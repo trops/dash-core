@@ -1,6 +1,7 @@
 import babel from "@rollup/plugin-babel";
 import resolve from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
+import typescript from "@rollup/plugin-typescript";
 import filesize from "rollup-plugin-filesize";
 import external from "rollup-plugin-peer-deps-external";
 import strip from "@rollup/plugin-strip";
@@ -17,10 +18,16 @@ const PLUGINS = [
     external({
         includeDependencies: true,
     }),
+    typescript({
+        tsconfig: "./tsconfig.json",
+        declaration: false,
+        sourceMap: true,
+    }),
     babel({
         babelHelpers: "runtime",
         exclude: "node_modules/**",
         skipPreflightCheck: true,
+        extensions: [".js", ".jsx", ".ts", ".tsx"],
     }),
     resolve({
         browser: true,
