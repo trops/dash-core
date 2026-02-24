@@ -1,0 +1,64 @@
+{
+    "name": "@trops/dash-core",
+    "version": "0.1.0",
+    "description": "Core framework for Dash dashboard applications",
+    "main": "dist/index.js",
+    "module": "dist/index.esm.js",
+    "exports": {
+        ".": {
+            "import": "./dist/index.esm.js",
+            "require": "./dist/index.js"
+        },
+        "./electron": {
+            "require": "./dist/electron/index.js"
+        }
+    },
+    "files": ["dist"],
+    "scripts": {
+        "build": "npm run build:renderer && npm run build:electron",
+        "build:renderer": "rollup -c rollup.config.renderer.mjs",
+        "build:electron": "rollup -c rollup.config.electron.mjs",
+        "clean": "rm -rf dist",
+        "prepublishOnly": "npm run clean && npm run build",
+        "prettify": "prettier --write \"src/**/*.{js,jsx,ts,tsx}\" \"electron/**/*.js\""
+    },
+    "peerDependencies": {
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "@trops/dash-react": ">=0.1.187"
+    },
+    "dependencies": {
+        "@fortawesome/fontawesome-svg-core": "^6.1.1",
+        "@fortawesome/free-brands-svg-icons": "^6.1.1",
+        "@fortawesome/free-solid-svg-icons": "^6.1.1",
+        "@fortawesome/react-fontawesome": "^0.1.18"
+    },
+    "devDependencies": {
+        "@babel/cli": "^7.22.0",
+        "@babel/core": "^7.22.0",
+        "@babel/preset-env": "^7.22.0",
+        "@babel/preset-react": "^7.22.0",
+        "@babel/plugin-transform-runtime": "^7.22.0",
+        "@babel/runtime": "^7.22.0",
+        "@rollup/plugin-babel": "^6.0.0",
+        "@rollup/plugin-commonjs": "^25.0.0",
+        "@rollup/plugin-json": "^6.0.0",
+        "@rollup/plugin-node-resolve": "^15.0.0",
+        "@rollup/plugin-strip": "^3.0.0",
+        "@rollup/plugin-typescript": "^11.0.0",
+        "rollup": "^3.25.0",
+        "rollup-plugin-filesize": "^10.0.0",
+        "rollup-plugin-peer-deps-external": "^2.2.4",
+        "prettier": "^3.0.0",
+        "typescript": "^5.0.0"
+    },
+    "publishConfig": {
+        "@trops:registry": "https://npm.pkg.github.com",
+        "access": "public"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/trops/dash-core.git"
+    },
+    "license": "MIT"
+}
