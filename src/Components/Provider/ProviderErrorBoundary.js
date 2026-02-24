@@ -1,14 +1,6 @@
 import React, { Component } from "react";
 import { MissingProviderPrompt } from "../../Components/Provider";
-
-// Lazy import to avoid circular dependencies
-let ProviderContext = null;
-try {
-    const ContextModule = require("../../Context");
-    ProviderContext = ContextModule.ProviderContext;
-} catch (e) {
-    console.warn("ProviderContext not available:", e.message);
-}
+import { ProviderContext } from "../../Context";
 
 /**
  * ProviderErrorBoundary Component

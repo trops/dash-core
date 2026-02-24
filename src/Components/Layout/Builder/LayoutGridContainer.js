@@ -11,6 +11,7 @@ import { WidgetFactory } from "../../../Widget";
 import { LayoutContainer } from "../../../Components/Layout";
 import { AppContext } from "../../../Context/App/AppContext";
 
+import { WidgetCard } from "./Enhanced/WidgetCard";
 import {
     getContainerBorderColor,
     renderComponent,
@@ -785,8 +786,6 @@ export const LayoutGridContainer = memo(
 
         // Unified edit mode cell renderer — wraps ALL cells in WidgetCard
         function renderEditCell(cellNumber, cellDef, selectableSet) {
-            const { WidgetCard } = require("./Enhanced/WidgetCard");
-
             const isCellSelected = selectedCellsForMerge.includes(cellNumber);
             const isCellSelectable =
                 selectableSet === null || selectableSet.has(cellNumber);
