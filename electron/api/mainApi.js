@@ -2,23 +2,13 @@
  * mainApi.js
  *
  * Factory for creating the main API object exposed to the renderer via contextBridge.
- * Core APIs are included by default. Template-specific APIs (algolia, openai, etc.)
+ * All APIs are included by default. Additional template-specific APIs
  * can be added via the extensions parameter.
  *
  * Usage in template's preload.js:
  *
- *   const { createMainApi } = require("@trops/dash-core/electron");
- *   const algoliaApi = require("./api/algoliaApi");
- *   const openaiApi = require("./api/openaiApi");
- *
- *   const mainApi = createMainApi({
- *       algolia: algoliaApi,
- *       openai: openaiApi,
- *       menuItems: menuItemsApi,
- *       plugins: pluginApi,
- *   });
- *
- *   contextBridge.exposeInMainWorld("mainApi", mainApi);
+ *   const { defaultMainApi } = require("@trops/dash-core/electron");
+ *   contextBridge.exposeInMainWorld("mainApi", defaultMainApi);
  */
 const { ipcRenderer, shell } = require("electron");
 const secureStoreApi = require("./secureStoreApi");
@@ -32,6 +22,10 @@ const providerApi = require("./providerApi");
 const mcpApi = require("./mcpApi");
 const registryApi = require("./registryApi");
 const themeApi = require("./themeApi");
+const algoliaApi = require("./algoliaApi");
+const openaiApi = require("./openaiApi");
+const menuItemsApi = require("./menuItemsApi");
+const pluginApi = require("./pluginApi");
 
 // Events constants
 const events = require("../events");
@@ -93,6 +87,12 @@ function createMainApi(extensions = {}) {
         publicEvents: events.public,
 
         pathPlugins: "",
+
+        // APIs previously in template
+        algolia: algoliaApi,
+        openai: openaiApi,
+        menuItems: menuItemsApi,
+        plugins: pluginApi,
 
         // Merge template-specific extensions
         ...extensions,

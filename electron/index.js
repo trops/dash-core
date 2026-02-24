@@ -15,6 +15,10 @@ const providerController = require("./controller/providerController");
 const layoutController = require("./controller/layoutController");
 const mcpController = require("./controller/mcpController");
 const registryController = require("./controller/registryController");
+const algoliaController = require("./controller/algoliaController");
+const openaiController = require("./controller/openaiController");
+const menuItemsController = require("./controller/menuItemsController");
+const pluginController = require("./controller/pluginController");
 
 // --- Controller functions (flat, for convenient destructuring) ---
 const controllers = require("./controller");
@@ -31,6 +35,10 @@ const providerApi = require("./api/providerApi");
 const mcpApi = require("./api/mcpApi");
 const registryApi = require("./api/registryApi");
 const themeApi = require("./api/themeApi");
+const algoliaApi = require("./api/algoliaApi");
+const openaiApi = require("./api/openaiApi");
+const menuItemsApi = require("./api/menuItemsApi");
+const pluginApi = require("./api/pluginApi");
 
 // --- Events ---
 const events = require("./events");
@@ -55,6 +63,10 @@ module.exports = {
     layoutController,
     mcpController,
     registryController,
+    algoliaController,
+    openaiController,
+    menuItemsController,
+    pluginController,
 
     // Controller functions (flat) — spread for convenient destructuring
     ...controllers,
@@ -71,6 +83,10 @@ module.exports = {
     mcpApi,
     registryApi,
     themeApi,
+    algoliaApi,
+    openaiApi,
+    menuItemsApi,
+    pluginApi,
 
     // Events
     events,

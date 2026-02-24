@@ -27,6 +27,10 @@ const EXTERNAL = [
     "@modelcontextprotocol/sdk/client/index.js",
     "@modelcontextprotocol/sdk/client/stdio.js",
     "safeStorage",
+    "algoliasearch",
+    "openai",
+    "JSONStream",
+    "live-plugin-manager",
 ];
 
 const config = {

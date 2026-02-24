@@ -1,6 +1,5 @@
 /**
- * Core controller exports.
- * Template-specific controllers (algolia, openai, menuItems, plugin) live in the template repo.
+ * Controller exports.
  */
 const { showDialog, fileChosenError } = require("./dialogController");
 const {
@@ -44,6 +43,18 @@ const {
     getProvider,
     deleteProvider,
 } = require("./providerController");
+const {
+    listIndices,
+    partialUpdateObjectsFromDirectory,
+    createBatchesFromFile,
+    browseObjectsToFile,
+} = require("./algoliaController");
+const { describeImage } = require("./openaiController");
+const {
+    saveMenuItemForApplication,
+    listMenuItemsForApplication,
+} = require("./menuItemsController");
+const { install: pluginInstall } = require("./pluginController");
 
 module.exports = {
     showDialog,
@@ -77,4 +88,12 @@ module.exports = {
     getDataDirectory,
     setDataDirectory,
     migrateDataDirectory,
+    listIndices,
+    partialUpdateObjectsFromDirectory,
+    createBatchesFromFile,
+    browseObjectsToFile,
+    describeImage,
+    saveMenuItemForApplication,
+    listMenuItemsForApplication,
+    pluginInstall,
 };

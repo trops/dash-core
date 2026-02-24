@@ -1,8 +1,7 @@
 /**
  * Events
  *
- * Core event constants used by the framework.
- * Template-specific events (algolia, openai, menuItem) live in the template repo.
+ * All event constants used by the framework.
  */
 const secureStorageEvents = require("./secureStorageEvents");
 const workspaceEvents = require("./workspaceEvents");
@@ -14,6 +13,9 @@ const dialogEvents = require("./dialogEvents");
 const providerEvents = require("./providerEvents");
 const mcpEvents = require("./mcpEvents");
 const registryEvents = require("./registryEvents");
+const algoliaEvents = require("./algoliaEvents");
+const menuItemEvents = require("./menuItemEvents");
+const openaiEvents = require("./openaiEvents");
 
 const publicEvents = {
     ...dataEvents,
@@ -31,4 +33,7 @@ module.exports = {
     ...providerEvents,
     ...mcpEvents,
     ...registryEvents,
+    ...algoliaEvents,
+    ...menuItemEvents,
+    ...openaiEvents,
 };
