@@ -35,9 +35,6 @@ src/Widgets/MyWidget/
 ├── widgets/
 │   ├── MyWidget.js           # Widget component
 │   └── MyWidget.dash.js      # Widget configuration
-├── workspaces/
-│   ├── MyWidgetWorkspace.js  # Workspace component
-│   └── MyWidgetWorkspace.dash.js
 └── index.js                  # Exports
 ```
 
@@ -136,69 +133,33 @@ export default {
 | `instructions` | string | No | Help text |
 | `required` | boolean | No | Whether field is required |
 
-## Creating Workspaces
-
-Workspaces are containers that host related widgets and provide shared context.
-
-### Workspace Component
-
-```javascript
-// MyWidgetWorkspace.js
-import React from "react";
-import { Workspace } from "@trops/dash-react";
-import { MyWidgetContext } from "../MyWidgetContext";
-
-export const MyWidgetWorkspace = ({ children, ...props }) => {
-    const sharedState = { /* shared data or API clients */ };
-
-    return (
-        <MyWidgetContext.Provider value={sharedState}>
-            <Workspace {...props}>{children}</Workspace>
-        </MyWidgetContext.Provider>
-    );
-};
-```
-
-### Workspace Configuration
-
-```javascript
-// MyWidgetWorkspace.dash.js
-import { MyWidgetWorkspace } from "./MyWidgetWorkspace";
-
-export default {
-    component: MyWidgetWorkspace,
-    canHaveChildren: true,
-    workspace: "my-widget-workspace",
-    type: "workspace",
-};
-```
-
 ## Context / Dependency Injection
 
-Share state and functionality between widgets via React Context:
+Widgets manage their own context internally, providing state to sub-components:
 
 ```javascript
 // MyWidgetContext.js
 import React from "react";
 export const MyWidgetContext = React.createContext();
 
-// In workspace — provide context
+// In widget — provide context
 import { useMyApi } from "./hooks/useMyApi";
+import { MyWidgetContext } from "../MyWidgetContext";
 
-export const MyWidgetWorkspace = ({ children }) => {
+export const MyWidget = (props) => {
     const myApi = useMyApi();
     return (
         <MyWidgetContext.Provider value={{ myApi }}>
-            {children}
+            <MyWidgetContent />
         </MyWidgetContext.Provider>
     );
 };
 
-// In widget — consume context
+// In sub-component — consume context
 import { useContext } from "react";
 import { MyWidgetContext } from "../MyWidgetContext";
 
-export const MyWidget = (props) => {
+const MyWidgetContent = () => {
     const { myApi } = useContext(MyWidgetContext);
     return <div>{/* Use myApi */}</div>;
 };
@@ -327,7 +288,6 @@ During development (`npm run dev`), changes to widget files automatically reload
 
 ### Widget not appearing in dashboard
 
-- Verify `.dash.js` config has correct `workspace` name matching the workspace config
 - Check ComponentManager registration: `ComponentManager.config("MyWidget")`
 - Ensure `index.js` exports the widget
 

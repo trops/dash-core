@@ -4,7 +4,7 @@ Consolidated reference for how widgets work in `@trops/dash-core`. Covers archit
 
 ## Overview
 
-Widgets are reusable React components in the Dash framework. The widget system provides a widget-based dashboard architecture with workspaces, contexts, and dependency injection -- all provided by `@trops/dash-core`.
+Widgets are reusable React components in the Dash framework. The widget system provides a widget-based dashboard architecture with contexts and dependency injection -- all provided by `@trops/dash-core`.
 
 The system spans two layers:
 
@@ -14,9 +14,8 @@ The system spans two layers:
 ## Key Concepts
 
 1. **Widgets** -- React components paired with `.dash.js` configuration files that define metadata, user-configurable properties, and event contracts.
-2. **Workspaces** -- Container components that host related widgets and provide shared context via React Context.
-3. **Contexts** -- React Context-based dependency injection for sharing state between a workspace and its child widgets.
-4. **ComponentManager** -- Central registry for widgets and workspaces. All widget lookups, registrations, and configuration queries go through this singleton.
+2. **Contexts** -- React Context-based dependency injection for sharing state between a widget's sub-components.
+3. **ComponentManager** -- Central registry for widgets. All widget lookups, registrations, and configuration queries go through this singleton.
 5. **Widget API** -- Injected into widgets as the `api` prop. Provides event publishing (`api.publishEvent`), data persistence (`api.storeData`, `api.readData`), and inter-widget communication (`api.registerListeners`).
 
 ## File Structure
@@ -28,9 +27,6 @@ MyWidget/
 ├── widgets/
 │   ├── MyWidget.js              # Widget React component
 │   └── MyWidget.dash.js         # Widget configuration
-├── workspaces/
-│   ├── MyWidgetWorkspace.js
-│   └── MyWidgetWorkspace.dash.js
 ├── contexts/
 │   └── MyWidgetContext.js       # Optional shared context
 └── index.js                     # Package entry point
@@ -140,28 +136,27 @@ When external widgets are registered via `registerBundleConfigs`, each config en
 
 ## Context Pattern
 
-Workspaces provide context, widgets consume it:
+Widgets manage their own context internally:
 
 ```javascript
 // contexts/WeatherWidgetContext.js
+import React from "react";
 export const WeatherWidgetContext = React.createContext({});
 
-// workspaces/WeatherWidgetWorkspace.js
-import { WeatherWidgetContext } from "../contexts";
+// widgets/WeatherWidget.js
+import { WeatherWidgetContext } from "../contexts/WeatherWidgetContext";
 
-export const WeatherWidgetWorkspace = ({ children }) => {
+export const WeatherWidget = (props) => {
     const weatherData = useWeatherApi();
     return (
         <WeatherWidgetContext.Provider value={{ weatherData }}>
-            {children}
+            <WeatherDisplay />
         </WeatherWidgetContext.Provider>
     );
 };
 
-// widgets/WeatherWidget.js
-import { WeatherWidgetContext } from "../contexts";
-
-export const WeatherWidget = (props) => {
+// Sub-component consumes context
+const WeatherDisplay = () => {
     const { weatherData } = useContext(WeatherWidgetContext);
     return <div>{weatherData.temp}</div>;
 };
