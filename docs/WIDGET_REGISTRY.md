@@ -73,9 +73,6 @@ my-widget/
 ├── widgets/
 │   ├── MyWidget.js           # Widget component
 │   └── MyWidget.dash.js      # Widget configuration
-├── workspaces/
-│   ├── MyWidgetWorkspace.js
-│   └── MyWidgetWorkspace.dash.js
 └── index.js                  # Exports
 ```
 
