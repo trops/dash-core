@@ -1,6 +1,6 @@
 import { useContext } from "react";
+import { AppContext } from "../Context/App/AppContext";
 import { WorkspaceContext } from "../Context/WorkspaceContext";
-import { DashboardContext } from "../Context/DashboardContext";
 import { WidgetContext } from "../Context/WidgetContext";
 
 /**
@@ -8,6 +8,13 @@ import { WidgetContext } from "../Context/WidgetContext";
  *
  * Convenience hook for widgets to access only their selected providers with credentials.
  * This is simpler than useDashboard(widgetId) because it automatically determines the widget ID.
+ *
+ * Matches the provider resolution pattern used by useMcpProvider:
+ * 1. Widget-level: widgetData.selectedProviders[providerType] (set by handleSelectProvider on the layout item)
+ * 2. Workspace-level fallback: workspace.workspaceData.selectedProviders[widgetId][providerType]
+ *
+ * Reads provider data from AppContext.providers (not DashboardContext.providers, which has a
+ * structural issue where providers don't flow through from AppWrapper).
  *
  * @returns {Object} Object containing:
  *   - providers: {
@@ -17,8 +24,6 @@ import { WidgetContext } from "../Context/WidgetContext";
  *     }
  *   - hasProvider(type): Boolean - Check if a provider type is available
  *   - getProvider(type): Provider object or null
- *
- * @throws {Error} If used outside of a Widget or DashboardWrapper
  *
  * @example
  * function MyWidget() {
@@ -34,41 +39,42 @@ import { WidgetContext } from "../Context/WidgetContext";
  * }
  */
 export const useWidgetProviders = () => {
+  const app = useContext(AppContext);
   const workspace = useContext(WorkspaceContext);
-  const dashboard = useContext(DashboardContext);
   const widgetContext = useContext(WidgetContext);
 
-  if (!workspace || !dashboard || !widgetContext) {
-    throw new Error(
-      "useWidgetProviders must be used within a Widget component. " +
-        "Make sure your component is rendered inside <Widget> and within a DashboardWrapper.",
-    );
-  }
+  const widgetData = widgetContext?.widgetData;
+  const widgetId = widgetData?.uuidString;
 
-  // Get the widget ID from widget context
-  const widgetId = widgetContext?.widgetData?.uuidString;
+  // Get all provider type declarations from the widget config
+  const providerDeclarations = widgetData?.providers || [];
 
-  if (!widgetId) {
-    throw new Error(
-      "Widget ID not found in context. " +
-        "Make sure your widget is properly initialized with a uuid.",
-    );
-  }
-
-  // Get providers selected for this specific widget
-  const widgetSelectedProviderNames =
-    workspace.workspaceData?.selectedProviders?.[widgetId] || {};
-
-  // Look up each selected provider by name
+  // Resolve each declared provider using the same two-layer lookup as useMcpProvider:
+  // 1. Widget-level: stored directly on the layout item by handleSelectProvider
+  // 2. Workspace-level: stored as workspace.selectedProviders[widgetId][providerType]
   const providers = {};
-  Object.entries(widgetSelectedProviderNames).forEach(
-    ([providerType, providerName]) => {
-      const provider = dashboard.providers?.[providerName];
+  for (const decl of providerDeclarations) {
+    const providerType = decl.type;
+
+    // 1. Widget-level (set by handleSelectProvider on the layout item)
+    let providerName = widgetData?.selectedProviders?.[providerType] || null;
+
+    // 2. Workspace-level fallback
+    if (!providerName && widgetId) {
+      providerName =
+        workspace?.workspaceData?.selectedProviders?.[widgetId]?.[
+          providerType
+        ] || null;
+    }
+
+    // Look up from AppContext.providers (not DashboardContext)
+    if (providerName) {
+      const provider = app?.providers?.[providerName];
       if (provider) {
         providers[providerType] = provider;
       }
-    },
-  );
+    }
+  }
 
   return {
     providers,
