@@ -13,6 +13,7 @@ export { McpServerPicker } from "./McpServerPicker";
 export { MissingProviderPrompt } from "./MissingProviderPrompt";
 export { ProviderErrorBoundary } from "./ProviderErrorBoundary";
 export {
-    withProviderDetection,
-    WidgetProviderWrapper,
+  withProviderDetection,
+  WidgetProviderWrapper,
 } from "./ProviderAwareWidget";
+export { AdvancedMcpConfig } from "./AdvancedMcpConfig";
