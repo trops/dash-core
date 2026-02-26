@@ -19,7 +19,7 @@
                 "token": {
                     "type": "text",
                     "displayName": "Personal Access Token",
-                    "required": true,
+                    "required": false,
                     "secret": true,
                     "instructions": "Generate a Personal Access Token at github.com/settings/tokens with the required scopes."
                 }
@@ -44,14 +44,14 @@
                 "botToken": {
                     "type": "text",
                     "displayName": "Bot Token",
-                    "required": true,
+                    "required": false,
                     "secret": true,
                     "instructions": "Create a Slack app and install it to your workspace to get a Bot Token (xoxb-...)."
                 },
                 "teamId": {
                     "type": "text",
                     "displayName": "Team ID",
-                    "required": true,
+                    "required": false,
                     "secret": false,
                     "instructions": "Find your Team ID in Slack workspace settings."
                 }
@@ -75,7 +75,7 @@
                 "authHeader": {
                     "type": "text",
                     "displayName": "API Key (as Authorization header JSON)",
-                    "required": true,
+                    "required": false,
                     "secret": true,
                     "instructions": "Create an integration at notion.so/my-integrations. Provide as JSON: {\"Authorization\": \"Bearer ntn_...\", \"Notion-Version\": \"2022-06-28\"}"
                 }
@@ -99,7 +99,7 @@
                 "apiKey": {
                     "type": "text",
                     "displayName": "API Key",
-                    "required": true,
+                    "required": false,
                     "secret": true,
                     "instructions": "Get an API key from brave.com/search/api."
                 }
@@ -121,7 +121,7 @@
                 "allowedPaths": {
                     "type": "text",
                     "displayName": "Allowed Paths",
-                    "required": true,
+                    "required": false,
                     "secret": false,
                     "instructions": "Comma-separated list of directory paths the server can access (e.g., /Users/you/Documents,/tmp)."
                 }
@@ -145,7 +145,7 @@
                 "connectionString": {
                     "type": "text",
                     "displayName": "Connection String",
-                    "required": true,
+                    "required": false,
                     "secret": true,
                     "instructions": "PostgreSQL connection string (e.g., postgresql://user:password@localhost:5432/dbname)."
                 }
@@ -169,7 +169,7 @@
                 "apiKey": {
                     "type": "text",
                     "displayName": "API Key",
-                    "required": true,
+                    "required": false,
                     "secret": true,
                     "instructions": "Generate a Personal API Key in Linear Settings > API."
                 }
@@ -208,7 +208,7 @@
                 "credentialsPath": {
                     "type": "text",
                     "displayName": "OAuth Credentials File Path",
-                    "required": true,
+                    "required": false,
                     "secret": false,
                     "instructions": "Path to your Google OAuth credentials.json file. Create one at console.cloud.google.com > APIs & Services > Credentials > OAuth 2.0 Client IDs."
                 },
@@ -240,7 +240,7 @@
                 "credentialsPath": {
                     "type": "text",
                     "displayName": "OAuth Credentials File Path",
-                    "required": true,
+                    "required": false,
                     "secret": false,
                     "instructions": "Path to your Google OAuth credentials.json file. Enable the Gmail API at console.cloud.google.com, then create OAuth 2.0 credentials."
                 },
@@ -272,7 +272,7 @@
                 "credentialsPath": {
                     "type": "text",
                     "displayName": "OAuth Credentials File Path",
-                    "required": true,
+                    "required": false,
                     "secret": false,
                     "instructions": "Path to your Google OAuth credentials.json file. Enable the Google Calendar API at console.cloud.google.com, then create OAuth 2.0 credentials."
                 },
@@ -302,14 +302,14 @@
                 "url": {
                     "type": "text",
                     "displayName": "MCP Server URL",
-                    "required": true,
+                    "required": false,
                     "secret": false,
                     "instructions": "Your Algolia MCP endpoint URL from the Algolia dashboard (e.g., https://mcp.us.algolia.com/1/abc123/mcp)."
                 },
                 "apiKey": {
                     "type": "text",
                     "displayName": "API Key",
-                    "required": true,
+                    "required": false,
                     "secret": true,
                     "instructions": "Your Algolia Search API Key, found in the Algolia dashboard under API Keys."
                 }

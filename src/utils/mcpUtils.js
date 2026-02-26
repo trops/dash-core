@@ -54,7 +54,7 @@ export function deriveFormFields(mcpConfig, credentialSchema = {}) {
       return {
         key,
         displayName: schemaMeta.displayName || formatFieldName(key),
-        required: schemaMeta.required !== false,
+        required: schemaMeta.required === true,
         secret: schemaMeta.secret || false,
         instructions: schemaMeta.instructions || null,
         type: schemaMeta.type || "text",
@@ -65,7 +65,7 @@ export function deriveFormFields(mcpConfig, credentialSchema = {}) {
     return {
       key,
       displayName: formatFieldName(key),
-      required: true,
+      required: false,
       secret: isLikelySecret(key),
       instructions: null,
       type: "text",
