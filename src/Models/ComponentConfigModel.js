@@ -43,73 +43,73 @@
  * @returns <ComponentConfigModel>Object
  */
 export const ComponentConfigModel = (obj = {}) => {
-    /**
-     * id
-     * The unique identifer for the component
-     */
-    obj.id = "id" in obj ? obj["id"] : null;
+  /**
+   * id
+   * The unique identifer for the component
+   */
+  obj.id = "id" in obj ? obj["id"] : null;
 
-    /**
-     * name
-     * The name of the component for display purposes
-     */
-    obj.name = "name" in obj ? obj["name"] : "My Workspace";
+  /**
+   * name
+   * The name of the component for display purposes
+   */
+  obj.name = "name" in obj ? obj["name"] : "My Workspace";
 
-    /**
-     * type
-     * The type of component (widget|workspace)
-     */
-    obj.type = "type" in obj ? obj["type"] : "workspace";
+  /**
+   * type
+   * The type of component (widget|workspace)
+   */
+  obj.type = "type" in obj ? obj["type"] : "workspace";
 
-    obj.contexts = "contexts" in obj ? obj["contexts"] : [];
+  obj.contexts = "contexts" in obj ? obj["contexts"] : [];
 
-    /**
-     * workspace
-     * The workspace this component belongs to
-     */
-    obj.workspace = "workspace" in obj ? obj["workspace"] : "workspace-dash";
+  /**
+   * workspace
+   * The workspace this component belongs to
+   */
+  obj.workspace = "workspace" in obj ? obj["workspace"] : "workspace-dash";
 
-    /**
-     * userConfig
-     * Allow the end users to edit/input parameters into the edit widget layout panel
-     */
-    obj.userConfig = "userConfig" in obj ? obj["userConfig"] : {};
+  /**
+   * userConfig
+   * Allow the end users to edit/input parameters into the edit widget layout panel
+   */
+  obj.userConfig = "userConfig" in obj ? obj["userConfig"] : {};
 
-    /**
-     * canHaveChildren
-     * If the component is allowed to have child components
-     */
-    obj.canHaveChildren =
-        "canHaveChildren" in obj ? obj["canHaveChildren"] : false;
+  /**
+   * canHaveChildren
+   * If the component is allowed to have child components
+   */
+  obj.canHaveChildren =
+    "canHaveChildren" in obj ? obj["canHaveChildren"] : false;
 
-    /**
-     * events
-     * The events that the component is emitting
-     */
-    obj.events = "events" in obj ? obj["events"] : [];
+  /**
+   * events
+   * The events that the component is emitting
+   */
+  obj.events = "events" in obj ? obj["events"] : [];
 
-    /**
-     * eventHandlers
-     * The Names of the functions that are listened to in the component and can be handled inside the component
-     */
-    obj.eventHandlers = "eventHandlers" in obj ? obj["eventHandlers"] : [];
+  /**
+   * eventHandlers
+   * The Names of the functions that are listened to in the component and can be handled inside the component
+   */
+  obj.eventHandlers = "eventHandlers" in obj ? obj["eventHandlers"] : [];
 
-    /**
-     * layout builder styles
-     */
-    obj.styles =
-        "styles" in obj
-            ? obj["styles"]
-            : {
-                  backgroundColor: "bg-blue-800",
-                  borderColor: "border-blue-900",
-              };
+  /**
+   * layout builder styles
+   */
+  obj.styles =
+    "styles" in obj
+      ? obj["styles"]
+      : {
+          backgroundColor: "bg-blue-800",
+          borderColor: "border-blue-900",
+        };
 
-    obj.author = "author" in obj ? obj["author"] : null;
-    obj.description = "description" in obj ? obj["description"] : null;
-    obj.icon = "icon" in obj ? obj["icon"] : null;
-    obj.package = "package" in obj ? obj["package"] : null;
-    obj.providers = "providers" in obj ? obj["providers"] : [];
+  obj.author = "author" in obj ? obj["author"] : null;
+  obj.description = "description" in obj ? obj["description"] : null;
+  obj.icon = "icon" in obj ? obj["icon"] : null;
+  obj.package = "package" in obj ? obj["package"] : null;
+  obj.providers = "providers" in obj ? obj["providers"] : [];
 
-    return obj;
+  return obj;
 };

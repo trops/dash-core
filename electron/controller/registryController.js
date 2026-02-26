@@ -15,7 +15,7 @@ const fs = require("fs");
 
 // Default registry URL (GitHub Pages)
 const DEFAULT_REGISTRY_URL =
-    "https://trops.github.io/dash-registry/registry-index.json";
+  "https://trops.github.io/dash-registry/registry-index.json";
 
 // Cache TTL: 5 minutes
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -27,18 +27,18 @@ let cacheTimestamp = 0;
  * Get the local test registry path for dev mode
  */
 function getTestRegistryPath() {
-    return path.join(__dirname, "..", "registry", "test-registry-index.json");
+  return path.join(__dirname, "..", "registry", "test-registry-index.json");
 }
 
 /**
  * Check if running in development mode
  */
 function isDev() {
-    return (
-        process.defaultApp ||
-        process.env.NODE_ENV === "development" ||
-        process.env.NODE_ENV === "dev"
-    );
+  return (
+    process.defaultApp ||
+    process.env.NODE_ENV === "development" ||
+    process.env.NODE_ENV === "dev"
+  );
 }
 
 /**
@@ -49,75 +49,69 @@ function isDev() {
  * @returns {Promise<Object>} The registry index
  */
 async function fetchRegistryIndex(forceRefresh = false) {
-    const now = Date.now();
+  const now = Date.now();
 
-    // Return cached data if still valid
-    if (!forceRefresh && cachedIndex && now - cacheTimestamp < CACHE_TTL_MS) {
-        console.log("[RegistryController] Returning cached registry index");
-        return cachedIndex;
-    }
+  // Return cached data if still valid
+  if (!forceRefresh && cachedIndex && now - cacheTimestamp < CACHE_TTL_MS) {
+    console.log("[RegistryController] Returning cached registry index");
+    return cachedIndex;
+  }
 
-    try {
-        let indexData;
+  try {
+    let indexData;
 
-        if (isDev()) {
-            // In dev mode, load from local test file
-            const testPath = getTestRegistryPath();
-            if (fs.existsSync(testPath)) {
-                console.log(
-                    "[RegistryController] Loading test registry from:",
-                    testPath
-                );
-                const raw = fs.readFileSync(testPath, "utf8");
-                indexData = JSON.parse(raw);
-            } else {
-                console.warn(
-                    "[RegistryController] Test registry not found at:",
-                    testPath
-                );
-                indexData = { version: "1.0.0", packages: [] };
-            }
-        } else {
-            // In production, fetch from remote URL
-            const registryUrl =
-                process.env.DASH_REGISTRY_URL || DEFAULT_REGISTRY_URL;
-            console.log(
-                "[RegistryController] Fetching registry from:",
-                registryUrl
-            );
-
-            const response = await fetch(registryUrl);
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to fetch registry: ${response.status} ${response.statusText}`
-                );
-            }
-            indexData = await response.json();
-        }
-
-        // Cache the result
-        cachedIndex = indexData;
-        cacheTimestamp = now;
-
+    if (isDev()) {
+      // In dev mode, load from local test file
+      const testPath = getTestRegistryPath();
+      if (fs.existsSync(testPath)) {
         console.log(
-            `[RegistryController] Loaded ${
-                indexData.packages?.length || 0
-            } packages`
+          "[RegistryController] Loading test registry from:",
+          testPath,
         );
-        return indexData;
-    } catch (error) {
-        console.error("[RegistryController] Error fetching registry:", error);
+        const raw = fs.readFileSync(testPath, "utf8");
+        indexData = JSON.parse(raw);
+      } else {
+        console.warn(
+          "[RegistryController] Test registry not found at:",
+          testPath,
+        );
+        indexData = { version: "1.0.0", packages: [] };
+      }
+    } else {
+      // In production, fetch from remote URL
+      const registryUrl = process.env.DASH_REGISTRY_URL || DEFAULT_REGISTRY_URL;
+      console.log("[RegistryController] Fetching registry from:", registryUrl);
 
-        // Return stale cache if available
-        if (cachedIndex) {
-            console.log(
-                "[RegistryController] Returning stale cache after fetch error"
-            );
-            return cachedIndex;
-        }
-
-        throw error;
+      const response = await fetch(registryUrl);
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch registry: ${response.status} ${response.statusText}`,
+        );
+      }
+      indexData = await response.json();
     }
+
+    // Cache the result
+    cachedIndex = indexData;
+    cacheTimestamp = now;
+
+    console.log(
+      `[RegistryController] Loaded ${indexData.packages?.length || 0} packages`,
+    );
+    return indexData;
+  } catch (error) {
+    console.error("[RegistryController] Error fetching registry:", error);
+
+    // Return stale cache if available
+    if (cachedIndex) {
+      console.log(
+        "[RegistryController] Returning stale cache after fetch error",
+      );
+      return cachedIndex;
+    }
+
+    throw error;
+  }
 }
 
 /**
@@ -131,66 +125,64 @@ async function fetchRegistryIndex(forceRefresh = false) {
  * @returns {Promise<Object>} { packages: [...], totalWidgets: number }
  */
 async function searchRegistry(query = "", filters = {}) {
-    const index = await fetchRegistryIndex();
-    let packages = index.packages || [];
+  const index = await fetchRegistryIndex();
+  let packages = index.packages || [];
 
-    // Apply search query
-    if (query) {
-        const q = query.toLowerCase();
-        packages = packages.filter((pkg) => {
-            // Match against package-level fields
-            const packageMatch =
-                (pkg.name || "").toLowerCase().includes(q) ||
-                (pkg.displayName || "").toLowerCase().includes(q) ||
-                (pkg.description || "").toLowerCase().includes(q) ||
-                (pkg.author || "").toLowerCase().includes(q) ||
-                (pkg.tags || []).some((t) => t.toLowerCase().includes(q));
+  // Apply search query
+  if (query) {
+    const q = query.toLowerCase();
+    packages = packages.filter((pkg) => {
+      // Match against package-level fields
+      const packageMatch =
+        (pkg.name || "").toLowerCase().includes(q) ||
+        (pkg.displayName || "").toLowerCase().includes(q) ||
+        (pkg.description || "").toLowerCase().includes(q) ||
+        (pkg.author || "").toLowerCase().includes(q) ||
+        (pkg.tags || []).some((t) => t.toLowerCase().includes(q));
 
-            // Match against individual widgets within the package
-            const widgetMatch = (pkg.widgets || []).some(
-                (w) =>
-                    (w.name || "").toLowerCase().includes(q) ||
-                    (w.displayName || "").toLowerCase().includes(q) ||
-                    (w.description || "").toLowerCase().includes(q)
-            );
+      // Match against individual widgets within the package
+      const widgetMatch = (pkg.widgets || []).some(
+        (w) =>
+          (w.name || "").toLowerCase().includes(q) ||
+          (w.displayName || "").toLowerCase().includes(q) ||
+          (w.description || "").toLowerCase().includes(q),
+      );
 
-            return packageMatch || widgetMatch;
-        });
-    }
+      return packageMatch || widgetMatch;
+    });
+  }
 
-    // Apply category filter
-    if (filters.category) {
-        packages = packages.filter(
-            (pkg) =>
-                (pkg.category || "").toLowerCase() ===
-                filters.category.toLowerCase()
-        );
-    }
-
-    // Apply author filter
-    if (filters.author) {
-        packages = packages.filter(
-            (pkg) =>
-                (pkg.author || "").toLowerCase() ===
-                filters.author.toLowerCase()
-        );
-    }
-
-    // Apply tag filter
-    if (filters.tag) {
-        const tagLower = filters.tag.toLowerCase();
-        packages = packages.filter((pkg) =>
-            (pkg.tags || []).some((t) => t.toLowerCase() === tagLower)
-        );
-    }
-
-    // Count total widgets across matched packages
-    const totalWidgets = packages.reduce(
-        (sum, pkg) => sum + (pkg.widgets || []).length,
-        0
+  // Apply category filter
+  if (filters.category) {
+    packages = packages.filter(
+      (pkg) =>
+        (pkg.category || "").toLowerCase() === filters.category.toLowerCase(),
     );
+  }
 
-    return { packages, totalWidgets };
+  // Apply author filter
+  if (filters.author) {
+    packages = packages.filter(
+      (pkg) =>
+        (pkg.author || "").toLowerCase() === filters.author.toLowerCase(),
+    );
+  }
+
+  // Apply tag filter
+  if (filters.tag) {
+    const tagLower = filters.tag.toLowerCase();
+    packages = packages.filter((pkg) =>
+      (pkg.tags || []).some((t) => t.toLowerCase() === tagLower),
+    );
+  }
+
+  // Count total widgets across matched packages
+  const totalWidgets = packages.reduce(
+    (sum, pkg) => sum + (pkg.widgets || []).length,
+    0,
+  );
+
+  return { packages, totalWidgets };
 }
 
 /**
@@ -200,9 +192,9 @@ async function searchRegistry(query = "", filters = {}) {
  * @returns {Promise<Object|null>} Package data or null if not found
  */
 async function getPackage(packageName) {
-    const index = await fetchRegistryIndex();
-    const pkg = (index.packages || []).find((p) => p.name === packageName);
-    return pkg || null;
+  const index = await fetchRegistryIndex();
+  const pkg = (index.packages || []).find((p) => p.name === packageName);
+  return pkg || null;
 }
 
 /**
@@ -212,30 +204,28 @@ async function getPackage(packageName) {
  * @returns {Promise<Array<Object>>} Widgets with available updates
  */
 async function checkUpdates(installedWidgets = []) {
-    const index = await fetchRegistryIndex();
-    const updates = [];
+  const index = await fetchRegistryIndex();
+  const updates = [];
 
-    for (const installed of installedWidgets) {
-        const pkg = (index.packages || []).find(
-            (p) => p.name === installed.name
-        );
-        if (pkg && pkg.version !== installed.version) {
-            updates.push({
-                name: pkg.name,
-                currentVersion: installed.version,
-                latestVersion: pkg.version,
-                downloadUrl: pkg.downloadUrl,
-                changelog: pkg.changelog || null,
-            });
-        }
+  for (const installed of installedWidgets) {
+    const pkg = (index.packages || []).find((p) => p.name === installed.name);
+    if (pkg && pkg.version !== installed.version) {
+      updates.push({
+        name: pkg.name,
+        currentVersion: installed.version,
+        latestVersion: pkg.version,
+        downloadUrl: pkg.downloadUrl,
+        changelog: pkg.changelog || null,
+      });
     }
+  }
 
-    return updates;
+  return updates;
 }
 
 module.exports = {
-    fetchRegistryIndex,
-    searchRegistry,
-    getPackage,
-    checkUpdates,
+  fetchRegistryIndex,
+  searchRegistry,
+  getPackage,
+  checkUpdates,
 };

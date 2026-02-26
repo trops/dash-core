@@ -8,17 +8,16 @@ const FALLBACK = "puzzle-piece";
  * the icon is falsy or not found in either prefix.
  */
 export const resolveIcon = (iconName) => {
-    if (!iconName) return FALLBACK;
+  if (!iconName) return FALLBACK;
 
-    // Already an array tuple like ["fab", "github"] — pass through
-    if (Array.isArray(iconName)) return iconName;
+  // Already an array tuple like ["fab", "github"] — pass through
+  if (Array.isArray(iconName)) return iconName;
 
-    // Try solid
-    if (findIconDefinition({ prefix: "fas", iconName })) return iconName;
+  // Try solid
+  if (findIconDefinition({ prefix: "fas", iconName })) return iconName;
 
-    // Try brand
-    if (findIconDefinition({ prefix: "fab", iconName }))
-        return ["fab", iconName];
+  // Try brand
+  if (findIconDefinition({ prefix: "fab", iconName })) return ["fab", iconName];
 
-    return FALLBACK;
+  return FALLBACK;
 };

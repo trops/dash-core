@@ -12,5 +12,5 @@ export const DATA_SAVE_TO_FILE_ERROR = "data-save-to-file-error";
 
 export const DATA_JSON_TO_CSV_STRING = "data-json-to-csv-string";
 export const DATA_JSON_TO_CSV_STRING_COMPLETE =
-    "data-json-to-csv-string-complete";
+  "data-json-to-csv-string-complete";
 export const DATA_JSON_TO_CSV_STRING_ERROR = "data-json-to-csv-string-error";

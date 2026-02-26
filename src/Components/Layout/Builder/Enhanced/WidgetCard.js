@@ -37,43 +37,43 @@ const WidgetCardContext = React.createContext({ preview: false });
  * Only renders in edit mode (preview === false)
  */
 const WidgetCardHeader_Component = ({
-    item,
-    cellNumber = null,
-    providers = [],
-    selectedProviders = {},
-    onProviderChange,
-    onConfigure,
-    onDelete,
-    onSplitHorizontal = null,
-    onSplitVertical = null,
-    // Merge selection props
-    isSelected = false,
-    isSelectable = true,
-    onToggleSelect = null,
+  item,
+  cellNumber = null,
+  providers = [],
+  selectedProviders = {},
+  onProviderChange,
+  onConfigure,
+  onDelete,
+  onSplitHorizontal = null,
+  onSplitVertical = null,
+  // Merge selection props
+  isSelected = false,
+  isSelectable = true,
+  onToggleSelect = null,
 }) => {
-    const { preview } = React.useContext(WidgetCardContext);
+  const { preview } = React.useContext(WidgetCardContext);
 
-    // Don't render header in preview mode
-    if (preview === true) {
-        return null;
-    }
+  // Don't render header in preview mode
+  if (preview === true) {
+    return null;
+  }
 
-    return (
-        <WidgetCardHeader
-            item={item}
-            cellNumber={cellNumber}
-            providers={providers}
-            selectedProviders={selectedProviders}
-            onProviderChange={onProviderChange}
-            onConfigure={onConfigure}
-            onDelete={onDelete}
-            onSplitHorizontal={onSplitHorizontal}
-            onSplitVertical={onSplitVertical}
-            isSelected={isSelected}
-            isSelectable={isSelectable}
-            onToggleSelect={onToggleSelect}
-        />
-    );
+  return (
+    <WidgetCardHeader
+      item={item}
+      cellNumber={cellNumber}
+      providers={providers}
+      selectedProviders={selectedProviders}
+      onProviderChange={onProviderChange}
+      onConfigure={onConfigure}
+      onDelete={onDelete}
+      onSplitHorizontal={onSplitHorizontal}
+      onSplitVertical={onSplitVertical}
+      isSelected={isSelected}
+      isSelectable={isSelectable}
+      onToggleSelect={onToggleSelect}
+    />
+  );
 };
 
 /**
@@ -82,19 +82,19 @@ const WidgetCardHeader_Component = ({
  * In preview mode: renders content without padding
  */
 const WidgetCardBody = ({ children, padding = "p-2", className = "" }) => {
-    const { preview } = React.useContext(WidgetCardContext);
+  const { preview } = React.useContext(WidgetCardContext);
 
-    // In preview mode, render children without padding wrapper
-    if (preview === true) {
-        return <>{children}</>;
-    }
+  // In preview mode, render children without padding wrapper
+  if (preview === true) {
+    return <>{children}</>;
+  }
 
-    // In edit mode, render with padding
-    return (
-        <div className={`flex-1 min-h-0 overflow-auto ${padding} ${className}`}>
-            {children}
-        </div>
-    );
+  // In edit mode, render with padding
+  return (
+    <div className={`flex-1 min-h-0 overflow-auto ${padding} ${className}`}>
+      {children}
+    </div>
+  );
 };
 
 /**
@@ -103,48 +103,48 @@ const WidgetCardBody = ({ children, padding = "p-2", className = "" }) => {
  * Shows amber warning when widget has eventHandlers that lack listener connections
  */
 const WidgetCardFooter = ({
-    children,
-    item = null,
-    onConfigure = null,
-    className = "",
+  children,
+  item = null,
+  onConfigure = null,
+  className = "",
 }) => {
-    const { preview } = React.useContext(WidgetCardContext);
-    if (preview === true) return null;
+  const { preview } = React.useContext(WidgetCardContext);
+  if (preview === true) return null;
 
-    // Compute unconfigured handlers
-    const widgetConfig = item?.component
-        ? ComponentManager.config(item.component, item)
-        : null;
-    const eventHandlers = widgetConfig?.eventHandlers || [];
-    const listeners = item?.listeners || {};
-    const unconfiguredCount = eventHandlers.filter(
-        (h) => !listeners[h] || listeners[h].length === 0
-    ).length;
+  // Compute unconfigured handlers
+  const widgetConfig = item?.component
+    ? ComponentManager.config(item.component, item)
+    : null;
+  const eventHandlers = widgetConfig?.eventHandlers || [];
+  const listeners = item?.listeners || {};
+  const unconfiguredCount = eventHandlers.filter(
+    (h) => !listeners[h] || listeners[h].length === 0,
+  ).length;
 
-    // Don't render if no children AND no warnings
-    if (!children && unconfiguredCount === 0) return null;
+  // Don't render if no children AND no warnings
+  if (!children && unconfiguredCount === 0) return null;
 
-    return (
-        <div
-            className={`border-t border-gray-700 px-3 py-1.5 bg-transparent ${className}`}
+  return (
+    <div
+      className={`border-t border-gray-700 px-3 py-1.5 bg-transparent ${className}`}
+    >
+      {children}
+      {unconfiguredCount > 0 && (
+        <button
+          type="button"
+          onClick={() => onConfigure && onConfigure(item, "handlers")}
+          className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium border bg-amber-900/20 border-amber-700/50 text-amber-400 hover:bg-amber-900/30 hover:border-amber-600/50 transition-all cursor-pointer"
+          title="Click to configure listeners"
         >
-            {children}
-            {unconfiguredCount > 0 && (
-                <button
-                    type="button"
-                    onClick={() => onConfigure && onConfigure(item, "handlers")}
-                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium border bg-amber-900/20 border-amber-700/50 text-amber-400 hover:bg-amber-900/30 hover:border-amber-600/50 transition-all cursor-pointer"
-                    title="Click to configure listeners"
-                >
-                    <FontAwesomeIcon icon="phone" className="text-[10px]" />
-                    <span>
-                        {unconfiguredCount} listener
-                        {unconfiguredCount > 1 ? "s" : ""} not connected
-                    </span>
-                </button>
-            )}
-        </div>
-    );
+          <FontAwesomeIcon icon="phone" className="text-[10px]" />
+          <span>
+            {unconfiguredCount} listener
+            {unconfiguredCount > 1 ? "s" : ""} not connected
+          </span>
+        </button>
+      )}
+    </div>
+  );
 };
 
 /**
@@ -154,25 +154,25 @@ const WidgetCardFooter = ({
  * In edit mode: wraps children in a container
  */
 export const WidgetCard = ({ preview = false, children, className = "" }) => {
-    // In preview mode, render children without wrapper
-    if (preview === true) {
-        return (
-            <WidgetCardContext.Provider value={{ preview }}>
-                {children}
-            </WidgetCardContext.Provider>
-        );
-    }
-
-    // In edit mode, render with wrapper (no padding - Body handles padding)
+  // In preview mode, render children without wrapper
+  if (preview === true) {
     return (
-        <WidgetCardContext.Provider value={{ preview }}>
-            <div
-                className={`flex flex-col w-full h-full min-h-0 overflow-hidden rounded border border-dashed border-gray-700 ${className}`}
-            >
-                {children}
-            </div>
-        </WidgetCardContext.Provider>
+      <WidgetCardContext.Provider value={{ preview }}>
+        {children}
+      </WidgetCardContext.Provider>
     );
+  }
+
+  // In edit mode, render with wrapper (no padding - Body handles padding)
+  return (
+    <WidgetCardContext.Provider value={{ preview }}>
+      <div
+        className={`flex flex-col w-full h-full min-h-0 overflow-hidden rounded border border-dashed border-gray-700 ${className}`}
+      >
+        {children}
+      </div>
+    </WidgetCardContext.Provider>
+  );
 };
 
 // Attach subcomponents

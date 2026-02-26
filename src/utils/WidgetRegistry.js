@@ -1,9 +1,9 @@
 const widgetRegistry = null;
 
 function setupWidgetRegistryHandlers() {
-    throw new Error(
-        "WidgetRegistry is Electron-only and must be used from the main process."
-    );
+  throw new Error(
+    "WidgetRegistry is Electron-only and must be used from the main process.",
+  );
 }
 
 module.exports = {};

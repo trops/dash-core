@@ -12,35 +12,35 @@ import { ThemeContext } from "@trops/dash-react";
  * and keeps the app theme.
  */
 export const DashboardThemeProvider = ({ themeKey, children }) => {
-    const parentContext = useContext(ThemeContext);
-    const { themes, themeVariant } = parentContext;
+  const parentContext = useContext(ThemeContext);
+  const { themes, themeVariant } = parentContext;
 
-    const contextValue = useMemo(() => {
-        if (!themeKey || !themes || !(themeKey in themes)) return null;
+  const contextValue = useMemo(() => {
+    if (!themeKey || !themes || !(themeKey in themes)) return null;
 
-        const dashboardTheme = themes[themeKey];
-        const themeValue = dashboardTheme
-            ? dashboardTheme[themeVariant] || null
-            : null;
+    const dashboardTheme = themes[themeKey];
+    const themeValue = dashboardTheme
+      ? dashboardTheme[themeVariant] || null
+      : null;
 
-        if (!themeValue) return null;
+    if (!themeValue) return null;
 
-        return {
-            ...parentContext,
-            currentTheme: themeValue,
-            currentThemeKey: themeKey,
-            theme: themeValue,
-            themeKey: themeKey,
-            appTheme: parentContext.currentTheme,
-            appThemeKey: parentContext.currentThemeKey,
-        };
-    }, [themeKey, themes, themeVariant, parentContext]);
+    return {
+      ...parentContext,
+      currentTheme: themeValue,
+      currentThemeKey: themeKey,
+      theme: themeValue,
+      themeKey: themeKey,
+      appTheme: parentContext.currentTheme,
+      appThemeKey: parentContext.currentThemeKey,
+    };
+  }, [themeKey, themes, themeVariant, parentContext]);
 
-    if (!contextValue) return <>{children}</>;
+  if (!contextValue) return <>{children}</>;
 
-    return (
-        <ThemeContext.Provider value={contextValue}>
-            {children}
-        </ThemeContext.Provider>
-    );
+  return (
+    <ThemeContext.Provider value={contextValue}>
+      {children}
+    </ThemeContext.Provider>
+  );
 };

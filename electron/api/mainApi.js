@@ -37,68 +37,68 @@ const events = require("../events");
  * @returns {Object} The complete mainApi object
  */
 function createMainApi(extensions = {}) {
-    const mainApi = {
-        // the main application identifier to STORE the data in the application folder.
-        appId: null,
+  const mainApi = {
+    // the main application identifier to STORE the data in the application folder.
+    appId: null,
 
-        setAppId: (appId) => {
-            console.log("setting appId in the api ", appId);
-            mainApi.appId = appId;
-        },
+    setAppId: (appId) => {
+      console.log("setting appId in the api ", appId);
+      mainApi.appId = appId;
+    },
 
-        // keep these for general use
-        on: (event, fn) => {
-            ipcRenderer.addListener(event, fn);
-        },
-        removeAllListeners: (name = null) => {
-            // can remove all listeners for event
-            if (name) ipcRenderer.removeAllListeners(name);
-        },
-        removeListener: (name, fn) => ipcRenderer.removeListener(name, fn),
+    // keep these for general use
+    on: (event, fn) => {
+      ipcRenderer.addListener(event, fn);
+    },
+    removeAllListeners: (name = null) => {
+      // can remove all listeners for event
+      if (name) ipcRenderer.removeAllListeners(name);
+    },
+    removeListener: (name, fn) => ipcRenderer.removeListener(name, fn),
 
-        // Core APIs
-        secureStoreApi: secureStoreApi,
-        workspace: workspaceApi,
-        layout: layoutApi,
-        themes: themeApi,
-        data: { appId: null, ...dataApi },
-        settings: settingsApi,
-        dialog: dialogApi,
-        widgets: widgetApi,
-        providers: providerApi,
-        mcp: mcpApi,
-        registry: registryApi,
+    // Core APIs
+    secureStoreApi: secureStoreApi,
+    workspace: workspaceApi,
+    layout: layoutApi,
+    themes: themeApi,
+    data: { appId: null, ...dataApi },
+    settings: settingsApi,
+    dialog: dialogApi,
+    widgets: widgetApi,
+    providers: providerApi,
+    mcp: mcpApi,
+    registry: registryApi,
 
-        shell: {
-            openPath: (path) => shell.openPath(path),
-            openExternal: (url) => {
-                if (
-                    typeof url === "string" &&
-                    (url.startsWith("http://") || url.startsWith("https://"))
-                ) {
-                    return shell.openExternal(url);
-                }
-            },
-        },
+    shell: {
+      openPath: (path) => shell.openPath(path),
+      openExternal: (url) => {
+        if (
+          typeof url === "string" &&
+          (url.startsWith("http://") || url.startsWith("https://"))
+        ) {
+          return shell.openExternal(url);
+        }
+      },
+    },
 
-        // included these in the bridge
-        events: { ...events },
+    // included these in the bridge
+    events: { ...events },
 
-        publicEvents: events.public,
+    publicEvents: events.public,
 
-        pathPlugins: "",
+    pathPlugins: "",
 
-        // APIs previously in template
-        algolia: algoliaApi,
-        openai: openaiApi,
-        menuItems: menuItemsApi,
-        plugins: pluginApi,
+    // APIs previously in template
+    algolia: algoliaApi,
+    openai: openaiApi,
+    menuItems: menuItemsApi,
+    plugins: pluginApi,
 
-        // Merge template-specific extensions
-        ...extensions,
-    };
+    // Merge template-specific extensions
+    ...extensions,
+  };
 
-    return mainApi;
+  return mainApi;
 }
 
 /**

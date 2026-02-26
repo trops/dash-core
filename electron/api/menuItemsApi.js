@@ -8,9 +8,9 @@ const { ipcRenderer } = require("electron");
 const { MENU_ITEMS_SAVE, MENU_ITEMS_LIST } = require("../events");
 
 const menuItemsApi = {
-    saveMenuItem: (appId, menuItem) =>
-        ipcRenderer.invoke(MENU_ITEMS_SAVE, { appId, menuItem }),
-    listMenuItems: (appId) => ipcRenderer.invoke(MENU_ITEMS_LIST, { appId }),
+  saveMenuItem: (appId, menuItem) =>
+    ipcRenderer.invoke(MENU_ITEMS_SAVE, { appId, menuItem }),
+  listMenuItems: (appId) => ipcRenderer.invoke(MENU_ITEMS_LIST, { appId }),
 };
 
 module.exports = menuItemsApi;

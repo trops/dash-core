@@ -9,6 +9,6 @@ export const ALGOLIA_LIST_INDICES_ERROR = "algolia-list-indices-error";
 
 export const ALGOLIA_ANALYTICS_FOR_QUERY = "algolia-analytics-for-query";
 export const ALGOLIA_ANALYTICS_FOR_QUERY_COMPLETE =
-    "algolia-analytics-for-query-complete";
+  "algolia-analytics-for-query-complete";
 export const ALGOLIA_ANALYTICS_FOR_QUERY_ERROR =
-    "algolia-analytics-for-query-error";
+  "algolia-analytics-for-query-error";

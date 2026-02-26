@@ -34,45 +34,45 @@ import { WidgetContext } from "../Context/WidgetContext";
  * }
  */
 export const useWidgetProviders = () => {
-    const workspace = useContext(WorkspaceContext);
-    const dashboard = useContext(DashboardContext);
-    const widgetContext = useContext(WidgetContext);
+  const workspace = useContext(WorkspaceContext);
+  const dashboard = useContext(DashboardContext);
+  const widgetContext = useContext(WidgetContext);
 
-    if (!workspace || !dashboard || !widgetContext) {
-        throw new Error(
-            "useWidgetProviders must be used within a Widget component. " +
-                "Make sure your component is rendered inside <Widget> and within a DashboardWrapper."
-        );
-    }
-
-    // Get the widget ID from widget context
-    const widgetId = widgetContext?.widgetData?.uuidString;
-
-    if (!widgetId) {
-        throw new Error(
-            "Widget ID not found in context. " +
-                "Make sure your widget is properly initialized with a uuid."
-        );
-    }
-
-    // Get providers selected for this specific widget
-    const widgetSelectedProviderNames =
-        workspace.workspaceData?.selectedProviders?.[widgetId] || {};
-
-    // Look up each selected provider by name
-    const providers = {};
-    Object.entries(widgetSelectedProviderNames).forEach(
-        ([providerType, providerName]) => {
-            const provider = dashboard.providers?.[providerName];
-            if (provider) {
-                providers[providerType] = provider;
-            }
-        }
+  if (!workspace || !dashboard || !widgetContext) {
+    throw new Error(
+      "useWidgetProviders must be used within a Widget component. " +
+        "Make sure your component is rendered inside <Widget> and within a DashboardWrapper.",
     );
+  }
 
-    return {
-        providers,
-        hasProvider: (type) => type in providers,
-        getProvider: (type) => providers[type] || null,
-    };
+  // Get the widget ID from widget context
+  const widgetId = widgetContext?.widgetData?.uuidString;
+
+  if (!widgetId) {
+    throw new Error(
+      "Widget ID not found in context. " +
+        "Make sure your widget is properly initialized with a uuid.",
+    );
+  }
+
+  // Get providers selected for this specific widget
+  const widgetSelectedProviderNames =
+    workspace.workspaceData?.selectedProviders?.[widgetId] || {};
+
+  // Look up each selected provider by name
+  const providers = {};
+  Object.entries(widgetSelectedProviderNames).forEach(
+    ([providerType, providerName]) => {
+      const provider = dashboard.providers?.[providerName];
+      if (provider) {
+        providers[providerType] = provider;
+      }
+    },
+  );
+
+  return {
+    providers,
+    hasProvider: (type) => type in providers,
+    getProvider: (type) => providers[type] || null,
+  };
 };

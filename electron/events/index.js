@@ -18,22 +18,22 @@ const menuItemEvents = require("./menuItemEvents");
 const openaiEvents = require("./openaiEvents");
 
 const publicEvents = {
-    ...dataEvents,
+  ...dataEvents,
 };
 
 module.exports = {
-    public: publicEvents,
-    ...secureStorageEvents,
-    ...workspaceEvents,
-    ...layoutEvents,
-    ...themeEvents,
-    ...dataEvents,
-    ...settingsEvents,
-    ...dialogEvents,
-    ...providerEvents,
-    ...mcpEvents,
-    ...registryEvents,
-    ...algoliaEvents,
-    ...menuItemEvents,
-    ...openaiEvents,
+  public: publicEvents,
+  ...secureStorageEvents,
+  ...workspaceEvents,
+  ...layoutEvents,
+  ...themeEvents,
+  ...dataEvents,
+  ...settingsEvents,
+  ...dialogEvents,
+  ...providerEvents,
+  ...mcpEvents,
+  ...registryEvents,
+  ...algoliaEvents,
+  ...menuItemEvents,
+  ...openaiEvents,
 };

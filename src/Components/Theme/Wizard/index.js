@@ -1,6 +1,6 @@
 export {
-    ThemeQuickCreate,
-    PresetGallery,
-    ColorHarmonyPicker,
-    GENERATE_MODES,
+  ThemeQuickCreate,
+  PresetGallery,
+  ColorHarmonyPicker,
+  GENERATE_MODES,
 } from "./ThemeQuickCreate";

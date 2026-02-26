@@ -24,17 +24,17 @@ import React, { useContext } from "react";
 export const ProviderContext = React.createContext({});
 
 export const useProvider = (providerName) => {
-    const { getProvider } = useContext(ProviderContext);
-    const provider = getProvider(providerName);
+  const { getProvider } = useContext(ProviderContext);
+  const provider = getProvider(providerName);
 
-    if (!provider) {
-        throw new Error(
-            `Provider "${providerName}" not found in registry. ` +
-                `Ensure the provider has been registered in DashboardWrapper.`
-        );
-    }
+  if (!provider) {
+    throw new Error(
+      `Provider "${providerName}" not found in registry. ` +
+        `Ensure the provider has been registered in DashboardWrapper.`,
+    );
+  }
 
-    return provider;
+  return provider;
 };
 
 /**
@@ -46,59 +46,59 @@ export const useProvider = (providerName) => {
  * @returns {Object} registry with getProvider, addProvider, removeProvider, listProviders
  */
 export const createProviderRegistry = () => {
-    const providers = new Map();
+  const providers = new Map();
 
-    return {
-        /**
-         * Get a provider by name
-         * @param {string} name - provider name (e.g., "algolia-prod", "contentful-staging")
-         * @returns {*} provider instance or undefined
-         */
-        getProvider: (name) => providers.get(name),
+  return {
+    /**
+     * Get a provider by name
+     * @param {string} name - provider name (e.g., "algolia-prod", "contentful-staging")
+     * @returns {*} provider instance or undefined
+     */
+    getProvider: (name) => providers.get(name),
 
-        /**
-         * Register a new provider instance
-         * @param {string} name - unique provider name
-         * @param {*} instance - the authenticated client/provider
-         * @throws if provider already exists
-         */
-        addProvider: (name, instance) => {
-            if (providers.has(name)) {
-                throw new Error(
-                    `Provider "${name}" already exists. Use updateProvider or removeProvider first.`
-                );
-            }
-            providers.set(name, instance);
-        },
+    /**
+     * Register a new provider instance
+     * @param {string} name - unique provider name
+     * @param {*} instance - the authenticated client/provider
+     * @throws if provider already exists
+     */
+    addProvider: (name, instance) => {
+      if (providers.has(name)) {
+        throw new Error(
+          `Provider "${name}" already exists. Use updateProvider or removeProvider first.`,
+        );
+      }
+      providers.set(name, instance);
+    },
 
-        /**
-         * Update an existing provider (or create if not exists)
-         * @param {string} name - provider name
-         * @param {*} instance - the authenticated client/provider
-         */
-        updateProvider: (name, instance) => {
-            providers.set(name, instance);
-        },
+    /**
+     * Update an existing provider (or create if not exists)
+     * @param {string} name - provider name
+     * @param {*} instance - the authenticated client/provider
+     */
+    updateProvider: (name, instance) => {
+      providers.set(name, instance);
+    },
 
-        /**
-         * Remove a provider from the registry
-         * @param {string} name - provider name
-         */
-        removeProvider: (name) => {
-            providers.delete(name);
-        },
+    /**
+     * Remove a provider from the registry
+     * @param {string} name - provider name
+     */
+    removeProvider: (name) => {
+      providers.delete(name);
+    },
 
-        /**
-         * List all registered providers
-         * @returns {Array<string>} array of provider names
-         */
-        listProviders: () => Array.from(providers.keys()),
+    /**
+     * List all registered providers
+     * @returns {Array<string>} array of provider names
+     */
+    listProviders: () => Array.from(providers.keys()),
 
-        /**
-         * Clear all providers (useful for cleanup)
-         */
-        clearAll: () => {
-            providers.clear();
-        },
-    };
+    /**
+     * Clear all providers (useful for cleanup)
+     */
+    clearAll: () => {
+      providers.clear();
+    },
+  };
 };

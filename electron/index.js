@@ -52,51 +52,51 @@ const dynamicWidgetLoader = require("./dynamicWidgetLoader");
 const { createMainApi, defaultMainApi } = require("./api/mainApi");
 
 module.exports = {
-    // Controllers (namespaced)
-    dialogController,
-    secureStoreController,
-    workspaceController,
-    themeController,
-    dataController,
-    settingsController,
-    providerController,
-    layoutController,
-    mcpController,
-    registryController,
-    algoliaController,
-    openaiController,
-    menuItemsController,
-    pluginController,
+  // Controllers (namespaced)
+  dialogController,
+  secureStoreController,
+  workspaceController,
+  themeController,
+  dataController,
+  settingsController,
+  providerController,
+  layoutController,
+  mcpController,
+  registryController,
+  algoliaController,
+  openaiController,
+  menuItemsController,
+  pluginController,
 
-    // Controller functions (flat) — spread for convenient destructuring
-    ...controllers,
+  // Controller functions (flat) — spread for convenient destructuring
+  ...controllers,
 
-    // APIs
-    secureStoreApi,
-    workspaceApi,
-    layoutApi,
-    dataApi,
-    settingsApi,
-    dialogApi,
-    widgetApi,
-    providerApi,
-    mcpApi,
-    registryApi,
-    themeApi,
-    algoliaApi,
-    openaiApi,
-    menuItemsApi,
-    pluginApi,
+  // APIs
+  secureStoreApi,
+  workspaceApi,
+  layoutApi,
+  dataApi,
+  settingsApi,
+  dialogApi,
+  widgetApi,
+  providerApi,
+  mcpApi,
+  registryApi,
+  themeApi,
+  algoliaApi,
+  openaiApi,
+  menuItemsApi,
+  pluginApi,
 
-    // Events
-    events,
+  // Events
+  events,
 
-    // Widget Pipeline
-    widgetRegistry,
-    widgetCompiler,
-    dynamicWidgetLoader,
+  // Widget Pipeline
+  widgetRegistry,
+  widgetCompiler,
+  dynamicWidgetLoader,
 
-    // Factory
-    createMainApi,
-    defaultMainApi,
+  // Factory
+  createMainApi,
+  defaultMainApi,
 };

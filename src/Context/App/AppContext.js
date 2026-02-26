@@ -9,6 +9,6 @@
 import { createContext } from "react";
 
 export const AppContext = createContext({
-    settings: null,
-    debugMode: false,
+  settings: null,
+  debugMode: false,
 });

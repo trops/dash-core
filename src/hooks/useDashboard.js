@@ -30,41 +30,41 @@ import { WorkspaceContext } from "../Context/WorkspaceContext";
  * const algoliaProvider = widgetProviders.algolia; // { name, type, credentials }
  */
 export const useDashboard = (widgetId = null) => {
-    const app = useContext(AppContext);
-    const dashboard = useContext(DashboardContext);
-    const theme = useContext(ThemeContext);
-    const workspace = useContext(WorkspaceContext);
+  const app = useContext(AppContext);
+  const dashboard = useContext(DashboardContext);
+  const theme = useContext(ThemeContext);
+  const workspace = useContext(WorkspaceContext);
 
-    if (!app || !dashboard || !theme) {
-        throw new Error(
-            "useDashboard must be used within DashboardWrapper. " +
-                "Make sure your component tree includes <DashboardWrapper> as a parent."
-        );
-    }
+  if (!app || !dashboard || !theme) {
+    throw new Error(
+      "useDashboard must be used within DashboardWrapper. " +
+        "Make sure your component tree includes <DashboardWrapper> as a parent.",
+    );
+  }
 
-    let widgetProviders = null;
+  let widgetProviders = null;
 
-    // If widgetId is provided, filter to providers selected for this widget
-    if (widgetId && workspace?.workspaceData?.selectedProviders) {
-        const widgetSelectedProviderNames =
-            workspace.workspaceData.selectedProviders[widgetId] || {};
-        widgetProviders = {};
+  // If widgetId is provided, filter to providers selected for this widget
+  if (widgetId && workspace?.workspaceData?.selectedProviders) {
+    const widgetSelectedProviderNames =
+      workspace.workspaceData.selectedProviders[widgetId] || {};
+    widgetProviders = {};
 
-        // Look up each selected provider by name in the full providers list
-        Object.entries(widgetSelectedProviderNames).forEach(
-            ([providerType, providerName]) => {
-                const provider = dashboard.providers?.[providerName];
-                if (provider) {
-                    widgetProviders[providerType] = provider;
-                }
-            }
-        );
-    }
+    // Look up each selected provider by name in the full providers list
+    Object.entries(widgetSelectedProviderNames).forEach(
+      ([providerType, providerName]) => {
+        const provider = dashboard.providers?.[providerName];
+        if (provider) {
+          widgetProviders[providerType] = provider;
+        }
+      },
+    );
+  }
 
-    return {
-        app,
-        dashboard,
-        theme,
-        ...(widgetProviders && { widgetProviders }),
-    };
+  return {
+    app,
+    dashboard,
+    theme,
+    ...(widgetProviders && { widgetProviders }),
+  };
 };

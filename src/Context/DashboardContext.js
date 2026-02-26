@@ -3,15 +3,15 @@ import { DashboardPublisher } from "../DashboardPublisher";
 import { WidgetApi } from "../Api";
 
 function buildWidgetApi() {
-    console.log(DashboardPublisher);
-    const w = WidgetApi;
-    w.setPublisher(DashboardPublisher);
-    return w;
+  console.log(DashboardPublisher);
+  const w = WidgetApi;
+  w.setPublisher(DashboardPublisher);
+  return w;
 }
 
 export const DashboardContext = createContext({
-    pub: DashboardPublisher,
-    widgetApi: buildWidgetApi(),
-    dashApi: null,
-    providers: {},
+  pub: DashboardPublisher,
+  widgetApi: buildWidgetApi(),
+  dashApi: null,
+  providers: {},
 });

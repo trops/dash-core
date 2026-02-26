@@ -7,9 +7,9 @@
 const { ipcRenderer } = require("electron");
 
 const pluginApi = {
-    install: (packageName, filepath) =>
-        ipcRenderer.invoke("plugin-install", { packageName, filepath }),
-    uninstall: (filepath) => ipcRenderer.invoke("plugin-uninstall", filepath),
+  install: (packageName, filepath) =>
+    ipcRenderer.invoke("plugin-install", { packageName, filepath }),
+  uninstall: (filepath) => ipcRenderer.invoke("plugin-uninstall", filepath),
 };
 
 module.exports = pluginApi;

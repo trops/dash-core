@@ -1,13 +1,13 @@
 function dynamicWidgetLoaderStub() {
-    throw new Error(
-        "DynamicWidgetLoader is Electron-only and must be used from the main process."
-    );
+  throw new Error(
+    "DynamicWidgetLoader is Electron-only and must be used from the main process.",
+  );
 }
 
 class DynamicWidgetLoader {
-    constructor() {
-        dynamicWidgetLoaderStub();
-    }
+  constructor() {
+    dynamicWidgetLoaderStub();
+  }
 }
 
 module.exports = DynamicWidgetLoader;

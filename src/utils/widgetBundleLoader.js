@@ -16,11 +16,11 @@ import PropTypes from "prop-types";
 // When the CJS bundle calls require("react"), it receives the
 // exact same React singleton the host app uses.
 const MODULE_MAP = {
-    react: React,
-    "react-dom": ReactDOM,
-    "@trops/dash-react": dashReact,
-    "react/jsx-runtime": jsxRuntime,
-    "prop-types": PropTypes,
+  react: React,
+  "react-dom": ReactDOM,
+  "@trops/dash-react": dashReact,
+  "react/jsx-runtime": jsxRuntime,
+  "prop-types": PropTypes,
 };
 
 /**
@@ -31,39 +31,39 @@ const MODULE_MAP = {
  * @returns {object} The module.exports from the evaluated bundle
  */
 export function evaluateBundle(source, widgetName) {
-    const module = { exports: {} };
-    const exports = module.exports;
+  const module = { exports: {} };
+  const exports = module.exports;
 
-    const require = (name) => {
-        if (MODULE_MAP[name]) {
-            const mod = MODULE_MAP[name];
-            // CJS interop: `import * as X` creates an ES module namespace where
-            // named exports may live under `.default` (e.g. @trops/dash-react).
-            // CJS bundles expect `require("pkg").Widget` to work, so merge
-            // `.default` properties onto the returned object.
-            if (mod.default && typeof mod.default === "object") {
-                return { ...mod.default, ...mod, default: mod.default };
-            }
-            return mod;
-        }
-        throw new Error(
-            `[widgetBundleLoader] Widget "${widgetName}" requires unknown module: "${name}"`
-        );
-    };
-
-    try {
-        // eslint-disable-next-line no-new-func
-        const fn = new Function("module", "exports", "require", source);
-        fn(module, exports, require);
-    } catch (error) {
-        console.error(
-            `[widgetBundleLoader] Error evaluating bundle for "${widgetName}":`,
-            error
-        );
-        throw error;
+  const require = (name) => {
+    if (MODULE_MAP[name]) {
+      const mod = MODULE_MAP[name];
+      // CJS interop: `import * as X` creates an ES module namespace where
+      // named exports may live under `.default` (e.g. @trops/dash-react).
+      // CJS bundles expect `require("pkg").Widget` to work, so merge
+      // `.default` properties onto the returned object.
+      if (mod.default && typeof mod.default === "object") {
+        return { ...mod.default, ...mod, default: mod.default };
+      }
+      return mod;
     }
+    throw new Error(
+      `[widgetBundleLoader] Widget "${widgetName}" requires unknown module: "${name}"`,
+    );
+  };
 
-    return module.exports;
+  try {
+    // eslint-disable-next-line no-new-func
+    const fn = new Function("module", "exports", "require", source);
+    fn(module, exports, require);
+  } catch (error) {
+    console.error(
+      `[widgetBundleLoader] Error evaluating bundle for "${widgetName}":`,
+      error,
+    );
+    throw error;
+  }
+
+  return module.exports;
 }
 
 /**
@@ -78,31 +78,31 @@ export function evaluateBundle(source, widgetName) {
  * @returns {Array<{key: string, config: object}>} Extracted configs
  */
 export function extractWidgetConfigs(bundleExports) {
-    const configs = [];
+  const configs = [];
 
-    for (const key of Object.keys(bundleExports)) {
-        let entry = bundleExports[key];
+  for (const key of Object.keys(bundleExports)) {
+    let entry = bundleExports[key];
 
-        // Skip non-objects and the __esModule flag
-        if (!entry || typeof entry !== "object" || key === "__esModule") {
-            continue;
-        }
-
-        // Unwrap { default: { component, type, ... } } wrappers
-        if (entry.default && typeof entry.default === "object") {
-            entry = entry.default;
-        }
-
-        // Must have a component function and a recognized type
-        if (
-            typeof entry.component === "function" &&
-            (entry.type === "widget" || entry.type === "workspace")
-        ) {
-            configs.push({ key, config: entry });
-        }
+    // Skip non-objects and the __esModule flag
+    if (!entry || typeof entry !== "object" || key === "__esModule") {
+      continue;
     }
 
-    return configs;
+    // Unwrap { default: { component, type, ... } } wrappers
+    if (entry.default && typeof entry.default === "object") {
+      entry = entry.default;
+    }
+
+    // Must have a component function and a recognized type
+    if (
+      typeof entry.component === "function" &&
+      (entry.type === "widget" || entry.type === "workspace")
+    ) {
+      configs.push({ key, config: entry });
+    }
+  }
+
+  return configs;
 }
 
 /**
@@ -113,7 +113,7 @@ export function extractWidgetConfigs(bundleExports) {
  * @returns {{ exports: object, configs: Array<{key: string, config: object}> }}
  */
 export function loadWidgetBundle(source, widgetName) {
-    const exports = evaluateBundle(source, widgetName);
-    const configs = extractWidgetConfigs(exports);
-    return { exports, configs };
+  const exports = evaluateBundle(source, widgetName);
+  const configs = extractWidgetConfigs(exports);
+  return { exports, configs };
 }

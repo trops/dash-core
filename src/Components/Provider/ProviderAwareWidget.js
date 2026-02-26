@@ -24,33 +24,33 @@ import { MissingProviderPrompt } from "./MissingProviderPrompt";
  *   });
  */
 export const withProviderDetection = (
-    Component,
-    {
-        requiredProviders = [],
-        registeredProviders = [],
-        onProviderSelect = null,
-    } = {}
+  Component,
+  {
+    requiredProviders = [],
+    registeredProviders = [],
+    onProviderSelect = null,
+  } = {},
 ) => {
-    return (props) => {
-        /**
-         * Check if all required providers are registered
-         */
-        const areProvidersReady = requiredProviders.every((req) => {
-            return registeredProviders.some((p) => p.type === req.type);
-        });
+  return (props) => {
+    /**
+     * Check if all required providers are registered
+     */
+    const areProvidersReady = requiredProviders.every((req) => {
+      return registeredProviders.some((p) => p.type === req.type);
+    });
 
-        if (!areProvidersReady) {
-            return (
-                <MissingProviderPrompt
-                    requiredProviders={requiredProviders}
-                    registeredProviders={registeredProviders}
-                    onProviderSelect={onProviderSelect}
-                />
-            );
-        }
+    if (!areProvidersReady) {
+      return (
+        <MissingProviderPrompt
+          requiredProviders={requiredProviders}
+          registeredProviders={registeredProviders}
+          onProviderSelect={onProviderSelect}
+        />
+      );
+    }
 
-        return <Component {...props} />;
-    };
+    return <Component {...props} />;
+  };
 };
 
 /**
@@ -60,30 +60,30 @@ export const withProviderDetection = (
  * Use this to wrap your widget when it has provider requirements.
  */
 export const WidgetProviderWrapper = ({
-    children,
-    requiredProviders = [],
-    registeredProviders = [],
-    onProviderSelect = null,
-    fallback = null,
+  children,
+  requiredProviders = [],
+  registeredProviders = [],
+  onProviderSelect = null,
+  fallback = null,
 }) => {
-    /**
-     * Check if all required providers are registered
-     */
-    const areProvidersReady = requiredProviders.every((req) => {
-        return registeredProviders.some((p) => p.type === req.type);
-    });
+  /**
+   * Check if all required providers are registered
+   */
+  const areProvidersReady = requiredProviders.every((req) => {
+    return registeredProviders.some((p) => p.type === req.type);
+  });
 
-    if (!areProvidersReady) {
-        return (
-            fallback || (
-                <MissingProviderPrompt
-                    requiredProviders={requiredProviders}
-                    registeredProviders={registeredProviders}
-                    onProviderSelect={onProviderSelect}
-                />
-            )
-        );
-    }
+  if (!areProvidersReady) {
+    return (
+      fallback || (
+        <MissingProviderPrompt
+          requiredProviders={requiredProviders}
+          registeredProviders={registeredProviders}
+          onProviderSelect={onProviderSelect}
+        />
+      )
+    );
+  }
 
-    return children;
+  return children;
 };

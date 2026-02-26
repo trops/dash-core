@@ -11,23 +11,23 @@ import { ThemeContext } from "@trops/dash-react";
  * No-op when rendered outside DashboardThemeProvider (appTheme is undefined).
  */
 export const AppThemeScope = ({ children }) => {
-    const ctx = useContext(ThemeContext);
+  const ctx = useContext(ThemeContext);
 
-    if (!ctx.appTheme) return <>{children}</>;
+  if (!ctx.appTheme) return <>{children}</>;
 
-    return (
-        <ThemeContext.Provider
-            value={{
-                ...ctx,
-                currentTheme: ctx.appTheme,
-                currentThemeKey: ctx.appThemeKey,
-                theme: ctx.appTheme,
-                themeKey: ctx.appThemeKey,
-                appTheme: undefined,
-                appThemeKey: undefined,
-            }}
-        >
-            {children}
-        </ThemeContext.Provider>
-    );
+  return (
+    <ThemeContext.Provider
+      value={{
+        ...ctx,
+        currentTheme: ctx.appTheme,
+        currentThemeKey: ctx.appThemeKey,
+        theme: ctx.appTheme,
+        themeKey: ctx.appThemeKey,
+        appTheme: undefined,
+        appThemeKey: undefined,
+      }}
+    >
+      {children}
+    </ThemeContext.Provider>
+  );
 };
