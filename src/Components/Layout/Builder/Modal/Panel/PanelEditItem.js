@@ -152,6 +152,24 @@ export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
             inputClassName="text-sm"
           />
         )}
+        {configItem["type"] === "number" && (
+          <InputText
+            type="number"
+            name={key}
+            value={value}
+            onChange={(value) => {
+              const num = Number(value);
+              if (value === "" || isNaN(num)) return;
+              if (configItem.min != null && num < configItem.min) return;
+              if (configItem.max != null && num > configItem.max) return;
+              onChange(key, num);
+            }}
+            inputClassName="text-sm"
+            min={configItem.min}
+            max={configItem.max}
+            step={configItem.step ?? 1}
+          />
+        )}
         {configItem["type"] === "select" && (
           <SelectMenu
             name={key}
