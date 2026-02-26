@@ -34,6 +34,8 @@ const ALGOLIA_BROWSE_OBJECTS_COMPLETE = "algolia-browse-objects-complete";
 const ALGOLIA_BROWSE_OBJECTS_UPDATE = "algolia-browse-objects-update";
 const ALGOLIA_BROWSE_OBJECTS_ERROR = "algolia-browse-objects-error";
 
+const ALGOLIA_SEARCH = "algolia-search";
+
 module.exports = {
   ALGOLIA_LIST_INDICES,
   ALGOLIA_LIST_INDICES_COMPLETE,
@@ -56,4 +58,5 @@ module.exports = {
   ALGOLIA_BROWSE_OBJECTS_COMPLETE,
   ALGOLIA_BROWSE_OBJECTS_ERROR,
   ALGOLIA_BROWSE_OBJECTS_UPDATE,
+  ALGOLIA_SEARCH,
 };

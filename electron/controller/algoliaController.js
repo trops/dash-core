@@ -230,6 +230,19 @@ const algoliaController = {
       });
     }
   },
+  /**
+   * search
+   * Search an index and return results in-memory (no file export).
+   * Returns the result directly for use with ipcMain.handle / ipcRenderer.invoke.
+   */
+  search: async (win, appId, apiKey, indexName, query = "", options = {}) => {
+    try {
+      const a = new AlgoliaIndex(appId, apiKey, indexName);
+      return await a.search(query, options);
+    } catch (e) {
+      return { error: true, message: e.message || String(e) };
+    }
+  },
 };
 
 module.exports = algoliaController;

@@ -48,6 +48,7 @@ const {
   partialUpdateObjectsFromDirectory,
   createBatchesFromFile,
   browseObjectsToFile,
+  search: searchIndex,
 } = require("./algoliaController");
 const { describeImage } = require("./openaiController");
 const {
@@ -96,4 +97,5 @@ module.exports = {
   saveMenuItemForApplication,
   listMenuItemsForApplication,
   pluginInstall,
+  searchIndex,
 };

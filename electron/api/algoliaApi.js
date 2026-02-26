@@ -13,6 +13,7 @@ const {
   ALGOLIA_PARTIAL_UPDATE_OBJECTS,
   ALGOLIA_CREATE_BATCH,
   ALGOLIA_BROWSE_OBJECTS,
+  ALGOLIA_SEARCH,
 } = require("../events");
 
 const algoliaApi = {
@@ -69,6 +70,15 @@ const algoliaApi = {
       query,
     });
   },
+
+  search: (appId, apiKey, indexName, query = "", options = {}) =>
+    ipcRenderer.invoke(ALGOLIA_SEARCH, {
+      appId,
+      apiKey,
+      indexName,
+      query,
+      options,
+    }),
 };
 
 module.exports = algoliaApi;

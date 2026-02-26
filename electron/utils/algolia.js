@@ -237,6 +237,23 @@ class AlgoliaIndex {
     });
   }
 
+  search = (query = "", options = {}) => {
+    return new Promise((resolve, reject) => {
+      try {
+        if (this.index !== null) {
+          this.index
+            .search(query, options)
+            .then((result) => resolve(result))
+            .catch((e) => reject(e));
+        } else {
+          reject("No index for client");
+        }
+      } catch (e) {
+        reject(e);
+      }
+    });
+  };
+
   saveObjects = (objects, file, callback = null) => {
     return new Promise((resolve, reject) => {
       try {
