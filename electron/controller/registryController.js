@@ -74,8 +74,21 @@ async function fetchRegistryIndex(forceRefresh = false) {
         console.warn(
           "[RegistryController] Test registry not found at:",
           testPath,
+          "— falling back to remote registry",
         );
-        indexData = { version: "1.0.0", packages: [] };
+        const registryUrl =
+          process.env.DASH_REGISTRY_URL || DEFAULT_REGISTRY_URL;
+        console.log(
+          "[RegistryController] Fetching registry from:",
+          registryUrl,
+        );
+        const response = await fetch(registryUrl);
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch registry: ${response.status} ${response.statusText}`,
+          );
+        }
+        indexData = await response.json();
       }
     } else {
       // In production, fetch from remote URL
