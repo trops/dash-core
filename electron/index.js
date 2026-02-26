@@ -20,6 +20,9 @@ const openaiController = require("./controller/openaiController");
 const menuItemsController = require("./controller/menuItemsController");
 const pluginController = require("./controller/pluginController");
 
+// --- Utils ---
+const clientCache = require("./utils/clientCache");
+
 // --- Controller functions (flat, for convenient destructuring) ---
 const controllers = require("./controller");
 
@@ -99,4 +102,7 @@ module.exports = {
   // Factory
   createMainApi,
   defaultMainApi,
+
+  // Utils
+  clientCache,
 };
