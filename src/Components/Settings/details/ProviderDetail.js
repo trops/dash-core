@@ -1,4 +1,4 @@
-import React, { useState, useContext, useMemo } from "react";
+import React, { useState, useContext, useMemo, useRef } from "react";
 import {
   Button,
   InputText,
@@ -49,6 +49,64 @@ export const ProviderDetail = ({
     if (isMcp || !provider?.credentials) return [];
     return Object.keys(provider.credentials);
   }, [isMcp, provider]);
+
+  // Dynamic credential fields for create mode
+  const [credentialFields, setCredentialFields] = useState(
+    isCreating ? [{ id: "default_apiKey", key: "apiKey", secret: true }] : [],
+  );
+  const fieldIdRef = useRef(0);
+
+  const handleFieldKeyChange = (id, newKey) => {
+    setCredentialFields((prev) =>
+      prev.map((f) => {
+        if (f.id !== id) return f;
+        const oldKey = f.key;
+        if (oldKey && formCredentials[oldKey] !== undefined) {
+          setFormCredentials((creds) => {
+            const updated = { ...creds };
+            const val = updated[oldKey];
+            delete updated[oldKey];
+            if (newKey.trim()) updated[newKey] = val;
+            return updated;
+          });
+        }
+        return { ...f, key: newKey };
+      }),
+    );
+  };
+
+  const handleFieldValueChange = (id, value) => {
+    const field = credentialFields.find((f) => f.id === id);
+    if (field?.key) {
+      setFormCredentials((prev) => ({ ...prev, [field.key]: value }));
+    }
+  };
+
+  const handleFieldSecretToggle = (id) => {
+    setCredentialFields((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, secret: !f.secret } : f)),
+    );
+  };
+
+  const handleAddField = () => {
+    fieldIdRef.current += 1;
+    setCredentialFields((prev) => [
+      ...prev,
+      { id: `field_${fieldIdRef.current}`, key: "", secret: false },
+    ]);
+  };
+
+  const handleRemoveField = (id) => {
+    const field = credentialFields.find((f) => f.id === id);
+    if (field?.key) {
+      setFormCredentials((prev) => {
+        const updated = { ...prev };
+        delete updated[field.key];
+        return updated;
+      });
+    }
+    setCredentialFields((prev) => prev.filter((f) => f.id !== id));
+  };
 
   const handleCredentialChange = (key, value) => {
     setFormCredentials((prev) => ({ ...prev, [key]: value }));
@@ -178,6 +236,71 @@ export const ProviderDetail = ({
                 placeholder="Provider type (e.g. algolia, openai)"
               />
             </div>
+          )}
+
+          {/* Credential fields for create mode */}
+          {isCreating && (
+            <>
+              <div className="border-t border-white/10 pt-4">
+                <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
+                  Credentials
+                </p>
+              </div>
+
+              {credentialFields.map((field) => (
+                <div key={field.id} className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <InputText
+                        value={field.key}
+                        onChange={(value) =>
+                          handleFieldKeyChange(field.id, value)
+                        }
+                        placeholder="Field name (e.g. apiKey)"
+                      />
+                    </div>
+                    <button
+                      onClick={() => handleFieldSecretToggle(field.id)}
+                      className="p-2 rounded hover:bg-white/10 transition-colors opacity-50 hover:opacity-100"
+                      title={field.secret ? "Show as text" : "Mark as secret"}
+                    >
+                      <FontAwesomeIcon
+                        icon={field.secret ? "eye-slash" : "eye"}
+                        className="h-3.5 w-3.5"
+                      />
+                    </button>
+                    <button
+                      onClick={() => handleRemoveField(field.id)}
+                      className="p-2 rounded hover:bg-red-500/20 transition-colors opacity-50 hover:opacity-100 text-red-400"
+                      title="Remove field"
+                    >
+                      <FontAwesomeIcon
+                        icon="trash"
+                        className="h-3.5 w-3.5"
+                      />
+                    </button>
+                  </div>
+                  {field.key.trim() && (
+                    <InputText
+                      type={field.secret ? "password" : "text"}
+                      value={formCredentials[field.key] || ""}
+                      onChange={(value) =>
+                        handleFieldValueChange(field.id, value)
+                      }
+                      placeholder={`Enter ${field.key}`}
+                    />
+                  )}
+                </div>
+              ))}
+
+              <button
+                onClick={handleAddField}
+                className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                <FontAwesomeIcon icon="plus" className="h-3 w-3" />
+                Add Credential Field
+              </button>
+            </>
           )}
 
           {/* MCP provider edit: read-only config + editable credentials */}

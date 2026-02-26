@@ -50,10 +50,14 @@ export const ProvidersSection = ({
 
   function handleSave() {
     if (!formName.trim() || !dashApi || !appId) return;
+    const credentials = {};
+    Object.entries(formCredentials).forEach(([key, value]) => {
+      if (key.trim()) credentials[key.trim()] = value;
+    });
     dashApi.saveProvider(
       appId,
       formName.trim(),
-      { providerType: formType.trim(), credentials: {} },
+      { providerType: formType.trim(), credentials },
       () => {
         resetForm();
         refreshProviders && refreshProviders();
@@ -280,6 +284,8 @@ export const ProvidersSection = ({
         setFormName={setFormName}
         formType={formType}
         setFormType={setFormType}
+        formCredentials={formCredentials}
+        setFormCredentials={setFormCredentials}
         onCreate={handleSave}
         onCancelEdit={() => {
           resetForm();
