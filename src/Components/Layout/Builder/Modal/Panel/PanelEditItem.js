@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useContext } from "react";
-import { SelectMenu, InputText, SubHeading3 } from "@trops/dash-react";
+import { SelectMenu, InputText, SubHeading3, FormLabel } from "@trops/dash-react";
 import { replaceItemInLayout } from "../../../../../utils/layout";
 import { LayoutModel, WorkspaceModel } from "../../../../../Models";
 import deepEqual from "deep-equal";
@@ -127,11 +127,13 @@ export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
   ) {
     return (
       <div key={`config-item-${key}`} className="flex flex-col space-y-1">
-        <span className="text-sm font-medium text-current opacity-70">
-          {displayName}{" "}
-          {required === true && <span className="text-red-500">*</span>}
-        </span>
-        <div className="text-xs opacity-50 pb-1">{instructions}</div>
+        <div className="flex items-center gap-1">
+          <FormLabel title={displayName} textSize="text-sm" />
+          {required === true && <span className="text-red-500 text-sm">*</span>}
+        </div>
+        {instructions && (
+          <div className="text-xs opacity-50 pb-1">{instructions}</div>
+        )}
         {configItem["type"] === "text" && (
           <InputText
             type="text"
@@ -203,10 +205,10 @@ export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
 
               return (
                 <div key={providerType} className="flex flex-col space-y-1">
-                  <span className="text-sm font-medium opacity-70">
-                    {providerType}
-                    {req.required && <span className="text-red-500"> *</span>}
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <FormLabel title={providerType} textSize="text-sm" />
+                    {req.required && <span className="text-red-500 text-sm">*</span>}
+                  </div>
                   <SelectMenu
                     name={`provider-${providerType}`}
                     textSize="text-sm"
