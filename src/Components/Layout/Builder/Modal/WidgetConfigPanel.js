@@ -81,14 +81,14 @@ export const WidgetConfigPanel = ({
     }
   }
 
-  function handleTextChangeCustom(e, config) {
+  function handleTextChangeCustom(key, value) {
     const newItem = JSON.parse(JSON.stringify(itemSelected));
     if ("userPrefs" in itemSelected === false) {
       newItem["userPrefs"] = {};
     }
-    newItem["userPrefs"][e.target.name] = e.target.value;
+    newItem["userPrefs"][key] = value;
     //setItemSelected(() => newItem);
-    onChange(e, newItem);
+    onChange(null, newItem);
   }
 
   /**
@@ -151,8 +151,8 @@ export const WidgetConfigPanel = ({
             type="text"
             name={key}
             value={value}
-            onChange={(e) => onChange(e, configItem)}
-            textSize="text-sm"
+            onChange={(value) => onChange(key, value)}
+            inputClassName="text-sm"
           />
         )}
         {configItem["type"] === "secret" && (
@@ -160,8 +160,8 @@ export const WidgetConfigPanel = ({
             type="password"
             name={key}
             value={value}
-            onChange={(e) => onChange(e, configItem)}
-            textSize="text-sm"
+            onChange={(value) => onChange(key, value)}
+            inputClassName="text-sm"
           />
         )}
         {configItem["type"] === "select" && (

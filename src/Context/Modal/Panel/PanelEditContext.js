@@ -80,12 +80,12 @@ export const PanelEditContext = ({ onUpdate, item }) => {
     return null;
   }
 
-  function handleTextChangeCustom(e, config) {
+  function handleTextChangeCustom(key, value) {
     const newItem = JSON.parse(JSON.stringify(itemSelected));
     if ("userPrefs" in itemSelected === false) {
       newItem["userPrefs"] = {};
     }
-    newItem["userPrefs"][e.target.name] = e.target.value;
+    newItem["userPrefs"][key] = value;
     //setItemSelected(() => newItem);
     onUpdate(newItem);
   }
@@ -114,8 +114,8 @@ export const PanelEditContext = ({ onUpdate, item }) => {
             type="text"
             name={key}
             value={value}
-            onChange={(e) => onChange(e, configItem)}
-            textSize="text-sm"
+            onChange={(value) => onChange(key, value)}
+            inputClassName="text-sm"
           />
         )}
         {configItem["type"] === "secret" && (
@@ -123,8 +123,8 @@ export const PanelEditContext = ({ onUpdate, item }) => {
             type="password"
             name={key}
             value={value}
-            onChange={(e) => onChange(e, configItem)}
-            textSize="text-sm"
+            onChange={(value) => onChange(key, value)}
+            inputClassName="text-sm"
           />
         )}
         {configItem["type"] === "select" && (
@@ -199,13 +199,13 @@ export const PanelEditContext = ({ onUpdate, item }) => {
                         type="text"
                         name={"display_name"}
                         value={itemSelected.name || ""}
-                        onChange={(e) =>
+                        onChange={(value) =>
                           handleSaveChanges({
                             ...itemSelected,
-                            name: e.target.value,
+                            name: value,
                           })
                         }
-                        textSize="text-sm"
+                        inputClassName="text-sm"
                       />
                     </div>
 

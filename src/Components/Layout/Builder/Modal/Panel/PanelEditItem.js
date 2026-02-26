@@ -107,13 +107,13 @@ export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
     return null;
   }
 
-  function handleTextChangeCustom(e, config) {
+  function handleTextChangeCustom(key, value) {
     const newItem = JSON.parse(JSON.stringify(itemSelected));
     if ("userPrefs" in itemSelected === false) {
       newItem["userPrefs"] = {};
     }
-    newItem["userPrefs"][e.target.name] = e.target.value;
-    handleUpdate(e, newItem);
+    newItem["userPrefs"][key] = value;
+    handleUpdate(null, newItem);
   }
 
   function renderFormItem(
@@ -127,7 +127,7 @@ export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
   ) {
     return (
       <div key={`config-item-${key}`} className="flex flex-col space-y-1">
-        <span className="text-sm font-medium opacity-70">
+        <span className="text-sm font-medium text-current opacity-70">
           {displayName}{" "}
           {required === true && <span className="text-red-500">*</span>}
         </span>
@@ -137,8 +137,8 @@ export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
             type="text"
             name={key}
             value={value}
-            onChange={(e) => onChange(e, configItem)}
-            textSize="text-sm"
+            onChange={(value) => onChange(key, value)}
+            inputClassName="text-sm"
           />
         )}
         {configItem["type"] === "secret" && (
@@ -146,8 +146,8 @@ export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
             type="password"
             name={key}
             value={value}
-            onChange={(e) => onChange(e, configItem)}
-            textSize="text-sm"
+            onChange={(value) => onChange(key, value)}
+            inputClassName="text-sm"
           />
         )}
         {configItem["type"] === "select" && (
