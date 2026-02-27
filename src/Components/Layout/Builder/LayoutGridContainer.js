@@ -538,7 +538,7 @@ export const LayoutGridContainer = memo(
             style={{
               gridTemplateRows: scrollable
                 ? getRowTemplate(item.grid)
-                : `repeat(${rows}, 1fr)`,
+                : `repeat(${rows}, minmax(0, 1fr))`,
               gap: GRID_GAP,
             }}
           >
@@ -999,7 +999,7 @@ export const LayoutGridContainer = memo(
               style={{
                 gridTemplateRows: scrollable
                   ? getRowTemplate(item.grid)
-                  : `repeat(${item.grid.rows}, 1fr)`,
+                  : `repeat(${item.grid.rows}, minmax(0, 1fr))`,
                 gridTemplateColumns: `repeat(${item.grid.cols}, 1fr)`,
                 overflow: "hidden",
               }}
@@ -1124,7 +1124,7 @@ export const LayoutGridContainer = memo(
         style={{
           gridTemplateRows: scrollable
             ? getRowTemplate(item.grid)
-            : `repeat(${item.grid.rows}, 1fr)`,
+            : `repeat(${item.grid.rows}, minmax(0, 1fr))`,
           gridTemplateColumns: `repeat(${item.grid.cols}, 1fr)`,
           overflow: scrollable ? "auto" : "hidden",
         }}
