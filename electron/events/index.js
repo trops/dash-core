@@ -16,6 +16,7 @@ const registryEvents = require("./registryEvents");
 const algoliaEvents = require("./algoliaEvents");
 const menuItemEvents = require("./menuItemEvents");
 const openaiEvents = require("./openaiEvents");
+const clientCacheEvents = require("./clientCacheEvents");
 
 const publicEvents = {
   ...dataEvents,
@@ -36,4 +37,5 @@ module.exports = {
   ...algoliaEvents,
   ...menuItemEvents,
   ...openaiEvents,
+  ...clientCacheEvents,
 };

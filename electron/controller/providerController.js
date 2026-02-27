@@ -83,6 +83,10 @@ const providerController = {
         `[providerController] Provider saved: ${providerName} (${providerType}, ${providerClass})`,
       );
 
+      // Invalidate any cached client so the next getClient() call uses fresh credentials
+      const clientCache = require("../utils/clientCache");
+      clientCache.invalidate(appId, providerName);
+
       // Return the data for ipcMain.handle() - modern promise-based approach
       return {
         success: true,
@@ -260,6 +264,10 @@ const providerController = {
       });
 
       console.log(`[providerController] Provider deleted: ${providerName}`);
+
+      // Invalidate any cached client for the deleted provider
+      const clientCache = require("../utils/clientCache");
+      clientCache.invalidate(appId, providerName);
 
       // Return the data for ipcMain.handle() - modern promise-based approach
       return {

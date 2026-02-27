@@ -274,10 +274,7 @@ export const ProviderDetail = ({
                       className="p-2 rounded hover:bg-red-500/20 transition-colors opacity-50 hover:opacity-100 text-red-400"
                       title="Remove field"
                     >
-                      <FontAwesomeIcon
-                        icon="trash"
-                        className="h-3.5 w-3.5"
-                      />
+                      <FontAwesomeIcon icon="trash" className="h-3.5 w-3.5" />
                     </button>
                   </div>
                   {field.key.trim() && (

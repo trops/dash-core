@@ -26,6 +26,7 @@ const algoliaApi = require("./algoliaApi");
 const openaiApi = require("./openaiApi");
 const menuItemsApi = require("./menuItemsApi");
 const pluginApi = require("./pluginApi");
+const clientCacheApi = require("./clientCacheApi");
 
 // Events constants
 const events = require("../events");
@@ -93,6 +94,7 @@ function createMainApi(extensions = {}) {
     openai: openaiApi,
     menuItems: menuItemsApi,
     plugins: pluginApi,
+    clientCache: clientCacheApi,
 
     // Merge template-specific extensions
     ...extensions,

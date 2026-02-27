@@ -22,6 +22,7 @@ const pluginController = require("./controller/pluginController");
 
 // --- Utils ---
 const clientCache = require("./utils/clientCache");
+require("./utils/clientFactories"); // auto-register built-in factories
 const responseCache = require("./utils/responseCache");
 
 // --- Controller functions (flat, for convenient destructuring) ---
@@ -43,6 +44,7 @@ const algoliaApi = require("./api/algoliaApi");
 const openaiApi = require("./api/openaiApi");
 const menuItemsApi = require("./api/menuItemsApi");
 const pluginApi = require("./api/pluginApi");
+const clientCacheApi = require("./api/clientCacheApi");
 
 // --- Events ---
 const events = require("./events");
@@ -91,6 +93,7 @@ module.exports = {
   openaiApi,
   menuItemsApi,
   pluginApi,
+  clientCacheApi,
 
   // Events
   events,
@@ -107,4 +110,7 @@ module.exports = {
   // Utils
   clientCache,
   responseCache,
+
+  // Setup helpers
+  setupCacheHandlers: clientCache.setupCacheHandlers.bind(clientCache),
 };

@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback, useContext } from "react";
-import { SelectMenu, InputText, SubHeading3, FormLabel } from "@trops/dash-react";
+import {
+  SelectMenu,
+  InputText,
+  SubHeading3,
+  FormLabel,
+} from "@trops/dash-react";
 import { replaceItemInLayout } from "../../../../../utils/layout";
 import { LayoutModel, WorkspaceModel } from "../../../../../Models";
 import deepEqual from "deep-equal";
@@ -225,7 +230,9 @@ export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
                 <div key={providerType} className="flex flex-col space-y-1">
                   <div className="flex items-center gap-1">
                     <FormLabel title={providerType} textSize="text-sm" />
-                    {req.required && <span className="text-red-500 text-sm">*</span>}
+                    {req.required && (
+                      <span className="text-red-500 text-sm">*</span>
+                    )}
                   </div>
                   <SelectMenu
                     name={`provider-${providerType}`}

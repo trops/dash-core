@@ -302,6 +302,12 @@ export default {
 };
 ```
 
+## Client Cache Integration
+
+The provider system integrates with the client cache (`electron/utils/clientCache.js`) for SDK client lifecycle management. When a provider is saved or deleted, `providerController` automatically invalidates any cached client for that provider so the next API call creates a fresh client with current credentials.
+
+For full details on client caching, factory registration, and cache management APIs, see [Client Cache](CLIENT_CACHE.md).
+
 ## Important Notes
 
 -   **Path references**: All paths in this document use `electron/` (the dash-core directory structure), not the legacy `public/lib/` paths from the original dash repo.

@@ -23,6 +23,7 @@ For project setup and quick start, see the [README](../README.md).
 | Document | Description |
 |---|---|
 | [Provider Architecture](PROVIDER_ARCHITECTURE.md) | Three-tier storage model, encryption, MCP providers, context integration |
+| [Client Cache](CLIENT_CACHE.md) | SDK client caching, factory registration, credential resolution |
 | [Widget Provider Configuration](WIDGET_PROVIDER_CONFIGURATION.md) | Configuring provider requirements in `.dash.js` files |
 
 ## Testing
