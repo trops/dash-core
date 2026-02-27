@@ -986,18 +986,19 @@ export const LayoutGridContainer = memo(
 
           {/* Row gutter + main grid side by side */}
           {scrollable ? (
-            <div className="flex flex-row flex-1 min-h-0 overflow-y-auto items-start">
-              {renderRowGutter()}
-              <div
-                id={`grid-container-${id}`}
-                className="grid flex-1 min-h-24 p-4 gap-5"
-                style={{
-                  gridTemplateRows: getRowTemplate(item.grid),
-                  gridTemplateColumns: `repeat(${item.grid.cols}, 1fr)`,
-                  overflow: "hidden",
-                }}
-              >
-                {renderGridCells()}
+            <div className="relative flex-1 min-h-0">
+              <div className="absolute inset-0 flex flex-row overflow-y-auto items-start">
+                {renderRowGutter()}
+                <div
+                  id={`grid-container-${id}`}
+                  className="grid flex-1 min-h-24 p-4 gap-5"
+                  style={{
+                    gridTemplateRows: getRowTemplate(item.grid),
+                    gridTemplateColumns: `repeat(${item.grid.cols}, 1fr)`,
+                  }}
+                >
+                  {renderGridCells()}
+                </div>
               </div>
             </div>
           ) : (
