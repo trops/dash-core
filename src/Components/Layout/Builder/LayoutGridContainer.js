@@ -985,28 +985,39 @@ export const LayoutGridContainer = memo(
           {renderColumnGutter()}
 
           {/* Row gutter + main grid side by side */}
-          <div
-            className={`flex flex-row flex-1 min-h-0 ${
-              scrollable ? "overflow-y-auto items-start" : ""
-            }`}
-          >
-            {renderRowGutter()}
-            <div
-              id={`grid-container-${id}`}
-              className={`grid flex-1 ${
-                scrollable ? "" : height
-              } min-h-24 p-4 gap-5`}
-              style={{
-                gridTemplateRows: scrollable
-                  ? getRowTemplate(item.grid)
-                  : `repeat(${item.grid.rows}, minmax(0, 1fr))`,
-                gridTemplateColumns: `repeat(${item.grid.cols}, 1fr)`,
-                overflow: "hidden",
-              }}
-            >
-              {renderGridCells()}
+          {scrollable ? (
+            <div className="flex flex-row flex-1 min-h-0 overflow-y-auto items-start">
+              {renderRowGutter()}
+              <div
+                id={`grid-container-${id}`}
+                className="grid flex-1 min-h-24 p-4 gap-5"
+                style={{
+                  gridTemplateRows: getRowTemplate(item.grid),
+                  gridTemplateColumns: `repeat(${item.grid.cols}, 1fr)`,
+                  overflow: "hidden",
+                }}
+              >
+                {renderGridCells()}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="relative flex-1 min-h-0">
+              <div className="absolute inset-0 flex flex-row overflow-hidden">
+                {renderRowGutter()}
+                <div
+                  id={`grid-container-${id}`}
+                  className="grid flex-1 p-4 gap-5"
+                  style={{
+                    gridTemplateRows: `repeat(${item.grid.rows}, minmax(0, 1fr))`,
+                    gridTemplateColumns: `repeat(${item.grid.cols}, 1fr)`,
+                    overflow: "hidden",
+                  }}
+                >
+                  {renderGridCells()}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Grid operation modals */}
@@ -1116,21 +1127,33 @@ export const LayoutGridContainer = memo(
         </DragComponent>
       </DropComponent>
     ) : useGridLayout ? (
-      <div
-        id={`grid-container-${id}`}
-        className={`grid w-full ${
-          scrollable ? "" : height
-        } min-h-24 p-3 ${item.grid.gap || "gap-2"}`}
-        style={{
-          gridTemplateRows: scrollable
-            ? getRowTemplate(item.grid)
-            : `repeat(${item.grid.rows}, minmax(0, 1fr))`,
-          gridTemplateColumns: `repeat(${item.grid.cols}, 1fr)`,
-          overflow: scrollable ? "auto" : "hidden",
-        }}
-      >
-        {renderGridCells()}
-      </div>
+      scrollable ? (
+        <div
+          id={`grid-container-${id}`}
+          className={`grid w-full min-h-24 p-3 ${item.grid.gap || "gap-2"}`}
+          style={{
+            gridTemplateRows: getRowTemplate(item.grid),
+            gridTemplateColumns: `repeat(${item.grid.cols}, 1fr)`,
+            overflow: "auto",
+          }}
+        >
+          {renderGridCells()}
+        </div>
+      ) : (
+        <div className={`relative w-full ${height} min-h-24`}>
+          <div
+            id={`grid-container-${id}`}
+            className={`absolute inset-0 grid p-3 ${item.grid.gap || "gap-2"}`}
+            style={{
+              gridTemplateRows: `repeat(${item.grid.rows}, minmax(0, 1fr))`,
+              gridTemplateColumns: `repeat(${item.grid.cols}, 1fr)`,
+              overflow: "hidden",
+            }}
+          >
+            {renderGridCells()}
+          </div>
+        </div>
+      )
     ) : (
       renderComponentContainer(children)
     );
