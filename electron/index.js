@@ -22,6 +22,7 @@ const pluginController = require("./controller/pluginController");
 
 // --- Utils ---
 const clientCache = require("./utils/clientCache");
+const responseCache = require("./utils/responseCache");
 
 // --- Controller functions (flat, for convenient destructuring) ---
 const controllers = require("./controller");
@@ -105,4 +106,5 @@ module.exports = {
 
   // Utils
   clientCache,
+  responseCache,
 };
