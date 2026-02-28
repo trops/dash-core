@@ -736,10 +736,14 @@ export const LayoutGridContainer = memo(
 
           const isCellSelected = selectedCellsForMerge.includes(cellNumber);
 
+          const rowModes = item.grid.rowModes || {};
+          const rowMode = rowModes[String(row)] || "fixed";
+          const heightClass = rowMode === "shrink" ? "" : "h-full";
+
           cells.push(
             <div
               key={cellNumber}
-              className={`flex w-full h-full min-h-0 min-w-0 overflow-hidden relative ${
+              className={`flex w-full ${heightClass} min-h-0 min-w-0 overflow-hidden relative ${
                 isCellSelected ? "ring-2 ring-blue-500 ring-inset rounded" : ""
               }`}
               data-cell={cellNumber}
