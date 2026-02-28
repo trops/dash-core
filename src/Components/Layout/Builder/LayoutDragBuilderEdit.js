@@ -35,6 +35,7 @@ export const LayoutDragBuilderEdit = ({
   onAddGridColumn = null,
   onDeleteGridColumn = null,
   onChangeRowHeight = null,
+  onChangeRowMode = null,
   onMoveWidgetToCell = null,
   onDropWidgetFromSidebar = null,
 }) => {
@@ -72,6 +73,7 @@ export const LayoutDragBuilderEdit = ({
     onAddGridColumn,
     onDeleteGridColumn,
     onChangeRowHeight,
+    onChangeRowMode,
     onMoveWidgetToCell,
     onDropWidgetFromSidebar,
   });

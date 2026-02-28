@@ -67,6 +67,7 @@ export const renderLayout = ({
   onAddGridColumn = null,
   onDeleteGridColumn = null,
   onChangeRowHeight = null,
+  onChangeRowMode = null,
   onMoveWidgetToCell = null,
   onDropWidgetFromSidebar = null,
 }) => {
@@ -143,6 +144,7 @@ export const renderLayout = ({
               onAddGridColumn={onAddGridColumn}
               onDeleteGridColumn={onDeleteGridColumn}
               onChangeRowHeight={onChangeRowHeight}
+              onChangeRowMode={onChangeRowMode}
               onMoveWidgetToCell={onMoveWidgetToCell}
               onDropWidgetFromSidebar={onDropWidgetFromSidebar}
             >
@@ -181,6 +183,7 @@ export const renderLayout = ({
                   onAddGridColumn,
                   onDeleteGridColumn,
                   onChangeRowHeight,
+                  onChangeRowMode,
                   onMoveWidgetToCell,
                   onDropWidgetFromSidebar,
                 })}

@@ -987,6 +987,32 @@ export const LayoutBuilder = ({
     }
   }
 
+  function handleChangeRowMode(gridContainerId, rowNumber, mode) {
+    try {
+      console.log(
+        "[LayoutBuilder] Change row mode:",
+        rowNumber,
+        "to",
+        mode,
+      );
+      const dashboard = new DashboardModel(currentWorkspace);
+      const result = dashboard.changeRowMode(
+        gridContainerId,
+        rowNumber,
+        mode,
+      );
+
+      if (result) {
+        const newWorkspace = dashboard.workspace();
+        setCurrentWorkspace(newWorkspace);
+      } else {
+        console.error("[LayoutBuilder] Failed to change row mode");
+      }
+    } catch (e) {
+      console.error("[LayoutBuilder] Error changing row mode:", e);
+    }
+  }
+
   /**
    * handle the click of a cell in a grid that does not contain a widget yet
    * the idea here is to allow the user to CHOOSE a widget that corresponds to
@@ -1098,6 +1124,7 @@ export const LayoutBuilder = ({
               onAddGridColumn={handleAddGridColumn}
               onDeleteGridColumn={handleDeleteGridColumn}
               onChangeRowHeight={handleChangeRowHeight}
+              onChangeRowMode={handleChangeRowMode}
               onMoveWidgetToCell={handleMoveWidgetToCell}
             />
           )}
@@ -1145,6 +1172,7 @@ export const LayoutBuilder = ({
               onAddGridColumn={handleAddGridColumn}
               onDeleteGridColumn={handleDeleteGridColumn}
               onChangeRowHeight={handleChangeRowHeight}
+              onChangeRowMode={handleChangeRowMode}
               onMoveWidgetToCell={handleMoveWidgetToCell}
               onDropWidgetFromSidebar={handleDropWidgetFromSidebar}
             />

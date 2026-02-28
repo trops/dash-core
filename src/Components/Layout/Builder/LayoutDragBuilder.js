@@ -32,6 +32,7 @@ export const LayoutDragBuilder = ({
   onAddGridColumn = null,
   onDeleteGridColumn = null,
   onChangeRowHeight = null,
+  onChangeRowMode = null,
 }) => {
   return isDraggable === true ? (
     <DndProvider backend={HTML5Backend} key={"dnd-provider"}>
@@ -63,6 +64,7 @@ export const LayoutDragBuilder = ({
         onAddGridColumn,
         onDeleteGridColumn,
         onChangeRowHeight,
+        onChangeRowMode,
       })}
     </DndProvider>
   ) : (
@@ -94,6 +96,7 @@ export const LayoutDragBuilder = ({
       onAddGridColumn,
       onDeleteGridColumn,
       onChangeRowHeight,
+      onChangeRowMode,
     })
   );
 };

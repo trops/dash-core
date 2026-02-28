@@ -157,6 +157,7 @@ export const LayoutGridContainer = memo(
     onAddGridColumn = null,
     onDeleteGridColumn = null,
     onChangeRowHeight = null,
+    onChangeRowMode = null,
     onMoveWidgetToCell = null,
     onDropWidgetFromSidebar = null,
   }) => {
@@ -186,16 +187,36 @@ export const LayoutGridContainer = memo(
     const GRID_PAD = 16; // px — matches p-4 (1rem)
     const GRID_GAP = 20; // px — matches gap-5 (1.25rem)
 
-    // Compute fixed row heights for scrollable mode
+    // Compute row template tracks respecting rowModes and rowHeights
     function getRowTemplate(grid) {
       const unit = grid.rowUnit || 300;
       const heights = grid.rowHeights || {};
+      const modes = grid.rowModes || {};
       const tracks = [];
       for (let r = 1; r <= grid.rows; r++) {
-        const mult = heights[String(r)] || 1;
-        tracks.push(`${unit * mult}px`);
+        const mode = modes[String(r)] || "fixed";
+        switch (mode) {
+          case "shrink":
+            tracks.push("auto");
+            break;
+          case "grow":
+            tracks.push("minmax(0, 1fr)");
+            break;
+          default: {
+            const mult = heights[String(r)] || 1;
+            tracks.push(`${unit * mult}px`);
+            break;
+          }
+        }
       }
       return tracks.join(" ");
+    }
+
+    // Check if any row has an explicit mode set
+    function hasExplicitRowModes() {
+      if (!hasGrid) return false;
+      const modes = item.grid.rowModes;
+      return modes && Object.keys(modes).length > 0;
     }
 
     // Get the current multiplier for a row
@@ -204,13 +225,44 @@ export const LayoutGridContainer = memo(
       return item.grid.rowHeights?.[String(row)] || 1;
     }
 
-    // Cycle multiplier: 1 → 2 → 3 → 1
-    function handleCycleRowHeight(row) {
-      const current = getRowMultiplier(row);
-      const next = current >= 3 ? 1 : current + 1;
-      if (onChangeRowHeight) {
-        onChangeRowHeight(id, row, next);
+    // Get the current mode for a row
+    function getRowMode(row) {
+      if (!hasGrid) return "fixed";
+      return item.grid.rowModes?.[String(row)] || "fixed";
+    }
+
+    // Unified cycle: shrink → grow → fixed 1x → fixed 2x → fixed 3x → shrink
+    function handleCycleRowSizing(row) {
+      const mode = getRowMode(row);
+      const mult = getRowMultiplier(row);
+
+      if (mode === "shrink") {
+        // shrink → grow
+        if (onChangeRowMode) onChangeRowMode(id, row, "grow");
+      } else if (mode === "grow") {
+        // grow → fixed 1x
+        if (onChangeRowMode) onChangeRowMode(id, row, "fixed");
+      } else {
+        // fixed: cycle 1x → 2x → 3x → shrink
+        if (mult >= 3) {
+          if (onChangeRowMode) onChangeRowMode(id, row, "shrink");
+        } else {
+          if (onChangeRowHeight) onChangeRowHeight(id, row, mult + 1);
+        }
       }
+    }
+
+    // Get display label and color for current row sizing
+    function getRowSizingDisplay(row) {
+      const mode = getRowMode(row);
+      if (mode === "shrink") return { label: "S", color: "text-amber-400", hoverBg: "hover:bg-amber-400/10" };
+      if (mode === "grow") return { label: "G", color: "text-green-400", hoverBg: "hover:bg-green-400/10" };
+      const mult = getRowMultiplier(row);
+      return {
+        label: `${mult}x`,
+        color: mult > 1 ? "text-blue-400" : "text-gray-500",
+        hoverBg: mult > 1 ? "hover:bg-blue-400/10" : "hover:bg-gray-400/10",
+      };
     }
 
     // Modal state for grid operations
@@ -492,17 +544,21 @@ export const LayoutGridContainer = memo(
                 <span className="text-[11px] text-gray-400 group-hover:text-gray-200 select-none font-mono font-medium">
                   R{row}
                 </span>
-                {scrollable && (
-                  <button
-                    className="w-5 h-5 flex items-center justify-center rounded text-[10px] text-gray-500 opacity-40 hover:opacity-100 hover:text-blue-400 hover:bg-blue-400/10 transition-all font-mono font-bold select-none"
-                    onClick={() => handleCycleRowHeight(row)}
-                    title={`Row height: ${getRowMultiplier(
-                      row,
-                    )}x (click to cycle)`}
-                  >
-                    {getRowMultiplier(row)}x
-                  </button>
-                )}
+                {(() => {
+                  const { label, color, hoverBg } = getRowSizingDisplay(row);
+                  const mode = getRowMode(row);
+                  const mult = getRowMultiplier(row);
+                  const titleParts = mode === "shrink" ? "Shrink (auto)" : mode === "grow" ? "Grow (1fr)" : `Fixed ${mult}x`;
+                  return (
+                    <button
+                      className={`w-5 h-5 flex items-center justify-center rounded text-[10px] ${color} opacity-40 hover:opacity-100 ${hoverBg} transition-all font-mono font-bold select-none`}
+                      onClick={() => handleCycleRowSizing(row)}
+                      title={`Row sizing: ${titleParts} (click to cycle)`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })()}
                 <button
                   className="w-5 h-5 flex items-center justify-center rounded text-[10px] text-gray-600 opacity-40 hover:opacity-100 hover:text-green-400 hover:bg-green-400/10 transition-all"
                   onClick={() => handleAddRow(row)}
@@ -538,7 +594,9 @@ export const LayoutGridContainer = memo(
             style={{
               gridTemplateRows: scrollable
                 ? getRowTemplate(item.grid)
-                : `repeat(${rows}, minmax(0, 1fr))`,
+                : hasExplicitRowModes()
+                  ? getRowTemplate(item.grid)
+                  : `repeat(${rows}, minmax(0, 1fr))`,
               gap: GRID_GAP,
             }}
           >
@@ -1009,7 +1067,9 @@ export const LayoutGridContainer = memo(
                   id={`grid-container-${id}`}
                   className="grid flex-1 p-4 gap-5"
                   style={{
-                    gridTemplateRows: `repeat(${item.grid.rows}, minmax(0, 1fr))`,
+                    gridTemplateRows: hasExplicitRowModes()
+                      ? getRowTemplate(item.grid)
+                      : `repeat(${item.grid.rows}, minmax(0, 1fr))`,
                     gridTemplateColumns: `repeat(${item.grid.cols}, 1fr)`,
                     overflow: "hidden",
                   }}
@@ -1146,7 +1206,9 @@ export const LayoutGridContainer = memo(
             id={`grid-container-${id}`}
             className={`absolute inset-0 grid p-3 ${item.grid.gap || "gap-2"}`}
             style={{
-              gridTemplateRows: `repeat(${item.grid.rows}, minmax(0, 1fr))`,
+              gridTemplateRows: hasExplicitRowModes()
+                ? getRowTemplate(item.grid)
+                : `repeat(${item.grid.rows}, minmax(0, 1fr))`,
               gridTemplateColumns: `repeat(${item.grid.cols}, 1fr)`,
               overflow: "hidden",
             }}

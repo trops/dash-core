@@ -1093,6 +1093,18 @@ export class DashboardModel {
         delete grid[`${grid.rows}.${c}`];
       }
       grid.rows--;
+
+      // Shift rowModes keys up and remove the compacted row's entry
+      if (grid.rowModes) {
+        const shifted = {};
+        for (const [key, mode] of Object.entries(grid.rowModes)) {
+          const rowNum = Number(key);
+          if (rowNum === r) continue;
+          shifted[String(rowNum > r ? rowNum - 1 : rowNum)] = mode;
+        }
+        grid.rowModes =
+          Object.keys(shifted).length > 0 ? shifted : undefined;
+      }
     }
 
     // --- Phase 3: Full normalization (steps 1-5) on the compacted grid ---
@@ -1575,6 +1587,55 @@ export class DashboardModel {
   }
 
   /**
+   * Change the sizing mode for a grid row
+   * @param {Number} itemId The id of the grid container
+   * @param {Number} rowNumber The row number (1-indexed)
+   * @param {String} mode The sizing mode: "shrink", "grow", or "fixed"
+   * @returns {Object} Updated grid or null on error
+   */
+  changeRowMode(itemId, rowNumber, mode) {
+    try {
+      const gridContainer = this.getComponentById(itemId);
+      if (!gridContainer || !gridContainer.grid) {
+        console.error(
+          "changeRowMode: Grid container not found or has no grid",
+        );
+        return null;
+      }
+
+      const grid = gridContainer.grid;
+      grid.rowModes = grid.rowModes || {};
+
+      if (mode === "fixed" || !mode) {
+        delete grid.rowModes[String(rowNumber)];
+      } else {
+        grid.rowModes[String(rowNumber)] = mode;
+      }
+
+      // When switching away from fixed, clear the rowHeights entry for that row
+      if (mode === "shrink" || mode === "grow") {
+        if (grid.rowHeights) {
+          delete grid.rowHeights[String(rowNumber)];
+          if (Object.keys(grid.rowHeights).length === 0) {
+            delete grid.rowHeights;
+          }
+        }
+      }
+
+      // Clean up empty object
+      if (Object.keys(grid.rowModes).length === 0) {
+        delete grid.rowModes;
+      }
+
+      this.updateLayoutItem(gridContainer);
+      return grid;
+    } catch (e) {
+      console.error("changeRowMode error:", e);
+      return null;
+    }
+  }
+
+  /**
    * Add a new row to the grid
    * @param {Number} itemId The id of the grid container
    * @param {Number} afterRow Row number after which to insert (0 = beginning)
@@ -1622,6 +1683,19 @@ export class DashboardModel {
           shifted[String(rowNum >= newRowNumber ? rowNum + 1 : rowNum)] = mult;
         }
         gridContainer.grid.rowHeights =
+          Object.keys(shifted).length > 0 ? shifted : undefined;
+      }
+
+      // Shift rowModes keys down (rows after insertion point move +1)
+      if (gridContainer.grid.rowModes) {
+        const shifted = {};
+        for (const [key, mode] of Object.entries(
+          gridContainer.grid.rowModes,
+        )) {
+          const rowNum = Number(key);
+          shifted[String(rowNum >= newRowNumber ? rowNum + 1 : rowNum)] = mode;
+        }
+        gridContainer.grid.rowModes =
           Object.keys(shifted).length > 0 ? shifted : undefined;
       }
 
@@ -1690,6 +1764,20 @@ export class DashboardModel {
           shifted[String(rowNum > rowNumber ? rowNum - 1 : rowNum)] = mult;
         }
         gridContainer.grid.rowHeights =
+          Object.keys(shifted).length > 0 ? shifted : undefined;
+      }
+
+      // Shift rowModes keys up and remove the deleted row's entry
+      if (gridContainer.grid.rowModes) {
+        const shifted = {};
+        for (const [key, mode] of Object.entries(
+          gridContainer.grid.rowModes,
+        )) {
+          const rowNum = Number(key);
+          if (rowNum === rowNumber) continue;
+          shifted[String(rowNum > rowNumber ? rowNum - 1 : rowNum)] = mode;
+        }
+        gridContainer.grid.rowModes =
           Object.keys(shifted).length > 0 ? shifted : undefined;
       }
 
