@@ -179,7 +179,7 @@ export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
           <SelectMenu
             name={key}
             selectedValue={value}
-            onChange={(e) => onChange(e, configItem)}
+            onChange={(e) => onChange(key, e.target.value)}
             textSize="text-xs"
             className="font-normal"
           >
