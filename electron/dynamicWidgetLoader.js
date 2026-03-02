@@ -112,13 +112,36 @@ class DynamicWidgetLoader {
     try {
       const source = fs.readFileSync(configPath, "utf8");
 
-      const exportMatch = source.match(/export\s+default\s+({[\s\S]*});?\s*$/);
+      let exportMatch = source.match(/export\s+default\s+({[\s\S]*});?\s*$/);
+
+      // Handle variable export pattern: const x = {...}; export default x;
+      if (!exportMatch) {
+        const varExportMatch = source.match(
+          /export\s+default\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*;?\s*$/,
+        );
+        if (varExportMatch) {
+          const varName = varExportMatch[1];
+          const varDeclMatch = source.match(
+            new RegExp(
+              `(?:const|let|var)\\s+${varName}\\s*=\\s*({[\\s\\S]*?});\\s*(?:export\\s+default)`,
+            ),
+          );
+          if (varDeclMatch) {
+            exportMatch = varDeclMatch;
+          }
+        }
+      }
 
       if (!exportMatch) {
         throw new Error("Could not find default export in config file");
       }
 
-      const exportedObjectStr = exportMatch[1];
+      // Sanitize component references so vm.runInContext doesn't fail
+      // on unresolvable imports — replace component: SomeName with component: "SomeName"
+      const exportedObjectStr = exportMatch[1].replace(
+        /component\s*:\s*([A-Z][a-zA-Z0-9_$]*)/g,
+        'component: "$1"',
+      );
 
       const context = vm.createContext({ module: { exports: {} } });
       vm.runInContext(`module.exports = ${exportedObjectStr}`, context);
