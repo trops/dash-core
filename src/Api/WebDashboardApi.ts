@@ -18,7 +18,7 @@ class WebDashboardApi implements IDashboardApi {
    * events
    * Events to be used for the api calls (call, success, error)
    */
-  events: apiEvents;
+  events: typeof apiEvents;
 
   constructor(api: any) {
     this.api = api;

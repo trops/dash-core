@@ -45,6 +45,7 @@ const EXTERNAL = [
     "react",
     "react-dom",
     "@trops/dash-react",
+    "@trops/dash-core",
     /^@fortawesome\//,
 ];
 
