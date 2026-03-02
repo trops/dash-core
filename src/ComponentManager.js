@@ -55,7 +55,10 @@ export const ComponentManager = {
     const tempComponentMap = this.componentMap();
     // Handle both module exports (widgetConfig.default) and direct config objects
     const config = widgetConfig.default || widgetConfig;
-    tempComponentMap[widgetKey] = ComponentConfigModel(config);
+    // Use scoped id if available (e.g., "trops.clock.AnalogClockWidget"),
+    // otherwise fall back to the provided widgetKey for backward compatibility
+    const registrationKey = config.id || widgetKey;
+    tempComponentMap[registrationKey] = ComponentConfigModel(config);
     this.setComponentMap(tempComponentMap);
   },
 
@@ -113,7 +116,22 @@ export const ComponentManager = {
       if (component && this.componentMap()) {
         if (ComponentManager.isLayoutContainer(component) === false) {
           const m = this.componentMap();
-          const cmp = component in m ? m[component] : null;
+          // Try exact match first (works for both scoped ids and legacy names)
+          let cmp = component in m ? m[component] : null;
+
+          // Fallback: scan by config.name for backward compatibility
+          // Handles saved layouts that reference old-style names (e.g., "AnalogClockWidget")
+          // when the widget is now registered under a scoped id (e.g., "trops.clock.AnalogClockWidget")
+          if (cmp === null) {
+            for (const key of Object.keys(m)) {
+              if (m[key].name === component) {
+                cmp = m[key];
+                cmp["componentName"] = key;
+                return cmp;
+              }
+            }
+          }
+
           if (cmp !== null) {
             cmp["componentName"] = component;
             return cmp;

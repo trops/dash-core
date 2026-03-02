@@ -74,10 +74,13 @@ class DynamicWidgetLoader {
 
       if (autoRegister && this.componentManager) {
         try {
-          this.componentManager.registerWidget(config, componentName);
+          // Use scoped id as registration key if available,
+          // otherwise fall back to componentName
+          const registrationKey = config.id || componentName;
+          this.componentManager.registerWidget(config, registrationKey);
           registered = true;
           console.log(
-            `[DynamicWidgetLoader] ✓ Registered ${componentName} with ComponentManager`,
+            `[DynamicWidgetLoader] ✓ Registered ${registrationKey} with ComponentManager`,
           );
         } catch (regError) {
           console.warn(
