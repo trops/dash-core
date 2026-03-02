@@ -9,6 +9,7 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import * as dashReact from "@trops/dash-react";
+import * as dashCore from "@trops/dash-core";
 import * as jsxRuntime from "react/jsx-runtime";
 import PropTypes from "prop-types";
 
@@ -19,6 +20,7 @@ const MODULE_MAP = {
   react: React,
   "react-dom": ReactDOM,
   "@trops/dash-react": dashReact,
+  "@trops/dash-core": dashCore,
   "react/jsx-runtime": jsxRuntime,
   "prop-types": PropTypes,
 };

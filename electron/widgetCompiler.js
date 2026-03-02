@@ -29,6 +29,12 @@ function findWidgetsDir(widgetPath) {
     return direct;
   }
 
+  // Check configs/ directory (used by packageZip.js for distributed widgets)
+  const configs = path.join(widgetPath, "configs");
+  if (fs.existsSync(configs)) {
+    return configs;
+  }
+
   // Check one level deeper for nested ZIP extraction
   try {
     const entries = fs.readdirSync(widgetPath, { withFileTypes: true });
@@ -155,6 +161,7 @@ async function compileWidget(widgetPath) {
         "react",
         "react-dom",
         "@trops/dash-react",
+        "@trops/dash-core",
         "react/jsx-runtime",
         "prop-types",
       ],
