@@ -810,6 +810,8 @@ function setupWidgetRegistryHandlers() {
             configs.push({
               componentName,
               widgetPackage: widget.name,
+              // Include scoped id if present in the config
+              id: config.id || null,
               config,
             });
           } catch (err) {
