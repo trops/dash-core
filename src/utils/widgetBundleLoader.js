@@ -9,18 +9,29 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import * as dashReact from "@trops/dash-react";
-import * as dashCore from "@trops/dash-core";
 import * as jsxRuntime from "react/jsx-runtime";
 import PropTypes from "prop-types";
 
-// Map of package names to the host app's module instances.
-// When the CJS bundle calls require("react"), it receives the
-// exact same React singleton the host app uses.
-const MODULE_MAP = {
+// Host-injected module references (e.g., "@trops/dash-core").
+// Set by the host app via setHostModules() after all modules are fully loaded,
+// avoiding the self-referential import that breaks under webpack scope hoisting.
+let _hostModules = {};
+
+/**
+ * Allow the host app to inject module references for the require shim.
+ * Called from Dash.js after importing dash-core, so the full namespace is available.
+ *
+ * @param {object} modules - Map of package names to module namespaces
+ */
+export function setHostModules(modules) {
+  _hostModules = modules;
+}
+
+// Base modules that can be statically imported without circular issues.
+const BASE_MODULE_MAP = {
   react: React,
   "react-dom": ReactDOM,
   "@trops/dash-react": dashReact,
-  "@trops/dash-core": dashCore,
   "react/jsx-runtime": jsxRuntime,
   "prop-types": PropTypes,
 };
@@ -33,12 +44,16 @@ const MODULE_MAP = {
  * @returns {object} The module.exports from the evaluated bundle
  */
 export function evaluateBundle(source, widgetName) {
+  // Merge base modules with host-provided modules (e.g., "@trops/dash-core")
+  // at call time so _hostModules is populated by the time widgets load.
+  const moduleMap = { ...BASE_MODULE_MAP, ..._hostModules };
+
   const module = { exports: {} };
   const exports = module.exports;
 
   const require = (name) => {
-    if (MODULE_MAP[name]) {
-      const mod = MODULE_MAP[name];
+    if (moduleMap[name]) {
+      const mod = moduleMap[name];
       // CJS interop: `import * as X` creates an ES module namespace where
       // named exports may live under `.default` (e.g. @trops/dash-react).
       // CJS bundles expect `require("pkg").Widget` to work, so merge
