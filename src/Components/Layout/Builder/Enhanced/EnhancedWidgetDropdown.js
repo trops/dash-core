@@ -924,7 +924,7 @@ export const EnhancedWidgetDropdown = ({
         <div className={`flex flex-col w-full h-full overflow-clip`}>
           <div className="flex flex-col w-full h-full overflow-clip">
             {/* Main Content Area */}
-            <div className="flex flex-row w-full h-full space-x-4 overflow-clip p-6">
+            <div className="flex flex-row w-full flex-1 min-h-0 space-x-4 overflow-clip p-6">
               {/* Left Side: Title and Description (1/3) - Hidden on small screens */}
               <div className="hidden lg:flex flex-col flex-shrink h-full rounded font-medium text-gray-400 w-1/3">
                 <div className="flex flex-col rounded p-6 py-10 space-y-4">
@@ -1394,11 +1394,25 @@ export const EnhancedWidgetDropdown = ({
                                             className={`w-full px-3 py-2 rounded text-sm ${currentTheme["bg-primary-medium"]} ${currentTheme["text-primary-light"]} ${currentTheme["border-primary-medium"]} border`}
                                           >
                                             {config.options &&
-                                              config.options.map((opt) => (
-                                                <option key={opt} value={opt}>
-                                                  {opt}
-                                                </option>
-                                              ))}
+                                              config.options.map((opt) => {
+                                                const optValue =
+                                                  typeof opt === "object"
+                                                    ? opt.value
+                                                    : opt;
+                                                const optLabel =
+                                                  typeof opt === "object"
+                                                    ? opt.displayName ||
+                                                      opt.value
+                                                    : opt;
+                                                return (
+                                                  <option
+                                                    key={optValue}
+                                                    value={optValue}
+                                                  >
+                                                    {optLabel}
+                                                  </option>
+                                                );
+                                              })}
                                           </select>
                                         )}
 
