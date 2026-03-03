@@ -10,7 +10,13 @@
  * - Registry integration with two-level browsing (packages + widgets)
  */
 
-import React, { useState, useContext, useEffect, useCallback } from "react";
+import React, {
+  useState,
+  useContext,
+  useEffect,
+  useCallback,
+  useMemo,
+} from "react";
 import {
   ThemeContext,
   Modal,
@@ -23,6 +29,7 @@ import {
   Paragraph,
   Menu3,
   MenuItem3,
+  SearchInput,
 } from "@trops/dash-react";
 import { ComponentManager } from "../../../../ComponentManager";
 import { WidgetIcon } from "./WidgetIcon";
@@ -65,6 +72,9 @@ export const EnhancedWidgetDropdown = ({
   const [inlineCreateSchema, setInlineCreateSchema] = useState({});
   const [inlineCreateError, setInlineCreateError] = useState(null);
   const [isCreatingProvider, setIsCreatingProvider] = useState(false);
+
+  // Installed widget grouping
+  const [expandedGroups, setExpandedGroups] = useState(new Set());
 
   // Registry state
   const [isLoadingRegistry, setIsLoadingRegistry] = useState(false);
@@ -165,6 +175,7 @@ export const EnhancedWidgetDropdown = ({
       setSearchQuery("");
       setSelectedAuthor("all");
       setSelectedProvider("all");
+      setExpandedGroups(new Set()); // Start with all groups collapsed
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
@@ -297,6 +308,45 @@ export const EnhancedWidgetDropdown = ({
   };
 
   const filteredWidgets = getFilteredWidgets();
+
+  // Set of installed package names for "Installed" badge in Discover mode
+  const installedPackageNames = useMemo(() => {
+    const names = new Set();
+    const map = ComponentManager.map();
+    Object.values(map).forEach((widget) => {
+      if (widget._sourcePackage) names.add(widget._sourcePackage);
+    });
+    return names;
+  }, [widgets]);
+
+  // Group installed widgets by package > author > "Other"
+  const groupedInstalledWidgets = useMemo(() => {
+    if (selectedSource !== "Installed") return {};
+    const groups = {};
+    filteredWidgets.forEach((widget) => {
+      const group = widget.package || widget.author || "Other";
+      if (!groups[group]) groups[group] = [];
+      groups[group].push(widget);
+    });
+    return groups;
+  }, [filteredWidgets, selectedSource]);
+
+  const installedGroupNames = useMemo(
+    () => Object.keys(groupedInstalledWidgets).sort(),
+    [groupedInstalledWidgets],
+  );
+
+  const toggleGroup = (groupName) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupName)) {
+        next.delete(groupName);
+      } else {
+        next.add(groupName);
+      }
+      return next;
+    });
+  };
 
   // Group filtered widgets by package (for package view in Discover)
   const getGroupedByPackage = () => {
@@ -518,8 +568,10 @@ export const EnhancedWidgetDropdown = ({
   const isAddButtonEnabled = () => {
     if (!selectedWidget) return false;
 
-    // For registry widgets, always enabled (install action)
-    if (selectedWidget.isRegistry) return true;
+    // For registry widgets, enabled unless already installed
+    if (selectedWidget.isRegistry) {
+      return !installedPackageNames.has(selectedWidget.packageName);
+    }
 
     // Check providers: all required providers must be selected
     const hasRequiredProviders = selectedWidget.providers
@@ -622,12 +674,12 @@ export const EnhancedWidgetDropdown = ({
                 selected={selectedPackage === group.name}
               >
                 <div className="flex items-center justify-between w-full">
-                  <div className="flex items-center space-x-2 flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
                     <span className="text-xs text-gray-500">
                       {expandedPackages.has(group.name) ? "\u25BC" : "\u25B6"}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="text-base font-medium truncate">
+                      <div className="text-sm font-medium truncate">
                         {group.displayName}
                       </div>
                       <div className="text-xs text-gray-500">
@@ -636,6 +688,11 @@ export const EnhancedWidgetDropdown = ({
                         {group.version}
                       </div>
                     </div>
+                    {installedPackageNames.has(group.name) && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 flex-shrink-0">
+                        Installed
+                      </span>
+                    )}
                   </div>
                 </div>
               </MenuItem3>
@@ -646,7 +703,35 @@ export const EnhancedWidgetDropdown = ({
                     onClick={() => handleWidgetSelect(widget)}
                     selected={selectedWidget?.key === widget.key}
                   >
-                    <div className="pl-6 text-sm">{widget.name}</div>
+                    <div className="flex items-center gap-2 pl-6 w-full">
+                      <WidgetIcon
+                        icon={widget.icon}
+                        className="h-4 w-4 opacity-60 flex-shrink-0"
+                        fallback="puzzle-piece"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">
+                          {widget.name}
+                        </div>
+                        {widget.description && (
+                          <div className="text-xs opacity-50 truncate">
+                            {widget.description}
+                          </div>
+                        )}
+                        {widget.providers?.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-0.5">
+                            {widget.providers.map((p) => (
+                              <span
+                                key={p.type}
+                                className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300"
+                              >
+                                {p.type}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </MenuItem3>
                 ))}
             </div>
@@ -664,11 +749,44 @@ export const EnhancedWidgetDropdown = ({
             onClick={() => handleWidgetSelect(widget)}
             selected={selectedWidget?.key === widget.key}
           >
-            <div className="flex items-center justify-between w-full">
-              <div className="text-base font-medium">{widget.name}</div>
-              <span className="text-xs text-gray-500">
-                {widget.packageDisplayName}
-              </span>
+            <div className="flex items-center gap-2 w-full">
+              <WidgetIcon
+                icon={widget.icon}
+                className="h-4 w-4 opacity-60 flex-shrink-0"
+                fallback="puzzle-piece"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">
+                  {widget.name}
+                </div>
+                {widget.description && (
+                  <div className="text-xs opacity-50 truncate">
+                    {widget.description}
+                  </div>
+                )}
+                {widget.providers?.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {widget.providers.map((p) => (
+                      <span
+                        key={p.type}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300"
+                      >
+                        {p.type}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {installedPackageNames.has(widget.packageName) && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">
+                    Installed
+                  </span>
+                )}
+                <span className="text-xs text-gray-500">
+                  {widget.packageDisplayName}
+                </span>
+              </div>
             </div>
           </MenuItem3>
         ))}
@@ -702,6 +820,11 @@ export const EnhancedWidgetDropdown = ({
             >
               v{selectedWidget.packageVersion}
             </span>
+            {installedPackageNames.has(selectedWidget.packageName) && (
+              <span className="text-xs px-2 py-0.5 rounded bg-green-500/20 text-green-400">
+                Installed
+              </span>
+            )}
           </div>
         </div>
 
@@ -819,72 +942,94 @@ export const EnhancedWidgetDropdown = ({
 
               {/* Right Side: Two-Column Widget Selector - Full width on small screens, 2/3 on large */}
               <div className="flex flex-col w-full lg:w-2/3 h-full overflow-hidden">
-                {/* Filters - Horizontal Layout */}
-                <div className="flex flex-row items-center space-x-3 mb-4 px-2">
-                  {/* Search Filter - Fills available space */}
-                  <input
-                    type="text"
-                    placeholder={
-                      selectedSource === "Discover"
-                        ? "Search packages and widgets..."
-                        : "Search widgets..."
-                    }
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className={`flex-1 px-3 py-2 rounded text-sm ${currentTheme["bg-primary-medium"]} ${currentTheme["text-primary-light"]} ${currentTheme["border-primary-medium"]} border focus:outline-none focus:ring-2 focus:ring-blue-500`}
-                  />
+                {/* Filters */}
+                <div className="flex flex-col gap-3 mb-4 px-2">
+                  {/* Top row: Tab toggle + Search */}
+                  <div className="flex flex-row items-center gap-3">
+                    {/* Installed / Discover pill toggle */}
+                    <div className="flex bg-white/5 rounded-md p-0.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSource("Installed")}
+                        className={`px-3 py-1.5 rounded text-sm transition-colors ${
+                          selectedSource === "Installed"
+                            ? "bg-white/10 font-medium opacity-90"
+                            : "opacity-50 hover:opacity-70"
+                        }`}
+                      >
+                        Installed
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSource("Discover")}
+                        className={`px-3 py-1.5 rounded text-sm transition-colors ${
+                          selectedSource === "Discover"
+                            ? "bg-white/10 font-medium opacity-90"
+                            : "opacity-50 hover:opacity-70"
+                        }`}
+                      >
+                        Discover
+                      </button>
+                    </div>
 
-                  {/* Author Filter */}
-                  <select
-                    value={selectedAuthor}
-                    onChange={(e) => setSelectedAuthor(e.target.value)}
-                    className={`px-3 py-2 rounded text-sm ${currentTheme["bg-primary-medium"]} ${currentTheme["text-primary-light"]} ${currentTheme["border-primary-medium"]} border focus:outline-none focus:ring-2 focus:ring-blue-500`}
-                  >
-                    <option value="all">All Authors</option>
-                    {getUniqueAuthors().map((author) => (
-                      <option key={author} value={author}>
-                        {author}
-                      </option>
-                    ))}
-                  </select>
+                    {/* Search */}
+                    <SearchInput
+                      value={searchQuery}
+                      onChange={setSearchQuery}
+                      placeholder={
+                        selectedSource === "Discover"
+                          ? "Search packages and widgets..."
+                          : "Search widgets..."
+                      }
+                      className="flex-1"
+                      inputClassName="py-1.5 text-sm"
+                    />
+                  </div>
 
-                  {/* Provider Filter - Only show for Installed */}
-                  {selectedSource === "Installed" && (
+                  {/* Bottom row: Secondary filters */}
+                  <div className="flex flex-row items-center gap-2">
+                    {/* Author Filter */}
                     <select
-                      value={selectedProvider}
-                      onChange={(e) => setSelectedProvider(e.target.value)}
-                      className={`px-3 py-2 rounded text-sm ${currentTheme["bg-primary-medium"]} ${currentTheme["text-primary-light"]} ${currentTheme["border-primary-medium"]} border focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                      value={selectedAuthor}
+                      onChange={(e) => setSelectedAuthor(e.target.value)}
+                      className={`px-2 py-1 rounded text-xs bg-transparent border ${currentTheme["border-primary-medium"] || "border-gray-700"} ${currentTheme["text-primary-light"] || "text-gray-300"} focus:outline-none appearance-none cursor-pointer`}
                     >
-                      <option value="all">All Providers</option>
-                      {getUniqueProviders().map((provider) => (
-                        <option key={provider} value={provider}>
-                          {provider === "none" ? "No Providers" : provider}
+                      <option value="all">All Authors</option>
+                      {getUniqueAuthors().map((author) => (
+                        <option key={author} value={author}>
+                          {author}
                         </option>
                       ))}
                     </select>
-                  )}
 
-                  {/* View Mode Toggle - Only for Discover */}
-                  {selectedSource === "Discover" && (
-                    <select
-                      value={registryViewMode}
-                      onChange={(e) => setRegistryViewMode(e.target.value)}
-                      className={`px-3 py-2 rounded text-sm ${currentTheme["bg-primary-medium"]} ${currentTheme["text-primary-light"]} ${currentTheme["border-primary-medium"]} border focus:outline-none focus:ring-2 focus:ring-blue-500`}
-                    >
-                      <option value="packages">Packages</option>
-                      <option value="widgets">Widgets</option>
-                    </select>
-                  )}
+                    {/* Provider Filter - Only show for Installed */}
+                    {selectedSource === "Installed" && (
+                      <select
+                        value={selectedProvider}
+                        onChange={(e) => setSelectedProvider(e.target.value)}
+                        className={`px-2 py-1 rounded text-xs bg-transparent border ${currentTheme["border-primary-medium"] || "border-gray-700"} ${currentTheme["text-primary-light"] || "text-gray-300"} focus:outline-none appearance-none cursor-pointer`}
+                      >
+                        <option value="all">All Providers</option>
+                        {getUniqueProviders().map((provider) => (
+                          <option key={provider} value={provider}>
+                            {provider === "none" ? "No Providers" : provider}
+                          </option>
+                        ))}
+                      </select>
+                    )}
 
-                  {/* Source Filter */}
-                  <select
-                    value={selectedSource}
-                    onChange={(e) => setSelectedSource(e.target.value)}
-                    className={`px-3 py-2 rounded text-sm ${currentTheme["bg-primary-medium"]} ${currentTheme["text-primary-light"]} ${currentTheme["border-primary-medium"]} border focus:outline-none focus:ring-2 focus:ring-blue-500`}
-                  >
-                    <option value="Installed">Installed</option>
-                    <option value="Discover">Discover</option>
-                  </select>
+                    {/* View Mode Toggle - Only for Discover */}
+                    {selectedSource === "Discover" && (
+                      <select
+                        value={registryViewMode}
+                        onChange={(e) => setRegistryViewMode(e.target.value)}
+                        className={`px-2 py-1 rounded text-xs bg-transparent border ${currentTheme["border-primary-medium"] || "border-gray-700"} ${currentTheme["text-primary-light"] || "text-gray-300"} focus:outline-none appearance-none cursor-pointer`}
+                      >
+                        <option value="packages">Packages</option>
+                        <option value="widgets">Widgets</option>
+                      </select>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex flex-row h-full overflow-hidden">
@@ -908,7 +1053,7 @@ export const EnhancedWidgetDropdown = ({
                       ) : (
                         // Widget List using Menu3/MenuItem3
                         <Menu3 scrollable={true} padding={true} height="h-full">
-                          {/* Phase 3: Recent Widgets Section */}
+                          {/* Recent Widgets Section */}
                           {recentWidgets.length > 0 &&
                             selectedSource === "Installed" && (
                               <div className="mb-3">
@@ -916,7 +1061,7 @@ export const EnhancedWidgetDropdown = ({
                                   className={`px-2 py-1 mb-2 border-b ${currentTheme["border-primary-medium"]}`}
                                 >
                                   <Paragraph className="text-xs font-semibold text-gray-400">
-                                    RECENT WIDGETS
+                                    RECENT
                                   </Paragraph>
                                 </div>
                                 {recentWidgets.map((widget) => (
@@ -927,10 +1072,21 @@ export const EnhancedWidgetDropdown = ({
                                       selectedWidget?.key === widget.key
                                     }
                                   >
-                                    <div className="flex items-center space-x-2 w-full">
-                                      <span className="text-xs">🕒</span>
-                                      <div className="text-base font-medium flex-1">
-                                        {widget.name}
+                                    <div className="flex items-center gap-2 w-full">
+                                      <WidgetIcon
+                                        icon={widget.icon}
+                                        className="h-4 w-4 opacity-60 flex-shrink-0"
+                                        fallback="puzzle-piece"
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-sm font-medium truncate">
+                                          {widget.name}
+                                        </div>
+                                        {widget.description && (
+                                          <div className="text-xs opacity-50 truncate">
+                                            {widget.description}
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
                                   </MenuItem3>
@@ -938,17 +1094,67 @@ export const EnhancedWidgetDropdown = ({
                               </div>
                             )}
 
-                          {/* Regular Widget List */}
-                          {filteredWidgets.map((widget) => (
-                            <MenuItem3
-                              key={widget.key}
-                              onClick={() => handleWidgetSelect(widget)}
-                              selected={selectedWidget?.key === widget.key}
-                            >
-                              <div className="text-base font-medium">
-                                {widget.name}
-                              </div>
-                            </MenuItem3>
+                          {/* Grouped Widget List */}
+                          {installedGroupNames.map((groupName) => (
+                            <div key={groupName} className="mb-1">
+                              <button
+                                type="button"
+                                onClick={() => toggleGroup(groupName)}
+                                className={`flex items-center gap-1.5 w-full px-2 py-1.5 text-xs font-semibold text-gray-400 hover:text-gray-300 transition-colors`}
+                              >
+                                <span className="text-[10px] opacity-60">
+                                  {expandedGroups.has(groupName)
+                                    ? "\u25BC"
+                                    : "\u25B6"}
+                                </span>
+                                {groupName}
+                                <span className="opacity-40 ml-auto">
+                                  {groupedInstalledWidgets[groupName].length}
+                                </span>
+                              </button>
+                              {expandedGroups.has(groupName) &&
+                                groupedInstalledWidgets[groupName].map(
+                                  (widget) => (
+                                    <MenuItem3
+                                      key={widget.key}
+                                      onClick={() => handleWidgetSelect(widget)}
+                                      selected={
+                                        selectedWidget?.key === widget.key
+                                      }
+                                    >
+                                      <div className="flex items-center gap-2 w-full">
+                                        <WidgetIcon
+                                          icon={widget.icon}
+                                          className="h-4 w-4 opacity-60 flex-shrink-0"
+                                          fallback="puzzle-piece"
+                                        />
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-sm font-medium truncate">
+                                            {widget.name}
+                                          </div>
+                                          {widget.description && (
+                                            <div className="text-xs opacity-50 truncate">
+                                              {widget.description}
+                                            </div>
+                                          )}
+                                          {widget.providers?.length > 0 && (
+                                            <div className="flex flex-wrap gap-1 mt-0.5">
+                                              {widget.providers.map((p) => (
+                                                <span
+                                                  key={p.type}
+                                                  className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300"
+                                                >
+                                                  {p.type}
+                                                </span>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </MenuItem3>
+                                  ),
+                                )}
+                            </div>
                           ))}
                         </Menu3>
                       )}
@@ -1253,7 +1459,9 @@ export const EnhancedWidgetDropdown = ({
                     selectedWidget?.isRegistry
                       ? isInstalling
                         ? "Installing..."
-                        : "Install Package"
+                        : installedPackageNames.has(selectedWidget.packageName)
+                          ? "Already Installed"
+                          : "Install Package"
                       : "Add to Dashboard"
                   }
                   bgColor={"bg-gray-800"}
