@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect, useContext } from "react";
+import React, { useState, useMemo, useRef, useEffect, useContext } from "react";
 import {
   ConfirmationModal,
   FontAwesomeIcon,
+  SearchInput,
   Sidebar,
   Paragraph,
   Tag3,
@@ -13,17 +14,23 @@ import { SectionLayout } from "../SectionLayout";
 import { InstalledWidgetDetail } from "../details/InstalledWidgetDetail";
 import { InstallWidgetPicker } from "../details/InstallWidgetPicker";
 import { DiscoverWidgetsDetail } from "../details/DiscoverWidgetsDetail";
-import { useInstalledWidgets } from "../../../hooks/useInstalledWidgets";
+import {
+  useInstalledWidgets,
+  findWidgetUsage,
+} from "../../../hooks/useInstalledWidgets";
 import { resolveIcon } from "../../../utils/resolveIcon";
 
 /**
  * WidgetsSection — unified widgets tab in AppSettingsModal.
  *
- * Left column: installed widgets list.
+ * Left column: installed widgets list with search, source tabs, author/provider
+ * filters, and grouped display.
  * Detail panel: widget detail, install picker, registry browser, or
  * install result depending on state.
  */
 export const WidgetsSection = ({
+  workspaces = [],
+  credentials = null,
   createRequested = false,
   onCreateAcknowledged = null,
 }) => {
@@ -39,7 +46,98 @@ export const WidgetsSection = ({
   // null | "picker" | "discover" | "zip-result" | "folder-result"
   const [installMode, setInstallMode] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteUsage, setDeleteUsage] = useState([]);
   const [installResult, setInstallResult] = useState(null);
+
+  // ── Filter state ────────────────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterSource, setFilterSource] = useState("all"); // "all" | "builtin" | "installed"
+  const [filterAuthor, setFilterAuthor] = useState("all");
+  const [filterProvider, setFilterProvider] = useState("all");
+
+  // ── Derived filter options ──────────────────────────────────────────
+  const uniqueAuthors = useMemo(
+    () =>
+      [...new Set(widgets.map((w) => w.package || w.author || "Other"))].sort(),
+    [widgets],
+  );
+
+  const uniqueProviders = useMemo(
+    () =>
+      [
+        ...new Set(
+          widgets.flatMap((w) => (w.providers || []).map((p) => p.type)),
+        ),
+      ].sort(),
+    [widgets],
+  );
+
+  // ── Filtered + grouped widgets ──────────────────────────────────────
+  const { filteredGrouped, filteredCount, totalCount } = useMemo(() => {
+    const filtered = widgets.filter((w) => {
+      // Search: match name, displayName, or description
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        const matchesSearch =
+          (w.displayName || "").toLowerCase().includes(q) ||
+          (w.name || "").toLowerCase().includes(q) ||
+          (w.description || "").toLowerCase().includes(q);
+        if (!matchesSearch) return false;
+      }
+      // Source filter
+      if (filterSource !== "all" && w.source !== filterSource) return false;
+      // Author/package filter
+      if (filterAuthor !== "all") {
+        if ((w.package || w.author || "Other") !== filterAuthor) return false;
+      }
+      // Provider filter
+      if (filterProvider !== "all") {
+        if (filterProvider === "none") {
+          if (w.providers && w.providers.length > 0) return false;
+        } else {
+          if (
+            !w.providers ||
+            !w.providers.some((p) => p.type === filterProvider)
+          )
+            return false;
+        }
+      }
+      return true;
+    });
+
+    // Group by package > author > "Other"
+    const groups = {};
+    filtered.forEach((w) => {
+      const group = w.package || w.author || "Other";
+      if (!groups[group]) groups[group] = [];
+      groups[group].push(w);
+    });
+
+    return {
+      filteredGrouped: groups,
+      filteredCount: filtered.length,
+      totalCount: widgets.length,
+    };
+  }, [widgets, searchQuery, filterSource, filterAuthor, filterProvider]);
+
+  const hasActiveFilters =
+    searchQuery ||
+    filterSource !== "all" ||
+    filterAuthor !== "all" ||
+    filterProvider !== "all";
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setFilterSource("all");
+    setFilterAuthor("all");
+    setFilterProvider("all");
+  };
+
+  const selectClassName = `w-full px-2 py-1 rounded text-xs bg-transparent border ${
+    currentTheme["border-primary-medium"] || "border-gray-700"
+  } ${
+    currentTheme["text-primary-light"] || "text-gray-300"
+  } focus:outline-none appearance-none cursor-pointer`;
 
   // Respond to external create trigger from header button
   const prevCreateRequested = useRef(false);
@@ -60,6 +158,14 @@ export const WidgetsSection = ({
     ? widgets.find((w) => w.name === selectedWidgetName)
     : null;
 
+  // ── Uninstall with usage check ──────────────────────────────────────
+
+  function handleDeleteRequest(widget) {
+    const usage = findWidgetUsage(widget.componentNames, workspaces);
+    setDeleteUsage(usage);
+    setDeleteTarget(widget);
+  }
+
   async function handleConfirmDelete() {
     if (!deleteTarget) return;
     try {
@@ -71,6 +177,7 @@ export const WidgetsSection = ({
       console.error("[WidgetsSection] Uninstall error:", err);
     }
     setDeleteTarget(null);
+    setDeleteUsage([]);
   }
 
   async function handleInstallFromZip() {
@@ -189,37 +296,140 @@ export const WidgetsSection = ({
         No widgets available
       </span>
     );
+  } else if (filteredCount === 0) {
+    listBody = (
+      <span className="text-sm opacity-40 py-8 text-center block">
+        No widgets match filters
+      </span>
+    );
   } else {
-    listBody = widgets.map((widget) => {
-      const isSelected = selectedWidgetName === widget.name && !installMode;
-      return (
-        <Sidebar.Item
-          key={widget.name}
-          icon={
-            <FontAwesomeIcon
-              icon={resolveIcon(widget.icon)}
-              className="h-3.5 w-3.5"
-            />
-          }
-          active={isSelected}
-          onClick={() => {
-            setSelectedWidgetName(widget.name);
-            setInstallMode(null);
-            setInstallResult(null);
-          }}
-          className={isSelected ? "bg-white/10 opacity-100" : ""}
-        >
-          <span className="flex items-center gap-2">
-            {widget.displayName || widget.name}
-            {widget.source === "builtin" && <Tag3 text="Built-in" />}
-          </span>
-        </Sidebar.Item>
-      );
+    const groupKeys = Object.keys(filteredGrouped).sort();
+    const showGroupHeaders = groupKeys.length > 1;
+
+    listBody = groupKeys.map((group) => {
+      const groupWidgets = filteredGrouped[group];
+      const items = groupWidgets.map((widget) => {
+        const isSelected = selectedWidgetName === widget.name && !installMode;
+        return (
+          <Sidebar.Item
+            key={widget.name}
+            icon={
+              <FontAwesomeIcon
+                icon={resolveIcon(widget.icon)}
+                className="h-3.5 w-3.5"
+              />
+            }
+            active={isSelected}
+            onClick={() => {
+              setSelectedWidgetName(widget.name);
+              setInstallMode(null);
+              setInstallResult(null);
+            }}
+            className={isSelected ? "bg-white/10 opacity-100" : ""}
+          >
+            <span className="flex items-center gap-2">
+              {widget.displayName || widget.name}
+              {widget.source === "builtin" && <Tag3 text="Built-in" />}
+            </span>
+          </Sidebar.Item>
+        );
+      });
+
+      if (showGroupHeaders) {
+        return (
+          <Sidebar.Group key={group} label={group}>
+            {items}
+          </Sidebar.Group>
+        );
+      }
+      return items;
     });
   }
 
   const listContent = (
     <div className="flex flex-col h-full">
+      {/* Filter bar */}
+      {!isLoading && !error && widgets.length > 0 && (
+        <div className="flex flex-col gap-2 px-3 py-2 flex-shrink-0 border-b border-white/10">
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search widgets..."
+            inputClassName="py-1.5 text-xs"
+          />
+
+          {/* Source tabs */}
+          <div className="flex bg-white/5 rounded-md p-0.5">
+            {[
+              { key: "all", label: "All" },
+              { key: "builtin", label: "Built-in" },
+              { key: "installed", label: "Installed" },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setFilterSource(tab.key)}
+                className={`flex-1 px-2 py-0.5 rounded text-[11px] transition-colors ${
+                  filterSource === tab.key
+                    ? "bg-white/10 font-medium opacity-90"
+                    : "opacity-50 hover:opacity-70"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Author + Provider dropdowns */}
+          <div className="grid grid-cols-2 gap-1.5">
+            <select
+              value={filterAuthor}
+              onChange={(e) => setFilterAuthor(e.target.value)}
+              className={selectClassName}
+            >
+              <option value="all">All Authors</option>
+              {uniqueAuthors.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filterProvider}
+              onChange={(e) => setFilterProvider(e.target.value)}
+              className={selectClassName}
+            >
+              <option value="all">All Providers</option>
+              <option value="none">No Providers</option>
+              {uniqueProviders.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Result count + clear */}
+          <div className="flex items-center justify-between text-[10px] px-0.5">
+            <span className="opacity-50">
+              {hasActiveFilters
+                ? `${filteredCount} of ${totalCount} widgets`
+                : `${totalCount} widgets`}
+            </span>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="opacity-60 hover:opacity-100 transition-opacity text-gray-300 hover:bg-white/10 px-1.5 py-0.5 rounded"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <Sidebar.Content>{listBody}</Sidebar.Content>
 
       {/* Summary footer */}
@@ -302,10 +512,17 @@ export const WidgetsSection = ({
     detailContent = (
       <InstalledWidgetDetail
         widget={selectedWidget}
-        onDelete={(w) => setDeleteTarget(w)}
+        onDelete={(w) => handleDeleteRequest(w)}
       />
     );
   }
+
+  // ── Uninstall confirmation message ──────────────────────────────────
+
+  const deleteMessage =
+    deleteUsage.length > 0
+      ? `"${deleteTarget?.displayName || deleteTarget?.name}" is currently used in ${deleteUsage.length} dashboard${deleteUsage.length !== 1 ? "s" : ""}. Uninstalling will leave orphaned layout items on these dashboards.`
+      : `Are you sure you want to uninstall "${deleteTarget?.displayName || deleteTarget?.name}"?`;
 
   return (
     <>
@@ -316,16 +533,43 @@ export const WidgetsSection = ({
       />
       <ConfirmationModal
         isOpen={!!deleteTarget}
-        setIsOpen={() => setDeleteTarget(null)}
+        setIsOpen={() => {
+          setDeleteTarget(null);
+          setDeleteUsage([]);
+        }}
         title="Uninstall Widget"
-        message={`Are you sure you want to uninstall "${
-          deleteTarget?.displayName || deleteTarget?.name
-        }"?`}
+        message={deleteMessage}
         confirmLabel="Uninstall"
         variant="danger"
         onConfirm={handleConfirmDelete}
-        onCancel={() => setDeleteTarget(null)}
-      />
+        onCancel={() => {
+          setDeleteTarget(null);
+          setDeleteUsage([]);
+        }}
+      >
+        {deleteUsage.length > 0 && (
+          <div className="mt-2 space-y-1">
+            <span className="text-xs font-semibold opacity-70">
+              Affected dashboards:
+            </span>
+            {deleteUsage.map((u) => (
+              <div
+                key={u.workspaceId}
+                className="text-xs opacity-60 flex items-center gap-1.5 pl-2"
+              >
+                <FontAwesomeIcon
+                  icon="triangle-exclamation"
+                  className="h-3 w-3 text-yellow-500"
+                />
+                {u.workspaceName}{" "}
+                <span className="opacity-50">
+                  ({u.count} instance{u.count !== 1 ? "s" : ""})
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </ConfirmationModal>
     </>
   );
 };
