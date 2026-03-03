@@ -1056,7 +1056,7 @@ export const EnhancedWidgetDropdown = ({
                           {/* Recent Widgets Section */}
                           {recentWidgets.length > 0 &&
                             selectedSource === "Installed" && (
-                              <div className="mb-3">
+                              <div className="mb-3 space-y-1">
                                 <div
                                   className={`px-2 py-1 mb-2 border-b ${currentTheme["border-primary-medium"]}`}
                                 >
@@ -1096,7 +1096,7 @@ export const EnhancedWidgetDropdown = ({
 
                           {/* Grouped Widget List */}
                           {installedGroupNames.map((groupName) => (
-                            <div key={groupName} className="mb-1">
+                            <div key={groupName} className="mb-1 space-y-1">
                               <button
                                 type="button"
                                 onClick={() => toggleGroup(groupName)}
@@ -1344,7 +1344,7 @@ export const EnhancedWidgetDropdown = ({
                               Object.keys(selectedWidget.userConfig).length >
                                 0 && (
                                 <div className="mb-3">
-                                  <Paragraph className="text-xs font-semibold text-gray-400 mb-2">
+                                  <Paragraph padding={false} className="text-xs font-semibold text-gray-400 mb-2">
                                     CONFIGURATION
                                   </Paragraph>
                                   <div className="space-y-2">
