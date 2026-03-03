@@ -137,9 +137,6 @@ export const PanelEditItemHandlers = ({ workspace, onUpdate, item = null }) => {
       )
     : [];
 
-  // Get the listeners for the current item
-  const listeners = itemSelected ? itemSelected["listeners"] || {} : {};
-
   // Get available source widgets with events
   const layoutArray =
     workspaceSelected !== null && Array.isArray(workspaceSelected.layout)
@@ -152,6 +149,31 @@ export const PanelEditItemHandlers = ({ workspace, onUpdate, item = null }) => {
     )
     .filter((e) => Array.isArray(e.events) && e.events.length > 0)
     .filter((li) => li["component"] !== itemSelected?.["component"]);
+
+  // Build a set of valid event strings from widgets currently in the layout
+  const validEventStrings = new Set();
+  sourceWidgets.forEach((layout) => {
+    if (Array.isArray(layout.events)) {
+      layout.events.forEach((event) => {
+        validEventStrings.add(
+          `${layout["component"]}[${layout["id"]}].${event}`,
+        );
+      });
+    }
+  });
+
+  // Get the listeners for the current item, filtering out orphaned references
+  const rawListeners = itemSelected ? itemSelected["listeners"] || {} : {};
+  const listeners = {};
+  Object.keys(rawListeners).forEach((handler) => {
+    const events = rawListeners[handler];
+    if (Array.isArray(events)) {
+      const validEvents = events.filter((e) => validEventStrings.has(e));
+      if (validEvents.length > 0) {
+        listeners[handler] = validEvents;
+      }
+    }
+  });
 
   // Count connected events for a handler
   function getConnectedCount(handler) {

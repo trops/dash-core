@@ -911,6 +911,9 @@ export class DashboardModel {
         });
         // and now handle the parent...
         // while(newLayoutLength > 0) {
+        // Clean up listener references to the removed widget
+        this._cleanupListenerReferencesForId(id);
+
         const children = this.layout.filter(
           (layoutItem) => layoutItem.parent === id,
         );
@@ -945,6 +948,31 @@ export class DashboardModel {
       console.log(e);
       return null;
     }
+  }
+
+  /**
+   * Remove listener references to a deleted widget from all remaining layout items.
+   * Listener event strings use the format "ComponentName[id].eventName".
+   * @param {number} id - The id of the removed widget
+   */
+  _cleanupListenerReferencesForId(id) {
+    const pattern = `[${id}].`;
+    this.layout.forEach((layoutItem) => {
+      if (layoutItem.listeners && typeof layoutItem.listeners === "object") {
+        const handlers = Object.keys(layoutItem.listeners);
+        handlers.forEach((handler) => {
+          const events = layoutItem.listeners[handler];
+          if (Array.isArray(events)) {
+            const filtered = events.filter((event) => !event.includes(pattern));
+            if (filtered.length > 0) {
+              layoutItem.listeners[handler] = filtered;
+            } else {
+              delete layoutItem.listeners[handler];
+            }
+          }
+        });
+      }
+    });
   }
 
   /**
@@ -1102,8 +1130,7 @@ export class DashboardModel {
           if (rowNum === r) continue;
           shifted[String(rowNum > r ? rowNum - 1 : rowNum)] = mode;
         }
-        grid.rowModes =
-          Object.keys(shifted).length > 0 ? shifted : undefined;
+        grid.rowModes = Object.keys(shifted).length > 0 ? shifted : undefined;
       }
     }
 
@@ -1597,9 +1624,7 @@ export class DashboardModel {
     try {
       const gridContainer = this.getComponentById(itemId);
       if (!gridContainer || !gridContainer.grid) {
-        console.error(
-          "changeRowMode: Grid container not found or has no grid",
-        );
+        console.error("changeRowMode: Grid container not found or has no grid");
         return null;
       }
 
@@ -1689,9 +1714,7 @@ export class DashboardModel {
       // Shift rowModes keys down (rows after insertion point move +1)
       if (gridContainer.grid.rowModes) {
         const shifted = {};
-        for (const [key, mode] of Object.entries(
-          gridContainer.grid.rowModes,
-        )) {
+        for (const [key, mode] of Object.entries(gridContainer.grid.rowModes)) {
           const rowNum = Number(key);
           shifted[String(rowNum >= newRowNumber ? rowNum + 1 : rowNum)] = mode;
         }
@@ -1770,9 +1793,7 @@ export class DashboardModel {
       // Shift rowModes keys up and remove the deleted row's entry
       if (gridContainer.grid.rowModes) {
         const shifted = {};
-        for (const [key, mode] of Object.entries(
-          gridContainer.grid.rowModes,
-        )) {
+        for (const [key, mode] of Object.entries(gridContainer.grid.rowModes)) {
           const rowNum = Number(key);
           if (rowNum === rowNumber) continue;
           shifted[String(rowNum > rowNumber ? rowNum - 1 : rowNum)] = mode;
