@@ -665,7 +665,7 @@ export const EnhancedWidgetDropdown = ({
       return (
         <Menu3 scrollable={true} padding={true} height="h-full">
           {groups.map((group) => (
-            <div key={group.name} className="mb-1">
+            <div key={group.name} className="mb-1 space-y-1">
               <MenuItem3
                 onClick={() => {
                   handlePackageSelect(group);
