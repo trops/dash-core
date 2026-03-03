@@ -14,6 +14,7 @@ export const DashboardHeader = ({
   workspace,
   preview,
   onClickEdit = null,
+  onPopout = null,
   onNameChange,
   onSaveChanges = null,
   menuItems = [],
@@ -47,13 +48,22 @@ export const DashboardHeader = ({
             padding={false}
             className="font-bold text-base"
           />
-          {onClickEdit !== null && (
-            <ButtonIcon
-              icon="pencil"
-              onClick={onClickEdit}
-              hoverBackgroundColor={"hover:bg-indigo-700"}
-            />
-          )}
+          <div className="flex flex-row items-center gap-1">
+            {onPopout !== null && (
+              <ButtonIcon
+                icon="arrow-up-right-from-square"
+                onClick={onPopout}
+                hoverBackgroundColor={"hover:bg-indigo-700"}
+              />
+            )}
+            {onClickEdit !== null && (
+              <ButtonIcon
+                icon="pencil"
+                onClick={onClickEdit}
+                hoverBackgroundColor={"hover:bg-indigo-700"}
+              />
+            )}
+          </div>
         </>
       ) : (
         <>

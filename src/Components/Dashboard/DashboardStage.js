@@ -58,6 +58,8 @@ export const DashboardStage = ({
   workspace = null,
   preview = true,
   backgroundColor = null,
+  popout = false,
+  popoutWorkspaceId = null,
 }) => {
   return (
     <Profiler id="myapp" onRender={() => {}}>
@@ -72,6 +74,8 @@ export const DashboardStage = ({
           workspace={workspace}
           preview={preview}
           backgroundColor={backgroundColor}
+          popout={popout}
+          popoutWorkspaceId={popoutWorkspaceId}
         />
       </DashboardWrapper>
     </Profiler>
@@ -84,6 +88,8 @@ const DashboardStageInner = ({
   workspace = null,
   preview = true,
   backgroundColor = null,
+  popout = false,
+  popoutWorkspaceId = null,
 }) => {
   const { pub } = useContext(DashboardContext);
   const appContext = useContext(AppContext);
@@ -164,6 +170,41 @@ const DashboardStageInner = ({
     isLoadingMenuItems === false && loadMenuItems();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace]);
+
+  // ─── Popout: auto-load workspace by ID ──────────────────────────
+  useEffect(() => {
+    if (!popout || popoutWorkspaceId === null) return;
+    if (workspaceConfig.length === 0) return;
+
+    const target = workspaceConfig.find((ws) => ws.id === popoutWorkspaceId);
+    if (target) {
+      handleOpenTab(target);
+      if (window.mainApi?.popout?.setTitle) {
+        window.mainApi.popout.setTitle(
+          popoutWorkspaceId,
+          target.name || "Untitled",
+        );
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [popout, popoutWorkspaceId, workspaceConfig]);
+
+  // ─── Popout: listen for workspace:saved broadcasts ─────────────
+  useEffect(() => {
+    if (!popout) return;
+    if (!window.mainApi?.on) return;
+
+    const handler = () => {
+      loadWorkspaces();
+    };
+    window.mainApi.on("workspace:saved", handler);
+    return () => {
+      if (window.mainApi?.removeListener) {
+        window.mainApi.removeListener("workspace:saved", handler);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [popout]);
 
   // ─── Tab Handlers ─────────────────────────────────────────────────
 
@@ -616,6 +657,12 @@ const DashboardStageInner = ({
     changeThemeVariant(themeVariant === "dark" ? "light" : "dark");
   }
 
+  function handlePopout() {
+    if (workspaceSelected && window.mainApi?.popout?.open) {
+      window.mainApi.popout.open(workspaceSelected.id);
+    }
+  }
+
   return (
     <LayoutContainer
       padding={false}
@@ -629,79 +676,92 @@ const DashboardStageInner = ({
       {/* ─── Main Content Area ──────────────────────── */}
       <DndProvider backend={HTML5Backend}>
         <div className="flex flex-row flex-1 overflow-hidden">
-          <DashSidebar
-            collapsed={sidebarCollapsed}
-            onCollapsedChange={setSidebarCollapsed}
-            workspaces={workspaceConfig}
-            menuItems={menuItems}
-            activeTabId={activeTabId}
-            onOpenWorkspace={handleOpenTab}
-            onNewDashboard={() => setIsLayoutPickerOpen(true)}
-            onGoHome={() => activeTabId && handleCloseTab(activeTabId)}
-            onOpenProviders={() => openAppSettings("providers")}
-            onOpenThemeManager={handleOpenThemeManager}
-            onOpenFolders={() => openAppSettings("folders")}
-            onOpenSettings={() => openAppSettings("general")}
-            onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
-          />
+          {!popout && (
+            <DashSidebar
+              collapsed={sidebarCollapsed}
+              onCollapsedChange={setSidebarCollapsed}
+              workspaces={workspaceConfig}
+              menuItems={menuItems}
+              activeTabId={activeTabId}
+              onOpenWorkspace={handleOpenTab}
+              onNewDashboard={() => setIsLayoutPickerOpen(true)}
+              onGoHome={() => activeTabId && handleCloseTab(activeTabId)}
+              onOpenProviders={() => openAppSettings("providers")}
+              onOpenThemeManager={handleOpenThemeManager}
+              onOpenFolders={() => openAppSettings("folders")}
+              onOpenSettings={() => openAppSettings("general")}
+              onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+            />
+          )}
           <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
             {workspaceSelected !== null ? (
               <>
                 <DashboardHeader
                   workspace={workspaceSelected}
-                  preview={previewMode}
+                  preview={popout ? true : previewMode}
                   onNameChange={handleWorkspaceNameChange}
-                  onClickEdit={handleToggleEditMode}
-                  onSaveChanges={handleClickSaveWorkspace}
+                  onClickEdit={popout ? null : handleToggleEditMode}
+                  onPopout={popout ? null : handlePopout}
+                  onSaveChanges={popout ? null : handleClickSaveWorkspace}
                   menuItems={menuItems}
                   themes={themes || {}}
-                  onFolderChange={handleWorkspaceFolderChange}
-                  onThemeChange={handleWorkspaceThemeChange}
+                  onFolderChange={popout ? null : handleWorkspaceFolderChange}
+                  onThemeChange={popout ? null : handleWorkspaceThemeChange}
                   scrollableEnabled={getRootScrollable()}
-                  onScrollableChange={handleScrollableChange}
+                  onScrollableChange={popout ? null : handleScrollableChange}
                 />
                 <DashboardThemeProvider themeKey={workspaceSelected?.themeKey}>
                   <div
                     className={`flex flex-col w-full flex-1 ${
-                      previewMode === true ? "overflow-y-auto" : "overflow-clip"
+                      popout || previewMode === true
+                        ? "overflow-y-auto"
+                        : "overflow-clip"
                     }`}
                   >
                     {renderComponent(workspaceSelected)}
                   </div>
                 </DashboardThemeProvider>
-                <DashTabBar
-                  tabs={openTabs}
-                  activeTabId={activeTabId}
-                  onSwitchTab={handleSwitchTab}
-                  onCloseTab={handleCloseTab}
-                />
+                {!popout && (
+                  <DashTabBar
+                    tabs={openTabs}
+                    activeTabId={activeTabId}
+                    onSwitchTab={handleSwitchTab}
+                    onCloseTab={handleCloseTab}
+                  />
+                )}
               </>
             ) : (
               <div className="flex flex-1 items-center justify-center">
                 <EmptyState
                   icon={<FontAwesomeIcon icon="clone" className="h-12 w-12" />}
-                  title="No dashboards open"
-                  description="Press ⌘K to search dashboards, or create a new one."
+                  title={popout ? "Dashboard not found" : "No dashboards open"}
+                  description={
+                    popout
+                      ? "The requested dashboard could not be loaded."
+                      : "Press \u2318K to search dashboards, or create a new one."
+                  }
                 >
-                  <div className="flex flex-row gap-2">
-                    <ButtonIcon
-                      icon="magnifying-glass"
-                      text="Search"
-                      onClick={() => setIsCommandPaletteOpen(true)}
-                      size="sm"
-                    />
-                    <ButtonIcon
-                      icon="plus"
-                      text="New Dashboard"
-                      onClick={handleClickNewFromEmpty}
-                      size="sm"
-                    />
-                  </div>
+                  {!popout && (
+                    <div className="flex flex-row gap-2">
+                      <ButtonIcon
+                        icon="magnifying-glass"
+                        text="Search"
+                        onClick={() => setIsCommandPaletteOpen(true)}
+                        size="sm"
+                      />
+                      <ButtonIcon
+                        icon="plus"
+                        text="New Dashboard"
+                        onClick={handleClickNewFromEmpty}
+                        size="sm"
+                      />
+                    </div>
+                  )}
                 </EmptyState>
               </div>
             )}
           </div>
-          {!previewMode && workspaceSelected && (
+          {!popout && !previewMode && workspaceSelected && (
             <WidgetSidebar
               collapsed={widgetSidebarCollapsed}
               onCollapsedChange={setWidgetSidebarCollapsed}
@@ -709,76 +769,82 @@ const DashboardStageInner = ({
           )}
         </div>
 
-        {/* ─── Modals ────────────────────────────── */}
-        <AppSettingsModal
-          isOpen={isAppSettingsOpen}
-          setIsOpen={setIsAppSettingsOpen}
-          initialSection={appSettingsInitialSection}
-          workspaces={workspaceConfig}
-          menuItems={menuItems}
-          dashApi={dashApi}
-          credentials={credentials}
-          onReloadWorkspaces={loadWorkspaces}
-          onReloadMenuItems={loadMenuItems}
-          onOpenThemeEditor={() => {
-            setIsAppSettingsOpen(false);
-            setIsThemeManagerOpen(true);
-          }}
-        />
+        {/* ─── Modals (hidden in popout mode) ────────── */}
+        {!popout && (
+          <>
+            <AppSettingsModal
+              isOpen={isAppSettingsOpen}
+              setIsOpen={setIsAppSettingsOpen}
+              initialSection={appSettingsInitialSection}
+              workspaces={workspaceConfig}
+              menuItems={menuItems}
+              dashApi={dashApi}
+              credentials={credentials}
+              onReloadWorkspaces={loadWorkspaces}
+              onReloadMenuItems={loadMenuItems}
+              onOpenThemeEditor={() => {
+                setIsAppSettingsOpen(false);
+                setIsThemeManagerOpen(true);
+              }}
+            />
 
-        <ThemeManagerModal
-          open={isThemeManagerOpen}
-          setIsOpen={() => setIsThemeManagerOpen(!isThemeManagerOpen)}
-          onSave={(themeKey) => {
-            changeCurrentTheme(themeKey);
-            setIsThemeManagerOpen(() => false);
-          }}
-        />
+            <ThemeManagerModal
+              open={isThemeManagerOpen}
+              setIsOpen={() => setIsThemeManagerOpen(!isThemeManagerOpen)}
+              onSave={(themeKey) => {
+                changeCurrentTheme(themeKey);
+                setIsThemeManagerOpen(() => false);
+              }}
+            />
 
-        <DashboardLoaderModal
-          open={isDashboardLoaderOpen}
-          setIsOpen={setIsDashboardLoaderOpen}
-          workspaces={workspaceConfig}
-          onSelecDashboard={handleSelectLoadDashboard}
-          onClose={() => handleCloseDashboardLoader()}
-        />
+            <DashboardLoaderModal
+              open={isDashboardLoaderOpen}
+              setIsOpen={setIsDashboardLoaderOpen}
+              workspaces={workspaceConfig}
+              onSelecDashboard={handleSelectLoadDashboard}
+              onClose={() => handleCloseDashboardLoader()}
+            />
 
-        <LayoutManagerModal
-          open={isLayoutPickerOpen}
-          setIsOpen={setIsLayoutPickerOpen}
-          onCreateWorkspace={handleCreateFromTemplate}
-          menuItems={menuItems}
-          onSaveMenuItem={handleSaveNewMenuItem}
-        />
+            <LayoutManagerModal
+              open={isLayoutPickerOpen}
+              setIsOpen={setIsLayoutPickerOpen}
+              onCreateWorkspace={handleCreateFromTemplate}
+              menuItems={menuItems}
+              onSaveMenuItem={handleSaveNewMenuItem}
+            />
+          </>
+        )}
       </DndProvider>
 
-      {/* ─── CommandPalette Overlay ──────────────────── */}
-      <DashCommandPalette
-        isOpen={isCommandPaletteOpen}
-        setIsOpen={setIsCommandPaletteOpen}
-        workspaces={workspaceConfig}
-        openTabs={openTabs}
-        menuItems={menuItems}
-        onOpenWorkspace={handleOpenTab}
-        onCreateNewWorkspace={handleClickNewFromEmpty}
-        onCreateNewFolder={() => openAppSettings("folders")}
-        onLoadDashboard={() => setIsDashboardLoaderOpen(true)}
-        providers={appContext?.providers || {}}
-        onCreateNewProvider={() => openAppSettings("providers")}
-        themes={themes || {}}
-        currentThemeKey={themeKey}
-        themeVariant={themeVariant}
-        onChangeTheme={changeCurrentTheme}
-        onOpenThemeManager={handleOpenThemeManager}
-        onToggleThemeVariant={handleToggleThemeVariant}
-        onOpenSettings={() => openAppSettings("general")}
-        debugMode={appContext?.debugMode || false}
-        onToggleDebugMode={() =>
-          appContext?.changeDebugMode &&
-          appContext.changeDebugMode(!appContext.debugMode)
-        }
-        onOpenDiscover={() => openAppSettings("widgets")}
-      />
+      {/* ─── CommandPalette Overlay (hidden in popout mode) ── */}
+      {!popout && (
+        <DashCommandPalette
+          isOpen={isCommandPaletteOpen}
+          setIsOpen={setIsCommandPaletteOpen}
+          workspaces={workspaceConfig}
+          openTabs={openTabs}
+          menuItems={menuItems}
+          onOpenWorkspace={handleOpenTab}
+          onCreateNewWorkspace={handleClickNewFromEmpty}
+          onCreateNewFolder={() => openAppSettings("folders")}
+          onLoadDashboard={() => setIsDashboardLoaderOpen(true)}
+          providers={appContext?.providers || {}}
+          onCreateNewProvider={() => openAppSettings("providers")}
+          themes={themes || {}}
+          currentThemeKey={themeKey}
+          themeVariant={themeVariant}
+          onChangeTheme={changeCurrentTheme}
+          onOpenThemeManager={handleOpenThemeManager}
+          onToggleThemeVariant={handleToggleThemeVariant}
+          onOpenSettings={() => openAppSettings("general")}
+          debugMode={appContext?.debugMode || false}
+          onToggleDebugMode={() =>
+            appContext?.changeDebugMode &&
+            appContext.changeDebugMode(!appContext.debugMode)
+          }
+          onOpenDiscover={() => openAppSettings("widgets")}
+        />
+      )}
     </LayoutContainer>
   );
 };
