@@ -201,7 +201,7 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
     >
       <Panel padding={false}>
         <div className={`flex flex-col w-full h-full overflow-clip`}>
-          <div className="flex flex-row w-full h-full overflow-clip">
+          <div className="flex flex-row w-full flex-1 min-h-0 overflow-clip">
             <div className="flex flex-row w-full h-full overflow-clip">
               {themeSelected && isEditing === false && (
                 <PanelThemePicker
