@@ -833,7 +833,7 @@ export const EnhancedWidgetDropdown = ({
         {/* Description */}
         {selectedWidget.packageDescription && (
           <div className="mb-2">
-            <Paragraph className="text-sm">
+            <Paragraph padding={false} className="text-sm">
               {selectedWidget.packageDescription}
             </Paragraph>
           </div>
