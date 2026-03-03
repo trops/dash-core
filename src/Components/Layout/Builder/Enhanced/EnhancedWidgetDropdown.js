@@ -801,7 +801,7 @@ export const EnhancedWidgetDropdown = ({
     return (
       <div className="flex-1 overflow-y-auto min-h-0 p-4 w-full">
         {/* Package Header */}
-        <div className="mb-3">
+        <div className="mb-2">
           <div className="flex items-center space-x-2 mb-1">
             <WidgetIcon
               icon={selectedWidget.icon}
@@ -828,11 +828,11 @@ export const EnhancedWidgetDropdown = ({
           </div>
         </div>
 
-        <hr className={`my-3 ${currentTheme["border-primary-medium"]}`} />
+        <hr className={`my-2 ${currentTheme["border-primary-medium"]}`} />
 
         {/* Description */}
         {selectedWidget.packageDescription && (
-          <div className="mb-3">
+          <div className="mb-2">
             <Paragraph className="text-sm">
               {selectedWidget.packageDescription}
             </Paragraph>
@@ -842,7 +842,7 @@ export const EnhancedWidgetDropdown = ({
         {/* Tags */}
         {selectedWidget.packageTags &&
           selectedWidget.packageTags.length > 0 && (
-            <div className="mb-3 flex flex-wrap gap-1">
+            <div className="mb-2 flex flex-wrap gap-1">
               {selectedWidget.packageTags.map((tag) => (
                 <span
                   key={tag}
@@ -855,15 +855,15 @@ export const EnhancedWidgetDropdown = ({
           )}
 
         {/* Included Widgets */}
-        <div className="mb-3">
-          <Paragraph className="text-xs font-semibold text-gray-400 mb-2">
+        <div className="mb-2">
+          <Paragraph padding={false} className="text-xs font-semibold text-gray-400 mb-1.5">
             INCLUDED WIDGETS
           </Paragraph>
           <div className="space-y-2">
             {(selectedWidget.packageWidgets || []).map((w, idx) => (
               <div
                 key={idx}
-                className={`p-2 rounded ${currentTheme["bg-primary-medium"]}`}
+                className={`p-3 rounded ${currentTheme["bg-primary-medium"]}`}
               >
                 <div className="text-sm font-medium text-white">
                   {w.displayName || w.name}
@@ -893,11 +893,11 @@ export const EnhancedWidgetDropdown = ({
 
         {/* Repository Link */}
         {selectedWidget.repository && (
-          <div className="mb-3">
-            <Paragraph className="text-xs font-semibold text-gray-400 mb-1">
+          <div className="mb-2">
+            <Paragraph padding={false} className="text-xs font-semibold text-gray-400 mb-1">
               REPOSITORY
             </Paragraph>
-            <Paragraph className="text-sm text-blue-400 break-all">
+            <Paragraph padding={false} className="text-sm text-blue-400 break-all">
               {selectedWidget.repository}
             </Paragraph>
           </div>
@@ -1058,9 +1058,9 @@ export const EnhancedWidgetDropdown = ({
                             selectedSource === "Installed" && (
                               <div className="mb-3 space-y-1">
                                 <div
-                                  className={`px-2 py-1 mb-2 border-b ${currentTheme["border-primary-medium"]}`}
+                                  className={`px-3 py-1 mb-1 border-b ${currentTheme["border-primary-medium"]}`}
                                 >
-                                  <Paragraph className="text-xs font-semibold text-gray-400">
+                                  <Paragraph padding={false} className="text-xs font-semibold text-gray-400">
                                     RECENT
                                   </Paragraph>
                                 </div>
@@ -1164,7 +1164,7 @@ export const EnhancedWidgetDropdown = ({
                     <div
                       className={`px-4 py-2 border-t ${currentTheme["border-primary-medium"]} ${currentTheme["bg-primary-medium"]}`}
                     >
-                      <Paragraph className="text-sm text-gray-400">
+                      <Paragraph padding={false} className="text-sm text-gray-400">
                         {selectedSource === "Discover"
                           ? `${registryPackages.length} package${
                               registryPackages.length !== 1 ? "s" : ""
