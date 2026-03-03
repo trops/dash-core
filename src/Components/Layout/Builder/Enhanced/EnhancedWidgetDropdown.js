@@ -1192,7 +1192,7 @@ export const EnhancedWidgetDropdown = ({
                           // Installed Widget Details
                           <div className="flex-1 overflow-y-auto min-h-0 p-4 w-full">
                             {/* Widget Header */}
-                            <div className="mb-3">
+                            <div className="mb-2">
                               <div className="flex items-center space-x-2 mb-1">
                                 <WidgetIcon
                                   icon={selectedWidget.icon}
@@ -1211,13 +1211,13 @@ export const EnhancedWidgetDropdown = ({
                             </div>
 
                             <hr
-                              className={`my-3 ${currentTheme["border-primary-medium"]}`}
+                              className={`my-2 ${currentTheme["border-primary-medium"]}`}
                             />
 
                             {/* Description */}
                             {selectedWidget.description && (
-                              <div className="mb-3">
-                                <Paragraph className="text-sm">
+                              <div className="mb-2">
+                                <Paragraph padding={false} className="text-sm">
                                   {selectedWidget.description}
                                 </Paragraph>
                               </div>
@@ -1226,8 +1226,8 @@ export const EnhancedWidgetDropdown = ({
                             {/* Required Providers - PHASE 2: Interactive Selection */}
                             {selectedWidget.providers &&
                               selectedWidget.providers.length > 0 && (
-                                <div className="mb-3">
-                                  <Paragraph className="text-xs font-semibold text-gray-400 mb-2">
+                                <div className="mb-2">
+                                  <Paragraph padding={false} className="text-xs font-semibold text-gray-400 mb-2">
                                     REQUIRED PROVIDERS
                                   </Paragraph>
                                   <div className="space-y-2">
@@ -1343,7 +1343,7 @@ export const EnhancedWidgetDropdown = ({
                             {selectedWidget.userConfig &&
                               Object.keys(selectedWidget.userConfig).length >
                                 0 && (
-                                <div className="mb-3">
+                                <div className="mb-2">
                                   <Paragraph padding={false} className="text-xs font-semibold text-gray-400 mb-2">
                                     CONFIGURATION
                                   </Paragraph>
