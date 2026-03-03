@@ -155,6 +155,8 @@ export const AppSettingsModal = ({
         )}
         {activeSection === "widgets" && (
           <WidgetsSection
+            workspaces={workspaces}
+            credentials={credentials}
             createRequested={createRequested}
             onCreateAcknowledged={() => setCreateRequested(false)}
           />

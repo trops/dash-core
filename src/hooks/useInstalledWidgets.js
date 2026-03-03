@@ -2,6 +2,47 @@ import { useState, useEffect, useCallback } from "react";
 import { ComponentManager } from "../ComponentManager";
 
 /**
+ * Walk a workspace layout array (possibly nested via LayoutGridContainer
+ * children) and collect every `item.component` value.
+ */
+function collectComponentsFromLayout(layout) {
+  const components = [];
+  if (!Array.isArray(layout)) return components;
+  for (const item of layout) {
+    if (item.component) components.push(item.component);
+    if (Array.isArray(item.children)) {
+      components.push(...collectComponentsFromLayout(item.children));
+    }
+  }
+  return components;
+}
+
+/**
+ * Check which workspaces use any of the given component names.
+ *
+ * @param {string[]} componentNames – CM keys the widget package registers
+ * @param {object[]} workspaces     – workspace objects with .layout arrays
+ * @returns {{ workspaceId: string, workspaceName: string, count: number }[]}
+ */
+export function findWidgetUsage(componentNames, workspaces) {
+  if (!componentNames?.length || !workspaces?.length) return [];
+  const nameSet = new Set(componentNames);
+  const results = [];
+  for (const ws of workspaces) {
+    const comps = collectComponentsFromLayout(ws.layout);
+    const count = comps.filter((c) => nameSet.has(c)).length;
+    if (count > 0) {
+      results.push({
+        workspaceId: ws.id,
+        workspaceName: ws.name || ws.id,
+        count,
+      });
+    }
+  }
+  return results;
+}
+
+/**
  * useInstalledWidgets — hook for listing and managing installed widgets.
  *
  * Merges built-in widgets (from ComponentManager) with externally installed
@@ -35,6 +76,7 @@ export const useInstalledWidgets = () => {
             name: key,
             displayName: config.name || key,
             author: config.author || null,
+            package: config.package || null,
             description: config.description || null,
             icon: config.icon || null,
             version: null,
@@ -42,6 +84,7 @@ export const useInstalledWidgets = () => {
             source: "builtin",
             providers: config.providers || [],
             workspace: config.workspace || null,
+            componentNames: [key],
           };
         });
 
@@ -67,6 +110,7 @@ export const useInstalledWidgets = () => {
             name: w.name,
             displayName: w.displayName || cm?.name || cmKey || w.name,
             author: w.author || cm?.author || null,
+            package: w.package || cm?.package || null,
             description: w.description || cm?.description || null,
             icon: w.icon || cm?.icon || null,
             version: w.version || null,
@@ -74,6 +118,7 @@ export const useInstalledWidgets = () => {
             source: "installed",
             providers: w.providers?.length ? w.providers : cm?.providers || [],
             workspace: w.workspace || cm?.workspace || null,
+            componentNames: w.componentNames || (cmKey ? [cmKey] : []),
           };
         });
       }
