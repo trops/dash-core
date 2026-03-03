@@ -213,7 +213,18 @@ const DashboardStageInner = ({
 
     const existingTab = openTabs.find((tab) => tab.id === workspaceItem.id);
     if (existingTab) {
-      // Tab already open — just switch to it
+      // Sync fresh workspace data to existing tab
+      setOpenTabs((prev) =>
+        prev.map((tab) =>
+          tab.id === existingTab.id
+            ? {
+                ...tab,
+                name: workspaceItem.name || "Untitled",
+                workspace: workspaceItem,
+              }
+            : tab,
+        ),
+      );
       setActiveTabId(existingTab.id);
     } else {
       // Open new tab
