@@ -517,12 +517,15 @@ export const WidgetsSection = ({
     );
   }
 
-  // ── Uninstall confirmation message ──────────────────────────────────
+  // ── Uninstall confirmation ──────────────────────────────────────────
 
-  const deleteMessage =
-    deleteUsage.length > 0
-      ? `"${deleteTarget?.displayName || deleteTarget?.name}" is currently used in ${deleteUsage.length} dashboard${deleteUsage.length !== 1 ? "s" : ""}. Uninstalling will leave orphaned layout items on these dashboards.`
-      : `Are you sure you want to uninstall "${deleteTarget?.displayName || deleteTarget?.name}"?`;
+  const paragraphStyles = getStylesForItem(
+    themeObjects.PARAGRAPH,
+    currentTheme,
+  );
+
+  const deleteWidgetLabel =
+    deleteTarget?.displayName || deleteTarget?.name || "";
 
   return (
     <>
@@ -538,7 +541,11 @@ export const WidgetsSection = ({
           setDeleteUsage([]);
         }}
         title="Uninstall Widget"
-        message={deleteMessage}
+        {...(deleteUsage.length === 0
+          ? {
+              message: `Are you sure you want to uninstall "${deleteWidgetLabel}"?`,
+            }
+          : {})}
         confirmLabel="Uninstall"
         variant="danger"
         onConfirm={handleConfirmDelete}
@@ -548,25 +555,32 @@ export const WidgetsSection = ({
         }}
       >
         {deleteUsage.length > 0 && (
-          <div className="mt-2 space-y-1">
-            <span className="text-xs font-semibold opacity-70">
-              Affected dashboards:
-            </span>
-            {deleteUsage.map((u) => (
-              <div
-                key={u.workspaceId}
-                className="text-xs opacity-60 flex items-center gap-1.5 pl-2"
-              >
-                <FontAwesomeIcon
-                  icon="triangle-exclamation"
-                  className="h-3 w-3 text-yellow-500"
-                />
-                {u.workspaceName}{" "}
-                <span className="opacity-50">
-                  ({u.count} instance{u.count !== 1 ? "s" : ""})
-                </span>
-              </div>
-            ))}
+          <div className={paragraphStyles.textColor || ""}>
+            <p className="text-sm leading-relaxed">
+              "{deleteWidgetLabel}" is currently used in {deleteUsage.length}{" "}
+              dashboard{deleteUsage.length !== 1 ? "s" : ""}. Uninstalling will
+              leave orphaned layout items on these dashboards.
+            </p>
+            <div className="mt-2 space-y-1">
+              <span className="text-xs font-semibold opacity-70">
+                Affected dashboards:
+              </span>
+              {deleteUsage.map((u) => (
+                <div
+                  key={u.workspaceId}
+                  className="text-xs opacity-60 flex items-center gap-1.5 pl-2"
+                >
+                  <FontAwesomeIcon
+                    icon="triangle-exclamation"
+                    className="h-3 w-3 text-yellow-500"
+                  />
+                  {u.workspaceName}{" "}
+                  <span className="opacity-50">
+                    ({u.count} instance{u.count !== 1 ? "s" : ""})
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </ConfirmationModal>
