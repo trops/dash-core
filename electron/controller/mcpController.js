@@ -21,6 +21,33 @@ const path = require("path");
 const fs = require("fs");
 
 /**
+ * Cached shell PATH result (resolved once, reused for all spawns).
+ */
+let _shellPath = null;
+
+/**
+ * Get the user's full shell PATH (including nvm, homebrew, volta, etc.).
+ * Electron GUI apps on macOS don't inherit the shell PATH, so we
+ * resolve it once by invoking a login shell.
+ */
+function getShellPath() {
+  if (_shellPath !== null) return _shellPath;
+
+  try {
+    const { execSync } = require("child_process");
+    const shell = process.env.SHELL || "/bin/bash";
+    _shellPath = execSync(`${shell} -ilc 'echo -n "$PATH"'`, {
+      encoding: "utf8",
+      timeout: 5000,
+    });
+  } catch {
+    _shellPath = process.env.PATH || "";
+  }
+
+  return _shellPath;
+}
+
+/**
  * Active MCP server connections
  * Map<string, { client: Client, transport: Transport, tools: Array, status: string }>
  */
@@ -133,6 +160,9 @@ const mcpController = {
         } else {
           // stdio transport (default) - spawn a local child process
           const env = { ...process.env };
+          // Ensure full shell PATH is available (Electron GUI apps
+          // on macOS don't inherit nvm/homebrew paths)
+          env.PATH = getShellPath();
           if (mcpConfig.envMapping && credentials) {
             Object.entries(mcpConfig.envMapping).forEach(
               ([envVar, credentialKey]) => {
