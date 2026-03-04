@@ -782,6 +782,33 @@ export const LayoutGridContainer = memo(
       return cells;
     }
 
+    // Hover-based popout overlay — avoids Tailwind named groups (requires v3.4+)
+    function PopoutOverlay({ children, onPopout }) {
+      const [hovered, setHovered] = React.useState(false);
+      return (
+        <div
+          className="relative w-full h-full"
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+        >
+          {children}
+          <button
+            className={`absolute top-1 right-1 p-1 rounded transition-opacity bg-black/60 hover:bg-black/80 text-gray-300 hover:text-white z-10 ${hovered ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPopout();
+            }}
+            title="Pop out widget"
+          >
+            <FontAwesomeIcon
+              icon="arrow-up-right-from-square"
+              className="h-3 w-3"
+            />
+          </button>
+        </div>
+      );
+    }
+
     // Render component inside a grid cell (preview mode only)
     function renderCellComponent(componentId, cellNumber, selectableSet) {
       if (!layout || !workspace) {
@@ -808,22 +835,9 @@ export const LayoutGridContainer = memo(
 
       if (onWidgetPopout && cellComponent.component) {
         return (
-          <div className="relative w-full h-full group/popout">
+          <PopoutOverlay onPopout={() => onWidgetPopout(cellComponent.id)}>
             {rendered}
-            <button
-              className="absolute top-1 right-1 p-1 rounded opacity-0 group-hover/popout:opacity-100 transition-opacity bg-black/60 hover:bg-black/80 text-gray-300 hover:text-white z-10"
-              onClick={(e) => {
-                e.stopPropagation();
-                onWidgetPopout(cellComponent.id);
-              }}
-              title="Pop out widget"
-            >
-              <FontAwesomeIcon
-                icon="arrow-up-right-from-square"
-                className="h-3 w-3"
-              />
-            </button>
-          </div>
+          </PopoutOverlay>
         );
       }
 
