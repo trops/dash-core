@@ -96,6 +96,12 @@ function createMainApi(extensions = {}) {
     plugins: pluginApi,
     clientCache: clientCacheApi,
 
+    widgetEvent: {
+      publish: (eventType, content) => {
+        ipcRenderer.send("widget-event:publish", { eventType, content });
+      },
+    },
+
     // Merge template-specific extensions
     ...extensions,
   };

@@ -77,14 +77,40 @@ const event = {
   },
 };
 
+let ipcBridgeListener = null;
+
 export const DashboardPublisher = {
   sub: (eventType, action, uuid) => {
     event.on(eventType, action, uuid);
   },
   pub: (eventType, content) => {
     event.emit(eventType, content);
-    // send to ALL
-    // event.emit("DashboardPublisher.monitor", { eventType, content });
+
+    // Forward to other windows via IPC bridge
+    if (window.mainApi?.widgetEvent) {
+      window.mainApi.widgetEvent.publish(eventType, content);
+    }
+  },
+
+  enableIpcBridge: () => {
+    if (ipcBridgeListener) return;
+    if (!window.mainApi?.on) return;
+
+    ipcBridgeListener = (_e, message) => {
+      event.emit(message.eventType, message.content);
+    };
+    window.mainApi.on("widget-event:broadcast", ipcBridgeListener);
+  },
+
+  disableIpcBridge: () => {
+    if (!ipcBridgeListener) return;
+    if (window.mainApi?.removeListener) {
+      window.mainApi.removeListener(
+        "widget-event:broadcast",
+        ipcBridgeListener,
+      );
+    }
+    ipcBridgeListener = null;
   },
 
   listeners: () => event.list,
