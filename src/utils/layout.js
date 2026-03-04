@@ -70,6 +70,7 @@ export const renderLayout = ({
   onChangeRowMode = null,
   onMoveWidgetToCell = null,
   onDropWidgetFromSidebar = null,
+  onWidgetPopout = null,
 }) => {
   try {
     // Go through each item in the Workspace Layout to render the items.
@@ -147,6 +148,7 @@ export const renderLayout = ({
               onChangeRowMode={onChangeRowMode}
               onMoveWidgetToCell={onMoveWidgetToCell}
               onDropWidgetFromSidebar={onDropWidgetFromSidebar}
+              onWidgetPopout={onWidgetPopout}
             >
               {id > 0 &&
                 renderLayout({
@@ -186,6 +188,7 @@ export const renderLayout = ({
                   onChangeRowMode,
                   onMoveWidgetToCell,
                   onDropWidgetFromSidebar,
+                  onWidgetPopout,
                 })}
               {/* OLD FLEXBOX GRID RENDERING - Disabled in favor of LayoutGridContainer CSS Grid */}
               {/* {id > 0 &&

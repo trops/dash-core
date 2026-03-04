@@ -160,6 +160,7 @@ export const LayoutGridContainer = memo(
     onChangeRowMode = null,
     onMoveWidgetToCell = null,
     onDropWidgetFromSidebar = null,
+    onWidgetPopout = null,
   }) => {
     // Get providers from AppContext (not DashboardContext, which has a structural
     // issue where providers from AppWrapper don't flow through DashboardWrapper)
@@ -255,8 +256,18 @@ export const LayoutGridContainer = memo(
     // Get display label and color for current row sizing
     function getRowSizingDisplay(row) {
       const mode = getRowMode(row);
-      if (mode === "shrink") return { label: "S", color: "text-amber-400", hoverBg: "hover:bg-amber-400/10" };
-      if (mode === "grow") return { label: "G", color: "text-green-400", hoverBg: "hover:bg-green-400/10" };
+      if (mode === "shrink")
+        return {
+          label: "S",
+          color: "text-amber-400",
+          hoverBg: "hover:bg-amber-400/10",
+        };
+      if (mode === "grow")
+        return {
+          label: "G",
+          color: "text-green-400",
+          hoverBg: "hover:bg-green-400/10",
+        };
       const mult = getRowMultiplier(row);
       return {
         label: `${mult}x`,
@@ -548,7 +559,12 @@ export const LayoutGridContainer = memo(
                   const { label, color, hoverBg } = getRowSizingDisplay(row);
                   const mode = getRowMode(row);
                   const mult = getRowMultiplier(row);
-                  const titleParts = mode === "shrink" ? "Shrink (auto)" : mode === "grow" ? "Grow (1fr)" : `Fixed ${mult}x`;
+                  const titleParts =
+                    mode === "shrink"
+                      ? "Shrink (auto)"
+                      : mode === "grow"
+                        ? "Grow (1fr)"
+                        : `Fixed ${mult}x`;
                   return (
                     <button
                       className={`w-5 h-5 flex items-center justify-center rounded text-[10px] ${color} opacity-40 hover:opacity-100 ${hoverBg} transition-all font-mono font-bold select-none`}
@@ -783,12 +799,35 @@ export const LayoutGridContainer = memo(
         return null;
       }
 
-      return renderComponent(
+      const rendered = renderComponent(
         cellComponent.component,
         cellComponent.id,
         cellComponent,
         null,
       );
+
+      if (onWidgetPopout && cellComponent.component) {
+        return (
+          <div className="relative w-full h-full group/popout">
+            {rendered}
+            <button
+              className="absolute top-1 right-1 p-1 rounded opacity-0 group-hover/popout:opacity-100 transition-opacity bg-black/60 hover:bg-black/80 text-gray-300 hover:text-white z-10"
+              onClick={(e) => {
+                e.stopPropagation();
+                onWidgetPopout(cellComponent.id);
+              }}
+              title="Pop out widget"
+            >
+              <FontAwesomeIcon
+                icon="arrow-up-right-from-square"
+                className="h-3 w-3"
+              />
+            </button>
+          </div>
+        );
+      }
+
+      return rendered;
     }
 
     // Render empty cell in preview mode

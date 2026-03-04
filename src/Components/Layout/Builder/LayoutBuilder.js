@@ -64,6 +64,7 @@ export const LayoutBuilder = ({
   dashboardId,
   editMode = "all",
   workspaceRef = null,
+  onWidgetPopout = null,
 }) => {
   const appContext = useContext(AppContext);
   const { debugMode } = appContext;
@@ -989,18 +990,9 @@ export const LayoutBuilder = ({
 
   function handleChangeRowMode(gridContainerId, rowNumber, mode) {
     try {
-      console.log(
-        "[LayoutBuilder] Change row mode:",
-        rowNumber,
-        "to",
-        mode,
-      );
+      console.log("[LayoutBuilder] Change row mode:", rowNumber, "to", mode);
       const dashboard = new DashboardModel(currentWorkspace);
-      const result = dashboard.changeRowMode(
-        gridContainerId,
-        rowNumber,
-        mode,
-      );
+      const result = dashboard.changeRowMode(gridContainerId, rowNumber, mode);
 
       if (result) {
         const newWorkspace = dashboard.workspace();
@@ -1126,6 +1118,7 @@ export const LayoutBuilder = ({
               onChangeRowHeight={handleChangeRowHeight}
               onChangeRowMode={handleChangeRowMode}
               onMoveWidgetToCell={handleMoveWidgetToCell}
+              onWidgetPopout={onWidgetPopout}
             />
           )}
           {preview === false && editMode === "all" && (

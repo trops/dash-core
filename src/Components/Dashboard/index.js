@@ -6,5 +6,6 @@ export { DashboardStage as Dashboard } from "./DashboardStage";
 export * from "./DashboardFooter";
 export * from "./DashboardHeader";
 export * from "./DashboardMonitor";
+export * from "./WidgetPopoutStage";
 // Re-export from canonical location for backward compatibility
 export { DashboardPublisher } from "../../DashboardPublisher";

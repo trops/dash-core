@@ -427,6 +427,7 @@ const DashboardStageInner = ({
           key={`LayoutBuilder-${workspaceItem["id"]}`}
           editMode={editMode}
           workspaceRef={currentWorkspaceRef}
+          onWidgetPopout={popout ? null : handleWidgetPopout}
         />
       ) : null;
     } catch (e) {
@@ -671,6 +672,12 @@ const DashboardStageInner = ({
   function handlePopout() {
     if (workspaceSelected && window.mainApi?.popout?.open) {
       window.mainApi.popout.open(workspaceSelected.id);
+    }
+  }
+
+  function handleWidgetPopout(widgetId) {
+    if (workspaceSelected && window.mainApi?.widgetPopout?.open) {
+      window.mainApi.widgetPopout.open(workspaceSelected.id, widgetId);
     }
   }
 
