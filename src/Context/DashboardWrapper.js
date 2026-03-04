@@ -4,7 +4,7 @@ import { WidgetApi } from "../Api";
 import { AppWrapper } from "./App/AppWrapper";
 import { ThemeWrapper } from "./ThemeWrapper";
 import { MainSection } from "@trops/dash-react";
-import { useContext, useMemo } from "react";
+import { useContext, useEffect, useMemo } from "react";
 import { AppContext } from "./App/AppContext";
 
 const EMPTY_PROVIDERS = {};
@@ -24,6 +24,11 @@ export const DashboardWrapper = ({
     w.setElectronApi(dashApi);
     return w;
   }, [dashApi]);
+
+  useEffect(() => {
+    DashboardPublisher.enableIpcBridge();
+    return () => DashboardPublisher.disableIpcBridge();
+  }, []);
 
   const providers = appContext?.providers || EMPTY_PROVIDERS;
 
