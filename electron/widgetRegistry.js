@@ -704,6 +704,20 @@ function findBundlePath(widgetPath) {
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
+      // Skip ESM files — the eval pipeline requires CJS
+      if (candidate.endsWith(".js") && !candidate.endsWith(".cjs.js")) {
+        try {
+          const head = fs.readFileSync(candidate, "utf8").slice(0, 256);
+          if (/^\s*(import\s|export\s)/m.test(head)) {
+            console.log(
+              `[WidgetRegistry] Skipping ESM bundle: ${candidate}`,
+            );
+            continue;
+          }
+        } catch (_) {
+          // Non-fatal — allow fallthrough
+        }
+      }
       return candidate;
     }
   }
