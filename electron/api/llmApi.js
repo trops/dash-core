@@ -10,6 +10,8 @@ const {
   LLM_SEND_MESSAGE,
   LLM_ABORT_REQUEST,
   LLM_LIST_CONNECTED_TOOLS,
+  LLM_CHECK_CLI_AVAILABLE,
+  LLM_CLEAR_CLI_SESSION,
   LLM_STREAM_DELTA,
   LLM_STREAM_TOOL_CALL,
   LLM_STREAM_TOOL_RESULT,
@@ -46,6 +48,24 @@ const llmApi = {
    * @returns {Promise<Array<{ serverName, tools, resources, status }>>}
    */
   listConnectedTools: () => ipcRenderer.invoke(LLM_LIST_CONNECTED_TOOLS),
+
+  /**
+   * checkCliAvailable
+   * Check if the Claude Code CLI is installed and accessible.
+   *
+   * @returns {Promise<{ available: boolean, path?: string }>}
+   */
+  checkCliAvailable: () => ipcRenderer.invoke(LLM_CHECK_CLI_AVAILABLE),
+
+  /**
+   * clearCliSession
+   * Clear the CLI conversation session for a widget (for "New Chat").
+   *
+   * @param {string} widgetUuid - the widget whose session to clear
+   * @returns {Promise<{ success: boolean }>}
+   */
+  clearCliSession: (widgetUuid) =>
+    ipcRenderer.invoke(LLM_CLEAR_CLI_SESSION, { widgetUuid }),
 
   // --- Stream event listeners ---
 

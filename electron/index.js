@@ -20,6 +20,7 @@ const openaiController = require("./controller/openaiController");
 const menuItemsController = require("./controller/menuItemsController");
 const pluginController = require("./controller/pluginController");
 const llmController = require("./controller/llmController");
+const cliController = require("./controller/cliController");
 
 // --- Utils ---
 const clientCache = require("./utils/clientCache");
@@ -76,6 +77,7 @@ module.exports = {
   menuItemsController,
   pluginController,
   llmController,
+  cliController,
 
   // Controller functions (flat) — spread for convenient destructuring
   ...controllers,

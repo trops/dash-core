@@ -10,6 +10,7 @@
  */
 const Anthropic = require("@anthropic-ai/sdk");
 const mcpController = require("./mcpController");
+const cliController = require("./cliController");
 const {
   LLM_STREAM_DELTA,
   LLM_STREAM_TOOL_CALL,
@@ -78,6 +79,11 @@ const llmController = {
    * @param {object} params - { apiKey, model, messages, tools, toolServerMap, systemPrompt, maxToolRounds }
    */
   sendMessage: async (win, requestId, params) => {
+    // Route to CLI backend if specified
+    if (params.backend === "claude-code") {
+      return cliController.sendMessage(win, requestId, params);
+    }
+
     const {
       apiKey,
       model = "claude-sonnet-4-20250514",
@@ -301,7 +307,8 @@ const llmController = {
       activeRequests.delete(requestId);
       return { success: true };
     }
-    return { success: false, message: "Request not found" };
+    // Fallback to CLI controller
+    return cliController.abortRequest(requestId);
   },
 };
 
