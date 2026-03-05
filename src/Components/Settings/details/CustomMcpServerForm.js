@@ -432,7 +432,7 @@ export const CustomMcpServerForm = ({
               }}
               language="json"
               placeholder={
-                '{\n  "mcpServers": {\n    "server-name": {\n      "command": "npx",\n      "args": ["-y", "package-name"],\n      "env": {\n        "API_KEY": "your-key"\n      }\n    }\n  }\n}'
+                '{\n  "type": "stdio",\n  "command": "npx",\n  "args": ["-y", "package-name"],\n  "env": {\n    "API_KEY": "${API_KEY}"\n  }\n}'
               }
             />
           </div>

@@ -176,18 +176,29 @@ export function headerTemplateToRows(headerTemplate, nextRowId) {
 }
 
 /**
- * Serialize the current form state into a standard MCP JSON config string.
+ * Serialize the current form state into a bare MCP JSON config string.
  *
- * Output format:
+ * Output format (stdio):
  * {
- *   "mcpServers": {
- *     "<name>": { "command": ..., "args": [...], "env": {...} }
- *   }
+ *   "type": "stdio",
+ *   "command": "npx",
+ *   "args": ["-y", "package-name"],
+ *   "env": { "API_KEY": "${API_KEY}" }
  * }
  *
- * @param {string} name - The provider name
+ * Output format (HTTP):
+ * {
+ *   "type": "streamable_http",
+ *   "url": "https://example.com/mcp",
+ *   "headerTemplate": { "Authorization": "Bearer {{apiKey}}" }
+ * }
+ *
+ * Credential values are NOT embedded — env values use ${FIELD_NAME} syntax
+ * to reference credential fields entered separately in the form.
+ *
+ * @param {string} name - The provider name (unused in output, kept for API compat)
  * @param {string} transport - "stdio" or "streamable_http"
- * @param {object} fields - { command, args, envMappingRows, url, headerRows, credentialData }
+ * @param {object} fields - { command, args, envMappingRows, url, headerRows }
  * @returns {string} Formatted JSON string
  */
 export function formStateToMcpJson(name, transport, fields) {
@@ -197,7 +208,6 @@ export function formStateToMcpJson(name, transport, fields) {
     envMappingRows = [],
     url = "",
     headerRows = [],
-    credentialData = {},
   } = fields;
 
   let serverConfig;
@@ -208,40 +218,45 @@ export function formStateToMcpJson(name, transport, fields) {
     envMappingRows.forEach((row) => {
       const envVar = row.envVar.trim();
       const credField = row.credField.trim();
-      if (envVar) {
-        env[envVar] = credentialData[credField] || "";
+      if (envVar && credField) {
+        env[envVar] = `\${${credField}}`;
       }
     });
-    serverConfig = { command: command.trim() };
+    serverConfig = { type: "stdio", command: command.trim() };
     if (argsArray.length > 0) serverConfig.args = argsArray;
     if (Object.keys(env).length > 0) serverConfig.env = env;
   } else {
     // streamable_http
-    serverConfig = { url: url.trim() };
-    const headers = {};
+    serverConfig = { type: "streamable_http", url: url.trim() };
+    const headerTemplate = {};
     headerRows.forEach((row) => {
       const hName = row.headerName.trim();
       const hValue = row.headerValue.trim();
       if (hName && hValue) {
-        headers[hName] = hValue;
+        headerTemplate[hName] = hValue;
       }
     });
-    if (Object.keys(headers).length > 0) serverConfig.headers = headers;
+    if (Object.keys(headerTemplate).length > 0)
+      serverConfig.headerTemplate = headerTemplate;
   }
 
-  return JSON.stringify(
-    { mcpServers: { [name || "server-name"]: serverConfig } },
-    null,
-    2,
-  );
+  return JSON.stringify(serverConfig, null, 2);
 }
 
 /**
- * Parse a standard MCP JSON config string back into form state.
+ * Parse an MCP JSON config string back into form state.
  *
- * Accepts:
- * - { "mcpServers": { "name": { ... } } }
- * - Bare server config: { "command": ..., "args": [...] }
+ * Accepts multiple input formats:
+ * - Bare config: { "command": ..., "args": [...], "env": { "KEY": "${FIELD}" } }
+ * - Wrapped: { "mcpServers": { "name": { ... } } } — unwraps and uses key as providerName
+ *
+ * Transport detection:
+ * - Explicit `type` or `transport` field
+ * - Inferred: `url` present → streamable_http, `command` present → stdio
+ *
+ * stdio env value parsing:
+ * - "${FIELD_NAME}" → envVar = key, credField = FIELD_NAME (reference syntax)
+ * - "literal-value" → envVar = key, credField = key, credentialData[key] = value
  *
  * @param {string} jsonString - The JSON to parse
  * @param {Function} nextRowId - Function that returns a unique row ID
@@ -264,17 +279,29 @@ export function mcpJsonToFormState(jsonString, nextRowId) {
       return { error: "No server found in mcpServers" };
     }
     [providerName, serverConfig] = entries[0];
-  } else if (parsed.command || parsed.url) {
+  } else if (
+    parsed.command ||
+    parsed.url ||
+    parsed.type ||
+    parsed.transport
+  ) {
     serverConfig = parsed;
   } else {
     return {
       error:
-        "Unrecognized format: expected mcpServers object or bare server config",
+        "Unrecognized format: expected a server config with command, url, or type",
     };
   }
 
-  const isHttp = !!serverConfig.url;
-  const transport = isHttp ? "streamable_http" : "stdio";
+  // Determine transport from type/transport field or infer from contents
+  const explicitType = serverConfig.type || serverConfig.transport;
+  let transport;
+  if (explicitType) {
+    transport =
+      explicitType === "stdio" ? "stdio" : "streamable_http";
+  } else {
+    transport = serverConfig.url ? "streamable_http" : "stdio";
+  }
 
   const result = {
     providerName,
@@ -293,12 +320,25 @@ export function mcpJsonToFormState(jsonString, nextRowId) {
     result.args = (serverConfig.args || []).join(" ");
     if (serverConfig.env && typeof serverConfig.env === "object") {
       Object.entries(serverConfig.env).forEach(([envVar, value]) => {
-        result.envMappingRows.push({
-          id: nextRowId(),
-          envVar,
-          credField: envVar,
-        });
-        result.credentialData[envVar] = value || "";
+        // Check for ${FIELD_NAME} reference syntax
+        const refMatch =
+          typeof value === "string" && value.match(/^\$\{(.+)\}$/);
+        if (refMatch) {
+          // Reference syntax — credField is the extracted name, no credential value
+          result.envMappingRows.push({
+            id: nextRowId(),
+            envVar,
+            credField: refMatch[1],
+          });
+        } else {
+          // Literal value — use envVar as credField and store the value
+          result.envMappingRows.push({
+            id: nextRowId(),
+            envVar,
+            credField: envVar,
+          });
+          result.credentialData[envVar] = value || "";
+        }
       });
     }
   } else {
