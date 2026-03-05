@@ -8,9 +8,14 @@ import {
   FormLabel,
   Tag,
   SubHeading3,
+  CodeEditorInline,
 } from "@trops/dash-react";
 import { AppContext } from "../../../Context/App/AppContext";
-import { deriveFormFields } from "../../../utils/mcpUtils";
+import {
+  deriveFormFields,
+  formStateToMcpJson,
+  mcpJsonToFormState,
+} from "../../../utils/mcpUtils";
 
 let rowIdCounter = 0;
 const nextRowId = () => `row_${++rowIdCounter}`;
@@ -63,38 +68,68 @@ function buildMcpConfig(
  *
  * Form for configuring a custom MCP server (not from the catalog).
  * Supports stdio and streamable_http transports with dynamic field derivation.
+ * Used for both creating new and editing existing MCP providers.
  *
  * @param {Function} onSave - (providerName, providerType, credentials, mcpConfig) => void
- * @param {Function} onBack - Called when the user wants to return to the catalog
+ * @param {Function} onBack - Called when the user wants to return
+ * @param {boolean} isEditMode - Whether we're editing an existing provider
+ * @param {string} initialName - Pre-populated provider name (edit mode)
+ * @param {string} initialTransport - Pre-populated transport type (edit mode)
+ * @param {string} initialCommand - Pre-populated command (edit mode)
+ * @param {string} initialArgs - Pre-populated args string (edit mode)
+ * @param {Array} initialEnvMappingRows - Pre-populated env mapping rows (edit mode)
+ * @param {string} initialUrl - Pre-populated URL (edit mode)
+ * @param {Array} initialHeaderRows - Pre-populated header rows (edit mode)
+ * @param {object} initialCredentials - Pre-populated credential values (edit mode)
  */
-export const CustomMcpServerForm = ({ onSave, onBack }) => {
+export const CustomMcpServerForm = ({
+  onSave,
+  onBack,
+  isEditMode = false,
+  initialName = "",
+  initialTransport = "stdio",
+  initialCommand = "",
+  initialArgs = "",
+  initialEnvMappingRows = [],
+  initialUrl = "",
+  initialHeaderRows = [],
+  initialCredentials = {},
+}) => {
   const appContext = useContext(AppContext);
   const dashApi = appContext?.dashApi;
 
   // Transport selection
-  const [transport, setTransport] = useState("stdio");
+  const [transport, setTransport] = useState(initialTransport);
 
   // Common
-  const [providerName, setProviderName] = useState("");
-  const [credentialData, setCredentialData] = useState({});
+  const [providerName, setProviderName] = useState(initialName);
+  const [credentialData, setCredentialData] = useState(initialCredentials);
   const [formErrors, setFormErrors] = useState({});
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
 
   // stdio fields
-  const [command, setCommand] = useState("");
-  const [args, setArgs] = useState("");
-  const [envMappingRows, setEnvMappingRows] = useState([]);
+  const [command, setCommand] = useState(initialCommand);
+  const [args, setArgs] = useState(initialArgs);
+  const [envMappingRows, setEnvMappingRows] = useState(initialEnvMappingRows);
 
   // HTTP fields
-  const [url, setUrl] = useState("");
-  const [headerRows, setHeaderRows] = useState([]);
+  const [url, setUrl] = useState(initialUrl);
+  const [headerRows, setHeaderRows] = useState(initialHeaderRows);
+
+  // JSON editor state
+  const [viewMode, setViewMode] = useState("form"); // "form" | "json"
+  const [jsonText, setJsonText] = useState("");
+  const [jsonError, setJsonError] = useState(null);
 
   // Clear credential data when transport changes (derived fields change entirely)
+  // Only in create mode — in edit mode the initial transport is set correctly
   useEffect(() => {
-    setCredentialData({});
-    setTestResult(null);
-  }, [transport]);
+    if (!isEditMode) {
+      setCredentialData({});
+      setTestResult(null);
+    }
+  }, [transport, isEditMode]);
 
   // Build mcpConfig from current state
   const mcpConfig = useMemo(
@@ -161,6 +196,39 @@ export const CustomMcpServerForm = ({ onSave, onBack }) => {
         return next;
       });
     }
+  };
+
+  // --- JSON toggle handlers ---
+  const handleSwitchToJson = () => {
+    const json = formStateToMcpJson(providerName, transport, {
+      command,
+      args,
+      envMappingRows,
+      url,
+      headerRows,
+      credentialData,
+    });
+    setJsonText(json);
+    setJsonError(null);
+    setViewMode("json");
+  };
+
+  const handleSwitchToForm = () => {
+    const result = mcpJsonToFormState(jsonText, nextRowId);
+    if (result.error) {
+      setJsonError(result.error);
+      return;
+    }
+    setProviderName(result.providerName || providerName);
+    setTransport(result.transport);
+    setCommand(result.command);
+    setArgs(result.args);
+    setEnvMappingRows(result.envMappingRows);
+    setUrl(result.url);
+    setHeaderRows(result.headerRows);
+    setCredentialData(result.credentialData);
+    setJsonError(null);
+    setViewMode("form");
   };
 
   // --- validation ---
@@ -236,6 +304,29 @@ export const CustomMcpServerForm = ({ onSave, onBack }) => {
 
   // --- save ---
   const handleSave = () => {
+    // If in JSON mode, parse JSON first to update form state
+    if (viewMode === "json") {
+      const result = mcpJsonToFormState(jsonText, nextRowId);
+      if (result.error) {
+        setJsonError(result.error);
+        return;
+      }
+      const name = (result.providerName || providerName || "").trim();
+      if (!name) {
+        setJsonError("Provider name is required");
+        return;
+      }
+      const config = buildMcpConfig(result.transport, {
+        command: result.command,
+        args: result.args,
+        envMappingRows: result.envMappingRows,
+        url: result.url,
+        headerRows: result.headerRows,
+      });
+      onSave(name, "custom", result.credentialData, config);
+      return;
+    }
+
     if (!validateForm()) return;
     onSave(providerName.trim(), "custom", credentialData, mcpConfig);
   };
@@ -252,55 +343,21 @@ export const CustomMcpServerForm = ({ onSave, onBack }) => {
             <FontAwesomeIcon icon="arrow-left" className="text-lg" />
           </button>
           <div>
-            <SubHeading3 title="Configure Custom MCP Server" padding={false} />
+            <SubHeading3
+              title={
+                isEditMode ? "Edit MCP Server" : "Configure Custom MCP Server"
+              }
+              padding={false}
+            />
             <p className="text-sm opacity-50 mt-1">
-              Define a custom MCP server connection
+              {isEditMode
+                ? "Modify this MCP server configuration"
+                : "Define a custom MCP server connection"}
             </p>
           </div>
         </div>
 
-        {/* Transport Selector */}
-        <div className="space-y-2">
-          <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
-            Transport Type
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <Card2
-              hover
-              selected={transport === "stdio"}
-              onClick={() => setTransport("stdio")}
-              className="text-left"
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <Icon2 icon="terminal" />
-                <span className="font-semibold text-sm">
-                  Local Process (stdio)
-                </span>
-              </div>
-              <p className="text-xs opacity-50">
-                Spawn a local command as a child process
-              </p>
-            </Card2>
-            <Card2
-              hover
-              selected={transport === "streamable_http"}
-              onClick={() => setTransport("streamable_http")}
-              className="text-left"
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <Icon2 icon="globe" />
-                <span className="font-semibold text-sm">
-                  Remote Server (HTTP)
-                </span>
-              </div>
-              <p className="text-xs opacity-50">
-                Connect to a remote MCP server via HTTP
-              </p>
-            </Card2>
-          </div>
-        </div>
-
-        {/* Provider Name */}
+        {/* Provider Name — always visible */}
         <div className="flex flex-col gap-2">
           <FormLabel label="Provider Name" required={true} />
           <p className="text-sm opacity-50">
@@ -326,228 +383,333 @@ export const CustomMcpServerForm = ({ onSave, onBack }) => {
           )}
         </div>
 
-        {/* ── stdio Fields ── */}
-        {transport === "stdio" && (
-          <div className="space-y-4">
-            <div className="border-t border-white/10 pt-4">
-              <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
-                Process Configuration
-              </p>
-            </div>
+        {/* View Mode Toggle */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => {
+              if (viewMode === "json") handleSwitchToForm();
+            }}
+            className={`px-3 py-1 text-xs font-medium rounded-l transition-colors ${
+              viewMode === "form"
+                ? "bg-white/10 text-white"
+                : "text-white/50 hover:text-white/70"
+            }`}
+          >
+            Form
+          </button>
+          <button
+            onClick={() => {
+              if (viewMode === "form") handleSwitchToJson();
+            }}
+            className={`px-3 py-1 text-xs font-medium rounded-r transition-colors ${
+              viewMode === "json"
+                ? "bg-white/10 text-white"
+                : "text-white/50 hover:text-white/70"
+            }`}
+          >
+            JSON
+          </button>
+        </div>
 
-            {/* Command */}
-            <div className="flex flex-col gap-2">
-              <FormLabel label="Command" required={true} />
-              <p className="text-sm opacity-50">
-                The executable to run (e.g., npx, node, python)
-              </p>
-              <InputText
-                value={command}
-                onChange={(value) => {
-                  setCommand(value);
-                  if (formErrors.command && value?.trim()) {
-                    setFormErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.command;
-                      return next;
-                    });
-                  }
-                }}
-                placeholder="e.g., npx"
-              />
-              {formErrors.command && (
-                <p className="text-sm text-red-400">{formErrors.command}</p>
-              )}
-            </div>
+        {/* JSON Error */}
+        {jsonError && <p className="text-sm text-red-400">{jsonError}</p>}
 
-            {/* Args */}
-            <div className="flex flex-col gap-2">
-              <FormLabel label="Arguments" />
-              <p className="text-sm opacity-50">
-                Space-separated arguments passed to the command
-              </p>
-              <InputText
-                value={args}
-                onChange={setArgs}
-                placeholder="e.g., -y @modelcontextprotocol/server-github"
-              />
-            </div>
-
-            {/* Environment Variable Mapping */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <FormLabel label="Environment Variable Mapping" />
-                  <p className="text-sm opacity-50 mt-1">
-                    Map environment variables to credential fields
-                  </p>
-                </div>
-              </div>
-
-              {envMappingRows.map((row) => (
-                <div key={row.id} className="flex items-center gap-2">
-                  <div className="flex-1">
-                    <InputText
-                      value={row.envVar}
-                      onChange={(value) =>
-                        updateEnvRow(row.id, "envVar", value)
-                      }
-                      placeholder="ENV_VAR_NAME"
-                    />
-                  </div>
-                  <span className="opacity-30 text-sm shrink-0">&rarr;</span>
-                  <div className="flex-1">
-                    <InputText
-                      value={row.credField}
-                      onChange={(value) =>
-                        updateEnvRow(row.id, "credField", value)
-                      }
-                      placeholder="credentialField"
-                    />
-                  </div>
-                  <button
-                    onClick={() => removeEnvRow(row.id)}
-                    className="text-gray-500 hover:text-red-400 transition-colors shrink-0"
-                  >
-                    <FontAwesomeIcon icon="times" className="text-sm" />
-                  </button>
-                </div>
-              ))}
-
-              <button
-                onClick={addEnvRow}
-                className="text-sm text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
-              >
-                <FontAwesomeIcon icon="plus" className="text-xs" />
-                <span>Add Environment Variable</span>
-              </button>
-            </div>
+        {/* ── JSON Editor View ── */}
+        {viewMode === "json" && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
+              MCP Server Configuration (JSON)
+            </p>
+            <p className="text-sm opacity-50">
+              Paste a standard MCP config JSON (compatible with Claude Desktop,
+              Cursor, etc.)
+            </p>
+            <CodeEditorInline
+              code={jsonText}
+              setCode={(val) => {
+                setJsonText(val);
+                setJsonError(null);
+              }}
+              language="json"
+              placeholder={
+                '{\n  "mcpServers": {\n    "server-name": {\n      "command": "npx",\n      "args": ["-y", "package-name"],\n      "env": {\n        "API_KEY": "your-key"\n      }\n    }\n  }\n}'
+              }
+            />
           </div>
         )}
 
-        {/* ── streamable_http Fields ── */}
-        {transport === "streamable_http" && (
-          <div className="space-y-4">
-            <div className="border-t border-white/10 pt-4">
-              <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
-                Server Configuration
-              </p>
-            </div>
-
-            {/* URL */}
-            <div className="flex flex-col gap-2">
-              <FormLabel label="Server URL" required={true} />
-              <p className="text-sm opacity-50">
-                Use{" "}
-                <code className="text-xs bg-white/10 px-1 py-0.5 rounded">
-                  {"{{fieldName}}"}
-                </code>{" "}
-                for values provided as credentials
-              </p>
-              <InputText
-                value={url}
-                onChange={(value) => {
-                  setUrl(value);
-                  if (formErrors.url && value?.trim()) {
-                    setFormErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.url;
-                      return next;
-                    });
-                  }
-                }}
-                placeholder="e.g., https://mcp.example.com/sse"
-              />
-              {formErrors.url && (
-                <p className="text-sm text-red-400">{formErrors.url}</p>
-              )}
-            </div>
-
-            {/* Headers */}
-            <div className="space-y-3">
-              <div>
-                <FormLabel label="Request Headers" />
-                <p className="text-sm opacity-50 mt-1">
-                  Use{" "}
-                  <code className="text-xs bg-white/10 px-1 py-0.5 rounded">
-                    {"{{fieldName}}"}
-                  </code>{" "}
-                  in values for credential placeholders
-                </p>
-              </div>
-
-              {headerRows.map((row) => (
-                <div key={row.id} className="flex items-center gap-2">
-                  <div className="flex-1">
-                    <InputText
-                      value={row.headerName}
-                      onChange={(value) =>
-                        updateHeaderRow(row.id, "headerName", value)
-                      }
-                      placeholder="Header-Name"
-                    />
-                  </div>
-                  <span className="opacity-30 text-sm shrink-0">:</span>
-                  <div className="flex-1">
-                    <InputText
-                      value={row.headerValue}
-                      onChange={(value) =>
-                        updateHeaderRow(row.id, "headerValue", value)
-                      }
-                      placeholder="Bearer {{apiKey}}"
-                    />
-                  </div>
-                  <button
-                    onClick={() => removeHeaderRow(row.id)}
-                    className="text-gray-500 hover:text-red-400 transition-colors shrink-0"
-                  >
-                    <FontAwesomeIcon icon="times" className="text-sm" />
-                  </button>
-                </div>
-              ))}
-
-              <button
-                onClick={addHeaderRow}
-                className="text-sm text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
-              >
-                <FontAwesomeIcon icon="plus" className="text-xs" />
-                <span>Add Header</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── Derived Credential Fields ── */}
-        {formFields.length > 0 && (
+        {/* ── Form View ── */}
+        {viewMode === "form" && (
           <>
-            <div className="border-t border-white/10 pt-4">
+            {/* Transport Selector */}
+            <div className="space-y-2">
               <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
-                Credentials
+                Transport Type
               </p>
-              <p className="text-sm opacity-50 mt-1">
-                Values for the fields referenced in your configuration above
-              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <Card2
+                  hover
+                  selected={transport === "stdio"}
+                  onClick={() => setTransport("stdio")}
+                  className="text-left"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Icon2 icon="terminal" />
+                    <span className="font-semibold text-sm">
+                      Local Process (stdio)
+                    </span>
+                  </div>
+                  <p className="text-xs opacity-50">
+                    Spawn a local command as a child process
+                  </p>
+                </Card2>
+                <Card2
+                  hover
+                  selected={transport === "streamable_http"}
+                  onClick={() => setTransport("streamable_http")}
+                  className="text-left"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Icon2 icon="globe" />
+                    <span className="font-semibold text-sm">
+                      Remote Server (HTTP)
+                    </span>
+                  </div>
+                  <p className="text-xs opacity-50">
+                    Connect to a remote MCP server via HTTP
+                  </p>
+                </Card2>
+              </div>
             </div>
 
-            {formFields.map((field) => (
-              <div key={field.key} className="flex flex-col gap-2">
-                <FormLabel
-                  label={field.displayName}
-                  required={field.required}
-                />
-                <InputText
-                  type={field.secret ? "password" : "text"}
-                  value={credentialData[field.key] || ""}
-                  onChange={(value) => handleCredentialChange(field.key, value)}
-                  placeholder={`Enter ${field.displayName.toLowerCase()}`}
-                />
-                {formErrors[field.key] && (
-                  <p className="text-sm text-red-400">
-                    {formErrors[field.key]}
+            {/* ── stdio Fields ── */}
+            {transport === "stdio" && (
+              <div className="space-y-4">
+                <div className="border-t border-white/10 pt-4">
+                  <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
+                    Process Configuration
                   </p>
-                )}
+                </div>
+
+                {/* Command */}
+                <div className="flex flex-col gap-2">
+                  <FormLabel label="Command" required={true} />
+                  <p className="text-sm opacity-50">
+                    The executable to run (e.g., npx, node, python)
+                  </p>
+                  <InputText
+                    value={command}
+                    onChange={(value) => {
+                      setCommand(value);
+                      if (formErrors.command && value?.trim()) {
+                        setFormErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.command;
+                          return next;
+                        });
+                      }
+                    }}
+                    placeholder="e.g., npx"
+                  />
+                  {formErrors.command && (
+                    <p className="text-sm text-red-400">{formErrors.command}</p>
+                  )}
+                </div>
+
+                {/* Args */}
+                <div className="flex flex-col gap-2">
+                  <FormLabel label="Arguments" />
+                  <p className="text-sm opacity-50">
+                    Space-separated arguments passed to the command
+                  </p>
+                  <InputText
+                    value={args}
+                    onChange={setArgs}
+                    placeholder="e.g., -y @modelcontextprotocol/server-github"
+                  />
+                </div>
+
+                {/* Environment Variable Mapping */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <FormLabel label="Environment Variable Mapping" />
+                      <p className="text-sm opacity-50 mt-1">
+                        Map environment variables to credential fields
+                      </p>
+                    </div>
+                  </div>
+
+                  {envMappingRows.map((row) => (
+                    <div key={row.id} className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <InputText
+                          value={row.envVar}
+                          onChange={(value) =>
+                            updateEnvRow(row.id, "envVar", value)
+                          }
+                          placeholder="ENV_VAR_NAME"
+                        />
+                      </div>
+                      <span className="opacity-30 text-sm shrink-0">
+                        &rarr;
+                      </span>
+                      <div className="flex-1">
+                        <InputText
+                          value={row.credField}
+                          onChange={(value) =>
+                            updateEnvRow(row.id, "credField", value)
+                          }
+                          placeholder="credentialField"
+                        />
+                      </div>
+                      <button
+                        onClick={() => removeEnvRow(row.id)}
+                        className="text-gray-500 hover:text-red-400 transition-colors shrink-0"
+                      >
+                        <FontAwesomeIcon icon="times" className="text-sm" />
+                      </button>
+                    </div>
+                  ))}
+
+                  <button
+                    onClick={addEnvRow}
+                    className="text-sm text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
+                  >
+                    <FontAwesomeIcon icon="plus" className="text-xs" />
+                    <span>Add Environment Variable</span>
+                  </button>
+                </div>
               </div>
-            ))}
+            )}
+
+            {/* ── streamable_http Fields ── */}
+            {transport === "streamable_http" && (
+              <div className="space-y-4">
+                <div className="border-t border-white/10 pt-4">
+                  <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
+                    Server Configuration
+                  </p>
+                </div>
+
+                {/* URL */}
+                <div className="flex flex-col gap-2">
+                  <FormLabel label="Server URL" required={true} />
+                  <p className="text-sm opacity-50">
+                    Use{" "}
+                    <code className="text-xs bg-white/10 px-1 py-0.5 rounded">
+                      {"{{fieldName}}"}
+                    </code>{" "}
+                    for values provided as credentials
+                  </p>
+                  <InputText
+                    value={url}
+                    onChange={(value) => {
+                      setUrl(value);
+                      if (formErrors.url && value?.trim()) {
+                        setFormErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.url;
+                          return next;
+                        });
+                      }
+                    }}
+                    placeholder="e.g., https://mcp.example.com/sse"
+                  />
+                  {formErrors.url && (
+                    <p className="text-sm text-red-400">{formErrors.url}</p>
+                  )}
+                </div>
+
+                {/* Headers */}
+                <div className="space-y-3">
+                  <div>
+                    <FormLabel label="Request Headers" />
+                    <p className="text-sm opacity-50 mt-1">
+                      Use{" "}
+                      <code className="text-xs bg-white/10 px-1 py-0.5 rounded">
+                        {"{{fieldName}}"}
+                      </code>{" "}
+                      in values for credential placeholders
+                    </p>
+                  </div>
+
+                  {headerRows.map((row) => (
+                    <div key={row.id} className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <InputText
+                          value={row.headerName}
+                          onChange={(value) =>
+                            updateHeaderRow(row.id, "headerName", value)
+                          }
+                          placeholder="Header-Name"
+                        />
+                      </div>
+                      <span className="opacity-30 text-sm shrink-0">:</span>
+                      <div className="flex-1">
+                        <InputText
+                          value={row.headerValue}
+                          onChange={(value) =>
+                            updateHeaderRow(row.id, "headerValue", value)
+                          }
+                          placeholder="Bearer {{apiKey}}"
+                        />
+                      </div>
+                      <button
+                        onClick={() => removeHeaderRow(row.id)}
+                        className="text-gray-500 hover:text-red-400 transition-colors shrink-0"
+                      >
+                        <FontAwesomeIcon icon="times" className="text-sm" />
+                      </button>
+                    </div>
+                  ))}
+
+                  <button
+                    onClick={addHeaderRow}
+                    className="text-sm text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
+                  >
+                    <FontAwesomeIcon icon="plus" className="text-xs" />
+                    <span>Add Header</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ── Derived Credential Fields ── */}
+            {formFields.length > 0 && (
+              <>
+                <div className="border-t border-white/10 pt-4">
+                  <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
+                    Credentials
+                  </p>
+                  <p className="text-sm opacity-50 mt-1">
+                    Values for the fields referenced in your configuration above
+                  </p>
+                </div>
+
+                {formFields.map((field) => (
+                  <div key={field.key} className="flex flex-col gap-2">
+                    <FormLabel
+                      label={field.displayName}
+                      required={field.required}
+                    />
+                    <InputText
+                      type={field.secret ? "password" : "text"}
+                      value={credentialData[field.key] || ""}
+                      onChange={(value) =>
+                        handleCredentialChange(field.key, value)
+                      }
+                      placeholder={`Enter ${field.displayName.toLowerCase()}`}
+                    />
+                    {formErrors[field.key] && (
+                      <p className="text-sm text-red-400">
+                        {formErrors[field.key]}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </>
+            )}
           </>
         )}
 
@@ -594,7 +756,11 @@ export const CustomMcpServerForm = ({ onSave, onBack }) => {
           onClick={handleTestConnection}
           size="sm"
         />
-        <Button title="Save MCP Server" onClick={handleSave} size="sm" />
+        <Button
+          title={isEditMode ? "Save Changes" : "Save MCP Server"}
+          onClick={handleSave}
+          size="sm"
+        />
       </div>
     </div>
   );
