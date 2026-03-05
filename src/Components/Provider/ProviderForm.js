@@ -1,5 +1,10 @@
-import React, { useState } from "react";
-import { InputText, FormLabel, Button } from "@trops/dash-react";
+import React, { useState, useRef } from "react";
+import {
+  InputText,
+  FormLabel,
+  Button,
+  FontAwesomeIcon,
+} from "@trops/dash-react";
 
 /**
  * ProviderForm component
@@ -41,6 +46,65 @@ export const ProviderForm = ({
   const [providerName, setProviderName] = useState(initialValues.name || "");
   const [formData, setFormData] = useState(initialValues);
   const [errors, setErrors] = useState({});
+
+  // Dynamic fields for unknown provider types (empty schema)
+  const hasSchema = Object.keys(credentialSchema).length > 0;
+  const [dynamicFields, setDynamicFields] = useState(
+    hasSchema ? [] : [{ id: "default_apiKey", key: "apiKey", secret: true }],
+  );
+  const fieldIdRef = useRef(0);
+
+  const handleDynamicKeyChange = (id, newKey) => {
+    setDynamicFields((prev) =>
+      prev.map((f) => {
+        if (f.id !== id) return f;
+        const oldKey = f.key;
+        if (oldKey && formData[oldKey] !== undefined) {
+          setFormData((fd) => {
+            const updated = { ...fd };
+            const val = updated[oldKey];
+            delete updated[oldKey];
+            if (newKey.trim()) updated[newKey] = val;
+            return updated;
+          });
+        }
+        return { ...f, key: newKey };
+      }),
+    );
+  };
+
+  const handleDynamicValueChange = (id, value) => {
+    const field = dynamicFields.find((f) => f.id === id);
+    if (field?.key) {
+      setFormData((prev) => ({ ...prev, [field.key]: value }));
+    }
+  };
+
+  const handleDynamicSecretToggle = (id) => {
+    setDynamicFields((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, secret: !f.secret } : f)),
+    );
+  };
+
+  const handleAddField = () => {
+    fieldIdRef.current += 1;
+    setDynamicFields((prev) => [
+      ...prev,
+      { id: `field_${fieldIdRef.current}`, key: "", secret: false },
+    ]);
+  };
+
+  const handleRemoveField = (id) => {
+    const field = dynamicFields.find((f) => f.id === id);
+    if (field?.key) {
+      setFormData((prev) => {
+        const updated = { ...prev };
+        delete updated[field.key];
+        return updated;
+      });
+    }
+    setDynamicFields((prev) => prev.filter((f) => f.id !== id));
+  };
 
   /**
    * Validate form based on schema requirements
@@ -171,6 +235,63 @@ export const ProviderForm = ({
           )}
         </div>
       ))}
+
+      {/* Fallback: dynamic fields when no schema is provided */}
+      {!hasSchema && (
+        <>
+          {dynamicFields.map((field) => (
+            <div key={field.id} className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <InputText
+                    value={field.key}
+                    onChange={(value) =>
+                      handleDynamicKeyChange(field.id, value)
+                    }
+                    placeholder="Field name (e.g. apiKey)"
+                  />
+                </div>
+                <button
+                  onClick={() => handleDynamicSecretToggle(field.id)}
+                  className="p-2 rounded hover:bg-white/10 transition-colors opacity-50 hover:opacity-100"
+                  title={field.secret ? "Show as text" : "Mark as secret"}
+                >
+                  <FontAwesomeIcon
+                    icon={field.secret ? "eye-slash" : "eye"}
+                    className="h-3.5 w-3.5"
+                  />
+                </button>
+                <button
+                  onClick={() => handleRemoveField(field.id)}
+                  className="p-2 rounded hover:bg-red-500/20 transition-colors opacity-50 hover:opacity-100 text-red-400"
+                  title="Remove field"
+                >
+                  <FontAwesomeIcon icon="trash" className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              {field.key.trim() && (
+                <InputText
+                  type={field.secret ? "password" : "text"}
+                  value={formData[field.key] || ""}
+                  onChange={(value) =>
+                    handleDynamicValueChange(field.id, value)
+                  }
+                  placeholder={`Enter ${field.key}`}
+                />
+              )}
+            </div>
+          ))}
+
+          <button
+            onClick={handleAddField}
+            className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+          >
+            <FontAwesomeIcon icon="plus" className="h-3 w-3" />
+            Add Credential Field
+          </button>
+        </>
+      )}
+
       {/* Form Actions */}
       <div className="flex gap-3 justify-end pt-4 border-t border-gray-300 dark:border-gray-700">
         <Button

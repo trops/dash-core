@@ -19,6 +19,7 @@ const algoliaController = require("./controller/algoliaController");
 const openaiController = require("./controller/openaiController");
 const menuItemsController = require("./controller/menuItemsController");
 const pluginController = require("./controller/pluginController");
+const llmController = require("./controller/llmController");
 
 // --- Utils ---
 const clientCache = require("./utils/clientCache");
@@ -44,6 +45,7 @@ const algoliaApi = require("./api/algoliaApi");
 const openaiApi = require("./api/openaiApi");
 const menuItemsApi = require("./api/menuItemsApi");
 const pluginApi = require("./api/pluginApi");
+const llmApi = require("./api/llmApi");
 const clientCacheApi = require("./api/clientCacheApi");
 
 // --- Events ---
@@ -73,6 +75,7 @@ module.exports = {
   openaiController,
   menuItemsController,
   pluginController,
+  llmController,
 
   // Controller functions (flat) — spread for convenient destructuring
   ...controllers,
@@ -93,6 +96,7 @@ module.exports = {
   openaiApi,
   menuItemsApi,
   pluginApi,
+  llmApi,
   clientCacheApi,
 
   // Events
