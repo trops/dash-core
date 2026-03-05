@@ -4,6 +4,7 @@ import {
   FontAwesomeIcon,
   Sidebar,
   Tag3,
+  Tabs3,
 } from "@trops/dash-react";
 import { AppContext } from "../../../Context/App/AppContext";
 import { SectionLayout } from "../SectionLayout";
@@ -25,6 +26,7 @@ export const ProvidersSection = ({
   const providers = appContext?.providers || {};
   const refreshProviders = appContext?.refreshProviders;
 
+  const [providerTab, setProviderTab] = useState("credentials");
   const [selectedName, setSelectedName] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -71,6 +73,7 @@ export const ProvidersSection = ({
       { providerType: formType.trim(), credentials },
       () => {
         resetForm();
+        setProviderTab("credentials");
         refreshProviders && refreshProviders();
       },
       (e, err) => console.error("Save provider error:", err),
@@ -80,6 +83,7 @@ export const ProvidersSection = ({
   function handleStartEdit(name, provider) {
     setSelectedName(name);
     setIsCreating(false);
+    setProviderTab(provider.providerClass === "mcp" ? "mcp" : "credentials");
 
     if (provider.providerClass === "mcp") {
       setIsEditingMcp(true);
@@ -176,6 +180,7 @@ export const ProvidersSection = ({
         setIsAddingMcp(false);
         refreshProviders && refreshProviders();
         setSelectedName(providerName);
+        setProviderTab("mcp");
       },
       (e, err) => console.error("Save MCP provider error:", err),
     );
@@ -212,6 +217,7 @@ export const ProvidersSection = ({
       },
       () => {
         setSelectedName(providerName);
+        setProviderTab("mcp");
         setIsEditingMcp(false);
         resetForm();
         refreshProviders && refreshProviders();
@@ -239,91 +245,80 @@ export const ProvidersSection = ({
   const selectedProvider =
     selectedName && providers[selectedName] ? providers[selectedName] : null;
 
+  const activeProviders =
+    providerTab === "credentials" ? credentialProviders : mcpProviders;
+  const activeIcon = providerTab === "credentials" ? "key" : "server";
+
   const listContent = (
-    <Sidebar.Content>
-      {/* Credential Providers */}
-      {credentialProviders.length > 0 && (
-        <>
-          <div className="px-3 py-2 text-xs font-semibold opacity-40 uppercase tracking-wider">
-            API Credentials
-          </div>
-          {credentialProviders.map(([name, provider]) => {
-            const isSelected = selectedName === name && !isCreating;
-            return (
-              <Sidebar.Item
-                key={name}
-                icon={<FontAwesomeIcon icon="key" className="h-3.5 w-3.5" />}
-                active={isSelected}
-                onClick={() => {
-                  setSelectedName(name);
-                  setIsCreating(false);
-                  setIsEditing(false);
-                  setIsAddingMcp(false);
-                  resetForm();
-                }}
-                badge={provider.type ? <Tag3 text={provider.type} /> : null}
-                className={isSelected ? "bg-white/10 opacity-100" : ""}
-              >
-                {name}
-              </Sidebar.Item>
-            );
-          })}
-        </>
-      )}
-
-      {/* MCP Providers */}
-      {mcpProviders.length > 0 && (
-        <>
-          <div className="px-3 py-2 text-xs font-semibold opacity-40 uppercase tracking-wider mt-2">
-            MCP Servers
-          </div>
-          {mcpProviders.map(([name, provider]) => {
-            const isSelected = selectedName === name && !isCreating;
-            return (
-              <Sidebar.Item
-                key={name}
-                icon={<FontAwesomeIcon icon="server" className="h-3.5 w-3.5" />}
-                active={isSelected}
-                onClick={() => {
-                  setSelectedName(name);
-                  setIsCreating(false);
-                  setIsEditing(false);
-                  setIsAddingMcp(false);
-                  resetForm();
-                }}
-                badge={provider.type ? <Tag3 text={provider.type} /> : null}
-                className={isSelected ? "bg-white/10 opacity-100" : ""}
-              >
-                {name}
-              </Sidebar.Item>
-            );
-          })}
-        </>
-      )}
-
-      {/* No providers */}
-      {providerEntries.length === 0 && (
-        <span className="text-sm opacity-40 py-8 text-center">
-          No providers configured
-        </span>
-      )}
-
-      {/* Add MCP Server button */}
-      <div className="px-3 py-3 mt-2 border-t border-white/10">
-        <button
-          onClick={() => {
-            setIsAddingMcp(true);
-            setSelectedName(null);
-            setIsCreating(false);
-            setIsEditing(false);
-          }}
-          className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors w-full"
+    <>
+      <div className="px-2 pt-2">
+        <Tabs3
+          value={providerTab}
+          onValueChange={setProviderTab}
+          backgroundColor="bg-transparent"
+          spacing="p-0"
         >
-          <FontAwesomeIcon icon="plus" className="h-3 w-3" />
-          Add MCP Server
-        </button>
+          <Tabs3.List className="w-full flex" spacing="p-0.5">
+            <Tabs3.Trigger value="credentials" className="flex-1">
+              API Credentials
+            </Tabs3.Trigger>
+            <Tabs3.Trigger value="mcp" className="flex-1">
+              MCP Servers
+            </Tabs3.Trigger>
+          </Tabs3.List>
+        </Tabs3>
       </div>
-    </Sidebar.Content>
+      <Sidebar.Content>
+        {activeProviders.map(([name, provider]) => {
+          const isSelected = selectedName === name && !isCreating;
+          return (
+            <Sidebar.Item
+              key={name}
+              icon={
+                <FontAwesomeIcon icon={activeIcon} className="h-3.5 w-3.5" />
+              }
+              active={isSelected}
+              onClick={() => {
+                setSelectedName(name);
+                setIsCreating(false);
+                setIsEditing(false);
+                setIsAddingMcp(false);
+                resetForm();
+              }}
+              badge={provider.type ? <Tag3 text={provider.type} /> : null}
+              className={isSelected ? "bg-white/10 opacity-100" : ""}
+            >
+              {name}
+            </Sidebar.Item>
+          );
+        })}
+
+        {activeProviders.length === 0 && (
+          <span className="text-sm opacity-40 py-8 text-center">
+            {providerTab === "credentials"
+              ? "No API credentials configured"
+              : "No MCP servers configured"}
+          </span>
+        )}
+
+        {providerTab === "mcp" && (
+          <div className="px-3 py-3 mt-2 border-t border-white/10">
+            <button
+              onClick={() => {
+                setIsAddingMcp(true);
+                setSelectedName(null);
+                setIsCreating(false);
+                setIsEditing(false);
+              }}
+              className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors w-full"
+            >
+              <FontAwesomeIcon icon="plus" className="h-3 w-3" />
+              Add MCP Server
+            </button>
+          </div>
+        )}
+      </Sidebar.Content>
+    </>
   );
 
   let detailContent = null;
