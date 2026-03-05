@@ -9,6 +9,11 @@ import { AppContext } from "../../../Context/App/AppContext";
 import { SectionLayout } from "../SectionLayout";
 import { ProviderDetail } from "../details/ProviderDetail";
 import { McpCatalogDetail } from "../details/McpCatalogDetail";
+import { CustomMcpServerForm } from "../details/CustomMcpServerForm";
+import {
+  envMappingToRows,
+  headerTemplateToRows,
+} from "../../../utils/mcpUtils";
 
 export const ProvidersSection = ({
   dashApi = null,
@@ -28,6 +33,11 @@ export const ProvidersSection = ({
   const [formCredentials, setFormCredentials] = useState({});
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isAddingMcp, setIsAddingMcp] = useState(false);
+  const [isEditingMcp, setIsEditingMcp] = useState(false);
+
+  // Row ID counter for env/header rows in MCP edit mode
+  const nextRowIdRef = useRef(0);
+  const nextRowId = () => `prov_row_${++nextRowIdRef.current}`;
 
   const providerEntries = Object.entries(providers);
   const appId = credentials?.appId;
@@ -46,6 +56,7 @@ export const ProvidersSection = ({
     setFormCredentials({});
     setIsCreating(false);
     setIsEditing(false);
+    setIsEditingMcp(false);
   }
 
   function handleSave() {
@@ -68,11 +79,18 @@ export const ProvidersSection = ({
 
   function handleStartEdit(name, provider) {
     setSelectedName(name);
-    setFormName(name);
-    setFormType(provider.type || "");
-    setFormCredentials(provider.credentials || {});
-    setIsEditing(true);
     setIsCreating(false);
+
+    if (provider.providerClass === "mcp") {
+      setIsEditingMcp(true);
+      setIsEditing(false);
+    } else {
+      setFormName(name);
+      setFormType(provider.type || "");
+      setFormCredentials(provider.credentials || {});
+      setIsEditing(true);
+      setIsEditingMcp(false);
+    }
   }
 
   function handleSaveEdit() {
@@ -158,6 +176,45 @@ export const ProvidersSection = ({
         setIsAddingMcp(false);
         refreshProviders && refreshProviders();
         setSelectedName(providerName);
+      },
+      (e, err) => console.error("Save MCP provider error:", err),
+    );
+  }
+
+  // Handle MCP provider editing via CustomMcpServerForm
+  function handleMcpEditSave(
+    providerName,
+    providerType,
+    mcpCredentials,
+    mcpConfig,
+  ) {
+    if (!dashApi || !appId) return;
+    const originalName = selectedName;
+
+    // Delete old if name changed
+    if (originalName && originalName !== providerName) {
+      dashApi.deleteProvider(
+        appId,
+        originalName,
+        () => {},
+        () => {},
+      );
+    }
+
+    dashApi.saveProvider(
+      appId,
+      providerName,
+      {
+        providerType,
+        credentials: mcpCredentials,
+        providerClass: "mcp",
+        mcpConfig,
+      },
+      () => {
+        setSelectedName(providerName);
+        setIsEditingMcp(false);
+        resetForm();
+        refreshProviders && refreshProviders();
       },
       (e, err) => console.error("Save MCP provider error:", err),
     );
@@ -292,6 +349,23 @@ export const ProvidersSection = ({
           resetForm();
           setIsCreating(false);
         }}
+      />
+    );
+  } else if (isEditingMcp && selectedName && selectedProvider) {
+    const mc = selectedProvider.mcpConfig || {};
+    detailContent = (
+      <CustomMcpServerForm
+        isEditMode={true}
+        initialName={selectedName}
+        initialTransport={mc.transport || "stdio"}
+        initialCommand={mc.command || ""}
+        initialArgs={(mc.args || []).join(" ")}
+        initialEnvMappingRows={envMappingToRows(mc.envMapping, nextRowId)}
+        initialUrl={mc.url || ""}
+        initialHeaderRows={headerTemplateToRows(mc.headerTemplate, nextRowId)}
+        initialCredentials={selectedProvider.credentials || {}}
+        onSave={handleMcpEditSave}
+        onBack={() => setIsEditingMcp(false)}
       />
     );
   } else if (selectedName && selectedProvider) {

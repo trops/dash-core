@@ -174,3 +174,146 @@ export function headerTemplateToRows(headerTemplate, nextRowId) {
     headerValue,
   }));
 }
+
+/**
+ * Serialize the current form state into a standard MCP JSON config string.
+ *
+ * Output format:
+ * {
+ *   "mcpServers": {
+ *     "<name>": { "command": ..., "args": [...], "env": {...} }
+ *   }
+ * }
+ *
+ * @param {string} name - The provider name
+ * @param {string} transport - "stdio" or "streamable_http"
+ * @param {object} fields - { command, args, envMappingRows, url, headerRows, credentialData }
+ * @returns {string} Formatted JSON string
+ */
+export function formStateToMcpJson(name, transport, fields) {
+  const {
+    command = "",
+    args = "",
+    envMappingRows = [],
+    url = "",
+    headerRows = [],
+    credentialData = {},
+  } = fields;
+
+  let serverConfig;
+
+  if (transport === "stdio") {
+    const argsArray = args.trim().split(/\s+/).filter(Boolean);
+    const env = {};
+    envMappingRows.forEach((row) => {
+      const envVar = row.envVar.trim();
+      const credField = row.credField.trim();
+      if (envVar) {
+        env[envVar] = credentialData[credField] || "";
+      }
+    });
+    serverConfig = { command: command.trim() };
+    if (argsArray.length > 0) serverConfig.args = argsArray;
+    if (Object.keys(env).length > 0) serverConfig.env = env;
+  } else {
+    // streamable_http
+    serverConfig = { url: url.trim() };
+    const headers = {};
+    headerRows.forEach((row) => {
+      const hName = row.headerName.trim();
+      const hValue = row.headerValue.trim();
+      if (hName && hValue) {
+        headers[hName] = hValue;
+      }
+    });
+    if (Object.keys(headers).length > 0) serverConfig.headers = headers;
+  }
+
+  return JSON.stringify(
+    { mcpServers: { [name || "server-name"]: serverConfig } },
+    null,
+    2,
+  );
+}
+
+/**
+ * Parse a standard MCP JSON config string back into form state.
+ *
+ * Accepts:
+ * - { "mcpServers": { "name": { ... } } }
+ * - Bare server config: { "command": ..., "args": [...] }
+ *
+ * @param {string} jsonString - The JSON to parse
+ * @param {Function} nextRowId - Function that returns a unique row ID
+ * @returns {{ providerName, transport, command, args, envMappingRows, url, headerRows, credentialData, error }}
+ */
+export function mcpJsonToFormState(jsonString, nextRowId) {
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonString);
+  } catch (e) {
+    return { error: `Invalid JSON: ${e.message}` };
+  }
+
+  let providerName = "";
+  let serverConfig;
+
+  if (parsed.mcpServers && typeof parsed.mcpServers === "object") {
+    const entries = Object.entries(parsed.mcpServers);
+    if (entries.length === 0) {
+      return { error: "No server found in mcpServers" };
+    }
+    [providerName, serverConfig] = entries[0];
+  } else if (parsed.command || parsed.url) {
+    serverConfig = parsed;
+  } else {
+    return {
+      error:
+        "Unrecognized format: expected mcpServers object or bare server config",
+    };
+  }
+
+  const isHttp = !!serverConfig.url;
+  const transport = isHttp ? "streamable_http" : "stdio";
+
+  const result = {
+    providerName,
+    transport,
+    command: "",
+    args: "",
+    envMappingRows: [],
+    url: "",
+    headerRows: [],
+    credentialData: {},
+    error: null,
+  };
+
+  if (transport === "stdio") {
+    result.command = serverConfig.command || "";
+    result.args = (serverConfig.args || []).join(" ");
+    if (serverConfig.env && typeof serverConfig.env === "object") {
+      Object.entries(serverConfig.env).forEach(([envVar, value]) => {
+        result.envMappingRows.push({
+          id: nextRowId(),
+          envVar,
+          credField: envVar,
+        });
+        result.credentialData[envVar] = value || "";
+      });
+    }
+  } else {
+    result.url = serverConfig.url || "";
+    const headers = serverConfig.headers || serverConfig.headerTemplate || {};
+    if (typeof headers === "object") {
+      Object.entries(headers).forEach(([headerName, headerValue]) => {
+        result.headerRows.push({
+          id: nextRowId(),
+          headerName,
+          headerValue,
+        });
+      });
+    }
+  }
+
+  return result;
+}
