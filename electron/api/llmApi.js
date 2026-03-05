@@ -21,6 +21,17 @@ const {
   LLM_STREAM_ERROR,
 } = require("../events/llmEvents");
 
+let _nextListenerId = 0;
+const _listenerMap = new Map();
+
+function _addListener(channel, callback) {
+    const id = String(++_nextListenerId);
+    const wrapped = (_event, data) => callback(data);
+    ipcRenderer.on(channel, wrapped);
+    _listenerMap.set(id, { channel, wrapped });
+    return id;
+}
+
 const llmApi = {
   /**
    * sendMessage
@@ -90,84 +101,40 @@ const llmApi = {
     ipcRenderer.invoke(LLM_CLI_END_SESSION, { widgetUuid }),
 
   // --- Stream event listeners ---
-  // Each on* method returns the wrapped callback so callers can remove
-  // their own listener without nuking listeners from other widgets.
+  // Each on* method returns an opaque string ID. Strings cross the
+  // contextBridge safely (unlike function refs which get proxied).
+  // Use removeStreamListener(id) to clean up.
 
-  /**
-   * onStreamDelta
-   * Listen for text chunks as they stream in.
-   * @returns {Function} wrapped callback for use with removeStreamListener
-   */
-  onStreamDelta: (callback) => {
-    const wrapped = (_event, data) => callback(data);
-    ipcRenderer.on(LLM_STREAM_DELTA, wrapped);
-    return wrapped;
-  },
+  /** @returns {string} listener ID */
+  onStreamDelta: (callback) => _addListener(LLM_STREAM_DELTA, callback),
 
-  /**
-   * onStreamToolCall
-   * Listen for tool call notifications.
-   * @returns {Function} wrapped callback for use with removeStreamListener
-   */
-  onStreamToolCall: (callback) => {
-    const wrapped = (_event, data) => callback(data);
-    ipcRenderer.on(LLM_STREAM_TOOL_CALL, wrapped);
-    return wrapped;
-  },
+  /** @returns {string} listener ID */
+  onStreamToolCall: (callback) => _addListener(LLM_STREAM_TOOL_CALL, callback),
 
-  /**
-   * onStreamToolResult
-   * Listen for tool result notifications.
-   * @returns {Function} wrapped callback for use with removeStreamListener
-   */
-  onStreamToolResult: (callback) => {
-    const wrapped = (_event, data) => callback(data);
-    ipcRenderer.on(LLM_STREAM_TOOL_RESULT, wrapped);
-    return wrapped;
-  },
+  /** @returns {string} listener ID */
+  onStreamToolResult: (callback) =>
+    _addListener(LLM_STREAM_TOOL_RESULT, callback),
 
-  /**
-   * onStreamComplete
-   * Listen for stream completion (final response).
-   * @returns {Function} wrapped callback for use with removeStreamListener
-   */
-  onStreamComplete: (callback) => {
-    const wrapped = (_event, data) => callback(data);
-    ipcRenderer.on(LLM_STREAM_COMPLETE, wrapped);
-    return wrapped;
-  },
+  /** @returns {string} listener ID */
+  onStreamComplete: (callback) => _addListener(LLM_STREAM_COMPLETE, callback),
 
-  /**
-   * onStreamError
-   * Listen for stream errors.
-   * @returns {Function} wrapped callback for use with removeStreamListener
-   */
-  onStreamError: (callback) => {
-    const wrapped = (_event, data) => callback(data);
-    ipcRenderer.on(LLM_STREAM_ERROR, wrapped);
-    return wrapped;
-  },
+  /** @returns {string} listener ID */
+  onStreamError: (callback) => _addListener(LLM_STREAM_ERROR, callback),
 
   /**
    * removeStreamListener
-   * Remove a specific stream listener by channel and callback reference.
+   * Remove a specific stream listener by its opaque ID.
    *
-   * @param {string} channel - the IPC channel name
-   * @param {Function} wrapped - the callback returned by on*
+   * @param {string} idOrChannel - listener ID (or legacy channel name when second arg is provided)
+   * @param {string} [id] - listener ID when called with legacy (channel, id) signature
    */
-  removeStreamListener: (channel, wrapped) => {
-    ipcRenderer.removeListener(channel, wrapped);
-  },
-
-  /**
-   * Stream channel constants for use with removeStreamListener.
-   */
-  streamChannels: {
-    delta: LLM_STREAM_DELTA,
-    toolCall: LLM_STREAM_TOOL_CALL,
-    toolResult: LLM_STREAM_TOOL_RESULT,
-    complete: LLM_STREAM_COMPLETE,
-    error: LLM_STREAM_ERROR,
+  removeStreamListener: (idOrChannel, id) => {
+    const listenerId = id !== undefined ? String(id) : String(idOrChannel);
+    const entry = _listenerMap.get(listenerId);
+    if (entry) {
+      ipcRenderer.removeListener(entry.channel, entry.wrapped);
+      _listenerMap.delete(listenerId);
+    }
   },
 
   /**
@@ -176,6 +143,10 @@ const llmApi = {
    * Prefer removeStreamListener for scoped cleanup.
    */
   removeAllStreamListeners: () => {
+    for (const [, entry] of _listenerMap) {
+      ipcRenderer.removeListener(entry.channel, entry.wrapped);
+    }
+    _listenerMap.clear();
     ipcRenderer.removeAllListeners(LLM_STREAM_DELTA);
     ipcRenderer.removeAllListeners(LLM_STREAM_TOOL_CALL);
     ipcRenderer.removeAllListeners(LLM_STREAM_TOOL_RESULT);
