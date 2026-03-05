@@ -26,6 +26,7 @@ const algoliaApi = require("./algoliaApi");
 const openaiApi = require("./openaiApi");
 const menuItemsApi = require("./menuItemsApi");
 const pluginApi = require("./pluginApi");
+const llmApi = require("./llmApi");
 const clientCacheApi = require("./clientCacheApi");
 
 // Events constants
@@ -88,6 +89,9 @@ function createMainApi(extensions = {}) {
     publicEvents: events.public,
 
     pathPlugins: "",
+
+    // LLM
+    llm: llmApi,
 
     // APIs previously in template
     algolia: algoliaApi,

@@ -618,9 +618,19 @@ export const LayoutBuilder = ({
           secret: true,
         },
       },
+      anthropic: {
+        apiKey: {
+          type: "text",
+          displayName: "API Key",
+          instructions: "Your Anthropic API key (starts with sk-ant-)",
+          required: true,
+          secret: true,
+        },
+      },
     };
 
-    const schema = providerSchemas[providerType] || {};
+    const schema =
+      providerSchemas[providerType] || matchingReq?.credentialSchema || {};
 
     setProviderModalConfig({
       widgetId,

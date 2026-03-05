@@ -561,6 +561,28 @@ const mcpController = {
   },
 
   /**
+   * listConnectedServers
+   * Returns all connected servers with their cached tool lists.
+   * Used by llmController to discover available MCP tools.
+   *
+   * @returns {Array<{ serverName, tools, resources, status }>}
+   */
+  listConnectedServers: () => {
+    const servers = [];
+    for (const [serverName, server] of activeServers) {
+      if (server.status === STATUS.CONNECTED) {
+        servers.push({
+          serverName,
+          tools: server.tools || [],
+          resources: server.resources || [],
+          status: server.status,
+        });
+      }
+    }
+    return servers;
+  },
+
+  /**
    * stopAllServers
    * Stop all running MCP servers (called on app quit)
    */

@@ -169,6 +169,7 @@ export const ProvidersSection = ({
     if (createRequested && !prevCreateRequested.current) {
       resetForm();
       setSelectedName(null);
+      setIsAddingMcp(false);
       setIsCreating(true);
     }
     prevCreateRequested.current = createRequested;

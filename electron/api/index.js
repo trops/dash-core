@@ -21,5 +21,6 @@ module.exports = {
   algoliaApi: require("./algoliaApi"),
   openaiApi: require("./openaiApi"),
   menuItemsApi: require("./menuItemsApi"),
+  llmApi: require("./llmApi"),
   pluginApi: require("./pluginApi"),
 };
