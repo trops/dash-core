@@ -314,6 +314,38 @@
                     "instructions": "Your Algolia Search API Key, found in the Algolia dashboard under API Keys."
                 }
             }
+        },
+        {
+            "id": "gong",
+            "name": "Gong",
+            "description": "Browse Gong call recordings, transcripts, and AI-generated summaries.",
+            "icon": "phone",
+            "tags": ["sales", "calls", "transcripts"],
+            "mcpConfig": {
+                "transport": "stdio",
+                "command": "npx",
+                "args": ["-y", "gongio-mcp"],
+                "envMapping": {
+                    "GONG_ACCESS_KEY": "accessKey",
+                    "GONG_ACCESS_KEY_SECRET": "accessKeySecret"
+                }
+            },
+            "credentialSchema": {
+                "accessKey": {
+                    "type": "text",
+                    "displayName": "Access Key",
+                    "required": true,
+                    "secret": true,
+                    "instructions": "Your Gong API Access Key. Generate one in Gong Settings > Ecosystem > API."
+                },
+                "accessKeySecret": {
+                    "type": "text",
+                    "displayName": "Access Key Secret",
+                    "required": true,
+                    "secret": true,
+                    "instructions": "Your Gong API Access Key Secret, provided when the access key was created."
+                }
+            }
         }
     ]
 }
