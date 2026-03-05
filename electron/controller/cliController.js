@@ -379,6 +379,52 @@ const cliController = {
     }
     return { success: false };
   },
+
+  /**
+   * getSessionStatus
+   * Check if a CLI session exists and whether a process is active for a widget.
+   *
+   * @param {string} widgetUuid - the widget to check
+   * @returns {{ hasSession: boolean, sessionId?: string, isProcessActive: boolean }}
+   */
+  getSessionStatus: (widgetUuid) => {
+    const sessionId = widgetUuid ? sessions.get(widgetUuid) : null;
+    // Check if any active process belongs to this widget
+    let isProcessActive = false;
+    for (const [, child] of activeProcesses) {
+      if (!child.killed) {
+        isProcessActive = true;
+        break;
+      }
+    }
+    return {
+      hasSession: !!sessionId,
+      sessionId: sessionId || undefined,
+      isProcessActive,
+    };
+  },
+
+  /**
+   * endSession
+   * Kill any active CLI process AND clear the session for a widget.
+   *
+   * @param {string} widgetUuid - the widget whose session to end
+   * @returns {{ success: boolean }}
+   */
+  endSession: (widgetUuid) => {
+    // Kill any active processes for this widget
+    for (const [reqId, child] of activeProcesses) {
+      if (reqId.startsWith(widgetUuid)) {
+        child.kill("SIGTERM");
+        activeProcesses.delete(reqId);
+      }
+    }
+    // Clear the session
+    if (widgetUuid && sessions.has(widgetUuid)) {
+      sessions.delete(widgetUuid);
+    }
+    return { success: true };
+  },
 };
 
 module.exports = cliController;

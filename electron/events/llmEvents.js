@@ -11,6 +11,8 @@ const LLM_ABORT_REQUEST = "llm-abort-request";
 const LLM_LIST_CONNECTED_TOOLS = "llm-list-connected-tools";
 const LLM_CHECK_CLI_AVAILABLE = "llm-check-cli-available";
 const LLM_CLEAR_CLI_SESSION = "llm-clear-cli-session";
+const LLM_CLI_SESSION_STATUS = "llm-cli-session-status";
+const LLM_CLI_END_SESSION = "llm-cli-end-session";
 
 // --- Main → Renderer (send) ---
 const LLM_STREAM_DELTA = "llm-stream-delta";
@@ -30,4 +32,6 @@ module.exports = {
   LLM_STREAM_TOOL_RESULT,
   LLM_STREAM_COMPLETE,
   LLM_STREAM_ERROR,
+  LLM_CLI_SESSION_STATUS,
+  LLM_CLI_END_SESSION,
 };
