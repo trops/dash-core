@@ -33,6 +33,25 @@ let _shellPath = null;
 function getShellPath() {
   if (_shellPath !== null) return _shellPath;
 
+  const fallbackDirs = [
+    "/usr/local/bin",
+    "/opt/homebrew/bin",
+  ];
+
+  // Add nvm/volta/nodenv paths if available
+  const home = process.env.HOME || "";
+  if (home) {
+    fallbackDirs.push(`${home}/.volta/bin`);
+    fallbackDirs.push(`${home}/.nodenv/shims`);
+    try {
+      const nvmDir = `${home}/.nvm/versions/node`;
+      const versions = fs.readdirSync(nvmDir).sort();
+      if (versions.length > 0) {
+        fallbackDirs.push(`${nvmDir}/${versions[versions.length - 1]}/bin`);
+      }
+    } catch {}
+  }
+
   try {
     const { execSync } = require("child_process");
     const shell = process.env.SHELL || "/bin/bash";
@@ -40,10 +59,20 @@ function getShellPath() {
       encoding: "utf8",
       timeout: 5000,
     });
-  } catch {
+  } catch (err) {
+    console.warn("[mcpController] Failed to resolve shell PATH:", err.message);
     _shellPath = process.env.PATH || "";
   }
 
+  // Append fallback dirs that aren't already present
+  const currentPaths = _shellPath.split(":");
+  for (const dir of fallbackDirs) {
+    if (!currentPaths.includes(dir)) {
+      _shellPath += `:${dir}`;
+    }
+  }
+
+  console.log("[mcpController] Resolved PATH:", _shellPath);
   return _shellPath;
 }
 
