@@ -228,6 +228,31 @@ export const ProviderForm = ({
             />
           )}
 
+          {fieldConfig.type === "file" && (
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <InputText
+                  value={formData[fieldName] || ""}
+                  onChange={(value) => handleInputChange(fieldName, value)}
+                  placeholder="Select a file..."
+                  className={errors[fieldName] ? "border-red-500" : ""}
+                />
+              </div>
+              <button
+                onClick={async () => {
+                  const filepath = await window.mainApi.dialog.chooseFile(
+                    true,
+                    ["json"],
+                  );
+                  if (filepath) handleInputChange(fieldName, filepath);
+                }}
+                className="px-3 py-1.5 text-sm rounded bg-white/10 hover:bg-white/20 transition-colors"
+              >
+                Browse
+              </button>
+            </div>
+          )}
+
           {errors[fieldName] && (
             <p className="text-sm text-red-500 dark:text-red-400">
               {errors[fieldName]}
