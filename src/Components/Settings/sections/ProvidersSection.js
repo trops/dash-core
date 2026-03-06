@@ -360,10 +360,15 @@ export const ProvidersSection = ({
     );
   } else if (isEditingMcp && selectedName && selectedProvider) {
     const mc = selectedProvider.mcpConfig || {};
+    const editCatalogEntry = catalog.find(
+      (entry) => entry.id === selectedProvider.type,
+    );
     detailContent = (
       <CustomMcpServerForm
         isEditMode={true}
         initialName={selectedName}
+        initialProviderType={selectedProvider.type || "custom"}
+        initialCredentialSchema={editCatalogEntry?.credentialSchema || {}}
         initialTransport={mc.transport || "stdio"}
         initialCommand={mc.command || ""}
         initialArgs={(mc.args || []).join(" ")}

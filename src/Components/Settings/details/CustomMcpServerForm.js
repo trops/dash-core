@@ -87,6 +87,8 @@ export const CustomMcpServerForm = ({
   onBack,
   isEditMode = false,
   initialName = "",
+  initialProviderType = "custom",
+  initialCredentialSchema = {},
   initialTransport = "stdio",
   initialCommand = "",
   initialArgs = "",
@@ -146,8 +148,8 @@ export const CustomMcpServerForm = ({
 
   // Derive credential fields from the live mcpConfig
   const formFields = useMemo(
-    () => deriveFormFields(mcpConfig, {}),
-    [mcpConfig],
+    () => deriveFormFields(mcpConfig, initialCredentialSchema),
+    [mcpConfig, initialCredentialSchema],
   );
 
   // --- envMapping row handlers ---
@@ -323,12 +325,12 @@ export const CustomMcpServerForm = ({
         url: result.url,
         headerRows: result.headerRows,
       });
-      onSave(name, "custom", result.credentialData, config);
+      onSave(name, initialProviderType, result.credentialData, config);
       return;
     }
 
     if (!validateForm()) return;
-    onSave(providerName.trim(), "custom", credentialData, mcpConfig);
+    onSave(providerName.trim(), initialProviderType, credentialData, mcpConfig);
   };
 
   return (
