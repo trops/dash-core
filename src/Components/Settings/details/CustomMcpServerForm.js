@@ -422,11 +422,11 @@ export const CustomMcpServerForm = ({
           activeStep={wizardStep}
           onStepChange={handleWizardStepChange}
           showNavigation={false}
-          className="flex-1 min-h-0 flex flex-col"
+          className="flex-1 min-h-0 flex flex-col px-6 pt-4"
         >
           {/* ── Step 1: Configure ── */}
           <Stepper.Step label="Configure" description="Server & credentials">
-            <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4 space-y-5">
+            <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
               {/* Provider Name */}
               <div className="flex flex-col gap-2">
                 <FormLabel label="Provider Name" required={true} />
@@ -826,7 +826,7 @@ export const CustomMcpServerForm = ({
 
           {/* ── Step 2: Test ── */}
           <Stepper.Step label="Test" description="Verify connection">
-            <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4 space-y-5">
+            <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
               <div className="flex flex-col items-center justify-center py-8 space-y-4">
                 <p className="text-sm opacity-60 text-center">
                   Test the connection to verify your configuration is correct.
@@ -864,7 +864,7 @@ export const CustomMcpServerForm = ({
 
           {/* ── Step 3: Tools ── */}
           <Stepper.Step label="Tools" description="Select allowed tools">
-            <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4 space-y-5">
+            <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
               {testResult?.success &&
               testResult.tools?.length > 0 &&
               selectedTools ? (
