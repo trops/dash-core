@@ -6,9 +6,11 @@ import {
   Sidebar,
   Button,
   Paragraph,
+  ConfirmationModal,
   getStylesForItem,
   themeObjects,
 } from "@trops/dash-react";
+import { AppContext } from "../../../Context/App/AppContext";
 import { RegistryPackageDetail } from "./RegistryPackageDetail";
 import { useRegistrySearch } from "../../../hooks/useRegistrySearch";
 
@@ -20,6 +22,8 @@ import { useRegistrySearch } from "../../../hooks/useRegistrySearch";
  */
 export const DiscoverWidgetsDetail = ({ onBack }) => {
   const { currentTheme } = useContext(ThemeContext);
+  const appContext = useContext(AppContext);
+  const providers = appContext?.providers || {};
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,
   });
@@ -38,12 +42,56 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
   } = useRegistrySearch();
 
   const [selectedPackageName, setSelectedPackageName] = useState(null);
+  const [toolConflictWarning, setToolConflictWarning] = useState(null);
 
   const selectedWidget = selectedPackageName
     ? flatWidgets.find((w) => w.packageName === selectedPackageName)
     : null;
 
+  // Check if widget's requiredTools conflict with user's provider allowedTools
+  const checkToolConflicts = (widget) => {
+    const conflicts = [];
+    const packageWidgets = widget.packageWidgets || [];
+    for (const w of packageWidgets) {
+      for (const p of w.providers || []) {
+        if (!p.requiredTools?.length || p.providerClass !== "mcp") continue;
+        // Find matching user provider
+        const matchingProviders = Object.entries(providers).filter(
+          ([, prov]) =>
+            prov.type === p.type &&
+            prov.providerClass === "mcp" &&
+            prov.allowedTools,
+        );
+        for (const [provName, prov] of matchingProviders) {
+          const blocked = p.requiredTools.filter(
+            (t) => !prov.allowedTools.includes(t),
+          );
+          if (blocked.length > 0) {
+            conflicts.push({
+              widgetName: w.displayName || w.name,
+              providerName: provName,
+              blockedTools: blocked,
+            });
+          }
+        }
+      }
+    }
+    return conflicts;
+  };
+
   const handleInstall = () => {
+    if (!selectedWidget) return;
+
+    const conflicts = checkToolConflicts(selectedWidget);
+    if (conflicts.length > 0) {
+      setToolConflictWarning(conflicts);
+    } else {
+      installPackage(selectedWidget);
+    }
+  };
+
+  const handleConfirmInstall = () => {
+    setToolConflictWarning(null);
     if (selectedWidget) {
       installPackage(selectedWidget);
     }
@@ -171,6 +219,28 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
           {packages.length !== 1 ? "s" : ""}
         </div>
       )}
+
+      {/* Tool conflict warning modal */}
+      <ConfirmationModal
+        isOpen={!!toolConflictWarning}
+        setIsOpen={() => setToolConflictWarning(null)}
+        title="Tool Access Conflict"
+        message={
+          toolConflictWarning
+            ? `This widget requires tools that are blocked by your provider settings:\n\n${toolConflictWarning
+                .map(
+                  (c) =>
+                    `• ${c.widgetName} needs ${c.blockedTools.join(", ")} (blocked by "${c.providerName}")`,
+                )
+                .join(
+                  "\n",
+                )}\n\nYou can update allowed tools in Settings → Providers after installing.`
+            : ""
+        }
+        confirmLabel="Install Anyway"
+        onConfirm={handleConfirmInstall}
+        onCancel={() => setToolConflictWarning(null)}
+      />
     </div>
   );
 };

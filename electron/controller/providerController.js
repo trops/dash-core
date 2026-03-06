@@ -28,6 +28,7 @@ const providerController = {
    * @param {object} credentials credentials object
    * @param {string} providerClass "credential" (default) or "mcp"
    * @param {object} mcpConfig MCP server config (transport, command, args, envMapping) - only for providerClass "mcp"
+   * @param {string[]|null} allowedTools optional list of allowed tool names - only for providerClass "mcp"
    */
   saveProvider: (
     win,
@@ -37,6 +38,7 @@ const providerController = {
     credentials,
     providerClass = "credential",
     mcpConfig = null,
+    allowedTools = null,
   ) => {
     try {
       // Build file path
@@ -70,6 +72,11 @@ const providerController = {
       // Add mcpConfig for MCP providers
       if (providerClass === "mcp" && mcpConfig) {
         providerEntry.mcpConfig = mcpConfig;
+      }
+
+      // Add allowedTools for MCP providers
+      if (providerClass === "mcp" && allowedTools) {
+        providerEntry.allowedTools = allowedTools;
       }
 
       providers[providerName] = providerEntry;
@@ -144,6 +151,11 @@ const providerController = {
             provider.mcpConfig = data.mcpConfig;
           }
 
+          // Include allowedTools for MCP providers
+          if (data.allowedTools) {
+            provider.allowedTools = data.allowedTools;
+          }
+
           decryptedProviders.push(provider);
         } catch (decryptError) {
           console.error(
@@ -214,6 +226,11 @@ const providerController = {
       // Include mcpConfig for MCP providers
       if (providerData.mcpConfig) {
         provider.mcpConfig = providerData.mcpConfig;
+      }
+
+      // Include allowedTools for MCP providers
+      if (providerData.allowedTools) {
+        provider.allowedTools = providerData.allowedTools;
       }
 
       console.log(`[providerController] Provider retrieved: ${providerName}`);

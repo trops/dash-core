@@ -101,16 +101,34 @@ export const RegistryPackageDetail = ({
                   </div>
                 )}
                 {w.providers && w.providers.length > 0 && (
-                  <div className="flex gap-1 mt-1">
-                    {w.providers.map((p, pidx) => (
-                      <span
-                        key={pidx}
-                        className="text-xs px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-400"
-                      >
-                        {p.type}
-                        {p.required ? " *" : ""}
-                      </span>
-                    ))}
+                  <div className="space-y-1 mt-1">
+                    <div className="flex gap-1 flex-wrap">
+                      {w.providers.map((p, pidx) => (
+                        <span
+                          key={pidx}
+                          className="text-xs px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-400"
+                        >
+                          {p.type}
+                          {p.required ? " *" : ""}
+                        </span>
+                      ))}
+                    </div>
+                    {w.providers.some((p) => p.requiredTools?.length > 0) && (
+                      <div className="flex flex-wrap gap-1 ml-1">
+                        {w.providers
+                          .filter((p) => p.requiredTools?.length > 0)
+                          .flatMap((p) =>
+                            p.requiredTools.map((tool) => (
+                              <span
+                                key={`${p.type}-${tool}`}
+                                className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 opacity-60"
+                              >
+                                {tool}
+                              </span>
+                            )),
+                          )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

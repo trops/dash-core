@@ -70,15 +70,8 @@ export const useMcpProvider = (providerType, options = {}) => {
   const mountedRef = useRef(true);
   const dashApi = app?.dashApi;
 
-  // Get the widget's allowed tools from its provider declaration
+  // Get the widget data and compute effective allowed tools
   const widgetData = widgetContext?.widgetData;
-  const allowedTools = (() => {
-    if (!widgetData?.providers) return null;
-    const mcpProvider = widgetData.providers.find(
-      (p) => p.type === providerType && p.providerClass === "mcp",
-    );
-    return mcpProvider?.allowedTools || null;
-  })();
 
   // Get the selected MCP provider for this widget
   // First check widget-level selectedProviders (set by handleSelectProvider on the layout item),
@@ -106,18 +99,37 @@ export const useMcpProvider = (providerType, options = {}) => {
     ? app?.providers?.[selectedProviderName]
     : null;
 
+  // Merge widget-declared allowedTools with user-configured allowedTools (intersection)
+  const effectiveAllowedTools = (() => {
+    // Widget-declared (from .dash.js providers[].allowedTools)
+    const widgetAllowed = (() => {
+      if (!widgetData?.providers) return null;
+      const p = widgetData.providers.find(
+        (p) => p.type === providerType && p.providerClass === "mcp",
+      );
+      return p?.allowedTools || null;
+    })();
+    // User-configured (from saved provider object)
+    const userAllowed = provider?.allowedTools || null;
+    // Intersection
+    if (!widgetAllowed && !userAllowed) return null;
+    if (!widgetAllowed) return userAllowed;
+    if (!userAllowed) return widgetAllowed;
+    return widgetAllowed.filter((t) => userAllowed.includes(t));
+  })();
+
   /**
    * Apply connection result to this hook instance's local state.
-   * Filters tools by allowedTools if specified.
+   * Filters tools by effectiveAllowedTools if specified.
    */
   const applyResult = useCallback(
     (result) => {
       if (!mountedRef.current) return;
 
       let serverTools = result.tools || [];
-      if (allowedTools) {
+      if (effectiveAllowedTools) {
         serverTools = serverTools.filter((tool) =>
-          allowedTools.includes(tool.name),
+          effectiveAllowedTools.includes(tool.name),
         );
       }
 
@@ -128,7 +140,7 @@ export const useMcpProvider = (providerType, options = {}) => {
       setStatus("connected");
       connectedRef.current = true;
     },
-    [allowedTools],
+    [effectiveAllowedTools],
   );
 
   /**
@@ -326,11 +338,20 @@ export const useMcpProvider = (providerType, options = {}) => {
       }
 
       // Client-side tool scoping check
-      if (allowedTools && !allowedTools.includes(toolName)) {
+      if (effectiveAllowedTools && !effectiveAllowedTools.includes(toolName)) {
+        // Provide enhanced error if the tool is in widget's requiredTools
+        const widgetRequiredTools = (() => {
+          if (!widgetData?.providers) return null;
+          const p = widgetData.providers.find(
+            (p) => p.type === providerType && p.providerClass === "mcp",
+          );
+          return p?.requiredTools || null;
+        })();
+        const isRequired = widgetRequiredTools?.includes(toolName);
         throw new Error(
-          `Tool "${toolName}" is not allowed for this widget. Allowed tools: ${allowedTools.join(
+          `Tool "${toolName}" is not allowed for this widget. Allowed tools: ${effectiveAllowedTools.join(
             ", ",
-          )}`,
+          )}${isRequired ? `. Note: "${toolName}" is declared as a required tool by this widget — update the provider's allowed tools in Settings → Providers.` : ""}`,
         );
       }
 
@@ -345,7 +366,7 @@ export const useMcpProvider = (providerType, options = {}) => {
           selectedProviderName,
           toolName,
           args,
-          allowedTools,
+          effectiveAllowedTools,
           (event, result) => {
             clearTimeout(timeout);
             console.log(
@@ -365,7 +386,13 @@ export const useMcpProvider = (providerType, options = {}) => {
         );
       });
     },
-    [dashApi, selectedProviderName, allowedTools],
+    [
+      dashApi,
+      selectedProviderName,
+      effectiveAllowedTools,
+      widgetData,
+      providerType,
+    ],
   );
 
   /**

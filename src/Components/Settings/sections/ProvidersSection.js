@@ -177,6 +177,7 @@ export const ProvidersSection = ({
     providerType,
     mcpCredentials,
     mcpConfig,
+    allowedTools = null,
   ) {
     if (!dashApi || !appId) return;
     dashApi.saveProvider(
@@ -187,6 +188,7 @@ export const ProvidersSection = ({
         credentials: mcpCredentials,
         providerClass: "mcp",
         mcpConfig,
+        allowedTools,
       },
       () => {
         setIsAddingMcp(false);
@@ -204,6 +206,7 @@ export const ProvidersSection = ({
     providerType,
     mcpCredentials,
     mcpConfig,
+    allowedTools = null,
   ) {
     if (!dashApi || !appId) return;
     const originalName = selectedName;
@@ -226,6 +229,7 @@ export const ProvidersSection = ({
         credentials: mcpCredentials,
         providerClass: "mcp",
         mcpConfig,
+        allowedTools,
       },
       () => {
         setSelectedName(providerName);
@@ -235,6 +239,29 @@ export const ProvidersSection = ({
         refreshProviders && refreshProviders();
       },
       (e, err) => console.error("Save MCP provider error:", err),
+    );
+  }
+
+  // Handle saving just allowedTools for an existing MCP provider
+  function handleSaveAllowedTools(providerName, allowedTools) {
+    if (!dashApi || !appId) return;
+    const existingProvider = providers[providerName];
+    if (!existingProvider) return;
+
+    dashApi.saveProvider(
+      appId,
+      providerName,
+      {
+        providerType: existingProvider.type,
+        credentials: existingProvider.credentials,
+        providerClass: "mcp",
+        mcpConfig: existingProvider.mcpConfig,
+        allowedTools,
+      },
+      () => {
+        refreshProviders && refreshProviders();
+      },
+      (e, err) => console.error("Save allowed tools error:", err),
     );
   }
 
@@ -376,6 +403,7 @@ export const ProvidersSection = ({
         initialUrl={mc.url || ""}
         initialHeaderRows={headerTemplateToRows(mc.headerTemplate, nextRowId)}
         initialCredentials={selectedProvider.credentials || {}}
+        initialAllowedTools={selectedProvider.allowedTools || null}
         onSave={handleMcpEditSave}
         onBack={() => setIsEditingMcp(false)}
       />
@@ -400,6 +428,7 @@ export const ProvidersSection = ({
         onCancelEdit={resetForm}
         onStartEdit={handleStartEdit}
         onDelete={(name) => setDeleteTarget(name)}
+        onSaveAllowedTools={handleSaveAllowedTools}
         catalogAuthCommand={catalogEntry?.authCommand || null}
       />
     );

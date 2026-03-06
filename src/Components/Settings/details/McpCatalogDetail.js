@@ -17,6 +17,7 @@ import {
   headerTemplateToRows,
 } from "../../../utils/mcpUtils";
 import { CustomMcpServerForm } from "./CustomMcpServerForm";
+import { ToolSelector } from "./ToolSelector";
 import { AdvancedMcpConfig } from "../../Provider/AdvancedMcpConfig";
 
 /**
@@ -66,6 +67,7 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
   const [isCustom, setIsCustom] = useState(false);
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [authResult, setAuthResult] = useState(null);
+  const [selectedTools, setSelectedTools] = useState(null);
 
   // Configuration form state
   const [providerName, setProviderName] = useState("");
@@ -200,6 +202,9 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
           message: `Connected! Found ${(result.tools || []).length} tools.`,
         });
 
+        // Pre-select all tools
+        setSelectedTools((result.tools || []).map((t) => t.name));
+
         // Stop the test server
         dashApi.mcpStopServer(
           testName,
@@ -255,6 +260,7 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
       selectedServer.id,
       credentialData,
       effectiveMcpConfig,
+      selectedTools,
     );
   };
 
@@ -276,6 +282,7 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
     setIsCustom(false);
     setTestResult(null);
     setAuthResult(null);
+    setSelectedTools(null);
     setProviderName("");
     setCredentialData({});
     setFormErrors({});
@@ -510,22 +517,19 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
                 />
                 <span>{testResult.message}</span>
               </div>
-              {testResult.success && testResult.tools?.length > 0 && (
-                <div className="mt-2 ml-6 space-y-1">
-                  {testResult.tools.map((tool) => (
-                    <div key={tool.name} className="text-xs">
-                      <span className="font-mono">{tool.name}</span>
-                      {tool.description && (
-                        <span className="opacity-60 ml-2">
-                          - {tool.description}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           )}
+
+          {/* Tool Selection after successful test */}
+          {testResult?.success &&
+            testResult.tools?.length > 0 &&
+            selectedTools && (
+              <ToolSelector
+                tools={testResult.tools}
+                selectedTools={selectedTools}
+                onSelectionChange={setSelectedTools}
+              />
+            )}
         </div>
 
         {/* Footer */}

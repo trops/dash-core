@@ -95,15 +95,28 @@ export const InstalledWidgetDetail = ({ widget, onDelete }) => {
             <span className="text-xs font-semibold opacity-50">PROVIDERS</span>
             <div className="flex flex-wrap gap-1.5">
               {widget.providers.map((p, i) => (
-                <span
-                  key={i}
-                  className={`text-xs px-2 py-0.5 rounded ${
-                    currentTheme["bg-primary-medium"] || "bg-white/10"
-                  } opacity-70`}
-                >
-                  {p.type}
-                  {p.providerClass === "mcp" ? " (MCP)" : ""}
-                </span>
+                <div key={i} className="flex flex-col gap-1">
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded ${
+                      currentTheme["bg-primary-medium"] || "bg-white/10"
+                    } opacity-70 w-fit`}
+                  >
+                    {p.type}
+                    {p.providerClass === "mcp" ? " (MCP)" : ""}
+                  </span>
+                  {p.requiredTools && p.requiredTools.length > 0 && (
+                    <div className="flex flex-wrap gap-1 ml-2">
+                      {p.requiredTools.map((tool) => (
+                        <span
+                          key={tool}
+                          className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-400"
+                        >
+                          {tool}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           </div>
