@@ -137,9 +137,10 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
       setWizardStep(newStep);
       return;
     }
-    // Step 0→1: validate the configure form
+    // Step 0→1: validate the configure form + auth gate
     if (wizardStep === 0 && newStep >= 1) {
       if (!validateForm()) return;
+      if (selectedServer?.authCommand && !authResult?.success) return;
     }
     // Step 1→2: require successful test
     if (wizardStep === 1 && newStep >= 2) {
@@ -361,11 +362,11 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
             activeStep={wizardStep}
             onStepChange={handleWizardStepChange}
             showNavigation={false}
-            className="flex-1 min-h-0 flex flex-col"
+            className="flex-1 min-h-0 flex flex-col px-6 pt-4"
           >
             {/* ── Step 1: Configure ── */}
             <Stepper.Step label="Configure" description="Name & credentials">
-              <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4 space-y-5">
+              <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
                 {/* Server Connection Info */}
                 <div className="bg-white/5 border border-white/10 rounded-lg p-4 space-y-3">
                   <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
@@ -549,7 +550,7 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
 
             {/* ── Step 2: Test ── */}
             <Stepper.Step label="Test" description="Verify connection">
-              <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4 space-y-5">
+              <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
                 <div className="flex flex-col items-center justify-center py-8 space-y-4">
                   <p className="text-sm opacity-60 text-center">
                     Test the connection to verify your configuration is correct.
@@ -587,7 +588,7 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
 
             {/* ── Step 3: Tools ── */}
             <Stepper.Step label="Tools" description="Select allowed tools">
-              <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4 space-y-5">
+              <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
                 {testResult?.success &&
                 testResult.tools?.length > 0 &&
                 selectedTools ? (
@@ -638,6 +639,7 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
                 <Button
                   title="Next"
                   onClick={() => handleWizardStepChange(1)}
+                  disabled={selectedServer?.authCommand && !authResult?.success}
                   size="sm"
                 />
               </>
