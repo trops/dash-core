@@ -136,6 +136,21 @@ function getShellPath() {
 }
 
 /**
+ * Create a clean environment for MCP child processes.
+ * Strips npm_* and ELECTRON_* vars that would force the child
+ * to use Electron's or npm's Node binary instead of the PATH one.
+ */
+function cleanEnvForChildProcess() {
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith("npm_") || key.startsWith("ELECTRON_")) continue;
+    env[key] = value;
+  }
+  env.PATH = getShellPath();
+  return env;
+}
+
+/**
  * Active MCP server connections
  * Map<string, { client: Client, transport: Transport, tools: Array, status: string }>
  */
@@ -247,10 +262,7 @@ const mcpController = {
           });
         } else {
           // stdio transport (default) - spawn a local child process
-          const env = { ...process.env };
-          // Ensure full shell PATH is available (Electron GUI apps
-          // on macOS don't inherit nvm/homebrew paths)
-          env.PATH = getShellPath();
+          const env = cleanEnvForChildProcess();
           if (mcpConfig.envMapping && credentials) {
             Object.entries(mcpConfig.envMapping).forEach(
               ([envVar, credentialKey]) => {
@@ -691,7 +703,7 @@ const mcpController = {
   runAuth: async (win, mcpConfig, credentials, authCommand) => {
     const { spawn } = require("child_process");
 
-    const env = { ...process.env, PATH: getShellPath() };
+    const env = cleanEnvForChildProcess();
 
     // Inject credentials as env vars using the same envMapping as startServer
     if (mcpConfig?.envMapping && credentials) {
