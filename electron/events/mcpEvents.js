@@ -36,6 +36,10 @@ const MCP_GET_CATALOG = "mcp-get-catalog";
 const MCP_GET_CATALOG_COMPLETE = "mcp-get-catalog-complete";
 const MCP_GET_CATALOG_ERROR = "mcp-get-catalog-error";
 
+const MCP_RUN_AUTH = "mcp-run-auth";
+const MCP_RUN_AUTH_COMPLETE = "mcp-run-auth-complete";
+const MCP_RUN_AUTH_ERROR = "mcp-run-auth-error";
+
 module.exports = {
   MCP_START_SERVER,
   MCP_START_SERVER_COMPLETE,
@@ -61,4 +65,7 @@ module.exports = {
   MCP_GET_CATALOG,
   MCP_GET_CATALOG_COMPLETE,
   MCP_GET_CATALOG_ERROR,
+  MCP_RUN_AUTH,
+  MCP_RUN_AUTH_COMPLETE,
+  MCP_RUN_AUTH_ERROR,
 };
