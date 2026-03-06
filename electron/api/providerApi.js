@@ -24,6 +24,7 @@ const providerApi = {
    * @param {Object} credentials - credentials object (shape depends on provider type)
    * @param {String} providerClass - "credential" (default) or "mcp"
    * @param {Object} mcpConfig - MCP server config (only for providerClass "mcp")
+   * @param {String[]|null} allowedTools - optional list of allowed tool names (MCP only)
    * @returns {Promise}
    */
   saveProvider: (
@@ -33,6 +34,7 @@ const providerApi = {
     credentials,
     providerClass = "credential",
     mcpConfig = null,
+    allowedTools = null,
   ) =>
     ipcRenderer.invoke(PROVIDER_SAVE, {
       appId,
@@ -41,6 +43,7 @@ const providerApi = {
       credentials,
       providerClass,
       mcpConfig,
+      allowedTools,
     }),
 
   /**

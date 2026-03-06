@@ -16,6 +16,7 @@ import {
   formStateToMcpJson,
   mcpJsonToFormState,
 } from "../../../utils/mcpUtils";
+import { ToolSelector } from "./ToolSelector";
 
 let rowIdCounter = 0;
 const nextRowId = () => `row_${++rowIdCounter}`;
@@ -96,6 +97,7 @@ export const CustomMcpServerForm = ({
   initialUrl = "",
   initialHeaderRows = [],
   initialCredentials = {},
+  initialAllowedTools = null,
 }) => {
   const appContext = useContext(AppContext);
   const dashApi = appContext?.dashApi;
@@ -118,6 +120,9 @@ export const CustomMcpServerForm = ({
   // HTTP fields
   const [url, setUrl] = useState(initialUrl);
   const [headerRows, setHeaderRows] = useState(initialHeaderRows);
+
+  // Tool selection state
+  const [selectedTools, setSelectedTools] = useState(initialAllowedTools);
 
   // JSON editor state
   const [viewMode, setViewMode] = useState("form"); // "form" | "json"
@@ -287,6 +292,16 @@ export const CustomMcpServerForm = ({
           message: `Connected! Found ${(result.tools || []).length} tools.`,
         });
 
+        // Pre-select tools: intersect with existing allowedTools if editing, or select all
+        const allToolNames = (result.tools || []).map((t) => t.name);
+        if (initialAllowedTools) {
+          setSelectedTools(
+            allToolNames.filter((t) => initialAllowedTools.includes(t)),
+          );
+        } else {
+          setSelectedTools(allToolNames);
+        }
+
         dashApi.mcpStopServer(
           testName,
           () => {},
@@ -325,12 +340,24 @@ export const CustomMcpServerForm = ({
         url: result.url,
         headerRows: result.headerRows,
       });
-      onSave(name, initialProviderType, result.credentialData, config);
+      onSave(
+        name,
+        initialProviderType,
+        result.credentialData,
+        config,
+        selectedTools,
+      );
       return;
     }
 
     if (!validateForm()) return;
-    onSave(providerName.trim(), initialProviderType, credentialData, mcpConfig);
+    onSave(
+      providerName.trim(),
+      initialProviderType,
+      credentialData,
+      mcpConfig,
+      selectedTools,
+    );
   };
 
   return (
@@ -755,22 +782,19 @@ export const CustomMcpServerForm = ({
               />
               <span>{testResult.message}</span>
             </div>
-            {testResult.success && testResult.tools?.length > 0 && (
-              <div className="mt-2 ml-6 space-y-1">
-                {testResult.tools.map((tool) => (
-                  <div key={tool.name} className="text-xs">
-                    <span className="font-mono">{tool.name}</span>
-                    {tool.description && (
-                      <span className="opacity-60 ml-2">
-                        - {tool.description}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         )}
+
+        {/* Tool Selection after successful test */}
+        {testResult?.success &&
+          testResult.tools?.length > 0 &&
+          selectedTools && (
+            <ToolSelector
+              tools={testResult.tools}
+              selectedTools={selectedTools}
+              onSelectionChange={setSelectedTools}
+            />
+          )}
       </div>
 
       {/* Footer */}

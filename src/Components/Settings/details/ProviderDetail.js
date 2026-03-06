@@ -12,6 +12,7 @@ import {
   formatFieldName,
   isLikelySecret,
 } from "../../../utils/mcpUtils";
+import { ToolSelector } from "./ToolSelector";
 
 export const ProviderDetail = ({
   providerName = null,
@@ -29,6 +30,7 @@ export const ProviderDetail = ({
   onStartEdit,
   onCreate,
   onDelete,
+  onSaveAllowedTools,
   catalogAuthCommand = null,
 }) => {
   const appContext = useContext(AppContext);
@@ -38,6 +40,7 @@ export const ProviderDetail = ({
   // MCP test connection state
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [selectedTools, setSelectedTools] = useState(null);
 
   // MCP auth state
   const [isAuthorizing, setIsAuthorizing] = useState(false);
@@ -143,6 +146,16 @@ export const ProviderDetail = ({
           tools: result.tools || [],
           message: `Connected! Found ${(result.tools || []).length} tools.`,
         });
+
+        // Pre-select: intersect with existing allowedTools, or select all
+        const allToolNames = (result.tools || []).map((t) => t.name);
+        if (provider?.allowedTools) {
+          setSelectedTools(
+            allToolNames.filter((t) => provider.allowedTools.includes(t)),
+          );
+        } else {
+          setSelectedTools(allToolNames);
+        }
 
         // Stop after test
         dashApi.mcpStopServer(
@@ -548,22 +561,45 @@ export const ProviderDetail = ({
                   />
                   <span>{testResult.message}</span>
                 </div>
-                {testResult.success && testResult.tools?.length > 0 && (
-                  <div className="mt-2 ml-6 space-y-1">
-                    {testResult.tools.map((tool) => (
-                      <div key={tool.name} className="text-xs">
-                        <span className="font-mono">{tool.name}</span>
-                        {tool.description && (
-                          <span className="opacity-60 ml-2">
-                            - {tool.description}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
+
+            {/* Tool Selection after successful test */}
+            {testResult?.success &&
+              testResult.tools?.length > 0 &&
+              selectedTools && (
+                <ToolSelector
+                  tools={testResult.tools}
+                  selectedTools={selectedTools}
+                  onSelectionChange={setSelectedTools}
+                />
+              )}
+
+            {/* Allowed Tools read-only display (when no test result) */}
+            {!testResult &&
+              provider?.allowedTools &&
+              provider.allowedTools.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
+                    Allowed Tools
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {provider.allowedTools.map((tool) => (
+                      <span
+                        key={tool}
+                        className="text-xs font-mono px-2 py-0.5 rounded bg-white/5 opacity-70"
+                      >
+                        {tool}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-xs opacity-40">
+                    {provider.allowedTools.length} tool
+                    {provider.allowedTools.length !== 1 ? "s" : ""} allowed —
+                    test connection to modify
+                  </p>
+                </div>
+              )}
           </div>
         )}
       </div>
@@ -581,6 +617,13 @@ export const ProviderDetail = ({
           <Button
             title={isTesting ? "Testing..." : "Test Connection"}
             onClick={handleTestConnection}
+            size="sm"
+          />
+        )}
+        {isMcp && selectedTools && onSaveAllowedTools && (
+          <Button
+            title="Update Allowed Tools"
+            onClick={() => onSaveAllowedTools(providerName, selectedTools)}
             size="sm"
           />
         )}

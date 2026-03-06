@@ -343,9 +343,14 @@ class ElectronDashboardApi implements IDashboardApi {
     if (this.api !== null) {
       try {
         // Handle the promise returned by the IPC call
-        // Note: providerData should contain providerType, credentials, and optionally providerClass/mcpConfig
-        const { providerType, credentials, providerClass, mcpConfig } =
-          providerData;
+        // Note: providerData should contain providerType, credentials, and optionally providerClass/mcpConfig/allowedTools
+        const {
+          providerType,
+          credentials,
+          providerClass,
+          mcpConfig,
+          allowedTools,
+        } = providerData;
         this.api.providers
           .saveProvider(
             appId,
@@ -354,6 +359,7 @@ class ElectronDashboardApi implements IDashboardApi {
             credentials,
             providerClass,
             mcpConfig,
+            allowedTools,
           )
           .then((result) => {
             onSuccess(this.events.PROVIDER_SAVE_COMPLETE, result);
