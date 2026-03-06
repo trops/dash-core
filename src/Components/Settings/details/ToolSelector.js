@@ -34,7 +34,7 @@ export const ToolSelector = ({
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 flex-1 flex flex-col min-h-0">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
           Allowed Tools
@@ -49,7 +49,7 @@ export const ToolSelector = ({
       <p className="text-sm opacity-50">
         Choose which tools this provider can expose to widgets
       </p>
-      <div className="space-y-1 max-h-64 overflow-y-auto">
+      <div className="space-y-1 flex-1 min-h-0 overflow-y-auto">
         {tools.map((tool) => {
           const checked = selectedTools.includes(tool.name);
           return (
