@@ -26,17 +26,42 @@ const fs = require("fs");
 let _shellPath = null;
 
 /**
+ * Check if a Node.js major version is compatible (v18, v20, or v22).
+ * Node v24+ has stricter ESM resolution that breaks some MCP packages.
+ */
+function isCompatibleNodeVersion(majorVersion) {
+  return majorVersion >= 18 && majorVersion <= 22;
+}
+
+/**
+ * Detect if an error message indicates Node v24+ ESM incompatibility.
+ */
+function isNodeEsmError(errorText) {
+  if (!errorText) return false;
+  return (
+    errorText.includes("ERR_PACKAGE_PATH_NOT_EXPORTED") ||
+    errorText.includes("ERR_MODULE_NOT_FOUND")
+  );
+}
+
+/**
  * Get the user's full shell PATH (including nvm, homebrew, volta, etc.).
  * Electron GUI apps on macOS don't inherit the shell PATH, so we
  * resolve it once by invoking a login shell.
+ *
+ * On systems where Node v24+ is the default, this will prefer a compatible
+ * nvm-managed Node version (v18/v20/v22) to avoid ESM resolution errors
+ * in MCP packages.
  */
 function getShellPath() {
   if (_shellPath !== null) return _shellPath;
 
+  const { execSync } = require("child_process");
   const fallbackDirs = ["/usr/local/bin", "/opt/homebrew/bin"];
 
-  // Add nvm/volta/nodenv paths if available
+  // Scan nvm versions, tracking both latest and best compatible version
   const home = process.env.HOME || "";
+  let compatibleNvmBin = null;
   if (home) {
     fallbackDirs.push(`${home}/.volta/bin`);
     fallbackDirs.push(`${home}/.nodenv/shims`);
@@ -44,13 +69,21 @@ function getShellPath() {
       const nvmDir = `${home}/.nvm/versions/node`;
       const versions = fs.readdirSync(nvmDir).sort();
       if (versions.length > 0) {
+        // Find the highest compatible version (v18/v20/v22)
+        for (let i = versions.length - 1; i >= 0; i--) {
+          const match = versions[i].match(/^v(\d+)/);
+          if (match && isCompatibleNodeVersion(parseInt(match[1], 10))) {
+            compatibleNvmBin = `${nvmDir}/${versions[i]}/bin`;
+            break;
+          }
+        }
+        // Always add the latest nvm version as fallback
         fallbackDirs.push(`${nvmDir}/${versions[versions.length - 1]}/bin`);
       }
     } catch {}
   }
 
   try {
-    const { execSync } = require("child_process");
     const shell = process.env.SHELL || "/bin/bash";
     _shellPath = execSync(`${shell} -ilc 'echo -n "$PATH"'`, {
       encoding: "utf8",
@@ -67,6 +100,24 @@ function getShellPath() {
     if (!currentPaths.includes(dir)) {
       _shellPath += `:${dir}`;
     }
+  }
+
+  // If system Node is v24+, prepend compatible nvm version so it's found first
+  if (compatibleNvmBin) {
+    try {
+      const nodeVersion = execSync(
+        `PATH="${_shellPath}" node --version 2>/dev/null`,
+        { encoding: "utf8", timeout: 5000 },
+      ).trim();
+      const majorMatch = nodeVersion.match(/^v(\d+)/);
+      if (majorMatch && !isCompatibleNodeVersion(parseInt(majorMatch[1], 10))) {
+        console.log(
+          `[mcpController] System Node is ${nodeVersion} (incompatible), ` +
+            `prepending compatible nvm path: ${compatibleNvmBin}`,
+        );
+        _shellPath = `${compatibleNvmBin}:${_shellPath}`;
+      }
+    } catch {}
   }
 
   console.log("[mcpController] Resolved PATH:", _shellPath);
@@ -271,6 +322,14 @@ const mcpController = {
           error,
         );
 
+        // Detect Node v24+ ESM compatibility errors and provide actionable message
+        let errorMessage = error.message;
+        if (isNodeEsmError(error.message)) {
+          errorMessage =
+            "This MCP server is incompatible with your system Node.js version. " +
+            "Install Node.js v22 (LTS) using nvm and restart the app.";
+        }
+
         // Mark as error state
         activeServers.set(serverName, {
           client: null,
@@ -278,12 +337,12 @@ const mcpController = {
           tools: [],
           resources: [],
           status: STATUS.ERROR,
-          error: error.message,
+          error: errorMessage,
         });
 
         return {
           error: true,
-          message: error.message,
+          message: errorMessage,
           serverName,
           status: STATUS.ERROR,
         };
@@ -667,6 +726,16 @@ const mcpController = {
           resolve({ success: true });
         } else {
           const detail = stderr.trim() || stdout.trim() || "";
+          // Detect Node v24+ ESM compatibility errors and provide actionable message
+          if (isNodeEsmError(detail)) {
+            resolve({
+              error: true,
+              message:
+                "This MCP server is incompatible with your system Node.js version. " +
+                "Install Node.js v22 (LTS) using nvm and restart the app.",
+            });
+            return;
+          }
           resolve({
             error: true,
             message: `Auth exited with code ${code}${detail ? ": " + detail : ""}`,
