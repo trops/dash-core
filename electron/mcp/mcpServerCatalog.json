@@ -231,6 +231,10 @@
           "GMAIL_OAUTH_PATH": "oauthKeysPath"
         }
       },
+      "authCommand": {
+        "command": "npx",
+        "args": ["-y", "@gongrzhe/server-gmail-autoauth-mcp", "auth"]
+      },
       "credentialSchema": {
         "oauthKeysPath": {
           "type": "file",
