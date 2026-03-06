@@ -64,6 +64,8 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
   const [testResult, setTestResult] = useState(null);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
   const [isCustom, setIsCustom] = useState(false);
+  const [isAuthorizing, setIsAuthorizing] = useState(false);
+  const [authResult, setAuthResult] = useState(null);
 
   // Configuration form state
   const [providerName, setProviderName] = useState("");
@@ -129,6 +131,7 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
     setSelectedServer(server);
     setIsConfiguring(true);
     setTestResult(null);
+    setAuthResult(null);
     setProviderName(server.name);
     setCredentialData({});
     setFormErrors({});
@@ -215,6 +218,35 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
     );
   };
 
+  // Handle authorize (OAuth browser flow)
+  const handleAuthorize = () => {
+    if (!dashApi || !selectedServer?.authCommand) return;
+
+    setIsAuthorizing(true);
+    setAuthResult(null);
+
+    dashApi.mcpRunAuth(
+      effectiveMcpConfig,
+      credentialData,
+      selectedServer.authCommand,
+      (event, result) => {
+        if (result.error) {
+          setAuthResult({ success: false, message: result.message });
+        } else {
+          setAuthResult({ success: true, message: "Authorized!" });
+        }
+        setIsAuthorizing(false);
+      },
+      (event, err) => {
+        setAuthResult({
+          success: false,
+          message: err?.message || "Authorization failed",
+        });
+        setIsAuthorizing(false);
+      },
+    );
+  };
+
   // Handle save
   const handleSaveProvider = () => {
     if (!selectedServer || !validateForm()) return;
@@ -243,6 +275,7 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
     setIsConfiguring(false);
     setIsCustom(false);
     setTestResult(null);
+    setAuthResult(null);
     setProviderName("");
     setCredentialData({});
     setFormErrors({});
@@ -440,6 +473,26 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
             </>
           )}
 
+          {/* Auth Result */}
+          {authResult && (
+            <div
+              className={`p-3 rounded-lg text-sm ${
+                authResult.success
+                  ? "bg-green-900/30 border border-green-700 text-green-300"
+                  : "bg-red-900/30 border border-red-700 text-red-300"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <FontAwesomeIcon
+                  icon={
+                    authResult.success ? "circle-check" : "circle-exclamation"
+                  }
+                />
+                <span>{authResult.message}</span>
+              </div>
+            </div>
+          )}
+
           {/* Test Connection Result */}
           {testResult && (
             <div
@@ -478,6 +531,13 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
         {/* Footer */}
         <div className="flex-shrink-0 flex flex-row justify-end gap-2 px-6 py-4 border-t border-white/10">
           <Button title="Cancel" onClick={onCancel} size="sm" />
+          {selectedServer?.authCommand && (
+            <Button
+              title={isAuthorizing ? "Authorizing..." : "Authorize"}
+              onClick={handleAuthorize}
+              size="sm"
+            />
+          )}
           <Button
             title={isTesting ? "Testing..." : "Test Connection"}
             onClick={handleTestConnection}
