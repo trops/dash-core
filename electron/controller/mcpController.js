@@ -326,8 +326,10 @@ const mcpController = {
         let errorMessage = error.message;
         if (isNodeEsmError(error.message)) {
           errorMessage =
-            "This MCP server is incompatible with your system Node.js version. " +
-            "Install Node.js v22 (LTS) using nvm and restart the app.";
+            "This MCP server isn't yet compatible with Node.js v24. To fix this:\n\n" +
+            "1. Run: nvm install 22\n" +
+            "2. Restart the app.\n\n" +
+            "Don't have nvm? See https://github.com/nvm-sh/nvm#installing-and-updating";
         }
 
         // Mark as error state
@@ -731,8 +733,10 @@ const mcpController = {
             resolve({
               error: true,
               message:
-                "This MCP server is incompatible with your system Node.js version. " +
-                "Install Node.js v22 (LTS) using nvm and restart the app.",
+                "This MCP server isn't yet compatible with Node.js v24. To fix this:\n\n" +
+                "1. Run: nvm install 22\n" +
+                "2. Restart the app.\n\n" +
+                "Don't have nvm? See https://github.com/nvm-sh/nvm#installing-and-updating",
             });
             return;
           }
