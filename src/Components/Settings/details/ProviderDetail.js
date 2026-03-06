@@ -478,129 +478,153 @@ export const ProviderDetail = ({
 
         {/* MCP-specific info */}
         {isMcp && provider.mcpConfig && (
-          <div className="space-y-4">
-            <div className="border-t border-white/10 pt-4">
-              <p className="text-xs font-semibold opacity-40 uppercase tracking-wider mb-3">
-                MCP Server Configuration
-              </p>
-              <div className="space-y-2 text-sm">
-                <div className="flex gap-2">
-                  <span className="opacity-50 w-20">Transport:</span>
-                  <span>
-                    {provider.mcpConfig.transport === "streamable_http"
-                      ? "Streamable HTTP"
-                      : "stdio"}
-                  </span>
-                </div>
-                {provider.mcpConfig.transport === "streamable_http" ? (
+          <>
+            {/* Section: Server Configuration */}
+            <div className="space-y-4">
+              <div className="border-t border-white/10 pt-4">
+                <p className="text-xs font-semibold opacity-40 uppercase tracking-wider mb-3">
+                  Server Configuration
+                </p>
+                <div className="space-y-2 text-sm">
                   <div className="flex gap-2">
-                    <span className="opacity-50 w-20">Endpoint:</span>
-                    <span className="text-xs opacity-70">
-                      Remote hosted server
+                    <span className="opacity-50 w-20">Transport:</span>
+                    <span>
+                      {provider.mcpConfig.transport === "streamable_http"
+                        ? "Streamable HTTP"
+                        : "stdio"}
                     </span>
                   </div>
-                ) : (
-                  <>
+                  {provider.mcpConfig.transport === "streamable_http" ? (
                     <div className="flex gap-2">
-                      <span className="opacity-50 w-20">Command:</span>
-                      <code className="text-xs bg-white/5 px-2 py-0.5 rounded">
-                        {provider.mcpConfig.command}{" "}
-                        {(provider.mcpConfig.args || []).join(" ")}
-                      </code>
+                      <span className="opacity-50 w-20">Endpoint:</span>
+                      <span className="text-xs opacity-70">
+                        Remote hosted server
+                      </span>
                     </div>
-                    {provider.mcpConfig.envMapping &&
-                      Object.keys(provider.mcpConfig.envMapping).length > 0 && (
-                        <div className="flex gap-2">
-                          <span className="opacity-50 w-20">Env Vars:</span>
-                          <span className="text-xs">
-                            {Object.keys(provider.mcpConfig.envMapping).join(
-                              ", ",
-                            )}
-                          </span>
-                        </div>
-                      )}
-                  </>
-                )}
+                  ) : (
+                    <>
+                      <div className="flex gap-2">
+                        <span className="opacity-50 w-20">Command:</span>
+                        <code className="text-xs bg-white/5 px-2 py-0.5 rounded">
+                          {provider.mcpConfig.command}{" "}
+                          {(provider.mcpConfig.args || []).join(" ")}
+                        </code>
+                      </div>
+                      {provider.mcpConfig.envMapping &&
+                        Object.keys(provider.mcpConfig.envMapping).length >
+                          0 && (
+                          <div className="flex gap-2">
+                            <span className="opacity-50 w-20">Env Vars:</span>
+                            <span className="text-xs">
+                              {Object.keys(provider.mcpConfig.envMapping).join(
+                                ", ",
+                              )}
+                            </span>
+                          </div>
+                        )}
+                    </>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Auth Result */}
-            {authResult && (
-              <div
-                className={`p-3 rounded-lg text-sm ${
-                  authResult.success
-                    ? "bg-green-900/30 border border-green-700 text-green-300"
-                    : "bg-red-900/30 border border-red-700 text-red-300"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <FontAwesomeIcon
-                    icon={
-                      authResult.success ? "circle-check" : "circle-exclamation"
-                    }
-                  />
-                  <span>{authResult.message}</span>
-                </div>
+            {/* Section: Connection & Tools */}
+            <div className="space-y-4">
+              <div className="border-t border-white/10 pt-4">
+                <p className="text-xs font-semibold opacity-40 uppercase tracking-wider mb-3">
+                  Connection & Tools
+                </p>
               </div>
-            )}
 
-            {/* Test Connection Result */}
-            {testResult && (
-              <div
-                className={`p-3 rounded-lg text-sm ${
-                  testResult.success
-                    ? "bg-green-900/30 border border-green-700 text-green-300"
-                    : "bg-red-900/30 border border-red-700 text-red-300"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <FontAwesomeIcon
-                    icon={
-                      testResult.success ? "circle-check" : "circle-exclamation"
-                    }
-                  />
-                  <span>{testResult.message}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Tool Selection after successful test */}
-            {testResult?.success &&
-              testResult.tools?.length > 0 &&
-              selectedTools && (
-                <ToolSelector
-                  tools={testResult.tools}
-                  selectedTools={selectedTools}
-                  onSelectionChange={setSelectedTools}
-                />
-              )}
-
-            {/* Allowed Tools read-only display (when no test result) */}
-            {!testResult &&
-              provider?.allowedTools &&
-              provider.allowedTools.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
-                    Allowed Tools
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {provider.allowedTools.map((tool) => (
-                      <span
-                        key={tool}
-                        className="text-xs font-mono px-2 py-0.5 rounded bg-white/5 opacity-70"
-                      >
-                        {tool}
-                      </span>
-                    ))}
+              {/* Auth Result */}
+              {authResult && (
+                <div
+                  className={`p-3 rounded-lg text-sm ${
+                    authResult.success
+                      ? "bg-green-900/30 border border-green-700 text-green-300"
+                      : "bg-red-900/30 border border-red-700 text-red-300"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <FontAwesomeIcon
+                      icon={
+                        authResult.success
+                          ? "circle-check"
+                          : "circle-exclamation"
+                      }
+                    />
+                    <span>{authResult.message}</span>
                   </div>
-                  <p className="text-xs opacity-40">
-                    {provider.allowedTools.length} tool
-                    {provider.allowedTools.length !== 1 ? "s" : ""} allowed —
-                    test connection to modify
-                  </p>
                 </div>
               )}
-          </div>
+
+              {/* Test Connection Result */}
+              {testResult && (
+                <div
+                  className={`p-3 rounded-lg text-sm ${
+                    testResult.success
+                      ? "bg-green-900/30 border border-green-700 text-green-300"
+                      : "bg-red-900/30 border border-red-700 text-red-300"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <FontAwesomeIcon
+                      icon={
+                        testResult.success
+                          ? "circle-check"
+                          : "circle-exclamation"
+                      }
+                    />
+                    <span>{testResult.message}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Tool Selection after successful test */}
+              {testResult?.success &&
+                testResult.tools?.length > 0 &&
+                selectedTools && (
+                  <ToolSelector
+                    tools={testResult.tools}
+                    selectedTools={selectedTools}
+                    onSelectionChange={setSelectedTools}
+                  />
+                )}
+
+              {/* Allowed Tools read-only display (when no test result) */}
+              {!testResult &&
+                provider?.allowedTools &&
+                provider.allowedTools.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap gap-1">
+                      {provider.allowedTools.map((tool) => (
+                        <span
+                          key={tool}
+                          className="text-xs font-mono px-2 py-0.5 rounded bg-white/5 opacity-70"
+                        >
+                          {tool}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-xs opacity-40">
+                      {provider.allowedTools.length} tool
+                      {provider.allowedTools.length !== 1 ? "s" : ""} allowed —
+                      test connection to modify
+                    </p>
+                  </div>
+                )}
+
+              {/* No tools or test yet */}
+              {!testResult &&
+                (!provider?.allowedTools ||
+                  provider.allowedTools.length === 0) && (
+                  <p className="text-sm opacity-40">
+                    No tools configured — use Test Connection to discover
+                    available tools.
+                  </p>
+                )}
+            </div>
+          </>
         )}
       </div>
 

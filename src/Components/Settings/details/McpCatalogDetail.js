@@ -8,6 +8,7 @@ import {
   FormLabel,
   Tag,
   SubHeading3,
+  Stepper,
 } from "@trops/dash-react";
 import { AppContext } from "../../../Context/App/AppContext";
 import {
@@ -68,6 +69,7 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [authResult, setAuthResult] = useState(null);
   const [selectedTools, setSelectedTools] = useState(null);
+  const [wizardStep, setWizardStep] = useState(0);
 
   // Configuration form state
   const [providerName, setProviderName] = useState("");
@@ -128,6 +130,24 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
     );
   });
 
+  // Wizard step navigation with validation gates
+  const handleWizardStepChange = (newStep) => {
+    // Allow backward navigation freely
+    if (newStep < wizardStep) {
+      setWizardStep(newStep);
+      return;
+    }
+    // Step 0→1: validate the configure form
+    if (wizardStep === 0 && newStep >= 1) {
+      if (!validateForm()) return;
+    }
+    // Step 1→2: require successful test
+    if (wizardStep === 1 && newStep >= 2) {
+      if (!testResult?.success) return;
+    }
+    setWizardStep(newStep);
+  };
+
   // Handle server selection -> show configuration form
   const handleSelectServer = (server) => {
     setSelectedServer(server);
@@ -137,6 +157,7 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
     setProviderName(server.name);
     setCredentialData({});
     setFormErrors({});
+    setWizardStep(0);
     setEnvMappingRows(
       envMappingToRows(server.mcpConfig?.envMapping, nextRowId),
     );
@@ -288,6 +309,7 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
     setFormErrors({});
     setEnvMappingRows([]);
     setHeaderRows([]);
+    setWizardStep(0);
   };
 
   // Prune credential data when form fields change (advanced config removed a field)
@@ -309,249 +331,340 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
     return <CustomMcpServerForm onSave={onSave} onBack={handleBack} />;
   }
 
-  // ── Stage 2: Configuration Form ──
+  // ── Stage 2: Configuration Form (3-step Stepper) ──
   if (isConfiguring && selectedServer) {
     return (
       <div className="flex flex-col flex-1 min-h-0">
-        <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
-          {/* Header with back button */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleBack}
-              className="text-gray-400 hover:text-gray-200 transition-colors"
-            >
-              <FontAwesomeIcon icon="arrow-left" className="text-lg" />
-            </button>
-            <div>
-              <SubHeading3
-                title={`Configure ${selectedServer.name}`}
-                padding={false}
-              />
-              <p className="text-sm opacity-50 mt-1">
-                {selectedServer.description ||
-                  "Configure the MCP server connection"}
-              </p>
-            </div>
-          </div>
-
-          {/* Server Connection Info */}
-          <div className="bg-white/5 border border-white/10 rounded-lg p-4 space-y-3">
-            <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
-              MCP Server Connection
-            </p>
-            <div className="space-y-2 text-sm">
-              <div className="flex gap-2">
-                <span className="opacity-50 w-24 shrink-0">Transport:</span>
-                <Tag
-                  text={
-                    effectiveMcpConfig.transport === "streamable_http"
-                      ? "Streamable HTTP"
-                      : "stdio"
-                  }
-                />
-              </div>
-              {effectiveMcpConfig.transport === "streamable_http" ? (
-                <div className="flex gap-2">
-                  <span className="opacity-50 w-24 shrink-0">Endpoint:</span>
-                  <span className="text-xs opacity-70">
-                    Remote hosted server (URL provided below)
-                  </span>
-                </div>
-              ) : (
-                <>
-                  <div className="flex gap-2">
-                    <span className="opacity-50 w-24 shrink-0">Command:</span>
-                    <code className="text-xs bg-white/5 px-2 py-0.5 rounded">
-                      {effectiveMcpConfig.command}{" "}
-                      {(effectiveMcpConfig.args || []).join(" ")}
-                    </code>
-                  </div>
-                  {effectiveMcpConfig.envMapping &&
-                    Object.keys(effectiveMcpConfig.envMapping).length > 0 && (
-                      <div className="flex gap-2">
-                        <span className="opacity-50 w-24 shrink-0">
-                          Env Vars:
-                        </span>
-                        <span className="text-xs opacity-70">
-                          {Object.keys(effectiveMcpConfig.envMapping).join(
-                            ", ",
-                          )}
-                        </span>
-                      </div>
-                    )}
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Advanced Configuration */}
-          <AdvancedMcpConfig
-            transport={effectiveMcpConfig.transport || "stdio"}
-            envMappingRows={envMappingRows}
-            onEnvMappingRowsChange={setEnvMappingRows}
-            headerRows={headerRows}
-            onHeaderRowsChange={setHeaderRows}
-          />
-
-          {/* Provider Name */}
-          <div className="flex flex-col gap-2">
-            <FormLabel label="Provider Name" required={true} />
-            <p className="text-sm opacity-50">
-              A name to identify this MCP server instance (e.g., &quot;Algolia
-              Production&quot;)
-            </p>
-            <InputText
-              value={providerName}
-              onChange={(value) => {
-                setProviderName(value);
-                if (formErrors.providerName && value?.trim()) {
-                  setFormErrors((prev) => {
-                    const next = { ...prev };
-                    delete next.providerName;
-                    return next;
-                  });
-                }
-              }}
-              placeholder="Enter provider name"
+        {/* Header */}
+        <div className="flex items-center gap-3 px-6 pt-6 pb-2">
+          <button
+            onClick={handleBack}
+            className="text-gray-400 hover:text-gray-200 transition-colors"
+          >
+            <FontAwesomeIcon icon="arrow-left" className="text-lg" />
+          </button>
+          <div>
+            <SubHeading3
+              title={`Configure ${selectedServer.name}`}
+              padding={false}
             />
-            {formErrors.providerName && (
-              <p className="text-sm text-red-400">{formErrors.providerName}</p>
-            )}
+            <p className="text-sm opacity-50 mt-1">
+              {selectedServer.description ||
+                "Configure the MCP server connection"}
+            </p>
           </div>
+        </div>
 
-          {/* Derived Configuration Fields */}
-          {formFields.length > 0 && (
-            <>
-              <div className="border-t border-white/10 pt-4">
-                <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
-                  {effectiveMcpConfig.transport === "streamable_http"
-                    ? "Server Configuration"
-                    : "Authentication"}
-                </p>
-              </div>
-
-              {formFields.map((field) => (
-                <div key={field.key} className="flex flex-col gap-2">
-                  <FormLabel
-                    label={field.displayName}
-                    required={field.required}
-                  />
-                  {field.instructions && (
-                    <p className="text-sm opacity-50">{field.instructions}</p>
-                  )}
-                  <div className="flex gap-2">
-                    <div className="flex-1">
-                      <InputText
-                        type={field.secret ? "password" : "text"}
-                        value={credentialData[field.key] || ""}
-                        onChange={(value) =>
-                          handleCredentialChange(field.key, value)
-                        }
-                        placeholder={
-                          field.type === "file"
-                            ? "Select a file..."
-                            : `Enter ${field.displayName.toLowerCase()}`
+        {/* Stepper */}
+        <div className="flex-1 min-h-0 flex flex-col">
+          <Stepper
+            activeStep={wizardStep}
+            onStepChange={handleWizardStepChange}
+            showNavigation={false}
+            className="flex-1 min-h-0 flex flex-col"
+          >
+            {/* ── Step 1: Configure ── */}
+            <Stepper.Step label="Configure" description="Name & credentials">
+              <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4 space-y-5">
+                {/* Server Connection Info */}
+                <div className="bg-white/5 border border-white/10 rounded-lg p-4 space-y-3">
+                  <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
+                    MCP Server Connection
+                  </p>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex gap-2">
+                      <span className="opacity-50 w-24 shrink-0">
+                        Transport:
+                      </span>
+                      <Tag
+                        text={
+                          effectiveMcpConfig.transport === "streamable_http"
+                            ? "Streamable HTTP"
+                            : "stdio"
                         }
                       />
                     </div>
-                    {field.type === "file" && (
-                      <button
-                        onClick={async () => {
-                          const filepath =
-                            await window.mainApi.dialog.chooseFile(true, [
-                              "json",
-                            ]);
-                          if (filepath)
-                            handleCredentialChange(field.key, filepath);
-                        }}
-                        className="px-3 py-1.5 text-sm rounded bg-white/10 hover:bg-white/20 transition-colors"
-                      >
-                        Browse
-                      </button>
+                    {effectiveMcpConfig.transport === "streamable_http" ? (
+                      <div className="flex gap-2">
+                        <span className="opacity-50 w-24 shrink-0">
+                          Endpoint:
+                        </span>
+                        <span className="text-xs opacity-70">
+                          Remote hosted server (URL provided below)
+                        </span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex gap-2">
+                          <span className="opacity-50 w-24 shrink-0">
+                            Command:
+                          </span>
+                          <code className="text-xs bg-white/5 px-2 py-0.5 rounded">
+                            {effectiveMcpConfig.command}{" "}
+                            {(effectiveMcpConfig.args || []).join(" ")}
+                          </code>
+                        </div>
+                        {effectiveMcpConfig.envMapping &&
+                          Object.keys(effectiveMcpConfig.envMapping).length >
+                            0 && (
+                            <div className="flex gap-2">
+                              <span className="opacity-50 w-24 shrink-0">
+                                Env Vars:
+                              </span>
+                              <span className="text-xs opacity-70">
+                                {Object.keys(
+                                  effectiveMcpConfig.envMapping,
+                                ).join(", ")}
+                              </span>
+                            </div>
+                          )}
+                      </>
                     )}
                   </div>
-                  {formErrors[field.key] && (
+                </div>
+
+                {/* Advanced Configuration */}
+                <AdvancedMcpConfig
+                  transport={effectiveMcpConfig.transport || "stdio"}
+                  envMappingRows={envMappingRows}
+                  onEnvMappingRowsChange={setEnvMappingRows}
+                  headerRows={headerRows}
+                  onHeaderRowsChange={setHeaderRows}
+                />
+
+                {/* Provider Name */}
+                <div className="flex flex-col gap-2">
+                  <FormLabel label="Provider Name" required={true} />
+                  <p className="text-sm opacity-50">
+                    A name to identify this MCP server instance (e.g.,
+                    &quot;Algolia Production&quot;)
+                  </p>
+                  <InputText
+                    value={providerName}
+                    onChange={(value) => {
+                      setProviderName(value);
+                      if (formErrors.providerName && value?.trim()) {
+                        setFormErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.providerName;
+                          return next;
+                        });
+                      }
+                    }}
+                    placeholder="Enter provider name"
+                  />
+                  {formErrors.providerName && (
                     <p className="text-sm text-red-400">
-                      {formErrors[field.key]}
+                      {formErrors.providerName}
                     </p>
                   )}
                 </div>
-              ))}
-            </>
-          )}
 
-          {/* Auth Result */}
-          {authResult && (
-            <div
-              className={`p-3 rounded-lg text-sm ${
-                authResult.success
-                  ? "bg-green-900/30 border border-green-700 text-green-300"
-                  : "bg-red-900/30 border border-red-700 text-red-300"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <FontAwesomeIcon
-                  icon={
-                    authResult.success ? "circle-check" : "circle-exclamation"
-                  }
-                />
-                <span>{authResult.message}</span>
+                {/* Derived Configuration Fields */}
+                {formFields.length > 0 && (
+                  <>
+                    <div className="border-t border-white/10 pt-4">
+                      <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
+                        {effectiveMcpConfig.transport === "streamable_http"
+                          ? "Server Configuration"
+                          : "Authentication"}
+                      </p>
+                    </div>
+
+                    {formFields.map((field) => (
+                      <div key={field.key} className="flex flex-col gap-2">
+                        <FormLabel
+                          label={field.displayName}
+                          required={field.required}
+                        />
+                        {field.instructions && (
+                          <p className="text-sm opacity-50">
+                            {field.instructions}
+                          </p>
+                        )}
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <InputText
+                              type={field.secret ? "password" : "text"}
+                              value={credentialData[field.key] || ""}
+                              onChange={(value) =>
+                                handleCredentialChange(field.key, value)
+                              }
+                              placeholder={
+                                field.type === "file"
+                                  ? "Select a file..."
+                                  : `Enter ${field.displayName.toLowerCase()}`
+                              }
+                            />
+                          </div>
+                          {field.type === "file" && (
+                            <button
+                              onClick={async () => {
+                                const filepath =
+                                  await window.mainApi.dialog.chooseFile(true, [
+                                    "json",
+                                  ]);
+                                if (filepath)
+                                  handleCredentialChange(field.key, filepath);
+                              }}
+                              className="px-3 py-1.5 text-sm rounded bg-white/10 hover:bg-white/20 transition-colors"
+                            >
+                              Browse
+                            </button>
+                          )}
+                        </div>
+                        {formErrors[field.key] && (
+                          <p className="text-sm text-red-400">
+                            {formErrors[field.key]}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {/* Auth Result */}
+                {authResult && (
+                  <div
+                    className={`p-3 rounded-lg text-sm ${
+                      authResult.success
+                        ? "bg-green-900/30 border border-green-700 text-green-300"
+                        : "bg-red-900/30 border border-red-700 text-red-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <FontAwesomeIcon
+                        icon={
+                          authResult.success
+                            ? "circle-check"
+                            : "circle-exclamation"
+                        }
+                      />
+                      <span>{authResult.message}</span>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            </Stepper.Step>
 
-          {/* Test Connection Result */}
-          {testResult && (
-            <div
-              className={`p-3 rounded-lg text-sm ${
-                testResult.success
-                  ? "bg-green-900/30 border border-green-700 text-green-300"
-                  : "bg-red-900/30 border border-red-700 text-red-300"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <FontAwesomeIcon
-                  icon={
-                    testResult.success ? "circle-check" : "circle-exclamation"
-                  }
-                />
-                <span>{testResult.message}</span>
+            {/* ── Step 2: Test ── */}
+            <Stepper.Step label="Test" description="Verify connection">
+              <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4 space-y-5">
+                <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                  <p className="text-sm opacity-60 text-center">
+                    Test the connection to verify your configuration is correct.
+                  </p>
+                  <Button
+                    title={isTesting ? "Testing..." : "Test Connection"}
+                    onClick={handleTestConnection}
+                    size="md"
+                  />
+                </div>
+
+                {/* Test Connection Result */}
+                {testResult && (
+                  <div
+                    className={`p-3 rounded-lg text-sm ${
+                      testResult.success
+                        ? "bg-green-900/30 border border-green-700 text-green-300"
+                        : "bg-red-900/30 border border-red-700 text-red-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <FontAwesomeIcon
+                        icon={
+                          testResult.success
+                            ? "circle-check"
+                            : "circle-exclamation"
+                        }
+                      />
+                      <span>{testResult.message}</span>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            </Stepper.Step>
 
-          {/* Tool Selection after successful test */}
-          {testResult?.success &&
-            testResult.tools?.length > 0 &&
-            selectedTools && (
-              <ToolSelector
-                tools={testResult.tools}
-                selectedTools={selectedTools}
-                onSelectionChange={setSelectedTools}
-              />
-            )}
+            {/* ── Step 3: Tools ── */}
+            <Stepper.Step label="Tools" description="Select allowed tools">
+              <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4 space-y-5">
+                {testResult?.success &&
+                testResult.tools?.length > 0 &&
+                selectedTools ? (
+                  <ToolSelector
+                    tools={testResult.tools}
+                    selectedTools={selectedTools}
+                    onSelectionChange={setSelectedTools}
+                  />
+                ) : (
+                  <div className="text-center py-8 opacity-50">
+                    No tools available. Go back and test the connection first.
+                  </div>
+                )}
+              </div>
+            </Stepper.Step>
+          </Stepper>
         </div>
 
-        {/* Footer */}
-        <div className="flex-shrink-0 flex flex-row justify-end gap-2 px-6 py-4 border-t border-white/10">
-          <Button title="Cancel" onClick={onCancel} size="sm" />
-          {selectedServer?.authCommand && (
-            <Button
-              title={isAuthorizing ? "Authorizing..." : "Authorize"}
-              onClick={handleAuthorize}
-              size="sm"
-            />
-          )}
-          <Button
-            title={isTesting ? "Testing..." : "Test Connection"}
-            onClick={handleTestConnection}
-            size="sm"
-          />
-          <Button
-            title="Save MCP Server"
-            onClick={handleSaveProvider}
-            size="sm"
-          />
+        {/* Custom Footer */}
+        <div className="flex-shrink-0 flex flex-row items-center px-6 py-4 border-t border-white/10">
+          <div className="flex flex-row gap-2">
+            {wizardStep === 0 && (
+              <Button title="Cancel" onClick={onCancel} size="sm" />
+            )}
+            {wizardStep > 0 && (
+              <Button
+                title="Back"
+                onClick={() => setWizardStep(wizardStep - 1)}
+                size="sm"
+              />
+            )}
+          </div>
+          <div className="flex-1 text-center">
+            <span className="text-xs opacity-40">
+              Step {wizardStep + 1} of 3
+            </span>
+          </div>
+          <div className="flex flex-row gap-2">
+            {wizardStep === 0 && (
+              <>
+                {selectedServer?.authCommand && (
+                  <Button
+                    title={isAuthorizing ? "Authorizing..." : "Authorize"}
+                    onClick={handleAuthorize}
+                    size="sm"
+                  />
+                )}
+                <Button
+                  title="Next"
+                  onClick={() => handleWizardStepChange(1)}
+                  size="sm"
+                />
+              </>
+            )}
+            {wizardStep === 1 && (
+              <>
+                <Button
+                  title={isTesting ? "Testing..." : "Test Connection"}
+                  onClick={handleTestConnection}
+                  size="sm"
+                />
+                <Button
+                  title="Next"
+                  onClick={() => handleWizardStepChange(2)}
+                  disabled={!testResult?.success}
+                  size="sm"
+                />
+              </>
+            )}
+            {wizardStep === 2 && (
+              <Button
+                title="Save MCP Server"
+                onClick={handleSaveProvider}
+                size="sm"
+              />
+            )}
+          </div>
         </div>
       </div>
     );
