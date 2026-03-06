@@ -85,10 +85,21 @@ function getShellPath() {
 
   try {
     const shell = process.env.SHELL || "/bin/bash";
-    _shellPath = execSync(`${shell} -ilc 'echo -n "$PATH"'`, {
-      encoding: "utf8",
-      timeout: 5000,
-    });
+    const marker = "__DASH_PATH__";
+    const raw = execSync(
+      `${shell} -ilc 'echo "${marker}$PATH${marker}"'`,
+      { encoding: "utf8", timeout: 5000 },
+    );
+    // Extract PATH between markers, stripping session restore noise
+    const startIdx = raw.indexOf(marker);
+    const endIdx = raw.lastIndexOf(marker);
+    if (startIdx !== -1 && endIdx > startIdx) {
+      _shellPath = raw
+        .substring(startIdx + marker.length, endIdx)
+        .replace(/[\r\n]/g, "");
+    } else {
+      _shellPath = process.env.PATH || "";
+    }
   } catch (err) {
     console.warn("[mcpController] Failed to resolve shell PATH:", err.message);
     _shellPath = process.env.PATH || "";
