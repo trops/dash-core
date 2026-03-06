@@ -158,12 +158,28 @@ export const useMcpProvider = (providerType, options = {}) => {
       return;
     }
 
-    // 1. Already connected at module level? Apply cached result, skip IPC
+    // 1. Already connected at module level? Verify with main process before trusting cache.
+    //    The server may have been stopped externally (e.g., Test Connection in settings).
     const cached = serverStates.get(selectedProviderName);
     if (cached && cached.status === "connected") {
-      cached.consumerCount++;
-      applyResult(cached);
-      return;
+      try {
+        const statusResult = await new Promise((resolve, reject) => {
+          dashApi.mcpGetServerStatus(
+            selectedProviderName,
+            (event, result) => resolve(result),
+            (event, err) => reject(err),
+          );
+        });
+        if (statusResult?.status === "connected") {
+          cached.consumerCount++;
+          applyResult(cached);
+          return;
+        }
+        // Server was stopped externally — clear stale cache and reconnect
+        serverStates.delete(selectedProviderName);
+      } catch {
+        serverStates.delete(selectedProviderName);
+      }
     }
 
     setIsConnecting(true);
