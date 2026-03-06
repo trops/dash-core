@@ -705,6 +705,25 @@ const mcpController = {
 
     const env = cleanEnvForChildProcess();
 
+    // Pre-auth setup: copy credential files to expected locations
+    if (authCommand.setup?.copyCredential) {
+      const { from, to } = authCommand.setup.copyCredential;
+      const sourcePath = credentials?.[from];
+      if (sourcePath) {
+        const destPath = to.replace(/^~/, process.env.HOME || "");
+        const destDir = require("path").dirname(destPath);
+        try {
+          fs.mkdirSync(destDir, { recursive: true });
+          fs.copyFileSync(sourcePath, destPath);
+        } catch (err) {
+          return {
+            error: true,
+            message: `Failed to copy OAuth keys: ${err.message}`,
+          };
+        }
+      }
+    }
+
     // Inject credentials as env vars using the same envMapping as startServer
     if (mcpConfig?.envMapping && credentials) {
       Object.entries(mcpConfig.envMapping).forEach(
