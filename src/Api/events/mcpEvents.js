@@ -26,3 +26,6 @@ export const MCP_SERVER_STATUS_ERROR = "mcp:server-status:error";
 
 export const MCP_GET_CATALOG_COMPLETE = "mcp:get-catalog:complete";
 export const MCP_GET_CATALOG_ERROR = "mcp:get-catalog:error";
+
+export const MCP_RUN_AUTH_COMPLETE = "mcp:run-auth:complete";
+export const MCP_RUN_AUTH_ERROR = "mcp:run-auth:error";

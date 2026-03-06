@@ -29,6 +29,7 @@ export const ProviderDetail = ({
   onStartEdit,
   onCreate,
   onDelete,
+  catalogAuthCommand = null,
 }) => {
   const appContext = useContext(AppContext);
   const dashApi = appContext?.dashApi;
@@ -37,6 +38,14 @@ export const ProviderDetail = ({
   // MCP test connection state
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+
+  // MCP auth state
+  const [isAuthorizing, setIsAuthorizing] = useState(false);
+  const [authResult, setAuthResult] = useState(null);
+
+  // Resolve authCommand: provider.mcpConfig.authCommand > catalogAuthCommand prop
+  const resolvedAuthCommand =
+    provider?.mcpConfig?.authCommand || catalogAuthCommand || null;
 
   // Derive credential fields for MCP providers in edit mode
   const mcpFormFields = useMemo(() => {
@@ -149,6 +158,34 @@ export const ProviderDetail = ({
           message: err?.message || "Connection failed",
         });
         setIsTesting(false);
+      },
+    );
+  };
+
+  const handleAuthorize = () => {
+    if (!dashApi || !provider?.mcpConfig || !resolvedAuthCommand) return;
+
+    setIsAuthorizing(true);
+    setAuthResult(null);
+
+    dashApi.mcpRunAuth(
+      provider.mcpConfig,
+      provider.credentials,
+      resolvedAuthCommand,
+      (event, result) => {
+        if (result.error) {
+          setAuthResult({ success: false, message: result.message });
+        } else {
+          setAuthResult({ success: true, message: "Authorized!" });
+        }
+        setIsAuthorizing(false);
+      },
+      (event, err) => {
+        setAuthResult({
+          success: false,
+          message: err?.message || "Authorization failed",
+        });
+        setIsAuthorizing(false);
       },
     );
   };
@@ -325,14 +362,37 @@ export const ProviderDetail = ({
                           {field.instructions}
                         </p>
                       )}
-                      <InputText
-                        type={field.secret ? "password" : "text"}
-                        value={formCredentials[field.key] || ""}
-                        onChange={(value) =>
-                          handleCredentialChange(field.key, value)
-                        }
-                        placeholder={`Enter ${field.displayName.toLowerCase()}`}
-                      />
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <InputText
+                            type={field.secret ? "password" : "text"}
+                            value={formCredentials[field.key] || ""}
+                            onChange={(value) =>
+                              handleCredentialChange(field.key, value)
+                            }
+                            placeholder={
+                              field.type === "file"
+                                ? "Select a file..."
+                                : `Enter ${field.displayName.toLowerCase()}`
+                            }
+                          />
+                        </div>
+                        {field.type === "file" && (
+                          <button
+                            onClick={async () => {
+                              const filepath =
+                                await window.mainApi.dialog.chooseFile(true, [
+                                  "json",
+                                ]);
+                              if (filepath)
+                                handleCredentialChange(field.key, filepath);
+                            }}
+                            className="px-3 py-1.5 text-sm rounded bg-white/10 hover:bg-white/20 transition-colors"
+                          >
+                            Browse
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </>
@@ -451,6 +511,26 @@ export const ProviderDetail = ({
               </div>
             </div>
 
+            {/* Auth Result */}
+            {authResult && (
+              <div
+                className={`p-3 rounded-lg text-sm ${
+                  authResult.success
+                    ? "bg-green-900/30 border border-green-700 text-green-300"
+                    : "bg-red-900/30 border border-red-700 text-red-300"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <FontAwesomeIcon
+                    icon={
+                      authResult.success ? "circle-check" : "circle-exclamation"
+                    }
+                  />
+                  <span>{authResult.message}</span>
+                </div>
+              </div>
+            )}
+
             {/* Test Connection Result */}
             {testResult && (
               <div
@@ -490,6 +570,13 @@ export const ProviderDetail = ({
 
       {/* Footer */}
       <div className="flex-shrink-0 flex flex-row justify-end gap-2 px-6 py-4 border-t border-white/10">
+        {isMcp && resolvedAuthCommand && (
+          <Button
+            title={isAuthorizing ? "Authorizing..." : "Authorize"}
+            onClick={handleAuthorize}
+            size="sm"
+          />
+        )}
         {isMcp && (
           <Button
             title={isTesting ? "Testing..." : "Test Connection"}

@@ -701,6 +701,28 @@ class ElectronDashboardApi implements IDashboardApi {
       return false;
     }
   }
+
+  mcpRunAuth(mcpConfig, credentials, authCommand, onSuccess, onError): Boolean {
+    if (this.api !== null) {
+      try {
+        this.api.mcp
+          .runAuth(mcpConfig, credentials, authCommand)
+          .then((result) => {
+            onSuccess(this.events.MCP_RUN_AUTH_COMPLETE, result);
+          })
+          .catch((error) => {
+            onError(this.events.MCP_RUN_AUTH_ERROR, error);
+          });
+        return true;
+      } catch (e) {
+        onError(this.events.MCP_RUN_AUTH_ERROR, e);
+        return false;
+      }
+    } else {
+      onError(this.events.MCP_RUN_AUTH_ERROR, new Error("No Api found"));
+      return false;
+    }
+  }
 }
 
 export { ElectronDashboardApi };

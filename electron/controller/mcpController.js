@@ -33,10 +33,7 @@ let _shellPath = null;
 function getShellPath() {
   if (_shellPath !== null) return _shellPath;
 
-  const fallbackDirs = [
-    "/usr/local/bin",
-    "/opt/homebrew/bin",
-  ];
+  const fallbackDirs = ["/usr/local/bin", "/opt/homebrew/bin"];
 
   // Add nvm/volta/nodenv paths if available
   const home = process.env.HOME || "";
@@ -609,6 +606,59 @@ const mcpController = {
       }
     }
     return servers;
+  },
+
+  /**
+   * runAuth
+   * Run a one-shot auth command (e.g., OAuth browser flow) for an MCP server
+   *
+   * @param {BrowserWindow} win the main window
+   * @param {object} mcpConfig { transport, command, args, envMapping }
+   * @param {object} credentials decrypted credentials object
+   * @param {object} authCommand { command, args }
+   * @returns {{ success } | { error, message }}
+   */
+  runAuth: async (win, mcpConfig, credentials, authCommand) => {
+    const { spawn } = require("child_process");
+
+    const env = { ...process.env, PATH: getShellPath() };
+
+    // Inject credentials as env vars using the same envMapping as startServer
+    if (mcpConfig?.envMapping && credentials) {
+      Object.entries(mcpConfig.envMapping).forEach(
+        ([envVar, credentialKey]) => {
+          if (credentials[credentialKey] !== undefined) {
+            env[envVar] = credentials[credentialKey];
+          }
+        },
+      );
+    }
+
+    return new Promise((resolve) => {
+      const proc = spawn(authCommand.command, authCommand.args || [], {
+        env,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+
+      const timeout = setTimeout(() => {
+        proc.kill();
+        resolve({ error: true, message: "Auth timed out (120s)" });
+      }, 120000);
+
+      proc.on("close", (code) => {
+        clearTimeout(timeout);
+        resolve(
+          code === 0
+            ? { success: true }
+            : { error: true, message: `Auth exited with code ${code}` },
+        );
+      });
+
+      proc.on("error", (err) => {
+        clearTimeout(timeout);
+        resolve({ error: true, message: err.message });
+      });
+    });
   },
 
   /**

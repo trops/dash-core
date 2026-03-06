@@ -693,14 +693,37 @@ export const CustomMcpServerForm = ({
                       label={field.displayName}
                       required={field.required}
                     />
-                    <InputText
-                      type={field.secret ? "password" : "text"}
-                      value={credentialData[field.key] || ""}
-                      onChange={(value) =>
-                        handleCredentialChange(field.key, value)
-                      }
-                      placeholder={`Enter ${field.displayName.toLowerCase()}`}
-                    />
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <InputText
+                          type={field.secret ? "password" : "text"}
+                          value={credentialData[field.key] || ""}
+                          onChange={(value) =>
+                            handleCredentialChange(field.key, value)
+                          }
+                          placeholder={
+                            field.type === "file"
+                              ? "Select a file..."
+                              : `Enter ${field.displayName.toLowerCase()}`
+                          }
+                        />
+                      </div>
+                      {field.type === "file" && (
+                        <button
+                          onClick={async () => {
+                            const filepath =
+                              await window.mainApi.dialog.chooseFile(true, [
+                                "json",
+                              ]);
+                            if (filepath)
+                              handleCredentialChange(field.key, filepath);
+                          }}
+                          className="px-3 py-1.5 text-sm rounded bg-white/10 hover:bg-white/20 transition-colors"
+                        >
+                          Browse
+                        </button>
+                      )}
+                    </div>
                     {formErrors[field.key] && (
                       <p className="text-sm text-red-400">
                         {formErrors[field.key]}

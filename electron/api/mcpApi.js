@@ -14,6 +14,7 @@ const {
   MCP_READ_RESOURCE,
   MCP_SERVER_STATUS,
   MCP_GET_CATALOG,
+  MCP_RUN_AUTH,
 } = require("../events");
 
 const mcpApi = {
@@ -108,6 +109,18 @@ const mcpApi = {
    * @returns {Promise<{ catalog } | { error, message }>}
    */
   getCatalog: () => ipcRenderer.invoke(MCP_GET_CATALOG),
+
+  /**
+   * runAuth
+   * Run a one-shot auth command for an MCP server (e.g., OAuth browser flow)
+   *
+   * @param {object} mcpConfig { transport, command, args, envMapping }
+   * @param {object} credentials decrypted credentials object
+   * @param {object} authCommand { command, args }
+   * @returns {Promise<{ success } | { error, message }>}
+   */
+  runAuth: (mcpConfig, credentials, authCommand) =>
+    ipcRenderer.invoke(MCP_RUN_AUTH, { mcpConfig, credentials, authCommand }),
 };
 
 module.exports = mcpApi;

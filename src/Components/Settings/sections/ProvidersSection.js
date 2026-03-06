@@ -26,6 +26,18 @@ export const ProvidersSection = ({
   const providers = appContext?.providers || {};
   const refreshProviders = appContext?.refreshProviders;
 
+  // Load MCP catalog for authCommand lookups
+  const [catalog, setCatalog] = useState([]);
+  useEffect(() => {
+    if (!dashApi) return;
+    dashApi.mcpGetCatalog(
+      (event, result) => {
+        if (result?.catalog) setCatalog(result.catalog);
+      },
+      () => {},
+    );
+  }, [dashApi]);
+
   const [providerTab, setProviderTab] = useState("credentials");
   const [selectedName, setSelectedName] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -364,6 +376,10 @@ export const ProvidersSection = ({
       />
     );
   } else if (selectedName && selectedProvider) {
+    // Look up authCommand from the catalog for this provider type
+    const catalogEntry = catalog.find(
+      (entry) => entry.id === selectedProvider.type,
+    );
     detailContent = (
       <ProviderDetail
         providerName={selectedName}
@@ -379,6 +395,7 @@ export const ProvidersSection = ({
         onCancelEdit={resetForm}
         onStartEdit={handleStartEdit}
         onDelete={(name) => setDeleteTarget(name)}
+        catalogAuthCommand={catalogEntry?.authCommand || null}
       />
     );
   }

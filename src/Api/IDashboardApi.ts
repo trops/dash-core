@@ -285,6 +285,14 @@ interface IDashboardApi {
   ) => Boolean;
 
   mcpGetCatalog: (onSuccess: Function, onError: Function) => Boolean;
+
+  mcpRunAuth: (
+    mcpConfig: any,
+    credentials: any,
+    authCommand: any,
+    onSuccess: Function,
+    onError: Function,
+  ) => Boolean;
 }
 
 export default IDashboardApi;
