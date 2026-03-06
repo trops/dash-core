@@ -130,21 +130,25 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
     );
   });
 
+  // Dynamic wizard steps based on whether auth is needed
+  const hasAuth = !!selectedServer?.authCommand;
+  const wizardSteps = hasAuth
+    ? ["configure", "authorize", "testTools"]
+    : ["configure", "testTools"];
+  const totalSteps = wizardSteps.length;
+  const currentStepType = wizardSteps[wizardStep];
+
   // Wizard step navigation with validation gates
   const handleWizardStepChange = (newStep) => {
-    // Allow backward navigation freely
     if (newStep < wizardStep) {
       setWizardStep(newStep);
       return;
     }
-    // Step 0→1: validate the configure form + auth gate
-    if (wizardStep === 0 && newStep >= 1) {
+    if (currentStepType === "configure" && newStep > wizardStep) {
       if (!validateForm()) return;
-      if (selectedServer?.authCommand && !authResult?.success) return;
     }
-    // Step 1→2: require successful test
-    if (wizardStep === 1 && newStep >= 2) {
-      if (!testResult?.success) return;
+    if (currentStepType === "authorize" && newStep > wizardStep) {
+      if (!authResult?.success) return;
     }
     setWizardStep(newStep);
   };
@@ -523,83 +527,113 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
                     ))}
                   </>
                 )}
-
-                {/* Auth Result */}
-                {authResult && (
-                  <div
-                    className={`p-3 rounded-lg text-sm ${
-                      authResult.success
-                        ? "bg-green-900/30 border border-green-700 text-green-300"
-                        : "bg-red-900/30 border border-red-700 text-red-300"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <FontAwesomeIcon
-                        icon={
-                          authResult.success
-                            ? "circle-check"
-                            : "circle-exclamation"
-                        }
-                      />
-                      <span>{authResult.message}</span>
-                    </div>
-                  </div>
-                )}
               </div>
             </Stepper.Step>
 
-            {/* ── Step 2: Test ── */}
-            <Stepper.Step label="Test" description="Verify connection">
-              <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
-                <div className="flex flex-col items-center justify-center py-8 space-y-4">
-                  <p className="text-sm opacity-60 text-center">
-                    Test the connection to verify your configuration is correct.
-                  </p>
-                  <Button
-                    title={isTesting ? "Testing..." : "Test Connection"}
-                    onClick={handleTestConnection}
-                    size="md"
-                  />
+            {/* ── Conditional: Authorize ── */}
+            {hasAuth && (
+              <Stepper.Step
+                label="Authorize"
+                description="OAuth authentication"
+              >
+                <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
+                  <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                    <p className="text-sm opacity-60 text-center max-w-md">
+                      This server requires OAuth authorization. Click the button
+                      below to open a browser window and complete the
+                      authentication flow.
+                    </p>
+                    <Button
+                      title={isAuthorizing ? "Authorizing..." : "Authorize"}
+                      onClick={handleAuthorize}
+                      size="md"
+                    />
+                  </div>
+                  {authResult && (
+                    <div
+                      className={`p-3 rounded-lg text-sm ${
+                        authResult.success
+                          ? "bg-green-900/30 border border-green-700 text-green-300"
+                          : "bg-red-900/30 border border-red-700 text-red-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <FontAwesomeIcon
+                          icon={
+                            authResult.success
+                              ? "circle-check"
+                              : "circle-exclamation"
+                          }
+                        />
+                        <span>{authResult.message}</span>
+                      </div>
+                    </div>
+                  )}
+                  {authResult && !authResult.success && (
+                    <div className="bg-white/5 border border-white/10 rounded-lg p-4 space-y-2">
+                      <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
+                        Troubleshooting
+                      </p>
+                      <ul className="text-sm opacity-60 space-y-1 list-disc list-inside">
+                        <li>
+                          Ensure Node.js and npx are available in your PATH
+                        </li>
+                        <li>
+                          Try running the auth command manually in your terminal
+                        </li>
+                        <li>Check that your OAuth credentials file is valid</li>
+                        <li>
+                          If using nvm, ensure the correct Node version is
+                          active
+                        </li>
+                      </ul>
+                    </div>
+                  )}
                 </div>
+              </Stepper.Step>
+            )}
 
-                {/* Test Connection Result */}
-                {testResult && (
-                  <div
-                    className={`p-3 rounded-lg text-sm ${
-                      testResult.success
-                        ? "bg-green-900/30 border border-green-700 text-green-300"
-                        : "bg-red-900/30 border border-red-700 text-red-300"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
+            {/* ── Test & Tools ── */}
+            <Stepper.Step
+              label="Test & Tools"
+              description="Verify & select tools"
+            >
+              <div className="flex-1 min-h-0 flex flex-col pb-4 space-y-4">
+                <div className="flex items-center gap-3">
+                  <Button
+                    title={isTesting ? "Fetching..." : "Fetch Tools"}
+                    onClick={handleTestConnection}
+                    size="sm"
+                  />
+                  {testResult && (
+                    <span
+                      className={`text-sm ${testResult.success ? "text-green-400" : "text-red-400"}`}
+                    >
                       <FontAwesomeIcon
                         icon={
                           testResult.success
                             ? "circle-check"
                             : "circle-exclamation"
                         }
+                        className="mr-1"
                       />
-                      <span>{testResult.message}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </Stepper.Step>
-
-            {/* ── Step 3: Tools ── */}
-            <Stepper.Step label="Tools" description="Select allowed tools">
-              <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
+                      {testResult.message}
+                    </span>
+                  )}
+                </div>
                 {testResult?.success &&
-                testResult.tools?.length > 0 &&
-                selectedTools ? (
-                  <ToolSelector
-                    tools={testResult.tools}
-                    selectedTools={selectedTools}
-                    onSelectionChange={setSelectedTools}
-                  />
-                ) : (
+                  testResult.tools?.length > 0 &&
+                  selectedTools && (
+                    <ToolSelector
+                      tools={testResult.tools}
+                      selectedTools={selectedTools}
+                      onSelectionChange={setSelectedTools}
+                    />
+                  )}
+                {!testResult && (
                   <div className="text-center py-8 opacity-50">
-                    No tools available. Go back and test the connection first.
+                    Click &quot;Fetch Tools&quot; to test the connection and
+                    discover available tools.
                   </div>
                 )}
               </div>
@@ -623,43 +657,26 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
           </div>
           <div className="flex-1 text-center">
             <span className="text-xs opacity-40">
-              Step {wizardStep + 1} of 3
+              Step {wizardStep + 1} of {totalSteps}
             </span>
           </div>
           <div className="flex flex-row gap-2">
-            {wizardStep === 0 && (
-              <>
-                {selectedServer?.authCommand && (
-                  <Button
-                    title={isAuthorizing ? "Authorizing..." : "Authorize"}
-                    onClick={handleAuthorize}
-                    size="sm"
-                  />
-                )}
-                <Button
-                  title="Next"
-                  onClick={() => handleWizardStepChange(1)}
-                  disabled={selectedServer?.authCommand && !authResult?.success}
-                  size="sm"
-                />
-              </>
+            {currentStepType === "configure" && (
+              <Button
+                title="Next"
+                onClick={() => handleWizardStepChange(wizardStep + 1)}
+                size="sm"
+              />
             )}
-            {wizardStep === 1 && (
-              <>
-                <Button
-                  title={isTesting ? "Testing..." : "Test Connection"}
-                  onClick={handleTestConnection}
-                  size="sm"
-                />
-                <Button
-                  title="Next"
-                  onClick={() => handleWizardStepChange(2)}
-                  disabled={!testResult?.success}
-                  size="sm"
-                />
-              </>
+            {currentStepType === "authorize" && (
+              <Button
+                title="Next"
+                onClick={() => handleWizardStepChange(wizardStep + 1)}
+                disabled={!authResult?.success}
+                size="sm"
+              />
             )}
-            {wizardStep === 2 && (
+            {currentStepType === "testTools" && (
               <Button
                 title="Save MCP Server"
                 onClick={handleSaveProvider}

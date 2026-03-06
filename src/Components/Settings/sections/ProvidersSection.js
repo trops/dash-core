@@ -392,6 +392,7 @@ export const ProvidersSection = ({
     );
     detailContent = (
       <CustomMcpServerForm
+        key={selectedName}
         isEditMode={true}
         initialName={selectedName}
         initialProviderType={selectedProvider.type || "custom"}
@@ -404,6 +405,7 @@ export const ProvidersSection = ({
         initialHeaderRows={headerTemplateToRows(mc.headerTemplate, nextRowId)}
         initialCredentials={selectedProvider.credentials || {}}
         initialAllowedTools={selectedProvider.allowedTools || null}
+        initialAuthCommand={editCatalogEntry?.authCommand || null}
         onSave={handleMcpEditSave}
         onBack={() => setIsEditingMcp(false)}
       />
