@@ -634,10 +634,26 @@ const mcpController = {
       );
     }
 
+    // Merge static env vars from authCommand (e.g., AUTH_SERVER_PORT)
+    if (authCommand.env) {
+      Object.entries(authCommand.env).forEach(([key, value]) => {
+        env[key] = value;
+      });
+    }
+
     return new Promise((resolve) => {
       const proc = spawn(authCommand.command, authCommand.args || [], {
         env,
         stdio: ["ignore", "pipe", "pipe"],
+      });
+
+      let stdout = "";
+      let stderr = "";
+      proc.stdout.on("data", (data) => {
+        stdout += data.toString();
+      });
+      proc.stderr.on("data", (data) => {
+        stderr += data.toString();
       });
 
       const timeout = setTimeout(() => {
@@ -647,11 +663,15 @@ const mcpController = {
 
       proc.on("close", (code) => {
         clearTimeout(timeout);
-        resolve(
-          code === 0
-            ? { success: true }
-            : { error: true, message: `Auth exited with code ${code}` },
-        );
+        if (code === 0) {
+          resolve({ success: true });
+        } else {
+          const detail = stderr.trim() || stdout.trim() || "";
+          resolve({
+            error: true,
+            message: `Auth exited with code ${code}${detail ? ": " + detail : ""}`,
+          });
+        }
       });
 
       proc.on("error", (err) => {
