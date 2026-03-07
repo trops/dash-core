@@ -969,3 +969,4 @@ const mcpController = {
 };
 
 module.exports = mcpController;
+module.exports.refreshGoogleOAuthToken = refreshGoogleOAuthToken;

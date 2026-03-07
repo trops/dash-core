@@ -200,8 +200,8 @@
       "tags": ["google", "files", "cloud-storage"],
       "mcpConfig": {
         "transport": "stdio",
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-gdrive"],
+        "command": "node",
+        "args": ["{{MCP_DIR}}/servers/google-drive.js"],
         "envMapping": {
           "GDRIVE_OAUTH_PATH": "oauthKeysPath"
         },
@@ -214,8 +214,8 @@
         }
       },
       "authCommand": {
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-gdrive", "auth"],
+        "command": "node",
+        "args": ["{{MCP_DIR}}/servers/google-drive.js", "auth"],
         "setup": {
           "copyCredential": {
             "from": "oauthKeysPath",
@@ -246,7 +246,11 @@
       "mcpConfig": {
         "transport": "stdio",
         "command": "npx",
-        "args": ["-y", "@gongrzhe/server-gmail-autoauth-mcp"]
+        "args": ["-y", "@gongrzhe/server-gmail-autoauth-mcp"],
+        "tokenRefresh": {
+          "credentialsPath": "~/.gmail-mcp/credentials.json",
+          "oauthKeysPath": "~/.gmail-mcp/gcp-oauth.keys.json"
+        }
       },
       "authCommand": {
         "command": "npx",
