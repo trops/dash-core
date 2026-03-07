@@ -189,6 +189,101 @@ function interpolate(template, credentials) {
   });
 }
 
+/**
+ * Refresh a Google OAuth access token before starting the MCP server.
+ * This sidesteps the upstream bug where `new google.auth.OAuth2()` is called
+ * without client_id/client_secret, preventing token refresh.
+ *
+ * Uses only Node built-in `https` — no external dependencies.
+ *
+ * @param {object} tokenRefresh { credentialsPath, oauthKeysPath }
+ */
+async function refreshGoogleOAuthToken(tokenRefresh) {
+  const home = process.env.HOME || "";
+  const credPath = tokenRefresh.credentialsPath.replace(/^~/, home);
+  const keysPath = tokenRefresh.oauthKeysPath.replace(/^~/, home);
+
+  if (!fs.existsSync(credPath) || !fs.existsSync(keysPath)) {
+    console.log(
+      "[mcpController] Token refresh skipped: credential files not found",
+    );
+    return;
+  }
+
+  const credentials = JSON.parse(fs.readFileSync(credPath, "utf8"));
+  const keysFile = JSON.parse(fs.readFileSync(keysPath, "utf8"));
+  const keyData = keysFile.installed || keysFile.web;
+
+  if (
+    !credentials.refresh_token ||
+    !keyData?.client_id ||
+    !keyData?.client_secret
+  ) {
+    console.log(
+      "[mcpController] Token refresh skipped: missing refresh_token or client credentials",
+    );
+    return;
+  }
+
+  // Skip if token is still valid (expiry > 5 minutes from now)
+  if (
+    credentials.expiry_date &&
+    credentials.expiry_date > Date.now() + 5 * 60 * 1000
+  ) {
+    console.log("[mcpController] Token still valid, skipping refresh");
+    return;
+  }
+
+  console.log("[mcpController] Refreshing Google OAuth token...");
+
+  const https = require("https");
+  const postData = [
+    `client_id=${encodeURIComponent(keyData.client_id)}`,
+    `client_secret=${encodeURIComponent(keyData.client_secret)}`,
+    `refresh_token=${encodeURIComponent(credentials.refresh_token)}`,
+    "grant_type=refresh_token",
+  ].join("&");
+
+  const body = await new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: "oauth2.googleapis.com",
+        path: "/token",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Content-Length": Buffer.byteLength(postData),
+        },
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          if (res.statusCode === 200) {
+            resolve(JSON.parse(data));
+          } else {
+            reject(
+              new Error(`Token refresh failed (${res.statusCode}): ${data}`),
+            );
+          }
+        });
+      },
+    );
+    req.on("error", reject);
+    req.write(postData);
+    req.end();
+  });
+
+  credentials.access_token = body.access_token;
+  credentials.expiry_date = Date.now() + (body.expires_in || 3600) * 1000;
+  if (body.refresh_token) {
+    credentials.refresh_token = body.refresh_token;
+  }
+
+  fs.writeFileSync(credPath, JSON.stringify(credentials, null, 2));
+  console.log("[mcpController] Google OAuth token refreshed successfully");
+}
+
 const mcpController = {
   /**
    * startServer
@@ -280,6 +375,18 @@ const mcpController = {
             });
           }
 
+          // Pre-start token refresh (e.g., Google OAuth)
+          if (mcpConfig.tokenRefresh) {
+            try {
+              await refreshGoogleOAuthToken(mcpConfig.tokenRefresh);
+            } catch (err) {
+              console.warn(
+                "[mcpController] Token refresh failed, continuing:",
+                err.message,
+              );
+            }
+          }
+
           // Build args - start with static args, then append dynamic args from credentials
           const args = [...(mcpConfig.args || [])];
           if (mcpConfig.argsMapping && credentials) {
@@ -305,7 +412,10 @@ const mcpController = {
           // Interpolate {{MCP_DIR}} in args to resolve local MCP server scripts
           const mcpDir = path.join(__dirname, "..", "mcp");
           for (let i = 0; i < args.length; i++) {
-            if (typeof args[i] === "string" && args[i].includes("{{MCP_DIR}}")) {
+            if (
+              typeof args[i] === "string" &&
+              args[i].includes("{{MCP_DIR}}")
+            ) {
               args[i] = args[i].replace(/\{\{MCP_DIR\}\}/g, mcpDir);
             }
           }
