@@ -920,8 +920,16 @@ const mcpController = {
       });
     }
 
+    // Interpolate {{MCP_DIR}} in authCommand args (same as startServer)
+    const mcpDir = path.join(__dirname, "..", "mcp");
+    const resolvedArgs = (authCommand.args || []).map((arg) =>
+      typeof arg === "string" && arg.includes("{{MCP_DIR}}")
+        ? arg.replace(/\{\{MCP_DIR\}\}/g, mcpDir)
+        : arg,
+    );
+
     return new Promise((resolve) => {
-      const proc = spawn(authCommand.command, authCommand.args || [], {
+      const proc = spawn(authCommand.command, resolvedArgs, {
         env,
         stdio: ["ignore", "pipe", "pipe"],
       });

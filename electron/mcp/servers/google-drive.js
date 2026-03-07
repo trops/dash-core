@@ -153,33 +153,12 @@ if (process.argv[2] === "auth") {
       const { URL } = require("url");
       const { client_id, client_secret } = getClientCredentials();
 
-      const keysFile = JSON.parse(fs.readFileSync(oauthKeysPath, "utf8"));
-      const keyData = keysFile.installed || keysFile.web;
-      const redirectUri =
-        keyData.redirect_uris?.[0] || "http://localhost:3000/oauth2callback";
-
-      // Extract port from redirect URI
-      const redirectUrl = new URL(redirectUri);
-      const port = parseInt(redirectUrl.port, 10) || 3000;
-
       const scopes = ["https://www.googleapis.com/auth/drive.readonly"];
-
-      const authUrl =
-        `https://accounts.google.com/o/oauth2/v2/auth?` +
-        `client_id=${encodeURIComponent(client_id)}` +
-        `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-        `&response_type=code` +
-        `&scope=${encodeURIComponent(scopes.join(" "))}` +
-        `&access_type=offline` +
-        `&prompt=consent`;
-
-      console.log(
-        `\nOpen this URL in your browser to authorize:\n\n${authUrl}\n`,
-      );
+      let redirectUri;
 
       // Start local server to catch the callback
       const server = http.createServer(async (req, res) => {
-        const reqUrl = new URL(req.url, `http://localhost:${port}`);
+        const reqUrl = new URL(req.url, redirectUri);
         const code = reqUrl.searchParams.get("code");
         if (!code) {
           res.writeHead(400);
@@ -255,8 +234,30 @@ if (process.argv[2] === "auth") {
         }
       });
 
-      server.listen(port, () => {
-        console.log(`Listening on port ${port} for OAuth callback...`);
+      server.on("error", (err) => {
+        console.error("OAuth server error:", err.message);
+        process.exit(1);
+      });
+
+      // Use ephemeral port (0) — OS assigns a free port
+      server.listen(0, () => {
+        const actualPort = server.address().port;
+        redirectUri = `http://localhost:${actualPort}`;
+
+        const authUrl =
+          `https://accounts.google.com/o/oauth2/v2/auth?` +
+          `client_id=${encodeURIComponent(client_id)}` +
+          `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+          `&response_type=code` +
+          `&scope=${encodeURIComponent(scopes.join(" "))}` +
+          `&access_type=offline` +
+          `&prompt=consent`;
+
+        const { exec } = require("child_process");
+        exec(`open "${authUrl}"`);
+        console.log(
+          `\nOpening browser for authorization (port ${actualPort})...\n`,
+        );
       });
     } catch (err) {
       console.error("Auth error:", err.message);
