@@ -204,11 +204,24 @@
         "args": ["-y", "@modelcontextprotocol/server-gdrive"],
         "envMapping": {
           "GDRIVE_OAUTH_PATH": "oauthKeysPath"
+        },
+        "staticEnv": {
+          "GDRIVE_CREDENTIALS_PATH": "~/.gdrive-mcp/credentials.json"
         }
       },
       "authCommand": {
         "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-gdrive", "auth"]
+        "args": ["-y", "@modelcontextprotocol/server-gdrive", "auth"],
+        "setup": {
+          "copyCredential": {
+            "from": "oauthKeysPath",
+            "to": "~/.gdrive-mcp/gcp-oauth.keys.json"
+          }
+        },
+        "staticEnv": {
+          "GDRIVE_CREDENTIALS_PATH": "~/.gdrive-mcp/credentials.json",
+          "GDRIVE_OAUTH_PATH": "~/.gdrive-mcp/gcp-oauth.keys.json"
+        }
       },
       "credentialSchema": {
         "oauthKeysPath": {
