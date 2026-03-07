@@ -201,12 +201,13 @@
       "mcpConfig": {
         "transport": "stdio",
         "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-gdrive"],
+        "args": ["-y", "-p", "@modelcontextprotocol/server-gdrive", "node", "{{MCP_DIR}}/gdrive-server.mjs"],
         "envMapping": {
           "GDRIVE_OAUTH_PATH": "oauthKeysPath"
         },
         "staticEnv": {
-          "GDRIVE_CREDENTIALS_PATH": "~/.gdrive-mcp/credentials.json"
+          "GDRIVE_CREDENTIALS_PATH": "~/.gdrive-mcp/credentials.json",
+          "GDRIVE_OAUTH_KEYS_PATH": "~/.gdrive-mcp/gcp-oauth.keys.json"
         }
       },
       "authCommand": {
