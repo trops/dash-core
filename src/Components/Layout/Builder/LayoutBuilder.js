@@ -727,12 +727,14 @@ export const LayoutBuilder = ({
     providerType,
     mcpCredentials,
     mcpConfig,
+    allowedTools,
   ) {
     console.log("[LayoutBuilder] MCP provider save:", {
       providerName,
       providerType,
       mcpCredentials,
       mcpConfig,
+      allowedTools,
     });
 
     const appId = dashboardContext?.credentials?.appId;
@@ -746,6 +748,7 @@ export const LayoutBuilder = ({
           credentials: mcpCredentials,
           providerClass: "mcp",
           mcpConfig,
+          allowedTools,
         },
         () => {
           console.log("[LayoutBuilder] MCP provider created:", providerName);
@@ -1428,6 +1431,7 @@ export const LayoutBuilder = ({
           isOpen={isMcpPickerOpen}
           setIsOpen={setIsMcpPickerOpen}
           onSave={handleMcpProviderSave}
+          autoSelectId={mcpPickerProviderType}
         />
       </AppThemeScope>
     </div>
