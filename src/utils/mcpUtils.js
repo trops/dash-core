@@ -279,12 +279,7 @@ export function mcpJsonToFormState(jsonString, nextRowId) {
       return { error: "No server found in mcpServers" };
     }
     [providerName, serverConfig] = entries[0];
-  } else if (
-    parsed.command ||
-    parsed.url ||
-    parsed.type ||
-    parsed.transport
-  ) {
+  } else if (parsed.command || parsed.url || parsed.type || parsed.transport) {
     serverConfig = parsed;
   } else {
     return {
@@ -297,8 +292,7 @@ export function mcpJsonToFormState(jsonString, nextRowId) {
   const explicitType = serverConfig.type || serverConfig.transport;
   let transport;
   if (explicitType) {
-    transport =
-      explicitType === "stdio" ? "stdio" : "streamable_http";
+    transport = explicitType === "stdio" ? "stdio" : "streamable_http";
   } else {
     transport = serverConfig.url ? "streamable_http" : "stdio";
   }

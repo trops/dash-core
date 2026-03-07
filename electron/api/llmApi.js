@@ -25,11 +25,11 @@ let _nextListenerId = 0;
 const _listenerMap = new Map();
 
 function _addListener(channel, callback) {
-    const id = String(++_nextListenerId);
-    const wrapped = (_event, data) => callback(data);
-    ipcRenderer.on(channel, wrapped);
-    _listenerMap.set(id, { channel, wrapped });
-    return id;
+  const id = String(++_nextListenerId);
+  const wrapped = (_event, data) => callback(data);
+  ipcRenderer.on(channel, wrapped);
+  _listenerMap.set(id, { channel, wrapped });
+  return id;
 }
 
 const llmApi = {
