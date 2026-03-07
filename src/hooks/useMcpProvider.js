@@ -313,19 +313,25 @@ export const useMcpProvider = (providerType, options = {}) => {
       serverStates.delete(selectedProviderName);
     }
 
-    dashApi.mcpStopServer(
-      selectedProviderName,
-      () => {
-        setIsConnected(false);
-        setTools([]);
-        setResources([]);
-        setStatus("disconnected");
-        connectedRef.current = false;
-      },
-      (event, err) => {
-        console.error("[useMcpProvider] Error disconnecting:", err?.message);
-      },
-    );
+    // Clear state synchronously BEFORE the IPC call so that
+    // a subsequent connect() won't short-circuit on stale connectedRef
+    setIsConnected(false);
+    setTools([]);
+    setResources([]);
+    setStatus("disconnected");
+    connectedRef.current = false;
+    pendingConnects.delete(selectedProviderName);
+
+    return new Promise((resolve) => {
+      dashApi.mcpStopServer(
+        selectedProviderName,
+        () => resolve(),
+        (event, err) => {
+          console.error("[useMcpProvider] Error disconnecting:", err?.message);
+          resolve();
+        },
+      );
+    });
   }, [dashApi, selectedProviderName]);
 
   /**
