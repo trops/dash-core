@@ -325,6 +325,30 @@ const mcpController = {
           await mcpController.stopServer(win, serverName);
         }
 
+        // Merge with catalog entry to pick up updated command/args
+        // (saved provider config may reference a stale or archived package)
+        try {
+          const { catalog } = mcpController.getCatalog(win);
+          const catalogEntry = (catalog || []).find(
+            (entry) => entry.name === serverName,
+          );
+          if (catalogEntry?.mcpConfig) {
+            const cat = catalogEntry.mcpConfig;
+            if (cat.command) mcpConfig.command = cat.command;
+            if (cat.args) mcpConfig.args = [...cat.args];
+            if (cat.staticEnv) mcpConfig.staticEnv = cat.staticEnv;
+            if (cat.tokenRefresh) mcpConfig.tokenRefresh = cat.tokenRefresh;
+            if (cat.envMapping) {
+              mcpConfig.envMapping = {
+                ...mcpConfig.envMapping,
+                ...cat.envMapping,
+              };
+            }
+          }
+        } catch (catalogErr) {
+          // Non-fatal: proceed with saved config if catalog lookup fails
+        }
+
         console.log(
           `[mcpController] Starting server: ${serverName} (transport: ${
             mcpConfig.transport || "stdio"

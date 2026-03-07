@@ -21,6 +21,10 @@ const { Server } = require("@modelcontextprotocol/sdk/server/index.js");
 const {
   StdioServerTransport,
 } = require("@modelcontextprotocol/sdk/server/stdio.js");
+const {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} = require("@modelcontextprotocol/sdk/types.js");
 const fs = require("fs");
 const https = require("https");
 const path = require("path");
@@ -267,7 +271,7 @@ if (process.argv[2] === "auth") {
       { capabilities: { tools: {} } },
     );
 
-    server.setRequestHandler({ method: "tools/list" }, async () => ({
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
         {
           name: "search",
@@ -286,7 +290,7 @@ if (process.argv[2] === "auth") {
       ],
     }));
 
-    server.setRequestHandler({ method: "tools/call" }, async (request) => {
+    server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (request.params.name !== "search") {
         return {
           content: [
