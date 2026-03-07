@@ -6,7 +6,7 @@
  */
 const { app, safeStorage } = require("electron");
 const path = require("path");
-const { writeFileSync } = require("fs");
+const { writeFileSync, readFileSync, existsSync } = require("fs");
 const {
   ensureDirectoryExistence,
   getFileContents,
@@ -129,6 +129,17 @@ const providerController = {
       // Load providers file
       const providersData = getFileContents(filename, {});
 
+      // Load MCP catalog for merging new config fields into saved providers
+      let catalog = [];
+      try {
+        const catalogPath = path.join(__dirname, "..", "mcp", "mcpServerCatalog.json");
+        if (existsSync(catalogPath)) {
+          catalog = JSON.parse(readFileSync(catalogPath, "utf-8"));
+        }
+      } catch (e) {
+        // Catalog is optional — merge is best-effort
+      }
+
       // Decrypt all credentials
       const decryptedProviders = [];
       Object.entries(providersData).forEach(([name, data]) => {
@@ -149,6 +160,16 @@ const providerController = {
           // Include mcpConfig for MCP providers
           if (data.mcpConfig) {
             provider.mcpConfig = data.mcpConfig;
+
+            // Merge argsMapping from catalog if missing from saved config
+            // (providers snapshot mcpConfig at creation time; this ensures
+            // existing providers pick up new catalog features like argsMapping)
+            if (!data.mcpConfig.argsMapping && data.type) {
+              const catalogEntry = catalog.find((entry) => entry.id === data.type);
+              if (catalogEntry?.mcpConfig?.argsMapping) {
+                provider.mcpConfig.argsMapping = catalogEntry.mcpConfig.argsMapping;
+              }
+            }
           }
 
           // Include allowedTools for MCP providers
