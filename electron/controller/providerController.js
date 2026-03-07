@@ -132,7 +132,12 @@ const providerController = {
       // Load MCP catalog for merging new config fields into saved providers
       let catalog = [];
       try {
-        const catalogPath = path.join(__dirname, "..", "mcp", "mcpServerCatalog.json");
+        const catalogPath = path.join(
+          __dirname,
+          "..",
+          "mcp",
+          "mcpServerCatalog.json",
+        );
         if (existsSync(catalogPath)) {
           const catalogData = JSON.parse(readFileSync(catalogPath, "utf-8"));
           catalog = catalogData.servers || [];
@@ -166,9 +171,12 @@ const providerController = {
             // (providers snapshot mcpConfig at creation time; this ensures
             // existing providers pick up new catalog features like argsMapping)
             if (!data.mcpConfig.argsMapping && data.type) {
-              const catalogEntry = catalog.find((entry) => entry.id === data.type);
+              const catalogEntry = catalog.find(
+                (entry) => entry.id === data.type,
+              );
               if (catalogEntry?.mcpConfig?.argsMapping) {
-                provider.mcpConfig.argsMapping = catalogEntry.mcpConfig.argsMapping;
+                provider.mcpConfig.argsMapping =
+                  catalogEntry.mcpConfig.argsMapping;
               }
             }
           }

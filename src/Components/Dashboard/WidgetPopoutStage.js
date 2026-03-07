@@ -76,8 +76,7 @@ const WidgetPopoutInner = ({ dashApi, credentials, workspaceId, widgetId }) => {
           // Merge workspace-level provider selections into the widget item
           const widgetWithProviders = {
             ...widget,
-            selectedProviders:
-              target.selectedProviders?.[widgetId] || {},
+            selectedProviders: target.selectedProviders?.[widgetId] || {},
           };
 
           setWidgetItem(widgetWithProviders);
@@ -146,12 +145,7 @@ const WidgetPopoutInner = ({ dashApi, credentials, workspaceId, widgetId }) => {
   return (
     <DashboardThemeProvider themeKey={workspace?.themeKey}>
       <div className="flex flex-col w-full h-full overflow-auto">
-        {renderComponent(
-          widgetItem.component,
-          widgetItem.id,
-          widgetItem,
-          null,
-        )}
+        {renderComponent(widgetItem.component, widgetItem.id, widgetItem, null)}
       </div>
     </DashboardThemeProvider>
   );
