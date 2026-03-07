@@ -86,10 +86,10 @@ function getShellPath() {
   try {
     const shell = process.env.SHELL || "/bin/bash";
     const marker = "__DASH_PATH__";
-    const raw = execSync(
-      `${shell} -ilc 'echo "${marker}$PATH${marker}"'`,
-      { encoding: "utf8", timeout: 5000 },
-    );
+    const raw = execSync(`${shell} -ilc 'echo "${marker}$PATH${marker}"'`, {
+      encoding: "utf8",
+      timeout: 5000,
+    });
     // Extract PATH between markers, stripping session restore noise
     const startIdx = raw.indexOf(marker);
     const endIdx = raw.lastIndexOf(marker);
@@ -300,6 +300,14 @@ const mcpController = {
                 }
               },
             );
+          }
+
+          // Interpolate {{MCP_DIR}} in args to resolve local MCP server scripts
+          const mcpDir = path.join(__dirname, "..", "mcp");
+          for (let i = 0; i < args.length; i++) {
+            if (typeof args[i] === "string" && args[i].includes("{{MCP_DIR}}")) {
+              args[i] = args[i].replace(/\{\{MCP_DIR\}\}/g, mcpDir);
+            }
           }
 
           transport = new StdioClientTransport({
