@@ -273,6 +273,13 @@ const mcpController = {
             );
           }
 
+          // Merge static env vars from mcpConfig (with ~ expansion)
+          if (mcpConfig.staticEnv) {
+            Object.entries(mcpConfig.staticEnv).forEach(([envVar, value]) => {
+              env[envVar] = value.replace(/^~/, process.env.HOME || "");
+            });
+          }
+
           // Build args - start with static args, then append dynamic args from credentials
           const args = [...(mcpConfig.args || [])];
           if (mcpConfig.argsMapping && credentials) {
@@ -761,6 +768,13 @@ const mcpController = {
     if (authCommand.env) {
       Object.entries(authCommand.env).forEach(([key, value]) => {
         env[key] = value;
+      });
+    }
+
+    // Merge static env vars from authCommand with ~ expansion
+    if (authCommand.staticEnv) {
+      Object.entries(authCommand.staticEnv).forEach(([key, value]) => {
+        env[key] = value.replace(/^~/, process.env.HOME || "");
       });
     }
 
