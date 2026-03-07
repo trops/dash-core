@@ -115,7 +115,10 @@
         "transport": "stdio",
         "command": "npx",
         "args": ["-y", "@modelcontextprotocol/server-filesystem"],
-        "envMapping": {}
+        "envMapping": {},
+        "argsMapping": {
+          "allowedPaths": { "type": "split", "delimiter": "," }
+        }
       },
       "credentialSchema": {
         "allowedPaths": {

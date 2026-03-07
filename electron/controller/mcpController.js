@@ -273,9 +273,31 @@ const mcpController = {
             );
           }
 
+          // Build args - start with static args, then append dynamic args from credentials
+          const args = [...(mcpConfig.args || [])];
+          if (mcpConfig.argsMapping && credentials) {
+            Object.entries(mcpConfig.argsMapping).forEach(
+              ([credentialKey, config]) => {
+                const value = credentials[credentialKey];
+                if (value) {
+                  if (config.type === "split" && config.delimiter) {
+                    args.push(
+                      ...value
+                        .split(config.delimiter)
+                        .map((s) => s.trim())
+                        .filter(Boolean),
+                    );
+                  } else {
+                    args.push(value);
+                  }
+                }
+              },
+            );
+          }
+
           transport = new StdioClientTransport({
             command: mcpConfig.command,
-            args: mcpConfig.args || [],
+            args,
             env,
           });
         }
