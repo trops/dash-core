@@ -432,6 +432,7 @@ export const ProvidersSection = ({
         onDelete={(name) => setDeleteTarget(name)}
         onSaveAllowedTools={handleSaveAllowedTools}
         catalogAuthCommand={catalogEntry?.authCommand || null}
+        catalogCredentialSchema={catalogEntry?.credentialSchema || {}}
       />
     );
   }

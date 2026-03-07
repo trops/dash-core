@@ -30,11 +30,18 @@ import {
   Menu3,
   MenuItem3,
   SearchInput,
+  Stepper,
+  FormLabel,
+  InputText,
+  Tag,
+  FontAwesomeIcon,
 } from "@trops/dash-react";
 import { ComponentManager } from "../../../../ComponentManager";
 import { WidgetIcon } from "./WidgetIcon";
 import { AppContext } from "../../../../Context/App/AppContext";
 import { ProviderForm } from "../../../Provider/ProviderForm";
+import { ToolSelector } from "../../../Settings/details/ToolSelector";
+import { deriveFormFields } from "../../../../utils/mcpUtils";
 
 export const EnhancedWidgetDropdown = ({
   isOpen,
@@ -72,6 +79,21 @@ export const EnhancedWidgetDropdown = ({
   const [inlineCreateSchema, setInlineCreateSchema] = useState({});
   const [inlineCreateError, setInlineCreateError] = useState(null);
   const [isCreatingProvider, setIsCreatingProvider] = useState(false);
+
+  // MCP catalog for inline stepper creation
+  const [mcpCatalog, setMcpCatalog] = useState([]);
+  const [inlineCatalogEntry, setInlineCatalogEntry] = useState(null);
+
+  // Inline MCP stepper state
+  const [inlineWizardStep, setInlineWizardStep] = useState(0);
+  const [inlineCredentialData, setInlineCredentialData] = useState({});
+  const [inlineProviderName, setInlineProviderName] = useState("");
+  const [inlineFormErrors, setInlineFormErrors] = useState({});
+  const [inlineTestResult, setInlineTestResult] = useState(null);
+  const [inlineIsTesting, setInlineIsTesting] = useState(false);
+  const [inlineAuthResult, setInlineAuthResult] = useState(null);
+  const [inlineIsAuthorizing, setInlineIsAuthorizing] = useState(false);
+  const [inlineSelectedTools, setInlineSelectedTools] = useState(null);
 
   // Installed widget grouping
   const [expandedGroups, setExpandedGroups] = useState(new Set());
@@ -165,6 +187,17 @@ export const EnhancedWidgetDropdown = ({
     setInlineCreateSchema({});
     setInlineCreateError(null);
   };
+
+  // Fetch MCP catalog for inline stepper creation
+  useEffect(() => {
+    if (isOpen && dashApi && mcpCatalog.length === 0) {
+      dashApi.mcpGetCatalog(
+        (event, result) => setMcpCatalog(result?.catalog || []),
+        () => {},
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, dashApi]);
 
   // Fetch widgets when modal opens
   useEffect(() => {
@@ -442,15 +475,34 @@ export const EnhancedWidgetDropdown = ({
 
   const handleProviderSelect = (providerType, providerName) => {
     if (providerName === "__create_new__") {
-      // Find credential schema for this provider type
       const providerReq = selectedWidget.providers.find(
         (p) => p.type === providerType,
       );
 
-      // Show inline creation form
+      // Look up full catalog entry for MCP providers
+      const catalogEntry = mcpCatalog.find((s) => s.id === providerType);
+
       setInlineCreateType(providerType);
-      setInlineCreateSchema(providerReq?.credentialSchema || {});
+      setInlineCreateSchema(
+        catalogEntry?.credentialSchema ||
+          providerReq?.credentialSchema ||
+          {},
+      );
       setInlineCreateError(null);
+
+      // Initialize stepper state for MCP providers
+      if (catalogEntry) {
+        setInlineCatalogEntry(catalogEntry);
+        setInlineProviderName(catalogEntry.name);
+        setInlineCredentialData({});
+        setInlineFormErrors({});
+        setInlineWizardStep(0);
+        setInlineTestResult(null);
+        setInlineAuthResult(null);
+        setInlineSelectedTools(null);
+      } else {
+        setInlineCatalogEntry(null);
+      }
     } else {
       // Normal provider selection - also close any open inline form
       setInlineCreateType(null);
@@ -521,6 +573,204 @@ export const EnhancedWidgetDropdown = ({
     setInlineCreateType(null);
     setInlineCreateSchema({});
     setInlineCreateError(null);
+    setInlineCatalogEntry(null);
+    setInlineWizardStep(0);
+    setInlineCredentialData({});
+    setInlineProviderName("");
+    setInlineFormErrors({});
+    setInlineTestResult(null);
+    setInlineAuthResult(null);
+    setInlineSelectedTools(null);
+    setInlineIsTesting(false);
+    setInlineIsAuthorizing(false);
+  };
+
+  // ── Inline MCP Stepper Handlers ──
+
+  const inlineFormFields = useMemo(() => {
+    if (!inlineCatalogEntry?.mcpConfig) return [];
+    return deriveFormFields(
+      inlineCatalogEntry.mcpConfig,
+      inlineCatalogEntry.credentialSchema || {},
+    );
+  }, [inlineCatalogEntry]);
+
+  const inlineHasAuth = !!inlineCatalogEntry?.authCommand;
+  const inlineWizardSteps = inlineHasAuth
+    ? ["configure", "authorize", "testTools"]
+    : ["configure", "testTools"];
+  const inlineTotalSteps = inlineWizardSteps.length;
+  const inlineCurrentStepType = inlineWizardSteps[inlineWizardStep];
+
+  const inlineValidateForm = () => {
+    const errors = {};
+    if (!inlineProviderName?.trim()) {
+      errors.providerName = "Provider name is required";
+    }
+    inlineFormFields.forEach((field) => {
+      if (field.required && !inlineCredentialData[field.key]?.trim()) {
+        errors[field.key] = `${field.displayName} is required`;
+      }
+    });
+    setInlineFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const inlineHandleCredentialChange = (fieldName, value) => {
+    setInlineCredentialData((prev) => ({ ...prev, [fieldName]: value }));
+    if (inlineFormErrors[fieldName] && value?.trim()) {
+      setInlineFormErrors((prev) => {
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
+    }
+  };
+
+  const inlineHandleWizardStepChange = (newStep) => {
+    if (newStep < inlineWizardStep) {
+      setInlineWizardStep(newStep);
+      return;
+    }
+    if (inlineCurrentStepType === "configure" && newStep > inlineWizardStep) {
+      if (!inlineValidateForm()) return;
+    }
+    if (inlineCurrentStepType === "authorize" && newStep > inlineWizardStep) {
+      if (!inlineAuthResult?.success) return;
+    }
+    setInlineWizardStep(newStep);
+  };
+
+  const inlineHandleTestConnection = () => {
+    if (!dashApi || !inlineCatalogEntry?.mcpConfig) return;
+
+    setInlineIsTesting(true);
+    setInlineTestResult(null);
+
+    const testName = `__test__${inlineCatalogEntry.id}`;
+
+    dashApi.mcpStartServer(
+      testName,
+      inlineCatalogEntry.mcpConfig,
+      inlineCredentialData,
+      (event, result) => {
+        if (result.error) {
+          setInlineTestResult({ success: false, message: result.message });
+          setInlineIsTesting(false);
+          return;
+        }
+
+        setInlineTestResult({
+          success: true,
+          tools: result.tools || [],
+          message: `Connected! Found ${(result.tools || []).length} tools.`,
+        });
+
+        setInlineSelectedTools((result.tools || []).map((t) => t.name));
+
+        dashApi.mcpStopServer(
+          testName,
+          () => {},
+          () => {},
+        );
+        setInlineIsTesting(false);
+      },
+      (event, err) => {
+        setInlineTestResult({
+          success: false,
+          message: err?.message || "Connection failed",
+        });
+        setInlineIsTesting(false);
+      },
+    );
+  };
+
+  const inlineHandleAuthorize = () => {
+    if (!dashApi || !inlineCatalogEntry?.mcpConfig || !inlineCatalogEntry?.authCommand) return;
+
+    setInlineIsAuthorizing(true);
+    setInlineAuthResult(null);
+
+    dashApi.mcpRunAuth(
+      inlineCatalogEntry.mcpConfig,
+      inlineCredentialData,
+      inlineCatalogEntry.authCommand,
+      (event, result) => {
+        if (result.error) {
+          setInlineAuthResult({ success: false, message: result.message });
+        } else {
+          setInlineAuthResult({ success: true, message: "Authorized!" });
+        }
+        setInlineIsAuthorizing(false);
+      },
+      (event, err) => {
+        setInlineAuthResult({
+          success: false,
+          message: err?.message || "Authorization failed",
+        });
+        setInlineIsAuthorizing(false);
+      },
+    );
+  };
+
+  const inlineHandleSave = () => {
+    if (!inlineCatalogEntry || !inlineValidateForm()) return;
+
+    const providerType = inlineCreateType;
+    const providerName = inlineProviderName.trim();
+
+    setIsCreatingProvider(true);
+    setInlineCreateError(null);
+
+    dashApi.saveProvider(
+      credentials.appId,
+      providerName,
+      {
+        providerType,
+        credentials: inlineCredentialData,
+        providerClass: "mcp",
+        mcpConfig: inlineCatalogEntry.mcpConfig,
+        allowedTools: inlineSelectedTools,
+      },
+      (event, result) => {
+        console.log(
+          "[EnhancedWidgetDropdown] MCP Provider saved successfully:",
+          result,
+        );
+
+        if (refreshProviders) {
+          refreshProviders();
+        }
+
+        setSelectedProviders((prev) => ({
+          ...prev,
+          [providerType]: providerName,
+        }));
+
+        // Reset stepper state
+        setInlineCreateType(null);
+        setInlineCreateSchema({});
+        setInlineCatalogEntry(null);
+        setIsCreatingProvider(false);
+        setInlineWizardStep(0);
+        setInlineCredentialData({});
+        setInlineProviderName("");
+        setInlineFormErrors({});
+        setInlineTestResult(null);
+        setInlineAuthResult(null);
+        setInlineSelectedTools(null);
+      },
+      (event, error) => {
+        console.error(
+          "[EnhancedWidgetDropdown] Failed to save MCP provider:",
+          error,
+        );
+        setInlineCreateError(
+          `Failed to create provider: ${error?.message || "Unknown error"}`,
+        );
+        setIsCreatingProvider(false);
+      },
+    );
   };
 
   const handleConfigChange = (key, value) => {
@@ -1310,25 +1560,286 @@ export const EnhancedWidgetDropdown = ({
                                                   </div>
                                                 )}
 
-                                                <ProviderForm
-                                                  credentialSchema={
-                                                    inlineCreateSchema
-                                                  }
-                                                  onSubmit={
-                                                    handleInlineProviderSubmit
-                                                  }
-                                                  onCancel={
-                                                    handleInlineProviderCancel
-                                                  }
-                                                  submitLabel={
-                                                    isCreatingProvider
-                                                      ? "Creating..."
-                                                      : "Create Provider"
-                                                  }
-                                                  providerType={
-                                                    providerReq.type
-                                                  }
-                                                />
+                                                {inlineCatalogEntry ? (
+                                                  /* MCP Provider: Stepper-based creation */
+                                                  <div className="space-y-3">
+                                                    <Stepper
+                                                      activeStep={inlineWizardStep}
+                                                      onStepChange={inlineHandleWizardStepChange}
+                                                      showNavigation={false}
+                                                      className="flex-1 min-h-0 flex flex-col"
+                                                    >
+                                                      {/* Step 1: Configure */}
+                                                      <Stepper.Step label="Configure" description="Name & credentials">
+                                                        <div className="space-y-4 pb-2">
+                                                          {/* MCP Connection Info */}
+                                                          <div className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-2">
+                                                            <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
+                                                              MCP Server Connection
+                                                            </p>
+                                                            <div className="space-y-1 text-sm">
+                                                              <div className="flex gap-2">
+                                                                <span className="opacity-50 w-20 shrink-0">Transport:</span>
+                                                                <Tag
+                                                                  text={
+                                                                    inlineCatalogEntry.mcpConfig?.transport === "streamable_http"
+                                                                      ? "Streamable HTTP"
+                                                                      : "stdio"
+                                                                  }
+                                                                />
+                                                              </div>
+                                                              {inlineCatalogEntry.mcpConfig?.transport !== "streamable_http" && (
+                                                                <div className="flex gap-2">
+                                                                  <span className="opacity-50 w-20 shrink-0">Command:</span>
+                                                                  <code className="text-xs bg-white/5 px-2 py-0.5 rounded">
+                                                                    {inlineCatalogEntry.mcpConfig?.command}{" "}
+                                                                    {(inlineCatalogEntry.mcpConfig?.args || []).join(" ")}
+                                                                  </code>
+                                                                </div>
+                                                              )}
+                                                            </div>
+                                                          </div>
+
+                                                          {/* Provider Name */}
+                                                          <div className="flex flex-col gap-1">
+                                                            <FormLabel label="Provider Name" required={true} />
+                                                            <InputText
+                                                              value={inlineProviderName}
+                                                              onChange={(value) => {
+                                                                setInlineProviderName(value);
+                                                                if (inlineFormErrors.providerName && value?.trim()) {
+                                                                  setInlineFormErrors((prev) => {
+                                                                    const next = { ...prev };
+                                                                    delete next.providerName;
+                                                                    return next;
+                                                                  });
+                                                                }
+                                                              }}
+                                                              placeholder="Enter provider name"
+                                                            />
+                                                            {inlineFormErrors.providerName && (
+                                                              <p className="text-xs text-red-400">
+                                                                {inlineFormErrors.providerName}
+                                                              </p>
+                                                            )}
+                                                          </div>
+
+                                                          {/* Credential Fields */}
+                                                          {inlineFormFields.length > 0 && (
+                                                            <>
+                                                              <div className="border-t border-white/10 pt-3">
+                                                                <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
+                                                                  {inlineCatalogEntry.mcpConfig?.transport === "streamable_http"
+                                                                    ? "Server Configuration"
+                                                                    : "Authentication"}
+                                                                </p>
+                                                              </div>
+
+                                                              {inlineFormFields.map((field) => (
+                                                                <div key={field.key} className="flex flex-col gap-1">
+                                                                  <FormLabel
+                                                                    label={field.displayName}
+                                                                    required={field.required}
+                                                                  />
+                                                                  {field.instructions && (
+                                                                    <p className="text-xs opacity-50">
+                                                                      {field.instructions}
+                                                                    </p>
+                                                                  )}
+                                                                  <div className="flex gap-2">
+                                                                    <div className="flex-1">
+                                                                      <InputText
+                                                                        type={field.secret ? "password" : "text"}
+                                                                        value={inlineCredentialData[field.key] || ""}
+                                                                        onChange={(value) =>
+                                                                          inlineHandleCredentialChange(field.key, value)
+                                                                        }
+                                                                        placeholder={
+                                                                          field.type === "file"
+                                                                            ? "Select a file..."
+                                                                            : `Enter ${field.displayName.toLowerCase()}`
+                                                                        }
+                                                                      />
+                                                                    </div>
+                                                                    {field.type === "file" && (
+                                                                      <button
+                                                                        onClick={async () => {
+                                                                          const filepath =
+                                                                            await window.mainApi.dialog.chooseFile(true, [
+                                                                              "json",
+                                                                            ]);
+                                                                          if (filepath)
+                                                                            inlineHandleCredentialChange(field.key, filepath);
+                                                                        }}
+                                                                        className="px-3 py-1.5 text-sm rounded bg-white/10 hover:bg-white/20 transition-colors"
+                                                                      >
+                                                                        Browse
+                                                                      </button>
+                                                                    )}
+                                                                  </div>
+                                                                  {inlineFormErrors[field.key] && (
+                                                                    <p className="text-xs text-red-400">
+                                                                      {inlineFormErrors[field.key]}
+                                                                    </p>
+                                                                  )}
+                                                                </div>
+                                                              ))}
+                                                            </>
+                                                          )}
+                                                        </div>
+                                                      </Stepper.Step>
+
+                                                      {/* Step 2: Authorize (conditional) */}
+                                                      {inlineHasAuth && (
+                                                        <Stepper.Step label="Authorize" description="OAuth authentication">
+                                                          <div className="space-y-4 pb-2">
+                                                            <div className="flex flex-col items-center justify-center py-6 space-y-3">
+                                                              <p className="text-sm opacity-60 text-center max-w-md">
+                                                                This server requires OAuth authorization. Click the button
+                                                                below to open a browser window and complete the
+                                                                authentication flow.
+                                                              </p>
+                                                              <Button
+                                                                title={inlineIsAuthorizing ? "Authorizing..." : "Authorize"}
+                                                                onClick={inlineHandleAuthorize}
+                                                                size="sm"
+                                                              />
+                                                            </div>
+                                                            {inlineAuthResult && (
+                                                              <div
+                                                                className={`p-3 rounded-lg text-sm ${
+                                                                  inlineAuthResult.success
+                                                                    ? "bg-green-900/30 border border-green-700 text-green-300"
+                                                                    : "bg-red-900/30 border border-red-700 text-red-300"
+                                                                }`}
+                                                              >
+                                                                <div className="flex items-center gap-2">
+                                                                  <FontAwesomeIcon
+                                                                    icon={
+                                                                      inlineAuthResult.success
+                                                                        ? "circle-check"
+                                                                        : "circle-exclamation"
+                                                                    }
+                                                                  />
+                                                                  <span>{inlineAuthResult.message}</span>
+                                                                </div>
+                                                              </div>
+                                                            )}
+                                                          </div>
+                                                        </Stepper.Step>
+                                                      )}
+
+                                                      {/* Step 3: Test & Tools */}
+                                                      <Stepper.Step label="Test & Tools" description="Verify & select tools">
+                                                        <div className="space-y-3 pb-2">
+                                                          <div className="flex items-center gap-3">
+                                                            <Button
+                                                              title={inlineIsTesting ? "Fetching..." : "Fetch Tools"}
+                                                              onClick={inlineHandleTestConnection}
+                                                              size="sm"
+                                                            />
+                                                            {inlineTestResult && (
+                                                              <span
+                                                                className={`text-sm ${inlineTestResult.success ? "text-green-400" : "text-red-400"}`}
+                                                              >
+                                                                <FontAwesomeIcon
+                                                                  icon={
+                                                                    inlineTestResult.success
+                                                                      ? "circle-check"
+                                                                      : "circle-exclamation"
+                                                                  }
+                                                                  className="mr-1"
+                                                                />
+                                                                {inlineTestResult.message}
+                                                              </span>
+                                                            )}
+                                                          </div>
+                                                          {inlineTestResult?.success &&
+                                                            inlineTestResult.tools?.length > 0 &&
+                                                            inlineSelectedTools && (
+                                                              <ToolSelector
+                                                                tools={inlineTestResult.tools}
+                                                                selectedTools={inlineSelectedTools}
+                                                                onSelectionChange={setInlineSelectedTools}
+                                                              />
+                                                            )}
+                                                          {!inlineTestResult && (
+                                                            <div className="text-center py-6 opacity-50 text-sm">
+                                                              Click &quot;Fetch Tools&quot; to test the connection and
+                                                              discover available tools.
+                                                            </div>
+                                                          )}
+                                                        </div>
+                                                      </Stepper.Step>
+                                                    </Stepper>
+
+                                                    {/* Stepper Footer */}
+                                                    <div className="flex flex-row items-center pt-3 border-t border-white/10">
+                                                      <div className="flex flex-row gap-2">
+                                                        {inlineWizardStep === 0 && (
+                                                          <Button title="Cancel" onClick={handleInlineProviderCancel} size="sm" />
+                                                        )}
+                                                        {inlineWizardStep > 0 && (
+                                                          <Button
+                                                            title="Back"
+                                                            onClick={() => setInlineWizardStep(inlineWizardStep - 1)}
+                                                            size="sm"
+                                                          />
+                                                        )}
+                                                      </div>
+                                                      <div className="flex-1 text-center">
+                                                        <span className="text-xs opacity-40">
+                                                          Step {inlineWizardStep + 1} of {inlineTotalSteps}
+                                                        </span>
+                                                      </div>
+                                                      <div className="flex flex-row gap-2">
+                                                        {inlineCurrentStepType === "configure" && (
+                                                          <Button
+                                                            title="Next"
+                                                            onClick={() => inlineHandleWizardStepChange(inlineWizardStep + 1)}
+                                                            size="sm"
+                                                          />
+                                                        )}
+                                                        {inlineCurrentStepType === "authorize" && (
+                                                          <Button
+                                                            title="Next"
+                                                            onClick={() => inlineHandleWizardStepChange(inlineWizardStep + 1)}
+                                                            disabled={!inlineAuthResult?.success}
+                                                            size="sm"
+                                                          />
+                                                        )}
+                                                        {inlineCurrentStepType === "testTools" && (
+                                                          <Button
+                                                            title={isCreatingProvider ? "Saving..." : "Save MCP Server"}
+                                                            onClick={inlineHandleSave}
+                                                            size="sm"
+                                                          />
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                ) : (
+                                                  /* Credential Provider: flat form fallback */
+                                                  <ProviderForm
+                                                    credentialSchema={
+                                                      inlineCreateSchema
+                                                    }
+                                                    onSubmit={
+                                                      handleInlineProviderSubmit
+                                                    }
+                                                    onCancel={
+                                                      handleInlineProviderCancel
+                                                    }
+                                                    submitLabel={
+                                                      isCreatingProvider
+                                                        ? "Creating..."
+                                                        : "Create Provider"
+                                                    }
+                                                    providerType={
+                                                      providerReq.type
+                                                    }
+                                                  />
+                                                )}
                                               </div>
                                             )}
                                           </div>

@@ -32,6 +32,7 @@ export const ProviderDetail = ({
   onDelete,
   onSaveAllowedTools,
   catalogAuthCommand = null,
+  catalogCredentialSchema = {},
 }) => {
   const appContext = useContext(AppContext);
   const dashApi = appContext?.dashApi;
@@ -53,8 +54,8 @@ export const ProviderDetail = ({
   // Derive credential fields for MCP providers in edit mode
   const mcpFormFields = useMemo(() => {
     if (!isMcp || !provider?.mcpConfig) return [];
-    return deriveFormFields(provider.mcpConfig, {});
-  }, [isMcp, provider]);
+    return deriveFormFields(provider.mcpConfig, catalogCredentialSchema);
+  }, [isMcp, provider, catalogCredentialSchema]);
 
   // Credential field keys for non-MCP providers
   const credentialKeys = useMemo(() => {
