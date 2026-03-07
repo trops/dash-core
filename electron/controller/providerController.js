@@ -134,7 +134,8 @@ const providerController = {
       try {
         const catalogPath = path.join(__dirname, "..", "mcp", "mcpServerCatalog.json");
         if (existsSync(catalogPath)) {
-          catalog = JSON.parse(readFileSync(catalogPath, "utf-8"));
+          const catalogData = JSON.parse(readFileSync(catalogPath, "utf-8"));
+          catalog = catalogData.servers || [];
         }
       } catch (e) {
         // Catalog is optional — merge is best-effort
