@@ -22,6 +22,8 @@ const pluginController = require("./controller/pluginController");
 const llmController = require("./controller/llmController");
 const cliController = require("./controller/cliController");
 const dashboardConfigController = require("./controller/dashboardConfigController");
+const registryAuthController = require("./controller/registryAuthController");
+const registryApiController = require("./controller/registryApiController");
 
 // --- Utils ---
 const clientCache = require("./utils/clientCache");
@@ -50,6 +52,7 @@ const pluginApi = require("./api/pluginApi");
 const llmApi = require("./api/llmApi");
 const clientCacheApi = require("./api/clientCacheApi");
 const dashboardConfigApi = require("./api/dashboardConfigApi");
+const registryAuthApi = require("./api/registryAuthApi");
 
 // --- Events ---
 const events = require("./events");
@@ -85,6 +88,8 @@ module.exports = {
   llmController,
   cliController,
   dashboardConfigController,
+  registryAuthController,
+  registryApiController,
 
   // Controller functions (flat) — spread for convenient destructuring
   ...controllers,
@@ -108,6 +113,7 @@ module.exports = {
   llmApi,
   clientCacheApi,
   dashboardConfigApi,
+  registryAuthApi,
 
   // Events
   events,

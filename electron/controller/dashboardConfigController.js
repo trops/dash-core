@@ -725,6 +725,35 @@ async function prepareDashboardForPublish(
       `[DashboardConfigController] Prepared publish package: ${filePath}`,
     );
 
+    // 9. Attempt to publish to registry if authenticated
+    let registrySubmission = null;
+    try {
+      const { getAuthStatus } = require("./registryAuthController");
+      const { publishToRegistry } = require("./registryApiController");
+      const authStatus = getAuthStatus();
+
+      if (authStatus.authenticated) {
+        console.log("[DashboardConfigController] Publishing to registry...");
+        registrySubmission = await publishToRegistry(filePath, manifest);
+        if (registrySubmission.success) {
+          console.log(
+            `[DashboardConfigController] Published to registry: ${registrySubmission.registryUrl}`,
+          );
+        } else {
+          console.warn(
+            `[DashboardConfigController] Registry publish failed: ${registrySubmission.error}`,
+          );
+        }
+      } else {
+        registrySubmission = { success: false, authRequired: true };
+      }
+    } catch (err) {
+      console.warn(
+        `[DashboardConfigController] Registry publish error: ${err.message}`,
+      );
+      registrySubmission = { success: false, error: err.message };
+    }
+
     return {
       success: true,
       filePath,
@@ -732,6 +761,7 @@ async function prepareDashboardForPublish(
       config: dashboardConfig,
       warnings: missingFromRegistry.length > 0 ? missingFromRegistry : undefined,
       registryCheckFailed: registryCheckFailed || undefined,
+      registrySubmission,
     };
   } catch (error) {
     console.error(

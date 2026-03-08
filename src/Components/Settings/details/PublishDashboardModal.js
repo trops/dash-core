@@ -66,6 +66,10 @@ export const PublishDashboardModal = ({
     const [isPublishing, setIsPublishing] = useState(false);
     const [result, setResult] = useState(null);
 
+    // Registry auth state
+    const [authFlow, setAuthFlow] = useState(null);
+    const [isPolling, setIsPolling] = useState(false);
+
     function resetState() {
         setStep(0);
         setAuthorName("");
@@ -74,6 +78,8 @@ export const PublishDashboardModal = ({
         setIcon("grip");
         setIsPublishing(false);
         setResult(null);
+        setAuthFlow(null);
+        setIsPolling(false);
     }
 
     function handleClose() {
@@ -123,6 +129,49 @@ export const PublishDashboardModal = ({
             });
         } finally {
             setIsPublishing(false);
+        }
+    }
+
+    async function handleSignIn() {
+        try {
+            const flow =
+                await window.mainApi.registryAuth.initiateLogin();
+            setAuthFlow(flow);
+
+            // Open verification URL in browser
+            if (flow.verificationUrlComplete) {
+                window.mainApi.shell.openExternal(
+                    flow.verificationUrlComplete,
+                );
+            }
+
+            // Start polling
+            setIsPolling(true);
+            const interval = (flow.interval || 5) * 1000;
+            const poll = setInterval(async () => {
+                try {
+                    const pollResult =
+                        await window.mainApi.registryAuth.pollToken(
+                            flow.deviceCode,
+                        );
+                    if (pollResult.status === "authorized") {
+                        clearInterval(poll);
+                        setIsPolling(false);
+                        setAuthFlow(null);
+                        // Re-publish now that we're authenticated
+                        handlePublish();
+                    } else if (pollResult.status === "expired") {
+                        clearInterval(poll);
+                        setIsPolling(false);
+                        setAuthFlow(null);
+                    }
+                } catch {
+                    clearInterval(poll);
+                    setIsPolling(false);
+                }
+            }, interval);
+        } catch (err) {
+            console.error("[PublishDashboardModal] Sign-in error:", err);
         }
     }
 
@@ -280,15 +329,112 @@ export const PublishDashboardModal = ({
                                 </>
                             ) : result.success ? (
                                 <div className="space-y-3">
-                                    <div className="flex items-center gap-2">
-                                        <FontAwesomeIcon
-                                            icon="circle-check"
-                                            className="h-4 w-4 text-green-400"
-                                        />
-                                        <span className="text-sm">
-                                            Dashboard prepared for publishing.
-                                        </span>
-                                    </div>
+                                    {/* Registry publish result */}
+                                    {result.registrySubmission?.success ? (
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-2">
+                                                <FontAwesomeIcon
+                                                    icon="circle-check"
+                                                    className="h-4 w-4 text-green-400"
+                                                />
+                                                <span className="text-sm">
+                                                    Published to Dash Registry
+                                                </span>
+                                            </div>
+                                            {result.registrySubmission.registryUrl && (
+                                                <div className="bg-white/5 border border-white/10 rounded-lg p-3">
+                                                    <div className="text-xs opacity-50 mb-1">
+                                                        Shareable Link
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            window.mainApi.shell.openExternal(
+                                                                result.registrySubmission.registryUrl,
+                                                            )
+                                                        }
+                                                        className="text-sm text-blue-400 hover:underline cursor-pointer break-all text-left"
+                                                    >
+                                                        {result.registrySubmission.registryUrl}
+                                                    </button>
+                                                </div>
+                                            )}
+                                            {result.registrySubmission.version && (
+                                                <div className="text-xs opacity-50">
+                                                    Version: v{result.registrySubmission.version}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : result.registrySubmission?.authRequired ? (
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-2">
+                                                <FontAwesomeIcon
+                                                    icon="circle-check"
+                                                    className="h-4 w-4 text-green-400"
+                                                />
+                                                <span className="text-sm">
+                                                    Dashboard saved locally.
+                                                </span>
+                                            </div>
+                                            {!authFlow && !isPolling && (
+                                                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 space-y-2">
+                                                    <p className="text-xs text-blue-300/90">
+                                                        Sign in to publish to the Dash
+                                                        Registry and get a shareable link.
+                                                    </p>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleSignIn}
+                                                        className="px-3 py-1.5 rounded text-xs bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors cursor-pointer"
+                                                    >
+                                                        Sign in to Registry
+                                                    </button>
+                                                </div>
+                                            )}
+                                            {authFlow && isPolling && (
+                                                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 space-y-2">
+                                                    <p className="text-xs text-blue-300/90">
+                                                        Enter this code in your browser:
+                                                    </p>
+                                                    <div className="text-center">
+                                                        <span className="text-2xl font-mono font-bold tracking-widest text-white">
+                                                            {authFlow.userCode}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-blue-300/70 text-center">
+                                                        Waiting for authorization...
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-2">
+                                                <FontAwesomeIcon
+                                                    icon="circle-check"
+                                                    className="h-4 w-4 text-green-400"
+                                                />
+                                                <span className="text-sm">
+                                                    Dashboard prepared for publishing.
+                                                </span>
+                                            </div>
+                                            {result.registrySubmission?.error && (
+                                                <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+                                                    <div className="flex items-start gap-2">
+                                                        <FontAwesomeIcon
+                                                            icon="triangle-exclamation"
+                                                            className="h-3.5 w-3.5 text-amber-400 mt-0.5 flex-shrink-0"
+                                                        />
+                                                        <span className="text-xs text-amber-300/90">
+                                                            Registry upload failed: {result.registrySubmission.error}.
+                                                            Your dashboard was saved locally.
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
                                     {result.filePath && (
                                         <div className="text-xs opacity-50 break-all">
                                             Saved to: {result.filePath}
@@ -385,7 +531,7 @@ export const PublishDashboardModal = ({
                             <Button2
                                 title={
                                     isPublishing
-                                        ? "Preparing..."
+                                        ? "Publishing..."
                                         : "Publish"
                                 }
                                 onClick={handlePublish}
