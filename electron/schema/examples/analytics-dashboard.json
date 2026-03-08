@@ -1,0 +1,109 @@
+{
+    "schemaVersion": "1.0.0",
+    "name": "Algolia Analytics Dashboard",
+    "description": "Pre-wired Algolia analytics with search, results, and query analytics widgets.",
+    "author": { "name": "Dash Team", "id": "trops" },
+    "shareable": true,
+    "tags": ["analytics", "algolia", "search"],
+    "icon": "chart-line",
+    "screenshots": [],
+    "workspace": {
+        "id": 1709856000000,
+        "name": "Algolia Analytics",
+        "type": "workspace",
+        "label": "Algolia Analytics",
+        "version": 1,
+        "menuId": 1,
+        "layout": [
+            {
+                "id": 1,
+                "order": 1,
+                "type": "grid",
+                "component": "LayoutGridContainer",
+                "hasChildren": 1,
+                "scrollable": false,
+                "parent": 0,
+                "menuId": 1,
+                "width": "w-full",
+                "height": "h-full",
+                "grid": {
+                    "rows": 2,
+                    "cols": 2,
+                    "gap": "gap-2",
+                    "1.1": { "component": "AlgoliaSearchPage", "hide": false },
+                    "1.2": {
+                        "component": "AlgoliaSearchQueryAnalytics",
+                        "hide": false
+                    },
+                    "2.1": { "component": "AlgoliaHits", "hide": false },
+                    "2.2": { "component": "AlgoliaStats", "hide": false }
+                }
+            }
+        ]
+    },
+    "widgets": [
+        {
+            "id": "trops.algolia-search.AlgoliaSearchPage",
+            "package": "@trops/algolia-search",
+            "version": "^1.0.0",
+            "required": true,
+            "author": "Dash Team"
+        },
+        {
+            "id": "trops.algolia-search.AlgoliaSearchQueryAnalytics",
+            "package": "@trops/algolia-search",
+            "version": "^1.0.0",
+            "required": true,
+            "author": "Dash Team"
+        },
+        {
+            "id": "trops.algolia-search.AlgoliaHits",
+            "package": "@trops/algolia-search",
+            "version": "^1.0.0",
+            "required": true,
+            "author": "Dash Team"
+        },
+        {
+            "id": "trops.algolia-search.AlgoliaStats",
+            "package": "@trops/algolia-search",
+            "version": "^1.0.0",
+            "required": false,
+            "author": "Dash Team"
+        }
+    ],
+    "providers": [
+        {
+            "type": "algolia",
+            "providerClass": "credential",
+            "required": true,
+            "usedBy": [
+                "AlgoliaSearchPage",
+                "AlgoliaSearchQueryAnalytics",
+                "AlgoliaHits",
+                "AlgoliaStats"
+            ]
+        }
+    ],
+    "eventWiring": [
+        {
+            "source": {
+                "widget": "AlgoliaSearchPage",
+                "event": "queryChanged"
+            },
+            "target": {
+                "widget": "AlgoliaHits",
+                "handler": "onSearchQuerySelected"
+            }
+        },
+        {
+            "source": {
+                "widget": "AlgoliaSearchPage",
+                "event": "queryChanged"
+            },
+            "target": {
+                "widget": "AlgoliaStats",
+                "handler": "onSearchQuerySelected"
+            }
+        }
+    ]
+}

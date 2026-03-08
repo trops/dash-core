@@ -57,6 +57,9 @@ const widgetRegistry = require("./widgetRegistry");
 const widgetCompiler = require("./widgetCompiler");
 const dynamicWidgetLoader = require("./dynamicWidgetLoader");
 
+// --- Schema ---
+const dashboardConfigValidator = require("./schema/dashboardConfigValidator");
+
 // --- Factory: createMainApi ---
 const { createMainApi, defaultMainApi } = require("./api/mainApi");
 
@@ -116,6 +119,9 @@ module.exports = {
   // Utils
   clientCache,
   responseCache,
+
+  // Schema
+  dashboardConfigValidator,
 
   // Setup helpers
   setupCacheHandlers: clientCache.setupCacheHandlers.bind(clientCache),
