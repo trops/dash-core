@@ -7,10 +7,12 @@ const REGISTRY_FETCH_INDEX = "registry:fetch-index";
 const REGISTRY_SEARCH = "registry:search";
 const REGISTRY_GET_PACKAGE = "registry:get-package";
 const REGISTRY_CHECK_UPDATES = "registry:check-updates";
+const REGISTRY_SEARCH_DASHBOARDS = "registry:search-dashboards";
 
 module.exports = {
   REGISTRY_FETCH_INDEX,
   REGISTRY_SEARCH,
   REGISTRY_GET_PACKAGE,
   REGISTRY_CHECK_UPDATES,
+  REGISTRY_SEARCH_DASHBOARDS,
 };
