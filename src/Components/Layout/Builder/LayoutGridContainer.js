@@ -1,4 +1,4 @@
-import React, { memo, useState, useContext } from "react";
+import React, { memo, useState, useContext, useRef, useEffect } from "react";
 import { useDrag, useDrop } from "react-dnd";
 import {
   ButtonIcon,
@@ -158,6 +158,8 @@ export const LayoutGridContainer = memo(
     onDeleteGridColumn = null,
     onChangeRowHeight = null,
     onChangeRowMode = null,
+    onChangeRowSizing = null,
+    onChangeColMode = null,
     onMoveWidgetToCell = null,
     onDropWidgetFromSidebar = null,
     onWidgetPopout = null,
@@ -237,18 +239,17 @@ export const LayoutGridContainer = memo(
       const mode = getRowMode(row);
       const mult = getRowMultiplier(row);
 
-      if (mode === "shrink") {
-        // shrink → grow
-        if (onChangeRowMode) onChangeRowMode(id, row, "grow");
-      } else if (mode === "grow") {
-        // grow → fixed 1x
-        if (onChangeRowMode) onChangeRowMode(id, row, "fixed");
-      } else {
-        // fixed: cycle 1x → 2x → 3x → shrink
-        if (mult >= 3) {
-          if (onChangeRowMode) onChangeRowMode(id, row, "shrink");
+      if (onChangeRowSizing) {
+        if (mode === "shrink") {
+          onChangeRowSizing(id, row, "grow");
+        } else if (mode === "grow") {
+          onChangeRowSizing(id, row, "fixed", 1);
         } else {
-          if (onChangeRowHeight) onChangeRowHeight(id, row, mult + 1);
+          if (mult >= 3) {
+            onChangeRowSizing(id, row, "shrink");
+          } else {
+            onChangeRowSizing(id, row, "fixed", mult + 1);
+          }
         }
       }
     }
@@ -274,6 +275,225 @@ export const LayoutGridContainer = memo(
         color: mult > 1 ? "text-blue-400" : "text-gray-500",
         hoverBg: mult > 1 ? "hover:bg-blue-400/10" : "hover:bg-gray-400/10",
       };
+    }
+
+    // Compute column template tracks respecting colModes
+    function getColTemplate(grid) {
+      const modes = grid.colModes || {};
+      const tracks = [];
+      for (let c = 1; c <= grid.cols; c++) {
+        const mode = modes[String(c)] || "grow";
+        switch (mode) {
+          case "shrink":
+            tracks.push("auto");
+            break;
+          case "1/4":
+            tracks.push("25%");
+            break;
+          case "1/3":
+            tracks.push("33.333%");
+            break;
+          case "1/2":
+            tracks.push("50%");
+            break;
+          case "2/3":
+            tracks.push("66.667%");
+            break;
+          default:
+            tracks.push("minmax(0, 1fr)");
+            break;
+        }
+      }
+      return tracks.join(" ");
+    }
+
+    function hasExplicitColModes() {
+      if (!hasGrid) return false;
+      const modes = item.grid.colModes;
+      return modes && Object.keys(modes).length > 0;
+    }
+
+    function getColMode(col) {
+      if (!hasGrid) return "grow";
+      return item.grid.colModes?.[String(col)] || "grow";
+    }
+
+    function getColSizingDisplay(col) {
+      const mode = getColMode(col);
+      if (mode === "shrink")
+        return {
+          label: "S",
+          color: "text-amber-400",
+          hoverBg: "hover:bg-amber-400/10",
+        };
+      if (mode === "1/4")
+        return {
+          label: "1/4",
+          color: "text-blue-400",
+          hoverBg: "hover:bg-blue-400/10",
+        };
+      if (mode === "1/3")
+        return {
+          label: "1/3",
+          color: "text-blue-400",
+          hoverBg: "hover:bg-blue-400/10",
+        };
+      if (mode === "1/2")
+        return {
+          label: "1/2",
+          color: "text-blue-400",
+          hoverBg: "hover:bg-blue-400/10",
+        };
+      if (mode === "2/3")
+        return {
+          label: "2/3",
+          color: "text-blue-400",
+          hoverBg: "hover:bg-blue-400/10",
+        };
+      // default: grow
+      return {
+        label: "G",
+        color: "text-green-400",
+        hoverBg: "hover:bg-green-400/10",
+      };
+    }
+
+    // Sizing popover state
+    const [sizingPopover, setSizingPopover] = useState(null); // { type: "row"|"col", index: number }
+    const popoverRef = useRef(null);
+    const popoverTriggerRef = useRef(null);
+
+    useEffect(() => {
+      if (!sizingPopover) return;
+      function handleClickOutside(e) {
+        if (
+          popoverRef.current &&
+          !popoverRef.current.contains(e.target) &&
+          popoverTriggerRef.current &&
+          !popoverTriggerRef.current.contains(e.target)
+        ) {
+          setSizingPopover(null);
+        }
+      }
+      function handleEscape(e) {
+        if (e.key === "Escape") setSizingPopover(null);
+      }
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleEscape);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+        document.removeEventListener("keydown", handleEscape);
+      };
+    }, [sizingPopover]);
+
+    const ROW_OPTIONS = [
+      { mode: "shrink", label: "S" },
+      { mode: "grow", label: "G" },
+      { mode: "fixed-1", label: "1x" },
+      { mode: "fixed-2", label: "2x" },
+      { mode: "fixed-3", label: "3x" },
+    ];
+
+    const COL_OPTIONS = [
+      { mode: "grow", label: "G" },
+      { mode: "shrink", label: "S" },
+      { mode: "1/4", label: "1/4" },
+      { mode: "1/3", label: "1/3" },
+      { mode: "1/2", label: "1/2" },
+      { mode: "2/3", label: "2/3" },
+    ];
+
+    function getActiveRowOption(row) {
+      const mode = getRowMode(row);
+      const mult = getRowMultiplier(row);
+      if (mode === "shrink") return "shrink";
+      if (mode === "grow") return "grow";
+      return `fixed-${mult}`;
+    }
+
+    function handleRowOptionSelect(row, optionMode) {
+      if (onChangeRowSizing) {
+        if (optionMode === "shrink" || optionMode === "grow") {
+          onChangeRowSizing(id, row, optionMode);
+        } else if (optionMode.startsWith("fixed-")) {
+          const mult = Number(optionMode.split("-")[1]);
+          onChangeRowSizing(id, row, "fixed", mult);
+        }
+      }
+    }
+
+    function handleColOptionSelect(col, optionMode) {
+      if (onChangeColMode) onChangeColMode(id, col, optionMode);
+    }
+
+    function getOptionColor(optionMode, type) {
+      if (type === "row") {
+        if (optionMode === "shrink") return "text-amber-400";
+        if (optionMode === "grow") return "text-green-400";
+        return "text-blue-400";
+      }
+      // col
+      if (optionMode === "grow") return "text-green-400";
+      if (optionMode === "shrink") return "text-amber-400";
+      return "text-blue-400";
+    }
+
+    function renderSizingPopover(type, index, triggerEl) {
+      if (
+        !sizingPopover ||
+        sizingPopover.type !== type ||
+        sizingPopover.index !== index
+      )
+        return null;
+
+      const options = type === "row" ? ROW_OPTIONS : COL_OPTIONS;
+      const activeMode =
+        type === "row" ? getActiveRowOption(index) : getColMode(index);
+      const isRow = type === "row";
+
+      return (
+        <div
+          ref={popoverRef}
+          className="absolute z-50 bg-gray-800 border border-gray-600 rounded-lg shadow-xl p-1 flex flex-row gap-0.5"
+          style={
+            isRow
+              ? {
+                  left: "100%",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  marginLeft: 4,
+                }
+              : {
+                  top: "100%",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  marginTop: 4,
+                }
+          }
+        >
+          {options.map((opt) => {
+            const isActive = opt.mode === activeMode;
+            const color = getOptionColor(opt.mode, type);
+            return (
+              <button
+                key={opt.mode}
+                className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold transition-all whitespace-nowrap ${
+                  isActive
+                    ? `${color} bg-white/20`
+                    : `text-gray-400 hover:text-gray-200 hover:bg-white/10`
+                }`}
+                onClick={() => {
+                  if (type === "row") handleRowOptionSelect(index, opt.mode);
+                  else handleColOptionSelect(index, opt.mode);
+                }}
+                title={opt.label}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      );
     }
 
     // Modal state for grid operations
@@ -557,22 +777,35 @@ export const LayoutGridContainer = memo(
                 </span>
                 {(() => {
                   const { label, color, hoverBg } = getRowSizingDisplay(row);
-                  const mode = getRowMode(row);
-                  const mult = getRowMultiplier(row);
-                  const titleParts =
-                    mode === "shrink"
-                      ? "Shrink (auto)"
-                      : mode === "grow"
-                        ? "Grow (1fr)"
-                        : `Fixed ${mult}x`;
                   return (
-                    <button
-                      className={`w-5 h-5 flex items-center justify-center rounded text-[10px] ${color} opacity-40 hover:opacity-100 ${hoverBg} transition-all font-mono font-bold select-none`}
-                      onClick={() => handleCycleRowSizing(row)}
-                      title={`Row sizing: ${titleParts} (click to cycle)`}
-                    >
-                      {label}
-                    </button>
+                    <div className="relative">
+                      <button
+                        ref={
+                          sizingPopover?.type === "row" &&
+                          sizingPopover?.index === row
+                            ? popoverTriggerRef
+                            : undefined
+                        }
+                        className={`w-5 h-5 flex items-center justify-center rounded text-[10px] ${color} ${
+                          sizingPopover?.type === "row" &&
+                          sizingPopover?.index === row
+                            ? "opacity-100"
+                            : "opacity-40"
+                        } hover:opacity-100 ${hoverBg} transition-all font-mono font-bold select-none`}
+                        onClick={() =>
+                          setSizingPopover(
+                            sizingPopover?.type === "row" &&
+                              sizingPopover?.index === row
+                              ? null
+                              : { type: "row", index: row },
+                          )
+                        }
+                        title="Row sizing (click to change)"
+                      >
+                        {label}
+                      </button>
+                      {renderSizingPopover("row", row)}
+                    </div>
                   );
                 })()}
                 <button
@@ -661,6 +894,39 @@ export const LayoutGridContainer = memo(
                 <span className="text-[11px] text-gray-400 group-hover:text-gray-200 select-none font-mono font-medium">
                   C{col}
                 </span>
+                {(() => {
+                  const { label, color, hoverBg } = getColSizingDisplay(col);
+                  return (
+                    <div className="relative">
+                      <button
+                        ref={
+                          sizingPopover?.type === "col" &&
+                          sizingPopover?.index === col
+                            ? popoverTriggerRef
+                            : undefined
+                        }
+                        className={`w-5 h-5 flex items-center justify-center rounded text-[10px] ${color} ${
+                          sizingPopover?.type === "col" &&
+                          sizingPopover?.index === col
+                            ? "opacity-100"
+                            : "opacity-40"
+                        } hover:opacity-100 ${hoverBg} transition-all font-mono font-bold select-none`}
+                        onClick={() =>
+                          setSizingPopover(
+                            sizingPopover?.type === "col" &&
+                              sizingPopover?.index === col
+                              ? null
+                              : { type: "col", index: col },
+                          )
+                        }
+                        title="Column sizing (click to change)"
+                      >
+                        {label}
+                      </button>
+                      {renderSizingPopover("col", col)}
+                    </div>
+                  );
+                })()}
                 <button
                   className="w-5 h-5 flex items-center justify-center rounded text-[10px] text-gray-600 opacity-40 hover:opacity-100 hover:text-green-400 hover:bg-green-400/10 transition-all"
                   onClick={() => handleAddColumn(col)}
@@ -697,7 +963,9 @@ export const LayoutGridContainer = memo(
           <div
             className="grid flex-1"
             style={{
-              gridTemplateColumns: `repeat(${cols}, 1fr)`,
+              gridTemplateColumns: hasExplicitColModes()
+                ? getColTemplate(item.grid)
+                : `repeat(${cols}, 1fr)`,
               gap: GRID_GAP,
             }}
           >
@@ -1109,7 +1377,9 @@ export const LayoutGridContainer = memo(
                   className="grid flex-1 min-h-24 p-4 gap-5"
                   style={{
                     gridTemplateRows: getRowTemplate(item.grid),
-                    gridTemplateColumns: `repeat(${item.grid.cols}, 1fr)`,
+                    gridTemplateColumns: hasExplicitColModes()
+                      ? getColTemplate(item.grid)
+                      : `repeat(${item.grid.cols}, 1fr)`,
                   }}
                 >
                   {renderGridCells()}
@@ -1127,7 +1397,9 @@ export const LayoutGridContainer = memo(
                     gridTemplateRows: hasExplicitRowModes()
                       ? getRowTemplate(item.grid)
                       : `repeat(${item.grid.rows}, minmax(0, 1fr))`,
-                    gridTemplateColumns: `repeat(${item.grid.cols}, 1fr)`,
+                    gridTemplateColumns: hasExplicitColModes()
+                      ? getColTemplate(item.grid)
+                      : `repeat(${item.grid.cols}, 1fr)`,
                     overflow: "hidden",
                   }}
                 >
@@ -1251,7 +1523,9 @@ export const LayoutGridContainer = memo(
           className={`grid w-full min-h-24 p-3 ${item.grid.gap || "gap-2"}`}
           style={{
             gridTemplateRows: getRowTemplate(item.grid),
-            gridTemplateColumns: `repeat(${item.grid.cols}, 1fr)`,
+            gridTemplateColumns: hasExplicitColModes()
+              ? getColTemplate(item.grid)
+              : `repeat(${item.grid.cols}, 1fr)`,
             overflow: "auto",
           }}
         >
@@ -1266,7 +1540,9 @@ export const LayoutGridContainer = memo(
               gridTemplateRows: hasExplicitRowModes()
                 ? getRowTemplate(item.grid)
                 : `repeat(${item.grid.rows}, minmax(0, 1fr))`,
-              gridTemplateColumns: `repeat(${item.grid.cols}, 1fr)`,
+              gridTemplateColumns: hasExplicitColModes()
+                ? getColTemplate(item.grid)
+                : `repeat(${item.grid.cols}, 1fr)`,
               overflow: "hidden",
             }}
           >

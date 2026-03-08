@@ -1812,6 +1812,43 @@ export class DashboardModel {
   }
 
   /**
+   * Change the sizing mode for a column
+   * @param {String} itemId The id of the grid container
+   * @param {Number} colNumber The column number (1-indexed)
+   * @param {String} mode The sizing mode: "grow" (default), "shrink", "1/4", "1/3", "1/2", "2/3"
+   * @returns {Object} Updated grid or null on error
+   */
+  changeColMode(itemId, colNumber, mode) {
+    try {
+      const gridContainer = this.getComponentById(itemId);
+      if (!gridContainer || !gridContainer.grid) {
+        console.error("changeColMode: Grid container not found or has no grid");
+        return null;
+      }
+
+      const grid = gridContainer.grid;
+      grid.colModes = grid.colModes || {};
+
+      if (mode === "grow" || !mode) {
+        delete grid.colModes[String(colNumber)];
+      } else {
+        grid.colModes[String(colNumber)] = mode;
+      }
+
+      // Clean up empty object
+      if (Object.keys(grid.colModes).length === 0) {
+        delete grid.colModes;
+      }
+
+      this.updateLayoutItem(gridContainer);
+      return grid;
+    } catch (e) {
+      console.error("changeColMode error:", e);
+      return null;
+    }
+  }
+
+  /**
    * Add a new column to the grid
    * @param {Number} itemId The id of the grid container
    * @param {Number} afterCol Column number after which to insert (0 = beginning)
@@ -1847,6 +1884,17 @@ export class DashboardModel {
           component: null,
           hide: false,
         };
+      }
+
+      // Shift colModes keys right (columns after insertion point move +1)
+      if (gridContainer.grid.colModes) {
+        const shifted = {};
+        for (const [key, mode] of Object.entries(gridContainer.grid.colModes)) {
+          const colNum = Number(key);
+          shifted[String(colNum >= newColNumber ? colNum + 1 : colNum)] = mode;
+        }
+        gridContainer.grid.colModes =
+          Object.keys(shifted).length > 0 ? shifted : undefined;
       }
 
       this._normalizeGrid(gridContainer.grid);
@@ -1904,6 +1952,19 @@ export class DashboardModel {
       }
 
       gridContainer.grid.cols -= 1;
+
+      // Shift colModes keys left and remove the deleted column's entry
+      if (gridContainer.grid.colModes) {
+        const shifted = {};
+        for (const [key, mode] of Object.entries(gridContainer.grid.colModes)) {
+          const colNum = Number(key);
+          if (colNum === colNumber) continue;
+          shifted[String(colNum > colNumber ? colNum - 1 : colNum)] = mode;
+        }
+        gridContainer.grid.colModes =
+          Object.keys(shifted).length > 0 ? shifted : undefined;
+      }
+
       this._normalizeGrid(gridContainer.grid);
       this.updateLayoutItem(gridContainer);
       return gridContainer.grid;
