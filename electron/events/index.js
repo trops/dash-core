@@ -18,6 +18,7 @@ const menuItemEvents = require("./menuItemEvents");
 const openaiEvents = require("./openaiEvents");
 const llmEvents = require("./llmEvents");
 const clientCacheEvents = require("./clientCacheEvents");
+const dashboardConfigEvents = require("./dashboardConfigEvents");
 
 const publicEvents = {
   ...dataEvents,
@@ -40,4 +41,5 @@ module.exports = {
   ...openaiEvents,
   ...llmEvents,
   ...clientCacheEvents,
+  ...dashboardConfigEvents,
 };

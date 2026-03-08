@@ -21,6 +21,7 @@ const menuItemsController = require("./controller/menuItemsController");
 const pluginController = require("./controller/pluginController");
 const llmController = require("./controller/llmController");
 const cliController = require("./controller/cliController");
+const dashboardConfigController = require("./controller/dashboardConfigController");
 
 // --- Utils ---
 const clientCache = require("./utils/clientCache");
@@ -48,6 +49,7 @@ const menuItemsApi = require("./api/menuItemsApi");
 const pluginApi = require("./api/pluginApi");
 const llmApi = require("./api/llmApi");
 const clientCacheApi = require("./api/clientCacheApi");
+const dashboardConfigApi = require("./api/dashboardConfigApi");
 
 // --- Events ---
 const events = require("./events");
@@ -59,6 +61,7 @@ const dynamicWidgetLoader = require("./dynamicWidgetLoader");
 
 // --- Schema ---
 const dashboardConfigValidator = require("./schema/dashboardConfigValidator");
+const dashboardConfigUtils = require("./schema/dashboardConfigUtils");
 
 // --- Factory: createMainApi ---
 const { createMainApi, defaultMainApi } = require("./api/mainApi");
@@ -81,6 +84,7 @@ module.exports = {
   pluginController,
   llmController,
   cliController,
+  dashboardConfigController,
 
   // Controller functions (flat) — spread for convenient destructuring
   ...controllers,
@@ -103,6 +107,7 @@ module.exports = {
   pluginApi,
   llmApi,
   clientCacheApi,
+  dashboardConfigApi,
 
   // Events
   events,
@@ -122,6 +127,7 @@ module.exports = {
 
   // Schema
   dashboardConfigValidator,
+  dashboardConfigUtils,
 
   // Setup helpers
   setupCacheHandlers: clientCache.setupCacheHandlers.bind(clientCache),
