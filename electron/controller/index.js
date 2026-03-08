@@ -59,6 +59,7 @@ const { install: pluginInstall } = require("./pluginController");
 const {
   exportDashboardConfig,
   importDashboardConfig,
+  installDashboardFromRegistry,
 } = require("./dashboardConfigController");
 
 module.exports = {
@@ -104,4 +105,5 @@ module.exports = {
   searchIndex,
   exportDashboardConfig,
   importDashboardConfig,
+  installDashboardFromRegistry,
 };

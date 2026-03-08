@@ -238,131 +238,13 @@ async function importDashboardConfig(win, appId, widgetRegistry = null) {
     // Apply defaults to fill in optional fields
     dashboardConfig = applyDefaults(dashboardConfig);
 
-    // 3. Auto-install missing widgets from registry
-    const installSummary = {
-      installed: [],
-      alreadyInstalled: [],
-      failed: [],
-    };
-
-    if (
-      widgetRegistry &&
-      dashboardConfig.widgets &&
-      dashboardConfig.widgets.length
-    ) {
-      const installedWidgets = widgetRegistry.getWidgets();
-      const installedPackages = new Set(installedWidgets.map((w) => w.name));
-
-      for (const widgetDep of dashboardConfig.widgets) {
-        const packageName = widgetDep.package;
-
-        if (installedPackages.has(packageName)) {
-          installSummary.alreadyInstalled.push(packageName);
-          continue;
-        }
-
-        // Try to find the widget in the registry and install it
-        try {
-          const registryPkg = await getPackage(packageName);
-          if (registryPkg && registryPkg.downloadUrl) {
-            await widgetRegistry.downloadWidget(
-              packageName,
-              registryPkg.downloadUrl,
-              registryPkg.dashConfigUrl || null,
-            );
-            installSummary.installed.push(packageName);
-            installedPackages.add(packageName);
-          } else {
-            installSummary.failed.push({
-              package: packageName,
-              reason: "Not found in registry",
-            });
-          }
-        } catch (installError) {
-          installSummary.failed.push({
-            package: packageName,
-            reason: installError.message,
-          });
-        }
-      }
-    }
-
-    // 4. Build workspace from config
-    const workspace = dashboardConfig.workspace;
-
-    if (!workspace) {
-      return {
-        success: false,
-        error: "Dashboard config has no workspace data",
-      };
-    }
-
-    // Generate a unique ID for the imported workspace
-    workspace.id = Date.now();
-
-    // 5. Apply event wiring to layout
-    const eventWiringSummary = [];
-    if (
-      dashboardConfig.eventWiring &&
-      dashboardConfig.eventWiring.length &&
-      workspace.layout
-    ) {
-      applyEventWiringToLayout(workspace.layout, dashboardConfig.eventWiring);
-      for (const wire of dashboardConfig.eventWiring) {
-        eventWiringSummary.push(
-          `${wire.source?.widget}.${wire.source?.event} → ${wire.target?.widget}.${wire.target?.handler}`,
-        );
-      }
-    }
-
-    // 6. Mark as not shareable (imported dashboards cannot be re-published)
-    workspace._dashboardConfig = {
-      shareable: false,
-      importedFrom: dashboardConfig.name,
-      importedAt: new Date().toISOString(),
-      originalAuthor: dashboardConfig.author,
-      schemaVersion: dashboardConfig.schemaVersion,
-    };
-
-    // Save workspace to workspaces.json
-    const workspaceController = require("./workspaceController");
-    const saveResult = workspaceController.saveWorkspaceForApplication(
+    // Delegate to shared import pipeline
+    return await processDashboardConfig(
       win,
       appId,
-      workspace,
+      dashboardConfig,
+      widgetRegistry,
     );
-
-    if (saveResult.error) {
-      return {
-        success: false,
-        error: `Failed to save workspace: ${saveResult.message}`,
-      };
-    }
-
-    // Build provider requirements summary
-    const providerSummary = (dashboardConfig.providers || []).map((p) => ({
-      type: p.type,
-      providerClass: p.providerClass,
-      required: p.required,
-      usedBy: p.usedBy,
-    }));
-
-    console.log(
-      `[DashboardConfigController] Imported dashboard "${dashboardConfig.name}" as workspace ${workspace.id}`,
-    );
-
-    return {
-      success: true,
-      workspace,
-      summary: {
-        name: dashboardConfig.name,
-        description: dashboardConfig.description || "",
-        author: dashboardConfig.author,
-        widgets: installSummary,
-        eventsWired: eventWiringSummary,
-        providersRequired: providerSummary,
-      },
-    };
   } catch (error) {
     console.error(
       "[DashboardConfigController] Error importing dashboard:",
@@ -375,7 +257,284 @@ async function importDashboardConfig(win, appId, widgetRegistry = null) {
   }
 }
 
+/**
+ * Shared import pipeline: install widgets, create workspace, wire events.
+ * Used by both importDashboardConfig (ZIP) and installDashboardFromRegistry.
+ *
+ * @param {BrowserWindow} win - The main window
+ * @param {string} appId - Application identifier
+ * @param {Object} dashboardConfig - Validated dashboard config object
+ * @param {Object} widgetRegistry - WidgetRegistry instance
+ * @param {Object} options - Additional options
+ * @param {string} options.source - Source label ("zip" or "registry")
+ * @returns {Promise<Object>} Result with success, workspace, and summary
+ */
+async function processDashboardConfig(
+  win,
+  appId,
+  dashboardConfig,
+  widgetRegistry = null,
+  options = {},
+) {
+  const source = options.source || "zip";
+
+  // 1. Auto-install missing widgets from registry
+  const installSummary = {
+    installed: [],
+    alreadyInstalled: [],
+    failed: [],
+  };
+
+  if (
+    widgetRegistry &&
+    dashboardConfig.widgets &&
+    dashboardConfig.widgets.length
+  ) {
+    const installedWidgets = widgetRegistry.getWidgets();
+    const installedPackages = new Set(installedWidgets.map((w) => w.name));
+
+    for (const widgetDep of dashboardConfig.widgets) {
+      const packageName = widgetDep.package;
+
+      if (installedPackages.has(packageName)) {
+        installSummary.alreadyInstalled.push(packageName);
+        continue;
+      }
+
+      // Try to find the widget in the registry and install it
+      try {
+        const registryPkg = await getPackage(packageName);
+        if (registryPkg && registryPkg.downloadUrl) {
+          await widgetRegistry.downloadWidget(
+            packageName,
+            registryPkg.downloadUrl,
+            registryPkg.dashConfigUrl || null,
+          );
+          installSummary.installed.push(packageName);
+          installedPackages.add(packageName);
+        } else {
+          installSummary.failed.push({
+            package: packageName,
+            reason: "Not found in registry",
+          });
+        }
+      } catch (installError) {
+        installSummary.failed.push({
+          package: packageName,
+          reason: installError.message,
+        });
+      }
+    }
+  }
+
+  // 2. Build workspace from config
+  const workspace = { ...dashboardConfig.workspace };
+
+  if (!workspace || !workspace.layout) {
+    return {
+      success: false,
+      error: "Dashboard config has no workspace data",
+    };
+  }
+
+  // Generate a unique ID for the imported workspace
+  workspace.id = Date.now();
+
+  // 3. Apply event wiring to layout
+  const eventWiringSummary = [];
+  if (
+    dashboardConfig.eventWiring &&
+    dashboardConfig.eventWiring.length &&
+    workspace.layout
+  ) {
+    applyEventWiringToLayout(workspace.layout, dashboardConfig.eventWiring);
+    for (const wire of dashboardConfig.eventWiring) {
+      eventWiringSummary.push(
+        `${wire.source?.widget}.${wire.source?.event} → ${wire.target?.widget}.${wire.target?.handler}`,
+      );
+    }
+  }
+
+  // 4. Mark as not shareable (imported dashboards cannot be re-published)
+  workspace._dashboardConfig = {
+    shareable: false,
+    source,
+    importedFrom: dashboardConfig.name,
+    importedAt: new Date().toISOString(),
+    originalAuthor: dashboardConfig.author,
+    schemaVersion: dashboardConfig.schemaVersion,
+  };
+
+  // Save workspace to workspaces.json
+  const workspaceController = require("./workspaceController");
+  const saveResult = workspaceController.saveWorkspaceForApplication(
+    win,
+    appId,
+    workspace,
+  );
+
+  if (saveResult.error) {
+    return {
+      success: false,
+      error: `Failed to save workspace: ${saveResult.message}`,
+    };
+  }
+
+  // Build provider requirements summary
+  const providerSummary = (dashboardConfig.providers || []).map((p) => ({
+    type: p.type,
+    providerClass: p.providerClass,
+    required: p.required,
+    usedBy: p.usedBy,
+  }));
+
+  console.log(
+    `[DashboardConfigController] Imported dashboard "${dashboardConfig.name}" (${source}) as workspace ${workspace.id}`,
+  );
+
+  return {
+    success: true,
+    workspace,
+    summary: {
+      name: dashboardConfig.name,
+      description: dashboardConfig.description || "",
+      author: dashboardConfig.author,
+      widgets: installSummary,
+      eventsWired: eventWiringSummary,
+      providersRequired: providerSummary,
+    },
+  };
+}
+
+/**
+ * Install a dashboard from the registry by package name.
+ *
+ * Fetches the dashboard ZIP from the registry, extracts the .dashboard.json,
+ * validates it, and delegates to the shared import pipeline.
+ *
+ * @param {BrowserWindow} win - The main window
+ * @param {string} appId - Application identifier
+ * @param {string} packageName - Registry package name for the dashboard
+ * @param {Object} widgetRegistry - WidgetRegistry instance
+ * @returns {Promise<Object>} Result with success, workspace, and summary
+ */
+async function installDashboardFromRegistry(
+  win,
+  appId,
+  packageName,
+  widgetRegistry = null,
+) {
+  try {
+    // 1. Look up the dashboard package in the registry
+    const registryPkg = await getPackage(packageName);
+    if (!registryPkg) {
+      return {
+        success: false,
+        error: `Dashboard package not found in registry: ${packageName}`,
+      };
+    }
+
+    if (!registryPkg.downloadUrl) {
+      return {
+        success: false,
+        error: `Dashboard package has no download URL: ${packageName}`,
+      };
+    }
+
+    // 2. Resolve the download URL and fetch the ZIP
+    const version = registryPkg.version || "1.0.0";
+    let downloadUrl = registryPkg.downloadUrl;
+    downloadUrl = downloadUrl.replace("{version}", version);
+    downloadUrl = downloadUrl.replace("{name}", packageName);
+
+    // Enforce HTTPS
+    const parsedUrl = new URL(downloadUrl);
+    if (parsedUrl.protocol !== "https:") {
+      return {
+        success: false,
+        error: `Dashboard downloads must use HTTPS. Refusing: ${downloadUrl}`,
+      };
+    }
+
+    console.log(
+      `[DashboardConfigController] Fetching dashboard from: ${downloadUrl}`,
+    );
+
+    const response = await fetch(downloadUrl);
+    if (!response.ok) {
+      return {
+        success: false,
+        error: `Failed to download dashboard: ${response.status} ${response.statusText}`,
+      };
+    }
+
+    const buffer = await response.arrayBuffer();
+    const zip = new AdmZip(Buffer.from(buffer));
+
+    // 3. Validate ZIP entries
+    const tempDir = path.join(app.getPath("temp"), "dash-registry-import");
+    const { validateZipEntries } = require("../widgetRegistry");
+    validateZipEntries(zip, tempDir);
+
+    // 4. Find and parse .dashboard.json
+    const entries = zip.getEntries();
+    const configEntry = entries.find((e) =>
+      e.entryName.endsWith(".dashboard.json"),
+    );
+
+    if (!configEntry) {
+      return {
+        success: false,
+        error: "No .dashboard.json file found in downloaded archive",
+      };
+    }
+
+    const configJson = configEntry.getData().toString("utf-8");
+    let dashboardConfig;
+    try {
+      dashboardConfig = JSON.parse(configJson);
+    } catch (parseError) {
+      return {
+        success: false,
+        error: `Invalid JSON in dashboard config: ${parseError.message}`,
+      };
+    }
+
+    // 5. Validate against schema
+    const validation = validateDashboardConfig(dashboardConfig);
+    if (!validation.valid) {
+      return {
+        success: false,
+        error: `Invalid dashboard config: ${validation.errors.join(", ")}`,
+      };
+    }
+
+    dashboardConfig = applyDefaults(dashboardConfig);
+
+    // 6. Delegate to shared import pipeline
+    return await processDashboardConfig(
+      win,
+      appId,
+      dashboardConfig,
+      widgetRegistry,
+      {
+        source: "registry",
+      },
+    );
+  } catch (error) {
+    console.error(
+      "[DashboardConfigController] Error installing dashboard from registry:",
+      error,
+    );
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
 module.exports = {
   exportDashboardConfig,
   importDashboardConfig,
+  installDashboardFromRegistry,
 };
