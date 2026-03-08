@@ -28,6 +28,7 @@ const menuItemsApi = require("./menuItemsApi");
 const pluginApi = require("./pluginApi");
 const llmApi = require("./llmApi");
 const clientCacheApi = require("./clientCacheApi");
+const dashboardConfigApi = require("./dashboardConfigApi");
 
 // Events constants
 const events = require("../events");
@@ -99,6 +100,7 @@ function createMainApi(extensions = {}) {
     menuItems: menuItemsApi,
     plugins: pluginApi,
     clientCache: clientCacheApi,
+    dashboardConfig: dashboardConfigApi,
 
     widgetEvent: {
       publish: (eventType, content) => {
