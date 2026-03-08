@@ -66,6 +66,13 @@ const {
   checkDashboardUpdatesForApp,
   getProviderSetupManifest,
 } = require("./dashboardConfigController");
+const {
+  saveDashboardRating,
+  getDashboardRating,
+  listDashboardRatings,
+  deleteDashboardRating,
+  enrichPackagesWithRatings,
+} = require("./dashboardRatingsController");
 
 module.exports = {
   showDialog,
@@ -116,4 +123,9 @@ module.exports = {
   getDashboardPreview,
   checkDashboardUpdatesForApp,
   getProviderSetupManifest,
+  saveDashboardRating,
+  getDashboardRating,
+  listDashboardRatings,
+  deleteDashboardRating,
+  enrichPackagesWithRatings,
 };
