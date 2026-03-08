@@ -259,10 +259,96 @@ function applyEventWiringToLayout(layout, eventWiring) {
   return layout;
 }
 
+/**
+ * Check compatibility of a dashboard config against installed widgets.
+ * Returns a per-widget status report indicating what's installed,
+ * what needs to be installed, and what's unavailable.
+ *
+ * @param {Array} dashboardWidgets - Widget deps from dashboard config (widgets array)
+ * @param {Array} installedWidgets - Currently installed widget metadata (from widgetRegistry.getWidgets())
+ * @param {Array} registryPackages - Available packages from registry index (optional)
+ * @returns {Object} Compatibility report
+ */
+function checkDashboardCompatibility(
+  dashboardWidgets = [],
+  installedWidgets = [],
+  registryPackages = [],
+) {
+  const installedByName = new Map();
+  for (const w of installedWidgets) {
+    if (w.name) {
+      installedByName.set(w.name, w);
+    }
+  }
+
+  const registryByName = new Map();
+  for (const p of registryPackages) {
+    if (p.name) {
+      registryByName.set(p.name, p);
+    }
+  }
+
+  const widgets = [];
+  let installedCount = 0;
+  let toInstallCount = 0;
+  let unavailableCount = 0;
+
+  for (const dep of dashboardWidgets) {
+    const packageName = dep.package;
+    const required = dep.required !== false;
+    const installed = installedByName.get(packageName);
+
+    if (installed) {
+      installedCount++;
+      widgets.push({
+        package: packageName,
+        required,
+        status: "installed",
+        installedVersion: installed.version || null,
+        requiredVersion: dep.version || "*",
+      });
+    } else if (registryByName.has(packageName)) {
+      toInstallCount++;
+      const registryPkg = registryByName.get(packageName);
+      widgets.push({
+        package: packageName,
+        required,
+        status: "to-install",
+        availableVersion: registryPkg.version || null,
+        requiredVersion: dep.version || "*",
+      });
+    } else {
+      unavailableCount++;
+      widgets.push({
+        package: packageName,
+        required,
+        status: "unavailable",
+        requiredVersion: dep.version || "*",
+      });
+    }
+  }
+
+  const hasUnavailableRequired = widgets.some(
+    (w) => w.status === "unavailable" && w.required,
+  );
+
+  return {
+    compatible: !hasUnavailableRequired,
+    summary: {
+      total: dashboardWidgets.length,
+      installed: installedCount,
+      toInstall: toInstallCount,
+      unavailable: unavailableCount,
+    },
+    widgets,
+  };
+}
+
 module.exports = {
   collectComponentNames,
   extractEventWiring,
   buildWidgetDependencies,
   buildProviderRequirements,
   applyEventWiringToLayout,
+  checkDashboardCompatibility,
 };
