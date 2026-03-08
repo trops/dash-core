@@ -744,10 +744,57 @@ async function prepareDashboardForPublish(
   }
 }
 
+/**
+ * Get a full preview of a dashboard package from the registry.
+ * Combines the structured preview data with a compatibility check.
+ *
+ * @param {string} packageName - Registry package name
+ * @param {Object} widgetRegistry - WidgetRegistry instance
+ * @returns {Promise<Object>} Preview data with compatibility report
+ */
+async function getDashboardPreview(packageName, widgetRegistry = null) {
+  const { buildDashboardPreview, checkDashboardCompatibility } =
+    require("../schema/dashboardConfigUtils");
+  const { getPackage, fetchRegistryIndex } = require("./registryController");
+
+  const pkg = await getPackage(packageName);
+  if (!pkg) {
+    return {
+      success: false,
+      error: `Dashboard package not found: ${packageName}`,
+    };
+  }
+
+  const preview = buildDashboardPreview(pkg);
+
+  // Get compatibility report
+  const installedWidgets = widgetRegistry ? widgetRegistry.getWidgets() : [];
+  let registryPackages = [];
+  try {
+    const index = await fetchRegistryIndex();
+    registryPackages = index.packages || [];
+  } catch (err) {
+    // Non-fatal — preview still works without compatibility
+  }
+
+  const compatibility = checkDashboardCompatibility(
+    pkg.widgets || [],
+    installedWidgets,
+    registryPackages,
+  );
+
+  return {
+    success: true,
+    preview,
+    compatibility,
+  };
+}
+
 module.exports = {
   exportDashboardConfig,
   importDashboardConfig,
   installDashboardFromRegistry,
   checkCompatibility,
   prepareDashboardForPublish,
+  getDashboardPreview,
 };

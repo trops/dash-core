@@ -8,6 +8,7 @@ const {
   applyEventWiringToLayout,
   checkDashboardCompatibility,
   generateRegistryManifest,
+  buildDashboardPreview,
 } = require("../schema/dashboardConfigUtils");
 
 describe("collectComponentNames", () => {
@@ -524,5 +525,78 @@ describe("generateRegistryManifest", () => {
     assert.equal(manifest.icon, "grip");
     assert.deepEqual(manifest.tags, []);
     assert.equal(manifest.author, "");
+  });
+});
+
+describe("buildDashboardPreview", () => {
+  it("builds preview from registry package manifest", () => {
+    const pkg = {
+      displayName: "Clock Dashboard",
+      description: "Four clock widgets",
+      author: "trops",
+      version: "1.0.0",
+      icon: "clock",
+      tags: ["clock", "time"],
+      category: "general",
+      publishedAt: "2026-03-08T00:00:00.000Z",
+      widgets: [
+        { id: "clock.Analog", name: "AnalogClock", package: "clock", version: "^1.0.0", required: true, author: "trops" },
+        { id: "clock.Digital", name: "DigitalClock", package: "clock", version: "^1.0.0", required: false, author: "trops" },
+      ],
+      eventWiring: [
+        { source: { widget: "AnalogClock", event: "tick" }, target: { widget: "DigitalClock", handler: "onTick" } },
+      ],
+      providers: [
+        { type: "time", providerClass: "credential", required: true, usedBy: ["AnalogClock"] },
+      ],
+    };
+    const preview = buildDashboardPreview(pkg);
+    assert.equal(preview.name, "Clock Dashboard");
+    assert.equal(preview.author, "trops");
+    assert.equal(preview.version, "1.0.0");
+    assert.equal(preview.widgets.length, 2);
+    assert.equal(preview.eventWiring.length, 1);
+    assert.ok(preview.eventWiring[0].summary.includes("AnalogClock.tick"));
+    assert.ok(preview.eventWiring[0].summary.includes("DigitalClock.onTick"));
+    assert.equal(preview.providers.length, 1);
+    assert.equal(preview.summary.widgetCount, 2);
+    assert.equal(preview.summary.requiredWidgets, 1);
+    assert.equal(preview.summary.optionalWidgets, 1);
+    assert.equal(preview.summary.eventCount, 1);
+    assert.equal(preview.summary.providerCount, 1);
+  });
+
+  it("builds preview from dashboard config with object author", () => {
+    const config = {
+      name: "My Dashboard",
+      author: { name: "John", id: "john123" },
+      widgets: [],
+    };
+    const preview = buildDashboardPreview(config);
+    assert.equal(preview.author, "John");
+    assert.equal(preview.authorId, "john123");
+  });
+
+  it("handles minimal input gracefully", () => {
+    const preview = buildDashboardPreview({});
+    assert.equal(preview.name, "Dashboard");
+    assert.equal(preview.description, "");
+    assert.equal(preview.author, "");
+    assert.deepEqual(preview.widgets, []);
+    assert.deepEqual(preview.eventWiring, []);
+    assert.deepEqual(preview.providers, []);
+    assert.equal(preview.summary.widgetCount, 0);
+  });
+
+  it("formats event wiring as human-readable summary", () => {
+    const source = {
+      eventWiring: [
+        { source: { widget: "Search", event: "queryChanged" }, target: { widget: "Results", handler: "onQuery" } },
+        { source: { widget: "Filter", event: "filterApplied" }, target: { widget: "Results" } },
+      ],
+    };
+    const preview = buildDashboardPreview(source);
+    assert.equal(preview.eventWiring[0].summary, "Search.queryChanged → Results.onQuery");
+    assert.equal(preview.eventWiring[1].summary, "Filter.filterApplied → Results.filterApplied");
   });
 });
