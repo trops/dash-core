@@ -565,9 +565,189 @@ async function checkCompatibility(dashboardWidgets, widgetRegistry = null) {
   );
 }
 
+/**
+ * Prepare a dashboard for publishing to the registry.
+ *
+ * Validates that the workspace is shareable, builds the dashboard config,
+ * checks that all widgets exist in the registry, generates a registry
+ * manifest, and creates a ZIP containing both the manifest and
+ * .dashboard.json config.
+ *
+ * @param {BrowserWindow} win - The main window (for save dialog)
+ * @param {string} appId - Application identifier
+ * @param {number|string} workspaceId - ID of the workspace to publish
+ * @param {Object} options - Publishing options
+ * @param {string} options.authorName - Author name
+ * @param {string} options.authorId - Author ID
+ * @param {string} options.description - Dashboard description
+ * @param {string[]} options.tags - Tags
+ * @param {string} options.icon - Icon name
+ * @param {string} options.githubUser - GitHub user/org for registry scope
+ * @param {string} options.category - Registry category
+ * @param {Object} widgetRegistry - WidgetRegistry instance
+ * @returns {Promise<Object>} Result with success, manifest, and filePath
+ */
+async function prepareDashboardForPublish(
+  win,
+  appId,
+  workspaceId,
+  options = {},
+  widgetRegistry = null,
+) {
+  try {
+    const { generateRegistryManifest } = require("../schema/dashboardConfigUtils");
+
+    // 1. Read workspace
+    const filename = path.join(
+      app.getPath("userData"),
+      appName,
+      appId,
+      configFilename,
+    );
+    const workspacesArray = getFileContents(filename);
+    const workspace = workspacesArray.find(
+      (w) => w.id === workspaceId || w.id === Number(workspaceId),
+    );
+
+    if (!workspace) {
+      return {
+        success: false,
+        error: `Workspace not found: ${workspaceId}`,
+      };
+    }
+
+    // 2. Check shareable flag — imported dashboards cannot be published
+    if (workspace._dashboardConfig && workspace._dashboardConfig.shareable === false) {
+      return {
+        success: false,
+        error: "This dashboard was imported and cannot be published. Only dashboards you created can be shared.",
+      };
+    }
+
+    const layout = workspace.layout || [];
+
+    // 3. Build the dashboard config (reuse export logic)
+    const componentNames = collectComponentNames(layout);
+    const eventWiring = extractEventWiring(layout);
+    const widgets = buildWidgetDependencies(componentNames, widgetRegistry);
+    const providers = buildProviderRequirements(componentNames, widgetRegistry);
+
+    const dashboardConfig = applyDefaults({
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      name: workspace.name || workspace.label || "Dashboard",
+      description: options.description || "",
+      author: {
+        name: options.authorName || "",
+        id: options.authorId || "",
+      },
+      shareable: true,
+      tags: options.tags || [],
+      icon: options.icon || "grip",
+      workspace: {
+        id: workspace.id,
+        name: workspace.name,
+        type: workspace.type || "workspace",
+        label: workspace.label || workspace.name,
+        version: workspace.version || 1,
+        layout,
+        menuId: workspace.menuId || 1,
+      },
+      widgets,
+      providers,
+      eventWiring,
+    });
+
+    // 4. Validate the config
+    const validation = validateDashboardConfig(dashboardConfig);
+    if (!validation.valid) {
+      return {
+        success: false,
+        error: `Generated config is invalid: ${validation.errors.join(", ")}`,
+      };
+    }
+
+    // 5. Verify all widgets exist in the registry
+    const { fetchRegistryIndex } = require("./registryController");
+    let registryPackages = [];
+    try {
+      const index = await fetchRegistryIndex();
+      registryPackages = index.packages || [];
+    } catch (err) {
+      return {
+        success: false,
+        error: `Cannot verify widgets in registry: ${err.message}`,
+      };
+    }
+
+    const registryNames = new Set(registryPackages.map((p) => p.name));
+    const missingFromRegistry = widgets
+      .filter((w) => w.required !== false && !registryNames.has(w.package))
+      .map((w) => w.package);
+
+    if (missingFromRegistry.length > 0) {
+      return {
+        success: false,
+        error: `Required widgets not found in registry: ${missingFromRegistry.join(", ")}. Publish them first.`,
+      };
+    }
+
+    // 6. Generate registry manifest
+    const manifest = generateRegistryManifest(dashboardConfig, {
+      githubUser: options.githubUser || options.authorId || "",
+      category: options.category || "general",
+      repository: options.repository || "",
+    });
+
+    // 7. Show save dialog for the publish package
+    const sanitizedName = manifest.name;
+    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+      title: "Save Dashboard Package for Registry",
+      defaultPath: path.join(
+        app.getPath("desktop"),
+        `${sanitizedName}-v${manifest.version}.zip`,
+      ),
+      filters: [{ name: "ZIP Archive", extensions: ["zip"] }],
+    });
+
+    if (canceled || !filePath) {
+      return { success: false, canceled: true };
+    }
+
+    // 8. Create ZIP with manifest and dashboard config
+    const zip = new AdmZip();
+    zip.addFile("manifest.json", Buffer.from(JSON.stringify(manifest, null, 2), "utf-8"));
+    zip.addFile(
+      `${sanitizedName}.dashboard.json`,
+      Buffer.from(JSON.stringify(dashboardConfig, null, 2), "utf-8"),
+    );
+    zip.writeZip(filePath);
+
+    console.log(
+      `[DashboardConfigController] Prepared publish package: ${filePath}`,
+    );
+
+    return {
+      success: true,
+      filePath,
+      manifest,
+      config: dashboardConfig,
+    };
+  } catch (error) {
+    console.error(
+      "[DashboardConfigController] Error preparing dashboard for publish:",
+      error,
+    );
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
 module.exports = {
   exportDashboardConfig,
   importDashboardConfig,
   installDashboardFromRegistry,
   checkCompatibility,
+  prepareDashboardForPublish,
 };

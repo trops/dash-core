@@ -7,6 +7,7 @@ const {
   buildProviderRequirements,
   applyEventWiringToLayout,
   checkDashboardCompatibility,
+  generateRegistryManifest,
 } = require("../schema/dashboardConfigUtils");
 
 describe("collectComponentNames", () => {
@@ -435,5 +436,93 @@ describe("checkDashboardCompatibility", () => {
     const result = checkDashboardCompatibility(dashboardWidgets, [], []);
     assert.equal(result.compatible, false);
     assert.equal(result.widgets[0].required, true);
+  });
+});
+
+describe("generateRegistryManifest", () => {
+  const sampleConfig = {
+    schemaVersion: "1.0.0",
+    name: "My Analytics Dashboard",
+    description: "Analytics with Algolia",
+    author: { name: "trops", id: "trops" },
+    shareable: true,
+    tags: ["analytics", "algolia"],
+    icon: "chart-line",
+    workspace: {
+      id: 1,
+      name: "Analytics",
+      version: 1,
+      layout: [],
+    },
+    widgets: [
+      {
+        id: "@trops/algolia.AlgoliaSearch",
+        package: "@trops/algolia-search",
+        version: "^1.0.0",
+        required: true,
+        author: "Dash Team",
+      },
+    ],
+    providers: [
+      { type: "algolia", providerClass: "credential", required: true, usedBy: ["AlgoliaSearch"] },
+    ],
+    eventWiring: [
+      {
+        source: { widget: "AlgoliaSearch", event: "queryChanged" },
+        target: { widget: "AlgoliaResults", handler: "onQuery" },
+      },
+    ],
+  };
+
+  it("generates a valid registry manifest", () => {
+    const manifest = generateRegistryManifest(sampleConfig, {
+      githubUser: "trops",
+    });
+    assert.equal(manifest.type, "dashboard");
+    assert.equal(manifest.githubUser, "trops");
+    assert.equal(manifest.displayName, "My Analytics Dashboard");
+    assert.equal(manifest.author, "trops");
+    assert.equal(manifest.description, "Analytics with Algolia");
+    assert.deepEqual(manifest.tags, ["analytics", "algolia"]);
+    assert.equal(manifest.icon, "chart-line");
+    assert.equal(manifest.widgets.length, 1);
+    assert.equal(manifest.widgets[0].package, "@trops/algolia-search");
+    assert.equal(manifest.providers.length, 1);
+    assert.equal(manifest.eventWiring.length, 1);
+  });
+
+  it("sanitizes name for URL-safe format", () => {
+    const config = { ...sampleConfig, name: "My Cool Dashboard!" };
+    const manifest = generateRegistryManifest(config);
+    assert.equal(manifest.name, "my-cool-dashboard");
+  });
+
+  it("includes downloadUrl with version/name placeholders", () => {
+    const manifest = generateRegistryManifest(sampleConfig, {
+      githubUser: "trops",
+    });
+    assert.ok(manifest.downloadUrl.includes("{version}"));
+    assert.ok(manifest.downloadUrl.includes("trops"));
+  });
+
+  it("sets publishedAt to current timestamp", () => {
+    const before = new Date().toISOString();
+    const manifest = generateRegistryManifest(sampleConfig);
+    const after = new Date().toISOString();
+    assert.ok(manifest.publishedAt >= before);
+    assert.ok(manifest.publishedAt <= after);
+  });
+
+  it("defaults missing optional fields", () => {
+    const minConfig = {
+      name: "Minimal",
+      workspace: { id: 1, layout: [] },
+      widgets: [],
+    };
+    const manifest = generateRegistryManifest(minConfig);
+    assert.equal(manifest.category, "general");
+    assert.equal(manifest.icon, "grip");
+    assert.deepEqual(manifest.tags, []);
+    assert.equal(manifest.author, "");
   });
 });

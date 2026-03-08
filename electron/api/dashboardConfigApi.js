@@ -10,6 +10,7 @@ const {
   DASHBOARD_CONFIG_IMPORT,
   DASHBOARD_CONFIG_INSTALL,
   DASHBOARD_CONFIG_COMPATIBILITY,
+  DASHBOARD_CONFIG_PUBLISH,
 } = require("../events");
 
 const dashboardConfigApi = {
@@ -65,6 +66,23 @@ const dashboardConfigApi = {
     ipcRenderer.invoke(DASHBOARD_CONFIG_COMPATIBILITY, {
       appId,
       dashboardWidgets,
+    }),
+
+  /**
+   * Prepare a dashboard for publishing to the registry.
+   * Validates shareable status, checks widgets exist in registry,
+   * generates manifest, and saves a publish-ready ZIP.
+   *
+   * @param {string} appId - Application identifier
+   * @param {number|string} workspaceId - Workspace to publish
+   * @param {Object} options - Publishing options (authorName, authorId, description, tags, icon, githubUser, category)
+   * @returns {Promise<Object>} Result with success, manifest, filePath
+   */
+  prepareDashboardForPublish: (appId, workspaceId, options = {}) =>
+    ipcRenderer.invoke(DASHBOARD_CONFIG_PUBLISH, {
+      appId,
+      workspaceId,
+      options,
     }),
 };
 

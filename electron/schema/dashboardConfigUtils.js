@@ -344,6 +344,58 @@ function checkDashboardCompatibility(
   };
 }
 
+/**
+ * Generate a registry manifest from a dashboard config.
+ * Converts the internal .dashboard.json format into the registry
+ * manifest.json format used by dash-registry.
+ *
+ * @param {Object} dashboardConfig - Validated dashboard config object
+ * @param {Object} options - Publishing options
+ * @param {string} options.githubUser - GitHub username / org for the package scope
+ * @param {string} options.category - Registry category (default: "general")
+ * @param {string} options.repository - Repository URL (optional)
+ * @returns {Object} Registry manifest object
+ */
+function generateRegistryManifest(dashboardConfig, options = {}) {
+  const name = (dashboardConfig.name || "dashboard")
+    .replace(/[^a-zA-Z0-9-_ ]/g, "")
+    .replace(/\s+/g, "-")
+    .toLowerCase();
+
+  const githubUser = options.githubUser || "";
+  const version = dashboardConfig.workspace?.version
+    ? `1.0.${dashboardConfig.workspace.version}`
+    : "1.0.0";
+
+  const manifest = {
+    githubUser,
+    name,
+    displayName: dashboardConfig.name || "Dashboard",
+    author: dashboardConfig.author?.name || "",
+    description: dashboardConfig.description || "",
+    version,
+    type: "dashboard",
+    category: options.category || "general",
+    tags: dashboardConfig.tags || [],
+    icon: dashboardConfig.icon || "grip",
+    downloadUrl: `https://github.com/${githubUser}/dash-registry/releases/download/${githubUser}--${name}--v{version}/${name}-v{version}.zip`,
+    repository: options.repository || "",
+    publishedAt: new Date().toISOString(),
+    widgets: (dashboardConfig.widgets || []).map((w) => ({
+      id: w.id,
+      name: w.id ? w.id.split(".").pop() : w.package,
+      package: w.package,
+      version: w.version || "*",
+      required: w.required !== false,
+      author: w.author || "",
+    })),
+    providers: dashboardConfig.providers || [],
+    eventWiring: dashboardConfig.eventWiring || [],
+  };
+
+  return manifest;
+}
+
 module.exports = {
   collectComponentNames,
   extractEventWiring,
@@ -351,4 +403,5 @@ module.exports = {
   buildProviderRequirements,
   applyEventWiringToLayout,
   checkDashboardCompatibility,
+  generateRegistryManifest,
 };
