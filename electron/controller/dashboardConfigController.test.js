@@ -6,6 +6,7 @@ const {
   buildWidgetDependencies,
   buildProviderRequirements,
   applyEventWiringToLayout,
+  checkDashboardCompatibility,
 } = require("../schema/dashboardConfigUtils");
 
 describe("collectComponentNames", () => {
@@ -303,7 +304,7 @@ describe("applyEventWiringToLayout", () => {
     assert.equal(result, layout);
   });
 
-  it("is the inverse of extractEventWiring", () => {
+  it("is the inverse of extractEventWiring (roundtrip)", () => {
     // Start with a layout that has listeners
     const originalLayout = [
       {
@@ -329,5 +330,110 @@ describe("applyEventWiringToLayout", () => {
 
     // Should reconstruct the original listeners
     assert.deepEqual(freshLayout[0].listeners, originalLayout[0].listeners);
+  });
+});
+
+describe("checkDashboardCompatibility", () => {
+  const installedWidgets = [
+    { name: "@trops/algolia-search", version: "1.2.0" },
+    { name: "@trops/slack-widgets", version: "2.0.1" },
+  ];
+
+  const registryPackages = [
+    { name: "@trops/algolia-search", version: "1.3.0" },
+    { name: "@trops/github-widgets", version: "1.0.0" },
+  ];
+
+  it("reports all installed widgets as compatible", () => {
+    const dashboardWidgets = [
+      { package: "@trops/algolia-search", version: "^1.0.0", required: true },
+      { package: "@trops/slack-widgets", version: "^2.0.0", required: true },
+    ];
+    const result = checkDashboardCompatibility(
+      dashboardWidgets,
+      installedWidgets,
+      registryPackages,
+    );
+    assert.equal(result.compatible, true);
+    assert.equal(result.summary.installed, 2);
+    assert.equal(result.summary.toInstall, 0);
+    assert.equal(result.summary.unavailable, 0);
+    assert.equal(result.widgets[0].status, "installed");
+    assert.equal(result.widgets[0].installedVersion, "1.2.0");
+  });
+
+  it("reports widgets available in registry as to-install", () => {
+    const dashboardWidgets = [
+      { package: "@trops/github-widgets", version: "^1.0.0", required: true },
+    ];
+    const result = checkDashboardCompatibility(
+      dashboardWidgets,
+      installedWidgets,
+      registryPackages,
+    );
+    assert.equal(result.compatible, true);
+    assert.equal(result.summary.toInstall, 1);
+    assert.equal(result.widgets[0].status, "to-install");
+    assert.equal(result.widgets[0].availableVersion, "1.0.0");
+  });
+
+  it("reports unavailable required widgets as incompatible", () => {
+    const dashboardWidgets = [
+      { package: "@trops/unknown-widget", version: "^1.0.0", required: true },
+    ];
+    const result = checkDashboardCompatibility(
+      dashboardWidgets,
+      installedWidgets,
+      registryPackages,
+    );
+    assert.equal(result.compatible, false);
+    assert.equal(result.summary.unavailable, 1);
+    assert.equal(result.widgets[0].status, "unavailable");
+  });
+
+  it("stays compatible when unavailable widget is optional", () => {
+    const dashboardWidgets = [
+      { package: "@trops/algolia-search", version: "^1.0.0", required: true },
+      { package: "@trops/unknown-widget", version: "^1.0.0", required: false },
+    ];
+    const result = checkDashboardCompatibility(
+      dashboardWidgets,
+      installedWidgets,
+      registryPackages,
+    );
+    assert.equal(result.compatible, true);
+    assert.equal(result.summary.installed, 1);
+    assert.equal(result.summary.unavailable, 1);
+  });
+
+  it("handles mixed statuses", () => {
+    const dashboardWidgets = [
+      { package: "@trops/algolia-search", version: "^1.0.0", required: true },
+      { package: "@trops/github-widgets", version: "^1.0.0", required: true },
+      { package: "@trops/unknown-widget", version: "^1.0.0", required: false },
+    ];
+    const result = checkDashboardCompatibility(
+      dashboardWidgets,
+      installedWidgets,
+      registryPackages,
+    );
+    assert.equal(result.compatible, true);
+    assert.equal(result.summary.total, 3);
+    assert.equal(result.summary.installed, 1);
+    assert.equal(result.summary.toInstall, 1);
+    assert.equal(result.summary.unavailable, 1);
+  });
+
+  it("returns compatible with empty widget list", () => {
+    const result = checkDashboardCompatibility([], installedWidgets, []);
+    assert.equal(result.compatible, true);
+    assert.equal(result.summary.total, 0);
+  });
+
+  it("defaults required to true when not specified", () => {
+    const dashboardWidgets = [{ package: "@trops/missing" }];
+    const result = checkDashboardCompatibility(dashboardWidgets, [], []);
+    assert.equal(result.compatible, false);
+    assert.equal(result.widgets[0].required, true);
   });
 });

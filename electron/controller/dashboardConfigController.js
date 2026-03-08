@@ -533,8 +533,41 @@ async function installDashboardFromRegistry(
   }
 }
 
+/**
+ * Check compatibility of a dashboard's widget dependencies against
+ * installed widgets and registry availability.
+ *
+ * @param {Array} dashboardWidgets - Widget deps from dashboard config
+ * @param {Object} widgetRegistry - WidgetRegistry instance (needs getWidgets())
+ * @returns {Promise<Object>} Compatibility report
+ */
+async function checkCompatibility(dashboardWidgets, widgetRegistry = null) {
+  const { checkDashboardCompatibility } = require("../schema/dashboardConfigUtils");
+  const { fetchRegistryIndex } = require("./registryController");
+
+  const installedWidgets = widgetRegistry ? widgetRegistry.getWidgets() : [];
+
+  let registryPackages = [];
+  try {
+    const index = await fetchRegistryIndex();
+    registryPackages = index.packages || [];
+  } catch (err) {
+    console.warn(
+      "[DashboardConfigController] Could not fetch registry index for compatibility check:",
+      err.message,
+    );
+  }
+
+  return checkDashboardCompatibility(
+    dashboardWidgets,
+    installedWidgets,
+    registryPackages,
+  );
+}
+
 module.exports = {
   exportDashboardConfig,
   importDashboardConfig,
   installDashboardFromRegistry,
+  checkCompatibility,
 };

@@ -9,6 +9,7 @@ const {
   DASHBOARD_CONFIG_EXPORT,
   DASHBOARD_CONFIG_IMPORT,
   DASHBOARD_CONFIG_INSTALL,
+  DASHBOARD_CONFIG_COMPATIBILITY,
 } = require("../events");
 
 const dashboardConfigApi = {
@@ -51,6 +52,19 @@ const dashboardConfigApi = {
     ipcRenderer.invoke(DASHBOARD_CONFIG_INSTALL, {
       appId,
       packageName,
+    }),
+
+  /**
+   * Check compatibility of a dashboard config against installed widgets.
+   *
+   * @param {string} appId - Application identifier
+   * @param {Array} dashboardWidgets - Widget dependencies from dashboard config
+   * @returns {Promise<Object>} Compatibility report with per-widget status
+   */
+  checkDashboardCompatibility: (appId, dashboardWidgets) =>
+    ipcRenderer.invoke(DASHBOARD_CONFIG_COMPATIBILITY, {
+      appId,
+      dashboardWidgets,
     }),
 };
 
