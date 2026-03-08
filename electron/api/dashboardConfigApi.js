@@ -13,6 +13,7 @@ const {
   DASHBOARD_CONFIG_PUBLISH,
   DASHBOARD_CONFIG_PREVIEW,
   DASHBOARD_CONFIG_CHECK_UPDATES,
+  DASHBOARD_CONFIG_PROVIDER_SETUP,
 } = require("../events");
 
 const dashboardConfigApi = {
@@ -105,6 +106,19 @@ const dashboardConfigApi = {
    */
   checkDashboardUpdates: (appId) =>
     ipcRenderer.invoke(DASHBOARD_CONFIG_CHECK_UPDATES, { appId }),
+
+  /**
+   * Get provider setup manifest for a dashboard's requirements.
+   *
+   * @param {string} appId - Application identifier
+   * @param {Array} requiredProviders - Provider requirements from dashboard config
+   * @returns {Promise<Object>} Setup manifest with per-provider status
+   */
+  getProviderSetupManifest: (appId, requiredProviders) =>
+    ipcRenderer.invoke(DASHBOARD_CONFIG_PROVIDER_SETUP, {
+      appId,
+      requiredProviders,
+    }),
 };
 
 module.exports = dashboardConfigApi;

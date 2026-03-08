@@ -10,6 +10,7 @@ const DASHBOARD_CONFIG_COMPATIBILITY = "dashboard-config-compatibility";
 const DASHBOARD_CONFIG_PUBLISH = "dashboard-config-publish";
 const DASHBOARD_CONFIG_PREVIEW = "dashboard-config-preview";
 const DASHBOARD_CONFIG_CHECK_UPDATES = "dashboard-config-check-updates";
+const DASHBOARD_CONFIG_PROVIDER_SETUP = "dashboard-config-provider-setup";
 
 module.exports = {
   DASHBOARD_CONFIG_EXPORT,
@@ -19,4 +20,5 @@ module.exports = {
   DASHBOARD_CONFIG_PUBLISH,
   DASHBOARD_CONFIG_PREVIEW,
   DASHBOARD_CONFIG_CHECK_UPDATES,
+  DASHBOARD_CONFIG_PROVIDER_SETUP,
 };

@@ -493,6 +493,59 @@ function checkDashboardUpdates(workspaces = [], registryPackages = []) {
   return updates;
 }
 
+/**
+ * Build a provider setup manifest for a dashboard's requirements.
+ * Compares required providers against configured providers,
+ * returning status (configured/needs-setup) for each.
+ *
+ * @param {Array} requiredProviders - Provider requirements from dashboard config
+ * @param {Array} configuredProviders - User's configured providers (from providerController)
+ * @returns {Object} Setup manifest with per-provider status
+ */
+function buildProviderSetupManifest(
+  requiredProviders = [],
+  configuredProviders = [],
+) {
+  const configuredByType = new Map();
+  for (const p of configuredProviders) {
+    const key = p.type || p.name || "";
+    if (key) {
+      configuredByType.set(key.toLowerCase(), p);
+    }
+  }
+
+  const providers = requiredProviders.map((req) => {
+    const typeKey = (req.type || "").toLowerCase();
+    const configured = configuredByType.get(typeKey);
+
+    return {
+      type: req.type || "",
+      providerClass: req.providerClass || "",
+      required: req.required !== false,
+      usedBy: req.usedBy || [],
+      status: configured ? "configured" : "needs-setup",
+      configuredProvider: configured || null,
+    };
+  });
+
+  const configuredCount = providers.filter(
+    (p) => p.status === "configured",
+  ).length;
+  const needsSetupCount = providers.filter(
+    (p) => p.status === "needs-setup",
+  ).length;
+
+  return {
+    allConfigured: needsSetupCount === 0,
+    summary: {
+      total: providers.length,
+      configured: configuredCount,
+      needsSetup: needsSetupCount,
+    },
+    providers,
+  };
+}
+
 module.exports = {
   collectComponentNames,
   extractEventWiring,
@@ -503,4 +556,5 @@ module.exports = {
   generateRegistryManifest,
   buildDashboardPreview,
   checkDashboardUpdates,
+  buildProviderSetupManifest,
 };

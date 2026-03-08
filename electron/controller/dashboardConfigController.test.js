@@ -10,6 +10,7 @@ const {
   generateRegistryManifest,
   buildDashboardPreview,
   checkDashboardUpdates,
+  buildProviderSetupManifest,
 } = require("../schema/dashboardConfigUtils");
 
 describe("collectComponentNames", () => {
@@ -691,5 +692,60 @@ describe("checkDashboardUpdates", () => {
   it("handles empty inputs", () => {
     assert.deepEqual(checkDashboardUpdates([], []), []);
     assert.deepEqual(checkDashboardUpdates([], registryPackages), []);
+  });
+});
+
+describe("buildProviderSetupManifest", () => {
+  it("identifies configured providers", () => {
+    const required = [
+      { type: "algolia", providerClass: "credential", required: true, usedBy: ["AlgoliaSearch"] },
+    ];
+    const configured = [
+      { type: "algolia", name: "My Algolia", credentials: {} },
+    ];
+    const result = buildProviderSetupManifest(required, configured);
+    assert.equal(result.allConfigured, true);
+    assert.equal(result.summary.configured, 1);
+    assert.equal(result.summary.needsSetup, 0);
+    assert.equal(result.providers[0].status, "configured");
+    assert.ok(result.providers[0].configuredProvider);
+  });
+
+  it("identifies providers needing setup", () => {
+    const required = [
+      { type: "slack", providerClass: "mcp", required: true, usedBy: ["SlackWidget"] },
+    ];
+    const result = buildProviderSetupManifest(required, []);
+    assert.equal(result.allConfigured, false);
+    assert.equal(result.summary.needsSetup, 1);
+    assert.equal(result.providers[0].status, "needs-setup");
+    assert.equal(result.providers[0].configuredProvider, null);
+  });
+
+  it("handles mixed configured and unconfigured", () => {
+    const required = [
+      { type: "algolia", providerClass: "credential", required: true, usedBy: ["Search"] },
+      { type: "github", providerClass: "credential", required: true, usedBy: ["GitHub"] },
+    ];
+    const configured = [
+      { type: "algolia", credentials: {} },
+    ];
+    const result = buildProviderSetupManifest(required, configured);
+    assert.equal(result.allConfigured, false);
+    assert.equal(result.summary.configured, 1);
+    assert.equal(result.summary.needsSetup, 1);
+  });
+
+  it("is case-insensitive for provider type matching", () => {
+    const required = [{ type: "Algolia", providerClass: "credential", required: true }];
+    const configured = [{ type: "algolia" }];
+    const result = buildProviderSetupManifest(required, configured);
+    assert.equal(result.providers[0].status, "configured");
+  });
+
+  it("returns allConfigured true for empty requirements", () => {
+    const result = buildProviderSetupManifest([], []);
+    assert.equal(result.allConfigured, true);
+    assert.equal(result.summary.total, 0);
   });
 });
