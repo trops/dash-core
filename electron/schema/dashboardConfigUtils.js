@@ -407,12 +407,11 @@ function buildDashboardPreview(source) {
   const preview = {
     name: source.displayName || source.name || "Dashboard",
     description: source.description || "",
-    author: typeof source.author === "object"
-      ? source.author.name || ""
-      : source.author || "",
-    authorId: typeof source.author === "object"
-      ? source.author.id || ""
-      : "",
+    author:
+      typeof source.author === "object"
+        ? source.author.name || ""
+        : source.author || "",
+    authorId: typeof source.author === "object" ? source.author.id || "" : "",
     version: source.version || "",
     icon: source.icon || "grip",
     tags: source.tags || [],
@@ -440,8 +439,12 @@ function buildDashboardPreview(source) {
       widgetCount: (source.widgets || []).length,
       eventCount: (source.eventWiring || []).length,
       providerCount: (source.providers || []).length,
-      requiredWidgets: (source.widgets || []).filter((w) => w.required !== false).length,
-      optionalWidgets: (source.widgets || []).filter((w) => w.required === false).length,
+      requiredWidgets: (source.widgets || []).filter(
+        (w) => w.required !== false,
+      ).length,
+      optionalWidgets: (source.widgets || []).filter(
+        (w) => w.required === false,
+      ).length,
     },
   };
 

@@ -545,7 +545,9 @@ async function installDashboardFromRegistry(
  * @returns {Promise<Object>} Compatibility report
  */
 async function checkCompatibility(dashboardWidgets, widgetRegistry = null) {
-  const { checkDashboardCompatibility } = require("../schema/dashboardConfigUtils");
+  const {
+    checkDashboardCompatibility,
+  } = require("../schema/dashboardConfigUtils");
   const { fetchRegistryIndex } = require("./registryController");
 
   const installedWidgets = widgetRegistry ? widgetRegistry.getWidgets() : [];
@@ -598,7 +600,9 @@ async function prepareDashboardForPublish(
   widgetRegistry = null,
 ) {
   try {
-    const { generateRegistryManifest } = require("../schema/dashboardConfigUtils");
+    const {
+      generateRegistryManifest,
+    } = require("../schema/dashboardConfigUtils");
 
     // 1. Read workspace
     const filename = path.join(
@@ -620,10 +624,14 @@ async function prepareDashboardForPublish(
     }
 
     // 2. Check shareable flag — imported dashboards cannot be published
-    if (workspace._dashboardConfig && workspace._dashboardConfig.shareable === false) {
+    if (
+      workspace._dashboardConfig &&
+      workspace._dashboardConfig.shareable === false
+    ) {
       return {
         success: false,
-        error: "This dashboard was imported and cannot be published. Only dashboards you created can be shared.",
+        error:
+          "This dashboard was imported and cannot be published. Only dashboards you created can be shared.",
       };
     }
 
@@ -714,7 +722,10 @@ async function prepareDashboardForPublish(
 
     // 8. Create ZIP with manifest and dashboard config
     const zip = new AdmZip();
-    zip.addFile("manifest.json", Buffer.from(JSON.stringify(manifest, null, 2), "utf-8"));
+    zip.addFile(
+      "manifest.json",
+      Buffer.from(JSON.stringify(manifest, null, 2), "utf-8"),
+    );
     zip.addFile(
       `${sanitizedName}.dashboard.json`,
       Buffer.from(JSON.stringify(dashboardConfig, null, 2), "utf-8"),
@@ -759,7 +770,8 @@ async function prepareDashboardForPublish(
       filePath,
       manifest,
       config: dashboardConfig,
-      warnings: missingFromRegistry.length > 0 ? missingFromRegistry : undefined,
+      warnings:
+        missingFromRegistry.length > 0 ? missingFromRegistry : undefined,
       registryCheckFailed: registryCheckFailed || undefined,
       registrySubmission,
     };
@@ -784,8 +796,10 @@ async function prepareDashboardForPublish(
  * @returns {Promise<Object>} Preview data with compatibility report
  */
 async function getDashboardPreview(packageName, widgetRegistry = null) {
-  const { buildDashboardPreview, checkDashboardCompatibility } =
-    require("../schema/dashboardConfigUtils");
+  const {
+    buildDashboardPreview,
+    checkDashboardCompatibility,
+  } = require("../schema/dashboardConfigUtils");
   const { getPackage, fetchRegistryIndex } = require("./registryController");
 
   const pkg = await getPackage(packageName);
@@ -850,7 +864,9 @@ async function checkDashboardUpdatesForApp(appId) {
     return {
       success: true,
       updates,
-      totalInstalled: workspaces.filter((w) => w._dashboardConfig?.registryPackage).length,
+      totalInstalled: workspaces.filter(
+        (w) => w._dashboardConfig?.registryPackage,
+      ).length,
     };
   } catch (error) {
     console.error(
@@ -874,7 +890,9 @@ async function checkDashboardUpdatesForApp(appId) {
  * @returns {Object} Setup manifest with per-provider status
  */
 function getProviderSetupManifest(appId, requiredProviders = []) {
-  const { buildProviderSetupManifest } = require("../schema/dashboardConfigUtils");
+  const {
+    buildProviderSetupManifest,
+  } = require("../schema/dashboardConfigUtils");
   const { listProviders } = require("./providerController");
 
   let configuredProviders = [];

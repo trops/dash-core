@@ -119,7 +119,9 @@ describe("enrichWithRatings", () => {
   });
 
   it("preserves all original package fields", () => {
-    const packages = [{ name: "pkg", version: "1.0.0", author: "me", extra: true }];
+    const packages = [
+      { name: "pkg", version: "1.0.0", author: "me", extra: true },
+    ];
     const enriched = enrichWithRatings(packages, {});
     assert.equal(enriched[0].version, "1.0.0");
     assert.equal(enriched[0].author, "me");

@@ -1,0 +1,92 @@
+const React = require("react");
+
+const ThemeContext = React.createContext({ currentTheme: {} });
+
+function Modal({ isOpen, children }) {
+  return isOpen
+    ? React.createElement("div", { "data-testid": "modal" }, children)
+    : null;
+}
+
+function Stepper({ activeStep, children, onStepChange }) {
+  const steps = React.Children.toArray(children);
+  // Only render the active step to avoid duplicate text in tests
+  return React.createElement(
+    "div",
+    { "data-testid": "stepper" },
+    steps[activeStep] || null,
+  );
+}
+
+Stepper.Step = function StepContent({ label, children }) {
+  return React.createElement(
+    "div",
+    { "data-testid": "step-content-" + label },
+    React.createElement("span", { "data-testid": "step-label" }, label),
+    children,
+  );
+};
+
+function InputText({ label, value, onChange, placeholder }) {
+  return React.createElement(
+    "label",
+    null,
+    label,
+    React.createElement("input", {
+      value: value,
+      onChange: (e) => onChange(e.target.value),
+      placeholder: placeholder,
+    }),
+  );
+}
+
+function TextArea({ label, value, onChange, placeholder, rows }) {
+  return React.createElement(
+    "label",
+    null,
+    label,
+    React.createElement("textarea", {
+      value: value,
+      onChange: (e) => onChange(e.target.value),
+      placeholder: placeholder,
+      rows: rows,
+    }),
+  );
+}
+
+function Button2({ title, onClick, disabled }) {
+  return React.createElement(
+    "button",
+    { onClick: onClick, disabled: disabled },
+    title,
+  );
+}
+
+function Button3({ title, onClick, disabled }) {
+  return React.createElement(
+    "button",
+    { onClick: onClick, disabled: disabled },
+    title,
+  );
+}
+
+function FontAwesomeIcon({ icon, className }) {
+  const name = typeof icon === "string" ? icon : (icon && icon.iconName) || "";
+  return React.createElement("span", {
+    "data-testid": "icon-" + name,
+    className: className,
+  });
+}
+
+module.exports = {
+  ThemeContext,
+  Modal,
+  Stepper,
+  InputText,
+  TextArea,
+  Button2,
+  Button3,
+  FontAwesomeIcon,
+  getStylesForItem: () => ({}),
+  themeObjects: { PANEL: "panel" },
+};

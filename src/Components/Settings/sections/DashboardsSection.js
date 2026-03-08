@@ -151,7 +151,7 @@ export const DashboardsSection = ({
     try {
       const result =
         await window.mainApi.dashboardConfig.importDashboardConfig(appId);
-      if (!result) {
+      if (!result || result.canceled) {
         // User cancelled the file picker
         setInstallMode(null);
         setImportResult(null);
@@ -187,7 +187,11 @@ export const DashboardsSection = ({
         key={ws.id}
         icon={<FontAwesomeIcon icon={icon} className="h-3.5 w-3.5" />}
         active={isSelected}
-        onClick={() => setSelectedId(ws.id)}
+        onClick={() => {
+          setSelectedId(ws.id);
+          setInstallMode(null);
+          setImportResult(null);
+        }}
         badge={String(widgetCount)}
         className={isSelected ? "bg-white/10 opacity-100" : ""}
       >
