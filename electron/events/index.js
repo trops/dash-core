@@ -20,6 +20,7 @@ const llmEvents = require("./llmEvents");
 const clientCacheEvents = require("./clientCacheEvents");
 const dashboardConfigEvents = require("./dashboardConfigEvents");
 const dashboardRatingsEvents = require("./dashboardRatingsEvents");
+const registryAuthEvents = require("./registryAuthEvents");
 
 const publicEvents = {
   ...dataEvents,
@@ -44,4 +45,5 @@ module.exports = {
   ...clientCacheEvents,
   ...dashboardConfigEvents,
   ...dashboardRatingsEvents,
+  ...registryAuthEvents,
 };

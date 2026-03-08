@@ -30,6 +30,7 @@ const llmApi = require("./llmApi");
 const clientCacheApi = require("./clientCacheApi");
 const dashboardConfigApi = require("./dashboardConfigApi");
 const dashboardRatingsApi = require("./dashboardRatingsApi");
+const registryAuthApi = require("./registryAuthApi");
 
 // Events constants
 const events = require("../events");
@@ -103,6 +104,7 @@ function createMainApi(extensions = {}) {
     clientCache: clientCacheApi,
     dashboardConfig: dashboardConfigApi,
     dashboardRatings: dashboardRatingsApi,
+    registryAuth: registryAuthApi,
 
     widgetEvent: {
       publish: (eventType, content) => {

@@ -1,6 +1,6 @@
 {
     "name": "@trops/dash-core",
-    "version": "0.1.96",
+    "version": "0.1.97",
     "description": "Core framework for Dash dashboard applications",
     "main": "dist/index.js",
     "module": "dist/index.esm.js",
@@ -23,6 +23,7 @@
         "clean": "rm -rf dist",
         "prepublishOnly": "npm run clean && npm run build",
         "test:mcp": "node --test electron/controller/mcpController.test.js electron/mcp/mcpServerCatalog.test.js",
+        "test": "jest --watchAll=false",
         "prettify": "prettier --write \"src/**/*.{js,jsx,ts,tsx}\" \"electron/**/*.js\""
     },
     "peerDependencies": {
@@ -50,7 +51,16 @@
         "@rollup/plugin-node-resolve": "^15.0.0",
         "@rollup/plugin-strip": "^3.0.0",
         "@rollup/plugin-typescript": "^11.0.0",
+        "@testing-library/dom": "^10.4.1",
+        "@testing-library/jest-dom": "^6.9.1",
+        "@testing-library/react": "^16.3.2",
+        "@testing-library/user-event": "^14.6.1",
+        "babel-jest": "^30.2.0",
+        "jest": "^30.2.0",
+        "jest-environment-jsdom": "^30.2.0",
         "prettier": "^3.0.0",
+        "react": "^19.2.4",
+        "react-dom": "^19.2.4",
         "rollup": "^3.25.0",
         "rollup-plugin-filesize": "^10.0.0",
         "rollup-plugin-peer-deps-external": "^2.2.4",

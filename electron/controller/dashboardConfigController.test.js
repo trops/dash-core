@@ -467,7 +467,12 @@ describe("generateRegistryManifest", () => {
       },
     ],
     providers: [
-      { type: "algolia", providerClass: "credential", required: true, usedBy: ["AlgoliaSearch"] },
+      {
+        type: "algolia",
+        providerClass: "credential",
+        required: true,
+        usedBy: ["AlgoliaSearch"],
+      },
     ],
     eventWiring: [
       {
@@ -542,14 +547,36 @@ describe("buildDashboardPreview", () => {
       category: "general",
       publishedAt: "2026-03-08T00:00:00.000Z",
       widgets: [
-        { id: "clock.Analog", name: "AnalogClock", package: "clock", version: "^1.0.0", required: true, author: "trops" },
-        { id: "clock.Digital", name: "DigitalClock", package: "clock", version: "^1.0.0", required: false, author: "trops" },
+        {
+          id: "clock.Analog",
+          name: "AnalogClock",
+          package: "clock",
+          version: "^1.0.0",
+          required: true,
+          author: "trops",
+        },
+        {
+          id: "clock.Digital",
+          name: "DigitalClock",
+          package: "clock",
+          version: "^1.0.0",
+          required: false,
+          author: "trops",
+        },
       ],
       eventWiring: [
-        { source: { widget: "AnalogClock", event: "tick" }, target: { widget: "DigitalClock", handler: "onTick" } },
+        {
+          source: { widget: "AnalogClock", event: "tick" },
+          target: { widget: "DigitalClock", handler: "onTick" },
+        },
       ],
       providers: [
-        { type: "time", providerClass: "credential", required: true, usedBy: ["AnalogClock"] },
+        {
+          type: "time",
+          providerClass: "credential",
+          required: true,
+          usedBy: ["AnalogClock"],
+        },
       ],
     };
     const preview = buildDashboardPreview(pkg);
@@ -593,13 +620,25 @@ describe("buildDashboardPreview", () => {
   it("formats event wiring as human-readable summary", () => {
     const source = {
       eventWiring: [
-        { source: { widget: "Search", event: "queryChanged" }, target: { widget: "Results", handler: "onQuery" } },
-        { source: { widget: "Filter", event: "filterApplied" }, target: { widget: "Results" } },
+        {
+          source: { widget: "Search", event: "queryChanged" },
+          target: { widget: "Results", handler: "onQuery" },
+        },
+        {
+          source: { widget: "Filter", event: "filterApplied" },
+          target: { widget: "Results" },
+        },
       ],
     };
     const preview = buildDashboardPreview(source);
-    assert.equal(preview.eventWiring[0].summary, "Search.queryChanged → Results.onQuery");
-    assert.equal(preview.eventWiring[1].summary, "Filter.filterApplied → Results.filterApplied");
+    assert.equal(
+      preview.eventWiring[0].summary,
+      "Search.queryChanged → Results.onQuery",
+    );
+    assert.equal(
+      preview.eventWiring[1].summary,
+      "Filter.filterApplied → Results.filterApplied",
+    );
   });
 });
 
@@ -698,7 +737,12 @@ describe("checkDashboardUpdates", () => {
 describe("buildProviderSetupManifest", () => {
   it("identifies configured providers", () => {
     const required = [
-      { type: "algolia", providerClass: "credential", required: true, usedBy: ["AlgoliaSearch"] },
+      {
+        type: "algolia",
+        providerClass: "credential",
+        required: true,
+        usedBy: ["AlgoliaSearch"],
+      },
     ];
     const configured = [
       { type: "algolia", name: "My Algolia", credentials: {} },
@@ -713,7 +757,12 @@ describe("buildProviderSetupManifest", () => {
 
   it("identifies providers needing setup", () => {
     const required = [
-      { type: "slack", providerClass: "mcp", required: true, usedBy: ["SlackWidget"] },
+      {
+        type: "slack",
+        providerClass: "mcp",
+        required: true,
+        usedBy: ["SlackWidget"],
+      },
     ];
     const result = buildProviderSetupManifest(required, []);
     assert.equal(result.allConfigured, false);
@@ -724,12 +773,20 @@ describe("buildProviderSetupManifest", () => {
 
   it("handles mixed configured and unconfigured", () => {
     const required = [
-      { type: "algolia", providerClass: "credential", required: true, usedBy: ["Search"] },
-      { type: "github", providerClass: "credential", required: true, usedBy: ["GitHub"] },
+      {
+        type: "algolia",
+        providerClass: "credential",
+        required: true,
+        usedBy: ["Search"],
+      },
+      {
+        type: "github",
+        providerClass: "credential",
+        required: true,
+        usedBy: ["GitHub"],
+      },
     ];
-    const configured = [
-      { type: "algolia", credentials: {} },
-    ];
+    const configured = [{ type: "algolia", credentials: {} }];
     const result = buildProviderSetupManifest(required, configured);
     assert.equal(result.allConfigured, false);
     assert.equal(result.summary.configured, 1);
@@ -737,7 +794,9 @@ describe("buildProviderSetupManifest", () => {
   });
 
   it("is case-insensitive for provider type matching", () => {
-    const required = [{ type: "Algolia", providerClass: "credential", required: true }];
+    const required = [
+      { type: "Algolia", providerClass: "credential", required: true },
+    ];
     const configured = [{ type: "algolia" }];
     const result = buildProviderSetupManifest(required, configured);
     assert.equal(result.providers[0].status, "configured");

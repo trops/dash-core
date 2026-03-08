@@ -67,6 +67,18 @@ const {
   getProviderSetupManifest,
 } = require("./dashboardConfigController");
 const {
+  initiateDeviceFlow,
+  pollForToken,
+  getStoredToken: getRegistryToken,
+  getAuthStatus: getRegistryAuthStatus,
+  getRegistryProfile,
+  clearToken: clearRegistryToken,
+} = require("./registryAuthController");
+const {
+  publishToRegistry,
+  getRegistryUrl,
+} = require("./registryApiController");
+const {
   saveDashboardRating,
   getDashboardRating,
   listDashboardRatings,
@@ -128,4 +140,12 @@ module.exports = {
   listDashboardRatings,
   deleteDashboardRating,
   enrichPackagesWithRatings,
+  initiateDeviceFlow,
+  pollForToken,
+  getRegistryToken,
+  getRegistryAuthStatus,
+  getRegistryProfile,
+  clearRegistryToken,
+  publishToRegistry,
+  getRegistryUrl,
 };
