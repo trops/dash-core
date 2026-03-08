@@ -11,6 +11,7 @@ const {
   DASHBOARD_CONFIG_INSTALL,
   DASHBOARD_CONFIG_COMPATIBILITY,
   DASHBOARD_CONFIG_PUBLISH,
+  DASHBOARD_CONFIG_PREVIEW,
 } = require("../events");
 
 const dashboardConfigApi = {
@@ -84,6 +85,16 @@ const dashboardConfigApi = {
       workspaceId,
       options,
     }),
+
+  /**
+   * Get a preview of a dashboard package from the registry.
+   * Returns structured preview data and compatibility report.
+   *
+   * @param {string} packageName - Registry package name
+   * @returns {Promise<Object>} Preview with metadata, widgets, wiring, compatibility
+   */
+  getDashboardPreview: (packageName) =>
+    ipcRenderer.invoke(DASHBOARD_CONFIG_PREVIEW, { packageName }),
 };
 
 module.exports = dashboardConfigApi;

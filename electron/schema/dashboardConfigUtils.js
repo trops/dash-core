@@ -396,6 +396,58 @@ function generateRegistryManifest(dashboardConfig, options = {}) {
   return manifest;
 }
 
+/**
+ * Build a structured preview object from a dashboard registry package
+ * or dashboard config. Provides all data needed for a rich preview UI.
+ *
+ * @param {Object} source - Registry package manifest or dashboard config
+ * @returns {Object} Structured preview with metadata, widgets, wiring, providers
+ */
+function buildDashboardPreview(source) {
+  const preview = {
+    name: source.displayName || source.name || "Dashboard",
+    description: source.description || "",
+    author: typeof source.author === "object"
+      ? source.author.name || ""
+      : source.author || "",
+    authorId: typeof source.author === "object"
+      ? source.author.id || ""
+      : "",
+    version: source.version || "",
+    icon: source.icon || "grip",
+    tags: source.tags || [],
+    screenshots: source.screenshots || [],
+    publishedAt: source.publishedAt || null,
+    category: source.category || "general",
+    widgets: (source.widgets || []).map((w) => ({
+      name: w.name || w.id || w.package || "",
+      package: w.package || "",
+      version: w.version || "*",
+      required: w.required !== false,
+      author: w.author || "",
+    })),
+    eventWiring: (source.eventWiring || []).map((wire) => ({
+      raw: wire,
+      summary: `${wire.source?.widget || "?"}.${wire.source?.event || "?"} → ${wire.target?.widget || "?"}.${wire.target?.handler || wire.source?.event || "?"}`,
+    })),
+    providers: (source.providers || []).map((p) => ({
+      type: p.type || "",
+      providerClass: p.providerClass || "",
+      required: p.required !== false,
+      usedBy: p.usedBy || [],
+    })),
+    summary: {
+      widgetCount: (source.widgets || []).length,
+      eventCount: (source.eventWiring || []).length,
+      providerCount: (source.providers || []).length,
+      requiredWidgets: (source.widgets || []).filter((w) => w.required !== false).length,
+      optionalWidgets: (source.widgets || []).filter((w) => w.required === false).length,
+    },
+  };
+
+  return preview;
+}
+
 module.exports = {
   collectComponentNames,
   extractEventWiring,
@@ -404,4 +456,5 @@ module.exports = {
   applyEventWiringToLayout,
   checkDashboardCompatibility,
   generateRegistryManifest,
+  buildDashboardPreview,
 };
