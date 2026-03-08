@@ -61,6 +61,7 @@ const {
   importDashboardConfig,
   installDashboardFromRegistry,
   checkCompatibility,
+  prepareDashboardForPublish,
 } = require("./dashboardConfigController");
 
 module.exports = {
@@ -108,4 +109,5 @@ module.exports = {
   importDashboardConfig,
   installDashboardFromRegistry,
   checkCompatibility,
+  prepareDashboardForPublish,
 };
