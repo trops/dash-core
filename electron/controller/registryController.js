@@ -13,9 +13,8 @@
 const path = require("path");
 const fs = require("fs");
 
-// Default registry URL (GitHub Pages)
-const DEFAULT_REGISTRY_URL =
-  "https://trops.github.io/dash-registry/registry-index.json";
+// Default registry API base URL
+const DEFAULT_REGISTRY_API_URL = "https://registry.trops.dev";
 
 // Cache TTL: 5 minutes
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -61,7 +60,7 @@ async function fetchRegistryIndex(forceRefresh = false) {
     let indexData;
 
     if (isDev()) {
-      // In dev mode, load from local test file
+      // In dev mode, try local test file first
       const testPath = getTestRegistryPath();
       if (fs.existsSync(testPath)) {
         console.log(
@@ -71,13 +70,10 @@ async function fetchRegistryIndex(forceRefresh = false) {
         const raw = fs.readFileSync(testPath, "utf8");
         indexData = JSON.parse(raw);
       } else {
-        console.warn(
-          "[RegistryController] Test registry not found at:",
-          testPath,
-          "— falling back to remote registry",
-        );
+        // Fall back to API (supports DASH_REGISTRY_URL as full-URL override)
         const registryUrl =
-          process.env.DASH_REGISTRY_URL || DEFAULT_REGISTRY_URL;
+          process.env.DASH_REGISTRY_URL ||
+          `${process.env.DASH_REGISTRY_API_URL || DEFAULT_REGISTRY_API_URL}/api/packages`;
         console.log(
           "[RegistryController] Fetching registry from:",
           registryUrl,
@@ -91,8 +87,10 @@ async function fetchRegistryIndex(forceRefresh = false) {
         indexData = await response.json();
       }
     } else {
-      // In production, fetch from remote URL
-      const registryUrl = process.env.DASH_REGISTRY_URL || DEFAULT_REGISTRY_URL;
+      // In production, fetch from API
+      const registryUrl =
+        process.env.DASH_REGISTRY_URL ||
+        `${process.env.DASH_REGISTRY_API_URL || DEFAULT_REGISTRY_API_URL}/api/packages`;
       console.log("[RegistryController] Fetching registry from:", registryUrl);
 
       const response = await fetch(registryUrl);
@@ -102,6 +100,14 @@ async function fetchRegistryIndex(forceRefresh = false) {
         );
       }
       indexData = await response.json();
+    }
+
+    // Normalize: ensure `version` exists on each package (API uses `latestVersion`)
+    if (indexData.packages) {
+      indexData.packages = indexData.packages.map((pkg) => ({
+        ...pkg,
+        version: pkg.version || pkg.latestVersion || "0.0.0",
+      }));
     }
 
     // Cache the result
