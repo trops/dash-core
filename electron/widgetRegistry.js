@@ -962,3 +962,4 @@ Object.defineProperty(module.exports, "widgetRegistry", {
   get: getWidgetRegistry,
 });
 module.exports.setupWidgetRegistryHandlers = setupWidgetRegistryHandlers;
+module.exports.validateZipEntries = validateZipEntries;

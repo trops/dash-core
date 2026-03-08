@@ -56,7 +56,10 @@ const {
   listMenuItemsForApplication,
 } = require("./menuItemsController");
 const { install: pluginInstall } = require("./pluginController");
-const { exportDashboardConfig } = require("./dashboardConfigController");
+const {
+  exportDashboardConfig,
+  importDashboardConfig,
+} = require("./dashboardConfigController");
 
 module.exports = {
   showDialog,
@@ -100,4 +103,5 @@ module.exports = {
   pluginInstall,
   searchIndex,
   exportDashboardConfig,
+  importDashboardConfig,
 };
