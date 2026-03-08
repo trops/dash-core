@@ -1,0 +1,217 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://trops.github.io/dash-registry/dashboard-config.schema.json",
+    "title": "Dashboard Configuration",
+    "description": "Schema for portable dashboard configuration files (.dashboard.json)",
+    "type": "object",
+    "required": ["schemaVersion", "name", "workspace", "widgets"],
+    "properties": {
+        "schemaVersion": {
+            "type": "string",
+            "description": "Schema version for forward compatibility",
+            "pattern": "^\\d+\\.\\d+\\.\\d+$",
+            "examples": ["1.0.0"]
+        },
+        "name": {
+            "type": "string",
+            "description": "Display name of the dashboard",
+            "minLength": 1,
+            "maxLength": 100
+        },
+        "description": {
+            "type": "string",
+            "description": "Human-readable description of the dashboard",
+            "maxLength": 1000,
+            "default": ""
+        },
+        "author": {
+            "type": "object",
+            "description": "Dashboard curator/creator (separate from widget authors)",
+            "required": ["name"],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Author display name"
+                },
+                "id": {
+                    "type": "string",
+                    "description": "Author identifier"
+                }
+            },
+            "additionalProperties": false
+        },
+        "shareable": {
+            "type": "boolean",
+            "description": "true for user-created dashboards, false for imported. Only shareable dashboards can be published to the registry.",
+            "default": true
+        },
+        "tags": {
+            "type": "array",
+            "description": "Searchable tags for discovery",
+            "items": {
+                "type": "string",
+                "maxLength": 50
+            },
+            "maxItems": 20,
+            "default": []
+        },
+        "icon": {
+            "type": "string",
+            "description": "FontAwesome icon name",
+            "default": "grip"
+        },
+        "screenshots": {
+            "type": "array",
+            "description": "Screenshot URLs or references",
+            "items": {
+                "type": "string"
+            },
+            "default": []
+        },
+        "workspace": {
+            "type": "object",
+            "description": "Full workspace configuration (DashboardModel JSON)",
+            "required": ["layout"],
+            "properties": {
+                "id": {
+                    "description": "Workspace ID (timestamp or number)"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string",
+                    "enum": ["layout", "widget", "workspace", "grid"],
+                    "default": "workspace"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "version": {
+                    "default": 1
+                },
+                "layout": {
+                    "type": "array",
+                    "description": "Array of layout items (LayoutModel objects)",
+                    "items": {
+                        "type": "object"
+                    },
+                    "minItems": 1
+                },
+                "menuId": {
+                    "default": 1
+                }
+            },
+            "additionalProperties": true
+        },
+        "widgets": {
+            "type": "array",
+            "description": "Widget dependencies required by this dashboard",
+            "items": {
+                "type": "object",
+                "required": ["id", "package"],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "Widget identifier (e.g., trops.algolia.AlgoliaSearchPage)"
+                    },
+                    "package": {
+                        "type": "string",
+                        "description": "npm package name (e.g., @trops/algolia-search)"
+                    },
+                    "version": {
+                        "type": "string",
+                        "description": "Semver range (e.g., ^1.0.0)",
+                        "default": "*"
+                    },
+                    "required": {
+                        "type": "boolean",
+                        "description": "Whether this widget is required for the dashboard to function",
+                        "default": true
+                    },
+                    "author": {
+                        "type": "string",
+                        "description": "Original widget author (preserved from widget package metadata)"
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        "providers": {
+            "type": "array",
+            "description": "Provider dependencies required by widgets in this dashboard",
+            "items": {
+                "type": "object",
+                "required": ["type", "providerClass"],
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "description": "Provider type identifier (e.g., algolia, slack, github)"
+                    },
+                    "providerClass": {
+                        "type": "string",
+                        "description": "Provider class: credential or mcp",
+                        "enum": ["credential", "mcp"]
+                    },
+                    "required": {
+                        "type": "boolean",
+                        "default": true
+                    },
+                    "usedBy": {
+                        "type": "array",
+                        "description": "Widget component names that use this provider",
+                        "items": {
+                            "type": "string"
+                        },
+                        "default": []
+                    }
+                },
+                "additionalProperties": false
+            },
+            "default": []
+        },
+        "eventWiring": {
+            "type": "array",
+            "description": "Pre-configured event connections between widgets",
+            "items": {
+                "type": "object",
+                "required": ["source", "target"],
+                "properties": {
+                    "source": {
+                        "type": "object",
+                        "required": ["widget", "event"],
+                        "properties": {
+                            "widget": {
+                                "type": "string",
+                                "description": "Source widget component name"
+                            },
+                            "event": {
+                                "type": "string",
+                                "description": "Event name published by source widget"
+                            }
+                        },
+                        "additionalProperties": false
+                    },
+                    "target": {
+                        "type": "object",
+                        "required": ["widget", "handler"],
+                        "properties": {
+                            "widget": {
+                                "type": "string",
+                                "description": "Target widget component name"
+                            },
+                            "handler": {
+                                "type": "string",
+                                "description": "Event handler name on target widget"
+                            }
+                        },
+                        "additionalProperties": false
+                    }
+                },
+                "additionalProperties": false
+            },
+            "default": []
+        }
+    },
+    "additionalProperties": false
+}

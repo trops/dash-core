@@ -1,0 +1,84 @@
+{
+    "schemaVersion": "1.0.0",
+    "name": "Event Demo Dashboard",
+    "description": "Demonstrates event wiring between sender and receiver widgets. No providers needed.",
+    "author": { "name": "Dash Team", "id": "trops" },
+    "shareable": true,
+    "tags": ["demo", "events", "getting-started"],
+    "icon": "paper-plane",
+    "screenshots": [],
+    "workspace": {
+        "id": 1709856100000,
+        "name": "Event Demo",
+        "type": "workspace",
+        "label": "Event Demo",
+        "version": 1,
+        "menuId": 1,
+        "layout": [
+            {
+                "id": 1,
+                "order": 1,
+                "type": "grid",
+                "component": "LayoutGridContainer",
+                "hasChildren": 1,
+                "scrollable": false,
+                "parent": 0,
+                "menuId": 1,
+                "width": "w-full",
+                "height": "h-full",
+                "grid": {
+                    "rows": 1,
+                    "cols": 2,
+                    "gap": "gap-2",
+                    "1.1": {
+                        "component": "EventSenderWidget",
+                        "hide": false
+                    },
+                    "1.2": {
+                        "component": "EventReceiverWidget",
+                        "hide": false
+                    }
+                }
+            }
+        ]
+    },
+    "widgets": [
+        {
+            "id": "trops.dash-samples.EventSenderWidget",
+            "package": "@trops/dash-samples",
+            "version": "^1.0.0",
+            "required": true,
+            "author": "Dash Team"
+        },
+        {
+            "id": "trops.dash-samples.EventReceiverWidget",
+            "package": "@trops/dash-samples",
+            "version": "^1.0.0",
+            "required": true,
+            "author": "Dash Team"
+        }
+    ],
+    "providers": [],
+    "eventWiring": [
+        {
+            "source": {
+                "widget": "EventSenderWidget",
+                "event": "buttonClicked"
+            },
+            "target": {
+                "widget": "EventReceiverWidget",
+                "handler": "onEventReceived"
+            }
+        },
+        {
+            "source": {
+                "widget": "EventSenderWidget",
+                "event": "messageSent"
+            },
+            "target": {
+                "widget": "EventReceiverWidget",
+                "handler": "onEventReceived"
+            }
+        }
+    ]
+}
