@@ -88,20 +88,23 @@ export const AppSettingsModal = ({
 
       <SettingsModal.Header border={true} padding="px-4 py-3">
         <SubHeading2 title={activeDef.label} padding={false} />
-        {(activeSection === "folders" ||
+        {(activeSection === "dashboards" ||
+          activeSection === "folders" ||
           activeSection === "providers" ||
           activeSection === "themes" ||
           activeSection === "widgets") && (
           <ButtonIcon3
             icon="plus"
             text={
-              activeSection === "folders"
-                ? "New Folder"
-                : activeSection === "providers"
-                  ? "New Provider"
-                  : activeSection === "widgets"
-                    ? "Install Widgets"
-                    : "New Theme"
+              activeSection === "dashboards"
+                ? "Marketplace"
+                : activeSection === "folders"
+                  ? "New Folder"
+                  : activeSection === "providers"
+                    ? "New Provider"
+                    : activeSection === "widgets"
+                      ? "Install Widgets"
+                      : "New Theme"
             }
             onClick={() => setCreateRequested(true)}
             spacing="px-3 py-1.5"
@@ -123,6 +126,8 @@ export const AppSettingsModal = ({
             dashApi={dashApi}
             credentials={credentials}
             onReloadWorkspaces={onReloadWorkspaces}
+            createRequested={createRequested}
+            onCreateAcknowledged={() => setCreateRequested(false)}
           />
         )}
         {activeSection === "folders" && (

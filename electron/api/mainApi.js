@@ -29,6 +29,7 @@ const pluginApi = require("./pluginApi");
 const llmApi = require("./llmApi");
 const clientCacheApi = require("./clientCacheApi");
 const dashboardConfigApi = require("./dashboardConfigApi");
+const dashboardRatingsApi = require("./dashboardRatingsApi");
 
 // Events constants
 const events = require("../events");
@@ -101,6 +102,7 @@ function createMainApi(extensions = {}) {
     plugins: pluginApi,
     clientCache: clientCacheApi,
     dashboardConfig: dashboardConfigApi,
+    dashboardRatings: dashboardRatingsApi,
 
     widgetEvent: {
       publish: (eventType, content) => {

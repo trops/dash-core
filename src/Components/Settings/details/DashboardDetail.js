@@ -1,4 +1,4 @@
-import React, { useContext } from "react";
+import React, { useState, useContext } from "react";
 import {
   Button,
   ButtonIcon,
@@ -9,6 +9,8 @@ import {
   FontAwesomeIcon,
   SubHeading,
 } from "@trops/dash-react";
+import { StarRating } from "./StarRating";
+import { PublishDashboardModal } from "./PublishDashboardModal";
 
 /**
  * LayoutPreview — renders a mini CSS grid thumbnail from a workspace's
@@ -89,6 +91,41 @@ export const DashboardDetail = ({
   const widgetCount = (ws.layout || []).length;
   const appId = credentials?.appId;
   const { themes } = useContext(ThemeContext);
+
+  const [exportStatus, setExportStatus] = useState(null);
+  const [publishOpen, setPublishOpen] = useState(false);
+
+  const registryPackage = ws._dashboardConfig?.registryPackage;
+  const isShareable = ws._dashboardConfig?.shareable !== false;
+
+  async function handleExport() {
+    if (!appId) return;
+    setExportStatus({ status: "loading" });
+    try {
+      const result = await window.mainApi.dashboardConfig.exportDashboardConfig(
+        appId,
+        ws.id,
+        {},
+      );
+      if (result?.success) {
+        setExportStatus({
+          status: "success",
+          message: "Exported successfully.",
+        });
+      } else {
+        setExportStatus({
+          status: "error",
+          message: result?.error || "Export failed.",
+        });
+      }
+    } catch (err) {
+      setExportStatus({
+        status: "error",
+        message: err.message || "Export failed.",
+      });
+    }
+    setTimeout(() => setExportStatus(null), 3000);
+  }
 
   const folderOptions = menuItems.map((m) => ({
     label: m.name,
@@ -192,6 +229,54 @@ export const DashboardDetail = ({
           </div>
         </div>
 
+        {/* Registry badge */}
+        {registryPackage && (
+          <div className="flex-shrink-0 flex items-center gap-2">
+            <FontAwesomeIcon icon="store" className="h-3 w-3 opacity-50" />
+            <span className="text-xs opacity-60">
+              Imported from registry:{" "}
+              <span className="font-medium">{registryPackage}</span>
+            </span>
+          </div>
+        )}
+
+        {/* Star Rating for registry dashboards */}
+        {registryPackage && appId && (
+          <div className="flex-shrink-0">
+            <StarRating
+              appId={appId}
+              packageName={registryPackage}
+              interactive={true}
+            />
+          </div>
+        )}
+
+        {/* Export status */}
+        {exportStatus && (
+          <div className="flex-shrink-0 flex items-center gap-2">
+            {exportStatus.status === "loading" && (
+              <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-500" />
+            )}
+            {exportStatus.status === "success" && (
+              <FontAwesomeIcon
+                icon="circle-check"
+                className="h-3.5 w-3.5 text-green-400"
+              />
+            )}
+            {exportStatus.status === "error" && (
+              <FontAwesomeIcon
+                icon="circle-xmark"
+                className="h-3.5 w-3.5 text-red-400"
+              />
+            )}
+            <span
+              className={`text-xs ${exportStatus.status === "error" ? "text-red-400" : "opacity-60"}`}
+            >
+              {exportStatus.message}
+            </span>
+          </div>
+        )}
+
         {/* Layout Preview */}
         <LayoutPreview layout={ws.layout} />
       </div>
@@ -199,11 +284,27 @@ export const DashboardDetail = ({
       {/* Footer */}
       {!isEditing && (
         <div className="flex-shrink-0 flex flex-row justify-end gap-2 px-6 py-4 border-t border-white/10">
+          <Button title="Export ZIP" onClick={handleExport} size="sm" />
+          {isShareable && (
+            <Button
+              title="Publish"
+              onClick={() => setPublishOpen(true)}
+              size="sm"
+            />
+          )}
           <Button title="Rename" onClick={() => onStartRename(ws)} size="sm" />
           <Button title="Duplicate" onClick={() => onDuplicate(ws)} size="sm" />
           <Button title="Delete" onClick={() => onDelete(ws)} size="sm" />
         </div>
       )}
+
+      <PublishDashboardModal
+        isOpen={publishOpen}
+        setIsOpen={setPublishOpen}
+        appId={appId}
+        workspaceId={ws.id}
+        workspaceName={ws.name}
+      />
     </div>
   );
 };

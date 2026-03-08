@@ -1,5 +1,6 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useState, useRef, useEffect } from "react";
 import {
+  ButtonIcon,
   ConfirmationModal,
   SearchInput,
   Sidebar,
@@ -12,6 +13,7 @@ import {
 } from "@trops/dash-react";
 import { SectionLayout } from "../SectionLayout";
 import { DashboardDetail } from "../details/DashboardDetail";
+import { DiscoverDashboardsDetail } from "../details/DiscoverDashboardsDetail";
 
 export const DashboardsSection = ({
   workspaces = [],
@@ -19,6 +21,8 @@ export const DashboardsSection = ({
   dashApi = null,
   credentials = null,
   onReloadWorkspaces = null,
+  createRequested = false,
+  onCreateAcknowledged = null,
 }) => {
   const [selectedId, setSelectedId] = useState(null);
   const [editingId, setEditingId] = useState(null);
@@ -26,6 +30,9 @@ export const DashboardsSection = ({
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState("grouped");
+  // null | "marketplace" | "import-result"
+  const [installMode, setInstallMode] = useState(null);
+  const [importResult, setImportResult] = useState(null);
 
   const appId = credentials?.appId;
 
@@ -122,6 +129,54 @@ export const DashboardsSection = ({
     );
   }
 
+  // Respond to external create trigger from header button (marketplace)
+  const prevCreateRequested = useRef(false);
+  useEffect(() => {
+    if (createRequested && !prevCreateRequested.current) {
+      setSelectedId(null);
+      setInstallMode("marketplace");
+      setImportResult(null);
+    }
+    prevCreateRequested.current = createRequested;
+    if (createRequested && onCreateAcknowledged) {
+      onCreateAcknowledged();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createRequested]);
+
+  async function handleImport() {
+    if (!appId) return;
+    setInstallMode("import-result");
+    setImportResult({ status: "loading", message: "Importing dashboard..." });
+    try {
+      const result =
+        await window.mainApi.dashboardConfig.importDashboardConfig(appId);
+      if (!result) {
+        // User cancelled the file picker
+        setInstallMode(null);
+        setImportResult(null);
+        return;
+      }
+      if (result.success) {
+        setImportResult({
+          status: "success",
+          message: `Dashboard "${result.workspace?.name || "Untitled"}" imported successfully.`,
+        });
+        onReloadWorkspaces && onReloadWorkspaces();
+      } else {
+        setImportResult({
+          status: "error",
+          message: result.error || "Import failed.",
+        });
+      }
+    } catch (err) {
+      setImportResult({
+        status: "error",
+        message: err.message || "Failed to import dashboard.",
+      });
+    }
+  }
+
   const selectedWorkspace = workspaces.find((ws) => ws.id === selectedId);
 
   function renderDashboardItem(ws, icon) {
@@ -174,14 +229,33 @@ export const DashboardsSection = ({
           headerStyles.backgroundColor || ""
         }`}
       >
-        <SearchInput
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder="Search dashboards..."
-        />
+        <div className="flex items-center gap-2">
+          <div className="flex-1">
+            <SearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search dashboards..."
+            />
+          </div>
+          <ButtonIcon
+            icon="file-import"
+            onClick={handleImport}
+            size="sm"
+            title="Import dashboard"
+          />
+        </div>
         <Tabs3
-          value={viewMode}
-          onValueChange={setViewMode}
+          value={installMode === "marketplace" ? "marketplace" : viewMode}
+          onValueChange={(val) => {
+            if (val === "marketplace") {
+              setInstallMode("marketplace");
+              setSelectedId(null);
+            } else {
+              setInstallMode(null);
+              setImportResult(null);
+              setViewMode(val);
+            }
+          }}
           backgroundColor="bg-transparent"
           spacing="p-0"
         >
@@ -191,6 +265,9 @@ export const DashboardsSection = ({
             </Tabs3.Trigger>
             <Tabs3.Trigger value="alphabetical" className="flex-1">
               A-Z
+            </Tabs3.Trigger>
+            <Tabs3.Trigger value="marketplace" className="flex-1">
+              Marketplace
             </Tabs3.Trigger>
           </Tabs3.List>
         </Tabs3>
@@ -210,26 +287,69 @@ export const DashboardsSection = ({
     </div>
   );
 
-  const detailContent = selectedWorkspace ? (
-    <DashboardDetail
-      workspace={selectedWorkspace}
-      menuItems={menuItems}
-      editingId={editingId}
-      editName={editName}
-      setEditName={setEditName}
-      onStartRename={handleStartRename}
-      onSaveRename={handleSaveRename}
-      onCancelRename={() => {
-        setEditingId(null);
-        setEditName("");
-      }}
-      onDuplicate={handleDuplicate}
-      onDelete={(ws) => setDeleteTarget(ws)}
-      dashApi={dashApi}
-      credentials={credentials}
-      onReloadWorkspaces={onReloadWorkspaces}
-    />
-  ) : null;
+  let detailContent = null;
+
+  if (installMode === "marketplace") {
+    detailContent = (
+      <DiscoverDashboardsDetail
+        onBack={() => {
+          setInstallMode(null);
+          setViewMode("grouped");
+        }}
+        appId={appId}
+      />
+    );
+  } else if (installMode === "import-result") {
+    detailContent = (
+      <div className="flex flex-col flex-1 min-h-0 p-6 space-y-4">
+        {importResult?.status === "loading" && (
+          <div className="flex items-center gap-3">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500"></div>
+            <span className="text-sm opacity-70">{importResult.message}</span>
+          </div>
+        )}
+        {importResult?.status === "success" && (
+          <div className="flex items-center gap-2">
+            <FontAwesomeIcon
+              icon="circle-check"
+              className="h-4 w-4 text-green-400"
+            />
+            <span className="text-sm">{importResult.message}</span>
+          </div>
+        )}
+        {importResult?.status === "error" && (
+          <div className="flex items-center gap-2">
+            <FontAwesomeIcon
+              icon="circle-xmark"
+              className="h-4 w-4 text-red-400"
+            />
+            <span className="text-sm text-red-400">{importResult.message}</span>
+          </div>
+        )}
+      </div>
+    );
+  } else if (selectedWorkspace) {
+    detailContent = (
+      <DashboardDetail
+        workspace={selectedWorkspace}
+        menuItems={menuItems}
+        editingId={editingId}
+        editName={editName}
+        setEditName={setEditName}
+        onStartRename={handleStartRename}
+        onSaveRename={handleSaveRename}
+        onCancelRename={() => {
+          setEditingId(null);
+          setEditName("");
+        }}
+        onDuplicate={handleDuplicate}
+        onDelete={(ws) => setDeleteTarget(ws)}
+        dashApi={dashApi}
+        credentials={credentials}
+        onReloadWorkspaces={onReloadWorkspaces}
+      />
+    );
+  }
 
   return (
     <>
