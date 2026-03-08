@@ -838,6 +838,31 @@ async function checkDashboardUpdatesForApp(appId) {
   }
 }
 
+/**
+ * Get a provider setup manifest for a dashboard's requirements.
+ * Compares required providers against the user's configured providers.
+ *
+ * @param {string} appId - Application identifier
+ * @param {Array} requiredProviders - Provider requirements from dashboard config
+ * @returns {Object} Setup manifest with per-provider status
+ */
+function getProviderSetupManifest(appId, requiredProviders = []) {
+  const { buildProviderSetupManifest } = require("../schema/dashboardConfigUtils");
+  const { listProviders } = require("./providerController");
+
+  let configuredProviders = [];
+  try {
+    configuredProviders = listProviders(null, appId) || [];
+  } catch (err) {
+    console.warn(
+      "[DashboardConfigController] Could not list providers:",
+      err.message,
+    );
+  }
+
+  return buildProviderSetupManifest(requiredProviders, configuredProviders);
+}
+
 module.exports = {
   exportDashboardConfig,
   importDashboardConfig,
@@ -846,4 +871,5 @@ module.exports = {
   prepareDashboardForPublish,
   getDashboardPreview,
   checkDashboardUpdatesForApp,
+  getProviderSetupManifest,
 };

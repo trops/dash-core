@@ -64,6 +64,7 @@ const {
   prepareDashboardForPublish,
   getDashboardPreview,
   checkDashboardUpdatesForApp,
+  getProviderSetupManifest,
 } = require("./dashboardConfigController");
 
 module.exports = {
@@ -114,4 +115,5 @@ module.exports = {
   prepareDashboardForPublish,
   getDashboardPreview,
   checkDashboardUpdatesForApp,
+  getProviderSetupManifest,
 };
