@@ -183,6 +183,10 @@ class WebDashboardApi implements IDashboardApi {
     );
     return false;
   }
+  mcpRunAuth(mcpConfig, credentials, authCommand, onSuccess, onError): Boolean {
+    onError?.("mcp:run-auth:error", new Error("MCP not available in web mode"));
+    return false;
+  }
 }
 
 export { WebDashboardApi };
