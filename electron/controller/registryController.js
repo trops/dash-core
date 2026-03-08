@@ -135,11 +135,21 @@ async function fetchRegistryIndex(forceRefresh = false) {
  * @param {string} filters.category - Filter by category
  * @param {string} filters.author - Filter by author
  * @param {string} filters.tag - Filter by tag
+ * @param {string} filters.type - Filter by package type ("widget" or "dashboard")
+ * @param {string[]} filters.compatibleWidgets - Only return dashboards whose required widgets are all in this list
  * @returns {Promise<Object>} { packages: [...], totalWidgets: number }
  */
 async function searchRegistry(query = "", filters = {}) {
   const index = await fetchRegistryIndex();
   let packages = index.packages || [];
+
+  // Apply type filter — packages without an explicit type default to "widget"
+  if (filters.type) {
+    const typeLower = filters.type.toLowerCase();
+    packages = packages.filter(
+      (pkg) => (pkg.type || "widget").toLowerCase() === typeLower,
+    );
+  }
 
   // Apply search query
   if (query) {
@@ -189,6 +199,24 @@ async function searchRegistry(query = "", filters = {}) {
     );
   }
 
+  // Apply compatibility filter — only dashboards whose required widgets
+  // are all present in the user's installed widget list
+  if (filters.compatibleWidgets && filters.compatibleWidgets.length) {
+    const installedSet = new Set(
+      filters.compatibleWidgets.map((w) => w.toLowerCase()),
+    );
+    packages = packages.filter((pkg) => {
+      const requiredWidgets = (pkg.widgets || []).filter(
+        (w) => w.required !== false,
+      );
+      return requiredWidgets.every(
+        (w) =>
+          installedSet.has((w.package || "").toLowerCase()) ||
+          installedSet.has((w.name || "").toLowerCase()),
+      );
+    });
+  }
+
   // Count total widgets across matched packages
   const totalWidgets = packages.reduce(
     (sum, pkg) => sum + (pkg.widgets || []).length,
@@ -236,9 +264,22 @@ async function checkUpdates(installedWidgets = []) {
   return updates;
 }
 
+/**
+ * Search the registry for dashboard packages only.
+ * Convenience wrapper around searchRegistry with type: "dashboard".
+ *
+ * @param {string} query - Search query string
+ * @param {Object} filters - Optional filters (category, author, tag, compatibleWidgets)
+ * @returns {Promise<Object>} { packages: [...], totalWidgets: number }
+ */
+async function searchDashboards(query = "", filters = {}) {
+  return searchRegistry(query, { ...filters, type: "dashboard" });
+}
+
 module.exports = {
   fetchRegistryIndex,
   searchRegistry,
+  searchDashboards,
   getPackage,
   checkUpdates,
 };

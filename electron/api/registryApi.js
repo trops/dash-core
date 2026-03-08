@@ -76,6 +76,25 @@ const registryApi = {
       throw error;
     }
   },
+
+  /**
+   * Search the registry for dashboard packages only
+   * @param {string} query - Search query
+   * @param {Object} filters - Optional filters { category, author, tag, compatibleWidgets }
+   * @returns {Promise<Object>} { packages: [...], totalWidgets: number }
+   */
+  searchDashboards: async (query = "", filters = {}) => {
+    try {
+      return await ipcRenderer.invoke(
+        "registry:search-dashboards",
+        query,
+        filters,
+      );
+    } catch (error) {
+      console.error("[RegistryApi] Error searching dashboards:", error);
+      throw error;
+    }
+  },
 };
 
 module.exports = registryApi;

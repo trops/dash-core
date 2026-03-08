@@ -1,0 +1,112 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2026-03-08T05:17:42.480Z",
+  "packages": [
+    {
+      "name": "clock",
+      "displayName": "Clock Widgets",
+      "author": "Test Author",
+      "description": "Clock widget package",
+      "version": "1.0.0",
+      "type": "widget",
+      "category": "general",
+      "tags": [
+        "time",
+        "utility"
+      ],
+      "downloadUrl": "https://example.com/clock.zip",
+      "widgets": [
+        {
+          "name": "AnalogClockWidget",
+          "displayName": "Analog Clock"
+        },
+        {
+          "name": "DigitalClockWidget",
+          "displayName": "Digital Clock"
+        }
+      ]
+    },
+    {
+      "name": "weather",
+      "displayName": "Weather Widgets",
+      "author": "Another Author",
+      "description": "Weather forecast widgets",
+      "version": "2.0.0",
+      "type": "widget",
+      "category": "data",
+      "tags": [
+        "weather",
+        "forecast"
+      ],
+      "downloadUrl": "https://example.com/weather.zip",
+      "widgets": [
+        {
+          "name": "WeatherWidget",
+          "displayName": "Weather"
+        }
+      ]
+    },
+    {
+      "name": "analytics-dashboard",
+      "displayName": "Analytics Dashboard",
+      "author": "Test Author",
+      "description": "Pre-built analytics dashboard with clock and weather",
+      "version": "1.0.0",
+      "type": "dashboard",
+      "category": "analytics",
+      "tags": [
+        "analytics",
+        "monitoring"
+      ],
+      "downloadUrl": "https://example.com/analytics-dashboard.zip",
+      "widgets": [
+        {
+          "name": "AnalogClockWidget",
+          "package": "clock",
+          "required": true
+        },
+        {
+          "name": "WeatherWidget",
+          "package": "weather",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "simple-dashboard",
+      "displayName": "Simple Dashboard",
+      "author": "Another Author",
+      "description": "Just clocks",
+      "version": "1.0.0",
+      "type": "dashboard",
+      "category": "general",
+      "tags": [
+        "simple"
+      ],
+      "downloadUrl": "https://example.com/simple-dashboard.zip",
+      "widgets": [
+        {
+          "name": "DigitalClockWidget",
+          "package": "clock",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "legacy-widget",
+      "displayName": "Legacy Widget",
+      "author": "Legacy Author",
+      "description": "Widget without explicit type field",
+      "version": "1.0.0",
+      "category": "general",
+      "tags": [],
+      "downloadUrl": "https://example.com/legacy.zip",
+      "widgets": [
+        {
+          "name": "LegacyWidget",
+          "displayName": "Legacy"
+        }
+      ]
+    }
+  ]
+}
