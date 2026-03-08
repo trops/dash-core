@@ -12,6 +12,7 @@ const {
   DASHBOARD_CONFIG_COMPATIBILITY,
   DASHBOARD_CONFIG_PUBLISH,
   DASHBOARD_CONFIG_PREVIEW,
+  DASHBOARD_CONFIG_CHECK_UPDATES,
 } = require("../events");
 
 const dashboardConfigApi = {
@@ -95,6 +96,15 @@ const dashboardConfigApi = {
    */
   getDashboardPreview: (packageName) =>
     ipcRenderer.invoke(DASHBOARD_CONFIG_PREVIEW, { packageName }),
+
+  /**
+   * Check installed dashboards for available updates.
+   *
+   * @param {string} appId - Application identifier
+   * @returns {Promise<Object>} Result with updates array
+   */
+  checkDashboardUpdates: (appId) =>
+    ipcRenderer.invoke(DASHBOARD_CONFIG_CHECK_UPDATES, { appId }),
 };
 
 module.exports = dashboardConfigApi;

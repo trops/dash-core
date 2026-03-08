@@ -448,6 +448,51 @@ function buildDashboardPreview(source) {
   return preview;
 }
 
+/**
+ * Check installed dashboards for available updates in the registry.
+ *
+ * Compares the `_dashboardConfig.installedVersion` of each workspace
+ * against the current version in the registry.
+ *
+ * @param {Array} workspaces - All workspaces from workspaces.json
+ * @param {Array} registryPackages - Packages from registry index
+ * @returns {Array} Update records with workspace info and version comparison
+ */
+function checkDashboardUpdates(workspaces = [], registryPackages = []) {
+  const registryByName = new Map();
+  for (const pkg of registryPackages) {
+    if (pkg.name && (pkg.type || "widget") === "dashboard") {
+      registryByName.set(pkg.name, pkg);
+    }
+  }
+
+  const updates = [];
+
+  for (const ws of workspaces) {
+    const config = ws._dashboardConfig;
+    if (!config || !config.registryPackage) continue;
+
+    const registryPkg = registryByName.get(config.registryPackage);
+    if (!registryPkg) continue;
+
+    const installedVersion = config.installedVersion || "0.0.0";
+    const latestVersion = registryPkg.version || "0.0.0";
+
+    if (installedVersion !== latestVersion) {
+      updates.push({
+        workspaceId: ws.id,
+        workspaceName: ws.name || ws.label || "",
+        registryPackage: config.registryPackage,
+        installedVersion,
+        latestVersion,
+        importedAt: config.importedAt || null,
+      });
+    }
+  }
+
+  return updates;
+}
+
 module.exports = {
   collectComponentNames,
   extractEventWiring,
@@ -457,4 +502,5 @@ module.exports = {
   checkDashboardCompatibility,
   generateRegistryManifest,
   buildDashboardPreview,
+  checkDashboardUpdates,
 };
