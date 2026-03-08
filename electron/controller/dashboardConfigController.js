@@ -363,6 +363,8 @@ async function processDashboardConfig(
     importedAt: new Date().toISOString(),
     originalAuthor: dashboardConfig.author,
     schemaVersion: dashboardConfig.schemaVersion,
+    registryPackage: options.registryPackage || null,
+    installedVersion: options.installedVersion || null,
   };
 
   // Save workspace to workspaces.json
@@ -519,6 +521,8 @@ async function installDashboardFromRegistry(
       widgetRegistry,
       {
         source: "registry",
+        registryPackage: packageName,
+        installedVersion: registryPkg.version || null,
       },
     );
   } catch (error) {
@@ -790,6 +794,50 @@ async function getDashboardPreview(packageName, widgetRegistry = null) {
   };
 }
 
+/**
+ * Check installed dashboards for available updates.
+ * Reads workspaces, finds those installed from the registry,
+ * and compares versions against the current registry index.
+ *
+ * @param {string} appId - Application identifier
+ * @returns {Promise<Object>} Result with updates array
+ */
+async function checkDashboardUpdatesForApp(appId) {
+  const { checkDashboardUpdates } = require("../schema/dashboardConfigUtils");
+  const { fetchRegistryIndex } = require("./registryController");
+
+  try {
+    const filename = path.join(
+      app.getPath("userData"),
+      appName,
+      appId,
+      configFilename,
+    );
+    const workspaces = getFileContents(filename) || [];
+
+    const index = await fetchRegistryIndex();
+    const registryPackages = index.packages || [];
+
+    const updates = checkDashboardUpdates(workspaces, registryPackages);
+
+    return {
+      success: true,
+      updates,
+      totalInstalled: workspaces.filter((w) => w._dashboardConfig?.registryPackage).length,
+    };
+  } catch (error) {
+    console.error(
+      "[DashboardConfigController] Error checking dashboard updates:",
+      error,
+    );
+    return {
+      success: false,
+      error: error.message,
+      updates: [],
+    };
+  }
+}
+
 module.exports = {
   exportDashboardConfig,
   importDashboardConfig,
@@ -797,4 +845,5 @@ module.exports = {
   checkCompatibility,
   prepareDashboardForPublish,
   getDashboardPreview,
+  checkDashboardUpdatesForApp,
 };

@@ -63,6 +63,7 @@ const {
   checkCompatibility,
   prepareDashboardForPublish,
   getDashboardPreview,
+  checkDashboardUpdatesForApp,
 } = require("./dashboardConfigController");
 
 module.exports = {
@@ -112,4 +113,5 @@ module.exports = {
   checkCompatibility,
   prepareDashboardForPublish,
   getDashboardPreview,
+  checkDashboardUpdatesForApp,
 };

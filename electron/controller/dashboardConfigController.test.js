@@ -9,6 +9,7 @@ const {
   checkDashboardCompatibility,
   generateRegistryManifest,
   buildDashboardPreview,
+  checkDashboardUpdates,
 } = require("../schema/dashboardConfigUtils");
 
 describe("collectComponentNames", () => {
@@ -598,5 +599,97 @@ describe("buildDashboardPreview", () => {
     const preview = buildDashboardPreview(source);
     assert.equal(preview.eventWiring[0].summary, "Search.queryChanged → Results.onQuery");
     assert.equal(preview.eventWiring[1].summary, "Filter.filterApplied → Results.filterApplied");
+  });
+});
+
+describe("checkDashboardUpdates", () => {
+  const registryPackages = [
+    { name: "clock-dashboard", type: "dashboard", version: "2.0.0" },
+    { name: "analytics-dashboard", type: "dashboard", version: "1.5.0" },
+    { name: "some-widget", type: "widget", version: "3.0.0" },
+  ];
+
+  it("detects outdated dashboards", () => {
+    const workspaces = [
+      {
+        id: 1,
+        name: "My Clocks",
+        _dashboardConfig: {
+          registryPackage: "clock-dashboard",
+          installedVersion: "1.0.0",
+        },
+      },
+    ];
+    const updates = checkDashboardUpdates(workspaces, registryPackages);
+    assert.equal(updates.length, 1);
+    assert.equal(updates[0].workspaceId, 1);
+    assert.equal(updates[0].installedVersion, "1.0.0");
+    assert.equal(updates[0].latestVersion, "2.0.0");
+    assert.equal(updates[0].registryPackage, "clock-dashboard");
+  });
+
+  it("returns empty when all dashboards are up to date", () => {
+    const workspaces = [
+      {
+        id: 1,
+        name: "My Clocks",
+        _dashboardConfig: {
+          registryPackage: "clock-dashboard",
+          installedVersion: "2.0.0",
+        },
+      },
+    ];
+    const updates = checkDashboardUpdates(workspaces, registryPackages);
+    assert.equal(updates.length, 0);
+  });
+
+  it("skips workspaces without _dashboardConfig", () => {
+    const workspaces = [
+      { id: 1, name: "Custom Workspace" },
+      {
+        id: 2,
+        name: "Imported",
+        _dashboardConfig: {
+          registryPackage: "clock-dashboard",
+          installedVersion: "1.0.0",
+        },
+      },
+    ];
+    const updates = checkDashboardUpdates(workspaces, registryPackages);
+    assert.equal(updates.length, 1);
+    assert.equal(updates[0].workspaceId, 2);
+  });
+
+  it("skips dashboards not found in registry", () => {
+    const workspaces = [
+      {
+        id: 1,
+        _dashboardConfig: {
+          registryPackage: "deleted-dashboard",
+          installedVersion: "1.0.0",
+        },
+      },
+    ];
+    const updates = checkDashboardUpdates(workspaces, registryPackages);
+    assert.equal(updates.length, 0);
+  });
+
+  it("ignores widget packages in registry", () => {
+    const workspaces = [
+      {
+        id: 1,
+        _dashboardConfig: {
+          registryPackage: "some-widget",
+          installedVersion: "1.0.0",
+        },
+      },
+    ];
+    const updates = checkDashboardUpdates(workspaces, registryPackages);
+    assert.equal(updates.length, 0);
+  });
+
+  it("handles empty inputs", () => {
+    assert.deepEqual(checkDashboardUpdates([], []), []);
+    assert.deepEqual(checkDashboardUpdates([], registryPackages), []);
   });
 });
