@@ -86,10 +86,9 @@ async function exportDashboardConfig(
       schemaVersion: CURRENT_SCHEMA_VERSION,
       name: workspace.name || workspace.label || "Exported Dashboard",
       description: options.description || "",
-      author: {
-        name: options.authorName || "",
-        id: options.authorId || "",
-      },
+      ...(options.authorName
+        ? { author: { name: options.authorName, id: options.authorId || "" } }
+        : {}),
       shareable: true,
       tags: options.tags || [],
       icon: options.icon || "grip",
@@ -640,10 +639,9 @@ async function prepareDashboardForPublish(
       schemaVersion: CURRENT_SCHEMA_VERSION,
       name: workspace.name || workspace.label || "Dashboard",
       description: options.description || "",
-      author: {
-        name: options.authorName || "",
-        id: options.authorId || "",
-      },
+      ...(options.authorName
+        ? { author: { name: options.authorName, id: options.authorId || "" } }
+        : {}),
       shareable: true,
       tags: options.tags || [],
       icon: options.icon || "grip",
@@ -670,29 +668,26 @@ async function prepareDashboardForPublish(
       };
     }
 
-    // 5. Verify all widgets exist in the registry
+    // 5. Check which widgets exist in the registry (soft warning, not blocking)
     const { fetchRegistryIndex } = require("./registryController");
     let registryPackages = [];
+    let registryCheckFailed = false;
     try {
       const index = await fetchRegistryIndex();
       registryPackages = index.packages || [];
     } catch (err) {
-      return {
-        success: false,
-        error: `Cannot verify widgets in registry: ${err.message}`,
-      };
+      console.warn(
+        `[DashboardConfigController] Unable to verify registry: ${err.message}`,
+      );
+      registryCheckFailed = true;
     }
 
-    const registryNames = new Set(registryPackages.map((p) => p.name));
-    const missingFromRegistry = widgets
-      .filter((w) => w.required !== false && !registryNames.has(w.package))
-      .map((w) => w.package);
-
-    if (missingFromRegistry.length > 0) {
-      return {
-        success: false,
-        error: `Required widgets not found in registry: ${missingFromRegistry.join(", ")}. Publish them first.`,
-      };
+    let missingFromRegistry = [];
+    if (!registryCheckFailed) {
+      const registryNames = new Set(registryPackages.map((p) => p.name));
+      missingFromRegistry = widgets
+        .filter((w) => w.required !== false && !registryNames.has(w.package))
+        .map((w) => w.package);
     }
 
     // 6. Generate registry manifest
@@ -735,6 +730,8 @@ async function prepareDashboardForPublish(
       filePath,
       manifest,
       config: dashboardConfig,
+      warnings: missingFromRegistry.length > 0 ? missingFromRegistry : undefined,
+      registryCheckFailed: registryCheckFailed || undefined,
     };
   } catch (error) {
     console.error(
