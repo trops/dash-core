@@ -1018,6 +1018,44 @@ export const LayoutBuilder = ({
     }
   }
 
+  function handleChangeRowSizing(gridContainerId, rowNumber, mode, multiplier) {
+    try {
+      console.log(
+        "[LayoutBuilder] Change row sizing:",
+        rowNumber,
+        "to",
+        mode,
+        multiplier !== undefined ? multiplier + "x" : "",
+      );
+      const dashboard = new DashboardModel(currentWorkspace);
+      dashboard.changeRowMode(gridContainerId, rowNumber, mode);
+      if (multiplier !== undefined) {
+        dashboard.changeRowHeight(gridContainerId, rowNumber, multiplier);
+      }
+      const newWorkspace = dashboard.workspace();
+      setCurrentWorkspace(newWorkspace);
+    } catch (e) {
+      console.error("[LayoutBuilder] Error changing row sizing:", e);
+    }
+  }
+
+  function handleChangeColMode(gridContainerId, colNumber, mode) {
+    try {
+      console.log("[LayoutBuilder] Change col mode:", colNumber, "to", mode);
+      const dashboard = new DashboardModel(currentWorkspace);
+      const result = dashboard.changeColMode(gridContainerId, colNumber, mode);
+
+      if (result) {
+        const newWorkspace = dashboard.workspace();
+        setCurrentWorkspace(newWorkspace);
+      } else {
+        console.error("[LayoutBuilder] Failed to change col mode");
+      }
+    } catch (e) {
+      console.error("[LayoutBuilder] Error changing col mode:", e);
+    }
+  }
+
   /**
    * handle the click of a cell in a grid that does not contain a widget yet
    * the idea here is to allow the user to CHOOSE a widget that corresponds to
@@ -1130,6 +1168,8 @@ export const LayoutBuilder = ({
               onDeleteGridColumn={handleDeleteGridColumn}
               onChangeRowHeight={handleChangeRowHeight}
               onChangeRowMode={handleChangeRowMode}
+              onChangeRowSizing={handleChangeRowSizing}
+              onChangeColMode={handleChangeColMode}
               onMoveWidgetToCell={handleMoveWidgetToCell}
               onWidgetPopout={onWidgetPopout}
             />
@@ -1179,6 +1219,8 @@ export const LayoutBuilder = ({
               onDeleteGridColumn={handleDeleteGridColumn}
               onChangeRowHeight={handleChangeRowHeight}
               onChangeRowMode={handleChangeRowMode}
+              onChangeRowSizing={handleChangeRowSizing}
+              onChangeColMode={handleChangeColMode}
               onMoveWidgetToCell={handleMoveWidgetToCell}
               onDropWidgetFromSidebar={handleDropWidgetFromSidebar}
             />
