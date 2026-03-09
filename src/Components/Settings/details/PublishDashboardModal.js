@@ -58,6 +58,7 @@ export const PublishDashboardModal = ({
   const [profile, setProfile] = useState(null);
   const [authFlow, setAuthFlow] = useState(null);
   const [isPolling, setIsPolling] = useState(false);
+  const [authError, setAuthError] = useState(null);
 
   // Step 1: Details
   const [authorName, setAuthorName] = useState("");
@@ -86,10 +87,15 @@ export const PublishDashboardModal = ({
         if (status.authenticated) {
           const userProfile = await window.mainApi.registryAuth.getProfile();
           if (cancelled) return;
-          setProfile(userProfile);
-          setAuthStatus("authenticated");
-          if (userProfile?.displayName && !authorName) {
-            setAuthorName(userProfile.displayName);
+          if (userProfile) {
+            setProfile(userProfile);
+            setAuthStatus("authenticated");
+            if (userProfile.displayName && !authorName) {
+              setAuthorName(userProfile.displayName);
+            }
+          } else {
+            // Token expired or invalid — treat as unauthenticated
+            setAuthStatus("unauthenticated");
           }
         } else {
           setAuthStatus("unauthenticated");
@@ -111,6 +117,7 @@ export const PublishDashboardModal = ({
     setProfile(null);
     setAuthFlow(null);
     setIsPolling(false);
+    setAuthError(null);
     setAuthorName("");
     setDescription("");
     setSelectedTags([]);
@@ -167,6 +174,7 @@ export const PublishDashboardModal = ({
   }
 
   async function handleSignIn() {
+    setAuthError(null);
     try {
       const flow = await window.mainApi.registryAuth.initiateLogin();
       setAuthFlow(flow);
@@ -207,6 +215,9 @@ export const PublishDashboardModal = ({
       }, interval);
     } catch (err) {
       console.error("[PublishDashboardModal] Sign-in error:", err);
+      setAuthError(
+        "Could not reach the registry. Check your connection and try again.",
+      );
     }
   }
 
@@ -311,13 +322,28 @@ export const PublishDashboardModal = ({
                     Sign in to the Dash Registry to publish your dashboard.
                   </p>
                   {!authFlow && !isPolling && (
-                    <button
-                      type="button"
-                      onClick={handleSignIn}
-                      className="px-4 py-2 rounded-lg text-sm bg-blue-500/20 border border-blue-500/30 text-blue-300 hover:bg-blue-500/30 transition-colors cursor-pointer"
-                    >
-                      Sign in to Registry
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleSignIn}
+                        className="px-4 py-2 rounded-lg text-sm bg-blue-500/20 border border-blue-500/30 text-blue-300 hover:bg-blue-500/30 transition-colors cursor-pointer"
+                      >
+                        Sign in to Registry
+                      </button>
+                      {authError && (
+                        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                          <div className="flex items-start gap-2">
+                            <FontAwesomeIcon
+                              icon="circle-xmark"
+                              className="h-3.5 w-3.5 text-red-400 mt-0.5 flex-shrink-0"
+                            />
+                            <span className="text-xs text-red-300/90">
+                              {authError}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                   {authFlow && isPolling && (
                     <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 space-y-3">

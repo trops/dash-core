@@ -155,6 +155,11 @@ async function getRegistryProfile() {
       },
     });
 
+    if (response.status === 401) {
+      // Token expired or invalid — clear stored credentials
+      clearToken();
+      return null;
+    }
     if (!response.ok) return null;
 
     const data = await response.json();
