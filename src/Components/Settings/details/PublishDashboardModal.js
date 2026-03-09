@@ -4,7 +4,6 @@ import {
   FontAwesomeIcon,
   Modal,
   Stepper,
-  InputText,
   TextArea,
   Button2,
   Button3,
@@ -90,9 +89,7 @@ export const PublishDashboardModal = ({
           if (userProfile) {
             setProfile(userProfile);
             setAuthStatus("authenticated");
-            if (userProfile.displayName && !authorName) {
-              setAuthorName(userProfile.displayName);
-            }
+            setAuthorName(userProfile.displayName || userProfile.username || "");
           } else {
             // Token expired or invalid — treat as unauthenticated
             setAuthStatus("unauthenticated");
@@ -371,12 +368,14 @@ export const PublishDashboardModal = ({
               <p className="text-sm opacity-70">
                 Provide details about your dashboard for the registry listing.
               </p>
-              <InputText
-                label="Author Name *"
-                value={authorName}
-                onChange={setAuthorName}
-                placeholder="Your name"
-              />
+              <div>
+                <label className="block text-sm font-medium opacity-70 mb-1">
+                  Author Name
+                </label>
+                <div className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm opacity-80">
+                  {authorName || "—"}
+                </div>
+              </div>
               <TextArea
                 label="Description"
                 value={description}
