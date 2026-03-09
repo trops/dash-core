@@ -14,6 +14,7 @@ const {
   DASHBOARD_CONFIG_PREVIEW,
   DASHBOARD_CONFIG_CHECK_UPDATES,
   DASHBOARD_CONFIG_PROVIDER_SETUP,
+  DASHBOARD_CONFIG_PUBLISH_PREVIEW,
 } = require("../events");
 
 const dashboardConfigApi = {
@@ -118,6 +119,20 @@ const dashboardConfigApi = {
     ipcRenderer.invoke(DASHBOARD_CONFIG_PROVIDER_SETUP, {
       appId,
       requiredProviders,
+    }),
+
+  /**
+   * Get a publish preview for a dashboard workspace.
+   * Returns widget names and package info without creating a ZIP or uploading.
+   *
+   * @param {string} appId - Application identifier
+   * @param {number|string} workspaceId - Workspace to preview
+   * @returns {Promise<Object>} Preview with dashboardName, widgetCount, widgets, componentNames
+   */
+  getPublishPreview: (appId, workspaceId) =>
+    ipcRenderer.invoke(DASHBOARD_CONFIG_PUBLISH_PREVIEW, {
+      appId,
+      workspaceId,
     }),
 };
 

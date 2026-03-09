@@ -693,9 +693,15 @@ async function prepareDashboardForPublish(
     let missingFromRegistry = [];
     if (!registryCheckFailed) {
       const registryNames = new Set(registryPackages.map((p) => p.name));
-      missingFromRegistry = widgets
-        .filter((w) => w.required !== false && !registryNames.has(w.package))
-        .map((w) => w.package);
+      missingFromRegistry = [
+        ...new Set(
+          widgets
+            .filter(
+              (w) => w.required !== false && !registryNames.has(w.package),
+            )
+            .map((w) => w.package),
+        ),
+      ];
     }
 
     // 6. Generate registry manifest
@@ -908,6 +914,52 @@ function getProviderSetupManifest(appId, requiredProviders = []) {
   return buildProviderSetupManifest(requiredProviders, configuredProviders);
 }
 
+/**
+ * Get a publish preview for a dashboard workspace.
+ * Returns widget/layout info without creating a ZIP or uploading.
+ *
+ * @param {string} appId - Application identifier
+ * @param {number|string} workspaceId - Workspace to preview
+ * @param {Object} widgetRegistry - WidgetRegistry instance (optional)
+ * @returns {Object} Preview with dashboardName, widgetCount, widgets, componentNames
+ */
+function getDashboardPublishPreview(appId, workspaceId, widgetRegistry = null) {
+  try {
+    const filename = path.join(
+      app.getPath("userData"),
+      appName,
+      appId,
+      configFilename,
+    );
+    const workspacesArray = getFileContents(filename);
+    const workspace = workspacesArray.find(
+      (w) => w.id === workspaceId || w.id === Number(workspaceId),
+    );
+
+    if (!workspace) {
+      return { success: false, error: `Workspace not found: ${workspaceId}` };
+    }
+
+    const layout = workspace.layout || [];
+    const componentNames = collectComponentNames(layout);
+    const widgets = buildWidgetDependencies(componentNames, widgetRegistry);
+
+    return {
+      success: true,
+      dashboardName: workspace.name || workspace.label || "Dashboard",
+      widgetCount: componentNames.length,
+      widgets: widgets.map((w) => ({ name: w.name, package: w.package })),
+      componentNames: [...componentNames],
+    };
+  } catch (error) {
+    console.error(
+      "[DashboardConfigController] Error getting publish preview:",
+      error,
+    );
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
   exportDashboardConfig,
   importDashboardConfig,
@@ -917,4 +969,5 @@ module.exports = {
   getDashboardPreview,
   checkDashboardUpdatesForApp,
   getProviderSetupManifest,
+  getDashboardPublishPreview,
 };

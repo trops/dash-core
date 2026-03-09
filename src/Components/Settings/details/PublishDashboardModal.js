@@ -69,9 +69,23 @@ export const PublishDashboardModal = ({
   // Step 3: Icon
   const [icon, setIcon] = useState("grip");
 
+  // Publish preview (widget names)
+  const [preview, setPreview] = useState(null);
+
   // Step 4: Publish
   const [isPublishing, setIsPublishing] = useState(false);
   const [result, setResult] = useState(null);
+
+  // Fetch publish preview (widget names) on open
+  useEffect(() => {
+    if (!isOpen || !appId || !workspaceId) return;
+    window.mainApi.dashboardConfig
+      .getPublishPreview(appId, workspaceId)
+      .then((res) => {
+        if (res.success) setPreview(res);
+      })
+      .catch(console.error);
+  }, [isOpen, appId, workspaceId]);
 
   // Check auth status on mount
   useEffect(() => {
@@ -89,7 +103,9 @@ export const PublishDashboardModal = ({
           if (userProfile) {
             setProfile(userProfile);
             setAuthStatus("authenticated");
-            setAuthorName(userProfile.displayName || userProfile.username || "");
+            setAuthorName(
+              userProfile.displayName || userProfile.username || "",
+            );
           } else {
             // Token expired or invalid — treat as unauthenticated
             setAuthStatus("unauthenticated");
@@ -119,6 +135,7 @@ export const PublishDashboardModal = ({
     setDescription("");
     setSelectedTags([]);
     setIcon("grip");
+    setPreview(null);
     setIsPublishing(false);
     setResult(null);
   }
@@ -376,6 +393,20 @@ export const PublishDashboardModal = ({
                   {authorName || "—"}
                 </div>
               </div>
+              {preview &&
+                preview.componentNames &&
+                preview.componentNames.length > 0 && (
+                  <div className="bg-white/5 border border-white/10 rounded-lg p-3 text-sm">
+                    <span className="opacity-50">
+                      This dashboard contains {preview.componentNames.length}{" "}
+                      widget{preview.componentNames.length !== 1 ? "s" : ""}
+                      :{" "}
+                    </span>
+                    <span className="opacity-80">
+                      {preview.componentNames.join(", ")}
+                    </span>
+                  </div>
+                )}
               <TextArea
                 label="Description"
                 value={description}
@@ -464,6 +495,16 @@ export const PublishDashboardModal = ({
                       />
                       <span className="opacity-70">{icon || "grip"}</span>
                     </div>
+                    {preview &&
+                      preview.componentNames &&
+                      preview.componentNames.length > 0 && (
+                        <div className="flex gap-2">
+                          <span className="opacity-50 w-20 flex-shrink-0">
+                            Widgets
+                          </span>
+                          <span>{preview.componentNames.join(", ")}</span>
+                        </div>
+                      )}
                   </div>
                 </>
               ) : result.success ? (
