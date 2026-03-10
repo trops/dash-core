@@ -7,6 +7,7 @@ import {
   TextArea,
   Button2,
   Button3,
+  Tag3,
   getStylesForItem,
   themeObjects,
 } from "@trops/dash-react";
@@ -396,15 +397,15 @@ export const PublishDashboardModal = ({
               {preview &&
                 preview.componentNames &&
                 preview.componentNames.length > 0 && (
-                  <div className="bg-white/5 border border-white/10 rounded-lg p-3 text-sm">
-                    <span className="opacity-50">
-                      This dashboard contains {preview.componentNames.length}{" "}
-                      widget{preview.componentNames.length !== 1 ? "s" : ""}
-                      :{" "}
-                    </span>
-                    <span className="opacity-80">
-                      {preview.componentNames.join(", ")}
-                    </span>
+                  <div>
+                    <label className="block text-sm font-medium opacity-70 mb-2">
+                      Widgets Included
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {preview.componentNames.map((name) => (
+                        <Tag3 key={name} text={name} />
+                      ))}
+                    </div>
                   </div>
                 )}
               <TextArea
@@ -502,7 +503,11 @@ export const PublishDashboardModal = ({
                           <span className="opacity-50 w-20 flex-shrink-0">
                             Widgets
                           </span>
-                          <span>{preview.componentNames.join(", ")}</span>
+                          <div className="flex flex-wrap gap-1">
+                            {preview.componentNames.map((name) => (
+                              <Tag3 key={name} text={name} />
+                            ))}
+                          </div>
                         </div>
                       )}
                   </div>
@@ -593,11 +598,20 @@ export const PublishDashboardModal = ({
                           installed by users who already have them.
                         </span>
                       </div>
-                      <ul className="text-xs opacity-60 pl-5 list-disc space-y-0.5">
+                      <div className="space-y-2 mt-1">
                         {result.warnings.map((w) => (
-                          <li key={w}>{w}</li>
+                          <div key={w.package}>
+                            <div className="text-xs font-semibold opacity-60">
+                              {w.package}
+                            </div>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {w.widgets.map((name) => (
+                                <Tag3 key={name} text={name} />
+                              ))}
+                            </div>
+                          </div>
                         ))}
-                      </ul>
+                      </div>
                     </div>
                   )}
                   {result.registryCheckFailed && (
