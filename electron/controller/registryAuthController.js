@@ -182,11 +182,115 @@ function clearToken() {
   }
 }
 
+/**
+ * Update the authenticated user's registry profile.
+ *
+ * @param {Object} updates - Fields to update (e.g. { displayName })
+ * @returns {Promise<Object|null>} Updated user or null on 401
+ */
+async function updateRegistryProfile(updates) {
+  const stored = getStoredToken();
+  if (!stored) return null;
+
+  try {
+    const response = await fetch(`${REGISTRY_BASE_URL}/api/auth/me`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${stored.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(updates),
+    });
+
+    if (response.status === 401) {
+      clearToken();
+      return null;
+    }
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    return data.user || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get the authenticated user's published packages.
+ *
+ * @returns {Promise<Object|null>} { packages: [...] } or null
+ */
+async function getRegistryPackages() {
+  const stored = getStoredToken();
+  if (!stored) return null;
+
+  try {
+    const response = await fetch(
+      `${REGISTRY_BASE_URL}/api/auth/me/packages`,
+      {
+        headers: {
+          Authorization: `Bearer ${stored.token}`,
+        },
+      },
+    );
+
+    if (response.status === 401) {
+      clearToken();
+      return null;
+    }
+    if (!response.ok) return null;
+
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Update a published package's metadata.
+ *
+ * @param {string} scope - Package scope (e.g. "@trops")
+ * @param {string} name - Package name
+ * @param {Object} updates - Fields to update (displayName, description, category, tags, visibility)
+ * @returns {Promise<Object|null>} Updated package or null
+ */
+async function updateRegistryPackage(scope, name, updates) {
+  const stored = getStoredToken();
+  if (!stored) return null;
+
+  try {
+    const response = await fetch(
+      `${REGISTRY_BASE_URL}/api/packages/${encodeURIComponent(scope)}/${encodeURIComponent(name)}`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${stored.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(updates),
+      },
+    );
+
+    if (response.status === 401) {
+      clearToken();
+      return null;
+    }
+    if (!response.ok) return null;
+
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
 module.exports = {
   initiateDeviceFlow,
   pollForToken,
   getStoredToken,
   getAuthStatus,
   getRegistryProfile,
+  updateRegistryProfile,
+  getRegistryPackages,
+  updateRegistryPackage,
   clearToken,
 };

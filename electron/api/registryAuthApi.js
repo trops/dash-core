@@ -12,6 +12,9 @@ const {
   REGISTRY_AUTH_GET_PROFILE,
   REGISTRY_AUTH_LOGOUT,
   REGISTRY_AUTH_PUBLISH,
+  REGISTRY_AUTH_UPDATE_PROFILE,
+  REGISTRY_AUTH_GET_PACKAGES,
+  REGISTRY_AUTH_UPDATE_PACKAGE,
 } = require("../events");
 
 const registryAuthApi = {
@@ -60,6 +63,37 @@ const registryAuthApi = {
    */
   publish: (zipPath, manifest) =>
     ipcRenderer.invoke(REGISTRY_AUTH_PUBLISH, { zipPath, manifest }),
+
+  /**
+   * Update the authenticated user's profile.
+   *
+   * @param {Object} updates - Fields to update (e.g. { displayName })
+   * @returns {Promise<Object|null>} Updated user or null
+   */
+  updateProfile: (updates) =>
+    ipcRenderer.invoke(REGISTRY_AUTH_UPDATE_PROFILE, updates),
+
+  /**
+   * Get the authenticated user's published packages.
+   *
+   * @returns {Promise<Object|null>} { packages: [...] } or null
+   */
+  getPackages: () => ipcRenderer.invoke(REGISTRY_AUTH_GET_PACKAGES),
+
+  /**
+   * Update a published package's metadata.
+   *
+   * @param {string} scope - Package scope
+   * @param {string} name - Package name
+   * @param {Object} updates - Fields to update
+   * @returns {Promise<Object|null>} Updated package or null
+   */
+  updatePackage: (scope, name, updates) =>
+    ipcRenderer.invoke(REGISTRY_AUTH_UPDATE_PACKAGE, {
+      scope,
+      name,
+      updates,
+    }),
 };
 
 module.exports = registryAuthApi;

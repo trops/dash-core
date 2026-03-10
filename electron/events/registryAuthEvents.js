@@ -9,6 +9,9 @@ const REGISTRY_AUTH_GET_STATUS = "registry-auth:get-status";
 const REGISTRY_AUTH_GET_PROFILE = "registry-auth:get-profile";
 const REGISTRY_AUTH_LOGOUT = "registry-auth:logout";
 const REGISTRY_AUTH_PUBLISH = "registry-auth:publish";
+const REGISTRY_AUTH_UPDATE_PROFILE = "registry-auth:update-profile";
+const REGISTRY_AUTH_GET_PACKAGES = "registry-auth:get-packages";
+const REGISTRY_AUTH_UPDATE_PACKAGE = "registry-auth:update-package";
 
 module.exports = {
   REGISTRY_AUTH_INITIATE_LOGIN,
@@ -17,4 +20,7 @@ module.exports = {
   REGISTRY_AUTH_GET_PROFILE,
   REGISTRY_AUTH_LOGOUT,
   REGISTRY_AUTH_PUBLISH,
+  REGISTRY_AUTH_UPDATE_PROFILE,
+  REGISTRY_AUTH_GET_PACKAGES,
+  REGISTRY_AUTH_UPDATE_PACKAGE,
 };
