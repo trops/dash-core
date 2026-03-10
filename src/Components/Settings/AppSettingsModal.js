@@ -4,6 +4,7 @@ import {
   ButtonIcon3,
   Sidebar,
   SettingsModal,
+  SubHeading,
   SubHeading2,
   ThemeContext,
   getStylesForItem,
@@ -16,20 +17,22 @@ import { ProvidersSection } from "./sections/ProvidersSection";
 import { ThemesSection } from "./sections/ThemesSection";
 import { GeneralSection } from "./sections/GeneralSection";
 import { WidgetsSection } from "./sections/WidgetsSection";
+import { AccountSection } from "./sections/AccountSection";
 
 const SECTIONS = [
-  { key: "dashboards", label: "Dashboards", icon: "clone" },
-  { key: "folders", label: "Folders", icon: "folder" },
-  { key: "providers", label: "Providers", icon: "plug" },
-  { key: "themes", label: "Themes", icon: "palette" },
-  { key: "widgets", label: "Widgets", icon: "puzzle-piece" },
   { key: "general", label: "General", icon: "cog" },
+  { key: "account", label: "Account", icon: "circle-user" },
+  { key: "dashboards", label: "Dashboards", icon: "clone" },
+  { key: "providers", label: "Providers", icon: "plug" },
+  { key: "widgets", label: "Widgets", icon: "puzzle-piece" },
+  { key: "folders", label: "Folders", icon: "folder" },
+  { key: "themes", label: "Themes", icon: "palette" },
 ];
 
 export const AppSettingsModal = ({
   isOpen,
   setIsOpen,
-  initialSection = "dashboards",
+  initialSection = "general",
   workspaces = [],
   menuItems = [],
   dashApi = null,
@@ -37,6 +40,11 @@ export const AppSettingsModal = ({
   onReloadWorkspaces = null,
   onReloadMenuItems = null,
   onOpenThemeEditor = null,
+  authStatus = "loading",
+  authProfile = null,
+  onSignIn = null,
+  onSignOut = null,
+  onProfileUpdated = null,
 }) => {
   const [activeSection, setActiveSection] = useState(initialSection);
   const [createRequested, setCreateRequested] = useState(false);
@@ -62,6 +70,10 @@ export const AppSettingsModal = ({
 
   return (
     <SettingsModal isOpen={isOpen} setIsOpen={setIsOpen}>
+      <SettingsModal.Title>
+        <SubHeading title="Settings" padding={false} />
+      </SettingsModal.Title>
+
       <SettingsModal.Sidebar>
         <Sidebar.Content>
           {SECTIONS.map((section) => {
@@ -165,6 +177,21 @@ export const AppSettingsModal = ({
             createRequested={createRequested}
             onCreateAcknowledged={() => setCreateRequested(false)}
           />
+        )}
+        {activeSection === "account" && (
+          <div
+            className={`flex-1 overflow-y-auto p-6 ${
+              panelStyles.textColor || "text-gray-200"
+            }`}
+          >
+            <AccountSection
+              authStatus={authStatus}
+              authProfile={authProfile}
+              onSignIn={onSignIn}
+              onSignOut={onSignOut}
+              onProfileUpdated={onProfileUpdated}
+            />
+          </div>
         )}
         {activeSection === "general" && (
           <div
