@@ -112,6 +112,14 @@ const DashboardStageInner = ({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [widgetSidebarCollapsed, setWidgetSidebarCollapsed] = useState(true);
 
+  // ─── Recents + Session ──────────────────────────────────────────
+  const [recentDashboards, setRecentDashboards] = useState([]);
+  const sessionRestored = useRef(false);
+
+  // ─── Registry Auth (for sidebar) ────────────────────────────────
+  const [authStatus, setAuthStatus] = useState("loading");
+  const [authProfile, setAuthProfile] = useState(null);
+
   // Derive workspaceSelected from active tab
   const workspaceSelected = activeTabId
     ? (openTabs.find((tab) => tab.id === activeTabId)?.workspace ?? null)
@@ -143,9 +151,18 @@ const DashboardStageInner = ({
   const [appSettingsInitialSection, setAppSettingsInitialSection] =
     useState("dashboards");
 
-  function openAppSettings(section = "dashboards") {
+  function openAppSettings(section = "general") {
     setAppSettingsInitialSection(section);
     setIsAppSettingsOpen(true);
+  }
+
+  async function handleProfileUpdated() {
+    try {
+      const profile = await window.mainApi?.registryAuth?.getProfile();
+      if (profile) setAuthProfile(profile);
+    } catch {
+      // ignore
+    }
   }
 
   // Ref to access LayoutBuilder's current workspace without re-render cascades
@@ -206,6 +223,71 @@ const DashboardStageInner = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [popout]);
 
+  // ─── Load recents on mount ───────────────────────────────────────
+  useEffect(() => {
+    if (popout) return;
+    window.mainApi?.session?.getRecents().then((recents) => {
+      if (recents) setRecentDashboards(recents);
+    });
+  }, [popout]);
+
+  // ─── Session save (continuous) ──────────────────────────────────
+  useEffect(() => {
+    if (popout) return;
+    const tabIds = openTabs.map((t) => t.id);
+    window.mainApi?.session?.saveState(tabIds, activeTabId);
+  }, [openTabs, activeTabId, popout]);
+
+  // ─── Session restore on launch ─────────────────────────────────
+  useEffect(() => {
+    if (popout || workspaceConfig.length === 0 || sessionRestored.current)
+      return;
+    sessionRestored.current = true;
+
+    window.mainApi?.session?.getState().then((state) => {
+      if (!state?.openTabIds?.length) return;
+      state.openTabIds.forEach((wsId) => {
+        const ws = workspaceConfig.find((w) => w.id === wsId);
+        if (ws) handleOpenTab(ws);
+      });
+      if (state.activeTabId) setActiveTabId(state.activeTabId);
+      window.mainApi?.session?.clearState();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceConfig, popout]);
+
+  // ─── Auth status check (for sidebar) ────────────────────────────
+  useEffect(() => {
+    if (popout) return;
+    let cancelled = false;
+
+    async function checkAuth() {
+      try {
+        const status = await window.mainApi?.registryAuth?.getStatus();
+        if (cancelled) return;
+        if (status?.authenticated) {
+          const profile = await window.mainApi?.registryAuth?.getProfile();
+          if (cancelled) return;
+          if (profile) {
+            setAuthProfile(profile);
+            setAuthStatus("authenticated");
+          } else {
+            setAuthStatus("unauthenticated");
+          }
+        } else {
+          setAuthStatus("unauthenticated");
+        }
+      } catch {
+        if (!cancelled) setAuthStatus("unauthenticated");
+      }
+    }
+
+    checkAuth();
+    return () => {
+      cancelled = true;
+    };
+  }, [popout]);
+
   // ─── Tab Handlers ─────────────────────────────────────────────────
 
   function handleOpenTab(workspaceItem) {
@@ -238,6 +320,15 @@ const DashboardStageInner = ({
     }
     setPreviewMode(true);
     setSidebarCollapsed(true);
+
+    // Track in recents
+    if (!popout) {
+      window.mainApi?.session
+        ?.addRecent(workspaceItem.id, workspaceItem.name || "Untitled")
+        .then((updated) => {
+          if (updated) setRecentDashboards(updated);
+        });
+    }
   }
 
   function handleCloseTab(tabId) {
@@ -669,6 +760,45 @@ const DashboardStageInner = ({
     changeThemeVariant(themeVariant === "dark" ? "light" : "dark");
   }
 
+  async function handleSidebarSignIn() {
+    try {
+      const flow = await window.mainApi.registryAuth.initiateLogin();
+      if (flow.verificationUrlComplete) {
+        window.mainApi.shell.openExternal(flow.verificationUrlComplete);
+      }
+      const interval = (flow.interval || 5) * 1000;
+      const poll = setInterval(async () => {
+        try {
+          const result = await window.mainApi.registryAuth.pollToken(
+            flow.deviceCode,
+          );
+          if (result.status === "authorized") {
+            clearInterval(poll);
+            const profile = await window.mainApi.registryAuth.getProfile();
+            setAuthProfile(profile);
+            setAuthStatus("authenticated");
+          } else if (result.status === "expired") {
+            clearInterval(poll);
+          }
+        } catch {
+          clearInterval(poll);
+        }
+      }, interval);
+    } catch (err) {
+      console.error("[DashboardStage] Sign-in error:", err);
+    }
+  }
+
+  async function handleSidebarSignOut() {
+    try {
+      await window.mainApi.registryAuth.logout();
+      setAuthStatus("unauthenticated");
+      setAuthProfile(null);
+    } catch (err) {
+      console.error("[DashboardStage] Sign-out error:", err);
+    }
+  }
+
   function handlePopout() {
     if (workspaceSelected && window.mainApi?.popout?.open) {
       window.mainApi.popout.open(workspaceSelected.id);
@@ -701,14 +831,15 @@ const DashboardStageInner = ({
               workspaces={workspaceConfig}
               menuItems={menuItems}
               activeTabId={activeTabId}
+              recentDashboards={recentDashboards}
+              authStatus={authStatus}
+              authProfile={authProfile}
               onOpenWorkspace={handleOpenTab}
               onNewDashboard={() => setIsLayoutPickerOpen(true)}
-              onGoHome={() => activeTabId && handleCloseTab(activeTabId)}
-              onOpenProviders={() => openAppSettings("providers")}
-              onOpenThemeManager={handleOpenThemeManager}
-              onOpenFolders={() => openAppSettings("folders")}
               onOpenSettings={() => openAppSettings("general")}
               onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+              onSignIn={handleSidebarSignIn}
+              onSignOut={handleSidebarSignOut}
             />
           )}
           <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
@@ -804,6 +935,11 @@ const DashboardStageInner = ({
                 setIsAppSettingsOpen(false);
                 setIsThemeManagerOpen(true);
               }}
+              authStatus={authStatus}
+              authProfile={authProfile}
+              onSignIn={handleSidebarSignIn}
+              onSignOut={handleSidebarSignOut}
+              onProfileUpdated={handleProfileUpdated}
             />
 
             <ThemeManagerModal

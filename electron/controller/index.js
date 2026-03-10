@@ -73,12 +73,23 @@ const {
   getStoredToken: getRegistryToken,
   getAuthStatus: getRegistryAuthStatus,
   getRegistryProfile,
+  updateRegistryProfile,
+  getRegistryPackages,
+  updateRegistryPackage,
   clearToken: clearRegistryToken,
 } = require("./registryAuthController");
 const {
   publishToRegistry,
   getRegistryUrl,
 } = require("./registryApiController");
+const {
+  getRecentDashboards,
+  addRecentDashboard,
+  clearRecentDashboards,
+  getSessionState,
+  saveSessionState,
+  clearSessionState,
+} = require("./sessionController");
 const {
   saveDashboardRating,
   getDashboardRating,
@@ -147,7 +158,16 @@ module.exports = {
   getRegistryToken,
   getRegistryAuthStatus,
   getRegistryProfile,
+  updateRegistryProfile,
+  getRegistryPackages,
+  updateRegistryPackage,
   clearRegistryToken,
   publishToRegistry,
   getRegistryUrl,
+  getRecentDashboards,
+  addRecentDashboard,
+  clearRecentDashboards,
+  getSessionState,
+  saveSessionState,
+  clearSessionState,
 };
