@@ -1,10 +1,14 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 
 /**
  * useRegistrySearch — shared hook for browsing and installing registry packages.
  *
  * Extracted from EnhancedWidgetDropdown so the same logic can power the
  * Discover tab inside AppSettingsModal (and anywhere else).
+ *
+ * Options:
+ *   filterByCapabilities – if true (default), only show packages compatible
+ *                          with the app's API capabilities
  *
  * Returns:
  *   packages      – raw package objects from the registry
@@ -16,8 +20,10 @@ import { useState, useEffect, useCallback } from "react";
  *   installError  – install error string (or null)
  *   search()      – manually trigger a search
  *   installPackage(widget) – install a specific registry widget
+ *   showAllPackages / setShowAllPackages – toggle to show incompatible packages
+ *   appCapabilities – the app's API namespaces
  */
-export const useRegistrySearch = () => {
+export const useRegistrySearch = ({ filterByCapabilities = true } = {}) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [packages, setPackages] = useState([]);
@@ -25,6 +31,15 @@ export const useRegistrySearch = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [isInstalling, setIsInstalling] = useState(false);
   const [installError, setInstallError] = useState(null);
+  const [showAllPackages, setShowAllPackages] = useState(false);
+
+  // Discover app capabilities from window.mainApi
+  const appCapabilities = useMemo(() => {
+    if (typeof window !== "undefined" && window.mainApi) {
+      return Object.keys(window.mainApi);
+    }
+    return [];
+  }, []);
 
   const search = useCallback(
     async (query) => {
@@ -38,16 +53,39 @@ export const useRegistrySearch = () => {
       setIsLoading(true);
       setError(null);
       try {
+        const filters = {};
+        if (filterByCapabilities && !showAllPackages && appCapabilities.length) {
+          filters.appCapabilities = appCapabilities;
+        }
         const result = await window.mainApi.registry.search(
           query ?? searchQuery,
-          {},
+          filters,
         );
         const pkgs = result.packages || [];
         setPackages(pkgs);
 
         // Flatten packages into widget entries
+        const capSet = new Set(appCapabilities.map((c) => c.toLowerCase()));
         const widgets = [];
         for (const pkg of pkgs) {
+          // Compute missing APIs for the entire package
+          const allApiProviders = [];
+          for (const p of pkg.providers || []) {
+            if (p.providerClass === "api" && p.required !== false) {
+              allApiProviders.push(p.type);
+            }
+          }
+          for (const w of pkg.widgets || []) {
+            for (const p of w.providers || []) {
+              if (p.providerClass === "api" && p.required !== false) {
+                allApiProviders.push(p.type);
+              }
+            }
+          }
+          const missingApis = [...new Set(allApiProviders)].filter(
+            (api) => !capSet.has(api.toLowerCase()),
+          );
+
           for (const widget of pkg.widgets || []) {
             widgets.push({
               key: `${pkg.name}/${widget.name}`,
@@ -67,6 +105,9 @@ export const useRegistrySearch = () => {
               repository: pkg.repository || "",
               publishedAt: pkg.publishedAt || "",
               packageWidgets: pkg.widgets || [],
+              appOrigin: pkg.appOrigin || null,
+              packageProviders: pkg.providers || [],
+              missingApis,
             });
           }
         }
@@ -80,7 +121,7 @@ export const useRegistrySearch = () => {
         setIsLoading(false);
       }
     },
-    [searchQuery],
+    [searchQuery, filterByCapabilities, showAllPackages, appCapabilities],
   );
 
   // Debounce search on query changes (300ms)
@@ -90,7 +131,7 @@ export const useRegistrySearch = () => {
     }, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery]);
+  }, [searchQuery, showAllPackages]);
 
   const installPackage = useCallback(async (widget) => {
     if (!widget || !widget.isRegistry) return;
@@ -139,5 +180,8 @@ export const useRegistrySearch = () => {
     search,
     installPackage,
     retry,
+    showAllPackages,
+    setShowAllPackages,
+    appCapabilities,
   };
 };

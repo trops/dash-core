@@ -150,8 +150,8 @@
                     },
                     "providerClass": {
                         "type": "string",
-                        "description": "Provider class: credential or mcp",
-                        "enum": ["credential", "mcp"]
+                        "description": "Provider class: credential, mcp, or api",
+                        "enum": ["credential", "mcp", "api"]
                     },
                     "required": {
                         "type": "boolean",
@@ -169,6 +169,11 @@
                 "additionalProperties": false
             },
             "default": []
+        },
+        "appOrigin": {
+            "type": "string",
+            "description": "Originating app package name (from package.json). Informational — indicates which app this dashboard was built for.",
+            "maxLength": 200
         },
         "eventWiring": {
             "type": "array",

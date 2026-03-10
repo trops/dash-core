@@ -136,6 +136,26 @@ export const RegistryPackageDetail = ({
           </div>
         </div>
 
+        {/* App Origin */}
+        {widget.appOrigin && (
+          <div className="flex items-center gap-1.5 text-xs opacity-50">
+            <FontAwesomeIcon icon="laptop" className="h-3 w-3" />
+            <span>Built for {widget.appOrigin}</span>
+          </div>
+        )}
+
+        {/* API Compatibility Warning */}
+        {widget.missingApis && widget.missingApis.length > 0 && (
+          <div className="p-2 rounded bg-yellow-900/30 border border-yellow-700">
+            <p className="text-xs text-yellow-400">
+              <FontAwesomeIcon icon="triangle-exclamation" className="mr-1" />
+              Incompatible — requires{" "}
+              {widget.missingApis.join(", ")} API
+              {widget.missingApis.length !== 1 ? "s" : ""}
+            </p>
+          </div>
+        )}
+
         {/* Repository Link */}
         {widget.repository && (
           <div>
