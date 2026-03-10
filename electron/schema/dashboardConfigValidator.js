@@ -133,7 +133,7 @@ function validateDashboardConfig(config) {
     if (!Array.isArray(config.providers)) {
       errors.push(`"providers" must be an array`);
     } else {
-      const validClasses = ["credential", "mcp"];
+      const validClasses = ["credential", "mcp", "api"];
       for (let i = 0; i < config.providers.length; i++) {
         const p = config.providers[i];
         if (typeof p !== "object" || p === null) {
@@ -145,13 +145,22 @@ function validateDashboardConfig(config) {
         }
         if (!validClasses.includes(p.providerClass)) {
           errors.push(
-            `"providers[${i}].providerClass" must be "credential" or "mcp", got "${p.providerClass}"`,
+            `"providers[${i}].providerClass" must be "credential", "mcp", or "api", got "${p.providerClass}"`,
           );
         }
         if ("usedBy" in p && !Array.isArray(p.usedBy)) {
           errors.push(`"providers[${i}].usedBy" must be an array`);
         }
       }
+    }
+  }
+
+  // appOrigin (optional)
+  if ("appOrigin" in config) {
+    if (typeof config.appOrigin !== "string") {
+      errors.push(`"appOrigin" must be a string`);
+    } else if (config.appOrigin.length > 200) {
+      errors.push(`"appOrigin" must be 200 characters or fewer`);
     }
   }
 

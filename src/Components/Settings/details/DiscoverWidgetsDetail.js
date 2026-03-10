@@ -39,6 +39,8 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
     installError,
     installPackage,
     retry,
+    showAllPackages,
+    setShowAllPackages,
   } = useRegistrySearch();
 
   const [selectedPackageName, setSelectedPackageName] = useState(null);
@@ -166,10 +168,21 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
       <div className="space-y-1">
         {packages.map((pkg) => {
           const widgetCount = (pkg.widgets || []).length;
+          // Check if this package has incompatible API dependencies
+          const pkgWidget = flatWidgets.find(
+            (w) => w.packageName === pkg.name,
+          );
+          const hasIncompatible =
+            pkgWidget?.missingApis && pkgWidget.missingApis.length > 0;
           return (
             <Sidebar.Item
               key={pkg.name}
-              icon={<FontAwesomeIcon icon="cube" className="h-3.5 w-3.5" />}
+              icon={
+                <FontAwesomeIcon
+                  icon={hasIncompatible ? "triangle-exclamation" : "cube"}
+                  className={`h-3.5 w-3.5 ${hasIncompatible ? "text-yellow-500" : ""}`}
+                />
+              }
               onClick={() => setSelectedPackageName(pkg.name)}
               badge={`${widgetCount}`}
             >
@@ -207,6 +220,15 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
           placeholder="Search packages..."
           inputClassName="py-1.5 text-xs"
         />
+        <label className="flex items-center gap-1.5 mt-2 text-xs opacity-50 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showAllPackages}
+            onChange={(e) => setShowAllPackages(e.target.checked)}
+            className="rounded"
+          />
+          Show all packages
+        </label>
       </div>
 
       {/* Package list */}

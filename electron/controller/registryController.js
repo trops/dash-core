@@ -143,6 +143,7 @@ async function fetchRegistryIndex(forceRefresh = false) {
  * @param {string} filters.tag - Filter by tag
  * @param {string} filters.type - Filter by package type ("widget" or "dashboard")
  * @param {string[]} filters.compatibleWidgets - Only return dashboards whose required widgets are all in this list
+ * @param {string[]} filters.appCapabilities - Only return packages whose required API providers are all in this list
  * @returns {Promise<Object>} { packages: [...], totalWidgets: number }
  */
 async function searchRegistry(query = "", filters = {}) {
@@ -220,6 +221,37 @@ async function searchRegistry(query = "", filters = {}) {
           installedSet.has((w.package || "").toLowerCase()) ||
           installedSet.has((w.name || "").toLowerCase()),
       );
+    });
+  }
+
+  // Apply API capability filter — only return packages whose required
+  // "api" providers are all present in the app's capability set
+  if (filters.appCapabilities && filters.appCapabilities.length) {
+    const capSet = new Set(
+      filters.appCapabilities.map((c) => c.toLowerCase()),
+    );
+    packages = packages.filter((pkg) => {
+      // Collect all "api" provider requirements from package-level and widget-level providers
+      const apiProviders = [];
+
+      // Package-level providers
+      for (const p of pkg.providers || []) {
+        if (p.providerClass === "api" && p.required !== false) {
+          apiProviders.push(p.type);
+        }
+      }
+
+      // Widget-level providers
+      for (const w of pkg.widgets || []) {
+        for (const p of w.providers || []) {
+          if (p.providerClass === "api" && p.required !== false) {
+            apiProviders.push(p.type);
+          }
+        }
+      }
+
+      // Package is compatible if all required API namespaces are present
+      return apiProviders.every((api) => capSet.has(api.toLowerCase()));
     });
   }
 

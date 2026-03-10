@@ -354,6 +354,7 @@ function checkDashboardCompatibility(
  * @param {string} options.githubUser - GitHub username / org for the package scope
  * @param {string} options.category - Registry category (default: "general")
  * @param {string} options.repository - Repository URL (optional)
+ * @param {string} options.appOrigin - Originating app package name (optional)
  * @returns {Object} Registry manifest object
  */
 function generateRegistryManifest(dashboardConfig, options = {}) {
@@ -392,6 +393,10 @@ function generateRegistryManifest(dashboardConfig, options = {}) {
     providers: dashboardConfig.providers || [],
     eventWiring: dashboardConfig.eventWiring || [],
   };
+
+  if (options.appOrigin || dashboardConfig.appOrigin) {
+    manifest.appOrigin = options.appOrigin || dashboardConfig.appOrigin;
+  }
 
   return manifest;
 }
@@ -435,6 +440,7 @@ function buildDashboardPreview(source) {
       required: p.required !== false,
       usedBy: p.usedBy || [],
     })),
+    appOrigin: source.appOrigin || null,
     summary: {
       widgetCount: (source.widgets || []).length,
       eventCount: (source.eventWiring || []).length,
@@ -549,6 +555,38 @@ function buildProviderSetupManifest(
   };
 }
 
+/**
+ * Check API compatibility of a package against the app's capabilities.
+ * Extracts providers with providerClass "api" and checks whether
+ * each required API namespace is present in the app's capability set.
+ *
+ * @param {Array} providers - Provider requirements (from widget config or package manifest)
+ * @param {string[]} appCapabilities - API namespaces the app exposes (e.g., Object.keys(window.mainApi))
+ * @returns {Object} Compatibility report
+ */
+function checkApiCompatibility(providers = [], appCapabilities = []) {
+  const capSet = new Set(appCapabilities.map((c) => c.toLowerCase()));
+
+  const apiProviders = providers.filter((p) => p.providerClass === "api");
+
+  if (apiProviders.length === 0) {
+    return { compatible: true, missingApis: [], requiredApis: [] };
+  }
+
+  const requiredApis = apiProviders
+    .filter((p) => p.required !== false)
+    .map((p) => p.type);
+  const missingApis = requiredApis.filter(
+    (api) => !capSet.has(api.toLowerCase()),
+  );
+
+  return {
+    compatible: missingApis.length === 0,
+    missingApis,
+    requiredApis,
+  };
+}
+
 module.exports = {
   collectComponentNames,
   extractEventWiring,
@@ -560,4 +598,5 @@ module.exports = {
   buildDashboardPreview,
   checkDashboardUpdates,
   buildProviderSetupManifest,
+  checkApiCompatibility,
 };
