@@ -1,5 +1,6 @@
-import React, { useContext } from "react";
+import React, { useContext, useState } from "react";
 import { FontAwesomeIcon, Sidebar, ThemeContext } from "@trops/dash-react";
+import { Popover, Transition } from "@headlessui/react";
 
 export const DashSidebar = ({
   collapsed,
@@ -7,22 +8,30 @@ export const DashSidebar = ({
   workspaces = [],
   menuItems = [],
   activeTabId = null,
+  recentDashboards = [],
+  authStatus = "loading",
+  authProfile = null,
   onOpenWorkspace,
   onNewDashboard,
-  onGoHome,
-  onOpenProviders,
-  onOpenThemeManager,
-  onOpenFolders,
   onOpenSettings,
   onOpenCommandPalette,
+  onSignIn,
+  onSignOut,
 }) => {
-  const { themeVariant, changeThemeVariant } = useContext(ThemeContext);
+  const { themeVariant, changeThemeVariant, currentTheme } =
+    useContext(ThemeContext);
+
   const workspacesForFolder = (folderId) =>
     workspaces.filter((ws) => ws.menuId === folderId);
 
   const orphanedWorkspaces = workspaces.filter(
     (ws) => !menuItems.some((mi) => mi.id === ws.menuId),
   );
+
+  // Filter recents: only show workspaces that still exist, max 5
+  const visibleRecents = recentDashboards
+    .filter((r) => workspaces.some((ws) => ws.id === r.workspaceId))
+    .slice(0, 5);
 
   return (
     <Sidebar
@@ -43,15 +52,6 @@ export const DashSidebar = ({
       </Sidebar.Header>
 
       <Sidebar.Content>
-        {/* Home */}
-        <Sidebar.Item
-          icon={<FontAwesomeIcon icon="home" className="h-3.5 w-3.5" />}
-          active={activeTabId === null}
-          onClick={onGoHome}
-        >
-          Home
-        </Sidebar.Item>
-
         {/* Search */}
         <Sidebar.Item
           icon={
@@ -62,43 +62,31 @@ export const DashSidebar = ({
           Search
         </Sidebar.Item>
 
-        <Sidebar.Item
-          icon={<FontAwesomeIcon icon="plug" className="h-3.5 w-3.5" />}
-          onClick={onOpenProviders}
-        >
-          Providers
-        </Sidebar.Item>
-        <Sidebar.Item
-          icon={<FontAwesomeIcon icon="palette" className="h-3.5 w-3.5" />}
-          onClick={onOpenThemeManager}
-        >
-          Themes
-        </Sidebar.Item>
-        <Sidebar.Item
-          icon={<FontAwesomeIcon icon="folder" className="h-3.5 w-3.5" />}
-          onClick={onOpenFolders}
-        >
-          Folders
-        </Sidebar.Item>
-        <Sidebar.Item
-          icon={<FontAwesomeIcon icon="cog" className="h-3.5 w-3.5" />}
-          onClick={onOpenSettings}
-        >
-          Settings
-        </Sidebar.Item>
-        <Sidebar.Item
-          icon={
-            <FontAwesomeIcon
-              icon={themeVariant === "dark" ? "sun" : "moon"}
-              className="h-3.5 w-3.5"
-            />
-          }
-          onClick={() =>
-            changeThemeVariant(themeVariant === "dark" ? "light" : "dark")
-          }
-        >
-          {themeVariant === "dark" ? "Light Mode" : "Dark Mode"}
-        </Sidebar.Item>
+        {/* Recents (only when expanded and has items) */}
+        {!collapsed && visibleRecents.length > 0 && (
+          <Sidebar.Group label="Recents">
+            {visibleRecents.map((recent) => {
+              const ws = workspaces.find((w) => w.id === recent.workspaceId);
+              return (
+                <Sidebar.Item
+                  key={recent.workspaceId}
+                  icon={
+                    <FontAwesomeIcon
+                      icon="clock-rotate-left"
+                      className="h-3.5 w-3.5"
+                    />
+                  }
+                  active={recent.workspaceId === activeTabId}
+                  onClick={() => ws && onOpenWorkspace(ws)}
+                >
+                  {(recent.name || "Untitled").replace(/^./, (c) =>
+                    c.toUpperCase(),
+                  )}
+                </Sidebar.Item>
+              );
+            })}
+          </Sidebar.Group>
+        )}
 
         {/* Dashboards */}
         <Sidebar.Group label="Dashboards">
@@ -160,6 +148,121 @@ export const DashSidebar = ({
           </>
         )}
       </Sidebar.Content>
+
+      <Sidebar.Footer>
+        <FooterPopover
+          collapsed={collapsed}
+          themeVariant={themeVariant}
+          changeThemeVariant={changeThemeVariant}
+          authStatus={authStatus}
+          authProfile={authProfile}
+          onOpenSettings={onOpenSettings}
+          onSignIn={onSignIn}
+          onSignOut={onSignOut}
+        />
+      </Sidebar.Footer>
     </Sidebar>
   );
 };
+
+const FooterPopover = ({
+  collapsed,
+  themeVariant,
+  changeThemeVariant,
+  authStatus,
+  authProfile,
+  onOpenSettings,
+  onSignIn,
+  onSignOut,
+}) => {
+  const displayName =
+    authStatus === "authenticated" && authProfile
+      ? authProfile.displayName || authProfile.username
+      : "Account";
+
+  return (
+    <Popover className="relative">
+      {({ close }) => (
+        <>
+          <Popover.Button
+            className="flex items-center w-full gap-2 px-3 py-2 rounded-md text-sm opacity-80 hover:opacity-100 transition-colors duration-150 cursor-pointer hover:bg-white/5 focus:outline-none"
+            title={collapsed ? displayName : undefined}
+          >
+            <FontAwesomeIcon
+              icon={authStatus === "authenticated" ? "circle-user" : "user"}
+              className="h-3.5 w-3.5 flex-shrink-0"
+            />
+            {!collapsed && (
+              <span className="flex-1 text-left truncate">{displayName}</span>
+            )}
+          </Popover.Button>
+
+          <Transition
+            enter="transition ease-out duration-100"
+            enterFrom="transform opacity-0 scale-95"
+            enterTo="transform opacity-100 scale-100"
+            leave="transition ease-in duration-75"
+            leaveFrom="transform opacity-100 scale-100"
+            leaveTo="transform opacity-0 scale-95"
+          >
+            <Popover.Panel className="absolute bottom-full left-0 mb-2 w-52 rounded-lg border border-white/10 bg-neutral-900 shadow-xl z-50">
+              <div className="p-1.5 space-y-0.5">
+                <PopoverItem
+                  icon="cog"
+                  label="Settings"
+                  onClick={() => {
+                    onOpenSettings();
+                    close();
+                  }}
+                />
+                <PopoverItem
+                  icon={themeVariant === "dark" ? "sun" : "moon"}
+                  label={themeVariant === "dark" ? "Light Mode" : "Dark Mode"}
+                  onClick={() => {
+                    changeThemeVariant(
+                      themeVariant === "dark" ? "light" : "dark",
+                    );
+                    close();
+                  }}
+                />
+
+                <div className="border-t border-white/10 my-1" />
+
+                {authStatus === "authenticated" ? (
+                  <PopoverItem
+                    icon="right-from-bracket"
+                    label="Sign Out"
+                    onClick={() => {
+                      onSignOut();
+                      close();
+                    }}
+                  />
+                ) : (
+                  <PopoverItem
+                    icon="right-to-bracket"
+                    label="Sign In"
+                    onClick={() => {
+                      onSignIn();
+                      close();
+                    }}
+                  />
+                )}
+              </div>
+            </Popover.Panel>
+          </Transition>
+        </>
+      )}
+    </Popover>
+  );
+};
+
+const PopoverItem = ({ icon, label, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="flex items-center w-full gap-2 px-3 py-2 rounded-md text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors duration-150 cursor-pointer"
+  >
+    <FontAwesomeIcon icon={icon} className="h-3.5 w-3.5 flex-shrink-0" />
+    <span>{label}</span>
+  </button>
+);
