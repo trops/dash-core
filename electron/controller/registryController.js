@@ -14,7 +14,7 @@ const path = require("path");
 const fs = require("fs");
 
 // Default registry API base URL
-const DEFAULT_REGISTRY_API_URL = "https://registry.trops.dev";
+const DEFAULT_REGISTRY_API_URL = "https://main.d919rwhuzp7rj.amplifyapp.com";
 
 // Cache TTL: 5 minutes
 const CACHE_TTL_MS = 5 * 60 * 1000;
