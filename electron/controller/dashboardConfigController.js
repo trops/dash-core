@@ -693,15 +693,20 @@ async function prepareDashboardForPublish(
     let missingFromRegistry = [];
     if (!registryCheckFailed) {
       const registryNames = new Set(registryPackages.map((p) => p.name));
-      missingFromRegistry = [
-        ...new Set(
-          widgets
-            .filter(
-              (w) => w.required !== false && !registryNames.has(w.package),
-            )
-            .map((w) => w.package),
-        ),
-      ];
+      const missingWidgets = widgets.filter(
+        (w) => w.required !== false && !registryNames.has(w.package),
+      );
+      const grouped = {};
+      for (const w of missingWidgets) {
+        if (!grouped[w.package]) grouped[w.package] = [];
+        const widgetName = w.id.includes(".") ? w.id.split(".")[1] : w.id;
+        if (!grouped[w.package].includes(widgetName)) {
+          grouped[w.package].push(widgetName);
+        }
+      }
+      missingFromRegistry = Object.entries(grouped).map(
+        ([pkg, widgetNames]) => ({ package: pkg, widgets: widgetNames }),
+      );
     }
 
     // 6. Generate registry manifest
