@@ -244,6 +244,14 @@ export const ThemeModel = (themeItem = {}) => {
 
     theme["dark"]["name"] = theme.name;
 
+    // Darkest shade (950 dark / 50 light) for stage backgrounds.
+    // Added outside the variant loop to avoid generating invalid text/border
+    // classes (invert(950) would be negative).
+    colorTypes.forEach((type) => {
+      theme["dark"][`bg-${type}-darkest`] = `bg-${theme[type]}-950`;
+      theme["light"][`bg-${type}-darkest`] = `bg-${theme[type]}-50`;
+    });
+
     // transparent colors
     theme["dark"]["bg-none"] = "bg-transparent";
     theme["dark"]["border-none"] = "border-transparent";
