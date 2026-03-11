@@ -58,6 +58,19 @@ const notificationApi = {
     ipcRenderer.on("notification:clicked", handler);
     return () => ipcRenderer.removeListener("notification:clicked", handler);
   },
+
+  /**
+   * Listen for Do Not Disturb state changes (e.g. toggled from macOS menu).
+   *
+   * @param {Function} callback - (dndEnabled: boolean) => void
+   * @returns {Function} removeListener function
+   */
+  onDndChanged: (callback) => {
+    const handler = (_event, dndEnabled) => callback(dndEnabled);
+    ipcRenderer.on("notification:dnd-changed", handler);
+    return () =>
+      ipcRenderer.removeListener("notification:dnd-changed", handler);
+  },
 };
 
 module.exports = notificationApi;
