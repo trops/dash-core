@@ -12,6 +12,7 @@ const DASHBOARD_CONFIG_PREVIEW = "dashboard-config-preview";
 const DASHBOARD_CONFIG_CHECK_UPDATES = "dashboard-config-check-updates";
 const DASHBOARD_CONFIG_PROVIDER_SETUP = "dashboard-config-provider-setup";
 const DASHBOARD_CONFIG_PUBLISH_PREVIEW = "dashboard-config-publish-preview";
+const DASHBOARD_CONFIG_SELECT_FILE = "dashboard-config-select-file";
 
 module.exports = {
   DASHBOARD_CONFIG_EXPORT,
@@ -23,4 +24,5 @@ module.exports = {
   DASHBOARD_CONFIG_CHECK_UPDATES,
   DASHBOARD_CONFIG_PROVIDER_SETUP,
   DASHBOARD_CONFIG_PUBLISH_PREVIEW,
+  DASHBOARD_CONFIG_SELECT_FILE,
 };
