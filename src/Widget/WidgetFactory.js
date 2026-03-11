@@ -142,6 +142,7 @@ const WidgetRenderer = ({
         ...params,
         uuidString,
         providers: config?.providers || [],
+        notifications: config?.notifications || [],
       };
 
       // need to set the electron api here.
