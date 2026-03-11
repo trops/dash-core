@@ -21,10 +21,7 @@ const themes = {
     dark: {
       "bg-primary-very-dark": "bg-black", // override test
     },
-    light: {
-      "bg-primary-very-light": "bg-white", // override test
-      "bg-primary-very-dark": "bg-gray-600", // override test
-    },
+    light: {},
   },
   "theme-2": {
     name: "Default 2",
@@ -37,10 +34,7 @@ const themes = {
     dark: {
       "bg-primary-very-dark": "bg-black", // override test
     },
-    light: {
-      "bg-primary-very-light": "bg-white", // override test
-      "bg-primary-very-dark": "bg-gray-600", // override test
-    },
+    light: {},
   },
 };
 
