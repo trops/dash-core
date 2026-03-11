@@ -186,9 +186,17 @@ const FooterPopover = ({
 
   // Load initial DND state
   useEffect(() => {
-    window.mainApi?.notifications?.getPreferences().then((prefs) => {
-      if (prefs) setDoNotDisturb(prefs.doNotDisturb);
-    });
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("timeout")), 2000),
+    );
+    const fetch = window.mainApi?.notifications?.getPreferences();
+    if (fetch) {
+      Promise.race([fetch, timeout])
+        .then((prefs) => {
+          if (prefs) setDoNotDisturb(prefs.doNotDisturb);
+        })
+        .catch(() => {});
+    }
   }, []);
 
   // Sync when toggled from macOS menu
@@ -204,7 +212,9 @@ const FooterPopover = ({
   function handleToggleDnd() {
     const newValue = !doNotDisturb;
     setDoNotDisturb(newValue);
-    window.mainApi?.notifications?.setGlobal({ doNotDisturb: newValue });
+    window.mainApi?.notifications
+      ?.setGlobal({ doNotDisturb: newValue })
+      ?.catch(() => {});
   }
 
   return (
