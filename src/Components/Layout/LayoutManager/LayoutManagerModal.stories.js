@@ -24,4 +24,8 @@ Primary.args = {
   onCreateWorkspace: (layoutObj) => {
     console.log("Create workspace with layout:", layoutObj);
   },
+  appId: "storybook-app",
+  onReloadWorkspaces: () => {
+    console.log("Reload workspaces");
+  },
 };

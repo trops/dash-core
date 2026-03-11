@@ -150,9 +150,19 @@ const DashboardStageInner = ({
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [appSettingsInitialSection, setAppSettingsInitialSection] =
     useState("dashboards");
+  const [appSettingsInitialProvider, setAppSettingsInitialProvider] =
+    useState(null);
+  const [appSettingsCreateProvider, setAppSettingsCreateProvider] =
+    useState(false);
 
-  function openAppSettings(section = "general") {
+  function openAppSettings(
+    section = "general",
+    providerName = null,
+    createProvider = false,
+  ) {
     setAppSettingsInitialSection(section);
+    setAppSettingsInitialProvider(providerName);
+    setAppSettingsCreateProvider(createProvider);
     setIsAppSettingsOpen(true);
   }
 
@@ -923,8 +933,16 @@ const DashboardStageInner = ({
           <>
             <AppSettingsModal
               isOpen={isAppSettingsOpen}
-              setIsOpen={setIsAppSettingsOpen}
+              setIsOpen={(open) => {
+                setIsAppSettingsOpen(open);
+                if (!open) {
+                  setAppSettingsInitialProvider(null);
+                  setAppSettingsCreateProvider(false);
+                }
+              }}
               initialSection={appSettingsInitialSection}
+              initialProviderName={appSettingsInitialProvider}
+              initialCreateProvider={appSettingsCreateProvider}
               workspaces={workspaceConfig}
               menuItems={menuItems}
               dashApi={dashApi}
@@ -965,6 +983,8 @@ const DashboardStageInner = ({
               onCreateWorkspace={handleCreateFromTemplate}
               menuItems={menuItems}
               onSaveMenuItem={handleSaveNewMenuItem}
+              appId={credentials?.appId}
+              onReloadWorkspaces={loadWorkspaces}
             />
           </>
         )}
@@ -983,7 +1003,8 @@ const DashboardStageInner = ({
           onCreateNewFolder={() => openAppSettings("folders")}
           onLoadDashboard={() => setIsDashboardLoaderOpen(true)}
           providers={appContext?.providers || {}}
-          onCreateNewProvider={() => openAppSettings("providers")}
+          onCreateNewProvider={() => openAppSettings("providers", null, true)}
+          onOpenProviderDetail={(name) => openAppSettings("providers", name)}
           themes={themes || {}}
           currentThemeKey={themeKey}
           themeVariant={themeVariant}
