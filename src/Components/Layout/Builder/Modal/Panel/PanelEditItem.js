@@ -4,7 +4,6 @@ import {
   InputText,
   SubHeading3,
   FormLabel,
-  Switch,
 } from "@trops/dash-react";
 import { replaceItemInLayout } from "../../../../../utils/layout";
 import { LayoutModel, WorkspaceModel } from "../../../../../Models";
@@ -25,33 +24,6 @@ export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
     : null;
   const providerRequirements = widgetConfig?.providers || [];
   const selectedProviders = itemSelected?.selectedProviders || {};
-  const notificationDefs = widgetConfig?.notifications || [];
-
-  // Notification preferences for this widget instance
-  const [notifPrefs, setNotifPrefs] = useState({});
-  const widgetUuid = itemSelected?.uuid || itemSelected?.uuidString;
-
-  useEffect(() => {
-    if (notificationDefs.length > 0 && widgetUuid && window.mainApi?.notifications?.getPreferences) {
-      window.mainApi.notifications.getPreferences().then((result) => {
-        setNotifPrefs(result.instances?.[widgetUuid] || {});
-      });
-    }
-  }, [widgetUuid, notificationDefs.length]);
-
-  function handleNotifToggle(typeKey, value) {
-    const updated = { ...notifPrefs, [typeKey]: value };
-    setNotifPrefs(updated);
-    if (window.mainApi?.notifications?.setPreferences && widgetUuid) {
-      window.mainApi.notifications.setPreferences(widgetUuid, { [typeKey]: value });
-    }
-  }
-
-  function getNotifEnabled(typeKey, defaultEnabled) {
-    if (typeof notifPrefs[typeKey] === "boolean") return notifPrefs[typeKey];
-    return defaultEnabled;
-  }
-
   useEffect(() => {
     if (deepEqual(item, itemSelected) === false) {
       setItemSelected(() => item);
@@ -287,30 +259,6 @@ export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
           </div>
         )}
 
-        {notificationDefs.length > 0 && (
-          <div className="flex flex-col space-y-3">
-            <SubHeading3 title="Notifications" padding={false} />
-            {notificationDefs.map((notif) => (
-              <div
-                key={notif.key}
-                className="flex flex-row items-center justify-between py-1"
-              >
-                <div className="flex flex-col">
-                  <span className="text-sm">{notif.displayName}</span>
-                  {notif.description && (
-                    <span className="text-xs opacity-50">
-                      {notif.description}
-                    </span>
-                  )}
-                </div>
-                <Switch
-                  checked={getNotifEnabled(notif.key, notif.defaultEnabled)}
-                  onChange={(value) => handleNotifToggle(notif.key, value)}
-                />
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     )
   );
