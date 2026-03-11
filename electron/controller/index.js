@@ -97,6 +97,7 @@ const {
   deleteDashboardRating,
   enrichPackagesWithRatings,
 } = require("./dashboardRatingsController");
+const notificationController = require("./notificationController");
 
 module.exports = {
   showDialog,
@@ -170,4 +171,5 @@ module.exports = {
   getSessionState,
   saveSessionState,
   clearSessionState,
+  notificationController,
 };

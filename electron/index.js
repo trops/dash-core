@@ -24,6 +24,7 @@ const cliController = require("./controller/cliController");
 const dashboardConfigController = require("./controller/dashboardConfigController");
 const registryAuthController = require("./controller/registryAuthController");
 const registryApiController = require("./controller/registryApiController");
+const notificationController = require("./controller/notificationController");
 
 // --- Utils ---
 const clientCache = require("./utils/clientCache");
@@ -53,6 +54,7 @@ const llmApi = require("./api/llmApi");
 const clientCacheApi = require("./api/clientCacheApi");
 const dashboardConfigApi = require("./api/dashboardConfigApi");
 const registryAuthApi = require("./api/registryAuthApi");
+const notificationApi = require("./api/notificationApi");
 
 // --- Events ---
 const events = require("./events");
@@ -90,6 +92,7 @@ module.exports = {
   dashboardConfigController,
   registryAuthController,
   registryApiController,
+  notificationController,
 
   // Controller functions (flat) — spread for convenient destructuring
   ...controllers,
@@ -114,6 +117,7 @@ module.exports = {
   clientCacheApi,
   dashboardConfigApi,
   registryAuthApi,
+  notificationApi,
 
   // Events
   events,
