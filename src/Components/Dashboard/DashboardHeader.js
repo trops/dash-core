@@ -74,8 +74,8 @@ export const DashboardHeader = ({
               onChange={onNameChange}
               textSize={"text-lg"}
               placeholder="My Workspace"
-              bgColor={"bg-gray-800"}
-              textColor={"text-gray-400"}
+              bgColor={currentTheme["bg-primary-very-dark"]}
+              textColor={currentTheme["text-primary-medium"]}
               hasBorder={false}
               autoFocus
             />
@@ -89,9 +89,9 @@ export const DashboardHeader = ({
                 }))}
                 onChange={onFolderChange}
                 placeholder="Folder"
-                backgroundColor={"bg-gray-800"}
-                textColor={"text-gray-400"}
-                borderColor={"border-gray-700"}
+                backgroundColor={currentTheme["bg-primary-very-dark"]}
+                textColor={currentTheme["text-primary-medium"]}
+                borderColor={currentTheme["border-primary-dark"]}
                 inputClassName="py-1 text-sm"
                 className="w-40 shrink-0"
               />
@@ -106,9 +106,9 @@ export const DashboardHeader = ({
                 }))}
                 onChange={onThemeChange}
                 placeholder="Theme"
-                backgroundColor={"bg-gray-800"}
-                textColor={"text-gray-400"}
-                borderColor={"border-gray-700"}
+                backgroundColor={currentTheme["bg-primary-very-dark"]}
+                textColor={currentTheme["text-primary-medium"]}
+                borderColor={currentTheme["border-primary-dark"]}
                 inputClassName="py-1 text-sm"
                 className="w-40 shrink-0"
               />
