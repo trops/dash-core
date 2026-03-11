@@ -3,3 +3,4 @@ export { useWidgetProviders } from "./useWidgetProviders";
 export { useMcpProvider } from "./useMcpProvider";
 export { useWidgetEvents } from "./useWidgetEvents";
 export { useProviderClient } from "./useProviderClient";
+export { useNotifications } from "./useNotifications";

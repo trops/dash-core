@@ -111,5 +111,12 @@ export const ComponentConfigModel = (obj = {}) => {
   obj.package = "package" in obj ? obj["package"] : null;
   obj.providers = "providers" in obj ? obj["providers"] : [];
 
+  /**
+   * notifications
+   * Notification types this widget can emit.
+   * Each entry: { key, displayName, description, defaultEnabled }
+   */
+  obj.notifications = "notifications" in obj ? obj["notifications"] : [];
+
   return obj;
 };

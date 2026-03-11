@@ -18,6 +18,7 @@ import { ThemesSection } from "./sections/ThemesSection";
 import { GeneralSection } from "./sections/GeneralSection";
 import { WidgetsSection } from "./sections/WidgetsSection";
 import { AccountSection } from "./sections/AccountSection";
+import { NotificationsSection } from "./sections/NotificationsSection";
 
 const SECTIONS = [
   { key: "general", label: "General", icon: "cog" },
@@ -27,12 +28,15 @@ const SECTIONS = [
   { key: "widgets", label: "Widgets", icon: "puzzle-piece" },
   { key: "folders", label: "Folders", icon: "folder" },
   { key: "themes", label: "Themes", icon: "palette" },
+  { key: "notifications", label: "Notifications", icon: "bell" },
 ];
 
 export const AppSettingsModal = ({
   isOpen,
   setIsOpen,
   initialSection = "general",
+  initialProviderName = null,
+  initialCreateProvider = false,
   workspaces = [],
   menuItems = [],
   dashApi = null,
@@ -159,6 +163,8 @@ export const AppSettingsModal = ({
             credentials={credentials}
             createRequested={createRequested}
             onCreateAcknowledged={() => setCreateRequested(false)}
+            initialProviderName={initialProviderName}
+            initialCreateRequested={initialCreateProvider}
           />
         )}
         {activeSection === "themes" && (
@@ -201,6 +207,9 @@ export const AppSettingsModal = ({
           >
             <GeneralSection />
           </div>
+        )}
+        {activeSection === "notifications" && (
+          <NotificationsSection workspaces={workspaces} />
         )}
       </SettingsModal.Body>
 
