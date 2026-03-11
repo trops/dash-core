@@ -283,6 +283,40 @@ async function updateRegistryPackage(scope, name, updates) {
   }
 }
 
+/**
+ * Delete a published package from the registry.
+ *
+ * @param {string} scope - Package scope (e.g. "@trops")
+ * @param {string} name - Package name
+ * @returns {Promise<Object|null>} Response or null
+ */
+async function deleteRegistryPackage(scope, name) {
+  const stored = getStoredToken();
+  if (!stored) return null;
+
+  try {
+    const response = await fetch(
+      `${REGISTRY_BASE_URL}/api/packages/${encodeURIComponent(scope)}/${encodeURIComponent(name)}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${stored.token}`,
+        },
+      },
+    );
+
+    if (response.status === 401) {
+      clearToken();
+      return null;
+    }
+    if (!response.ok) return null;
+
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
 module.exports = {
   initiateDeviceFlow,
   pollForToken,
@@ -292,5 +326,6 @@ module.exports = {
   updateRegistryProfile,
   getRegistryPackages,
   updateRegistryPackage,
+  deleteRegistryPackage,
   clearToken,
 };
