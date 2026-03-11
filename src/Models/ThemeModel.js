@@ -58,8 +58,8 @@ export const ThemeModel = (themeItem = {}) => {
         "very-light": 100,
         light: 200,
         medium: 300,
-        dark: 400,
-        "very-dark": 500,
+        dark: 200,
+        "very-dark": 100,
       },
       dark: {
         "very-light": 500,
@@ -217,8 +217,17 @@ export const ThemeModel = (themeItem = {}) => {
     }
 
     if (overrideLight !== null) {
+      // Strip stale light overrides from pre-fix saved themes.
+      // These were band-aids for the old linear shade mapping and
+      // conflict with the corrected light variant (100-300 range).
+      const staleKeys = [
+        "bg-primary-very-light",
+        "bg-primary-very-dark",
+      ];
       Object.keys(overrideLight).forEach((key) => {
-        theme["light"][key] = overrideLight[key];
+        if (!staleKeys.includes(key)) {
+          theme["light"][key] = overrideLight[key];
+        }
       });
     }
 
