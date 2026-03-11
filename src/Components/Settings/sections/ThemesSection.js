@@ -171,55 +171,6 @@ export const ThemesSection = ({
         </span>
       </div>
 
-      {/* Generate options */}
-      {dashApi && appId && (
-        <div
-          className={`flex flex-col gap-1 px-2 py-3 border-b ${
-            rowStyles.borderColor || ""
-          }`}
-        >
-          <span className="text-[10px] font-semibold opacity-30 uppercase tracking-wider px-2 pb-1">
-            Generate
-          </span>
-          <Sidebar.Item
-            icon={<FontAwesomeIcon icon="swatchbook" className="h-3 w-3" />}
-            active={generateMode === GENERATE_MODES.PRESETS}
-            onClick={() => {
-              setGenerateMode(GENERATE_MODES.PRESETS);
-              setSelectedThemeKey(null);
-            }}
-            className={
-              generateMode === GENERATE_MODES.PRESETS
-                ? "bg-white/10 opacity-100"
-                : ""
-            }
-          >
-            From Presets
-          </Sidebar.Item>
-          <Sidebar.Item
-            icon={<FontAwesomeIcon icon="shuffle" className="h-3 w-3" />}
-            onClick={handleCreateFromRandom}
-          >
-            Random
-          </Sidebar.Item>
-          <Sidebar.Item
-            icon={<FontAwesomeIcon icon="droplet" className="h-3 w-3" />}
-            active={generateMode === GENERATE_MODES.COLOR}
-            onClick={() => {
-              setGenerateMode(GENERATE_MODES.COLOR);
-              setSelectedThemeKey(null);
-            }}
-            className={
-              generateMode === GENERATE_MODES.COLOR
-                ? "bg-white/10 opacity-100"
-                : ""
-            }
-          >
-            From Color
-          </Sidebar.Item>
-        </div>
-      )}
-
       {/* Theme list */}
       <Sidebar.Content>
         {themeEntries.map(([key, theme]) => {
