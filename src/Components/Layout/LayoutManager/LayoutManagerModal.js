@@ -12,6 +12,8 @@ import {
 import { LayoutManagerPicker } from "./Panel/LayoutManagerPicker";
 import { layoutTemplates, createLayoutFromTemplate } from "./layoutTemplates";
 import { FOLDER_ICONS } from "../../Settings/details/FolderDetail";
+import { CreationMethodPicker } from "./Panel/CreationMethodPicker";
+import { DiscoverDashboardsDetail } from "../../Settings/details/DiscoverDashboardsDetail";
 
 export const LayoutManagerModal = ({
   open,
@@ -19,9 +21,12 @@ export const LayoutManagerModal = ({
   onCreateWorkspace,
   menuItems = [],
   onSaveMenuItem = null,
+  appId,
+  onReloadWorkspaces,
 }) => {
   const { themes, themeKey: appThemeKey } = useContext(ThemeContext);
 
+  const [creationMethod, setCreationMethod] = useState(null);
   const [dashboardName, setDashboardName] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState(layoutTemplates[0]);
   const [activeStep, setActiveStep] = useState(0);
@@ -37,6 +42,7 @@ export const LayoutManagerModal = ({
   // Reset state when modal opens
   useEffect(() => {
     if (open) {
+      setCreationMethod(null);
       setDashboardName("");
       setActiveStep(0);
       setLocalMenuItems(menuItems || []);
@@ -91,18 +97,60 @@ export const LayoutManagerModal = ({
     setActiveStep(2);
   }
 
+  function handleMethodSelect(method) {
+    if (method === "import") {
+      handleImportFromFile();
+    } else {
+      setCreationMethod(method);
+    }
+  }
+
+  async function handleImportFromFile() {
+    handleClose();
+    try {
+      const result =
+        await window.mainApi.dashboardConfig.importDashboardConfig(appId);
+      if (result && !result.canceled && result.success) {
+        onReloadWorkspaces && onReloadWorkspaces();
+      }
+    } catch (err) {
+      console.error("[LayoutManagerModal] Import error:", err);
+    }
+  }
+
   const selectedFolder = localMenuItems.find(
     (item) => item.id === selectedMenuId,
   );
 
-  return (
-    <Modal
-      isOpen={open}
-      setIsOpen={setIsOpen}
-      width="w-11/12 xl:w-5/6"
-      height="h-5/6"
-      scrollable={false}
-    >
+  // ─── Render body based on creationMethod ─────────────────────────
+  function renderBody() {
+    if (creationMethod === null) {
+      return (
+        <Panel backgroundColor="bg-slate-800" padding={false}>
+          <Panel.Body scrollable={false} className="h-full">
+            <div className="h-full p-6 pb-0">
+              <CreationMethodPicker onSelect={handleMethodSelect} />
+            </div>
+          </Panel.Body>
+        </Panel>
+      );
+    }
+
+    if (creationMethod === "registry") {
+      return (
+        <Panel backgroundColor="bg-slate-800" padding={false}>
+          <Panel.Body scrollable={false} className="h-full">
+            <DiscoverDashboardsDetail
+              onBack={() => setCreationMethod(null)}
+              appId={appId}
+            />
+          </Panel.Body>
+        </Panel>
+      );
+    }
+
+    // creationMethod === "template" — existing 4-step wizard
+    return (
       <Panel backgroundColor="bg-slate-800" padding={false}>
         <Panel.Body scrollable={false} className="h-full">
           <Stepper
@@ -445,13 +493,45 @@ export const LayoutManagerModal = ({
           </Stepper>
         </Panel.Body>
       </Panel>
+    );
+  }
+
+  // ─── Render footer based on creationMethod ───────────────────────
+  function renderFooter() {
+    // Picker screen: just Cancel
+    if (creationMethod === null) {
+      return (
+        <Modal.Footer>
+          <div className="flex flex-row space-x-2">
+            <Button
+              onClick={handleClose}
+              title="Cancel"
+              textSize="text-base xl:text-lg"
+              padding="py-2 px-4"
+              backgroundColor="bg-gray-700"
+              textColor="text-gray-300"
+              hoverTextColor="hover:text-gray-100"
+              hoverBackgroundColor="hover:bg-gray-600"
+            />
+          </div>
+        </Modal.Footer>
+      );
+    }
+
+    // Registry screen: no footer (DiscoverDashboardsDetail has its own back button)
+    if (creationMethod === "registry") {
+      return null;
+    }
+
+    // Template wizard footer
+    return (
       <Modal.Footer>
         <div className="flex flex-row space-x-2">
           {activeStep === 0 && (
             <>
               <Button
-                onClick={handleClose}
-                title="Cancel"
+                onClick={() => setCreationMethod(null)}
+                title="Back"
                 textSize="text-base xl:text-lg"
                 padding="py-2 px-4"
                 backgroundColor="bg-gray-700"
@@ -547,6 +627,19 @@ export const LayoutManagerModal = ({
           )}
         </div>
       </Modal.Footer>
+    );
+  }
+
+  return (
+    <Modal
+      isOpen={open}
+      setIsOpen={setIsOpen}
+      width="w-11/12 xl:w-5/6"
+      height="h-5/6"
+      scrollable={false}
+    >
+      {renderBody()}
+      {renderFooter()}
     </Modal>
   );
 };
