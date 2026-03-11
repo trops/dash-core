@@ -15,6 +15,7 @@ const {
   REGISTRY_AUTH_UPDATE_PROFILE,
   REGISTRY_AUTH_GET_PACKAGES,
   REGISTRY_AUTH_UPDATE_PACKAGE,
+  REGISTRY_AUTH_DELETE_PACKAGE,
 } = require("../events");
 
 const registryAuthApi = {
@@ -94,6 +95,16 @@ const registryAuthApi = {
       name,
       updates,
     }),
+
+  /**
+   * Delete a published package.
+   *
+   * @param {string} scope - Package scope
+   * @param {string} name - Package name
+   * @returns {Promise<Object|null>} Response or null
+   */
+  deletePackage: (scope, name) =>
+    ipcRenderer.invoke(REGISTRY_AUTH_DELETE_PACKAGE, { scope, name }),
 };
 
 module.exports = registryAuthApi;

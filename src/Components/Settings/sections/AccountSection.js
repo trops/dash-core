@@ -87,6 +87,17 @@ const AuthenticatedView = ({ profile, onSignOut, onProfileUpdated }) => {
                         ),
                     );
                 }}
+                onPackageDeleted={(deletedPkg) => {
+                    setPackages((prev) =>
+                        prev.filter(
+                            (p) =>
+                                !(
+                                    p.name === deletedPkg.name &&
+                                    p.scope === deletedPkg.scope
+                                ),
+                        ),
+                    );
+                }}
             />
         </div>
     );
@@ -209,7 +220,7 @@ const ProfileCard = ({ profile, onSignOut, onProfileUpdated }) => {
     );
 };
 
-const PackagesList = ({ packages, loading, onPackageUpdated }) => {
+const PackagesList = ({ packages, loading, onPackageUpdated, onPackageDeleted }) => {
     const [editingPkg, setEditingPkg] = useState(null);
 
     if (loading) {
@@ -248,6 +259,10 @@ const PackagesList = ({ packages, loading, onPackageUpdated }) => {
                                 setEditingPkg(null);
                                 onPackageUpdated(updated);
                             }}
+                            onDeleted={() => {
+                                setEditingPkg(null);
+                                onPackageDeleted(pkg);
+                            }}
                         />
                     ))}
                 </div>
@@ -256,7 +271,7 @@ const PackagesList = ({ packages, loading, onPackageUpdated }) => {
     );
 };
 
-const PackageItem = ({ pkg, isEditing, onEdit, onCancel, onSaved }) => {
+const PackageItem = ({ pkg, isEditing, onEdit, onCancel, onSaved, onDeleted }) => {
     const [form, setForm] = useState({
         displayName: pkg.displayName || "",
         description: pkg.description || "",
@@ -265,6 +280,8 @@ const PackageItem = ({ pkg, isEditing, onEdit, onCancel, onSaved }) => {
         visibility: pkg.visibility || "public",
     });
     const [saving, setSaving] = useState(false);
+    const [confirmingDelete, setConfirmingDelete] = useState(false);
+    const [deleting, setDeleting] = useState(false);
 
     async function handleSave() {
         setSaving(true);
@@ -292,6 +309,25 @@ const PackageItem = ({ pkg, isEditing, onEdit, onCancel, onSaved }) => {
             // ignore
         } finally {
             setSaving(false);
+        }
+    }
+
+    async function handleDelete() {
+        setDeleting(true);
+        try {
+            const result =
+                await window.mainApi?.registryAuth?.deletePackage(
+                    pkg.scope,
+                    pkg.name,
+                );
+            if (result) {
+                onDeleted?.();
+            }
+        } catch {
+            // ignore
+        } finally {
+            setDeleting(false);
+            setConfirmingDelete(false);
         }
     }
 
@@ -348,27 +384,61 @@ const PackageItem = ({ pkg, isEditing, onEdit, onCancel, onSaved }) => {
                         </select>
                     </div>
                 </div>
-                <div className="flex gap-2">
-                    <Button
-                        title={saving ? "Saving..." : "Save"}
-                        onClick={handleSave}
-                        disabled={saving}
-                    />
-                    <button
-                        type="button"
-                        onClick={onCancel}
-                        className="text-xs opacity-50 hover:opacity-80 cursor-pointer"
-                    >
-                        Cancel
-                    </button>
+                <div className="flex items-center justify-between">
+                    <div>
+                        {confirmingDelete ? (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleDelete}
+                                    disabled={deleting}
+                                    className="text-xs text-red-400 hover:text-red-300 cursor-pointer font-medium"
+                                >
+                                    {deleting ? "Deleting..." : "Confirm Delete"}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setConfirmingDelete(false)}
+                                    className="text-xs opacity-50 hover:opacity-80 cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => setConfirmingDelete(true)}
+                                className="text-xs text-red-400/70 hover:text-red-400 cursor-pointer"
+                            >
+                                Delete
+                            </button>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={onCancel}
+                            className="text-xs opacity-50 hover:opacity-80 cursor-pointer"
+                        >
+                            Cancel
+                        </button>
+                        <Button
+                            title={saving ? "Saving..." : "Save"}
+                            onClick={handleSave}
+                            disabled={saving}
+                        />
+                    </div>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="bg-white/5 rounded-lg p-3 flex items-start justify-between">
-            <div className="flex-1 min-w-0 space-y-1">
+        <div
+            onClick={onEdit}
+            className="bg-white/5 rounded-lg p-3 cursor-pointer hover:bg-white/10 transition-colors"
+        >
+            <div className="space-y-1">
                 <div className="flex items-center gap-2">
                     <span className="text-sm font-medium truncate">
                         {pkg.displayName || pkg.name}
@@ -399,13 +469,6 @@ const PackageItem = ({ pkg, isEditing, onEdit, onCancel, onSaved }) => {
                     </span>
                 )}
             </div>
-            <button
-                type="button"
-                onClick={onEdit}
-                className="flex-shrink-0 ml-2 text-xs opacity-40 hover:opacity-80 cursor-pointer"
-            >
-                Edit
-            </button>
         </div>
     );
 };
