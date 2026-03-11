@@ -9,20 +9,29 @@ import {
 
 import PanelEditItem from "./Panel/PanelEditItem";
 import PanelEditItemGrid from "./Panel/PanelEditItemGrid";
+import PanelEditItemNotifications from "./Panel/PanelEditItemNotifications";
 
 import { PanelEditItemHandlers } from "./Panel";
 import PanelCode from "./Panel/PanelCode";
+import { ComponentManager } from "../../../../ComponentManager";
 
-const getSections = (item) => [
-  { key: "edit", label: "Settings", icon: "cog" },
-  ...(item?.type !== "widget" && item?.grid
-    ? [{ key: "grid_layout", label: "Layout", icon: "square" }]
-    : []),
-  ...(item?.workspace !== "layout"
-    ? [{ key: "handlers", label: "Listeners", icon: "phone" }]
-    : []),
-  { key: "code", label: "Code", icon: "code" },
-];
+const getSections = (item) => {
+  const widgetConfig = item ? ComponentManager.config(item.component, item) : null;
+  const hasNotifications = widgetConfig?.notifications?.length > 0;
+  return [
+    { key: "edit", label: "Settings", icon: "cog" },
+    ...(item?.type !== "widget" && item?.grid
+      ? [{ key: "grid_layout", label: "Layout", icon: "square" }]
+      : []),
+    ...(hasNotifications
+      ? [{ key: "notifications", label: "Notifications", icon: "bell" }]
+      : []),
+    ...(item?.workspace !== "layout"
+      ? [{ key: "handlers", label: "Listeners", icon: "phone" }]
+      : []),
+    { key: "code", label: "Code", icon: "code" },
+  ];
+};
 
 export const LayoutBuilderConfigModal = ({
   workspace,
@@ -120,6 +129,14 @@ export const LayoutBuilderConfigModal = ({
 
           {activeSection === "grid_layout" && (
             <PanelEditItemGrid
+              item={itemSelected}
+              onUpdate={handleEditChange}
+              workspace={workspaceSelected}
+            />
+          )}
+
+          {activeSection === "notifications" && (
+            <PanelEditItemNotifications
               item={itemSelected}
               onUpdate={handleEditChange}
               workspace={workspaceSelected}
