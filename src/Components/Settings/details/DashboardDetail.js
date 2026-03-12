@@ -230,7 +230,7 @@ export const DashboardDetail = ({
             value={ws.themeKey || ""}
             onChange={(val) => handleChangeTheme(val)}
             options={themeOptions}
-            placeholder="App Default"
+            placeholder="Select a theme"
           />
           <div className="flex flex-row items-center gap-2">
             <FontAwesomeIcon icon="th-large" className="h-3 w-3 opacity-50" />

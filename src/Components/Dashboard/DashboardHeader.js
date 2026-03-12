@@ -99,13 +99,15 @@ export const DashboardHeader = ({
             {onThemeChange && Object.keys(resolvedThemes).length > 0 && (
               <SelectInput
                 value={workspaceSelected.themeKey || ""}
-                options={Object.entries(resolvedThemes).map(([key, t]) => ({
-                  label: t.name || key,
-                  value: key,
-                  icon: "palette",
-                }))}
+                options={Object.entries(resolvedThemes)
+                  .sort(([, a], [, b]) => (a.name || "").localeCompare(b.name || ""))
+                  .map(([key, t]) => ({
+                    label: t.name || key,
+                    value: key,
+                    icon: "palette",
+                  }))}
                 onChange={onThemeChange}
-                placeholder="Theme"
+                placeholder="Select a theme"
                 backgroundColor={currentTheme["bg-primary-very-dark"]}
                 textColor={currentTheme["text-primary-medium"]}
                 borderColor={currentTheme["border-primary-dark"]}
