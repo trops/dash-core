@@ -24,6 +24,7 @@ const VALUE_OPTIONS = {
     "font-extrabold",
     "font-black",
   ],
+  borderWidth: ["border-0", "border", "border-2", "border-4", "border-8"],
   borderRadius: [
     "rounded-none",
     "rounded-sm",
