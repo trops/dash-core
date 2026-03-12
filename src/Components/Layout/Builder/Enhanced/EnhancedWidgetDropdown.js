@@ -42,6 +42,7 @@ import { AppContext } from "../../../../Context/App/AppContext";
 import { ProviderForm } from "../../../Provider/ProviderForm";
 import { ToolSelector } from "../../../Settings/details/ToolSelector";
 import { deriveFormFields } from "../../../../utils/mcpUtils";
+import { getUserConfigurableProviders } from "../../../../utils/providerUtils";
 
 export const EnhancedWidgetDropdown = ({
   isOpen,
@@ -291,8 +292,9 @@ export const EnhancedWidgetDropdown = ({
     const providers = new Set();
     providers.add("none"); // For widgets without providers
     widgets.forEach((widget) => {
-      if (widget.providers && widget.providers.length > 0) {
-        widget.providers.forEach((provider) => {
+      const configurable = getUserConfigurableProviders(widget.providers);
+      if (configurable.length > 0) {
+        configurable.forEach((provider) => {
           providers.add(provider.type);
         });
       }
@@ -325,11 +327,10 @@ export const EnhancedWidgetDropdown = ({
       let matchesProvider = true;
       if (selectedProvider !== "all") {
         if (selectedProvider === "none") {
-          matchesProvider = !widget.providers || widget.providers.length === 0;
+          matchesProvider = getUserConfigurableProviders(widget.providers).length === 0;
         } else {
           matchesProvider =
-            widget.providers &&
-            widget.providers.some((p) => p.type === selectedProvider);
+            getUserConfigurableProviders(widget.providers).some((p) => p.type === selectedProvider);
         }
       }
 
@@ -828,7 +829,7 @@ export const EnhancedWidgetDropdown = ({
 
     // Check providers: all required providers must be selected
     const hasRequiredProviders = selectedWidget.providers
-      ? selectedWidget.providers
+      ? getUserConfigurableProviders(selectedWidget.providers)
           .filter((p) => p.required === true)
           .every(
             (p) =>
@@ -971,9 +972,9 @@ export const EnhancedWidgetDropdown = ({
                             {widget.description}
                           </div>
                         )}
-                        {widget.providers?.length > 0 && (
+                        {getUserConfigurableProviders(widget.providers).length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-0.5">
-                            {widget.providers.map((p) => (
+                            {getUserConfigurableProviders(widget.providers).map((p) => (
                               <span
                                 key={p.type}
                                 className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300"
@@ -1129,9 +1130,9 @@ export const EnhancedWidgetDropdown = ({
                     {w.description}
                   </div>
                 )}
-                {w.providers && w.providers.length > 0 && (
+                {getUserConfigurableProviders(w.providers).length > 0 && (
                   <div className="flex gap-1 mt-1">
-                    {w.providers.map((p, pidx) => (
+                    {getUserConfigurableProviders(w.providers).map((p, pidx) => (
                       <span
                         key={pidx}
                         className="text-xs px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-400"
@@ -1402,9 +1403,9 @@ export const EnhancedWidgetDropdown = ({
                                               {widget.description}
                                             </div>
                                           )}
-                                          {widget.providers?.length > 0 && (
+                                          {getUserConfigurableProviders(widget.providers).length > 0 && (
                                             <div className="flex flex-wrap gap-1 mt-0.5">
-                                              {widget.providers.map((p) => (
+                                              {getUserConfigurableProviders(widget.providers).map((p) => (
                                                 <span
                                                   key={p.type}
                                                   className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300"
@@ -1492,8 +1493,7 @@ export const EnhancedWidgetDropdown = ({
                             )}
 
                             {/* Required Providers - PHASE 2: Interactive Selection */}
-                            {selectedWidget.providers &&
-                              selectedWidget.providers.length > 0 && (
+                            {getUserConfigurableProviders(selectedWidget.providers).length > 0 && (
                                 <div className="mb-2">
                                   <Paragraph
                                     padding={false}
@@ -1502,7 +1502,7 @@ export const EnhancedWidgetDropdown = ({
                                     REQUIRED PROVIDERS
                                   </Paragraph>
                                   <div className="space-y-2">
-                                    {selectedWidget.providers.map(
+                                    {getUserConfigurableProviders(selectedWidget.providers).map(
                                       (providerReq, idx) => {
                                         // Get available providers of this type
                                         const providersOfType = Object.values(

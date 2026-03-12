@@ -9,6 +9,7 @@ import {
   themeObjects,
 } from "@trops/dash-react";
 import { resolveIcon } from "../../../utils/resolveIcon";
+import { getUserConfigurableProviders } from "../../../utils/providerUtils";
 
 /**
  * InstalledWidgetDetail — detail panel for a selected installed widget.
@@ -90,11 +91,11 @@ export const InstalledWidgetDetail = ({ widget, onDelete }) => {
         )}
 
         {/* Providers */}
-        {widget.providers && widget.providers.length > 0 && (
+        {getUserConfigurableProviders(widget.providers).length > 0 && (
           <div className="flex flex-col space-y-1">
             <span className="text-xs font-semibold opacity-50">PROVIDERS</span>
             <div className="flex flex-wrap gap-1.5">
-              {widget.providers.map((p, i) => (
+              {getUserConfigurableProviders(widget.providers).map((p, i) => (
                 <div key={i} className="flex flex-col gap-1">
                   <span
                     className={`text-xs px-2 py-0.5 rounded ${
