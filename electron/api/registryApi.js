@@ -95,6 +95,25 @@ const registryApi = {
       throw error;
     }
   },
+
+  /**
+   * Search the registry for theme packages only
+   * @param {string} query - Search query
+   * @param {Object} filters - Optional filters { category, author, tag }
+   * @returns {Promise<Object>} { packages: [...], totalWidgets: number }
+   */
+  searchThemes: async (query = "", filters = {}) => {
+    try {
+      return await ipcRenderer.invoke(
+        "registry:search-themes",
+        query,
+        filters,
+      );
+    } catch (error) {
+      console.error("[RegistryApi] Error searching themes:", error);
+      throw error;
+    }
+  },
 };
 
 module.exports = registryApi;
