@@ -85,6 +85,7 @@ export const DashboardDetail = ({
   dashApi = null,
   credentials = null,
   onReloadWorkspaces = null,
+  onOpenWorkspace = null,
 }) => {
   const ws = workspace;
   const isEditing = editingId === ws.id;
@@ -201,7 +202,16 @@ export const DashboardDetail = ({
               <ButtonIcon icon="xmark" onClick={onCancelRename} size="sm" />
             </div>
           ) : (
-            <SubHeading title={ws.name || "Untitled"} padding={false} />
+            <>
+              <SubHeading title={ws.name || "Untitled"} padding={false} />
+              {onOpenWorkspace && (
+                <ButtonIcon
+                  icon="arrow-up-right-from-square"
+                  onClick={() => onOpenWorkspace(ws)}
+                  size="sm"
+                />
+              )}
+            </>
           )}
         </div>
 

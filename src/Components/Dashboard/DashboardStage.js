@@ -949,6 +949,10 @@ const DashboardStageInner = ({
               credentials={credentials}
               onReloadWorkspaces={loadWorkspaces}
               onReloadMenuItems={loadMenuItems}
+              onOpenWorkspace={(ws) => {
+                handleOpenTab(ws);
+                setIsAppSettingsOpen(false);
+              }}
               onOpenThemeEditor={() => {
                 setIsAppSettingsOpen(false);
                 setIsThemeManagerOpen(true);

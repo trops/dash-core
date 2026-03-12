@@ -19,6 +19,7 @@ export const DashboardsSection = ({
   dashApi = null,
   credentials = null,
   onReloadWorkspaces = null,
+  onOpenWorkspace = null,
   createRequested = false,
   onCreateAcknowledged = null,
 }) => {
@@ -284,6 +285,7 @@ export const DashboardsSection = ({
         dashApi={dashApi}
         credentials={credentials}
         onReloadWorkspaces={onReloadWorkspaces}
+        onOpenWorkspace={onOpenWorkspace}
       />
     );
   }
