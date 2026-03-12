@@ -7,6 +7,7 @@ import {
   getStylesForItem,
   themeObjects,
 } from "@trops/dash-react";
+import { getUserConfigurableProviders } from "../../../utils/providerUtils";
 
 /**
  * RegistryPackageDetail — detail panel for a registry package/widget.
@@ -100,10 +101,10 @@ export const RegistryPackageDetail = ({
                     {w.description}
                   </div>
                 )}
-                {w.providers && w.providers.length > 0 && (
+                {getUserConfigurableProviders(w.providers).length > 0 && (
                   <div className="space-y-1 mt-1">
                     <div className="flex gap-1 flex-wrap">
-                      {w.providers.map((p, pidx) => (
+                      {getUserConfigurableProviders(w.providers).map((p, pidx) => (
                         <span
                           key={pidx}
                           className="text-xs px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-400"
@@ -113,9 +114,9 @@ export const RegistryPackageDetail = ({
                         </span>
                       ))}
                     </div>
-                    {w.providers.some((p) => p.requiredTools?.length > 0) && (
+                    {getUserConfigurableProviders(w.providers).some((p) => p.requiredTools?.length > 0) && (
                       <div className="flex flex-wrap gap-1 ml-1">
-                        {w.providers
+                        {getUserConfigurableProviders(w.providers)
                           .filter((p) => p.requiredTools?.length > 0)
                           .flatMap((p) =>
                             p.requiredTools.map((tool) => (

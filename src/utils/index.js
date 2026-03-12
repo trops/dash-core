@@ -9,6 +9,7 @@ export * from "./dragTypes";
 export * from "./resolveIcon";
 export * from "./validation";
 export * from "./mcpUtils";
+export * from "./providerUtils";
 export * from "./themeGenerator";
 // Note: DynamicWidgetLoader and WidgetRegistry are Electron-only
 // export * from "./DynamicWidgetLoader";
