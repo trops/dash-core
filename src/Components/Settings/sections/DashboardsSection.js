@@ -228,7 +228,7 @@ export const DashboardsSection = ({
   const listContent = (
     <div className="flex flex-col h-full">
       <div
-        className={`flex-shrink-0 flex flex-col gap-2 px-3 pt-3 pb-2 ${
+        className={`flex-shrink-0 flex flex-col gap-2 px-3 py-2 ${
           headerStyles.backgroundColor || ""
         }`}
       >
