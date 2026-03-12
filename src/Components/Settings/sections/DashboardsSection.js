@@ -4,7 +4,6 @@ import {
   ConfirmationModal,
   SearchInput,
   Sidebar,
-  Tabs3,
   ThemeContext,
   deepCopy,
   getStylesForItem,
@@ -239,6 +238,7 @@ export const DashboardsSection = ({
               value={searchQuery}
               onChange={setSearchQuery}
               placeholder="Search dashboards..."
+              inputClassName="py-1.5 text-xs"
             />
           </div>
           <ButtonIcon
@@ -248,33 +248,39 @@ export const DashboardsSection = ({
             title="Import dashboard"
           />
         </div>
-        <Tabs3
-          value={installMode === "marketplace" ? "marketplace" : viewMode}
-          onValueChange={(val) => {
-            if (val === "marketplace") {
-              setInstallMode("marketplace");
-              setSelectedId(null);
-            } else {
-              setInstallMode(null);
-              setImportResult(null);
-              setViewMode(val);
-            }
-          }}
-          backgroundColor="bg-transparent"
-          spacing="p-0"
-        >
-          <Tabs3.List className="w-full flex" spacing="p-0.5">
-            <Tabs3.Trigger value="grouped" className="flex-1">
-              Grouped
-            </Tabs3.Trigger>
-            <Tabs3.Trigger value="alphabetical" className="flex-1">
-              A-Z
-            </Tabs3.Trigger>
-            <Tabs3.Trigger value="marketplace" className="flex-1">
-              Marketplace
-            </Tabs3.Trigger>
-          </Tabs3.List>
-        </Tabs3>
+        <div className="flex bg-white/5 rounded-md p-0.5">
+          {[
+            { key: "grouped", label: "Grouped" },
+            { key: "alphabetical", label: "A-Z" },
+            { key: "marketplace", label: "Marketplace" },
+          ].map((tab) => {
+            const currentTab =
+              installMode === "marketplace" ? "marketplace" : viewMode;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => {
+                  if (tab.key === "marketplace") {
+                    setInstallMode("marketplace");
+                    setSelectedId(null);
+                  } else {
+                    setInstallMode(null);
+                    setImportResult(null);
+                    setViewMode(tab.key);
+                  }
+                }}
+                className={`flex-1 px-2 py-0.5 rounded text-[11px] transition-colors ${
+                  currentTab === tab.key
+                    ? "bg-white/10 font-medium opacity-90"
+                    : "opacity-50 hover:opacity-70"
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto min-h-0">
         <Sidebar.Content>

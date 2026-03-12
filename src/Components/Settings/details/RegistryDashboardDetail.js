@@ -15,7 +15,7 @@ import { StarRating } from "./StarRating";
  * Shows package header, description, tags, widget list with compatibility
  * status, provider requirements, event wiring summary, and install button.
  */
-export const RegistryDashboardDetail = ({ dashboardPackage, appId }) => {
+export const RegistryDashboardDetail = ({ dashboardPackage, appId, onInstallComplete }) => {
   const { currentTheme } = useContext(ThemeContext);
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,
@@ -69,6 +69,9 @@ export const RegistryDashboardDetail = ({ dashboardPackage, appId }) => {
           ? `Dashboard "${result.workspace?.name || pkg.name}" installed successfully.`
           : result?.error || "Installation failed.",
       });
+      if (result?.success && onInstallComplete) {
+        onInstallComplete(result);
+      }
     } catch (err) {
       console.error("[RegistryDashboardDetail] Install error:", err);
       setInstallResult({

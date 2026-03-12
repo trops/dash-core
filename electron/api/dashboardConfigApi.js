@@ -7,6 +7,7 @@
 const { ipcRenderer } = require("electron");
 const {
   DASHBOARD_CONFIG_EXPORT,
+  DASHBOARD_CONFIG_SELECT_FILE,
   DASHBOARD_CONFIG_IMPORT,
   DASHBOARD_CONFIG_INSTALL,
   DASHBOARD_CONFIG_COMPATIBILITY,
@@ -34,15 +35,26 @@ const dashboardConfigApi = {
     }),
 
   /**
+   * Select and preview a dashboard ZIP file without importing it.
+   * Opens the file picker, validates the config, and returns a preview
+   * with the file path for later import.
+   *
+   * @returns {Promise<Object>} Result with success, filePath, and dashboardConfig preview
+   */
+  selectDashboardFile: () =>
+    ipcRenderer.invoke(DASHBOARD_CONFIG_SELECT_FILE),
+
+  /**
    * Import a dashboard config from a ZIP file.
-   * Shows a file picker, validates the config, installs missing widgets,
-   * creates the workspace, and applies event wiring.
+   * Shows a file picker (or uses options.filePath), validates the config,
+   * installs missing widgets, creates the workspace, and applies event wiring.
    *
    * @param {string} appId - Application identifier
+   * @param {Object} options - Import options (filePath, name, menuId, themeKey)
    * @returns {Promise<Object>} Result with success, workspace, and summary
    */
-  importDashboardConfig: (appId) =>
-    ipcRenderer.invoke(DASHBOARD_CONFIG_IMPORT, { appId }),
+  importDashboardConfig: (appId, options = {}) =>
+    ipcRenderer.invoke(DASHBOARD_CONFIG_IMPORT, { appId, ...options }),
 
   /**
    * Install a dashboard from the registry by package name.

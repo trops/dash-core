@@ -58,6 +58,7 @@ const {
 const { install: pluginInstall } = require("./pluginController");
 const {
   exportDashboardConfig,
+  selectDashboardFile,
   importDashboardConfig,
   installDashboardFromRegistry,
   checkCompatibility,
@@ -141,6 +142,7 @@ module.exports = {
   pluginInstall,
   searchIndex,
   exportDashboardConfig,
+  selectDashboardFile,
   importDashboardConfig,
   installDashboardFromRegistry,
   checkCompatibility,
