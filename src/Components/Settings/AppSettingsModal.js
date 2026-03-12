@@ -43,6 +43,7 @@ export const AppSettingsModal = ({
   credentials = null,
   onReloadWorkspaces = null,
   onReloadMenuItems = null,
+  onOpenWorkspace = null,
   onOpenThemeEditor = null,
   authStatus = "loading",
   authProfile = null,
@@ -144,6 +145,7 @@ export const AppSettingsModal = ({
             onReloadWorkspaces={onReloadWorkspaces}
             createRequested={createRequested}
             onCreateAcknowledged={() => setCreateRequested(false)}
+            onOpenWorkspace={onOpenWorkspace}
           />
         )}
         {activeSection === "folders" && (
