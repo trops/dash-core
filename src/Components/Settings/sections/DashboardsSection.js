@@ -1,6 +1,5 @@
 import React, { useContext, useState, useRef, useEffect } from "react";
 import {
-  ButtonIcon,
   ConfirmationModal,
   SearchInput,
   Sidebar,
@@ -29,9 +28,8 @@ export const DashboardsSection = ({
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState("grouped");
-  // null | "marketplace" | "import-result"
+  // null | "marketplace"
   const [installMode, setInstallMode] = useState(null);
-  const [importResult, setImportResult] = useState(null);
 
   const appId = credentials?.appId;
 
@@ -134,7 +132,6 @@ export const DashboardsSection = ({
     if (createRequested && !prevCreateRequested.current) {
       setSelectedId(null);
       setInstallMode("marketplace");
-      setImportResult(null);
     }
     prevCreateRequested.current = createRequested;
     if (createRequested && onCreateAcknowledged) {
@@ -142,39 +139,6 @@ export const DashboardsSection = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createRequested]);
-
-  async function handleImport() {
-    if (!appId) return;
-    setInstallMode("import-result");
-    setImportResult({ status: "loading", message: "Importing dashboard..." });
-    try {
-      const result =
-        await window.mainApi.dashboardConfig.importDashboardConfig(appId);
-      if (!result || result.canceled) {
-        // User cancelled the file picker
-        setInstallMode(null);
-        setImportResult(null);
-        return;
-      }
-      if (result.success) {
-        setImportResult({
-          status: "success",
-          message: `Dashboard "${result.workspace?.name || "Untitled"}" imported successfully.`,
-        });
-        onReloadWorkspaces && onReloadWorkspaces();
-      } else {
-        setImportResult({
-          status: "error",
-          message: result.error || "Import failed.",
-        });
-      }
-    } catch (err) {
-      setImportResult({
-        status: "error",
-        message: err.message || "Failed to import dashboard.",
-      });
-    }
-  }
 
   const selectedWorkspace = workspaces.find((ws) => ws.id === selectedId);
 
@@ -189,7 +153,6 @@ export const DashboardsSection = ({
         onClick={() => {
           setSelectedId(ws.id);
           setInstallMode(null);
-          setImportResult(null);
         }}
         badge={String(widgetCount)}
         className={isSelected ? "bg-white/10 opacity-100" : ""}
@@ -241,12 +204,6 @@ export const DashboardsSection = ({
               inputClassName="py-1.5 text-xs"
             />
           </div>
-          <ButtonIcon
-            icon="file-import"
-            onClick={handleImport}
-            size="sm"
-            title="Import dashboard"
-          />
         </div>
         <div className="flex bg-white/5 rounded-md p-0.5">
           {[
@@ -266,7 +223,6 @@ export const DashboardsSection = ({
                     setSelectedId(null);
                   } else {
                     setInstallMode(null);
-                    setImportResult(null);
                     setViewMode(tab.key);
                   }
                 }}
@@ -308,35 +264,6 @@ export const DashboardsSection = ({
         }}
         appId={appId}
       />
-    );
-  } else if (installMode === "import-result") {
-    detailContent = (
-      <div className="flex flex-col flex-1 min-h-0 p-6 space-y-4">
-        {importResult?.status === "loading" && (
-          <div className="flex items-center gap-3">
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500"></div>
-            <span className="text-sm opacity-70">{importResult.message}</span>
-          </div>
-        )}
-        {importResult?.status === "success" && (
-          <div className="flex items-center gap-2">
-            <FontAwesomeIcon
-              icon="circle-check"
-              className="h-4 w-4 text-green-400"
-            />
-            <span className="text-sm">{importResult.message}</span>
-          </div>
-        )}
-        {importResult?.status === "error" && (
-          <div className="flex items-center gap-2">
-            <FontAwesomeIcon
-              icon="circle-xmark"
-              className="h-4 w-4 text-red-400"
-            />
-            <span className="text-sm text-red-400">{importResult.message}</span>
-          </div>
-        )}
-      </div>
     );
   } else if (selectedWorkspace) {
     detailContent = (
