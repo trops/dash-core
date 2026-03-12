@@ -104,17 +104,21 @@ export const RegistryPackageDetail = ({
                 {getUserConfigurableProviders(w.providers).length > 0 && (
                   <div className="space-y-1 mt-1">
                     <div className="flex gap-1 flex-wrap">
-                      {getUserConfigurableProviders(w.providers).map((p, pidx) => (
-                        <span
-                          key={pidx}
-                          className="text-xs px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-400"
-                        >
-                          {p.type}
-                          {p.required ? " *" : ""}
-                        </span>
-                      ))}
+                      {getUserConfigurableProviders(w.providers).map(
+                        (p, pidx) => (
+                          <span
+                            key={pidx}
+                            className="text-xs px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-400"
+                          >
+                            {p.type}
+                            {p.required ? " *" : ""}
+                          </span>
+                        ),
+                      )}
                     </div>
-                    {getUserConfigurableProviders(w.providers).some((p) => p.requiredTools?.length > 0) && (
+                    {getUserConfigurableProviders(w.providers).some(
+                      (p) => p.requiredTools?.length > 0,
+                    ) && (
                       <div className="flex flex-wrap gap-1 ml-1">
                         {getUserConfigurableProviders(w.providers)
                           .filter((p) => p.requiredTools?.length > 0)
@@ -150,8 +154,7 @@ export const RegistryPackageDetail = ({
           <div className="p-2 rounded bg-yellow-900/30 border border-yellow-700">
             <p className="text-xs text-yellow-400">
               <FontAwesomeIcon icon="triangle-exclamation" className="mr-1" />
-              Incompatible — requires{" "}
-              {widget.missingApis.join(", ")} API
+              Incompatible — requires {widget.missingApis.join(", ")} API
               {widget.missingApis.length !== 1 ? "s" : ""}
             </p>
           </div>

@@ -237,9 +237,7 @@ const FooterPopover = ({
                 className="h-3.5 w-3.5 flex-shrink-0"
               />
               {!collapsed && (
-                <span className="flex-1 text-left truncate">
-                  {displayName}
-                </span>
+                <span className="flex-1 text-left truncate">{displayName}</span>
               )}
             </Popover.Button>
             {createPortal(
@@ -263,9 +261,7 @@ const FooterPopover = ({
                   style={{
                     zIndex: 9999,
                     left: rect?.left ?? 0,
-                    bottom: rect
-                      ? window.innerHeight - rect.top + 8
-                      : 0,
+                    bottom: rect ? window.innerHeight - rect.top + 8 : 0,
                   }}
                 >
                   <div className="p-1.5 space-y-0.5">

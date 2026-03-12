@@ -15,7 +15,11 @@ import { StarRating } from "./StarRating";
  * Shows package header, description, tags, widget list with compatibility
  * status, provider requirements, event wiring summary, and install button.
  */
-export const RegistryDashboardDetail = ({ dashboardPackage, appId, onInstallComplete }) => {
+export const RegistryDashboardDetail = ({
+  dashboardPackage,
+  appId,
+  onInstallComplete,
+}) => {
   const { currentTheme } = useContext(ThemeContext);
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,

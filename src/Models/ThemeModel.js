@@ -220,10 +220,7 @@ export const ThemeModel = (themeItem = {}) => {
       // Strip stale light overrides from pre-fix saved themes.
       // These were band-aids for the old linear shade mapping and
       // conflict with the corrected light variant (100-300 range).
-      const staleKeys = [
-        "bg-primary-very-light",
-        "bg-primary-very-dark",
-      ];
+      const staleKeys = ["bg-primary-very-light", "bg-primary-very-dark"];
       Object.keys(overrideLight).forEach((key) => {
         if (!staleKeys.includes(key)) {
           theme["light"][key] = overrideLight[key];

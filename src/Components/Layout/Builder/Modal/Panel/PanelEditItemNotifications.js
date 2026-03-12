@@ -12,7 +12,11 @@ export const PanelEditItemNotifications = ({ item, workspace, onUpdate }) => {
   const widgetUuid = item?.uuid || item?.uuidString;
 
   useEffect(() => {
-    if (notificationDefs.length > 0 && widgetUuid && window.mainApi?.notifications?.getPreferences) {
+    if (
+      notificationDefs.length > 0 &&
+      widgetUuid &&
+      window.mainApi?.notifications?.getPreferences
+    ) {
       window.mainApi.notifications.getPreferences().then((result) => {
         setNotifPrefs(result.instances?.[widgetUuid] || {});
       });
@@ -23,7 +27,9 @@ export const PanelEditItemNotifications = ({ item, workspace, onUpdate }) => {
     const updated = { ...notifPrefs, [typeKey]: value };
     setNotifPrefs(updated);
     if (window.mainApi?.notifications?.setPreferences && widgetUuid) {
-      window.mainApi.notifications.setPreferences(widgetUuid, { [typeKey]: value });
+      window.mainApi.notifications.setPreferences(widgetUuid, {
+        [typeKey]: value,
+      });
     }
   }
 
@@ -46,9 +52,7 @@ export const PanelEditItemNotifications = ({ item, workspace, onUpdate }) => {
             <div className="flex flex-col">
               <span className="text-sm">{notif.displayName}</span>
               {notif.description && (
-                <span className="text-xs opacity-50">
-                  {notif.description}
-                </span>
+                <span className="text-xs opacity-50">{notif.description}</span>
               )}
             </div>
             <Switch

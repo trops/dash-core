@@ -16,7 +16,9 @@ import PanelCode from "./Panel/PanelCode";
 import { ComponentManager } from "../../../../ComponentManager";
 
 const getSections = (item) => {
-  const widgetConfig = item ? ComponentManager.config(item.component, item) : null;
+  const widgetConfig = item
+    ? ComponentManager.config(item.component, item)
+    : null;
   const hasNotifications = widgetConfig?.notifications?.length > 0;
   return [
     { key: "edit", label: "Settings", icon: "cog" },

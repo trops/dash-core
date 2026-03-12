@@ -225,14 +225,11 @@ async function getRegistryPackages() {
   if (!stored) return null;
 
   try {
-    const response = await fetch(
-      `${REGISTRY_BASE_URL}/api/auth/me/packages`,
-      {
-        headers: {
-          Authorization: `Bearer ${stored.token}`,
-        },
+    const response = await fetch(`${REGISTRY_BASE_URL}/api/auth/me/packages`, {
+      headers: {
+        Authorization: `Bearer ${stored.token}`,
       },
-    );
+    });
 
     if (response.status === 401) {
       clearToken();

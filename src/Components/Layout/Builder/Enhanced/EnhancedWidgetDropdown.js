@@ -327,10 +327,12 @@ export const EnhancedWidgetDropdown = ({
       let matchesProvider = true;
       if (selectedProvider !== "all") {
         if (selectedProvider === "none") {
-          matchesProvider = getUserConfigurableProviders(widget.providers).length === 0;
-        } else {
           matchesProvider =
-            getUserConfigurableProviders(widget.providers).some((p) => p.type === selectedProvider);
+            getUserConfigurableProviders(widget.providers).length === 0;
+        } else {
+          matchesProvider = getUserConfigurableProviders(widget.providers).some(
+            (p) => p.type === selectedProvider,
+          );
         }
       }
 
@@ -972,16 +974,19 @@ export const EnhancedWidgetDropdown = ({
                             {widget.description}
                           </div>
                         )}
-                        {getUserConfigurableProviders(widget.providers).length > 0 && (
+                        {getUserConfigurableProviders(widget.providers).length >
+                          0 && (
                           <div className="flex flex-wrap gap-1 mt-0.5">
-                            {getUserConfigurableProviders(widget.providers).map((p) => (
-                              <span
-                                key={p.type}
-                                className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300"
-                              >
-                                {p.type}
-                              </span>
-                            ))}
+                            {getUserConfigurableProviders(widget.providers).map(
+                              (p) => (
+                                <span
+                                  key={p.type}
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300"
+                                >
+                                  {p.type}
+                                </span>
+                              ),
+                            )}
                           </div>
                         )}
                       </div>
@@ -1132,15 +1137,17 @@ export const EnhancedWidgetDropdown = ({
                 )}
                 {getUserConfigurableProviders(w.providers).length > 0 && (
                   <div className="flex gap-1 mt-1">
-                    {getUserConfigurableProviders(w.providers).map((p, pidx) => (
-                      <span
-                        key={pidx}
-                        className="text-xs px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-400"
-                      >
-                        {p.type}
-                        {p.required ? " *" : ""}
-                      </span>
-                    ))}
+                    {getUserConfigurableProviders(w.providers).map(
+                      (p, pidx) => (
+                        <span
+                          key={pidx}
+                          className="text-xs px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-400"
+                        >
+                          {p.type}
+                          {p.required ? " *" : ""}
+                        </span>
+                      ),
+                    )}
                   </div>
                 )}
               </div>
@@ -1403,9 +1410,13 @@ export const EnhancedWidgetDropdown = ({
                                               {widget.description}
                                             </div>
                                           )}
-                                          {getUserConfigurableProviders(widget.providers).length > 0 && (
+                                          {getUserConfigurableProviders(
+                                            widget.providers,
+                                          ).length > 0 && (
                                             <div className="flex flex-wrap gap-1 mt-0.5">
-                                              {getUserConfigurableProviders(widget.providers).map((p) => (
+                                              {getUserConfigurableProviders(
+                                                widget.providers,
+                                              ).map((p) => (
                                                 <span
                                                   key={p.type}
                                                   className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300"
@@ -1493,556 +1504,537 @@ export const EnhancedWidgetDropdown = ({
                             )}
 
                             {/* Required Providers - PHASE 2: Interactive Selection */}
-                            {getUserConfigurableProviders(selectedWidget.providers).length > 0 && (
-                                <div className="mb-2">
-                                  <Paragraph
-                                    padding={false}
-                                    className="text-xs font-semibold text-gray-400 mb-2"
-                                  >
-                                    REQUIRED PROVIDERS
-                                  </Paragraph>
-                                  <div className="space-y-2">
-                                    {getUserConfigurableProviders(selectedWidget.providers).map(
-                                      (providerReq, idx) => {
-                                        // Get available providers of this type
-                                        const providersOfType = Object.values(
-                                          availableProviders,
-                                        ).filter(
-                                          (p) => p.type === providerReq.type,
-                                        );
+                            {getUserConfigurableProviders(
+                              selectedWidget.providers,
+                            ).length > 0 && (
+                              <div className="mb-2">
+                                <Paragraph
+                                  padding={false}
+                                  className="text-xs font-semibold text-gray-400 mb-2"
+                                >
+                                  REQUIRED PROVIDERS
+                                </Paragraph>
+                                <div className="space-y-2">
+                                  {getUserConfigurableProviders(
+                                    selectedWidget.providers,
+                                  ).map((providerReq, idx) => {
+                                    // Get available providers of this type
+                                    const providersOfType = Object.values(
+                                      availableProviders,
+                                    ).filter(
+                                      (p) => p.type === providerReq.type,
+                                    );
 
-                                        return (
-                                          <div key={idx} className="space-y-1">
-                                            <label className="text-sm font-medium">
-                                              {providerReq.type}
-                                              {providerReq.required && (
-                                                <span className="text-red-400 ml-1">
-                                                  *
-                                                </span>
-                                              )}
-                                            </label>
-                                            <select
-                                              value={
-                                                selectedProviders[
-                                                  providerReq.type
-                                                ] || ""
-                                              }
-                                              onChange={(e) =>
-                                                handleProviderSelect(
-                                                  providerReq.type,
-                                                  e.target.value,
-                                                )
-                                              }
-                                              className={`w-full px-3 py-2 rounded text-sm ${currentTheme["bg-primary-medium"]} ${currentTheme["text-primary-light"]} ${currentTheme["border-primary-medium"]} border`}
-                                            >
-                                              <option value="">
-                                                -- Select Provider --
-                                              </option>
-                                              {providersOfType.map((p) => (
-                                                <option
-                                                  key={p.name}
-                                                  value={p.name}
-                                                >
-                                                  {p.name}
-                                                </option>
-                                              ))}
-                                              <option value="__create_new__">
-                                                + Create New {providerReq.type}
-                                              </option>
-                                            </select>
-                                            {providerReq.required &&
-                                              !selectedProviders[
-                                                providerReq.type
-                                              ] &&
-                                              inlineCreateType !==
-                                                providerReq.type && (
+                                    return (
+                                      <div key={idx} className="space-y-1">
+                                        <label className="text-sm font-medium">
+                                          {providerReq.type}
+                                          {providerReq.required && (
+                                            <span className="text-red-400 ml-1">
+                                              *
+                                            </span>
+                                          )}
+                                        </label>
+                                        <select
+                                          value={
+                                            selectedProviders[
+                                              providerReq.type
+                                            ] || ""
+                                          }
+                                          onChange={(e) =>
+                                            handleProviderSelect(
+                                              providerReq.type,
+                                              e.target.value,
+                                            )
+                                          }
+                                          className={`w-full px-3 py-2 rounded text-sm ${currentTheme["bg-primary-medium"]} ${currentTheme["text-primary-light"]} ${currentTheme["border-primary-medium"]} border`}
+                                        >
+                                          <option value="">
+                                            -- Select Provider --
+                                          </option>
+                                          {providersOfType.map((p) => (
+                                            <option key={p.name} value={p.name}>
+                                              {p.name}
+                                            </option>
+                                          ))}
+                                          <option value="__create_new__">
+                                            + Create New {providerReq.type}
+                                          </option>
+                                        </select>
+                                        {providerReq.required &&
+                                          !selectedProviders[
+                                            providerReq.type
+                                          ] &&
+                                          inlineCreateType !==
+                                            providerReq.type && (
+                                            <p className="text-xs text-red-400">
+                                              Required
+                                            </p>
+                                          )}
+
+                                        {/* Inline Provider Creation Form */}
+                                        {inlineCreateType ===
+                                          providerReq.type && (
+                                          <div
+                                            className={`mt-3 p-3 rounded border ${currentTheme["border-primary-medium"]} ${currentTheme["bg-primary-dark"]}`}
+                                          >
+                                            <p className="text-xs font-semibold text-gray-400 mb-2">
+                                              CREATE NEW{" "}
+                                              {providerReq.type.toUpperCase()}{" "}
+                                              PROVIDER
+                                            </p>
+
+                                            {inlineCreateError && (
+                                              <div className="mb-3 p-2 rounded bg-red-900/30 border border-red-700">
                                                 <p className="text-xs text-red-400">
-                                                  Required
+                                                  {inlineCreateError}
                                                 </p>
-                                              )}
-
-                                            {/* Inline Provider Creation Form */}
-                                            {inlineCreateType ===
-                                              providerReq.type && (
-                                              <div
-                                                className={`mt-3 p-3 rounded border ${currentTheme["border-primary-medium"]} ${currentTheme["bg-primary-dark"]}`}
-                                              >
-                                                <p className="text-xs font-semibold text-gray-400 mb-2">
-                                                  CREATE NEW{" "}
-                                                  {providerReq.type.toUpperCase()}{" "}
-                                                  PROVIDER
-                                                </p>
-
-                                                {inlineCreateError && (
-                                                  <div className="mb-3 p-2 rounded bg-red-900/30 border border-red-700">
-                                                    <p className="text-xs text-red-400">
-                                                      {inlineCreateError}
-                                                    </p>
-                                                  </div>
-                                                )}
-
-                                                {inlineCatalogEntry ? (
-                                                  /* MCP Provider: Stepper-based creation */
-                                                  <div className="space-y-3">
-                                                    <Stepper
-                                                      activeStep={
-                                                        inlineWizardStep
-                                                      }
-                                                      onStepChange={
-                                                        inlineHandleWizardStepChange
-                                                      }
-                                                      showNavigation={false}
-                                                      className="flex-1 min-h-0 flex flex-col"
-                                                    >
-                                                      {/* Step 1: Configure */}
-                                                      <Stepper.Step
-                                                        label="Configure"
-                                                        description="Name & credentials"
-                                                      >
-                                                        <div className="space-y-4 pb-2">
-                                                          {/* MCP Connection Info */}
-                                                          <div className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-2">
-                                                            <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
-                                                              MCP Server
-                                                              Connection
-                                                            </p>
-                                                            <div className="space-y-1 text-sm">
-                                                              <div className="flex gap-2">
-                                                                <span className="opacity-50 w-20 shrink-0">
-                                                                  Transport:
-                                                                </span>
-                                                                <Tag
-                                                                  text={
-                                                                    inlineCatalogEntry
-                                                                      .mcpConfig
-                                                                      ?.transport ===
-                                                                    "streamable_http"
-                                                                      ? "Streamable HTTP"
-                                                                      : "stdio"
-                                                                  }
-                                                                />
-                                                              </div>
-                                                              {inlineCatalogEntry
-                                                                .mcpConfig
-                                                                ?.transport !==
-                                                                "streamable_http" && (
-                                                                <div className="flex gap-2">
-                                                                  <span className="opacity-50 w-20 shrink-0">
-                                                                    Command:
-                                                                  </span>
-                                                                  <code className="text-xs bg-white/5 px-2 py-0.5 rounded">
-                                                                    {
-                                                                      inlineCatalogEntry
-                                                                        .mcpConfig
-                                                                        ?.command
-                                                                    }{" "}
-                                                                    {(
-                                                                      inlineCatalogEntry
-                                                                        .mcpConfig
-                                                                        ?.args ||
-                                                                      []
-                                                                    ).join(" ")}
-                                                                  </code>
-                                                                </div>
-                                                              )}
-                                                            </div>
-                                                          </div>
-
-                                                          {/* Provider Name */}
-                                                          <div className="flex flex-col gap-1">
-                                                            <FormLabel
-                                                              label="Provider Name"
-                                                              required={true}
-                                                            />
-                                                            <InputText
-                                                              value={
-                                                                inlineProviderName
-                                                              }
-                                                              onChange={(
-                                                                value,
-                                                              ) => {
-                                                                setInlineProviderName(
-                                                                  value,
-                                                                );
-                                                                if (
-                                                                  inlineFormErrors.providerName &&
-                                                                  value?.trim()
-                                                                ) {
-                                                                  setInlineFormErrors(
-                                                                    (prev) => {
-                                                                      const next =
-                                                                        {
-                                                                          ...prev,
-                                                                        };
-                                                                      delete next.providerName;
-                                                                      return next;
-                                                                    },
-                                                                  );
-                                                                }
-                                                              }}
-                                                              placeholder="Enter provider name"
-                                                            />
-                                                            {inlineFormErrors.providerName && (
-                                                              <p className="text-xs text-red-400">
-                                                                {
-                                                                  inlineFormErrors.providerName
-                                                                }
-                                                              </p>
-                                                            )}
-                                                          </div>
-
-                                                          {/* Credential Fields */}
-                                                          {inlineFormFields.length >
-                                                            0 && (
-                                                            <>
-                                                              <div className="border-t border-white/10 pt-3">
-                                                                <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
-                                                                  {inlineCatalogEntry
-                                                                    .mcpConfig
-                                                                    ?.transport ===
-                                                                  "streamable_http"
-                                                                    ? "Server Configuration"
-                                                                    : "Authentication"}
-                                                                </p>
-                                                              </div>
-
-                                                              {inlineFormFields.map(
-                                                                (field) => (
-                                                                  <div
-                                                                    key={
-                                                                      field.key
-                                                                    }
-                                                                    className="flex flex-col gap-1"
-                                                                  >
-                                                                    <FormLabel
-                                                                      label={
-                                                                        field.displayName
-                                                                      }
-                                                                      required={
-                                                                        field.required
-                                                                      }
-                                                                    />
-                                                                    {field.instructions && (
-                                                                      <p className="text-xs opacity-50">
-                                                                        {
-                                                                          field.instructions
-                                                                        }
-                                                                      </p>
-                                                                    )}
-                                                                    <div className="flex gap-2">
-                                                                      <div className="flex-1">
-                                                                        <InputText
-                                                                          type={
-                                                                            field.secret
-                                                                              ? "password"
-                                                                              : "text"
-                                                                          }
-                                                                          value={
-                                                                            inlineCredentialData[
-                                                                              field
-                                                                                .key
-                                                                            ] ||
-                                                                            ""
-                                                                          }
-                                                                          onChange={(
-                                                                            value,
-                                                                          ) =>
-                                                                            inlineHandleCredentialChange(
-                                                                              field.key,
-                                                                              value,
-                                                                            )
-                                                                          }
-                                                                          placeholder={
-                                                                            field.type ===
-                                                                            "file"
-                                                                              ? "Select a file..."
-                                                                              : `Enter ${field.displayName.toLowerCase()}`
-                                                                          }
-                                                                        />
-                                                                      </div>
-                                                                      {field.type ===
-                                                                        "file" && (
-                                                                        <button
-                                                                          onClick={async () => {
-                                                                            const filepath =
-                                                                              await window.mainApi.dialog.chooseFile(
-                                                                                true,
-                                                                                [
-                                                                                  "json",
-                                                                                ],
-                                                                              );
-                                                                            if (
-                                                                              filepath
-                                                                            )
-                                                                              inlineHandleCredentialChange(
-                                                                                field.key,
-                                                                                filepath,
-                                                                              );
-                                                                          }}
-                                                                          className="px-3 py-1.5 text-sm rounded bg-white/10 hover:bg-white/20 transition-colors"
-                                                                        >
-                                                                          Browse
-                                                                        </button>
-                                                                      )}
-                                                                    </div>
-                                                                    {inlineFormErrors[
-                                                                      field.key
-                                                                    ] && (
-                                                                      <p className="text-xs text-red-400">
-                                                                        {
-                                                                          inlineFormErrors[
-                                                                            field
-                                                                              .key
-                                                                          ]
-                                                                        }
-                                                                      </p>
-                                                                    )}
-                                                                  </div>
-                                                                ),
-                                                              )}
-                                                            </>
-                                                          )}
-                                                        </div>
-                                                      </Stepper.Step>
-
-                                                      {/* Step 2: Authorize (conditional) */}
-                                                      {inlineHasAuth && (
-                                                        <Stepper.Step
-                                                          label="Authorize"
-                                                          description="OAuth authentication"
-                                                        >
-                                                          <div className="space-y-4 pb-2">
-                                                            <div className="flex flex-col items-center justify-center py-6 space-y-3">
-                                                              <p className="text-sm opacity-60 text-center max-w-md">
-                                                                This server
-                                                                requires OAuth
-                                                                authorization.
-                                                                Click the button
-                                                                below to open a
-                                                                browser window
-                                                                and complete the
-                                                                authentication
-                                                                flow.
-                                                              </p>
-                                                              <Button
-                                                                title={
-                                                                  inlineIsAuthorizing
-                                                                    ? "Authorizing..."
-                                                                    : "Authorize"
-                                                                }
-                                                                onClick={
-                                                                  inlineHandleAuthorize
-                                                                }
-                                                                size="sm"
-                                                              />
-                                                            </div>
-                                                            {inlineAuthResult && (
-                                                              <div
-                                                                className={`p-3 rounded-lg text-sm ${
-                                                                  inlineAuthResult.success
-                                                                    ? "bg-green-900/30 border border-green-700 text-green-300"
-                                                                    : "bg-red-900/30 border border-red-700 text-red-300"
-                                                                }`}
-                                                              >
-                                                                <div className="flex items-center gap-2">
-                                                                  <FontAwesomeIcon
-                                                                    icon={
-                                                                      inlineAuthResult.success
-                                                                        ? "circle-check"
-                                                                        : "circle-exclamation"
-                                                                    }
-                                                                  />
-                                                                  <span>
-                                                                    {
-                                                                      inlineAuthResult.message
-                                                                    }
-                                                                  </span>
-                                                                </div>
-                                                              </div>
-                                                            )}
-                                                          </div>
-                                                        </Stepper.Step>
-                                                      )}
-
-                                                      {/* Step 3: Test & Tools */}
-                                                      <Stepper.Step
-                                                        label="Test & Tools"
-                                                        description="Verify & select tools"
-                                                      >
-                                                        <div className="space-y-3 pb-2">
-                                                          <div className="flex items-center gap-3">
-                                                            <Button
-                                                              title={
-                                                                inlineIsTesting
-                                                                  ? "Fetching..."
-                                                                  : "Fetch Tools"
-                                                              }
-                                                              onClick={
-                                                                inlineHandleTestConnection
-                                                              }
-                                                              size="sm"
-                                                            />
-                                                            {inlineTestResult && (
-                                                              <span
-                                                                className={`text-sm ${inlineTestResult.success ? "text-green-400" : "text-red-400"}`}
-                                                              >
-                                                                <FontAwesomeIcon
-                                                                  icon={
-                                                                    inlineTestResult.success
-                                                                      ? "circle-check"
-                                                                      : "circle-exclamation"
-                                                                  }
-                                                                  className="mr-1"
-                                                                />
-                                                                {
-                                                                  inlineTestResult.message
-                                                                }
-                                                              </span>
-                                                            )}
-                                                          </div>
-                                                          {inlineTestResult?.success &&
-                                                            inlineTestResult
-                                                              .tools?.length >
-                                                              0 &&
-                                                            inlineSelectedTools && (
-                                                              <ToolSelector
-                                                                tools={
-                                                                  inlineTestResult.tools
-                                                                }
-                                                                selectedTools={
-                                                                  inlineSelectedTools
-                                                                }
-                                                                onSelectionChange={
-                                                                  setInlineSelectedTools
-                                                                }
-                                                              />
-                                                            )}
-                                                          {!inlineTestResult && (
-                                                            <div className="text-center py-6 opacity-50 text-sm">
-                                                              Click &quot;Fetch
-                                                              Tools&quot; to
-                                                              test the
-                                                              connection and
-                                                              discover available
-                                                              tools.
-                                                            </div>
-                                                          )}
-                                                        </div>
-                                                      </Stepper.Step>
-                                                    </Stepper>
-
-                                                    {/* Stepper Footer */}
-                                                    <div className="flex flex-row items-center pt-3 border-t border-white/10">
-                                                      <div className="flex flex-row gap-2">
-                                                        {inlineWizardStep ===
-                                                          0 && (
-                                                          <Button
-                                                            title="Cancel"
-                                                            onClick={
-                                                              handleInlineProviderCancel
-                                                            }
-                                                            size="sm"
-                                                          />
-                                                        )}
-                                                        {inlineWizardStep >
-                                                          0 && (
-                                                          <Button
-                                                            title="Back"
-                                                            onClick={() =>
-                                                              setInlineWizardStep(
-                                                                inlineWizardStep -
-                                                                  1,
-                                                              )
-                                                            }
-                                                            size="sm"
-                                                          />
-                                                        )}
-                                                      </div>
-                                                      <div className="flex-1 text-center">
-                                                        <span className="text-xs opacity-40">
-                                                          Step{" "}
-                                                          {inlineWizardStep + 1}{" "}
-                                                          of {inlineTotalSteps}
-                                                        </span>
-                                                      </div>
-                                                      <div className="flex flex-row gap-2">
-                                                        {inlineCurrentStepType ===
-                                                          "configure" && (
-                                                          <Button
-                                                            title="Next"
-                                                            onClick={() =>
-                                                              inlineHandleWizardStepChange(
-                                                                inlineWizardStep +
-                                                                  1,
-                                                              )
-                                                            }
-                                                            size="sm"
-                                                          />
-                                                        )}
-                                                        {inlineCurrentStepType ===
-                                                          "authorize" && (
-                                                          <Button
-                                                            title="Next"
-                                                            onClick={() =>
-                                                              inlineHandleWizardStepChange(
-                                                                inlineWizardStep +
-                                                                  1,
-                                                              )
-                                                            }
-                                                            disabled={
-                                                              !inlineAuthResult?.success
-                                                            }
-                                                            size="sm"
-                                                          />
-                                                        )}
-                                                        {inlineCurrentStepType ===
-                                                          "testTools" && (
-                                                          <Button
-                                                            title={
-                                                              isCreatingProvider
-                                                                ? "Saving..."
-                                                                : "Save MCP Server"
-                                                            }
-                                                            onClick={
-                                                              inlineHandleSave
-                                                            }
-                                                            size="sm"
-                                                          />
-                                                        )}
-                                                      </div>
-                                                    </div>
-                                                  </div>
-                                                ) : (
-                                                  /* Credential Provider: flat form fallback */
-                                                  <ProviderForm
-                                                    credentialSchema={
-                                                      inlineCreateSchema
-                                                    }
-                                                    onSubmit={
-                                                      handleInlineProviderSubmit
-                                                    }
-                                                    onCancel={
-                                                      handleInlineProviderCancel
-                                                    }
-                                                    submitLabel={
-                                                      isCreatingProvider
-                                                        ? "Creating..."
-                                                        : "Create Provider"
-                                                    }
-                                                    providerType={
-                                                      providerReq.type
-                                                    }
-                                                  />
-                                                )}
                                               </div>
                                             )}
+
+                                            {inlineCatalogEntry ? (
+                                              /* MCP Provider: Stepper-based creation */
+                                              <div className="space-y-3">
+                                                <Stepper
+                                                  activeStep={inlineWizardStep}
+                                                  onStepChange={
+                                                    inlineHandleWizardStepChange
+                                                  }
+                                                  showNavigation={false}
+                                                  className="flex-1 min-h-0 flex flex-col"
+                                                >
+                                                  {/* Step 1: Configure */}
+                                                  <Stepper.Step
+                                                    label="Configure"
+                                                    description="Name & credentials"
+                                                  >
+                                                    <div className="space-y-4 pb-2">
+                                                      {/* MCP Connection Info */}
+                                                      <div className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-2">
+                                                        <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
+                                                          MCP Server Connection
+                                                        </p>
+                                                        <div className="space-y-1 text-sm">
+                                                          <div className="flex gap-2">
+                                                            <span className="opacity-50 w-20 shrink-0">
+                                                              Transport:
+                                                            </span>
+                                                            <Tag
+                                                              text={
+                                                                inlineCatalogEntry
+                                                                  .mcpConfig
+                                                                  ?.transport ===
+                                                                "streamable_http"
+                                                                  ? "Streamable HTTP"
+                                                                  : "stdio"
+                                                              }
+                                                            />
+                                                          </div>
+                                                          {inlineCatalogEntry
+                                                            .mcpConfig
+                                                            ?.transport !==
+                                                            "streamable_http" && (
+                                                            <div className="flex gap-2">
+                                                              <span className="opacity-50 w-20 shrink-0">
+                                                                Command:
+                                                              </span>
+                                                              <code className="text-xs bg-white/5 px-2 py-0.5 rounded">
+                                                                {
+                                                                  inlineCatalogEntry
+                                                                    .mcpConfig
+                                                                    ?.command
+                                                                }{" "}
+                                                                {(
+                                                                  inlineCatalogEntry
+                                                                    .mcpConfig
+                                                                    ?.args || []
+                                                                ).join(" ")}
+                                                              </code>
+                                                            </div>
+                                                          )}
+                                                        </div>
+                                                      </div>
+
+                                                      {/* Provider Name */}
+                                                      <div className="flex flex-col gap-1">
+                                                        <FormLabel
+                                                          label="Provider Name"
+                                                          required={true}
+                                                        />
+                                                        <InputText
+                                                          value={
+                                                            inlineProviderName
+                                                          }
+                                                          onChange={(value) => {
+                                                            setInlineProviderName(
+                                                              value,
+                                                            );
+                                                            if (
+                                                              inlineFormErrors.providerName &&
+                                                              value?.trim()
+                                                            ) {
+                                                              setInlineFormErrors(
+                                                                (prev) => {
+                                                                  const next = {
+                                                                    ...prev,
+                                                                  };
+                                                                  delete next.providerName;
+                                                                  return next;
+                                                                },
+                                                              );
+                                                            }
+                                                          }}
+                                                          placeholder="Enter provider name"
+                                                        />
+                                                        {inlineFormErrors.providerName && (
+                                                          <p className="text-xs text-red-400">
+                                                            {
+                                                              inlineFormErrors.providerName
+                                                            }
+                                                          </p>
+                                                        )}
+                                                      </div>
+
+                                                      {/* Credential Fields */}
+                                                      {inlineFormFields.length >
+                                                        0 && (
+                                                        <>
+                                                          <div className="border-t border-white/10 pt-3">
+                                                            <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
+                                                              {inlineCatalogEntry
+                                                                .mcpConfig
+                                                                ?.transport ===
+                                                              "streamable_http"
+                                                                ? "Server Configuration"
+                                                                : "Authentication"}
+                                                            </p>
+                                                          </div>
+
+                                                          {inlineFormFields.map(
+                                                            (field) => (
+                                                              <div
+                                                                key={field.key}
+                                                                className="flex flex-col gap-1"
+                                                              >
+                                                                <FormLabel
+                                                                  label={
+                                                                    field.displayName
+                                                                  }
+                                                                  required={
+                                                                    field.required
+                                                                  }
+                                                                />
+                                                                {field.instructions && (
+                                                                  <p className="text-xs opacity-50">
+                                                                    {
+                                                                      field.instructions
+                                                                    }
+                                                                  </p>
+                                                                )}
+                                                                <div className="flex gap-2">
+                                                                  <div className="flex-1">
+                                                                    <InputText
+                                                                      type={
+                                                                        field.secret
+                                                                          ? "password"
+                                                                          : "text"
+                                                                      }
+                                                                      value={
+                                                                        inlineCredentialData[
+                                                                          field
+                                                                            .key
+                                                                        ] || ""
+                                                                      }
+                                                                      onChange={(
+                                                                        value,
+                                                                      ) =>
+                                                                        inlineHandleCredentialChange(
+                                                                          field.key,
+                                                                          value,
+                                                                        )
+                                                                      }
+                                                                      placeholder={
+                                                                        field.type ===
+                                                                        "file"
+                                                                          ? "Select a file..."
+                                                                          : `Enter ${field.displayName.toLowerCase()}`
+                                                                      }
+                                                                    />
+                                                                  </div>
+                                                                  {field.type ===
+                                                                    "file" && (
+                                                                    <button
+                                                                      onClick={async () => {
+                                                                        const filepath =
+                                                                          await window.mainApi.dialog.chooseFile(
+                                                                            true,
+                                                                            [
+                                                                              "json",
+                                                                            ],
+                                                                          );
+                                                                        if (
+                                                                          filepath
+                                                                        )
+                                                                          inlineHandleCredentialChange(
+                                                                            field.key,
+                                                                            filepath,
+                                                                          );
+                                                                      }}
+                                                                      className="px-3 py-1.5 text-sm rounded bg-white/10 hover:bg-white/20 transition-colors"
+                                                                    >
+                                                                      Browse
+                                                                    </button>
+                                                                  )}
+                                                                </div>
+                                                                {inlineFormErrors[
+                                                                  field.key
+                                                                ] && (
+                                                                  <p className="text-xs text-red-400">
+                                                                    {
+                                                                      inlineFormErrors[
+                                                                        field
+                                                                          .key
+                                                                      ]
+                                                                    }
+                                                                  </p>
+                                                                )}
+                                                              </div>
+                                                            ),
+                                                          )}
+                                                        </>
+                                                      )}
+                                                    </div>
+                                                  </Stepper.Step>
+
+                                                  {/* Step 2: Authorize (conditional) */}
+                                                  {inlineHasAuth && (
+                                                    <Stepper.Step
+                                                      label="Authorize"
+                                                      description="OAuth authentication"
+                                                    >
+                                                      <div className="space-y-4 pb-2">
+                                                        <div className="flex flex-col items-center justify-center py-6 space-y-3">
+                                                          <p className="text-sm opacity-60 text-center max-w-md">
+                                                            This server requires
+                                                            OAuth authorization.
+                                                            Click the button
+                                                            below to open a
+                                                            browser window and
+                                                            complete the
+                                                            authentication flow.
+                                                          </p>
+                                                          <Button
+                                                            title={
+                                                              inlineIsAuthorizing
+                                                                ? "Authorizing..."
+                                                                : "Authorize"
+                                                            }
+                                                            onClick={
+                                                              inlineHandleAuthorize
+                                                            }
+                                                            size="sm"
+                                                          />
+                                                        </div>
+                                                        {inlineAuthResult && (
+                                                          <div
+                                                            className={`p-3 rounded-lg text-sm ${
+                                                              inlineAuthResult.success
+                                                                ? "bg-green-900/30 border border-green-700 text-green-300"
+                                                                : "bg-red-900/30 border border-red-700 text-red-300"
+                                                            }`}
+                                                          >
+                                                            <div className="flex items-center gap-2">
+                                                              <FontAwesomeIcon
+                                                                icon={
+                                                                  inlineAuthResult.success
+                                                                    ? "circle-check"
+                                                                    : "circle-exclamation"
+                                                                }
+                                                              />
+                                                              <span>
+                                                                {
+                                                                  inlineAuthResult.message
+                                                                }
+                                                              </span>
+                                                            </div>
+                                                          </div>
+                                                        )}
+                                                      </div>
+                                                    </Stepper.Step>
+                                                  )}
+
+                                                  {/* Step 3: Test & Tools */}
+                                                  <Stepper.Step
+                                                    label="Test & Tools"
+                                                    description="Verify & select tools"
+                                                  >
+                                                    <div className="space-y-3 pb-2">
+                                                      <div className="flex items-center gap-3">
+                                                        <Button
+                                                          title={
+                                                            inlineIsTesting
+                                                              ? "Fetching..."
+                                                              : "Fetch Tools"
+                                                          }
+                                                          onClick={
+                                                            inlineHandleTestConnection
+                                                          }
+                                                          size="sm"
+                                                        />
+                                                        {inlineTestResult && (
+                                                          <span
+                                                            className={`text-sm ${inlineTestResult.success ? "text-green-400" : "text-red-400"}`}
+                                                          >
+                                                            <FontAwesomeIcon
+                                                              icon={
+                                                                inlineTestResult.success
+                                                                  ? "circle-check"
+                                                                  : "circle-exclamation"
+                                                              }
+                                                              className="mr-1"
+                                                            />
+                                                            {
+                                                              inlineTestResult.message
+                                                            }
+                                                          </span>
+                                                        )}
+                                                      </div>
+                                                      {inlineTestResult?.success &&
+                                                        inlineTestResult.tools
+                                                          ?.length > 0 &&
+                                                        inlineSelectedTools && (
+                                                          <ToolSelector
+                                                            tools={
+                                                              inlineTestResult.tools
+                                                            }
+                                                            selectedTools={
+                                                              inlineSelectedTools
+                                                            }
+                                                            onSelectionChange={
+                                                              setInlineSelectedTools
+                                                            }
+                                                          />
+                                                        )}
+                                                      {!inlineTestResult && (
+                                                        <div className="text-center py-6 opacity-50 text-sm">
+                                                          Click &quot;Fetch
+                                                          Tools&quot; to test
+                                                          the connection and
+                                                          discover available
+                                                          tools.
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  </Stepper.Step>
+                                                </Stepper>
+
+                                                {/* Stepper Footer */}
+                                                <div className="flex flex-row items-center pt-3 border-t border-white/10">
+                                                  <div className="flex flex-row gap-2">
+                                                    {inlineWizardStep === 0 && (
+                                                      <Button
+                                                        title="Cancel"
+                                                        onClick={
+                                                          handleInlineProviderCancel
+                                                        }
+                                                        size="sm"
+                                                      />
+                                                    )}
+                                                    {inlineWizardStep > 0 && (
+                                                      <Button
+                                                        title="Back"
+                                                        onClick={() =>
+                                                          setInlineWizardStep(
+                                                            inlineWizardStep -
+                                                              1,
+                                                          )
+                                                        }
+                                                        size="sm"
+                                                      />
+                                                    )}
+                                                  </div>
+                                                  <div className="flex-1 text-center">
+                                                    <span className="text-xs opacity-40">
+                                                      Step{" "}
+                                                      {inlineWizardStep + 1} of{" "}
+                                                      {inlineTotalSteps}
+                                                    </span>
+                                                  </div>
+                                                  <div className="flex flex-row gap-2">
+                                                    {inlineCurrentStepType ===
+                                                      "configure" && (
+                                                      <Button
+                                                        title="Next"
+                                                        onClick={() =>
+                                                          inlineHandleWizardStepChange(
+                                                            inlineWizardStep +
+                                                              1,
+                                                          )
+                                                        }
+                                                        size="sm"
+                                                      />
+                                                    )}
+                                                    {inlineCurrentStepType ===
+                                                      "authorize" && (
+                                                      <Button
+                                                        title="Next"
+                                                        onClick={() =>
+                                                          inlineHandleWizardStepChange(
+                                                            inlineWizardStep +
+                                                              1,
+                                                          )
+                                                        }
+                                                        disabled={
+                                                          !inlineAuthResult?.success
+                                                        }
+                                                        size="sm"
+                                                      />
+                                                    )}
+                                                    {inlineCurrentStepType ===
+                                                      "testTools" && (
+                                                      <Button
+                                                        title={
+                                                          isCreatingProvider
+                                                            ? "Saving..."
+                                                            : "Save MCP Server"
+                                                        }
+                                                        onClick={
+                                                          inlineHandleSave
+                                                        }
+                                                        size="sm"
+                                                      />
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              /* Credential Provider: flat form fallback */
+                                              <ProviderForm
+                                                credentialSchema={
+                                                  inlineCreateSchema
+                                                }
+                                                onSubmit={
+                                                  handleInlineProviderSubmit
+                                                }
+                                                onCancel={
+                                                  handleInlineProviderCancel
+                                                }
+                                                submitLabel={
+                                                  isCreatingProvider
+                                                    ? "Creating..."
+                                                    : "Create Provider"
+                                                }
+                                                providerType={providerReq.type}
+                                              />
+                                            )}
                                           </div>
-                                        );
-                                      },
-                                    )}
-                                  </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                              )}
+                              </div>
+                            )}
 
                             {/* Configuration Options - PHASE 2: Interactive Inputs */}
                             {selectedWidget.userConfig &&

@@ -67,7 +67,9 @@ export const WidgetsSection = ({
     () =>
       [
         ...new Set(
-          widgets.flatMap((w) => getUserConfigurableProviders(w.providers || []).map((p) => p.type)),
+          widgets.flatMap((w) =>
+            getUserConfigurableProviders(w.providers || []).map((p) => p.type),
+          ),
         ),
       ].sort(),
     [widgets],
@@ -94,10 +96,13 @@ export const WidgetsSection = ({
       // Provider filter
       if (filterProvider !== "all") {
         if (filterProvider === "none") {
-          if (getUserConfigurableProviders(w.providers).length > 0) return false;
+          if (getUserConfigurableProviders(w.providers).length > 0)
+            return false;
         } else {
           if (
-            !getUserConfigurableProviders(w.providers).some((p) => p.type === filterProvider)
+            !getUserConfigurableProviders(w.providers).some(
+              (p) => p.type === filterProvider,
+            )
           )
             return false;
         }
