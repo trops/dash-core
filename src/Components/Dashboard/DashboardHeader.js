@@ -82,11 +82,15 @@ export const DashboardHeader = ({
             {onFolderChange && menuItems.length > 0 && (
               <SelectInput
                 value={workspaceSelected.menuId ?? ""}
-                options={menuItems.map((m) => ({
-                  label: m.name,
-                  value: m.id,
-                  icon: m.icon || m.folder || "folder",
-                }))}
+                options={menuItems
+                  .map((m) => ({
+                    label: m.name,
+                    value: m.id,
+                    icon: m.icon || m.folder || "folder",
+                  }))
+                  .sort((a, b) =>
+                    (a.label || "").localeCompare(b.label || "")
+                  )}
                 onChange={onFolderChange}
                 placeholder="Folder"
                 backgroundColor={currentTheme["bg-primary-very-dark"]}

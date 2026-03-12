@@ -118,7 +118,7 @@ export const FoldersSection = ({
 
   const listContent = (
     <Sidebar.Content>
-      {menuItems.map((item) => {
+      {[...menuItems].sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((item) => {
         const isSelected = selectedId === item.id && !isCreating;
         const count = getDashboardCount(item.id);
         return (
