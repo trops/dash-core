@@ -15,6 +15,10 @@ const THEME_DELETE = "theme-delete";
 const THEME_DELETE_COMPLETE = "theme-delete-complete";
 const THEME_DELETE_ERROR = "theme-delete-error";
 
+const THEME_PUBLISH = "theme-publish";
+const THEME_INSTALL_FROM_REGISTRY = "theme-install-from-registry";
+const THEME_PUBLISH_PREVIEW = "theme-publish-preview";
+
 module.exports = {
   THEME_LIST,
   THEME_LIST_COMPLETE,
@@ -25,4 +29,7 @@ module.exports = {
   THEME_DELETE,
   THEME_DELETE_COMPLETE,
   THEME_DELETE_ERROR,
+  THEME_PUBLISH,
+  THEME_INSTALL_FROM_REGISTRY,
+  THEME_PUBLISH_PREVIEW,
 };

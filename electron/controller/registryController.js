@@ -312,10 +312,23 @@ async function searchDashboards(query = "", filters = {}) {
   return searchRegistry(query, { ...filters, type: "dashboard" });
 }
 
+/**
+ * Search the registry for theme packages only.
+ * Convenience wrapper around searchRegistry with type: "theme".
+ *
+ * @param {string} query - Search query string
+ * @param {Object} filters - Optional filters (category, author, tag)
+ * @returns {Promise<Object>} { packages: [...], totalWidgets: number }
+ */
+async function searchThemes(query = "", filters = {}) {
+  return searchRegistry(query, { ...filters, type: "theme" });
+}
+
 module.exports = {
   fetchRegistryIndex,
   searchRegistry,
   searchDashboards,
+  searchThemes,
   getPackage,
   checkUpdates,
 };

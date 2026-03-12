@@ -25,6 +25,7 @@ const dashboardConfigController = require("./controller/dashboardConfigControlle
 const registryAuthController = require("./controller/registryAuthController");
 const registryApiController = require("./controller/registryApiController");
 const notificationController = require("./controller/notificationController");
+const themeRegistryController = require("./controller/themeRegistryController");
 
 // --- Utils ---
 const clientCache = require("./utils/clientCache");
@@ -93,6 +94,7 @@ module.exports = {
   registryAuthController,
   registryApiController,
   notificationController,
+  themeRegistryController,
 
   // Controller functions (flat) — spread for convenient destructuring
   ...controllers,

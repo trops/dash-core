@@ -107,6 +107,69 @@
           "displayName": "Legacy"
         }
       ]
+    },
+    {
+      "name": "ocean-depth",
+      "displayName": "Ocean Depth",
+      "author": "Test Author",
+      "description": "A deep blue theme inspired by the ocean",
+      "version": "1.0.0",
+      "type": "theme",
+      "category": "general",
+      "tags": [
+        "dark",
+        "cool"
+      ],
+      "icon": "palette",
+      "colors": {
+        "primary": "#0d47a1",
+        "secondary": "#1565c0",
+        "tertiary": "#42a5f5",
+        "neutral": "#263238"
+      },
+      "downloadUrl": "https://example.com/ocean-depth.zip"
+    },
+    {
+      "name": "sunset-glow",
+      "displayName": "Sunset Glow",
+      "author": "Another Author",
+      "description": "Warm sunset-inspired color palette",
+      "version": "1.0.0",
+      "type": "theme",
+      "category": "general",
+      "tags": [
+        "warm",
+        "vibrant"
+      ],
+      "icon": "palette",
+      "colors": {
+        "primary": "#e65100",
+        "secondary": "#ff6d00",
+        "tertiary": "#ffab40",
+        "neutral": "#3e2723"
+      },
+      "downloadUrl": "https://example.com/sunset-glow.zip"
+    },
+    {
+      "name": "forest-canopy",
+      "displayName": "Forest Canopy",
+      "author": "Test Author",
+      "description": "Natural green theme with earthy tones",
+      "version": "1.0.0",
+      "type": "theme",
+      "category": "general",
+      "tags": [
+        "dark",
+        "minimal"
+      ],
+      "icon": "palette",
+      "colors": {
+        "primary": "#1b5e20",
+        "secondary": "#2e7d32",
+        "tertiary": "#66bb6a",
+        "neutral": "#33302e"
+      },
+      "downloadUrl": "https://example.com/forest-canopy.zip"
     }
   ]
 }
