@@ -17,7 +17,7 @@ import { RegistryDashboardDetail } from "./RegistryDashboardDetail";
  * Mirrors DiscoverWidgetsDetail structure: back button, search, scrollable
  * package list, and inline detail when a package is selected.
  */
-export const DiscoverDashboardsDetail = ({ onBack, appId }) => {
+export const DiscoverDashboardsDetail = ({ onBack, appId, onInstallComplete }) => {
   const { currentTheme } = useContext(ThemeContext);
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,
@@ -83,6 +83,7 @@ export const DiscoverDashboardsDetail = ({ onBack, appId }) => {
         <RegistryDashboardDetail
           dashboardPackage={selectedPackage}
           appId={appId}
+          onInstallComplete={onInstallComplete}
         />
       </div>
     );

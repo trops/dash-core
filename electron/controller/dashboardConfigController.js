@@ -163,24 +163,15 @@ async function exportDashboardConfig(
 }
 
 /**
- * Import a dashboard from a ZIP file containing a .dashboard.json config.
- *
- * Steps:
- * 1. Show native file picker for .zip selection
- * 2. Extract and validate .dashboard.json
- * 3. Auto-install missing widgets from registry
- * 4. Create workspace in workspaces.json
- * 5. Apply event wiring to layout
- * 6. Mark imported dashboard shareable: false
+ * Select and preview a dashboard ZIP file without importing it.
+ * Opens the file picker, extracts and validates the .dashboard.json,
+ * and returns a preview of the config + the file path for later import.
  *
  * @param {BrowserWindow} win - The main window (for dialog)
- * @param {string} appId - Application identifier
- * @param {Object} widgetRegistry - WidgetRegistry instance (needs getWidgets(), downloadWidget())
- * @returns {Promise<Object>} Result with success, workspace, and import summary
+ * @returns {Promise<Object>} Result with success, filePath, and dashboardConfig preview
  */
-async function importDashboardConfig(win, appId, widgetRegistry = null) {
+async function selectDashboardFile(win) {
   try {
-    // 1. Show file picker
     const { canceled, filePaths } = await dialog.showOpenDialog(win, {
       title: "Import Dashboard Configuration",
       filters: [{ name: "ZIP Archive", extensions: ["zip"] }],
@@ -192,6 +183,114 @@ async function importDashboardConfig(win, appId, widgetRegistry = null) {
     }
 
     const zipPath = filePaths[0];
+
+    // Extract and validate
+    const zip = new AdmZip(zipPath);
+    const tempDir = path.join(app.getPath("temp"), "dash-import");
+    const { validateZipEntries } = require("../widgetRegistry");
+    validateZipEntries(zip, tempDir);
+
+    const entries = zip.getEntries();
+    const configEntry = entries.find((e) =>
+      e.entryName.endsWith(".dashboard.json"),
+    );
+
+    if (!configEntry) {
+      return {
+        success: false,
+        error: "No .dashboard.json file found in ZIP archive",
+      };
+    }
+
+    const configJson = configEntry.getData().toString("utf-8");
+    let dashboardConfig;
+    try {
+      dashboardConfig = JSON.parse(configJson);
+    } catch (parseError) {
+      return {
+        success: false,
+        error: `Invalid JSON: ${parseError.message}`,
+      };
+    }
+
+    const validation = validateDashboardConfig(dashboardConfig);
+    if (!validation.valid) {
+      return {
+        success: false,
+        error: `Invalid config: ${validation.errors.join(", ")}`,
+      };
+    }
+
+    dashboardConfig = applyDefaults(dashboardConfig);
+
+    return {
+      success: true,
+      filePath: zipPath,
+      dashboardConfig: {
+        name: dashboardConfig.name,
+        description: dashboardConfig.description,
+        author: dashboardConfig.author,
+        workspace: dashboardConfig.workspace,
+        widgets: dashboardConfig.widgets || [],
+        providers: dashboardConfig.providers || [],
+      },
+    };
+  } catch (error) {
+    console.error(
+      "[DashboardConfigController] Error selecting dashboard file:",
+      error,
+    );
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Import a dashboard from a ZIP file containing a .dashboard.json config.
+ *
+ * Steps:
+ * 1. Show native file picker for .zip selection (or use options.filePath)
+ * 2. Extract and validate .dashboard.json
+ * 3. Auto-install missing widgets from registry
+ * 4. Create workspace in workspaces.json
+ * 5. Apply event wiring to layout
+ * 6. Mark imported dashboard shareable: false
+ *
+ * @param {BrowserWindow} win - The main window (for dialog)
+ * @param {string} appId - Application identifier
+ * @param {Object} widgetRegistry - WidgetRegistry instance (needs getWidgets(), downloadWidget())
+ * @param {Object} options - Import options
+ * @param {string} options.filePath - Skip file picker, use this path directly
+ * @param {string} options.name - Override workspace name
+ * @param {number} options.menuId - Override workspace menuId (folder)
+ * @param {string} options.themeKey - Override workspace themeKey
+ * @returns {Promise<Object>} Result with success, workspace, and import summary
+ */
+async function importDashboardConfig(
+  win,
+  appId,
+  widgetRegistry = null,
+  options = {},
+) {
+  try {
+    let zipPath;
+
+    if (options.filePath) {
+      // Use the provided file path (from selectDashboardFile)
+      zipPath = options.filePath;
+    } else {
+      // Show file picker
+      const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+        title: "Import Dashboard Configuration",
+        filters: [{ name: "ZIP Archive", extensions: ["zip"] }],
+        properties: ["openFile"],
+      });
+
+      if (canceled || !filePaths || !filePaths.length) {
+        return { success: false, canceled: true };
+      }
+
+      zipPath = filePaths[0];
+    }
 
     // 2. Extract and validate .dashboard.json from ZIP
     const zip = new AdmZip(zipPath);
@@ -237,12 +336,17 @@ async function importDashboardConfig(win, appId, widgetRegistry = null) {
     // Apply defaults to fill in optional fields
     dashboardConfig = applyDefaults(dashboardConfig);
 
-    // Delegate to shared import pipeline
+    // Delegate to shared import pipeline with overrides
     return await processDashboardConfig(
       win,
       appId,
       dashboardConfig,
       widgetRegistry,
+      {
+        name: options.name,
+        menuId: options.menuId,
+        themeKey: options.themeKey,
+      },
     );
   } catch (error) {
     console.error(
@@ -338,6 +442,11 @@ async function processDashboardConfig(
 
   // Generate a unique ID for the imported workspace
   workspace.id = Date.now();
+
+  // Apply name/menuId/themeKey overrides if provided
+  if (options.name) workspace.name = options.name;
+  if (options.menuId !== undefined) workspace.menuId = options.menuId;
+  if (options.themeKey !== undefined) workspace.themeKey = options.themeKey;
 
   // 3. Apply event wiring to layout
   const eventWiringSummary = [];
@@ -967,6 +1076,7 @@ function getDashboardPublishPreview(appId, workspaceId, widgetRegistry = null) {
 
 module.exports = {
   exportDashboardConfig,
+  selectDashboardFile,
   importDashboardConfig,
   installDashboardFromRegistry,
   checkCompatibility,

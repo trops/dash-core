@@ -985,6 +985,7 @@ const DashboardStageInner = ({
               onSaveMenuItem={handleSaveNewMenuItem}
               appId={credentials?.appId}
               onReloadWorkspaces={loadWorkspaces}
+              onOpenWorkspace={handleOpenTab}
             />
           </>
         )}
