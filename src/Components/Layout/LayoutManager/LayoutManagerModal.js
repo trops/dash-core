@@ -106,12 +106,12 @@ export const LayoutManagerModal = ({
   }
 
   async function handleImportFromFile() {
-    handleClose();
     try {
       const result =
         await window.mainApi.dashboardConfig.importDashboardConfig(appId);
       if (result && !result.canceled && result.success) {
         onReloadWorkspaces && onReloadWorkspaces();
+        handleClose();
       }
     } catch (err) {
       console.error("[LayoutManagerModal] Import error:", err);
@@ -518,9 +518,24 @@ export const LayoutManagerModal = ({
       );
     }
 
-    // Registry screen: no footer (DiscoverDashboardsDetail has its own back button)
+    // Registry screen: Cancel button only (DiscoverDashboardsDetail has its own inline back button)
     if (creationMethod === "registry") {
-      return null;
+      return (
+        <Modal.Footer>
+          <div className="flex flex-row space-x-2">
+            <Button
+              onClick={handleClose}
+              title="Cancel"
+              textSize="text-base xl:text-lg"
+              padding="py-2 px-4"
+              backgroundColor="bg-gray-700"
+              textColor="text-gray-300"
+              hoverTextColor="hover:text-gray-100"
+              hoverBackgroundColor="hover:bg-gray-600"
+            />
+          </div>
+        </Modal.Footer>
+      );
     }
 
     // Template wizard footer
