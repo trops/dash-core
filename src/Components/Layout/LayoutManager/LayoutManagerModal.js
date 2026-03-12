@@ -112,8 +112,7 @@ export const LayoutManagerModal = ({
 
   async function handleImportFromFile() {
     try {
-      const result =
-        await window.mainApi.dashboardConfig.selectDashboardFile();
+      const result = await window.mainApi.dashboardConfig.selectDashboardFile();
       if (result && !result.canceled && result.success) {
         setSelectedFile(result);
         setDashboardName(
@@ -140,8 +139,7 @@ export const LayoutManagerModal = ({
     setImportedWorkspace(result.workspace);
     setDashboardName(result.workspace?.name || "");
     setSelectedMenuId(
-      result.workspace?.menuId ||
-        (menuItems.length > 0 ? menuItems[0].id : 1),
+      result.workspace?.menuId || (menuItems.length > 0 ? menuItems[0].id : 1),
     );
     setSelectedThemeKey(result.workspace?.themeKey || null);
     setActiveStep(0);
@@ -248,11 +246,7 @@ export const LayoutManagerModal = ({
     return (
       <div className="flex flex-row w-full h-full">
         <div className="flex flex-col w-1/3 p-6 py-10 space-y-4 justify-start">
-          <Heading
-            title="Organize"
-            padding={false}
-            textColor="text-gray-300"
-          />
+          <Heading title="Organize" padding={false} textColor="text-gray-300" />
           <p className="text-base font-normal text-gray-400">
             Assign this dashboard to a folder for easy organization in the
             sidebar.
@@ -260,9 +254,7 @@ export const LayoutManagerModal = ({
           {selectedFolder && (
             <div className="flex flex-row items-center space-x-2 mt-4 pt-4 border-t border-gray-700">
               <FontAwesomeIcon
-                icon={
-                  selectedFolder.icon || selectedFolder.folder || "folder"
-                }
+                icon={selectedFolder.icon || selectedFolder.folder || "folder"}
                 className="text-blue-400"
               />
               <span className="text-sm font-medium text-gray-300">
@@ -324,8 +316,7 @@ export const LayoutManagerModal = ({
             <div className="border-t border-gray-700 my-2" />
           )}
           {localMenuItems.map((item) => {
-            const isSelected =
-              !isCreatingFolder && item.id === selectedMenuId;
+            const isSelected = !isCreatingFolder && item.id === selectedMenuId;
             return (
               <div
                 key={item.id}
@@ -376,38 +367,33 @@ export const LayoutManagerModal = ({
           <p className="text-base font-normal text-gray-400">
             Choose a theme for this dashboard, or use the application default.
           </p>
-          {selectedThemeKey !== null &&
-            themes &&
-            themes[selectedThemeKey] && (
-              <>
-                <div className="flex flex-row items-center space-x-2 mt-4 pt-4 border-t border-gray-700">
-                  <FontAwesomeIcon
-                    icon="palette"
-                    className="text-blue-400"
+          {selectedThemeKey !== null && themes && themes[selectedThemeKey] && (
+            <>
+              <div className="flex flex-row items-center space-x-2 mt-4 pt-4 border-t border-gray-700">
+                <FontAwesomeIcon icon="palette" className="text-blue-400" />
+                <span className="text-sm font-medium text-gray-300">
+                  {themes[selectedThemeKey].name || selectedThemeKey}
+                </span>
+              </div>
+              <div className="flex flex-row space-x-2 mt-3">
+                {themes[selectedThemeKey].primary && (
+                  <div
+                    className={`w-8 h-8 rounded bg-${themes[selectedThemeKey].primary}-500`}
                   />
-                  <span className="text-sm font-medium text-gray-300">
-                    {themes[selectedThemeKey].name || selectedThemeKey}
-                  </span>
-                </div>
-                <div className="flex flex-row space-x-2 mt-3">
-                  {themes[selectedThemeKey].primary && (
-                    <div
-                      className={`w-8 h-8 rounded bg-${themes[selectedThemeKey].primary}-500`}
-                    />
-                  )}
-                  {themes[selectedThemeKey].secondary && (
-                    <div
-                      className={`w-8 h-8 rounded bg-${themes[selectedThemeKey].secondary}-500`}
-                    />
-                  )}
-                  {themes[selectedThemeKey].tertiary && (
-                    <div
-                      className={`w-8 h-8 rounded bg-${themes[selectedThemeKey].tertiary}-500`}
-                    />
-                  )}
-                </div>
-              </>
-            )}
+                )}
+                {themes[selectedThemeKey].secondary && (
+                  <div
+                    className={`w-8 h-8 rounded bg-${themes[selectedThemeKey].secondary}-500`}
+                  />
+                )}
+                {themes[selectedThemeKey].tertiary && (
+                  <div
+                    className={`w-8 h-8 rounded bg-${themes[selectedThemeKey].tertiary}-500`}
+                  />
+                )}
+              </div>
+            </>
+          )}
           {selectedThemeKey === null && (
             <div className="flex flex-row items-center space-x-2 mt-4 pt-4 border-t border-gray-700">
               <FontAwesomeIcon icon="palette" className="text-blue-400" />
@@ -429,16 +415,12 @@ export const LayoutManagerModal = ({
             <FontAwesomeIcon
               icon="palette"
               className={`w-5 h-5 mr-3 ${
-                selectedThemeKey === null
-                  ? "text-blue-400"
-                  : "text-gray-400"
+                selectedThemeKey === null ? "text-blue-400" : "text-gray-400"
               }`}
             />
             <span
               className={`text-sm font-medium ${
-                selectedThemeKey === null
-                  ? "text-blue-300"
-                  : "text-gray-300"
+                selectedThemeKey === null ? "text-blue-300" : "text-gray-300"
               }`}
             >
               App Default
@@ -481,25 +463,19 @@ export const LayoutManagerModal = ({
                   <FontAwesomeIcon
                     icon="palette"
                     className={`w-5 h-5 mr-3 ${
-                      isThemeSelected
-                        ? "text-blue-400"
-                        : "text-gray-400"
+                      isThemeSelected ? "text-blue-400" : "text-gray-400"
                     }`}
                   />
                   <span
                     className={`text-sm font-medium ${
-                      isThemeSelected
-                        ? "text-blue-300"
-                        : "text-gray-300"
+                      isThemeSelected ? "text-blue-300" : "text-gray-300"
                     }`}
                   >
                     {t.name || key}
                   </span>
                   <div className="flex flex-row space-x-1 ml-auto">
                     {t.primary && (
-                      <div
-                        className={`w-4 h-4 rounded bg-${t.primary}-500`}
-                      />
+                      <div className={`w-4 h-4 rounded bg-${t.primary}-500`} />
                     )}
                     {t.secondary && (
                       <div
@@ -507,9 +483,7 @@ export const LayoutManagerModal = ({
                       />
                     )}
                     {t.tertiary && (
-                      <div
-                        className={`w-4 h-4 rounded bg-${t.tertiary}-500`}
-                      />
+                      <div className={`w-4 h-4 rounded bg-${t.tertiary}-500`} />
                     )}
                   </div>
                 </div>
@@ -529,17 +503,14 @@ export const LayoutManagerModal = ({
         <div className="flex flex-col w-1/3 p-6 py-10 space-y-4 justify-start">
           <Heading title="File" padding={false} textColor="text-gray-300" />
           <p className="text-base font-normal text-gray-400">
-            Select a dashboard ZIP file downloaded from the registry or shared by
-            a developer you trust. The filename should begin with{" "}
+            Select a dashboard ZIP file downloaded from the registry or shared
+            by a developer you trust. The filename should begin with{" "}
             <code className="text-gray-300">dashboard</code> and end with{" "}
             <code className="text-gray-300">.zip</code>.
           </p>
           {fileName && (
             <div className="flex flex-row items-center space-x-2 mt-4 pt-4 border-t border-gray-700">
-              <FontAwesomeIcon
-                icon="file-zipper"
-                className="text-blue-400"
-              />
+              <FontAwesomeIcon icon="file-zipper" className="text-blue-400" />
               <span className="text-sm font-medium text-gray-300">
                 {fileName}
               </span>
@@ -623,10 +594,7 @@ export const LayoutManagerModal = ({
               <Stepper.Step label="Organize" description="Choose a folder">
                 {renderFolderStep()}
               </Stepper.Step>
-              <Stepper.Step
-                label="Choose Theme"
-                description="Dashboard theme"
-              >
+              <Stepper.Step label="Choose Theme" description="Dashboard theme">
                 {renderThemeStep()}
               </Stepper.Step>
             </Stepper>
@@ -652,10 +620,7 @@ export const LayoutManagerModal = ({
               <Stepper.Step label="Organize" description="Choose a folder">
                 {renderFolderStep()}
               </Stepper.Step>
-              <Stepper.Step
-                label="Choose Theme"
-                description="Dashboard theme"
-              >
+              <Stepper.Step label="Choose Theme" description="Dashboard theme">
                 {renderThemeStep()}
               </Stepper.Step>
             </Stepper>

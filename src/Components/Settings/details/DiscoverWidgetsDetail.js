@@ -169,9 +169,7 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
         {packages.map((pkg) => {
           const widgetCount = (pkg.widgets || []).length;
           // Check if this package has incompatible API dependencies
-          const pkgWidget = flatWidgets.find(
-            (w) => w.packageName === pkg.name,
-          );
+          const pkgWidget = flatWidgets.find((w) => w.packageName === pkg.name);
           const hasIncompatible =
             pkgWidget?.missingApis && pkgWidget.missingApis.length > 0;
           return (

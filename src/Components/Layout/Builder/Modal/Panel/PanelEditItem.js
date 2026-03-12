@@ -258,7 +258,6 @@ export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
             })}
           </div>
         )}
-
       </div>
     )
   );

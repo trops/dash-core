@@ -227,9 +227,7 @@ async function searchRegistry(query = "", filters = {}) {
   // Apply API capability filter — only return packages whose required
   // "api" providers are all present in the app's capability set
   if (filters.appCapabilities && filters.appCapabilities.length) {
-    const capSet = new Set(
-      filters.appCapabilities.map((c) => c.toLowerCase()),
-    );
+    const capSet = new Set(filters.appCapabilities.map((c) => c.toLowerCase()));
     packages = packages.filter((pkg) => {
       // Collect all "api" provider requirements from package-level and widget-level providers
       const apiProviders = [];

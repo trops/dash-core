@@ -54,7 +54,11 @@ export const useRegistrySearch = ({ filterByCapabilities = true } = {}) => {
       setError(null);
       try {
         const filters = {};
-        if (filterByCapabilities && !showAllPackages && appCapabilities.length) {
+        if (
+          filterByCapabilities &&
+          !showAllPackages &&
+          appCapabilities.length
+        ) {
           filters.appCapabilities = appCapabilities;
         }
         const result = await window.mainApi.registry.search(

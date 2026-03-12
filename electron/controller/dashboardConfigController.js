@@ -123,7 +123,10 @@ async function exportDashboardConfig(
 
     const { canceled, filePath } = await dialog.showSaveDialog(win, {
       title: "Export Dashboard as ZIP",
-      defaultPath: path.join(app.getPath("desktop"), `${sanitizedName}.zip`),
+      defaultPath: path.join(
+        app.getPath("desktop"),
+        `dashboard-${sanitizedName}.zip`,
+      ),
       filters: [{ name: "ZIP Archive", extensions: ["zip"] }],
     });
 
@@ -831,7 +834,7 @@ async function prepareDashboardForPublish(
       title: "Save Dashboard Package for Registry",
       defaultPath: path.join(
         app.getPath("desktop"),
-        `${sanitizedName}-v${manifest.version}.zip`,
+        `dashboard-${sanitizedName}-v${manifest.version}.zip`,
       ),
       filters: [{ name: "ZIP Archive", extensions: ["zip"] }],
     });

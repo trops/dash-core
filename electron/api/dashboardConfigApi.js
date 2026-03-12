@@ -41,8 +41,7 @@ const dashboardConfigApi = {
    *
    * @returns {Promise<Object>} Result with success, filePath, and dashboardConfig preview
    */
-  selectDashboardFile: () =>
-    ipcRenderer.invoke(DASHBOARD_CONFIG_SELECT_FILE),
+  selectDashboardFile: () => ipcRenderer.invoke(DASHBOARD_CONFIG_SELECT_FILE),
 
   /**
    * Import a dashboard config from a ZIP file.

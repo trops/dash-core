@@ -379,7 +379,7 @@ function generateRegistryManifest(dashboardConfig, options = {}) {
     category: options.category || "general",
     tags: dashboardConfig.tags || [],
     icon: dashboardConfig.icon || "grip",
-    downloadUrl: `https://github.com/${githubUser}/dash-registry/releases/download/${githubUser}--${name}--v{version}/${name}-v{version}.zip`,
+    downloadUrl: `https://github.com/${githubUser}/dash-registry/releases/download/${githubUser}--${name}--v{version}/dashboard-${name}-v{version}.zip`,
     repository: options.repository || "",
     publishedAt: new Date().toISOString(),
     widgets: (dashboardConfig.widgets || []).map((w) => ({
