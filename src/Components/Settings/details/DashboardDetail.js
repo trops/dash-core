@@ -134,11 +134,12 @@ export const DashboardDetail = ({
   }));
 
   const themeOptions = [
-    { label: "App Default", value: "" },
-    ...Object.entries(themes || {}).map(([key, t]) => ({
-      label: t.name || key,
-      value: key,
-    })),
+    ...Object.entries(themes || {})
+      .sort(([, a], [, b]) => (a.name || "").localeCompare(b.name || ""))
+      .map(([key, t]) => ({
+        label: t.name || key,
+        value: key,
+      })),
   ];
 
   function handleChangeFolder(val) {

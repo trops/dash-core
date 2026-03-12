@@ -57,7 +57,12 @@ export const LayoutManagerModal = ({
         menuItems && menuItems.length > 0 ? menuItems[0].id : 1,
       );
       setSelectedTemplate(layoutTemplates[0]);
-      setSelectedThemeKey(null);
+      const fallback = themes
+        ? Object.entries(themes)
+            .sort(([, a], [, b]) => (a.name || "").localeCompare(b.name || ""))
+            [0]?.[0] || null
+        : null;
+      setSelectedThemeKey(appThemeKey || fallback);
       setImportedWorkspace(null);
       setSelectedFile(null);
       setIsCreatingFolder(false);
@@ -365,7 +370,7 @@ export const LayoutManagerModal = ({
         <div className="flex flex-col w-1/3 p-6 py-10 space-y-4 justify-start">
           <Heading title="Theme" padding={false} textColor="text-gray-300" />
           <p className="text-base font-normal text-gray-400">
-            Choose a theme for this dashboard, or use the application default.
+            Choose a theme for this dashboard.
           </p>
           {selectedThemeKey !== null && themes && themes[selectedThemeKey] && (
             <>
@@ -394,61 +399,12 @@ export const LayoutManagerModal = ({
               </div>
             </>
           )}
-          {selectedThemeKey === null && (
-            <div className="flex flex-row items-center space-x-2 mt-4 pt-4 border-t border-gray-700">
-              <FontAwesomeIcon icon="palette" className="text-blue-400" />
-              <span className="text-sm font-medium text-gray-300">
-                App Default
-              </span>
-            </div>
-          )}
         </div>
         <div className="flex flex-col w-2/3 p-6 overflow-y-auto space-y-2">
-          <div
-            className={`flex flex-row items-center px-4 py-3 rounded-lg cursor-pointer transition-all ${
-              selectedThemeKey === null
-                ? "ring-2 ring-blue-500 bg-gray-700"
-                : "hover:bg-gray-750 hover:ring-1 hover:ring-gray-600 bg-gray-800/50"
-            }`}
-            onClick={() => setSelectedThemeKey(null)}
-          >
-            <FontAwesomeIcon
-              icon="palette"
-              className={`w-5 h-5 mr-3 ${
-                selectedThemeKey === null ? "text-blue-400" : "text-gray-400"
-              }`}
-            />
-            <span
-              className={`text-sm font-medium ${
-                selectedThemeKey === null ? "text-blue-300" : "text-gray-300"
-              }`}
-            >
-              App Default
-            </span>
-            <div className="flex flex-row space-x-1 ml-auto">
-              {themes && appThemeKey && themes[appThemeKey] && (
-                <>
-                  {themes[appThemeKey].primary && (
-                    <div
-                      className={`w-4 h-4 rounded bg-${themes[appThemeKey].primary}-500`}
-                    />
-                  )}
-                  {themes[appThemeKey].secondary && (
-                    <div
-                      className={`w-4 h-4 rounded bg-${themes[appThemeKey].secondary}-500`}
-                    />
-                  )}
-                  {themes[appThemeKey].tertiary && (
-                    <div
-                      className={`w-4 h-4 rounded bg-${themes[appThemeKey].tertiary}-500`}
-                    />
-                  )}
-                </>
-              )}
-            </div>
-          </div>
           {themes &&
-            Object.entries(themes).map(([key, t]) => {
+            Object.entries(themes)
+              .sort(([, a], [, b]) => (a.name || "").localeCompare(b.name || ""))
+              .map(([key, t]) => {
               const isThemeSelected = selectedThemeKey === key;
               return (
                 <div
