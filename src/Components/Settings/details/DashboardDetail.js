@@ -128,10 +128,12 @@ export const DashboardDetail = ({
     setTimeout(() => setExportStatus(null), 3000);
   }
 
-  const folderOptions = menuItems.map((m) => ({
-    label: m.name,
-    value: String(m.id),
-  }));
+  const folderOptions = menuItems
+    .map((m) => ({
+      label: m.name,
+      value: String(m.id),
+    }))
+    .sort((a, b) => (a.label || "").localeCompare(b.label || ""));
 
   const themeOptions = [
     ...Object.entries(themes || {})
