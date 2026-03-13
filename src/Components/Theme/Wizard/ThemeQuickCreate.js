@@ -16,6 +16,7 @@ export const GENERATE_MODES = {
   PRESETS: "presets",
   COLOR: "color",
   WIZARD: "wizard",
+  CHOOSER: "chooser",
 };
 
 // ─── Preset Gallery ──────────────────────────────────────────────────────
@@ -315,7 +316,7 @@ export const ThemeQuickCreate = ({
         <span className="text-sm font-semibold opacity-50">
           Generation Method
         </span>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-col gap-2">
           <MethodCard
             icon="swatchbook"
             title="Presets"
@@ -330,14 +331,14 @@ export const ThemeQuickCreate = ({
             selected={wizardMethod === "random"}
             onClick={() => handleMethodSelect("random")}
           />
+          <MethodCard
+            icon="droplet"
+            title="From Color"
+            subtitle="Build from a base color with harmony rules"
+            selected={wizardMethod === "color"}
+            onClick={() => handleMethodSelect("color")}
+          />
         </div>
-        <MethodCard
-          icon="droplet"
-          title="From Color"
-          subtitle="Build from a base color with harmony rules"
-          selected={wizardMethod === "color"}
-          onClick={() => handleMethodSelect("color")}
-        />
       </div>
 
       {/* Conditional Options */}

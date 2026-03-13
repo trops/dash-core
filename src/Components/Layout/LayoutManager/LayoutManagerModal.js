@@ -58,9 +58,9 @@ export const LayoutManagerModal = ({
       );
       setSelectedTemplate(layoutTemplates[0]);
       const fallback = themes
-        ? Object.entries(themes)
-            .sort(([, a], [, b]) => (a.name || "").localeCompare(b.name || ""))
-            [0]?.[0] || null
+        ? Object.entries(themes).sort(([, a], [, b]) =>
+            (a.name || "").localeCompare(b.name || ""),
+          )[0]?.[0] || null
         : null;
       setSelectedThemeKey(appThemeKey || fallback);
       setImportedWorkspace(null);
@@ -403,48 +403,54 @@ export const LayoutManagerModal = ({
         <div className="flex flex-col w-2/3 p-6 overflow-y-auto space-y-2">
           {themes &&
             Object.entries(themes)
-              .sort(([, a], [, b]) => (a.name || "").localeCompare(b.name || ""))
+              .sort(([, a], [, b]) =>
+                (a.name || "").localeCompare(b.name || ""),
+              )
               .map(([key, t]) => {
-              const isThemeSelected = selectedThemeKey === key;
-              return (
-                <div
-                  key={key}
-                  className={`flex flex-row items-center px-4 py-3 rounded-lg cursor-pointer transition-all ${
-                    isThemeSelected
-                      ? "ring-2 ring-blue-500 bg-gray-700"
-                      : "hover:bg-gray-750 hover:ring-1 hover:ring-gray-600 bg-gray-800/50"
-                  }`}
-                  onClick={() => setSelectedThemeKey(key)}
-                >
-                  <FontAwesomeIcon
-                    icon="palette"
-                    className={`w-5 h-5 mr-3 ${
-                      isThemeSelected ? "text-blue-400" : "text-gray-400"
+                const isThemeSelected = selectedThemeKey === key;
+                return (
+                  <div
+                    key={key}
+                    className={`flex flex-row items-center px-4 py-3 rounded-lg cursor-pointer transition-all ${
+                      isThemeSelected
+                        ? "ring-2 ring-blue-500 bg-gray-700"
+                        : "hover:bg-gray-750 hover:ring-1 hover:ring-gray-600 bg-gray-800/50"
                     }`}
-                  />
-                  <span
-                    className={`text-sm font-medium ${
-                      isThemeSelected ? "text-blue-300" : "text-gray-300"
-                    }`}
+                    onClick={() => setSelectedThemeKey(key)}
                   >
-                    {t.name || key}
-                  </span>
-                  <div className="flex flex-row space-x-1 ml-auto">
-                    {t.primary && (
-                      <div className={`w-4 h-4 rounded bg-${t.primary}-500`} />
-                    )}
-                    {t.secondary && (
-                      <div
-                        className={`w-4 h-4 rounded bg-${t.secondary}-500`}
-                      />
-                    )}
-                    {t.tertiary && (
-                      <div className={`w-4 h-4 rounded bg-${t.tertiary}-500`} />
-                    )}
+                    <FontAwesomeIcon
+                      icon="palette"
+                      className={`w-5 h-5 mr-3 ${
+                        isThemeSelected ? "text-blue-400" : "text-gray-400"
+                      }`}
+                    />
+                    <span
+                      className={`text-sm font-medium ${
+                        isThemeSelected ? "text-blue-300" : "text-gray-300"
+                      }`}
+                    >
+                      {t.name || key}
+                    </span>
+                    <div className="flex flex-row space-x-1 ml-auto">
+                      {t.primary && (
+                        <div
+                          className={`w-4 h-4 rounded bg-${t.primary}-500`}
+                        />
+                      )}
+                      {t.secondary && (
+                        <div
+                          className={`w-4 h-4 rounded bg-${t.secondary}-500`}
+                        />
+                      )}
+                      {t.tertiary && (
+                        <div
+                          className={`w-4 h-4 rounded bg-${t.tertiary}-500`}
+                        />
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
         </div>
       </div>
     );

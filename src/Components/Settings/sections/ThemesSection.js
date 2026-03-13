@@ -13,10 +13,12 @@ import { DiscoverThemesDetail } from "../details/DiscoverThemesDetail";
 import { generateRandomTheme } from "../../../utils/themeGenerator";
 import {
   ThemeQuickCreate,
+  ThemeNewChooser,
   PresetGallery,
   ColorHarmonyPicker,
   GENERATE_MODES,
 } from "../../Theme/Wizard";
+import { ThemeColorDots } from "../../Theme/ThemeColorDots";
 
 // ─── Main Component ──────────────────────────────────────────────────────
 
@@ -44,6 +46,7 @@ export const ThemesSection = ({
   const [wizardTheme, setWizardTheme] = useState(null);
   // null | "marketplace"
   const [installMode, setInstallMode] = useState(null);
+  const [enteredViaChooser, setEnteredViaChooser] = useState(false);
 
   const themeEntries = themes ? Object.entries(themes) : [];
   const appId = credentials?.appId;
@@ -56,7 +59,7 @@ export const ThemesSection = ({
   const prevCreateRequested = useRef(false);
   useEffect(() => {
     if (createRequested && !prevCreateRequested.current) {
-      setGenerateMode(GENERATE_MODES.WIZARD);
+      setGenerateMode(GENERATE_MODES.CHOOSER);
       setWizardName("");
       setWizardMethod(null);
       setWizardTheme(null);
@@ -160,7 +163,7 @@ export const ThemesSection = ({
 
   const listContent = (
     <div className="flex flex-col h-full">
-      {/* Variant toggle + tabs header */}
+      {/* Variant toggle */}
       <div
         className={`flex-shrink-0 flex flex-col gap-2 px-3 py-2 ${
           rowStyles.backgroundColor || ""
@@ -178,37 +181,6 @@ export const ThemesSection = ({
           <span className="text-xs opacity-50">
             {themeVariant === "dark" ? "Dark" : "Light"}
           </span>
-        </div>
-        <div className="flex bg-white/5 rounded-md p-0.5">
-          {[
-            { key: "themes", label: "My Themes" },
-            { key: "marketplace", label: "Marketplace" },
-          ].map((tab) => {
-            const currentTab =
-              installMode === "marketplace" ? "marketplace" : "themes";
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => {
-                  if (tab.key === "marketplace") {
-                    setInstallMode("marketplace");
-                    setSelectedThemeKey(null);
-                    setGenerateMode(GENERATE_MODES.NONE);
-                  } else {
-                    setInstallMode(null);
-                  }
-                }}
-                className={`flex-1 px-2 py-0.5 rounded text-[11px] transition-colors ${
-                  currentTab === tab.key
-                    ? "bg-white/10 font-medium opacity-90"
-                    : "opacity-50 hover:opacity-70"
-                }`}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
         </div>
       </div>
 
@@ -240,7 +212,7 @@ export const ThemesSection = ({
                   setGenerateMode(GENERATE_MODES.NONE);
                   setInstallMode(null);
                 }}
-                badge={isActive ? "active" : null}
+                badge={<ThemeColorDots theme={theme} />}
                 className={isSelected ? "bg-white/10 opacity-100" : ""}
               >
                 {theme.name || key}
@@ -265,6 +237,10 @@ export const ThemesSection = ({
       <DiscoverThemesDetail
         onBack={() => {
           setInstallMode(null);
+          if (enteredViaChooser) {
+            setGenerateMode(GENERATE_MODES.CHOOSER);
+            setEnteredViaChooser(false);
+          }
         }}
         appId={appId}
         onInstallComplete={() => {
@@ -276,6 +252,19 @@ export const ThemesSection = ({
               }
             });
           }
+        }}
+      />
+    );
+  } else if (generateMode === GENERATE_MODES.CHOOSER) {
+    detailContent = (
+      <ThemeNewChooser
+        onSearchThemes={() => {
+          setGenerateMode(GENERATE_MODES.NONE);
+          setInstallMode("marketplace");
+          setEnteredViaChooser(true);
+        }}
+        onCreateNew={() => {
+          setGenerateMode(GENERATE_MODES.WIZARD);
         }}
       />
     );

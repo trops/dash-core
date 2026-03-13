@@ -86,7 +86,11 @@ const DraggableWidgetItem = ({ widgetKey, widget }) => {
 
 /* ─── Discover Tab Content ─────────────────────────────────────────── */
 
-const SidebarDiscoverContent = ({ registry, onInstallSuccess, installedPackageNames }) => {
+const SidebarDiscoverContent = ({
+  registry,
+  onInstallSuccess,
+  installedPackageNames,
+}) => {
   const [selectedPackageName, setSelectedPackageName] = useState(null);
 
   // Check if a package is installed by name or scope/name
@@ -109,9 +113,7 @@ const SidebarDiscoverContent = ({ registry, onInstallSuccess, installedPackageNa
         return pkg.widgets.some(
           (w) =>
             w.name in cMap ||
-            cMapKeys.some(
-              (k) => k === w.name || k.endsWith(`_${w.name}`),
-            ),
+            cMapKeys.some((k) => k === w.name || k.endsWith(`_${w.name}`)),
         );
       }
       return false;
@@ -331,7 +333,9 @@ const SidebarDiscoverContent = ({ registry, onInstallSuccess, installedPackageNa
                     {pkg.displayName || pkg.name}
                   </div>
                   <div className="flex items-center gap-1 text-[10px] opacity-50">
-                    {pkg.author && <span className="truncate">{pkg.author}</span>}
+                    {pkg.author && (
+                      <span className="truncate">{pkg.author}</span>
+                    )}
                     {pkg.author && pkg.widgets?.length > 0 && (
                       <span>&middot;</span>
                     )}
@@ -437,7 +441,9 @@ export const WidgetSidebar = ({ collapsed, onCollapsedChange }) => {
       }
     };
     loadInstalled();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [widgetVersion]);
 
   // Derive unique groups for dropdown (package > author > "Other")

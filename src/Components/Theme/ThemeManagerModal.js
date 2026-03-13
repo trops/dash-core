@@ -13,7 +13,8 @@ import { deepCopy } from "@trops/dash-react";
 
 import { PanelTheme } from "./Panel/PanelTheme";
 import PanelThemePicker from "./Panel/PanelThemePicker";
-import { ThemeQuickCreate } from "./Wizard";
+import { ThemeQuickCreate, ThemeNewChooser } from "./Wizard";
+import { DiscoverThemesDetail } from "../Settings/details/DiscoverThemesDetail";
 
 export const ThemeManagerModal = ({ open, setIsOpen }) => {
   const {
@@ -31,6 +32,8 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
   const [themeKeySelected, setThemeKeySelected] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isChoosingMode, setIsChoosingMode] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const [wizardName, setWizardName] = useState("");
   const [wizardMethod, setWizardMethod] = useState(null);
   const [wizardTheme, setWizardTheme] = useState(null);
@@ -49,6 +52,8 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
       setRawThemeSelected(null);
       setThemeKeySelected(null);
       setIsCreating(false);
+      setIsChoosingMode(false);
+      setIsSearching(false);
     } else {
       if (themeKeySelected === null && themes) {
         const themeKeyTemp =
@@ -87,11 +92,28 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
   }
 
   function handleStartCreateTheme() {
-    setIsCreating(true);
+    setIsChoosingMode(true);
+    setIsCreating(false);
+    setIsSearching(false);
     setIsEditing(false);
+  }
+
+  function handleChooseCreate() {
+    setIsChoosingMode(false);
+    setIsCreating(true);
     setWizardName("");
     setWizardMethod(null);
     setWizardTheme(null);
+  }
+
+  function handleChooseSearch() {
+    setIsChoosingMode(false);
+    setIsSearching(true);
+  }
+
+  function handleBackFromSearch() {
+    setIsSearching(false);
+    setIsChoosingMode(true);
   }
 
   function handleWizardComplete() {
@@ -122,6 +144,8 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
 
   function handleCancelCreate() {
     setIsCreating(false);
+    setIsChoosingMode(false);
+    setIsSearching(false);
   }
 
   function handleSaveTheme() {
@@ -213,7 +237,29 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
                   onChangeVariant={changeThemeVariant}
                   rawTheme={rawThemeSelected}
                   wizardContent={
-                    isCreating ? (
+                    isChoosingMode ? (
+                      <ThemeNewChooser
+                        onSearchThemes={handleChooseSearch}
+                        onCreateNew={handleChooseCreate}
+                      />
+                    ) : isSearching ? (
+                      <DiscoverThemesDetail
+                        onBack={handleBackFromSearch}
+                        appId={credentials?.appId}
+                        onInstallComplete={() => {
+                          if (dashApi && credentials?.appId) {
+                            dashApi.listThemes(
+                              credentials.appId,
+                              (e, message) => {
+                                if (message && message.themes) {
+                                  changeThemesForApplication(message.themes);
+                                }
+                              },
+                            );
+                          }
+                        }}
+                      />
+                    ) : isCreating ? (
                       <ThemeQuickCreate
                         wizardName={wizardName}
                         setWizardName={setWizardName}
@@ -251,12 +297,12 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
                 </div>
               </div>
             )}
-            {isCreating && (
+            {(isCreating || isChoosingMode || isSearching) && (
               <div className="flex flex-row space-x-2">
                 <Button onClick={handleCancelCreate} title="Cancel" />
               </div>
             )}
-            {!isCreating && isEditing === false && (
+            {!isCreating && !isChoosingMode && !isSearching && isEditing === false && (
               <div className="flex flex-row space-x-2">
                 <Button onClick={() => setIsOpen(false)} title="Cancel" />
                 {themeSelected !== null && (
@@ -270,7 +316,7 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
                 )}
               </div>
             )}
-            {!isCreating && isEditing === true && (
+            {!isCreating && !isChoosingMode && !isSearching && isEditing === true && (
               <div className="flex flex-row space-x-2">
                 <Button onClick={() => setIsEditing(false)} title="Cancel" />
                 <Button
