@@ -11,6 +11,9 @@ import {
 } from "@trops/dash-react";
 import { RegistryThemeDetail } from "./RegistryThemeDetail";
 
+import { toDisplayColor } from "../../../utils/colorUtils";
+import { ThemeColorDots } from "../../Theme/ThemeColorDots";
+
 /**
  * DiscoverThemesDetail — registry browser for theme packages.
  *
@@ -130,30 +133,18 @@ export const DiscoverThemesDetail = ({ onBack, appId, onInstallComplete }) => {
   } else {
     listBody = (
       <div className="space-y-1">
-        {packages.map((pkg) => {
-          const colors = pkg.colors || {};
-          return (
+        {packages.map((pkg) => (
             <Sidebar.Item
               key={pkg.name}
               icon={
-                <div className="flex items-center gap-0.5">
-                  {[colors.primary, colors.secondary, colors.tertiary]
-                    .filter(Boolean)
-                    .map((color, i) => (
-                      <div
-                        key={i}
-                        className="h-3 w-3 rounded-full border border-white/20"
-                        style={{ backgroundColor: color }}
-                      />
-                    ))}
-                </div>
+                <FontAwesomeIcon icon="palette" className="h-3.5 w-3.5" />
               }
+              badge={<ThemeColorDots colors={pkg.colors} theme={pkg} />}
               onClick={() => setSelectedPackageName(pkg.name)}
             >
               {pkg.displayName || pkg.name}
             </Sidebar.Item>
-          );
-        })}
+          ))}
       </div>
     );
   }

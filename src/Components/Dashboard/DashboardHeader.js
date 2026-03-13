@@ -88,9 +88,7 @@ export const DashboardHeader = ({
                     value: m.id,
                     icon: m.icon || m.folder || "folder",
                   }))
-                  .sort((a, b) =>
-                    (a.label || "").localeCompare(b.label || "")
-                  )}
+                  .sort((a, b) => (a.label || "").localeCompare(b.label || ""))}
                 onChange={onFolderChange}
                 placeholder="Folder"
                 backgroundColor={currentTheme["bg-primary-very-dark"]}
@@ -104,7 +102,9 @@ export const DashboardHeader = ({
               <SelectInput
                 value={workspaceSelected.themeKey || ""}
                 options={Object.entries(resolvedThemes)
-                  .sort(([, a], [, b]) => (a.name || "").localeCompare(b.name || ""))
+                  .sort(([, a], [, b]) =>
+                    (a.name || "").localeCompare(b.name || ""),
+                  )
                   .map(([key, t]) => ({
                     label: t.name || key,
                     value: key,

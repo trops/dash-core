@@ -104,11 +104,7 @@ const registryApi = {
    */
   searchThemes: async (query = "", filters = {}) => {
     try {
-      return await ipcRenderer.invoke(
-        "registry:search-themes",
-        query,
-        filters,
-      );
+      return await ipcRenderer.invoke("registry:search-themes", query, filters);
     } catch (error) {
       console.error("[RegistryApi] Error searching themes:", error);
       throw error;

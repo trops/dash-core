@@ -11,6 +11,7 @@ import {
 } from "@trops/dash-react";
 import { StarRating } from "./StarRating";
 import { PublishDashboardModal } from "./PublishDashboardModal";
+import { ThemeColorDots } from "../../Theme/ThemeColorDots";
 
 /**
  * LayoutPreview — renders a mini CSS grid thumbnail from a workspace's
@@ -141,6 +142,8 @@ export const DashboardDetail = ({
       .map(([key, t]) => ({
         label: t.name || key,
         value: key,
+        icon: "palette",
+        badge: <ThemeColorDots theme={t} />,
       })),
   ];
 

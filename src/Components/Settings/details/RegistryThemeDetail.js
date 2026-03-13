@@ -8,6 +8,86 @@ import {
   themeObjects,
 } from "@trops/dash-react";
 
+import { toDisplayColor } from "../../../utils/colorUtils";
+
+/**
+ * Darken/lighten a hex color by a percentage (-1 to 1).
+ * Negative = darker, positive = lighter.
+ */
+function adjustColor(hex, amount) {
+  if (!hex || !hex.startsWith("#")) return hex;
+  const num = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, Math.max(0, ((num >> 16) & 0xff) + Math.round(255 * amount)));
+  const g = Math.min(255, Math.max(0, ((num >> 8) & 0xff) + Math.round(255 * amount)));
+  const b = Math.min(255, Math.max(0, (num & 0xff) + Math.round(255 * amount)));
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
+}
+
+/**
+ * ThemePreviewMockup — renders a mini dashboard mockup using theme colors.
+ */
+const ThemePreviewMockup = ({ colors }) => {
+  const { primary, secondary, tertiary, neutral } = colors;
+  const bg = neutral || adjustColor(primary, -0.6);
+  const sidebar = adjustColor(primary, -0.5);
+  const header = adjustColor(primary, -0.4);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-xs font-semibold opacity-50">PREVIEW</span>
+      <div
+        className="rounded-lg overflow-hidden border border-white/10"
+        style={{ backgroundColor: bg, minHeight: 160 }}
+      >
+        <div className="flex flex-row h-full" style={{ minHeight: 160 }}>
+          {/* Sidebar */}
+          <div
+            className="flex flex-col gap-1.5 p-2 w-24 flex-shrink-0"
+            style={{ backgroundColor: sidebar }}
+          >
+            <div className="h-2 w-12 rounded-sm opacity-60" style={{ backgroundColor: primary }} />
+            <div className="h-2 w-16 rounded-sm opacity-30" style={{ backgroundColor: secondary }} />
+            <div className="h-2 w-10 rounded-sm opacity-30" style={{ backgroundColor: secondary }} />
+            <div className="h-2 w-14 rounded-sm opacity-30" style={{ backgroundColor: secondary }} />
+          </div>
+          {/* Main area */}
+          <div className="flex flex-col flex-1 min-w-0">
+            {/* Header bar */}
+            <div className="flex items-center gap-2 px-3 py-2" style={{ backgroundColor: header }}>
+              <div className="h-2 w-20 rounded-sm opacity-70" style={{ backgroundColor: primary }} />
+              <div className="flex-1" />
+              <div className="h-2 w-8 rounded-sm opacity-40" style={{ backgroundColor: tertiary || secondary }} />
+            </div>
+            {/* Content grid */}
+            <div className="grid grid-cols-3 gap-2 p-3 flex-1">
+              {/* Widget card 1 */}
+              <div className="rounded p-2 flex flex-col gap-1.5" style={{ backgroundColor: adjustColor(primary, -0.35) }}>
+                <div className="h-1.5 w-10 rounded-sm" style={{ backgroundColor: primary, opacity: 0.7 }} />
+                <div className="h-8 w-full rounded-sm" style={{ backgroundColor: secondary, opacity: 0.3 }} />
+                <div className="h-1.5 w-12 rounded-sm" style={{ backgroundColor: tertiary || secondary, opacity: 0.4 }} />
+              </div>
+              {/* Widget card 2 */}
+              <div className="rounded p-2 flex flex-col gap-1.5" style={{ backgroundColor: adjustColor(primary, -0.35) }}>
+                <div className="h-1.5 w-8 rounded-sm" style={{ backgroundColor: secondary, opacity: 0.7 }} />
+                <div className="flex flex-row gap-1 flex-1">
+                  <div className="flex-1 rounded-sm" style={{ backgroundColor: primary, opacity: 0.25 }} />
+                  <div className="flex-1 rounded-sm" style={{ backgroundColor: tertiary || secondary, opacity: 0.25 }} />
+                </div>
+              </div>
+              {/* Widget card 3 */}
+              <div className="rounded p-2 flex flex-col gap-1.5" style={{ backgroundColor: adjustColor(primary, -0.35) }}>
+                <div className="h-1.5 w-12 rounded-sm" style={{ backgroundColor: tertiary || primary, opacity: 0.7 }} />
+                <div className="h-4 w-full rounded-sm" style={{ backgroundColor: primary, opacity: 0.2 }} />
+                <div className="h-4 w-full rounded-sm" style={{ backgroundColor: secondary, opacity: 0.2 }} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /**
  * RegistryThemeDetail — detail panel for a registry theme package.
  *
@@ -18,8 +98,7 @@ export const RegistryThemeDetail = ({
   appId,
   onInstallComplete,
 }) => {
-  const { currentTheme, changeThemesForApplication } =
-    useContext(ThemeContext);
+  const { currentTheme, changeThemesForApplication } = useContext(ThemeContext);
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,
   });
@@ -30,7 +109,14 @@ export const RegistryThemeDetail = ({
   const pkg = themePackage;
   if (!pkg) return null;
 
-  const colors = pkg.colors || {};
+  const rawColors = pkg.colors || {};
+  // Also check top-level fields for themes that store colors directly
+  const colors = {
+    primary: toDisplayColor(rawColors.primary || pkg.primary || ""),
+    secondary: toDisplayColor(rawColors.secondary || pkg.secondary || ""),
+    tertiary: toDisplayColor(rawColors.tertiary || pkg.tertiary || ""),
+    neutral: toDisplayColor(rawColors.neutral || pkg.neutral || ""),
+  };
 
   async function handleInstall() {
     if (!appId || !pkg.name) return;
@@ -87,10 +173,7 @@ export const RegistryThemeDetail = ({
             <FontAwesomeIcon icon="palette" className="h-5 w-5" />
           </div>
           <div>
-            <SubHeading3
-              title={pkg.displayName || pkg.name}
-              padding={false}
-            />
+            <SubHeading3 title={pkg.displayName || pkg.name} padding={false} />
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-sm opacity-60">
                 by {pkg.author || "Unknown"}
@@ -108,26 +191,26 @@ export const RegistryThemeDetail = ({
 
         <hr className={currentTheme["border-primary-medium"]} />
 
-        {/* Color Preview */}
+        {/* Theme Preview Mockup */}
         {colorEntries.length > 0 && (
-          <div>
-            <span className="text-xs font-semibold opacity-50 mb-2 block">
-              COLORS
-            </span>
-            <div className="flex flex-row gap-3">
-              {colorEntries.map(({ label, value }) => (
-                <div key={label} className="flex flex-col items-center gap-1">
-                  <div
-                    className="h-10 w-10 rounded-full border-2 border-white/20"
-                    style={{ backgroundColor: value }}
-                  />
-                  <span className="text-[10px] opacity-50">{label}</span>
-                  <span className="text-[10px] opacity-30 font-mono">
-                    {value}
-                  </span>
-                </div>
-              ))}
-            </div>
+          <ThemePreviewMockup colors={colors} />
+        )}
+
+        {/* Color Swatches */}
+        {colorEntries.length > 0 && (
+          <div className="flex flex-row gap-3">
+            {colorEntries.map(({ label, value }) => (
+              <div key={label} className="flex flex-col items-center gap-1 flex-1">
+                <div
+                  className="h-8 w-8 rounded border-2 border-white/20"
+                  style={{ backgroundColor: value }}
+                />
+                <span className="text-[10px] opacity-50">{label}</span>
+                <span className="text-[10px] opacity-30 font-mono">
+                  {value}
+                </span>
+              </div>
+            ))}
           </div>
         )}
 

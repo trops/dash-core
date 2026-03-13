@@ -118,32 +118,34 @@ export const FoldersSection = ({
 
   const listContent = (
     <Sidebar.Content>
-      {[...menuItems].sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((item) => {
-        const isSelected = selectedId === item.id && !isCreating;
-        const count = getDashboardCount(item.id);
-        return (
-          <Sidebar.Item
-            key={item.id}
-            icon={
-              <FontAwesomeIcon
-                icon={item.folder || item.icon || "folder"}
-                className="h-3.5 w-3.5"
-              />
-            }
-            active={isSelected}
-            onClick={() => {
-              setSelectedId(item.id);
-              setIsCreating(false);
-              setIsEditing(false);
-              resetForm();
-            }}
-            badge={count > 0 ? String(count) : null}
-            className={isSelected ? "bg-white/10 opacity-100" : ""}
-          >
-            {item.name}
-          </Sidebar.Item>
-        );
-      })}
+      {[...menuItems]
+        .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+        .map((item) => {
+          const isSelected = selectedId === item.id && !isCreating;
+          const count = getDashboardCount(item.id);
+          return (
+            <Sidebar.Item
+              key={item.id}
+              icon={
+                <FontAwesomeIcon
+                  icon={item.folder || item.icon || "folder"}
+                  className="h-3.5 w-3.5"
+                />
+              }
+              active={isSelected}
+              onClick={() => {
+                setSelectedId(item.id);
+                setIsCreating(false);
+                setIsEditing(false);
+                resetForm();
+              }}
+              badge={count > 0 ? String(count) : null}
+              className={isSelected ? "bg-white/10 opacity-100" : ""}
+            >
+              {item.name}
+            </Sidebar.Item>
+          );
+        })}
       {menuItems.length === 0 && (
         <span className="text-sm opacity-40 py-8 text-center">
           No folders yet
