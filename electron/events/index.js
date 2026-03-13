@@ -23,6 +23,7 @@ const dashboardRatingsEvents = require("./dashboardRatingsEvents");
 const registryAuthEvents = require("./registryAuthEvents");
 const sessionEvents = require("./sessionEvents");
 const notificationEvents = require("./notificationEvents");
+const schedulerEvents = require("./schedulerEvents");
 
 const publicEvents = {
   ...dataEvents,
@@ -50,4 +51,5 @@ module.exports = {
   ...registryAuthEvents,
   ...sessionEvents,
   ...notificationEvents,
+  ...schedulerEvents,
 };

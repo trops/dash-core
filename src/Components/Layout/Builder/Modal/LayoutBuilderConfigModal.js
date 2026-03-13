@@ -10,6 +10,7 @@ import {
 import PanelEditItem from "./Panel/PanelEditItem";
 import PanelEditItemGrid from "./Panel/PanelEditItemGrid";
 import PanelEditItemNotifications from "./Panel/PanelEditItemNotifications";
+import PanelEditItemSchedule from "./Panel/PanelEditItemSchedule";
 
 import { PanelEditItemHandlers } from "./Panel";
 import PanelCode from "./Panel/PanelCode";
@@ -20,6 +21,7 @@ const getSections = (item) => {
     ? ComponentManager.config(item.component, item)
     : null;
   const hasNotifications = widgetConfig?.notifications?.length > 0;
+  const hasScheduledTasks = widgetConfig?.scheduledTasks?.length > 0;
   return [
     { key: "edit", label: "Settings", icon: "cog" },
     ...(item?.type !== "widget" && item?.grid
@@ -27,6 +29,9 @@ const getSections = (item) => {
       : []),
     ...(hasNotifications
       ? [{ key: "notifications", label: "Notifications", icon: "bell" }]
+      : []),
+    ...(hasScheduledTasks
+      ? [{ key: "schedule", label: "Schedule", icon: "clock" }]
       : []),
     ...(item?.workspace !== "layout"
       ? [{ key: "handlers", label: "Listeners", icon: "phone" }]
@@ -139,6 +144,14 @@ export const LayoutBuilderConfigModal = ({
 
           {activeSection === "notifications" && (
             <PanelEditItemNotifications
+              item={itemSelected}
+              onUpdate={handleEditChange}
+              workspace={workspaceSelected}
+            />
+          )}
+
+          {activeSection === "schedule" && (
+            <PanelEditItemSchedule
               item={itemSelected}
               onUpdate={handleEditChange}
               workspace={workspaceSelected}

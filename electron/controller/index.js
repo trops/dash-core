@@ -99,6 +99,7 @@ const {
   enrichPackagesWithRatings,
 } = require("./dashboardRatingsController");
 const notificationController = require("./notificationController");
+const schedulerController = require("./schedulerController");
 const {
   prepareThemeForPublish,
   installThemeFromRegistry,
@@ -179,6 +180,7 @@ module.exports = {
   saveSessionState,
   clearSessionState,
   notificationController,
+  schedulerController,
   prepareThemeForPublish,
   installThemeFromRegistry,
   getThemePublishPreview,

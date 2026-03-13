@@ -33,6 +33,7 @@ const dashboardRatingsApi = require("./dashboardRatingsApi");
 const registryAuthApi = require("./registryAuthApi");
 const sessionApi = require("./sessionApi");
 const notificationApi = require("./notificationApi");
+const schedulerApi = require("./schedulerApi");
 
 // Events constants
 const events = require("../events");
@@ -109,6 +110,7 @@ function createMainApi(extensions = {}) {
     registryAuth: registryAuthApi,
     session: sessionApi,
     notifications: notificationApi,
+    scheduler: schedulerApi,
 
     widgetEvent: {
       publish: (eventType, content) => {

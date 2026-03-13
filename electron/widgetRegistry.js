@@ -791,6 +791,8 @@ function setupWidgetRegistryHandlers() {
   });
 
   ipcMain.handle("widget:uninstall", (event, widgetName) => {
+    const schedulerController = require("./controller/schedulerController");
+    schedulerController.cleanupWidget(widgetName);
     return getWidgetRegistry().uninstallWidget(widgetName);
   });
 
