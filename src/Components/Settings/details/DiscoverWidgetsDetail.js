@@ -1,4 +1,4 @@
-import React, { useState, useContext } from "react";
+import React, { useState, useEffect, useCallback, useContext } from "react";
 import {
   ThemeContext,
   FontAwesomeIcon,
@@ -11,6 +11,7 @@ import {
   themeObjects,
 } from "@trops/dash-react";
 import { AppContext } from "../../../Context/App/AppContext";
+import { ComponentManager } from "../../../ComponentManager";
 import { RegistryPackageDetail } from "./RegistryPackageDetail";
 import { useRegistrySearch } from "../../../hooks/useRegistrySearch";
 
@@ -45,6 +46,67 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
 
   const [selectedPackageName, setSelectedPackageName] = useState(null);
   const [toolConflictWarning, setToolConflictWarning] = useState(null);
+
+  // Track installed package names (same pattern as WidgetSidebar)
+  const [installedPackageNames, setInstalledPackageNames] = useState(new Set());
+
+  const loadInstalledPackages = useCallback(async () => {
+    try {
+      const widgets = await window.mainApi.widgets.list();
+      const names = new Set();
+      for (const w of widgets) {
+        if (w.name) names.add(w.name);
+        if (w.path) {
+          const folderName = w.path.split("/").pop();
+          if (folderName) names.add(folderName);
+        }
+        if (w.author && w.name) {
+          names.add(`${w.author}/${w.name}`);
+        }
+        if (w.author && w.path) {
+          const folderName = w.path.split("/").pop();
+          if (folderName) names.add(`${w.author}/${folderName}`);
+        }
+      }
+      setInstalledPackageNames(names);
+    } catch (err) {
+      console.error(
+        "[DiscoverWidgetsDetail] Error loading installed widgets:",
+        err,
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    loadInstalledPackages();
+    const handleWidgetsUpdated = () => loadInstalledPackages();
+    window.addEventListener("dash:widgets-updated", handleWidgetsUpdated);
+    return () =>
+      window.removeEventListener("dash:widgets-updated", handleWidgetsUpdated);
+  }, [loadInstalledPackages]);
+
+  const isPackageInstalled = useCallback(
+    (pkg) => {
+      if (
+        installedPackageNames.has(pkg.name) ||
+        (pkg.scope && installedPackageNames.has(`${pkg.scope}/${pkg.name}`))
+      ) {
+        return true;
+      }
+      const packageWidgets = pkg.widgets || [];
+      if (packageWidgets.length > 0) {
+        const cMap = ComponentManager.componentMap();
+        const cMapKeys = Object.keys(cMap);
+        return packageWidgets.some(
+          (w) =>
+            w.name in cMap ||
+            cMapKeys.some((k) => k === w.name || k.endsWith(`_${w.name}`)),
+        );
+      }
+      return false;
+    },
+    [installedPackageNames],
+  );
 
   const selectedWidget = selectedPackageName
     ? flatWidgets.find((w) => w.packageName === selectedPackageName)
@@ -120,6 +182,13 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
           onInstall={handleInstall}
           isInstalling={isInstalling}
           installError={installError}
+          isInstalled={
+            selectedWidget
+              ? isPackageInstalled(
+                  packages.find((p) => p.name === selectedPackageName) || {},
+                )
+              : false
+          }
         />
       </div>
     );
@@ -172,6 +241,7 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
           const pkgWidget = flatWidgets.find((w) => w.packageName === pkg.name);
           const hasIncompatible =
             pkgWidget?.missingApis && pkgWidget.missingApis.length > 0;
+          const isInstalled = isPackageInstalled(pkg);
           return (
             <Sidebar.Item
               key={pkg.name}
@@ -183,8 +253,16 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
               }
               onClick={() => setSelectedPackageName(pkg.name)}
               badge={`${widgetCount}`}
+              className={isInstalled ? "opacity-50" : ""}
             >
-              {pkg.displayName || pkg.name}
+              <span className="flex items-center gap-1.5">
+                {pkg.displayName || pkg.name}
+                {isInstalled && (
+                  <span className="text-[10px] text-emerald-400">
+                    Installed
+                  </span>
+                )}
+              </span>
             </Sidebar.Item>
           );
         })}

@@ -26,6 +26,7 @@ export const RegistryPackageDetail = ({
   onInstall,
   isInstalling = false,
   installError = null,
+  isInstalled = false,
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
@@ -47,7 +48,14 @@ export const RegistryPackageDetail = ({
             <FontAwesomeIcon icon={widget.icon || "cube"} className="h-5 w-5" />
           </div>
           <div>
-            <SubHeading3 title={widget.packageDisplayName} padding={false} />
+            <div className="flex items-center gap-2">
+              <SubHeading3 title={widget.packageDisplayName} padding={false} />
+              {isInstalled && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 flex-shrink-0">
+                  Installed
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-sm opacity-60">
                 by {widget.packageAuthor || "Unknown"}
@@ -191,13 +199,21 @@ export const RegistryPackageDetail = ({
         className={`flex items-center justify-end px-6 py-3 border-t ${currentTheme["border-primary-medium"]}`}
       >
         <Button
-          title={isInstalling ? "Installing..." : "Install Package"}
-          bgColor="bg-blue-600"
-          hoverBackgroundColor={isInstalling ? "" : "hover:bg-blue-700"}
+          title={
+            isInstalled
+              ? "Installed"
+              : isInstalling
+                ? "Installing..."
+                : "Install Package"
+          }
+          bgColor={isInstalled ? "bg-emerald-600/50" : "bg-blue-600"}
+          hoverBackgroundColor={
+            isInstalled || isInstalling ? "" : "hover:bg-blue-700"
+          }
           textSize="text-sm"
           padding="py-1.5 px-4"
           onClick={onInstall}
-          disabled={isInstalling}
+          disabled={isInstalling || isInstalled}
         />
       </div>
     </div>
