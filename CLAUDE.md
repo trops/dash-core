@@ -317,6 +317,29 @@ Automated via GitHub Actions on push to `master`:
 
 Published to npm as `@trops/dash-core`.
 
+### Local CI Script (Recommended)
+
+The `scripts/ci.sh` script handles the full validation pipeline (Node 20 via nvm, Prettier, renderer build, electron build + MCP catalog, Jest tests, MCP tests, output verification) and optionally the git workflow:
+
+```bash
+# Validate only
+npm run ci
+
+# Validate + commit + version bump
+npm run ci:commit -- -m "Your commit message"
+
+# Above + push branch
+npm run ci:push -- -m "Your commit message"
+
+# Above + create PR
+npm run ci:pr -- -m "Your commit message"
+
+# Above + merge PR + tag + cleanup branches
+npm run ci:release -- -m "Your commit message"
+```
+
+Each flag is cumulative -- `--release` runs all prior steps. The script automatically switches to Node 20 using nvm.
+
 ### Validation
 
 After making changes:

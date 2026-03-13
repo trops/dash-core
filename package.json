@@ -24,7 +24,12 @@
         "prepublishOnly": "npm run clean && npm run build",
         "test:mcp": "node --test electron/controller/mcpController.test.js electron/mcp/mcpServerCatalog.test.js",
         "test": "jest --watchAll=false",
-        "prettify": "prettier --write \"src/**/*.{js,jsx,ts,tsx}\" \"electron/**/*.js\""
+        "prettify": "prettier --write \"src/**/*.{js,jsx,ts,tsx}\" \"electron/**/*.js\"",
+        "ci": "./scripts/ci.sh",
+        "ci:commit": "./scripts/ci.sh --commit",
+        "ci:push": "./scripts/ci.sh --push",
+        "ci:pr": "./scripts/ci.sh --pr",
+        "ci:release": "./scripts/ci.sh --release"
     },
     "peerDependencies": {
         "@trops/dash-react": ">=0.1.187",
