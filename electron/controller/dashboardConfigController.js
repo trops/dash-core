@@ -942,14 +942,27 @@ async function prepareDashboardForPublish(
       );
     }
 
-    // 7. Generate registry manifest
+    // 7. Resolve registry username for scope
+    let registryUsername = options.githubUser || "";
+    if (!registryUsername) {
+      try {
+        const { getRegistryProfile } = require("./registryAuthController");
+        const profile = await getRegistryProfile();
+        registryUsername = profile?.username || options.authorId || "";
+      } catch {
+        registryUsername = options.authorId || "";
+      }
+    }
+
+    // 8. Generate registry manifest
     const manifest = generateRegistryManifest(dashboardConfig, {
-      githubUser: options.githubUser || options.authorId || "",
+      githubUser: registryUsername,
       category: options.category || "general",
       repository: options.repository || "",
+      appOrigin: appId,
     });
 
-    // 8. Show save dialog for the publish package
+    // 9. Show save dialog for the publish package
     const sanitizedName = manifest.name;
     const { canceled, filePath } = await dialog.showSaveDialog(win, {
       title: "Save Dashboard Package for Registry",
@@ -964,7 +977,7 @@ async function prepareDashboardForPublish(
       return { success: false, canceled: true };
     }
 
-    // 9. Create ZIP with manifest and dashboard config
+    // 10. Create ZIP with manifest and dashboard config
     const zip = new AdmZip();
     zip.addFile(
       "manifest.json",
@@ -980,7 +993,7 @@ async function prepareDashboardForPublish(
       `[DashboardConfigController] Prepared publish package: ${filePath}`,
     );
 
-    // 10. Attempt to publish to registry if authenticated
+    // 11. Attempt to publish to registry if authenticated
     let registrySubmission = null;
     try {
       const { getAuthStatus } = require("./registryAuthController");
