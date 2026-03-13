@@ -39,13 +39,14 @@ function sanitizeName(name) {
  * @returns {Object} Registry manifest
  */
 function generateThemeRegistryManifest(themeData, themeKey, options = {}) {
-  const sanitizedName = sanitizeName(themeKey);
+  const humanName = themeData.name || themeKey;
+  const sanitizedName = sanitizeName(humanName);
   const colors = extractColors(themeData);
 
   return {
     scope: options.scope || "",
     name: sanitizedName,
-    displayName: themeKey,
+    displayName: humanName,
     author: options.authorName || "",
     description: options.description || "",
     version: "1.0.0",
