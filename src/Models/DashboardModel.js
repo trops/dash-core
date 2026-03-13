@@ -1576,8 +1576,9 @@ export class DashboardModel {
     const gridContainer = this.getComponentById(itemId);
     const grid = gridContainer.grid;
     const componentId = grid[sourceCellNumber].component;
+    const targetComponentId = grid[targetCellNumber].component;
     grid[targetCellNumber].component = componentId;
-    grid[sourceCellNumber].component = null;
+    grid[sourceCellNumber].component = targetComponentId;
     this.updateLayoutItem(gridContainer);
   }
 

@@ -302,29 +302,35 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
                 <Button onClick={handleCancelCreate} title="Cancel" />
               </div>
             )}
-            {!isCreating && !isChoosingMode && !isSearching && isEditing === false && (
-              <div className="flex flex-row space-x-2">
-                <Button onClick={() => setIsOpen(false)} title="Cancel" />
-                {themeSelected !== null && (
-                  <Button onClick={handleDeleteTheme} title="Delete" />
-                )}
-                {themeSelected !== null && (
-                  <Button onClick={() => setIsEditing(true)} title="Edit" />
-                )}
-                {themeSelected !== null && (
-                  <Button onClick={handleActivateTheme} title="Activate" />
-                )}
-              </div>
-            )}
-            {!isCreating && !isChoosingMode && !isSearching && isEditing === true && (
-              <div className="flex flex-row space-x-2">
-                <Button onClick={() => setIsEditing(false)} title="Cancel" />
-                <Button
-                  onClick={() => handleSaveTheme(themeKeySelected)}
-                  title="Save Changes"
-                />
-              </div>
-            )}
+            {!isCreating &&
+              !isChoosingMode &&
+              !isSearching &&
+              isEditing === false && (
+                <div className="flex flex-row space-x-2">
+                  <Button onClick={() => setIsOpen(false)} title="Cancel" />
+                  {themeSelected !== null && (
+                    <Button onClick={handleDeleteTheme} title="Delete" />
+                  )}
+                  {themeSelected !== null && (
+                    <Button onClick={() => setIsEditing(true)} title="Edit" />
+                  )}
+                  {themeSelected !== null && (
+                    <Button onClick={handleActivateTheme} title="Activate" />
+                  )}
+                </div>
+              )}
+            {!isCreating &&
+              !isChoosingMode &&
+              !isSearching &&
+              isEditing === true && (
+                <div className="flex flex-row space-x-2">
+                  <Button onClick={() => setIsEditing(false)} title="Cancel" />
+                  <Button
+                    onClick={() => handleSaveTheme(themeKeySelected)}
+                    title="Save Changes"
+                  />
+                </div>
+              )}
           </div>
         </div>
       </Panel>

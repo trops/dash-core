@@ -957,7 +957,7 @@ export const LayoutBuilder = ({
   ) {
     try {
       console.log(
-        "[LayoutBuilder] Move widget:",
+        "[LayoutBuilder] Move/swap widget:",
         sourceCellNumber,
         "→",
         targetCellNumber,
