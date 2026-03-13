@@ -60,9 +60,48 @@ function generateThemeRegistryManifest(themeData, themeKey, options = {}) {
   };
 }
 
+// Tailwind color family name → representative hex (500 shade)
+const TAILWIND_COLORS = {
+  slate: "#64748b",
+  gray: "#6b7280",
+  zinc: "#71717a",
+  neutral: "#737373",
+  stone: "#78716c",
+  red: "#ef4444",
+  orange: "#f97316",
+  amber: "#f59e0b",
+  yellow: "#eab308",
+  lime: "#84cc16",
+  green: "#22c55e",
+  emerald: "#10b981",
+  teal: "#14b8a6",
+  cyan: "#06b6d4",
+  sky: "#0ea5e9",
+  blue: "#3b82f6",
+  indigo: "#6366f1",
+  violet: "#8b5cf6",
+  purple: "#a855f7",
+  fuchsia: "#d946ef",
+  pink: "#ec4899",
+  rose: "#f43f5e",
+};
+
+/**
+ * Convert a color value to a CSS-usable color.
+ * If it's a Tailwind family name, map to its hex 500 shade.
+ * If it already looks like a hex/rgb/hsl value, return as-is.
+ */
+function toDisplayColor(value) {
+  if (!value) return "";
+  const lower = value.toLowerCase().trim();
+  if (TAILWIND_COLORS[lower]) return TAILWIND_COLORS[lower];
+  return value;
+}
+
 /**
  * Extract primary/secondary/tertiary/neutral colors from a theme object.
  * Theme objects store colors in various structures; this normalizes them.
+ * Converts Tailwind color family names to hex values for display.
  */
 function extractColors(themeData) {
   const colors = {
@@ -88,6 +127,12 @@ function extractColors(themeData) {
     if (themeData.colors.tertiary) colors.tertiary = themeData.colors.tertiary;
     if (themeData.colors.neutral) colors.neutral = themeData.colors.neutral;
   }
+
+  // Convert Tailwind names to hex
+  colors.primary = toDisplayColor(colors.primary);
+  colors.secondary = toDisplayColor(colors.secondary);
+  colors.tertiary = toDisplayColor(colors.tertiary);
+  colors.neutral = toDisplayColor(colors.neutral);
 
   return colors;
 }
