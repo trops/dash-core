@@ -6,6 +6,7 @@ import {
   Sidebar,
   Paragraph,
   Tag3,
+  Tabs3,
   ThemeContext,
   getStylesForItem,
   themeObjects,
@@ -364,26 +365,24 @@ export const WidgetsSection = ({
           />
 
           {/* Source tabs */}
-          <div className="flex bg-white/5 rounded-md p-0.5">
-            {[
-              { key: "all", label: "All" },
-              { key: "builtin", label: "Built-in" },
-              { key: "installed", label: "Installed" },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setFilterSource(tab.key)}
-                className={`flex-1 px-2 py-0.5 rounded text-[11px] transition-colors ${
-                  filterSource === tab.key
-                    ? "bg-white/10 font-medium opacity-90"
-                    : "opacity-50 hover:opacity-70"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <Tabs3
+            value={filterSource}
+            onValueChange={setFilterSource}
+            backgroundColor="bg-transparent"
+            spacing="p-0"
+          >
+            <Tabs3.List className="w-full flex" spacing="p-0.5">
+              <Tabs3.Trigger value="all" className="flex-1">
+                All
+              </Tabs3.Trigger>
+              <Tabs3.Trigger value="builtin" className="flex-1">
+                Built-in
+              </Tabs3.Trigger>
+              <Tabs3.Trigger value="installed" className="flex-1">
+                Installed
+              </Tabs3.Trigger>
+            </Tabs3.List>
+          </Tabs3>
 
           {/* Author + Provider dropdowns */}
           <div className="grid grid-cols-2 gap-1.5">
