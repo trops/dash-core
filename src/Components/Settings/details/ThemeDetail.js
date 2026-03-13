@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Button,
   SubHeading,
@@ -8,6 +8,7 @@ import {
   colorTypes,
   themeVariants,
 } from "@trops/dash-react";
+import { PublishThemeModal } from "./PublishThemeModal";
 
 const TOKEN_TYPES = ["bg", "text", "border"];
 
@@ -356,8 +357,11 @@ export const ThemeDetail = ({
   onActivate,
   onOpenThemeEditor,
   onDelete = null,
+  appId = null,
 }) => {
   const theme = themeKey && themes ? themes[themeKey] : null;
+  const [publishOpen, setPublishOpen] = useState(false);
+  const canPublish = theme && !theme._registryMeta;
   const displayTheme = useMemo(() => {
     return theme ? theme[themeVariant] || {} : {};
   }, [theme, themeVariant]);
@@ -426,11 +430,18 @@ export const ThemeDetail = ({
 
       {/* Footer */}
       <div className="flex-shrink-0 flex flex-row justify-between px-6 py-4 border-t border-white/10">
-        <div>
+        <div className="flex flex-row gap-2">
           {!isActive && onDelete && (
             <Button
               title="Delete"
               onClick={() => onDelete(themeKey)}
+              size="sm"
+            />
+          )}
+          {canPublish && (
+            <Button
+              title="Publish"
+              onClick={() => setPublishOpen(true)}
               size="sm"
             />
           )}
@@ -446,6 +457,15 @@ export const ThemeDetail = ({
           <Button title="Edit" onClick={onOpenThemeEditor} size="sm" />
         </div>
       </div>
+      {canPublish && (
+        <PublishThemeModal
+          isOpen={publishOpen}
+          setIsOpen={setPublishOpen}
+          appId={appId}
+          themeKey={themeKey}
+          themeName={theme.name || themeKey}
+        />
+      )}
     </div>
   );
 };
