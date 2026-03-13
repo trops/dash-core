@@ -157,6 +157,45 @@ export const RegistryDashboardDetail = ({
           </div>
         )}
 
+        {/* Bundled Theme */}
+        {pkg.theme && (
+          <div>
+            <span className="text-xs font-semibold opacity-50 mb-1 block">
+              INCLUDES THEME
+            </span>
+            <div
+              className={`p-3 rounded ${currentTheme["bg-primary-medium"]} flex items-center gap-3`}
+            >
+              <FontAwesomeIcon icon="palette" className="h-4 w-4 opacity-60" />
+              <div className="flex-1">
+                <span className="text-sm font-medium">
+                  {pkg.theme.name || pkg.theme.key || "Bundled Theme"}
+                </span>
+                <span className="text-xs opacity-40 ml-2">
+                  Will be auto-installed
+                </span>
+              </div>
+              {pkg.theme.colors && (
+                <div className="flex items-center gap-1">
+                  {[
+                    pkg.theme.colors.primary,
+                    pkg.theme.colors.secondary,
+                    pkg.theme.colors.tertiary,
+                  ]
+                    .filter(Boolean)
+                    .map((color, i) => (
+                      <div
+                        key={i}
+                        className="h-4 w-4 rounded-full border border-white/20"
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Widget Dependencies */}
         <div>
           <span className="text-xs font-semibold opacity-50 mb-1 block">

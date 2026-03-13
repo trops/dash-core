@@ -30,6 +30,7 @@ const {
   applyEventWiringToLayout,
 } = require("../schema/dashboardConfigUtils");
 const { searchRegistry, getPackage } = require("./registryController");
+const themeController = require("./themeController");
 
 const configFilename = "workspaces.json";
 const appName = "Dashboard";
@@ -106,7 +107,33 @@ async function exportDashboardConfig(
       eventWiring,
     });
 
-    // 4. Validate the generated config
+    // 4. Bundle theme if workspace has a themeKey
+    if (workspace.themeKey) {
+      try {
+        const themeResult = themeController.listThemesForApplication(
+          win,
+          appId,
+        );
+        const themeData = themeResult.themes?.[workspace.themeKey];
+        if (themeData) {
+          dashboardConfig.theme = {
+            key: workspace.themeKey,
+            data: themeData,
+          };
+          if (themeData._registryMeta?.packageName) {
+            dashboardConfig.theme.registryPackage =
+              themeData._registryMeta.packageName;
+          }
+        }
+      } catch (themeErr) {
+        console.warn(
+          "[DashboardConfigController] Could not bundle theme:",
+          themeErr.message,
+        );
+      }
+    }
+
+    // 5. Validate the generated config
     const validation = validateDashboardConfig(dashboardConfig);
     if (!validation.valid) {
       return {
@@ -115,7 +142,7 @@ async function exportDashboardConfig(
       };
     }
 
-    // 5. Show save dialog
+    // 6. Show save dialog
     const sanitizedName = (workspace.name || "dashboard")
       .replace(/[^a-zA-Z0-9-_ ]/g, "")
       .replace(/\s+/g, "-")
@@ -134,7 +161,7 @@ async function exportDashboardConfig(
       return { success: false, canceled: true };
     }
 
-    // 6. Create ZIP with the config
+    // 7. Create ZIP with the config
     const zip = new AdmZip();
     const configJson = JSON.stringify(dashboardConfig, null, 2);
     zip.addFile(
@@ -433,7 +460,69 @@ async function processDashboardConfig(
     }
   }
 
-  // 2. Build workspace from config
+  // 2. Install bundled theme if present
+  let themeInstalled = null;
+  if (dashboardConfig.theme) {
+    const bundledTheme = dashboardConfig.theme;
+    try {
+      const themeResult = themeController.listThemesForApplication(win, appId);
+      const existingThemes = themeResult.themes || {};
+      const themeKey = bundledTheme.key;
+
+      if (bundledTheme.data && themeKey && !existingThemes[themeKey]) {
+        // Embed registry origin metadata if present
+        const themeData = { ...bundledTheme.data };
+        if (bundledTheme.registryPackage) {
+          themeData._registryMeta = {
+            source: "dashboard-import",
+            packageName: bundledTheme.registryPackage,
+            installedAt: new Date().toISOString(),
+          };
+        }
+        themeController.saveThemeForApplication(
+          win,
+          appId,
+          themeKey,
+          themeData,
+        );
+        themeInstalled = themeKey;
+        console.log(
+          `[DashboardConfigController] Installed bundled theme: ${themeKey}`,
+        );
+      } else if (
+        !bundledTheme.data &&
+        bundledTheme.registryPackage &&
+        themeKey &&
+        !existingThemes[themeKey]
+      ) {
+        // Fallback: try to install from registry by package name
+        try {
+          const {
+            installThemeFromRegistry,
+          } = require("./themeRegistryController");
+          await installThemeFromRegistry(
+            win,
+            appId,
+            bundledTheme.registryPackage,
+          );
+          themeInstalled = themeKey;
+          console.log(
+            `[DashboardConfigController] Installed theme from registry: ${bundledTheme.registryPackage}`,
+          );
+        } catch (registryErr) {
+          console.warn(
+            `[DashboardConfigController] Could not install theme from registry: ${registryErr.message}`,
+          );
+        }
+      }
+    } catch (themeErr) {
+      console.warn(
+        `[DashboardConfigController] Could not install bundled theme: ${themeErr.message}`,
+      );
+    }
+  }
+
+  // 3. Build workspace from config
   const workspace = { ...dashboardConfig.workspace };
 
   if (!workspace || !workspace.layout) {
@@ -451,7 +540,12 @@ async function processDashboardConfig(
   if (options.menuId !== undefined) workspace.menuId = options.menuId;
   if (options.themeKey !== undefined) workspace.themeKey = options.themeKey;
 
-  // 3. Apply event wiring to layout
+  // Set themeKey from bundled theme if it was installed and no override given
+  if (themeInstalled && options.themeKey === undefined) {
+    workspace.themeKey = themeInstalled;
+  }
+
+  // 4. Apply event wiring to layout
   const eventWiringSummary = [];
   if (
     dashboardConfig.eventWiring &&
@@ -466,7 +560,7 @@ async function processDashboardConfig(
     }
   }
 
-  // 4. Mark as not shareable (imported dashboards cannot be re-published)
+  // 5. Mark as not shareable (imported dashboards cannot be re-published)
   workspace._dashboardConfig = {
     shareable: false,
     source,
@@ -515,6 +609,7 @@ async function processDashboardConfig(
       widgets: installSummary,
       eventsWired: eventWiringSummary,
       providersRequired: providerSummary,
+      themeInstalled: themeInstalled || null,
     },
   };
 }
@@ -779,7 +874,33 @@ async function prepareDashboardForPublish(
       eventWiring,
     });
 
-    // 4. Validate the config
+    // 4. Bundle theme if workspace has a themeKey
+    if (workspace.themeKey) {
+      try {
+        const themeResult = themeController.listThemesForApplication(
+          win,
+          appId,
+        );
+        const themeData = themeResult.themes?.[workspace.themeKey];
+        if (themeData) {
+          dashboardConfig.theme = {
+            key: workspace.themeKey,
+            data: themeData,
+          };
+          if (themeData._registryMeta?.packageName) {
+            dashboardConfig.theme.registryPackage =
+              themeData._registryMeta.packageName;
+          }
+        }
+      } catch (themeErr) {
+        console.warn(
+          "[DashboardConfigController] Could not bundle theme for publish:",
+          themeErr.message,
+        );
+      }
+    }
+
+    // 5. Validate the config
     const validation = validateDashboardConfig(dashboardConfig);
     if (!validation.valid) {
       return {
@@ -788,7 +909,7 @@ async function prepareDashboardForPublish(
       };
     }
 
-    // 5. Check which widgets exist in the registry (soft warning, not blocking)
+    // 6. Check which widgets exist in the registry (soft warning, not blocking)
     const { fetchRegistryIndex } = require("./registryController");
     let registryPackages = [];
     let registryCheckFailed = false;
@@ -821,14 +942,14 @@ async function prepareDashboardForPublish(
       );
     }
 
-    // 6. Generate registry manifest
+    // 7. Generate registry manifest
     const manifest = generateRegistryManifest(dashboardConfig, {
       githubUser: options.githubUser || options.authorId || "",
       category: options.category || "general",
       repository: options.repository || "",
     });
 
-    // 7. Show save dialog for the publish package
+    // 8. Show save dialog for the publish package
     const sanitizedName = manifest.name;
     const { canceled, filePath } = await dialog.showSaveDialog(win, {
       title: "Save Dashboard Package for Registry",
@@ -843,7 +964,7 @@ async function prepareDashboardForPublish(
       return { success: false, canceled: true };
     }
 
-    // 8. Create ZIP with manifest and dashboard config
+    // 9. Create ZIP with manifest and dashboard config
     const zip = new AdmZip();
     zip.addFile(
       "manifest.json",
@@ -859,7 +980,7 @@ async function prepareDashboardForPublish(
       `[DashboardConfigController] Prepared publish package: ${filePath}`,
     );
 
-    // 9. Attempt to publish to registry if authenticated
+    // 10. Attempt to publish to registry if authenticated
     let registrySubmission = null;
     try {
       const { getAuthStatus } = require("./registryAuthController");
