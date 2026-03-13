@@ -1,6 +1,6 @@
 {
     "name": "@trops/dash-core",
-    "version": "0.1.138",
+    "version": "0.1.139",
     "description": "Core framework for Dash dashboard applications",
     "main": "dist/index.js",
     "module": "dist/index.esm.js",
@@ -36,6 +36,7 @@
         "@fortawesome/free-brands-svg-icons": "^6.1.1",
         "@fortawesome/free-solid-svg-icons": "^6.1.1",
         "@fortawesome/react-fontawesome": "^0.1.18",
+        "@modelcontextprotocol/sdk": "^1.26.0",
         "@trops/dash-core": "^0.1.109"
     },
     "devDependencies": {
