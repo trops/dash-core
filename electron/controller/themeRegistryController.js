@@ -13,7 +13,10 @@ const AdmZip = require("adm-zip");
 const themeController = require("./themeController");
 const registryController = require("./registryController");
 const registryApiController = require("./registryApiController");
-const { getAuthStatus } = require("./registryAuthController");
+const {
+  getAuthStatus,
+  getRegistryProfile,
+} = require("./registryAuthController");
 
 const appName = "Dashboard";
 
@@ -105,7 +108,10 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
     // Read the theme data
     const themesResult = themeController.listThemesForApplication(win, appId);
     if (themesResult.error) {
-      return { success: false, error: "Failed to read themes: " + themesResult.message };
+      return {
+        success: false,
+        error: "Failed to read themes: " + themesResult.message,
+      };
     }
 
     const themeData = themesResult.themes[themeKey];
@@ -113,13 +119,21 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
       return { success: false, error: `Theme "${themeKey}" not found` };
     }
 
-    // Get auth status for scope
+    // Get auth status and profile for scope
     const auth = getAuthStatus();
-    const scope = auth.profile?.username || options.scope || "";
-    if (!scope) {
+    if (!auth.authenticated) {
       return {
         success: false,
         error: "Not authenticated with registry",
+        authRequired: true,
+      };
+    }
+    const profile = await getRegistryProfile();
+    const scope = profile?.username || options.scope || "";
+    if (!scope) {
+      return {
+        success: false,
+        error: "Could not determine registry username",
         authRequired: true,
       };
     }
@@ -132,10 +146,15 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
     });
 
     // Validate colors
-    if (!manifest.colors.primary || !manifest.colors.secondary || !manifest.colors.tertiary) {
+    if (
+      !manifest.colors.primary ||
+      !manifest.colors.secondary ||
+      !manifest.colors.tertiary
+    ) {
       return {
         success: false,
-        error: "Theme must have primary, secondary, and tertiary colors defined",
+        error:
+          "Theme must have primary, secondary, and tertiary colors defined",
       };
     }
 
@@ -176,7 +195,10 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
         filePath,
         manifest,
       );
-      console.log("[ThemeRegistryController] Registry publish result:", registryResult);
+      console.log(
+        "[ThemeRegistryController] Registry publish result:",
+        registryResult,
+      );
     }
 
     return {
@@ -186,7 +208,10 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
       registryResult,
     };
   } catch (err) {
-    console.error("[ThemeRegistryController] Error preparing theme for publish:", err);
+    console.error(
+      "[ThemeRegistryController] Error preparing theme for publish:",
+      err,
+    );
     return { success: false, error: err.message };
   }
 }
@@ -207,7 +232,10 @@ async function installThemeFromRegistry(win, appId, packageName) {
     // Look up the package
     const pkg = await registryController.getPackage(packageName);
     if (!pkg) {
-      return { success: false, error: `Theme package "${packageName}" not found in registry` };
+      return {
+        success: false,
+        error: `Theme package "${packageName}" not found in registry`,
+      };
     }
 
     // Resolve download URL
@@ -226,7 +254,10 @@ async function installThemeFromRegistry(win, appId, packageName) {
       return { success: false, error: "Download URL must use HTTPS" };
     }
 
-    console.log("[ThemeRegistryController] Downloading theme from:", downloadUrl);
+    console.log(
+      "[ThemeRegistryController] Downloading theme from:",
+      downloadUrl,
+    );
 
     // Download the ZIP
     const response = await fetch(downloadUrl);
@@ -249,11 +280,17 @@ async function installThemeFromRegistry(win, appId, packageName) {
     );
 
     if (!themeEntry) {
-      return { success: false, error: "ZIP does not contain a .theme.json file" };
+      return {
+        success: false,
+        error: "ZIP does not contain a .theme.json file",
+      };
     }
 
     // Validate entry path (security: prevent path traversal)
-    if (themeEntry.entryName.includes("..") || path.isAbsolute(themeEntry.entryName)) {
+    if (
+      themeEntry.entryName.includes("..") ||
+      path.isAbsolute(themeEntry.entryName)
+    ) {
       return { success: false, error: "Invalid file path in ZIP" };
     }
 
@@ -263,7 +300,10 @@ async function installThemeFromRegistry(win, appId, packageName) {
     try {
       themeData = JSON.parse(themeJson);
     } catch (parseErr) {
-      return { success: false, error: "Invalid JSON in theme file: " + parseErr.message };
+      return {
+        success: false,
+        error: "Invalid JSON in theme file: " + parseErr.message,
+      };
     }
 
     // Add registry metadata
@@ -285,7 +325,10 @@ async function installThemeFromRegistry(win, appId, packageName) {
     );
 
     if (saveResult.error) {
-      return { success: false, error: "Failed to save theme: " + saveResult.message };
+      return {
+        success: false,
+        error: "Failed to save theme: " + saveResult.message,
+      };
     }
 
     console.log("[ThemeRegistryController] Theme installed:", themeKey);
@@ -313,7 +356,10 @@ function getThemePublishPreview(appId, themeKey) {
   try {
     const themesResult = themeController.listThemesForApplication(null, appId);
     if (themesResult.error) {
-      return { success: false, error: "Failed to read themes: " + themesResult.message };
+      return {
+        success: false,
+        error: "Failed to read themes: " + themesResult.message,
+      };
     }
 
     const themeData = themesResult.themes[themeKey];
