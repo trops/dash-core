@@ -1,5 +1,6 @@
 module.exports = {
     testEnvironment: "jsdom",
+    testPathIgnorePatterns: ["/node_modules/", "/electron/"],
     transform: {
         "^.+\\.[jt]sx?$": "babel-jest",
     },
