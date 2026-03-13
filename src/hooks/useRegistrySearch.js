@@ -65,7 +65,11 @@ export const useRegistrySearch = ({ filterByCapabilities = true } = {}) => {
           query ?? searchQuery,
           filters,
         );
-        const pkgs = result.packages || [];
+        // Only include packages that contain at least one widget
+        // (filters out theme-only packages, etc.)
+        const pkgs = (result.packages || []).filter(
+          (pkg) => pkg.widgets && pkg.widgets.length > 0,
+        );
         setPackages(pkgs);
 
         // Flatten packages into widget entries
