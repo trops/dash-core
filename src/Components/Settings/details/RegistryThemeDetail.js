@@ -17,8 +17,14 @@ import { toDisplayColor } from "../../../utils/colorUtils";
 function adjustColor(hex, amount) {
   if (!hex || !hex.startsWith("#")) return hex;
   const num = parseInt(hex.slice(1), 16);
-  const r = Math.min(255, Math.max(0, ((num >> 16) & 0xff) + Math.round(255 * amount)));
-  const g = Math.min(255, Math.max(0, ((num >> 8) & 0xff) + Math.round(255 * amount)));
+  const r = Math.min(
+    255,
+    Math.max(0, ((num >> 16) & 0xff) + Math.round(255 * amount)),
+  );
+  const g = Math.min(
+    255,
+    Math.max(0, ((num >> 8) & 0xff) + Math.round(255 * amount)),
+  );
   const b = Math.min(255, Math.max(0, (num & 0xff) + Math.round(255 * amount)));
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
 }
@@ -45,40 +51,103 @@ const ThemePreviewMockup = ({ colors }) => {
             className="flex flex-col gap-1.5 p-2 w-24 flex-shrink-0"
             style={{ backgroundColor: sidebar }}
           >
-            <div className="h-2 w-12 rounded-sm opacity-60" style={{ backgroundColor: primary }} />
-            <div className="h-2 w-16 rounded-sm opacity-30" style={{ backgroundColor: secondary }} />
-            <div className="h-2 w-10 rounded-sm opacity-30" style={{ backgroundColor: secondary }} />
-            <div className="h-2 w-14 rounded-sm opacity-30" style={{ backgroundColor: secondary }} />
+            <div
+              className="h-2 w-12 rounded-sm opacity-60"
+              style={{ backgroundColor: primary }}
+            />
+            <div
+              className="h-2 w-16 rounded-sm opacity-30"
+              style={{ backgroundColor: secondary }}
+            />
+            <div
+              className="h-2 w-10 rounded-sm opacity-30"
+              style={{ backgroundColor: secondary }}
+            />
+            <div
+              className="h-2 w-14 rounded-sm opacity-30"
+              style={{ backgroundColor: secondary }}
+            />
           </div>
           {/* Main area */}
           <div className="flex flex-col flex-1 min-w-0">
             {/* Header bar */}
-            <div className="flex items-center gap-2 px-3 py-2" style={{ backgroundColor: header }}>
-              <div className="h-2 w-20 rounded-sm opacity-70" style={{ backgroundColor: primary }} />
+            <div
+              className="flex items-center gap-2 px-3 py-2"
+              style={{ backgroundColor: header }}
+            >
+              <div
+                className="h-2 w-20 rounded-sm opacity-70"
+                style={{ backgroundColor: primary }}
+              />
               <div className="flex-1" />
-              <div className="h-2 w-8 rounded-sm opacity-40" style={{ backgroundColor: tertiary || secondary }} />
+              <div
+                className="h-2 w-8 rounded-sm opacity-40"
+                style={{ backgroundColor: tertiary || secondary }}
+              />
             </div>
             {/* Content grid */}
             <div className="grid grid-cols-3 gap-2 p-3 flex-1">
               {/* Widget card 1 */}
-              <div className="rounded p-2 flex flex-col gap-1.5" style={{ backgroundColor: adjustColor(primary, -0.35) }}>
-                <div className="h-1.5 w-10 rounded-sm" style={{ backgroundColor: primary, opacity: 0.7 }} />
-                <div className="h-8 w-full rounded-sm" style={{ backgroundColor: secondary, opacity: 0.3 }} />
-                <div className="h-1.5 w-12 rounded-sm" style={{ backgroundColor: tertiary || secondary, opacity: 0.4 }} />
+              <div
+                className="rounded p-2 flex flex-col gap-1.5"
+                style={{ backgroundColor: adjustColor(primary, -0.35) }}
+              >
+                <div
+                  className="h-1.5 w-10 rounded-sm"
+                  style={{ backgroundColor: primary, opacity: 0.7 }}
+                />
+                <div
+                  className="h-8 w-full rounded-sm"
+                  style={{ backgroundColor: secondary, opacity: 0.3 }}
+                />
+                <div
+                  className="h-1.5 w-12 rounded-sm"
+                  style={{
+                    backgroundColor: tertiary || secondary,
+                    opacity: 0.4,
+                  }}
+                />
               </div>
               {/* Widget card 2 */}
-              <div className="rounded p-2 flex flex-col gap-1.5" style={{ backgroundColor: adjustColor(primary, -0.35) }}>
-                <div className="h-1.5 w-8 rounded-sm" style={{ backgroundColor: secondary, opacity: 0.7 }} />
+              <div
+                className="rounded p-2 flex flex-col gap-1.5"
+                style={{ backgroundColor: adjustColor(primary, -0.35) }}
+              >
+                <div
+                  className="h-1.5 w-8 rounded-sm"
+                  style={{ backgroundColor: secondary, opacity: 0.7 }}
+                />
                 <div className="flex flex-row gap-1 flex-1">
-                  <div className="flex-1 rounded-sm" style={{ backgroundColor: primary, opacity: 0.25 }} />
-                  <div className="flex-1 rounded-sm" style={{ backgroundColor: tertiary || secondary, opacity: 0.25 }} />
+                  <div
+                    className="flex-1 rounded-sm"
+                    style={{ backgroundColor: primary, opacity: 0.25 }}
+                  />
+                  <div
+                    className="flex-1 rounded-sm"
+                    style={{
+                      backgroundColor: tertiary || secondary,
+                      opacity: 0.25,
+                    }}
+                  />
                 </div>
               </div>
               {/* Widget card 3 */}
-              <div className="rounded p-2 flex flex-col gap-1.5" style={{ backgroundColor: adjustColor(primary, -0.35) }}>
-                <div className="h-1.5 w-12 rounded-sm" style={{ backgroundColor: tertiary || primary, opacity: 0.7 }} />
-                <div className="h-4 w-full rounded-sm" style={{ backgroundColor: primary, opacity: 0.2 }} />
-                <div className="h-4 w-full rounded-sm" style={{ backgroundColor: secondary, opacity: 0.2 }} />
+              <div
+                className="rounded p-2 flex flex-col gap-1.5"
+                style={{ backgroundColor: adjustColor(primary, -0.35) }}
+              >
+                <div
+                  className="h-1.5 w-12 rounded-sm"
+                  style={{ backgroundColor: tertiary || primary, opacity: 0.7 }}
+                />
+                <div
+                  className="h-4 w-full rounded-sm"
+                  style={{ backgroundColor: primary, opacity: 0.2 }}
+                />
+                <div
+                  className="h-4 w-full rounded-sm"
+                  style={{ backgroundColor: secondary, opacity: 0.2 }}
+                />
               </div>
             </div>
           </div>
@@ -192,15 +261,16 @@ export const RegistryThemeDetail = ({
         <hr className={currentTheme["border-primary-medium"]} />
 
         {/* Theme Preview Mockup */}
-        {colorEntries.length > 0 && (
-          <ThemePreviewMockup colors={colors} />
-        )}
+        {colorEntries.length > 0 && <ThemePreviewMockup colors={colors} />}
 
         {/* Color Swatches */}
         {colorEntries.length > 0 && (
           <div className="flex flex-row gap-3">
             {colorEntries.map(({ label, value }) => (
-              <div key={label} className="flex flex-col items-center gap-1 flex-1">
+              <div
+                key={label}
+                className="flex flex-col items-center gap-1 flex-1"
+              >
                 <div
                   className="h-8 w-8 rounded border-2 border-white/20"
                   style={{ backgroundColor: value }}

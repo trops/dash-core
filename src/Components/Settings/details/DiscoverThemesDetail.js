@@ -134,17 +134,15 @@ export const DiscoverThemesDetail = ({ onBack, appId, onInstallComplete }) => {
     listBody = (
       <div className="space-y-1">
         {packages.map((pkg) => (
-            <Sidebar.Item
-              key={pkg.name}
-              icon={
-                <FontAwesomeIcon icon="palette" className="h-3.5 w-3.5" />
-              }
-              badge={<ThemeColorDots colors={pkg.colors} theme={pkg} />}
-              onClick={() => setSelectedPackageName(pkg.name)}
-            >
-              {pkg.displayName || pkg.name}
-            </Sidebar.Item>
-          ))}
+          <Sidebar.Item
+            key={pkg.name}
+            icon={<FontAwesomeIcon icon="palette" className="h-3.5 w-3.5" />}
+            badge={<ThemeColorDots colors={pkg.colors} theme={pkg} />}
+            onClick={() => setSelectedPackageName(pkg.name)}
+          >
+            {pkg.displayName || pkg.name}
+          </Sidebar.Item>
+        ))}
       </div>
     );
   }
