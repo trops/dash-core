@@ -25,30 +25,58 @@ import {
 
 import { MergeCellsModal } from "./Modal";
 
-const DraggableCellBody = ({
+const DraggableDroppableCellBody = ({
   cellNumber,
   gridContainerId,
+  onMoveWidgetToCell,
+  hasSpan,
   children,
   padding,
 }) => {
   const [{ isDragging }, drag] = useDrag(
     () => ({
       type: GRID_CELL_WIDGET_TYPE,
-      item: { cellNumber, gridContainerId },
+      item: { cellNumber, gridContainerId, hasSpan },
       collect: (monitor) => ({ isDragging: monitor.isDragging() }),
     }),
-    [cellNumber, gridContainerId],
+    [cellNumber, gridContainerId, hasSpan],
+  );
+
+  const [{ isOver, canDrop }, drop] = useDrop(
+    () => ({
+      accept: GRID_CELL_WIDGET_TYPE,
+      canDrop: (dragItem) => {
+        if (dragItem.gridContainerId !== gridContainerId) return false;
+        if (dragItem.cellNumber === cellNumber) return false;
+        if (dragItem.hasSpan || hasSpan) return false;
+        return true;
+      },
+      drop: (dragItem) => {
+        if (onMoveWidgetToCell)
+          onMoveWidgetToCell(gridContainerId, dragItem.cellNumber, cellNumber);
+      },
+      collect: (monitor) => ({
+        isOver: monitor.isOver(),
+        canDrop: monitor.canDrop(),
+      }),
+    }),
+    [cellNumber, gridContainerId, onMoveWidgetToCell, hasSpan],
   );
 
   return (
     <div
-      ref={drag}
+      ref={(node) => drag(drop(node))}
       className={`flex-1 min-h-0 overflow-auto ${padding} ${
         isDragging ? "opacity-30" : ""
-      }`}
+      } ${isOver && canDrop ? "ring-2 ring-blue-500 ring-inset" : ""}`}
       style={{ cursor: "grab" }}
     >
       {children}
+      {isOver && canDrop && (
+        <div className="absolute inset-0 flex items-center justify-center bg-blue-600/30 rounded pointer-events-none">
+          <span className="text-sm font-bold text-blue-200">Swap</span>
+        </div>
+      )}
     </div>
   );
 };
@@ -1211,13 +1239,21 @@ export const LayoutGridContainer = memo(
             }
           />
           {cellComponent && isWidgetResolvable(cellComponent.component) ? (
-            <DraggableCellBody
+            <DraggableDroppableCellBody
               cellNumber={cellNumber}
               gridContainerId={id}
+              onMoveWidgetToCell={onMoveWidgetToCell}
+              hasSpan={
+                !!(
+                  cellDef.span &&
+                  ((cellDef.span.row && cellDef.span.row > 1) ||
+                    (cellDef.span.col && cellDef.span.col > 1))
+                )
+              }
               padding="p-3"
             >
               {renderedWidget}
-            </DraggableCellBody>
+            </DraggableDroppableCellBody>
           ) : (
             <DroppableEmptyCell
               cellNumber={cellNumber}
