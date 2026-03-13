@@ -8,6 +8,7 @@ import {
   Toggle,
 } from "@trops/dash-react";
 import { ThemeContext } from "../../Context";
+import { ThemeColorDots } from "../Theme/ThemeColorDots";
 import deepEqual from "deep-equal";
 
 export const DashboardHeader = ({
@@ -109,6 +110,7 @@ export const DashboardHeader = ({
                     label: t.name || key,
                     value: key,
                     icon: "palette",
+                    badge: <ThemeColorDots theme={t} />,
                   }))}
                 onChange={onThemeChange}
                 placeholder="Select a theme"
