@@ -118,5 +118,12 @@ export const ComponentConfigModel = (obj = {}) => {
    */
   obj.notifications = "notifications" in obj ? obj["notifications"] : [];
 
+  /**
+   * scheduledTasks
+   * Scheduled task handlers this widget exposes.
+   * Each entry: { key, handler, displayName, description }
+   */
+  obj.scheduledTasks = "scheduledTasks" in obj ? obj["scheduledTasks"] : [];
+
   return obj;
 };
