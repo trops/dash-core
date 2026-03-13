@@ -396,6 +396,31 @@ function generateRegistryManifest(dashboardConfig, options = {}) {
     manifest.appOrigin = options.appOrigin || dashboardConfig.appOrigin;
   }
 
+  // Include theme metadata if dashboard bundles a theme
+  if (dashboardConfig.theme) {
+    manifest.theme = {
+      key: dashboardConfig.theme.key || "",
+      name: dashboardConfig.theme.data?.name || dashboardConfig.theme.key || "",
+    };
+    if (dashboardConfig.theme.registryPackage) {
+      manifest.theme.registryPackage = dashboardConfig.theme.registryPackage;
+    }
+    // Extract color values for display
+    const td = dashboardConfig.theme.data;
+    if (td) {
+      const colors = {};
+      if (td.primary || td.colors?.primary)
+        colors.primary = td.primary || td.colors.primary;
+      if (td.secondary || td.colors?.secondary)
+        colors.secondary = td.secondary || td.colors.secondary;
+      if (td.tertiary || td.colors?.tertiary)
+        colors.tertiary = td.tertiary || td.colors.tertiary;
+      if (Object.keys(colors).length > 0) {
+        manifest.theme.colors = colors;
+      }
+    }
+  }
+
   return manifest;
 }
 
