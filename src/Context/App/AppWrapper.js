@@ -91,6 +91,11 @@ export const AppWrapper = ({ children, credentials = null, dashApi }) => {
         saveSettings(s);
         return s;
       });
+      if (to) {
+        window.mainApi?.debug?.open();
+      } else {
+        window.mainApi?.debug?.close();
+      }
     },
     [dashApi, credentials],
   );
