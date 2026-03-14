@@ -372,6 +372,7 @@ export const ComponentManager = {
             eventHandlers: "eventHandlers" in c ? c["eventHandlers"] : [],
             providers: "providers" in c ? c["providers"] : [],
             notifications: "notifications" in c ? c["notifications"] : [],
+            scheduledTasks: "scheduledTasks" in c ? c["scheduledTasks"] : [],
             icon: "icon" in c ? c["icon"] : null,
           };
         }

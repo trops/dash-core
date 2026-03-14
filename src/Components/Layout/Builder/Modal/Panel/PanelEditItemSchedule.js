@@ -19,9 +19,9 @@ const DAYS = [
 ];
 
 const INTERVAL_UNITS = [
-  { value: "seconds", displayName: "Seconds" },
-  { value: "minutes", displayName: "Minutes" },
-  { value: "hours", displayName: "Hours" },
+  { value: "seconds", label: "Seconds" },
+  { value: "minutes", label: "Minutes" },
+  { value: "hours", label: "Hours" },
 ];
 
 function intervalToMs(value, unit) {
@@ -197,9 +197,7 @@ function TaskScheduleEditor({
                 label="Every"
                 type="number"
                 value={String(intervalValue)}
-                onChange={(e) =>
-                  handleIntervalChange(e.target.value, intervalUnit)
-                }
+                onChange={(val) => handleIntervalChange(val, intervalUnit)}
                 className="w-24"
                 min="1"
               />
@@ -254,7 +252,7 @@ function TaskScheduleEditor({
                 label="Time"
                 type="time"
                 value={time}
-                onChange={(e) => handleTimeChange(e.target.value)}
+                onChange={(val) => handleTimeChange(val)}
                 className="w-36"
               />
             </div>
