@@ -11,6 +11,7 @@ import { SectionLayout } from "../SectionLayout";
 import { ProviderDetail } from "../details/ProviderDetail";
 import { McpCatalogDetail } from "../details/McpCatalogDetail";
 import { CustomMcpServerForm } from "../details/CustomMcpServerForm";
+import { WebSocketProviderForm } from "../details/WebSocketProviderForm";
 import {
   envMappingToRows,
   headerTemplateToRows,
@@ -48,6 +49,8 @@ export const ProvidersSection = ({
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isAddingMcp, setIsAddingMcp] = useState(false);
   const [isEditingMcp, setIsEditingMcp] = useState(false);
+  const [isAddingWs, setIsAddingWs] = useState(false);
+  const [isEditingWs, setIsEditingWs] = useState(false);
 
   // Row ID counter for env/header rows in MCP edit mode
   const nextRowIdRef = useRef(0);
@@ -63,6 +66,9 @@ export const ProvidersSection = ({
   const mcpProviders = providerEntries.filter(
     ([, p]) => p.providerClass === "mcp",
   );
+  const wsProviders = providerEntries.filter(
+    ([, p]) => p.providerClass === "websocket",
+  );
 
   function resetForm() {
     setFormName("");
@@ -71,6 +77,7 @@ export const ProvidersSection = ({
     setIsCreating(false);
     setIsEditing(false);
     setIsEditingMcp(false);
+    setIsEditingWs(false);
   }
 
   function handleSave() {
@@ -95,17 +102,25 @@ export const ProvidersSection = ({
   function handleStartEdit(name, provider) {
     setSelectedName(name);
     setIsCreating(false);
-    setProviderTab(provider.providerClass === "mcp" ? "mcp" : "credentials");
 
-    if (provider.providerClass === "mcp") {
+    if (provider.providerClass === "websocket") {
+      setProviderTab("websocket");
+      setIsEditingWs(true);
+      setIsEditing(false);
+      setIsEditingMcp(false);
+    } else if (provider.providerClass === "mcp") {
+      setProviderTab("mcp");
       setIsEditingMcp(true);
       setIsEditing(false);
+      setIsEditingWs(false);
     } else {
+      setProviderTab("credentials");
       setFormName(name);
       setFormType(provider.type || "");
       setFormCredentials(provider.credentials || {});
       setIsEditing(true);
       setIsEditingMcp(false);
+      setIsEditingWs(false);
     }
   }
 
@@ -151,6 +166,11 @@ export const ProvidersSection = ({
         () => {},
         () => {},
       );
+    }
+
+    // If it's a WebSocket provider, disconnect first
+    if (targetProvider?.providerClass === "websocket" && dashApi?.webSocket) {
+      dashApi.webSocket.disconnect(deleteTarget).catch(() => {});
     }
 
     dashApi.deleteProvider(
@@ -265,6 +285,63 @@ export const ProvidersSection = ({
     );
   }
 
+  // Handle WebSocket provider creation
+  function handleWsSave(providerName, wsConfig, wsCredentials) {
+    if (!dashApi || !appId) return;
+    dashApi.saveProvider(
+      appId,
+      providerName,
+      {
+        providerType: "websocket",
+        credentials: wsCredentials,
+        providerClass: "websocket",
+        wsConfig,
+      },
+      () => {
+        setIsAddingWs(false);
+        refreshProviders && refreshProviders();
+        setSelectedName(providerName);
+        setProviderTab("websocket");
+      },
+      (e, err) => console.error("Save WebSocket provider error:", err),
+    );
+  }
+
+  // Handle WebSocket provider editing
+  function handleWsEditSave(providerName, wsConfig, wsCredentials) {
+    if (!dashApi || !appId) return;
+    const originalName = selectedName;
+
+    // Delete old if name changed
+    if (originalName && originalName !== providerName) {
+      dashApi.deleteProvider(
+        appId,
+        originalName,
+        () => {},
+        () => {},
+      );
+    }
+
+    dashApi.saveProvider(
+      appId,
+      providerName,
+      {
+        providerType: "websocket",
+        credentials: wsCredentials,
+        providerClass: "websocket",
+        wsConfig,
+      },
+      () => {
+        setSelectedName(providerName);
+        setProviderTab("websocket");
+        setIsEditingWs(false);
+        resetForm();
+        refreshProviders && refreshProviders();
+      },
+      (e, err) => console.error("Save WebSocket provider error:", err),
+    );
+  }
+
   // Respond to external create trigger from header
   const prevCreateRequested = useRef(false);
   useEffect(() => {
@@ -285,8 +362,17 @@ export const ProvidersSection = ({
     selectedName && providers[selectedName] ? providers[selectedName] : null;
 
   const activeProviders =
-    providerTab === "credentials" ? credentialProviders : mcpProviders;
-  const activeIcon = providerTab === "credentials" ? "key" : "server";
+    providerTab === "credentials"
+      ? credentialProviders
+      : providerTab === "mcp"
+        ? mcpProviders
+        : wsProviders;
+  const activeIcon =
+    providerTab === "credentials"
+      ? "key"
+      : providerTab === "mcp"
+        ? "server"
+        : "plug";
 
   const listContent = (
     <>
@@ -299,10 +385,13 @@ export const ProvidersSection = ({
         >
           <Tabs3.List className="w-full flex" spacing="p-0.5">
             <Tabs3.Trigger value="credentials" className="flex-1">
-              API Credentials
+              Credentials
             </Tabs3.Trigger>
             <Tabs3.Trigger value="mcp" className="flex-1">
-              MCP Servers
+              MCP
+            </Tabs3.Trigger>
+            <Tabs3.Trigger value="websocket" className="flex-1">
+              WebSocket
             </Tabs3.Trigger>
           </Tabs3.List>
         </Tabs3>
@@ -336,7 +425,9 @@ export const ProvidersSection = ({
           <span className="text-sm opacity-40 py-8 text-center">
             {providerTab === "credentials"
               ? "No API credentials configured"
-              : "No MCP servers configured"}
+              : providerTab === "mcp"
+                ? "No MCP servers configured"
+                : "No WebSocket providers configured"}
           </span>
         )}
 
@@ -356,12 +447,59 @@ export const ProvidersSection = ({
             </button>
           </div>
         )}
+
+        {providerTab === "websocket" && (
+          <div className="px-3 py-3 mt-2 border-t border-white/10">
+            <button
+              onClick={() => {
+                setIsAddingWs(true);
+                setSelectedName(null);
+                setIsCreating(false);
+                setIsEditing(false);
+                setIsAddingMcp(false);
+              }}
+              className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors w-full"
+            >
+              <FontAwesomeIcon icon="plus" className="h-3 w-3" />
+              Add WebSocket Provider
+            </button>
+          </div>
+        )}
       </Sidebar.Content>
     </>
   );
 
   let detailContent = null;
-  if (isAddingMcp) {
+  if (isAddingWs) {
+    detailContent = (
+      <WebSocketProviderForm
+        onSave={handleWsSave}
+        onCancel={() => setIsAddingWs(false)}
+      />
+    );
+  } else if (isEditingWs && selectedName && selectedProvider) {
+    const wc = selectedProvider.wsConfig || {};
+    const editHeaderRows = wc.headers
+      ? Object.entries(wc.headers).map(([key, value], i) => ({
+          id: `ws_edit_${i}`,
+          key,
+          value,
+        }))
+      : [];
+    detailContent = (
+      <WebSocketProviderForm
+        key={selectedName}
+        isEditMode={true}
+        initialName={selectedName}
+        initialUrl={wc.url || ""}
+        initialHeaderRows={editHeaderRows}
+        initialSubprotocols={wc.subprotocols || []}
+        initialCredentials={selectedProvider.credentials || {}}
+        onSave={handleWsEditSave}
+        onCancel={() => setIsEditingWs(false)}
+      />
+    );
+  } else if (isAddingMcp) {
     detailContent = (
       <McpCatalogDetail
         onSave={handleMcpSave}
