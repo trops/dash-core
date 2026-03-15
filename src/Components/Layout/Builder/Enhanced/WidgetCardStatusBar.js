@@ -35,20 +35,25 @@ function formatCountdown(ms) {
 }
 
 /**
- * Format a timestamp as relative time ago.
+ * Format a timestamp as an absolute time string.
  * @param {number|string} timestamp - epoch ms or ISO string
- * @returns {string} e.g. "2m ago", "1h ago", "just now"
+ * @returns {string} e.g. "1:05:30 PM" for today, or full date+time for older
  */
 function formatRelativeTime(timestamp) {
   if (!timestamp) return null;
   const ts =
     typeof timestamp === "string" ? new Date(timestamp).getTime() : timestamp;
-  const diff = Date.now() - ts;
+  const date = new Date(ts);
+  const now = new Date();
+  const isToday =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
 
-  if (diff < 60000) return "just now";
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-  return `${Math.floor(diff / 86400000)}d ago`;
+  if (isToday) {
+    return date.toLocaleTimeString();
+  }
+  return date.toLocaleString();
 }
 
 /**
