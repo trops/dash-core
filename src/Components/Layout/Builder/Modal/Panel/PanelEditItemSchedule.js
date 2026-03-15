@@ -283,6 +283,7 @@ export const PanelEditItemSchedule = ({ item, workspace, onUpdate }) => {
   const workspaceId = workspace?.id;
 
   const [taskStates, setTaskStates] = useState({});
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (
@@ -290,17 +291,30 @@ export const PanelEditItemSchedule = ({ item, workspace, onUpdate }) => {
       widgetUuid &&
       window.mainApi?.scheduler?.getTasks
     ) {
+      setIsLoading(true);
       window.mainApi.scheduler.getTasks(widgetUuid).then((tasks) => {
         const stateMap = {};
         for (const task of tasks || []) {
           stateMap[task.taskKey] = task;
         }
         setTaskStates(stateMap);
+        setIsLoading(false);
       });
+    } else {
+      setIsLoading(false);
     }
   }, [widgetUuid, scheduledTaskDefs.length]);
 
   if (!item || scheduledTaskDefs.length === 0) return null;
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col flex-1 min-h-0 p-6">
+        <SubHeading3 title="Schedule" padding={false} />
+        <div className="text-sm opacity-50 mt-4">Loading schedules...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
