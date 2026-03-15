@@ -28,6 +28,7 @@ const notificationController = require("./controller/notificationController");
 const schedulerController = require("./controller/schedulerController");
 const themeRegistryController = require("./controller/themeRegistryController");
 const themeFromUrlController = require("./controller/themeFromUrlController");
+const webSocketController = require("./controller/webSocketController");
 
 // --- Utils ---
 const clientCache = require("./utils/clientCache");
@@ -101,6 +102,7 @@ module.exports = {
   schedulerController,
   themeRegistryController,
   themeFromUrlController,
+  webSocketController,
 
   // Controller functions (flat) — spread for convenient destructuring
   ...controllers,
