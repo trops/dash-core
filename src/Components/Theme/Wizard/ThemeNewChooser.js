@@ -14,7 +14,11 @@ const ChooserCard = ({ icon, title, subtitle, onClick }) => (
   </div>
 );
 
-export const ThemeNewChooser = ({ onSearchThemes, onCreateNew }) => (
+export const ThemeNewChooser = ({
+  onSearchThemes,
+  onCreateNew,
+  onCreateFromUrl = null,
+}) => (
   <div className="flex flex-col gap-6 p-6 overflow-y-auto flex-1 min-h-0">
     <span className="text-sm font-semibold opacity-50">Add a Theme</span>
     <div className="grid grid-cols-2 gap-3">
@@ -30,6 +34,14 @@ export const ThemeNewChooser = ({ onSearchThemes, onCreateNew }) => (
         subtitle="Build from presets, random palettes, or color harmony rules"
         onClick={onCreateNew}
       />
+      {onCreateFromUrl && (
+        <ChooserCard
+          icon="globe"
+          title="From Website"
+          subtitle="Extract colors from any URL to create a theme"
+          onClick={onCreateFromUrl}
+        />
+      )}
     </div>
   </div>
 );
