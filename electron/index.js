@@ -30,6 +30,7 @@ const themeRegistryController = require("./controller/themeRegistryController");
 const themeFromUrlController = require("./controller/themeFromUrlController");
 const paletteToThemeMapper = require("./controller/paletteToThemeMapper");
 const webSocketController = require("./controller/webSocketController");
+const extractionCacheController = require("./controller/extractionCacheController");
 
 // --- Utils ---
 const clientCache = require("./utils/clientCache");
@@ -106,6 +107,7 @@ module.exports = {
   themeFromUrlController,
   paletteToThemeMapper,
   webSocketController,
+  extractionCacheController,
 
   // Controller functions (flat) — spread for convenient destructuring
   ...controllers,
