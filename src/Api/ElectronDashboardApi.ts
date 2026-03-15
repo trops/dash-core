@@ -293,11 +293,16 @@ class ElectronDashboardApi implements IDashboardApi {
     }
   }
 
-  extractThemeFromUrl(url, onSuccess, onError): Boolean {
+  extractThemeFromUrl(
+    url,
+    onSuccess,
+    onError,
+    { forceRefresh = false } = {},
+  ): Boolean {
     if (this.api !== null) {
       try {
         this.api.themeFromUrl
-          .extractFromUrl(url)
+          .extractFromUrl(url, { forceRefresh })
           .then((result) => {
             onSuccess(this.events.THEME_EXTRACT_FROM_URL_COMPLETE, result);
           })

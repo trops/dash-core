@@ -12,7 +12,8 @@ const {
 } = require("../events");
 
 const themeFromUrlApi = {
-  extractFromUrl: (url) => ipcRenderer.invoke(THEME_EXTRACT_FROM_URL, { url }),
+  extractFromUrl: (url, { forceRefresh = false } = {}) =>
+    ipcRenderer.invoke(THEME_EXTRACT_FROM_URL, { url, forceRefresh }),
   mapPaletteToTheme: (palette, overrides) =>
     ipcRenderer.invoke(THEME_MAP_PALETTE_TO_THEME, { palette, overrides }),
 };
