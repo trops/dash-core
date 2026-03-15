@@ -1,6 +1,6 @@
 {
     "name": "@trops/dash-core",
-    "version": "0.1.153",
+    "version": "0.1.154",
     "description": "Core framework for Dash dashboard applications",
     "main": "dist/index.js",
     "module": "dist/index.esm.js",
