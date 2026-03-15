@@ -293,6 +293,53 @@ class ElectronDashboardApi implements IDashboardApi {
     }
   }
 
+  extractThemeFromUrl(url, onSuccess, onError): Boolean {
+    if (this.api !== null) {
+      try {
+        this.api.themeFromUrl
+          .extractFromUrl(url)
+          .then((result) => {
+            onSuccess(this.events.THEME_EXTRACT_FROM_URL_COMPLETE, result);
+          })
+          .catch((error) => {
+            onError(this.events.THEME_EXTRACT_FROM_URL_ERROR, error);
+          });
+        return true;
+      } catch (e) {
+        onError(this.events.THEME_EXTRACT_FROM_URL_ERROR, e);
+        return false;
+      }
+    } else {
+      onError(
+        this.events.THEME_EXTRACT_FROM_URL_ERROR,
+        new Error("No Api found"),
+      );
+      return false;
+    }
+  }
+
+  mapPaletteToTheme(palette, overrides, onSuccess, onError): Boolean {
+    if (this.api !== null) {
+      try {
+        this.api.themeFromUrl
+          .mapPaletteToTheme(palette, overrides)
+          .then((result) => {
+            onSuccess(this.events.THEME_MAP_PALETTE_COMPLETE, result);
+          })
+          .catch((error) => {
+            onError(this.events.THEME_MAP_PALETTE_ERROR, error);
+          });
+        return true;
+      } catch (e) {
+        onError(this.events.THEME_MAP_PALETTE_ERROR, e);
+        return false;
+      }
+    } else {
+      onError(this.events.THEME_MAP_PALETTE_ERROR, new Error("No Api found"));
+      return false;
+    }
+  }
+
   listProviders(appId, onSuccess, onError): Boolean {
     if (this.api !== null) {
       try {

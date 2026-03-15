@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Button, Button2, FontAwesomeIcon, InputText } from "@trops/dash-react";
+import {
+  Button,
+  Button2,
+  FontAwesomeIcon,
+  InputText,
+  ThemeFromUrlPane,
+} from "@trops/dash-react";
 import {
   getThemePresets,
   generateRandomTheme,
@@ -17,6 +23,7 @@ export const GENERATE_MODES = {
   COLOR: "color",
   WIZARD: "wizard",
   CHOOSER: "chooser",
+  FROM_URL: "from-url",
 };
 
 // ─── Preset Gallery ──────────────────────────────────────────────────────
@@ -286,6 +293,8 @@ export const ThemeQuickCreate = ({
   wizardTheme,
   setWizardTheme,
   onComplete,
+  onExtract = null,
+  onMapToTheme = null,
 }) => {
   const canCreate = wizardName.trim().length > 0 && wizardTheme !== null;
 
@@ -338,6 +347,15 @@ export const ThemeQuickCreate = ({
             selected={wizardMethod === "color"}
             onClick={() => handleMethodSelect("color")}
           />
+          {onExtract && (
+            <MethodCard
+              icon="globe"
+              title="From Website"
+              subtitle="Extract colors from any URL"
+              selected={wizardMethod === "from-url"}
+              onClick={() => handleMethodSelect("from-url")}
+            />
+          )}
         </div>
       </div>
 
@@ -357,6 +375,14 @@ export const ThemeQuickCreate = ({
       )}
       {wizardMethod === "color" && (
         <ColorHarmonyPicker
+          onGenerate={(theme) => setWizardTheme(theme)}
+          inline={true}
+        />
+      )}
+      {wizardMethod === "from-url" && onExtract && (
+        <ThemeFromUrlPane
+          onExtract={onExtract}
+          onMapToTheme={onMapToTheme}
           onGenerate={(theme) => setWizardTheme(theme)}
           inline={true}
         />

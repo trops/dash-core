@@ -3,6 +3,7 @@ import {
   Sidebar,
   Switch,
   ThemeContext,
+  ThemeFromUrlPane,
   getStylesForItem,
   themeObjects,
   FontAwesomeIcon,
@@ -161,6 +162,40 @@ export const ThemesSection = ({
     if (onOpenThemeEditor) onOpenThemeEditor();
   }
 
+  async function handleUrlExtract(url) {
+    return new Promise((resolve, reject) => {
+      dashApi.extractThemeFromUrl(
+        url,
+        (e, result) => resolve(result),
+        (e, err) => reject(err),
+      );
+    });
+  }
+
+  async function handleUrlMapToTheme(palette, roleAssignments) {
+    const overrides = {};
+    for (const [role, index] of Object.entries(roleAssignments)) {
+      if (palette[index]) {
+        overrides[role] = palette[index].hex;
+      }
+    }
+    return new Promise((resolve, reject) => {
+      dashApi.mapPaletteToTheme(
+        palette,
+        overrides,
+        (e, result) => resolve(result?.theme || result),
+        (e, err) => reject(err),
+      );
+    });
+  }
+
+  function handleUrlThemeGenerated(theme) {
+    if (!dashApi || !appId) return;
+    const key = theme.id || `theme-${Date.now()}`;
+    const finalTheme = { ...theme, id: key };
+    saveAndSelectTheme(key, finalTheme);
+  }
+
   const listContent = (
     <div className="flex flex-col h-full">
       {/* Variant toggle */}
@@ -266,6 +301,9 @@ export const ThemesSection = ({
         onCreateNew={() => {
           setGenerateMode(GENERATE_MODES.WIZARD);
         }}
+        onCreateFromUrl={() => {
+          setGenerateMode(GENERATE_MODES.FROM_URL);
+        }}
       />
     );
   } else if (generateMode === GENERATE_MODES.WIZARD) {
@@ -278,10 +316,20 @@ export const ThemesSection = ({
         wizardTheme={wizardTheme}
         setWizardTheme={setWizardTheme}
         onComplete={handleWizardComplete}
+        onExtract={handleUrlExtract}
+        onMapToTheme={handleUrlMapToTheme}
       />
     );
   } else if (generateMode === GENERATE_MODES.PRESETS) {
     detailContent = <PresetGallery onSelect={handleCreateFromPreset} />;
+  } else if (generateMode === GENERATE_MODES.FROM_URL) {
+    detailContent = (
+      <ThemeFromUrlPane
+        onExtract={handleUrlExtract}
+        onMapToTheme={handleUrlMapToTheme}
+        onGenerate={handleUrlThemeGenerated}
+      />
+    );
   } else if (generateMode === GENERATE_MODES.COLOR) {
     detailContent = <ColorHarmonyPicker onGenerate={handleCreateFromHarmony} />;
   } else if (selectedThemeKey && themes && themes[selectedThemeKey]) {

@@ -4,6 +4,7 @@ import {
   Panel,
   Modal,
   ThemeContext,
+  ThemeFromUrlPane,
   getStylesForItem,
   themeObjects,
 } from "@trops/dash-react";
@@ -34,6 +35,7 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [isChoosingMode, setIsChoosingMode] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [isFromUrl, setIsFromUrl] = useState(false);
   const [wizardName, setWizardName] = useState("");
   const [wizardMethod, setWizardMethod] = useState(null);
   const [wizardTheme, setWizardTheme] = useState(null);
@@ -54,6 +56,7 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
       setIsCreating(false);
       setIsChoosingMode(false);
       setIsSearching(false);
+      setIsFromUrl(false);
     } else {
       if (themeKeySelected === null && themes) {
         const themeKeyTemp =
@@ -111,9 +114,64 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
     setIsSearching(true);
   }
 
+  function handleChooseFromUrl() {
+    setIsChoosingMode(false);
+    setIsFromUrl(true);
+  }
+
   function handleBackFromSearch() {
     setIsSearching(false);
     setIsChoosingMode(true);
+  }
+
+  async function handleUrlExtract(url) {
+    return new Promise((resolve, reject) => {
+      dashApi.extractThemeFromUrl(
+        url,
+        (e, result) => resolve(result),
+        (e, err) => reject(err),
+      );
+    });
+  }
+
+  async function handleUrlMapToTheme(palette, roleAssignments) {
+    const overrides = {};
+    for (const [role, index] of Object.entries(roleAssignments)) {
+      if (palette[index]) {
+        overrides[role] = palette[index].hex;
+      }
+    }
+    return new Promise((resolve, reject) => {
+      dashApi.mapPaletteToTheme(
+        palette,
+        overrides,
+        (e, result) => resolve(result?.theme || result),
+        (e, err) => reject(err),
+      );
+    });
+  }
+
+  function handleUrlThemeGenerated(theme) {
+    const key = theme.id || `theme-${Date.now()}`;
+    const finalTheme = { ...theme, id: key };
+    if (dashApi) {
+      dashApi.saveTheme(
+        credentials.appId,
+        key,
+        finalTheme,
+        (e, message) => {
+          changeThemesForApplication(message["themes"]);
+          setIsFromUrl(false);
+          const newThemes = message["themes"];
+          if (newThemes && newThemes[key]) {
+            setThemeKeySelected(key);
+            setThemeSelected(newThemes[key]);
+            setRawThemeSelected(finalTheme);
+          }
+        },
+        handleSaveThemeError,
+      );
+    }
   }
 
   function handleWizardComplete() {
@@ -146,6 +204,7 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
     setIsCreating(false);
     setIsChoosingMode(false);
     setIsSearching(false);
+    setIsFromUrl(false);
   }
 
   function handleSaveTheme() {
@@ -241,6 +300,7 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
                       <ThemeNewChooser
                         onSearchThemes={handleChooseSearch}
                         onCreateNew={handleChooseCreate}
+                        onCreateFromUrl={handleChooseFromUrl}
                       />
                     ) : isSearching ? (
                       <DiscoverThemesDetail
@@ -268,6 +328,14 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
                         wizardTheme={wizardTheme}
                         setWizardTheme={setWizardTheme}
                         onComplete={handleWizardComplete}
+                        onExtract={handleUrlExtract}
+                        onMapToTheme={handleUrlMapToTheme}
+                      />
+                    ) : isFromUrl ? (
+                      <ThemeFromUrlPane
+                        onExtract={handleUrlExtract}
+                        onMapToTheme={handleUrlMapToTheme}
+                        onGenerate={handleUrlThemeGenerated}
                       />
                     ) : null
                   }
@@ -297,7 +365,7 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
                 </div>
               </div>
             )}
-            {(isCreating || isChoosingMode || isSearching) && (
+            {(isCreating || isChoosingMode || isSearching || isFromUrl) && (
               <div className="flex flex-row space-x-2">
                 <Button onClick={handleCancelCreate} title="Cancel" />
               </div>
@@ -305,6 +373,7 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
             {!isCreating &&
               !isChoosingMode &&
               !isSearching &&
+              !isFromUrl &&
               isEditing === false && (
                 <div className="flex flex-row space-x-2">
                   <Button onClick={() => setIsOpen(false)} title="Cancel" />
@@ -322,6 +391,7 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
             {!isCreating &&
               !isChoosingMode &&
               !isSearching &&
+              !isFromUrl &&
               isEditing === true && (
                 <div className="flex flex-row space-x-2">
                   <Button onClick={() => setIsEditing(false)} title="Cancel" />
