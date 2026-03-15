@@ -28,6 +28,7 @@ const notificationController = require("./controller/notificationController");
 const schedulerController = require("./controller/schedulerController");
 const themeRegistryController = require("./controller/themeRegistryController");
 const themeFromUrlController = require("./controller/themeFromUrlController");
+const paletteToThemeMapper = require("./controller/paletteToThemeMapper");
 const webSocketController = require("./controller/webSocketController");
 
 // --- Utils ---
@@ -102,6 +103,7 @@ module.exports = {
   schedulerController,
   themeRegistryController,
   themeFromUrlController,
+  paletteToThemeMapper,
   webSocketController,
 
   // Controller functions (flat) — spread for convenient destructuring

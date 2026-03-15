@@ -105,6 +105,11 @@ const {
   installThemeFromRegistry,
   getThemePublishPreview,
 } = require("./themeRegistryController");
+const {
+  assignRoles,
+  matchTailwindFamily,
+  generateThemeFromPalette,
+} = require("./paletteToThemeMapper");
 
 module.exports = {
   showDialog,
@@ -184,4 +189,7 @@ module.exports = {
   prepareThemeForPublish,
   installThemeFromRegistry,
   getThemePublishPreview,
+  assignRoles,
+  matchTailwindFamily,
+  generateThemeFromPalette,
 };

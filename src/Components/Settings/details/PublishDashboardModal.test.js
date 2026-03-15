@@ -34,6 +34,10 @@ function mockMainApi() {
         success: true,
         filePath: "/tmp/dashboard.json",
       }),
+      getPublishPreview: jest.fn().mockResolvedValue({
+        success: true,
+        preview: {},
+      }),
     },
   };
 }
@@ -117,9 +121,8 @@ describe("PublishDashboardModal", () => {
         nextBtn.click();
       });
 
-      // Author name input should be pre-filled
-      const input = screen.getByPlaceholderText("Your name");
-      expect(input.value).toBe("John Doe");
+      // Author name should be displayed (read-only div, not an input)
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
     });
 
     test("shows unauthenticated state with sign-in button", async () => {
@@ -301,7 +304,7 @@ describe("PublishDashboardModal", () => {
       expect(screen.getByText("Step 1 of 5")).toBeInTheDocument();
     });
 
-    test("cannot advance past Details without author name", async () => {
+    test("uses username as fallback when displayName is empty", async () => {
       window.mainApi.registryAuth.getStatus.mockResolvedValue({
         authenticated: true,
       });
@@ -322,9 +325,9 @@ describe("PublishDashboardModal", () => {
 
       expect(screen.getByText("Step 2 of 5")).toBeInTheDocument();
 
-      // Try to advance without author name — should be disabled
+      // Author name field uses profile data (read-only) — Next should be enabled
       const nextBtn2 = screen.getByText("Next");
-      expect(nextBtn2).toBeDisabled();
+      expect(nextBtn2).not.toBeDisabled();
     });
   });
 
