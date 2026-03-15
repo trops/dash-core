@@ -62,6 +62,7 @@ const registryAuthApi = require("./api/registryAuthApi");
 const notificationApi = require("./api/notificationApi");
 const schedulerApi = require("./api/schedulerApi");
 const themeFromUrlApi = require("./api/themeFromUrlApi");
+const webSocketApi = require("./api/webSocketApi");
 
 // --- Events ---
 const events = require("./events");
@@ -132,6 +133,7 @@ module.exports = {
   notificationApi,
   schedulerApi,
   themeFromUrlApi,
+  webSocketApi,
 
   // Events
   events,

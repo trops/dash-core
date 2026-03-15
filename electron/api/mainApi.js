@@ -35,6 +35,7 @@ const sessionApi = require("./sessionApi");
 const notificationApi = require("./notificationApi");
 const schedulerApi = require("./schedulerApi");
 const themeFromUrlApi = require("./themeFromUrlApi");
+const webSocketApi = require("./webSocketApi");
 
 // Events constants
 const events = require("../events");
@@ -113,6 +114,7 @@ function createMainApi(extensions = {}) {
     notifications: notificationApi,
     scheduler: schedulerApi,
     themeFromUrl: themeFromUrlApi,
+    webSocket: webSocketApi,
 
     widgetEvent: {
       publish: (eventType, content) => {
