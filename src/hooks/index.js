@@ -6,3 +6,4 @@ export { useProviderClient } from "./useProviderClient";
 export { useNotifications } from "./useNotifications";
 export { useScheduler } from "./useScheduler";
 export { useWidgetSchedulerStatus } from "./useWidgetSchedulerStatus";
+export { useWebSocketProvider } from "./useWebSocketProvider";
