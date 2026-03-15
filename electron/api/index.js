@@ -24,4 +24,5 @@ module.exports = {
   llmApi: require("./llmApi"),
   pluginApi: require("./pluginApi"),
   registryAuthApi: require("./registryAuthApi"),
+  webSocketApi: require("./webSocketApi"),
 };
