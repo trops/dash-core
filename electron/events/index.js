@@ -24,6 +24,7 @@ const registryAuthEvents = require("./registryAuthEvents");
 const sessionEvents = require("./sessionEvents");
 const notificationEvents = require("./notificationEvents");
 const schedulerEvents = require("./schedulerEvents");
+const themeFromUrlEvents = require("./themeFromUrlEvents");
 
 const publicEvents = {
   ...dataEvents,
@@ -52,4 +53,5 @@ module.exports = {
   ...sessionEvents,
   ...notificationEvents,
   ...schedulerEvents,
+  ...themeFromUrlEvents,
 };

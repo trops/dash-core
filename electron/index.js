@@ -27,6 +27,7 @@ const registryApiController = require("./controller/registryApiController");
 const notificationController = require("./controller/notificationController");
 const schedulerController = require("./controller/schedulerController");
 const themeRegistryController = require("./controller/themeRegistryController");
+const themeFromUrlController = require("./controller/themeFromUrlController");
 
 // --- Utils ---
 const clientCache = require("./utils/clientCache");
@@ -58,6 +59,7 @@ const dashboardConfigApi = require("./api/dashboardConfigApi");
 const registryAuthApi = require("./api/registryAuthApi");
 const notificationApi = require("./api/notificationApi");
 const schedulerApi = require("./api/schedulerApi");
+const themeFromUrlApi = require("./api/themeFromUrlApi");
 
 // --- Events ---
 const events = require("./events");
@@ -98,6 +100,7 @@ module.exports = {
   notificationController,
   schedulerController,
   themeRegistryController,
+  themeFromUrlController,
 
   // Controller functions (flat) — spread for convenient destructuring
   ...controllers,
@@ -124,6 +127,7 @@ module.exports = {
   registryAuthApi,
   notificationApi,
   schedulerApi,
+  themeFromUrlApi,
 
   // Events
   events,
