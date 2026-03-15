@@ -3,9 +3,13 @@
  *
  * Color extraction pipeline for generating themes from a website URL.
  * Extracts brand colors from HTML meta tags, CSS custom properties,
- * and computed styles, then merges and ranks them into a palette.
+ * computed styles, and favicon/logo images (via node-vibrant).
  */
 const css = require("css");
+const { Vibrant } = require("node-vibrant/node");
+const https = require("https");
+const http = require("http");
+const { URL } = require("url");
 
 // ─── Color conversion helpers ───────────────────────────────────────────────
 
@@ -300,6 +304,178 @@ function extractComputedColors(computedStyles) {
   return results;
 }
 
+// ─── Favicon extraction ──────────────────────────────────────────────────────
+
+/**
+ * Parse HTML to find favicon and apple-touch-icon URLs.
+ * Prefers apple-touch-icon (higher resolution) and largest available sizes.
+ * @param {string} htmlContent - Raw HTML string
+ * @returns {Array<{url: string, priority: number}>} Sorted by priority (highest first)
+ */
+function extractFaviconUrls(htmlContent) {
+  if (!htmlContent) return [];
+  const icons = [];
+
+  // apple-touch-icon (higher resolution, best for extraction)
+  const appleTouchPattern =
+    /<link[^>]*rel\s*=\s*["']apple-touch-icon(?:-precomposed)?["'][^>]*>/gi;
+  let match;
+  while ((match = appleTouchPattern.exec(htmlContent)) !== null) {
+    const hrefMatch = match[0].match(/href\s*=\s*["']([^"']+)["']/i);
+    if (hrefMatch) {
+      const sizesMatch = match[0].match(/sizes\s*=\s*["'](\d+)x(\d+)["']/i);
+      const size = sizesMatch ? parseInt(sizesMatch[1], 10) : 180; // apple-touch-icon defaults to 180
+      icons.push({ url: hrefMatch[1], priority: 100 + size });
+    }
+  }
+
+  // Standard favicon link tags (icon, shortcut icon)
+  const iconPattern =
+    /<link[^>]*rel\s*=\s*["'](?:shortcut\s+)?icon["'][^>]*>/gi;
+  while ((match = iconPattern.exec(htmlContent)) !== null) {
+    const hrefMatch = match[0].match(/href\s*=\s*["']([^"']+)["']/i);
+    if (hrefMatch) {
+      const sizesMatch = match[0].match(/sizes\s*=\s*["'](\d+)x(\d+)["']/i);
+      const size = sizesMatch ? parseInt(sizesMatch[1], 10) : 16;
+      icons.push({ url: hrefMatch[1], priority: size });
+    }
+  }
+
+  // Sort by priority descending (prefer largest / apple-touch-icon)
+  icons.sort((a, b) => b.priority - a.priority);
+  return icons;
+}
+
+/**
+ * Resolve a potentially relative URL against a base URL.
+ * @param {string} href - The href from the HTML (may be relative)
+ * @param {string} baseUrl - The page URL to resolve against
+ * @returns {string|null} Absolute URL or null if invalid
+ */
+function resolveUrl(href, baseUrl) {
+  try {
+    return new URL(href, baseUrl).href;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch a URL and return the response as a Buffer.
+ * Follows redirects (up to 5). Times out after 10 seconds.
+ * @param {string} url - Absolute URL to fetch
+ * @returns {Promise<Buffer>}
+ */
+function fetchBuffer(url) {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url);
+    const client = parsedUrl.protocol === "https:" ? https : http;
+    const request = client.get(
+      url,
+      { timeout: 10000, headers: { "User-Agent": "Dash/1.0" } },
+      (res) => {
+        // Follow redirects
+        if (
+          res.statusCode >= 300 &&
+          res.statusCode < 400 &&
+          res.headers.location
+        ) {
+          const redirectUrl = resolveUrl(res.headers.location, url);
+          if (redirectUrl) {
+            fetchBuffer(redirectUrl).then(resolve).catch(reject);
+            return;
+          }
+        }
+        if (res.statusCode !== 200) {
+          reject(new Error(`HTTP ${res.statusCode}`));
+          return;
+        }
+        const chunks = [];
+        res.on("data", (chunk) => chunks.push(chunk));
+        res.on("end", () => resolve(Buffer.concat(chunks)));
+        res.on("error", reject);
+      },
+    );
+    request.on("error", reject);
+    request.on("timeout", () => {
+      request.destroy();
+      reject(new Error("Timeout"));
+    });
+  });
+}
+
+/**
+ * Extract colors from favicon/logo images using node-vibrant.
+ * Tries icons in priority order (apple-touch-icon first, largest first).
+ * Returns on the first successful extraction.
+ *
+ * @param {string} htmlContent - Raw HTML to parse for icon URLs
+ * @param {string} baseUrl - Page URL for resolving relative icon paths
+ * @returns {Promise<Array<{hex: string, source: string, confidence: number}>>}
+ */
+async function extractFaviconColors(htmlContent, baseUrl) {
+  const iconEntries = extractFaviconUrls(htmlContent);
+  if (iconEntries.length === 0) {
+    // Fallback: try /favicon.ico at the domain root
+    try {
+      const rootFavicon = new URL("/favicon.ico", baseUrl).href;
+      iconEntries.push({ url: rootFavicon, priority: 1 });
+    } catch {
+      return [];
+    }
+  }
+
+  for (const entry of iconEntries) {
+    const absoluteUrl = resolveUrl(entry.url, baseUrl);
+    if (!absoluteUrl) continue;
+
+    try {
+      const buffer = await fetchBuffer(absoluteUrl);
+      const palette = await Vibrant.from(buffer).getPalette();
+
+      const results = [];
+      const swatchNames = [
+        "Vibrant",
+        "DarkVibrant",
+        "LightVibrant",
+        "Muted",
+        "DarkMuted",
+        "LightMuted",
+      ];
+
+      for (const name of swatchNames) {
+        const swatch = palette[name];
+        if (!swatch) continue;
+        const [r, g, b] = swatch.rgb;
+        const hex = rgbToHex({
+          r: Math.round(r),
+          g: Math.round(g),
+          b: Math.round(b),
+        });
+        results.push({
+          hex,
+          source: "favicon",
+          confidence: 0.7,
+        });
+      }
+
+      if (results.length > 0) {
+        console.log(
+          `[themeFromUrlController] Favicon vibrant: ${results.length} swatches from ${absoluteUrl}`,
+        );
+        return results;
+      }
+    } catch (err) {
+      console.warn(
+        `[themeFromUrlController] Favicon extraction failed for ${absoluteUrl}: ${err.message}`,
+      );
+      // Try next icon
+    }
+  }
+
+  return [];
+}
+
 // ─── Merge & rank ────────────────────────────────────────────────────────────
 
 /**
@@ -426,13 +602,23 @@ function mergeAndRank(allColors, maxColors = 6) {
 /**
  * Extract a ranked color palette from website content.
  *
+ * When `baseUrl` is provided, also extracts colors from favicon/logo images
+ * via node-vibrant (async). Without `baseUrl`, runs synchronously using only
+ * meta tags, CSS vars, and computed styles.
+ *
  * @param {Object} params
  * @param {string} params.htmlContent - Raw HTML of the page
  * @param {string} params.cssContent - Concatenated CSS content
  * @param {Object} params.computedStyles - Map of selector → { color, backgroundColor, borderColor }
- * @returns {{ palette: Array, rawCount: number }}
+ * @param {string} [params.baseUrl] - Page URL for resolving favicon paths (enables image extraction)
+ * @returns {Promise<{ palette: Array, rawCount: number }>}
  */
-function extractColorsFromUrl({ htmlContent, cssContent, computedStyles }) {
+async function extractColorsFromUrl({
+  htmlContent,
+  cssContent,
+  computedStyles,
+  baseUrl,
+}) {
   console.log("[themeFromUrlController] Starting color extraction pipeline");
 
   const metaColors = extractMetaColors(htmlContent);
@@ -450,7 +636,27 @@ function extractColorsFromUrl({ htmlContent, cssContent, computedStyles }) {
     `[themeFromUrlController] Computed styles: ${computedColors.length} colors`,
   );
 
-  const allColors = [...metaColors, ...cssVarColors, ...computedColors];
+  // Favicon extraction (async, requires baseUrl)
+  let faviconColors = [];
+  if (baseUrl) {
+    try {
+      faviconColors = await extractFaviconColors(htmlContent, baseUrl);
+      console.log(
+        `[themeFromUrlController] Favicon/logo: ${faviconColors.length} colors`,
+      );
+    } catch (err) {
+      console.warn(
+        `[themeFromUrlController] Favicon extraction failed: ${err.message}`,
+      );
+    }
+  }
+
+  const allColors = [
+    ...metaColors,
+    ...cssVarColors,
+    ...computedColors,
+    ...faviconColors,
+  ];
   console.log(`[themeFromUrlController] Total raw colors: ${allColors.length}`);
 
   const palette = mergeAndRank(allColors);
@@ -466,6 +672,8 @@ function extractColorsFromUrl({ htmlContent, cssContent, computedStyles }) {
 
 const themeFromUrlController = {
   extractColorsFromUrl,
+  extractFaviconUrls,
+  extractFaviconColors,
 };
 
 module.exports = themeFromUrlController;
