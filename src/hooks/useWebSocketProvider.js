@@ -56,6 +56,8 @@ export const useWebSocketProvider = (providerType, options = {}) => {
   const [lastMessage, setLastMessage] = useState(null);
   const [messages, setMessages] = useState([]);
   const [status, setStatus] = useState(STATUS.DISCONNECTED);
+  const [retryCount, setRetryCount] = useState(0);
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   const connectedRef = useRef(false);
   const mountedRef = useRef(true);
@@ -344,19 +346,32 @@ export const useWebSocketProvider = (providerType, options = {}) => {
       if (newStatus === STATUS.CONNECTED) {
         setIsConnected(true);
         setIsConnecting(false);
+        setIsReconnecting(false);
+        setRetryCount(0);
         setError(null);
         connectedRef.current = true;
       } else if (newStatus === STATUS.DISCONNECTED) {
         setIsConnected(false);
         setIsConnecting(false);
         connectedRef.current = false;
+        if (payload.reconnecting) {
+          setIsReconnecting(true);
+        } else {
+          setIsReconnecting(false);
+          setRetryCount(0);
+        }
       } else if (newStatus === STATUS.ERROR) {
         setIsConnected(false);
         setIsConnecting(false);
+        setIsReconnecting(false);
         setError(payload.error || "WebSocket error");
         connectedRef.current = false;
       } else if (newStatus === STATUS.CONNECTING) {
         setIsConnecting(true);
+        if (payload.retryCount) {
+          setRetryCount(payload.retryCount);
+          setIsReconnecting(true);
+        }
       }
     };
 
@@ -402,6 +417,8 @@ export const useWebSocketProvider = (providerType, options = {}) => {
   return {
     isConnected,
     isConnecting,
+    isReconnecting,
+    retryCount,
     error,
     lastMessage,
     messages,
