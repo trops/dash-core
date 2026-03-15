@@ -5,6 +5,7 @@ import { DashboardContext, WidgetContext } from "../Context";
 import { WidgetHelpers } from "../Api/WidgetHelpers";
 import { WidgetApi } from "../Api/WidgetApi";
 import { getUUID } from "@trops/dash-react";
+import { WidgetCardStatusBar } from "../Components/Layout/Builder/Enhanced/WidgetCardStatusBar";
 
 /**
  * WidgetErrorBoundary - Catches errors from widget rendering
@@ -158,45 +159,58 @@ const WidgetRenderer = ({
       // Memoize context value to prevent unnecessary re-renders
       const widgetContextValue = { widgetData };
 
+      const hasScheduledTasks = (config?.scheduledTasks || []).length > 0;
+
+      const widgetElement =
+        children === null ? (
+          <WidgetComponent
+            id={`widget-nokids-${widgetKey}`}
+            key={`widget-nokids-${widgetKey}`}
+            listen={(listeners, handlers) =>
+              helpers.listen(listeners, handlers)
+            }
+            publishEvent={(eventName, payload) =>
+              helpers.publishEvent(eventName, payload)
+            }
+            api={w}
+            {...params}
+            {...userPrefs}
+            backgroundColor={bgColor}
+            widgetConfig={helpers.config()}
+            widgetEventNames={helpers.events()}
+          />
+        ) : (
+          <WidgetComponent
+            listen={(listeners, handlers) =>
+              helpers.listen(listeners, handlers)
+            }
+            publishEvent={(eventName, payload) =>
+              helpers.publishEvent(eventName, payload)
+            }
+            api={w}
+            id={`widget-kids-${widgetKey}`}
+            key={`widget-kids-${widgetKey}`}
+            {...params}
+            {...userPrefs}
+            backgroundColor={bgColor}
+          >
+            {children}
+          </WidgetComponent>
+        );
+
       // Wrap widget rendering with WidgetContext + error boundary
       return (
         <WidgetContext.Provider value={widgetContextValue}>
           <WidgetErrorBoundary widgetName={component}>
-            {children === null ? (
-              <WidgetComponent
-                id={`widget-nokids-${widgetKey}`}
-                key={`widget-nokids-${widgetKey}`}
-                listen={(listeners, handlers) =>
-                  helpers.listen(listeners, handlers)
-                }
-                publishEvent={(eventName, payload) =>
-                  helpers.publishEvent(eventName, payload)
-                }
-                api={w}
-                {...params}
-                {...userPrefs}
-                backgroundColor={bgColor}
-                widgetConfig={helpers.config()}
-                widgetEventNames={helpers.events()}
-              />
+            {hasScheduledTasks ? (
+              <div className="flex flex-col w-full h-full min-h-0">
+                <div className="flex-1 min-h-0 overflow-auto">
+                  {widgetElement}
+                </div>
+                <WidgetCardStatusBar item={params} />
+              </div>
             ) : (
-              <WidgetComponent
-                listen={(listeners, handlers) =>
-                  helpers.listen(listeners, handlers)
-                }
-                publishEvent={(eventName, payload) =>
-                  helpers.publishEvent(eventName, payload)
-                }
-                api={w}
-                id={`widget-kids-${widgetKey}`}
-                key={`widget-kids-${widgetKey}`}
-                {...params}
-                {...userPrefs}
-                backgroundColor={bgColor}
-              >
-                {children}
-                {/* {WidgetFactory.renderChildren(children)} */}
-              </WidgetComponent>
+              widgetElement
             )}
           </WidgetErrorBoundary>
         </WidgetContext.Provider>

@@ -10,3 +10,4 @@ export { EnhancedWidgetDropdown } from "./EnhancedWidgetDropdown";
 export { ProviderBadge } from "./ProviderBadge";
 export { WidgetCardHeader } from "./WidgetCardHeader";
 export { WidgetCard } from "./WidgetCard";
+export { WidgetCardStatusBar } from "./WidgetCardStatusBar";

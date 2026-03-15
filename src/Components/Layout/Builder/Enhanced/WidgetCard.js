@@ -15,6 +15,7 @@
 
 import React from "react";
 import { WidgetCardHeader } from "./WidgetCardHeader";
+import { WidgetCardStatusBar } from "./WidgetCardStatusBar";
 import { ComponentManager } from "../../../../ComponentManager";
 import { FontAwesomeIcon } from "@trops/dash-react";
 
@@ -179,5 +180,6 @@ export const WidgetCard = ({ preview = false, children, className = "" }) => {
 WidgetCard.Header = WidgetCardHeader_Component;
 WidgetCard.Body = WidgetCardBody;
 WidgetCard.Footer = WidgetCardFooter;
+WidgetCard.StatusBar = WidgetCardStatusBar;
 
 export default WidgetCard;
