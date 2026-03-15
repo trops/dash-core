@@ -89,4 +89,18 @@ module.exports = {
   FontAwesomeIcon,
   getStylesForItem: () => ({}),
   themeObjects: { PANEL: "panel" },
+  deepCopy: (obj) => JSON.parse(JSON.stringify(obj)),
+  isObject: (val) =>
+    val !== null && typeof val === "object" && !Array.isArray(val),
+  capitalizeFirstLetter: (str) =>
+    str ? str.charAt(0).toUpperCase() + str.slice(1) : "",
+  getStyleName: (type) =>
+    type === "bg"
+      ? "background"
+      : type === "text"
+        ? "color"
+        : type === "border"
+          ? "border"
+          : type,
+  colorTypes: ["primary", "secondary", "tertiary", "neutral"],
 };
