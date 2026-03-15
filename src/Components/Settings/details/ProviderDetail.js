@@ -37,6 +37,7 @@ export const ProviderDetail = ({
   const appContext = useContext(AppContext);
   const dashApi = appContext?.dashApi;
   const isMcp = provider?.providerClass === "mcp";
+  const isWs = provider?.providerClass === "websocket";
 
   // MCP test connection state
   const [isTesting, setIsTesting] = useState(false);
@@ -202,6 +203,51 @@ export const ProviderDetail = ({
         setIsAuthorizing(false);
       },
     );
+  };
+
+  // WebSocket test connection state
+  const [isWsTesting, setIsWsTesting] = useState(false);
+  const [wsTestResult, setWsTestResult] = useState(null);
+
+  const handleWsTestConnection = async () => {
+    if (!dashApi?.webSocket || !provider?.wsConfig?.url || !providerName)
+      return;
+
+    setIsWsTesting(true);
+    setWsTestResult(null);
+
+    const startTime = Date.now();
+    try {
+      const result = await dashApi.webSocket.connect(providerName, {
+        url: provider.wsConfig.url,
+        headers: provider.wsConfig.headers || null,
+        subprotocols: provider.wsConfig.subprotocols || null,
+        credentials: provider.credentials || null,
+      });
+
+      const latency = Date.now() - startTime;
+
+      if (result.error) {
+        setWsTestResult({
+          success: false,
+          message: result.message || "Connection failed",
+        });
+      } else {
+        setWsTestResult({
+          success: true,
+          message: `Connected in ${latency}ms`,
+        });
+
+        // Disconnect after test
+        await dashApi.webSocket.disconnect(providerName).catch(() => {});
+      }
+    } catch (err) {
+      setWsTestResult({
+        success: false,
+        message: err?.message || "Connection failed",
+      });
+    }
+    setIsWsTesting(false);
   };
 
   const isFormMode = isEditing || isCreating;
@@ -473,7 +519,11 @@ export const ProviderDetail = ({
           )}
           <div className="flex flex-row items-center gap-2">
             <span className="text-sm opacity-50">Class:</span>
-            <Tag text={isMcp ? "MCP Server" : "API Credentials"} />
+            <Tag
+              text={
+                isWs ? "WebSocket" : isMcp ? "MCP Server" : "API Credentials"
+              }
+            />
           </div>
         </div>
 
@@ -627,6 +677,71 @@ export const ProviderDetail = ({
             </div>
           </>
         )}
+
+        {/* WebSocket-specific info */}
+        {isWs && provider.wsConfig && (
+          <>
+            <div className="space-y-4">
+              <div className="border-t border-white/10 pt-4">
+                <p className="text-xs font-semibold opacity-40 uppercase tracking-wider mb-3">
+                  Connection
+                </p>
+                <div className="space-y-2 text-sm">
+                  <div className="flex gap-2">
+                    <span className="opacity-50 w-24 shrink-0">URL:</span>
+                    <code className="text-xs bg-white/5 px-2 py-0.5 rounded break-all">
+                      {provider.wsConfig.url}
+                    </code>
+                  </div>
+                  {provider.wsConfig.headers &&
+                    Object.keys(provider.wsConfig.headers).length > 0 && (
+                      <div className="flex gap-2">
+                        <span className="opacity-50 w-24 shrink-0">
+                          Headers:
+                        </span>
+                        <span className="text-xs opacity-70">
+                          {Object.keys(provider.wsConfig.headers).join(", ")}
+                        </span>
+                      </div>
+                    )}
+                  {provider.wsConfig.subprotocols &&
+                    provider.wsConfig.subprotocols.length > 0 && (
+                      <div className="flex gap-2">
+                        <span className="opacity-50 w-24 shrink-0">
+                          Subprotocols:
+                        </span>
+                        <span className="text-xs opacity-70">
+                          {provider.wsConfig.subprotocols.join(", ")}
+                        </span>
+                      </div>
+                    )}
+                </div>
+              </div>
+            </div>
+
+            {/* WebSocket Test Result */}
+            {wsTestResult && (
+              <div
+                className={`p-3 rounded-lg text-sm ${
+                  wsTestResult.success
+                    ? "bg-green-900/30 border border-green-700 text-green-300"
+                    : "bg-red-900/30 border border-red-700 text-red-300"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <FontAwesomeIcon
+                    icon={
+                      wsTestResult.success
+                        ? "circle-check"
+                        : "circle-exclamation"
+                    }
+                  />
+                  <span>{wsTestResult.message}</span>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Footer */}
@@ -642,6 +757,13 @@ export const ProviderDetail = ({
           <Button
             title={isTesting ? "Testing..." : "Test Connection"}
             onClick={handleTestConnection}
+            size="sm"
+          />
+        )}
+        {isWs && (
+          <Button
+            title={isWsTesting ? "Testing..." : "Test Connection"}
+            onClick={handleWsTestConnection}
             size="sm"
           />
         )}
