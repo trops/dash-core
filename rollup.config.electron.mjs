@@ -31,6 +31,7 @@ const EXTERNAL = [
     "openai",
     "JSONStream",
     "live-plugin-manager",
+    "node-vibrant/node",
 ];
 
 const config = {

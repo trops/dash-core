@@ -2,14 +2,14 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const themeFromUrlController = require("./themeFromUrlController");
 
-const { extractColorsFromUrl } = themeFromUrlController;
+const { extractColorsFromUrl, extractFaviconUrls } = themeFromUrlController;
 
 describe("themeFromUrlController", () => {
   describe("extractMetaColors (via extractColorsFromUrl)", () => {
-    it("extracts theme-color meta tag", () => {
+    it("extracts theme-color meta tag", async () => {
       const html =
         '<html><head><meta name="theme-color" content="#3B82F6"></head></html>';
-      const result = extractColorsFromUrl({
+      const result = await extractColorsFromUrl({
         htmlContent: html,
         cssContent: "",
         computedStyles: {},
@@ -18,10 +18,10 @@ describe("themeFromUrlController", () => {
       assert.equal(result.palette[0].hex, "#3b82f6");
     });
 
-    it("extracts msapplication-TileColor", () => {
+    it("extracts msapplication-TileColor", async () => {
       const html =
         '<html><head><meta name="msapplication-TileColor" content="#da532c"></head></html>';
-      const result = extractColorsFromUrl({
+      const result = await extractColorsFromUrl({
         htmlContent: html,
         cssContent: "",
         computedStyles: {},
@@ -30,10 +30,10 @@ describe("themeFromUrlController", () => {
       assert.equal(result.palette[0].hex, "#da532c");
     });
 
-    it("handles reversed attribute order", () => {
+    it("handles reversed attribute order", async () => {
       const html =
         '<html><head><meta content="#ff5500" name="theme-color"></head></html>';
-      const result = extractColorsFromUrl({
+      const result = await extractColorsFromUrl({
         htmlContent: html,
         cssContent: "",
         computedStyles: {},
@@ -42,8 +42,8 @@ describe("themeFromUrlController", () => {
       assert.equal(result.palette[0].hex, "#ff5500");
     });
 
-    it("returns empty palette for no meta tags", () => {
-      const result = extractColorsFromUrl({
+    it("returns empty palette for no meta tags", async () => {
+      const result = await extractColorsFromUrl({
         htmlContent: "<html><head></head></html>",
         cssContent: "",
         computedStyles: {},
@@ -54,10 +54,10 @@ describe("themeFromUrlController", () => {
   });
 
   describe("extractCssVarColors (via extractColorsFromUrl)", () => {
-    it("extracts brand CSS custom properties", () => {
+    it("extracts brand CSS custom properties", async () => {
       const css =
         ":root { --brand-primary: #6366f1; --brand-accent: #f59e0b; }";
-      const result = extractColorsFromUrl({
+      const result = await extractColorsFromUrl({
         htmlContent: "",
         cssContent: css,
         computedStyles: {},
@@ -66,9 +66,9 @@ describe("themeFromUrlController", () => {
       assert.ok(result.rawCount >= 2);
     });
 
-    it("extracts color-* pattern variables", () => {
+    it("extracts color-* pattern variables", async () => {
       const css = ":root { --color-main: rgb(59, 130, 246); }";
-      const result = extractColorsFromUrl({
+      const result = await extractColorsFromUrl({
         htmlContent: "",
         cssContent: css,
         computedStyles: {},
@@ -76,9 +76,9 @@ describe("themeFromUrlController", () => {
       assert.ok(result.palette.length >= 1);
     });
 
-    it("handles invalid CSS gracefully", () => {
+    it("handles invalid CSS gracefully", async () => {
       const css = "this is not valid css {{{ --brand-color: #ff0000; }";
-      const result = extractColorsFromUrl({
+      const result = await extractColorsFromUrl({
         htmlContent: "",
         cssContent: css,
         computedStyles: {},
@@ -89,7 +89,7 @@ describe("themeFromUrlController", () => {
   });
 
   describe("extractComputedColors (via extractColorsFromUrl)", () => {
-    it("extracts computed styles from key elements", () => {
+    it("extracts computed styles from key elements", async () => {
       const computed = {
         body: {
           color: "rgb(0, 0, 0)",
@@ -102,7 +102,7 @@ describe("themeFromUrlController", () => {
           borderColor: null,
         },
       };
-      const result = extractColorsFromUrl({
+      const result = await extractColorsFromUrl({
         htmlContent: "",
         cssContent: "",
         computedStyles: computed,
@@ -111,8 +111,8 @@ describe("themeFromUrlController", () => {
       assert.ok(result.rawCount >= 3);
     });
 
-    it("handles null/empty computed styles", () => {
-      const result = extractColorsFromUrl({
+    it("handles null/empty computed styles", async () => {
+      const result = await extractColorsFromUrl({
         htmlContent: "",
         cssContent: "",
         computedStyles: null,
@@ -122,10 +122,10 @@ describe("themeFromUrlController", () => {
   });
 
   describe("merge and rank", () => {
-    it("deduplicates similar colors via deltaE clustering", () => {
+    it("deduplicates similar colors via deltaE clustering", async () => {
       // Two very similar blues
       const css = ":root { --brand-primary: #3b82f6; --color-main: #3a80f4; }";
-      const result = extractColorsFromUrl({
+      const result = await extractColorsFromUrl({
         htmlContent: "",
         cssContent: css,
         computedStyles: {},
@@ -135,10 +135,10 @@ describe("themeFromUrlController", () => {
       assert.ok(result.rawCount >= 2);
     });
 
-    it("keeps distinct colors separate", () => {
+    it("keeps distinct colors separate", async () => {
       const css =
         ":root { --brand-primary: #3b82f6; --brand-secondary: #ef4444; --brand-tertiary: #10b981; }";
-      const result = extractColorsFromUrl({
+      const result = await extractColorsFromUrl({
         htmlContent: "",
         cssContent: css,
         computedStyles: {},
@@ -146,7 +146,7 @@ describe("themeFromUrlController", () => {
       assert.ok(result.palette.length >= 3);
     });
 
-    it("filters boring colors but keeps them for neutral", () => {
+    it("filters boring colors but keeps them for neutral", async () => {
       const html =
         '<html><head><meta name="theme-color" content="#3b82f6"></head></html>';
       const computed = {
@@ -156,7 +156,7 @@ describe("themeFromUrlController", () => {
           borderColor: null,
         },
       };
-      const result = extractColorsFromUrl({
+      const result = await extractColorsFromUrl({
         htmlContent: html,
         cssContent: "",
         computedStyles: computed,
@@ -167,7 +167,7 @@ describe("themeFromUrlController", () => {
       assert.ok(blueEntry, "Blue should be in palette");
     });
 
-    it("returns max 6 colors by default", () => {
+    it("returns max 6 colors by default", async () => {
       const css = `:root {
                 --brand-1: #ef4444;
                 --brand-2: #f97316;
@@ -178,7 +178,7 @@ describe("themeFromUrlController", () => {
                 --brand-7: #ec4899;
                 --brand-8: #14b8a6;
             }`;
-      const result = extractColorsFromUrl({
+      const result = await extractColorsFromUrl({
         htmlContent: "",
         cssContent: css,
         computedStyles: {},
@@ -188,7 +188,7 @@ describe("themeFromUrlController", () => {
   });
 
   describe("full pipeline integration", () => {
-    it("combines all sources and produces ranked palette", () => {
+    it("combines all sources and produces ranked palette", async () => {
       const html =
         '<html><head><meta name="theme-color" content="#6366f1"></head></html>';
       const css =
@@ -201,7 +201,7 @@ describe("themeFromUrlController", () => {
         },
       };
 
-      const result = extractColorsFromUrl({
+      const result = await extractColorsFromUrl({
         htmlContent: html,
         cssContent: css,
         computedStyles: computed,
@@ -212,6 +212,87 @@ describe("themeFromUrlController", () => {
       assert.equal(result.palette[0].hex, "#6366f1");
       assert.ok(result.palette[0].confidence > 0);
       assert.ok(result.palette[0].sources.length >= 1);
+    });
+  });
+
+  describe("extractFaviconUrls", () => {
+    it("extracts apple-touch-icon with highest priority", () => {
+      const html = `<html><head>
+        <link rel="icon" href="/favicon.ico">
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+      </head></html>`;
+      const icons = extractFaviconUrls(html);
+      assert.ok(icons.length >= 3);
+      // Apple touch icon should be first (priority 100 + 180 = 280)
+      assert.equal(icons[0].url, "/apple-touch-icon.png");
+    });
+
+    it("extracts shortcut icon", () => {
+      const html =
+        '<html><head><link rel="shortcut icon" href="/favicon.ico"></head></html>';
+      const icons = extractFaviconUrls(html);
+      assert.equal(icons.length, 1);
+      assert.equal(icons[0].url, "/favicon.ico");
+    });
+
+    it("prefers largest icon size", () => {
+      const html = `<html><head>
+        <link rel="icon" sizes="16x16" href="/small.png">
+        <link rel="icon" sizes="192x192" href="/large.png">
+        <link rel="icon" sizes="32x32" href="/medium.png">
+      </head></html>`;
+      const icons = extractFaviconUrls(html);
+      assert.equal(icons[0].url, "/large.png");
+    });
+
+    it("returns empty array for no icons", () => {
+      const html = "<html><head></head></html>";
+      const icons = extractFaviconUrls(html);
+      assert.equal(icons.length, 0);
+    });
+
+    it("handles apple-touch-icon-precomposed", () => {
+      const html =
+        '<html><head><link rel="apple-touch-icon-precomposed" href="/icon.png"></head></html>';
+      const icons = extractFaviconUrls(html);
+      assert.equal(icons.length, 1);
+      assert.equal(icons[0].url, "/icon.png");
+    });
+
+    it("handles null/empty htmlContent", () => {
+      assert.deepEqual(extractFaviconUrls(null), []);
+      assert.deepEqual(extractFaviconUrls(""), []);
+    });
+  });
+
+  describe("favicon extraction fallback", () => {
+    it("continues pipeline without favicon when no baseUrl provided", async () => {
+      const html =
+        '<html><head><meta name="theme-color" content="#3b82f6"><link rel="icon" href="/favicon.ico"></head></html>';
+      const result = await extractColorsFromUrl({
+        htmlContent: html,
+        cssContent: "",
+        computedStyles: {},
+      });
+      // Should still have meta color, no favicon source
+      assert.ok(result.palette.length >= 1);
+      assert.equal(result.palette[0].hex, "#3b82f6");
+      assert.ok(!result.palette[0].sources.includes("favicon"));
+    });
+
+    it("gracefully handles unreachable favicon URL", async () => {
+      const html =
+        '<html><head><meta name="theme-color" content="#3b82f6"><link rel="icon" href="/favicon.ico"></head></html>';
+      const result = await extractColorsFromUrl({
+        htmlContent: html,
+        cssContent: "",
+        computedStyles: {},
+        baseUrl: "http://localhost:99999",
+      });
+      // Should still have meta color despite favicon failure
+      assert.ok(result.palette.length >= 1);
+      assert.equal(result.palette[0].hex, "#3b82f6");
     });
   });
 });
