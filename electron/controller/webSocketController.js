@@ -7,6 +7,10 @@
  *   - pendingConnects Map for in-flight deduplication
  *   - Status constants matching MCP pattern
  *
+ * Features:
+ *   - Auto-reconnect with exponential backoff (1s → 2s → 4s → 8s → 16s, max 30s, 5 retries)
+ *   - Heartbeat ping/pong keepalive (30s interval, 10s pong timeout)
+ *
  * Uses the `ws` package (installed in dash-electron) for WebSocket clients.
  * Multiple widgets referencing the same provider share a single socket.
  */
@@ -16,7 +20,10 @@ const WebSocket = require("ws");
  * Active WebSocket connections
  * Map<string, { socket: WebSocket, status: string, config: object,
  *               consumers: Set<number>, messageCount: number,
- *               connectedAt: number|null, lastMessageAt: number|null }>
+ *               connectedAt: number|null, lastMessageAt: number|null,
+ *               retryCount: number, retryTimer: NodeJS.Timeout|null,
+ *               heartbeatTimer: NodeJS.Timeout|null, pongTimer: NodeJS.Timeout|null,
+ *               intentionalClose: boolean }>
  */
 const activeConnections = new Map();
 
@@ -39,6 +46,24 @@ const STATUS = {
 };
 
 /**
+ * Reconnect configuration
+ */
+const RECONNECT = {
+  BASE_DELAY: 1000, // 1 second
+  MULTIPLIER: 2,
+  MAX_DELAY: 30000, // 30 seconds
+  MAX_RETRIES: 5,
+};
+
+/**
+ * Heartbeat configuration
+ */
+const HEARTBEAT = {
+  PING_INTERVAL: 30000, // 30 seconds
+  PONG_TIMEOUT: 10000, // 10 seconds
+};
+
+/**
  * Interpolate {{fieldName}} placeholders in a string with credential values.
  * Reuses the same pattern as mcpController for URL and header templates.
  *
@@ -58,7 +83,7 @@ function interpolate(template, credentials) {
  *
  * @param {string} providerName - The provider whose status changed
  * @param {string} status - New status value
- * @param {object} extra - Additional fields (error, etc.)
+ * @param {object} extra - Additional fields (error, retryCount, retryIn, etc.)
  */
 function broadcastStatusChange(providerName, status, extra = {}) {
   const { WS_STATUS_CHANGE } = require("../events/webSocketEvents");
@@ -92,6 +117,320 @@ function broadcastMessage(providerName, data) {
       win.webContents.send(WS_MESSAGE, payload);
     }
   }
+}
+
+/**
+ * Calculate the backoff delay for a given retry attempt.
+ *
+ * @param {number} retryCount - Current retry attempt (0-based)
+ * @returns {number} Delay in milliseconds
+ */
+function getBackoffDelay(retryCount) {
+  const delay =
+    RECONNECT.BASE_DELAY * Math.pow(RECONNECT.MULTIPLIER, retryCount);
+  return Math.min(delay, RECONNECT.MAX_DELAY);
+}
+
+/**
+ * Clear heartbeat and pong timers for a connection.
+ *
+ * @param {object} conn - The connection object from activeConnections
+ */
+function clearHeartbeatTimers(conn) {
+  if (conn.heartbeatTimer) {
+    clearInterval(conn.heartbeatTimer);
+    conn.heartbeatTimer = null;
+  }
+  if (conn.pongTimer) {
+    clearTimeout(conn.pongTimer);
+    conn.pongTimer = null;
+  }
+}
+
+/**
+ * Clear the reconnect timer for a connection.
+ *
+ * @param {object} conn - The connection object from activeConnections
+ */
+function clearReconnectTimer(conn) {
+  if (conn.retryTimer) {
+    clearTimeout(conn.retryTimer);
+    conn.retryTimer = null;
+  }
+}
+
+/**
+ * Start heartbeat ping/pong for an active connection.
+ * Sends a WebSocket ping frame every HEARTBEAT.PING_INTERVAL ms.
+ * If no pong is received within HEARTBEAT.PONG_TIMEOUT ms, the connection
+ * is considered stale and a reconnect is triggered.
+ *
+ * @param {string} providerName - The provider name
+ */
+function startHeartbeat(providerName) {
+  const conn = activeConnections.get(providerName);
+  if (!conn || !conn.socket) return;
+
+  // Clear any existing heartbeat timers
+  clearHeartbeatTimers(conn);
+
+  conn.heartbeatTimer = setInterval(() => {
+    const current = activeConnections.get(providerName);
+    if (
+      !current ||
+      !current.socket ||
+      current.socket.readyState !== WebSocket.OPEN
+    ) {
+      clearHeartbeatTimers(current || conn);
+      return;
+    }
+
+    // Send ping
+    try {
+      current.socket.ping();
+    } catch {
+      // Socket errored during ping — will be caught by error/close handlers
+      return;
+    }
+
+    // Start pong timeout
+    current.pongTimer = setTimeout(() => {
+      const staleConn = activeConnections.get(providerName);
+      if (!staleConn || staleConn.intentionalClose) return;
+
+      console.log(
+        `[webSocketController] Heartbeat timeout (no pong): ${providerName}`,
+      );
+
+      // Clear heartbeat before triggering reconnect
+      clearHeartbeatTimers(staleConn);
+
+      // Close the stale socket to trigger the close handler → reconnect
+      if (staleConn.socket) {
+        try {
+          staleConn.socket.terminate();
+        } catch {
+          /* already closing */
+        }
+      }
+    }, HEARTBEAT.PONG_TIMEOUT);
+  }, HEARTBEAT.PING_INTERVAL);
+}
+
+/**
+ * Attempt to reconnect a provider with exponential backoff.
+ * Called from the socket close handler when the close was unexpected.
+ *
+ * @param {string} providerName - The provider to reconnect
+ */
+function scheduleReconnect(providerName) {
+  const conn = activeConnections.get(providerName);
+  if (!conn) return;
+
+  if (conn.retryCount >= RECONNECT.MAX_RETRIES) {
+    console.log(
+      `[webSocketController] Max retries (${RECONNECT.MAX_RETRIES}) reached for ${providerName}`,
+    );
+    activeConnections.set(providerName, {
+      ...conn,
+      socket: null,
+      status: STATUS.ERROR,
+      error: `Reconnect failed after ${RECONNECT.MAX_RETRIES} attempts`,
+    });
+    broadcastStatusChange(providerName, STATUS.ERROR, {
+      error: `Reconnect failed after ${RECONNECT.MAX_RETRIES} attempts`,
+    });
+    return;
+  }
+
+  const delay = getBackoffDelay(conn.retryCount);
+  console.log(
+    `[webSocketController] Reconnecting ${providerName} in ${delay}ms (attempt ${conn.retryCount + 1}/${RECONNECT.MAX_RETRIES})`,
+  );
+
+  // Broadcast connecting status with retry info
+  broadcastStatusChange(providerName, STATUS.CONNECTING, {
+    retryCount: conn.retryCount + 1,
+    retryIn: delay,
+  });
+
+  conn.retryTimer = setTimeout(async () => {
+    const current = activeConnections.get(providerName);
+    if (!current || current.intentionalClose) return;
+
+    // Update retry count before attempting
+    current.retryCount++;
+
+    try {
+      // Use the stored config to reconnect
+      const config = current.config;
+      const url = config.credentials
+        ? interpolate(config.url, config.credentials)
+        : config.url;
+
+      const wsOptions = {};
+      if (config.headers) {
+        const headers = {};
+        if (config.credentials) {
+          Object.entries(config.headers).forEach(([headerName, template]) => {
+            headers[headerName] = interpolate(template, config.credentials);
+          });
+        } else {
+          Object.assign(headers, config.headers);
+        }
+        wsOptions.headers = headers;
+      }
+
+      console.log(
+        `[webSocketController] Reconnect attempt ${current.retryCount}/${RECONNECT.MAX_RETRIES}: ${providerName}`,
+      );
+
+      const socket = new WebSocket(url, config.subprotocols || [], wsOptions);
+
+      // Wait for open or error
+      await new Promise((resolve, reject) => {
+        const onOpen = () => {
+          socket.removeListener("error", onError);
+          resolve();
+        };
+        const onError = (err) => {
+          socket.removeListener("open", onOpen);
+          reject(err);
+        };
+        socket.once("open", onOpen);
+        socket.once("error", onError);
+      });
+
+      // Reconnect succeeded — reset retry count, update connection
+      const reconnected = activeConnections.get(providerName);
+      if (!reconnected || reconnected.intentionalClose) {
+        // Was disconnected intentionally during reconnect
+        socket.close(1000, "Client disconnect");
+        return;
+      }
+
+      activeConnections.set(providerName, {
+        ...reconnected,
+        socket,
+        status: STATUS.CONNECTED,
+        connectedAt: Date.now(),
+        retryCount: 0,
+        retryTimer: null,
+        error: undefined,
+      });
+
+      // Wire up handlers on the new socket
+      wireSocketHandlers(providerName, socket);
+
+      // Start heartbeat on the new socket
+      startHeartbeat(providerName);
+
+      broadcastStatusChange(providerName, STATUS.CONNECTED);
+
+      console.log(
+        `[webSocketController] Reconnected: ${providerName} (after ${current.retryCount} attempt(s))`,
+      );
+    } catch (err) {
+      console.error(
+        `[webSocketController] Reconnect attempt ${current.retryCount} failed for ${providerName}:`,
+        err.message,
+      );
+
+      // Schedule next retry
+      scheduleReconnect(providerName);
+    }
+  }, delay);
+}
+
+/**
+ * Wire up message, close, error, and pong handlers on a WebSocket instance.
+ * Extracted so both initial connect and reconnect use the same handlers.
+ *
+ * @param {string} providerName - The provider name
+ * @param {WebSocket} socket - The WebSocket instance
+ */
+function wireSocketHandlers(providerName, socket) {
+  // Message handler
+  socket.on("message", (data) => {
+    const conn = activeConnections.get(providerName);
+    if (conn) {
+      conn.messageCount++;
+      conn.lastMessageAt = Date.now();
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(data.toString());
+    } catch {
+      parsed = data.toString();
+    }
+
+    broadcastMessage(providerName, parsed);
+  });
+
+  // Close handler — triggers auto-reconnect for unexpected closes
+  socket.on("close", (code, reason) => {
+    console.log(
+      `[webSocketController] Connection closed: ${providerName} (code: ${code})`,
+    );
+    const conn = activeConnections.get(providerName);
+    if (!conn || conn.socket !== socket) return;
+
+    // Clean up heartbeat timers
+    clearHeartbeatTimers(conn);
+
+    // Update status
+    activeConnections.set(providerName, {
+      ...conn,
+      socket: null,
+      status: STATUS.DISCONNECTED,
+    });
+
+    // Normal close (code 1000) or intentional disconnect — don't reconnect
+    if (conn.intentionalClose || code === 1000) {
+      broadcastStatusChange(providerName, STATUS.DISCONNECTED, {
+        code,
+        reason: reason?.toString(),
+      });
+      return;
+    }
+
+    // Unexpected close — attempt auto-reconnect
+    broadcastStatusChange(providerName, STATUS.DISCONNECTED, {
+      code,
+      reason: reason?.toString(),
+      reconnecting: true,
+    });
+    scheduleReconnect(providerName);
+  });
+
+  // Error handler
+  socket.on("error", (err) => {
+    console.error(
+      `[webSocketController] Socket error for ${providerName}:`,
+      err.message,
+    );
+    const conn = activeConnections.get(providerName);
+    if (conn && conn.socket === socket) {
+      activeConnections.set(providerName, {
+        ...conn,
+        status: STATUS.ERROR,
+        error: err.message,
+      });
+      broadcastStatusChange(providerName, STATUS.ERROR, {
+        error: err.message,
+      });
+    }
+  });
+
+  // Pong handler — clear the pong timeout when we receive a pong
+  socket.on("pong", () => {
+    const conn = activeConnections.get(providerName);
+    if (conn && conn.pongTimer) {
+      clearTimeout(conn.pongTimer);
+      conn.pongTimer = null;
+    }
+  });
 }
 
 const webSocketController = {
@@ -133,8 +472,11 @@ const webSocketController = {
     // 3. Fresh connect — wrap in a promise and track it
     const connectPromise = (async () => {
       try {
-        // Clean up stale/error state
+        // Clean up stale/error state (including any pending reconnect timers)
         if (activeConnections.has(providerName)) {
+          const stale = activeConnections.get(providerName);
+          clearReconnectTimer(stale);
+          clearHeartbeatTimers(stale);
           await webSocketController.disconnect(win, providerName);
         }
 
@@ -177,6 +519,11 @@ const webSocketController = {
           messageCount: 0,
           connectedAt: null,
           lastMessageAt: null,
+          retryCount: 0,
+          retryTimer: null,
+          heartbeatTimer: null,
+          pongTimer: null,
+          intentionalClose: false,
         });
         broadcastStatusChange(providerName, STATUS.CONNECTING);
 
@@ -209,64 +556,18 @@ const webSocketController = {
           messageCount: 0,
           connectedAt: Date.now(),
           lastMessageAt: null,
+          retryCount: 0,
+          retryTimer: null,
+          heartbeatTimer: null,
+          pongTimer: null,
+          intentionalClose: false,
         });
 
-        // Wire up message handler
-        socket.on("message", (data) => {
-          const conn = activeConnections.get(providerName);
-          if (conn) {
-            conn.messageCount++;
-            conn.lastMessageAt = Date.now();
-          }
+        // Wire up socket event handlers
+        wireSocketHandlers(providerName, socket);
 
-          // Parse if JSON, otherwise pass as string
-          let parsed;
-          try {
-            parsed = JSON.parse(data.toString());
-          } catch {
-            parsed = data.toString();
-          }
-
-          broadcastMessage(providerName, parsed);
-        });
-
-        // Wire up close handler
-        socket.on("close", (code, reason) => {
-          console.log(
-            `[webSocketController] Connection closed: ${providerName} (code: ${code})`,
-          );
-          const conn = activeConnections.get(providerName);
-          if (conn && conn.socket === socket) {
-            activeConnections.set(providerName, {
-              ...conn,
-              socket: null,
-              status: STATUS.DISCONNECTED,
-            });
-            broadcastStatusChange(providerName, STATUS.DISCONNECTED, {
-              code,
-              reason: reason?.toString(),
-            });
-          }
-        });
-
-        // Wire up error handler
-        socket.on("error", (err) => {
-          console.error(
-            `[webSocketController] Socket error for ${providerName}:`,
-            err.message,
-          );
-          const conn = activeConnections.get(providerName);
-          if (conn && conn.socket === socket) {
-            activeConnections.set(providerName, {
-              ...conn,
-              status: STATUS.ERROR,
-              error: err.message,
-            });
-            broadcastStatusChange(providerName, STATUS.ERROR, {
-              error: err.message,
-            });
-          }
-        });
+        // Start heartbeat
+        startHeartbeat(providerName);
 
         broadcastStatusChange(providerName, STATUS.CONNECTED);
 
@@ -292,6 +593,11 @@ const webSocketController = {
           messageCount: 0,
           connectedAt: null,
           lastMessageAt: null,
+          retryCount: 0,
+          retryTimer: null,
+          heartbeatTimer: null,
+          pongTimer: null,
+          intentionalClose: false,
           error: error.message,
         });
         broadcastStatusChange(providerName, STATUS.ERROR, {
@@ -316,6 +622,7 @@ const webSocketController = {
   /**
    * disconnect
    * Close a WebSocket connection and clean up.
+   * Marks the close as intentional to suppress auto-reconnect.
    *
    * @param {BrowserWindow} win - the requesting window
    * @param {string} providerName - the provider to disconnect
@@ -342,6 +649,13 @@ const webSocketController = {
       }
 
       console.log(`[webSocketController] Disconnecting: ${providerName}`);
+
+      // Mark as intentional so the close handler doesn't auto-reconnect
+      conn.intentionalClose = true;
+
+      // Clear all timers
+      clearHeartbeatTimers(conn);
+      clearReconnectTimer(conn);
 
       // Close the socket
       if (conn.socket) {
@@ -370,6 +684,11 @@ const webSocketController = {
         error,
       );
       // Clean up anyway
+      const conn = activeConnections.get(providerName);
+      if (conn) {
+        clearHeartbeatTimers(conn);
+        clearReconnectTimer(conn);
+      }
       activeConnections.delete(providerName);
       return {
         error: true,
@@ -424,7 +743,7 @@ const webSocketController = {
    *
    * @param {BrowserWindow} win - the requesting window
    * @param {string} providerName - the provider name
-   * @returns {{ providerName, status, messageCount, connectedAt, lastMessageAt, error }}
+   * @returns {{ providerName, status, messageCount, connectedAt, lastMessageAt, error, retryCount }}
    */
   getStatus: (win, providerName) => {
     const conn = activeConnections.get(providerName);
@@ -445,6 +764,7 @@ const webSocketController = {
       connectedAt: conn.connectedAt || null,
       lastMessageAt: conn.lastMessageAt || null,
       error: conn.error || null,
+      retryCount: conn.retryCount || 0,
     };
   },
 
@@ -453,7 +773,7 @@ const webSocketController = {
    * Returns all active connections with their status.
    *
    * @param {BrowserWindow} win - the requesting window
-   * @returns {{ connections: Array<{ providerName, status, messageCount, connectedAt, lastMessageAt }> }}
+   * @returns {{ connections: Array<{ providerName, status, messageCount, connectedAt, lastMessageAt, retryCount }> }}
    */
   getAll: (win) => {
     const connections = [];
@@ -465,6 +785,7 @@ const webSocketController = {
         connectedAt: conn.connectedAt || null,
         lastMessageAt: conn.lastMessageAt || null,
         error: conn.error || null,
+        retryCount: conn.retryCount || 0,
       });
     }
     return { success: true, connections };
