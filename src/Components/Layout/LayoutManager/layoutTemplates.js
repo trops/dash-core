@@ -109,6 +109,30 @@ export const layoutTemplates = [
     ],
   },
   {
+    id: "two-by-three",
+    name: "2x3 Grid",
+    description:
+      "Six panels in two rows of three. Good for medium-density dashboards.",
+    rows: 2,
+    cols: 3,
+    cells: [
+      { key: "1.1" },
+      { key: "1.2" },
+      { key: "1.3" },
+      { key: "2.1" },
+      { key: "2.2" },
+      { key: "2.3" },
+    ],
+    previewCells: [
+      { row: 1, col: 1 },
+      { row: 1, col: 2 },
+      { row: 1, col: 3 },
+      { row: 2, col: 1 },
+      { row: 2, col: 2 },
+      { row: 2, col: 3 },
+    ],
+  },
+  {
     id: "three-by-three",
     name: "3x3 Grid",
     description:
