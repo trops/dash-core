@@ -32,6 +32,9 @@ const paletteToThemeMapper = require("./controller/paletteToThemeMapper");
 const webSocketController = require("./controller/webSocketController");
 const extractionCacheController = require("./controller/extractionCacheController");
 
+// --- Errors ---
+const themeFromUrlErrors = require("./errors/themeFromUrlErrors");
+
 // --- Utils ---
 const clientCache = require("./utils/clientCache");
 require("./utils/clientFactories"); // auto-register built-in factories
@@ -152,6 +155,9 @@ module.exports = {
   // Utils
   clientCache,
   responseCache,
+
+  // Errors
+  themeFromUrlErrors,
 
   // Schema
   dashboardConfigValidator,
