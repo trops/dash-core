@@ -10,6 +10,11 @@ const { Vibrant } = require("node-vibrant/node");
 const https = require("https");
 const http = require("http");
 const { URL } = require("url");
+const {
+  UrlUnreachableError,
+  ExtractionFailedError,
+  NoColorsFoundError,
+} = require("../errors/themeFromUrlErrors");
 
 // ─── Color conversion helpers ───────────────────────────────────────────────
 
@@ -65,6 +70,9 @@ function parseColor(str) {
     );
   }
 
+  console.warn(
+    `[themeFromUrlController] parseColor: unrecognized color format "${str}"`,
+  );
   return null;
 }
 
@@ -362,12 +370,22 @@ function resolveUrl(href, baseUrl) {
 
 /**
  * Fetch a URL and return the response as a Buffer.
- * Follows redirects (up to 5). Times out after 10 seconds.
+ * Follows redirects (up to maxRedirects). Times out after 10 seconds.
  * @param {string} url - Absolute URL to fetch
+ * @param {number} [maxRedirects=5] - Maximum number of redirects to follow
+ * @param {number} [_redirectCount=0] - Internal: current redirect count
  * @returns {Promise<Buffer>}
  */
-function fetchBuffer(url) {
+function fetchBuffer(url, maxRedirects = 5, _redirectCount = 0) {
   return new Promise((resolve, reject) => {
+    if (_redirectCount >= maxRedirects) {
+      reject(
+        new UrlUnreachableError(
+          `Too many redirects (${_redirectCount}) fetching ${url}`,
+        ),
+      );
+      return;
+    }
     const parsedUrl = new URL(url);
     const client = parsedUrl.protocol === "https:" ? https : http;
     const request = client.get(
@@ -382,7 +400,9 @@ function fetchBuffer(url) {
         ) {
           const redirectUrl = resolveUrl(res.headers.location, url);
           if (redirectUrl) {
-            fetchBuffer(redirectUrl).then(resolve).catch(reject);
+            fetchBuffer(redirectUrl, maxRedirects, _redirectCount + 1)
+              .then(resolve)
+              .catch(reject);
             return;
           }
         }
@@ -500,10 +520,12 @@ function isBoringColor(hex) {
  * Merge colors from all sources, deduplicate via clustering, and rank.
  * @param {Array<{hex, source, confidence}>} allColors - Colors from all extraction stages
  * @param {number} maxColors - Maximum palette size (default: 6)
- * @returns {Array<{hex, rgb, hsl, confidence, sources}>}
+ * @returns {{ palette: Array<{hex, rgb, hsl, confidence, sources}>, reason: string }}
  */
 function mergeAndRank(allColors, maxColors = 6) {
-  if (!allColors || allColors.length === 0) return [];
+  if (!allColors || allColors.length === 0) {
+    return { palette: [], reason: "no_colors_extracted" };
+  }
 
   // Build clusters — group colors within deltaE < 10
   const clusters = [];
@@ -546,6 +568,11 @@ function mergeAndRank(allColors, maxColors = 6) {
   // Separate boring from interesting colors
   const interesting = clusters.filter((c) => !isBoringColor(c.hex));
   const boring = clusters.filter((c) => isBoringColor(c.hex));
+
+  // All colors were filtered as boring
+  if (interesting.length === 0 && boring.length === 0) {
+    return { palette: [], reason: "all_colors_filtered" };
+  }
 
   // Score: confidence * frequency weight * saturation bonus
   const scored = interesting.map((c) => {
@@ -594,7 +621,11 @@ function mergeAndRank(allColors, maxColors = 6) {
     });
   }
 
-  return palette;
+  if (palette.length === 0) {
+    return { palette: [], reason: "all_colors_filtered" };
+  }
+
+  return { palette, reason: "success" };
 }
 
 // ─── Main export ─────────────────────────────────────────────────────────────
@@ -631,6 +662,11 @@ async function extractColorsFromUrl({
     `[themeFromUrlController] CSS vars: ${cssVarColors.length} colors`,
   );
 
+  // Null guard on computedStyles
+  if (computedStyles != null && typeof computedStyles !== "object") {
+    throw new ExtractionFailedError("computedStyles must be an object or null");
+  }
+
   const computedColors = extractComputedColors(computedStyles);
   console.log(
     `[themeFromUrlController] Computed styles: ${computedColors.length} colors`,
@@ -656,17 +692,32 @@ async function extractColorsFromUrl({
     ...cssVarColors,
     ...computedColors,
     ...faviconColors,
-  ];
+  ].filter((c) => {
+    if (!c.hex) {
+      console.warn(
+        `[themeFromUrlController] Skipping color with missing hex from source "${c.source}"`,
+      );
+      return false;
+    }
+    return true;
+  });
   console.log(`[themeFromUrlController] Total raw colors: ${allColors.length}`);
 
-  const palette = mergeAndRank(allColors);
+  const { palette, reason } = mergeAndRank(allColors);
   console.log(
-    `[themeFromUrlController] Final palette: ${palette.length} colors`,
+    `[themeFromUrlController] Final palette: ${palette.length} colors (reason: ${reason})`,
   );
+
+  if (palette.length === 0) {
+    throw new NoColorsFoundError(
+      `No usable colors extracted (reason: ${reason})`,
+    );
+  }
 
   return {
     palette,
     rawCount: allColors.length,
+    reason,
   };
 }
 
