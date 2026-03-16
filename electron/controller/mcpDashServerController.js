@@ -29,6 +29,7 @@ let httpServer = null;
 let transport = null;
 let startTime = null;
 let connectionCount = 0;
+let activeWin = null;
 
 // --- Rate Limiting ---
 const RATE_LIMIT = 60; // requests per minute
@@ -115,6 +116,41 @@ function saveMcpServerSettings(win, mcpSettings) {
   const settings = result?.settings || {};
   settings.mcpDashServer = mcpSettings;
   settingsController.saveSettingsForApplication(win, settings);
+}
+
+// --- App ID Resolution ---
+/**
+ * Resolve the appId by scanning the userData/Dashboard directory for
+ * subdirectories containing workspaces.json. Falls back to the default.
+ */
+function resolveAppId() {
+  const { app } = require("electron");
+  const fs = require("fs");
+  const path = require("path");
+  const dashboardDir = path.join(app.getPath("userData"), "Dashboard");
+  try {
+    const entries = fs.readdirSync(dashboardDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const wsFile = path.join(dashboardDir, entry.name, "workspaces.json");
+        if (fs.existsSync(wsFile)) {
+          return entry.name;
+        }
+      }
+    }
+  } catch (e) {
+    // Directory may not exist yet
+  }
+  return "@trops/dash-electron";
+}
+
+/**
+ * Get the current server context (win + appId) for tool handlers.
+ * Returns null if the server is not running.
+ */
+function getServerContext() {
+  if (!activeWin) return null;
+  return { win: activeWin, appId: resolveAppId() };
 }
 
 // --- Controller ---
@@ -230,6 +266,7 @@ const mcpDashServerController = {
 
       startTime = Date.now();
       connectionCount = 0;
+      activeWin = win;
       startCleanup();
 
       // Save enabled state
@@ -290,6 +327,7 @@ const mcpDashServerController = {
       transport = null;
       startTime = null;
       connectionCount = 0;
+      activeWin = null;
 
       // Update settings
       if (win) {
@@ -363,6 +401,7 @@ const mcpDashServerController = {
   // Expose registration functions for other controllers
   registerTool,
   registerResource,
+  getServerContext,
 };
 
 module.exports = mcpDashServerController;
