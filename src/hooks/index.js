@@ -8,3 +8,4 @@ export { useScheduler } from "./useScheduler";
 export { useWidgetSchedulerStatus } from "./useWidgetSchedulerStatus";
 export { useWebSocketProvider } from "./useWebSocketProvider";
 export { useMcpDashServer } from "./useMcpDashServer";
+export { useWizardState, widgetCountToTemplate } from "./useWizardState";
