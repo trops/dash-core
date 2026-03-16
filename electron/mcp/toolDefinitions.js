@@ -164,4 +164,88 @@ const widgetTools = [
   },
 ];
 
-module.exports = { dashboardTools, widgetTools };
+const themeTools = [
+  {
+    name: "list_themes",
+    description:
+      "List all saved themes with their names and whether they are currently active",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "get_theme",
+    description:
+      "Get full details of a theme by name, including all color values",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Name of the theme to retrieve",
+        },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "create_theme",
+    description:
+      "Create a new theme from a colors object. The colors object should contain color role keys (e.g. primary, secondary, surface, background) mapped to hex values or shade objects.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Display name for the new theme",
+        },
+        colors: {
+          type: "object",
+          description:
+            "Theme colors object with role keys mapped to hex values or shade objects",
+        },
+      },
+      required: ["name", "colors"],
+    },
+  },
+  {
+    name: "create_theme_from_url",
+    description:
+      "Extract brand colors from a website URL and generate a theme. Loads the page, extracts colors from meta tags, CSS variables, computed styles, and favicons, then maps them to theme roles.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description:
+            "Website URL to extract colors from (must start with http:// or https://)",
+        },
+        name: {
+          type: "string",
+          description:
+            "Optional name for the theme. If omitted, a name is derived from the URL hostname.",
+        },
+      },
+      required: ["url"],
+    },
+  },
+  {
+    name: "apply_theme",
+    description:
+      "Apply a saved theme to the active dashboard. The theme must already exist (use list_themes to see available themes).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Name of the theme to apply",
+        },
+      },
+      required: ["name"],
+    },
+  },
+];
+
+module.exports = { dashboardTools, widgetTools, themeTools };

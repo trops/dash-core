@@ -832,6 +832,507 @@ async function handleSearchWidgets({ query }) {
   }
 }
 
+// --- Theme Tool Handlers ---
+
+const settingsController = require("../controller/settingsController");
+const themeFromUrlController = require("../controller/themeFromUrlController");
+const paletteToThemeMapper = require("../controller/paletteToThemeMapper");
+const extractionCacheController = require("../controller/extractionCacheController");
+const { THEME_SAVE_COMPLETE, SETTINGS_SAVE_COMPLETE } = require("../events");
+
+/**
+ * list_themes — Returns all saved themes with name, active state, and color summary.
+ */
+async function handleListThemes() {
+  const { win, appId } = requireContext();
+  const result = themeController.listThemesForApplication(win, appId);
+
+  if (result.error) {
+    return {
+      content: [
+        { type: "text", text: JSON.stringify({ error: result.message }) },
+      ],
+      isError: true,
+    };
+  }
+
+  const themes = result.themes || {};
+  const settingsResult = settingsController.getSettingsForApplication(win);
+  const activeThemeKey = settingsResult?.settings?.theme || null;
+
+  const themeList = Object.keys(themes).map((name) => ({
+    name,
+    isActive: name === activeThemeKey,
+    colors: themes[name],
+  }));
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(
+          { themes: themeList, count: themeList.length },
+          null,
+          2,
+        ),
+      },
+    ],
+  };
+}
+
+/**
+ * get_theme — Returns full details of a theme by name.
+ */
+async function handleGetTheme({ name }) {
+  if (!name || typeof name !== "string" || !name.trim()) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "name is required and must be a non-empty string",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  const { win, appId } = requireContext();
+  const result = themeController.listThemesForApplication(win, appId);
+
+  if (result.error) {
+    return {
+      content: [
+        { type: "text", text: JSON.stringify({ error: result.message }) },
+      ],
+      isError: true,
+    };
+  }
+
+  const themes = result.themes || {};
+  const themeName = name.trim();
+
+  if (!(themeName in themes)) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ error: `Theme not found: ${themeName}` }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  const settingsResult = settingsController.getSettingsForApplication(win);
+  const activeThemeKey = settingsResult?.settings?.theme || null;
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(
+          {
+            name: themeName,
+            isActive: themeName === activeThemeKey,
+            colors: themes[themeName],
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  };
+}
+
+/**
+ * create_theme — Creates a new theme from a colors object.
+ */
+async function handleCreateTheme({ name, colors }) {
+  if (!name || typeof name !== "string" || !name.trim()) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "name is required and must be a non-empty string",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  if (!colors || typeof colors !== "object" || Array.isArray(colors)) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "colors is required and must be an object",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  const { win, appId } = requireContext();
+  const themeName = name.trim();
+
+  const result = themeController.saveThemeForApplication(
+    win,
+    appId,
+    themeName,
+    colors,
+  );
+
+  if (result.error) {
+    return {
+      content: [
+        { type: "text", text: JSON.stringify({ error: result.message }) },
+      ],
+      isError: true,
+    };
+  }
+
+  // Notify the renderer so the UI updates
+  win.webContents.send(THEME_SAVE_COMPLETE, result);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ name: themeName, created: true }, null, 2),
+      },
+    ],
+  };
+}
+
+/**
+ * create_theme_from_url — Extracts colors from a URL and generates a theme.
+ * Uses a hidden BrowserWindow to load the page and extract styles.
+ */
+async function handleCreateThemeFromUrl({ url, name }) {
+  if (!url || typeof url !== "string" || !url.trim()) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "url is required and must be a non-empty string",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  const trimmedUrl = url.trim();
+
+  // Validate URL format
+  if (!trimmedUrl.startsWith("http://") && !trimmedUrl.startsWith("https://")) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "url must start with http:// or https://",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  const { win, appId } = requireContext();
+  const { BrowserWindow } = require("electron");
+
+  const LOAD_TIMEOUT_MS = 15000;
+
+  try {
+    // Extract colors using a hidden BrowserWindow (same approach as dash-electron IPC handler)
+    const extractionData = await extractionCacheController.get(
+      trimmedUrl,
+      async () => {
+        const scanWindow = new BrowserWindow({
+          width: 1280,
+          height: 900,
+          show: false,
+          webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+          },
+        });
+
+        let destroyed = false;
+        const destroyScanWindow = () => {
+          if (!destroyed) {
+            destroyed = true;
+            scanWindow.destroy();
+          }
+        };
+
+        try {
+          scanWindow.webContents.on("will-navigate", (event) => {
+            event.preventDefault();
+          });
+
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              reject(
+                new Error(
+                  `Page load timed out after ${LOAD_TIMEOUT_MS}ms for ${trimmedUrl}`,
+                ),
+              );
+            }, LOAD_TIMEOUT_MS);
+
+            scanWindow.webContents.on(
+              "did-fail-load",
+              (event, errorCode, errorDescription) => {
+                clearTimeout(timeout);
+                const desc = errorDescription || `Error code ${errorCode}`;
+                reject(new Error(`Page load failed: ${desc}`));
+              },
+            );
+
+            scanWindow
+              .loadURL(trimmedUrl)
+              .then(() => {
+                clearTimeout(timeout);
+                resolve();
+              })
+              .catch((err) => {
+                clearTimeout(timeout);
+                reject(
+                  new Error(`Failed to load ${trimmedUrl}: ${err.message}`),
+                );
+              });
+          });
+
+          const extracted = await scanWindow.webContents.executeJavaScript(`
+            (function() {
+              try {
+                const htmlContent = document.documentElement.outerHTML;
+                let cssContent = '';
+                try {
+                  for (const sheet of document.styleSheets) {
+                    try {
+                      for (const rule of sheet.cssRules) {
+                        cssContent += rule.cssText + '\\n';
+                      }
+                    } catch (e) { /* cross-origin stylesheet */ }
+                  }
+                } catch (e) {}
+                const selectors = ['body', 'header', 'nav', 'main', 'footer', 'a', 'button', 'h1', 'h2'];
+                const computedStyles = {};
+                for (const sel of selectors) {
+                  const el = document.querySelector(sel);
+                  if (!el) continue;
+                  const cs = window.getComputedStyle(el);
+                  computedStyles[sel] = {
+                    color: cs.color,
+                    backgroundColor: cs.backgroundColor,
+                    borderColor: cs.borderColor,
+                  };
+                }
+                return { success: true, htmlContent, cssContent, computedStyles };
+              } catch (e) {
+                return { success: false, error: { type: 'EXTRACTION_FAILED', message: e.message } };
+              }
+            })();
+          `);
+
+          if (!extracted || !extracted.success) {
+            const errMsg =
+              extracted?.error?.message || "Script execution failed";
+            throw new Error(`Color extraction failed: ${errMsg}`);
+          }
+
+          return themeFromUrlController.extractColorsFromUrl({
+            htmlContent: extracted.htmlContent,
+            cssContent: extracted.cssContent,
+            computedStyles: extracted.computedStyles,
+            baseUrl: trimmedUrl,
+          });
+        } finally {
+          destroyScanWindow();
+        }
+      },
+    );
+
+    // Map palette to theme
+    const palette = extractionData?.palette || [];
+    if (palette.length === 0) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              error: "No colors could be extracted from the URL",
+            }),
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    const { theme: generatedTheme } =
+      paletteToThemeMapper.generateThemeFromPalette(palette);
+
+    // Derive theme name from URL hostname if not provided
+    let themeName;
+    if (name && typeof name === "string" && name.trim()) {
+      themeName = name.trim();
+    } else {
+      try {
+        const { URL } = require("url");
+        const parsed = new URL(trimmedUrl);
+        themeName = parsed.hostname.replace(/^www\./, "");
+      } catch {
+        themeName = "url-theme";
+      }
+    }
+
+    // Save the generated theme
+    const saveResult = themeController.saveThemeForApplication(
+      win,
+      appId,
+      themeName,
+      generatedTheme,
+    );
+
+    if (saveResult.error) {
+      return {
+        content: [
+          { type: "text", text: JSON.stringify({ error: saveResult.message }) },
+        ],
+        isError: true,
+      };
+    }
+
+    // Notify the renderer
+    win.webContents.send(THEME_SAVE_COMPLETE, saveResult);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              name: themeName,
+              created: true,
+              colorsExtracted: palette.length,
+              source: trimmedUrl,
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  } catch (err) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: `Failed to create theme from URL: ${err.message}`,
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+}
+
+/**
+ * apply_theme — Applies a saved theme to the active dashboard.
+ * Updates settings to set the active theme key and notifies the renderer.
+ */
+async function handleApplyTheme({ name }) {
+  if (!name || typeof name !== "string" || !name.trim()) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "name is required and must be a non-empty string",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  const { win, appId } = requireContext();
+  const themeName = name.trim();
+
+  // Verify the theme exists
+  const themeResult = themeController.listThemesForApplication(win, appId);
+  if (themeResult.error) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ error: themeResult.message }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  const themes = themeResult.themes || {};
+  if (!(themeName in themes)) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: `Theme not found: ${themeName}. Use list_themes to see available themes.`,
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  // Update settings to set the active theme
+  const settingsResult = settingsController.getSettingsForApplication(win);
+  const settings = settingsResult?.settings || {};
+  settings.theme = themeName;
+
+  const saveResult = settingsController.saveSettingsForApplication(
+    win,
+    settings,
+  );
+
+  if (saveResult.error) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ error: saveResult.message }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  // Notify the renderer to update the theme
+  win.webContents.send(SETTINGS_SAVE_COMPLETE, { settings });
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ name: themeName, applied: true }, null, 2),
+      },
+    ],
+  };
+}
+
 module.exports = {
   handleListDashboards,
   handleGetDashboard,
@@ -843,4 +1344,9 @@ module.exports = {
   handleConfigureWidget,
   handleListWidgets,
   handleSearchWidgets,
+  handleListThemes,
+  handleGetTheme,
+  handleCreateTheme,
+  handleCreateThemeFromUrl,
+  handleApplyTheme,
 };
