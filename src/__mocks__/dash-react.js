@@ -101,16 +101,84 @@ function FontAwesomeIcon({ icon, className }) {
   });
 }
 
+function Button({ title, onClick, disabled }) {
+  return React.createElement(
+    "button",
+    { onClick: onClick, disabled: disabled },
+    title,
+  );
+}
+
+// Tabs3 mock — renders only the active tab content
+function Tabs3({ value, onValueChange, children, className }) {
+  return React.createElement(
+    "div",
+    { "data-testid": "tabs3", className: className },
+    React.Children.map(children, (child) => {
+      if (!child) return null;
+      // Clone children passing value and onValueChange for triggers
+      return React.cloneElement(child, {
+        _activeTab: value,
+        _onTabChange: onValueChange,
+      });
+    }),
+  );
+}
+
+Tabs3.List = function TabsList({
+  children,
+  _activeTab,
+  _onTabChange,
+  className,
+}) {
+  return React.createElement(
+    "div",
+    { "data-testid": "tabs3-list", role: "tablist", className: className },
+    React.Children.map(children, (child) =>
+      child ? React.cloneElement(child, { _activeTab, _onTabChange }) : null,
+    ),
+  );
+};
+
+Tabs3.Trigger = function TabsTrigger({
+  value,
+  children,
+  _activeTab,
+  _onTabChange,
+}) {
+  return React.createElement(
+    "button",
+    {
+      "data-testid": "tab-trigger-" + value,
+      role: "tab",
+      "aria-selected": _activeTab === value,
+      onClick: () => _onTabChange && _onTabChange(value),
+    },
+    children,
+  );
+};
+
+Tabs3.Content = function TabsContent({ value, children, _activeTab }) {
+  if (_activeTab !== value) return null;
+  return React.createElement(
+    "div",
+    { "data-testid": "tab-content-" + value },
+    children,
+  );
+};
+
 module.exports = {
   ThemeContext,
   Modal,
   Stepper,
   InputText,
   TextArea,
+  Button,
   Button2,
   Button3,
   SelectableCard,
   FontAwesomeIcon,
+  Tabs3,
   getStylesForItem: () => ({}),
   themeObjects: { PANEL: "panel" },
   deepCopy: (obj) => JSON.parse(JSON.stringify(obj)),
