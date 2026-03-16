@@ -21,6 +21,22 @@ import {
 } from "../../Theme/Wizard";
 import { ThemeColorDots } from "../../Theme/ThemeColorDots";
 
+const BackToChooser = ({ onClick, children }) => (
+  <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex-shrink-0 px-4 pt-4">
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex items-center gap-1.5 text-sm opacity-60 hover:opacity-100 transition-opacity"
+      >
+        <FontAwesomeIcon icon="arrow-left" className="h-3 w-3" />
+        <span>Back</span>
+      </button>
+    </div>
+    <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
+  </div>
+);
+
 // ─── Main Component ──────────────────────────────────────────────────────
 
 export const ThemesSection = ({
@@ -48,6 +64,7 @@ export const ThemesSection = ({
   // null | "marketplace"
   const [installMode, setInstallMode] = useState(null);
   const [enteredViaChooser, setEnteredViaChooser] = useState(false);
+  const [initialMethod, setInitialMethod] = useState(null);
 
   const themeEntries = themes ? Object.entries(themes) : [];
   const appId = credentials?.appId;
@@ -298,40 +315,55 @@ export const ThemesSection = ({
           setInstallMode("marketplace");
           setEnteredViaChooser(true);
         }}
-        onCreateNew={() => {
-          setGenerateMode(GENERATE_MODES.WIZARD);
-        }}
-        onCreateFromUrl={() => {
-          setGenerateMode(GENERATE_MODES.FROM_URL);
+        onSelectMethod={(method) => {
+          setInitialMethod(method);
+          if (method === "presets") setGenerateMode(GENERATE_MODES.PRESETS);
+          else if (method === "color") setGenerateMode(GENERATE_MODES.COLOR);
+          else if (method === "from-url")
+            setGenerateMode(GENERATE_MODES.FROM_URL);
+          else setGenerateMode(GENERATE_MODES.WIZARD);
         }}
       />
     );
   } else if (generateMode === GENERATE_MODES.WIZARD) {
     detailContent = (
-      <ThemeQuickCreate
-        wizardName={wizardName}
-        setWizardName={setWizardName}
-        wizardMethod={wizardMethod}
-        setWizardMethod={setWizardMethod}
-        wizardTheme={wizardTheme}
-        setWizardTheme={setWizardTheme}
-        onComplete={handleWizardComplete}
-        onExtract={handleUrlExtract}
-        onMapToTheme={handleUrlMapToTheme}
-      />
+      <BackToChooser onClick={() => setGenerateMode(GENERATE_MODES.CHOOSER)}>
+        <ThemeQuickCreate
+          wizardName={wizardName}
+          setWizardName={setWizardName}
+          wizardMethod={wizardMethod}
+          setWizardMethod={setWizardMethod}
+          wizardTheme={wizardTheme}
+          setWizardTheme={setWizardTheme}
+          onComplete={handleWizardComplete}
+          onExtract={handleUrlExtract}
+          onMapToTheme={handleUrlMapToTheme}
+          initialMethod={initialMethod}
+        />
+      </BackToChooser>
     );
   } else if (generateMode === GENERATE_MODES.PRESETS) {
-    detailContent = <PresetGallery onSelect={handleCreateFromPreset} />;
+    detailContent = (
+      <BackToChooser onClick={() => setGenerateMode(GENERATE_MODES.CHOOSER)}>
+        <PresetGallery onSelect={handleCreateFromPreset} />
+      </BackToChooser>
+    );
   } else if (generateMode === GENERATE_MODES.FROM_URL) {
     detailContent = (
-      <ThemeFromUrlPane
-        onExtract={handleUrlExtract}
-        onMapToTheme={handleUrlMapToTheme}
-        onGenerate={handleUrlThemeGenerated}
-      />
+      <BackToChooser onClick={() => setGenerateMode(GENERATE_MODES.CHOOSER)}>
+        <ThemeFromUrlPane
+          onExtract={handleUrlExtract}
+          onMapToTheme={handleUrlMapToTheme}
+          onGenerate={handleUrlThemeGenerated}
+        />
+      </BackToChooser>
     );
   } else if (generateMode === GENERATE_MODES.COLOR) {
-    detailContent = <ColorHarmonyPicker onGenerate={handleCreateFromHarmony} />;
+    detailContent = (
+      <BackToChooser onClick={() => setGenerateMode(GENERATE_MODES.CHOOSER)}>
+        <ColorHarmonyPicker onGenerate={handleCreateFromHarmony} />
+      </BackToChooser>
+    );
   } else if (selectedThemeKey && themes && themes[selectedThemeKey]) {
     detailContent = (
       <ThemeDetail

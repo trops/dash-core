@@ -66,6 +66,10 @@ export const useWebSocketProvider = (providerType, options = {}) => {
   maxMessagesRef.current = maxMessages;
 
   const dashApi = app?.dashApi;
+  // Access the raw preload bridge (mainApi) for the webSocket sub-API.
+  // dashApi is an ElectronDashboardApi wrapper; the webSocket methods
+  // live on the underlying mainApi object (dashApi.api).
+  const wsApi = dashApi?.api?.webSocket;
 
   // Get the widget data
   const widgetData = widgetContext?.widgetData;
@@ -113,7 +117,7 @@ export const useWebSocketProvider = (providerType, options = {}) => {
   const connect = useCallback(async () => {
     if (connectedRef.current) return;
 
-    if (!dashApi?.webSocket || !provider) {
+    if (!wsApi || !provider) {
       setError(
         !provider
           ? `No ${providerType} WebSocket provider selected for this widget`
@@ -140,8 +144,7 @@ export const useWebSocketProvider = (providerType, options = {}) => {
     const cached = connectionStates.get(selectedProviderName);
     if (cached && cached.status === STATUS.CONNECTED) {
       try {
-        const statusResult =
-          await dashApi.webSocket.getStatus(selectedProviderName);
+        const statusResult = await wsApi.getStatus(selectedProviderName);
         if (statusResult?.status === "connected") {
           cached.consumerCount++;
           applyConnected();
@@ -186,7 +189,7 @@ export const useWebSocketProvider = (providerType, options = {}) => {
     // 3. First caller — fire the IPC call and share the promise
     const connectPromise = (async () => {
       try {
-        const result = await dashApi.webSocket.connect(selectedProviderName, {
+        const result = await wsApi.connect(selectedProviderName, {
           url: provider.wsConfig.url,
           headers: provider.wsConfig.headers || null,
           subprotocols: provider.wsConfig.subprotocols || null,
@@ -239,14 +242,14 @@ export const useWebSocketProvider = (providerType, options = {}) => {
       setIsConnecting(false);
       setStatus(STATUS.ERROR);
     }
-  }, [dashApi, provider, providerType, selectedProviderName, applyConnected]);
+  }, [wsApi, provider, providerType, selectedProviderName, applyConnected]);
 
   /**
    * Disconnect from the WebSocket server.
    * Only sends the IPC disconnect call when this is the last consumer.
    */
   const disconnect = useCallback(async () => {
-    if (!dashApi?.webSocket || !selectedProviderName) return;
+    if (!wsApi || !selectedProviderName) return;
 
     const state = connectionStates.get(selectedProviderName);
     if (state) {
@@ -277,31 +280,31 @@ export const useWebSocketProvider = (providerType, options = {}) => {
     pendingConnects.delete(selectedProviderName);
 
     try {
-      await dashApi.webSocket.disconnect(selectedProviderName);
+      await wsApi.disconnect(selectedProviderName);
     } catch (err) {
       console.error(
         "[useWebSocketProvider] Error disconnecting:",
         err?.message,
       );
     }
-  }, [dashApi, selectedProviderName]);
+  }, [wsApi, selectedProviderName]);
 
   /**
    * Send data through the WebSocket connection
    */
   const send = useCallback(
     async (data) => {
-      if (!dashApi?.webSocket || !selectedProviderName) {
+      if (!wsApi || !selectedProviderName) {
         throw new Error("WebSocket not connected");
       }
 
-      const result = await dashApi.webSocket.send(selectedProviderName, data);
+      const result = await wsApi.send(selectedProviderName, data);
       if (result.error) {
         throw new Error(result.message);
       }
       return result;
     },
-    [dashApi, selectedProviderName],
+    [wsApi, selectedProviderName],
   );
 
   // Keep a ref to connect so the auto-connect effect doesn't depend on it
@@ -310,7 +313,7 @@ export const useWebSocketProvider = (providerType, options = {}) => {
 
   // Listen for incoming messages from main process
   useEffect(() => {
-    if (!dashApi?.webSocket || !selectedProviderName) return;
+    if (!wsApi || !selectedProviderName) return;
 
     const handleMessage = (_event, payload) => {
       if (payload.provider !== selectedProviderName) return;
@@ -328,13 +331,13 @@ export const useWebSocketProvider = (providerType, options = {}) => {
       setLastMessage(msg);
     };
 
-    dashApi.webSocket.onMessage(handleMessage);
-    return () => dashApi.webSocket.offMessage(handleMessage);
-  }, [dashApi, selectedProviderName]);
+    wsApi.onMessage(handleMessage);
+    return () => wsApi.offMessage(handleMessage);
+  }, [wsApi, selectedProviderName]);
 
   // Listen for status changes from main process
   useEffect(() => {
-    if (!dashApi?.webSocket || !selectedProviderName) return;
+    if (!wsApi || !selectedProviderName) return;
 
     const handleStatusChange = (_event, payload) => {
       if (payload.provider !== selectedProviderName) return;
@@ -375,9 +378,9 @@ export const useWebSocketProvider = (providerType, options = {}) => {
       }
     };
 
-    dashApi.webSocket.onStatusChange(handleStatusChange);
-    return () => dashApi.webSocket.offStatusChange(handleStatusChange);
-  }, [dashApi, selectedProviderName]);
+    wsApi.onStatusChange(handleStatusChange);
+    return () => wsApi.offStatusChange(handleStatusChange);
+  }, [wsApi, selectedProviderName]);
 
   // Auto-connect on mount or when provider selection changes
   useEffect(() => {
@@ -395,7 +398,7 @@ export const useWebSocketProvider = (providerType, options = {}) => {
       mountedRef.current = false;
 
       // Decrement consumer count; only disconnect if last consumer
-      if (connectedRef.current && dashApi?.webSocket && selectedProviderName) {
+      if (connectedRef.current && wsApi && selectedProviderName) {
         const state = connectionStates.get(selectedProviderName);
         if (state) {
           state.consumerCount = Math.max(0, state.consumerCount - 1);
@@ -409,10 +412,10 @@ export const useWebSocketProvider = (providerType, options = {}) => {
           connectionStates.delete(selectedProviderName);
         }
 
-        dashApi.webSocket.disconnect(selectedProviderName).catch(() => {});
+        wsApi.disconnect(selectedProviderName).catch(() => {});
       }
     };
-  }, [dashApi, selectedProviderName]);
+  }, [wsApi, selectedProviderName]);
 
   return {
     isConnected,
