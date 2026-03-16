@@ -248,4 +248,75 @@ const themeTools = [
   },
 ];
 
-module.exports = { dashboardTools, widgetTools, themeTools };
+const providerTools = [
+  {
+    name: "list_providers",
+    description:
+      "List all configured providers with their names, types, and status. Credential secrets are never returned.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "add_provider",
+    description:
+      "Add a new provider configuration. Supports credential providers (API keys) and MCP providers (server connections). Credentials are encrypted at rest.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description:
+            "Unique display name for the provider (e.g. 'Algolia Production', 'Slack')",
+        },
+        type: {
+          type: "string",
+          description:
+            "Provider type identifier (e.g. 'algolia', 'slack', 'openai', 'github')",
+        },
+        providerClass: {
+          type: "string",
+          enum: ["credential", "mcp"],
+          description:
+            "Provider class: 'credential' for API key providers, 'mcp' for MCP server providers. Defaults to 'credential'.",
+        },
+        credentials: {
+          type: "object",
+          description:
+            "Credentials object (e.g. { apiKey: '...', appId: '...' }). Encrypted at rest, never returned in responses.",
+        },
+        mcpConfig: {
+          type: "object",
+          description:
+            "MCP server configuration (transport, command, args, envMapping). Only used when providerClass is 'mcp'.",
+        },
+        allowedTools: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Optional list of allowed MCP tool names. Only used when providerClass is 'mcp'.",
+        },
+      },
+      required: ["name", "type", "credentials"],
+    },
+  },
+  {
+    name: "remove_provider",
+    description:
+      "Remove a provider by name. This deletes the provider and its stored credentials permanently.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Name of the provider to remove",
+        },
+      },
+      required: ["name"],
+    },
+  },
+];
+
+module.exports = { dashboardTools, widgetTools, themeTools, providerTools };

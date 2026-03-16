@@ -1333,6 +1333,232 @@ async function handleApplyTheme({ name }) {
   };
 }
 
+// --- Provider Tool Handlers ---
+
+const { PROVIDER_LIST_COMPLETE } = require("../events");
+
+/**
+ * list_providers — Returns all configured providers with name, type, class, and status.
+ * Credentials/secrets are NEVER included in the response.
+ */
+async function handleListProviders() {
+  const { win, appId } = requireContext();
+  const result = providerController.listProviders(win, appId);
+
+  if (result.error) {
+    return {
+      content: [
+        { type: "text", text: JSON.stringify({ error: result.message }) },
+      ],
+      isError: true,
+    };
+  }
+
+  const providers = (result.providers || []).map((p) => ({
+    name: p.name,
+    type: p.type,
+    providerClass: p.providerClass || "credential",
+    dateCreated: p.dateCreated,
+    dateUpdated: p.dateUpdated,
+  }));
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ providers, count: providers.length }, null, 2),
+      },
+    ],
+  };
+}
+
+/**
+ * add_provider — Adds a new provider with encrypted credentials.
+ * Credentials are accepted on input but never returned in the response.
+ */
+async function handleAddProvider({
+  name,
+  type,
+  providerClass,
+  credentials,
+  mcpConfig,
+  allowedTools,
+}) {
+  if (!name || typeof name !== "string" || !name.trim()) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "name is required and must be a non-empty string",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  if (!type || typeof type !== "string" || !type.trim()) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "type is required and must be a non-empty string",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  if (
+    !credentials ||
+    typeof credentials !== "object" ||
+    Array.isArray(credentials)
+  ) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "credentials is required and must be an object",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  const resolvedClass = providerClass || "credential";
+  if (resolvedClass !== "credential" && resolvedClass !== "mcp") {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "providerClass must be 'credential' or 'mcp'",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  const { win, appId } = requireContext();
+  const providerName = name.trim();
+  const providerType = type.trim();
+
+  // Check for duplicate names
+  const existing = providerController.listProviders(win, appId);
+  if (!existing.error) {
+    const duplicate = (existing.providers || []).find(
+      (p) => p.name === providerName,
+    );
+    if (duplicate) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              error: `A provider with name "${providerName}" already exists. Remove it first or use a different name.`,
+            }),
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  const result = providerController.saveProvider(
+    win,
+    appId,
+    providerName,
+    providerType,
+    credentials,
+    resolvedClass,
+    resolvedClass === "mcp" ? mcpConfig || null : null,
+    resolvedClass === "mcp" ? allowedTools || null : null,
+  );
+
+  if (result.error) {
+    return {
+      content: [
+        { type: "text", text: JSON.stringify({ error: result.message }) },
+      ],
+      isError: true,
+    };
+  }
+
+  // Notify the renderer so the UI updates
+  const listResult = providerController.listProviders(win, appId);
+  win.webContents.send(PROVIDER_LIST_COMPLETE, listResult);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(
+          {
+            name: providerName,
+            type: providerType,
+            providerClass: resolvedClass,
+            created: true,
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  };
+}
+
+/**
+ * remove_provider — Removes a provider by name, deleting its stored credentials.
+ */
+async function handleRemoveProvider({ name }) {
+  if (!name || typeof name !== "string" || !name.trim()) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "name is required and must be a non-empty string",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  const { win, appId } = requireContext();
+  const providerName = name.trim();
+
+  const result = providerController.deleteProvider(win, appId, providerName);
+
+  if (result.error) {
+    return {
+      content: [
+        { type: "text", text: JSON.stringify({ error: result.message }) },
+      ],
+      isError: true,
+    };
+  }
+
+  // Notify the renderer so the UI updates
+  const listResult = providerController.listProviders(win, appId);
+  win.webContents.send(PROVIDER_LIST_COMPLETE, listResult);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ name: providerName, removed: true }, null, 2),
+      },
+    ],
+  };
+}
+
 module.exports = {
   handleListDashboards,
   handleGetDashboard,
@@ -1349,4 +1575,7 @@ module.exports = {
   handleCreateTheme,
   handleCreateThemeFromUrl,
   handleApplyTheme,
+  handleListProviders,
+  handleAddProvider,
+  handleRemoveProvider,
 };
