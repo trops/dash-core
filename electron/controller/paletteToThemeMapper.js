@@ -8,6 +8,8 @@
 
 const { TAILWIND_COLORS } = require("../../src/utils/colorUtils");
 
+const VALID_HEX_RE = /^#[0-9a-fA-F]{6}$/;
+
 // ─── Color conversion helpers ───────────────────────────────────────────────
 // These mirror the helpers in themeFromUrlController but are kept local
 // to avoid coupling the two modules.
@@ -159,8 +161,38 @@ function assignRoles(palette) {
     };
   }
 
+  // Validate and filter palette entries — each must have hex and confidence
+  const validPalette = palette.filter((c) => {
+    if (!c || typeof c !== "object") {
+      console.warn("[paletteToThemeMapper] Skipping non-object palette entry");
+      return false;
+    }
+    if (!c.hex || typeof c.hex !== "string") {
+      console.warn(
+        "[paletteToThemeMapper] Skipping palette entry with missing hex",
+      );
+      return false;
+    }
+    if (c.confidence == null || typeof c.confidence !== "number") {
+      console.warn(
+        `[paletteToThemeMapper] Skipping palette entry "${c.hex}" with missing confidence`,
+      );
+      return false;
+    }
+    return true;
+  });
+
+  if (validPalette.length === 0) {
+    return {
+      primary: "#6b7280",
+      secondary: "#3b82f6",
+      tertiary: "#6366f1",
+      neutral: "#64748b",
+    };
+  }
+
   // Ensure all entries have hsl
-  const colors = palette.map((c) => {
+  const colors = validPalette.map((c) => {
     const rgb = c.rgb || parseHex(c.hex);
     const hsl = c.hsl || (rgb ? rgbToHsl(rgb) : { h: 0, s: 0, l: 50 });
     return { ...c, rgb, hsl };
@@ -263,11 +295,18 @@ function generateThemeFromPalette(palette, overrides = {}) {
   // Step 1: Assign roles
   const roles = assignRoles(palette);
 
-  // Apply any user overrides
-  if (overrides.primary) roles.primary = overrides.primary;
-  if (overrides.secondary) roles.secondary = overrides.secondary;
-  if (overrides.tertiary) roles.tertiary = overrides.tertiary;
-  if (overrides.neutral) roles.neutral = overrides.neutral;
+  // Apply any user overrides (validate hex format)
+  for (const role of ["primary", "secondary", "tertiary", "neutral"]) {
+    if (overrides[role]) {
+      if (VALID_HEX_RE.test(overrides[role])) {
+        roles[role] = overrides[role];
+      } else {
+        console.warn(
+          `[paletteToThemeMapper] Skipping invalid override for ${role}: "${overrides[role]}"`,
+        );
+      }
+    }
+  }
 
   // Step 2: Match each role to nearest Tailwind family
   const primaryMatch = matchTailwindFamily(roles.primary);
