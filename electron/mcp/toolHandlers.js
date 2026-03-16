@@ -1114,30 +1114,54 @@ async function handleCreateThemeFromUrl({ url, name }) {
           const extracted = await scanWindow.webContents.executeJavaScript(`
             (function() {
               try {
-                const htmlContent = document.documentElement.outerHTML;
-                let cssContent = '';
+                var htmlContent = document.documentElement.outerHTML;
+                var cssContent = '';
                 try {
-                  for (const sheet of document.styleSheets) {
+                  for (var s = 0; s < document.styleSheets.length; s++) {
                     try {
-                      for (const rule of sheet.cssRules) {
-                        cssContent += rule.cssText + '\\n';
+                      var rules = document.styleSheets[s].cssRules;
+                      for (var r = 0; r < rules.length; r++) {
+                        cssContent += rules[r].cssText + '\\n';
                       }
-                    } catch (e) { /* cross-origin stylesheet */ }
+                    } catch (e) {}
                   }
                 } catch (e) {}
-                const selectors = ['body', 'header', 'nav', 'main', 'footer', 'a', 'button', 'h1', 'h2'];
-                const computedStyles = {};
-                for (const sel of selectors) {
-                  const el = document.querySelector(sel);
-                  if (!el) continue;
-                  const cs = window.getComputedStyle(el);
-                  computedStyles[sel] = {
-                    color: cs.color,
-                    backgroundColor: cs.backgroundColor,
-                    borderColor: cs.borderColor,
-                  };
+
+                var DEFAULT_COLORS = {
+                  'rgba(0, 0, 0, 0)': 1, 'transparent': 1,
+                  'rgb(0, 0, 0)': 1, 'rgb(255, 255, 255)': 1
+                };
+                var colorFreq = {};
+                var elements = document.body ? document.body.querySelectorAll('*') : [];
+                var limit = Math.min(elements.length, 500);
+                for (var i = 0; i < limit; i++) {
+                  var el = elements[i];
+                  if (el.offsetWidth === 0 && el.offsetHeight === 0) continue;
+                  var cs = window.getComputedStyle(el);
+                  var props = ['color', 'backgroundColor', 'borderColor'];
+                  for (var p = 0; p < props.length; p++) {
+                    var val = cs[props[p]];
+                    if (val && !DEFAULT_COLORS[val]) {
+                      colorFreq[val] = (colorFreq[val] || 0) + 1;
+                    }
+                  }
+                  if (el instanceof SVGElement) {
+                    var fill = cs.fill;
+                    var stroke = cs.stroke;
+                    if (fill && fill !== 'none' && !DEFAULT_COLORS[fill]) {
+                      colorFreq[fill] = (colorFreq[fill] || 0) + 1;
+                    }
+                    if (stroke && stroke !== 'none' && !DEFAULT_COLORS[stroke]) {
+                      colorFreq[stroke] = (colorFreq[stroke] || 0) + 1;
+                    }
+                  }
                 }
-                return { success: true, htmlContent, cssContent, computedStyles };
+                var domColors = Object.keys(colorFreq)
+                  .map(function(key) { return { color: key, count: colorFreq[key] }; })
+                  .sort(function(a, b) { return b.count - a.count; })
+                  .slice(0, 50);
+
+                return { success: true, htmlContent: htmlContent, cssContent: cssContent, domColors: domColors };
               } catch (e) {
                 return { success: false, error: { type: 'EXTRACTION_FAILED', message: e.message } };
               }
@@ -1153,7 +1177,7 @@ async function handleCreateThemeFromUrl({ url, name }) {
           return themeFromUrlController.extractColorsFromUrl({
             htmlContent: extracted.htmlContent,
             cssContent: extracted.cssContent,
-            computedStyles: extracted.computedStyles,
+            domColors: extracted.domColors,
             baseUrl: trimmedUrl,
           });
         } finally {
