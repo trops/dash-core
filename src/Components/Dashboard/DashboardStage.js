@@ -30,6 +30,7 @@ import { WorkspaceModel, MenuItemModel } from "../../Models";
 
 import { DashboardLoaderModal } from "./Modal/DashboardLoaderModal";
 import { LayoutManagerModal } from "../Layout/LayoutManager";
+import { DashboardWizardModal } from "../Layout/DashboardWizard";
 
 import { DashCommandPalette } from "../Navigation/DashCommandPalette";
 import { DashTabBar } from "../Navigation/DashTabBar";
@@ -145,6 +146,7 @@ const DashboardStageInner = ({
   const [isThemeManagerOpen, setIsThemeManagerOpen] = useState(false);
   const [isDashboardLoaderOpen, setIsDashboardLoaderOpen] = useState(false);
   const [isLayoutPickerOpen, setIsLayoutPickerOpen] = useState(false);
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
 
   // Unified App Settings Modal
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
@@ -914,6 +916,12 @@ const DashboardStageInner = ({
                         onClick={handleClickNewFromEmpty}
                         size="sm"
                       />
+                      <ButtonIcon
+                        icon="wand-magic-sparkles"
+                        text="Wizard"
+                        onClick={() => setIsWizardOpen(true)}
+                        size="sm"
+                      />
                     </div>
                   )}
                 </EmptyState>
@@ -962,6 +970,7 @@ const DashboardStageInner = ({
               onSignIn={handleSidebarSignIn}
               onSignOut={handleSidebarSignOut}
               onProfileUpdated={handleProfileUpdated}
+              onOpenWizard={() => setIsWizardOpen(true)}
             />
 
             <ThemeManagerModal
@@ -990,6 +999,18 @@ const DashboardStageInner = ({
               appId={credentials?.appId}
               onReloadWorkspaces={loadWorkspaces}
               onOpenWorkspace={handleOpenTab}
+              onOpenWizard={() => setIsWizardOpen(true)}
+            />
+
+            <DashboardWizardModal
+              open={isWizardOpen}
+              setIsOpen={setIsWizardOpen}
+              menuItems={menuItems}
+              onSaveMenuItem={handleSaveNewMenuItem}
+              onCreateWorkspace={handleCreateFromTemplate}
+              onOpenDashboard={handleOpenTab}
+              onReloadWorkspaces={loadWorkspaces}
+              appId={credentials?.appId}
             />
           </>
         )}
@@ -1023,6 +1044,7 @@ const DashboardStageInner = ({
             appContext.changeDebugMode(!appContext.debugMode)
           }
           onOpenDiscover={() => openAppSettings("widgets")}
+          onOpenWizard={() => setIsWizardOpen(true)}
         />
       )}
     </LayoutContainer>

@@ -52,6 +52,7 @@ export const AppSettingsModal = ({
   onSignIn = null,
   onSignOut = null,
   onProfileUpdated = null,
+  onOpenWizard = null,
 }) => {
   const [activeSection, setActiveSection] = useState(initialSection);
   const [createRequested, setCreateRequested] = useState(false);
@@ -148,6 +149,14 @@ export const AppSettingsModal = ({
             createRequested={createRequested}
             onCreateAcknowledged={() => setCreateRequested(false)}
             onOpenWorkspace={onOpenWorkspace}
+            onOpenWizard={
+              onOpenWizard
+                ? () => {
+                    setIsOpen(false);
+                    onOpenWizard();
+                  }
+                : null
+            }
           />
         )}
         {activeSection === "folders" && (
