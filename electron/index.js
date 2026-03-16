@@ -80,7 +80,9 @@ const dynamicWidgetLoader = require("./dynamicWidgetLoader");
 
 // --- MCP Dash Server Tools ---
 const { registerDashboardTools } = require("./mcp/dashboardTools");
+const { registerWidgetTools } = require("./mcp/widgetTools");
 registerDashboardTools();
+registerWidgetTools();
 
 // --- Schema ---
 const dashboardConfigValidator = require("./schema/dashboardConfigValidator");
@@ -176,4 +178,5 @@ module.exports = {
 
   // MCP Dash Server Tools
   registerDashboardTools,
+  registerWidgetTools,
 };
