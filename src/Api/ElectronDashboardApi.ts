@@ -402,6 +402,7 @@ class ElectronDashboardApi implements IDashboardApi {
           providerClass,
           mcpConfig,
           allowedTools,
+          wsConfig,
         } = providerData;
         this.api.providers
           .saveProvider(
@@ -412,6 +413,7 @@ class ElectronDashboardApi implements IDashboardApi {
             providerClass,
             mcpConfig,
             allowedTools,
+            wsConfig,
           )
           .then((result) => {
             onSuccess(this.events.PROVIDER_SAVE_COMPLETE, result);
