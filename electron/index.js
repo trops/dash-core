@@ -82,9 +82,11 @@ const dynamicWidgetLoader = require("./dynamicWidgetLoader");
 const { registerDashboardTools } = require("./mcp/dashboardTools");
 const { registerWidgetTools } = require("./mcp/widgetTools");
 const { registerThemeTools } = require("./mcp/themeTools");
+const { registerProviderTools } = require("./mcp/providerTools");
 registerDashboardTools();
 registerWidgetTools();
 registerThemeTools();
+registerProviderTools();
 
 // --- Schema ---
 const dashboardConfigValidator = require("./schema/dashboardConfigValidator");
@@ -182,4 +184,5 @@ module.exports = {
   registerDashboardTools,
   registerWidgetTools,
   registerThemeTools,
+  registerProviderTools,
 };
