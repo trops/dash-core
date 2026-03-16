@@ -16,6 +16,7 @@ const registryApiController = require("./registryApiController");
 const {
   getAuthStatus,
   getRegistryProfile,
+  getStoredToken,
 } = require("./registryAuthController");
 
 const appName = "Dashboard";
@@ -251,29 +252,24 @@ async function installThemeFromRegistry(win, appId, packageName) {
       };
     }
 
-    // Resolve download URL
-    let downloadUrl = pkg.downloadUrl;
-    if (!downloadUrl) {
-      return { success: false, error: "Package has no download URL" };
-    }
-
-    // Resolve template variables
-    downloadUrl = downloadUrl
-      .replace("{version}", pkg.version || "1.0.0")
-      .replace("{name}", pkg.name || "");
-
-    // Enforce HTTPS
-    if (!downloadUrl.startsWith("https://")) {
-      return { success: false, error: "Download URL must use HTTPS" };
-    }
+    // Construct download URL from package metadata using the working registry base
+    const registryBaseUrl =
+      process.env.DASH_REGISTRY_API_URL ||
+      "https://main.d919rwhuzp7rj.amplifyapp.com";
+    const downloadUrl = `${registryBaseUrl}/api/packages/${encodeURIComponent(pkg.scope)}/${encodeURIComponent(pkg.name)}/download?version=${encodeURIComponent(pkg.version || "1.0.0")}`;
 
     console.log(
       "[ThemeRegistryController] Downloading theme from:",
       downloadUrl,
     );
 
-    // Download the ZIP
-    const response = await fetch(downloadUrl);
+    // Download the ZIP (with auth header)
+    const headers = {};
+    const auth = getStoredToken();
+    if (auth?.token) {
+      headers["Authorization"] = `Bearer ${auth.token}`;
+    }
+    const response = await fetch(downloadUrl, { headers });
     if (!response.ok) {
       return {
         success: false,

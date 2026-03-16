@@ -9,7 +9,8 @@ const path = require("path");
 const { getStoredToken } = require("./registryAuthController");
 
 const REGISTRY_BASE_URL =
-  process.env.DASH_REGISTRY_API_URL || "https://registry.trops.dev";
+  process.env.DASH_REGISTRY_API_URL ||
+  "https://main.d919rwhuzp7rj.amplifyapp.com";
 
 /**
  * Publish a package to the registry.
