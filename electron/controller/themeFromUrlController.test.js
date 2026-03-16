@@ -42,14 +42,19 @@ describe("themeFromUrlController", () => {
       assert.equal(result.palette[0].hex, "#ff5500");
     });
 
-    it("returns empty palette for no meta tags", async () => {
-      const result = await extractColorsFromUrl({
-        htmlContent: "<html><head></head></html>",
-        cssContent: "",
-        computedStyles: {},
-      });
-      assert.equal(result.palette.length, 0);
-      assert.equal(result.rawCount, 0);
+    it("throws NoColorsFoundError for no meta tags", async () => {
+      await assert.rejects(
+        () =>
+          extractColorsFromUrl({
+            htmlContent: "<html><head></head></html>",
+            cssContent: "",
+            computedStyles: {},
+          }),
+        (err) => {
+          assert.equal(err.name, "NoColorsFoundError");
+          return true;
+        },
+      );
     });
   });
 
@@ -111,13 +116,19 @@ describe("themeFromUrlController", () => {
       assert.ok(result.rawCount >= 3);
     });
 
-    it("handles null/empty computed styles", async () => {
-      const result = await extractColorsFromUrl({
-        htmlContent: "",
-        cssContent: "",
-        computedStyles: null,
-      });
-      assert.equal(result.palette.length, 0);
+    it("throws NoColorsFoundError for null/empty computed styles with no other sources", async () => {
+      await assert.rejects(
+        () =>
+          extractColorsFromUrl({
+            htmlContent: "",
+            cssContent: "",
+            computedStyles: null,
+          }),
+        (err) => {
+          assert.equal(err.name, "NoColorsFoundError");
+          return true;
+        },
+      );
     });
   });
 
@@ -293,6 +304,123 @@ describe("themeFromUrlController", () => {
       // Should still have meta color despite favicon failure
       assert.ok(result.palette.length >= 1);
       assert.equal(result.palette[0].hex, "#3b82f6");
+    });
+  });
+
+  describe("error paths — controller defensive guards", () => {
+    it("throws ExtractionFailedError when computedStyles is a non-object", async () => {
+      await assert.rejects(
+        () =>
+          extractColorsFromUrl({
+            htmlContent: "",
+            cssContent: "",
+            computedStyles: "not-an-object",
+          }),
+        (err) => {
+          assert.equal(err.name, "ExtractionFailedError");
+          assert.equal(err.type, "EXTRACTION_FAILED");
+          assert.ok(err.message.includes("computedStyles"));
+          return true;
+        },
+      );
+    });
+
+    it("throws NoColorsFoundError when no colors extracted at all", async () => {
+      await assert.rejects(
+        () =>
+          extractColorsFromUrl({
+            htmlContent: "<html><head></head></html>",
+            cssContent: "",
+            computedStyles: {},
+          }),
+        (err) => {
+          assert.equal(err.name, "NoColorsFoundError");
+          assert.equal(err.type, "NO_COLORS_FOUND");
+          assert.ok(err.userMessage.includes("No usable colors"));
+          return true;
+        },
+      );
+    });
+
+    it("includes boring colors as neutral candidates when no chromatic colors exist", async () => {
+      // Only near-black and near-white computed styles — boring but still usable as neutral
+      const computed = {
+        body: {
+          color: "rgb(100, 100, 100)",
+          backgroundColor: "rgb(200, 200, 200)",
+          borderColor: null,
+        },
+      };
+      const result = await extractColorsFromUrl({
+        htmlContent: "",
+        cssContent: "",
+        computedStyles: computed,
+      });
+      // Boring colors get added as neutral candidates — palette should still have entries
+      assert.ok(result.palette.length >= 1);
+      // All entries should be low-saturation (neutral-ish)
+      for (const entry of result.palette) {
+        assert.ok(entry.hsl.s <= 10 || entry.isNeutral);
+      }
+    });
+
+    it("skips color entries with missing hex (no crash)", async () => {
+      // CSS var that would produce a color + a meta tag with an unparseable color
+      // The unparseable ones get null from parseColor → no hex → filtered out
+      const html =
+        '<html><head><meta name="theme-color" content="#3b82f6"></head></html>';
+      const result = await extractColorsFromUrl({
+        htmlContent: html,
+        cssContent: "",
+        computedStyles: {},
+      });
+      // Should still succeed with the valid color
+      assert.ok(result.palette.length >= 1);
+      assert.equal(result.palette[0].hex, "#3b82f6");
+    });
+
+    it("handles null computedStyles gracefully", async () => {
+      const html =
+        '<html><head><meta name="theme-color" content="#ef4444"></head></html>';
+      const result = await extractColorsFromUrl({
+        htmlContent: html,
+        cssContent: "",
+        computedStyles: null,
+      });
+      assert.ok(result.palette.length >= 1);
+      assert.equal(result.palette[0].hex, "#ef4444");
+    });
+
+    it("handles empty htmlContent and cssContent (only computedStyles)", async () => {
+      const computed = {
+        header: {
+          color: null,
+          backgroundColor: "rgb(59, 130, 246)",
+          borderColor: null,
+        },
+      };
+      const result = await extractColorsFromUrl({
+        htmlContent: "",
+        cssContent: "",
+        computedStyles: computed,
+      });
+      assert.ok(result.palette.length >= 1);
+    });
+
+    it("mergeAndRank returns no_colors_extracted for empty input", async () => {
+      // No sources of any colors at all — will hit NoColorsFoundError
+      await assert.rejects(
+        () =>
+          extractColorsFromUrl({
+            htmlContent: "",
+            cssContent: "",
+            computedStyles: {},
+          }),
+        (err) => {
+          assert.equal(err.name, "NoColorsFoundError");
+          return true;
+        },
+      );
     });
   });
 });

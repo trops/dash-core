@@ -318,4 +318,84 @@ describe("paletteToThemeMapper", () => {
       assert.match(result.roleAssignments.neutral, /^#[0-9a-f]{6}$/);
     });
   });
+
+  describe("error paths — invalid palette objects", () => {
+    it("filters out non-object palette entries in assignRoles", () => {
+      const palette = [
+        null,
+        undefined,
+        "not-an-object",
+        { hex: "#3b82f6", confidence: 1.0 },
+      ];
+      const roles = assignRoles(palette);
+      // Should still work with the one valid entry
+      assert.equal(roles.primary, "#3b82f6");
+    });
+
+    it("filters out palette entries with missing hex in assignRoles", () => {
+      const palette = [
+        { confidence: 0.8 }, // missing hex
+        { hex: null, confidence: 0.7 }, // null hex
+        { hex: "#ef4444", confidence: 0.6 },
+      ];
+      const roles = assignRoles(palette);
+      assert.equal(roles.primary, "#ef4444");
+    });
+
+    it("filters out palette entries with missing confidence in assignRoles", () => {
+      const palette = [
+        { hex: "#3b82f6" }, // missing confidence
+        { hex: "#ef4444", confidence: null }, // null confidence
+        { hex: "#10b981", confidence: 0.5 },
+      ];
+      const roles = assignRoles(palette);
+      assert.equal(roles.primary, "#10b981");
+    });
+
+    it("returns defaults when all palette entries are invalid", () => {
+      const palette = [
+        null,
+        { confidence: 0.5 }, // missing hex
+        { hex: "#abc", confidence: null }, // missing confidence
+      ];
+      const roles = assignRoles(palette);
+      // Should return default values
+      assert.equal(roles.primary, "#6b7280");
+      assert.equal(roles.secondary, "#3b82f6");
+      assert.equal(roles.tertiary, "#6366f1");
+      assert.equal(roles.neutral, "#64748b");
+    });
+
+    it("skips invalid hex override in generateThemeFromPalette", () => {
+      const palette = [
+        { hex: "#3b82f6", confidence: 1.0 },
+        { hex: "#ef4444", confidence: 0.6 },
+      ];
+      const result = generateThemeFromPalette(palette, {
+        primary: "not-valid-hex",
+        secondary: "#10b981", // valid
+      });
+      // Invalid override should be skipped — primary stays as assigned
+      assert.equal(result.roleAssignments.primary, "#3b82f6");
+      // Valid override should be applied
+      assert.equal(result.roleAssignments.secondary, "#10b981");
+    });
+
+    it("skips short hex override in generateThemeFromPalette", () => {
+      const palette = [{ hex: "#3b82f6", confidence: 1.0 }];
+      const result = generateThemeFromPalette(palette, {
+        primary: "#abc", // 3-char hex — doesn't match /^#[0-9a-fA-F]{6}$/
+      });
+      assert.equal(result.roleAssignments.primary, "#3b82f6");
+    });
+
+    it("handles palette with all invalid entries in generateThemeFromPalette", () => {
+      const palette = [null, undefined, { hex: null }];
+      const result = generateThemeFromPalette(palette);
+      // Should still produce a theme with defaults
+      assert.ok(result.theme);
+      assert.ok(result.theme.primary);
+      assert.ok(result.theme.id);
+    });
+  });
 });
