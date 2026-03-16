@@ -78,6 +78,10 @@ const widgetRegistry = require("./widgetRegistry");
 const widgetCompiler = require("./widgetCompiler");
 const dynamicWidgetLoader = require("./dynamicWidgetLoader");
 
+// --- MCP Dash Server Tools ---
+const { registerDashboardTools } = require("./mcp/dashboardTools");
+registerDashboardTools();
+
 // --- Schema ---
 const dashboardConfigValidator = require("./schema/dashboardConfigValidator");
 const dashboardConfigUtils = require("./schema/dashboardConfigUtils");
@@ -169,4 +173,7 @@ module.exports = {
 
   // Setup helpers
   setupCacheHandlers: clientCache.setupCacheHandlers.bind(clientCache),
+
+  // MCP Dash Server Tools
+  registerDashboardTools,
 };
