@@ -31,6 +31,7 @@ const themeFromUrlController = require("./controller/themeFromUrlController");
 const paletteToThemeMapper = require("./controller/paletteToThemeMapper");
 const webSocketController = require("./controller/webSocketController");
 const extractionCacheController = require("./controller/extractionCacheController");
+const mcpDashServerController = require("./controller/mcpDashServerController");
 
 // --- Errors ---
 const themeFromUrlErrors = require("./errors/themeFromUrlErrors");
@@ -67,6 +68,7 @@ const notificationApi = require("./api/notificationApi");
 const schedulerApi = require("./api/schedulerApi");
 const themeFromUrlApi = require("./api/themeFromUrlApi");
 const webSocketApi = require("./api/webSocketApi");
+const mcpDashServerApi = require("./api/mcpDashServerApi");
 
 // --- Events ---
 const events = require("./events");
@@ -111,6 +113,7 @@ module.exports = {
   paletteToThemeMapper,
   webSocketController,
   extractionCacheController,
+  mcpDashServerController,
 
   // Controller functions (flat) — spread for convenient destructuring
   ...controllers,
@@ -139,6 +142,7 @@ module.exports = {
   schedulerApi,
   themeFromUrlApi,
   webSocketApi,
+  mcpDashServerApi,
 
   // Events
   events,

@@ -26,6 +26,7 @@ const notificationEvents = require("./notificationEvents");
 const schedulerEvents = require("./schedulerEvents");
 const themeFromUrlEvents = require("./themeFromUrlEvents");
 const webSocketEvents = require("./webSocketEvents");
+const mcpDashServerEvents = require("./mcpDashServerEvents");
 
 const publicEvents = {
   ...dataEvents,
@@ -56,4 +57,5 @@ module.exports = {
   ...schedulerEvents,
   ...themeFromUrlEvents,
   ...webSocketEvents,
+  ...mcpDashServerEvents,
 };

@@ -110,6 +110,7 @@ const {
   matchTailwindFamily,
   generateThemeFromPalette,
 } = require("./paletteToThemeMapper");
+const mcpDashServerController = require("./mcpDashServerController");
 
 module.exports = {
   showDialog,
@@ -192,4 +193,5 @@ module.exports = {
   assignRoles,
   matchTailwindFamily,
   generateThemeFromPalette,
+  mcpDashServerController,
 };
