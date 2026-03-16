@@ -83,10 +83,12 @@ const { registerDashboardTools } = require("./mcp/dashboardTools");
 const { registerWidgetTools } = require("./mcp/widgetTools");
 const { registerThemeTools } = require("./mcp/themeTools");
 const { registerProviderTools } = require("./mcp/providerTools");
+const { registerResources } = require("./mcp/resources");
 registerDashboardTools();
 registerWidgetTools();
 registerThemeTools();
 registerProviderTools();
+registerResources();
 
 // --- Schema ---
 const dashboardConfigValidator = require("./schema/dashboardConfigValidator");
@@ -185,4 +187,5 @@ module.exports = {
   registerWidgetTools,
   registerThemeTools,
   registerProviderTools,
+  registerResources,
 };
