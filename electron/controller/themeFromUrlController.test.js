@@ -307,6 +307,100 @@ describe("themeFromUrlController", () => {
     });
   });
 
+  describe("extractDomColors (via extractColorsFromUrl)", () => {
+    it("extracts frequency-sorted DOM colors with blue ranking higher", async () => {
+      const result = await extractColorsFromUrl({
+        htmlContent: "",
+        cssContent: "",
+        computedStyles: {},
+        domColors: [
+          { color: "rgb(66, 133, 244)", count: 15 }, // Google blue
+          { color: "rgb(219, 68, 55)", count: 8 }, // Google red
+        ],
+      });
+      assert.ok(result.palette.length >= 2);
+      // Blue has higher count, should rank first
+      assert.equal(result.palette[0].hex, "#4285f4");
+    });
+
+    it("high-frequency DOM colors outrank single-occurrence CSS vars", async () => {
+      const result = await extractColorsFromUrl({
+        htmlContent: "",
+        cssContent: ":root { --brand-primary: #ff5500; }",
+        computedStyles: {},
+        domColors: [
+          { color: "rgb(66, 133, 244)", count: 50 },
+          { color: "rgb(219, 68, 55)", count: 30 },
+        ],
+      });
+      assert.ok(result.palette.length >= 2);
+      // DOM blue (count 50) should outrank the single CSS var
+      assert.equal(result.palette[0].hex, "#4285f4");
+    });
+
+    it("handles Google-like palette — all 4 brand colors appear", async () => {
+      const result = await extractColorsFromUrl({
+        htmlContent: "",
+        cssContent: "",
+        computedStyles: {},
+        domColors: [
+          { color: "rgb(66, 133, 244)", count: 3 }, // blue
+          { color: "rgb(219, 68, 55)", count: 3 }, // red
+          { color: "rgb(244, 180, 0)", count: 3 }, // yellow
+          { color: "rgb(15, 157, 88)", count: 3 }, // green
+        ],
+      });
+      assert.ok(result.palette.length >= 4);
+      const hexes = result.palette.map((c) => c.hex);
+      assert.ok(hexes.includes("#4285f4"), "Blue should be in palette");
+      assert.ok(hexes.includes("#db4437"), "Red should be in palette");
+      assert.ok(hexes.includes("#f4b400"), "Yellow should be in palette");
+      assert.ok(hexes.includes("#0f9d58"), "Green should be in palette");
+    });
+
+    it("handles empty domColors gracefully", async () => {
+      const html =
+        '<html><head><meta name="theme-color" content="#3b82f6"></head></html>';
+      const result = await extractColorsFromUrl({
+        htmlContent: html,
+        cssContent: "",
+        computedStyles: {},
+        domColors: [],
+      });
+      assert.ok(result.palette.length >= 1);
+      assert.equal(result.palette[0].hex, "#3b82f6");
+    });
+
+    it("handles null domColors gracefully", async () => {
+      const html =
+        '<html><head><meta name="theme-color" content="#3b82f6"></head></html>';
+      const result = await extractColorsFromUrl({
+        htmlContent: html,
+        cssContent: "",
+        computedStyles: {},
+        domColors: null,
+      });
+      assert.ok(result.palette.length >= 1);
+      assert.equal(result.palette[0].hex, "#3b82f6");
+    });
+
+    it("preserves backwards compat — existing computedStyles still work", async () => {
+      const computed = {
+        body: {
+          color: "rgb(0, 0, 0)",
+          backgroundColor: "rgb(59, 130, 246)",
+          borderColor: "rgb(99, 102, 241)",
+        },
+      };
+      const result = await extractColorsFromUrl({
+        htmlContent: "",
+        cssContent: "",
+        computedStyles: computed,
+      });
+      assert.ok(result.rawCount >= 2);
+    });
+  });
+
   describe("error paths — controller defensive guards", () => {
     it("throws ExtractionFailedError when computedStyles is a non-object", async () => {
       await assert.rejects(

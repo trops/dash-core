@@ -312,6 +312,28 @@ function extractComputedColors(computedStyles) {
   return results;
 }
 
+/**
+ * Extract colors from broad DOM color scan (frequency-based).
+ * @param {Array<{color: string, count: number}>} domColors - Sorted by frequency
+ * @returns {Array<{hex: string, source: string, confidence: number, count: number}>}
+ */
+function extractDomColors(domColors) {
+  if (!Array.isArray(domColors) || domColors.length === 0) return [];
+  const results = [];
+  for (const entry of domColors) {
+    if (!entry.color || !entry.count) continue;
+    const rgb = parseColor(entry.color);
+    if (!rgb) continue;
+    results.push({
+      hex: rgbToHex(rgb),
+      source: "dom",
+      confidence: 0.7,
+      count: entry.count,
+    });
+  }
+  return results;
+}
+
 // ─── Favicon extraction ──────────────────────────────────────────────────────
 
 /**
@@ -540,7 +562,7 @@ function mergeAndRank(allColors, maxColors = 6) {
     for (const cluster of clusters) {
       if (deltaE(cluster.lab, lab) < THRESHOLD) {
         // Merge into existing cluster — keep the highest-confidence color as representative
-        cluster.count++;
+        cluster.count += color.count || 1;
         cluster.sources.add(color.source);
         if (color.confidence > cluster.confidence) {
           cluster.hex = color.hex;
@@ -559,7 +581,7 @@ function mergeAndRank(allColors, maxColors = 6) {
         rgb,
         lab,
         confidence: color.confidence,
-        count: 1,
+        count: color.count || 1,
         sources: new Set([color.source]),
       });
     }
@@ -641,6 +663,7 @@ function mergeAndRank(allColors, maxColors = 6) {
  * @param {string} params.htmlContent - Raw HTML of the page
  * @param {string} params.cssContent - Concatenated CSS content
  * @param {Object} params.computedStyles - Map of selector → { color, backgroundColor, borderColor }
+ * @param {Array<{color: string, count: number}>} [params.domColors] - Frequency-sorted DOM colors from broad scan
  * @param {string} [params.baseUrl] - Page URL for resolving favicon paths (enables image extraction)
  * @returns {Promise<{ palette: Array, rawCount: number }>}
  */
@@ -648,6 +671,7 @@ async function extractColorsFromUrl({
   htmlContent,
   cssContent,
   computedStyles,
+  domColors,
   baseUrl,
 }) {
   console.log("[themeFromUrlController] Starting color extraction pipeline");
@@ -672,6 +696,11 @@ async function extractColorsFromUrl({
     `[themeFromUrlController] Computed styles: ${computedColors.length} colors`,
   );
 
+  const domColorResults = extractDomColors(domColors);
+  console.log(
+    `[themeFromUrlController] DOM scan: ${domColorResults.length} colors`,
+  );
+
   // Favicon extraction (async, requires baseUrl)
   let faviconColors = [];
   if (baseUrl) {
@@ -691,6 +720,7 @@ async function extractColorsFromUrl({
     ...metaColors,
     ...cssVarColors,
     ...computedColors,
+    ...domColorResults,
     ...faviconColors,
   ].filter((c) => {
     if (!c.hex) {
