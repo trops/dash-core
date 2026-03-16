@@ -70,6 +70,29 @@ function Button3({ title, onClick, disabled }) {
   );
 }
 
+function SelectableCard({
+  icon,
+  label,
+  description,
+  selected,
+  onSelect,
+  disabled,
+}) {
+  return React.createElement(
+    "div",
+    {
+      "data-testid": "selectable-card-" + label,
+      role: "button",
+      "aria-pressed": selected,
+      "aria-disabled": disabled,
+      onClick: disabled ? undefined : onSelect,
+    },
+    icon,
+    React.createElement("span", null, label),
+    description ? React.createElement("span", null, description) : null,
+  );
+}
+
 function FontAwesomeIcon({ icon, className }) {
   const name = typeof icon === "string" ? icon : (icon && icon.iconName) || "";
   return React.createElement("span", {
@@ -86,6 +109,7 @@ module.exports = {
   TextArea,
   Button2,
   Button3,
+  SelectableCard,
   FontAwesomeIcon,
   getStylesForItem: () => ({}),
   themeObjects: { PANEL: "panel" },
