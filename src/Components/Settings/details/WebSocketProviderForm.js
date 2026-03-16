@@ -1,10 +1,11 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useContext } from "react";
 import {
   Button,
   InputText,
   SubHeading3,
   FontAwesomeIcon,
 } from "@trops/dash-react";
+import { AppContext } from "../../../Context/App/AppContext";
 
 /**
  * Validate that a URL starts with ws:// or wss://
@@ -111,6 +112,11 @@ export const WebSocketProviderForm = ({
   );
   const [credentials, setCredentials] = useState(initialCredentials);
   const [errors, setErrors] = useState({});
+  const [isWsTesting, setIsWsTesting] = useState(false);
+  const [wsTestResult, setWsTestResult] = useState(null);
+
+  const appContext = useContext(AppContext);
+  const dashApi = appContext?.dashApi;
 
   const nextRowIdRef = useRef(0);
   const nextRowId = () => `ws_hdr_${++nextRowIdRef.current}`;
@@ -180,6 +186,59 @@ export const WebSocketProviderForm = ({
     );
   }
 
+  async function handleTestConnection() {
+    if (!dashApi?.webSocket || !url.trim() || !isValidWsUrl(url)) return;
+
+    setIsWsTesting(true);
+    setWsTestResult(null);
+
+    // Build config from current form state (same as handleSave)
+    const headers = {};
+    for (const row of headerRows) {
+      if (row.key.trim()) {
+        headers[row.key.trim()] = row.value;
+      }
+    }
+
+    const subprotoArray = subprotocols
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const testName = name.trim() || "__ws_test__";
+    const startTime = Date.now();
+
+    try {
+      const result = await dashApi.webSocket.connect(testName, {
+        url: url.trim(),
+        headers: Object.keys(headers).length > 0 ? headers : null,
+        subprotocols: subprotoArray.length > 0 ? subprotoArray : null,
+        credentials: Object.keys(credentials).length > 0 ? credentials : null,
+      });
+
+      const latency = Date.now() - startTime;
+
+      if (result.error) {
+        setWsTestResult({
+          success: false,
+          message: result.message || "Connection failed",
+        });
+      } else {
+        setWsTestResult({
+          success: true,
+          message: `Connected in ${latency}ms`,
+        });
+        await dashApi.webSocket.disconnect(testName).catch(() => {});
+      }
+    } catch (err) {
+      setWsTestResult({
+        success: false,
+        message: err?.message || "Connection failed",
+      });
+    }
+    setIsWsTesting(false);
+  }
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* Body */}
@@ -200,7 +259,7 @@ export const WebSocketProviderForm = ({
             value={name}
             onChange={(value) => setName(value)}
             placeholder="e.g., crypto-ws, stock-feed"
-            error={!!errors.name}
+            inputClassName={errors.name ? "border-red-500" : ""}
           />
           {errors.name && (
             <span className="text-xs text-red-400">{errors.name}</span>
@@ -216,7 +275,7 @@ export const WebSocketProviderForm = ({
             value={url}
             onChange={(value) => setUrl(value)}
             placeholder="wss://api.example.com/ws or ws://localhost:8080"
-            error={!!errors.url}
+            inputClassName={errors.url ? "border-red-500" : ""}
           />
           {errors.url && (
             <span className="text-xs text-red-400">{errors.url}</span>
@@ -324,7 +383,9 @@ export const WebSocketProviderForm = ({
                     }))
                   }
                   placeholder={`Enter ${field}`}
-                  error={!!errors[`cred_${field}`]}
+                  inputClassName={
+                    errors[`cred_${field}`] ? "border-red-500" : ""
+                  }
                 />
                 {errors[`cred_${field}`] && (
                   <span className="text-xs text-red-400">
@@ -335,10 +396,38 @@ export const WebSocketProviderForm = ({
             ))}
           </div>
         )}
+
+        {/* WebSocket Test Result */}
+        {wsTestResult && (
+          <div
+            className={`p-3 rounded-lg text-sm ${
+              wsTestResult.success
+                ? "bg-green-900/30 border border-green-700 text-green-300"
+                : "bg-red-900/30 border border-red-700 text-red-300"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <FontAwesomeIcon
+                icon={
+                  wsTestResult.success ? "circle-check" : "circle-exclamation"
+                }
+              />
+              <span>{wsTestResult.message}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Footer */}
       <div className="flex-shrink-0 flex flex-row justify-end gap-2 px-6 py-4 border-t border-white/10">
+        {dashApi?.webSocket && (
+          <Button
+            title={isWsTesting ? "Testing..." : "Test Connection"}
+            onClick={handleTestConnection}
+            size="sm"
+            disabled={!url.trim() || !isValidWsUrl(url)}
+          />
+        )}
         <Button title="Cancel" onClick={onCancel} size="sm" />
         <Button
           title={isEditMode ? "Save" : "Create"}
