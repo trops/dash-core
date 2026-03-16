@@ -14,34 +14,40 @@ const ChooserCard = ({ icon, title, subtitle, onClick }) => (
   </div>
 );
 
-export const ThemeNewChooser = ({
-  onSearchThemes,
-  onCreateNew,
-  onCreateFromUrl = null,
-}) => (
+export const ThemeNewChooser = ({ onSearchThemes, onSelectMethod }) => (
   <div className="flex flex-col gap-6 p-6 overflow-y-auto flex-1 min-h-0">
     <span className="text-sm font-semibold opacity-50">Add a Theme</span>
     <div className="grid grid-cols-2 gap-3">
       <ChooserCard
         icon="magnifying-glass"
-        title="Search for Themes"
-        subtitle="Browse the theme marketplace"
+        title="Search Marketplace"
+        subtitle="Browse community themes"
         onClick={onSearchThemes}
       />
       <ChooserCard
-        icon="wand-magic-sparkles"
-        title="Create New"
-        subtitle="Build from presets, random palettes, or color harmony rules"
-        onClick={onCreateNew}
+        icon="swatchbook"
+        title="From Presets"
+        subtitle="Start from a curated preset"
+        onClick={() => onSelectMethod("presets")}
       />
-      {onCreateFromUrl && (
-        <ChooserCard
-          icon="globe"
-          title="From Website"
-          subtitle="Extract colors from any URL to create a theme"
-          onClick={onCreateFromUrl}
-        />
-      )}
+      <ChooserCard
+        icon="droplet"
+        title="From Colors"
+        subtitle="Build from a color palette"
+        onClick={() => onSelectMethod("color")}
+      />
+      <ChooserCard
+        icon="shuffle"
+        title="From Random"
+        subtitle="Generate a random theme"
+        onClick={() => onSelectMethod("random")}
+      />
+      <ChooserCard
+        icon="globe"
+        title="From Website"
+        subtitle="Extract colors from any URL"
+        onClick={() => onSelectMethod("from-url")}
+      />
     </div>
   </div>
 );

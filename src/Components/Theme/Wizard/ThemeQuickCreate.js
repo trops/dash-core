@@ -295,8 +295,21 @@ export const ThemeQuickCreate = ({
   onComplete,
   onExtract = null,
   onMapToTheme = null,
+  initialMethod = null,
 }) => {
   const canCreate = wizardName.trim().length > 0 && wizardTheme !== null;
+  const showMethodPicker = initialMethod === null;
+
+  useEffect(() => {
+    if (initialMethod && wizardMethod !== initialMethod) {
+      setWizardMethod(initialMethod);
+      setWizardTheme(null);
+      if (initialMethod === "random") {
+        setWizardTheme(generateRandomTheme());
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMethod]);
 
   function handleMethodSelect(method) {
     setWizardMethod(method);
@@ -320,44 +333,46 @@ export const ThemeQuickCreate = ({
         />
       </div>
 
-      {/* Method Selection */}
-      <div className="flex flex-col gap-2">
-        <span className="text-sm font-semibold opacity-50">
-          Generation Method
-        </span>
+      {/* Method Selection — hidden when initialMethod is pre-set */}
+      {showMethodPicker && (
         <div className="flex flex-col gap-2">
-          <MethodCard
-            icon="swatchbook"
-            title="Presets"
-            subtitle="Choose from curated palettes"
-            selected={wizardMethod === "presets"}
-            onClick={() => handleMethodSelect("presets")}
-          />
-          <MethodCard
-            icon="shuffle"
-            title="Random"
-            subtitle="Generate a random palette"
-            selected={wizardMethod === "random"}
-            onClick={() => handleMethodSelect("random")}
-          />
-          <MethodCard
-            icon="droplet"
-            title="From Color"
-            subtitle="Build from a base color with harmony rules"
-            selected={wizardMethod === "color"}
-            onClick={() => handleMethodSelect("color")}
-          />
-          {onExtract && (
+          <span className="text-sm font-semibold opacity-50">
+            Generation Method
+          </span>
+          <div className="flex flex-col gap-2">
             <MethodCard
-              icon="globe"
-              title="From Website"
-              subtitle="Extract colors from any URL"
-              selected={wizardMethod === "from-url"}
-              onClick={() => handleMethodSelect("from-url")}
+              icon="swatchbook"
+              title="Presets"
+              subtitle="Choose from curated palettes"
+              selected={wizardMethod === "presets"}
+              onClick={() => handleMethodSelect("presets")}
             />
-          )}
+            <MethodCard
+              icon="shuffle"
+              title="Random"
+              subtitle="Generate a random palette"
+              selected={wizardMethod === "random"}
+              onClick={() => handleMethodSelect("random")}
+            />
+            <MethodCard
+              icon="droplet"
+              title="From Color"
+              subtitle="Build from a base color with harmony rules"
+              selected={wizardMethod === "color"}
+              onClick={() => handleMethodSelect("color")}
+            />
+            {onExtract && (
+              <MethodCard
+                icon="globe"
+                title="From Website"
+                subtitle="Extract colors from any URL"
+                selected={wizardMethod === "from-url"}
+                onClick={() => handleMethodSelect("from-url")}
+              />
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Conditional Options */}
       {wizardMethod === "presets" && (
