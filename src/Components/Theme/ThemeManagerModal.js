@@ -4,7 +4,6 @@ import {
   Panel,
   Modal,
   ThemeContext,
-  ThemeFromUrlPane,
   getStylesForItem,
   themeObjects,
 } from "@trops/dash-react";
@@ -35,7 +34,7 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [isChoosingMode, setIsChoosingMode] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
-  const [isFromUrl, setIsFromUrl] = useState(false);
+  const [selectedMethod, setSelectedMethod] = useState(null);
   const [wizardName, setWizardName] = useState("");
   const [wizardMethod, setWizardMethod] = useState(null);
   const [wizardTheme, setWizardTheme] = useState(null);
@@ -56,7 +55,7 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
       setIsCreating(false);
       setIsChoosingMode(false);
       setIsSearching(false);
-      setIsFromUrl(false);
+      setSelectedMethod(null);
     } else {
       if (themeKeySelected === null && themes) {
         const themeKeyTemp =
@@ -99,11 +98,13 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
     setIsCreating(false);
     setIsSearching(false);
     setIsEditing(false);
+    setSelectedMethod(null);
   }
 
-  function handleChooseCreate() {
+  function handleSelectMethod(method) {
     setIsChoosingMode(false);
     setIsCreating(true);
+    setSelectedMethod(method);
     setWizardName("");
     setWizardMethod(null);
     setWizardTheme(null);
@@ -112,11 +113,6 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
   function handleChooseSearch() {
     setIsChoosingMode(false);
     setIsSearching(true);
-  }
-
-  function handleChooseFromUrl() {
-    setIsChoosingMode(false);
-    setIsFromUrl(true);
   }
 
   function handleBackFromSearch() {
@@ -151,29 +147,6 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
     });
   }
 
-  function handleUrlThemeGenerated(theme) {
-    const key = theme.id || `theme-${Date.now()}`;
-    const finalTheme = { ...theme, id: key };
-    if (dashApi) {
-      dashApi.saveTheme(
-        credentials.appId,
-        key,
-        finalTheme,
-        (e, message) => {
-          changeThemesForApplication(message["themes"]);
-          setIsFromUrl(false);
-          const newThemes = message["themes"];
-          if (newThemes && newThemes[key]) {
-            setThemeKeySelected(key);
-            setThemeSelected(newThemes[key]);
-            setRawThemeSelected(finalTheme);
-          }
-        },
-        handleSaveThemeError,
-      );
-    }
-  }
-
   function handleWizardComplete() {
     if (!wizardTheme || !wizardName.trim()) return;
     const key = wizardTheme.id || `theme-${Date.now()}`;
@@ -188,6 +161,7 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
           changeThemesForApplication(message["themes"]);
           setIsCreating(false);
           setIsEditing(false);
+          setSelectedMethod(null);
           const newThemes = message["themes"];
           if (newThemes && newThemes[key]) {
             setThemeKeySelected(key);
@@ -204,7 +178,7 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
     setIsCreating(false);
     setIsChoosingMode(false);
     setIsSearching(false);
-    setIsFromUrl(false);
+    setSelectedMethod(null);
   }
 
   function handleSaveTheme() {
@@ -274,6 +248,8 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
     setIsEditing(false);
   }
 
+  const isInWizardFlow = isCreating || isChoosingMode || isSearching;
+
   return (
     <Modal
       isOpen={open}
@@ -299,8 +275,7 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
                     isChoosingMode ? (
                       <ThemeNewChooser
                         onSearchThemes={handleChooseSearch}
-                        onCreateNew={handleChooseCreate}
-                        onCreateFromUrl={handleChooseFromUrl}
+                        onSelectMethod={handleSelectMethod}
                       />
                     ) : isSearching ? (
                       <DiscoverThemesDetail
@@ -330,12 +305,7 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
                         onComplete={handleWizardComplete}
                         onExtract={handleUrlExtract}
                         onMapToTheme={handleUrlMapToTheme}
-                      />
-                    ) : isFromUrl ? (
-                      <ThemeFromUrlPane
-                        onExtract={handleUrlExtract}
-                        onMapToTheme={handleUrlMapToTheme}
-                        onGenerate={handleUrlThemeGenerated}
+                        initialMethod={selectedMethod}
                       />
                     ) : null
                   }
@@ -365,42 +335,34 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
                 </div>
               </div>
             )}
-            {(isCreating || isChoosingMode || isSearching || isFromUrl) && (
+            {isInWizardFlow && (
               <div className="flex flex-row space-x-2">
                 <Button onClick={handleCancelCreate} title="Cancel" />
               </div>
             )}
-            {!isCreating &&
-              !isChoosingMode &&
-              !isSearching &&
-              !isFromUrl &&
-              isEditing === false && (
-                <div className="flex flex-row space-x-2">
-                  <Button onClick={() => setIsOpen(false)} title="Cancel" />
-                  {themeSelected !== null && (
-                    <Button onClick={handleDeleteTheme} title="Delete" />
-                  )}
-                  {themeSelected !== null && (
-                    <Button onClick={() => setIsEditing(true)} title="Edit" />
-                  )}
-                  {themeSelected !== null && (
-                    <Button onClick={handleActivateTheme} title="Activate" />
-                  )}
-                </div>
-              )}
-            {!isCreating &&
-              !isChoosingMode &&
-              !isSearching &&
-              !isFromUrl &&
-              isEditing === true && (
-                <div className="flex flex-row space-x-2">
-                  <Button onClick={() => setIsEditing(false)} title="Cancel" />
-                  <Button
-                    onClick={() => handleSaveTheme(themeKeySelected)}
-                    title="Save Changes"
-                  />
-                </div>
-              )}
+            {!isInWizardFlow && isEditing === false && (
+              <div className="flex flex-row space-x-2">
+                <Button onClick={() => setIsOpen(false)} title="Cancel" />
+                {themeSelected !== null && (
+                  <Button onClick={handleDeleteTheme} title="Delete" />
+                )}
+                {themeSelected !== null && (
+                  <Button onClick={() => setIsEditing(true)} title="Edit" />
+                )}
+                {themeSelected !== null && (
+                  <Button onClick={handleActivateTheme} title="Activate" />
+                )}
+              </div>
+            )}
+            {!isInWizardFlow && isEditing === true && (
+              <div className="flex flex-row space-x-2">
+                <Button onClick={() => setIsEditing(false)} title="Cancel" />
+                <Button
+                  onClick={() => handleSaveTheme(themeKeySelected)}
+                  title="Save Changes"
+                />
+              </div>
+            )}
           </div>
         </div>
       </Panel>
