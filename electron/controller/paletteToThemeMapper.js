@@ -7,6 +7,7 @@
  */
 
 const { TAILWIND_COLORS } = require("../../src/utils/colorUtils");
+const { generateThemeName } = require("../../src/utils/themeGenerator");
 
 const VALID_HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
@@ -339,7 +340,6 @@ function generateThemeFromPalette(palette, overrides = {}) {
   }
 
   // Step 3: Generate theme name from families
-  const { generateThemeName } = require("../../src/utils/themeGenerator");
   const themeName = generateThemeName(
     primaryMatch.family,
     secondaryMatch.family,
