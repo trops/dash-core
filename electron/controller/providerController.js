@@ -29,6 +29,7 @@ const providerController = {
    * @param {string} providerClass "credential" (default) or "mcp"
    * @param {object} mcpConfig MCP server config (transport, command, args, envMapping) - only for providerClass "mcp"
    * @param {string[]|null} allowedTools optional list of allowed tool names - only for providerClass "mcp"
+   * @param {object} wsConfig WebSocket config (url, headers, subprotocols) - only for providerClass "websocket"
    */
   saveProvider: (
     win,
@@ -39,6 +40,7 @@ const providerController = {
     providerClass = "credential",
     mcpConfig = null,
     allowedTools = null,
+    wsConfig = null,
   ) => {
     try {
       // Build file path
@@ -77,6 +79,11 @@ const providerController = {
       // Add allowedTools for MCP providers
       if (providerClass === "mcp" && allowedTools) {
         providerEntry.allowedTools = allowedTools;
+      }
+
+      // Add wsConfig for WebSocket providers
+      if (providerClass === "websocket" && wsConfig) {
+        providerEntry.wsConfig = wsConfig;
       }
 
       providers[providerName] = providerEntry;
@@ -186,6 +193,11 @@ const providerController = {
             provider.allowedTools = data.allowedTools;
           }
 
+          // Include wsConfig for WebSocket providers
+          if (data.wsConfig) {
+            provider.wsConfig = data.wsConfig;
+          }
+
           decryptedProviders.push(provider);
         } catch (decryptError) {
           console.error(
@@ -261,6 +273,11 @@ const providerController = {
       // Include allowedTools for MCP providers
       if (providerData.allowedTools) {
         provider.allowedTools = providerData.allowedTools;
+      }
+
+      // Include wsConfig for WebSocket providers
+      if (providerData.wsConfig) {
+        provider.wsConfig = providerData.wsConfig;
       }
 
       console.log(`[providerController] Provider retrieved: ${providerName}`);
