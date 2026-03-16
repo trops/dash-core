@@ -24,6 +24,7 @@ export const LayoutManagerModal = ({
   appId,
   onReloadWorkspaces,
   onOpenWorkspace = null,
+  onOpenWizard = null,
 }) => {
   const { themes, themeKey: appThemeKey } = useContext(ThemeContext);
 
@@ -112,6 +113,11 @@ export const LayoutManagerModal = ({
   }
 
   function handleMethodSelect(method) {
+    if (method === "wizard" && onOpenWizard) {
+      setIsOpen(false);
+      onOpenWizard();
+      return;
+    }
     setCreationMethod(method);
   }
 

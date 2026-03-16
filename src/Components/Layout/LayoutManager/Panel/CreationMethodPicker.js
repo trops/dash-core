@@ -53,6 +53,12 @@ export const CreationMethodPicker = ({ onSelect }) => {
           description="Browse and install dashboards from the online registry"
           onClick={() => onSelect("registry")}
         />
+        <OptionCard
+          icon="wand-magic-sparkles"
+          title="Dashboard Wizard"
+          description="Guided setup — pick categories, providers, and widgets step by step"
+          onClick={() => onSelect("wizard")}
+        />
       </div>
     </div>
   );

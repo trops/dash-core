@@ -23,6 +23,7 @@ export const DashboardsSection = ({
   onOpenWorkspace = null,
   createRequested = false,
   onCreateAcknowledged = null,
+  onOpenWizard = null,
 }) => {
   const [selectedId, setSelectedId] = useState(null);
   const [editingId, setEditingId] = useState(null);
@@ -231,6 +232,18 @@ export const DashboardsSection = ({
             <Tabs3.Trigger value="marketplace" className="flex-1">
               Marketplace
             </Tabs3.Trigger>
+            {onOpenWizard && (
+              <Tabs3.Trigger
+                value="wizard"
+                className="flex-1"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onOpenWizard();
+                }}
+              >
+                Wizard
+              </Tabs3.Trigger>
+            )}
           </Tabs3.List>
         </Tabs3>
       </div>

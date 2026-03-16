@@ -19,6 +19,7 @@ export const DashCommandPalette = ({
   onCreateNewWorkspace = null,
   onCreateNewFolder = null,
   onLoadDashboard = null,
+  onOpenWizard = null,
   // Theme actions
   onChangeTheme = null,
   onOpenThemeManager = null,
@@ -94,6 +95,12 @@ export const DashCommandPalette = ({
       label: "New Folder",
       icon: "folder-plus",
       action: () => onCreateNewFolder && onCreateNewFolder(),
+    },
+    matchesQuery("Dashboard Wizard") && {
+      key: "dashboard-wizard",
+      label: "Dashboard Wizard",
+      icon: "wand-magic-sparkles",
+      action: () => onOpenWizard && onOpenWizard(),
     },
   ].filter(Boolean);
 
