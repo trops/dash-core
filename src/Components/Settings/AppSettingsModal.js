@@ -19,6 +19,7 @@ import { GeneralSection } from "./sections/GeneralSection";
 import { WidgetsSection } from "./sections/WidgetsSection";
 import { AccountSection } from "./sections/AccountSection";
 import { NotificationsSection } from "./sections/NotificationsSection";
+import { McpServerSection } from "./sections/McpServerSection";
 
 const SECTIONS = [
   { key: "general", label: "General", icon: "cog" },
@@ -29,6 +30,7 @@ const SECTIONS = [
   { key: "folders", label: "Folders", icon: "folder" },
   { key: "themes", label: "Themes", icon: "palette" },
   { key: "notifications", label: "Notifications", icon: "bell" },
+  { key: "mcp-server", label: "MCP Server", icon: "server" },
 ];
 
 export const AppSettingsModal = ({
@@ -212,6 +214,15 @@ export const AppSettingsModal = ({
         )}
         {activeSection === "notifications" && (
           <NotificationsSection workspaces={workspaces} />
+        )}
+        {activeSection === "mcp-server" && (
+          <div
+            className={`flex-1 overflow-y-auto p-6 ${
+              panelStyles.textColor || "text-gray-200"
+            }`}
+          >
+            <McpServerSection />
+          </div>
         )}
       </SettingsModal.Body>
 
