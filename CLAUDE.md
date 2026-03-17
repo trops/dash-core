@@ -446,6 +446,17 @@ npm run screenshot -- --click-selector 'button:has([data-icon="circle-user"], [d
 
 The plan's verification section MUST include the screenshot command with navigation flags appropriate to the feature being changed. See dash-electron CLAUDE.md for the full navigation map and all options.
 
+### Visual Inspection (cross-repo)
+
+When changes affect rendered UI, validate visually in dash-electron after linking:
+
+```bash
+# In dash-electron (after npm run link-core)
+npm run screenshot -- --click-selector 'button:has([data-icon="circle-user"], [data-icon="user"])' --click "Settings" --click "Themes"
+```
+
+The plan's verification section MUST include the screenshot command with navigation flags appropriate to the feature being changed. See dash-electron CLAUDE.md for the full navigation map and all options.
+
 ## Code Style
 
 - **Formatting:** Prettier (`.prettierrc`), 4-space indentation
