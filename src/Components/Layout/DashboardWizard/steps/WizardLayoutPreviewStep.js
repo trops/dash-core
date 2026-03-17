@@ -7,7 +7,7 @@ import { resolveIcon } from "../../../../utils/resolveIcon";
 /**
  * WizardLayoutPreviewStep
  *
- * Step 3 of the Dashboard Wizard. Two modes:
+ * Step 1 of the Dashboard Wizard. Two modes:
  *   - Custom path: auto-selects a layout template based on widget count,
  *     renders a visual grid with widget names in cells and drag-reorder.
  *   - Pre-built path: shows a read-only preview of the selected dashboard.

@@ -1,11 +1,14 @@
 import { useReducer, useCallback, useMemo } from "react";
 
-const TOTAL_STEPS = 6; // Steps 0-5
+const TOTAL_STEPS = 3; // Steps 0-2: Discover, Layout, Customize
 
 const initialState = {
   step: 0,
-  intent: [],
-  providers: [],
+  filters: {
+    categories: [],
+    providers: [],
+    query: "",
+  },
   selectedWidgets: [],
   selectedDashboard: null,
   layout: {
@@ -25,25 +28,37 @@ function wizardReducer(state, action) {
     case "SET_STEP":
       return { ...state, step: action.payload };
 
-    case "SET_INTENT":
-      return { ...state, intent: action.payload };
+    case "SET_FILTERS":
+      return {
+        ...state,
+        filters: { ...state.filters, ...action.payload },
+      };
 
-    case "TOGGLE_INTENT": {
-      const intent = state.intent.includes(action.payload)
-        ? state.intent.filter((i) => i !== action.payload)
-        : [...state.intent, action.payload];
-      return { ...state, intent };
+    case "TOGGLE_FILTER_CATEGORY": {
+      const categories = state.filters.categories.includes(action.payload)
+        ? state.filters.categories.filter((c) => c !== action.payload)
+        : [...state.filters.categories, action.payload];
+      return {
+        ...state,
+        filters: { ...state.filters, categories },
+      };
     }
 
-    case "SET_PROVIDERS":
-      return { ...state, providers: action.payload };
-
-    case "TOGGLE_PROVIDER": {
-      const providers = state.providers.includes(action.payload)
-        ? state.providers.filter((p) => p !== action.payload)
-        : [...state.providers, action.payload];
-      return { ...state, providers };
+    case "TOGGLE_FILTER_PROVIDER": {
+      const providers = state.filters.providers.includes(action.payload)
+        ? state.filters.providers.filter((p) => p !== action.payload)
+        : [...state.filters.providers, action.payload];
+      return {
+        ...state,
+        filters: { ...state.filters, providers },
+      };
     }
+
+    case "SET_SEARCH_QUERY":
+      return {
+        ...state,
+        filters: { ...state.filters, query: action.payload },
+      };
 
     case "SET_SELECTED_WIDGETS":
       return { ...state, selectedWidgets: action.payload };
@@ -99,19 +114,13 @@ export function widgetCountToTemplate(count) {
 function getCanProceed(state) {
   switch (state.step) {
     case 0:
-      return state.intent.length > 0;
+      return (
+        state.selectedDashboard !== null || state.selectedWidgets.length > 0
+      );
     case 1:
-      return state.providers.length > 0;
-    case 2:
-      return state.path === "prebuilt"
-        ? state.selectedDashboard !== null
-        : state.selectedWidgets.length > 0;
-    case 3:
       return state.layout.templateKey !== null;
-    case 4:
+    case 2:
       return state.customization.name.trim().length > 0;
-    case 5:
-      return true;
     default:
       return false;
   }
