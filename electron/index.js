@@ -158,6 +158,7 @@ module.exports = {
 
   // Events
   events,
+  API_GROUPS: events.API_GROUPS,
 
   // Widget Pipeline
   widgetRegistry,
