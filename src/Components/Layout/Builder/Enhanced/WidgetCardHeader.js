@@ -69,13 +69,6 @@ export const WidgetCardHeader = ({
     widgetItem,
   );
 
-  console.log("[WidgetCardHeader] Debug:", {
-    component: widgetItem?.component,
-    widgetConfig,
-    configProviders: widgetConfig?.providers,
-    itemProviders: widgetItem?.providers,
-  });
-
   // Detect missing widgets (component key exists but not in ComponentManager)
   const isWidgetMissing = widgetItem?.component && !widgetConfig;
 
@@ -124,22 +117,9 @@ export const WidgetCardHeader = ({
 
   // Handle provider selection
   const handleProviderSelect = (providerType, providerId) => {
-    console.log("[WidgetCardHeader] handleProviderSelect called:", {
-      providerType,
-      providerId,
-    });
-
     if (providerId === "_new") {
-      // Trigger provider creation flow
-      console.log(
-        "[WidgetCardHeader] Creating new provider, calling onProviderChange with isCreateNew=true",
-      );
       onProviderChange(providerType, null, true); // true = create new
     } else {
-      console.log(
-        "[WidgetCardHeader] Selecting existing provider:",
-        providerId,
-      );
       onProviderChange(providerType, providerId);
     }
     setShowProviderDropdown(null);
@@ -322,10 +302,6 @@ export const WidgetCardHeader = ({
                   {/* Create new provider */}
                   <MenuItem2
                     onClick={() => {
-                      console.log(
-                        "[WidgetCardHeader] Create new provider button clicked for:",
-                        providerType,
-                      );
                       handleProviderSelect(providerType, "_new");
                     }}
                   >
