@@ -4,6 +4,8 @@ import {
   InputText,
   ThemeContext,
   Button,
+  Card3,
+  Tag3,
 } from "@trops/dash-react";
 import { AppContext } from "../../../../Context";
 import {
@@ -215,14 +217,16 @@ export const WizardCustomizeStep = ({
   // --- Success state ---
   if (createdDashboard) {
     return (
-      <div className="wizard-customize-step">
-        <div className="wizard-success">
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col items-center justify-center gap-4 py-12">
           <FontAwesomeIcon
             icon="circle-check"
-            className="wizard-success-icon"
+            className="text-green-400 text-3xl"
           />
-          <h3 className="wizard-step-header">Dashboard created!</h3>
-          <p className="wizard-step-description">
+          <h3 className="text-lg font-semibold text-gray-200">
+            Dashboard created!
+          </h3>
+          <p className="text-sm text-gray-400">
             Your dashboard{" "}
             <strong>
               {createdDashboard.name || state.customization.name.trim()}
@@ -272,21 +276,19 @@ export const WizardCustomizeStep = ({
       : null;
 
   return (
-    <div className="wizard-customize-step">
-      <h3 className="wizard-step-header">Customize your dashboard</h3>
-      <p className="wizard-step-description">
+    <div className="flex flex-col gap-4">
+      <h3 className="text-lg font-semibold text-gray-200">
+        Customize your dashboard
+      </h3>
+      <p className="text-sm text-gray-400">
         Name your dashboard, choose a folder, and pick a theme.
       </p>
 
-      <div className="wizard-customize-sections">
+      <div className="flex flex-col gap-6">
         {/* --- Name --- */}
-        <div className="wizard-customize-section">
-          <label className="wizard-customize-label">
-            <FontAwesomeIcon
-              icon="input-text"
-              fixedWidth
-              className="wizard-customize-label-icon"
-            />
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
+            <FontAwesomeIcon icon="input-text" fixedWidth />
             Dashboard Name
           </label>
           <InputText
@@ -298,28 +300,24 @@ export const WizardCustomizeStep = ({
         </div>
 
         {/* --- Folder picker --- */}
-        <div className="wizard-customize-section">
-          <label className="wizard-customize-label">
-            <FontAwesomeIcon
-              icon="folder"
-              fixedWidth
-              className="wizard-customize-label-icon"
-            />
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
+            <FontAwesomeIcon icon="folder" fixedWidth />
             Folder
           </label>
-          <div className="wizard-customize-folder-list">
+          <div className="flex flex-col gap-1.5">
             {!isCreatingFolder ? (
               <button
                 type="button"
-                className="wizard-customize-folder-create"
+                className="flex items-center gap-2 px-3 py-2 rounded border border-dashed border-gray-600 text-sm text-gray-400 hover:border-gray-500 hover:text-gray-300 transition-colors"
                 onClick={() => setIsCreatingFolder(true)}
               >
                 <FontAwesomeIcon icon="plus" fixedWidth />
                 <span>New Folder</span>
               </button>
             ) : (
-              <div className="wizard-customize-folder-form">
-                <div className="wizard-customize-folder-form-header">
+              <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-gray-300">
                     New Folder
                   </span>
@@ -371,50 +369,47 @@ export const WizardCustomizeStep = ({
               const isSelected =
                 !isCreatingFolder && item.id === state.customization.menuId;
               return (
-                <div
+                <Card3
                   key={item.id}
-                  className={`wizard-customize-folder-item ${
-                    isSelected ? "wizard-customize-folder-item--selected" : ""
-                  }`}
+                  hover
+                  selected={isSelected}
                   onClick={() => handleMenuSelect(item.id)}
                 >
-                  <FontAwesomeIcon
-                    icon={item.icon || item.folder || "folder"}
-                    fixedWidth
-                    className={`w-5 h-5 ${
-                      isSelected ? "text-blue-400" : "text-gray-400"
-                    }`}
-                  />
-                  <span
-                    className={`text-sm font-medium ${
-                      isSelected ? "text-blue-300" : "text-gray-300"
-                    }`}
-                  >
-                    {item.name}
-                  </span>
-                  {isSelected && (
+                  <div className="flex items-center gap-2">
                     <FontAwesomeIcon
-                      icon="check"
-                      className="ml-auto text-blue-400 text-sm"
+                      icon={item.icon || item.folder || "folder"}
+                      fixedWidth
+                      className={`w-5 h-5 ${
+                        isSelected ? "text-blue-400" : "text-gray-400"
+                      }`}
                     />
-                  )}
-                </div>
+                    <span
+                      className={`text-sm font-medium ${
+                        isSelected ? "text-blue-300" : "text-gray-300"
+                      }`}
+                    >
+                      {item.name}
+                    </span>
+                    {isSelected && (
+                      <FontAwesomeIcon
+                        icon="check"
+                        className="ml-auto text-blue-400 text-sm"
+                      />
+                    )}
+                  </div>
+                </Card3>
               );
             })}
           </div>
         </div>
 
         {/* --- Theme picker --- */}
-        <div className="wizard-customize-section">
-          <label className="wizard-customize-label">
-            <FontAwesomeIcon
-              icon="palette"
-              fixedWidth
-              className="wizard-customize-label-icon"
-            />
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
+            <FontAwesomeIcon icon="palette" fixedWidth />
             Theme
           </label>
-          <div className="wizard-customize-theme-list">
+          <div className="flex flex-col gap-1.5">
             {themes &&
               Object.entries(themes)
                 .sort(([, a], [, b]) =>
@@ -423,46 +418,45 @@ export const WizardCustomizeStep = ({
                 .map(([key, t]) => {
                   const isThemeSelected = state.customization.theme === key;
                   return (
-                    <div
+                    <Card3
                       key={key}
-                      className={`wizard-customize-theme-item ${
-                        isThemeSelected
-                          ? "wizard-customize-theme-item--selected"
-                          : ""
-                      }`}
+                      hover
+                      selected={isThemeSelected}
                       onClick={() => handleThemeSelect(key)}
                     >
-                      <FontAwesomeIcon
-                        icon="palette"
-                        className={`w-5 h-5 mr-3 ${
-                          isThemeSelected ? "text-blue-400" : "text-gray-400"
-                        }`}
-                      />
-                      <span
-                        className={`text-sm font-medium ${
-                          isThemeSelected ? "text-blue-300" : "text-gray-300"
-                        }`}
-                      >
-                        {t.name || key}
-                      </span>
-                      <div className="flex flex-row space-x-1 ml-auto">
-                        {t.primary && (
-                          <div
-                            className={`w-4 h-4 rounded bg-${t.primary}-500`}
-                          />
-                        )}
-                        {t.secondary && (
-                          <div
-                            className={`w-4 h-4 rounded bg-${t.secondary}-500`}
-                          />
-                        )}
-                        {t.tertiary && (
-                          <div
-                            className={`w-4 h-4 rounded bg-${t.tertiary}-500`}
-                          />
-                        )}
+                      <div className="flex items-center gap-2">
+                        <FontAwesomeIcon
+                          icon="palette"
+                          className={`w-5 h-5 ${
+                            isThemeSelected ? "text-blue-400" : "text-gray-400"
+                          }`}
+                        />
+                        <span
+                          className={`text-sm font-medium ${
+                            isThemeSelected ? "text-blue-300" : "text-gray-300"
+                          }`}
+                        >
+                          {t.name || key}
+                        </span>
+                        <div className="flex flex-row space-x-1 ml-auto">
+                          {t.primary && (
+                            <div
+                              className={`w-4 h-4 rounded bg-${t.primary}-500`}
+                            />
+                          )}
+                          {t.secondary && (
+                            <div
+                              className={`w-4 h-4 rounded bg-${t.secondary}-500`}
+                            />
+                          )}
+                          {t.tertiary && (
+                            <div
+                              className={`w-4 h-4 rounded bg-${t.tertiary}-500`}
+                            />
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    </Card3>
                   );
                 })}
           </div>
@@ -470,62 +464,34 @@ export const WizardCustomizeStep = ({
 
         {/* --- Provider setup summary --- */}
         {selectedProviders.length > 0 && (
-          <div className="wizard-customize-section">
-            <label className="wizard-customize-label">
-              <FontAwesomeIcon
-                icon="plug"
-                fixedWidth
-                className="wizard-customize-label-icon"
-              />
+          <div className="flex flex-col gap-2">
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
+              <FontAwesomeIcon icon="plug" fixedWidth />
               Provider Status
             </label>
-            <div className="wizard-customize-provider-summary">
+            <div className="rounded-lg border border-gray-700/50 bg-gray-800/50 p-4 flex flex-col gap-3">
               {configuredProviders.length > 0 && (
-                <div className="wizard-provider-group">
-                  <span className="wizard-provider-group-label wizard-provider-group-label--ready">
-                    <FontAwesomeIcon
-                      icon="circle-check"
-                      className="text-green-400"
-                    />{" "}
-                    Ready ({configuredProviders.length})
+                <div className="flex flex-col gap-1.5">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-green-400">
+                    <FontAwesomeIcon icon="circle-check" /> Ready (
+                    {configuredProviders.length})
                   </span>
-                  <div className="wizard-provider-list">
+                  <div className="flex flex-wrap gap-1.5">
                     {configuredProviders.map((p) => (
-                      <span
-                        key={p.key}
-                        className="wizard-provider-badge wizard-provider-badge--ready"
-                      >
-                        <FontAwesomeIcon
-                          icon={resolveIcon(p.icon)}
-                          fixedWidth
-                        />
-                        {p.name}
-                      </span>
+                      <Tag3 key={p.key} text={p.name} />
                     ))}
                   </div>
                 </div>
               )}
               {needsSetupProviders.length > 0 && (
-                <div className="wizard-provider-group">
-                  <span className="wizard-provider-group-label wizard-provider-group-label--setup">
-                    <FontAwesomeIcon
-                      icon="circle-exclamation"
-                      className="text-amber-400"
-                    />{" "}
-                    Needs setup ({needsSetupProviders.length})
+                <div className="flex flex-col gap-1.5">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-400">
+                    <FontAwesomeIcon icon="circle-exclamation" /> Needs setup (
+                    {needsSetupProviders.length})
                   </span>
-                  <div className="wizard-provider-list">
+                  <div className="flex flex-wrap gap-1.5">
                     {needsSetupProviders.map((p) => (
-                      <span
-                        key={p.key}
-                        className="wizard-provider-badge wizard-provider-badge--setup"
-                      >
-                        <FontAwesomeIcon
-                          icon={resolveIcon(p.icon)}
-                          fixedWidth
-                        />
-                        {p.name}
-                      </span>
+                      <Tag3 key={p.key} text={p.name} />
                     ))}
                   </div>
                 </div>
@@ -535,16 +501,16 @@ export const WizardCustomizeStep = ({
         )}
 
         {/* --- Summary sidebar --- */}
-        <div className="wizard-customize-summary">
-          <span className="wizard-customize-summary-title">Summary</span>
+        <div className="rounded-lg border border-gray-700/50 bg-gray-800/50 p-4 flex flex-col gap-2">
+          <span className="text-sm font-semibold text-gray-300">Summary</span>
           {state.customization.name.trim() && (
-            <div className="wizard-customize-summary-row">
+            <div className="flex items-center gap-2 text-sm text-gray-300">
               <FontAwesomeIcon icon="clone" className="text-blue-400" />
               <span>{state.customization.name.trim()}</span>
             </div>
           )}
           {selectedFolder && (
-            <div className="wizard-customize-summary-row">
+            <div className="flex items-center gap-2 text-sm text-gray-300">
               <FontAwesomeIcon
                 icon={selectedFolder.icon || selectedFolder.folder || "folder"}
                 className="text-blue-400"
@@ -553,7 +519,7 @@ export const WizardCustomizeStep = ({
             </div>
           )}
           {selectedTheme && (
-            <div className="wizard-customize-summary-row">
+            <div className="flex items-center gap-2 text-sm text-gray-300">
               <FontAwesomeIcon icon="palette" className="text-blue-400" />
               <span>{selectedTheme.name || state.customization.theme}</span>
               <div className="flex flex-row space-x-1 ml-2">
@@ -570,7 +536,7 @@ export const WizardCustomizeStep = ({
               </div>
             </div>
           )}
-          <div className="wizard-customize-summary-row">
+          <div className="flex items-center gap-2 text-sm text-gray-300">
             <FontAwesomeIcon
               icon={isPrebuilt ? "box" : "grid-2"}
               className="text-blue-400"
@@ -587,11 +553,8 @@ export const WizardCustomizeStep = ({
 
         {/* --- Error display --- */}
         {error && (
-          <div className="wizard-customize-error">
-            <FontAwesomeIcon
-              icon="triangle-exclamation"
-              className="text-red-400"
-            />
+          <div className="flex items-center gap-2 text-red-400 py-2">
+            <FontAwesomeIcon icon="triangle-exclamation" />
             <span>{error}</span>
           </div>
         )}

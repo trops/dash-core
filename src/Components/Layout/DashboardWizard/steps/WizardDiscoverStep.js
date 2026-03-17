@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { FontAwesomeIcon } from "@trops/dash-react";
+import {
+  FontAwesomeIcon,
+  Card2,
+  Tag2,
+  Tag3,
+  InputText,
+} from "@trops/dash-react";
 import { useRegistrySearch } from "../../../../hooks/useRegistrySearch";
 import { resolveIcon } from "../../../../utils/resolveIcon";
 import { DASHBOARD_TAGS } from "../../../Settings/constants";
@@ -55,10 +61,9 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
   }, []);
 
   const handleSearchChange = useCallback(
-    (e) => {
-      const q = e.target.value;
-      setSearchQuery(q);
-      dispatch({ type: "SET_SEARCH_QUERY", payload: q });
+    (val) => {
+      setSearchQuery(val);
+      dispatch({ type: "SET_SEARCH_QUERY", payload: val });
     },
     [setSearchQuery, dispatch],
   );
@@ -116,86 +121,72 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
     filters.categories.length > 0 || filters.providers.length > 0;
 
   return (
-    <div className="wizard-discover-step">
+    <div className="flex flex-col gap-4">
       {/* Search bar */}
-      <div className="wizard-discover-search">
-        <div className="wizard-discover-search-input">
-          <FontAwesomeIcon
-            icon="magnifying-glass"
-            fixedWidth
-            className="wizard-discover-search-icon"
-          />
-          <input
-            type="text"
-            placeholder="Search registry..."
-            value={searchQuery}
-            onChange={handleSearchChange}
-            className="wizard-discover-input"
-          />
-        </div>
-      </div>
+      <InputText
+        value={searchQuery}
+        onChange={handleSearchChange}
+        placeholder="Search registry..."
+      />
 
       {/* Filter chips */}
-      <div className="wizard-discover-filters">
-        <div className="wizard-discover-filter-row">
-          <span className="wizard-discover-filter-label">Categories</span>
-          <div className="wizard-discover-chips">
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+            Categories
+          </span>
+          <div className="flex flex-wrap gap-1.5">
             {DASHBOARD_TAGS.map((tag) => (
-              <button
+              <Tag2
                 key={tag}
-                type="button"
-                className={`wizard-chip ${filters.categories.includes(tag) ? "wizard-chip--active" : ""}`}
+                text={tag}
                 onClick={() => handleToggleCategory(tag)}
-              >
-                {tag}
-              </button>
+                className={
+                  filters.categories.includes(tag) ? "ring-1 ring-blue-400" : ""
+                }
+              />
             ))}
           </div>
         </div>
-        <div className="wizard-discover-filter-row">
-          <span className="wizard-discover-filter-label">Providers</span>
-          <div className="wizard-discover-chips">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+            Providers
+          </span>
+          <div className="flex flex-wrap gap-1.5">
             {KNOWN_PROVIDERS.map((prov) => (
-              <button
+              <Tag2
                 key={prov.key}
-                type="button"
-                className={`wizard-chip ${filters.providers.includes(prov.key) ? "wizard-chip--active" : ""}`}
+                text={prov.name}
                 onClick={() => handleToggleProvider(prov.key)}
-              >
-                {prov.name}
-              </button>
+                className={
+                  filters.providers.includes(prov.key)
+                    ? "ring-1 ring-blue-400"
+                    : ""
+                }
+              />
             ))}
           </div>
         </div>
       </div>
 
       {/* Results */}
-      <div className="wizard-discover-results">
+      <div className="flex flex-col gap-6 mt-2">
         {isLoading ? (
-          <div className="wizard-loading">
-            <FontAwesomeIcon
-              icon="spinner"
-              spin
-              fixedWidth
-              className="wizard-loading-icon"
-            />
+          <div className="flex flex-col items-center justify-center gap-2 py-12 text-gray-400">
+            <FontAwesomeIcon icon="spinner" spin fixedWidth />
             <span>Searching registry...</span>
           </div>
         ) : error ? (
-          <div className="wizard-error">
+          <div className="flex items-center gap-2 text-red-400 py-4">
             <FontAwesomeIcon icon="circle-exclamation" fixedWidth />
             <span>{error}</span>
           </div>
         ) : !hasResults ? (
-          <div className="wizard-empty">
-            <FontAwesomeIcon
-              icon="magnifying-glass"
-              fixedWidth
-              className="wizard-empty-icon"
-            />
+          <div className="flex flex-col items-center justify-center gap-2 py-12 text-gray-500">
+            <FontAwesomeIcon icon="magnifying-glass" fixedWidth />
             <p>No results match your search.</p>
             {hasActiveFilters && (
-              <p className="wizard-empty-hint">
+              <p className="text-xs text-gray-600">
                 Try removing some filters to see more results.
               </p>
             )}
@@ -204,12 +195,12 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
           <>
             {/* Dashboards section */}
             {filteredDashboards.length > 0 && (
-              <div className="wizard-discover-section">
-                <h4 className="wizard-discover-section-title">
+              <div className="flex flex-col gap-2">
+                <h4 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
                   Dashboards ({filteredDashboards.length} result
                   {filteredDashboards.length !== 1 ? "s" : ""})
                 </h4>
-                <div className="wizard-dashboard-list">
+                <div className="flex flex-col gap-2">
                   {filteredDashboards.map((dash) => {
                     const isSelected =
                       state.selectedDashboard &&
@@ -220,41 +211,41 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
                       .join(", ");
 
                     return (
-                      <button
+                      <Card2
                         key={dash.name}
-                        type="button"
-                        className={`wizard-dashboard-card ${isSelected ? "wizard-dashboard-card--selected" : ""}`}
+                        hover
+                        selected={isSelected}
                         onClick={() => handleSelectDashboard(dash)}
                       >
-                        <div className="wizard-dashboard-card-header">
+                        <div className="flex items-center gap-2">
                           <FontAwesomeIcon
                             icon={resolveIcon(dash.icon || "grid-2")}
                             fixedWidth
-                            className="wizard-dashboard-card-icon"
+                            className="text-gray-400"
                           />
-                          <span className="wizard-dashboard-card-name">
+                          <span className="text-sm font-medium text-gray-200">
                             {dash.displayName || dash.name}
                           </span>
                           {isSelected && (
                             <FontAwesomeIcon
                               icon="circle-check"
-                              className="wizard-dashboard-card-check"
+                              className="ml-auto text-blue-400"
                             />
                           )}
                         </div>
                         {dash.description && (
-                          <p className="wizard-dashboard-card-desc">
+                          <p className="text-xs text-gray-400 mt-1">
                             {dash.description}
                           </p>
                         )}
-                        <div className="wizard-dashboard-card-meta">
+                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
                           <span>
                             {widgetCount} widget
                             {widgetCount !== 1 ? "s" : ""}
                           </span>
                           {providerNames && <span>{providerNames}</span>}
                         </div>
-                      </button>
+                      </Card2>
                     );
                   })}
                 </div>
@@ -263,57 +254,60 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
 
             {/* Widgets section */}
             {filteredWidgets.length > 0 && (
-              <div className="wizard-discover-section">
-                <h4 className="wizard-discover-section-title">
+              <div className="flex flex-col gap-2">
+                <h4 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
                   Widgets ({filteredWidgets.length} result
                   {filteredWidgets.length !== 1 ? "s" : ""})
                   {state.selectedWidgets.length > 0 && (
-                    <span className="wizard-count-badge">
-                      {state.selectedWidgets.length} selected
-                    </span>
+                    <Tag3 text={`${state.selectedWidgets.length} selected`} />
                   )}
                 </h4>
-                <div className="wizard-widget-list">
+                <div className="grid grid-cols-2 gap-2">
                   {filteredWidgets.map((widget) => {
                     const checked = isWidgetSelected(widget);
                     return (
-                      <button
+                      <Card2
                         key={widget.key}
-                        type="button"
-                        className={`wizard-widget-card ${checked ? "wizard-widget-card--selected" : ""}`}
+                        hover
+                        selected={checked}
                         onClick={() => handleToggleWidget(widget)}
                       >
-                        <div className="wizard-widget-card-checkbox">
+                        <div className="flex items-start gap-2">
                           <FontAwesomeIcon
                             icon={checked ? "square-check" : "square"}
                             fixedWidth
+                            className={
+                              checked
+                                ? "text-blue-400 mt-0.5"
+                                : "text-gray-500 mt-0.5"
+                            }
                           />
-                        </div>
-                        <div className="wizard-widget-card-info">
-                          <div className="wizard-widget-card-header">
-                            {widget.icon && (
-                              <FontAwesomeIcon
-                                icon={resolveIcon(widget.icon)}
-                                fixedWidth
-                                className="wizard-widget-card-icon"
-                              />
+                          <div className="flex flex-col gap-0.5 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              {widget.icon && (
+                                <FontAwesomeIcon
+                                  icon={resolveIcon(widget.icon)}
+                                  fixedWidth
+                                  className="text-gray-400 text-xs"
+                                />
+                              )}
+                              <span className="text-sm font-medium text-gray-200 truncate">
+                                {widget.name}
+                              </span>
+                            </div>
+                            {widget.description && (
+                              <p className="text-xs text-gray-400 line-clamp-2">
+                                {widget.description}
+                              </p>
                             )}
-                            <span className="wizard-widget-card-name">
-                              {widget.name}
-                            </span>
+                            {widget.packageDisplayName && (
+                              <span className="text-xs text-gray-500">
+                                {widget.packageDisplayName}
+                              </span>
+                            )}
                           </div>
-                          {widget.description && (
-                            <p className="wizard-widget-card-desc">
-                              {widget.description}
-                            </p>
-                          )}
-                          {widget.packageDisplayName && (
-                            <span className="wizard-widget-card-package">
-                              {widget.packageDisplayName}
-                            </span>
-                          )}
                         </div>
-                      </button>
+                      </Card2>
                     );
                   })}
                 </div>
