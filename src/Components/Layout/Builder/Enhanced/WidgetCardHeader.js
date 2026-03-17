@@ -19,6 +19,7 @@ import {
 import { ProviderBadge } from "./ProviderBadge";
 import { WidgetIcon } from "./WidgetIcon";
 import { ComponentManager } from "../../../../ComponentManager";
+import { getUserConfigurableProviders } from "../../../../utils/providerUtils";
 
 export const WidgetCardHeader = ({
   item, // Widget/component item
@@ -83,18 +84,21 @@ export const WidgetCardHeader = ({
     widgetConfig?.name || widgetItem?.name || widgetItem?.component;
 
   // Get provider requirements from widget config (not from item directly)
+  // Filter out providerClass: "api" so only user-configurable providers show badges
   const getProviderRequirements = () => {
+    let providers = [];
     // Check config first (correct source)
     if (widgetConfig?.providers) {
-      return Array.isArray(widgetConfig.providers)
+      providers = Array.isArray(widgetConfig.providers)
         ? widgetConfig.providers
         : [];
+    } else if (widgetItem?.providers) {
+      // Fallback to item (legacy)
+      providers = Array.isArray(widgetItem.providers)
+        ? widgetItem.providers
+        : [];
     }
-    // Fallback to item (legacy)
-    if (widgetItem?.providers) {
-      return Array.isArray(widgetItem.providers) ? widgetItem.providers : [];
-    }
-    return [];
+    return getUserConfigurableProviders(providers);
   };
 
   const providerRequirements = getProviderRequirements();
