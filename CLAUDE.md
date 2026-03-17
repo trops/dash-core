@@ -1,18 +1,229 @@
 # @trops/dash-core — Core Dashboard Framework
 
+> ⚠️ **THIS FILE IS A PROTOCOL, NOT DOCUMENTATION.**
+> Every section marked MANDATORY must be followed in order, without exception.
+> If anything is unclear — requirements, file locations, which repo to change —
+> **ASK before proceeding. Do not infer. Do not improvise.**
+
+---
+
+## ⚠️ MANDATORY: Before Any Code Changes
+
+These steps are NON-NEGOTIABLE and must happen in this exact order before writing any code:
+
+1. Sync dash-core (this repo):
+   ```bash
+   git checkout master && git pull origin master
+   ```
+
+2. Locate and sync sibling repos. They live alongside this repo — discover their paths:
+   ```bash
+   REPO_ROOT="$(git rev-parse --show-toplevel)"
+   DASH_REACT="$(find "$(dirname "$REPO_ROOT")" -maxdepth 3 -name "package.json" | xargs grep -l '"name": "@trops/dash-react"' 2>/dev/null | head -1 | xargs dirname)"
+   DASH_ELECTRON="$(find "$(dirname "$REPO_ROOT")" -maxdepth 3 -name "package.json" | xargs grep -l '"name": "dash-electron"' 2>/dev/null | head -1 | xargs dirname)"
+   echo "dash-react:    $DASH_REACT"
+   echo "dash-electron: $DASH_ELECTRON"
+   ```
+   If either is not found, **STOP and ask the user where the repo is cloned.** Do not assume a path.
+
+3. Pull latest in each found sibling repo:
+   ```bash
+   cd "$DASH_REACT" && git pull origin master
+   cd "$DASH_ELECTRON" && git pull origin master
+   ```
+
+4. Return to this repo and create a feature branch:
+   ```bash
+   cd "$REPO_ROOT"
+   git checkout -b feat/<TICKET-KEY>-<slug>
+   ```
+
+**If any pull fails: STOP. Report the exact error. Do not proceed.**
+
+---
+
+## ⚠️ MANDATORY: Development Phases
+
+These four phases are sequential and cannot be skipped, combined, or reordered.
+
+### Phase 1 — PLAN
+
+1. State the task in one sentence.
+2. List every file that will be created or modified.
+3. List any dependencies that will be added.
+4. Identify risks, ambiguities, or cross-repo implications.
+5. Explicitly state whether this change has downstream effects on dash-electron or dash-react.
+6. **Wait for explicit user approval before writing a single line of code.**
+   Acceptable approvals: "proceed", "looks good", "go ahead", 👍.
+   Silence is NOT approval.
+
+### Phase 2 — IMPLEMENT
+
+1. Make only the changes listed in the approved plan.
+2. Do not refactor, rename, or "improve" anything outside the plan.
+3. Do not add dependencies not listed in the plan.
+4. **Use `@trops/dash-react` components for all UI.** See UI Component Rule below.
+5. Run Prettier when done:
+   ```bash
+   npm run prettify
+   ```
+6. Fix any Prettier errors before proceeding.
+7. Stage any new (untracked) files created in this phase before proceeding to Phase 3:
+   ```bash
+   git add <each new file explicitly by path>
+   ```
+   The CI script uses `git add -u` which only stages tracked files — any new file not
+   staged here will be silently excluded from the commit. Do not use `git add .` or `git add -A`.
+
+### Phase 3 — VALIDATE
+
+1. Run the full CI validation:
+   ```bash
+   npm run ci
+   ```
+2. If it fails, fix the errors and re-run. Do not proceed with a failing build.
+3. Do not mark this phase complete until `npm run ci` exits cleanly.
+4. Verify all three dist output files exist:
+   ```bash
+   ls dist/index.js dist/index.esm.js dist/electron/index.js
+   ```
+   If any file is missing, the build silently failed — treat this as a CI failure.
+5. **If you cannot make CI pass: STOP. Report the exact output. Do not proceed.**
+
+### Phase 4 — RELEASE
+
+1. Use the CI script — **this is the only approved release path**:
+   ```bash
+   npm run ci:release -- -m "type(scope): description"
+   ```
+2. Do not manually construct `git commit`, `git push`, `git tag`, or `gh pr` commands.
+   Manual git commands outside of `ci.sh` are not permitted.
+3. Confirm to the user: "Released. Commit: `<hash>` pushed to `<branch>`."
+
+---
+
+## ⚠️ MANDATORY: Cross-Repo Changes
+
+dash-core is a dependency of dash-electron (and peer of dash-react). Changes here have
+downstream consequences. The mandatory order is:
+
+1. Sync ALL repos first (see Mandatory Pre-Work above — sibling repos are discovered, not assumed).
+2. Make and validate changes in dash-core **first**.
+3. Run `npm run ci` in dash-core and confirm it passes — including dist output verification.
+4. If the change affects dash-react, apply and validate those changes next.
+5. Only then update dash-electron to consume the new version.
+6. Run `npm run ci` in dash-electron to confirm end-to-end compatibility before releasing anything.
+7. Never modify dash-electron to work around a missing dash-core change — fix it at the source.
+8. Read `.claude/skills/cross-repo-dev/SKILL.md` before starting any cross-repo task.
+
+**Never release dash-core without verifying dash-electron still builds and runs against it.**
+
+---
+
+## ⚠️ UI Component Rule — Use @trops/dash-react for All UI
+
+`@trops/dash-react` is the UX library for the entire Dash ecosystem. All UI components
+in dash-core must come from `@trops/dash-react` to maintain visual and behavioral
+consistency across the application.
+
+```javascript
+// CORRECT — always import UI components from @trops/dash-react
+import {
+    Panel, Panel2, Panel3,
+    Heading, SubHeading,
+    Button, ButtonIcon,
+    Widget, Workspace,
+    Modal, Notification,
+    LayoutContainer,
+    ErrorBoundary,
+    FontAwesomeIcon,
+    ThemeContext,
+} from "@trops/dash-react";
+
+// WRONG — never build custom UI components that duplicate dash-react functionality
+// WRONG — never import ThemeContext from a local file
+import { ThemeContext } from "./Context/ThemeContext"; // creates dual context instances
+
+// WRONG — never import FontAwesomeIcon directly
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"; // duplicates dependency
+```
+
+**Before building any new UI component, check whether @trops/dash-react already provides it.**
+If dash-react is missing something that dash-core needs, the correct fix is to add it to
+dash-react first (cross-repo task), not to build a local substitute in dash-core.
+
+---
+
+## ⚠️ NON-NEGOTIABLE RULES
+
+- **Never skip a phase.** Even if the task "seems simple."
+- **Never combine phases.** Do not implement and validate in the same step.
+- **Never push directly to master.** Always use feature branches and PRs via `ci:release`.
+- **Never use `git push --force` or `git reset --hard`.**
+- **Never use `git add .` or `git add -A`.** Stage only the files changed in Phase 2.
+- **Never build custom UI components that duplicate @trops/dash-react.** Use dash-react.
+- **Never release dash-core without verifying dash-electron compatibility.**
+- **When in doubt, ask.** Do not infer requirements. Do not improvise solutions.
+- **If a command fails, stop.** Report the exact error output. Do not attempt workarounds.
+
+---
+
+## ci.sh — The Only Approved Release Path
+
+The `scripts/ci.sh` script handles the full pipeline: Node 20 via nvm, Prettier, renderer
+build, electron build + MCP catalog, Jest tests, MCP tests, output verification, commit,
+version bump, push, PR, merge, tag, and cleanup.
+
+```bash
+# Validate only
+npm run ci
+
+# Validate + commit + version bump
+npm run ci:commit -- -m "Your commit message"
+
+# Above + push branch
+npm run ci:push -- -m "Your commit message"
+
+# Above + create PR
+npm run ci:pr -- -m "Your commit message"
+
+# Above + merge PR + tag + cleanup
+npm run ci:release -- -m "Your commit message"
+```
+
+Each flag is cumulative. `--release` runs all prior steps automatically.
+
+**During development only**, individual build targets may be used to iterate faster:
+
+```bash
+npm run build:renderer   # Renderer layer only (ESM + CJS)
+npm run build:electron   # Electron layer only (CJS)
+```
+
+These are NOT substitutes for `npm run ci` — always run the full pipeline before release.
+
+---
+
 ## Project Overview
 
-`@trops/dash-core` is the core framework for Dash dashboard applications. It provides the widget system, provider architecture, context providers, layout engine, and Electron main process layer. Consuming apps (e.g., `dash-electron`) use this as their foundation.
+`@trops/dash-core` is the core framework for Dash dashboard applications. It provides the
+widget system, provider architecture, context providers, layout engine, and Electron main
+process layer. Consuming apps (e.g., `dash-electron`) use this as their foundation.
 
 **Package:** `@trops/dash-core`
 **Repository:** [github.com/trops/dash-core](https://github.com/trops/dash-core)
+**Published to:** public npm registry — no special `.npmrc` configuration required.
 
 **Two export paths:**
 
-- `@trops/dash-core` — Renderer layer (ESM + CJS). Platform-agnostic React components, contexts, hooks, models, and utilities. Zero Electron dependencies.
-- `@trops/dash-core/electron` — Electron layer (CJS only). Controllers, IPC handlers, events, widget pipeline, and the `createMainApi` factory.
+- `@trops/dash-core` — Renderer layer (ESM + CJS). Platform-agnostic React components,
+  contexts, hooks, models, and utilities. Zero Electron dependencies.
+- `@trops/dash-core/electron` — Electron layer (CJS only). Controllers, IPC handlers,
+  events, widget pipeline, and the `createMainApi` factory.
 
 **Peer dependencies:** `react ^18.2.0`, `react-dom ^18.2.0`, `@trops/dash-react >=0.1.187`
+
+---
 
 ## Architecture
 
@@ -27,10 +238,8 @@ Platform-agnostic UI framework. ~54 source files.
 | **Hooks** | `hooks/` | useDashboard, useMcpProvider, useWidgetProviders, useInstalledWidgets, useWidgetEvents, useRegistrySearch |
 | **Models** | `Models/` | DashboardModel, LayoutModel, ThemeModel, ComponentConfigModel, SettingsModel, etc. |
 | **Api** | `Api/` | DashboardApi, ElectronDashboardApi (typed), WidgetApi, ThemeApi, MockDashboardApi |
-| **Components** | `Components/` | Dashboard, Layout (Builder, Grid, Container), Settings, Navigation, Theme, Provider, Menu, Workspace |
+| **Components** | `Components/` | Dashboard, Layout, Settings, Navigation, Theme, Provider, Menu, Workspace |
 | **Widget** | `Widget/` | Widget, WidgetFactory, ExternalWidget |
-| **DashboardPublisher** | `DashboardPublisher.js` | Dashboard state publishing |
-| **ErrorBoundary** | `ErrorBoundary.js` | React error boundary |
 | **Utils** | `utils/` | widgetBundleLoader, layout, validation, mcpUtils, dragTypes, resolveIcon, themeGenerator, DynamicWidgetLoader, WidgetRegistry, plugin-loader |
 
 ### Electron Layer (`electron/`)
@@ -44,7 +253,6 @@ Main process controllers, APIs, and widget pipeline. ~60 files.
 | **Events** | `events/` | Event channel definitions for each module |
 | **Widget Pipeline** | `widgetRegistry.js`, `widgetCompiler.js`, `dynamicWidgetLoader.js` | Install, compile (esbuild), and load external widgets |
 | **MCP** | `mcp/mcpServerCatalog.json` | MCP server definitions (transport, command, args, env mapping) |
-| **Utils** | `utils/` | file, color, browser, transform, ntc, algolia |
 
 ### Entry Points
 
@@ -52,12 +260,13 @@ Main process controllers, APIs, and widget pipeline. ~60 files.
 ```javascript
 import { ComponentManager, DashboardPublisher, useDashboard, ... } from "@trops/dash-core";
 ```
-Auto-registers LayoutContainer and LayoutGridContainer with ComponentManager on import.
 
 **Electron** (`electron/index.js`):
 ```javascript
 const { createMainApi, providerController, mcpController, ... } = require("@trops/dash-core/electron");
 ```
+
+---
 
 ## Directory Structure
 
@@ -65,14 +274,6 @@ const { createMainApi, providerController, mcpController, ... } = require("@trop
 dash-core/
 ├── src/                            # Renderer layer
 │   ├── Api/
-│   │   ├── DashboardApi.js
-│   │   ├── ElectronDashboardApi.ts  # Typed API with MCP methods
-│   │   ├── IDashboardApi.ts
-│   │   ├── MockDashboardApi.ts
-│   │   ├── WebDashboardApi.ts
-│   │   ├── WidgetApi.js
-│   │   ├── WidgetHelpers.js
-│   │   └── ThemeApi.js
 │   ├── ComponentManager.js
 │   ├── Components/
 │   │   ├── Dashboard/
@@ -80,93 +281,32 @@ dash-core/
 │   │   ├── Navigation/
 │   │   ├── Settings/
 │   │   ├── Theme/
-│   │   ├── Provider/                # McpServerPicker, ProviderForm, etc.
+│   │   ├── Provider/
 │   │   ├── Menu/
 │   │   └── Workspace/
 │   ├── Context/
-│   │   ├── AppThemeScope.js
-│   │   ├── DashboardContext.js
-│   │   ├── DashboardThemeProvider.js
-│   │   ├── DashboardWrapper.js
-│   │   ├── ProviderContext.js
-│   │   ├── ThemeWrapper.js
-│   │   ├── WidgetContext.js
-│   │   └── WorkspaceContext.js
 │   ├── DashboardPublisher.js
 │   ├── ErrorBoundary.js
 │   ├── Models/
-│   │   ├── ColorModel.js
-│   │   ├── ComponentConfigModel.js
-│   │   ├── ContextModel.js
-│   │   ├── DashboardItemModel.js
-│   │   ├── DashboardModel.js
-│   │   ├── LayoutModel.js
-│   │   ├── MenuItemModel.js
-│   │   ├── SettingsModel.js
-│   │   ├── ThemeModel.js
-│   │   └── WorkspaceModel.js
 │   ├── Widget/
-│   │   ├── ExternalWidget.js
-│   │   ├── Widget.js
-│   │   └── WidgetFactory.js
 │   ├── hooks/
-│   │   ├── useDashboard.js
-│   │   ├── useInstalledWidgets.js
-│   │   ├── useMcpProvider.js
-│   │   ├── useRegistrySearch.js
-│   │   ├── useWidgetEvents.js
-│   │   └── useWidgetProviders.js
 │   └── utils/
-│       ├── DynamicWidgetLoader.js
-│       ├── WidgetRegistry.js
-│       ├── dragTypes.js
-│       ├── layout.js
-│       ├── mcpUtils.js
-│       ├── plugin-loader.js
-│       ├── resolveIcon.js
-│       ├── themeGenerator.js
-│       ├── validation.js
-│       └── widgetBundleLoader.js
 ├── electron/                        # Electron layer
 │   ├── api/
-│   │   ├── mainApi.js               # createMainApi factory
-│   │   ├── providerApi.js
-│   │   ├── mcpApi.js
-│   │   ├── widgetApi.js
-│   │   ├── registryApi.js
-│   │   ├── workspaceApi.js
-│   │   ├── themeApi.js
-│   │   ├── layoutApi.js
-│   │   ├── dataApi.js
-│   │   ├── settingsApi.js
-│   │   ├── secureStoreApi.js
-│   │   ├── dialogApi.js
-│   │   ├── algoliaApi.js
-│   │   ├── openaiApi.js
-│   │   ├── menuItemsApi.js
-│   │   └── pluginApi.js
+│   │   └── mainApi.js               # createMainApi factory
 │   ├── controller/
-│   │   ├── providerController.js    # Provider CRUD + encryption
-│   │   ├── mcpController.js         # MCP server lifecycle
-│   │   ├── workspaceController.js
-│   │   ├── themeController.js
-│   │   ├── settingsController.js
-│   │   ├── layoutController.js
-│   │   ├── dataController.js
-│   │   ├── registryController.js
-│   │   ├── secureStoreController.js
-│   │   ├── dialogController.js
-│   │   ├── algoliaController.js
-│   │   ├── openaiController.js
-│   │   ├── menuItemsController.js
-│   │   └── pluginController.js
-│   ├── events/                      # Event channel definitions
+│   ├── events/
 │   ├── mcp/
 │   │   └── mcpServerCatalog.json
 │   ├── utils/
-│   ├── widgetRegistry.js            # Widget install/uninstall persistence
-│   ├── widgetCompiler.js            # esbuild compilation
-│   └── dynamicWidgetLoader.js       # Runtime widget loading
+│   ├── widgetRegistry.js
+│   ├── widgetCompiler.js
+│   └── dynamicWidgetLoader.js
+├── dist/                            # Build output — never edit manually
+│   ├── index.js                     # Renderer CJS
+│   ├── index.esm.js                 # Renderer ESM
+│   └── electron/
+│       └── index.js                 # Electron CJS
 ├── .github/workflows/
 │   └── release-package.yml          # Auto-publish on push to master
 ├── package.json
@@ -176,6 +316,8 @@ dash-core/
 └── tsconfig.json
 ```
 
+---
+
 ## Key Patterns
 
 ### createMainApi Factory
@@ -183,7 +325,6 @@ dash-core/
 Template apps use `createMainApi(extensions)` to combine dash-core APIs with custom ones:
 
 ```javascript
-// In consuming app's electron.js / preload.js
 const { createMainApi } = require("@trops/dash-core/electron");
 
 const api = createMainApi({
@@ -192,13 +333,12 @@ const api = createMainApi({
 });
 ```
 
-Core APIs (providers, MCP, widgets, themes, workspaces, etc.) are built-in. Extensions add template-specific APIs.
-
 ### Provider System — Critical Note
 
 **Providers are read from `AppContext.providers`, NOT `DashboardContext.providers`.**
 
-DashboardContext.providers is structurally empty because DashboardWrapper renders before providers are loaded in the component tree. Always use:
+DashboardContext.providers is structurally empty because DashboardWrapper renders before
+providers are loaded in the component tree. Always use:
 
 ```javascript
 // Recommended
@@ -211,30 +351,6 @@ import { AppContext } from "@trops/dash-core";
 const { providers } = useContext(AppContext);
 ```
 
-### ThemeContext Import Rule
-
-Always import `ThemeContext` from `@trops/dash-react` — never from a local context file:
-
-```javascript
-// CORRECT
-import { ThemeContext } from "@trops/dash-react";
-
-// WRONG — creates dual context instances
-import { ThemeContext } from "./Context/ThemeContext";
-```
-
-### FontAwesomeIcon Import Rule
-
-Always import `FontAwesomeIcon` from `@trops/dash-react`:
-
-```javascript
-// CORRECT
-import { FontAwesomeIcon } from "@trops/dash-react";
-
-// WRONG — duplicates the dependency
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-```
-
 ### MCP Provider Lifecycle
 
 1. Widget mounts → `useMcpProvider("slack")` hook runs
@@ -244,38 +360,38 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 5. Widget calls `callTool("send_message", args)` → 30-second timeout per call
 6. On unmount, hook calls `mcpStopServer()` to clean up child process
 
-Tool scoping enforced at both hook level (client-side filter) and main process level (mcpController validates allowedTools).
-
 ### ComponentManager
 
-- `registerContainerTypes(LayoutContainer, LayoutGridContainer)` — auto-called when `@trops/dash-core` is imported
+- `registerContainerTypes(LayoutContainer, LayoutGridContainer)` — auto-called on import
 - `registerWidget(config, name)` / `config(name)` for widget CRUD
-- `_sourcePackage` field set on external widget configs by `registerBundleConfigs` in consuming app's Dash.js
-- `loadWidgetComponents` enriches registry entries with `.dash.js` metadata (displayName, icon, providers, workspace, events, eventHandlers)
+- `_sourcePackage` field set on external widget configs by `registerBundleConfigs`
+- `loadWidgetComponents` enriches registry entries with `.dash.js` metadata
 
 ### Widget Bundle Loading
 
-- `widgetBundleLoader.js` evaluates CJS bundles with `new Function()` + require shim (MODULE_MAP)
+- `widgetBundleLoader.js` evaluates CJS bundles with `new Function()` + require shim
 - **Critical:** MODULE_MAP must include `@trops/dash-core` so external widgets share the ComponentManager singleton
 - `extractWidgetConfigs` requires `typeof entry.component === "function"`
 
 ### Layout System
 
-- **Grid path vs non-grid path**: Grid cells (`LayoutGridContainer.renderEditCell`) use `layout.find()` which returns raw items WITHOUT LayoutModel processing. Non-grid path processes through LayoutModel.
+- **Grid path vs non-grid path**: Grid cells use `layout.find()` which returns raw items WITHOUT LayoutModel processing.
 - **LayoutModel**: Refreshes `eventHandlers`/`events` from `ComponentManager.config()` — critical for keeping config fields up-to-date in the edit modal.
 
-## Development Workflow
+---
 
-### Building
+## Build and Publishing
+
+### Build Commands
 
 ```bash
-# Build both layers
+# Build both layers (use this for validation)
 npm run build
 
-# Build renderer only (ESM + CJS)
+# Build renderer only — development iteration only, not a substitute for npm run ci
 npm run build:renderer
 
-# Build electron only (CJS)
+# Build electron only — development iteration only, not a substitute for npm run ci
 npm run build:electron
 
 # Clean dist
@@ -285,15 +401,15 @@ npm run clean
 npm run prettify
 ```
 
-### Build Output
+### Build Output Verification
 
+After any build, always verify all three output files exist:
+
+```bash
+ls dist/index.js dist/index.esm.js dist/electron/index.js
 ```
-dist/
-├── index.js          # Renderer CJS
-├── index.esm.js      # Renderer ESM
-└── electron/
-    └── index.js      # Electron CJS
-```
+
+A build that exits 0 but produces incomplete output is a silent failure.
 
 ### Rollup Configuration
 
@@ -315,47 +431,9 @@ Automated via GitHub Actions on push to `master`:
 2. `npm run build`
 3. `npm publish --provenance --access public`
 
-Published to npm as `@trops/dash-core`.
+Published to the **public npm registry** — no special `.npmrc` configuration required.
 
-### Local CI Script (Recommended)
-
-The `scripts/ci.sh` script handles the full validation pipeline (Node 20 via nvm, Prettier, renderer build, electron build + MCP catalog, Jest tests, MCP tests, output verification) and optionally the git workflow:
-
-```bash
-# Validate only
-npm run ci
-
-# Validate + commit + version bump
-npm run ci:commit -- -m "Your commit message"
-
-# Above + push branch
-npm run ci:push -- -m "Your commit message"
-
-# Above + create PR
-npm run ci:pr -- -m "Your commit message"
-
-# Above + merge PR + tag + cleanup branches
-npm run ci:release -- -m "Your commit message"
-```
-
-Each flag is cumulative -- `--release` runs all prior steps. The script automatically switches to Node 20 using nvm.
-
-### Validation
-
-After making changes:
-
-```bash
-# Quick check
-npm run build
-
-# Format + build
-npm run prettify && npm run build
-```
-
-**Success criteria:**
-- No build errors
-- `dist/index.js`, `dist/index.esm.js`, `dist/electron/index.js` all created
-- No unresolved import errors
+---
 
 ## Code Style
 
@@ -366,6 +444,22 @@ npm run prettify && npm run build
 - **Contexts:** PascalCase with suffix (`ThemeContext.js`)
 - **Electron layer:** CommonJS (`require` / `module.exports`)
 - **Renderer layer:** ES modules (`import` / `export`)
+- **UI components:** Always from `@trops/dash-react` — never built locally if dash-react provides it
+
+---
+
+## Related Projects
+
+| Package | Purpose |
+|---|---|
+| `@trops/dash-react` | UI component library — the UX library for all Dash UI |
+| `dash-electron` | Electron app template consuming dash-core |
+| `dash` (original) | Original monolith, preserved as safety net only |
+
+Sibling repos are not at a fixed path — they vary by developer machine. Always discover
+them at runtime using `package.json` name matching (see Mandatory Pre-Work above).
+
+---
 
 ## Key Files Reference
 
@@ -389,22 +483,37 @@ npm run prettify && npm run build
 | `electron/widgetCompiler.js` | esbuild compilation pipeline |
 | `electron/mcp/mcpServerCatalog.json` | MCP server definitions |
 
-## Related Packages
+---
 
-| Package | Location | Purpose |
-|---|---|---|
-| `@trops/dash-react` | `~/Development/dash-react/dash-react/` | UI component library (Panel, Button, ThemeContext, etc.) |
-| `dash-electron` | `~/Development/dash-electron/dash-electron/` | Electron app template using dash-core |
-| `dash` (original) | `~/Development/dash/dash/` | Original monolith, preserved as safety net |
+## Troubleshooting
+
+**Build exits 0 but dist files are missing:** Silent rollup failure — check for unresolved
+imports or circular dependencies. Run `npm run build` with verbose output.
+
+**`dist/electron/index.js` missing after build:** Electron rollup config may have failed
+silently. Run `npm run build:electron` alone to isolate the error.
+
+**Consumer app (dash-electron) breaks after a dash-core change:** Never modify dash-electron
+as a workaround — fix the root cause in dash-core. Run `npm run ci` in dash-core first,
+then re-test in dash-electron.
+
+**ThemeContext not updating in consumer:** Verify ThemeContext is imported from
+`@trops/dash-react` everywhere — a local import creates a duplicate context instance that
+won't receive updates.
+
+**MCP tools not appearing in widget:** Check that `AppContext.providers` (not
+`DashboardContext.providers`) is the source. DashboardContext.providers is structurally empty.
+
+---
 
 ## Documentation
 
 See [docs/INDEX.md](docs/INDEX.md) for the full documentation index:
 
-- [Widget System](docs/WIDGET_SYSTEM.md) — Architecture, auto-registration, hot reload
-- [Widget API](docs/WIDGET_API.md) — Management methods reference
-- [Widget Development](docs/WIDGET_DEVELOPMENT.md) — Create and test widgets
-- [Widget Registry](docs/WIDGET_REGISTRY.md) — Packaging and distribution
-- [Provider Architecture](docs/PROVIDER_ARCHITECTURE.md) — Three-tier storage, encryption, MCP
-- [Widget Provider Configuration](docs/WIDGET_PROVIDER_CONFIGURATION.md) — Provider config in .dash.js
-- [Testing](docs/TESTING.md) — Testing workflows and checklists
+- [Widget System](docs/WIDGET_SYSTEM.md)
+- [Widget API](docs/WIDGET_API.md)
+- [Widget Development](docs/WIDGET_DEVELOPMENT.md)
+- [Widget Registry](docs/WIDGET_REGISTRY.md)
+- [Provider Architecture](docs/PROVIDER_ARCHITECTURE.md)
+- [Widget Provider Configuration](docs/WIDGET_PROVIDER_CONFIGURATION.md)
+- [Testing](docs/TESTING.md)
