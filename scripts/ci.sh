@@ -121,19 +121,28 @@ MAIN_BRANCH="master"
 step "Configuring git credentials via gh"
 gh auth setup-git
 
-# --- Pull latest from remote ---
-step "Pulling latest from origin"
-git fetch origin
-if git rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1; then
-    git pull origin "$BRANCH" --rebase
-elif [[ "$BRANCH" != "$MAIN_BRANCH" ]]; then
-    git pull origin "$MAIN_BRANCH" --rebase
-fi
-
 # --- Commit ---
 step "Committing changes"
-git add -A
+git add -u
 git commit -m "$COMMIT_MSG"
+
+# --- Rebase on latest remote ---
+step "Rebasing on latest origin"
+git fetch origin
+REBASE_TARGET=""
+if git rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1; then
+    REBASE_TARGET="origin/$BRANCH"
+elif [[ "$BRANCH" != "$MAIN_BRANCH" ]]; then
+    REBASE_TARGET="origin/$MAIN_BRANCH"
+fi
+if [[ -n "$REBASE_TARGET" ]]; then
+    git rebase "$REBASE_TARGET" || {
+        echo "Error: Rebase on $REBASE_TARGET failed (conflicts)."
+        echo "Aborting rebase. Resolve manually and re-run."
+        git rebase --abort 2>/dev/null || true
+        exit 1
+    }
+fi
 
 step "Bumping version"
 npm version patch --no-git-tag-version
