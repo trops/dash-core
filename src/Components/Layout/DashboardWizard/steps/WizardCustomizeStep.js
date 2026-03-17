@@ -248,7 +248,10 @@ export const WizardCustomizeStep = ({
   }
 
   // --- Provider setup summary ---
-  const selectedProviders = (state.providers || []).map((provKey) => {
+  const selectedProviders = (
+    (state.filters && state.filters.providers) ||
+    []
+  ).map((provKey) => {
     const prov = providersMap?.[provKey] || {};
     return {
       key: provKey,

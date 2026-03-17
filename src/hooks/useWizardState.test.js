@@ -33,8 +33,11 @@ describe("useWizardState", () => {
 
   test("returns initial state at step 0", () => {
     expect(result.current.state.step).toBe(0);
-    expect(result.current.state.intent).toEqual([]);
-    expect(result.current.state.providers).toEqual([]);
+    expect(result.current.state.filters).toEqual({
+      categories: [],
+      providers: [],
+      query: "",
+    });
     expect(result.current.state.selectedWidgets).toEqual([]);
     expect(result.current.state.selectedDashboard).toBeNull();
     expect(result.current.state.path).toBeNull();
@@ -44,52 +47,67 @@ describe("useWizardState", () => {
     expect(result.current.isCustomPath).toBe(false);
   });
 
-  // --- Intent actions ---
+  // --- Filter actions ---
 
-  test("SET_INTENT replaces intent array", () => {
+  test("SET_FILTERS merges into filters", () => {
     act(() => {
       result.current.dispatch({
-        type: "SET_INTENT",
-        payload: ["reporting", "monitoring"],
+        type: "SET_FILTERS",
+        payload: { categories: ["reporting", "monitoring"] },
       });
     });
-    expect(result.current.state.intent).toEqual(["reporting", "monitoring"]);
+    expect(result.current.state.filters.categories).toEqual([
+      "reporting",
+      "monitoring",
+    ]);
+    expect(result.current.state.filters.providers).toEqual([]);
+    expect(result.current.state.filters.query).toBe("");
   });
 
-  test("TOGGLE_INTENT adds then removes a category", () => {
-    act(() => {
-      result.current.dispatch({ type: "TOGGLE_INTENT", payload: "reporting" });
-    });
-    expect(result.current.state.intent).toEqual(["reporting"]);
-
-    act(() => {
-      result.current.dispatch({ type: "TOGGLE_INTENT", payload: "reporting" });
-    });
-    expect(result.current.state.intent).toEqual([]);
-  });
-
-  // --- Provider actions ---
-
-  test("SET_PROVIDERS replaces providers array", () => {
+  test("TOGGLE_FILTER_CATEGORY adds then removes a category", () => {
     act(() => {
       result.current.dispatch({
-        type: "SET_PROVIDERS",
-        payload: ["github", "slack"],
+        type: "TOGGLE_FILTER_CATEGORY",
+        payload: "reporting",
       });
     });
-    expect(result.current.state.providers).toEqual(["github", "slack"]);
+    expect(result.current.state.filters.categories).toEqual(["reporting"]);
+
+    act(() => {
+      result.current.dispatch({
+        type: "TOGGLE_FILTER_CATEGORY",
+        payload: "reporting",
+      });
+    });
+    expect(result.current.state.filters.categories).toEqual([]);
   });
 
-  test("TOGGLE_PROVIDER adds then removes a provider", () => {
+  test("TOGGLE_FILTER_PROVIDER adds then removes a provider", () => {
     act(() => {
-      result.current.dispatch({ type: "TOGGLE_PROVIDER", payload: "github" });
+      result.current.dispatch({
+        type: "TOGGLE_FILTER_PROVIDER",
+        payload: "github",
+      });
     });
-    expect(result.current.state.providers).toEqual(["github"]);
+    expect(result.current.state.filters.providers).toEqual(["github"]);
 
     act(() => {
-      result.current.dispatch({ type: "TOGGLE_PROVIDER", payload: "github" });
+      result.current.dispatch({
+        type: "TOGGLE_FILTER_PROVIDER",
+        payload: "github",
+      });
     });
-    expect(result.current.state.providers).toEqual([]);
+    expect(result.current.state.filters.providers).toEqual([]);
+  });
+
+  test("SET_SEARCH_QUERY updates query", () => {
+    act(() => {
+      result.current.dispatch({
+        type: "SET_SEARCH_QUERY",
+        payload: "slack",
+      });
+    });
+    expect(result.current.state.filters.query).toBe("slack");
   });
 
   // --- Widget actions ---
@@ -133,7 +151,9 @@ describe("useWizardState", () => {
         payload: { id: "dash-1" },
       });
     });
-    expect(result.current.state.selectedDashboard).toEqual({ id: "dash-1" });
+    expect(result.current.state.selectedDashboard).toEqual({
+      id: "dash-1",
+    });
   });
 
   test("SET_PATH sets path and updates derived flags", () => {
@@ -153,7 +173,10 @@ describe("useWizardState", () => {
   // --- Layout actions ---
 
   test("SET_LAYOUT replaces layout object", () => {
-    const layout = { templateKey: "two-columns", widgetOrder: ["A", "B"] };
+    const layout = {
+      templateKey: "two-columns",
+      widgetOrder: ["A", "B"],
+    };
     act(() => {
       result.current.dispatch({ type: "SET_LAYOUT", payload: layout });
     });
@@ -164,7 +187,10 @@ describe("useWizardState", () => {
     act(() => {
       result.current.dispatch({
         type: "SET_LAYOUT",
-        payload: { templateKey: "two-columns", widgetOrder: ["A", "B"] },
+        payload: {
+          templateKey: "two-columns",
+          widgetOrder: ["A", "B"],
+        },
       });
     });
     act(() => {
@@ -203,22 +229,28 @@ describe("useWizardState", () => {
 
   test("RESET returns to initial state", () => {
     act(() => {
-      result.current.dispatch({ type: "TOGGLE_INTENT", payload: "reporting" });
-      result.current.dispatch({ type: "SET_STEP", payload: 3 });
+      result.current.dispatch({
+        type: "TOGGLE_FILTER_CATEGORY",
+        payload: "reporting",
+      });
+      result.current.dispatch({ type: "SET_STEP", payload: 2 });
     });
     act(() => {
       result.current.dispatch({ type: "RESET" });
     });
     expect(result.current.state.step).toBe(0);
-    expect(result.current.state.intent).toEqual([]);
+    expect(result.current.state.filters.categories).toEqual([]);
   });
 
   // --- Step navigation ---
 
   test("nextStep advances when canProceed is true", () => {
-    // Step 0 requires intent
+    // Step 0 requires a dashboard or widget selection
     act(() => {
-      result.current.dispatch({ type: "TOGGLE_INTENT", payload: "reporting" });
+      result.current.dispatch({
+        type: "SET_SELECTED_DASHBOARD",
+        payload: { id: "d1" },
+      });
     });
     expect(result.current.canProceed).toBe(true);
 
@@ -229,7 +261,7 @@ describe("useWizardState", () => {
   });
 
   test("nextStep does nothing when canProceed is false", () => {
-    // Step 0 with empty intent
+    // Step 0 with no selection
     expect(result.current.canProceed).toBe(false);
     act(() => {
       result.current.nextStep();
@@ -259,58 +291,37 @@ describe("useWizardState", () => {
 
   test("goToStep navigates to valid steps only", () => {
     act(() => {
-      result.current.goToStep(4);
+      result.current.goToStep(2);
     });
-    expect(result.current.state.step).toBe(4);
+    expect(result.current.state.step).toBe(2);
 
     act(() => {
       result.current.goToStep(-1);
     });
-    expect(result.current.state.step).toBe(4);
+    expect(result.current.state.step).toBe(2);
 
     act(() => {
-      result.current.goToStep(6);
+      result.current.goToStep(3);
     });
-    expect(result.current.state.step).toBe(4);
+    expect(result.current.state.step).toBe(2);
   });
 
   test("nextStep does not exceed max step", () => {
     act(() => {
-      result.current.dispatch({ type: "SET_STEP", payload: 5 });
+      result.current.dispatch({ type: "SET_STEP", payload: 2 });
     });
     act(() => {
       result.current.nextStep();
     });
-    expect(result.current.state.step).toBe(5);
+    expect(result.current.state.step).toBe(2);
   });
 
   // --- canProceed per step ---
 
-  test("step 0 canProceed requires intent", () => {
+  test("step 0 canProceed requires dashboard or widget selection", () => {
     expect(result.current.canProceed).toBe(false);
-    act(() => {
-      result.current.dispatch({ type: "TOGGLE_INTENT", payload: "reporting" });
-    });
-    expect(result.current.canProceed).toBe(true);
-  });
 
-  test("step 1 canProceed requires providers", () => {
-    act(() => {
-      result.current.dispatch({ type: "SET_STEP", payload: 1 });
-    });
-    expect(result.current.canProceed).toBe(false);
-    act(() => {
-      result.current.dispatch({ type: "TOGGLE_PROVIDER", payload: "github" });
-    });
-    expect(result.current.canProceed).toBe(true);
-  });
-
-  test("step 2 prebuilt path requires selectedDashboard", () => {
-    act(() => {
-      result.current.dispatch({ type: "SET_STEP", payload: 2 });
-      result.current.dispatch({ type: "SET_PATH", payload: "prebuilt" });
-    });
-    expect(result.current.canProceed).toBe(false);
+    // Dashboard selection satisfies
     act(() => {
       result.current.dispatch({
         type: "SET_SELECTED_DASHBOARD",
@@ -318,15 +329,13 @@ describe("useWizardState", () => {
       });
     });
     expect(result.current.canProceed).toBe(true);
-  });
 
-  test("step 2 custom path requires selectedWidgets", () => {
+    // Clear dashboard, add widget
     act(() => {
-      result.current.dispatch({ type: "SET_STEP", payload: 2 });
-      result.current.dispatch({ type: "SET_PATH", payload: "custom" });
-    });
-    expect(result.current.canProceed).toBe(false);
-    act(() => {
+      result.current.dispatch({
+        type: "SET_SELECTED_DASHBOARD",
+        payload: null,
+      });
       result.current.dispatch({
         type: "TOGGLE_WIDGET",
         payload: { name: "W1" },
@@ -335,9 +344,9 @@ describe("useWizardState", () => {
     expect(result.current.canProceed).toBe(true);
   });
 
-  test("step 3 canProceed requires layout templateKey", () => {
+  test("step 1 canProceed requires layout templateKey", () => {
     act(() => {
-      result.current.dispatch({ type: "SET_STEP", payload: 3 });
+      result.current.dispatch({ type: "SET_STEP", payload: 1 });
     });
     expect(result.current.canProceed).toBe(false);
     act(() => {
@@ -349,9 +358,9 @@ describe("useWizardState", () => {
     expect(result.current.canProceed).toBe(true);
   });
 
-  test("step 4 canProceed requires non-empty name", () => {
+  test("step 2 canProceed requires non-empty name", () => {
     act(() => {
-      result.current.dispatch({ type: "SET_STEP", payload: 4 });
+      result.current.dispatch({ type: "SET_STEP", payload: 2 });
     });
     expect(result.current.canProceed).toBe(false);
     act(() => {
@@ -363,22 +372,15 @@ describe("useWizardState", () => {
     expect(result.current.canProceed).toBe(true);
   });
 
-  test("step 4 whitespace-only name does not pass", () => {
+  test("step 2 whitespace-only name does not pass", () => {
     act(() => {
-      result.current.dispatch({ type: "SET_STEP", payload: 4 });
+      result.current.dispatch({ type: "SET_STEP", payload: 2 });
       result.current.dispatch({
         type: "SET_CUSTOMIZATION",
         payload: { name: "   " },
       });
     });
     expect(result.current.canProceed).toBe(false);
-  });
-
-  test("step 5 always canProceed", () => {
-    act(() => {
-      result.current.dispatch({ type: "SET_STEP", payload: 5 });
-    });
-    expect(result.current.canProceed).toBe(true);
   });
 
   // --- Unknown action ---

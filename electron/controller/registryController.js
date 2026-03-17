@@ -182,11 +182,13 @@ async function searchRegistry(query = "", filters = {}) {
     });
   }
 
-  // Apply category filter
+  // Apply category filter (supports single string or comma-separated or array)
   if (filters.category) {
-    packages = packages.filter(
-      (pkg) =>
-        (pkg.category || "").toLowerCase() === filters.category.toLowerCase(),
+    const cats = Array.isArray(filters.category)
+      ? filters.category
+      : filters.category.split(",").map((c) => c.trim().toLowerCase());
+    packages = packages.filter((pkg) =>
+      cats.includes((pkg.category || "").toLowerCase()),
     );
   }
 
@@ -198,11 +200,13 @@ async function searchRegistry(query = "", filters = {}) {
     );
   }
 
-  // Apply tag filter
+  // Apply tag filter (supports single string or comma-separated or array)
   if (filters.tag) {
-    const tagLower = filters.tag.toLowerCase();
+    const tags = Array.isArray(filters.tag)
+      ? filters.tag
+      : filters.tag.split(",").map((t) => t.trim().toLowerCase());
     packages = packages.filter((pkg) =>
-      (pkg.tags || []).some((t) => t.toLowerCase() === tagLower),
+      (pkg.tags || []).some((t) => tags.includes(t.toLowerCase())),
     );
   }
 

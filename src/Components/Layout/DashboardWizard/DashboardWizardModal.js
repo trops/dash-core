@@ -1,16 +1,12 @@
 import React, { useEffect, useCallback } from "react";
 import { Modal, Stepper, Button } from "@trops/dash-react";
 import { useWizardState } from "../../../hooks/useWizardState";
-import { WizardIntentStep } from "./steps/WizardIntentStep";
-import { WizardProvidersStep } from "./steps/WizardProvidersStep";
-import { WizardResultsStep } from "./steps/WizardResultsStep";
+import { WizardDiscoverStep } from "./steps/WizardDiscoverStep";
 import { WizardLayoutPreviewStep } from "./steps/WizardLayoutPreviewStep";
 import { WizardCustomizeStep } from "./steps/WizardCustomizeStep";
 
 const STEP_LABELS = [
-  { label: "Intent", description: "Choose categories" },
-  { label: "Providers", description: "Select data sources" },
-  { label: "Browse", description: "Pick widgets or dashboards" },
+  { label: "Discover", description: "Search & select" },
   { label: "Layout", description: "Arrange your widgets" },
   { label: "Customize", description: "Name, folder & theme" },
 ];
@@ -67,25 +63,25 @@ export const DashboardWizardModal = ({
   // Skip layout step for prebuilt path
   const handleNext = useCallback(() => {
     if (!canProceed) return;
-    if (state.step === 2 && isPrebuiltPath) {
-      // Skip layout step (3), go straight to customize (4)
-      goToStep(4);
+    if (state.step === 0 && isPrebuiltPath) {
+      // Skip layout step (1), go straight to customize (2)
+      goToStep(2);
     } else {
       nextStep();
     }
   }, [canProceed, state.step, isPrebuiltPath, goToStep, nextStep]);
 
   const handleBack = useCallback(() => {
-    if (state.step === 4 && isPrebuiltPath) {
-      // Skip back over layout step (3), go to browse (2)
-      goToStep(2);
+    if (state.step === 2 && isPrebuiltPath) {
+      // Skip back over layout step (1), go to discover (0)
+      goToStep(0);
     } else {
       prevStep();
     }
   }, [state.step, isPrebuiltPath, goToStep, prevStep]);
 
-  const isLastStep = state.step === 4;
-  const isSuccessState = state.step === 4 && state._created;
+  const isLastStep = state.step === 2;
+  const isSuccessState = state.step === 2 && state._created;
 
   return (
     <Modal isOpen={open} setIsOpen={setIsOpen} width="w-5/6" height="h-5/6">
@@ -129,7 +125,7 @@ export const DashboardWizardModal = ({
               description={STEP_LABELS[0].description}
             >
               <div className="flex-1 min-h-0 overflow-y-auto">
-                <WizardIntentStep state={state} dispatch={dispatch} />
+                <WizardDiscoverStep state={state} dispatch={dispatch} />
               </div>
             </Stepper.Step>
 
@@ -138,31 +134,13 @@ export const DashboardWizardModal = ({
               description={STEP_LABELS[1].description}
             >
               <div className="flex-1 min-h-0 overflow-y-auto">
-                <WizardProvidersStep state={state} dispatch={dispatch} />
+                <WizardLayoutPreviewStep state={state} dispatch={dispatch} />
               </div>
             </Stepper.Step>
 
             <Stepper.Step
               label={STEP_LABELS[2].label}
               description={STEP_LABELS[2].description}
-            >
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                <WizardResultsStep state={state} dispatch={dispatch} />
-              </div>
-            </Stepper.Step>
-
-            <Stepper.Step
-              label={STEP_LABELS[3].label}
-              description={STEP_LABELS[3].description}
-            >
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                <WizardLayoutPreviewStep state={state} dispatch={dispatch} />
-              </div>
-            </Stepper.Step>
-
-            <Stepper.Step
-              label={STEP_LABELS[4].label}
-              description={STEP_LABELS[4].description}
             >
               <div className="flex-1 min-h-0 overflow-y-auto">
                 <WizardCustomizeStep
