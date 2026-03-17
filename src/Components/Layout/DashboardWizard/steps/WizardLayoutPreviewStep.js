@@ -55,9 +55,11 @@ export const WizardLayoutPreviewStep = ({ state, dispatch }) => {
   );
 
   return (
-    <div className="wizard-layout-step">
-      <h3 className="wizard-step-header">Preview your layout</h3>
-      <p className="wizard-step-description">
+    <div className="flex flex-col gap-4">
+      <h3 className="text-lg font-semibold text-gray-200">
+        Preview your layout
+      </h3>
+      <p className="text-sm text-gray-400">
         Drag widgets to rearrange their placement in the grid.
       </p>
       {template ? (
@@ -68,12 +70,8 @@ export const WizardLayoutPreviewStep = ({ state, dispatch }) => {
           dispatch={dispatch}
         />
       ) : (
-        <div className="wizard-empty">
-          <FontAwesomeIcon
-            icon="grid-2"
-            fixedWidth
-            className="wizard-empty-icon"
-          />
+        <div className="flex flex-col items-center justify-center gap-2 py-12 text-gray-500">
+          <FontAwesomeIcon icon="grid-2" fixedWidth />
           <p>No layout template available.</p>
         </div>
       )}
@@ -86,14 +84,12 @@ export const WizardLayoutPreviewStep = ({ state, dispatch }) => {
 const PrebuiltPreview = ({ dashboard }) => {
   if (!dashboard) {
     return (
-      <div className="wizard-layout-step">
-        <h3 className="wizard-step-header">Dashboard preview</h3>
-        <div className="wizard-empty">
-          <FontAwesomeIcon
-            icon="box-open"
-            fixedWidth
-            className="wizard-empty-icon"
-          />
+      <div className="flex flex-col gap-4">
+        <h3 className="text-lg font-semibold text-gray-200">
+          Dashboard preview
+        </h3>
+        <div className="flex flex-col items-center justify-center gap-2 py-12 text-gray-500">
+          <FontAwesomeIcon icon="box-open" fixedWidth />
           <p>No dashboard selected.</p>
         </div>
       </div>
@@ -103,35 +99,38 @@ const PrebuiltPreview = ({ dashboard }) => {
   const widgets = dashboard.widgets || [];
 
   return (
-    <div className="wizard-layout-step">
-      <h3 className="wizard-step-header">Dashboard preview</h3>
-      <div className="wizard-prebuilt-preview">
-        <div className="wizard-prebuilt-header">
+    <div className="flex flex-col gap-4">
+      <h3 className="text-lg font-semibold text-gray-200">Dashboard preview</h3>
+      <div className="rounded-lg border border-gray-700/50 bg-gray-800/50 p-4 flex flex-col gap-3">
+        <div className="flex items-center gap-2">
           <FontAwesomeIcon
             icon={resolveIcon(dashboard.icon || "grid-2")}
             fixedWidth
-            className="wizard-prebuilt-icon"
+            className="text-blue-400"
           />
-          <span className="wizard-prebuilt-name">
+          <span className="text-base font-semibold text-gray-200">
             {dashboard.displayName || dashboard.name}
           </span>
         </div>
         {dashboard.description && (
-          <p className="wizard-prebuilt-desc">{dashboard.description}</p>
+          <p className="text-sm text-gray-400">{dashboard.description}</p>
         )}
-        <div className="wizard-prebuilt-widgets">
-          <span className="wizard-prebuilt-widgets-label">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
             Includes {widgets.length} widget
             {widgets.length !== 1 ? "s" : ""}:
           </span>
-          <ul className="wizard-prebuilt-widget-list">
+          <ul className="flex flex-col gap-1">
             {widgets.map((w, i) => (
-              <li key={w.name || i}>
+              <li
+                key={w.name || i}
+                className="flex items-center gap-2 text-sm text-gray-300"
+              >
                 {w.icon && (
                   <FontAwesomeIcon
                     icon={resolveIcon(w.icon)}
                     fixedWidth
-                    className="wizard-prebuilt-widget-icon"
+                    className="text-gray-500 text-xs"
                   />
                 )}
                 <span>{w.displayName || w.name}</span>
@@ -216,7 +215,7 @@ const LayoutGrid = ({ template, widgetOrder, widgets, dispatch }) => {
 
   return (
     <div
-      className="wizard-layout-grid"
+      className="gap-3 p-4"
       style={{
         display: "grid",
         gridTemplateRows: `repeat(${template.rows}, 1fr)`,
@@ -233,13 +232,13 @@ const LayoutGrid = ({ template, widgetOrder, widgets, dispatch }) => {
         if (cell.rowSpan) cellStyle.gridRow = `span ${cell.rowSpan}`;
         if (cell.colSpan) cellStyle.gridColumn = `span ${cell.colSpan}`;
 
-        const classNames = [
-          "wizard-layout-cell",
+        const cellClasses = [
+          "rounded-lg border transition-all flex items-center justify-center min-h-[60px]",
           hasWidget
-            ? "wizard-layout-cell--filled"
-            : "wizard-layout-cell--empty",
-          isDragging ? "wizard-layout-cell--dragging" : "",
-          isDragOver ? "wizard-layout-cell--drag-over" : "",
+            ? "border-gray-600 bg-gray-800/80 cursor-grab"
+            : "border-dashed border-gray-700 bg-gray-800/30",
+          isDragging ? "opacity-50 scale-95" : "",
+          isDragOver ? "ring-2 ring-blue-400 border-blue-400" : "",
         ]
           .filter(Boolean)
           .join(" ");
@@ -247,7 +246,7 @@ const LayoutGrid = ({ template, widgetOrder, widgets, dispatch }) => {
         return (
           <div
             key={`${cell.row}-${cell.col}`}
-            className={classNames}
+            className={cellClasses}
             style={cellStyle}
             draggable={hasWidget}
             onDragStart={hasWidget ? (e) => handleDragStart(e, i) : undefined}
@@ -257,24 +256,24 @@ const LayoutGrid = ({ template, widgetOrder, widgets, dispatch }) => {
             onDragEnd={handleDragEnd}
           >
             {hasWidget ? (
-              <div className="wizard-layout-cell-content">
+              <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-300">
                 {content.icon && (
                   <FontAwesomeIcon
                     icon={resolveIcon(content.icon)}
                     fixedWidth
-                    className="wizard-layout-cell-icon"
+                    className="text-gray-400 text-xs"
                   />
                 )}
-                <span className="wizard-layout-cell-name">
+                <span className="truncate">
                   {content.displayName || content.name || content.key}
                 </span>
                 <FontAwesomeIcon
                   icon="grip-vertical"
-                  className="wizard-layout-cell-grip"
+                  className="text-gray-600 ml-auto"
                 />
               </div>
             ) : (
-              <div className="wizard-layout-cell-placeholder">
+              <div className="text-gray-600">
                 <FontAwesomeIcon icon="plus" fixedWidth />
               </div>
             )}

@@ -167,6 +167,56 @@ Tabs3.Content = function TabsContent({ value, children, _activeTab }) {
   );
 };
 
+function Card2({ children, hover, selected, onClick, className }) {
+  return React.createElement(
+    "button",
+    {
+      "data-testid": "card2",
+      "aria-selected": selected,
+      onClick: onClick,
+      className: className,
+    },
+    children,
+  );
+}
+
+function Card3({ children, hover, selected, onClick, className }) {
+  return React.createElement(
+    "button",
+    {
+      "data-testid": "card3",
+      "aria-selected": selected,
+      onClick: onClick,
+      className: className,
+    },
+    children,
+  );
+}
+
+function Tag2({ text, onClick, className }) {
+  return React.createElement(
+    "button",
+    {
+      "data-testid": "tag2",
+      onClick: onClick,
+      className: className,
+    },
+    text,
+  );
+}
+
+function Tag3({ text, onClick, className }) {
+  return React.createElement(
+    "span",
+    {
+      "data-testid": "tag3",
+      onClick: onClick,
+      className: className,
+    },
+    text,
+  );
+}
+
 module.exports = {
   ThemeContext,
   Modal,
@@ -176,6 +226,10 @@ module.exports = {
   Button,
   Button2,
   Button3,
+  Card2,
+  Card3,
+  Tag2,
+  Tag3,
   SelectableCard,
   FontAwesomeIcon,
   Tabs3,
