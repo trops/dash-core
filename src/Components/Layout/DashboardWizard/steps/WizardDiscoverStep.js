@@ -195,12 +195,12 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
           <>
             {/* Dashboards section */}
             {filteredDashboards.length > 0 && (
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-3">
                 <h4 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
                   Dashboards ({filteredDashboards.length} result
                   {filteredDashboards.length !== 1 ? "s" : ""})
                 </h4>
-                <div className="flex flex-col gap-2">
+                <div className="grid grid-cols-2 gap-3">
                   {filteredDashboards.map((dash) => {
                     const isSelected =
                       state.selectedDashboard &&
@@ -215,6 +215,9 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
                         key={dash.name}
                         hover
                         selected={isSelected}
+                        padding="p-5"
+                        rounded="rounded-lg"
+                        className="hover:shadow-lg"
                         onClick={() => handleSelectDashboard(dash)}
                       >
                         <div className="flex items-center gap-2">
@@ -234,7 +237,7 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
                           )}
                         </div>
                         {dash.description && (
-                          <p className="text-xs text-gray-400 mt-1">
+                          <p className="text-xs text-gray-400 mt-1 line-clamp-2">
                             {dash.description}
                           </p>
                         )}
@@ -254,7 +257,7 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
 
             {/* Widgets section */}
             {filteredWidgets.length > 0 && (
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-3">
                 <h4 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
                   Widgets ({filteredWidgets.length} result
                   {filteredWidgets.length !== 1 ? "s" : ""})
@@ -262,7 +265,7 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
                     <Tag3 text={`${state.selectedWidgets.length} selected`} />
                   )}
                 </h4>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-3">
                   {filteredWidgets.map((widget) => {
                     const checked = isWidgetSelected(widget);
                     return (
@@ -270,6 +273,9 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
                         key={widget.key}
                         hover
                         selected={checked}
+                        padding="p-5"
+                        rounded="rounded-lg"
+                        className="hover:shadow-lg"
                         onClick={() => handleToggleWidget(widget)}
                       >
                         <div className="flex items-start gap-2">
