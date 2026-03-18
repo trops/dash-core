@@ -280,7 +280,7 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
                     <Tag3 text={`${state.selectedWidgets.length} selected`} />
                   )}
                 </h4>
-                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   {filteredWidgets.map((widget) => {
                     const checked = isWidgetSelected(widget);
                     return (
@@ -288,46 +288,44 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
                         key={widget.key}
                         hover
                         selected={checked}
-                        padding="p-5"
+                        padding="p-4"
                         rounded="rounded-lg"
-                        className="hover:shadow-lg"
+                        className="hover:shadow-lg flex flex-col"
                         onClick={() => handleToggleWidget(widget)}
                       >
-                        <div className="flex items-start gap-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            {widget.icon && (
+                              <FontAwesomeIcon
+                                icon={resolveIcon(widget.icon)}
+                                fixedWidth
+                                className="text-gray-400 text-sm"
+                              />
+                            )}
+                            <span className="text-sm font-medium text-gray-200 truncate">
+                              {widget.name}
+                            </span>
+                          </div>
                           <FontAwesomeIcon
                             icon={checked ? "square-check" : "square"}
                             fixedWidth
                             className={
                               checked
-                                ? "text-blue-400 mt-0.5"
-                                : "text-gray-500 mt-0.5"
+                                ? "text-blue-400 flex-shrink-0"
+                                : "text-gray-500 flex-shrink-0"
                             }
                           />
-                          <div className="flex flex-col gap-0.5 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              {widget.icon && (
-                                <FontAwesomeIcon
-                                  icon={resolveIcon(widget.icon)}
-                                  fixedWidth
-                                  className="text-gray-400 text-xs"
-                                />
-                              )}
-                              <span className="text-sm font-medium text-gray-200 truncate">
-                                {widget.name}
-                              </span>
-                            </div>
-                            {widget.description && (
-                              <p className="text-xs text-gray-400 line-clamp-2">
-                                {widget.description}
-                              </p>
-                            )}
-                            {widget.packageDisplayName && (
-                              <span className="text-xs text-gray-500">
-                                {widget.packageDisplayName}
-                              </span>
-                            )}
-                          </div>
                         </div>
+                        {widget.description && (
+                          <p className="text-xs text-gray-400 line-clamp-2 mt-1.5 flex-1">
+                            {widget.description}
+                          </p>
+                        )}
+                        {widget.packageDisplayName && (
+                          <span className="text-xs text-gray-500 mt-2 pt-1.5 border-t border-gray-700/50 truncate">
+                            {widget.packageDisplayName}
+                          </span>
+                        )}
                       </Card2>
                     );
                   })}
