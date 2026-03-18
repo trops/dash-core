@@ -243,9 +243,8 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
  * @returns {Object} Result with success, themeKey, theme
  */
 async function installThemeFromRegistry(win, appId, packageName) {
+  const TAG = "[ThemeInstall]";
   try {
-    const TAG = "[ThemeInstall]";
-
     // Stage 1: Package lookup
     console.log(`${TAG} [1/5 Package Lookup] input="${packageName}"`);
     const pkg = await registryController.getPackage(packageName);
@@ -253,18 +252,30 @@ async function installThemeFromRegistry(win, appId, packageName) {
       console.log(`${TAG} [1/5 Package Lookup] FAIL — package not found`);
       return {
         success: false,
-        error: `Theme package "${packageName}" not found in registry`,
+        error: `Package lookup failed: "${packageName}" was not found in the registry index. The package may have been removed or the name may be incorrect.`,
       };
     }
     console.log(
       `${TAG} [1/5 Package Lookup] resolved scope="${pkg.scope}" name="${pkg.name}" version="${pkg.version || "1.0.0"}"`,
     );
 
-    // Stage 2: URL construction
+    // Stage 2: URL construction — strip @ from scope for URL path
     const registryBaseUrl =
       process.env.DASH_REGISTRY_API_URL ||
       "https://main.d919rwhuzp7rj.amplifyapp.com";
-    const downloadUrl = `${registryBaseUrl}/api/packages/${encodeURIComponent(pkg.scope)}/${encodeURIComponent(pkg.name)}/download?version=${encodeURIComponent(pkg.version || "1.0.0")}`;
+    const urlScope = (pkg.scope || "").replace(/^@/, "");
+    const urlName = pkg.name || "";
+    const urlVersion = pkg.version || "1.0.0";
+    if (!urlScope || !urlName) {
+      console.log(
+        `${TAG} [2/5 URL Construction] FAIL — missing scope="${urlScope}" or name="${urlName}"`,
+      );
+      return {
+        success: false,
+        error: `Download failed: package is missing required fields (scope: "${pkg.scope || ""}", name: "${pkg.name || ""}"). The registry entry may be corrupt.`,
+      };
+    }
+    const downloadUrl = `${registryBaseUrl}/api/packages/${encodeURIComponent(urlScope)}/${encodeURIComponent(urlName)}/download?version=${encodeURIComponent(urlVersion)}`;
     console.log(`${TAG} [2/5 URL Construction] url="${downloadUrl}"`);
 
     // Stage 3: Download
@@ -281,7 +292,19 @@ async function installThemeFromRegistry(win, appId, packageName) {
     if (auth?.token) {
       headers["Authorization"] = `Bearer ${auth.token}`;
     }
-    const response = await fetch(downloadUrl, { headers });
+
+    let response;
+    try {
+      response = await fetch(downloadUrl, { headers });
+    } catch (fetchErr) {
+      console.log(
+        `${TAG} [3/5 Download] FAIL — network error: ${fetchErr.message}`,
+      );
+      return {
+        success: false,
+        error: `Download failed: could not reach the registry (${fetchErr.message}). Check your internet connection.`,
+      };
+    }
     console.log(
       `${TAG} [3/5 Download] status=${response.status} contentType="${response.headers.get("content-type") || "unknown"}"`,
     );
@@ -293,19 +316,59 @@ async function installThemeFromRegistry(win, appId, packageName) {
         authRequired: true,
       };
     }
+    if (response.status === 404) {
+      return {
+        success: false,
+        error: `Download failed: the registry returned 404 for scope="${urlScope}" name="${urlName}" version="${urlVersion}". The package version may not exist.`,
+      };
+    }
     if (!response.ok) {
       return {
         success: false,
-        error: `Failed to download theme: ${response.status} ${response.statusText}`,
+        error: `Download failed: registry returned ${response.status} ${response.statusText}`,
       };
     }
 
+    const contentType = response.headers.get("content-type") || "";
     const arrayBuffer = await response.arrayBuffer();
     const zipBuffer = Buffer.from(arrayBuffer);
     console.log(`${TAG} [3/5 Download] size=${zipBuffer.length} bytes`);
 
+    if (zipBuffer.length === 0) {
+      return {
+        success: false,
+        error: "Download failed: registry returned an empty response.",
+      };
+    }
+
+    // Check if the response is actually a ZIP (not an HTML error page or JSON error)
+    if (
+      contentType.includes("text/html") ||
+      contentType.includes("application/json")
+    ) {
+      const body = zipBuffer.toString("utf-8").slice(0, 200);
+      console.log(
+        `${TAG} [3/5 Download] FAIL — unexpected content type "${contentType}": ${body}`,
+      );
+      return {
+        success: false,
+        error: `Download failed: registry returned ${contentType} instead of a ZIP file. The download URL may be incorrect.`,
+      };
+    }
+
     // Stage 4: ZIP extraction
-    const zip = new AdmZip(zipBuffer);
+    let zip;
+    try {
+      zip = new AdmZip(zipBuffer);
+    } catch (zipErr) {
+      console.log(
+        `${TAG} [4/5 ZIP Extraction] FAIL — invalid ZIP: ${zipErr.message}`,
+      );
+      return {
+        success: false,
+        error: `ZIP extraction failed: the downloaded file is not a valid ZIP archive (${zipErr.message}).`,
+      };
+    }
     const entries = zip.getEntries();
     const entryNames = entries.map((e) => e.entryName);
     const themeEntry = entries.find((entry) =>
@@ -321,7 +384,7 @@ async function installThemeFromRegistry(win, appId, packageName) {
       );
       return {
         success: false,
-        error: "ZIP does not contain a .theme.json file",
+        error: `ZIP extraction failed: no .theme.json file found in archive. Files present: [${entryNames.join(", ")}]`,
       };
     }
 
@@ -330,7 +393,10 @@ async function installThemeFromRegistry(win, appId, packageName) {
       themeEntry.entryName.includes("..") ||
       path.isAbsolute(themeEntry.entryName)
     ) {
-      return { success: false, error: "Invalid file path in ZIP" };
+      return {
+        success: false,
+        error: "ZIP extraction failed: invalid file path detected in archive.",
+      };
     }
 
     // Parse theme data
@@ -341,7 +407,7 @@ async function installThemeFromRegistry(win, appId, packageName) {
     } catch (parseErr) {
       return {
         success: false,
-        error: "Invalid JSON in theme file: " + parseErr.message,
+        error: `ZIP extraction failed: ${themeEntry.entryName} contains invalid JSON (${parseErr.message}).`,
       };
     }
 
@@ -369,7 +435,7 @@ async function installThemeFromRegistry(win, appId, packageName) {
       console.log(`${TAG} [5/5 Theme Save] FAIL — ${saveResult.message}`);
       return {
         success: false,
-        error: "Failed to save theme: " + saveResult.message,
+        error: `Theme save failed: ${saveResult.message}`,
       };
     }
 
@@ -382,8 +448,11 @@ async function installThemeFromRegistry(win, appId, packageName) {
       themes: saveResult.themes,
     };
   } catch (err) {
-    console.error("[ThemeRegistryController] Error installing theme:", err);
-    return { success: false, error: err.message };
+    console.error(`${TAG} Unexpected error:`, err);
+    return {
+      success: false,
+      error: `Unexpected error during theme install: ${err.message}`,
+    };
   }
 }
 

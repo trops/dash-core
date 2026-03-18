@@ -267,14 +267,54 @@ async function searchRegistry(query = "", filters = {}) {
 }
 
 /**
- * Get a specific package by name
+ * Get a specific package by name.
  *
- * @param {string} packageName - Name of the package
+ * Handles multiple naming formats:
+ *  - bare name:   "ocean-depth"
+ *  - scoped name: "john/ocean-depth" or "@john/ocean-depth"
+ *  - displayName: "Ocean Depth"
+ *
+ * @param {string} packageName - Name of the package (any format)
  * @returns {Promise<Object|null>} Package data or null if not found
  */
 async function getPackage(packageName) {
+  if (!packageName) return null;
+
   const index = await fetchRegistryIndex();
-  const pkg = (index.packages || []).find((p) => p.name === packageName);
+  const packages = index.packages || [];
+
+  // 1. Exact match on name
+  let pkg = packages.find((p) => p.name === packageName);
+  if (pkg) return pkg;
+
+  // 2. If input contains "/", split into scope + name and match both fields
+  if (packageName.includes("/")) {
+    const parts = packageName.split("/");
+    const inputScope = parts[0].replace(/^@/, "");
+    const inputName = parts.slice(1).join("/");
+    pkg = packages.find(
+      (p) =>
+        p.name === inputName &&
+        (p.scope || "").replace(/^@/, "") === inputScope,
+    );
+    if (pkg) return pkg;
+  }
+
+  // 3. Match by displayName (case-insensitive)
+  const lower = packageName.toLowerCase();
+  pkg = packages.find((p) => (p.displayName || "").toLowerCase() === lower);
+  if (pkg) return pkg;
+
+  // 4. Try bare-name match against scoped registry entries
+  //    (registry might store "scope/name" in p.name while caller sends just "name")
+  pkg = packages.find((p) => {
+    if (p.name && p.name.includes("/")) {
+      const bareName = p.name.split("/").pop();
+      return bareName === packageName;
+    }
+    return false;
+  });
+
   return pkg || null;
 }
 
