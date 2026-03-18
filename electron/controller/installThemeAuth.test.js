@@ -8,6 +8,9 @@
  *   - Auto-retry after successful auth (DASH-144 UI flow)
  *   - Pipeline failure scenarios after auth gate (DASH-150)
  *   - Happy path end-to-end with realistic mock data (DASH-150)
+ *   - Scope/name mismatch and URL encoding edge cases (DASH-155)
+ *   - Additional HTTP error scenarios (DASH-155)
+ *   - Registry metadata and save verification (DASH-155)
  *
  * Uses Node.js built-in test module with source re-evaluation to mock
  * dependencies (same pattern as installDashboardAuth.test.js).
@@ -720,6 +723,349 @@ describe("installThemeFromRegistry — happy path end-to-end", () => {
       result.themeKey,
       "minimal-theme",
       "Should fall back to package name when displayName is absent",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DASH-155: Identified failure scenario — scope/name mismatch & URL encoding
+// ---------------------------------------------------------------------------
+describe("installThemeFromRegistry — scope/name edge cases (DASH-155)", () => {
+  beforeEach(() => {
+    mockStoredToken = null;
+    clearTokenCalled = false;
+    lastFetchUrl = null;
+    lastFetchOptions = null;
+    mockFetchResponse = null;
+    mockGetPackageResult = MOCK_PKG;
+    mockAdmZipEntries = [];
+    lastSavedTheme = null;
+    mockSaveResult = null;
+  });
+
+  it("encodes scope with @ prefix correctly in download URL", async () => {
+    mockStoredToken = { token: "tok" };
+    mockFetchResponse = mockOkResponse();
+    mockGetPackageResult = {
+      ...MOCK_PKG,
+      scope: "@my-org",
+      name: "night-sky",
+    };
+    mockAdmZipEntries = [
+      createMockThemeEntry("night-sky.theme.json", MOCK_THEME_DATA),
+    ];
+
+    await controller.installThemeFromRegistry(null, "app1", "night-sky");
+
+    assert.ok(lastFetchUrl, "fetch URL should be set");
+    assert.ok(
+      lastFetchUrl.includes(encodeURIComponent("@my-org")),
+      "URL should encode the @ in scope",
+    );
+    assert.ok(
+      !lastFetchUrl.includes("/@my-org/"),
+      "Scope should be encoded, not raw",
+    );
+  });
+
+  it("handles package with empty scope", async () => {
+    mockStoredToken = { token: "tok" };
+    mockFetchResponse = mockOkResponse();
+    mockGetPackageResult = {
+      ...MOCK_PKG,
+      scope: "",
+      name: "unscoped-theme",
+      displayName: "Unscoped Theme",
+    };
+    mockAdmZipEntries = [
+      createMockThemeEntry("unscoped-theme.theme.json", MOCK_THEME_DATA),
+    ];
+
+    const result = await controller.installThemeFromRegistry(
+      null,
+      "app1",
+      "unscoped-theme",
+    );
+
+    assert.equal(result.success, true);
+    assert.equal(result.themeKey, "Unscoped Theme");
+    assert.ok(lastFetchUrl, "fetch URL should be set");
+  });
+
+  it("handles package name with special characters", async () => {
+    mockStoredToken = { token: "tok" };
+    mockFetchResponse = mockOkResponse();
+    mockGetPackageResult = {
+      ...MOCK_PKG,
+      scope: "@trops",
+      name: "my theme (v2)",
+    };
+
+    try {
+      await controller.installThemeFromRegistry(null, "app1", "my theme (v2)");
+    } catch {
+      // May fail at ZIP parsing — we care about URL encoding
+    }
+
+    assert.ok(lastFetchUrl, "fetch URL should be set");
+    assert.ok(
+      lastFetchUrl.includes(encodeURIComponent("my theme (v2)")),
+      "Package name with special characters should be URL-encoded",
+    );
+  });
+
+  it("uses version from package metadata, not hardcoded default", async () => {
+    mockStoredToken = { token: "tok" };
+    mockFetchResponse = mockOkResponse();
+    mockGetPackageResult = {
+      ...MOCK_PKG,
+      version: "3.5.1",
+    };
+    mockAdmZipEntries = [
+      createMockThemeEntry("ocean-depth.theme.json", MOCK_THEME_DATA),
+    ];
+
+    await controller.installThemeFromRegistry(null, "app1", "ocean-depth");
+
+    assert.ok(
+      lastFetchUrl.includes("version=3.5.1"),
+      "URL should use the version from the package, not a default",
+    );
+  });
+
+  it("falls back to version 1.0.0 when package has no version", async () => {
+    mockStoredToken = { token: "tok" };
+    mockFetchResponse = mockOkResponse();
+    mockGetPackageResult = {
+      name: "no-version-theme",
+      scope: "@trops",
+      displayName: "No Version",
+    };
+    mockAdmZipEntries = [
+      createMockThemeEntry("no-version-theme.theme.json", MOCK_THEME_DATA),
+    ];
+
+    await controller.installThemeFromRegistry(null, "app1", "no-version-theme");
+
+    assert.ok(
+      lastFetchUrl.includes("version=1.0.0"),
+      "URL should fall back to version 1.0.0 when package has no version field",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DASH-155: Additional HTTP error and exception scenarios
+// ---------------------------------------------------------------------------
+describe("installThemeFromRegistry — HTTP and exception scenarios (DASH-155)", () => {
+  beforeEach(() => {
+    mockStoredToken = null;
+    clearTokenCalled = false;
+    lastFetchUrl = null;
+    lastFetchOptions = null;
+    mockFetchResponse = null;
+    mockGetPackageResult = MOCK_PKG;
+    mockAdmZipEntries = [];
+    lastSavedTheme = null;
+    mockSaveResult = null;
+  });
+
+  it("returns error with status code on 403 response", async () => {
+    mockStoredToken = { token: "valid-token" };
+    mockFetchResponse = {
+      ok: false,
+      status: 403,
+      statusText: "Forbidden",
+      headers: { get: () => null },
+    };
+
+    const result = await controller.installThemeFromRegistry(
+      null,
+      "app1",
+      "ocean-depth",
+    );
+
+    assert.equal(result.success, false);
+    assert.ok(
+      result.error.includes("403"),
+      "Error should include the HTTP status code",
+    );
+    assert.equal(
+      result.authRequired,
+      undefined,
+      "403 should NOT set authRequired (only 401 does)",
+    );
+    assert.equal(clearTokenCalled, false, "Token should NOT be cleared on 403");
+  });
+
+  it("returns error with status code on 404 response", async () => {
+    mockStoredToken = { token: "valid-token" };
+    mockFetchResponse = {
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+      headers: { get: () => null },
+    };
+
+    const result = await controller.installThemeFromRegistry(
+      null,
+      "app1",
+      "ocean-depth",
+    );
+
+    assert.equal(result.success, false);
+    assert.ok(
+      result.error.includes("404"),
+      "Error should include the HTTP status code",
+    );
+  });
+
+  it("returns error when ZIP has zero entries", async () => {
+    mockStoredToken = { token: "valid-token" };
+    mockFetchResponse = mockOkResponse();
+    mockAdmZipEntries = [];
+
+    const result = await controller.installThemeFromRegistry(
+      null,
+      "app1",
+      "ocean-depth",
+    );
+
+    assert.equal(result.success, false);
+    assert.ok(
+      result.error.includes(".theme.json"),
+      "Error should mention missing .theme.json when ZIP is empty",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DASH-155: Happy path — registry metadata and save verification
+// ---------------------------------------------------------------------------
+describe("installThemeFromRegistry — registry metadata verification (DASH-155)", () => {
+  beforeEach(() => {
+    mockStoredToken = null;
+    clearTokenCalled = false;
+    lastFetchUrl = null;
+    lastFetchOptions = null;
+    mockFetchResponse = null;
+    mockGetPackageResult = MOCK_PKG;
+    mockAdmZipEntries = [];
+    lastSavedTheme = null;
+    mockSaveResult = null;
+  });
+
+  it("attaches _registryMeta with installedAt timestamp", async () => {
+    mockStoredToken = { token: "valid-token" };
+    mockFetchResponse = mockOkResponse();
+    mockAdmZipEntries = [
+      createMockThemeEntry("ocean-depth.theme.json", MOCK_THEME_DATA),
+    ];
+
+    const before = new Date().toISOString();
+    const result = await controller.installThemeFromRegistry(
+      null,
+      "app1",
+      "ocean-depth",
+    );
+    const after = new Date().toISOString();
+
+    assert.equal(result.success, true);
+    assert.ok(
+      result.theme._registryMeta.installedAt,
+      "Should have installedAt",
+    );
+    assert.ok(
+      result.theme._registryMeta.installedAt >= before &&
+        result.theme._registryMeta.installedAt <= after,
+      "installedAt should be a recent ISO timestamp",
+    );
+  });
+
+  it("preserves all original theme fields alongside _registryMeta", async () => {
+    mockStoredToken = { token: "valid-token" };
+    mockFetchResponse = mockOkResponse();
+    const originalTheme = {
+      name: "Custom Theme",
+      primary: "indigo",
+      secondary: "slate",
+      tertiary: "zinc",
+      neutral: "gray",
+      mode: "light",
+      fontFamily: "Fira Code, monospace",
+      customField: "should-be-preserved",
+    };
+    mockAdmZipEntries = [
+      createMockThemeEntry("ocean-depth.theme.json", originalTheme),
+    ];
+
+    const result = await controller.installThemeFromRegistry(
+      null,
+      "app1",
+      "ocean-depth",
+    );
+
+    assert.equal(result.success, true);
+    assert.equal(result.theme.name, "Custom Theme");
+    assert.equal(result.theme.primary, "indigo");
+    assert.equal(result.theme.mode, "light");
+    assert.equal(result.theme.fontFamily, "Fira Code, monospace");
+    assert.equal(result.theme.customField, "should-be-preserved");
+    assert.ok(result.theme._registryMeta, "Should have _registryMeta");
+  });
+
+  it("returns themes map from saveThemeForApplication", async () => {
+    mockStoredToken = { token: "valid-token" };
+    mockFetchResponse = mockOkResponse();
+    mockAdmZipEntries = [
+      createMockThemeEntry("ocean-depth.theme.json", MOCK_THEME_DATA),
+    ];
+    mockSaveResult = {
+      themes: {
+        "Ocean Depth": MOCK_THEME_DATA,
+        "Existing Theme": { name: "Existing" },
+      },
+    };
+
+    const result = await controller.installThemeFromRegistry(
+      null,
+      "app1",
+      "ocean-depth",
+    );
+
+    assert.equal(result.success, true);
+    assert.ok(result.themes, "Result should include themes map");
+    assert.ok(
+      result.themes["Ocean Depth"],
+      "Themes map should include installed theme",
+    );
+    assert.ok(
+      result.themes["Existing Theme"],
+      "Themes map should include pre-existing themes",
+    );
+  });
+
+  it("picks the first .theme.json when ZIP has multiple", async () => {
+    mockStoredToken = { token: "valid-token" };
+    mockFetchResponse = mockOkResponse();
+    const secondTheme = { ...MOCK_THEME_DATA, name: "Second Theme" };
+    mockAdmZipEntries = [
+      { entryName: "manifest.json", getData: () => Buffer.from("{}") },
+      createMockThemeEntry("first.theme.json", MOCK_THEME_DATA),
+      createMockThemeEntry("second.theme.json", secondTheme),
+    ];
+
+    const result = await controller.installThemeFromRegistry(
+      null,
+      "app1",
+      "ocean-depth",
+    );
+
+    assert.equal(result.success, true);
+    assert.equal(
+      result.theme.name,
+      "Ocean Depth",
+      "Should use the first .theme.json entry found",
     );
   });
 });
