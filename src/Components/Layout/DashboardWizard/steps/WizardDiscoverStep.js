@@ -200,15 +200,15 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
                   Dashboards ({filteredDashboards.length} result
                   {filteredDashboards.length !== 1 ? "s" : ""})
                 </h4>
-                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   {filteredDashboards.map((dash) => {
                     const isSelected =
                       state.selectedDashboard &&
                       state.selectedDashboard.name === dash.name;
                     const widgetCount = (dash.widgets || []).length;
-                    const providerNames = (dash.providers || [])
+                    const providerTags = (dash.providers || [])
                       .map((p) => p.name || p.type)
-                      .join(", ");
+                      .filter(Boolean);
 
                     return (
                       <Card2
@@ -220,33 +220,48 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
                         className="hover:shadow-lg"
                         onClick={() => handleSelectDashboard(dash)}
                       >
-                        <div className="flex items-center gap-2">
-                          <FontAwesomeIcon
-                            icon={resolveIcon(dash.icon || "grid-2")}
-                            fixedWidth
-                            className="text-gray-400"
-                          />
-                          <span className="text-sm font-medium text-gray-200">
+                        <div className="flex flex-col items-center text-center gap-2">
+                          <div className="relative">
+                            <span className="text-2xl">
+                              <FontAwesomeIcon
+                                icon={resolveIcon(dash.icon || "grid-2")}
+                                fixedWidth
+                                className="text-gray-400"
+                              />
+                            </span>
+                            {isSelected && (
+                              <FontAwesomeIcon
+                                icon="circle-check"
+                                className="absolute -top-1 -right-3 text-blue-400 text-xs"
+                              />
+                            )}
+                          </div>
+                          <span className="text-sm font-semibold text-gray-200">
                             {dash.displayName || dash.name}
                           </span>
-                          {isSelected && (
-                            <FontAwesomeIcon
-                              icon="circle-check"
-                              className="ml-auto text-blue-400"
-                            />
-                          )}
                         </div>
                         {dash.description && (
-                          <p className="text-xs text-gray-400 mt-1 line-clamp-2">
+                          <p className="text-xs text-gray-400 mt-2 line-clamp-2 text-center">
                             {dash.description}
                           </p>
                         )}
-                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
-                          <span>
+                        <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-700/50">
+                          <span className="text-xs text-gray-500">
                             {widgetCount} widget
                             {widgetCount !== 1 ? "s" : ""}
                           </span>
-                          {providerNames && <span>{providerNames}</span>}
+                          {providerTags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 justify-end">
+                              {providerTags.slice(0, 3).map((tag) => (
+                                <span
+                                  key={tag}
+                                  className="text-xs px-1.5 py-0.5 rounded bg-gray-800 text-gray-400"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </Card2>
                     );
