@@ -30,6 +30,7 @@ const {
   applyEventWiringToLayout,
 } = require("../schema/dashboardConfigUtils");
 const { searchRegistry, getPackage } = require("./registryController");
+const { getStoredToken } = require("./registryAuthController");
 const themeController = require("./themeController");
 
 const configFilename = "workspaces.json";
@@ -653,7 +654,13 @@ async function installDashboardFromRegistry(
       `[DashboardConfigController] Fetching dashboard from: ${downloadUrl}`,
     );
 
-    const response = await fetch(downloadUrl);
+    // Download the ZIP (with auth header)
+    const headers = {};
+    const auth = getStoredToken();
+    if (auth?.token) {
+      headers["Authorization"] = `Bearer ${auth.token}`;
+    }
+    const response = await fetch(downloadUrl, { headers });
     if (!response.ok) {
       return {
         success: false,
