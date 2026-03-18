@@ -244,29 +244,33 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
  */
 async function installThemeFromRegistry(win, appId, packageName) {
   try {
-    // Look up the package
+    const TAG = "[ThemeInstall]";
+
+    // Stage 1: Package lookup
+    console.log(`${TAG} [1/5 Package Lookup] input="${packageName}"`);
     const pkg = await registryController.getPackage(packageName);
     if (!pkg) {
+      console.log(`${TAG} [1/5 Package Lookup] FAIL — package not found`);
       return {
         success: false,
         error: `Theme package "${packageName}" not found in registry`,
       };
     }
+    console.log(
+      `${TAG} [1/5 Package Lookup] resolved scope="${pkg.scope}" name="${pkg.name}" version="${pkg.version || "1.0.0"}"`,
+    );
 
-    // Construct download URL from package metadata using the working registry base
+    // Stage 2: URL construction
     const registryBaseUrl =
       process.env.DASH_REGISTRY_API_URL ||
       "https://main.d919rwhuzp7rj.amplifyapp.com";
     const downloadUrl = `${registryBaseUrl}/api/packages/${encodeURIComponent(pkg.scope)}/${encodeURIComponent(pkg.name)}/download?version=${encodeURIComponent(pkg.version || "1.0.0")}`;
+    console.log(`${TAG} [2/5 URL Construction] url="${downloadUrl}"`);
 
-    console.log(
-      "[ThemeRegistryController] Downloading theme from:",
-      downloadUrl,
-    );
-
-    // Download the ZIP (with auth header)
+    // Stage 3: Download
     const auth = getStoredToken();
     if (!auth) {
+      console.log(`${TAG} [3/5 Download] FAIL — no stored auth token`);
       return {
         success: false,
         error: "Not authenticated with registry",
@@ -278,6 +282,9 @@ async function installThemeFromRegistry(win, appId, packageName) {
       headers["Authorization"] = `Bearer ${auth.token}`;
     }
     const response = await fetch(downloadUrl, { headers });
+    console.log(
+      `${TAG} [3/5 Download] status=${response.status} contentType="${response.headers.get("content-type") || "unknown"}"`,
+    );
     if (response.status === 401) {
       clearToken();
       return {
@@ -295,16 +302,23 @@ async function installThemeFromRegistry(win, appId, packageName) {
 
     const arrayBuffer = await response.arrayBuffer();
     const zipBuffer = Buffer.from(arrayBuffer);
+    console.log(`${TAG} [3/5 Download] size=${zipBuffer.length} bytes`);
 
-    // Extract .theme.json from ZIP
+    // Stage 4: ZIP extraction
     const zip = new AdmZip(zipBuffer);
     const entries = zip.getEntries();
-
+    const entryNames = entries.map((e) => e.entryName);
     const themeEntry = entries.find((entry) =>
       entry.entryName.endsWith(".theme.json"),
     );
+    console.log(
+      `${TAG} [4/5 ZIP Extraction] files=[${entryNames.join(", ")}] hasThemeJson=${!!themeEntry}`,
+    );
 
     if (!themeEntry) {
+      console.log(
+        `${TAG} [4/5 ZIP Extraction] FAIL — no .theme.json in archive`,
+      );
       return {
         success: false,
         error: "ZIP does not contain a .theme.json file",
@@ -338,10 +352,12 @@ async function installThemeFromRegistry(win, appId, packageName) {
       installedAt: new Date().toISOString(),
     };
 
-    // Determine theme key from package display name or name
+    // Stage 5: Theme save
     const themeKey = pkg.displayName || pkg.name;
+    console.log(
+      `${TAG} [5/5 Theme Save] themeKey="${themeKey}" hasName=${!!themeData.name} hasColors=${!!(themeData.colors || themeData.primary)}`,
+    );
 
-    // Save via themeController
     const saveResult = themeController.saveThemeForApplication(
       win,
       appId,
@@ -350,13 +366,14 @@ async function installThemeFromRegistry(win, appId, packageName) {
     );
 
     if (saveResult.error) {
+      console.log(`${TAG} [5/5 Theme Save] FAIL — ${saveResult.message}`);
       return {
         success: false,
         error: "Failed to save theme: " + saveResult.message,
       };
     }
 
-    console.log("[ThemeRegistryController] Theme installed:", themeKey);
+    console.log(`${TAG} [5/5 Theme Save] SUCCESS — installed "${themeKey}"`);
 
     return {
       success: true,
