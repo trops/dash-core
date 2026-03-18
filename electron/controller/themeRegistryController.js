@@ -259,23 +259,24 @@ async function installThemeFromRegistry(win, appId, packageName) {
       `${TAG} [1/5 Package Lookup] resolved scope="${pkg.scope}" name="${pkg.name}" version="${pkg.version || "1.0.0"}"`,
     );
 
-    // Stage 2: URL construction — strip @ from scope for URL path
+    // Stage 2: URL construction — keep scope as-is (encodeURIComponent handles @)
     const registryBaseUrl =
       process.env.DASH_REGISTRY_API_URL ||
       "https://main.d919rwhuzp7rj.amplifyapp.com";
-    const urlScope = (pkg.scope || "").replace(/^@/, "");
+    const urlScope = pkg.scope || "";
     const urlName = pkg.name || "";
     const urlVersion = pkg.version || "1.0.0";
-    if (!urlScope || !urlName) {
+    if (!urlName) {
       console.log(
-        `${TAG} [2/5 URL Construction] FAIL — missing scope="${urlScope}" or name="${urlName}"`,
+        `${TAG} [2/5 URL Construction] FAIL — missing name="${urlName}"`,
       );
       return {
         success: false,
-        error: `Download failed: package is missing required fields (scope: "${pkg.scope || ""}", name: "${pkg.name || ""}"). The registry entry may be corrupt.`,
+        error: `Download failed: package is missing a name field. The registry entry may be corrupt.`,
       };
     }
-    const downloadUrl = `${registryBaseUrl}/api/packages/${encodeURIComponent(urlScope)}/${encodeURIComponent(urlName)}/download?version=${encodeURIComponent(urlVersion)}`;
+    const scopePath = urlScope ? `${encodeURIComponent(urlScope)}/` : "";
+    const downloadUrl = `${registryBaseUrl}/api/packages/${scopePath}${encodeURIComponent(urlName)}/download?version=${encodeURIComponent(urlVersion)}`;
     console.log(`${TAG} [2/5 URL Construction] url="${downloadUrl}"`);
 
     // Stage 3: Download

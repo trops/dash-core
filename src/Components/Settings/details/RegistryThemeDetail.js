@@ -206,9 +206,14 @@ export const RegistryThemeDetail = ({
     setAuthFlow(null);
     setAuthError(null);
     try {
+      // Send scoped name (scope/name) for unambiguous package lookup;
+      // fall back to bare name if scope is missing
+      const installName = pkg.scope
+        ? `${pkg.scope.replace(/^@/, "")}/${pkg.name}`
+        : pkg.name;
       const result = await window.mainApi.themes.installThemeFromRegistry(
         appId,
-        pkg.name,
+        installName,
       );
       if (result?.authRequired) {
         // Auth needed — show inline auth prompt
