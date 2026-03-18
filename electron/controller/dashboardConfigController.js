@@ -926,8 +926,19 @@ async function prepareDashboardForPublish(
     let missingFromRegistry = [];
     if (!registryCheckFailed) {
       const registryNames = new Set(registryPackages.map((p) => p.name));
+      const registryWidgetNames = new Set();
+      for (const pkg of registryPackages) {
+        if (pkg.widgets) {
+          for (const w of pkg.widgets) {
+            if (w.name) registryWidgetNames.add(w.name);
+          }
+        }
+      }
       const missingWidgets = widgets.filter(
-        (w) => w.required !== false && !registryNames.has(w.package),
+        (w) =>
+          w.required !== false &&
+          !registryNames.has(w.package) &&
+          !registryWidgetNames.has(w.package),
       );
       const grouped = {};
       for (const w of missingWidgets) {
