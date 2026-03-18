@@ -17,6 +17,7 @@ const {
   getAuthStatus,
   getRegistryProfile,
   getStoredToken,
+  clearToken,
 } = require("./registryAuthController");
 
 const appName = "Dashboard";
@@ -264,12 +265,27 @@ async function installThemeFromRegistry(win, appId, packageName) {
     );
 
     // Download the ZIP (with auth header)
-    const headers = {};
     const auth = getStoredToken();
+    if (!auth) {
+      return {
+        success: false,
+        error: "Not authenticated with registry",
+        authRequired: true,
+      };
+    }
+    const headers = {};
     if (auth?.token) {
       headers["Authorization"] = `Bearer ${auth.token}`;
     }
     const response = await fetch(downloadUrl, { headers });
+    if (response.status === 401) {
+      clearToken();
+      return {
+        success: false,
+        error: "Authentication expired. Please sign in again.",
+        authRequired: true,
+      };
+    }
     if (!response.ok) {
       return {
         success: false,
