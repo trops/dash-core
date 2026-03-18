@@ -200,7 +200,7 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
                   Dashboards ({filteredDashboards.length} result
                   {filteredDashboards.length !== 1 ? "s" : ""})
                 </h4>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                   {filteredDashboards.map((dash) => {
                     const isSelected =
                       state.selectedDashboard &&
@@ -265,7 +265,7 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
                     <Tag3 text={`${state.selectedWidgets.length} selected`} />
                   )}
                 </h4>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                   {filteredWidgets.map((widget) => {
                     const checked = isWidgetSelected(widget);
                     return (

@@ -84,7 +84,12 @@ export const DashboardWizardModal = ({
   const isSuccessState = state.step === 2 && state._created;
 
   return (
-    <Modal isOpen={open} setIsOpen={setIsOpen} width="w-5/6" height="h-5/6">
+    <Modal
+      isOpen={open}
+      setIsOpen={setIsOpen}
+      width="w-full max-w-5xl"
+      height="h-5/6"
+    >
       <div className="flex flex-col h-full bg-gray-900 rounded-lg overflow-hidden">
         {/* Header with close button */}
         <div className="flex items-center justify-between px-6 pt-5 pb-0">
