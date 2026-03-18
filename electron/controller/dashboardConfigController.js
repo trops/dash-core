@@ -642,27 +642,12 @@ async function installDashboardFromRegistry(
       };
     }
 
-    if (!registryPkg.downloadUrl) {
-      return {
-        success: false,
-        error: `Dashboard package has no download URL: ${packageName}`,
-      };
-    }
-
-    // 2. Resolve the download URL and fetch the ZIP
-    const version = registryPkg.version || "1.0.0";
-    let downloadUrl = registryPkg.downloadUrl;
-    downloadUrl = downloadUrl.replace("{version}", version);
-    downloadUrl = downloadUrl.replace("{name}", packageName);
-
-    // Enforce HTTPS
-    const parsedUrl = new URL(downloadUrl);
-    if (parsedUrl.protocol !== "https:") {
-      return {
-        success: false,
-        error: `Dashboard downloads must use HTTPS. Refusing: ${downloadUrl}`,
-      };
-    }
+    // 2. Construct download URL via /api/packages/.../download endpoint
+    //    (matches theme download flow in themeRegistryController.js)
+    const registryBaseUrl =
+      process.env.DASH_REGISTRY_API_URL ||
+      "https://main.d919rwhuzp7rj.amplifyapp.com";
+    const downloadUrl = `${registryBaseUrl}/api/packages/${encodeURIComponent(registryPkg.scope)}/${encodeURIComponent(registryPkg.name)}/download?version=${encodeURIComponent(registryPkg.version || "1.0.0")}`;
 
     console.log(
       `[DashboardConfigController] Fetching dashboard from: ${downloadUrl}`,
