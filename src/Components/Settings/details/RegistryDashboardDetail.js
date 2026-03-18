@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useRef } from "react";
 import {
   ThemeContext,
   Button,
@@ -14,6 +14,9 @@ import { StarRating } from "./StarRating";
  *
  * Shows package header, description, tags, widget list with compatibility
  * status, provider requirements, event wiring summary, and install button.
+ *
+ * When install returns authRequired, shows an inline device-code auth prompt.
+ * After successful auth, auto-retries the install (DASH-136).
  */
 export const RegistryDashboardDetail = ({
   dashboardPackage,
@@ -29,9 +32,21 @@ export const RegistryDashboardDetail = ({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
   const [installResult, setInstallResult] = useState(null);
+  const [authFlow, setAuthFlow] = useState(null);
+  const [isPolling, setIsPolling] = useState(false);
+  const [authError, setAuthError] = useState(null);
+  const pollIntervalRef = useRef(null);
 
   const pkg = dashboardPackage;
   if (!pkg) return null;
+
+  // Clean up polling on unmount
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, []);
 
   // Load preview data on mount
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -41,6 +56,10 @@ export const RegistryDashboardDetail = ({
     setPreviewLoading(true);
     setPreview(null);
     setInstallResult(null);
+    setAuthFlow(null);
+    setIsPolling(false);
+    setAuthError(null);
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     window.mainApi?.dashboardConfig
       ?.getDashboardPreview(pkg.name)
       .then((result) => {
@@ -61,12 +80,23 @@ export const RegistryDashboardDetail = ({
     if (!appId || !pkg.name) return;
     setIsInstalling(true);
     setInstallResult(null);
+    setAuthFlow(null);
+    setAuthError(null);
     try {
       const result =
         await window.mainApi.dashboardConfig.installDashboardFromRegistry(
           appId,
           pkg.name,
         );
+      if (result?.authRequired) {
+        // Auth needed — show inline auth prompt (DASH-135)
+        setIsInstalling(false);
+        setInstallResult({
+          status: "auth",
+          message: result.error || "Sign in to install this dashboard.",
+        });
+        return;
+      }
       setInstallResult({
         status: result?.success ? "success" : "error",
         message: result?.success
@@ -84,6 +114,53 @@ export const RegistryDashboardDetail = ({
       });
     } finally {
       setIsInstalling(false);
+    }
+  }
+
+  async function handleSignIn() {
+    setAuthError(null);
+    try {
+      const flow = await window.mainApi.registryAuth.initiateLogin();
+      setAuthFlow(flow);
+
+      // Open verification URL in browser
+      if (flow.verificationUrlComplete) {
+        window.mainApi.shell.openExternal(flow.verificationUrlComplete);
+      }
+
+      // Start polling for token
+      setIsPolling(true);
+      const interval = (flow.interval || 5) * 1000;
+      pollIntervalRef.current = setInterval(async () => {
+        try {
+          const pollResult = await window.mainApi.registryAuth.pollToken(
+            flow.deviceCode,
+          );
+          if (pollResult.status === "authorized") {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+            setIsPolling(false);
+            setAuthFlow(null);
+            // DASH-136: Auto-retry install after successful auth
+            handleInstall();
+          } else if (pollResult.status === "expired") {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+            setIsPolling(false);
+            setAuthFlow(null);
+            setAuthError("Authorization expired. Please try again.");
+          }
+        } catch {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+          setIsPolling(false);
+        }
+      }, interval);
+    } catch (err) {
+      console.error("[RegistryDashboardDetail] Sign-in error:", err);
+      setAuthError(
+        "Could not reach the registry. Check your connection and try again.",
+      );
     }
   }
 
@@ -290,7 +367,7 @@ export const RegistryDashboardDetail = ({
         )}
 
         {/* Install Result */}
-        {installResult && (
+        {installResult && installResult.status !== "auth" && (
           <div
             className={`p-2 rounded border ${
               installResult.status === "success"
@@ -321,24 +398,82 @@ export const RegistryDashboardDetail = ({
             </div>
           </div>
         )}
+
+        {/* Auth Prompt (DASH-135) */}
+        {installResult?.status === "auth" && (
+          <div className="space-y-3">
+            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3">
+              <div className="flex items-start gap-2">
+                <FontAwesomeIcon
+                  icon="lock"
+                  className="h-3.5 w-3.5 text-yellow-400 mt-0.5 flex-shrink-0"
+                />
+                <span className="text-sm text-yellow-300/90">
+                  {installResult.message}
+                </span>
+              </div>
+            </div>
+            {!authFlow && !isPolling && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleSignIn}
+                  className="px-4 py-2 rounded-lg text-sm bg-blue-500/20 border border-blue-500/30 text-blue-300 hover:bg-blue-500/30 transition-colors cursor-pointer"
+                >
+                  Sign in to Registry
+                </button>
+                {authError && (
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                    <div className="flex items-start gap-2">
+                      <FontAwesomeIcon
+                        icon="circle-xmark"
+                        className="h-3.5 w-3.5 text-red-400 mt-0.5 flex-shrink-0"
+                      />
+                      <span className="text-xs text-red-300/90">
+                        {authError}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+            {authFlow && isPolling && (
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 space-y-3">
+                <p className="text-xs text-blue-300/90">
+                  Enter this code in your browser:
+                </p>
+                <div className="text-center">
+                  <span className="text-2xl font-mono font-bold tracking-widest text-white">
+                    {authFlow.userCode}
+                  </span>
+                </div>
+                <p className="text-xs text-blue-300/70 text-center">
+                  Waiting for authorization — install will resume
+                  automatically...
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Install Footer */}
-      {installResult?.status !== "success" && (
-        <div
-          className={`flex items-center justify-end px-6 py-3 border-t ${currentTheme["border-primary-medium"]}`}
-        >
-          <Button
-            title={isInstalling ? "Installing..." : "Install Dashboard"}
-            bgColor="bg-blue-600"
-            hoverBackgroundColor={isInstalling ? "" : "hover:bg-blue-700"}
-            textSize="text-sm"
-            padding="py-1.5 px-4"
-            onClick={handleInstall}
-            disabled={isInstalling}
-          />
-        </div>
-      )}
+      {installResult?.status !== "success" &&
+        installResult?.status !== "auth" && (
+          <div
+            className={`flex items-center justify-end px-6 py-3 border-t ${currentTheme["border-primary-medium"]}`}
+          >
+            <Button
+              title={isInstalling ? "Installing..." : "Install Dashboard"}
+              bgColor="bg-blue-600"
+              hoverBackgroundColor={isInstalling ? "" : "hover:bg-blue-700"}
+              textSize="text-sm"
+              padding="py-1.5 px-4"
+              onClick={handleInstall}
+              disabled={isInstalling}
+            />
+          </div>
+        )}
     </div>
   );
 };
