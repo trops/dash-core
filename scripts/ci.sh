@@ -92,6 +92,10 @@ npx jest --watchAll=false
 step "Running MCP tests"
 node --test electron/controller/mcpController.test.js electron/mcp/mcpServerCatalog.test.js
 
+# 6b. Run controller auth tests
+step "Running controller auth tests"
+node --test electron/controller/installDashboardAuth.test.js
+
 # 7. Verify output
 step "Verifying build output"
 for f in dist/index.js dist/index.esm.js dist/electron/index.js; do
