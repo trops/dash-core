@@ -3,6 +3,7 @@ export { DashboardStage } from "./DashboardStage";
 // Backward compatibility: re-export DashboardStage as Dashboard
 export { DashboardStage as Dashboard } from "./DashboardStage";
 
+export { WelcomePrompt, WELCOME_STORAGE_KEY } from "./WelcomePrompt";
 export * from "./DashboardFooter";
 export * from "./DashboardHeader";
 export * from "./DashboardMonitor";
