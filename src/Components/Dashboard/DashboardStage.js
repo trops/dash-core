@@ -38,6 +38,7 @@ import { DashSidebar } from "../Navigation/DashSidebar";
 import { WidgetSidebar } from "../Navigation/WidgetSidebar";
 
 import { AppContext } from "../../Context/App/AppContext";
+import { WelcomePrompt } from "./WelcomePrompt";
 
 /**
  * DashboardStage - Main application wrapper component
@@ -61,6 +62,9 @@ export const DashboardStage = ({
   backgroundColor = null,
   popout = false,
   popoutWorkspaceId = null,
+  showWelcomePrompt = false,
+  onAcceptWelcome = null,
+  onDismissWelcome = null,
 }) => {
   return (
     <Profiler id="myapp" onRender={() => {}}>
@@ -77,6 +81,11 @@ export const DashboardStage = ({
           backgroundColor={backgroundColor}
           popout={popout}
           popoutWorkspaceId={popoutWorkspaceId}
+        />
+        <WelcomePrompt
+          isOpen={showWelcomePrompt}
+          onAccept={onAcceptWelcome}
+          onDismiss={onDismissWelcome}
         />
       </DashboardWrapper>
     </Profiler>
