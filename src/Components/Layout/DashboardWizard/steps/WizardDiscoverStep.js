@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   FontAwesomeIcon,
+  Button,
   Card2,
   Tag2,
   Tag3,
@@ -115,6 +116,19 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
     [dispatch],
   );
 
+  // Tab state (DASH-185)
+  const [activeTab, setActiveTab] = useState("dashboards");
+
+  // Clear selection handler (DASH-186)
+  const hasSelection =
+    state.selectedDashboard !== null || state.selectedWidgets.length > 0;
+
+  const handleClearSelection = useCallback(() => {
+    dispatch({ type: "SET_SELECTED_DASHBOARD", payload: null });
+    dispatch({ type: "SET_SELECTED_WIDGETS", payload: [] });
+    dispatch({ type: "SET_PATH", payload: null });
+  }, [dispatch]);
+
   const hasResults =
     filteredDashboards.length > 0 || filteredWidgets.length > 0;
   const hasActiveFilters =
@@ -169,8 +183,54 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
         </div>
       </div>
 
+      {/* Tab bar + Clear Selection (DASH-185, DASH-186) */}
+      <div className="flex items-center justify-between">
+        <div className="flex gap-1">
+          <button
+            type="button"
+            className={`px-4 py-2 text-sm font-medium rounded-t transition-colors ${
+              activeTab === "dashboards"
+                ? "bg-gray-800 text-blue-400 border-b-2 border-blue-400"
+                : "text-gray-400 hover:text-gray-200"
+            }`}
+            onClick={() => setActiveTab("dashboards")}
+          >
+            Dashboards ({filteredDashboards.length})
+          </button>
+          <button
+            type="button"
+            className={`px-4 py-2 text-sm font-medium rounded-t transition-colors ${
+              activeTab === "widgets"
+                ? "bg-gray-800 text-blue-400 border-b-2 border-blue-400"
+                : "text-gray-400 hover:text-gray-200"
+            }`}
+            onClick={() => setActiveTab("widgets")}
+          >
+            Widgets ({filteredWidgets.length})
+            {state.selectedWidgets.length > 0 && (
+              <span className="ml-1.5">
+                <Tag3 text={`${state.selectedWidgets.length} selected`} />
+              </span>
+            )}
+          </button>
+        </div>
+        {hasSelection && (
+          <Button
+            onClick={handleClearSelection}
+            title="Clear Selection"
+            textSize="text-xs"
+            padding="py-1 px-3"
+            backgroundColor="bg-gray-700"
+            textColor="text-gray-400"
+            hoverTextColor="hover:text-white"
+            hoverBackgroundColor="hover:bg-gray-600"
+            icon="xmark"
+          />
+        )}
+      </div>
+
       {/* Results */}
-      <div className="flex flex-col gap-6 mt-2">
+      <div className="flex flex-col gap-6">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center gap-2 py-12 text-gray-400">
             <FontAwesomeIcon icon="spinner" spin fixedWidth />
@@ -193,13 +253,9 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
           </div>
         ) : (
           <>
-            {/* Dashboards section */}
-            {filteredDashboards.length > 0 && (
+            {/* Dashboards tab */}
+            {activeTab === "dashboards" && filteredDashboards.length > 0 && (
               <div className="flex flex-col gap-3">
-                <h4 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
-                  Dashboards ({filteredDashboards.length} result
-                  {filteredDashboards.length !== 1 ? "s" : ""})
-                </h4>
                 <div className="grid grid-cols-3 gap-3">
                   {filteredDashboards.map((dash) => {
                     const isSelected =
@@ -270,16 +326,17 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
               </div>
             )}
 
-            {/* Widgets section */}
-            {filteredWidgets.length > 0 && (
+            {/* Dashboards tab — empty state */}
+            {activeTab === "dashboards" && filteredDashboards.length === 0 && (
+              <div className="flex flex-col items-center justify-center gap-2 py-12 text-gray-500">
+                <FontAwesomeIcon icon="grid-2" fixedWidth />
+                <p>No dashboards match your search.</p>
+              </div>
+            )}
+
+            {/* Widgets tab */}
+            {activeTab === "widgets" && filteredWidgets.length > 0 && (
               <div className="flex flex-col gap-3">
-                <h4 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
-                  Widgets ({filteredWidgets.length} result
-                  {filteredWidgets.length !== 1 ? "s" : ""})
-                  {state.selectedWidgets.length > 0 && (
-                    <Tag3 text={`${state.selectedWidgets.length} selected`} />
-                  )}
-                </h4>
                 <div className="grid grid-cols-3 gap-3">
                   {filteredWidgets.map((widget) => {
                     const checked = isWidgetSelected(widget);
@@ -330,6 +387,14 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
                     );
                   })}
                 </div>
+              </div>
+            )}
+
+            {/* Widgets tab — empty state */}
+            {activeTab === "widgets" && filteredWidgets.length === 0 && (
+              <div className="flex flex-col items-center justify-center gap-2 py-12 text-gray-500">
+                <FontAwesomeIcon icon="puzzle-piece" fixedWidth />
+                <p>No widgets match your search.</p>
               </div>
             )}
           </>

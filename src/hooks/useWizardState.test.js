@@ -233,7 +233,7 @@ describe("useWizardState", () => {
         type: "TOGGLE_FILTER_CATEGORY",
         payload: "reporting",
       });
-      result.current.dispatch({ type: "SET_STEP", payload: 2 });
+      result.current.dispatch({ type: "SET_STEP", payload: 1 });
     });
     act(() => {
       result.current.dispatch({ type: "RESET" });
@@ -271,13 +271,8 @@ describe("useWizardState", () => {
 
   test("prevStep goes back but not below 0", () => {
     act(() => {
-      result.current.dispatch({ type: "SET_STEP", payload: 2 });
+      result.current.dispatch({ type: "SET_STEP", payload: 1 });
     });
-    act(() => {
-      result.current.prevStep();
-    });
-    expect(result.current.state.step).toBe(1);
-
     act(() => {
       result.current.prevStep();
     });
@@ -291,29 +286,29 @@ describe("useWizardState", () => {
 
   test("goToStep navigates to valid steps only", () => {
     act(() => {
-      result.current.goToStep(2);
+      result.current.goToStep(1);
     });
-    expect(result.current.state.step).toBe(2);
+    expect(result.current.state.step).toBe(1);
 
     act(() => {
       result.current.goToStep(-1);
     });
-    expect(result.current.state.step).toBe(2);
+    expect(result.current.state.step).toBe(1);
 
     act(() => {
-      result.current.goToStep(3);
+      result.current.goToStep(2);
     });
-    expect(result.current.state.step).toBe(2);
+    expect(result.current.state.step).toBe(1);
   });
 
   test("nextStep does not exceed max step", () => {
     act(() => {
-      result.current.dispatch({ type: "SET_STEP", payload: 2 });
+      result.current.dispatch({ type: "SET_STEP", payload: 1 });
     });
     act(() => {
       result.current.nextStep();
     });
-    expect(result.current.state.step).toBe(2);
+    expect(result.current.state.step).toBe(1);
   });
 
   // --- canProceed per step ---
@@ -344,23 +339,9 @@ describe("useWizardState", () => {
     expect(result.current.canProceed).toBe(true);
   });
 
-  test("step 1 canProceed requires layout templateKey", () => {
+  test("step 1 canProceed requires non-empty name", () => {
     act(() => {
       result.current.dispatch({ type: "SET_STEP", payload: 1 });
-    });
-    expect(result.current.canProceed).toBe(false);
-    act(() => {
-      result.current.dispatch({
-        type: "SET_LAYOUT",
-        payload: { templateKey: "single", widgetOrder: [] },
-      });
-    });
-    expect(result.current.canProceed).toBe(true);
-  });
-
-  test("step 2 canProceed requires non-empty name", () => {
-    act(() => {
-      result.current.dispatch({ type: "SET_STEP", payload: 2 });
     });
     expect(result.current.canProceed).toBe(false);
     act(() => {
@@ -372,9 +353,9 @@ describe("useWizardState", () => {
     expect(result.current.canProceed).toBe(true);
   });
 
-  test("step 2 whitespace-only name does not pass", () => {
+  test("step 1 whitespace-only name does not pass", () => {
     act(() => {
-      result.current.dispatch({ type: "SET_STEP", payload: 2 });
+      result.current.dispatch({ type: "SET_STEP", payload: 1 });
       result.current.dispatch({
         type: "SET_CUSTOMIZATION",
         payload: { name: "   " },

@@ -42,6 +42,7 @@ export const WizardCustomizeStep = ({
   onInstallDashboard = null,
   onOpenDashboard = null,
   appId,
+  createHandlerRef = null,
 }) => {
   const { themes, themeKey: appThemeKey } = useContext(ThemeContext);
   const { providers: providersMap } = useContext(AppContext);
@@ -56,9 +57,12 @@ export const WizardCustomizeStep = ({
   const [error, setError] = useState(null);
   const [createdDashboard, setCreatedDashboard] = useState(null);
 
+  // Sub-step state (DASH-188): 0 = Name, 1 = Folder, 2 = Theme
+  const [subStep, setSubStep] = useState(0);
+
   const isPrebuilt = state.path === "prebuilt";
 
-  // Initialize customization defaults on mount
+  // Initialize customization defaults when stepping into this step
   useEffect(() => {
     setLocalMenuItems(menuItems);
     const updates = {};
@@ -71,11 +75,25 @@ export const WizardCustomizeStep = ({
       )[0]?.[0];
       updates.theme = appThemeKey || fallback || null;
     }
+    // Auto-populate name from selected dashboard (DASH-184)
+    if (!state.customization.name && state.selectedDashboard) {
+      updates.name =
+        state.selectedDashboard.displayName ||
+        state.selectedDashboard.name ||
+        "";
+    }
     if (Object.keys(updates).length > 0) {
       dispatch({ type: "SET_CUSTOMIZATION", payload: updates });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [state.step, state.selectedDashboard]);
+
+  // Expose handleCreate and creating state to parent via ref (DASH-183)
+  useEffect(() => {
+    if (createHandlerRef) {
+      createHandlerRef.current = { handleCreate, creating };
+    }
+  }, [createHandlerRef, handleCreate, creating]);
 
   const handleNameChange = useCallback(
     (val) => {
@@ -90,6 +108,7 @@ export const WizardCustomizeStep = ({
       setIsCreatingFolder(false);
       setNewFolderName("");
       setNewFolderIcon(null);
+      setSubStep(2); // Auto-advance to Theme
     },
     [dispatch],
   );
@@ -275,192 +294,262 @@ export const WizardCustomizeStep = ({
       ? themes[state.customization.theme]
       : null;
 
+  const SUB_STEPS = [
+    { label: "Name", icon: "input-text" },
+    { label: "Folder", icon: "folder" },
+    { label: "Theme", icon: "palette" },
+  ];
+
   return (
     <div className="flex flex-col gap-4">
       <h3 className="text-lg font-semibold text-gray-200">
         Customize your dashboard
       </h3>
-      <p className="text-sm text-gray-400">
-        Name your dashboard, choose a folder, and pick a theme.
-      </p>
+
+      {/* Mini-stepper (DASH-188) */}
+      <div className="flex items-center gap-2 mb-2">
+        {SUB_STEPS.map((s, i) => (
+          <React.Fragment key={s.label}>
+            {i > 0 && (
+              <div
+                className={`flex-1 h-px ${i <= subStep ? "bg-blue-500" : "bg-gray-700"}`}
+              />
+            )}
+            <button
+              type="button"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                i === subStep
+                  ? "bg-blue-600 text-white"
+                  : i < subStep
+                    ? "bg-blue-900/50 text-blue-300 cursor-pointer"
+                    : "bg-gray-800 text-gray-500"
+              }`}
+              onClick={() => setSubStep(i)}
+            >
+              <FontAwesomeIcon icon={s.icon} fixedWidth />
+              {s.label}
+            </button>
+          </React.Fragment>
+        ))}
+      </div>
 
       <div className="flex flex-col gap-6">
-        {/* --- Name --- */}
-        <div className="flex flex-col gap-2">
-          <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
-            <FontAwesomeIcon icon="input-text" fixedWidth />
-            Dashboard Name
-          </label>
-          <InputText
-            value={state.customization.name}
-            onChange={handleNameChange}
-            placeholder="My Dashboard"
-            autoFocus={true}
-          />
-        </div>
+        {/* --- Sub-step 0: Name --- */}
+        {subStep === 0 && (
+          <div className="flex flex-col gap-3">
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
+              <FontAwesomeIcon icon="input-text" fixedWidth />
+              Dashboard Name
+            </label>
+            <InputText
+              value={state.customization.name}
+              onChange={handleNameChange}
+              placeholder="My Dashboard"
+              autoFocus={true}
+            />
+            <div className="flex justify-end mt-2">
+              <Button
+                onClick={() => setSubStep(1)}
+                title="Next"
+                textSize="text-sm"
+                padding="py-1.5 px-4"
+                backgroundColor={
+                  state.customization.name.trim()
+                    ? "bg-blue-600"
+                    : "bg-gray-700"
+                }
+                textColor={
+                  state.customization.name.trim()
+                    ? "text-white"
+                    : "text-gray-500"
+                }
+                hoverTextColor={
+                  state.customization.name.trim()
+                    ? "hover:text-white"
+                    : "hover:text-gray-500"
+                }
+                hoverBackgroundColor={
+                  state.customization.name.trim()
+                    ? "hover:bg-blue-500"
+                    : "hover:bg-gray-700"
+                }
+                disabled={!state.customization.name.trim()}
+                icon="arrow-right"
+              />
+            </div>
+          </div>
+        )}
 
-        {/* --- Folder picker --- */}
-        <div className="flex flex-col gap-2">
-          <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
-            <FontAwesomeIcon icon="folder" fixedWidth />
-            Folder
-          </label>
-          <div className="flex flex-col gap-1.5">
-            {!isCreatingFolder ? (
-              <button
-                type="button"
-                className="flex items-center gap-2 px-3 py-2 rounded border border-dashed border-gray-600 text-sm text-gray-400 hover:border-gray-500 hover:text-gray-300 transition-colors"
-                onClick={() => setIsCreatingFolder(true)}
-              >
-                <FontAwesomeIcon icon="plus" fixedWidth />
-                <span>New Folder</span>
-              </button>
-            ) : (
-              <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-300">
-                    New Folder
-                  </span>
-                  <button
-                    type="button"
-                    className="text-gray-500 hover:text-gray-300 transition-colors"
-                    onClick={handleCancelNewFolder}
-                  >
-                    <FontAwesomeIcon icon="xmark" />
-                  </button>
+        {/* --- Sub-step 1: Folder picker --- */}
+        {subStep === 1 && (
+          <div className="flex flex-col gap-3">
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
+              <FontAwesomeIcon icon="folder" fixedWidth />
+              Folder
+            </label>
+            <div className="flex flex-col gap-1.5">
+              {!isCreatingFolder ? (
+                <button
+                  type="button"
+                  className="flex items-center gap-2 px-3 py-2 rounded border border-dashed border-gray-600 text-sm text-gray-400 hover:border-gray-500 hover:text-gray-300 transition-colors"
+                  onClick={() => setIsCreatingFolder(true)}
+                >
+                  <FontAwesomeIcon icon="plus" fixedWidth />
+                  <span>New Folder</span>
+                </button>
+              ) : (
+                <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-300">
+                      New Folder
+                    </span>
+                    <button
+                      type="button"
+                      className="text-gray-500 hover:text-gray-300 transition-colors"
+                      onClick={handleCancelNewFolder}
+                    >
+                      <FontAwesomeIcon icon="xmark" />
+                    </button>
+                  </div>
+                  <InputText
+                    value={newFolderName}
+                    onChange={(val) => setNewFolderName(val)}
+                    placeholder="Folder name"
+                  />
+                  <div className="grid grid-cols-10 gap-2">
+                    {FOLDER_ICONS.map((icon) => {
+                      const isIconSelected = icon === newFolderIcon;
+                      return (
+                        <div
+                          key={icon}
+                          className={`flex items-center justify-center p-2 rounded cursor-pointer transition-all ${
+                            isIconSelected
+                              ? "bg-blue-600 ring-2 ring-blue-400 text-white"
+                              : "bg-gray-700 text-gray-400 hover:bg-gray-600 hover:text-gray-200"
+                          }`}
+                          onClick={() => setNewFolderIcon(icon)}
+                        >
+                          <FontAwesomeIcon icon={icon} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <Button
+                    onClick={handleSaveNewFolder}
+                    title="Add Folder"
+                    textSize="text-sm"
+                    padding="py-1 px-3"
+                    backgroundColor="bg-blue-600"
+                    textColor="text-white"
+                    hoverTextColor="hover:text-white"
+                    hoverBackgroundColor="hover:bg-blue-500"
+                    disabled={!newFolderName.trim() || !newFolderIcon}
+                  />
                 </div>
-                <InputText
-                  value={newFolderName}
-                  onChange={(val) => setNewFolderName(val)}
-                  placeholder="Folder name"
-                />
-                <div className="grid grid-cols-10 gap-2">
-                  {FOLDER_ICONS.map((icon) => {
-                    const isIconSelected = icon === newFolderIcon;
-                    return (
-                      <div
-                        key={icon}
-                        className={`flex items-center justify-center p-2 rounded cursor-pointer transition-all ${
-                          isIconSelected
-                            ? "bg-blue-600 ring-2 ring-blue-400 text-white"
-                            : "bg-gray-700 text-gray-400 hover:bg-gray-600 hover:text-gray-200"
+              )}
+              {localMenuItems.map((item) => {
+                const isSelected =
+                  !isCreatingFolder && item.id === state.customization.menuId;
+                return (
+                  <Card3
+                    key={item.id}
+                    hover
+                    selected={isSelected}
+                    onClick={() => handleMenuSelect(item.id)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <FontAwesomeIcon
+                        icon={item.icon || item.folder || "folder"}
+                        fixedWidth
+                        className={`w-5 h-5 ${
+                          isSelected ? "text-blue-400" : "text-gray-400"
                         }`}
-                        onClick={() => setNewFolderIcon(icon)}
+                      />
+                      <span
+                        className={`text-sm font-medium ${
+                          isSelected ? "text-blue-300" : "text-gray-300"
+                        }`}
                       >
-                        <FontAwesomeIcon icon={icon} />
-                      </div>
+                        {item.name}
+                      </span>
+                      {isSelected && (
+                        <FontAwesomeIcon
+                          icon="check"
+                          className="ml-auto text-blue-400 text-sm"
+                        />
+                      )}
+                    </div>
+                  </Card3>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* --- Sub-step 2: Theme picker --- */}
+        {subStep === 2 && (
+          <div className="flex flex-col gap-3">
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
+              <FontAwesomeIcon icon="palette" fixedWidth />
+              Theme
+            </label>
+            <div className="flex flex-col gap-1.5">
+              {themes &&
+                Object.entries(themes)
+                  .sort(([, a], [, b]) =>
+                    (a.name || "").localeCompare(b.name || ""),
+                  )
+                  .map(([key, t]) => {
+                    const isThemeSelected = state.customization.theme === key;
+                    return (
+                      <Card3
+                        key={key}
+                        hover
+                        selected={isThemeSelected}
+                        onClick={() => handleThemeSelect(key)}
+                      >
+                        <div className="flex items-center gap-2">
+                          <FontAwesomeIcon
+                            icon="palette"
+                            className={`w-5 h-5 ${
+                              isThemeSelected
+                                ? "text-blue-400"
+                                : "text-gray-400"
+                            }`}
+                          />
+                          <span
+                            className={`text-sm font-medium ${
+                              isThemeSelected
+                                ? "text-blue-300"
+                                : "text-gray-300"
+                            }`}
+                          >
+                            {t.name || key}
+                          </span>
+                          <div className="flex flex-row space-x-1 ml-auto">
+                            {t.primary && (
+                              <div
+                                className={`w-4 h-4 rounded bg-${t.primary}-500`}
+                              />
+                            )}
+                            {t.secondary && (
+                              <div
+                                className={`w-4 h-4 rounded bg-${t.secondary}-500`}
+                              />
+                            )}
+                            {t.tertiary && (
+                              <div
+                                className={`w-4 h-4 rounded bg-${t.tertiary}-500`}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </Card3>
                     );
                   })}
-                </div>
-                <Button
-                  onClick={handleSaveNewFolder}
-                  title="Add Folder"
-                  textSize="text-sm"
-                  padding="py-1 px-3"
-                  backgroundColor="bg-blue-600"
-                  textColor="text-white"
-                  hoverTextColor="hover:text-white"
-                  hoverBackgroundColor="hover:bg-blue-500"
-                  disabled={!newFolderName.trim() || !newFolderIcon}
-                />
-              </div>
-            )}
-            {localMenuItems.map((item) => {
-              const isSelected =
-                !isCreatingFolder && item.id === state.customization.menuId;
-              return (
-                <Card3
-                  key={item.id}
-                  hover
-                  selected={isSelected}
-                  onClick={() => handleMenuSelect(item.id)}
-                >
-                  <div className="flex items-center gap-2">
-                    <FontAwesomeIcon
-                      icon={item.icon || item.folder || "folder"}
-                      fixedWidth
-                      className={`w-5 h-5 ${
-                        isSelected ? "text-blue-400" : "text-gray-400"
-                      }`}
-                    />
-                    <span
-                      className={`text-sm font-medium ${
-                        isSelected ? "text-blue-300" : "text-gray-300"
-                      }`}
-                    >
-                      {item.name}
-                    </span>
-                    {isSelected && (
-                      <FontAwesomeIcon
-                        icon="check"
-                        className="ml-auto text-blue-400 text-sm"
-                      />
-                    )}
-                  </div>
-                </Card3>
-              );
-            })}
+            </div>
           </div>
-        </div>
-
-        {/* --- Theme picker --- */}
-        <div className="flex flex-col gap-2">
-          <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
-            <FontAwesomeIcon icon="palette" fixedWidth />
-            Theme
-          </label>
-          <div className="flex flex-col gap-1.5">
-            {themes &&
-              Object.entries(themes)
-                .sort(([, a], [, b]) =>
-                  (a.name || "").localeCompare(b.name || ""),
-                )
-                .map(([key, t]) => {
-                  const isThemeSelected = state.customization.theme === key;
-                  return (
-                    <Card3
-                      key={key}
-                      hover
-                      selected={isThemeSelected}
-                      onClick={() => handleThemeSelect(key)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <FontAwesomeIcon
-                          icon="palette"
-                          className={`w-5 h-5 ${
-                            isThemeSelected ? "text-blue-400" : "text-gray-400"
-                          }`}
-                        />
-                        <span
-                          className={`text-sm font-medium ${
-                            isThemeSelected ? "text-blue-300" : "text-gray-300"
-                          }`}
-                        >
-                          {t.name || key}
-                        </span>
-                        <div className="flex flex-row space-x-1 ml-auto">
-                          {t.primary && (
-                            <div
-                              className={`w-4 h-4 rounded bg-${t.primary}-500`}
-                            />
-                          )}
-                          {t.secondary && (
-                            <div
-                              className={`w-4 h-4 rounded bg-${t.secondary}-500`}
-                            />
-                          )}
-                          {t.tertiary && (
-                            <div
-                              className={`w-4 h-4 rounded bg-${t.tertiary}-500`}
-                            />
-                          )}
-                        </div>
-                      </div>
-                    </Card3>
-                  );
-                })}
-          </div>
-        </div>
+        )}
 
         {/* --- Provider setup summary --- */}
         {selectedProviders.length > 0 && (
