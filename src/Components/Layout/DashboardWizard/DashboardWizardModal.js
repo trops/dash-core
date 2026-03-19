@@ -1,13 +1,11 @@
-import React, { useEffect, useCallback } from "react";
+import React, { useEffect, useCallback, useRef } from "react";
 import { Modal, Stepper, Button } from "@trops/dash-react";
 import { useWizardState } from "../../../hooks/useWizardState";
 import { WizardDiscoverStep } from "./steps/WizardDiscoverStep";
-import { WizardLayoutPreviewStep } from "./steps/WizardLayoutPreviewStep";
 import { WizardCustomizeStep } from "./steps/WizardCustomizeStep";
 
 const STEP_LABELS = [
   { label: "Discover", description: "Search & select" },
-  { label: "Layout", description: "Arrange your widgets" },
   { label: "Customize", description: "Name, folder & theme" },
 ];
 
@@ -29,15 +27,9 @@ export const DashboardWizardModal = ({
   onReloadWorkspaces = null,
   appId,
 }) => {
-  const {
-    state,
-    dispatch,
-    nextStep,
-    prevStep,
-    goToStep,
-    canProceed,
-    isPrebuiltPath,
-  } = useWizardState();
+  const createHandlerRef = useRef(null);
+
+  const { state, dispatch, nextStep, prevStep, canProceed } = useWizardState();
 
   // Reset wizard state when modal opens
   useEffect(() => {
@@ -54,34 +46,20 @@ export const DashboardWizardModal = ({
     (newStep) => {
       // Stepper only allows going backwards; forward is via Next button
       if (newStep < state.step) {
-        goToStep(newStep);
+        prevStep();
       }
     },
-    [state.step, goToStep],
+    [state.step, prevStep],
   );
 
-  // Skip layout step for prebuilt path
   const handleNext = useCallback(() => {
     if (!canProceed) return;
-    if (state.step === 0 && isPrebuiltPath) {
-      // Skip layout step (1), go straight to customize (2)
-      goToStep(2);
-    } else {
-      nextStep();
-    }
-  }, [canProceed, state.step, isPrebuiltPath, goToStep, nextStep]);
+    nextStep();
+  }, [canProceed, nextStep]);
 
-  const handleBack = useCallback(() => {
-    if (state.step === 2 && isPrebuiltPath) {
-      // Skip back over layout step (1), go to discover (0)
-      goToStep(0);
-    } else {
-      prevStep();
-    }
-  }, [state.step, isPrebuiltPath, goToStep, prevStep]);
-
-  const isLastStep = state.step === 2;
-  const isSuccessState = state.step === 2 && state._created;
+  const isLastStep = state.step === 1;
+  const isCreating = createHandlerRef.current?.creating ?? false;
+  const canCreate = canProceed && !isCreating;
 
   return (
     <Modal
@@ -139,15 +117,6 @@ export const DashboardWizardModal = ({
               description={STEP_LABELS[1].description}
             >
               <div className="flex-1 min-h-0 overflow-y-auto">
-                <WizardLayoutPreviewStep state={state} dispatch={dispatch} />
-              </div>
-            </Stepper.Step>
-
-            <Stepper.Step
-              label={STEP_LABELS[2].label}
-              description={STEP_LABELS[2].description}
-            >
-              <div className="flex-1 min-h-0 overflow-y-auto">
                 <WizardCustomizeStep
                   state={state}
                   dispatch={dispatch}
@@ -161,6 +130,7 @@ export const DashboardWizardModal = ({
                     if (onReloadWorkspaces) onReloadWorkspaces();
                   }}
                   appId={appId}
+                  createHandlerRef={createHandlerRef}
                 />
               </div>
             </Stepper.Step>
@@ -169,7 +139,7 @@ export const DashboardWizardModal = ({
           {/* Custom navigation footer */}
           <div className="flex flex-row justify-between items-center pt-4 mt-4 border-t border-gray-700/50">
             <Button
-              onClick={state.step === 0 ? handleClose : handleBack}
+              onClick={state.step === 0 ? handleClose : prevStep}
               title={state.step === 0 ? "Cancel" : "Back"}
               textSize="text-sm"
               padding="py-2 px-4"
@@ -181,7 +151,24 @@ export const DashboardWizardModal = ({
             <span className="text-xs text-gray-500">
               Step {state.step + 1} of {STEP_LABELS.length}
             </span>
-            {!isLastStep ? (
+            {isLastStep ? (
+              <Button
+                onClick={() => createHandlerRef.current?.handleCreate?.()}
+                title={isCreating ? "Creating..." : "Create Dashboard"}
+                textSize="text-sm"
+                padding="py-2 px-4"
+                backgroundColor={canCreate ? "bg-green-600" : "bg-gray-700"}
+                textColor={canCreate ? "text-white" : "text-gray-500"}
+                hoverTextColor={
+                  canCreate ? "hover:text-white" : "hover:text-gray-500"
+                }
+                hoverBackgroundColor={
+                  canCreate ? "hover:bg-green-500" : "hover:bg-gray-700"
+                }
+                disabled={!canCreate}
+                icon={isCreating ? "spinner" : "plus"}
+              />
+            ) : (
               <Button
                 onClick={handleNext}
                 title="Next"
@@ -198,8 +185,6 @@ export const DashboardWizardModal = ({
                 disabled={!canProceed}
                 icon="arrow-right"
               />
-            ) : (
-              <div />
             )}
           </div>
         </div>

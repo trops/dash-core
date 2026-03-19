@@ -235,6 +235,8 @@ describe("WizardDiscoverStep", () => {
     });
 
     render(<WizardDiscoverStep state={baseState} dispatch={dispatch} />);
+    // Switch to Widgets tab first
+    fireEvent.click(screen.getByText(/^Widgets/));
     expect(screen.getByText("git-widget")).toBeInTheDocument();
     expect(screen.getByText("Git stats")).toBeInTheDocument();
   });
@@ -259,6 +261,8 @@ describe("WizardDiscoverStep", () => {
     });
 
     render(<WizardDiscoverStep state={baseState} dispatch={dispatch} />);
+    // Switch to Widgets tab first
+    fireEvent.click(screen.getByText(/^Widgets/));
     fireEvent.click(screen.getByText("git-widget").closest("button"));
 
     expect(dispatch).toHaveBeenCalledWith({
@@ -304,6 +308,8 @@ describe("WizardDiscoverStep", () => {
     });
 
     render(<WizardDiscoverStep state={baseState} dispatch={dispatch} />);
+    // Switch to Widgets tab first
+    fireEvent.click(screen.getByText(/^Widgets/));
     expect(screen.getByText("uptime")).toBeInTheDocument();
     expect(screen.queryByText("report")).not.toBeInTheDocument();
   });
@@ -335,6 +341,8 @@ describe("WizardDiscoverStep", () => {
     });
 
     render(<WizardDiscoverStep state={baseState} dispatch={dispatch} />);
+    // Switch to Widgets tab first
+    fireEvent.click(screen.getByText(/^Widgets/));
     expect(screen.getByText("git-widget")).toBeInTheDocument();
     expect(screen.queryByText("slack-widget")).not.toBeInTheDocument();
   });

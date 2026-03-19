@@ -1,6 +1,6 @@
 import { useReducer, useCallback, useMemo } from "react";
 
-const TOTAL_STEPS = 3; // Steps 0-2: Discover, Layout, Customize
+const TOTAL_STEPS = 2; // Steps 0-1: Discover, Customize
 
 const initialState = {
   step: 0,
@@ -60,8 +60,15 @@ function wizardReducer(state, action) {
         filters: { ...state.filters, query: action.payload },
       };
 
-    case "SET_SELECTED_WIDGETS":
-      return { ...state, selectedWidgets: action.payload };
+    case "SET_SELECTED_WIDGETS": {
+      const templateKey = widgetCountToTemplate(action.payload.length);
+      const widgetOrder = action.payload.map((w) => w.name || w.key);
+      return {
+        ...state,
+        selectedWidgets: action.payload,
+        layout: { templateKey, widgetOrder },
+      };
+    }
 
     case "TOGGLE_WIDGET": {
       const exists = state.selectedWidgets.some(
@@ -70,7 +77,16 @@ function wizardReducer(state, action) {
       const selectedWidgets = exists
         ? state.selectedWidgets.filter((w) => w.name !== action.payload.name)
         : [...state.selectedWidgets, action.payload];
-      return { ...state, selectedWidgets };
+      const toggleTemplateKey = widgetCountToTemplate(selectedWidgets.length);
+      const toggleWidgetOrder = selectedWidgets.map((w) => w.name || w.key);
+      return {
+        ...state,
+        selectedWidgets,
+        layout: {
+          templateKey: toggleTemplateKey,
+          widgetOrder: toggleWidgetOrder,
+        },
+      };
     }
 
     case "SET_SELECTED_DASHBOARD":
@@ -118,8 +134,6 @@ function getCanProceed(state) {
         state.selectedDashboard !== null || state.selectedWidgets.length > 0
       );
     case 1:
-      return state.layout.templateKey !== null;
-    case 2:
       return state.customization.name.trim().length > 0;
     default:
       return false;
