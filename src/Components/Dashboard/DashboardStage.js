@@ -399,6 +399,7 @@ const DashboardStageInner = ({
       handleOpenTab(newWorkspace);
       setSidebarCollapsed(true);
       setPreviewMode(false);
+      return { success: true, workspace: newWorkspace };
     } catch (e) {
       console.log(e);
     }

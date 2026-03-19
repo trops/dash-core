@@ -88,62 +88,7 @@ export const WizardCustomizeStep = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.step, state.selectedDashboard]);
 
-  // Expose handleCreate and creating state to parent via ref (DASH-183)
-  useEffect(() => {
-    if (createHandlerRef) {
-      createHandlerRef.current = { handleCreate, creating };
-    }
-  }, [createHandlerRef, handleCreate, creating]);
-
-  const handleNameChange = useCallback(
-    (val) => {
-      dispatch({ type: "SET_CUSTOMIZATION", payload: { name: val } });
-    },
-    [dispatch],
-  );
-
-  const handleMenuSelect = useCallback(
-    (id) => {
-      dispatch({ type: "SET_CUSTOMIZATION", payload: { menuId: id } });
-      setIsCreatingFolder(false);
-      setNewFolderName("");
-      setNewFolderIcon(null);
-      setSubStep(2); // Auto-advance to Theme
-    },
-    [dispatch],
-  );
-
-  const handleThemeSelect = useCallback(
-    (key) => {
-      dispatch({ type: "SET_CUSTOMIZATION", payload: { theme: key } });
-    },
-    [dispatch],
-  );
-
-  function handleCancelNewFolder() {
-    setIsCreatingFolder(false);
-    setNewFolderName("");
-    setNewFolderIcon(null);
-  }
-
-  function handleSaveNewFolder() {
-    if (!newFolderName.trim() || !newFolderIcon) return;
-    const newItem = {
-      id: Date.now(),
-      name: newFolderName.trim(),
-      icon: newFolderIcon,
-    };
-    setLocalMenuItems((prev) => [...prev, newItem]);
-    dispatch({ type: "SET_CUSTOMIZATION", payload: { menuId: newItem.id } });
-    if (onSaveMenuItem) {
-      onSaveMenuItem(newItem);
-    }
-    setIsCreatingFolder(false);
-    setNewFolderName("");
-    setNewFolderIcon(null);
-  }
-
-  // --- Create logic ---
+  // --- Create logic (DASH-191: moved above useEffect so ref captures actual function) ---
   const handleCreate = useCallback(async () => {
     setCreating(true);
     setError(null);
@@ -232,6 +177,61 @@ export const WizardCustomizeStep = ({
       setCreating(false);
     }
   }, [state, isPrebuilt, onInstallDashboard, onCreateWorkspace, appId]);
+
+  // Expose handleCreate and creating state to parent via ref (DASH-183)
+  useEffect(() => {
+    if (createHandlerRef) {
+      createHandlerRef.current = { handleCreate, creating };
+    }
+  }, [createHandlerRef, handleCreate, creating]);
+
+  const handleNameChange = useCallback(
+    (val) => {
+      dispatch({ type: "SET_CUSTOMIZATION", payload: { name: val } });
+    },
+    [dispatch],
+  );
+
+  const handleMenuSelect = useCallback(
+    (id) => {
+      dispatch({ type: "SET_CUSTOMIZATION", payload: { menuId: id } });
+      setIsCreatingFolder(false);
+      setNewFolderName("");
+      setNewFolderIcon(null);
+      setSubStep(2); // Auto-advance to Theme
+    },
+    [dispatch],
+  );
+
+  const handleThemeSelect = useCallback(
+    (key) => {
+      dispatch({ type: "SET_CUSTOMIZATION", payload: { theme: key } });
+    },
+    [dispatch],
+  );
+
+  function handleCancelNewFolder() {
+    setIsCreatingFolder(false);
+    setNewFolderName("");
+    setNewFolderIcon(null);
+  }
+
+  function handleSaveNewFolder() {
+    if (!newFolderName.trim() || !newFolderIcon) return;
+    const newItem = {
+      id: Date.now(),
+      name: newFolderName.trim(),
+      icon: newFolderIcon,
+    };
+    setLocalMenuItems((prev) => [...prev, newItem]);
+    dispatch({ type: "SET_CUSTOMIZATION", payload: { menuId: newItem.id } });
+    if (onSaveMenuItem) {
+      onSaveMenuItem(newItem);
+    }
+    setIsCreatingFolder(false);
+    setNewFolderName("");
+    setNewFolderIcon(null);
+  }
 
   // --- Success state ---
   if (createdDashboard) {
@@ -482,6 +482,19 @@ export const WizardCustomizeStep = ({
                   </Card3>
                 );
               })}
+            </div>
+            <div className="flex justify-end mt-2">
+              <Button
+                onClick={() => setSubStep(2)}
+                title="Next"
+                textSize="text-sm"
+                padding="py-1.5 px-4"
+                backgroundColor="bg-blue-600"
+                textColor="text-white"
+                hoverTextColor="hover:text-white"
+                hoverBackgroundColor="hover:bg-blue-500"
+                icon="arrow-right"
+              />
             </div>
           </div>
         )}
