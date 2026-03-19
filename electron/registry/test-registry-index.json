@@ -107,6 +107,176 @@
           "displayName": "Legacy"
         }
       ]
+    },
+    {
+      "name": "nordic-frost",
+      "displayName": "Nordic Frost",
+      "scope": "@trops",
+      "author": "johng",
+      "description": "Cool Scandinavian palette with sky blues and slate accents",
+      "version": "1.0.0",
+      "type": "theme",
+      "category": "general",
+      "tags": ["cool", "minimal"],
+      "colors": {
+        "primary": "#0ea5e9",
+        "secondary": "#64748b",
+        "tertiary": "#3b82f6",
+        "neutral": "#334155"
+      }
+    },
+    {
+      "name": "dracula-night",
+      "displayName": "Dracula Night",
+      "scope": "@trops",
+      "author": "johng",
+      "description": "Dark editor-inspired theme with purple, pink, and cyan tones",
+      "version": "1.0.0",
+      "type": "theme",
+      "category": "general",
+      "tags": ["dark", "editor"],
+      "colors": {
+        "primary": "#a855f7",
+        "secondary": "#ec4899",
+        "tertiary": "#06b6d4",
+        "neutral": "#334155"
+      }
+    },
+    {
+      "name": "solarized-warm",
+      "displayName": "Solarized Warm",
+      "scope": "@trops",
+      "author": "johng",
+      "description": "Warm Solarized variant with amber, orange, and yellow",
+      "version": "1.0.0",
+      "type": "theme",
+      "category": "general",
+      "tags": ["warm", "classic"],
+      "colors": {
+        "primary": "#f59e0b",
+        "secondary": "#f97316",
+        "tertiary": "#eab308",
+        "neutral": "#334155"
+      }
+    },
+    {
+      "name": "monokai-ember",
+      "displayName": "Monokai Ember",
+      "scope": "@trops",
+      "author": "johng",
+      "description": "Monokai-inspired palette with orange, rose, and green accents",
+      "version": "1.0.0",
+      "type": "theme",
+      "category": "general",
+      "tags": ["editor", "vibrant"],
+      "colors": {
+        "primary": "#f97316",
+        "secondary": "#f43f5e",
+        "tertiary": "#22c55e",
+        "neutral": "#334155"
+      }
+    },
+    {
+      "name": "evergreen-pine",
+      "displayName": "Evergreen Pine",
+      "scope": "@trops",
+      "author": "johng",
+      "description": "Deep forest palette with emerald, teal, and lime greens",
+      "version": "1.0.0",
+      "type": "theme",
+      "category": "general",
+      "tags": ["nature", "green"],
+      "colors": {
+        "primary": "#10b981",
+        "secondary": "#14b8a6",
+        "tertiary": "#84cc16",
+        "neutral": "#334155"
+      }
+    },
+    {
+      "name": "sakura-blossom",
+      "displayName": "Sakura Blossom",
+      "scope": "@trops",
+      "author": "johng",
+      "description": "Japanese cherry blossom theme with pink, rose, and fuchsia",
+      "version": "1.0.0",
+      "type": "theme",
+      "category": "general",
+      "tags": ["soft", "pink"],
+      "colors": {
+        "primary": "#ec4899",
+        "secondary": "#f43f5e",
+        "tertiary": "#d946ef",
+        "neutral": "#334155"
+      }
+    },
+    {
+      "name": "oceanic-breeze",
+      "displayName": "Oceanic Breeze",
+      "scope": "@trops",
+      "author": "johng",
+      "description": "Tropical ocean palette with cyan, sky, and teal tones",
+      "version": "1.0.0",
+      "type": "theme",
+      "category": "general",
+      "tags": ["ocean", "cool"],
+      "colors": {
+        "primary": "#06b6d4",
+        "secondary": "#0ea5e9",
+        "tertiary": "#14b8a6",
+        "neutral": "#334155"
+      }
+    },
+    {
+      "name": "volcanic-ash",
+      "displayName": "Volcanic Ash",
+      "scope": "@trops",
+      "author": "johng",
+      "description": "Volcanic fire palette with red, amber, and orange",
+      "version": "1.0.0",
+      "type": "theme",
+      "category": "general",
+      "tags": ["warm", "bold"],
+      "colors": {
+        "primary": "#ef4444",
+        "secondary": "#f59e0b",
+        "tertiary": "#f97316",
+        "neutral": "#334155"
+      }
+    },
+    {
+      "name": "lavender-haze",
+      "displayName": "Lavender Haze",
+      "scope": "@trops",
+      "author": "johng",
+      "description": "Soft purple tones with violet, indigo, and purple",
+      "version": "1.0.0",
+      "type": "theme",
+      "category": "general",
+      "tags": ["soft", "purple"],
+      "colors": {
+        "primary": "#8b5cf6",
+        "secondary": "#6366f1",
+        "tertiary": "#a855f7",
+        "neutral": "#334155"
+      }
+    },
+    {
+      "name": "copper-canyon",
+      "displayName": "Copper Canyon",
+      "scope": "@trops",
+      "author": "johng",
+      "description": "Warm desert palette with orange, amber, and red tones",
+      "version": "1.0.0",
+      "type": "theme",
+      "category": "general",
+      "tags": ["warm", "desert"],
+      "colors": {
+        "primary": "#f97316",
+        "secondary": "#f59e0b",
+        "tertiary": "#ef4444",
+        "neutral": "#334155"
+      }
     }
   ]
 }
