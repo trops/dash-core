@@ -207,6 +207,18 @@ export const DashboardsSection = ({
               inputClassName="py-1.5 text-xs"
             />
           </div>
+          {onOpenWizard && (
+            <button
+              onClick={onOpenWizard}
+              className="flex-shrink-0 p-1.5 rounded opacity-60 hover:opacity-100 transition-opacity"
+              title="Dashboard Wizard"
+            >
+              <FontAwesomeIcon
+                icon="wand-magic-sparkles"
+                className="h-3.5 w-3.5"
+              />
+            </button>
+          )}
         </div>
         <Tabs3
           value={installMode === "marketplace" ? "marketplace" : viewMode}
@@ -232,18 +244,6 @@ export const DashboardsSection = ({
             <Tabs3.Trigger value="marketplace" className="flex-1">
               Marketplace
             </Tabs3.Trigger>
-            {onOpenWizard && (
-              <Tabs3.Trigger
-                value="wizard"
-                className="flex-1"
-                onClick={(e) => {
-                  e.preventDefault();
-                  onOpenWizard();
-                }}
-              >
-                Wizard
-              </Tabs3.Trigger>
-            )}
           </Tabs3.List>
         </Tabs3>
       </div>
