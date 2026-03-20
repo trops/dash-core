@@ -289,8 +289,7 @@ export const RegistryDashboardDetail = ({
             <div className="space-y-1.5">
               {widgetDeps.map((w, idx) => {
                 const status =
-                  compatibility?.widgets?.[w.packageName || w.name] ||
-                  "unknown";
+                  compatibility?.widgets?.[w.package || w.name] || "unknown";
                 const compat = getCompatIcon(status);
                 return (
                   <div
