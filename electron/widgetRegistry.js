@@ -514,6 +514,11 @@ class WidgetRegistry {
       registeredAt: new Date().toISOString(),
     };
 
+    // Persist scope from manifest/config if available
+    if (config.scope) {
+      widgetEntry.scope = config.scope;
+    }
+
     this.widgets.set(widgetName, widgetEntry);
     this.saveRegistry();
     console.log(`[WidgetRegistry] Registered widget: ${widgetName}`);
@@ -574,6 +579,8 @@ class WidgetRegistry {
           // has full display data without needing ComponentManager.
           if (result?.config && existingEntry) {
             const cfg = result.config;
+            if (cfg.scope && !existingEntry.scope)
+              existingEntry.scope = cfg.scope;
             if (cfg.icon && !existingEntry.icon) existingEntry.icon = cfg.icon;
             if (cfg.providers?.length && !existingEntry.providers?.length)
               existingEntry.providers = cfg.providers;

@@ -130,16 +130,27 @@ function buildWidgetDependencies(componentNames, widgetRegistry = null) {
     if (seen.has(name)) continue;
     seen.add(name);
 
+    let scope = "";
     let packageName = "";
+    let widgetName = name;
     let version = "*";
     let author = "";
+
+    // Check if name is already a scoped ID (scope.packageName.widgetName)
+    const parts = name.split(".");
+    if (parts.length === 3) {
+      scope = parts[0];
+      packageName = parts[1];
+      widgetName = parts[2];
+    }
 
     // Try to resolve from widget registry
     if (widgetRegistry) {
       const installedWidgets = widgetRegistry.getWidgets();
       for (const w of installedWidgets) {
         if (w.componentNames && w.componentNames.includes(name)) {
-          packageName = w.name || "";
+          if (!scope && w.scope) scope = w.scope;
+          if (!packageName || packageName === name) packageName = w.name || "";
           version = w.version || "*";
           author =
             typeof w.author === "string" ? w.author : w.author?.name || "";
@@ -148,9 +159,19 @@ function buildWidgetDependencies(componentNames, widgetRegistry = null) {
       }
     }
 
+    const id =
+      scope && packageName && widgetName
+        ? `${scope}.${packageName}.${widgetName}`
+        : packageName
+          ? `${packageName}.${widgetName}`
+          : widgetName;
+
     widgets.push({
-      id: packageName ? `${packageName}.${name}` : name,
-      package: packageName || name,
+      id,
+      scope: scope || "",
+      packageName: packageName || widgetName,
+      widgetName,
+      package: packageName || widgetName,
       version,
       required: true,
       author: author || "",
@@ -274,10 +295,17 @@ function checkDashboardCompatibility(
   installedWidgets = [],
   registryPackages = [],
 ) {
+  // Build lookup maps using composite keys (scope.packageName.componentName)
+  const installedByKey = new Map();
   const installedByName = new Map();
   for (const w of installedWidgets) {
     if (w.name) {
       installedByName.set(w.name, w);
+    }
+    if (w.scope && w.name && w.componentNames) {
+      for (const cn of w.componentNames) {
+        installedByKey.set(`${w.scope}.${w.name}.${cn}`, w);
+      }
     }
   }
 
@@ -295,19 +323,31 @@ function checkDashboardCompatibility(
   let hasUnavailableRequired = false;
 
   for (const dep of dashboardWidgets) {
-    const packageName = dep.package;
+    // Build composite key for scoped matching
+    const key =
+      dep.scope && dep.packageName && dep.widgetName
+        ? `${dep.scope}.${dep.packageName}.${dep.widgetName}`
+        : null;
+    const packageName = dep.package || dep.packageName || "";
     const required = dep.required !== false;
-    const installed = installedByName.get(packageName);
+
+    // Try composite key first, then fall back to package name
+    const installed = key
+      ? installedByKey.get(key) || installedByName.get(packageName)
+      : installedByName.get(packageName);
+
+    // Use the dep's id or key for the status map
+    const statusKey = dep.id || key || packageName;
 
     if (installed) {
       installedCount++;
-      widgets[packageName] = "installed";
+      widgets[statusKey] = "installed";
     } else if (registryByName.has(packageName)) {
       toInstallCount++;
-      widgets[packageName] = "available";
+      widgets[statusKey] = "available";
     } else {
       unavailableCount++;
-      widgets[packageName] = "unavailable";
+      widgets[statusKey] = "unavailable";
       if (required) {
         hasUnavailableRequired = true;
       }
@@ -366,6 +406,9 @@ function generateRegistryManifest(dashboardConfig, options = {}) {
     publishedAt: new Date().toISOString(),
     widgets: (dashboardConfig.widgets || []).map((w) => ({
       id: w.id,
+      scope: w.scope || "",
+      packageName: w.packageName || w.package || "",
+      widgetName: w.widgetName || (w.id ? w.id.split(".").pop() : w.package),
       name: w.id ? w.id.split(".").pop() : w.package,
       package: w.package,
       version: w.version || "*",

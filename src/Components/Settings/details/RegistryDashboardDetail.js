@@ -7,6 +7,7 @@ import {
   getStylesForItem,
   themeObjects,
 } from "@trops/dash-react";
+import { ComponentManager } from "../../../ComponentManager";
 import { StarRating } from "./StarRating";
 
 /**
@@ -164,9 +165,66 @@ export const RegistryDashboardDetail = ({
     }
   }
 
-  const compatibility = preview?.compatibility;
   const widgetDeps = preview?.widgets || pkg.widgets || [];
   const providers = preview?.providers || [];
+
+  // Augment compatibility: check renderer-side ComponentManager for
+  // built-in widgets that the electron-side WidgetRegistry doesn't know about
+  const compatibility = (() => {
+    const raw = preview?.compatibility;
+    if (!raw) return raw;
+
+    const cMap = ComponentManager.componentMap();
+    const augWidgets = { ...raw.widgets };
+    let fixedCount = 0;
+
+    for (const [key, status] of Object.entries(augWidgets)) {
+      if (status !== "unavailable" && status !== "unknown") continue;
+      // Extract bare widget name (last segment of dotted key)
+      const bareName = key.includes(".") ? key.split(".").pop() : key;
+      // Match by exact key, bare name, or config.name scan
+      if (
+        key in cMap ||
+        bareName in cMap ||
+        Object.values(cMap).some((c) => c.name === key || c.name === bareName)
+      ) {
+        augWidgets[key] = "installed";
+        fixedCount++;
+      }
+    }
+
+    if (fixedCount === 0) return raw;
+
+    // Recompute summary
+    let installed = 0,
+      toInstall = 0,
+      unavailable = 0,
+      hasUnavailableRequired = false;
+    for (const dep of widgetDeps) {
+      const depKey =
+        dep.scope && dep.packageName && dep.widgetName
+          ? `${dep.scope}.${dep.packageName}.${dep.widgetName}`
+          : dep.id || dep.package || dep.name;
+      const s = augWidgets[depKey] || "unknown";
+      if (s === "installed") installed++;
+      else if (s === "available") toInstall++;
+      else {
+        unavailable++;
+        if (dep.required !== false) hasUnavailableRequired = true;
+      }
+    }
+
+    return {
+      compatible: !hasUnavailableRequired,
+      summary: {
+        total: widgetDeps.length,
+        installed,
+        toInstall,
+        unavailable,
+      },
+      widgets: augWidgets,
+    };
+  })();
   const wiring = preview?.wiring || [];
 
   function getCompatIcon(status) {
@@ -288,8 +346,11 @@ export const RegistryDashboardDetail = ({
           ) : (
             <div className="space-y-1.5">
               {widgetDeps.map((w, idx) => {
-                const status =
-                  compatibility?.widgets?.[w.package || w.name] || "unknown";
+                const depKey =
+                  w.scope && w.packageName && w.widgetName
+                    ? `${w.scope}.${w.packageName}.${w.widgetName}`
+                    : w.id || w.package || w.name;
+                const status = compatibility?.widgets?.[depKey] || "unknown";
                 const compat = getCompatIcon(status);
                 return (
                   <div
