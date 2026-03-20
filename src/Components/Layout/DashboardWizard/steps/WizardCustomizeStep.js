@@ -137,27 +137,42 @@ export const WizardCustomizeStep = ({
 
         const layoutObj = createLayoutFromTemplate(template, menuId || 1);
 
-        // Place widgets into grid cells
+        // Place widgets into grid cells as proper layout items
         const widgetOrder = state.layout.widgetOrder || [];
         const cells = template.cells.filter((c) => !c.hide);
+        const widgetItems = [];
+        let nextId = 2; // grid container is ID 1
+
         for (let i = 0; i < widgetOrder.length && i < cells.length; i++) {
           const widget = state.selectedWidgets.find(
             (w) => (w.name || w.key) === widgetOrder[i],
           );
           if (widget && layoutObj.grid[cells[i].key]) {
-            layoutObj.grid[cells[i].key].component =
-              widget.component || widget.name || widget.key;
+            const widgetKey = widget.component || widget.name || widget.key;
+            widgetItems.push({
+              id: nextId,
+              component: widgetKey,
+              parent: 1,
+              order: i + 1,
+              hasChildren: 0,
+              scrollable: true,
+              workspace: "layout",
+            });
+            layoutObj.grid[cells[i].key].component = nextId;
+            nextId++;
           }
         }
 
+        const fullLayout = [layoutObj, ...widgetItems];
+
         if (onCreateWorkspace) {
-          result = await onCreateWorkspace(layoutObj, theme, name.trim());
+          result = await onCreateWorkspace(fullLayout, theme, name.trim());
         } else if (window.mainApi?.workspace?.saveWorkspaceForApplication) {
           const workspace = {
             name: name.trim(),
             menuId: menuId || 1,
             themeKey: theme,
-            layout: [layoutObj],
+            layout: fullLayout,
           };
           await window.mainApi.workspace.saveWorkspaceForApplication(
             appId,

@@ -388,12 +388,19 @@ const DashboardStageInner = ({
     setIsLayoutPickerOpen(true);
   }
 
-  function handleCreateFromTemplate(layoutObj, themeKey = null, name = null) {
+  function handleCreateFromTemplate(
+    layoutObjOrArray,
+    themeKey = null,
+    name = null,
+  ) {
     try {
+      const layout = Array.isArray(layoutObjOrArray)
+        ? layoutObjOrArray
+        : [layoutObjOrArray];
       const newWorkspace = WorkspaceModel({
-        layout: [layoutObj],
+        layout,
         themeKey,
-        menuId: layoutObj.menuId,
+        menuId: layout[0].menuId,
         name: name || undefined,
       });
       handleOpenTab(newWorkspace);
