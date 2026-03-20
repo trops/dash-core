@@ -19,6 +19,7 @@ import {
   useInstalledWidgets,
   findWidgetUsage,
 } from "../../../hooks/useInstalledWidgets";
+import { useWidgetUpdates } from "../../../hooks/useWidgetUpdates";
 import { resolveIcon } from "../../../utils/resolveIcon";
 import { getUserConfigurableProviders } from "../../../utils/providerUtils";
 
@@ -43,6 +44,10 @@ export const WidgetsSection = ({
 
   const { widgets, isLoading, error, uninstallWidget, refresh } =
     useInstalledWidgets();
+  const { updates, isChecking, updateWidget, isUpdating } = useWidgetUpdates(
+    widgets,
+    refresh,
+  );
 
   const [selectedWidgetName, setSelectedWidgetName] = useState(null);
   // null | "picker" | "discover" | "zip-result" | "folder-result"
@@ -336,6 +341,11 @@ export const WidgetsSection = ({
             <span className="flex items-center gap-2">
               {widget.displayName || widget.name}
               {widget.source === "builtin" && <Tag3 text="Built-in" />}
+              {updates.has(widget.name) && (
+                <span className="text-[10px] text-blue-400 font-medium">
+                  Update
+                </span>
+              )}
             </span>
           </Sidebar.Item>
         );
@@ -451,6 +461,12 @@ export const WidgetsSection = ({
             if (installedCount > 0) parts.push(`${installedCount} installed`);
             return parts.join(", ");
           })()}
+          {updates.size > 0 && (
+            <span className="text-blue-400 ml-1">
+              {" \u00B7 "}
+              {updates.size} update{updates.size !== 1 ? "s" : ""} available
+            </span>
+          )}
         </div>
       )}
     </div>
@@ -517,6 +533,9 @@ export const WidgetsSection = ({
       <InstalledWidgetDetail
         widget={selectedWidget}
         onDelete={(w) => handleDeleteRequest(w)}
+        updateInfo={updates.get(selectedWidget?.name) || null}
+        onUpdate={updateWidget}
+        isUpdating={isUpdating === selectedWidget?.name}
       />
     );
   }
