@@ -10,6 +10,13 @@ jest.mock("./IconPicker", () => ({
   ),
 }));
 
+// Mock ComponentManager to avoid transitive @headlessui/react import
+jest.mock("../../../ComponentManager", () => ({
+  ComponentManager: {
+    componentMap: jest.fn().mockReturnValue({}),
+  },
+}));
+
 // --- Helpers ---
 
 function mockMainApi() {

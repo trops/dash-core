@@ -11,6 +11,7 @@ import {
   getStylesForItem,
   themeObjects,
 } from "@trops/dash-react";
+import { ComponentManager } from "../../../ComponentManager";
 import { IconPicker } from "./IconPicker";
 
 const DASHBOARD_TAGS = [
@@ -164,11 +165,25 @@ export const PublishDashboardModal = ({
     setIsPublishing(true);
     setResult(null);
     try {
+      // Collect component configs from ComponentManager for scope resolution
+      const configMap = ComponentManager.componentMap();
+      const componentConfigs = {};
+      for (const [key, config] of Object.entries(configMap)) {
+        if (config && (config.id || config.scope || config.packageName)) {
+          componentConfigs[config.name || key] = {
+            id: config.id || null,
+            scope: config.scope || "",
+            packageName: config.packageName || "",
+          };
+        }
+      }
+
       const options = {
         authorName: authorName.trim(),
         description: description.trim() || undefined,
         tags: selectedTags,
         icon: icon || undefined,
+        componentConfigs,
       };
       const res =
         await window.mainApi.dashboardConfig.prepareDashboardForPublish(
