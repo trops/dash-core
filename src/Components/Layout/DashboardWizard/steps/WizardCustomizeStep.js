@@ -135,6 +135,30 @@ export const WizardCustomizeStep = ({
           throw new Error("No layout template selected.");
         }
 
+        // Install selected registry widgets that aren't yet installed
+        if (window.mainApi?.widgets) {
+          const installedList = (await window.mainApi.widgets.list()) || [];
+          const installedNames = new Set(installedList.map((w) => w.name));
+
+          for (const widget of state.selectedWidgets) {
+            if (!widget.isRegistry) continue;
+            const scopedId = widget.packageScope
+              ? `@${widget.packageScope.replace(/^@/, "")}/${widget.packageName}`
+              : widget.packageName;
+            if (
+              !installedNames.has(scopedId) &&
+              !installedNames.has(widget.packageName)
+            ) {
+              const resolvedUrl = (widget.downloadUrl || "")
+                .replace(/\{version\}/g, widget.packageVersion || "")
+                .replace(/\{name\}/g, widget.packageName || "");
+              if (resolvedUrl) {
+                await window.mainApi.widgets.install(scopedId, resolvedUrl);
+              }
+            }
+          }
+        }
+
         const layoutObj = createLayoutFromTemplate(template, menuId || 1);
 
         // Place widgets into grid cells as proper layout items
