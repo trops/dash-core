@@ -362,11 +362,11 @@ describe("checkDashboardCompatibility", () => {
     assert.equal(result.summary.installed, 2);
     assert.equal(result.summary.toInstall, 0);
     assert.equal(result.summary.unavailable, 0);
-    assert.equal(result.widgets[0].status, "installed");
-    assert.equal(result.widgets[0].installedVersion, "1.2.0");
+    assert.equal(result.widgets["@trops/algolia-search"], "installed");
+    assert.equal(result.widgets["@trops/slack-widgets"], "installed");
   });
 
-  it("reports widgets available in registry as to-install", () => {
+  it("reports widgets available in registry as available", () => {
     const dashboardWidgets = [
       { package: "@trops/github-widgets", version: "^1.0.0", required: true },
     ];
@@ -377,8 +377,7 @@ describe("checkDashboardCompatibility", () => {
     );
     assert.equal(result.compatible, true);
     assert.equal(result.summary.toInstall, 1);
-    assert.equal(result.widgets[0].status, "to-install");
-    assert.equal(result.widgets[0].availableVersion, "1.0.0");
+    assert.equal(result.widgets["@trops/github-widgets"], "available");
   });
 
   it("reports unavailable required widgets as incompatible", () => {
@@ -392,7 +391,7 @@ describe("checkDashboardCompatibility", () => {
     );
     assert.equal(result.compatible, false);
     assert.equal(result.summary.unavailable, 1);
-    assert.equal(result.widgets[0].status, "unavailable");
+    assert.equal(result.widgets["@trops/unknown-widget"], "unavailable");
   });
 
   it("stays compatible when unavailable widget is optional", () => {
@@ -438,7 +437,7 @@ describe("checkDashboardCompatibility", () => {
     const dashboardWidgets = [{ package: "@trops/missing" }];
     const result = checkDashboardCompatibility(dashboardWidgets, [], []);
     assert.equal(result.compatible, false);
-    assert.equal(result.widgets[0].required, true);
+    assert.equal(result.widgets["@trops/missing"], "unavailable");
   });
 });
 

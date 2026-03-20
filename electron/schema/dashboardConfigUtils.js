@@ -288,10 +288,11 @@ function checkDashboardCompatibility(
     }
   }
 
-  const widgets = [];
+  const widgets = {};
   let installedCount = 0;
   let toInstallCount = 0;
   let unavailableCount = 0;
+  let hasUnavailableRequired = false;
 
   for (const dep of dashboardWidgets) {
     const packageName = dep.package;
@@ -300,37 +301,18 @@ function checkDashboardCompatibility(
 
     if (installed) {
       installedCount++;
-      widgets.push({
-        package: packageName,
-        required,
-        status: "installed",
-        installedVersion: installed.version || null,
-        requiredVersion: dep.version || "*",
-      });
+      widgets[packageName] = "installed";
     } else if (registryByName.has(packageName)) {
       toInstallCount++;
-      const registryPkg = registryByName.get(packageName);
-      widgets.push({
-        package: packageName,
-        required,
-        status: "to-install",
-        availableVersion: registryPkg.version || null,
-        requiredVersion: dep.version || "*",
-      });
+      widgets[packageName] = "available";
     } else {
       unavailableCount++;
-      widgets.push({
-        package: packageName,
-        required,
-        status: "unavailable",
-        requiredVersion: dep.version || "*",
-      });
+      widgets[packageName] = "unavailable";
+      if (required) {
+        hasUnavailableRequired = true;
+      }
     }
   }
-
-  const hasUnavailableRequired = widgets.some(
-    (w) => w.status === "unavailable" && w.required,
-  );
 
   return {
     compatible: !hasUnavailableRequired,
