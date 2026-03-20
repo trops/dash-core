@@ -342,74 +342,97 @@ async function installThemeFromRegistry(win, appId, packageName) {
       };
     }
 
-    // Check if the response is actually a ZIP (not an HTML error page or JSON error)
-    if (
-      contentType.includes("text/html") ||
-      contentType.includes("application/json")
-    ) {
+    // Reject HTML error pages
+    if (contentType.includes("text/html")) {
       const body = zipBuffer.toString("utf-8").slice(0, 200);
-      console.log(
-        `${TAG} [3/5 Download] FAIL — unexpected content type "${contentType}": ${body}`,
-      );
+      console.log(`${TAG} [3/5 Download] FAIL — HTML response: ${body}`);
       return {
         success: false,
-        error: `Download failed: registry returned ${contentType} instead of a ZIP file. The download URL may be incorrect.`,
+        error: `Download failed: registry returned an HTML page instead of theme data.`,
       };
     }
 
-    // Stage 4: ZIP extraction
-    let zip;
-    try {
-      zip = new AdmZip(zipBuffer);
-    } catch (zipErr) {
-      console.log(
-        `${TAG} [4/5 ZIP Extraction] FAIL — invalid ZIP: ${zipErr.message}`,
-      );
-      return {
-        success: false,
-        error: `ZIP extraction failed: the downloaded file is not a valid ZIP archive (${zipErr.message}).`,
-      };
-    }
-    const entries = zip.getEntries();
-    const entryNames = entries.map((e) => e.entryName);
-    const themeEntry = entries.find((entry) =>
-      entry.entryName.endsWith(".theme.json"),
-    );
-    console.log(
-      `${TAG} [4/5 ZIP Extraction] files=[${entryNames.join(", ")}] hasThemeJson=${!!themeEntry}`,
-    );
-
-    if (!themeEntry) {
-      console.log(
-        `${TAG} [4/5 ZIP Extraction] FAIL — no .theme.json in archive`,
-      );
-      return {
-        success: false,
-        error: `ZIP extraction failed: no .theme.json file found in archive. Files present: [${entryNames.join(", ")}]`,
-      };
-    }
-
-    // Validate entry path (security: prevent path traversal)
-    if (
-      themeEntry.entryName.includes("..") ||
-      path.isAbsolute(themeEntry.entryName)
-    ) {
-      return {
-        success: false,
-        error: "ZIP extraction failed: invalid file path detected in archive.",
-      };
-    }
-
-    // Parse theme data
-    const themeJson = themeEntry.getData().toString("utf-8");
+    // Stage 4: Extract theme data (JSON or ZIP)
     let themeData;
-    try {
-      themeData = JSON.parse(themeJson);
-    } catch (parseErr) {
-      return {
-        success: false,
-        error: `ZIP extraction failed: ${themeEntry.entryName} contains invalid JSON (${parseErr.message}).`,
-      };
+
+    if (contentType.includes("application/json")) {
+      // Registry served theme data as JSON directly — parse and use it
+      console.log(`${TAG} [4/5 Extract] JSON response — parsing directly`);
+      let jsonData;
+      try {
+        jsonData = JSON.parse(zipBuffer.toString("utf-8"));
+      } catch (parseErr) {
+        return {
+          success: false,
+          error: `Download failed: registry returned invalid JSON (${parseErr.message}).`,
+        };
+      }
+      if (jsonData.error) {
+        console.log(
+          `${TAG} [4/5 Extract] FAIL — JSON error: ${jsonData.error}`,
+        );
+        return {
+          success: false,
+          error: `Download failed: ${jsonData.error}`,
+        };
+      }
+      // The response may be raw theme data, or wrapped in a data/theme key
+      themeData = jsonData.data || jsonData.theme || jsonData;
+    } else {
+      // ZIP response — extract .theme.json from archive
+      let zip;
+      try {
+        zip = new AdmZip(zipBuffer);
+      } catch (zipErr) {
+        console.log(
+          `${TAG} [4/5 ZIP Extraction] FAIL — invalid ZIP: ${zipErr.message}`,
+        );
+        return {
+          success: false,
+          error: `ZIP extraction failed: the downloaded file is not a valid ZIP archive (${zipErr.message}).`,
+        };
+      }
+      const entries = zip.getEntries();
+      const entryNames = entries.map((e) => e.entryName);
+      const themeEntry = entries.find((entry) =>
+        entry.entryName.endsWith(".theme.json"),
+      );
+      console.log(
+        `${TAG} [4/5 ZIP Extraction] files=[${entryNames.join(", ")}] hasThemeJson=${!!themeEntry}`,
+      );
+
+      if (!themeEntry) {
+        console.log(
+          `${TAG} [4/5 ZIP Extraction] FAIL — no .theme.json in archive`,
+        );
+        return {
+          success: false,
+          error: `ZIP extraction failed: no .theme.json file found in archive. Files present: [${entryNames.join(", ")}]`,
+        };
+      }
+
+      // Validate entry path (security: prevent path traversal)
+      if (
+        themeEntry.entryName.includes("..") ||
+        path.isAbsolute(themeEntry.entryName)
+      ) {
+        return {
+          success: false,
+          error:
+            "ZIP extraction failed: invalid file path detected in archive.",
+        };
+      }
+
+      // Parse theme data from ZIP entry
+      const themeJson = themeEntry.getData().toString("utf-8");
+      try {
+        themeData = JSON.parse(themeJson);
+      } catch (parseErr) {
+        return {
+          success: false,
+          error: `ZIP extraction failed: ${themeEntry.entryName} contains invalid JSON (${parseErr.message}).`,
+        };
+      }
     }
 
     // Add registry metadata
