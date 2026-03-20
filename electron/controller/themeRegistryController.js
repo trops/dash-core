@@ -332,7 +332,7 @@ async function installThemeFromRegistry(win, appId, packageName) {
 
     const contentType = response.headers.get("content-type") || "";
     const arrayBuffer = await response.arrayBuffer();
-    const zipBuffer = Buffer.from(arrayBuffer);
+    let zipBuffer = Buffer.from(arrayBuffer);
     console.log(`${TAG} [3/5 Download] size=${zipBuffer.length} bytes`);
 
     if (zipBuffer.length === 0) {
@@ -356,8 +356,10 @@ async function installThemeFromRegistry(win, appId, packageName) {
     let themeData;
 
     if (contentType.includes("application/json")) {
-      // Registry served theme data as JSON directly — parse and use it
-      console.log(`${TAG} [4/5 Extract] JSON response — parsing directly`);
+      // Registry returns JSON with a downloadUrl pointing to the actual ZIP
+      console.log(
+        `${TAG} [3/5 Download] JSON response — checking for downloadUrl`,
+      );
       let jsonData;
       try {
         jsonData = JSON.parse(zipBuffer.toString("utf-8"));
@@ -369,16 +371,52 @@ async function installThemeFromRegistry(win, appId, packageName) {
       }
       if (jsonData.error) {
         console.log(
-          `${TAG} [4/5 Extract] FAIL — JSON error: ${jsonData.error}`,
+          `${TAG} [3/5 Download] FAIL — JSON error: ${jsonData.error}`,
         );
         return {
           success: false,
           error: `Download failed: ${jsonData.error}`,
         };
       }
-      // The response may be raw theme data, or wrapped in a data/theme key
-      themeData = jsonData.data || jsonData.theme || jsonData;
-    } else {
+      if (jsonData.downloadUrl) {
+        // Follow the pre-signed URL to get the actual ZIP
+        console.log(`${TAG} [3/5 Download] following downloadUrl to fetch ZIP`);
+        let zipResponse;
+        try {
+          zipResponse = await fetch(jsonData.downloadUrl);
+        } catch (fetchErr) {
+          return {
+            success: false,
+            error: `Download failed: could not fetch ZIP from storage (${fetchErr.message}).`,
+          };
+        }
+        if (!zipResponse.ok) {
+          return {
+            success: false,
+            error: `Download failed: storage returned ${zipResponse.status} ${zipResponse.statusText}`,
+          };
+        }
+        const zipArrayBuffer = await zipResponse.arrayBuffer();
+        zipBuffer = Buffer.from(zipArrayBuffer);
+        console.log(
+          `${TAG} [3/5 Download] ZIP fetched, size=${zipBuffer.length} bytes`,
+        );
+        if (zipBuffer.length === 0) {
+          return {
+            success: false,
+            error: "Download failed: storage returned an empty ZIP file.",
+          };
+        }
+      } else {
+        // No downloadUrl — treat as direct theme data
+        console.log(
+          `${TAG} [4/5 Extract] JSON response with no downloadUrl — using as theme data`,
+        );
+        themeData = jsonData.data || jsonData.theme || jsonData;
+      }
+    }
+
+    if (!themeData) {
       // ZIP response — extract .theme.json from archive
       let zip;
       try {
