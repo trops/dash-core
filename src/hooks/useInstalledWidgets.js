@@ -119,6 +119,7 @@ export const useInstalledWidgets = () => {
             providers: w.providers?.length ? w.providers : cm?.providers || [],
             workspace: w.workspace || cm?.workspace || null,
             componentNames: w.componentNames || (cmKey ? [cmKey] : []),
+            packageId: w.packageId || w.name,
           };
         });
       }

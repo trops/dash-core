@@ -103,6 +103,7 @@ export const useRegistrySearch = ({ filterByCapabilities = true } = {}) => {
               providers: widget.providers || [],
               isRegistry: true,
               packageName: pkg.name,
+              packageScope: pkg.scope || null,
               packageDisplayName: pkg.displayName || pkg.name,
               packageVersion: pkg.version,
               packageAuthor: pkg.author || "",
@@ -148,7 +149,12 @@ export const useRegistrySearch = ({ filterByCapabilities = true } = {}) => {
     setInstallError(null);
 
     try {
-      const { packageName, downloadUrl, packageVersion } = widget;
+      const { packageName, packageScope, downloadUrl, packageVersion } = widget;
+
+      // Build scoped ID (e.g. "@trops/slack") for the install key
+      const scopedId = packageScope
+        ? `@${packageScope.replace(/^@/, "")}/${packageName}`
+        : packageName;
 
       // Resolve placeholders in the download URL
       const resolvedUrl = downloadUrl
@@ -156,13 +162,13 @@ export const useRegistrySearch = ({ filterByCapabilities = true } = {}) => {
         .replace(/\{name\}/g, packageName);
 
       console.log(
-        `[useRegistrySearch] Installing package: ${packageName} from ${resolvedUrl}`,
+        `[useRegistrySearch] Installing package: ${scopedId} from ${resolvedUrl}`,
       );
 
-      await window.mainApi.widgets.install(packageName, resolvedUrl);
+      await window.mainApi.widgets.install(scopedId, resolvedUrl);
 
       console.log(
-        `[useRegistrySearch] Package ${packageName} installed successfully`,
+        `[useRegistrySearch] Package ${scopedId} installed successfully`,
       );
     } catch (err) {
       console.error("[useRegistrySearch] Install error:", err);

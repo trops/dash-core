@@ -12,6 +12,7 @@
 
 const path = require("path");
 const fs = require("fs");
+const { toPackageId } = require("../utils/packageId");
 
 // Default registry API base URL
 const DEFAULT_REGISTRY_API_URL = "https://main.d919rwhuzp7rj.amplifyapp.com";
@@ -329,10 +330,18 @@ async function checkUpdates(installedWidgets = []) {
   const updates = [];
 
   for (const installed of installedWidgets) {
-    const pkg = (index.packages || []).find((p) => p.name === installed.name);
+    const installedId = installed.packageId || installed.name;
+    const pkg = (index.packages || []).find((p) => {
+      // Match by scoped ID (e.g. "@trops/slack" === "@trops/slack")
+      const registryId = toPackageId(p.scope, p.name);
+      if (registryId === installedId) return true;
+      // Fallback: bare-name match for pre-migration entries
+      if (p.name === installedId) return true;
+      return false;
+    });
     if (pkg && pkg.version !== installed.version) {
       updates.push({
-        name: pkg.name,
+        name: installed.name,
         currentVersion: installed.version,
         latestVersion: pkg.version,
         downloadUrl: pkg.downloadUrl,

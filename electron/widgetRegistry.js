@@ -20,6 +20,7 @@ const { fileURLToPath } = require("url");
 const { app, ipcMain, BrowserWindow } = require("electron");
 const { dynamicWidgetLoader } = require("./dynamicWidgetLoader");
 const { compileWidget, findWidgetsDir } = require("./widgetCompiler");
+const { toPackageId, parsePackageId } = require("./utils/packageId");
 
 let WIDGETS_CACHE_DIR = null;
 let REGISTRY_CONFIG_FILE = null;
@@ -128,6 +129,46 @@ class WidgetRegistry {
         console.log(
           `[WidgetRegistry] Loaded ${this.widgets.size} widgets from cache`,
         );
+
+        // Migration: re-key bare-name entries that have scope metadata
+        if (!registryData._scopeMigrated) {
+          let migrated = false;
+          const entries = Array.from(this.widgets.entries());
+          for (const [key, entry] of entries) {
+            if (entry.scope && !key.startsWith("@")) {
+              const scopedId = toPackageId(entry.scope, key);
+
+              // Move folder from widgets/{name}/ to widgets/@{scope}/{name}/
+              const oldPath = path.join(WIDGETS_CACHE_DIR, key);
+              const newPath = path.join(
+                WIDGETS_CACHE_DIR,
+                ...scopedId.split("/"),
+              );
+              if (fs.existsSync(oldPath) && !fs.existsSync(newPath)) {
+                const scopeDir = path.dirname(newPath);
+                if (!fs.existsSync(scopeDir)) {
+                  fs.mkdirSync(scopeDir, { recursive: true });
+                }
+                fs.renameSync(oldPath, newPath);
+                console.log(
+                  `[WidgetRegistry] Migrated folder: ${key} → ${scopedId}`,
+                );
+              }
+
+              // Re-key in the Map
+              entry.name = scopedId;
+              entry.packageId = scopedId;
+              entry.path = newPath;
+              this.widgets.delete(key);
+              this.widgets.set(scopedId, entry);
+              migrated = true;
+            }
+          }
+          if (migrated) {
+            this.saveRegistry();
+            console.log("[WidgetRegistry] Scope migration complete");
+          }
+        }
       }
     } catch (error) {
       console.error("[WidgetRegistry] Error loading registry:", error);
@@ -229,7 +270,8 @@ class WidgetRegistry {
         throw new Error(`Local path not found: ${resolvedPath}`);
       }
 
-      const widgetPath = path.join(WIDGETS_CACHE_DIR, widgetName);
+      // Scoped names (e.g. "@trops/slack") get nested dirs: widgets/@trops/slack/
+      const widgetPath = path.join(WIDGETS_CACHE_DIR, ...widgetName.split("/"));
 
       if (fs.existsSync(widgetPath)) {
         fs.rmSync(widgetPath, { recursive: true });
@@ -425,7 +467,8 @@ class WidgetRegistry {
       const buffer = await response.arrayBuffer();
       const zip = new AdmZip(Buffer.from(buffer));
 
-      const widgetPath = path.join(WIDGETS_CACHE_DIR, widgetName);
+      // Scoped names (e.g. "@trops/slack") get nested dirs: widgets/@trops/slack/
+      const widgetPath = path.join(WIDGETS_CACHE_DIR, ...widgetName.split("/"));
 
       if (fs.existsSync(widgetPath)) {
         fs.rmSync(widgetPath, { recursive: true });
@@ -518,6 +561,9 @@ class WidgetRegistry {
     if (config.scope) {
       widgetEntry.scope = config.scope;
     }
+
+    // Store canonical package ID for update matching
+    widgetEntry.packageId = widgetName;
 
     this.widgets.set(widgetName, widgetEntry);
     this.saveRegistry();
@@ -644,6 +690,16 @@ class WidgetRegistry {
       if (fs.existsSync(widget.path)) {
         fs.rmSync(widget.path, { recursive: true });
       }
+
+      // Clean up empty scope directory (e.g. widgets/@trops/ after removing @trops/slack)
+      const { scope } = parsePackageId(widgetName);
+      if (scope) {
+        const scopeDir = path.join(WIDGETS_CACHE_DIR, `@${scope}`);
+        if (fs.existsSync(scopeDir) && fs.readdirSync(scopeDir).length === 0) {
+          fs.rmdirSync(scopeDir);
+        }
+      }
+
       this.widgets.delete(widgetName);
       this.saveRegistry();
       console.log(`[WidgetRegistry] Uninstalled widget: ${widgetName}`);
