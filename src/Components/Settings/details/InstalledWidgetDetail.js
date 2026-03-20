@@ -17,7 +17,13 @@ import { getUserConfigurableProviders } from "../../../utils/providerUtils";
  * Shows widget name, version, author, description, install path, and actions
  * (Open in Finder, Uninstall).
  */
-export const InstalledWidgetDetail = ({ widget, onDelete }) => {
+export const InstalledWidgetDetail = ({
+  widget,
+  onDelete,
+  updateInfo = null,
+  onUpdate,
+  isUpdating = false,
+}) => {
   const { currentTheme } = useContext(ThemeContext);
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,
@@ -56,11 +62,25 @@ export const InstalledWidgetDetail = ({ widget, onDelete }) => {
         {widget.version && (
           <div className="flex flex-col space-y-1">
             <span className="text-xs font-semibold opacity-50">VERSION</span>
-            <span
-              className={`text-xs px-2 py-0.5 rounded ${currentTheme["bg-primary-medium"]} opacity-70 w-fit`}
-            >
-              v{widget.version}
-            </span>
+            {updateInfo ? (
+              <span className="flex items-center gap-2 text-xs">
+                <span
+                  className={`px-2 py-0.5 rounded ${currentTheme["bg-primary-medium"]} opacity-50 w-fit`}
+                >
+                  v{widget.version}
+                </span>
+                <span className="opacity-40">&rarr;</span>
+                <span className="px-2 py-0.5 rounded bg-blue-900/30 text-blue-400 w-fit">
+                  v{updateInfo.latestVersion}
+                </span>
+              </span>
+            ) : (
+              <span
+                className={`text-xs px-2 py-0.5 rounded ${currentTheme["bg-primary-medium"]} opacity-70 w-fit`}
+              >
+                v{widget.version}
+              </span>
+            )}
           </div>
         )}
 
@@ -139,6 +159,18 @@ export const InstalledWidgetDetail = ({ widget, onDelete }) => {
             currentTheme["border-primary-medium"] || "border-white/10"
           }`}
         >
+          {updateInfo && (
+            <Button
+              title={
+                isUpdating
+                  ? "Updating..."
+                  : `Update to v${updateInfo.latestVersion}`
+              }
+              onClick={() => onUpdate(widget.name)}
+              disabled={isUpdating}
+              size="sm"
+            />
+          )}
           {widget.path && (
             <Button
               title="Open in Finder"
