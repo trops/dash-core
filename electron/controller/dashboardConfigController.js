@@ -854,7 +854,22 @@ async function prepareDashboardForPublish(
     // 3. Build the dashboard config (reuse export logic)
     const componentNames = collectComponentNames(layout);
     const eventWiring = extractEventWiring(layout);
-    const widgets = buildWidgetDependencies(componentNames, widgetRegistry);
+
+    // Build componentConfigs map from renderer-supplied data
+    // This resolves scope/packageName for built-in widgets that aren't in widgetRegistry
+    let componentConfigs = null;
+    if (options.componentConfigs) {
+      componentConfigs = {};
+      for (const [key, config] of Object.entries(options.componentConfigs)) {
+        componentConfigs[key] = config;
+      }
+    }
+
+    const widgets = buildWidgetDependencies(
+      componentNames,
+      widgetRegistry,
+      componentConfigs,
+    );
     const providers = buildProviderRequirements(componentNames, widgetRegistry);
 
     const dashboardConfig = applyDefaults({

@@ -120,9 +120,14 @@ function extractEventWiring(layout) {
  *
  * @param {string[]} componentNames - Widget component names from layout
  * @param {Object} widgetRegistry - WidgetRegistry instance (optional, needs getWidgets())
+ * @param {Object} componentConfigs - Map of component name → .dash.js config (optional, for built-in widgets)
  * @returns {Array} Widget dependency objects for the dashboard config
  */
-function buildWidgetDependencies(componentNames, widgetRegistry = null) {
+function buildWidgetDependencies(
+  componentNames,
+  widgetRegistry = null,
+  componentConfigs = null,
+) {
   const widgets = [];
   const seen = new Set();
 
@@ -155,6 +160,21 @@ function buildWidgetDependencies(componentNames, widgetRegistry = null) {
           author =
             typeof w.author === "string" ? w.author : w.author?.name || "";
           break;
+        }
+      }
+    }
+
+    // Fallback: resolve from component configs (built-in widgets)
+    if (componentConfigs && componentConfigs[name]) {
+      const config = componentConfigs[name];
+      if (!scope && config.scope) scope = config.scope;
+      if ((!packageName || packageName === name) && config.packageName)
+        packageName = config.packageName;
+      if (config.id && !scope) {
+        const idParts = config.id.split(".");
+        if (idParts.length === 3) {
+          scope = idParts[0];
+          packageName = idParts[1];
         }
       }
     }
