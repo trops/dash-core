@@ -134,6 +134,48 @@ describe("DashboardPublisher — registerListeners", () => {
       DashboardPublisher.registerListeners("not-object", {}, "uuid");
     }).not.toThrow();
   });
+
+  test("does not throw when listener value is an object instead of array", () => {
+    expect(() => {
+      DashboardPublisher.registerListeners(
+        { customEvent: { EventSenderWidget: "customEvent" } },
+        { customEvent: jest.fn() },
+        "uuid",
+      );
+    }).not.toThrow();
+  });
+
+  test("does not throw when listener value is a string instead of array", () => {
+    expect(() => {
+      DashboardPublisher.registerListeners(
+        { customEvent: "EventSenderWidget[11].customEvent" },
+        { customEvent: jest.fn() },
+        "uuid",
+      );
+    }).not.toThrow();
+  });
+
+  test("registers only valid array entries when mixed with invalid ones", () => {
+    const validHandler = jest.fn();
+    const invalidHandler = jest.fn();
+    const uuid = "widget-mixed";
+
+    DashboardPublisher.registerListeners(
+      {
+        validKey: ["EventSenderWidget[11].customEvent"],
+        invalidKey: { EventSenderWidget: "customEvent" },
+      },
+      { validKey: validHandler, invalidKey: invalidHandler },
+      uuid,
+    );
+
+    DashboardPublisher.pub("EventSenderWidget[11].customEvent", {
+      data: "test",
+    });
+
+    expect(validHandler).toHaveBeenCalledTimes(1);
+    expect(invalidHandler).not.toHaveBeenCalled();
+  });
 });
 
 describe("DashboardPublisher — payload shape", () => {
