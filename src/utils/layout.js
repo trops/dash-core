@@ -106,7 +106,8 @@ export const renderLayout = ({
 
           // if (gridLayout) console.log("rendering grid ", child, childLayout);
 
-          return hasChildren === 1 && canHaveChildren === true ? (
+          return (hasChildren === 1 && canHaveChildren === true) ||
+            component === "LayoutGridContainer" ? (
             <LayoutGridContainer
               key={`grid-container-${uuid}-${
                 previewMode === true ? "view" : "edit"
