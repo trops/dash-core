@@ -480,8 +480,49 @@ class WidgetRegistry {
       if (!response.ok)
         throw new Error(`Failed to fetch: ${response.statusText}`);
 
-      const buffer = await response.arrayBuffer();
-      const zip = new AdmZip(Buffer.from(buffer));
+      const contentType = response.headers.get("content-type") || "";
+      let buffer = Buffer.from(await response.arrayBuffer());
+
+      if (buffer.length === 0) {
+        throw new Error("Download failed: registry returned an empty response");
+      }
+
+      if (contentType.includes("text/html")) {
+        throw new Error(
+          "Download failed: registry returned an HTML page instead of package data",
+        );
+      }
+
+      // Registry download endpoints return JSON with a pre-signed S3 URL
+      if (contentType.includes("application/json")) {
+        let jsonData;
+        try {
+          jsonData = JSON.parse(buffer.toString("utf-8"));
+        } catch (parseErr) {
+          throw new Error(
+            `Download failed: invalid JSON (${parseErr.message})`,
+          );
+        }
+        if (jsonData.error) {
+          throw new Error(`Download failed: ${jsonData.error}`);
+        }
+        if (jsonData.downloadUrl) {
+          const zipResponse = await fetch(jsonData.downloadUrl);
+          if (!zipResponse.ok) {
+            throw new Error(
+              `Download failed: storage returned ${zipResponse.status} ${zipResponse.statusText}`,
+            );
+          }
+          buffer = Buffer.from(await zipResponse.arrayBuffer());
+          if (buffer.length === 0) {
+            throw new Error(
+              "Download failed: storage returned an empty ZIP file",
+            );
+          }
+        }
+      }
+
+      const zip = new AdmZip(buffer);
 
       // Scoped names (e.g. "@trops/slack") get nested dirs: widgets/@trops/slack/
       const widgetPath = path.join(WIDGETS_CACHE_DIR, ...widgetName.split("/"));

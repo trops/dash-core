@@ -16,6 +16,7 @@ const {
   DASHBOARD_CONFIG_CHECK_UPDATES,
   DASHBOARD_CONFIG_PROVIDER_SETUP,
   DASHBOARD_CONFIG_PUBLISH_PREVIEW,
+  DASHBOARD_CONFIG_INSTALL_PROGRESS,
 } = require("../events");
 
 const dashboardConfigApi = {
@@ -145,6 +146,20 @@ const dashboardConfigApi = {
       appId,
       workspaceId,
     }),
+
+  /**
+   * Listen for dashboard install progress events.
+   * Emitted per-widget during dashboard installation.
+   *
+   * @param {Function} callback - (data: {packageName, displayName, status, index, total, error?})
+   * @returns {Function} removeListener cleanup function
+   */
+  onInstallProgress: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on(DASHBOARD_CONFIG_INSTALL_PROGRESS, handler);
+    return () =>
+      ipcRenderer.removeListener(DASHBOARD_CONFIG_INSTALL_PROGRESS, handler);
+  },
 };
 
 module.exports = dashboardConfigApi;
