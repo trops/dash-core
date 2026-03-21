@@ -272,6 +272,9 @@ export const DashboardsSection = ({
           setViewMode("grouped");
         }}
         appId={appId}
+        onInstallComplete={() => {
+          onReloadWorkspaces && onReloadWorkspaces();
+        }}
       />
     );
   } else if (selectedWorkspace) {

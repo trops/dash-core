@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useContext, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useContext,
+  useRef,
+  useCallback,
+} from "react";
 import {
   ThemeContext,
   Button,
@@ -9,6 +15,7 @@ import {
 } from "@trops/dash-react";
 import { ComponentManager } from "../../../ComponentManager";
 import { StarRating } from "./StarRating";
+import { InstallProgressModal } from "./InstallProgressModal";
 
 /**
  * RegistryDashboardDetail — detail panel for a registry dashboard package.
@@ -36,16 +43,22 @@ export const RegistryDashboardDetail = ({
   const [authFlow, setAuthFlow] = useState(null);
   const [isPolling, setIsPolling] = useState(false);
   const [authError, setAuthError] = useState(null);
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const [progressWidgets, setProgressWidgets] = useState([]);
+  const [progressComplete, setProgressComplete] = useState(false);
+  const progressResultRef = useRef(null);
   const pollIntervalRef = useRef(null);
+  const cleanupProgressRef = useRef(null);
 
   const pkg = dashboardPackage;
   if (!pkg) return null;
 
-  // Clean up polling on unmount
+  // Clean up polling and progress listener on unmount
   // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      if (cleanupProgressRef.current) cleanupProgressRef.current();
     };
   }, []);
 
@@ -83,6 +96,38 @@ export const RegistryDashboardDetail = ({
     setInstallResult(null);
     setAuthFlow(null);
     setAuthError(null);
+
+    // Initialize progress modal from widget deps
+    const deps = widgetDeps.length > 0 ? widgetDeps : [];
+    if (deps.length > 0) {
+      setProgressWidgets(
+        deps.map((w) => ({
+          packageName: w.package || w.name,
+          displayName: w.displayName || w.name || w.package,
+          status: "pending",
+        })),
+      );
+      setProgressComplete(false);
+      setShowProgressModal(true);
+
+      // Register progress listener
+      if (cleanupProgressRef.current) cleanupProgressRef.current();
+      cleanupProgressRef.current =
+        window.mainApi?.dashboardConfig?.onInstallProgress?.((data) => {
+          setProgressWidgets((prev) => {
+            const next = [...prev];
+            if (data.index >= 0 && data.index < next.length) {
+              next[data.index] = {
+                ...next[data.index],
+                status: data.status,
+                error: data.error || null,
+              };
+            }
+            return next;
+          });
+        });
+    }
+
     try {
       const result =
         await window.mainApi.dashboardConfig.installDashboardFromRegistry(
@@ -90,33 +135,70 @@ export const RegistryDashboardDetail = ({
           pkg.name,
         );
       if (result?.authRequired) {
-        // Auth needed — show inline auth prompt (DASH-135)
+        // Auth needed — close progress modal, show inline auth prompt
+        setShowProgressModal(false);
         setIsInstalling(false);
         setInstallResult({
           status: "auth",
           message: result.error || "Sign in to install this dashboard.",
         });
+        if (cleanupProgressRef.current) {
+          cleanupProgressRef.current();
+          cleanupProgressRef.current = null;
+        }
         return;
       }
-      setInstallResult({
-        status: result?.success ? "success" : "error",
-        message: result?.success
-          ? `Dashboard "${result.workspace?.name || pkg.name}" installed successfully.`
-          : result?.error || "Installation failed.",
-      });
-      if (result?.success && onInstallComplete) {
-        onInstallComplete(result);
+
+      // Store result for use when modal closes
+      progressResultRef.current = result;
+      setProgressComplete(true);
+
+      // If no progress modal was shown, apply result directly
+      if (deps.length === 0) {
+        setInstallResult({
+          status: result?.success ? "success" : "error",
+          message: result?.success
+            ? `Dashboard "${result.workspace?.name || pkg.name}" installed successfully.`
+            : result?.error || "Installation failed.",
+        });
+        if (result?.success && onInstallComplete) {
+          onInstallComplete(result);
+        }
       }
     } catch (err) {
       console.error("[RegistryDashboardDetail] Install error:", err);
-      setInstallResult({
-        status: "error",
-        message: err.message || "Failed to install dashboard.",
-      });
+      setProgressComplete(true);
+      if (deps.length === 0) {
+        setInstallResult({
+          status: "error",
+          message: err.message || "Failed to install dashboard.",
+        });
+      }
     } finally {
       setIsInstalling(false);
+      if (cleanupProgressRef.current) {
+        cleanupProgressRef.current();
+        cleanupProgressRef.current = null;
+      }
     }
   }
+
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const handleProgressDone = useCallback(() => {
+    setShowProgressModal(false);
+    const result = progressResultRef.current;
+    if (result) {
+      setInstallResult({
+        status: result.success ? "success" : "error",
+        message: result.success
+          ? `Dashboard "${result.workspace?.name || pkg.name}" installed successfully.`
+          : result.error || "Installation failed.",
+      });
+      if (result.success && onInstallComplete) {
+        onInstallComplete(result);
+      }
+    }
+  }, [pkg.name, onInstallComplete]);
 
   async function handleSignIn() {
     setAuthError(null);
@@ -534,6 +616,15 @@ export const RegistryDashboardDetail = ({
             />
           </div>
         )}
+
+      {/* Progress Modal */}
+      <InstallProgressModal
+        isOpen={showProgressModal}
+        setIsOpen={setShowProgressModal}
+        widgets={progressWidgets}
+        isComplete={progressComplete}
+        onDone={handleProgressDone}
+      />
     </div>
   );
 };

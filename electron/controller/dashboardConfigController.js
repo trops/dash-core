@@ -419,6 +419,10 @@ async function processDashboardConfig(
     failed: [],
   };
 
+  const {
+    DASHBOARD_CONFIG_INSTALL_PROGRESS,
+  } = require("../events/dashboardConfigEvents");
+
   if (
     widgetRegistry &&
     dashboardConfig.widgets &&
@@ -426,14 +430,46 @@ async function processDashboardConfig(
   ) {
     const installedWidgets = widgetRegistry.getWidgets();
     const installedPackages = new Set(installedWidgets.map((w) => w.name));
+    const total = dashboardConfig.widgets.length;
 
-    for (const widgetDep of dashboardConfig.widgets) {
+    // Emit initial "pending" state for all widgets
+    for (let i = 0; i < total; i++) {
+      const dep = dashboardConfig.widgets[i];
+      win.webContents.send(DASHBOARD_CONFIG_INSTALL_PROGRESS, {
+        packageName: dep.package,
+        displayName: dep.displayName || dep.name || dep.package,
+        status: "pending",
+        index: i,
+        total,
+      });
+    }
+
+    for (let i = 0; i < total; i++) {
+      const widgetDep = dashboardConfig.widgets[i];
       const packageName = widgetDep.package;
+      const displayName =
+        widgetDep.displayName || widgetDep.name || packageName;
 
       if (installedPackages.has(packageName)) {
         installSummary.alreadyInstalled.push(packageName);
+        win.webContents.send(DASHBOARD_CONFIG_INSTALL_PROGRESS, {
+          packageName,
+          displayName,
+          status: "already-installed",
+          index: i,
+          total,
+        });
         continue;
       }
+
+      // Emit downloading status
+      win.webContents.send(DASHBOARD_CONFIG_INSTALL_PROGRESS, {
+        packageName,
+        displayName,
+        status: "downloading",
+        index: i,
+        total,
+      });
 
       // Try to find the widget in the registry and install it
       try {
@@ -446,16 +482,39 @@ async function processDashboardConfig(
           );
           installSummary.installed.push({ packageName, config });
           installedPackages.add(packageName);
+          win.webContents.send(DASHBOARD_CONFIG_INSTALL_PROGRESS, {
+            packageName,
+            displayName,
+            status: "installed",
+            index: i,
+            total,
+          });
         } else {
           installSummary.failed.push({
             package: packageName,
             reason: "Not found in registry",
+          });
+          win.webContents.send(DASHBOARD_CONFIG_INSTALL_PROGRESS, {
+            packageName,
+            displayName,
+            status: "failed",
+            index: i,
+            total,
+            error: "Not found in registry",
           });
         }
       } catch (installError) {
         installSummary.failed.push({
           package: packageName,
           reason: installError.message,
+        });
+        win.webContents.send(DASHBOARD_CONFIG_INSTALL_PROGRESS, {
+          packageName,
+          displayName,
+          status: "failed",
+          index: i,
+          total,
+          error: installError.message,
         });
       }
     }
