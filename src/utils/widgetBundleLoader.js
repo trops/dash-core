@@ -68,10 +68,14 @@ export function evaluateBundle(source, widgetName) {
     );
   };
 
+  // Provide a process shim so bundles that reference process.env.NODE_ENV
+  // (common in React libraries) don't throw ReferenceError in the sandbox.
+  const process = { env: { NODE_ENV: "production" } };
+
   try {
     // eslint-disable-next-line no-new-func
-    const fn = new Function("module", "exports", "require", source);
-    fn(module, exports, require);
+    const fn = new Function("module", "exports", "require", "process", source);
+    fn(module, exports, require, process);
   } catch (error) {
     console.error(
       `[widgetBundleLoader] Error evaluating bundle for "${widgetName}":`,
