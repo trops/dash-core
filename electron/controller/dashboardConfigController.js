@@ -683,8 +683,68 @@ async function installDashboardFromRegistry(
       };
     }
 
-    const buffer = await response.arrayBuffer();
-    const zip = new AdmZip(Buffer.from(buffer));
+    const contentType = response.headers.get("content-type") || "";
+    const arrayBuffer = await response.arrayBuffer();
+    let zipBuffer = Buffer.from(arrayBuffer);
+
+    if (zipBuffer.length === 0) {
+      return {
+        success: false,
+        error: "Download failed: registry returned an empty response.",
+      };
+    }
+
+    if (contentType.includes("text/html")) {
+      return {
+        success: false,
+        error:
+          "Download failed: registry returned an HTML page instead of package data.",
+      };
+    }
+
+    if (contentType.includes("application/json")) {
+      let jsonData;
+      try {
+        jsonData = JSON.parse(zipBuffer.toString("utf-8"));
+      } catch (parseErr) {
+        return {
+          success: false,
+          error: `Download failed: invalid JSON (${parseErr.message}).`,
+        };
+      }
+      if (jsonData.error) {
+        return {
+          success: false,
+          error: `Download failed: ${jsonData.error}`,
+        };
+      }
+      if (jsonData.downloadUrl) {
+        let zipResponse;
+        try {
+          zipResponse = await fetch(jsonData.downloadUrl);
+        } catch (fetchErr) {
+          return {
+            success: false,
+            error: `Download failed: could not fetch ZIP from storage (${fetchErr.message}).`,
+          };
+        }
+        if (!zipResponse.ok) {
+          return {
+            success: false,
+            error: `Download failed: storage returned ${zipResponse.status} ${zipResponse.statusText}`,
+          };
+        }
+        zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
+        if (zipBuffer.length === 0) {
+          return {
+            success: false,
+            error: "Download failed: storage returned an empty ZIP file.",
+          };
+        }
+      }
+    }
+
+    const zip = new AdmZip(zipBuffer);
 
     // 3. Validate ZIP entries
     const tempDir = path.join(app.getPath("temp"), "dash-registry-import");
