@@ -1529,11 +1529,21 @@ export function isWidgetResolvable(componentKey) {
   // Layout containers are always resolvable (handled specially by WidgetFactory)
   if (ComponentManager.isLayoutContainer(componentKey)) return true;
   const m = ComponentManager.componentMap();
-  return !!(
-    m &&
-    m[componentKey] &&
-    typeof m[componentKey].component === "function"
-  );
+  if (!m) return false;
+  // Exact key match (scoped id)
+  if (m[componentKey] && typeof m[componentKey].component === "function") {
+    return true;
+  }
+  // Fallback: match by config.name (mirrors getComponent's name fallback)
+  for (const key of Object.keys(m)) {
+    if (
+      m[key].name === componentKey &&
+      typeof m[key].component === "function"
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // export {
