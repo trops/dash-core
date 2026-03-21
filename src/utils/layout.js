@@ -6,6 +6,7 @@ import {
   LayoutBuilderConfigContainerMenuItem,
 } from "../Components/Layout/Builder";
 import { WidgetFactory } from "../Widget";
+import { WidgetNotFound } from "../Widget/WidgetNotFound";
 import { DashboardModel, LayoutModel } from "../Models";
 import { deepCopy } from "@trops/dash-react";
 import { ComponentManager } from "../ComponentManager";
@@ -749,21 +750,7 @@ export function renderComponent(component, id, params = {}, children = null) {
       // WidgetFactory.render() always returns a React element (truthy),
       // so the old ternary fallback could never fire.
       if (!isWidgetResolvable(component)) {
-        return (
-          <div className="flex flex-col h-full justify-center items-center w-full z-10 gap-2 p-4 text-center">
-            <FontAwesomeIcon
-              icon="triangle-exclamation"
-              className="h-6 w-6 text-amber-500"
-            />
-            <div className="text-sm font-semibold text-gray-300">
-              Widget Not Found
-            </div>
-            <div className="text-xs text-gray-500 font-mono">{component}</div>
-            <div className="text-xs text-gray-600 mt-1">
-              This widget may have been uninstalled or renamed.
-            </div>
-          </div>
-        );
+        return <WidgetNotFound component={component} />;
       }
 
       if ("height" in params) {
