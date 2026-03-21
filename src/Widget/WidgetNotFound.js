@@ -2,7 +2,6 @@ import React, { useState, useCallback } from "react";
 import { Modal, FontAwesomeIcon, Button } from "@trops/dash-react";
 import { RegistryPackageDetail } from "../Components/Settings/details/RegistryPackageDetail";
 import { RegistryAuthPrompt } from "../Components/Registry/RegistryAuthPrompt";
-import { useRegistryAuth } from "../hooks/useRegistryAuth";
 
 /**
  * Extract a search query from a widget component key.
@@ -68,8 +67,6 @@ export const WidgetNotFound = ({ component }) => {
   const [installError, setInstallError] = useState(null);
   const [needsAuth, setNeedsAuth] = useState(false);
 
-  const { checkAuth } = useRegistryAuth();
-
   const lookupWidget = useCallback(async () => {
     setShowModal(true);
     setIsLoading(true);
@@ -116,12 +113,18 @@ export const WidgetNotFound = ({ component }) => {
     setNeedsAuth(false);
 
     try {
-      // Check auth before attempting install
-      const authed = await checkAuth();
-      if (!authed) {
-        setNeedsAuth(true);
-        setIsInstalling(false);
-        return;
+      // Check auth before attempting install — direct API call avoids
+      // instantiating the full useRegistryAuth hook in this component.
+      try {
+        const status = await window.mainApi?.registryAuth?.getStatus();
+        if (!status?.authenticated) {
+          setNeedsAuth(true);
+          setIsInstalling(false);
+          return;
+        }
+      } catch {
+        // If auth check fails, proceed anyway — install will fail with
+        // Unauthorized which is caught below
       }
 
       const { packageName, packageScope, downloadUrl, packageVersion } =
@@ -147,7 +150,7 @@ export const WidgetNotFound = ({ component }) => {
     }
 
     setIsInstalling(false);
-  }, [registryWidget, checkAuth]);
+  }, [registryWidget]);
 
   const handleAuthSuccess = useCallback(() => {
     setNeedsAuth(false);
