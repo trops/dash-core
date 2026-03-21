@@ -21,6 +21,7 @@ const { app, ipcMain, BrowserWindow } = require("electron");
 const { dynamicWidgetLoader } = require("./dynamicWidgetLoader");
 const { compileWidget, findWidgetsDir } = require("./widgetCompiler");
 const { toPackageId, parsePackageId } = require("./utils/packageId");
+const { getStoredToken } = require("./controller/registryAuthController");
 
 let WIDGETS_CACHE_DIR = null;
 let REGISTRY_CONFIG_FILE = null;
@@ -460,7 +461,22 @@ class WidgetRegistry {
         `[WidgetRegistry] Downloading widget: ${widgetName} from ${downloadUrl}`,
       );
 
-      const response = await fetch(downloadUrl);
+      // Add auth header for registry API download endpoints
+      const fetchOpts = {};
+      const registryBase =
+        process.env.DASH_REGISTRY_API_URL ||
+        "https://main.d919rwhuzp7rj.amplifyapp.com";
+      if (
+        downloadUrl.includes(registryBase) ||
+        downloadUrl.includes("/api/packages/")
+      ) {
+        const auth = getStoredToken();
+        if (auth?.token) {
+          fetchOpts.headers = { Authorization: `Bearer ${auth.token}` };
+        }
+      }
+
+      const response = await fetch(downloadUrl, fetchOpts);
       if (!response.ok)
         throw new Error(`Failed to fetch: ${response.statusText}`);
 
