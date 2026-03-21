@@ -218,7 +218,7 @@ export const LayoutBuilderGridItem = ({
     const parentLayout = getLayoutItemById(workspace["layout"], item["parent"]);
     const parentDirection = parentLayout
       ? parentLayout["direction"]
-      : parentWorkspace["direction"];
+      : (parentWorkspace?.["direction"] ?? "col");
 
     // determine if the item is at the "start/end" of the col/row
     const isMaxOrder = isMaxOrderForItem(
