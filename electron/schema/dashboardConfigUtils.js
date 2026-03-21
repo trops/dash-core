@@ -179,6 +179,16 @@ function buildWidgetDependencies(
       }
     }
 
+    // Final fallback: if widget name looks like a scoped id, parse it
+    if (!packageName || packageName === name) {
+      const idParts = name.split(".");
+      if (idParts.length === 3) {
+        scope = scope || idParts[0];
+        packageName = idParts[1];
+        widgetName = idParts[2];
+      }
+    }
+
     const id =
       scope && packageName && widgetName
         ? `${scope}.${packageName}.${widgetName}`
