@@ -439,12 +439,12 @@ async function processDashboardConfig(
       try {
         const registryPkg = await getPackage(packageName);
         if (registryPkg && registryPkg.downloadUrl) {
-          await widgetRegistry.downloadWidget(
+          const config = await widgetRegistry.downloadWidget(
             packageName,
             registryPkg.downloadUrl,
             registryPkg.dashConfigUrl || null,
           );
-          installSummary.installed.push(packageName);
+          installSummary.installed.push({ packageName, config });
           installedPackages.add(packageName);
         } else {
           installSummary.failed.push({
@@ -459,6 +459,24 @@ async function processDashboardConfig(
         });
       }
     }
+
+    // Notify renderer about auto-installed widgets
+    if (installSummary.installed.length > 0) {
+      const { BrowserWindow } = require("electron");
+      for (const { packageName, config } of installSummary.installed) {
+        BrowserWindow.getAllWindows().forEach((w) => {
+          w.webContents.send("widget:installed", {
+            widgetName: packageName,
+            config: config || {},
+          });
+        });
+      }
+    }
+
+    // Flatten installed list to just package names for the summary
+    installSummary.installed = installSummary.installed.map((entry) =>
+      typeof entry === "string" ? entry : entry.packageName,
+    );
   }
 
   // 2. Install bundled theme if present
