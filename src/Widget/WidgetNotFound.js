@@ -152,52 +152,50 @@ export const WidgetNotFound = ({ component }) => {
         </button>
       </div>
 
-      {showModal && (
-        <Modal
-          title="Registry Package"
-          width="w-1/3"
-          height="h-auto"
-          onClose={() => setShowModal(false)}
-        >
-          {isLoading && (
-            <div className="flex items-center justify-center p-12">
-              <FontAwesomeIcon
-                icon="spinner"
-                className="h-5 w-5 text-gray-400 animate-spin"
-              />
-            </div>
-          )}
-
-          {!isLoading && registryWidget && (
-            <RegistryPackageDetail
-              widget={registryWidget}
-              onInstall={handleInstall}
-              isInstalling={isInstalling}
-              installError={installError}
+      <Modal
+        isOpen={showModal}
+        setIsOpen={setShowModal}
+        width="w-1/3"
+        height="auto"
+      >
+        {isLoading && (
+          <div className="flex items-center justify-center p-12">
+            <FontAwesomeIcon
+              icon="spinner"
+              className="h-5 w-5 text-gray-400 animate-spin"
             />
-          )}
+          </div>
+        )}
 
-          {!isLoading && notFound && (
-            <div className="flex flex-col items-center justify-center gap-3 p-12 text-center">
-              <FontAwesomeIcon
-                icon="triangle-exclamation"
-                className="h-6 w-6 text-amber-500"
-              />
-              <div className="text-sm text-gray-400">
-                This widget is not available in the registry.
-              </div>
-              <Button
-                title="Close"
-                bgColor="bg-gray-600"
-                hoverBackgroundColor="hover:bg-gray-700"
-                textSize="text-sm"
-                padding="py-1.5 px-4"
-                onClick={() => setShowModal(false)}
-              />
+        {!isLoading && registryWidget && (
+          <RegistryPackageDetail
+            widget={registryWidget}
+            onInstall={handleInstall}
+            isInstalling={isInstalling}
+            installError={installError}
+          />
+        )}
+
+        {!isLoading && notFound && (
+          <div className="flex flex-col items-center justify-center gap-3 p-12 text-center">
+            <FontAwesomeIcon
+              icon="triangle-exclamation"
+              className="h-6 w-6 text-amber-500"
+            />
+            <div className="text-sm text-gray-400">
+              This widget is not available in the registry.
             </div>
-          )}
-        </Modal>
-      )}
+            <Button
+              title="Close"
+              bgColor="bg-gray-600"
+              hoverBackgroundColor="hover:bg-gray-700"
+              textSize="text-sm"
+              padding="py-1.5 px-4"
+              onClick={() => setShowModal(false)}
+            />
+          </div>
+        )}
+      </Modal>
     </>
   );
 };
