@@ -107,11 +107,19 @@ export const WizardCustomizeStep = ({
             themeKey: theme,
             appId,
           });
-        } else if (window.mainApi?.registry?.installDashboard) {
-          const installResult = await window.mainApi.registry.installDashboard(
-            appId,
-            state.selectedDashboard.name || state.selectedDashboard.key,
-          );
+        } else if (
+          window.mainApi?.dashboardConfig?.installDashboardFromRegistry
+        ) {
+          const installResult =
+            await window.mainApi.dashboardConfig.installDashboardFromRegistry(
+              appId,
+              state.selectedDashboard.name || state.selectedDashboard.key,
+            );
+          if (installResult?.authRequired) {
+            throw new Error(
+              installResult.error || "Sign in to install this dashboard.",
+            );
+          }
           if (installResult?.workspace) {
             const updatedWorkspace = {
               ...installResult.workspace,
@@ -124,6 +132,8 @@ export const WizardCustomizeStep = ({
               updatedWorkspace,
             );
             result = { success: true, workspace: updatedWorkspace };
+          } else if (installResult?.error) {
+            throw new Error(installResult.error);
           }
         }
       } else {
