@@ -1,6 +1,8 @@
 import React, { useState, useCallback } from "react";
 import { Modal, FontAwesomeIcon, Button } from "@trops/dash-react";
 import { RegistryPackageDetail } from "../Components/Settings/details/RegistryPackageDetail";
+import { RegistryAuthPrompt } from "../Components/Registry/RegistryAuthPrompt";
+import { useRegistryAuth } from "../hooks/useRegistryAuth";
 
 /**
  * Extract a search query from a widget component key.
@@ -54,7 +56,8 @@ function packageToFlatWidget(pkg) {
  *
  * Shows the existing "Widget Not Found" error display and adds a
  * "Find in Registry" button that does an exact registry lookup and
- * opens an install modal.
+ * opens an install modal.  When install requires auth, shows an inline
+ * RegistryAuthPrompt and auto-retries after successful sign-in.
  */
 export const WidgetNotFound = ({ component }) => {
   const [showModal, setShowModal] = useState(false);
@@ -63,6 +66,9 @@ export const WidgetNotFound = ({ component }) => {
   const [notFound, setNotFound] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
   const [installError, setInstallError] = useState(null);
+  const [needsAuth, setNeedsAuth] = useState(false);
+
+  const { checkAuth } = useRegistryAuth();
 
   const lookupWidget = useCallback(async () => {
     setShowModal(true);
@@ -70,6 +76,7 @@ export const WidgetNotFound = ({ component }) => {
     setNotFound(false);
     setRegistryWidget(null);
     setInstallError(null);
+    setNeedsAuth(false);
 
     const { packageName, widgetName } = getWidgetSearchQuery(component);
 
@@ -106,8 +113,17 @@ export const WidgetNotFound = ({ component }) => {
 
     setIsInstalling(true);
     setInstallError(null);
+    setNeedsAuth(false);
 
     try {
+      // Check auth before attempting install
+      const authed = await checkAuth();
+      if (!authed) {
+        setNeedsAuth(true);
+        setIsInstalling(false);
+        return;
+      }
+
       const { packageName, packageScope, downloadUrl, packageVersion } =
         registryWidget;
 
@@ -122,11 +138,25 @@ export const WidgetNotFound = ({ component }) => {
       await window.mainApi.widgets.install(scopedId, resolvedUrl);
       setShowModal(false);
     } catch (err) {
-      setInstallError(err.message || "Failed to install package");
+      const msg = err.message || "Failed to install package";
+      if (msg.toLowerCase().includes("unauthorized")) {
+        setNeedsAuth(true);
+      } else {
+        setInstallError(msg);
+      }
     }
 
     setIsInstalling(false);
-  }, [registryWidget]);
+  }, [registryWidget, checkAuth]);
+
+  const handleAuthSuccess = useCallback(() => {
+    setNeedsAuth(false);
+    handleInstall();
+  }, [handleInstall]);
+
+  const handleClose = useCallback(() => {
+    setShowModal(false);
+  }, []);
 
   return (
     <>
@@ -158,43 +188,62 @@ export const WidgetNotFound = ({ component }) => {
         width="w-1/3"
         height="auto"
       >
-        {isLoading && (
-          <div className="flex items-center justify-center p-12">
-            <FontAwesomeIcon
-              icon="spinner"
-              className="h-5 w-5 text-gray-400 animate-spin"
-            />
-          </div>
-        )}
+        <div className="relative">
+          {/* Close button — always visible */}
+          <button
+            type="button"
+            className="absolute top-3 right-3 z-10 text-gray-500 hover:text-gray-300 transition-colors"
+            onClick={handleClose}
+          >
+            <FontAwesomeIcon icon="xmark" className="h-4 w-4" />
+          </button>
 
-        {!isLoading && registryWidget && (
-          <RegistryPackageDetail
-            widget={registryWidget}
-            onInstall={handleInstall}
-            isInstalling={isInstalling}
-            installError={installError}
-          />
-        )}
-
-        {!isLoading && notFound && (
-          <div className="flex flex-col items-center justify-center gap-3 p-12 text-center">
-            <FontAwesomeIcon
-              icon="triangle-exclamation"
-              className="h-6 w-6 text-amber-500"
-            />
-            <div className="text-sm text-gray-400">
-              This widget is not available in the registry.
+          {isLoading && (
+            <div className="flex items-center justify-center p-12">
+              <FontAwesomeIcon
+                icon="spinner"
+                className="h-5 w-5 text-gray-400 animate-spin"
+              />
             </div>
-            <Button
-              title="Close"
-              bgColor="bg-gray-600"
-              hoverBackgroundColor="hover:bg-gray-700"
-              textSize="text-sm"
-              padding="py-1.5 px-4"
-              onClick={() => setShowModal(false)}
+          )}
+
+          {!isLoading && needsAuth && registryWidget && (
+            <RegistryAuthPrompt
+              onAuthenticated={handleAuthSuccess}
+              onCancel={() => setNeedsAuth(false)}
+              message="Sign in to install this widget from the Dash Registry."
             />
-          </div>
-        )}
+          )}
+
+          {!isLoading && !needsAuth && registryWidget && (
+            <RegistryPackageDetail
+              widget={registryWidget}
+              onInstall={handleInstall}
+              isInstalling={isInstalling}
+              installError={installError}
+            />
+          )}
+
+          {!isLoading && notFound && (
+            <div className="flex flex-col items-center justify-center gap-3 p-12 text-center">
+              <FontAwesomeIcon
+                icon="triangle-exclamation"
+                className="h-6 w-6 text-amber-500"
+              />
+              <div className="text-sm text-gray-400">
+                This widget is not available in the registry.
+              </div>
+              <Button
+                title="Close"
+                bgColor="bg-gray-600"
+                hoverBackgroundColor="hover:bg-gray-700"
+                textSize="text-sm"
+                padding="py-1.5 px-4"
+                onClick={handleClose}
+              />
+            </div>
+          )}
+        </div>
       </Modal>
     </>
   );
