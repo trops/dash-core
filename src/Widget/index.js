@@ -9,3 +9,4 @@
 export * from "./Widget";
 export * from "./WidgetFactory";
 export * from "./ExternalWidget";
+export * from "./WidgetNotFound";
