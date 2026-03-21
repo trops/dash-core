@@ -120,7 +120,9 @@ export const DashboardPublisher = {
       if (isObject(listeners) === true) {
         Object.keys(listeners).forEach((handlerKey) => {
           if (handlerKey in listeners) {
-            listeners[handlerKey].forEach((event) => {
+            const events = listeners[handlerKey];
+            if (!Array.isArray(events)) return;
+            events.forEach((event) => {
               // subscribe our listeners
               DashboardPublisher.sub(event, handlerMap[handlerKey], uuid);
             });
