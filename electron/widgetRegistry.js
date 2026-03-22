@@ -633,6 +633,23 @@ class WidgetRegistry {
     // Store canonical package ID for update matching
     widgetEntry.packageId = widgetName;
 
+    // Derive displayName from authoritative sources instead of trusting dash.json
+    if (config.widgets?.length > 0) {
+      const pkgNames = [
+        ...new Set(config.widgets.map((w) => w.package).filter(Boolean)),
+      ];
+      if (pkgNames.length === 1) {
+        widgetEntry.displayName = pkgNames[0];
+      }
+    }
+    if (!widgetEntry.displayName || widgetEntry.displayName === config.name) {
+      const bare = widgetName.replace(/^@[^/]+\//, "");
+      widgetEntry.displayName = bare
+        .split("-")
+        .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+        .join(" ");
+    }
+
     this.widgets.set(widgetName, widgetEntry);
     this.saveRegistry();
     console.log(`[WidgetRegistry] Registered widget: ${widgetName}`);
@@ -673,7 +690,9 @@ class WidgetRegistry {
       // Store component names as displayName on the registry entry
       // so settings UI shows "WeatherWidget" instead of "weather-widget"
       if (components.length > 0 && existingEntry) {
-        existingEntry.displayName = components.join(", ");
+        if (!existingEntry.displayName) {
+          existingEntry.displayName = components.join(", ");
+        }
         existingEntry.componentNames = components;
         registryUpdated = true;
       }
@@ -693,8 +712,6 @@ class WidgetRegistry {
           // has full display data without needing ComponentManager.
           if (result?.config && existingEntry) {
             const cfg = result.config;
-            if (cfg.displayName) existingEntry.displayName = cfg.displayName;
-            if (cfg.description) existingEntry.description = cfg.description;
             if (cfg.scope && !existingEntry.scope)
               existingEntry.scope = cfg.scope;
             if (cfg.icon && !existingEntry.icon) existingEntry.icon = cfg.icon;

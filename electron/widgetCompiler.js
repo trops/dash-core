@@ -29,6 +29,12 @@ function findWidgetsDir(widgetPath) {
     return direct;
   }
 
+  // Check configs/widgets/ (packageZip.js nests .dash.js files here)
+  const configsWidgets = path.join(widgetPath, "configs", "widgets");
+  if (fs.existsSync(configsWidgets)) {
+    return configsWidgets;
+  }
+
   // Check configs/ directory (used by packageZip.js for distributed widgets)
   const configs = path.join(widgetPath, "configs");
   if (fs.existsSync(configs)) {
