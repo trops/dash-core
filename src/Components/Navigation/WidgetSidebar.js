@@ -4,6 +4,7 @@ import React, {
   useContext,
   useEffect,
   useCallback,
+  useRef,
 } from "react";
 import { useDrag } from "react-dnd";
 import {
@@ -16,6 +17,7 @@ import { ComponentManager } from "../../ComponentManager";
 import { SIDEBAR_WIDGET_TYPE } from "../../utils/dragTypes";
 import { useRegistrySearch } from "../../hooks/useRegistrySearch";
 import { RegistryAuthPrompt } from "../Registry/RegistryAuthPrompt";
+import { InstallProgressModal } from "../Settings/details/InstallProgressModal";
 
 const DraggableWidgetItem = ({ widgetKey, widget }) => {
   const [{ isDragging }, drag] = useDrag(
@@ -94,6 +96,10 @@ const SidebarDiscoverContent = ({
 }) => {
   const [selectedPackageName, setSelectedPackageName] = useState(null);
   const [pendingInstallPkg, setPendingInstallPkg] = useState(null);
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const [progressWidgets, setProgressWidgets] = useState([]);
+  const [progressComplete, setProgressComplete] = useState(false);
+  const installActiveRef = useRef(false);
 
   // Check if a package is installed by name or scope/name
   const isPackageInstalled = useCallback(
@@ -123,6 +129,36 @@ const SidebarDiscoverContent = ({
     [installedPackageNames],
   );
 
+  // Watch for install completion — avoids stale closure reads after await
+  useEffect(() => {
+    if (!installActiveRef.current) return;
+    if (registry.isInstalling) return; // Still in progress
+
+    // Install completed — clear the ref
+    installActiveRef.current = false;
+
+    if (registry.needsAuth) {
+      // Auth needed — close modal, let inline RegistryAuthPrompt render
+      setShowProgressModal(false);
+      return;
+    }
+
+    if (registry.installError) {
+      setProgressWidgets((prev) =>
+        prev.map((w) => ({
+          ...w,
+          status: "failed",
+          error: registry.installError,
+        })),
+      );
+    } else {
+      setProgressWidgets((prev) =>
+        prev.map((w) => ({ ...w, status: "installed" })),
+      );
+    }
+    setProgressComplete(true);
+  }, [registry.isInstalling, registry.needsAuth, registry.installError]);
+
   const selectedPackage = useMemo(() => {
     if (!selectedPackageName) return null;
     return registry.packages.find((pkg) => pkg.name === selectedPackageName);
@@ -130,12 +166,27 @@ const SidebarDiscoverContent = ({
 
   const handleInstall = useCallback(
     async (pkg) => {
-      // Build a widget-like object that useRegistrySearch.installPackage expects
-      const firstWidget = pkg.widgets?.[0];
-      if (!firstWidget) return;
-
+      if (!pkg.widgets?.length) return;
       setPendingInstallPkg(pkg);
 
+      // Build progress items from package widgets
+      const items = pkg.widgets.map((w) => ({
+        packageName: pkg.name,
+        displayName: w.displayName || w.name,
+        status: "pending",
+      }));
+
+      setProgressWidgets(items);
+      setProgressComplete(false);
+      setShowProgressModal(true);
+      installActiveRef.current = true;
+
+      // Transition to downloading
+      setProgressWidgets((prev) =>
+        prev.map((w) => ({ ...w, status: "downloading" })),
+      );
+
+      // Call existing hook install — useEffect handles the result
       const installable = {
         isRegistry: true,
         packageName: pkg.name,
@@ -145,16 +196,24 @@ const SidebarDiscoverContent = ({
       };
 
       await registry.installPackage(installable);
-
-      // If no install error and no auth needed, signal success
-      if (!registry.installError && !registry.needsAuth) {
-        onInstallSuccess(pkg.displayName || pkg.name);
-        setSelectedPackageName(null);
-        setPendingInstallPkg(null);
-      }
     },
-    [registry, onInstallSuccess],
+    [registry],
   );
+
+  const handleProgressDone = useCallback(() => {
+    setShowProgressModal(false);
+    setProgressWidgets([]);
+    setProgressComplete(false);
+
+    // If install was successful, trigger the success flash
+    if (!registry.installError) {
+      onInstallSuccess(
+        pendingInstallPkg?.displayName || pendingInstallPkg?.name || "Package",
+      );
+      setSelectedPackageName(null);
+    }
+    setPendingInstallPkg(null);
+  }, [onInstallSuccess, pendingInstallPkg, registry.installError]);
 
   // Detail view for a selected package
   if (selectedPackage) {
@@ -291,6 +350,14 @@ const SidebarDiscoverContent = ({
             </button>
           </div>
         )}
+
+        <InstallProgressModal
+          isOpen={showProgressModal}
+          setIsOpen={setShowProgressModal}
+          widgets={progressWidgets}
+          isComplete={progressComplete}
+          onDone={handleProgressDone}
+        />
       </div>
     );
   }
