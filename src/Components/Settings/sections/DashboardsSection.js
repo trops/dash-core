@@ -36,7 +36,7 @@ export const DashboardsSection = ({
 
   const appId = credentials?.appId;
 
-  const { currentTheme } = useContext(ThemeContext);
+  const { currentTheme, loadThemes } = useContext(ThemeContext);
   const headerStyles = getStylesForItem(
     themeObjects.PANEL_HEADER,
     currentTheme,
@@ -274,6 +274,7 @@ export const DashboardsSection = ({
         appId={appId}
         onInstallComplete={() => {
           onReloadWorkspaces && onReloadWorkspaces();
+          loadThemes();
         }}
       />
     );

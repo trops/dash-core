@@ -547,51 +547,62 @@ async function processDashboardConfig(
       const existingThemes = themeResult.themes || {};
       const themeKey = bundledTheme.key;
 
-      if (bundledTheme.data && themeKey && !existingThemes[themeKey]) {
-        // Embed registry origin metadata if present
-        const themeData = { ...bundledTheme.data };
-        if (bundledTheme.registryPackage) {
-          themeData._registryMeta = {
-            source: "dashboard-import",
-            packageName: bundledTheme.registryPackage,
-            installedAt: new Date().toISOString(),
-          };
-        }
-        themeController.saveThemeForApplication(
-          win,
-          appId,
-          themeKey,
-          themeData,
-        );
-        themeInstalled = themeKey;
-        console.log(
-          `[DashboardConfigController] Installed bundled theme: ${themeKey}`,
-        );
-      } else if (
-        !bundledTheme.data &&
-        bundledTheme.registryPackage &&
-        themeKey &&
-        !existingThemes[themeKey]
-      ) {
-        // Fallback: try to install from registry by package name
-        try {
-          const {
-            installThemeFromRegistry,
-          } = require("./themeRegistryController");
-          await installThemeFromRegistry(
+      if (themeKey) {
+        if (bundledTheme.data && !existingThemes[themeKey]) {
+          // Theme is new — install it
+          const themeData = { ...bundledTheme.data };
+          if (bundledTheme.registryPackage) {
+            themeData._registryMeta = {
+              source: "dashboard-import",
+              packageName: bundledTheme.registryPackage,
+              installedAt: new Date().toISOString(),
+            };
+          }
+          const saveResult = themeController.saveThemeForApplication(
             win,
             appId,
-            bundledTheme.registryPackage,
+            themeKey,
+            themeData,
           );
-          themeInstalled = themeKey;
+          if (saveResult.error) {
+            console.warn(
+              `[DashboardConfigController] Theme save failed: ${saveResult.message}`,
+            );
+          } else {
+            console.log(
+              `[DashboardConfigController] Installed bundled theme: ${themeKey}`,
+            );
+          }
+        } else if (
+          !bundledTheme.data &&
+          bundledTheme.registryPackage &&
+          !existingThemes[themeKey]
+        ) {
+          // Fallback: try to install from registry by package name
+          try {
+            const {
+              installThemeFromRegistry,
+            } = require("./themeRegistryController");
+            await installThemeFromRegistry(
+              win,
+              appId,
+              bundledTheme.registryPackage,
+            );
+            console.log(
+              `[DashboardConfigController] Installed theme from registry: ${bundledTheme.registryPackage}`,
+            );
+          } catch (registryErr) {
+            console.warn(
+              `[DashboardConfigController] Could not install theme from registry: ${registryErr.message}`,
+            );
+          }
+        } else if (existingThemes[themeKey]) {
           console.log(
-            `[DashboardConfigController] Installed theme from registry: ${bundledTheme.registryPackage}`,
-          );
-        } catch (registryErr) {
-          console.warn(
-            `[DashboardConfigController] Could not install theme from registry: ${registryErr.message}`,
+            `[DashboardConfigController] Theme already exists: ${themeKey}`,
           );
         }
+        // Always bind workspace to theme key
+        themeInstalled = themeKey;
       }
     } catch (themeErr) {
       console.warn(

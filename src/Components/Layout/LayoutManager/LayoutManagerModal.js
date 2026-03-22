@@ -26,7 +26,11 @@ export const LayoutManagerModal = ({
   onOpenWorkspace = null,
   onOpenWizard = null,
 }) => {
-  const { themes, themeKey: appThemeKey } = useContext(ThemeContext);
+  const {
+    themes,
+    themeKey: appThemeKey,
+    loadThemes,
+  } = useContext(ThemeContext);
 
   const [creationMethod, setCreationMethod] = useState(null);
   const [dashboardName, setDashboardName] = useState("");
@@ -183,6 +187,7 @@ export const LayoutManagerModal = ({
           });
         if (result && result.success) {
           onReloadWorkspaces && onReloadWorkspaces();
+          loadThemes();
           if (onOpenWorkspace && result.workspace) {
             onOpenWorkspace(result.workspace);
           }
@@ -210,6 +215,7 @@ export const LayoutManagerModal = ({
         updatedWorkspace,
       );
       onReloadWorkspaces && onReloadWorkspaces();
+      loadThemes();
       if (onOpenWorkspace) {
         onOpenWorkspace(updatedWorkspace);
       }
