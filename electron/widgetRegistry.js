@@ -693,6 +693,8 @@ class WidgetRegistry {
           // has full display data without needing ComponentManager.
           if (result?.config && existingEntry) {
             const cfg = result.config;
+            if (cfg.displayName) existingEntry.displayName = cfg.displayName;
+            if (cfg.description) existingEntry.description = cfg.description;
             if (cfg.scope && !existingEntry.scope)
               existingEntry.scope = cfg.scope;
             if (cfg.icon && !existingEntry.icon) existingEntry.icon = cfg.icon;
