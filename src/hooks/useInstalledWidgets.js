@@ -89,56 +89,68 @@ export const useInstalledWidgets = () => {
           };
         });
 
-      // ── Installed widgets from WidgetRegistry ───────────────
-      // Registry entries now include .dash.js fields (icon, providers,
-      // workspace, etc.) persisted at install time. Also try enriching
-      // from ComponentManager as a fallback.
-      let installedWidgets = [];
+      // ── Installed widgets from ComponentManager + Registry ───
+      // CM entries with _sourcePackage are registry-installed widgets.
+      // Show each as an individual "installed" entry, enriched with
+      // registry-level metadata (version, path, packageId).
+      let registryByName = {};
       if (window.mainApi?.widgets) {
         const list = await window.mainApi.widgets.list();
-        installedWidgets = (list || []).map((w) => {
-          // Try to find a matching ComponentManager entry:
-          // 1) by componentNames stored in the registry entry
-          // 2) by _sourcePackage on the CM entry
-          const cmKey =
-            (w.componentNames || []).find((cn) => cn in cMap) ||
-            Object.keys(cMap).find(
-              (key) => cMap[key]._sourcePackage === w.name,
-            );
-          const cm = cmKey ? cMap[cmKey] : null;
-
-          return {
-            name: w.name,
-            displayName: w.displayName || cm?.name || cmKey || w.name,
-            author: w.author || cm?.author || null,
-            package: w.package || cm?.package || null,
-            description: w.description || cm?.description || null,
-            icon: w.icon || cm?.icon || null,
-            version: w.version || null,
-            path: w.path || null,
-            source: "installed",
-            providers: w.providers?.length ? w.providers : cm?.providers || [],
-            workspace: w.workspace || cm?.workspace || null,
-            componentNames: w.componentNames || (cmKey ? [cmKey] : []),
-            packageId: w.packageId || w.name,
-          };
+        (list || []).forEach((w) => {
+          registryByName[w.name] = w;
         });
       }
 
-      // ── Merge: installed wins on name collision ──────────────
-      // Also remove builtin entries whose _sourcePackage matches an
-      // installed widget name (e.g. builtin "WeatherWidget" with
-      // _sourcePackage "weather-widget" is the same as installed
-      // "weather-widget").
-      const installedNames = new Set(installedWidgets.map((w) => w.name));
-      const deduped = builtinWidgets.filter((w) => {
-        if (installedNames.has(w.name)) return false;
-        const sp = cMap[w.name]?._sourcePackage;
-        if (sp && installedNames.has(sp)) return false;
-        return true;
-      });
+      const installedFromCM = Object.keys(cMap)
+        .filter(
+          (key) => cMap[key].type === "widget" && !!cMap[key]._sourcePackage,
+        )
+        .map((key) => {
+          const config = cMap[key];
+          const reg = registryByName[config._sourcePackage] || {};
+          return {
+            name: key,
+            displayName: config.name || key,
+            author: config.author || reg.author || null,
+            package: config.package || null,
+            description: config.description || null,
+            icon: config.icon || null,
+            version: reg.version || null,
+            path: reg.path || null,
+            source: "installed",
+            providers: config.providers || [],
+            workspace: config.workspace || null,
+            componentNames: [key],
+            packageId: reg.packageId || config._sourcePackage,
+          };
+        });
 
-      setWidgets([...deduped, ...installedWidgets]);
+      // Fallback: registry packages whose components never loaded
+      // into CM (e.g. compile failure). Show the package-level entry.
+      const cmSourcePackages = new Set(
+        Object.values(cMap)
+          .filter((c) => c._sourcePackage)
+          .map((c) => c._sourcePackage),
+      );
+      const fallbackInstalled = Object.values(registryByName)
+        .filter((w) => !cmSourcePackages.has(w.name))
+        .map((w) => ({
+          name: w.name,
+          displayName: w.displayName || w.name,
+          author: w.author || null,
+          package: w.package || null,
+          description: w.description || null,
+          icon: w.icon || null,
+          version: w.version || null,
+          path: w.path || null,
+          source: "installed",
+          providers: w.providers || [],
+          workspace: w.workspace || null,
+          componentNames: w.componentNames || [],
+          packageId: w.packageId || w.name,
+        }));
+
+      setWidgets([...builtinWidgets, ...installedFromCM, ...fallbackInstalled]);
     } catch (err) {
       console.error("[useInstalledWidgets] Error listing widgets:", err);
       setError(err.message || "Failed to load widgets");
