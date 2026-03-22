@@ -70,6 +70,7 @@ export const useInstalledWidgets = () => {
       const cMap = ComponentManager.componentMap() || {};
       const builtinWidgets = Object.keys(cMap)
         .filter((key) => cMap[key].type === "widget")
+        .filter((key) => !cMap[key]._sourcePackage)
         .map((key) => {
           const config = cMap[key];
           return {
