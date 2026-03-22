@@ -24,16 +24,12 @@ export const InstallProgressModal = ({
   widgets = [],
   isComplete = false,
   onDone,
+  onCancel = null,
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,
   });
-
-  // Prevent dismissal while installation is in progress
-  const guardedSetIsOpen = (val) => {
-    if (isComplete) setIsOpen(val);
-  };
 
   const doneCount = widgets.filter(
     (w) =>
@@ -77,7 +73,7 @@ export const InstallProgressModal = ({
   return (
     <Modal
       isOpen={isOpen}
-      setIsOpen={guardedSetIsOpen}
+      setIsOpen={setIsOpen}
       width="w-[440px]"
       height="auto"
     >
@@ -125,8 +121,22 @@ export const InstallProgressModal = ({
 
         {/* Footer */}
         <div
-          className={`flex items-center justify-end px-5 py-3 border-t ${currentTheme["border-primary-medium"] || "border-white/10"}`}
+          className={`flex items-center justify-between px-5 py-3 border-t ${currentTheme["border-primary-medium"] || "border-white/10"}`}
         >
+          <div>
+            {!isComplete && onCancel && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (onCancel) onCancel();
+                  setIsOpen(false);
+                }}
+                className="text-sm text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
           <Button
             title="Done"
             bgColor={isComplete ? "bg-blue-600" : "bg-gray-700"}

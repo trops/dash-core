@@ -476,9 +476,20 @@ class WidgetRegistry {
         }
       }
 
-      const response = await fetch(downloadUrl, fetchOpts);
-      if (!response.ok)
+      let response;
+      try {
+        response = await fetch(downloadUrl, fetchOpts);
+      } catch (fetchErr) {
+        throw new Error(
+          "Could not reach the download server. Check your connection and try again.",
+        );
+      }
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error("Authentication required to download this widget");
+        }
         throw new Error(`Failed to fetch: ${response.statusText}`);
+      }
 
       const contentType = response.headers.get("content-type") || "";
       let buffer = Buffer.from(await response.arrayBuffer());

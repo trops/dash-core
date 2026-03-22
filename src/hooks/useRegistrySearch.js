@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { cleanIpcError } from "../utils/errorUtils";
 
 /**
  * useRegistrySearch — shared hook for browsing and installing registry packages.
@@ -31,6 +32,7 @@ export const useRegistrySearch = ({ filterByCapabilities = true } = {}) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [isInstalling, setIsInstalling] = useState(false);
   const [installError, setInstallError] = useState(null);
+  const [needsAuth, setNeedsAuth] = useState(false);
   const [showAllPackages, setShowAllPackages] = useState(false);
 
   // Discover app capabilities from window.mainApi
@@ -142,13 +144,29 @@ export const useRegistrySearch = ({ filterByCapabilities = true } = {}) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, showAllPackages]);
 
+  const clearNeedsAuth = useCallback(() => setNeedsAuth(false), []);
+
   const installPackage = useCallback(async (widget) => {
     if (!widget || !widget.isRegistry) return;
 
     setIsInstalling(true);
     setInstallError(null);
+    setNeedsAuth(false);
 
     try {
+      // Check auth before attempting download
+      try {
+        const status = await window.mainApi?.registryAuth?.getStatus();
+        if (!status?.authenticated) {
+          setNeedsAuth(true);
+          setIsInstalling(false);
+          return;
+        }
+      } catch {
+        // If auth check fails, proceed — install will fail with
+        // Unauthorized which is caught below
+      }
+
       const { packageName, packageScope, downloadUrl, packageVersion } = widget;
 
       // Build scoped ID (e.g. "@trops/slack") for the install key
@@ -172,7 +190,15 @@ export const useRegistrySearch = ({ filterByCapabilities = true } = {}) => {
       );
     } catch (err) {
       console.error("[useRegistrySearch] Install error:", err);
-      setInstallError(err.message || "Failed to install package");
+      const msg = cleanIpcError(err.message || "Failed to install package");
+      if (
+        msg.toLowerCase().includes("unauthorized") ||
+        msg.toLowerCase().includes("authentication required")
+      ) {
+        setNeedsAuth(true);
+      } else {
+        setInstallError(msg);
+      }
     } finally {
       setIsInstalling(false);
     }
@@ -191,6 +217,8 @@ export const useRegistrySearch = ({ filterByCapabilities = true } = {}) => {
     setSearchQuery,
     isInstalling,
     installError,
+    needsAuth,
+    clearNeedsAuth,
     search,
     installPackage,
     retry,
