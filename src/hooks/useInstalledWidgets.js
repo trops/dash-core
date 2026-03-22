@@ -171,6 +171,10 @@ export const useInstalledWidgets = () => {
 
   useEffect(() => {
     refresh();
+    const handleWidgetsUpdated = () => refresh();
+    window.addEventListener("dash:widgets-updated", handleWidgetsUpdated);
+    return () =>
+      window.removeEventListener("dash:widgets-updated", handleWidgetsUpdated);
   }, [refresh]);
 
   return { widgets, isLoading, error, uninstallWidget, refresh };
