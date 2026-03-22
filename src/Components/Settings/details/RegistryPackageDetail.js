@@ -8,6 +8,7 @@ import {
   themeObjects,
 } from "@trops/dash-react";
 import { getUserConfigurableProviders } from "../../../utils/providerUtils";
+import { RegistryAuthPrompt } from "../../Registry/RegistryAuthPrompt";
 
 /**
  * RegistryPackageDetail — detail panel for a registry package/widget.
@@ -27,6 +28,9 @@ export const RegistryPackageDetail = ({
   isInstalling = false,
   installError = null,
   isInstalled = false,
+  showAuth = false,
+  onAuthSuccess = null,
+  onAuthCancel = null,
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
@@ -194,28 +198,39 @@ export const RegistryPackageDetail = ({
         )}
       </div>
 
-      {/* Install Footer */}
-      <div
-        className={`flex items-center justify-end px-6 py-3 border-t ${currentTheme["border-primary-medium"]}`}
-      >
-        <Button
-          title={
-            isInstalled
-              ? "Installed"
-              : isInstalling
-                ? "Installing..."
-                : "Install Package"
-          }
-          bgColor={isInstalled ? "bg-emerald-600/50" : "bg-blue-600"}
-          hoverBackgroundColor={
-            isInstalled || isInstalling ? "" : "hover:bg-blue-700"
-          }
-          textSize="text-sm"
-          padding="py-1.5 px-4"
-          onClick={onInstall}
-          disabled={isInstalling || isInstalled}
+      {/* Auth Prompt */}
+      {showAuth && (
+        <RegistryAuthPrompt
+          onAuthenticated={onAuthSuccess}
+          onCancel={onAuthCancel}
+          message="Sign in to install this widget from the Dash Registry."
         />
-      </div>
+      )}
+
+      {/* Install Footer — hidden when auth prompt is showing */}
+      {!showAuth && (
+        <div
+          className={`flex items-center justify-end px-6 py-3 border-t ${currentTheme["border-primary-medium"]}`}
+        >
+          <Button
+            title={
+              isInstalled
+                ? "Installed"
+                : isInstalling
+                  ? "Installing..."
+                  : "Install Package"
+            }
+            bgColor={isInstalled ? "bg-emerald-600/50" : "bg-blue-600"}
+            hoverBackgroundColor={
+              isInstalled || isInstalling ? "" : "hover:bg-blue-700"
+            }
+            textSize="text-sm"
+            padding="py-1.5 px-4"
+            onClick={onInstall}
+            disabled={isInstalling || isInstalled}
+          />
+        </div>
+      )}
     </div>
   );
 };

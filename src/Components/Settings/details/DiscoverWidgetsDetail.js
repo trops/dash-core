@@ -38,6 +38,8 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
     setSearchQuery,
     isInstalling,
     installError,
+    needsAuth,
+    clearNeedsAuth,
     installPackage,
     retry,
     showAllPackages,
@@ -189,6 +191,12 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
                 )
               : false
           }
+          showAuth={needsAuth}
+          onAuthSuccess={() => {
+            clearNeedsAuth();
+            installPackage(selectedWidget);
+          }}
+          onAuthCancel={clearNeedsAuth}
         />
       </div>
     );

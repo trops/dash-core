@@ -15,6 +15,7 @@ import {
 import { ComponentManager } from "../../ComponentManager";
 import { SIDEBAR_WIDGET_TYPE } from "../../utils/dragTypes";
 import { useRegistrySearch } from "../../hooks/useRegistrySearch";
+import { RegistryAuthPrompt } from "../Registry/RegistryAuthPrompt";
 
 const DraggableWidgetItem = ({ widgetKey, widget }) => {
   const [{ isDragging }, drag] = useDrag(
@@ -92,6 +93,7 @@ const SidebarDiscoverContent = ({
   installedPackageNames,
 }) => {
   const [selectedPackageName, setSelectedPackageName] = useState(null);
+  const [pendingInstallPkg, setPendingInstallPkg] = useState(null);
 
   // Check if a package is installed by name or scope/name
   const isPackageInstalled = useCallback(
@@ -132,19 +134,23 @@ const SidebarDiscoverContent = ({
       const firstWidget = pkg.widgets?.[0];
       if (!firstWidget) return;
 
+      setPendingInstallPkg(pkg);
+
       const installable = {
         isRegistry: true,
         packageName: pkg.name,
+        packageScope: pkg.scope || null,
         downloadUrl: pkg.downloadUrl || "",
         packageVersion: pkg.version || "",
       };
 
       await registry.installPackage(installable);
 
-      // If no install error, signal success
-      if (!registry.installError) {
+      // If no install error and no auth needed, signal success
+      if (!registry.installError && !registry.needsAuth) {
         onInstallSuccess(pkg.displayName || pkg.name);
         setSelectedPackageName(null);
+        setPendingInstallPkg(null);
       }
     },
     [registry, onInstallSuccess],
@@ -249,23 +255,42 @@ const SidebarDiscoverContent = ({
               {registry.installError}
             </div>
           )}
+
+          {/* Auth prompt */}
+          {registry.needsAuth && (
+            <div className="mb-3">
+              <RegistryAuthPrompt
+                onAuthenticated={() => {
+                  registry.clearNeedsAuth();
+                  if (pendingInstallPkg) handleInstall(pendingInstallPkg);
+                }}
+                onCancel={() => {
+                  registry.clearNeedsAuth();
+                  setPendingInstallPkg(null);
+                }}
+                message="Sign in to install this widget from the Dash Registry."
+              />
+            </div>
+          )}
         </div>
 
-        {/* Install button pinned to bottom */}
-        <div className="px-3 py-2 flex-shrink-0">
-          <button
-            type="button"
-            onClick={() => handleInstall(pkg)}
-            disabled={registry.isInstalling || isInstalled}
-            className="w-full py-1.5 rounded-md text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {isInstalled
-              ? "Installed"
-              : registry.isInstalling
-                ? "Installing..."
-                : "Install Package"}
-          </button>
-        </div>
+        {/* Install button pinned to bottom — hidden when auth prompt is showing */}
+        {!registry.needsAuth && (
+          <div className="px-3 py-2 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => handleInstall(pkg)}
+              disabled={registry.isInstalling || isInstalled}
+              className="w-full py-1.5 rounded-md text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isInstalled
+                ? "Installed"
+                : registry.isInstalling
+                  ? "Installing..."
+                  : "Install Package"}
+            </button>
+          </div>
+        )}
       </div>
     );
   }

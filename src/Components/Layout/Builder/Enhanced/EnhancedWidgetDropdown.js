@@ -43,6 +43,8 @@ import { ProviderForm } from "../../../Provider/ProviderForm";
 import { ToolSelector } from "../../../Settings/details/ToolSelector";
 import { deriveFormFields } from "../../../../utils/mcpUtils";
 import { getUserConfigurableProviders } from "../../../../utils/providerUtils";
+import { RegistryAuthPrompt } from "../../../Registry/RegistryAuthPrompt";
+import { cleanIpcError } from "../../../../utils/errorUtils";
 
 export const EnhancedWidgetDropdown = ({
   isOpen,
@@ -108,6 +110,7 @@ export const EnhancedWidgetDropdown = ({
   const [selectedPackage, setSelectedPackage] = useState(null);
   const [isInstalling, setIsInstalling] = useState(false);
   const [installError, setInstallError] = useState(null);
+  const [needsAuth, setNeedsAuth] = useState(false);
 
   // Phase 3: Recent Widgets - localStorage functions
   const loadRecentWidgets = () => {
@@ -789,8 +792,22 @@ export const EnhancedWidgetDropdown = ({
 
     setIsInstalling(true);
     setInstallError(null);
+    setNeedsAuth(false);
 
     try {
+      // Check auth before attempting download
+      try {
+        const status = await window.mainApi?.registryAuth?.getStatus();
+        if (!status?.authenticated) {
+          setNeedsAuth(true);
+          setIsInstalling(false);
+          return;
+        }
+      } catch {
+        // If auth check fails, proceed — install will fail with
+        // Unauthorized which is caught below
+      }
+
       const { packageName, downloadUrl, packageVersion } = selectedWidget;
 
       // Resolve version placeholder in download URL
@@ -814,7 +831,15 @@ export const EnhancedWidgetDropdown = ({
       setSelectedPackage(null);
     } catch (error) {
       console.error("[EnhancedWidgetDropdown] Install error:", error);
-      setInstallError(error.message || "Failed to install package");
+      const msg = cleanIpcError(error.message || "Failed to install package");
+      if (
+        msg.toLowerCase().includes("unauthorized") ||
+        msg.toLowerCase().includes("authentication required")
+      ) {
+        setNeedsAuth(true);
+      } else {
+        setInstallError(msg);
+      }
     } finally {
       setIsInstalling(false);
     }
@@ -1177,6 +1202,20 @@ export const EnhancedWidgetDropdown = ({
         {installError && (
           <div className="mt-3 p-2 rounded bg-red-900/30 border border-red-700">
             <p className="text-xs text-red-400">{installError}</p>
+          </div>
+        )}
+
+        {/* Auth Prompt */}
+        {needsAuth && (
+          <div className="mt-3">
+            <RegistryAuthPrompt
+              onAuthenticated={() => {
+                setNeedsAuth(false);
+                handleInstallPackage();
+              }}
+              onCancel={() => setNeedsAuth(false)}
+              message="Sign in to install this widget from the Dash Registry."
+            />
           </div>
         )}
       </div>
