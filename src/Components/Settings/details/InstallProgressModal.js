@@ -38,7 +38,7 @@ export const InstallProgressModal = ({
       w.status === "failed",
   ).length;
 
-  function statusIcon(status) {
+  function statusIcon(status, item) {
     switch (status) {
       case "downloading":
         return (
@@ -48,7 +48,7 @@ export const InstallProgressModal = ({
       case "already-installed":
         return (
           <FontAwesomeIcon
-            icon="circle-check"
+            icon={item?.type === "theme" ? "palette" : "circle-check"}
             className="h-4 w-4 text-green-400 flex-shrink-0"
           />
         );
@@ -85,7 +85,7 @@ export const InstallProgressModal = ({
           <h3 className="text-sm font-semibold">
             {isComplete
               ? "Installation Complete"
-              : `Installing widget ${doneCount + 1} of ${widgets.length}...`}
+              : `Installing ${doneCount + 1} of ${widgets.length}...`}
           </h3>
         </div>
 
@@ -96,7 +96,7 @@ export const InstallProgressModal = ({
               <div
                 className={`flex items-center gap-2.5 p-2 rounded ${currentTheme["bg-primary-medium"] || "bg-white/5"}`}
               >
-                {statusIcon(w.status)}
+                {statusIcon(w.status, w)}
                 <span className="text-sm flex-1 truncate">{w.displayName}</span>
                 <span className="text-[10px] opacity-40">
                   {w.status === "already-installed"

@@ -87,16 +87,25 @@ export const RegistryDashboardDetail = ({
     setIsInstalling(true);
     setInstallResult(null);
 
-    // Initialize progress modal from widget deps
+    // Initialize progress modal from widget deps + optional theme
     const deps = widgetDeps.length > 0 ? widgetDeps : [];
-    if (deps.length > 0) {
-      setProgressWidgets(
-        deps.map((w) => ({
-          packageName: w.package || w.name,
-          displayName: w.displayName || w.name || w.package,
-          status: "pending",
-        })),
-      );
+    const items = deps.map((w) => ({
+      packageName: w.package || w.name,
+      displayName: w.displayName || w.name || w.package,
+      status: "pending",
+    }));
+
+    if (pkg.theme) {
+      items.push({
+        packageName: pkg.theme.registryPackage || pkg.theme.key || "theme",
+        displayName: pkg.theme.name || pkg.theme.key || "Bundled Theme",
+        status: "pending",
+        type: "theme",
+      });
+    }
+
+    if (items.length > 0) {
+      setProgressWidgets(items);
       setProgressComplete(false);
       setShowProgressModal(true);
 
@@ -144,7 +153,7 @@ export const RegistryDashboardDetail = ({
       setProgressComplete(true);
 
       // If no progress modal was shown, apply result directly
-      if (deps.length === 0) {
+      if (items.length === 0) {
         setInstallResult({
           status: result?.success ? "success" : "error",
           message: result?.success
@@ -158,7 +167,7 @@ export const RegistryDashboardDetail = ({
     } catch (err) {
       console.error("[RegistryDashboardDetail] Install error:", err);
       setProgressComplete(true);
-      if (deps.length === 0) {
+      if (items.length === 0) {
         setInstallResult({
           status: "error",
           message: err.message || "Failed to install dashboard.",

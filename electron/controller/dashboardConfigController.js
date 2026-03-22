@@ -423,6 +423,14 @@ async function processDashboardConfig(
     DASHBOARD_CONFIG_INSTALL_PROGRESS,
   } = require("../events/dashboardConfigEvents");
 
+  // Compute total progress items (widgets + optional theme)
+  const hasTheme = !!(dashboardConfig.theme && dashboardConfig.theme.key);
+  const widgetTotal = dashboardConfig.widgets
+    ? dashboardConfig.widgets.length
+    : 0;
+  const themeIndex = widgetTotal;
+  const progressTotal = widgetTotal + (hasTheme ? 1 : 0);
+
   if (
     widgetRegistry &&
     dashboardConfig.widgets &&
@@ -430,21 +438,38 @@ async function processDashboardConfig(
   ) {
     const installedWidgets = widgetRegistry.getWidgets();
     const installedPackages = new Set(installedWidgets.map((w) => w.name));
-    const total = dashboardConfig.widgets.length;
 
     // Emit initial "pending" state for all widgets
-    for (let i = 0; i < total; i++) {
+    for (let i = 0; i < widgetTotal; i++) {
       const dep = dashboardConfig.widgets[i];
       win.webContents.send(DASHBOARD_CONFIG_INSTALL_PROGRESS, {
         packageName: dep.package,
         displayName: dep.displayName || dep.name || dep.package,
         status: "pending",
         index: i,
-        total,
+        total: progressTotal,
       });
     }
 
-    for (let i = 0; i < total; i++) {
+    // Emit initial "pending" state for theme (if present)
+    if (hasTheme) {
+      const themeDisplay =
+        dashboardConfig.theme.name ||
+        dashboardConfig.theme.key ||
+        "Bundled Theme";
+      win.webContents.send(DASHBOARD_CONFIG_INSTALL_PROGRESS, {
+        packageName:
+          dashboardConfig.theme.registryPackage ||
+          dashboardConfig.theme.key ||
+          "theme",
+        displayName: themeDisplay,
+        status: "pending",
+        index: themeIndex,
+        total: progressTotal,
+      });
+    }
+
+    for (let i = 0; i < widgetTotal; i++) {
       const widgetDep = dashboardConfig.widgets[i];
       const packageName = widgetDep.package;
       const displayName =
@@ -457,7 +482,7 @@ async function processDashboardConfig(
           displayName,
           status: "already-installed",
           index: i,
-          total,
+          total: progressTotal,
         });
         continue;
       }
@@ -468,7 +493,7 @@ async function processDashboardConfig(
         displayName,
         status: "downloading",
         index: i,
-        total,
+        total: progressTotal,
       });
 
       // Try to find the widget in the registry and install it
@@ -487,7 +512,7 @@ async function processDashboardConfig(
             displayName,
             status: "installed",
             index: i,
-            total,
+            total: progressTotal,
           });
         } else {
           installSummary.failed.push({
@@ -499,7 +524,7 @@ async function processDashboardConfig(
             displayName,
             status: "failed",
             index: i,
-            total,
+            total: progressTotal,
             error: "Not found in registry",
           });
         }
@@ -513,7 +538,7 @@ async function processDashboardConfig(
           displayName,
           status: "failed",
           index: i,
-          total,
+          total: progressTotal,
           error: installError.message,
         });
       }
@@ -542,6 +567,11 @@ async function processDashboardConfig(
   let themeInstalled = null;
   if (dashboardConfig.theme) {
     const bundledTheme = dashboardConfig.theme;
+    const themeDisplay =
+      bundledTheme.name || bundledTheme.key || "Bundled Theme";
+    const themePackageName =
+      bundledTheme.registryPackage || bundledTheme.key || "theme";
+
     try {
       const themeResult = themeController.listThemesForApplication(win, appId);
       const existingThemes = themeResult.themes || {};
@@ -550,6 +580,14 @@ async function processDashboardConfig(
       if (themeKey) {
         if (bundledTheme.data && !existingThemes[themeKey]) {
           // Theme is new — install it
+          win.webContents.send(DASHBOARD_CONFIG_INSTALL_PROGRESS, {
+            packageName: themePackageName,
+            displayName: themeDisplay,
+            status: "downloading",
+            index: themeIndex,
+            total: progressTotal,
+          });
+
           const themeData = { ...bundledTheme.data };
           if (bundledTheme.registryPackage) {
             themeData._registryMeta = {
@@ -568,10 +606,25 @@ async function processDashboardConfig(
             console.warn(
               `[DashboardConfigController] Theme save failed: ${saveResult.message}`,
             );
+            win.webContents.send(DASHBOARD_CONFIG_INSTALL_PROGRESS, {
+              packageName: themePackageName,
+              displayName: themeDisplay,
+              status: "failed",
+              index: themeIndex,
+              total: progressTotal,
+              error: saveResult.message,
+            });
           } else {
             console.log(
               `[DashboardConfigController] Installed bundled theme: ${themeKey}`,
             );
+            win.webContents.send(DASHBOARD_CONFIG_INSTALL_PROGRESS, {
+              packageName: themePackageName,
+              displayName: themeDisplay,
+              status: "installed",
+              index: themeIndex,
+              total: progressTotal,
+            });
           }
         } else if (
           !bundledTheme.data &&
@@ -579,6 +632,14 @@ async function processDashboardConfig(
           !existingThemes[themeKey]
         ) {
           // Fallback: try to install from registry by package name
+          win.webContents.send(DASHBOARD_CONFIG_INSTALL_PROGRESS, {
+            packageName: themePackageName,
+            displayName: themeDisplay,
+            status: "downloading",
+            index: themeIndex,
+            total: progressTotal,
+          });
+
           try {
             const {
               installThemeFromRegistry,
@@ -591,15 +652,37 @@ async function processDashboardConfig(
             console.log(
               `[DashboardConfigController] Installed theme from registry: ${bundledTheme.registryPackage}`,
             );
+            win.webContents.send(DASHBOARD_CONFIG_INSTALL_PROGRESS, {
+              packageName: themePackageName,
+              displayName: themeDisplay,
+              status: "installed",
+              index: themeIndex,
+              total: progressTotal,
+            });
           } catch (registryErr) {
             console.warn(
               `[DashboardConfigController] Could not install theme from registry: ${registryErr.message}`,
             );
+            win.webContents.send(DASHBOARD_CONFIG_INSTALL_PROGRESS, {
+              packageName: themePackageName,
+              displayName: themeDisplay,
+              status: "failed",
+              index: themeIndex,
+              total: progressTotal,
+              error: registryErr.message,
+            });
           }
         } else if (existingThemes[themeKey]) {
           console.log(
             `[DashboardConfigController] Theme already exists: ${themeKey}`,
           );
+          win.webContents.send(DASHBOARD_CONFIG_INSTALL_PROGRESS, {
+            packageName: themePackageName,
+            displayName: themeDisplay,
+            status: "already-installed",
+            index: themeIndex,
+            total: progressTotal,
+          });
         }
         // Always bind workspace to theme key
         themeInstalled = themeKey;
@@ -608,6 +691,14 @@ async function processDashboardConfig(
       console.warn(
         `[DashboardConfigController] Could not install bundled theme: ${themeErr.message}`,
       );
+      win.webContents.send(DASHBOARD_CONFIG_INSTALL_PROGRESS, {
+        packageName: themePackageName,
+        displayName: themeDisplay,
+        status: "failed",
+        index: themeIndex,
+        total: progressTotal,
+        error: themeErr.message,
+      });
     }
   }
 
@@ -873,6 +964,18 @@ async function installDashboardFromRegistry(
     }
 
     dashboardConfig = applyDefaults(dashboardConfig);
+
+    // 5b. Inject theme metadata from registry if config has no theme section
+    if (
+      !dashboardConfig.theme &&
+      registryPkg.theme &&
+      registryPkg.theme.registryPackage
+    ) {
+      dashboardConfig.theme = {
+        key: registryPkg.theme.key || registryPkg.theme.name,
+        registryPackage: registryPkg.theme.registryPackage,
+      };
+    }
 
     // 6. Delegate to shared import pipeline
     return await processDashboardConfig(
