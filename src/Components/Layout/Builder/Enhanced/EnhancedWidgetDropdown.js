@@ -43,7 +43,8 @@ import { ProviderForm } from "../../../Provider/ProviderForm";
 import { ToolSelector } from "../../../Settings/details/ToolSelector";
 import { deriveFormFields } from "../../../../utils/mcpUtils";
 import { getUserConfigurableProviders } from "../../../../utils/providerUtils";
-import { RegistryAuthPrompt } from "../../../Registry/RegistryAuthPrompt";
+import { RegistryAuthModal } from "../../../Registry/RegistryAuthModal";
+import { InstallProgressModal } from "../../../Settings/details/InstallProgressModal";
 import { cleanIpcError } from "../../../../utils/errorUtils";
 
 export const EnhancedWidgetDropdown = ({
@@ -111,6 +112,11 @@ export const EnhancedWidgetDropdown = ({
   const [isInstalling, setIsInstalling] = useState(false);
   const [installError, setInstallError] = useState(null);
   const [needsAuth, setNeedsAuth] = useState(false);
+
+  // Install progress modal state
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const [progressWidgets, setProgressWidgets] = useState([]);
+  const [progressComplete, setProgressComplete] = useState(false);
 
   // Phase 3: Recent Widgets - localStorage functions
   const loadRecentWidgets = () => {
@@ -794,6 +800,28 @@ export const EnhancedWidgetDropdown = ({
     setInstallError(null);
     setNeedsAuth(false);
 
+    // Build progress items
+    const pkgWidgets = selectedWidget.packageWidgets || [];
+    const items =
+      pkgWidgets.length > 0
+        ? pkgWidgets.map((w) => ({
+            packageName: selectedWidget.packageName,
+            displayName: w.displayName || w.name,
+            status: "downloading",
+          }))
+        : [
+            {
+              packageName: selectedWidget.packageName,
+              displayName:
+                selectedWidget.packageDisplayName || selectedWidget.packageName,
+              status: "downloading",
+            },
+          ];
+
+    setProgressWidgets(items);
+    setProgressComplete(false);
+    setShowProgressModal(true);
+
     try {
       // Check auth before attempting download
       try {
@@ -801,6 +829,7 @@ export const EnhancedWidgetDropdown = ({
         if (!status?.authenticated) {
           setNeedsAuth(true);
           setIsInstalling(false);
+          setShowProgressModal(false);
           return;
         }
       } catch {
@@ -825,10 +854,11 @@ export const EnhancedWidgetDropdown = ({
         `[EnhancedWidgetDropdown] Package ${packageName} installed successfully`,
       );
 
-      // Switch to Installed tab after successful install
-      setSelectedSource("Installed");
-      setSelectedWidget(null);
-      setSelectedPackage(null);
+      // Mark items as installed
+      setProgressWidgets((prev) =>
+        prev.map((w) => ({ ...w, status: "installed" })),
+      );
+      setProgressComplete(true);
     } catch (error) {
       console.error("[EnhancedWidgetDropdown] Install error:", error);
       const msg = cleanIpcError(error.message || "Failed to install package");
@@ -837,11 +867,28 @@ export const EnhancedWidgetDropdown = ({
         msg.toLowerCase().includes("authentication required")
       ) {
         setNeedsAuth(true);
+        setShowProgressModal(false);
       } else {
         setInstallError(msg);
+        setProgressWidgets((prev) =>
+          prev.map((w) => ({ ...w, status: "failed", error: msg })),
+        );
+        setProgressComplete(true);
       }
     } finally {
       setIsInstalling(false);
+    }
+  };
+
+  const handleProgressDone = () => {
+    setShowProgressModal(false);
+    setProgressWidgets([]);
+    setProgressComplete(false);
+    // Switch to Installed tab after successful install
+    if (!installError) {
+      setSelectedSource("Installed");
+      setSelectedWidget(null);
+      setSelectedPackage(null);
     }
   };
 
@@ -1204,232 +1251,176 @@ export const EnhancedWidgetDropdown = ({
             <p className="text-xs text-red-400">{installError}</p>
           </div>
         )}
-
-        {/* Auth Prompt */}
-        {needsAuth && (
-          <div className="mt-3">
-            <RegistryAuthPrompt
-              onAuthenticated={() => {
-                setNeedsAuth(false);
-                handleInstallPackage();
-              }}
-              onCancel={() => setNeedsAuth(false)}
-              message="Sign in to install this widget from the Dash Registry."
-            />
-          </div>
-        )}
       </div>
     );
   };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      setIsOpen={onClose}
-      width={"w-11/12 xl:w-5/6"}
-      height="h-5/6"
-    >
-      <Panel direction="col" padding={false}>
-        <div className={`flex flex-col w-full h-full overflow-clip`}>
-          <div className="flex flex-col w-full h-full overflow-clip">
-            {/* Main Content Area */}
-            <div className="flex flex-row w-full flex-1 min-h-0 space-x-4 overflow-clip p-6">
-              {/* Left Side: Title and Description (1/3) - Hidden on small screens */}
-              <div className="hidden lg:flex flex-col flex-shrink h-full rounded font-medium text-gray-400 w-1/3">
-                <div className="flex flex-col rounded p-6 py-10 space-y-4">
-                  <Heading title={"Add Widget to Dashboard"} padding={false} />
-                  <SubHeading3
-                    title={
-                      selectedSource === "Discover"
-                        ? "Browse the widget registry to discover and install community-contributed widget packages."
-                        : "Browse and select widgets to add to your dashboard. Widgets provide specialized functionality like analytics, notifications, and integrations."
-                    }
-                    padding={false}
-                  />
-                </div>
-              </div>
-
-              {/* Right Side: Two-Column Widget Selector - Full width on small screens, 2/3 on large */}
-              <div className="flex flex-col w-full lg:w-2/3 h-full overflow-hidden">
-                {/* Filters */}
-                <div className="flex flex-col gap-3 mb-4 px-2">
-                  {/* Top row: Tab toggle + Search */}
-                  <div className="flex flex-row items-center gap-3">
-                    {/* Installed / Discover pill toggle */}
-                    <div className="flex bg-white/5 rounded-md p-0.5 flex-shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedSource("Installed")}
-                        className={`px-3 py-1.5 rounded text-sm transition-colors ${
-                          selectedSource === "Installed"
-                            ? "bg-white/10 font-medium opacity-90"
-                            : "opacity-50 hover:opacity-70"
-                        }`}
-                      >
-                        Installed
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedSource("Discover")}
-                        className={`px-3 py-1.5 rounded text-sm transition-colors ${
-                          selectedSource === "Discover"
-                            ? "bg-white/10 font-medium opacity-90"
-                            : "opacity-50 hover:opacity-70"
-                        }`}
-                      >
-                        Discover
-                      </button>
-                    </div>
-
-                    {/* Search */}
-                    <SearchInput
-                      value={searchQuery}
-                      onChange={setSearchQuery}
-                      placeholder={
+    <>
+      <Modal
+        isOpen={isOpen}
+        setIsOpen={onClose}
+        width={"w-11/12 xl:w-5/6"}
+        height="h-5/6"
+      >
+        <Panel direction="col" padding={false}>
+          <div className={`flex flex-col w-full h-full overflow-clip`}>
+            <div className="flex flex-col w-full h-full overflow-clip">
+              {/* Main Content Area */}
+              <div className="flex flex-row w-full flex-1 min-h-0 space-x-4 overflow-clip p-6">
+                {/* Left Side: Title and Description (1/3) - Hidden on small screens */}
+                <div className="hidden lg:flex flex-col flex-shrink h-full rounded font-medium text-gray-400 w-1/3">
+                  <div className="flex flex-col rounded p-6 py-10 space-y-4">
+                    <Heading
+                      title={"Add Widget to Dashboard"}
+                      padding={false}
+                    />
+                    <SubHeading3
+                      title={
                         selectedSource === "Discover"
-                          ? "Search packages and widgets..."
-                          : "Search widgets..."
+                          ? "Browse the widget registry to discover and install community-contributed widget packages."
+                          : "Browse and select widgets to add to your dashboard. Widgets provide specialized functionality like analytics, notifications, and integrations."
                       }
-                      className="flex-1"
-                      inputClassName="py-1.5 text-sm"
+                      padding={false}
                     />
                   </div>
+                </div>
 
-                  {/* Bottom row: Secondary filters */}
-                  <div className="flex flex-row items-center gap-2">
-                    {/* Author Filter */}
-                    <select
-                      value={selectedAuthor}
-                      onChange={(e) => setSelectedAuthor(e.target.value)}
-                      className={`px-2 py-1 rounded text-xs bg-transparent border ${currentTheme["border-primary-medium"] || "border-gray-700"} ${currentTheme["text-primary-light"] || "text-gray-300"} focus:outline-none appearance-none cursor-pointer`}
-                    >
-                      <option value="all">All Authors</option>
-                      {getUniqueAuthors().map((author) => (
-                        <option key={author} value={author}>
-                          {author}
-                        </option>
-                      ))}
-                    </select>
+                {/* Right Side: Two-Column Widget Selector - Full width on small screens, 2/3 on large */}
+                <div className="flex flex-col w-full lg:w-2/3 h-full overflow-hidden">
+                  {/* Filters */}
+                  <div className="flex flex-col gap-3 mb-4 px-2">
+                    {/* Top row: Tab toggle + Search */}
+                    <div className="flex flex-row items-center gap-3">
+                      {/* Installed / Discover pill toggle */}
+                      <div className="flex bg-white/5 rounded-md p-0.5 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSource("Installed")}
+                          className={`px-3 py-1.5 rounded text-sm transition-colors ${
+                            selectedSource === "Installed"
+                              ? "bg-white/10 font-medium opacity-90"
+                              : "opacity-50 hover:opacity-70"
+                          }`}
+                        >
+                          Installed
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSource("Discover")}
+                          className={`px-3 py-1.5 rounded text-sm transition-colors ${
+                            selectedSource === "Discover"
+                              ? "bg-white/10 font-medium opacity-90"
+                              : "opacity-50 hover:opacity-70"
+                          }`}
+                        >
+                          Discover
+                        </button>
+                      </div>
 
-                    {/* Provider Filter - Only show for Installed */}
-                    {selectedSource === "Installed" && (
+                      {/* Search */}
+                      <SearchInput
+                        value={searchQuery}
+                        onChange={setSearchQuery}
+                        placeholder={
+                          selectedSource === "Discover"
+                            ? "Search packages and widgets..."
+                            : "Search widgets..."
+                        }
+                        className="flex-1"
+                        inputClassName="py-1.5 text-sm"
+                      />
+                    </div>
+
+                    {/* Bottom row: Secondary filters */}
+                    <div className="flex flex-row items-center gap-2">
+                      {/* Author Filter */}
                       <select
-                        value={selectedProvider}
-                        onChange={(e) => setSelectedProvider(e.target.value)}
+                        value={selectedAuthor}
+                        onChange={(e) => setSelectedAuthor(e.target.value)}
                         className={`px-2 py-1 rounded text-xs bg-transparent border ${currentTheme["border-primary-medium"] || "border-gray-700"} ${currentTheme["text-primary-light"] || "text-gray-300"} focus:outline-none appearance-none cursor-pointer`}
                       >
-                        <option value="all">All Providers</option>
-                        {getUniqueProviders().map((provider) => (
-                          <option key={provider} value={provider}>
-                            {provider === "none" ? "No Providers" : provider}
+                        <option value="all">All Authors</option>
+                        {getUniqueAuthors().map((author) => (
+                          <option key={author} value={author}>
+                            {author}
                           </option>
                         ))}
                       </select>
-                    )}
 
-                    {/* View Mode Toggle - Only for Discover */}
-                    {selectedSource === "Discover" && (
-                      <select
-                        value={registryViewMode}
-                        onChange={(e) => setRegistryViewMode(e.target.value)}
-                        className={`px-2 py-1 rounded text-xs bg-transparent border ${currentTheme["border-primary-medium"] || "border-gray-700"} ${currentTheme["text-primary-light"] || "text-gray-300"} focus:outline-none appearance-none cursor-pointer`}
-                      >
-                        <option value="packages">Packages</option>
-                        <option value="widgets">Widgets</option>
-                      </select>
-                    )}
+                      {/* Provider Filter - Only show for Installed */}
+                      {selectedSource === "Installed" && (
+                        <select
+                          value={selectedProvider}
+                          onChange={(e) => setSelectedProvider(e.target.value)}
+                          className={`px-2 py-1 rounded text-xs bg-transparent border ${currentTheme["border-primary-medium"] || "border-gray-700"} ${currentTheme["text-primary-light"] || "text-gray-300"} focus:outline-none appearance-none cursor-pointer`}
+                        >
+                          <option value="all">All Providers</option>
+                          {getUniqueProviders().map((provider) => (
+                            <option key={provider} value={provider}>
+                              {provider === "none" ? "No Providers" : provider}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
+                      {/* View Mode Toggle - Only for Discover */}
+                      {selectedSource === "Discover" && (
+                        <select
+                          value={registryViewMode}
+                          onChange={(e) => setRegistryViewMode(e.target.value)}
+                          className={`px-2 py-1 rounded text-xs bg-transparent border ${currentTheme["border-primary-medium"] || "border-gray-700"} ${currentTheme["text-primary-light"] || "text-gray-300"} focus:outline-none appearance-none cursor-pointer`}
+                        >
+                          <option value="packages">Packages</option>
+                          <option value="widgets">Widgets</option>
+                        </select>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                <div className="flex flex-row h-full overflow-hidden">
-                  {/* Column 1: Widget List (50%) */}
-                  <div
-                    className={`w-1/2 border-r ${currentTheme["border-primary-medium"]} flex flex-col overflow-hidden p-2`}
-                  >
-                    {/* Widget List - Scrollable */}
-                    <div className="flex-1 overflow-y-auto w-full h-full">
-                      {selectedSource === "Discover" ? (
-                        renderDiscoverList()
-                      ) : filteredWidgets.length === 0 ? (
-                        // No Widgets Found
-                        <div className="p-8 text-center h-full w-full">
-                          <Paragraph className="text-gray-500">
-                            {widgets.length === 0
-                              ? "No widgets found"
-                              : "No widgets match the current filters"}
-                          </Paragraph>
-                        </div>
-                      ) : (
-                        // Widget List using Menu3/MenuItem3
-                        <Menu3 scrollable={true} padding={true} height="h-full">
-                          {/* Recent Widgets Section */}
-                          {recentWidgets.length > 0 &&
-                            selectedSource === "Installed" && (
-                              <div className="mb-3 space-y-1">
-                                <div
-                                  className={`px-3 py-1 mb-1 border-b ${currentTheme["border-primary-medium"]}`}
-                                >
-                                  <Paragraph
-                                    padding={false}
-                                    className="text-xs font-semibold text-gray-400"
+                  <div className="flex flex-row h-full overflow-hidden">
+                    {/* Column 1: Widget List (50%) */}
+                    <div
+                      className={`w-1/2 border-r ${currentTheme["border-primary-medium"]} flex flex-col overflow-hidden p-2`}
+                    >
+                      {/* Widget List - Scrollable */}
+                      <div className="flex-1 overflow-y-auto w-full h-full">
+                        {selectedSource === "Discover" ? (
+                          renderDiscoverList()
+                        ) : filteredWidgets.length === 0 ? (
+                          // No Widgets Found
+                          <div className="p-8 text-center h-full w-full">
+                            <Paragraph className="text-gray-500">
+                              {widgets.length === 0
+                                ? "No widgets found"
+                                : "No widgets match the current filters"}
+                            </Paragraph>
+                          </div>
+                        ) : (
+                          // Widget List using Menu3/MenuItem3
+                          <Menu3
+                            scrollable={true}
+                            padding={true}
+                            height="h-full"
+                          >
+                            {/* Recent Widgets Section */}
+                            {recentWidgets.length > 0 &&
+                              selectedSource === "Installed" && (
+                                <div className="mb-3 space-y-1">
+                                  <div
+                                    className={`px-3 py-1 mb-1 border-b ${currentTheme["border-primary-medium"]}`}
                                   >
-                                    RECENT
-                                  </Paragraph>
-                                </div>
-                                {recentWidgets.map((widget) => (
-                                  <MenuItem3
-                                    key={`recent-${widget.key}`}
-                                    onClick={() => handleRecentClick(widget)}
-                                    selected={
-                                      selectedWidget?.key === widget.key
-                                    }
-                                  >
-                                    <div className="flex items-center gap-2 w-full">
-                                      <WidgetIcon
-                                        icon={widget.icon}
-                                        className="h-4 w-4 opacity-60 flex-shrink-0"
-                                        fallback="puzzle-piece"
-                                      />
-                                      <div className="flex-1 min-w-0">
-                                        <div className="text-sm font-medium truncate">
-                                          {widget.name}
-                                        </div>
-                                        {widget.description && (
-                                          <div className="text-xs opacity-50 truncate">
-                                            {widget.description}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </MenuItem3>
-                                ))}
-                              </div>
-                            )}
-
-                          {/* Grouped Widget List */}
-                          {installedGroupNames.map((groupName) => (
-                            <div key={groupName} className="mb-1 space-y-1">
-                              <button
-                                type="button"
-                                onClick={() => toggleGroup(groupName)}
-                                className={`flex items-center gap-1.5 w-full px-2 py-1.5 text-xs font-semibold text-gray-400 hover:text-gray-300 transition-colors`}
-                              >
-                                <span className="text-[10px] opacity-60">
-                                  {expandedGroups.has(groupName)
-                                    ? "\u25BC"
-                                    : "\u25B6"}
-                                </span>
-                                {groupName}
-                                <span className="opacity-40 ml-auto">
-                                  {groupedInstalledWidgets[groupName].length}
-                                </span>
-                              </button>
-                              {expandedGroups.has(groupName) &&
-                                groupedInstalledWidgets[groupName].map(
-                                  (widget) => (
+                                    <Paragraph
+                                      padding={false}
+                                      className="text-xs font-semibold text-gray-400"
+                                    >
+                                      RECENT
+                                    </Paragraph>
+                                  </div>
+                                  {recentWidgets.map((widget) => (
                                     <MenuItem3
-                                      key={widget.key}
-                                      onClick={() => handleWidgetSelect(widget)}
+                                      key={`recent-${widget.key}`}
+                                      onClick={() => handleRecentClick(widget)}
                                       selected={
                                         selectedWidget?.key === widget.key
                                       }
@@ -1449,792 +1440,888 @@ export const EnhancedWidgetDropdown = ({
                                               {widget.description}
                                             </div>
                                           )}
-                                          {getUserConfigurableProviders(
-                                            widget.providers,
-                                          ).length > 0 && (
-                                            <div className="flex flex-wrap gap-1 mt-0.5">
-                                              {getUserConfigurableProviders(
-                                                widget.providers,
-                                              ).map((p) => (
-                                                <span
-                                                  key={p.type}
-                                                  className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300"
-                                                >
-                                                  {p.type}
-                                                </span>
-                                              ))}
-                                            </div>
-                                          )}
                                         </div>
                                       </div>
                                     </MenuItem3>
-                                  ),
-                                )}
-                            </div>
-                          ))}
-                        </Menu3>
-                      )}
-                    </div>
+                                  ))}
+                                </div>
+                              )}
 
-                    {/* Widget Count Indicator */}
-                    <div
-                      className={`px-4 py-2 border-t ${currentTheme["border-primary-medium"]} ${currentTheme["bg-primary-medium"]}`}
-                    >
-                      <Paragraph
-                        padding={false}
-                        className="text-sm text-gray-400"
-                      >
-                        {selectedSource === "Discover"
-                          ? `${registryPackages.length} package${
-                              registryPackages.length !== 1 ? "s" : ""
-                            } \u00B7 ${filteredWidgets.length} widget${
-                              filteredWidgets.length !== 1 ? "s" : ""
-                            }`
-                          : `${filteredWidgets.length} of ${
-                              widgets.length
-                            } widget${widgets.length !== 1 ? "s" : ""}`}
-                      </Paragraph>
-                    </div>
-                  </div>
-
-                  {/* Column 2: Widget Details / Configure & Add (50%) */}
-                  <div className="h-full w-1/2 flex flex-col overflow-hidden min-h-0 p-2">
-                    <Panel3
-                      padding={true}
-                      className="w-full flex flex-col overflow-auto min-h-0"
-                    >
-                      {selectedWidget ? (
-                        selectedWidget.isRegistry ? (
-                          // Registry Widget Details
-                          renderRegistryDetail()
-                        ) : (
-                          // Installed Widget Details
-                          <div className="flex-1 overflow-y-auto min-h-0 p-4 w-full">
-                            {/* Widget Header */}
-                            <div className="mb-2">
-                              <div className="flex items-center space-x-2 mb-1">
-                                <WidgetIcon
-                                  icon={selectedWidget.icon}
-                                  className="h-6 w-6 text-white/70"
-                                />
-                                <h3 className="text-xl font-bold text-white">
-                                  {selectedWidget.name}
-                                </h3>
-                              </div>
-                              <div className="text-sm text-gray-400 pl-10">
-                                by{" "}
-                                {selectedWidget.author ||
-                                  selectedWidget.workspace ||
-                                  "Unknown"}
-                              </div>
-                            </div>
-
-                            <hr
-                              className={`my-2 ${currentTheme["border-primary-medium"]}`}
-                            />
-
-                            {/* Description */}
-                            {selectedWidget.description && (
-                              <div className="mb-2">
-                                <Paragraph padding="py-2" className="text-sm">
-                                  {selectedWidget.description}
-                                </Paragraph>
-                              </div>
-                            )}
-
-                            {/* Required Providers - PHASE 2: Interactive Selection */}
-                            {getUserConfigurableProviders(
-                              selectedWidget.providers,
-                            ).length > 0 && (
-                              <div className="mb-2">
-                                <Paragraph
-                                  padding={false}
-                                  className="text-xs font-semibold text-gray-400 mb-2"
+                            {/* Grouped Widget List */}
+                            {installedGroupNames.map((groupName) => (
+                              <div key={groupName} className="mb-1 space-y-1">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleGroup(groupName)}
+                                  className={`flex items-center gap-1.5 w-full px-2 py-1.5 text-xs font-semibold text-gray-400 hover:text-gray-300 transition-colors`}
                                 >
-                                  REQUIRED PROVIDERS
-                                </Paragraph>
-                                <div className="space-y-2">
-                                  {getUserConfigurableProviders(
-                                    selectedWidget.providers,
-                                  ).map((providerReq, idx) => {
-                                    // Get available providers of this type
-                                    const providersOfType = Object.values(
-                                      availableProviders,
-                                    ).filter(
-                                      (p) => p.type === providerReq.type,
-                                    );
-
-                                    return (
-                                      <div key={idx} className="space-y-1">
-                                        <label className="text-sm font-medium">
-                                          {providerReq.type}
-                                          {providerReq.required && (
-                                            <span className="text-red-400 ml-1">
-                                              *
-                                            </span>
-                                          )}
-                                        </label>
-                                        <select
-                                          value={
-                                            selectedProviders[
-                                              providerReq.type
-                                            ] || ""
-                                          }
-                                          onChange={(e) =>
-                                            handleProviderSelect(
-                                              providerReq.type,
-                                              e.target.value,
-                                            )
-                                          }
-                                          className={`w-full px-3 py-2 rounded text-sm ${currentTheme["bg-primary-medium"]} ${currentTheme["text-primary-light"]} ${currentTheme["border-primary-medium"]} border`}
-                                        >
-                                          <option value="">
-                                            -- Select Provider --
-                                          </option>
-                                          {providersOfType.map((p) => (
-                                            <option key={p.name} value={p.name}>
-                                              {p.name}
-                                            </option>
-                                          ))}
-                                          <option value="__create_new__">
-                                            + Create New {providerReq.type}
-                                          </option>
-                                        </select>
-                                        {providerReq.required &&
-                                          !selectedProviders[
-                                            providerReq.type
-                                          ] &&
-                                          inlineCreateType !==
-                                            providerReq.type && (
-                                            <p className="text-xs text-red-400">
-                                              Required
-                                            </p>
-                                          )}
-
-                                        {/* Inline Provider Creation Form */}
-                                        {inlineCreateType ===
-                                          providerReq.type && (
-                                          <div
-                                            className={`mt-3 p-3 rounded border ${currentTheme["border-primary-medium"]} ${currentTheme["bg-primary-dark"]}`}
-                                          >
-                                            <p className="text-xs font-semibold text-gray-400 mb-2">
-                                              CREATE NEW{" "}
-                                              {providerReq.type.toUpperCase()}{" "}
-                                              PROVIDER
-                                            </p>
-
-                                            {inlineCreateError && (
-                                              <div className="mb-3 p-2 rounded bg-red-900/30 border border-red-700">
-                                                <p className="text-xs text-red-400">
-                                                  {inlineCreateError}
-                                                </p>
+                                  <span className="text-[10px] opacity-60">
+                                    {expandedGroups.has(groupName)
+                                      ? "\u25BC"
+                                      : "\u25B6"}
+                                  </span>
+                                  {groupName}
+                                  <span className="opacity-40 ml-auto">
+                                    {groupedInstalledWidgets[groupName].length}
+                                  </span>
+                                </button>
+                                {expandedGroups.has(groupName) &&
+                                  groupedInstalledWidgets[groupName].map(
+                                    (widget) => (
+                                      <MenuItem3
+                                        key={widget.key}
+                                        onClick={() =>
+                                          handleWidgetSelect(widget)
+                                        }
+                                        selected={
+                                          selectedWidget?.key === widget.key
+                                        }
+                                      >
+                                        <div className="flex items-center gap-2 w-full">
+                                          <WidgetIcon
+                                            icon={widget.icon}
+                                            className="h-4 w-4 opacity-60 flex-shrink-0"
+                                            fallback="puzzle-piece"
+                                          />
+                                          <div className="flex-1 min-w-0">
+                                            <div className="text-sm font-medium truncate">
+                                              {widget.name}
+                                            </div>
+                                            {widget.description && (
+                                              <div className="text-xs opacity-50 truncate">
+                                                {widget.description}
                                               </div>
                                             )}
-
-                                            {inlineCatalogEntry ? (
-                                              /* MCP Provider: Stepper-based creation */
-                                              <div className="space-y-3">
-                                                <Stepper
-                                                  activeStep={inlineWizardStep}
-                                                  onStepChange={
-                                                    inlineHandleWizardStepChange
-                                                  }
-                                                  showNavigation={false}
-                                                  className="flex-1 min-h-0 flex flex-col"
-                                                >
-                                                  {/* Step 1: Configure */}
-                                                  <Stepper.Step
-                                                    label="Configure"
-                                                    description="Name & credentials"
+                                            {getUserConfigurableProviders(
+                                              widget.providers,
+                                            ).length > 0 && (
+                                              <div className="flex flex-wrap gap-1 mt-0.5">
+                                                {getUserConfigurableProviders(
+                                                  widget.providers,
+                                                ).map((p) => (
+                                                  <span
+                                                    key={p.type}
+                                                    className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300"
                                                   >
-                                                    <div className="space-y-4 pb-2">
-                                                      {/* MCP Connection Info */}
-                                                      <div className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-2">
-                                                        <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
-                                                          MCP Server Connection
-                                                        </p>
-                                                        <div className="space-y-1 text-sm">
-                                                          <div className="flex gap-2">
-                                                            <span className="opacity-50 w-20 shrink-0">
-                                                              Transport:
-                                                            </span>
-                                                            <Tag
-                                                              text={
-                                                                inlineCatalogEntry
-                                                                  .mcpConfig
-                                                                  ?.transport ===
-                                                                "streamable_http"
-                                                                  ? "Streamable HTTP"
-                                                                  : "stdio"
-                                                              }
-                                                            />
-                                                          </div>
-                                                          {inlineCatalogEntry
-                                                            .mcpConfig
-                                                            ?.transport !==
-                                                            "streamable_http" && (
-                                                            <div className="flex gap-2">
-                                                              <span className="opacity-50 w-20 shrink-0">
-                                                                Command:
-                                                              </span>
-                                                              <code className="text-xs bg-white/5 px-2 py-0.5 rounded">
-                                                                {
-                                                                  inlineCatalogEntry
-                                                                    .mcpConfig
-                                                                    ?.command
-                                                                }{" "}
-                                                                {(
-                                                                  inlineCatalogEntry
-                                                                    .mcpConfig
-                                                                    ?.args || []
-                                                                ).join(" ")}
-                                                              </code>
-                                                            </div>
-                                                          )}
-                                                        </div>
-                                                      </div>
-
-                                                      {/* Provider Name */}
-                                                      <div className="flex flex-col gap-1">
-                                                        <FormLabel
-                                                          label="Provider Name"
-                                                          required={true}
-                                                        />
-                                                        <InputText
-                                                          value={
-                                                            inlineProviderName
-                                                          }
-                                                          onChange={(value) => {
-                                                            setInlineProviderName(
-                                                              value,
-                                                            );
-                                                            if (
-                                                              inlineFormErrors.providerName &&
-                                                              value?.trim()
-                                                            ) {
-                                                              setInlineFormErrors(
-                                                                (prev) => {
-                                                                  const next = {
-                                                                    ...prev,
-                                                                  };
-                                                                  delete next.providerName;
-                                                                  return next;
-                                                                },
-                                                              );
-                                                            }
-                                                          }}
-                                                          placeholder="Enter provider name"
-                                                        />
-                                                        {inlineFormErrors.providerName && (
-                                                          <p className="text-xs text-red-400">
-                                                            {
-                                                              inlineFormErrors.providerName
-                                                            }
-                                                          </p>
-                                                        )}
-                                                      </div>
-
-                                                      {/* Credential Fields */}
-                                                      {inlineFormFields.length >
-                                                        0 && (
-                                                        <>
-                                                          <div className="border-t border-white/10 pt-3">
-                                                            <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
-                                                              {inlineCatalogEntry
-                                                                .mcpConfig
-                                                                ?.transport ===
-                                                              "streamable_http"
-                                                                ? "Server Configuration"
-                                                                : "Authentication"}
-                                                            </p>
-                                                          </div>
-
-                                                          {inlineFormFields.map(
-                                                            (field) => (
-                                                              <div
-                                                                key={field.key}
-                                                                className="flex flex-col gap-1"
-                                                              >
-                                                                <FormLabel
-                                                                  label={
-                                                                    field.displayName
-                                                                  }
-                                                                  required={
-                                                                    field.required
-                                                                  }
-                                                                />
-                                                                {field.instructions && (
-                                                                  <p className="text-xs opacity-50">
-                                                                    {
-                                                                      field.instructions
-                                                                    }
-                                                                  </p>
-                                                                )}
-                                                                <div className="flex gap-2">
-                                                                  <div className="flex-1">
-                                                                    <InputText
-                                                                      type={
-                                                                        field.secret
-                                                                          ? "password"
-                                                                          : "text"
-                                                                      }
-                                                                      value={
-                                                                        inlineCredentialData[
-                                                                          field
-                                                                            .key
-                                                                        ] || ""
-                                                                      }
-                                                                      onChange={(
-                                                                        value,
-                                                                      ) =>
-                                                                        inlineHandleCredentialChange(
-                                                                          field.key,
-                                                                          value,
-                                                                        )
-                                                                      }
-                                                                      placeholder={
-                                                                        field.type ===
-                                                                        "file"
-                                                                          ? "Select a file..."
-                                                                          : `Enter ${field.displayName.toLowerCase()}`
-                                                                      }
-                                                                    />
-                                                                  </div>
-                                                                  {field.type ===
-                                                                    "file" && (
-                                                                    <button
-                                                                      onClick={async () => {
-                                                                        const filepath =
-                                                                          await window.mainApi.dialog.chooseFile(
-                                                                            true,
-                                                                            [
-                                                                              "json",
-                                                                            ],
-                                                                          );
-                                                                        if (
-                                                                          filepath
-                                                                        )
-                                                                          inlineHandleCredentialChange(
-                                                                            field.key,
-                                                                            filepath,
-                                                                          );
-                                                                      }}
-                                                                      className="px-3 py-1.5 text-sm rounded bg-white/10 hover:bg-white/20 transition-colors"
-                                                                    >
-                                                                      Browse
-                                                                    </button>
-                                                                  )}
-                                                                </div>
-                                                                {inlineFormErrors[
-                                                                  field.key
-                                                                ] && (
-                                                                  <p className="text-xs text-red-400">
-                                                                    {
-                                                                      inlineFormErrors[
-                                                                        field
-                                                                          .key
-                                                                      ]
-                                                                    }
-                                                                  </p>
-                                                                )}
-                                                              </div>
-                                                            ),
-                                                          )}
-                                                        </>
-                                                      )}
-                                                    </div>
-                                                  </Stepper.Step>
-
-                                                  {/* Step 2: Authorize (conditional) */}
-                                                  {inlineHasAuth && (
-                                                    <Stepper.Step
-                                                      label="Authorize"
-                                                      description="OAuth authentication"
-                                                    >
-                                                      <div className="space-y-4 pb-2">
-                                                        <div className="flex flex-col items-center justify-center py-6 space-y-3">
-                                                          <p className="text-sm opacity-60 text-center max-w-md">
-                                                            This server requires
-                                                            OAuth authorization.
-                                                            Click the button
-                                                            below to open a
-                                                            browser window and
-                                                            complete the
-                                                            authentication flow.
-                                                          </p>
-                                                          <Button
-                                                            title={
-                                                              inlineIsAuthorizing
-                                                                ? "Authorizing..."
-                                                                : "Authorize"
-                                                            }
-                                                            onClick={
-                                                              inlineHandleAuthorize
-                                                            }
-                                                            size="sm"
-                                                          />
-                                                        </div>
-                                                        {inlineAuthResult && (
-                                                          <div
-                                                            className={`p-3 rounded-lg text-sm ${
-                                                              inlineAuthResult.success
-                                                                ? "bg-green-900/30 border border-green-700 text-green-300"
-                                                                : "bg-red-900/30 border border-red-700 text-red-300"
-                                                            }`}
-                                                          >
-                                                            <div className="flex items-center gap-2">
-                                                              <FontAwesomeIcon
-                                                                icon={
-                                                                  inlineAuthResult.success
-                                                                    ? "circle-check"
-                                                                    : "circle-exclamation"
-                                                                }
-                                                              />
-                                                              <span>
-                                                                {
-                                                                  inlineAuthResult.message
-                                                                }
-                                                              </span>
-                                                            </div>
-                                                          </div>
-                                                        )}
-                                                      </div>
-                                                    </Stepper.Step>
-                                                  )}
-
-                                                  {/* Step 3: Test & Tools */}
-                                                  <Stepper.Step
-                                                    label="Test & Tools"
-                                                    description="Verify & select tools"
-                                                  >
-                                                    <div className="space-y-3 pb-2">
-                                                      <div className="flex items-center gap-3">
-                                                        <Button
-                                                          title={
-                                                            inlineIsTesting
-                                                              ? "Fetching..."
-                                                              : "Fetch Tools"
-                                                          }
-                                                          onClick={
-                                                            inlineHandleTestConnection
-                                                          }
-                                                          size="sm"
-                                                        />
-                                                        {inlineTestResult && (
-                                                          <span
-                                                            className={`text-sm ${inlineTestResult.success ? "text-green-400" : "text-red-400"}`}
-                                                          >
-                                                            <FontAwesomeIcon
-                                                              icon={
-                                                                inlineTestResult.success
-                                                                  ? "circle-check"
-                                                                  : "circle-exclamation"
-                                                              }
-                                                              className="mr-1"
-                                                            />
-                                                            {
-                                                              inlineTestResult.message
-                                                            }
-                                                          </span>
-                                                        )}
-                                                      </div>
-                                                      {inlineTestResult?.success &&
-                                                        inlineTestResult.tools
-                                                          ?.length > 0 &&
-                                                        inlineSelectedTools && (
-                                                          <ToolSelector
-                                                            tools={
-                                                              inlineTestResult.tools
-                                                            }
-                                                            selectedTools={
-                                                              inlineSelectedTools
-                                                            }
-                                                            onSelectionChange={
-                                                              setInlineSelectedTools
-                                                            }
-                                                          />
-                                                        )}
-                                                      {!inlineTestResult && (
-                                                        <div className="text-center py-6 opacity-50 text-sm">
-                                                          Click &quot;Fetch
-                                                          Tools&quot; to test
-                                                          the connection and
-                                                          discover available
-                                                          tools.
-                                                        </div>
-                                                      )}
-                                                    </div>
-                                                  </Stepper.Step>
-                                                </Stepper>
-
-                                                {/* Stepper Footer */}
-                                                <div className="flex flex-row items-center pt-3 border-t border-white/10">
-                                                  <div className="flex flex-row gap-2">
-                                                    {inlineWizardStep === 0 && (
-                                                      <Button
-                                                        title="Cancel"
-                                                        onClick={
-                                                          handleInlineProviderCancel
-                                                        }
-                                                        size="sm"
-                                                      />
-                                                    )}
-                                                    {inlineWizardStep > 0 && (
-                                                      <Button
-                                                        title="Back"
-                                                        onClick={() =>
-                                                          setInlineWizardStep(
-                                                            inlineWizardStep -
-                                                              1,
-                                                          )
-                                                        }
-                                                        size="sm"
-                                                      />
-                                                    )}
-                                                  </div>
-                                                  <div className="flex-1 text-center">
-                                                    <span className="text-xs opacity-40">
-                                                      Step{" "}
-                                                      {inlineWizardStep + 1} of{" "}
-                                                      {inlineTotalSteps}
-                                                    </span>
-                                                  </div>
-                                                  <div className="flex flex-row gap-2">
-                                                    {inlineCurrentStepType ===
-                                                      "configure" && (
-                                                      <Button
-                                                        title="Next"
-                                                        onClick={() =>
-                                                          inlineHandleWizardStepChange(
-                                                            inlineWizardStep +
-                                                              1,
-                                                          )
-                                                        }
-                                                        size="sm"
-                                                      />
-                                                    )}
-                                                    {inlineCurrentStepType ===
-                                                      "authorize" && (
-                                                      <Button
-                                                        title="Next"
-                                                        onClick={() =>
-                                                          inlineHandleWizardStepChange(
-                                                            inlineWizardStep +
-                                                              1,
-                                                          )
-                                                        }
-                                                        disabled={
-                                                          !inlineAuthResult?.success
-                                                        }
-                                                        size="sm"
-                                                      />
-                                                    )}
-                                                    {inlineCurrentStepType ===
-                                                      "testTools" && (
-                                                      <Button
-                                                        title={
-                                                          isCreatingProvider
-                                                            ? "Saving..."
-                                                            : "Save MCP Server"
-                                                        }
-                                                        onClick={
-                                                          inlineHandleSave
-                                                        }
-                                                        size="sm"
-                                                      />
-                                                    )}
-                                                  </div>
-                                                </div>
+                                                    {p.type}
+                                                  </span>
+                                                ))}
                                               </div>
-                                            ) : (
-                                              /* Credential Provider: flat form fallback */
-                                              <ProviderForm
-                                                credentialSchema={
-                                                  inlineCreateSchema
-                                                }
-                                                onSubmit={
-                                                  handleInlineProviderSubmit
-                                                }
-                                                onCancel={
-                                                  handleInlineProviderCancel
-                                                }
-                                                submitLabel={
-                                                  isCreatingProvider
-                                                    ? "Creating..."
-                                                    : "Create Provider"
-                                                }
-                                                providerType={providerReq.type}
-                                              />
                                             )}
                                           </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
+                                        </div>
+                                      </MenuItem3>
+                                    ),
+                                  )}
+                              </div>
+                            ))}
+                          </Menu3>
+                        )}
+                      </div>
+
+                      {/* Widget Count Indicator */}
+                      <div
+                        className={`px-4 py-2 border-t ${currentTheme["border-primary-medium"]} ${currentTheme["bg-primary-medium"]}`}
+                      >
+                        <Paragraph
+                          padding={false}
+                          className="text-sm text-gray-400"
+                        >
+                          {selectedSource === "Discover"
+                            ? `${registryPackages.length} package${
+                                registryPackages.length !== 1 ? "s" : ""
+                              } \u00B7 ${filteredWidgets.length} widget${
+                                filteredWidgets.length !== 1 ? "s" : ""
+                              }`
+                            : `${filteredWidgets.length} of ${
+                                widgets.length
+                              } widget${widgets.length !== 1 ? "s" : ""}`}
+                        </Paragraph>
+                      </div>
+                    </div>
+
+                    {/* Column 2: Widget Details / Configure & Add (50%) */}
+                    <div className="h-full w-1/2 flex flex-col overflow-hidden min-h-0 p-2">
+                      <Panel3
+                        padding={true}
+                        className="w-full flex flex-col overflow-auto min-h-0"
+                      >
+                        {selectedWidget ? (
+                          selectedWidget.isRegistry ? (
+                            // Registry Widget Details
+                            renderRegistryDetail()
+                          ) : (
+                            // Installed Widget Details
+                            <div className="flex-1 overflow-y-auto min-h-0 p-4 w-full">
+                              {/* Widget Header */}
+                              <div className="mb-2">
+                                <div className="flex items-center space-x-2 mb-1">
+                                  <WidgetIcon
+                                    icon={selectedWidget.icon}
+                                    className="h-6 w-6 text-white/70"
+                                  />
+                                  <h3 className="text-xl font-bold text-white">
+                                    {selectedWidget.name}
+                                  </h3>
+                                </div>
+                                <div className="text-sm text-gray-400 pl-10">
+                                  by{" "}
+                                  {selectedWidget.author ||
+                                    selectedWidget.workspace ||
+                                    "Unknown"}
                                 </div>
                               </div>
-                            )}
 
-                            {/* Configuration Options - PHASE 2: Interactive Inputs */}
-                            {selectedWidget.userConfig &&
-                              Object.keys(selectedWidget.userConfig).length >
-                                0 && (
+                              <hr
+                                className={`my-2 ${currentTheme["border-primary-medium"]}`}
+                              />
+
+                              {/* Description */}
+                              {selectedWidget.description && (
+                                <div className="mb-2">
+                                  <Paragraph padding="py-2" className="text-sm">
+                                    {selectedWidget.description}
+                                  </Paragraph>
+                                </div>
+                              )}
+
+                              {/* Required Providers - PHASE 2: Interactive Selection */}
+                              {getUserConfigurableProviders(
+                                selectedWidget.providers,
+                              ).length > 0 && (
                                 <div className="mb-2">
                                   <Paragraph
                                     padding={false}
                                     className="text-xs font-semibold text-gray-400 mb-2"
                                   >
-                                    CONFIGURATION
+                                    REQUIRED PROVIDERS
                                   </Paragraph>
                                   <div className="space-y-2">
-                                    {Object.entries(
-                                      selectedWidget.userConfig,
-                                    ).map(([key, config]) => (
-                                      <div key={key} className="space-y-1">
-                                        <label className="text-sm font-medium">
-                                          {config.displayName || key}
-                                          {config.required && (
-                                            <span className="text-red-400 ml-1">
-                                              *
-                                            </span>
-                                          )}
-                                        </label>
+                                    {getUserConfigurableProviders(
+                                      selectedWidget.providers,
+                                    ).map((providerReq, idx) => {
+                                      // Get available providers of this type
+                                      const providersOfType = Object.values(
+                                        availableProviders,
+                                      ).filter(
+                                        (p) => p.type === providerReq.type,
+                                      );
 
-                                        {config.type === "text" && (
-                                          <input
-                                            type="text"
-                                            placeholder={
-                                              config.defaultValue || ""
-                                            }
-                                            value={userConfigValues[key] || ""}
-                                            onChange={(e) =>
-                                              handleConfigChange(
-                                                key,
-                                                e.target.value,
-                                              )
-                                            }
-                                            className={`w-full px-3 py-2 rounded text-sm ${currentTheme["bg-primary-medium"]} ${currentTheme["text-primary-light"]} ${currentTheme["border-primary-medium"]} border`}
-                                          />
-                                        )}
-
-                                        {config.type === "select" && (
+                                      return (
+                                        <div key={idx} className="space-y-1">
+                                          <label className="text-sm font-medium">
+                                            {providerReq.type}
+                                            {providerReq.required && (
+                                              <span className="text-red-400 ml-1">
+                                                *
+                                              </span>
+                                            )}
+                                          </label>
                                           <select
                                             value={
-                                              userConfigValues[key] ||
-                                              config.defaultValue ||
-                                              ""
+                                              selectedProviders[
+                                                providerReq.type
+                                              ] || ""
                                             }
                                             onChange={(e) =>
-                                              handleConfigChange(
-                                                key,
+                                              handleProviderSelect(
+                                                providerReq.type,
                                                 e.target.value,
                                               )
                                             }
                                             className={`w-full px-3 py-2 rounded text-sm ${currentTheme["bg-primary-medium"]} ${currentTheme["text-primary-light"]} ${currentTheme["border-primary-medium"]} border`}
                                           >
-                                            {config.options &&
-                                              config.options.map((opt) => {
-                                                const optValue =
-                                                  typeof opt === "object"
-                                                    ? opt.value
-                                                    : opt;
-                                                const optLabel =
-                                                  typeof opt === "object"
-                                                    ? opt.displayName ||
-                                                      opt.value
-                                                    : opt;
-                                                return (
-                                                  <option
-                                                    key={optValue}
-                                                    value={optValue}
-                                                  >
-                                                    {optLabel}
-                                                  </option>
-                                                );
-                                              })}
+                                            <option value="">
+                                              -- Select Provider --
+                                            </option>
+                                            {providersOfType.map((p) => (
+                                              <option
+                                                key={p.name}
+                                                value={p.name}
+                                              >
+                                                {p.name}
+                                              </option>
+                                            ))}
+                                            <option value="__create_new__">
+                                              + Create New {providerReq.type}
+                                            </option>
                                           </select>
-                                        )}
+                                          {providerReq.required &&
+                                            !selectedProviders[
+                                              providerReq.type
+                                            ] &&
+                                            inlineCreateType !==
+                                              providerReq.type && (
+                                              <p className="text-xs text-red-400">
+                                                Required
+                                              </p>
+                                            )}
 
-                                        {config.instructions && (
-                                          <p className="text-xs text-gray-400">
-                                            {config.instructions}
-                                          </p>
-                                        )}
+                                          {/* Inline Provider Creation Form */}
+                                          {inlineCreateType ===
+                                            providerReq.type && (
+                                            <div
+                                              className={`mt-3 p-3 rounded border ${currentTheme["border-primary-medium"]} ${currentTheme["bg-primary-dark"]}`}
+                                            >
+                                              <p className="text-xs font-semibold text-gray-400 mb-2">
+                                                CREATE NEW{" "}
+                                                {providerReq.type.toUpperCase()}{" "}
+                                                PROVIDER
+                                              </p>
 
-                                        {config.required &&
-                                          !userConfigValues[key] && (
-                                            <p className="text-xs text-red-400">
-                                              Required
-                                            </p>
+                                              {inlineCreateError && (
+                                                <div className="mb-3 p-2 rounded bg-red-900/30 border border-red-700">
+                                                  <p className="text-xs text-red-400">
+                                                    {inlineCreateError}
+                                                  </p>
+                                                </div>
+                                              )}
+
+                                              {inlineCatalogEntry ? (
+                                                /* MCP Provider: Stepper-based creation */
+                                                <div className="space-y-3">
+                                                  <Stepper
+                                                    activeStep={
+                                                      inlineWizardStep
+                                                    }
+                                                    onStepChange={
+                                                      inlineHandleWizardStepChange
+                                                    }
+                                                    showNavigation={false}
+                                                    className="flex-1 min-h-0 flex flex-col"
+                                                  >
+                                                    {/* Step 1: Configure */}
+                                                    <Stepper.Step
+                                                      label="Configure"
+                                                      description="Name & credentials"
+                                                    >
+                                                      <div className="space-y-4 pb-2">
+                                                        {/* MCP Connection Info */}
+                                                        <div className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-2">
+                                                          <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
+                                                            MCP Server
+                                                            Connection
+                                                          </p>
+                                                          <div className="space-y-1 text-sm">
+                                                            <div className="flex gap-2">
+                                                              <span className="opacity-50 w-20 shrink-0">
+                                                                Transport:
+                                                              </span>
+                                                              <Tag
+                                                                text={
+                                                                  inlineCatalogEntry
+                                                                    .mcpConfig
+                                                                    ?.transport ===
+                                                                  "streamable_http"
+                                                                    ? "Streamable HTTP"
+                                                                    : "stdio"
+                                                                }
+                                                              />
+                                                            </div>
+                                                            {inlineCatalogEntry
+                                                              .mcpConfig
+                                                              ?.transport !==
+                                                              "streamable_http" && (
+                                                              <div className="flex gap-2">
+                                                                <span className="opacity-50 w-20 shrink-0">
+                                                                  Command:
+                                                                </span>
+                                                                <code className="text-xs bg-white/5 px-2 py-0.5 rounded">
+                                                                  {
+                                                                    inlineCatalogEntry
+                                                                      .mcpConfig
+                                                                      ?.command
+                                                                  }{" "}
+                                                                  {(
+                                                                    inlineCatalogEntry
+                                                                      .mcpConfig
+                                                                      ?.args ||
+                                                                    []
+                                                                  ).join(" ")}
+                                                                </code>
+                                                              </div>
+                                                            )}
+                                                          </div>
+                                                        </div>
+
+                                                        {/* Provider Name */}
+                                                        <div className="flex flex-col gap-1">
+                                                          <FormLabel
+                                                            label="Provider Name"
+                                                            required={true}
+                                                          />
+                                                          <InputText
+                                                            value={
+                                                              inlineProviderName
+                                                            }
+                                                            onChange={(
+                                                              value,
+                                                            ) => {
+                                                              setInlineProviderName(
+                                                                value,
+                                                              );
+                                                              if (
+                                                                inlineFormErrors.providerName &&
+                                                                value?.trim()
+                                                              ) {
+                                                                setInlineFormErrors(
+                                                                  (prev) => {
+                                                                    const next =
+                                                                      {
+                                                                        ...prev,
+                                                                      };
+                                                                    delete next.providerName;
+                                                                    return next;
+                                                                  },
+                                                                );
+                                                              }
+                                                            }}
+                                                            placeholder="Enter provider name"
+                                                          />
+                                                          {inlineFormErrors.providerName && (
+                                                            <p className="text-xs text-red-400">
+                                                              {
+                                                                inlineFormErrors.providerName
+                                                              }
+                                                            </p>
+                                                          )}
+                                                        </div>
+
+                                                        {/* Credential Fields */}
+                                                        {inlineFormFields.length >
+                                                          0 && (
+                                                          <>
+                                                            <div className="border-t border-white/10 pt-3">
+                                                              <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
+                                                                {inlineCatalogEntry
+                                                                  .mcpConfig
+                                                                  ?.transport ===
+                                                                "streamable_http"
+                                                                  ? "Server Configuration"
+                                                                  : "Authentication"}
+                                                              </p>
+                                                            </div>
+
+                                                            {inlineFormFields.map(
+                                                              (field) => (
+                                                                <div
+                                                                  key={
+                                                                    field.key
+                                                                  }
+                                                                  className="flex flex-col gap-1"
+                                                                >
+                                                                  <FormLabel
+                                                                    label={
+                                                                      field.displayName
+                                                                    }
+                                                                    required={
+                                                                      field.required
+                                                                    }
+                                                                  />
+                                                                  {field.instructions && (
+                                                                    <p className="text-xs opacity-50">
+                                                                      {
+                                                                        field.instructions
+                                                                      }
+                                                                    </p>
+                                                                  )}
+                                                                  <div className="flex gap-2">
+                                                                    <div className="flex-1">
+                                                                      <InputText
+                                                                        type={
+                                                                          field.secret
+                                                                            ? "password"
+                                                                            : "text"
+                                                                        }
+                                                                        value={
+                                                                          inlineCredentialData[
+                                                                            field
+                                                                              .key
+                                                                          ] ||
+                                                                          ""
+                                                                        }
+                                                                        onChange={(
+                                                                          value,
+                                                                        ) =>
+                                                                          inlineHandleCredentialChange(
+                                                                            field.key,
+                                                                            value,
+                                                                          )
+                                                                        }
+                                                                        placeholder={
+                                                                          field.type ===
+                                                                          "file"
+                                                                            ? "Select a file..."
+                                                                            : `Enter ${field.displayName.toLowerCase()}`
+                                                                        }
+                                                                      />
+                                                                    </div>
+                                                                    {field.type ===
+                                                                      "file" && (
+                                                                      <button
+                                                                        onClick={async () => {
+                                                                          const filepath =
+                                                                            await window.mainApi.dialog.chooseFile(
+                                                                              true,
+                                                                              [
+                                                                                "json",
+                                                                              ],
+                                                                            );
+                                                                          if (
+                                                                            filepath
+                                                                          )
+                                                                            inlineHandleCredentialChange(
+                                                                              field.key,
+                                                                              filepath,
+                                                                            );
+                                                                        }}
+                                                                        className="px-3 py-1.5 text-sm rounded bg-white/10 hover:bg-white/20 transition-colors"
+                                                                      >
+                                                                        Browse
+                                                                      </button>
+                                                                    )}
+                                                                  </div>
+                                                                  {inlineFormErrors[
+                                                                    field.key
+                                                                  ] && (
+                                                                    <p className="text-xs text-red-400">
+                                                                      {
+                                                                        inlineFormErrors[
+                                                                          field
+                                                                            .key
+                                                                        ]
+                                                                      }
+                                                                    </p>
+                                                                  )}
+                                                                </div>
+                                                              ),
+                                                            )}
+                                                          </>
+                                                        )}
+                                                      </div>
+                                                    </Stepper.Step>
+
+                                                    {/* Step 2: Authorize (conditional) */}
+                                                    {inlineHasAuth && (
+                                                      <Stepper.Step
+                                                        label="Authorize"
+                                                        description="OAuth authentication"
+                                                      >
+                                                        <div className="space-y-4 pb-2">
+                                                          <div className="flex flex-col items-center justify-center py-6 space-y-3">
+                                                            <p className="text-sm opacity-60 text-center max-w-md">
+                                                              This server
+                                                              requires OAuth
+                                                              authorization.
+                                                              Click the button
+                                                              below to open a
+                                                              browser window and
+                                                              complete the
+                                                              authentication
+                                                              flow.
+                                                            </p>
+                                                            <Button
+                                                              title={
+                                                                inlineIsAuthorizing
+                                                                  ? "Authorizing..."
+                                                                  : "Authorize"
+                                                              }
+                                                              onClick={
+                                                                inlineHandleAuthorize
+                                                              }
+                                                              size="sm"
+                                                            />
+                                                          </div>
+                                                          {inlineAuthResult && (
+                                                            <div
+                                                              className={`p-3 rounded-lg text-sm ${
+                                                                inlineAuthResult.success
+                                                                  ? "bg-green-900/30 border border-green-700 text-green-300"
+                                                                  : "bg-red-900/30 border border-red-700 text-red-300"
+                                                              }`}
+                                                            >
+                                                              <div className="flex items-center gap-2">
+                                                                <FontAwesomeIcon
+                                                                  icon={
+                                                                    inlineAuthResult.success
+                                                                      ? "circle-check"
+                                                                      : "circle-exclamation"
+                                                                  }
+                                                                />
+                                                                <span>
+                                                                  {
+                                                                    inlineAuthResult.message
+                                                                  }
+                                                                </span>
+                                                              </div>
+                                                            </div>
+                                                          )}
+                                                        </div>
+                                                      </Stepper.Step>
+                                                    )}
+
+                                                    {/* Step 3: Test & Tools */}
+                                                    <Stepper.Step
+                                                      label="Test & Tools"
+                                                      description="Verify & select tools"
+                                                    >
+                                                      <div className="space-y-3 pb-2">
+                                                        <div className="flex items-center gap-3">
+                                                          <Button
+                                                            title={
+                                                              inlineIsTesting
+                                                                ? "Fetching..."
+                                                                : "Fetch Tools"
+                                                            }
+                                                            onClick={
+                                                              inlineHandleTestConnection
+                                                            }
+                                                            size="sm"
+                                                          />
+                                                          {inlineTestResult && (
+                                                            <span
+                                                              className={`text-sm ${inlineTestResult.success ? "text-green-400" : "text-red-400"}`}
+                                                            >
+                                                              <FontAwesomeIcon
+                                                                icon={
+                                                                  inlineTestResult.success
+                                                                    ? "circle-check"
+                                                                    : "circle-exclamation"
+                                                                }
+                                                                className="mr-1"
+                                                              />
+                                                              {
+                                                                inlineTestResult.message
+                                                              }
+                                                            </span>
+                                                          )}
+                                                        </div>
+                                                        {inlineTestResult?.success &&
+                                                          inlineTestResult.tools
+                                                            ?.length > 0 &&
+                                                          inlineSelectedTools && (
+                                                            <ToolSelector
+                                                              tools={
+                                                                inlineTestResult.tools
+                                                              }
+                                                              selectedTools={
+                                                                inlineSelectedTools
+                                                              }
+                                                              onSelectionChange={
+                                                                setInlineSelectedTools
+                                                              }
+                                                            />
+                                                          )}
+                                                        {!inlineTestResult && (
+                                                          <div className="text-center py-6 opacity-50 text-sm">
+                                                            Click &quot;Fetch
+                                                            Tools&quot; to test
+                                                            the connection and
+                                                            discover available
+                                                            tools.
+                                                          </div>
+                                                        )}
+                                                      </div>
+                                                    </Stepper.Step>
+                                                  </Stepper>
+
+                                                  {/* Stepper Footer */}
+                                                  <div className="flex flex-row items-center pt-3 border-t border-white/10">
+                                                    <div className="flex flex-row gap-2">
+                                                      {inlineWizardStep ===
+                                                        0 && (
+                                                        <Button
+                                                          title="Cancel"
+                                                          onClick={
+                                                            handleInlineProviderCancel
+                                                          }
+                                                          size="sm"
+                                                        />
+                                                      )}
+                                                      {inlineWizardStep > 0 && (
+                                                        <Button
+                                                          title="Back"
+                                                          onClick={() =>
+                                                            setInlineWizardStep(
+                                                              inlineWizardStep -
+                                                                1,
+                                                            )
+                                                          }
+                                                          size="sm"
+                                                        />
+                                                      )}
+                                                    </div>
+                                                    <div className="flex-1 text-center">
+                                                      <span className="text-xs opacity-40">
+                                                        Step{" "}
+                                                        {inlineWizardStep + 1}{" "}
+                                                        of {inlineTotalSteps}
+                                                      </span>
+                                                    </div>
+                                                    <div className="flex flex-row gap-2">
+                                                      {inlineCurrentStepType ===
+                                                        "configure" && (
+                                                        <Button
+                                                          title="Next"
+                                                          onClick={() =>
+                                                            inlineHandleWizardStepChange(
+                                                              inlineWizardStep +
+                                                                1,
+                                                            )
+                                                          }
+                                                          size="sm"
+                                                        />
+                                                      )}
+                                                      {inlineCurrentStepType ===
+                                                        "authorize" && (
+                                                        <Button
+                                                          title="Next"
+                                                          onClick={() =>
+                                                            inlineHandleWizardStepChange(
+                                                              inlineWizardStep +
+                                                                1,
+                                                            )
+                                                          }
+                                                          disabled={
+                                                            !inlineAuthResult?.success
+                                                          }
+                                                          size="sm"
+                                                        />
+                                                      )}
+                                                      {inlineCurrentStepType ===
+                                                        "testTools" && (
+                                                        <Button
+                                                          title={
+                                                            isCreatingProvider
+                                                              ? "Saving..."
+                                                              : "Save MCP Server"
+                                                          }
+                                                          onClick={
+                                                            inlineHandleSave
+                                                          }
+                                                          size="sm"
+                                                        />
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              ) : (
+                                                /* Credential Provider: flat form fallback */
+                                                <ProviderForm
+                                                  credentialSchema={
+                                                    inlineCreateSchema
+                                                  }
+                                                  onSubmit={
+                                                    handleInlineProviderSubmit
+                                                  }
+                                                  onCancel={
+                                                    handleInlineProviderCancel
+                                                  }
+                                                  submitLabel={
+                                                    isCreatingProvider
+                                                      ? "Creating..."
+                                                      : "Create Provider"
+                                                  }
+                                                  providerType={
+                                                    providerReq.type
+                                                  }
+                                                />
+                                              )}
+                                            </div>
                                           )}
-                                      </div>
-                                    ))}
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               )}
+
+                              {/* Configuration Options - PHASE 2: Interactive Inputs */}
+                              {selectedWidget.userConfig &&
+                                Object.keys(selectedWidget.userConfig).length >
+                                  0 && (
+                                  <div className="mb-2">
+                                    <Paragraph
+                                      padding={false}
+                                      className="text-xs font-semibold text-gray-400 mb-2"
+                                    >
+                                      CONFIGURATION
+                                    </Paragraph>
+                                    <div className="space-y-2">
+                                      {Object.entries(
+                                        selectedWidget.userConfig,
+                                      ).map(([key, config]) => (
+                                        <div key={key} className="space-y-1">
+                                          <label className="text-sm font-medium">
+                                            {config.displayName || key}
+                                            {config.required && (
+                                              <span className="text-red-400 ml-1">
+                                                *
+                                              </span>
+                                            )}
+                                          </label>
+
+                                          {config.type === "text" && (
+                                            <input
+                                              type="text"
+                                              placeholder={
+                                                config.defaultValue || ""
+                                              }
+                                              value={
+                                                userConfigValues[key] || ""
+                                              }
+                                              onChange={(e) =>
+                                                handleConfigChange(
+                                                  key,
+                                                  e.target.value,
+                                                )
+                                              }
+                                              className={`w-full px-3 py-2 rounded text-sm ${currentTheme["bg-primary-medium"]} ${currentTheme["text-primary-light"]} ${currentTheme["border-primary-medium"]} border`}
+                                            />
+                                          )}
+
+                                          {config.type === "select" && (
+                                            <select
+                                              value={
+                                                userConfigValues[key] ||
+                                                config.defaultValue ||
+                                                ""
+                                              }
+                                              onChange={(e) =>
+                                                handleConfigChange(
+                                                  key,
+                                                  e.target.value,
+                                                )
+                                              }
+                                              className={`w-full px-3 py-2 rounded text-sm ${currentTheme["bg-primary-medium"]} ${currentTheme["text-primary-light"]} ${currentTheme["border-primary-medium"]} border`}
+                                            >
+                                              {config.options &&
+                                                config.options.map((opt) => {
+                                                  const optValue =
+                                                    typeof opt === "object"
+                                                      ? opt.value
+                                                      : opt;
+                                                  const optLabel =
+                                                    typeof opt === "object"
+                                                      ? opt.displayName ||
+                                                        opt.value
+                                                      : opt;
+                                                  return (
+                                                    <option
+                                                      key={optValue}
+                                                      value={optValue}
+                                                    >
+                                                      {optLabel}
+                                                    </option>
+                                                  );
+                                                })}
+                                            </select>
+                                          )}
+
+                                          {config.instructions && (
+                                            <p className="text-xs text-gray-400">
+                                              {config.instructions}
+                                            </p>
+                                          )}
+
+                                          {config.required &&
+                                            !userConfigValues[key] && (
+                                              <p className="text-xs text-red-400">
+                                                Required
+                                              </p>
+                                            )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                            </div>
+                          )
+                        ) : (
+                          // Empty State
+                          <div className="flex-1 flex items-center justify-center">
+                            <Panel3 padding={true}>
+                              <Paragraph className="text-gray-500 text-center">
+                                {selectedSource === "Discover"
+                                  ? "Select a package to view details"
+                                  : "Select a widget to view details"}
+                              </Paragraph>
+                            </Panel3>
                           </div>
-                        )
-                      ) : (
-                        // Empty State
-                        <div className="flex-1 flex items-center justify-center">
-                          <Panel3 padding={true}>
-                            <Paragraph className="text-gray-500 text-center">
-                              {selectedSource === "Discover"
-                                ? "Select a package to view details"
-                                : "Select a widget to view details"}
-                            </Paragraph>
-                          </Panel3>
-                        </div>
-                      )}
-                    </Panel3>
+                        )}
+                      </Panel3>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Footer */}
-            <div className="flex flex-row justify-between bg-gray-900 p-4 rounded-br rounded-bl border-t border-gray-800">
-              <div className="flex flex-row text-lg text-gray-600 items-center font-bold px-4">
-                {selectedSource === "Discover"
-                  ? "Browse and install widget packages from the registry."
-                  : "Select a widget from the list to view details and add it to your dashboard."}
-              </div>
-              <div className="flex flex-row space-x-2">
-                <Button
-                  title={"Cancel"}
-                  bgColor={"bg-gray-800"}
-                  textSize={"text-lg"}
-                  padding={"py-2 px-4"}
-                  onClick={onClose}
-                />
-                <Button
-                  title={
-                    selectedWidget?.isRegistry
-                      ? isInstalling
-                        ? "Installing..."
-                        : installedPackageNames.has(selectedWidget.packageName)
-                          ? "Already Installed"
-                          : "Install Package"
-                      : "Add to Dashboard"
-                  }
-                  bgColor={"bg-gray-800"}
-                  hoverBackgroundColor={
-                    isAddButtonEnabled() && !isInstalling
-                      ? selectedWidget?.isRegistry
-                        ? "hover:bg-blue-700"
-                        : "hover:bg-green-700"
-                      : ""
-                  }
-                  textSize={"text-lg"}
-                  padding={"py-2 px-4"}
-                  onClick={handleAddWidget}
-                  disabled={!isAddButtonEnabled() || isInstalling}
-                />
+              {/* Footer */}
+              <div className="flex flex-row justify-between bg-gray-900 p-4 rounded-br rounded-bl border-t border-gray-800">
+                <div className="flex flex-row text-lg text-gray-600 items-center font-bold px-4">
+                  {selectedSource === "Discover"
+                    ? "Browse and install widget packages from the registry."
+                    : "Select a widget from the list to view details and add it to your dashboard."}
+                </div>
+                <div className="flex flex-row space-x-2">
+                  <Button
+                    title={"Cancel"}
+                    bgColor={"bg-gray-800"}
+                    textSize={"text-lg"}
+                    padding={"py-2 px-4"}
+                    onClick={onClose}
+                  />
+                  <Button
+                    title={
+                      selectedWidget?.isRegistry
+                        ? isInstalling
+                          ? "Installing..."
+                          : installedPackageNames.has(
+                                selectedWidget.packageName,
+                              )
+                            ? "Already Installed"
+                            : "Install Package"
+                        : "Add to Dashboard"
+                    }
+                    bgColor={"bg-gray-800"}
+                    hoverBackgroundColor={
+                      isAddButtonEnabled() && !isInstalling
+                        ? selectedWidget?.isRegistry
+                          ? "hover:bg-blue-700"
+                          : "hover:bg-green-700"
+                        : ""
+                    }
+                    textSize={"text-lg"}
+                    padding={"py-2 px-4"}
+                    onClick={handleAddWidget}
+                    disabled={!isAddButtonEnabled() || isInstalling}
+                  />
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </Panel>
-    </Modal>
+        </Panel>
+      </Modal>
+
+      <InstallProgressModal
+        isOpen={showProgressModal}
+        setIsOpen={setShowProgressModal}
+        widgets={progressWidgets}
+        isComplete={progressComplete}
+        onDone={handleProgressDone}
+      />
+
+      <RegistryAuthModal
+        isOpen={needsAuth}
+        setIsOpen={(open) => {
+          if (!open) setNeedsAuth(false);
+        }}
+        onAuthenticated={() => {
+          setNeedsAuth(false);
+          handleInstallPackage();
+        }}
+        onCancel={() => setNeedsAuth(false)}
+        message="Sign in to install this widget from the Dash Registry."
+      />
+    </>
   );
 };
