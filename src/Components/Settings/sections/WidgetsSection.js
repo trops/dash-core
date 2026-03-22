@@ -338,12 +338,19 @@ export const WidgetsSection = ({
             }}
             className={isSelected ? "bg-white/10 opacity-100" : ""}
           >
-            <span className="flex items-center gap-2">
-              {widget.displayName || widget.name}
-              {widget.source === "builtin" && <Tag3 text="Built-in" />}
-              {updates.has(widget.name) && (
-                <span className="text-[10px] text-blue-400 font-medium">
-                  Update
+            <span className="flex flex-col">
+              <span className="flex items-center gap-2">
+                {widget.displayName || widget.name}
+                {widget.source === "builtin" && <Tag3 text="Built-in" />}
+                {updates.has(widget.name) && (
+                  <span className="text-[10px] text-blue-400 font-medium">
+                    Update
+                  </span>
+                )}
+              </span>
+              {widget.source === "installed" && widget.packageId && (
+                <span className="text-[10px] opacity-40 truncate">
+                  {widget.packageId}
                 </span>
               )}
             </span>
