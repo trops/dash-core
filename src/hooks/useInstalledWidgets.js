@@ -5,7 +5,7 @@ import { ComponentManager } from "../ComponentManager";
  * Walk a workspace layout array (possibly nested via LayoutGridContainer
  * children) and collect every `item.component` value.
  */
-function collectComponentsFromLayout(layout) {
+export function collectComponentsFromLayout(layout) {
   const components = [];
   if (!Array.isArray(layout)) return components;
   for (const item of layout) {
@@ -86,6 +86,7 @@ export const useInstalledWidgets = () => {
             providers: config.providers || [],
             workspace: config.workspace || null,
             componentNames: [key],
+            scopedId: key,
           };
         });
 
@@ -122,6 +123,7 @@ export const useInstalledWidgets = () => {
             workspace: config.workspace || null,
             componentNames: [key],
             packageId: reg.packageId || config._sourcePackage,
+            scopedId: key,
           };
         });
 
@@ -148,6 +150,7 @@ export const useInstalledWidgets = () => {
           workspace: w.workspace || null,
           componentNames: w.componentNames || [],
           packageId: w.packageId || w.name,
+          scopedId: w.name,
         }));
 
       setWidgets([...builtinWidgets, ...installedFromCM, ...fallbackInstalled]);

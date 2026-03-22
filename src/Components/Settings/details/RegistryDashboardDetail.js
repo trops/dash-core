@@ -16,7 +16,7 @@ import {
 import { ComponentManager } from "../../../ComponentManager";
 import { StarRating } from "./StarRating";
 import { InstallProgressModal } from "./InstallProgressModal";
-import { RegistryAuthPrompt } from "../../Registry/RegistryAuthPrompt";
+import { RegistryAuthModal } from "../../Registry/RegistryAuthModal";
 
 /**
  * RegistryDashboardDetail — detail panel for a registry dashboard package.
@@ -492,18 +492,6 @@ export const RegistryDashboardDetail = ({
             </div>
           </div>
         )}
-
-        {/* Auth Prompt */}
-        {installResult?.status === "auth" && (
-          <RegistryAuthPrompt
-            onAuthenticated={() => {
-              setInstallResult(null);
-              handleInstall();
-            }}
-            onCancel={() => setInstallResult(null)}
-            message={installResult.message}
-          />
-        )}
       </div>
 
       {/* Install Footer */}
@@ -531,6 +519,20 @@ export const RegistryDashboardDetail = ({
         widgets={progressWidgets}
         isComplete={progressComplete}
         onDone={handleProgressDone}
+      />
+
+      {/* Auth Modal */}
+      <RegistryAuthModal
+        isOpen={installResult?.status === "auth"}
+        setIsOpen={(open) => {
+          if (!open) setInstallResult(null);
+        }}
+        onAuthenticated={() => {
+          setInstallResult(null);
+          handleInstall();
+        }}
+        onCancel={() => setInstallResult(null)}
+        message={installResult?.message || "Sign in to install this dashboard."}
       />
     </div>
   );

@@ -1,54 +1,11 @@
 import React, { useState, useCallback } from "react";
 import { Modal, FontAwesomeIcon, Button } from "@trops/dash-react";
 import { RegistryPackageDetail } from "../Components/Settings/details/RegistryPackageDetail";
-import { RegistryAuthPrompt } from "../Components/Registry/RegistryAuthPrompt";
-
-/**
- * Extract a search query from a widget component key.
- *
- * Scoped IDs look like "scope.packageName.WidgetName" — we can do an exact
- * package lookup with the middle segment.  Plain names are just the widget
- * class name, so we fall back to a search.
- */
-function getWidgetSearchQuery(componentKey) {
-  const parts = componentKey.split(".");
-  if (parts.length >= 3) {
-    return {
-      packageName: parts[1],
-      widgetName: parts[2],
-      scope: parts[0],
-    };
-  }
-  return { packageName: null, widgetName: componentKey, scope: null };
-}
-
-/**
- * Convert a raw registry package object into the flat widget shape
- * expected by RegistryPackageDetail.
- */
-function packageToFlatWidget(pkg) {
-  return {
-    key: `${pkg.name}/0`,
-    name: pkg.displayName || pkg.name,
-    icon: pkg.icon || null,
-    isRegistry: true,
-    packageName: pkg.name,
-    packageScope: pkg.scope || null,
-    packageDisplayName: pkg.displayName || pkg.name,
-    packageVersion: pkg.version,
-    packageAuthor: pkg.author || "",
-    packageDescription: pkg.description || "",
-    packageTags: pkg.tags || [],
-    packageCategory: pkg.category || "",
-    downloadUrl: pkg.downloadUrl || "",
-    repository: pkg.repository || "",
-    publishedAt: pkg.publishedAt || "",
-    packageWidgets: pkg.widgets || [],
-    appOrigin: pkg.appOrigin || null,
-    packageProviders: pkg.providers || [],
-    missingApis: [],
-  };
-}
+import { RegistryAuthModal } from "../Components/Registry/RegistryAuthModal";
+import {
+  getWidgetSearchQuery,
+  packageToFlatWidget,
+} from "../utils/registryUtils";
 
 /**
  * WidgetNotFound — rendered in place of an unresolvable widget.
@@ -210,15 +167,7 @@ export const WidgetNotFound = ({ component }) => {
             </div>
           )}
 
-          {!isLoading && needsAuth && registryWidget && (
-            <RegistryAuthPrompt
-              onAuthenticated={handleAuthSuccess}
-              onCancel={() => setNeedsAuth(false)}
-              message="Sign in to install this widget from the Dash Registry."
-            />
-          )}
-
-          {!isLoading && !needsAuth && registryWidget && (
+          {!isLoading && registryWidget && (
             <RegistryPackageDetail
               widget={registryWidget}
               onInstall={handleInstall}
@@ -248,6 +197,16 @@ export const WidgetNotFound = ({ component }) => {
           )}
         </div>
       </Modal>
+
+      <RegistryAuthModal
+        isOpen={needsAuth && !!registryWidget}
+        setIsOpen={(open) => {
+          if (!open) setNeedsAuth(false);
+        }}
+        onAuthenticated={handleAuthSuccess}
+        onCancel={() => setNeedsAuth(false)}
+        message="Sign in to install this widget from the Dash Registry."
+      />
     </>
   );
 };

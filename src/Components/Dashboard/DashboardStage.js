@@ -38,6 +38,8 @@ import { DashSidebar } from "../Navigation/DashSidebar";
 import { WidgetSidebar } from "../Navigation/WidgetSidebar";
 
 import { AppContext } from "../../Context/App/AppContext";
+import { useMissingWidgets } from "../../hooks/useMissingWidgets";
+import { MissingWidgetsModal } from "../../Widget/MissingWidgetsModal";
 
 /**
  * DashboardStage - Main application wrapper component
@@ -150,6 +152,14 @@ const DashboardStageInner = ({
   const [isDashboardLoaderOpen, setIsDashboardLoaderOpen] = useState(false);
   const [isLayoutPickerOpen, setIsLayoutPickerOpen] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+
+  // Missing widgets detection
+  const { missingComponents, hasMissing } =
+    useMissingWidgets(workspaceSelected);
+  const [isMissingWidgetsModalOpen, setIsMissingWidgetsModalOpen] =
+    useState(false);
+  const [dismissedMissingForWorkspace, setDismissedMissingForWorkspace] =
+    useState(new Set());
 
   // Unified App Settings Modal
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
@@ -883,6 +893,42 @@ const DashboardStageInner = ({
                   onScrollableChange={popout ? null : handleScrollableChange}
                 />
                 <DashboardThemeProvider themeKey={workspaceSelected?.themeKey}>
+                  {/* Missing widgets banner */}
+                  {hasMissing &&
+                    missingComponents.length >= 2 &&
+                    !dismissedMissingForWorkspace.has(
+                      workspaceSelected?.id,
+                    ) && (
+                      <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 flex-shrink-0">
+                        <FontAwesomeIcon
+                          icon="triangle-exclamation"
+                          className="h-3.5 w-3.5 text-amber-400 flex-shrink-0"
+                        />
+                        <span className="text-xs text-amber-300/90 flex-1">
+                          {missingComponents.length} widgets are missing from
+                          this dashboard.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIsMissingWidgetsModalOpen(true)}
+                          className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium"
+                        >
+                          Resolve
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDismissedMissingForWorkspace(
+                              (prev) =>
+                                new Set([...prev, workspaceSelected?.id]),
+                            )
+                          }
+                          className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                        >
+                          <FontAwesomeIcon icon="xmark" className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
                   <div
                     className={`flex flex-col w-full flex-1 ${
                       popout || previewMode === true
@@ -1022,6 +1068,17 @@ const DashboardStageInner = ({
               onOpenDashboard={handleOpenTab}
               onReloadWorkspaces={loadWorkspaces}
               appId={credentials?.appId}
+            />
+
+            <MissingWidgetsModal
+              missingComponents={missingComponents}
+              isOpen={isMissingWidgetsModalOpen}
+              setIsOpen={setIsMissingWidgetsModalOpen}
+              onInstallComplete={() => {
+                setDismissedMissingForWorkspace(
+                  (prev) => new Set([...prev, workspaceSelected?.id]),
+                );
+              }}
             />
           </>
         )}

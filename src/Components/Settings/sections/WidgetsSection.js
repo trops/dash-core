@@ -15,6 +15,7 @@ import { SectionLayout } from "../SectionLayout";
 import { InstalledWidgetDetail } from "../details/InstalledWidgetDetail";
 import { InstallWidgetPicker } from "../details/InstallWidgetPicker";
 import { DiscoverWidgetsDetail } from "../details/DiscoverWidgetsDetail";
+import { InstallProgressModal } from "../details/InstallProgressModal";
 import {
   useInstalledWidgets,
   findWidgetUsage,
@@ -55,6 +56,11 @@ export const WidgetsSection = ({
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteUsage, setDeleteUsage] = useState([]);
   const [installResult, setInstallResult] = useState(null);
+
+  // Install progress modal state
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const [progressWidgets, setProgressWidgets] = useState([]);
+  const [progressComplete, setProgressComplete] = useState(false);
 
   // ── Filter state ────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
@@ -202,10 +208,29 @@ export const WidgetsSection = ({
       const widgetName = filename.replace(/\.zip$/i, "");
 
       setInstallMode("zip-result");
-      setInstallResult({ status: "loading", message: "Installing..." });
+
+      // Show progress modal
+      setProgressWidgets([
+        {
+          packageName: widgetName,
+          displayName: widgetName,
+          status: "downloading",
+        },
+      ]);
+      setProgressComplete(false);
+      setShowProgressModal(true);
 
       await window.mainApi.widgets.installLocal(widgetName, filepath);
       await refresh();
+
+      setProgressWidgets([
+        {
+          packageName: widgetName,
+          displayName: widgetName,
+          status: "installed",
+        },
+      ]);
+      setProgressComplete(true);
 
       setInstallResult({
         status: "success",
@@ -213,6 +238,11 @@ export const WidgetsSection = ({
       });
     } catch (err) {
       console.error("[WidgetsSection] ZIP install error:", err);
+      setProgressWidgets((prev) =>
+        prev.map((w) => ({ ...w, status: "failed", error: err.message })),
+      );
+      setProgressComplete(true);
+
       setInstallResult({
         status: "error",
         message: err.message || "Failed to install widget from ZIP.",
@@ -227,10 +257,17 @@ export const WidgetsSection = ({
       if (!folderPath) return;
 
       setInstallMode("folder-result");
-      setInstallResult({
-        status: "loading",
-        message: "Loading widgets...",
-      });
+
+      // Show progress modal with initial item
+      setProgressWidgets([
+        {
+          packageName: "folder",
+          displayName: "Loading folder...",
+          status: "downloading",
+        },
+      ]);
+      setProgressComplete(false);
+      setShowProgressModal(true);
 
       const results = await window.mainApi.widgets.loadFolder(folderPath);
       await refresh();
@@ -238,6 +275,27 @@ export const WidgetsSection = ({
       const count = Array.isArray(results) ? results.length : 0;
       const isSingle = count === 1 && results[0]?.mode === "single";
       const skipped = results?.skipped || 0;
+
+      // Rebuild progress items from actual results
+      if (count > 0) {
+        setProgressWidgets(
+          results.map((r) => ({
+            packageName: r.name || "widget",
+            displayName: r.displayName || r.name || "Widget",
+            status: "installed",
+          })),
+        );
+      } else {
+        setProgressWidgets([
+          {
+            packageName: "folder",
+            displayName: "No widgets found",
+            status: "failed",
+            error: "No widget directories found in folder.",
+          },
+        ]);
+      }
+      setProgressComplete(true);
 
       let message;
       if (isSingle) {
@@ -263,11 +321,22 @@ export const WidgetsSection = ({
       });
     } catch (err) {
       console.error("[WidgetsSection] Folder load error:", err);
+      setProgressWidgets((prev) =>
+        prev.map((w) => ({ ...w, status: "failed", error: err.message })),
+      );
+      setProgressComplete(true);
+
       setInstallResult({
         status: "error",
         message: err.message || "Failed to load widgets from folder.",
       });
     }
+  }
+
+  function handleProgressDone() {
+    setShowProgressModal(false);
+    setProgressWidgets([]);
+    setProgressComplete(false);
   }
 
   function handlePickerSelect(option) {
@@ -348,9 +417,9 @@ export const WidgetsSection = ({
                   </span>
                 )}
               </span>
-              {widget.source === "installed" && widget.packageId && (
+              {(widget.scopedId || widget.name) && (
                 <span className="text-[10px] opacity-40 truncate">
-                  {widget.packageId}
+                  {widget.scopedId || widget.name}
                 </span>
               )}
             </span>
@@ -563,6 +632,13 @@ export const WidgetsSection = ({
         listContent={listContent}
         detailContent={detailContent}
         emptyDetailMessage="Select a widget to view details"
+      />
+      <InstallProgressModal
+        isOpen={showProgressModal}
+        setIsOpen={setShowProgressModal}
+        widgets={progressWidgets}
+        isComplete={progressComplete}
+        onDone={handleProgressDone}
       />
       <ConfirmationModal
         isOpen={!!deleteTarget}

@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback, useContext } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useContext,
+  useRef,
+} from "react";
 import {
   ThemeContext,
   FontAwesomeIcon,
@@ -13,6 +19,8 @@ import {
 import { AppContext } from "../../../Context/App/AppContext";
 import { ComponentManager } from "../../../ComponentManager";
 import { RegistryPackageDetail } from "./RegistryPackageDetail";
+import { RegistryAuthModal } from "../../Registry/RegistryAuthModal";
+import { InstallProgressModal } from "./InstallProgressModal";
 import { useRegistrySearch } from "../../../hooks/useRegistrySearch";
 
 /**
@@ -48,6 +56,13 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
 
   const [selectedPackageName, setSelectedPackageName] = useState(null);
   const [toolConflictWarning, setToolConflictWarning] = useState(null);
+
+  // Install progress modal state
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const [progressWidgets, setProgressWidgets] = useState([]);
+  const [progressComplete, setProgressComplete] = useState(false);
+  const installActiveRef = useRef(false);
+  const pendingInstallRef = useRef(null);
 
   // Track installed package names (same pattern as WidgetSidebar)
   const [installedPackageNames, setInstalledPackageNames] = useState(new Set());
@@ -86,6 +101,42 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
     return () =>
       window.removeEventListener("dash:widgets-updated", handleWidgetsUpdated);
   }, [loadInstalledPackages]);
+
+  // Watch for install completion — same pattern as WidgetSidebar
+  useEffect(() => {
+    if (!installActiveRef.current) return;
+    if (isInstalling) return; // Still in progress
+
+    installActiveRef.current = false;
+
+    if (needsAuth) {
+      // Auth needed — close progress modal, auth modal will handle it
+      setShowProgressModal(false);
+      return;
+    }
+
+    if (installError) {
+      setProgressWidgets((prev) =>
+        prev.map((w) => ({
+          ...w,
+          status: "failed",
+          error: installError,
+        })),
+      );
+    } else {
+      setProgressWidgets((prev) =>
+        prev.map((w) => ({ ...w, status: "installed" })),
+      );
+    }
+    setProgressComplete(true);
+  }, [isInstalling, needsAuth, installError]);
+
+  const handleProgressDone = useCallback(() => {
+    setShowProgressModal(false);
+    setProgressWidgets([]);
+    setProgressComplete(false);
+    pendingInstallRef.current = null;
+  }, []);
 
   const isPackageInstalled = useCallback(
     (pkg) => {
@@ -145,6 +196,39 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
     return conflicts;
   };
 
+  const startInstallWithProgress = useCallback(
+    (widget) => {
+      const pkg = packages.find((p) => p.name === widget.packageName);
+      const widgetList = pkg?.widgets || [];
+      const items = widgetList.map((w) => ({
+        packageName: widget.packageName,
+        displayName: w.displayName || w.name,
+        status: "pending",
+      }));
+      if (items.length === 0) {
+        items.push({
+          packageName: widget.packageName,
+          displayName: widget.packageDisplayName || widget.packageName,
+          status: "pending",
+        });
+      }
+
+      pendingInstallRef.current = widget;
+      setProgressWidgets(items);
+      setProgressComplete(false);
+      setShowProgressModal(true);
+      installActiveRef.current = true;
+
+      // Transition to downloading
+      setProgressWidgets((prev) =>
+        prev.map((w) => ({ ...w, status: "downloading" })),
+      );
+
+      installPackage(widget);
+    },
+    [packages, installPackage],
+  );
+
   const handleInstall = () => {
     if (!selectedWidget) return;
 
@@ -152,14 +236,14 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
     if (conflicts.length > 0) {
       setToolConflictWarning(conflicts);
     } else {
-      installPackage(selectedWidget);
+      startInstallWithProgress(selectedWidget);
     }
   };
 
   const handleConfirmInstall = () => {
     setToolConflictWarning(null);
     if (selectedWidget) {
-      installPackage(selectedWidget);
+      startInstallWithProgress(selectedWidget);
     }
   };
 
@@ -191,12 +275,28 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
                 )
               : false
           }
-          showAuth={needsAuth}
-          onAuthSuccess={() => {
-            clearNeedsAuth();
-            installPackage(selectedWidget);
+        />
+
+        <InstallProgressModal
+          isOpen={showProgressModal}
+          setIsOpen={setShowProgressModal}
+          widgets={progressWidgets}
+          isComplete={progressComplete}
+          onDone={handleProgressDone}
+        />
+
+        <RegistryAuthModal
+          isOpen={needsAuth}
+          setIsOpen={(open) => {
+            if (!open) clearNeedsAuth();
           }}
-          onAuthCancel={clearNeedsAuth}
+          onAuthenticated={() => {
+            clearNeedsAuth();
+            if (pendingInstallRef.current)
+              startInstallWithProgress(pendingInstallRef.current);
+          }}
+          onCancel={clearNeedsAuth}
+          message="Sign in to install this widget from the Dash Registry."
         />
       </div>
     );

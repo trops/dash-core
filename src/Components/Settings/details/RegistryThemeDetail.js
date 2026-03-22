@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useRef } from "react";
+import React, { useState, useContext } from "react";
 import {
   ThemeContext,
   Button,
@@ -7,6 +7,7 @@ import {
   getStylesForItem,
   themeObjects,
 } from "@trops/dash-react";
+import { RegistryAuthModal } from "../../Registry/RegistryAuthModal";
 
 import { toDisplayColor } from "../../../utils/colorUtils";
 
@@ -174,21 +175,9 @@ export const RegistryThemeDetail = ({
 
   const [isInstalling, setIsInstalling] = useState(false);
   const [installResult, setInstallResult] = useState(null);
-  const [authFlow, setAuthFlow] = useState(null);
-  const [isPolling, setIsPolling] = useState(false);
-  const [authError, setAuthError] = useState(null);
-  const pollIntervalRef = useRef(null);
 
   const pkg = themePackage;
   if (!pkg) return null;
-
-  // Clean up polling on unmount
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  useEffect(() => {
-    return () => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    };
-  }, []);
 
   const rawColors = pkg.colors || {};
   // Also check top-level fields for themes that store colors directly
@@ -247,53 +236,6 @@ export const RegistryThemeDetail = ({
       });
     } finally {
       setIsInstalling(false);
-    }
-  }
-
-  async function handleSignIn() {
-    setAuthError(null);
-    try {
-      const flow = await window.mainApi.registryAuth.initiateLogin();
-      setAuthFlow(flow);
-
-      // Open verification URL in browser
-      if (flow.verificationUrlComplete) {
-        window.mainApi.shell.openExternal(flow.verificationUrlComplete);
-      }
-
-      // Start polling for token
-      setIsPolling(true);
-      const interval = (flow.interval || 5) * 1000;
-      pollIntervalRef.current = setInterval(async () => {
-        try {
-          const pollResult = await window.mainApi.registryAuth.pollToken(
-            flow.deviceCode,
-          );
-          if (pollResult.status === "authorized") {
-            clearInterval(pollIntervalRef.current);
-            pollIntervalRef.current = null;
-            setIsPolling(false);
-            setAuthFlow(null);
-            // DASH-144: Auto-retry install after successful auth
-            handleInstall();
-          } else if (pollResult.status === "expired") {
-            clearInterval(pollIntervalRef.current);
-            pollIntervalRef.current = null;
-            setIsPolling(false);
-            setAuthFlow(null);
-            setAuthError("Authorization expired. Please try again.");
-          }
-        } catch {
-          clearInterval(pollIntervalRef.current);
-          pollIntervalRef.current = null;
-          setIsPolling(false);
-        }
-      }, interval);
-    } catch (err) {
-      console.error("[RegistryThemeDetail] Sign-in error:", err);
-      setAuthError(
-        "Could not reach the registry. Check your connection and try again.",
-      );
     }
   }
 
@@ -408,63 +350,6 @@ export const RegistryThemeDetail = ({
             </div>
           </div>
         )}
-
-        {/* Auth Prompt (DASH-144) */}
-        {installResult?.status === "auth" && (
-          <div className="space-y-3">
-            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3">
-              <div className="flex items-start gap-2">
-                <FontAwesomeIcon
-                  icon="lock"
-                  className="h-3.5 w-3.5 text-yellow-400 mt-0.5 flex-shrink-0"
-                />
-                <span className="text-sm text-yellow-300/90">
-                  {installResult.message}
-                </span>
-              </div>
-            </div>
-            {!authFlow && !isPolling && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleSignIn}
-                  className="px-4 py-2 rounded-lg text-sm bg-blue-500/20 border border-blue-500/30 text-blue-300 hover:bg-blue-500/30 transition-colors cursor-pointer"
-                >
-                  Sign in to Registry
-                </button>
-                {authError && (
-                  <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-                    <div className="flex items-start gap-2">
-                      <FontAwesomeIcon
-                        icon="circle-xmark"
-                        className="h-3.5 w-3.5 text-red-400 mt-0.5 flex-shrink-0"
-                      />
-                      <span className="text-xs text-red-300/90">
-                        {authError}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-            {authFlow && isPolling && (
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 space-y-3">
-                <p className="text-xs text-blue-300/90">
-                  Enter this code in your browser:
-                </p>
-                <div className="text-center">
-                  <span className="text-2xl font-mono font-bold tracking-widest text-white">
-                    {authFlow.userCode}
-                  </span>
-                </div>
-                <p className="text-xs text-blue-300/70 text-center">
-                  Waiting for authorization — install will resume
-                  automatically...
-                </p>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Install Footer */}
@@ -484,6 +369,20 @@ export const RegistryThemeDetail = ({
             />
           </div>
         )}
+
+      {/* Auth Modal */}
+      <RegistryAuthModal
+        isOpen={installResult?.status === "auth"}
+        setIsOpen={(open) => {
+          if (!open) setInstallResult(null);
+        }}
+        onAuthenticated={() => {
+          setInstallResult(null);
+          handleInstall();
+        }}
+        onCancel={() => setInstallResult(null)}
+        message={installResult?.message || "Sign in to install this theme."}
+      />
     </div>
   );
 };
