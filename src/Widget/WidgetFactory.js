@@ -6,6 +6,7 @@ import { WidgetHelpers } from "../Api/WidgetHelpers";
 import { WidgetApi } from "../Api/WidgetApi";
 import { getUUID } from "@trops/dash-react";
 import { WidgetCardStatusBar } from "../Components/Layout/Builder/Enhanced/WidgetCardStatusBar";
+import { WidgetNotFound } from "./WidgetNotFound";
 
 /**
  * WidgetErrorBoundary - Catches errors from widget rendering
@@ -94,9 +95,7 @@ const WidgetRenderer = ({
       const isLayout = ComponentManager.isLayoutContainer(component);
       // grab the component from the map
       const WidgetComponent =
-        isLayout === false
-          ? m[component]["component"]
-          : ComponentManager.getComponent(component)?.component;
+        ComponentManager.getComponent(component)?.component;
 
       // get the config details from the .dash file
       const config = ComponentManager.config(component, params);
@@ -117,7 +116,9 @@ const WidgetRenderer = ({
       const userPrefs = params["userPrefs"];
 
       // Check to make sure this is a Component
-      if (typeof WidgetComponent !== "function") return null;
+      if (typeof WidgetComponent !== "function") {
+        return <WidgetNotFound component={component} />;
+      }
 
       if (isLayout === false) {
         params["width"] = "w-full";
@@ -218,10 +219,10 @@ const WidgetRenderer = ({
     }
   } catch (e) {
     console.log(e.message);
-    return null;
+    return <WidgetNotFound component={component} />;
   }
 
-  return null;
+  return <WidgetNotFound component={component} />;
 };
 
 /**

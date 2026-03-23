@@ -17,6 +17,7 @@ import {
   renderComponent,
 } from "../../../utils/layout";
 import { ComponentManager } from "../../../ComponentManager";
+import { WidgetNotFound } from "../../../Widget/WidgetNotFound";
 import { isContainer, isWorkspace } from "../../../utils/layout";
 import {
   GRID_CELL_WIDGET_TYPE,
@@ -1264,7 +1265,7 @@ export const LayoutGridContainer = memo(
             >
               {cellComponent ? (
                 <div className="flex-1 flex flex-col min-h-[120px]">
-                  {renderedWidget}
+                  <WidgetNotFound component={cellComponent.component} />
                 </div>
               ) : (
                 <WidgetCard.Body padding="p-0">
