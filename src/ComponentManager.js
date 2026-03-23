@@ -119,19 +119,6 @@ export const ComponentManager = {
           // Try exact match first (works for both scoped ids and legacy names)
           let cmp = component in m ? m[component] : null;
 
-          // Fallback: scan by config.name for backward compatibility
-          // Handles saved layouts that reference old-style names (e.g., "AnalogClockWidget")
-          // when the widget is now registered under a scoped id (e.g., "trops.clock.AnalogClockWidget")
-          if (cmp === null) {
-            for (const key of Object.keys(m)) {
-              if (m[key].name === component) {
-                cmp = m[key];
-                cmp["componentName"] = key;
-                return cmp;
-              }
-            }
-          }
-
           if (cmp !== null) {
             cmp["componentName"] = component;
             return cmp;
