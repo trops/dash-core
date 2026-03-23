@@ -1,5 +1,5 @@
 import React from "react";
-import { Panel, Heading, FontAwesomeIcon } from "@trops/dash-react";
+import { FontAwesomeIcon } from "@trops/dash-react";
 
 /**
  * ExternalWidget
@@ -12,17 +12,19 @@ import { Panel, Heading, FontAwesomeIcon } from "@trops/dash-react";
  */
 export const ExternalWidget = ({ title, description, icon, ...props }) => {
   return (
-    <Panel>
-      <div className="flex flex-col items-center justify-center gap-2 py-6 text-center opacity-70">
-        <FontAwesomeIcon
-          icon={icon || "puzzle-piece"}
-          className="h-6 w-6 opacity-50"
-        />
-        <Heading title={title || "External Widget"} padding={false} />
-        {description && (
-          <p className="text-sm text-gray-400 max-w-xs">{description}</p>
-        )}
+    <div className="flex flex-col h-full justify-center items-center w-full gap-2 p-4 text-center">
+      <FontAwesomeIcon
+        icon={icon || "triangle-exclamation"}
+        className="h-5 w-5 text-amber-500"
+      />
+      <div className="text-sm font-semibold text-gray-300">
+        Widget Unavailable
       </div>
-    </Panel>
+      {title && <div className="text-xs text-gray-500 font-mono">{title}</div>}
+      <div className="text-xs text-gray-600 mt-1">
+        {description ||
+          "Check widget configuration or reinstall from the registry."}
+      </div>
+    </div>
   );
 };
