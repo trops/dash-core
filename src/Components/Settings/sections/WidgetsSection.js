@@ -178,16 +178,32 @@ export const WidgetsSection = ({
   // ── Uninstall with usage check ──────────────────────────────────────
 
   function handleDeleteRequest(widget) {
-    const usage = findWidgetUsage(widget.componentNames, workspaces);
+    // Find all sibling widgets in the same package (uninstall is package-level)
+    const siblings =
+      widget.packageId && widget.source === "installed"
+        ? widgets.filter(
+            (w) => w.packageId === widget.packageId && w.name !== widget.name,
+          )
+        : [];
+    const allComponentNames = [
+      ...widget.componentNames,
+      ...siblings.flatMap((s) => s.componentNames),
+    ];
+    const usage = findWidgetUsage(allComponentNames, workspaces);
     setDeleteUsage(usage);
-    setDeleteTarget(widget);
+    setDeleteTarget({ ...widget, _siblings: siblings });
   }
 
   async function handleConfirmDelete() {
     if (!deleteTarget) return;
     try {
       await uninstallWidget(deleteTarget.name);
-      if (selectedWidgetName === deleteTarget.name) {
+      // Clear selection if it was the target or any sibling
+      const allNames = [
+        deleteTarget.name,
+        ...(deleteTarget._siblings || []).map((s) => s.name),
+      ];
+      if (allNames.includes(selectedWidgetName)) {
         setSelectedWidgetName(null);
       }
     } catch (err) {
@@ -625,6 +641,11 @@ export const WidgetsSection = ({
 
   const deleteWidgetLabel =
     deleteTarget?.displayName || deleteTarget?.name || "";
+  const deleteSiblings = deleteTarget?._siblings || [];
+  const deletePackageLabel = deleteTarget?.packageId
+    ? deleteTarget.packageId.replace(/^@[^/]+\//, "")
+    : "";
+  const hasPackageSiblings = deleteSiblings.length > 0;
 
   return (
     <>
@@ -646,8 +667,8 @@ export const WidgetsSection = ({
           setDeleteTarget(null);
           setDeleteUsage([]);
         }}
-        title="Uninstall Widget"
-        {...(deleteUsage.length === 0
+        title={hasPackageSiblings ? "Uninstall Package" : "Uninstall Widget"}
+        {...(!hasPackageSiblings && deleteUsage.length === 0
           ? {
               message: `Are you sure you want to uninstall "${deleteWidgetLabel}"?`,
             }
@@ -660,33 +681,64 @@ export const WidgetsSection = ({
           setDeleteUsage([]);
         }}
       >
-        {deleteUsage.length > 0 && (
+        {(hasPackageSiblings || deleteUsage.length > 0) && (
           <div className={paragraphStyles.textColor || ""}>
-            <p className="text-sm leading-relaxed">
-              "{deleteWidgetLabel}" is currently used in {deleteUsage.length}{" "}
-              dashboard{deleteUsage.length !== 1 ? "s" : ""}. Uninstalling will
-              leave orphaned layout items on these dashboards.
-            </p>
-            <div className="mt-2 space-y-1">
-              <span className="text-xs font-semibold opacity-70">
-                Affected dashboards:
-              </span>
-              {deleteUsage.map((u) => (
-                <div
-                  key={u.workspaceId}
-                  className="text-xs opacity-60 flex items-center gap-1.5 pl-2"
-                >
-                  <FontAwesomeIcon
-                    icon="triangle-exclamation"
-                    className="h-3 w-3 text-yellow-500"
-                  />
-                  {u.workspaceName}{" "}
-                  <span className="opacity-50">
-                    ({u.count} instance{u.count !== 1 ? "s" : ""})
-                  </span>
+            {hasPackageSiblings && (
+              <>
+                <p className="text-sm leading-relaxed">
+                  "{deleteWidgetLabel}" is part of the{" "}
+                  <span className="font-semibold">{deletePackageLabel}</span>{" "}
+                  package. Uninstalling will remove all{" "}
+                  {deleteSiblings.length + 1} widgets in this package:
+                </p>
+                <div className="mt-2 mb-2 space-y-1">
+                  {[deleteTarget, ...deleteSiblings].map((w) => (
+                    <div
+                      key={w.name}
+                      className="text-xs opacity-60 flex items-center gap-1.5 pl-2"
+                    >
+                      <FontAwesomeIcon
+                        icon="puzzle-piece"
+                        className="h-3 w-3"
+                      />
+                      {w.displayName || w.name}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            )}
+            {deleteUsage.length > 0 && (
+              <>
+                <p className="text-sm leading-relaxed">
+                  {hasPackageSiblings
+                    ? "These widgets are"
+                    : `"${deleteWidgetLabel}" is`}{" "}
+                  currently used in {deleteUsage.length} dashboard
+                  {deleteUsage.length !== 1 ? "s" : ""}. Uninstalling will leave
+                  orphaned layout items on these dashboards.
+                </p>
+                <div className="mt-2 space-y-1">
+                  <span className="text-xs font-semibold opacity-70">
+                    Affected dashboards:
+                  </span>
+                  {deleteUsage.map((u) => (
+                    <div
+                      key={u.workspaceId}
+                      className="text-xs opacity-60 flex items-center gap-1.5 pl-2"
+                    >
+                      <FontAwesomeIcon
+                        icon="triangle-exclamation"
+                        className="h-3 w-3 text-yellow-500"
+                      />
+                      {u.workspaceName}{" "}
+                      <span className="opacity-50">
+                        ({u.count} instance{u.count !== 1 ? "s" : ""})
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
       </ConfirmationModal>
