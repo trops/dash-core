@@ -30,6 +30,7 @@ const DraggableDroppableCellBody = ({
   cellNumber,
   gridContainerId,
   onMoveWidgetToCell,
+  onDropWidgetFromSidebar,
   hasSpan,
   children,
   padding,
@@ -43,39 +44,70 @@ const DraggableDroppableCellBody = ({
     [cellNumber, gridContainerId, hasSpan],
   );
 
-  const [{ isOver, canDrop }, drop] = useDrop(
+  const [{ isOver, canDrop, itemType }, drop] = useDrop(
     () => ({
-      accept: GRID_CELL_WIDGET_TYPE,
-      canDrop: (dragItem) => {
+      accept: [GRID_CELL_WIDGET_TYPE, SIDEBAR_WIDGET_TYPE],
+      canDrop: (dragItem, monitor) => {
+        const itemType = monitor.getItemType();
+        if (itemType === SIDEBAR_WIDGET_TYPE) return true;
         if (dragItem.gridContainerId !== gridContainerId) return false;
         if (dragItem.cellNumber === cellNumber) return false;
         if (dragItem.hasSpan || hasSpan) return false;
         return true;
       },
-      drop: (dragItem) => {
-        if (onMoveWidgetToCell)
-          onMoveWidgetToCell(gridContainerId, dragItem.cellNumber, cellNumber);
+      drop: (dragItem, monitor) => {
+        const itemType = monitor.getItemType();
+        if (itemType === SIDEBAR_WIDGET_TYPE) {
+          if (onDropWidgetFromSidebar)
+            onDropWidgetFromSidebar(
+              gridContainerId,
+              cellNumber,
+              dragItem.widgetKey,
+            );
+        } else {
+          if (onMoveWidgetToCell)
+            onMoveWidgetToCell(
+              gridContainerId,
+              dragItem.cellNumber,
+              cellNumber,
+            );
+        }
       },
       collect: (monitor) => ({
         isOver: monitor.isOver(),
         canDrop: monitor.canDrop(),
+        itemType: monitor.getItemType(),
       }),
     }),
-    [cellNumber, gridContainerId, onMoveWidgetToCell, hasSpan],
+    [
+      cellNumber,
+      gridContainerId,
+      onMoveWidgetToCell,
+      onDropWidgetFromSidebar,
+      hasSpan,
+    ],
   );
+
+  const isSidebarDrop = itemType === SIDEBAR_WIDGET_TYPE;
 
   return (
     <div
       ref={(node) => drag(drop(node))}
-      className={`flex-1 min-h-0 overflow-auto ${padding} ${
+      className={`flex-1 min-h-0 overflow-auto relative ${padding} ${
         isDragging ? "opacity-30" : ""
-      } ${isOver && canDrop ? "ring-2 ring-blue-500 ring-inset" : ""}`}
+      } ${isOver && canDrop ? (isSidebarDrop ? "ring-2 ring-green-500 ring-inset" : "ring-2 ring-blue-500 ring-inset") : ""}`}
       style={{ cursor: "grab" }}
     >
       {children}
       {isOver && canDrop && (
-        <div className="absolute inset-0 flex items-center justify-center bg-blue-600/30 rounded pointer-events-none">
-          <span className="text-sm font-bold text-blue-200">Swap</span>
+        <div
+          className={`absolute inset-0 flex items-center justify-center ${isSidebarDrop ? "bg-green-600/30" : "bg-blue-600/30"} rounded pointer-events-none`}
+        >
+          <span
+            className={`text-sm font-bold ${isSidebarDrop ? "text-green-200" : "text-blue-200"}`}
+          >
+            {isSidebarDrop ? "Drop here" : "Swap"}
+          </span>
         </div>
       )}
     </div>
@@ -1245,6 +1277,7 @@ export const LayoutGridContainer = memo(
               cellNumber={cellNumber}
               gridContainerId={id}
               onMoveWidgetToCell={onMoveWidgetToCell}
+              onDropWidgetFromSidebar={onDropWidgetFromSidebar}
               hasSpan={
                 !!(
                   cellDef.span &&
