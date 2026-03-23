@@ -167,22 +167,27 @@ export const useInstalledWidgets = () => {
     async (widgetName) => {
       if (!window.mainApi?.widgets) return;
       try {
+        // Resolve packageId — widgetName may be a CM key (e.g. "AnalogClockWidget")
+        // but the registry is keyed by scoped package ID (e.g. "@trops/clock").
+        const widget = widgets.find((w) => w.name === widgetName);
+        const packageId = widget?.packageId || widgetName;
+
         // Remove matching ComponentManager entries so the widget
         // doesn't reappear as a "builtin" ghost after uninstall.
         const cMap = ComponentManager.componentMap() || {};
         const keysToRemove = Object.keys(cMap).filter(
-          (key) => cMap[key]._sourcePackage === widgetName,
+          (key) => cMap[key]._sourcePackage === packageId,
         );
         keysToRemove.forEach((key) => delete cMap[key]);
 
-        await window.mainApi.widgets.uninstall(widgetName);
+        await window.mainApi.widgets.uninstall(packageId);
         await refresh();
       } catch (err) {
         console.error("[useInstalledWidgets] Error uninstalling widget:", err);
         throw err;
       }
     },
-    [refresh],
+    [refresh, widgets],
   );
 
   useEffect(() => {
