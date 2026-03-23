@@ -1261,11 +1261,15 @@ export const LayoutGridContainer = memo(
               onMoveWidgetToCell={onMoveWidgetToCell}
               onDropWidgetFromSidebar={onDropWidgetFromSidebar}
             >
-              <WidgetCard.Body padding="p-0">
-                {cellComponent
-                  ? renderedWidget
-                  : renderEmptyCellContent(cellNumber)}
-              </WidgetCard.Body>
+              {cellComponent ? (
+                <div className="flex-1 flex flex-col min-h-[120px]">
+                  {renderedWidget}
+                </div>
+              ) : (
+                <WidgetCard.Body padding="p-0">
+                  {renderEmptyCellContent(cellNumber)}
+                </WidgetCard.Body>
+              )}
             </DroppableEmptyCell>
           )}
           {cellComponent && (
