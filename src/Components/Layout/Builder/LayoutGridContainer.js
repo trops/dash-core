@@ -15,8 +15,8 @@ import { WidgetCard } from "./Enhanced/WidgetCard";
 import {
   getContainerBorderColor,
   renderComponent,
-  isWidgetResolvable,
 } from "../../../utils/layout";
+import { ComponentManager } from "../../../ComponentManager";
 import { isContainer, isWorkspace } from "../../../utils/layout";
 import {
   GRID_CELL_WIDGET_TYPE,
@@ -1238,7 +1238,8 @@ export const LayoutGridContainer = memo(
                 : undefined
             }
           />
-          {cellComponent && isWidgetResolvable(cellComponent.component) ? (
+          {cellComponent &&
+          ComponentManager.config(cellComponent.component, cellComponent) ? (
             <DraggableDroppableCellBody
               cellNumber={cellNumber}
               gridContainerId={id}
