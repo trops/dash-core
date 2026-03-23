@@ -59,6 +59,11 @@ export const ComponentManager = {
     // otherwise fall back to the provided widgetKey for backward compatibility
     const registrationKey = config.id || widgetKey;
     tempComponentMap[registrationKey] = ComponentConfigModel(config);
+    // Also register under plain component name for backward compat
+    // (dashboards may reference "SlackWidget" instead of "trops.slack.SlackWidget")
+    if (config.id && config.id !== widgetKey && !tempComponentMap[widgetKey]) {
+      tempComponentMap[widgetKey] = tempComponentMap[registrationKey];
+    }
     this.setComponentMap(tempComponentMap);
   },
 
