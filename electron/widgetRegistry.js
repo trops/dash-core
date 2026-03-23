@@ -619,9 +619,9 @@ class WidgetRegistry {
    */
   registerWidget(widgetName, config, widgetPath, autoRegister = true) {
     const widgetEntry = {
+      ...config,
       name: widgetName,
       path: widgetPath,
-      ...config,
       registeredAt: new Date().toISOString(),
     };
 

@@ -98,7 +98,7 @@ export const useInstalledWidgets = () => {
       if (window.mainApi?.widgets) {
         const list = await window.mainApi.widgets.list();
         (list || []).forEach((w) => {
-          registryByName[w.name] = w;
+          registryByName[w.packageId || w.name] = w;
         });
       }
 

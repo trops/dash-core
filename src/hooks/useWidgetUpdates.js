@@ -25,17 +25,32 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
     checkedRef.current = true;
     setIsChecking(true);
 
-    const payload = installed.map((w) => ({
-      name: w.name,
-      version: w.version,
-    }));
+    // Deduplicate by package — multiple widgets in the same package share one version
+    const pkgMap = new Map();
+    installed.forEach((w) => {
+      const pkgId = w.packageId || w.name;
+      if (!pkgMap.has(pkgId)) {
+        pkgMap.set(pkgId, { name: pkgId, version: w.version });
+      }
+    });
+    const payload = Array.from(pkgMap.values());
 
     window.mainApi?.registry
       ?.checkUpdates(payload)
       .then((results) => {
         if (Array.isArray(results) && results.length > 0) {
           const map = new Map();
-          results.forEach((r) => map.set(r.name, r));
+          results.forEach((r) => {
+            // Key by package ID (from result)
+            map.set(r.name, r);
+            // Also key by each widget's CM key so UI can look up by widget name
+            installed.forEach((w) => {
+              const pkgId = w.packageId || w.name;
+              if (pkgId === r.name) {
+                map.set(w.name, r);
+              }
+            });
+          });
           setUpdates(map);
         }
       })
@@ -53,13 +68,17 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
       const info = updates.get(name);
       if (!info || !info.downloadUrl) return;
 
+      // Use packageId for install — name may be a CM key (widget-level)
+      const widget = installedWidgets.find((w) => w.name === name);
+      const packageId = widget?.packageId || info.name || name;
+
       setIsUpdating(name);
       try {
         const resolvedUrl = info.downloadUrl
           .replace(/\{version\}/g, info.latestVersion)
-          .replace(/\{name\}/g, name);
+          .replace(/\{name\}/g, packageId);
 
-        await window.mainApi.widgets.install(name, resolvedUrl);
+        await window.mainApi.widgets.install(packageId, resolvedUrl);
 
         // Remove from updates map on success
         setUpdates((prev) => {
@@ -75,7 +94,7 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
         setIsUpdating(null);
       }
     },
-    [updates, onUpdated],
+    [updates, onUpdated, installedWidgets],
   );
 
   return { updates, isChecking, updateWidget, isUpdating };
