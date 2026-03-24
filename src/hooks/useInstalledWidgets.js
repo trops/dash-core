@@ -2,14 +2,40 @@ import { useState, useEffect, useCallback } from "react";
 import { ComponentManager } from "../ComponentManager";
 
 /**
- * Walk a workspace layout array (possibly nested via LayoutGridContainer
- * children) and collect every `item.component` value.
+ * Walk a workspace layout and collect widget component keys that are
+ * actively referenced by grid cells. Ignores orphaned layout items
+ * (items not referenced by any grid cell) so they don't trigger false
+ * "missing widget" warnings.
  */
 export function collectComponentsFromLayout(layout) {
   const components = [];
   if (!Array.isArray(layout)) return components;
+
+  // Collect IDs of layout items that are actively referenced by grid cells
+  const activeItemIds = new Set();
   for (const item of layout) {
-    if (item.component) components.push(item.component);
+    if (item.grid && typeof item.grid === "object") {
+      for (const key of Object.keys(item.grid)) {
+        const cell = item.grid[key];
+        if (cell && typeof cell === "object" && cell.component) {
+          activeItemIds.add(cell.component);
+        }
+      }
+    }
+  }
+
+  for (const item of layout) {
+    if (!item.component) continue;
+    // Skip layout containers — they are always resolvable
+    if (
+      item.component === "LayoutGridContainer" ||
+      item.component === "Container" ||
+      item.component === "LayoutContainer"
+    )
+      continue;
+    // When grid containers exist, only collect items referenced by a grid cell
+    if (activeItemIds.size > 0 && !activeItemIds.has(item.id)) continue;
+    components.push(item.component);
     if (Array.isArray(item.children)) {
       components.push(...collectComponentsFromLayout(item.children));
     }
