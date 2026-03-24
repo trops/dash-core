@@ -1,6 +1,16 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { FontAwesomeIcon, Sidebar, ThemeContext } from "@trops/dash-react";
+import {
+  FontAwesomeIcon,
+  Sidebar,
+  ThemeContext,
+  useSidebar,
+} from "@trops/dash-react";
+
+const CollapsibleContent = ({ children }) => {
+  const { collapsed } = useSidebar();
+  return collapsed ? null : children;
+};
 import { Popover, Transition } from "@headlessui/react";
 
 export const DashSidebar = ({
@@ -43,11 +53,11 @@ export const DashSidebar = ({
     >
       <Sidebar.Header>
         <div className="flex items-center justify-between">
-          {!collapsed && (
+          <CollapsibleContent>
             <span className="font-bold text-lg tracking-tight opacity-80">
               Dash.
             </span>
-          )}
+          </CollapsibleContent>
           <Sidebar.Trigger />
         </div>
       </Sidebar.Header>
@@ -64,30 +74,32 @@ export const DashSidebar = ({
         </Sidebar.Item>
 
         {/* Recents (only when expanded and has items) */}
-        {!collapsed && visibleRecents.length > 0 && (
-          <Sidebar.Group label="Recents">
-            {visibleRecents.map((recent) => {
-              const ws = workspaces.find((w) => w.id === recent.workspaceId);
-              return (
-                <Sidebar.Item
-                  key={recent.workspaceId}
-                  icon={
-                    <FontAwesomeIcon
-                      icon="clock-rotate-left"
-                      className="h-3.5 w-3.5"
-                    />
-                  }
-                  active={recent.workspaceId === activeTabId}
-                  onClick={() => ws && onOpenWorkspace(ws)}
-                >
-                  {(recent.name || "Untitled").replace(/^./, (c) =>
-                    c.toUpperCase(),
-                  )}
-                </Sidebar.Item>
-              );
-            })}
-          </Sidebar.Group>
-        )}
+        <CollapsibleContent>
+          {visibleRecents.length > 0 && (
+            <Sidebar.Group label="Recents">
+              {visibleRecents.map((recent) => {
+                const ws = workspaces.find((w) => w.id === recent.workspaceId);
+                return (
+                  <Sidebar.Item
+                    key={recent.workspaceId}
+                    icon={
+                      <FontAwesomeIcon
+                        icon="clock-rotate-left"
+                        className="h-3.5 w-3.5"
+                      />
+                    }
+                    active={recent.workspaceId === activeTabId}
+                    onClick={() => ws && onOpenWorkspace(ws)}
+                  >
+                    {(recent.name || "Untitled").replace(/^./, (c) =>
+                      c.toUpperCase(),
+                    )}
+                  </Sidebar.Item>
+                );
+              })}
+            </Sidebar.Group>
+          )}
+        </CollapsibleContent>
 
         {/* Dashboards */}
         <Sidebar.Group label="Dashboards">
@@ -100,41 +112,21 @@ export const DashSidebar = ({
         </Sidebar.Group>
 
         {/* Dashboard folders (only when expanded) */}
-        {!collapsed && (
-          <>
-            {menuItems.map((menuItem) => {
-              const folderWorkspaces = workspacesForFolder(menuItem.id);
-              const folderIcon = menuItem.icon || menuItem.folder || "folder";
-              if (folderWorkspaces.length === 0) return null;
-              return (
-                <Sidebar.Group key={menuItem.id} label={menuItem.name}>
-                  {folderWorkspaces.map((ws) => (
-                    <Sidebar.Item
-                      key={ws.id}
-                      icon={
-                        <FontAwesomeIcon
-                          icon={folderIcon}
-                          className="h-3.5 w-3.5"
-                        />
-                      }
-                      active={ws.id === activeTabId}
-                      onClick={() => onOpenWorkspace(ws)}
-                    >
-                      {(ws.name || "Untitled").replace(/^./, (c) =>
-                        c.toUpperCase(),
-                      )}
-                    </Sidebar.Item>
-                  ))}
-                </Sidebar.Group>
-              );
-            })}
-            {orphanedWorkspaces.length > 0 && (
-              <Sidebar.Group label="Uncategorized">
-                {orphanedWorkspaces.map((ws) => (
+        <CollapsibleContent>
+          {menuItems.map((menuItem) => {
+            const folderWorkspaces = workspacesForFolder(menuItem.id);
+            const folderIcon = menuItem.icon || menuItem.folder || "folder";
+            if (folderWorkspaces.length === 0) return null;
+            return (
+              <Sidebar.Group key={menuItem.id} label={menuItem.name}>
+                {folderWorkspaces.map((ws) => (
                   <Sidebar.Item
                     key={ws.id}
                     icon={
-                      <FontAwesomeIcon icon="clone" className="h-3.5 w-3.5" />
+                      <FontAwesomeIcon
+                        icon={folderIcon}
+                        className="h-3.5 w-3.5"
+                      />
                     }
                     active={ws.id === activeTabId}
                     onClick={() => onOpenWorkspace(ws)}
@@ -145,9 +137,27 @@ export const DashSidebar = ({
                   </Sidebar.Item>
                 ))}
               </Sidebar.Group>
-            )}
-          </>
-        )}
+            );
+          })}
+          {orphanedWorkspaces.length > 0 && (
+            <Sidebar.Group label="Uncategorized">
+              {orphanedWorkspaces.map((ws) => (
+                <Sidebar.Item
+                  key={ws.id}
+                  icon={
+                    <FontAwesomeIcon icon="clone" className="h-3.5 w-3.5" />
+                  }
+                  active={ws.id === activeTabId}
+                  onClick={() => onOpenWorkspace(ws)}
+                >
+                  {(ws.name || "Untitled").replace(/^./, (c) =>
+                    c.toUpperCase(),
+                  )}
+                </Sidebar.Item>
+              ))}
+            </Sidebar.Group>
+          )}
+        </CollapsibleContent>
       </Sidebar.Content>
 
       <Sidebar.Footer>
