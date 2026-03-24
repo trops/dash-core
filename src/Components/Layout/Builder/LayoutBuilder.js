@@ -922,7 +922,22 @@ export const LayoutBuilder = ({
         component: widgetKey,
         key: widgetKey,
       };
-      const layout = currentWorkspace["layout"];
+
+      // Remove old widget from layout if the target cell is already occupied
+      let workspace = currentWorkspace;
+      const gridContainer = workspace["layout"].find(
+        (item) => item.id === gridContainerId,
+      );
+      if (gridContainer?.grid?.[cellNumber]?.component) {
+        const oldWidgetId = gridContainer.grid[cellNumber].component;
+        const dashboard = new DashboardModel(workspace);
+        dashboard.removeItemFromLayout(oldWidgetId);
+        // Clear the grid cell reference before adding the new widget
+        gridContainer.grid[cellNumber].component = null;
+        workspace = dashboard.workspace();
+      }
+
+      const layout = workspace["layout"];
       const hasChildren = widgetItem["type"] === "workspace";
 
       const newLayout = addItemToItemLayout(
@@ -942,7 +957,7 @@ export const LayoutBuilder = ({
         };
       }
 
-      const newWorkspace = JSON.parse(JSON.stringify(currentWorkspace));
+      const newWorkspace = JSON.parse(JSON.stringify(workspace));
       newWorkspace["layout"] = newLayout;
       setCurrentWorkspace(newWorkspace);
     } catch (e) {

@@ -2050,4 +2050,44 @@ export class DashboardModel {
       return color;
     }
   }
+
+  /**
+   * Remove orphaned layout items that are not referenced by any grid cell.
+   * Call this during save to keep the workspace data clean.
+   */
+  cleanOrphanedItems() {
+    try {
+      // Collect all item IDs actively referenced by grid cells
+      const activeItemIds = new Set();
+      for (const item of this.layout) {
+        if (item.grid && typeof item.grid === "object") {
+          for (const key of Object.keys(item.grid)) {
+            const cell = item.grid[key];
+            if (cell && typeof cell === "object" && cell.component) {
+              activeItemIds.add(cell.component);
+            }
+          }
+          // The grid container itself is active
+          activeItemIds.add(item.id);
+        }
+      }
+
+      // If no grid containers exist, nothing to clean
+      if (activeItemIds.size === 0) return;
+
+      // Keep root items (parent: 0) and items referenced by grid cells
+      const before = this.layout.length;
+      this.layout = this.layout.filter(
+        (item) => item.parent === 0 || activeItemIds.has(item.id),
+      );
+      const removed = before - this.layout.length;
+      if (removed > 0) {
+        console.log(
+          `[DashboardModel] Cleaned ${removed} orphaned layout item(s)`,
+        );
+      }
+    } catch (e) {
+      console.error("[DashboardModel] Error cleaning orphaned items:", e);
+    }
+  }
 }
