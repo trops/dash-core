@@ -55,15 +55,10 @@ export const ComponentManager = {
     const tempComponentMap = this.componentMap();
     // Handle both module exports (widgetConfig.default) and direct config objects
     const config = widgetConfig.default || widgetConfig;
-    // Use scoped id if available (e.g., "trops.clock.AnalogClockWidget"),
-    // otherwise fall back to the provided widgetKey for backward compatibility
+    // Register under a single canonical key: config.id (scoped widget ID) if
+    // available, otherwise the provided widgetKey. No aliases — one widget, one key.
     const registrationKey = config.id || widgetKey;
     tempComponentMap[registrationKey] = ComponentConfigModel(config);
-    // Also register under plain component name for backward compat
-    // (dashboards may reference "SlackWidget" instead of "trops.slack.SlackWidget")
-    if (config.id && config.id !== widgetKey && !tempComponentMap[widgetKey]) {
-      tempComponentMap[widgetKey] = tempComponentMap[registrationKey];
-    }
     this.setComponentMap(tempComponentMap);
   },
 

@@ -119,7 +119,9 @@ export function extractWidgetConfigs(bundleExports) {
       typeof entry.component === "function" &&
       (entry.type === "widget" || entry.type === "workspace")
     ) {
-      configs.push({ key, config: entry });
+      // Use the canonical widget ID from config if available,
+      // otherwise fall back to the CJS export key
+      configs.push({ key: entry.id || key, config: entry });
     }
   }
 
