@@ -19,7 +19,7 @@ import {
   EmptyState,
   ButtonIcon,
 } from "@trops/dash-react";
-import { LayoutModel } from "../../Models";
+import { LayoutModel, DashboardModel } from "../../Models";
 import { ThemeManagerModal } from "../../Components/Theme";
 import { AppSettingsModal } from "../../Components/Settings";
 
@@ -700,6 +700,11 @@ const DashboardStageInner = ({
         return layoutItem;
       });
       workspaceToSave["layout"] = layout;
+
+      // Clean orphaned layout items and stale listener references before save
+      const dashboardForCleanup = new DashboardModel(workspaceToSave);
+      dashboardForCleanup.cleanOrphanedItems();
+      workspaceToSave = dashboardForCleanup.workspace();
 
       // lets set a version so that we can compare...
       workspaceToSave["version"] = Date.now();

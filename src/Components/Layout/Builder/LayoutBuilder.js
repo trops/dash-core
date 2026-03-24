@@ -1111,6 +1111,17 @@ export const LayoutBuilder = ({
     try {
       // create the new dashboard.
       let dashboard = new DashboardModel(workspace);
+
+      // Remove old widget from layout if the target cell is already occupied
+      const gridContainer = dashboard.layout.find(
+        (item) => item.id === component.id,
+      );
+      if (gridContainer?.grid?.[cellNumber]?.component) {
+        const oldWidgetId = gridContainer.grid[cellNumber].component;
+        dashboard.removeItemFromLayout(oldWidgetId);
+        gridContainer.grid[cellNumber].component = null;
+      }
+
       let componentToAdd = ComponentManager.getComponent(widgetName);
       let widget = LayoutModel(
         componentToAdd,
