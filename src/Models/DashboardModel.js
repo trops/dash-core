@@ -2075,17 +2075,26 @@ export class DashboardModel {
       // If no grid containers exist, nothing to clean
       if (activeItemIds.size === 0) return;
 
-      // Keep root items (parent: 0) and items referenced by grid cells
-      const before = this.layout.length;
+      // Identify orphaned item IDs before removing them
+      const orphanedIds = this.layout
+        .filter((item) => item.parent !== 0 && !activeItemIds.has(item.id))
+        .map((item) => item.id);
+
+      if (orphanedIds.length === 0) return;
+
+      // Remove orphaned items from layout
       this.layout = this.layout.filter(
         (item) => item.parent === 0 || activeItemIds.has(item.id),
       );
-      const removed = before - this.layout.length;
-      if (removed > 0) {
-        console.log(
-          `[DashboardModel] Cleaned ${removed} orphaned layout item(s)`,
-        );
+
+      // Clean listener references on remaining items for each removed orphan
+      for (const id of orphanedIds) {
+        this._cleanupListenerReferencesForId(id);
       }
+
+      console.log(
+        `[DashboardModel] Cleaned ${orphanedIds.length} orphaned layout item(s) and their listener references`,
+      );
     } catch (e) {
       console.error("[DashboardModel] Error cleaning orphaned items:", e);
     }
