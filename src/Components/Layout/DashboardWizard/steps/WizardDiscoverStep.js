@@ -155,9 +155,7 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
                 key={tag}
                 text={tag}
                 onClick={() => handleToggleCategory(tag)}
-                className={
-                  filters.categories.includes(tag) ? "ring-1 ring-blue-400" : ""
-                }
+                active={filters.categories.includes(tag)}
               />
             ))}
           </div>
@@ -172,11 +170,7 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
                 key={prov.key}
                 text={prov.name}
                 onClick={() => handleToggleProvider(prov.key)}
-                className={
-                  filters.providers.includes(prov.key)
-                    ? "ring-1 ring-blue-400"
-                    : ""
-                }
+                active={filters.providers.includes(prov.key)}
               />
             ))}
           </div>
