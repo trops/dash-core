@@ -29,7 +29,8 @@
         "ci:commit": "./scripts/ci.sh --commit",
         "ci:push": "./scripts/ci.sh --push",
         "ci:pr": "./scripts/ci.sh --pr",
-        "ci:release": "./scripts/ci.sh --release"
+        "ci:release": "./scripts/ci.sh --release",
+        "prdize": "node scripts/prdize.js"
     },
     "peerDependencies": {
         "@trops/dash-react": ">=0.1.187",
