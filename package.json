@@ -1,6 +1,6 @@
 {
     "name": "@trops/dash-core",
-    "version": "0.1.282",
+    "version": "0.1.283",
     "description": "Core framework for Dash dashboard applications",
     "main": "dist/index.js",
     "module": "dist/index.esm.js",
@@ -29,7 +29,8 @@
         "ci:commit": "./scripts/ci.sh --commit",
         "ci:push": "./scripts/ci.sh --push",
         "ci:pr": "./scripts/ci.sh --pr",
-        "ci:release": "./scripts/ci.sh --release"
+        "ci:release": "./scripts/ci.sh --release",
+        "prdize": "node scripts/prdize.js"
     },
     "peerDependencies": {
         "@trops/dash-react": ">=0.1.187",
