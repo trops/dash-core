@@ -242,12 +242,18 @@ const mcpDashServerController = {
           // Handle MCP requests on /mcp path
           if (req.url === "/mcp" || req.url?.startsWith("/mcp")) {
             try {
-              transport = new StreamableHTTPServerTransport({
+              // Stateless mode: create a fresh server + transport per request
+              const reqServer = new McpServer({
+                name: "dash-electron",
+                version: "1.0.0",
+              });
+              applyRegistrations(reqServer);
+              const reqTransport = new StreamableHTTPServerTransport({
                 sessionIdGenerator: undefined,
               });
-              await mcpServer.connect(transport);
+              await reqServer.connect(reqTransport);
               connectionCount++;
-              await transport.handleRequest(req, res);
+              await reqTransport.handleRequest(req, res);
             } catch (err) {
               console.error("[mcpDashServer] Error handling MCP request:", err);
               if (!res.headersSent) {
