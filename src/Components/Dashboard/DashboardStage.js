@@ -691,7 +691,7 @@ const DashboardStageInner = ({
       console.log("dashboard clicked save workspace ", workspaceSelected);
       // we have to remove the widgetConfig which contains the component
       // sanitize the workspace layout remove widgetConfig items
-      const workspaceToSave = deepCopy(
+      let workspaceToSave = deepCopy(
         currentWorkspaceRef.current || workspaceSelected,
       );
       const layout = workspaceToSave["layout"].map((layoutItem) => {
