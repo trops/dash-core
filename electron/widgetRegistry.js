@@ -174,6 +174,77 @@ class WidgetRegistry {
     } catch (error) {
       console.error("[WidgetRegistry] Error loading registry:", error);
     }
+
+    // Reconcile: re-register orphaned widget packages found on disk
+    this.reconcileWithDisk();
+  }
+
+  /**
+   * Scan the widgets directory for packages that exist on disk but are
+   * missing from the registry (e.g. because registry.json was manually edited).
+   * Re-registers them so they can be properly managed (listed, uninstalled).
+   */
+  reconcileWithDisk() {
+    try {
+      if (!WIDGETS_CACHE_DIR || !fs.existsSync(WIDGETS_CACHE_DIR)) return;
+
+      const registeredPaths = new Set(
+        Array.from(this.widgets.values()).map((w) => w.path),
+      );
+      let reconciled = false;
+
+      const entries = fs.readdirSync(WIDGETS_CACHE_DIR, {
+        withFileTypes: true,
+      });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+
+        if (entry.name.startsWith("@")) {
+          // Scoped packages: @scope/name
+          const scopeDir = path.join(WIDGETS_CACHE_DIR, entry.name);
+          const pkgs = fs.readdirSync(scopeDir, { withFileTypes: true });
+          for (const pkg of pkgs) {
+            if (!pkg.isDirectory()) continue;
+            const pkgPath = path.join(scopeDir, pkg.name);
+            const pkgId = `${entry.name}/${pkg.name}`;
+            if (!registeredPaths.has(pkgPath) && !this.widgets.has(pkgId)) {
+              this._reregisterOrphan(pkgId, pkgPath);
+              reconciled = true;
+            }
+          }
+        } else if (entry.name !== "registry.json") {
+          // Bare-name packages
+          const pkgPath = path.join(WIDGETS_CACHE_DIR, entry.name);
+          if (!registeredPaths.has(pkgPath) && !this.widgets.has(entry.name)) {
+            this._reregisterOrphan(entry.name, pkgPath);
+            reconciled = true;
+          }
+        }
+      }
+
+      if (reconciled) {
+        this.saveRegistry();
+        console.log("[WidgetRegistry] Disk reconciliation complete");
+      }
+    } catch (err) {
+      console.warn("[WidgetRegistry] Reconciliation error:", err.message);
+    }
+  }
+
+  /**
+   * Re-register an orphaned widget package found on disk.
+   */
+  _reregisterOrphan(pkgId, pkgPath) {
+    console.log(`[WidgetRegistry] Re-registering orphaned widget: ${pkgId}`);
+    const { scope } = parsePackageId(pkgId);
+    this.widgets.set(pkgId, {
+      name: pkgId,
+      packageId: pkgId,
+      scope: scope || null,
+      path: pkgPath,
+      version: null,
+      orphaned: true,
+    });
   }
 
   /**
@@ -767,10 +838,23 @@ class WidgetRegistry {
    * @param {string} widgetName - Name of the widget to remove
    */
   uninstallWidget(widgetName) {
-    const widget = this.widgets.get(widgetName);
+    let widget = this.widgets.get(widgetName);
+
+    // Fallback: widget not in registry but might exist on disk
     if (!widget) {
-      console.warn(`[WidgetRegistry] Widget not found: ${widgetName}`);
-      return false;
+      const candidatePath = path.join(
+        WIDGETS_CACHE_DIR,
+        ...widgetName.split("/"),
+      );
+      if (fs.existsSync(candidatePath)) {
+        widget = { path: candidatePath };
+        console.log(
+          `[WidgetRegistry] Widget ${widgetName} not in registry, removing from disk`,
+        );
+      } else {
+        console.warn(`[WidgetRegistry] Widget not found: ${widgetName}`);
+        return false;
+      }
     }
 
     try {
@@ -943,7 +1027,13 @@ function setupWidgetRegistryHandlers() {
   ipcMain.handle("widget:uninstall", (event, widgetName) => {
     const schedulerController = require("./controller/schedulerController");
     schedulerController.cleanupWidget(widgetName);
-    return getWidgetRegistry().uninstallWidget(widgetName);
+    const success = getWidgetRegistry().uninstallWidget(widgetName);
+    if (success) {
+      BrowserWindow.getAllWindows().forEach((win) => {
+        win.webContents.send("widget:uninstalled", { widgetName });
+      });
+    }
+    return success;
   });
 
   ipcMain.handle("widget:cache-path", () => getWidgetRegistry().getCachePath());

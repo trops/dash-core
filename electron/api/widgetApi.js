@@ -294,6 +294,23 @@ const widgetApi = {
   },
 
   /**
+   * Listen for widget uninstallation events
+   * Useful for cleaning up ComponentManager entries and refreshing UI
+   *
+   * @param {Function} callback - Function called when a widget is uninstalled
+   *
+   * @example
+   * mainApi.widgets.onUninstalled(({ widgetName }) => {
+   *   console.log(`Widget ${widgetName} was uninstalled!`);
+   * });
+   */
+  onUninstalled: (callback) => {
+    ipcRenderer.on("widget:uninstalled", (event, data) => {
+      callback(data);
+    });
+  },
+
+  /**
    * Listen for batch widget loading events
    * Useful for updating UI when multiple widgets are loaded at once
    *
@@ -318,6 +335,15 @@ const widgetApi = {
    */
   removeInstalledListener: (callback) => {
     ipcRenderer.removeListener("widget:installed", callback);
+  },
+
+  /**
+   * Remove listener for widget uninstallation events
+   *
+   * @param {Function} callback - The callback to remove
+   */
+  removeUninstalledListener: (callback) => {
+    ipcRenderer.removeListener("widget:uninstalled", callback);
   },
 
   /**
