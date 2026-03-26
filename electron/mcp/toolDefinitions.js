@@ -8,7 +8,8 @@
 const dashboardTools = [
   {
     name: "list_dashboards",
-    description: "List all dashboards with their IDs, names, and widget counts",
+    description:
+      "List all dashboards with their IDs, names, and widget counts. Use this to discover existing dashboards before creating new ones or to find a dashboard ID for other operations.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -18,7 +19,7 @@ const dashboardTools = [
   {
     name: "get_dashboard",
     description:
-      "Get full details of a dashboard including layout and widgets. Omit dashboardId to get the active dashboard.",
+      "Get full details of a dashboard including layout, widgets, and theme. Omit dashboardId to get the active dashboard. Use this to inspect widget configurations or to understand the current layout before making changes.",
     inputSchema: {
       type: "object",
       properties: {
@@ -33,7 +34,8 @@ const dashboardTools = [
   },
   {
     name: "create_dashboard",
-    description: "Create a new dashboard with the given name",
+    description:
+      "Create a new empty dashboard with the given name. Returns the dashboard ID. After creating, use search_widgets or list_widgets to find widgets, then add_widget to populate the dashboard.",
     inputSchema: {
       type: "object",
       properties: {
@@ -48,7 +50,7 @@ const dashboardTools = [
   {
     name: "delete_dashboard",
     description:
-      "Delete a dashboard by ID. Cannot delete the last remaining dashboard.",
+      "Delete a dashboard by ID. Cannot delete the last remaining dashboard. Use list_dashboards first to find the dashboard ID.",
     inputSchema: {
       type: "object",
       properties: {
@@ -63,7 +65,7 @@ const dashboardTools = [
   {
     name: "get_app_stats",
     description:
-      "Get application statistics: counts of dashboards, widgets, themes, and providers",
+      "Get application statistics: counts of dashboards, widgets, themes, and providers. Useful for understanding the current state of the app at a glance.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -76,7 +78,7 @@ const widgetTools = [
   {
     name: "add_widget",
     description:
-      "Add a widget to a dashboard by component name. Use list_widgets or search_widgets to find available widget names.",
+      "Add a widget to a dashboard by component name. Call list_widgets or search_widgets first to discover available widget names. Can be called multiple times to add multiple widgets. Returns the widget instance ID for use with configure_widget.",
     inputSchema: {
       type: "object",
       properties: {
@@ -96,7 +98,8 @@ const widgetTools = [
   },
   {
     name: "remove_widget",
-    description: "Remove a widget instance from a dashboard by its ID",
+    description:
+      "Remove a widget instance from a dashboard by its ID. Use get_dashboard to find widget instance IDs.",
     inputSchema: {
       type: "object",
       properties: {
@@ -115,7 +118,7 @@ const widgetTools = [
   {
     name: "configure_widget",
     description:
-      "Update a widget's configuration. The config object is merged into the existing config.",
+      "Update a widget's configuration. The config object is merged into the existing config (partial update). Use get_dashboard to see current widget configs and discover valid config keys.",
     inputSchema: {
       type: "object",
       properties: {
@@ -139,7 +142,7 @@ const widgetTools = [
   {
     name: "list_widgets",
     description:
-      "List available widgets from the registry, including name, description, and provider info",
+      "List all available widgets from the registry, including name, description, and provider requirements. Use this to discover what widgets can be added to dashboards with add_widget.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -149,7 +152,7 @@ const widgetTools = [
   {
     name: "search_widgets",
     description:
-      "Search the widget registry by keyword. Returns matching widgets with name, description, and provider info.",
+      "Search the widget registry by keyword. Returns matching widgets with name, description, and provider info. Use the widget name from results with add_widget to add it to a dashboard.",
     inputSchema: {
       type: "object",
       properties: {
@@ -168,7 +171,7 @@ const themeTools = [
   {
     name: "list_themes",
     description:
-      "List all saved themes with their names and whether they are currently active",
+      "List all saved themes with their names and whether they are currently active. Use this to discover available themes before applying one.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -178,7 +181,7 @@ const themeTools = [
   {
     name: "get_theme",
     description:
-      "Get full details of a theme by name, including all color values",
+      "Get full details of a theme by name, including all color values and shade mappings. Use list_themes first to find theme names.",
     inputSchema: {
       type: "object",
       properties: {
@@ -193,7 +196,7 @@ const themeTools = [
   {
     name: "create_theme",
     description:
-      "Create a new theme from a colors object. The colors object should contain color role keys (e.g. primary, secondary, surface, background) mapped to hex values or shade objects.",
+      "Create a new theme from a colors object. Primary maps to buttons, links, and active states. Secondary maps to backgrounds, cards, and panels. Tertiary maps to accents, badges, and highlights. Example colors: { primary: '#3b82f6', secondary: '#10b981', tertiary: '#f59e0b' }. After creation, use apply_theme to activate it.",
     inputSchema: {
       type: "object",
       properties: {
@@ -213,7 +216,7 @@ const themeTools = [
   {
     name: "create_theme_from_url",
     description:
-      "Extract brand colors from a website URL and generate a theme. Loads the page, extracts colors from meta tags, CSS variables, computed styles, and favicons, then maps them to theme roles.",
+      "Extract brand colors from a website URL and generate a matching theme. Loads the page in a hidden browser, extracts colors from meta tags, CSS variables, computed styles, and favicons, then maps them to theme roles. Works best with pages that have visible brand colors. Takes a few seconds to process. After creation, use apply_theme to activate it.",
     inputSchema: {
       type: "object",
       properties: {
@@ -234,7 +237,7 @@ const themeTools = [
   {
     name: "apply_theme",
     description:
-      "Apply a saved theme to the active dashboard. The theme must already exist (use list_themes to see available themes).",
+      "Apply a saved theme to the active dashboard. The theme must already exist -- use list_themes to see available themes, or create one first with create_theme or create_theme_from_url.",
     inputSchema: {
       type: "object",
       properties: {
@@ -248,11 +251,31 @@ const themeTools = [
   },
 ];
 
+const guideTools = [
+  {
+    name: "get_setup_guide",
+    description:
+      "Get a contextual setup guide for Dash. Returns step-by-step instructions for the requested topic. Call this when the user asks how to get started, what they can do, or needs help with a specific workflow.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        topic: {
+          type: "string",
+          enum: ["dashboard", "theme", "provider", "widget", "overview"],
+          description:
+            "Topic to get help with. Use 'overview' or omit for a general capabilities guide.",
+        },
+      },
+      required: [],
+    },
+  },
+];
+
 const providerTools = [
   {
     name: "list_providers",
     description:
-      "List all configured providers with their names, types, and status. Credential secrets are never returned.",
+      "List all configured providers with their names, types, and status. Credential secrets are never returned. Use this to check which services are already connected.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -262,7 +285,7 @@ const providerTools = [
   {
     name: "add_provider",
     description:
-      "Add a new provider configuration. Supports credential providers (API keys) and MCP providers (server connections). Credentials are encrypted at rest.",
+      "Add a new provider configuration. Supports credential providers (API keys) and MCP providers (server connections with tool scoping). Credentials are encrypted at rest. Common types: 'github', 'slack', 'algolia', 'notion', 'openai'. Use list_providers first to check existing connections.",
     inputSchema: {
       type: "object",
       properties: {
@@ -319,4 +342,10 @@ const providerTools = [
   },
 ];
 
-module.exports = { dashboardTools, widgetTools, themeTools, providerTools };
+module.exports = {
+  dashboardTools,
+  widgetTools,
+  themeTools,
+  providerTools,
+  guideTools,
+};

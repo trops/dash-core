@@ -66,11 +66,13 @@ function stopCleanup() {
   rateBuckets.clear();
 }
 
-// --- Tool & Resource Registration ---
-// These are populated by other controllers (DASH-78, DASH-79, etc.)
+// --- Tool, Resource & Prompt Registration ---
+// These are populated by other modules (DASH-78, DASH-79, etc.)
 // Each entry: { name, description, inputSchema, handler }
 const registeredTools = [];
 const registeredResources = [];
+// Each entry: { name, description, args, handler }
+const registeredPrompts = [];
 
 /**
  * Register a tool to be exposed via the MCP server.
@@ -88,7 +90,15 @@ function registerResource(resourceDef) {
 }
 
 /**
- * Apply all registered tools and resources to the McpServer instance.
+ * Register a prompt to be exposed via the MCP server.
+ * Prompts are guided entry points that LLM clients display as suggested actions.
+ */
+function registerPrompt(promptDef) {
+  registeredPrompts.push(promptDef);
+}
+
+/**
+ * Apply all registered tools, resources, and prompts to the McpServer instance.
  */
 function applyRegistrations(server) {
   for (const tool of registeredTools) {
@@ -101,6 +111,23 @@ function applyRegistrations(server) {
       resource.metadata || {},
       resource.handler,
     );
+  }
+  for (const prompt of registeredPrompts) {
+    if (prompt.args && Object.keys(prompt.args).length > 0) {
+      // Prompt with arguments — use the 4-arg overload
+      // Build a Zod-compatible arg schema from our plain arg definitions
+      const z = require("zod");
+      const shape = {};
+      for (const [key, def] of Object.entries(prompt.args)) {
+        shape[key] = def.required
+          ? z.string().describe(def.description)
+          : z.string().optional().describe(def.description);
+      }
+      server.prompt(prompt.name, prompt.description, shape, prompt.handler);
+    } else {
+      // Prompt with no arguments — use the 2-arg overload
+      server.prompt(prompt.name, prompt.description, prompt.handler);
+    }
   }
 }
 
@@ -401,6 +428,7 @@ const mcpDashServerController = {
   // Expose registration functions for other controllers
   registerTool,
   registerResource,
+  registerPrompt,
   getServerContext,
 };
 

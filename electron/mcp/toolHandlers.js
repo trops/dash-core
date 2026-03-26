@@ -1583,6 +1583,133 @@ async function handleRemoveProvider({ name }) {
   };
 }
 
+// ── Setup Guide ───────────────────────────────────────────────────────
+
+const GUIDE_CONTENT = {
+  overview: `# Dash MCP Server — What You Can Do
+
+You are connected to Dash, a dashboard application. Here is what you can help with:
+
+## Dashboards
+- **Create** dashboards with create_dashboard
+- **Populate** them with widgets using search_widgets + add_widget
+- **Configure** widgets with configure_widget
+- **Inspect** with list_dashboards and get_dashboard
+
+## Themes
+- **Create** themes from hex colors with create_theme
+- **Extract** brand colors from any website with create_theme_from_url
+- **Apply** themes with apply_theme
+
+## Providers
+- **Connect** external services (Slack, GitHub, Algolia, etc.) with add_provider
+- **Check** existing connections with list_providers
+
+## Typical Workflow
+1. Create a dashboard: create_dashboard("My Dashboard")
+2. Search for widgets: search_widgets("slack") or list_widgets()
+3. Add widgets: add_widget(widgetName, dashboardId)
+4. Configure: configure_widget(widgetId, config)
+5. Style it: create_theme_from_url("https://example.com") then apply_theme(name)`,
+
+  dashboard: `# How to Build a Dashboard
+
+## Step 1: Create
+Use create_dashboard with a descriptive name.
+
+## Step 2: Find Widgets
+- search_widgets("keyword") — find widgets by topic (e.g., "slack", "github", "analytics")
+- list_widgets() — see all available widgets
+
+## Step 3: Add Widgets
+Call add_widget for each widget you want. You need the exact component name from the search/list results.
+
+## Step 4: Configure
+Use get_dashboard to see the current state, then configure_widget to set options on each widget instance.
+
+## Tips
+- You can add the same widget type multiple times with different configurations
+- Some widgets require providers (check the providers field in search results)
+- Use list_providers to check what is already connected`,
+
+  theme: `# How to Create and Apply Themes
+
+## Option A: From Colors
+Use create_theme with a name and colors object:
+- **primary** — buttons, links, active states (e.g., "#3b82f6" for blue)
+- **secondary** — backgrounds, cards, panels (e.g., "#10b981" for emerald)
+- **tertiary** — accents, badges, highlights (e.g., "#f59e0b" for amber)
+
+Example: create_theme("My Theme", { primary: "#3b82f6", secondary: "#10b981", tertiary: "#f59e0b" })
+
+## Option B: From a Website
+Use create_theme_from_url with any website URL. Dash extracts brand colors automatically.
+
+Example: create_theme_from_url("https://stripe.com")
+
+## Apply
+After creating, use apply_theme with the theme name.
+
+## Browse
+Use list_themes to see all saved themes, get_theme to inspect colors.`,
+
+  provider: `# How to Set Up Providers
+
+Providers connect Dash widgets to external services. Some widgets require providers to function.
+
+## Available Services
+Common provider types: github, slack, algolia, notion, openai, google-drive, gmail, google-calendar, brave-search, filesystem, gong
+
+## Adding a Provider
+Use add_provider with:
+- **name** — display name (e.g., "My GitHub")
+- **type** — service type (e.g., "github")
+- **credentials** — API keys/tokens for the service
+
+## Credential Types by Service
+- **GitHub**: { token: "ghp_..." } — Personal Access Token from github.com/settings/tokens
+- **Slack**: { botToken: "xoxb-...", teamId: "T..." } — from Slack app settings
+- **Algolia**: { appId: "...", apiKey: "..." } — from Algolia dashboard
+- **OpenAI**: { apiKey: "sk-..." } — from platform.openai.com/api-keys
+- **Notion**: { apiKey: "ntn_..." } — from notion.so/my-integrations
+
+## MCP Providers
+For MCP server providers, set providerClass to "mcp" and include mcpConfig with transport, command, and args.
+
+## Check Status
+Use list_providers to see what is already connected.`,
+
+  widget: `# How to Find and Add Widgets
+
+## Discover Widgets
+- search_widgets("keyword") — search by topic, service name, or function
+- list_widgets() — browse all available widgets
+
+## Add to Dashboard
+Use add_widget with the widget component name and optionally a dashboard ID.
+
+## Configure
+After adding, use configure_widget with the widget instance ID and a config object.
+Use get_dashboard to see current widget configs and discover valid config keys.
+
+## Widget Requirements
+Some widgets require providers (external service connections). Check the "providers" field in search results. Use add_provider to connect required services.
+
+## Tips
+- Widget names are case-sensitive — use the exact name from search/list results
+- You can add the same widget type multiple times with different configs
+- Widgets auto-refresh when providers are connected`,
+};
+
+async function handleGetSetupGuide({ topic }) {
+  const key = topic || "overview";
+  const content = GUIDE_CONTENT[key] || GUIDE_CONTENT.overview;
+
+  return {
+    content: [{ type: "text", text: content }],
+  };
+}
+
 module.exports = {
   handleListDashboards,
   handleGetDashboard,
@@ -1602,4 +1729,5 @@ module.exports = {
   handleListProviders,
   handleAddProvider,
   handleRemoveProvider,
+  handleGetSetupGuide,
 };
