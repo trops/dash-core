@@ -8,13 +8,14 @@
  * MCP *client* that connects to external tool servers for widgets.
  *
  * Architecture:
- *   - Node http server bound to 127.0.0.1 (localhost only)
+ *   - Node https server bound to 127.0.0.1 (localhost only)
+ *   - Auto-generated self-signed TLS certificate for localhost
  *   - StreamableHTTPServerTransport from @modelcontextprotocol/sdk
  *   - McpServer registers tools and resources
  *   - Bearer token authentication on all requests
  *   - Rate limiting via token bucket (60 req/min)
  */
-const http = require("http");
+const https = require("https");
 const { randomUUID } = require("crypto");
 const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
 const {
@@ -22,10 +23,11 @@ const {
 } = require("@modelcontextprotocol/sdk/server/streamableHttp.js");
 
 const settingsController = require("./settingsController");
+const { getOrCreateCert } = require("../mcp/tlsCert");
 
 // --- State ---
 let mcpServer = null;
-let httpServer = null;
+let httpsServer = null;
 let transport = null;
 let startTime = null;
 let connectionCount = 0;
@@ -188,7 +190,7 @@ const mcpDashServerController = {
    * @param {Object} options - { port?: number }
    */
   startServer: async (win, options = {}) => {
-    if (httpServer) {
+    if (httpsServer) {
       return {
         success: false,
         error: "Server is already running",
@@ -207,74 +209,83 @@ const mcpDashServerController = {
         version: "1.0.0",
       });
 
+      // Generate or load TLS certificate
+      const { app } = require("electron");
+      const path = require("path");
+      const certsDir = path.join(app.getPath("userData"), "certs");
+      const tlsCert = getOrCreateCert(certsDir);
+
       // Apply registered tools and resources
       applyRegistrations(mcpServer);
 
-      // Create HTTP server with auth and rate limiting
-      httpServer = http.createServer(async (req, res) => {
-        const ip = req.socket.remoteAddress || req.connection.remoteAddress;
+      // Create HTTPS server with auth and rate limiting
+      httpsServer = https.createServer(
+        { key: tlsCert.key, cert: tlsCert.cert },
+        async (req, res) => {
+          const ip = req.socket.remoteAddress || req.connection.remoteAddress;
 
-        // Rate limiting
-        if (isRateLimited(ip)) {
-          res.writeHead(429, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Rate limit exceeded" }));
-          return;
-        }
+          // Rate limiting
+          if (isRateLimited(ip)) {
+            res.writeHead(429, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Rate limit exceeded" }));
+            return;
+          }
 
-        // Bearer token auth
-        const authHeader = req.headers.authorization;
-        if (!authHeader || authHeader !== `Bearer ${token}`) {
-          res.writeHead(401, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Unauthorized" }));
-          return;
-        }
+          // Bearer token auth
+          const authHeader = req.headers.authorization;
+          if (!authHeader || authHeader !== `Bearer ${token}`) {
+            res.writeHead(401, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Unauthorized" }));
+            return;
+          }
 
-        // Handle MCP requests on /mcp path
-        if (req.url === "/mcp" || req.url?.startsWith("/mcp")) {
-          try {
-            transport = new StreamableHTTPServerTransport({
-              sessionIdGenerator: undefined,
-            });
-            await mcpServer.connect(transport);
-            connectionCount++;
-            await transport.handleRequest(req, res);
-          } catch (err) {
-            console.error("[mcpDashServer] Error handling MCP request:", err);
-            if (!res.headersSent) {
-              res.writeHead(500, {
+          // Handle MCP requests on /mcp path
+          if (req.url === "/mcp" || req.url?.startsWith("/mcp")) {
+            try {
+              transport = new StreamableHTTPServerTransport({
+                sessionIdGenerator: undefined,
+              });
+              await mcpServer.connect(transport);
+              connectionCount++;
+              await transport.handleRequest(req, res);
+            } catch (err) {
+              console.error("[mcpDashServer] Error handling MCP request:", err);
+              if (!res.headersSent) {
+                res.writeHead(500, {
+                  "Content-Type": "application/json",
+                });
+                res.end(
+                  JSON.stringify({
+                    error: "Internal server error",
+                  }),
+                );
+              }
+            }
+          } else {
+            // Health check endpoint
+            if (req.url === "/health" && req.method === "GET") {
+              res.writeHead(200, {
                 "Content-Type": "application/json",
               });
               res.end(
                 JSON.stringify({
-                  error: "Internal server error",
+                  status: "ok",
+                  server: "dash-electron-mcp",
+                  version: "1.0.0",
                 }),
               );
+              return;
             }
+            res.writeHead(404, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Not found" }));
           }
-        } else {
-          // Health check endpoint
-          if (req.url === "/health" && req.method === "GET") {
-            res.writeHead(200, {
-              "Content-Type": "application/json",
-            });
-            res.end(
-              JSON.stringify({
-                status: "ok",
-                server: "dash-electron-mcp",
-                version: "1.0.0",
-              }),
-            );
-            return;
-          }
-          res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Not found" }));
-        }
-      });
+        },
+      );
 
       // Bind to localhost only
       await new Promise((resolve, reject) => {
-        httpServer.on("error", (err) => {
-          httpServer = null;
+        httpsServer.on("error", (err) => {
+          httpsServer = null;
           mcpServer = null;
           if (err.code === "EADDRINUSE") {
             reject(
@@ -286,7 +297,7 @@ const mcpDashServerController = {
             reject(err);
           }
         });
-        httpServer.listen(port, "127.0.0.1", () => {
+        httpsServer.listen(port, "127.0.0.1", () => {
           resolve();
         });
       });
@@ -305,17 +316,17 @@ const mcpDashServerController = {
       });
 
       console.log(
-        `[mcpDashServer] Server started on http://127.0.0.1:${port}/mcp`,
+        `[mcpDashServer] Server started on https://127.0.0.1:${port}/mcp`,
       );
 
       return {
         success: true,
         port,
-        url: `http://127.0.0.1:${port}/mcp`,
+        url: `https://127.0.0.1:${port}/mcp`,
       };
     } catch (err) {
       console.error("[mcpDashServer] Failed to start server:", err);
-      httpServer = null;
+      httpsServer = null;
       mcpServer = null;
       return {
         success: false,
@@ -328,7 +339,7 @@ const mcpDashServerController = {
    * Stop the MCP Dash server.
    */
   stopServer: async (win) => {
-    if (!httpServer) {
+    if (!httpsServer) {
       return { success: true, message: "Server was not running" };
     }
 
@@ -336,7 +347,7 @@ const mcpDashServerController = {
       stopCleanup();
 
       await new Promise((resolve) => {
-        httpServer.close(() => resolve());
+        httpsServer.close(() => resolve());
         // Force close after 5 seconds
         setTimeout(() => resolve(), 5000);
       });
@@ -349,7 +360,7 @@ const mcpDashServerController = {
         }
       }
 
-      httpServer = null;
+      httpsServer = null;
       mcpServer = null;
       transport = null;
       startTime = null;
@@ -387,7 +398,7 @@ const mcpDashServerController = {
   getStatus: (win) => {
     const serverSettings = getMcpServerSettings(win);
     return {
-      running: !!httpServer,
+      running: !!httpsServer,
       enabled: serverSettings.enabled || false,
       port: serverSettings.port || 3141,
       connectionCount,
