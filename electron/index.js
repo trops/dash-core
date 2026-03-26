@@ -78,17 +78,21 @@ const widgetRegistry = require("./widgetRegistry");
 const widgetCompiler = require("./widgetCompiler");
 const dynamicWidgetLoader = require("./dynamicWidgetLoader");
 
-// --- MCP Dash Server Tools ---
+// --- MCP Dash Server Tools, Resources & Prompts ---
 const { registerDashboardTools } = require("./mcp/dashboardTools");
 const { registerWidgetTools } = require("./mcp/widgetTools");
 const { registerThemeTools } = require("./mcp/themeTools");
 const { registerProviderTools } = require("./mcp/providerTools");
+const { registerGuideTools } = require("./mcp/guideTools");
 const { registerResources } = require("./mcp/resources");
+const { registerPrompts } = require("./mcp/promptRegistration");
 registerDashboardTools();
 registerWidgetTools();
 registerThemeTools();
 registerProviderTools();
+registerGuideTools();
 registerResources();
+registerPrompts();
 
 // --- Schema ---
 const dashboardConfigValidator = require("./schema/dashboardConfigValidator");
