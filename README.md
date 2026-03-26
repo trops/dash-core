@@ -12,9 +12,9 @@ npm install @trops/dash-core
 
 ```json
 {
-    "@trops/dash-react": ">=0.1.187",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+  "@trops/dash-react": ">=0.1.187",
+  "react": "^18.2.0",
+  "react-dom": "^18.2.0"
 }
 ```
 
@@ -26,31 +26,31 @@ Platform-agnostic UI framework — contexts, hooks, models, components, widget s
 
 ```javascript
 import {
-    ComponentManager,
-    DashboardPublisher,
-    ErrorBoundary,
-    // Contexts
-    AppContext,
-    DashboardContext,
-    ThemeWrapper,
-    ProviderContext,
-    // Hooks
-    useDashboard,
-    useMcpProvider,
-    useWidgetProviders,
-    useInstalledWidgets,
-    // Models
-    DashboardModel,
-    LayoutModel,
-    ThemeModel,
-    // Components
-    LayoutBuilder,
-    SettingsPanel,
-    NavigationBar,
-    // Widget
-    Widget,
-    WidgetFactory,
-    ExternalWidget,
+  ComponentManager,
+  DashboardPublisher,
+  ErrorBoundary,
+  // Contexts
+  AppContext,
+  DashboardContext,
+  ThemeWrapper,
+  ProviderContext,
+  // Hooks
+  useDashboard,
+  useMcpProvider,
+  useWidgetProviders,
+  useInstalledWidgets,
+  // Models
+  DashboardModel,
+  LayoutModel,
+  ThemeModel,
+  // Components
+  LayoutBuilder,
+  SettingsPanel,
+  NavigationBar,
+  // Widget
+  Widget,
+  WidgetFactory,
+  ExternalWidget,
 } from "@trops/dash-core";
 ```
 
@@ -60,20 +60,20 @@ Controllers, IPC handlers, events, and widget pipeline for Electron apps.
 
 ```javascript
 const {
-    // Factory
-    createMainApi,
-    // Controllers
-    providerController,
-    mcpController,
-    workspaceController,
-    themeController,
-    registryController,
-    // Widget pipeline
-    widgetRegistry,
-    widgetCompiler,
-    dynamicWidgetLoader,
-    // Events
-    events,
+  // Factory
+  createMainApi,
+  // Controllers
+  providerController,
+  mcpController,
+  workspaceController,
+  themeController,
+  registryController,
+  // Widget pipeline
+  widgetRegistry,
+  widgetCompiler,
+  dynamicWidgetLoader,
+  // Events
+  events,
 } = require("@trops/dash-core/electron");
 ```
 
@@ -102,28 +102,28 @@ const {
 
 Platform-agnostic UI framework.
 
-| Module | Key Files | Purpose |
-|---|---|---|
-| **ComponentManager** | `ComponentManager.js` | Widget/workspace registration, config resolution |
-| **Context** | `Context/` | AppContext, DashboardContext, ThemeWrapper, ProviderContext, WidgetContext, WorkspaceContext |
-| **Hooks** | `hooks/` | useDashboard, useMcpProvider, useWidgetProviders, useInstalledWidgets, useWidgetEvents, useRegistrySearch |
-| **Models** | `Models/` | DashboardModel, LayoutModel, ThemeModel, ComponentConfigModel, SettingsModel, etc. |
-| **Api** | `Api/` | DashboardApi, ElectronDashboardApi (typed), WidgetApi, ThemeApi, MockDashboardApi |
-| **Components** | `Components/` | Dashboard, Layout, Settings, Navigation, Theme, Provider, Menu, Workspace |
-| **Widget** | `Widget/` | Widget, WidgetFactory, ExternalWidget |
-| **Utils** | `utils/` | widgetBundleLoader, layout, validation, mcpUtils, dragTypes, resolveIcon, themeGenerator, DynamicWidgetLoader, WidgetRegistry, plugin-loader |
+| Module               | Key Files             | Purpose                                                                                                                                      |
+| -------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **ComponentManager** | `ComponentManager.js` | Widget/workspace registration, config resolution                                                                                             |
+| **Context**          | `Context/`            | AppContext, DashboardContext, ThemeWrapper, ProviderContext, WidgetContext, WorkspaceContext                                                 |
+| **Hooks**            | `hooks/`              | useDashboard, useMcpProvider, useWidgetProviders, useInstalledWidgets, useWidgetEvents, useRegistrySearch                                    |
+| **Models**           | `Models/`             | DashboardModel, LayoutModel, ThemeModel, ComponentConfigModel, SettingsModel, etc.                                                           |
+| **Api**              | `Api/`                | DashboardApi, ElectronDashboardApi (typed), WidgetApi, ThemeApi, MockDashboardApi                                                            |
+| **Components**       | `Components/`         | Dashboard, Layout, Settings, Navigation, Theme, Provider, Menu, Workspace                                                                    |
+| **Widget**           | `Widget/`             | Widget, WidgetFactory, ExternalWidget                                                                                                        |
+| **Utils**            | `utils/`              | widgetBundleLoader, layout, validation, mcpUtils, dragTypes, resolveIcon, themeGenerator, DynamicWidgetLoader, WidgetRegistry, plugin-loader |
 
 ### Electron Layer (`electron/`)
 
 Main process controllers, APIs, and widget pipeline.
 
-| Module | Key Files | Purpose |
-|---|---|---|
-| **Controllers** | `controller/` | providerController, mcpController, workspaceController, themeController, settingsController, layoutController, dataController, registryController, secureStoreController, dialogController, algoliaController, openaiController, menuItemsController, pluginController |
-| **APIs** | `api/` | IPC handlers for each controller + `mainApi.js` (createMainApi factory) |
-| **Events** | `events/` | Event channel definitions for each module |
-| **Widget Pipeline** | `widgetRegistry.js`, `widgetCompiler.js`, `dynamicWidgetLoader.js` | Install, compile (esbuild), and load external widgets |
-| **MCP** | `mcp/mcpServerCatalog.json` | MCP server definitions (transport, command, args, env mapping) |
+| Module              | Key Files                                                          | Purpose                                                                                                                                                                                                                                                                |
+| ------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Controllers**     | `controller/`                                                      | providerController, mcpController, workspaceController, themeController, settingsController, layoutController, dataController, registryController, secureStoreController, dialogController, algoliaController, openaiController, menuItemsController, pluginController |
+| **APIs**            | `api/`                                                             | IPC handlers for each controller + `mainApi.js` (createMainApi factory)                                                                                                                                                                                                |
+| **Events**          | `events/`                                                          | Event channel definitions for each module                                                                                                                                                                                                                              |
+| **Widget Pipeline** | `widgetRegistry.js`, `widgetCompiler.js`, `dynamicWidgetLoader.js` | Install, compile (esbuild), and load external widgets                                                                                                                                                                                                                  |
+| **MCP**             | `mcp/mcpServerCatalog.json`                                        | MCP server definitions (transport, command, args, env mapping)                                                                                                                                                                                                         |
 
 ### Directory Structure
 
@@ -187,7 +187,7 @@ Template apps use `createMainApi(extensions)` to combine core APIs with custom o
 const { createMainApi } = require("@trops/dash-core/electron");
 
 const api = createMainApi({
-    myCustomApi: require("./myCustomApi"),
+  myCustomApi: require("./myCustomApi"),
 });
 ```
 
@@ -236,25 +236,25 @@ import { ThemeContext } from "./Context/ThemeContext";
 
 ## Key Files
 
-| File | Purpose |
-|---|---|
-| `src/index.js` | Main renderer export + auto-registration |
-| `electron/index.js` | Main electron export |
-| `electron/api/mainApi.js` | `createMainApi(extensions)` factory |
-| `src/ComponentManager.js` | Widget registration system |
-| `src/Context/ThemeWrapper.js` | Theme provider (imports ThemeContext from @trops/dash-react) |
-| `src/Context/DashboardWrapper.js` | Dashboard context + provider passing |
-| `src/hooks/useMcpProvider.js` | MCP server connection and tool calling |
-| `src/hooks/useWidgetProviders.js` | Widget provider resolution |
-| `src/hooks/useInstalledWidgets.js` | Merges builtin + installed widgets |
-| `src/utils/widgetBundleLoader.js` | CJS bundle evaluation in renderer |
-| `src/Models/LayoutModel.js` | Layout processing, refreshes events from ComponentManager |
-| `src/Models/ComponentConfigModel.js` | Normalizes widget config with defaults |
-| `electron/controller/providerController.js` | Provider CRUD + encryption |
-| `electron/controller/mcpController.js` | MCP server spawn/stop/call |
-| `electron/widgetRegistry.js` | Widget install/uninstall persistence |
-| `electron/widgetCompiler.js` | esbuild compilation pipeline |
-| `electron/mcp/mcpServerCatalog.json` | MCP server definitions |
+| File                                        | Purpose                                                      |
+| ------------------------------------------- | ------------------------------------------------------------ |
+| `src/index.js`                              | Main renderer export + auto-registration                     |
+| `electron/index.js`                         | Main electron export                                         |
+| `electron/api/mainApi.js`                   | `createMainApi(extensions)` factory                          |
+| `src/ComponentManager.js`                   | Widget registration system                                   |
+| `src/Context/ThemeWrapper.js`               | Theme provider (imports ThemeContext from @trops/dash-react) |
+| `src/Context/DashboardWrapper.js`           | Dashboard context + provider passing                         |
+| `src/hooks/useMcpProvider.js`               | MCP server connection and tool calling                       |
+| `src/hooks/useWidgetProviders.js`           | Widget provider resolution                                   |
+| `src/hooks/useInstalledWidgets.js`          | Merges builtin + installed widgets                           |
+| `src/utils/widgetBundleLoader.js`           | CJS bundle evaluation in renderer                            |
+| `src/Models/LayoutModel.js`                 | Layout processing, refreshes events from ComponentManager    |
+| `src/Models/ComponentConfigModel.js`        | Normalizes widget config with defaults                       |
+| `electron/controller/providerController.js` | Provider CRUD + encryption                                   |
+| `electron/controller/mcpController.js`      | MCP server spawn/stop/call                                   |
+| `electron/widgetRegistry.js`                | Widget install/uninstall persistence                         |
+| `electron/widgetCompiler.js`                | esbuild compilation pipeline                                 |
+| `electron/mcp/mcpServerCatalog.json`        | MCP server definitions                                       |
 
 ## Documentation
 
@@ -271,10 +271,10 @@ See [docs/INDEX.md](docs/INDEX.md) for the full documentation index:
 
 ## Related Packages
 
-| Package | Purpose | Location |
-|---|---|---|
-| `@trops/dash-react` | UI component library | [dash-react](https://github.com/trops/dash-react) |
-| `dash-electron` | Electron app template | [dash-electron](https://github.com/trops/dash-electron) |
+| Package             | Purpose               | Location                                                |
+| ------------------- | --------------------- | ------------------------------------------------------- |
+| `@trops/dash-react` | UI component library  | [dash-react](https://github.com/trops/dash-react)       |
+| `dash-electron`     | Electron app template | [dash-electron](https://github.com/trops/dash-electron) |
 
 ## Development
 
@@ -307,11 +307,13 @@ A build that exits 0 but produces incomplete output is a silent failure.
 ### Rollup Configuration
 
 **Renderer** (`rollup.config.renderer.mjs`):
+
 - Input: `src/index.js`
 - Output: CJS (`dist/index.js`) + ESM (`dist/index.esm.js`)
 - Externals: react, react-dom, @trops/dash-react, @fortawesome/\*, @babel/runtime
 
 **Electron** (`rollup.config.electron.mjs`):
+
 - Input: `electron/index.js`
 - Output: CJS only (`dist/electron/index.js`)
 - Externals: electron, Node builtins, esbuild, @anthropic-ai/sdk, @modelcontextprotocol/sdk, algoliasearch, openai, etc.
