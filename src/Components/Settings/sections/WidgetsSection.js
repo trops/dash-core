@@ -16,6 +16,7 @@ import { InstalledWidgetDetail } from "../details/InstalledWidgetDetail";
 import { InstallWidgetPicker } from "../details/InstallWidgetPicker";
 import { DiscoverWidgetsDetail } from "../details/DiscoverWidgetsDetail";
 import { InstallProgressModal } from "../details/InstallProgressModal";
+import { RegistryAuthModal } from "../../Registry/RegistryAuthModal";
 import {
   useInstalledWidgets,
   findWidgetUsage,
@@ -45,10 +46,15 @@ export const WidgetsSection = ({
 
   const { widgets, isLoading, error, uninstallWidget, refresh } =
     useInstalledWidgets();
-  const { updates, isChecking, updateWidget, isUpdating } = useWidgetUpdates(
-    widgets,
-    refresh,
-  );
+  const {
+    updates,
+    isChecking,
+    updateWidget,
+    isUpdating,
+    needsAuth,
+    clearNeedsAuth,
+    updateError,
+  } = useWidgetUpdates(widgets, refresh);
 
   const [selectedWidgetName, setSelectedWidgetName] = useState(null);
   // null | "picker" | "discover" | "zip-result" | "folder-result"
@@ -742,6 +748,16 @@ export const WidgetsSection = ({
           </div>
         )}
       </ConfirmationModal>
+      <RegistryAuthModal
+        isOpen={needsAuth}
+        setIsOpen={(open) => {
+          if (!open) clearNeedsAuth();
+        }}
+        onAuthenticated={() => {
+          clearNeedsAuth();
+          if (selectedWidget?.name) updateWidget(selectedWidget.name);
+        }}
+      />
     </>
   );
 };

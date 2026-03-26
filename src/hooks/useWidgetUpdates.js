@@ -6,12 +6,14 @@ import { useState, useEffect, useCallback, useRef } from "react";
  *
  * @param {Array} installedWidgets - Widgets from useInstalledWidgets()
  * @param {Function} onUpdated - Callback after a successful update (e.g. refresh)
- * @returns {{ updates: Map, isChecking: boolean, updateWidget: Function, isUpdating: string|null }}
+ * @returns {{ updates: Map, isChecking: boolean, updateWidget: Function, isUpdating: string|null, needsAuth: boolean, clearNeedsAuth: Function, updateError: string|null }}
  */
 export function useWidgetUpdates(installedWidgets = [], onUpdated) {
   const [updates, setUpdates] = useState(new Map());
   const [isChecking, setIsChecking] = useState(false);
   const [isUpdating, setIsUpdating] = useState(null);
+  const [needsAuth, setNeedsAuth] = useState(false);
+  const [updateError, setUpdateError] = useState(null);
   const checkedRef = useRef(false);
 
   // Check for updates once when installed widgets are available
@@ -73,7 +75,15 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
       const packageId = widget?.packageId || info.name || name;
 
       setIsUpdating(name);
+      setUpdateError(null);
       try {
+        // Check auth before attempting download (same pattern as useRegistrySearch)
+        const status = await window.mainApi?.registryAuth?.getStatus();
+        if (!status?.authenticated) {
+          setNeedsAuth(true);
+          return;
+        }
+
         const resolvedUrl = info.downloadUrl
           .replace(/\{version\}/g, info.latestVersion)
           .replace(/\{name\}/g, packageId);
@@ -90,6 +100,7 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
         if (onUpdated) onUpdated();
       } catch (err) {
         console.error("[useWidgetUpdates] Update failed:", err);
+        setUpdateError(err.message || "Update failed");
       } finally {
         setIsUpdating(null);
       }
@@ -97,5 +108,15 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
     [updates, onUpdated, installedWidgets],
   );
 
-  return { updates, isChecking, updateWidget, isUpdating };
+  const clearNeedsAuth = useCallback(() => setNeedsAuth(false), []);
+
+  return {
+    updates,
+    isChecking,
+    updateWidget,
+    isUpdating,
+    needsAuth,
+    clearNeedsAuth,
+    updateError,
+  };
 }
