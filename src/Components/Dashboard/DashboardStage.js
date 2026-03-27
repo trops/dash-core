@@ -231,9 +231,8 @@ const DashboardStageInner = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [popout, popoutWorkspaceId, workspaceConfig]);
 
-  // ─── Popout: listen for workspace:saved broadcasts ─────────────
+  // ─── Listen for workspace:saved broadcasts (MCP tools, popouts) ──
   useEffect(() => {
-    if (!popout) return;
     if (!window.mainApi?.on) return;
 
     const handler = () => {
@@ -246,7 +245,7 @@ const DashboardStageInner = ({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [popout]);
+  }, []);
 
   // ─── Load recents on mount ───────────────────────────────────────
   useEffect(() => {

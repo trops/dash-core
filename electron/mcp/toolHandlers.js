@@ -275,6 +275,9 @@ async function handleCreateDashboard({ name, layout }) {
     };
   }
 
+  // Notify renderer so UI refreshes
+  win.webContents.send("workspace:saved");
+
   const response = { id: String(newWorkspace.id), name: newWorkspace.name };
   if (layout && layout.rows && layout.cols) {
     response.layout = { rows: layout.rows, cols: layout.cols };
@@ -366,6 +369,9 @@ async function handleDeleteDashboard({ dashboardId }) {
       isError: true,
     };
   }
+
+  // Notify renderer so UI refreshes
+  win.webContents.send("workspace:saved");
 
   return {
     content: [
@@ -717,6 +723,9 @@ async function handleAddWidget({ dashboardId, widgetName, row, col }) {
     };
   }
 
+  // Notify renderer so UI refreshes
+  win.webContents.send("workspace:saved");
+
   const response = {
     widgetId: String(newId),
     name: widgetName.trim(),
@@ -818,6 +827,9 @@ async function handleRemoveWidget({ dashboardId, widgetId }) {
     };
   }
 
+  // Notify renderer so UI refreshes
+  win.webContents.send("workspace:saved");
+
   return {
     content: [
       {
@@ -913,6 +925,9 @@ async function handleConfigureWidget({ dashboardId, widgetId, config }) {
       isError: true,
     };
   }
+
+  // Notify renderer so UI refreshes
+  win.webContents.send("workspace:saved");
 
   return {
     content: [
@@ -2092,6 +2107,9 @@ async function handleSetLayout({ dashboardId, rows, cols, gap, colModes }) {
     };
   }
 
+  // Notify renderer so UI refreshes
+  win.webContents.send("workspace:saved");
+
   return {
     content: [
       {
@@ -2248,6 +2266,9 @@ async function handleUpdateLayout({ dashboardId, rows, cols, gap, colModes }) {
       isError: true,
     };
   }
+
+  // Notify renderer so UI refreshes
+  win.webContents.send("workspace:saved");
 
   return {
     content: [
@@ -2428,6 +2449,9 @@ async function handleMoveWidget({ dashboardId, widgetId, row, col }) {
       isError: true,
     };
   }
+
+  // Notify renderer so UI refreshes
+  win.webContents.send("workspace:saved");
 
   const response = {
     widgetId,
