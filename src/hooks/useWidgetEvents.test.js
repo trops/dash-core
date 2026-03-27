@@ -10,6 +10,7 @@
  *   - Gmail: emailSelected chain
  *   - Google Calendar: eventSelected chain
  *   - GitHub: repoSelected + issueSelected chains
+ *   - Gong: callSelected chain
  *
  * Also verifies:
  *   - Correct payload shape { id, name, ...metadata }
@@ -422,7 +423,154 @@ describe("GitHub: issueSelected event chain", () => {
 });
 
 // ===========================================================================
-// 6. PAYLOAD SHAPE VERIFICATION
+// 6. GONG: callSelected chain
+//    GongCallSearch / GongLibraryFolders → GongCallDetail, GongCallSummary, GongCallTranscript
+// ===========================================================================
+
+describe("Gong: callSelected event chain", () => {
+  const CALL_PAYLOAD = {
+    id: "call-123",
+    title: "Q4 Strategy Review",
+    date: "2026-03-15T14:00:00Z",
+    duration: 1800,
+    scope: "external",
+  };
+
+  test("GongCallSearch publishes callSelected to GongCallDetail", () => {
+    const received = [];
+    const callEvent = eventName("GongCallSearch", 1, "callSelected");
+
+    wireListener(
+      "callSelected",
+      [callEvent],
+      (data) => received.push(data),
+      "dash-1-GongCallDetail-1",
+    );
+
+    DashboardPublisher.pub(callEvent, CALL_PAYLOAD);
+
+    expect(received).toHaveLength(1);
+    expect(received[0].message.id).toBe("call-123");
+    expect(received[0].message.title).toBe("Q4 Strategy Review");
+    expect(received[0].message.duration).toBe(1800);
+    expect(received[0].message.scope).toBe("external");
+  });
+
+  test("GongCallSearch publishes callSelected to GongCallSummary", () => {
+    const received = [];
+    const callEvent = eventName("GongCallSearch", 1, "callSelected");
+
+    wireListener(
+      "callSelected",
+      [callEvent],
+      (data) => received.push(data),
+      "dash-1-GongCallSummary-1",
+    );
+
+    DashboardPublisher.pub(callEvent, CALL_PAYLOAD);
+
+    expect(received).toHaveLength(1);
+    expect(received[0].message.id).toBe("call-123");
+    expect(received[0].message.title).toBe("Q4 Strategy Review");
+  });
+
+  test("GongCallSearch publishes callSelected to GongCallTranscript", () => {
+    const received = [];
+    const callEvent = eventName("GongCallSearch", 1, "callSelected");
+
+    wireListener(
+      "callSelected",
+      [callEvent],
+      (data) => received.push(data),
+      "dash-1-GongCallTranscript-1",
+    );
+
+    DashboardPublisher.pub(callEvent, CALL_PAYLOAD);
+
+    expect(received).toHaveLength(1);
+    expect(received[0].message.id).toBe("call-123");
+    expect(received[0].message.title).toBe("Q4 Strategy Review");
+    expect(received[0].message.date).toBe("2026-03-15T14:00:00Z");
+  });
+
+  test("all three Gong receivers get the same callSelected event", () => {
+    const detailRx = [];
+    const summaryRx = [];
+    const transcriptRx = [];
+    const callEvent = eventName("GongCallSearch", 1, "callSelected");
+
+    wireListener(
+      "callSelected",
+      [callEvent],
+      (d) => detailRx.push(d),
+      "dash-1-GongCallDetail-1",
+    );
+    wireListener(
+      "callSelected",
+      [callEvent],
+      (d) => summaryRx.push(d),
+      "dash-1-GongCallSummary-1",
+    );
+    wireListener(
+      "callSelected",
+      [callEvent],
+      (d) => transcriptRx.push(d),
+      "dash-1-GongCallTranscript-1",
+    );
+
+    DashboardPublisher.pub(callEvent, CALL_PAYLOAD);
+
+    expect(detailRx).toHaveLength(1);
+    expect(summaryRx).toHaveLength(1);
+    expect(transcriptRx).toHaveLength(1);
+    expect(detailRx[0].message).toEqual(summaryRx[0].message);
+    expect(summaryRx[0].message).toEqual(transcriptRx[0].message);
+  });
+
+  test("GongLibraryFolders publishes callSelected to GongCallDetail", () => {
+    const received = [];
+    const folderEvent = eventName("GongLibraryFolders", 1, "callSelected");
+
+    wireListener(
+      "callSelected",
+      [folderEvent],
+      (data) => received.push(data),
+      "dash-1-GongCallDetail-1",
+    );
+
+    DashboardPublisher.pub(folderEvent, CALL_PAYLOAD);
+
+    expect(received).toHaveLength(1);
+    expect(received[0].message.id).toBe("call-123");
+  });
+
+  test("GongCallDetail can listen to both GongCallSearch and GongLibraryFolders", () => {
+    const received = [];
+    const searchEvent = eventName("GongCallSearch", 1, "callSelected");
+    const folderEvent = eventName("GongLibraryFolders", 1, "callSelected");
+
+    wireListener(
+      "callSelected",
+      [searchEvent, folderEvent],
+      (data) => received.push(data),
+      "dash-1-GongCallDetail-1",
+    );
+
+    DashboardPublisher.pub(searchEvent, CALL_PAYLOAD);
+    DashboardPublisher.pub(folderEvent, {
+      ...CALL_PAYLOAD,
+      id: "call-456",
+      title: "Sprint Retro",
+    });
+
+    expect(received).toHaveLength(2);
+    expect(received[0].message.id).toBe("call-123");
+    expect(received[1].message.id).toBe("call-456");
+  });
+});
+
+// ===========================================================================
+// 7. PAYLOAD SHAPE VERIFICATION
 //    Events carry correct shape { id, name, ...metadata }
 // ===========================================================================
 
@@ -488,7 +636,7 @@ describe("Event payload shape verification", () => {
 });
 
 // ===========================================================================
-// 7. GRACEFUL HANDLING OF MISSING / STALE EVENTS
+// 8. GRACEFUL HANDLING OF MISSING / STALE EVENTS
 // ===========================================================================
 
 describe("Graceful handling of missing and stale events", () => {
@@ -543,8 +691,8 @@ describe("Graceful handling of missing and stale events", () => {
 });
 
 // ===========================================================================
-// 8. CROSS-PROVIDER EVENT ISOLATION
-//    Slack events must not leak to Gmail/Drive/Calendar/GitHub widgets
+// 9. CROSS-PROVIDER EVENT ISOLATION
+//    Slack events must not leak to Gmail/Drive/Calendar/GitHub/Gong widgets
 // ===========================================================================
 
 describe("Cross-provider event isolation", () => {
@@ -611,12 +759,53 @@ describe("Cross-provider event isolation", () => {
     expect(calReceived).toHaveLength(0);
   });
 
-  test("five providers publishing simultaneously stay isolated", () => {
+  test("Gong callSelected does not reach Slack listener", () => {
+    const slackReceived = [];
+    const gongEvent = eventName("GongCallSearch", 1, "callSelected");
+    const slackEvent = eventName("SlackListChannels", 1, "channelSelected");
+
+    wireListener(
+      "channelSelected",
+      [slackEvent],
+      (data) => slackReceived.push(data),
+      "dash-1-SlackChannelMessages-1",
+    );
+
+    DashboardPublisher.pub(gongEvent, {
+      id: "call-123",
+      title: "Q4 Review",
+    });
+
+    expect(slackReceived).toHaveLength(0);
+  });
+
+  test("Gong callSelected does not reach Gmail listener", () => {
+    const gmailReceived = [];
+    const gongEvent = eventName("GongCallSearch", 1, "callSelected");
+    const gmailEvent = eventName("GmailInbox", 1, "emailSelected");
+
+    wireListener(
+      "emailSelected",
+      [gmailEvent],
+      (data) => gmailReceived.push(data),
+      "dash-1-GmailMessageView-1",
+    );
+
+    DashboardPublisher.pub(gongEvent, {
+      id: "call-123",
+      title: "Q4 Review",
+    });
+
+    expect(gmailReceived).toHaveLength(0);
+  });
+
+  test("six providers publishing simultaneously stay isolated", () => {
     const slackRx = [];
     const driveRx = [];
     const gmailRx = [];
     const calRx = [];
     const githubRx = [];
+    const gongRx = [];
 
     // Each provider widget listens ONLY to its own source event
     wireListener(
@@ -649,6 +838,12 @@ describe("Cross-provider event isolation", () => {
       (d) => githubRx.push(d),
       "uuid-github",
     );
+    wireListener(
+      "callSelected",
+      [eventName("GongCallSearch", 1, "callSelected")],
+      (d) => gongRx.push(d),
+      "uuid-gong",
+    );
 
     // Publish one event per provider
     DashboardPublisher.pub(
@@ -671,6 +866,10 @@ describe("Cross-provider event isolation", () => {
       id: 1,
       name: "dash-core",
     });
+    DashboardPublisher.pub(eventName("GongCallSearch", 1, "callSelected"), {
+      id: "call-01",
+      title: "Q4 Review",
+    });
 
     // Each listener received exactly one event — its own
     expect(slackRx).toHaveLength(1);
@@ -678,6 +877,7 @@ describe("Cross-provider event isolation", () => {
     expect(gmailRx).toHaveLength(1);
     expect(calRx).toHaveLength(1);
     expect(githubRx).toHaveLength(1);
+    expect(gongRx).toHaveLength(1);
 
     // Verify each got the correct payload
     expect(slackRx[0].message.name).toBe("general");
@@ -685,11 +885,12 @@ describe("Cross-provider event isolation", () => {
     expect(gmailRx[0].message.name).toBe("Hello");
     expect(calRx[0].message.name).toBe("Standup");
     expect(githubRx[0].message.name).toBe("dash-core");
+    expect(gongRx[0].message.title).toBe("Q4 Review");
   });
 });
 
 // ===========================================================================
-// 9. MULTIPLE INSTANCES OF SAME WIDGET TYPE
+// 10. MULTIPLE INSTANCES OF SAME WIDGET TYPE
 // ===========================================================================
 
 describe("Multiple instances of same widget type", () => {

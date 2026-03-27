@@ -78,6 +78,7 @@ const event = {
 };
 
 let ipcBridgeListener = null;
+const monitorCallbacks = new Set();
 
 export const DashboardPublisher = {
   sub: (eventType, action, uuid) => {
@@ -86,10 +87,33 @@ export const DashboardPublisher = {
   pub: (eventType, content) => {
     event.emit(eventType, content);
 
+    // Notify monitor callbacks (debugger)
+    if (monitorCallbacks.size > 0) {
+      const subscriberCount = (event.list.get(eventType) || []).length;
+      const monitorData = {
+        eventType,
+        content,
+        timestamp: Date.now(),
+        subscriberCount,
+      };
+      monitorCallbacks.forEach((cb) => {
+        try {
+          cb(monitorData);
+        } catch (_) {
+          // Monitor callbacks must not break event delivery
+        }
+      });
+    }
+
     // Forward to other windows via IPC bridge
     if (window.mainApi?.widgetEvent) {
       window.mainApi.widgetEvent.publish(eventType, content);
     }
+  },
+
+  onMonitor: (callback) => {
+    monitorCallbacks.add(callback);
+    return () => monitorCallbacks.delete(callback);
   },
 
   enableIpcBridge: () => {

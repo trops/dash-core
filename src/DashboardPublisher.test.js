@@ -359,3 +359,81 @@ describe("DashboardPublisher — IPC bridge", () => {
     });
   });
 });
+
+describe("DashboardPublisher — monitor callbacks", () => {
+  test("onMonitor callback is called when pub fires", () => {
+    const monitor = jest.fn();
+    const unsub = DashboardPublisher.onMonitor(monitor);
+
+    DashboardPublisher.pub("TestWidget[1].testEvent", { id: "1" });
+
+    expect(monitor).toHaveBeenCalledTimes(1);
+    const data = monitor.mock.calls[0][0];
+    expect(data.eventType).toBe("TestWidget[1].testEvent");
+    expect(data.content).toEqual({ id: "1" });
+    expect(typeof data.timestamp).toBe("number");
+    expect(typeof data.subscriberCount).toBe("number");
+
+    unsub();
+  });
+
+  test("unsubscribe stops monitor callbacks", () => {
+    const monitor = jest.fn();
+    const unsub = DashboardPublisher.onMonitor(monitor);
+
+    DashboardPublisher.pub("TestWidget[1].testEvent", { id: "1" });
+    expect(monitor).toHaveBeenCalledTimes(1);
+
+    unsub();
+
+    DashboardPublisher.pub("TestWidget[1].testEvent", { id: "2" });
+    expect(monitor).toHaveBeenCalledTimes(1);
+  });
+
+  test("monitor receives correct subscriber count", () => {
+    const monitor = jest.fn();
+    const unsub = DashboardPublisher.onMonitor(monitor);
+
+    // Wire two subscribers
+    DashboardPublisher.sub("TestWidget[1].testEvent", jest.fn(), "widget-aaa");
+    DashboardPublisher.sub("TestWidget[1].testEvent", jest.fn(), "widget-bbb");
+
+    DashboardPublisher.pub("TestWidget[1].testEvent", { id: "1" });
+
+    expect(monitor.mock.calls[0][0].subscriberCount).toBe(2);
+
+    unsub();
+  });
+
+  test("multiple monitor callbacks all fire", () => {
+    const monitor1 = jest.fn();
+    const monitor2 = jest.fn();
+    const unsub1 = DashboardPublisher.onMonitor(monitor1);
+    const unsub2 = DashboardPublisher.onMonitor(monitor2);
+
+    DashboardPublisher.pub("TestWidget[1].testEvent", { id: "1" });
+
+    expect(monitor1).toHaveBeenCalledTimes(1);
+    expect(monitor2).toHaveBeenCalledTimes(1);
+
+    unsub1();
+    unsub2();
+  });
+
+  test("throwing monitor callback does not break event delivery", () => {
+    const badMonitor = jest.fn(() => {
+      throw new Error("Monitor error");
+    });
+    const handler = jest.fn();
+    const unsub = DashboardPublisher.onMonitor(badMonitor);
+
+    DashboardPublisher.sub("TestWidget[1].testEvent", handler, "widget-aaa");
+    DashboardPublisher.pub("TestWidget[1].testEvent", { id: "1" });
+
+    // Event delivery still works despite monitor error
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(badMonitor).toHaveBeenCalledTimes(1);
+
+    unsub();
+  });
+});
