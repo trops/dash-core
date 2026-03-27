@@ -152,7 +152,7 @@ async function handleGetDashboard({ dashboardId }) {
 /**
  * create_dashboard — Creates a new workspace with the given name.
  */
-async function handleCreateDashboard({ name }) {
+async function handleCreateDashboard({ name, layout }) {
   if (!name || typeof name !== "string" || !name.trim()) {
     return {
       content: [
@@ -167,7 +167,85 @@ async function handleCreateDashboard({ name }) {
     };
   }
 
+  // Validate optional layout parameter
+  if (layout !== undefined && layout !== null) {
+    if (typeof layout !== "object" || Array.isArray(layout)) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              error: "layout must be an object with rows and cols",
+            }),
+          },
+        ],
+        isError: true,
+      };
+    }
+    const { rows, cols } = layout;
+    if (
+      rows === undefined ||
+      cols === undefined ||
+      typeof rows !== "number" ||
+      typeof cols !== "number"
+    ) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              error: "layout.rows and layout.cols are required numbers",
+            }),
+          },
+        ],
+        isError: true,
+      };
+    }
+    if (rows < 1 || rows > 10 || cols < 1 || cols > 10) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              error: "rows and cols must be between 1 and 10",
+            }),
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
   const { win, appId } = requireContext();
+
+  // Build root layout node — grid or plain container
+  const rootNode =
+    layout && layout.rows && layout.cols
+      ? {
+          id: 1,
+          order: 1,
+          component: "LayoutGridContainer",
+          type: "grid",
+          parent: 0,
+          hasChildren: 1,
+          scrollable: false,
+          width: "w-full",
+          height: "h-full",
+          workspace: "layout",
+          grid: buildEmptyGrid(
+            layout.rows,
+            layout.cols,
+            layout.gap,
+            layout.colModes,
+          ),
+        }
+      : {
+          id: 1,
+          order: 1,
+          component: "Container",
+          parent: 0,
+          items: [],
+        };
 
   const newWorkspace = {
     id: Date.now(),
@@ -176,15 +254,7 @@ async function handleCreateDashboard({ name }) {
     type: "workspace",
     version: 1,
     menuId: 1,
-    layout: [
-      {
-        id: 1,
-        order: 1,
-        component: "Container",
-        parentId: 0,
-        items: [],
-      },
-    ],
+    layout: [rootNode],
   };
 
   const result = workspaceController.saveWorkspaceForApplication(
@@ -205,15 +275,16 @@ async function handleCreateDashboard({ name }) {
     };
   }
 
+  const response = { id: String(newWorkspace.id), name: newWorkspace.name };
+  if (layout && layout.rows && layout.cols) {
+    response.layout = { rows: layout.rows, cols: layout.cols };
+  }
+
   return {
     content: [
       {
         type: "text",
-        text: JSON.stringify(
-          { id: String(newWorkspace.id), name: newWorkspace.name },
-          null,
-          2,
-        ),
+        text: JSON.stringify(response, null, 2),
       },
     ],
   };
@@ -405,9 +476,64 @@ function nextLayoutId(layout) {
 }
 
 /**
+ * Helper: find the LayoutGridContainer node in a layout array.
+ */
+function findGridNode(layout) {
+  if (!Array.isArray(layout)) return null;
+  return (
+    layout.find(
+      (item) => item.component === "LayoutGridContainer" && item.grid,
+    ) || null
+  );
+}
+
+/**
+ * Helper: build an empty grid object with cell slots for all row.col positions.
+ */
+function buildEmptyGrid(rows, cols, gap, colModes) {
+  const grid = {
+    rows,
+    cols,
+    gap: gap || "gap-2",
+  };
+  if (colModes && Object.keys(colModes).length > 0) {
+    grid.colModes = colModes;
+  }
+  for (let r = 1; r <= rows; r++) {
+    for (let c = 1; c <= cols; c++) {
+      grid[`${r}.${c}`] = { component: null, hide: false };
+    }
+  }
+  return grid;
+}
+
+/**
+ * Helper: find the next empty cell scanning left-to-right, top-to-bottom.
+ */
+function findNextEmptyCell(grid) {
+  for (let r = 1; r <= grid.rows; r++) {
+    for (let c = 1; c <= grid.cols; c++) {
+      const key = `${r}.${c}`;
+      const cell = grid[key];
+      if (!cell || (cell.component === null && !cell.hide)) {
+        return { row: r, col: c };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Helper: check if a row/col position is within grid bounds.
+ */
+function isValidCell(grid, row, col) {
+  return row >= 1 && row <= grid.rows && col >= 1 && col <= grid.cols;
+}
+
+/**
  * add_widget — Add a widget to a dashboard by component name.
  */
-async function handleAddWidget({ dashboardId, widgetName }) {
+async function handleAddWidget({ dashboardId, widgetName, row, col }) {
   if (!widgetName || typeof widgetName !== "string" || !widgetName.trim()) {
     return {
       content: [
@@ -415,6 +541,25 @@ async function handleAddWidget({ dashboardId, widgetName }) {
           type: "text",
           text: JSON.stringify({
             error: "widgetName is required and must be a non-empty string",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  // Validate row/col pairing
+  if (
+    (row !== undefined && col === undefined) ||
+    (row === undefined && col !== undefined)
+  ) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error:
+              "Both row and col must be provided together, or both omitted",
           }),
         },
       ],
@@ -446,7 +591,88 @@ async function handleAddWidget({ dashboardId, widgetName }) {
       item.component === "LayoutContainer" ||
       item.component === "LayoutGridContainer",
   );
-  const parentId = container ? container.id : 0;
+
+  const gridNode = findGridNode(layout);
+
+  // Determine grid placement
+  let targetRow = null;
+  let targetCol = null;
+
+  if (row !== undefined && col !== undefined) {
+    // Explicit placement requested
+    if (!gridNode) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              error:
+                "Cannot specify row/col: dashboard has no grid layout. Use create_dashboard with layout or set_layout first.",
+            }),
+          },
+        ],
+        isError: true,
+      };
+    }
+    const r = Number(row);
+    const c = Number(col);
+    if (!isValidCell(gridNode.grid, r, c)) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              error: `Cell ${r}.${c} is out of bounds (grid is ${gridNode.grid.rows}x${gridNode.grid.cols})`,
+            }),
+          },
+        ],
+        isError: true,
+      };
+    }
+    const cellKey = `${r}.${c}`;
+    const cell = gridNode.grid[cellKey];
+    if (cell && cell.hide) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              error: `Cell ${r}.${c} is hidden`,
+            }),
+          },
+        ],
+        isError: true,
+      };
+    }
+    if (cell && cell.component !== null) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              error: `Cell ${r}.${c} is already occupied by widget ${cell.component}`,
+            }),
+          },
+        ],
+        isError: true,
+      };
+    }
+    targetRow = r;
+    targetCol = c;
+  } else if (gridNode) {
+    // No row/col specified but grid exists — auto-place in next empty cell
+    const empty = findNextEmptyCell(gridNode.grid);
+    if (empty) {
+      targetRow = empty.row;
+      targetCol = empty.col;
+    }
+  }
+
+  const parentContainerId = gridNode
+    ? gridNode.id
+    : container
+      ? container.id
+      : 0;
 
   const newId = nextLayoutId(layout);
   const maxOrder = layout.reduce(
@@ -458,11 +684,21 @@ async function handleAddWidget({ dashboardId, widgetName }) {
     id: newId,
     order: maxOrder + 1,
     component: widgetName.trim(),
-    parentId,
+    parent: parentContainerId,
     config: {},
   };
 
   workspace.layout = [...layout, newItem];
+
+  // If placing in grid, update the cell assignment
+  if (gridNode && targetRow !== null && targetCol !== null) {
+    const cellKey = `${targetRow}.${targetCol}`;
+    gridNode.grid[cellKey] = {
+      ...(gridNode.grid[cellKey] || {}),
+      component: newId,
+      hide: false,
+    };
+  }
 
   const saveResult = workspaceController.saveWorkspaceForApplication(
     win,
@@ -481,19 +717,20 @@ async function handleAddWidget({ dashboardId, widgetName }) {
     };
   }
 
+  const response = {
+    widgetId: String(newId),
+    name: widgetName.trim(),
+    dashboardId: String(workspace.id),
+  };
+  if (targetRow !== null && targetCol !== null) {
+    response.cell = { row: targetRow, col: targetCol };
+  }
+
   return {
     content: [
       {
         type: "text",
-        text: JSON.stringify(
-          {
-            widgetId: String(newId),
-            name: widgetName.trim(),
-            dashboardId: String(workspace.id),
-          },
-          null,
-          2,
-        ),
+        text: JSON.stringify(response, null, 2),
       },
     ],
   };
@@ -548,6 +785,21 @@ async function handleRemoveWidget({ dashboardId, widgetId }) {
   }
 
   workspace.layout = layout.filter((item) => String(item.id) !== widgetId);
+
+  // Clean up grid cell assignments that reference this widget
+  const numericId = Number(widgetId);
+  for (const item of workspace.layout) {
+    if (item.grid) {
+      for (const key of Object.keys(item.grid)) {
+        if (/^\d+\.\d+$/.test(key)) {
+          const cell = item.grid[key];
+          if (cell && cell.component === numericId) {
+            cell.component = null;
+          }
+        }
+      }
+    }
+  }
 
   const saveResult = workspaceController.saveWorkspaceForApplication(
     win,
@@ -1710,6 +1962,492 @@ async function handleGetSetupGuide({ topic }) {
   };
 }
 
+// --- Layout Tool Handlers ---
+
+/**
+ * set_layout — Set or replace the grid layout on a dashboard.
+ */
+async function handleSetLayout({ dashboardId, rows, cols, gap, colModes }) {
+  if (
+    rows === undefined ||
+    cols === undefined ||
+    typeof rows !== "number" ||
+    typeof cols !== "number"
+  ) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "rows and cols are required numbers",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+  if (rows < 1 || rows > 10 || cols < 1 || cols > 10) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "rows and cols must be between 1 and 10",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  const { win, appId } = requireContext();
+  const result = workspaceController.listWorkspacesForApplication(win, appId);
+  if (result.error) {
+    return {
+      content: [
+        { type: "text", text: JSON.stringify({ error: result.message }) },
+      ],
+      isError: true,
+    };
+  }
+
+  const found = findWorkspace(result.workspaces || [], dashboardId);
+  if (found.error) return found.response;
+
+  const workspace = found.workspace;
+  const layout = workspace.layout || [];
+
+  const newGrid = buildEmptyGrid(rows, cols, gap, colModes);
+  const existingGridNode = findGridNode(layout);
+  const orphanedWidgetIds = [];
+
+  if (existingGridNode) {
+    // Preserve cell assignments that still fit in the new dimensions
+    const oldGrid = existingGridNode.grid;
+    for (const key of Object.keys(oldGrid)) {
+      if (
+        /^\d+\.\d+$/.test(key) &&
+        oldGrid[key] &&
+        oldGrid[key].component !== null
+      ) {
+        const parts = key.split(".");
+        const r = Number(parts[0]);
+        const c = Number(parts[1]);
+        if (r <= rows && c <= cols) {
+          newGrid[key] = { ...newGrid[key], component: oldGrid[key].component };
+        } else {
+          orphanedWidgetIds.push(oldGrid[key].component);
+        }
+      }
+    }
+    existingGridNode.grid = newGrid;
+  } else {
+    // Replace root Container with a LayoutGridContainer
+    const rootIdx = layout.findIndex(
+      (item) =>
+        item.parent === 0 &&
+        (item.component === "Container" ||
+          item.component === "LayoutContainer"),
+    );
+
+    const newGridNode = {
+      id: rootIdx >= 0 ? layout[rootIdx].id : nextLayoutId(layout),
+      order: 1,
+      component: "LayoutGridContainer",
+      type: "grid",
+      parent: 0,
+      hasChildren: 1,
+      scrollable: false,
+      width: "w-full",
+      height: "h-full",
+      workspace: "layout",
+      grid: newGrid,
+    };
+
+    if (rootIdx >= 0) {
+      // Reparent existing widgets to the new grid node
+      const oldRootId = layout[rootIdx].id;
+      for (const item of layout) {
+        if (item.parent === oldRootId && item.id !== oldRootId) {
+          item.parent = newGridNode.id;
+        }
+      }
+      workspace.layout[rootIdx] = newGridNode;
+    } else {
+      workspace.layout = [newGridNode, ...layout];
+    }
+  }
+
+  const saveResult = workspaceController.saveWorkspaceForApplication(
+    win,
+    appId,
+    workspace,
+  );
+  if (saveResult.error) {
+    return {
+      content: [
+        { type: "text", text: JSON.stringify({ error: saveResult.message }) },
+      ],
+      isError: true,
+    };
+  }
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(
+          {
+            dashboardId: String(workspace.id),
+            grid: { rows, cols },
+            orphanedWidgets: orphanedWidgetIds.map(String),
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  };
+}
+
+/**
+ * update_layout — Partially update grid layout properties.
+ */
+async function handleUpdateLayout({ dashboardId, rows, cols, gap, colModes }) {
+  if (
+    rows === undefined &&
+    cols === undefined &&
+    gap === undefined &&
+    colModes === undefined
+  ) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error:
+              "At least one of rows, cols, gap, or colModes must be provided",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  const { win, appId } = requireContext();
+  const result = workspaceController.listWorkspacesForApplication(win, appId);
+  if (result.error) {
+    return {
+      content: [
+        { type: "text", text: JSON.stringify({ error: result.message }) },
+      ],
+      isError: true,
+    };
+  }
+
+  const found = findWorkspace(result.workspaces || [], dashboardId);
+  if (found.error) return found.response;
+
+  const workspace = found.workspace;
+  const gridNode = findGridNode(workspace.layout || []);
+
+  if (!gridNode) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error:
+              "Dashboard has no grid layout. Use set_layout or create_dashboard with layout first.",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  const grid = gridNode.grid;
+  const oldRows = grid.rows;
+  const oldCols = grid.cols;
+  const newRows = rows !== undefined ? rows : oldRows;
+  const newCols = cols !== undefined ? cols : oldCols;
+
+  if (newRows < 1 || newRows > 10 || newCols < 1 || newCols > 10) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "rows and cols must be between 1 and 10",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  // Update gap if specified
+  if (gap !== undefined) {
+    grid.gap = gap;
+  }
+
+  // Merge colModes if specified
+  if (colModes !== undefined) {
+    grid.colModes = { ...(grid.colModes || {}), ...colModes };
+    // Remove entries set to null
+    for (const k of Object.keys(grid.colModes)) {
+      if (grid.colModes[k] === null) {
+        delete grid.colModes[k];
+      }
+    }
+    if (Object.keys(grid.colModes).length === 0) {
+      delete grid.colModes;
+    }
+  }
+
+  // Handle dimension changes
+  const orphanedWidgetIds = [];
+  if (newRows !== oldRows || newCols !== oldCols) {
+    // Add new cells
+    for (let r = 1; r <= newRows; r++) {
+      for (let c = 1; c <= newCols; c++) {
+        const key = `${r}.${c}`;
+        if (!grid[key]) {
+          grid[key] = { component: null, hide: false };
+        }
+      }
+    }
+    // Collect orphaned widgets from removed cells
+    for (const key of Object.keys(grid)) {
+      if (/^\d+\.\d+$/.test(key)) {
+        const parts = key.split(".");
+        const r = Number(parts[0]);
+        const c = Number(parts[1]);
+        if (r > newRows || c > newCols) {
+          if (grid[key] && grid[key].component !== null) {
+            orphanedWidgetIds.push(grid[key].component);
+          }
+          delete grid[key];
+        }
+      }
+    }
+    grid.rows = newRows;
+    grid.cols = newCols;
+  }
+
+  const saveResult = workspaceController.saveWorkspaceForApplication(
+    win,
+    appId,
+    workspace,
+  );
+  if (saveResult.error) {
+    return {
+      content: [
+        { type: "text", text: JSON.stringify({ error: saveResult.message }) },
+      ],
+      isError: true,
+    };
+  }
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(
+          {
+            dashboardId: String(workspace.id),
+            grid: { rows: newRows, cols: newCols, gap: grid.gap },
+            orphanedWidgets: orphanedWidgetIds.map(String),
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  };
+}
+
+/**
+ * move_widget — Move a widget to a different grid cell (swap if occupied).
+ */
+async function handleMoveWidget({ dashboardId, widgetId, row, col }) {
+  if (!widgetId || typeof widgetId !== "string") {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ error: "widgetId is required" }),
+        },
+      ],
+      isError: true,
+    };
+  }
+  if (row === undefined || col === undefined) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ error: "row and col are required" }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  const { win, appId } = requireContext();
+  const result = workspaceController.listWorkspacesForApplication(win, appId);
+  if (result.error) {
+    return {
+      content: [
+        { type: "text", text: JSON.stringify({ error: result.message }) },
+      ],
+      isError: true,
+    };
+  }
+
+  const found = findWorkspace(result.workspaces || [], dashboardId);
+  if (found.error) return found.response;
+
+  const workspace = found.workspace;
+  const gridNode = findGridNode(workspace.layout || []);
+
+  if (!gridNode) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "Dashboard has no grid layout",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  const r = Number(row);
+  const c = Number(col);
+  if (!isValidCell(gridNode.grid, r, c)) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: `Cell ${r}.${c} is out of bounds (grid is ${gridNode.grid.rows}x${gridNode.grid.cols})`,
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  const targetKey = `${r}.${c}`;
+  const targetCell = gridNode.grid[targetKey];
+  if (targetCell && targetCell.hide) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: `Cell ${r}.${c} is hidden`,
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  // Find the widget's current cell
+  const numericWidgetId = Number(widgetId);
+  let sourceKey = null;
+  for (const key of Object.keys(gridNode.grid)) {
+    if (
+      /^\d+\.\d+$/.test(key) &&
+      gridNode.grid[key] &&
+      gridNode.grid[key].component === numericWidgetId
+    ) {
+      sourceKey = key;
+      break;
+    }
+  }
+
+  if (!sourceKey) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: `Widget ${widgetId} not found in any grid cell`,
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  if (sourceKey === targetKey) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              widgetId,
+              cell: { row: r, col: c },
+              swapped: false,
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  }
+
+  // Perform the move (swap if target occupied)
+  const targetComponentId = targetCell ? targetCell.component : null;
+  gridNode.grid[targetKey] = {
+    ...(gridNode.grid[targetKey] || {}),
+    component: numericWidgetId,
+  };
+  gridNode.grid[sourceKey] = {
+    ...(gridNode.grid[sourceKey] || {}),
+    component: targetComponentId,
+  };
+
+  const saveResult = workspaceController.saveWorkspaceForApplication(
+    win,
+    appId,
+    workspace,
+  );
+  if (saveResult.error) {
+    return {
+      content: [
+        { type: "text", text: JSON.stringify({ error: saveResult.message }) },
+      ],
+      isError: true,
+    };
+  }
+
+  const response = {
+    widgetId,
+    cell: { row: r, col: c },
+    swapped: targetComponentId !== null,
+  };
+  if (targetComponentId !== null) {
+    response.swappedWidgetId = String(targetComponentId);
+  }
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(response, null, 2),
+      },
+    ],
+  };
+}
+
 module.exports = {
   handleListDashboards,
   handleGetDashboard,
@@ -1730,4 +2468,12 @@ module.exports = {
   handleAddProvider,
   handleRemoveProvider,
   handleGetSetupGuide,
+  handleSetLayout,
+  handleUpdateLayout,
+  handleMoveWidget,
+  // Helpers (exported for testing)
+  findGridNode,
+  buildEmptyGrid,
+  findNextEmptyCell,
+  isValidCell,
 };

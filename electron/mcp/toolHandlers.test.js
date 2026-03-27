@@ -217,9 +217,7 @@ function makeWorkspace(id, name, layout) {
     name,
     label: name,
     type: "workspace",
-    layout: layout || [
-      { id: 1, order: 1, component: "Container", parentId: 0 },
-    ],
+    layout: layout || [{ id: 1, order: 1, component: "Container", parent: 0 }],
   };
 }
 
@@ -233,19 +231,19 @@ describe("MCP Tool Handlers", () => {
   beforeEach(() => {
     mockWorkspaces = [
       makeWorkspace(100, "Main Dashboard", [
-        { id: 1, order: 1, component: "Container", parentId: 0 },
+        { id: 1, order: 1, component: "Container", parent: 0 },
         {
           id: 2,
           order: 2,
           component: "Clock",
-          parentId: 1,
+          parent: 1,
           config: { timezone: "UTC" },
         },
         {
           id: 3,
           order: 3,
           component: "WeatherWidget",
-          parentId: 1,
+          parent: 1,
           config: {},
         },
       ]),
@@ -867,6 +865,714 @@ describe("MCP Tool Handlers", () => {
     it("notifies renderer after removing", async () => {
       await handlers.handleRemoveProvider({ name: "OpenAI" });
       assert.ok(mockSent.some((s) => s.channel === "provider-list-complete"));
+    });
+  });
+
+  // =====================================================================
+  // Layout Tools
+  // =====================================================================
+
+  describe("create_dashboard with layout", () => {
+    it("creates a grid dashboard when layout is provided", async () => {
+      const result = await handlers.handleCreateDashboard({
+        name: "Grid Dashboard",
+        layout: { rows: 2, cols: 3 },
+      });
+      const data = parseResult(result);
+      assert.ok(data.id);
+      assert.equal(data.name, "Grid Dashboard");
+      assert.deepStrictEqual(data.layout, { rows: 2, cols: 3 });
+
+      // Verify workspace was saved with LayoutGridContainer
+      const ws = mockWorkspaces.find((w) => String(w.id) === data.id);
+      assert.ok(ws);
+      const gridNode = ws.layout.find(
+        (n) => n.component === "LayoutGridContainer",
+      );
+      assert.ok(gridNode);
+      assert.equal(gridNode.parent, 0);
+      assert.equal(gridNode.grid.rows, 2);
+      assert.equal(gridNode.grid.cols, 3);
+      assert.equal(gridNode.grid.gap, "gap-2");
+      // Check all cells exist
+      assert.deepStrictEqual(gridNode.grid["1.1"], {
+        component: null,
+        hide: false,
+      });
+      assert.deepStrictEqual(gridNode.grid["2.3"], {
+        component: null,
+        hide: false,
+      });
+    });
+
+    it("uses default gap when not specified", async () => {
+      const result = await handlers.handleCreateDashboard({
+        name: "Default Gap",
+        layout: { rows: 1, cols: 1 },
+      });
+      const data = parseResult(result);
+      const ws = mockWorkspaces.find((w) => String(w.id) === data.id);
+      const gridNode = ws.layout.find(
+        (n) => n.component === "LayoutGridContainer",
+      );
+      assert.equal(gridNode.grid.gap, "gap-2");
+    });
+
+    it("passes colModes through", async () => {
+      const result = await handlers.handleCreateDashboard({
+        name: "ColModes",
+        layout: { rows: 1, cols: 2, colModes: { 1: "1/4" } },
+      });
+      const data = parseResult(result);
+      const ws = mockWorkspaces.find((w) => String(w.id) === data.id);
+      const gridNode = ws.layout.find(
+        (n) => n.component === "LayoutGridContainer",
+      );
+      assert.deepStrictEqual(gridNode.grid.colModes, { 1: "1/4" });
+    });
+
+    it("creates plain Container when layout omitted", async () => {
+      const result = await handlers.handleCreateDashboard({
+        name: "Plain Dashboard",
+      });
+      const data = parseResult(result);
+      assert.equal(data.layout, undefined);
+      const ws = mockWorkspaces.find((w) => String(w.id) === data.id);
+      assert.ok(ws.layout.find((n) => n.component === "Container"));
+    });
+
+    it("rejects rows out of bounds", async () => {
+      const result = await handlers.handleCreateDashboard({
+        name: "Bad",
+        layout: { rows: 0, cols: 1 },
+      });
+      assert.equal(result.isError, true);
+    });
+
+    it("rejects cols out of bounds", async () => {
+      const result = await handlers.handleCreateDashboard({
+        name: "Bad",
+        layout: { rows: 1, cols: 11 },
+      });
+      assert.equal(result.isError, true);
+    });
+
+    it("rejects layout missing rows", async () => {
+      const result = await handlers.handleCreateDashboard({
+        name: "Bad",
+        layout: { cols: 2 },
+      });
+      assert.equal(result.isError, true);
+    });
+
+    it("rejects layout as array", async () => {
+      const result = await handlers.handleCreateDashboard({
+        name: "Bad",
+        layout: [1, 2],
+      });
+      assert.equal(result.isError, true);
+    });
+  });
+
+  describe("add_widget with row/col", () => {
+    function makeGridWorkspace(id, name, rows, cols, cells) {
+      const grid = {
+        rows,
+        cols,
+        gap: "gap-2",
+      };
+      for (let r = 1; r <= rows; r++) {
+        for (let c = 1; c <= cols; c++) {
+          grid[`${r}.${c}`] = { component: null, hide: false };
+        }
+      }
+      if (cells) {
+        for (const [key, val] of Object.entries(cells)) {
+          grid[key] = val;
+        }
+      }
+      return {
+        id,
+        name,
+        label: name,
+        type: "workspace",
+        layout: [
+          {
+            id: 1,
+            order: 1,
+            component: "LayoutGridContainer",
+            parent: 0,
+            grid,
+          },
+        ],
+      };
+    }
+
+    it("places widget in specified grid cell", async () => {
+      mockWorkspaces = [makeGridWorkspace(300, "Grid", 2, 2)];
+      const result = await handlers.handleAddWidget({
+        dashboardId: "300",
+        widgetName: "Clock",
+        row: 1,
+        col: 2,
+      });
+      const data = parseResult(result);
+      assert.ok(data.widgetId);
+      assert.deepStrictEqual(data.cell, { row: 1, col: 2 });
+
+      // Verify grid cell was updated
+      const ws = mockWorkspaces.find((w) => w.id === 300);
+      const gridNode = ws.layout.find(
+        (n) => n.component === "LayoutGridContainer",
+      );
+      assert.equal(gridNode.grid["1.2"].component, Number(data.widgetId));
+    });
+
+    it("auto-places in next empty cell when no row/col", async () => {
+      mockWorkspaces = [
+        makeGridWorkspace(300, "Grid", 1, 2, {
+          1.1: { component: 5, hide: false },
+        }),
+      ];
+      const result = await handlers.handleAddWidget({
+        dashboardId: "300",
+        widgetName: "Clock",
+      });
+      const data = parseResult(result);
+      assert.deepStrictEqual(data.cell, { row: 1, col: 2 });
+    });
+
+    it("errors when cell is out of bounds", async () => {
+      mockWorkspaces = [makeGridWorkspace(300, "Grid", 1, 2)];
+      const result = await handlers.handleAddWidget({
+        dashboardId: "300",
+        widgetName: "Clock",
+        row: 2,
+        col: 1,
+      });
+      assert.equal(result.isError, true);
+      const data = parseResult(result);
+      assert.match(data.error, /out of bounds/i);
+    });
+
+    it("errors when cell is occupied", async () => {
+      mockWorkspaces = [
+        makeGridWorkspace(300, "Grid", 1, 2, {
+          1.1: { component: 5, hide: false },
+        }),
+      ];
+      const result = await handlers.handleAddWidget({
+        dashboardId: "300",
+        widgetName: "Clock",
+        row: 1,
+        col: 1,
+      });
+      assert.equal(result.isError, true);
+      const data = parseResult(result);
+      assert.match(data.error, /occupied/i);
+    });
+
+    it("errors when row/col specified but no grid", async () => {
+      const result = await handlers.handleAddWidget({
+        dashboardId: "100",
+        widgetName: "Clock",
+        row: 1,
+        col: 1,
+      });
+      assert.equal(result.isError, true);
+      const data = parseResult(result);
+      assert.match(data.error, /no grid/i);
+    });
+
+    it("errors when only row provided", async () => {
+      const result = await handlers.handleAddWidget({
+        widgetName: "Clock",
+        row: 1,
+      });
+      assert.equal(result.isError, true);
+      const data = parseResult(result);
+      assert.match(data.error, /both row and col/i);
+    });
+
+    it("appends without cell when no grid and no row/col", async () => {
+      const result = await handlers.handleAddWidget({
+        dashboardId: "100",
+        widgetName: "NotesWidget",
+      });
+      const data = parseResult(result);
+      assert.ok(data.widgetId);
+      assert.equal(data.cell, undefined);
+    });
+  });
+
+  describe("remove_widget grid cleanup", () => {
+    it("clears grid cell assignment when removing widget", async () => {
+      const grid = {
+        rows: 1,
+        cols: 2,
+        gap: "gap-2",
+        1.1: { component: 5, hide: false },
+        1.2: { component: 6, hide: false },
+      };
+      mockWorkspaces = [
+        {
+          id: 400,
+          name: "Grid",
+          label: "Grid",
+          type: "workspace",
+          layout: [
+            {
+              id: 1,
+              order: 1,
+              component: "LayoutGridContainer",
+              parent: 0,
+              grid,
+            },
+            { id: 5, order: 2, component: "Clock", parent: 1, config: {} },
+            {
+              id: 6,
+              order: 3,
+              component: "Weather",
+              parent: 1,
+              config: {},
+            },
+          ],
+        },
+      ];
+
+      await handlers.handleRemoveWidget({
+        dashboardId: "400",
+        widgetId: "5",
+      });
+
+      const ws = mockWorkspaces.find((w) => w.id === 400);
+      const gridNode = ws.layout.find(
+        (n) => n.component === "LayoutGridContainer",
+      );
+      assert.equal(gridNode.grid["1.1"].component, null);
+      assert.equal(gridNode.grid["1.2"].component, 6);
+    });
+  });
+
+  describe("set_layout", () => {
+    it("creates grid on dashboard with Container", async () => {
+      const result = await handlers.handleSetLayout({
+        dashboardId: "100",
+        rows: 2,
+        cols: 3,
+      });
+      const data = parseResult(result);
+      assert.equal(data.dashboardId, "100");
+      assert.deepStrictEqual(data.grid, { rows: 2, cols: 3 });
+
+      const ws = mockWorkspaces.find((w) => w.id === 100);
+      const gridNode = ws.layout.find(
+        (n) => n.component === "LayoutGridContainer",
+      );
+      assert.ok(gridNode);
+      assert.equal(gridNode.grid.rows, 2);
+      assert.equal(gridNode.grid.cols, 3);
+    });
+
+    it("replaces existing grid and preserves fitting assignments", async () => {
+      const grid = {
+        rows: 2,
+        cols: 2,
+        gap: "gap-2",
+        1.1: { component: 5, hide: false },
+        1.2: { component: 6, hide: false },
+        2.1: { component: 7, hide: false },
+        2.2: { component: null, hide: false },
+      };
+      mockWorkspaces = [
+        {
+          id: 500,
+          name: "Grid",
+          label: "Grid",
+          type: "workspace",
+          layout: [
+            {
+              id: 1,
+              order: 1,
+              component: "LayoutGridContainer",
+              parent: 0,
+              grid,
+            },
+          ],
+        },
+      ];
+
+      const result = await handlers.handleSetLayout({
+        dashboardId: "500",
+        rows: 1,
+        cols: 2,
+      });
+      const data = parseResult(result);
+      assert.deepStrictEqual(data.grid, { rows: 1, cols: 2 });
+      // Widget 7 was in 2.1 which is now out of bounds
+      assert.ok(data.orphanedWidgets.includes("7"));
+      // Widgets 5 and 6 should be preserved
+      const ws = mockWorkspaces.find((w) => w.id === 500);
+      const gridNode = ws.layout.find(
+        (n) => n.component === "LayoutGridContainer",
+      );
+      assert.equal(gridNode.grid["1.1"].component, 5);
+      assert.equal(gridNode.grid["1.2"].component, 6);
+    });
+
+    it("rejects rows out of bounds", async () => {
+      const result = await handlers.handleSetLayout({
+        dashboardId: "100",
+        rows: 0,
+        cols: 1,
+      });
+      assert.equal(result.isError, true);
+    });
+
+    it("rejects missing rows", async () => {
+      const result = await handlers.handleSetLayout({
+        dashboardId: "100",
+        cols: 1,
+      });
+      assert.equal(result.isError, true);
+    });
+  });
+
+  describe("update_layout", () => {
+    function makeGridDashboard(id, rows, cols, cells) {
+      const grid = { rows, cols, gap: "gap-2" };
+      for (let r = 1; r <= rows; r++) {
+        for (let c = 1; c <= cols; c++) {
+          grid[`${r}.${c}`] = { component: null, hide: false };
+        }
+      }
+      if (cells) {
+        for (const [key, val] of Object.entries(cells)) {
+          grid[key] = val;
+        }
+      }
+      return {
+        id,
+        name: "Grid",
+        label: "Grid",
+        type: "workspace",
+        layout: [
+          {
+            id: 1,
+            order: 1,
+            component: "LayoutGridContainer",
+            parent: 0,
+            grid,
+          },
+        ],
+      };
+    }
+
+    it("updates only gap when specified", async () => {
+      mockWorkspaces = [makeGridDashboard(600, 2, 2)];
+      const result = await handlers.handleUpdateLayout({
+        dashboardId: "600",
+        gap: "gap-4",
+      });
+      const data = parseResult(result);
+      assert.equal(data.grid.gap, "gap-4");
+      assert.equal(data.grid.rows, 2);
+      assert.equal(data.grid.cols, 2);
+    });
+
+    it("merges colModes", async () => {
+      mockWorkspaces = [makeGridDashboard(600, 2, 2)];
+      // Add initial colModes
+      mockWorkspaces[0].layout[0].grid.colModes = { 1: "1/4" };
+
+      const result = await handlers.handleUpdateLayout({
+        dashboardId: "600",
+        colModes: { 2: "1/3" },
+      });
+      const data = parseResult(result);
+      const ws = mockWorkspaces.find((w) => w.id === 600);
+      const gridNode = ws.layout[0];
+      assert.equal(gridNode.grid.colModes["1"], "1/4");
+      assert.equal(gridNode.grid.colModes["2"], "1/3");
+    });
+
+    it("orphans widgets when shrinking", async () => {
+      mockWorkspaces = [
+        makeGridDashboard(600, 2, 2, {
+          2.1: { component: 10, hide: false },
+        }),
+      ];
+      const result = await handlers.handleUpdateLayout({
+        dashboardId: "600",
+        rows: 1,
+      });
+      const data = parseResult(result);
+      assert.ok(data.orphanedWidgets.includes("10"));
+      assert.equal(data.grid.rows, 1);
+    });
+
+    it("expands grid with empty cells", async () => {
+      mockWorkspaces = [makeGridDashboard(600, 1, 1)];
+      const result = await handlers.handleUpdateLayout({
+        dashboardId: "600",
+        rows: 2,
+        cols: 2,
+      });
+      const data = parseResult(result);
+      assert.equal(data.grid.rows, 2);
+      assert.equal(data.grid.cols, 2);
+      const ws = mockWorkspaces.find((w) => w.id === 600);
+      assert.deepStrictEqual(ws.layout[0].grid["2.2"], {
+        component: null,
+        hide: false,
+      });
+    });
+
+    it("errors when no grid exists", async () => {
+      const result = await handlers.handleUpdateLayout({
+        dashboardId: "100",
+        rows: 2,
+      });
+      assert.equal(result.isError, true);
+      const data = parseResult(result);
+      assert.match(data.error, /no grid/i);
+    });
+
+    it("errors when no properties specified", async () => {
+      const result = await handlers.handleUpdateLayout({
+        dashboardId: "100",
+      });
+      assert.equal(result.isError, true);
+    });
+  });
+
+  describe("move_widget", () => {
+    function makeGridDashboard(id, rows, cols, cells) {
+      const grid = { rows, cols, gap: "gap-2" };
+      for (let r = 1; r <= rows; r++) {
+        for (let c = 1; c <= cols; c++) {
+          grid[`${r}.${c}`] = { component: null, hide: false };
+        }
+      }
+      if (cells) {
+        for (const [key, val] of Object.entries(cells)) {
+          grid[key] = val;
+        }
+      }
+      return {
+        id,
+        name: "Grid",
+        label: "Grid",
+        type: "workspace",
+        layout: [
+          {
+            id: 1,
+            order: 1,
+            component: "LayoutGridContainer",
+            parent: 0,
+            grid,
+          },
+        ],
+      };
+    }
+
+    it("moves widget to an empty cell", async () => {
+      mockWorkspaces = [
+        makeGridDashboard(700, 1, 3, {
+          1.1: { component: 10, hide: false },
+        }),
+      ];
+      const result = await handlers.handleMoveWidget({
+        dashboardId: "700",
+        widgetId: "10",
+        row: 1,
+        col: 3,
+      });
+      const data = parseResult(result);
+      assert.equal(data.widgetId, "10");
+      assert.deepStrictEqual(data.cell, { row: 1, col: 3 });
+      assert.equal(data.swapped, false);
+
+      const ws = mockWorkspaces.find((w) => w.id === 700);
+      const gridNode = ws.layout[0];
+      assert.equal(gridNode.grid["1.1"].component, null);
+      assert.equal(gridNode.grid["1.3"].component, 10);
+    });
+
+    it("swaps when target cell is occupied", async () => {
+      mockWorkspaces = [
+        makeGridDashboard(700, 1, 2, {
+          1.1: { component: 10, hide: false },
+          1.2: { component: 11, hide: false },
+        }),
+      ];
+      const result = await handlers.handleMoveWidget({
+        dashboardId: "700",
+        widgetId: "10",
+        row: 1,
+        col: 2,
+      });
+      const data = parseResult(result);
+      assert.equal(data.swapped, true);
+      assert.equal(data.swappedWidgetId, "11");
+
+      const ws = mockWorkspaces.find((w) => w.id === 700);
+      const gridNode = ws.layout[0];
+      assert.equal(gridNode.grid["1.1"].component, 11);
+      assert.equal(gridNode.grid["1.2"].component, 10);
+    });
+
+    it("no-ops when source equals target", async () => {
+      mockWorkspaces = [
+        makeGridDashboard(700, 1, 2, {
+          1.1: { component: 10, hide: false },
+        }),
+      ];
+      const result = await handlers.handleMoveWidget({
+        dashboardId: "700",
+        widgetId: "10",
+        row: 1,
+        col: 1,
+      });
+      const data = parseResult(result);
+      assert.equal(data.swapped, false);
+    });
+
+    it("errors when widget not in grid", async () => {
+      mockWorkspaces = [makeGridDashboard(700, 1, 2)];
+      const result = await handlers.handleMoveWidget({
+        dashboardId: "700",
+        widgetId: "99",
+        row: 1,
+        col: 1,
+      });
+      assert.equal(result.isError, true);
+      const data = parseResult(result);
+      assert.match(data.error, /not found/i);
+    });
+
+    it("errors when target out of bounds", async () => {
+      mockWorkspaces = [
+        makeGridDashboard(700, 1, 2, {
+          1.1: { component: 10, hide: false },
+        }),
+      ];
+      const result = await handlers.handleMoveWidget({
+        dashboardId: "700",
+        widgetId: "10",
+        row: 2,
+        col: 1,
+      });
+      assert.equal(result.isError, true);
+      const data = parseResult(result);
+      assert.match(data.error, /out of bounds/i);
+    });
+
+    it("errors when no grid exists", async () => {
+      const result = await handlers.handleMoveWidget({
+        dashboardId: "100",
+        widgetId: "2",
+        row: 1,
+        col: 1,
+      });
+      assert.equal(result.isError, true);
+      const data = parseResult(result);
+      assert.match(data.error, /no grid/i);
+    });
+
+    it("errors when widgetId missing", async () => {
+      const result = await handlers.handleMoveWidget({
+        row: 1,
+        col: 1,
+      });
+      assert.equal(result.isError, true);
+    });
+
+    it("errors when row/col missing", async () => {
+      const result = await handlers.handleMoveWidget({
+        widgetId: "10",
+      });
+      assert.equal(result.isError, true);
+    });
+  });
+
+  // =====================================================================
+  // Helper Functions
+  // =====================================================================
+  describe("helper: buildEmptyGrid", () => {
+    it("creates grid with correct dimensions and empty cells", () => {
+      const grid = handlers.buildEmptyGrid(2, 3, "gap-4", { 1: "1/4" });
+      assert.equal(grid.rows, 2);
+      assert.equal(grid.cols, 3);
+      assert.equal(grid.gap, "gap-4");
+      assert.deepStrictEqual(grid.colModes, { 1: "1/4" });
+      assert.deepStrictEqual(grid["1.1"], { component: null, hide: false });
+      assert.deepStrictEqual(grid["2.3"], { component: null, hide: false });
+    });
+
+    it("defaults gap to gap-2", () => {
+      const grid = handlers.buildEmptyGrid(1, 1);
+      assert.equal(grid.gap, "gap-2");
+    });
+
+    it("omits colModes when empty", () => {
+      const grid = handlers.buildEmptyGrid(1, 1, "gap-2", {});
+      assert.equal(grid.colModes, undefined);
+    });
+  });
+
+  describe("helper: findNextEmptyCell", () => {
+    it("finds first empty cell scanning L-R, T-B", () => {
+      const grid = {
+        rows: 2,
+        cols: 2,
+        1.1: { component: 5, hide: false },
+        1.2: { component: 6, hide: false },
+        2.1: { component: null, hide: false },
+        2.2: { component: null, hide: false },
+      };
+      const cell = handlers.findNextEmptyCell(grid);
+      assert.deepStrictEqual(cell, { row: 2, col: 1 });
+    });
+
+    it("returns null when all cells occupied", () => {
+      const grid = {
+        rows: 1,
+        cols: 1,
+        1.1: { component: 5, hide: false },
+      };
+      assert.equal(handlers.findNextEmptyCell(grid), null);
+    });
+
+    it("skips hidden cells", () => {
+      const grid = {
+        rows: 1,
+        cols: 2,
+        1.1: { component: null, hide: true },
+        1.2: { component: null, hide: false },
+      };
+      const cell = handlers.findNextEmptyCell(grid);
+      assert.deepStrictEqual(cell, { row: 1, col: 2 });
+    });
+  });
+
+  describe("helper: findGridNode", () => {
+    it("finds LayoutGridContainer with grid object", () => {
+      const layout = [
+        { id: 1, component: "LayoutGridContainer", grid: { rows: 1 } },
+        { id: 2, component: "Clock" },
+      ];
+      const node = handlers.findGridNode(layout);
+      assert.equal(node.id, 1);
+    });
+
+    it("returns null when no grid exists", () => {
+      const layout = [{ id: 1, component: "Container" }];
+      assert.equal(handlers.findGridNode(layout), null);
+    });
+
+    it("returns null for non-array input", () => {
+      assert.equal(handlers.findGridNode(null), null);
     });
   });
 });

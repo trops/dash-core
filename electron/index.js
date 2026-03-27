@@ -84,6 +84,7 @@ const { registerWidgetTools } = require("./mcp/widgetTools");
 const { registerThemeTools } = require("./mcp/themeTools");
 const { registerProviderTools } = require("./mcp/providerTools");
 const { registerGuideTools } = require("./mcp/guideTools");
+const { registerLayoutTools } = require("./mcp/layoutTools");
 const { registerResources } = require("./mcp/resources");
 const { registerPrompts } = require("./mcp/promptRegistration");
 registerDashboardTools();
@@ -91,6 +92,7 @@ registerWidgetTools();
 registerThemeTools();
 registerProviderTools();
 registerGuideTools();
+registerLayoutTools();
 registerResources();
 registerPrompts();
 
@@ -192,5 +194,6 @@ module.exports = {
   registerWidgetTools,
   registerThemeTools,
   registerProviderTools,
+  registerLayoutTools,
   registerResources,
 };
