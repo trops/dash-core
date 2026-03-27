@@ -35,13 +35,39 @@ const dashboardTools = [
   {
     name: "create_dashboard",
     description:
-      "Create a new empty dashboard with the given name. Returns the dashboard ID. After creating, use search_widgets or list_widgets to find widgets, then add_widget to populate the dashboard.",
+      "Create a new dashboard with the given name. Optionally provide a layout to create a grid dashboard. Returns the dashboard ID. After creating, use search_widgets or list_widgets to find widgets, then add_widget to populate the dashboard.",
     inputSchema: {
       type: "object",
       properties: {
         name: {
           type: "string",
           description: "Display name for the new dashboard",
+        },
+        layout: {
+          type: "object",
+          description:
+            "Optional grid layout configuration. When provided, creates a grid dashboard instead of a simple container.",
+          properties: {
+            rows: {
+              type: "number",
+              description: "Number of rows (1-10)",
+            },
+            cols: {
+              type: "number",
+              description: "Number of columns (1-10)",
+            },
+            gap: {
+              type: "string",
+              description:
+                "Tailwind gap class (e.g. 'gap-2', 'gap-4'). Defaults to 'gap-2'.",
+            },
+            colModes: {
+              type: "object",
+              description:
+                "Per-row column sizing. Keys are row numbers (as strings), values are mode strings: 'equal', '1/4', '1/3', '1/2', '2/3'.",
+            },
+          },
+          required: ["rows", "cols"],
         },
       },
       required: ["name"],
@@ -78,7 +104,7 @@ const widgetTools = [
   {
     name: "add_widget",
     description:
-      "Add a widget to a dashboard by component name. Call list_widgets or search_widgets first to discover available widget names. Can be called multiple times to add multiple widgets. Returns the widget instance ID for use with configure_widget.",
+      "Add a widget to a dashboard by component name. Call list_widgets or search_widgets first to discover available widget names. Can be called multiple times to add multiple widgets. Returns the widget instance ID for use with configure_widget. If the dashboard has a grid layout, you can specify row/col for explicit placement, or omit them to auto-place in the next empty cell.",
     inputSchema: {
       type: "object",
       properties: {
@@ -91,6 +117,16 @@ const widgetTools = [
           type: "string",
           description:
             "Component name of the widget to add (e.g. 'Clock', 'WeatherWidget')",
+        },
+        row: {
+          type: "number",
+          description:
+            "Grid row to place the widget in (1-indexed). Must be used together with col. Requires a grid layout on the dashboard.",
+        },
+        col: {
+          type: "number",
+          description:
+            "Grid column to place the widget in (1-indexed). Must be used together with row.",
         },
       },
       required: ["widgetName"],
@@ -342,10 +378,106 @@ const providerTools = [
   },
 ];
 
+const layoutTools = [
+  {
+    name: "set_layout",
+    description:
+      "Set or replace the grid layout on a dashboard. Creates a LayoutGridContainer with the specified dimensions. Existing widgets in cells that fit the new grid are preserved; widgets outside the new bounds are orphaned (kept but unassigned). Use this to add a grid to an existing dashboard or to resize the grid.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dashboardId: {
+          type: "string",
+          description: "Dashboard ID. Omit to use the active dashboard.",
+        },
+        rows: {
+          type: "number",
+          description: "Number of rows (1-10)",
+        },
+        cols: {
+          type: "number",
+          description: "Number of columns (1-10)",
+        },
+        gap: {
+          type: "string",
+          description:
+            "Tailwind gap class (e.g. 'gap-2', 'gap-4'). Defaults to 'gap-2'.",
+        },
+        colModes: {
+          type: "object",
+          description:
+            "Per-row column sizing. Keys are row numbers (as strings), values are mode strings: 'equal', '1/4', '1/3', '1/2', '2/3'.",
+        },
+      },
+      required: ["rows", "cols"],
+    },
+  },
+  {
+    name: "update_layout",
+    description:
+      "Partially update the grid layout. Only specified properties change — omitted properties keep their current values. colModes is merged (not replaced). Widgets in removed rows/columns are orphaned. Dashboard must already have a grid layout.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dashboardId: {
+          type: "string",
+          description: "Dashboard ID. Omit to use the active dashboard.",
+        },
+        rows: {
+          type: "number",
+          description: "New number of rows (1-10). Omit to keep current.",
+        },
+        cols: {
+          type: "number",
+          description: "New number of columns (1-10). Omit to keep current.",
+        },
+        gap: {
+          type: "string",
+          description: "Tailwind gap class. Omit to keep current.",
+        },
+        colModes: {
+          type: "object",
+          description:
+            "Column sizing modes to merge. Set a key to null to reset that row to default.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "move_widget",
+    description:
+      "Move a widget to a different grid cell. If the target cell is occupied, the two widgets are swapped. The widget must already be placed in a grid cell. Use get_dashboard to find widget IDs and current positions.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dashboardId: {
+          type: "string",
+          description: "Dashboard ID. Omit to use the active dashboard.",
+        },
+        widgetId: {
+          type: "string",
+          description: "ID of the widget to move",
+        },
+        row: {
+          type: "number",
+          description: "Target row (1-indexed)",
+        },
+        col: {
+          type: "number",
+          description: "Target column (1-indexed)",
+        },
+      },
+      required: ["widgetId", "row", "col"],
+    },
+  },
+];
+
 module.exports = {
   dashboardTools,
   widgetTools,
   themeTools,
   providerTools,
   guideTools,
+  layoutTools,
 };
