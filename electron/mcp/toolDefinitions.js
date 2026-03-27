@@ -104,7 +104,7 @@ const widgetTools = [
   {
     name: "add_widget",
     description:
-      "Add a widget to a dashboard by component name. Call list_widgets or search_widgets first to discover available widget names. Can be called multiple times to add multiple widgets. Returns the widget instance ID for use with configure_widget. If the dashboard has a grid layout, you can specify row/col for explicit placement, or omit them to auto-place in the next empty cell.",
+      "Add a widget to a dashboard by its scoped component name. IMPORTANT: Use the exact scoped name from list_widgets or search_widgets (format: 'scope.package.WidgetName', e.g. 'trops.gong.GongCallSearch'). Can be called multiple times. Returns the widget instance ID for use with configure_widget. If the dashboard has a grid layout, you can specify row/col for explicit placement, or omit them to auto-place in the next empty cell.",
     inputSchema: {
       type: "object",
       properties: {
@@ -116,7 +116,7 @@ const widgetTools = [
         widgetName: {
           type: "string",
           description:
-            "Component name of the widget to add (e.g. 'Clock', 'WeatherWidget')",
+            "Scoped component name from list_widgets/search_widgets (e.g. 'trops.gong.GongCallSearch', 'trops.slack.SlackChannelFeed')",
         },
         row: {
           type: "number",
@@ -178,7 +178,7 @@ const widgetTools = [
   {
     name: "list_widgets",
     description:
-      "List all available widgets from the registry, including name, description, and provider requirements. Use this to discover what widgets can be added to dashboards with add_widget.",
+      "List all available widgets from the registry. Returns scoped component names (e.g. 'trops.gong.GongCallSearch') that can be passed directly to add_widget. Also includes description, provider requirements, and package info.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -188,7 +188,7 @@ const widgetTools = [
   {
     name: "search_widgets",
     description:
-      "Search the widget registry by keyword. Returns matching widgets with name, description, and provider info. Use the widget name from results with add_widget to add it to a dashboard.",
+      "Search the widget registry by keyword. Returns matching widgets with scoped names (e.g. 'trops.slack.SlackChannelFeed') that can be passed directly to add_widget. Also includes description and provider info.",
     inputSchema: {
       type: "object",
       properties: {
