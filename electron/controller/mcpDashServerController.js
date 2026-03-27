@@ -99,17 +99,21 @@ function registerPrompt(promptDef) {
   registeredPrompts.push(promptDef);
 }
 
+const z = require("zod");
+const { jsonSchemaToZod } = require("../mcp/jsonSchemaToZod");
+
 /**
  * Apply all registered tools, resources, and prompts to the McpServer instance.
  */
 function applyRegistrations(server) {
   for (const tool of registeredTools) {
-    server.registerTool(
+    const zodSchema = jsonSchemaToZod(tool.inputSchema);
+    // server.tool() expects a raw Zod shape (e.g. { name: z.string() }),
+    // NOT a z.object() wrapper. Extract .shape from the Zod object.
+    server.tool(
       tool.name,
-      {
-        description: tool.description,
-        inputSchema: tool.inputSchema,
-      },
+      tool.description,
+      zodSchema.shape || {},
       tool.handler,
     );
   }
@@ -125,7 +129,6 @@ function applyRegistrations(server) {
     if (prompt.args && Object.keys(prompt.args).length > 0) {
       // Prompt with arguments — use the 4-arg overload
       // Build a Zod-compatible arg schema from our plain arg definitions
-      const z = require("zod");
       const shape = {};
       for (const [key, def] of Object.entries(prompt.args)) {
         shape[key] = def.required
