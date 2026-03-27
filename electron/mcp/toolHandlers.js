@@ -961,12 +961,18 @@ async function handleListWidgets() {
       if (pkg.type && pkg.type !== "widget") continue;
 
       for (const w of pkg.widgets || []) {
+        const shortName = w.name || pkg.name;
+        const scopedName =
+          pkg.scope && pkg.name && w.name
+            ? `${pkg.scope}.${pkg.name}.${w.name}`
+            : shortName;
         widgets.push({
-          name: w.name || pkg.name,
+          name: scopedName,
           displayName: w.displayName || w.name || pkg.displayName || pkg.name,
           description: w.description || pkg.description || "",
           icon: w.icon || pkg.icon || null,
           package: pkg.name,
+          scope: pkg.scope || null,
           providers: (w.providers || pkg.providers || []).map((p) => ({
             type: p.type,
             providerClass: p.providerClass || "api",
@@ -977,12 +983,17 @@ async function handleListWidgets() {
 
       // If a package has no widgets array, treat the package itself as a widget
       if (!pkg.widgets || pkg.widgets.length === 0) {
+        const scopedName =
+          pkg.scope && pkg.name
+            ? `${pkg.scope}.${pkg.name}.${pkg.name}`
+            : pkg.name;
         widgets.push({
-          name: pkg.name,
+          name: scopedName,
           displayName: pkg.displayName || pkg.name,
           description: pkg.description || "",
           icon: pkg.icon || null,
           package: pkg.name,
+          scope: pkg.scope || null,
           providers: (pkg.providers || []).map((p) => ({
             type: p.type,
             providerClass: p.providerClass || "api",
@@ -1042,12 +1053,18 @@ async function handleSearchWidgets({ query }) {
       if (pkg.type && pkg.type !== "widget") continue;
 
       for (const w of pkg.widgets || []) {
+        const shortName = w.name || pkg.name;
+        const scopedName =
+          pkg.scope && pkg.name && w.name
+            ? `${pkg.scope}.${pkg.name}.${w.name}`
+            : shortName;
         widgets.push({
-          name: w.name || pkg.name,
+          name: scopedName,
           displayName: w.displayName || w.name || pkg.displayName || pkg.name,
           description: w.description || pkg.description || "",
           icon: w.icon || pkg.icon || null,
           package: pkg.name,
+          scope: pkg.scope || null,
           providers: (w.providers || pkg.providers || []).map((p) => ({
             type: p.type,
             providerClass: p.providerClass || "api",
@@ -1057,12 +1074,17 @@ async function handleSearchWidgets({ query }) {
       }
 
       if (!pkg.widgets || pkg.widgets.length === 0) {
+        const scopedName =
+          pkg.scope && pkg.name
+            ? `${pkg.scope}.${pkg.name}.${pkg.name}`
+            : pkg.name;
         widgets.push({
-          name: pkg.name,
+          name: scopedName,
           displayName: pkg.displayName || pkg.name,
           description: pkg.description || "",
           icon: pkg.icon || null,
           package: pkg.name,
+          scope: pkg.scope || null,
           providers: (pkg.providers || []).map((p) => ({
             type: p.type,
             providerClass: p.providerClass || "api",
