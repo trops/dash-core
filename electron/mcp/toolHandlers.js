@@ -1897,7 +1897,7 @@ You are connected to Dash, a dashboard application. Here is what you can help wi
 ## Typical Workflow
 1. Create a dashboard: create_dashboard("My Dashboard")
 2. Search for widgets: search_widgets("slack") or list_widgets()
-3. Add widgets: add_widget(widgetName, dashboardId)
+3. Add widgets: add_widget(scopedName, dashboardId) — use the name from search/list results (e.g. "trops.slack.SlackChannelFeed")
 4. Configure: configure_widget(widgetId, config)
 5. Style it: create_theme_from_url("https://example.com") then apply_theme(name)`,
 
