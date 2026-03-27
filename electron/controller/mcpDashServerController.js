@@ -104,7 +104,14 @@ function registerPrompt(promptDef) {
  */
 function applyRegistrations(server) {
   for (const tool of registeredTools) {
-    server.tool(tool.name, tool.description, tool.inputSchema, tool.handler);
+    server.registerTool(
+      tool.name,
+      {
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+      },
+      tool.handler,
+    );
   }
   for (const resource of registeredResources) {
     server.resource(
