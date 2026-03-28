@@ -178,7 +178,7 @@ const widgetTools = [
   {
     name: "list_widgets",
     description:
-      "List all available widgets from the registry. Returns scoped component names (e.g. 'trops.gong.GongCallSearch') that can be passed directly to add_widget. Also includes description, provider requirements, and package info.",
+      "List all available widgets from the registry. Returns scoped component names (e.g. 'trops.gong.GongCallSearch') that can be passed directly to add_widget. Each widget includes an 'installed' boolean — if true, use add_widget directly; if false, call install_widget first. Also includes description, provider requirements, and package info.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -188,7 +188,7 @@ const widgetTools = [
   {
     name: "search_widgets",
     description:
-      "Search the widget registry by keyword. Returns matching widgets with scoped names (e.g. 'trops.slack.SlackChannelFeed') that can be passed directly to add_widget. Also includes description and provider info.",
+      "Search the widget registry by keyword. Returns matching widgets with scoped names (e.g. 'trops.slack.SlackChannelFeed') that can be passed directly to add_widget. Each widget includes an 'installed' boolean — if true, use add_widget directly; if false, call install_widget first. Also includes description and provider info.",
     inputSchema: {
       type: "object",
       properties: {
