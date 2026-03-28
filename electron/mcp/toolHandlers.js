@@ -427,6 +427,8 @@ async function handleGetAppStats() {
 // --- Widget Tool Handlers ---
 
 const registryController = require("../controller/registryController");
+const registryAuthController = require("../controller/registryAuthController");
+const { getWidgetRegistry } = require("../widgetRegistry");
 
 /**
  * Helper: find a workspace by ID or return the first (active) one.
@@ -1113,6 +1115,155 @@ async function handleSearchWidgets({ query }) {
           type: "text",
           text: JSON.stringify({
             error: `Failed to search widget registry: ${err.message}`,
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+}
+
+/**
+ * install_widget — Install a widget package from the Dash registry.
+ * Requires the user to be authenticated via Settings > Account.
+ */
+async function handleInstallWidget({ packageName }) {
+  if (!packageName || typeof packageName !== "string" || !packageName.trim()) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "packageName is required and must be a non-empty string",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  // Check authentication
+  const auth = registryAuthController.getStoredToken();
+  if (!auth) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error:
+              "Not authenticated with the Dash registry. Please sign in via Settings > Account in the Dash app first.",
+            authRequired: true,
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  try {
+    // Look up the package in the registry
+    const pkg = await registryController.getPackage(packageName.trim());
+    if (!pkg) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              error: `Package "${packageName}" not found in the registry. Use search_widgets to find available packages.`,
+            }),
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    if (!pkg.downloadUrl) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              error: `Package "${packageName}" has no download URL in the registry.`,
+            }),
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    // Download and install
+    const registry = getWidgetRegistry();
+    const config = await registry.downloadWidget(pkg.name, pkg.downloadUrl);
+
+    // Notify all renderer windows
+    const { win } = requireContext();
+    const { BrowserWindow } = require("electron");
+    BrowserWindow.getAllWindows().forEach((w) => {
+      w.webContents.send("widget:installed", {
+        widgetName: pkg.name,
+        config,
+      });
+    });
+
+    // Build the list of installed widget names for the response
+    const widgetNames = (pkg.widgets || []).map((w) => {
+      const scopedName =
+        pkg.scope && pkg.name && w.name
+          ? `${pkg.scope}.${pkg.name}.${w.name}`
+          : w.name || pkg.name;
+      return {
+        name: scopedName,
+        displayName: w.displayName || w.name,
+      };
+    });
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              success: true,
+              package: pkg.name,
+              scope: pkg.scope || null,
+              version: pkg.version || null,
+              widgets: widgetNames,
+              message: `Successfully installed "${pkg.displayName || pkg.name}". Use add_widget with the widget names above to add them to a dashboard.`,
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  } catch (err) {
+    // Handle auth expiration
+    if (
+      err.message &&
+      (err.message.includes("401") || err.message.includes("Unauthorized"))
+    ) {
+      registryAuthController.clearToken();
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              error:
+                "Authentication expired. Please sign in again via Settings > Account in the Dash app.",
+              authRequired: true,
+            }),
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: `Failed to install widget package: ${err.message}`,
           }),
         },
       ],
@@ -2505,6 +2656,7 @@ module.exports = {
   handleConfigureWidget,
   handleListWidgets,
   handleSearchWidgets,
+  handleInstallWidget,
   handleListThemes,
   handleGetTheme,
   handleCreateTheme,
