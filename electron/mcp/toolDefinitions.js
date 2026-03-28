@@ -201,6 +201,22 @@ const widgetTools = [
       required: ["query"],
     },
   },
+  {
+    name: "install_widget",
+    description:
+      "Install a widget package from the Dash registry. Requires registry authentication — the user must be signed in via Settings > Account in the Dash app. Use search_widgets first to find available packages, then install by package name (e.g., 'slack', 'gong', 'chat'). After installation, use add_widget to place it on a dashboard.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        packageName: {
+          type: "string",
+          description:
+            "Package name from the registry (e.g., 'slack', 'gong', 'chat'). Use the 'package' field from search_widgets results.",
+        },
+      },
+      required: ["packageName"],
+    },
+  },
 ];
 
 const themeTools = [

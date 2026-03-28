@@ -12,6 +12,7 @@ const {
   handleConfigureWidget,
   handleListWidgets,
   handleSearchWidgets,
+  handleInstallWidget,
 } = require("./toolHandlers");
 
 // Map tool names to handler functions
@@ -21,6 +22,7 @@ const handlerMap = {
   configure_widget: handleConfigureWidget,
   list_widgets: handleListWidgets,
   search_widgets: handleSearchWidgets,
+  install_widget: handleInstallWidget,
 };
 
 /**
