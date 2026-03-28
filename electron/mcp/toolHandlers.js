@@ -950,17 +950,55 @@ async function handleConfigureWidget({ dashboardId, widgetId, config }) {
 }
 
 /**
+ * Build a Set of installed package identifiers for quick lookup.
+ * Includes both scoped ("@trops/slack") and bare ("slack") forms.
+ */
+function getInstalledPackageNames() {
+  const installed = new Set();
+  try {
+    const registry = getWidgetRegistry();
+    const widgets = registry.getWidgets();
+    for (const w of widgets) {
+      const name = w.name || w.packageId || "";
+      installed.add(name.toLowerCase());
+      // Also add bare name for scoped packages ("@trops/slack" → "slack")
+      if (name.includes("/")) {
+        installed.add(name.split("/").pop().toLowerCase());
+      }
+    }
+  } catch {
+    // Widget registry may not be initialized (e.g. in tests)
+  }
+  return installed;
+}
+
+/**
+ * Check if a registry package is locally installed.
+ */
+function isPackageInstalled(pkg, installedNames) {
+  const candidates = [
+    pkg.name,
+    pkg.scope ? `@${pkg.scope}/${pkg.name}` : null,
+    pkg.scope ? `${pkg.scope}/${pkg.name}` : null,
+  ].filter(Boolean);
+  return candidates.some((c) => installedNames.has(c.toLowerCase()));
+}
+
+/**
  * list_widgets — List available widgets from the registry.
  */
 async function handleListWidgets() {
   try {
     const index = await registryController.fetchRegistryIndex();
     const packages = index.packages || [];
+    const installedNames = getInstalledPackageNames();
 
     const widgets = [];
     for (const pkg of packages) {
       // Skip non-widget packages
       if (pkg.type && pkg.type !== "widget") continue;
+
+      const installed = isPackageInstalled(pkg, installedNames);
 
       for (const w of pkg.widgets || []) {
         const shortName = w.name || pkg.name;
@@ -975,6 +1013,7 @@ async function handleListWidgets() {
           icon: w.icon || pkg.icon || null,
           package: pkg.name,
           scope: pkg.scope || null,
+          installed,
           providers: (w.providers || pkg.providers || []).map((p) => ({
             type: p.type,
             providerClass: p.providerClass || "api",
@@ -996,6 +1035,7 @@ async function handleListWidgets() {
           icon: pkg.icon || null,
           package: pkg.name,
           scope: pkg.scope || null,
+          installed,
           providers: (pkg.providers || []).map((p) => ({
             type: p.type,
             providerClass: p.providerClass || "api",
@@ -1049,10 +1089,13 @@ async function handleSearchWidgets({ query }) {
   try {
     const result = await registryController.searchRegistry(query.trim());
     const packages = result.packages || [];
+    const installedNames = getInstalledPackageNames();
 
     const widgets = [];
     for (const pkg of packages) {
       if (pkg.type && pkg.type !== "widget") continue;
+
+      const installed = isPackageInstalled(pkg, installedNames);
 
       for (const w of pkg.widgets || []) {
         const shortName = w.name || pkg.name;
@@ -1067,6 +1110,7 @@ async function handleSearchWidgets({ query }) {
           icon: w.icon || pkg.icon || null,
           package: pkg.name,
           scope: pkg.scope || null,
+          installed,
           providers: (w.providers || pkg.providers || []).map((p) => ({
             type: p.type,
             providerClass: p.providerClass || "api",
@@ -1087,6 +1131,7 @@ async function handleSearchWidgets({ query }) {
           icon: pkg.icon || null,
           package: pkg.name,
           scope: pkg.scope || null,
+          installed,
           providers: (pkg.providers || []).map((p) => ({
             type: p.type,
             providerClass: p.providerClass || "api",
