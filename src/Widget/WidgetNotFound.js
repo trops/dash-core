@@ -148,7 +148,7 @@ export const WidgetNotFound = ({ component }) => {
         width="w-1/3"
         height="auto"
       >
-        <div className="relative">
+        <div className="relative max-h-[80vh] flex flex-col">
           {/* Close button — always visible */}
           <button
             type="button"
@@ -168,12 +168,14 @@ export const WidgetNotFound = ({ component }) => {
           )}
 
           {!isLoading && registryWidget && (
-            <RegistryPackageDetail
-              widget={registryWidget}
-              onInstall={handleInstall}
-              isInstalling={isInstalling}
-              installError={installError}
-            />
+            <div className="overflow-y-auto flex-1 min-h-0">
+              <RegistryPackageDetail
+                widget={registryWidget}
+                onInstall={handleInstall}
+                isInstalling={isInstalling}
+                installError={installError}
+              />
+            </div>
           )}
 
           {!isLoading && notFound && (
