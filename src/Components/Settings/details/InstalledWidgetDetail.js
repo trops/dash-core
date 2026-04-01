@@ -23,6 +23,7 @@ export const InstalledWidgetDetail = ({
   updateInfo = null,
   onUpdate,
   isUpdating = false,
+  updateError = null,
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
@@ -151,6 +152,15 @@ export const InstalledWidgetDetail = ({
           </div>
         )}
       </div>
+
+      {/* Update Error */}
+      {updateError && (
+        <div className="flex-shrink-0 px-6 py-2">
+          <div className="p-2 rounded bg-red-900/30 border border-red-700 text-xs text-red-400">
+            {updateError}
+          </div>
+        </div>
+      )}
 
       {/* Footer — only show for installed (non-builtin) widgets */}
       {widget.source !== "builtin" && (

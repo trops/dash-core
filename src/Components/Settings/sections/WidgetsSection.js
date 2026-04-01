@@ -649,6 +649,7 @@ export const WidgetsSection = ({
         updateInfo={updates.get(selectedWidget?.name) || null}
         onUpdate={updateWidget}
         isUpdating={isUpdating === selectedWidget?.name}
+        updateError={updateError}
       />
     );
   }

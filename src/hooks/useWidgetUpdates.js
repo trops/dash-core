@@ -54,6 +54,9 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
             });
           });
           setUpdates(map);
+          console.log(
+            `[useWidgetUpdates] Found ${results.length} package update(s)`,
+          );
         }
       })
       .catch((err) => {
@@ -68,7 +71,24 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
   const updateWidget = useCallback(
     async (name) => {
       const info = updates.get(name);
-      if (!info || !info.downloadUrl) return;
+      if (!info) {
+        console.error(
+          `[useWidgetUpdates] No update info found for "${name}". Available keys:`,
+          Array.from(updates.keys()),
+        );
+        setUpdateError(`No update info found for "${name}".`);
+        return;
+      }
+      if (!info.downloadUrl) {
+        console.error(
+          `[useWidgetUpdates] Update info for "${name}" has no downloadUrl:`,
+          info,
+        );
+        setUpdateError(
+          `Update for "${name}" has no download URL. The registry entry may be incomplete.`,
+        );
+        return;
+      }
 
       // Use packageId for install — name may be a CM key (widget-level)
       const widget = installedWidgets.find((w) => w.name === name);
@@ -77,9 +97,12 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
       setIsUpdating(name);
       setUpdateError(null);
       try {
-        // Check auth before attempting download (same pattern as useRegistrySearch)
-        const status = await window.mainApi?.registryAuth?.getStatus();
-        if (!status?.authenticated) {
+        // Validate token against registry (not just check if it exists locally)
+        const profile = await window.mainApi?.registryAuth?.getProfile();
+        if (!profile) {
+          console.log(
+            "[useWidgetUpdates] Token invalid or expired, requesting auth",
+          );
           setNeedsAuth(true);
           return;
         }
@@ -88,7 +111,13 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
           .replace(/\{version\}/g, info.latestVersion)
           .replace(/\{name\}/g, packageId);
 
+        console.log(
+          `[useWidgetUpdates] Installing ${packageId} from ${resolvedUrl}`,
+        );
+
         await window.mainApi.widgets.install(packageId, resolvedUrl);
+
+        console.log(`[useWidgetUpdates] ✓ Updated ${packageId} successfully`);
 
         // Remove ALL widgets in this package from updates map
         // (install replaces the entire package, not just one widget)
