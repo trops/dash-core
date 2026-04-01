@@ -164,7 +164,7 @@ export const InstalledWidgetDetail = ({
               title={
                 isUpdating
                   ? "Updating..."
-                  : `Update to v${updateInfo.latestVersion}`
+                  : `Update Package to v${updateInfo.latestVersion}`
               }
               onClick={() => onUpdate(widget.name)}
               disabled={isUpdating}
