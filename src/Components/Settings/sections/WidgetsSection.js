@@ -507,14 +507,14 @@ export const WidgetsSection = ({
             </Tabs3.List>
           </Tabs3>
 
-          {/* Author + Provider dropdowns */}
+          {/* Package + Provider dropdowns */}
           <div className="grid grid-cols-2 gap-1.5">
             <select
               value={filterAuthor}
               onChange={(e) => setFilterAuthor(e.target.value)}
               className={selectClassName}
             >
-              <option value="all">All Authors</option>
+              <option value="all">All Packages</option>
               {uniqueAuthors.map((a) => (
                 <option key={a} value={a}>
                   {a}
