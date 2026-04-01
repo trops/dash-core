@@ -450,8 +450,23 @@ export const WidgetsSection = ({
       });
 
       if (showGroupHeaders) {
+        const groupHasUpdate = groupWidgets.some((w) => updates.has(w.name));
         return (
-          <Sidebar.Group key={group} label={group}>
+          <Sidebar.Group
+            key={group}
+            label={
+              groupHasUpdate ? (
+                <span className="flex items-center gap-2">
+                  {group}
+                  <span className="text-[10px] text-blue-400 font-medium">
+                    Update
+                  </span>
+                </span>
+              ) : (
+                group
+              )
+            }
+          >
             {items}
           </Sidebar.Group>
         );

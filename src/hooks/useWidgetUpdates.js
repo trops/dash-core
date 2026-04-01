@@ -90,10 +90,13 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
 
         await window.mainApi.widgets.install(packageId, resolvedUrl);
 
-        // Remove from updates map on success
+        // Remove ALL widgets in this package from updates map
+        // (install replaces the entire package, not just one widget)
         setUpdates((prev) => {
           const next = new Map(prev);
-          next.delete(name);
+          for (const [key, val] of next) {
+            if (val.name === info.name) next.delete(key);
+          }
           return next;
         });
 
