@@ -62,12 +62,6 @@ export const ProviderBadge = ({
     >
       <span>{status.icon}</span>
       <span className="capitalize">{providerType}</span>
-      {isConfigured && providerName && (
-        <>
-          <span className="text-gray-400">·</span>
-          <span className="max-w-[100px] truncate">{providerName}</span>
-        </>
-      )}
     </button>
   );
 };
