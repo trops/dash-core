@@ -3,6 +3,8 @@ import React, {
   useEffect,
   useContext,
   useRef,
+  useMemo,
+  useCallback,
   Profiler,
 } from "react";
 import { LayoutContainer } from "../../Components/Layout";
@@ -34,6 +36,7 @@ import { DashboardWizardModal } from "../Layout/DashboardWizard";
 
 import { DashCommandPalette } from "../Navigation/DashCommandPalette";
 import { DashTabBar } from "../Navigation/DashTabBar";
+import { PageTabBar } from "../Navigation/PageTabBar";
 import { DashSidebar } from "../Navigation/DashSidebar";
 import { WidgetSidebar } from "../Navigation/WidgetSidebar";
 
@@ -87,6 +90,53 @@ export const DashboardStage = ({
     </Profiler>
   );
 };
+
+/**
+ * PageLayoutBuilder — memoized wrapper for LayoutBuilder within a page.
+ * Prevents the parent re-render from creating a new workspace object on every
+ * render, which would trigger LayoutBuilder's useEffect normalization cycle.
+ */
+const PageLayoutBuilder = React.memo(function PageLayoutBuilder({
+  page,
+  workspaceItem,
+  previewMode,
+  editMode,
+  onPageWorkspaceChange,
+  onProviderSelect,
+  onTogglePreview,
+  workspaceRef,
+  onWidgetPopout,
+}) {
+  const pageWorkspace = useMemo(
+    () => ({
+      ...workspaceItem,
+      layout: page.layout || [],
+    }),
+    // Only recompute when the page layout actually changes (by reference)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [workspaceItem.id, page.layout],
+  );
+
+  const handleChange = useCallback(
+    (ws) => onPageWorkspaceChange(ws, page.id),
+    [onPageWorkspaceChange, page.id],
+  );
+
+  return (
+    <LayoutBuilder
+      dashboardId={workspaceItem["id"]}
+      preview={previewMode}
+      workspace={pageWorkspace}
+      onWorkspaceChange={handleChange}
+      onProviderSelect={onProviderSelect}
+      onTogglePreview={onTogglePreview}
+      key={`LayoutBuilder-${workspaceItem["id"]}-${page.id}`}
+      editMode={editMode}
+      workspaceRef={workspaceRef}
+      onWidgetPopout={onWidgetPopout}
+    />
+  );
+});
 
 const DashboardStageInner = ({
   dashApi,
@@ -444,6 +494,17 @@ const DashboardStageInner = ({
           return LayoutModel(layoutOG, workspaces, ws["id"]);
         });
         ws["layout"] = tempLayout;
+        // Normalize page layouts too
+        if (ws.pages && Array.isArray(ws.pages)) {
+          ws.pages = ws.pages.map((page) => {
+            if (page.layout && Array.isArray(page.layout)) {
+              page.layout = page.layout.map((layoutOG) =>
+                LayoutModel(layoutOG, workspaces, ws["id"]),
+              );
+            }
+            return page;
+          });
+        }
         return WorkspaceModel(ws);
       });
 
@@ -537,9 +598,165 @@ const DashboardStageInner = ({
     }
   }
 
+  // ─── Page State ──────────────────────────────────────────────────
+  const [activePageId, setActivePageId] = useState(null);
+
+  const workspacePages = workspaceSelected?.pages || [];
+  const hasPages = workspacePages.length > 0;
+  const currentActivePageId =
+    activePageId ||
+    workspaceSelected?.activePageId ||
+    (workspacePages[0]?.id ?? null);
+
+  function handleAddPage() {
+    if (!workspaceSelected) return;
+
+    let existingPages = [...workspacePages];
+
+    // If this is the first time adding a page to a single-page dashboard,
+    // migrate the existing layout into page 1 first.
+    if (existingPages.length === 0 && workspaceSelected.layout?.length > 0) {
+      const page1 = {
+        id: `page-${Date.now() - 1}`,
+        name: workspaceSelected.name || "Page 1",
+        order: 0,
+        layout: workspaceSelected.layout,
+      };
+      existingPages = [page1];
+    }
+
+    const newPage = DashboardModel.createPage(
+      `Page ${existingPages.length + 1}`,
+    );
+    newPage.order = existingPages.length;
+
+    const updatedWorkspace = {
+      ...workspaceSelected,
+      pages: [...existingPages, newPage],
+      activePageId: newPage.id,
+    };
+    setActivePageId(newPage.id);
+    handleWorkspaceChange(updatedWorkspace);
+  }
+
+  function handleSwitchPage(pageId) {
+    setActivePageId(pageId);
+  }
+
+  function handleRenamePage(pageId, newName) {
+    if (!workspaceSelected) return;
+    const updatedPages = workspacePages.map((p) =>
+      p.id === pageId ? { ...p, name: newName } : p,
+    );
+    handleWorkspaceChange({ ...workspaceSelected, pages: updatedPages });
+  }
+
+  function handleDeletePage(pageId) {
+    if (!workspaceSelected || workspacePages.length <= 1) return;
+    const updatedPages = workspacePages.filter((p) => p.id !== pageId);
+    const newActiveId =
+      currentActivePageId === pageId
+        ? updatedPages[0]?.id
+        : currentActivePageId;
+    setActivePageId(newActiveId);
+
+    // If only one page remains, convert back to single-page mode
+    if (updatedPages.length === 1) {
+      handleWorkspaceChange({
+        ...workspaceSelected,
+        layout: updatedPages[0].layout,
+        pages: [],
+        activePageId: null,
+      });
+      setActivePageId(null);
+      return;
+    }
+
+    handleWorkspaceChange({
+      ...workspaceSelected,
+      pages: updatedPages,
+      activePageId: newActiveId,
+    });
+  }
+
+  function handleReorderPages(reorderedPages) {
+    if (!workspaceSelected) return;
+    handleWorkspaceChange({
+      ...workspaceSelected,
+      pages: reorderedPages,
+    });
+  }
+
+  // Track each page's current layout via per-page refs.
+  // LayoutBuilder writes to workspaceRef on every internal change,
+  // but in multi-page mode each page needs its own ref.
+  const pageRefsMap = useRef({});
+
+  function getPageRef(pageId) {
+    if (!pageRefsMap.current[pageId]) {
+      pageRefsMap.current[pageId] = { current: null };
+    }
+    return pageRefsMap.current[pageId];
+  }
+
+  function handlePageWorkspaceChange(updatedWorkspace, pageId) {
+    // When LayoutBuilder saves a page's layout, write it back to the correct page
+    if (!workspaceSelected || !hasPages) {
+      handleWorkspaceChange(updatedWorkspace);
+      return;
+    }
+    // Store in per-page ref
+    pageRefsMap.current[pageId] = { current: updatedWorkspace };
+
+    const updatedPages = workspacePages.map((p) =>
+      p.id === pageId ? { ...p, layout: updatedWorkspace.layout } : p,
+    );
+    handleWorkspaceChange({
+      ...workspaceSelected,
+      pages: updatedPages,
+      activePageId: currentActivePageId,
+    });
+  }
+
   function renderComponent(workspaceItem) {
     try {
-      return workspaceItem !== undefined ? (
+      if (workspaceItem === undefined) return null;
+
+      // Multi-page mode
+      if (hasPages) {
+        const sortedPages = [...workspacePages].sort(
+          (a, b) => (a.order || 0) - (b.order || 0),
+        );
+        return (
+          <>
+            {sortedPages.map((page) => {
+              const isActive = page.id === currentActivePageId;
+              return (
+                <div
+                  key={page.id}
+                  style={{ display: isActive ? "flex" : "none" }}
+                  className="flex-col w-full flex-1"
+                >
+                  <PageLayoutBuilder
+                    page={page}
+                    workspaceItem={workspaceItem}
+                    previewMode={previewMode}
+                    editMode={editMode}
+                    onPageWorkspaceChange={handlePageWorkspaceChange}
+                    onProviderSelect={handleProviderSelect}
+                    onTogglePreview={handleToggleEditMode}
+                    workspaceRef={getPageRef(page.id)}
+                    onWidgetPopout={popout ? null : handleWidgetPopout}
+                  />
+                </div>
+              );
+            })}
+          </>
+        );
+      }
+
+      // Single-page mode (backward compatible)
+      return (
         <LayoutBuilder
           dashboardId={workspaceItem["id"]}
           preview={previewMode}
@@ -552,7 +769,7 @@ const DashboardStageInner = ({
           workspaceRef={currentWorkspaceRef}
           onWidgetPopout={popout ? null : handleWidgetPopout}
         />
-      ) : null;
+      );
     } catch (e) {
       console.log(e);
       return null;
@@ -690,15 +907,41 @@ const DashboardStageInner = ({
       console.log("dashboard clicked save workspace ", workspaceSelected);
       // we have to remove the widgetConfig which contains the component
       // sanitize the workspace layout remove widgetConfig items
-      let workspaceToSave = deepCopy(
-        currentWorkspaceRef.current || workspaceSelected,
-      );
-      const layout = workspaceToSave["layout"].map((layoutItem) => {
-        delete layoutItem["widgetConfig"];
-        // delete layoutItem["api"];
-        return layoutItem;
-      });
-      workspaceToSave["layout"] = layout;
+      let workspaceToSave;
+
+      if (hasPages) {
+        // Multi-page: gather latest layout from each page's LayoutBuilder ref
+        workspaceToSave = deepCopy(workspaceSelected);
+        workspaceToSave.pages = (workspaceToSave.pages || []).map((page) => {
+          const pageRef = pageRefsMap.current[page.id];
+          const latestLayout = pageRef?.current?.layout || page.layout || [];
+          return {
+            ...page,
+            layout: latestLayout.map((item) => {
+              const copy = { ...item };
+              delete copy.widgetConfig;
+              return copy;
+            }),
+          };
+        });
+        workspaceToSave.activePageId = currentActivePageId;
+        // Also sanitize the root layout (may be stale from pre-pages era)
+        workspaceToSave.layout = (workspaceToSave.layout || []).map((item) => {
+          const copy = { ...item };
+          delete copy.widgetConfig;
+          return copy;
+        });
+      } else {
+        // Single-page: use workspaceRef as before
+        workspaceToSave = deepCopy(
+          currentWorkspaceRef.current || workspaceSelected,
+        );
+        const layout = workspaceToSave["layout"].map((layoutItem) => {
+          delete layoutItem["widgetConfig"];
+          return layoutItem;
+        });
+        workspaceToSave["layout"] = layout;
+      }
 
       // Clean orphaned layout items and stale listener references before save
       const dashboardForCleanup = new DashboardModel(workspaceToSave);
@@ -933,6 +1176,18 @@ const DashboardStageInner = ({
                         </button>
                       </div>
                     )}
+                  {(hasPages || !previewMode) && (
+                    <PageTabBar
+                      pages={workspacePages}
+                      activePageId={currentActivePageId}
+                      onSwitchPage={handleSwitchPage}
+                      onAddPage={handleAddPage}
+                      onRenamePage={handleRenamePage}
+                      onDeletePage={handleDeletePage}
+                      onReorderPages={handleReorderPages}
+                      editMode={!previewMode}
+                    />
+                  )}
                   <div
                     className={`flex flex-col w-full flex-1 ${
                       popout || previewMode === true
