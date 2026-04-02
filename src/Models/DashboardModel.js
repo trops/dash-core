@@ -47,10 +47,34 @@ export class DashboardModel {
     this.layout = "layout" in obj ? obj["layout"] : this._initializeLayout();
     this.menuId = "menuId" in obj ? obj["menuId"] : 1;
 
+    // Multi-page support: migrate single-page workspaces
+    if ("pages" in obj && Array.isArray(obj.pages) && obj.pages.length > 0) {
+      this.pages = obj.pages;
+      this.activePageId = obj.activePageId || obj.pages[0].id;
+    } else {
+      // Single-page workspace — no migration yet, pages stay empty
+      // Pages are created on demand when user clicks "Add Page"
+      this.pages = [];
+      this.activePageId = null;
+    }
+
     obj = null;
 
     // Normalize all grids on load to repair any persisted corruption
     this._normalizeAllGrids();
+
+    // Also normalize grids within pages
+    if (this.pages.length > 0) {
+      for (const page of this.pages) {
+        if (page.layout) {
+          const saved = this.layout;
+          this.layout = page.layout;
+          this._normalizeAllGrids();
+          page.layout = this.layout;
+          this.layout = saved;
+        }
+      }
+    }
   }
 
   _initializeLayout() {
@@ -81,6 +105,40 @@ export class DashboardModel {
     }
   }
 
+  /**
+   * Create a new page with a default 1x1 grid layout.
+   */
+  static createPage(name = "New Page") {
+    return {
+      id: `page-${Date.now()}`,
+      name,
+      order: 0,
+      layout: [
+        LayoutModel(
+          {
+            id: 1,
+            order: 1,
+            type: "grid",
+            component: "LayoutGridContainer",
+            hasChildren: 1,
+            scrollable: false,
+            parent: 0,
+            menuId: 1,
+            width: "w-full",
+            height: "h-full",
+            grid: {
+              rows: 1,
+              cols: 1,
+              gap: "gap-2",
+              1.1: { component: null, hide: false },
+            },
+          },
+          [],
+        ),
+      ],
+    };
+  }
+
   destroy() {
     this.id = null;
     this.name = null;
@@ -93,7 +151,7 @@ export class DashboardModel {
   }
 
   workspace() {
-    return {
+    const ws = {
       id: this.id,
       name: this.name,
       type: this.type,
@@ -102,6 +160,11 @@ export class DashboardModel {
       layout: this.layout,
       menuId: this.menuId,
     };
+    if (this.pages && this.pages.length > 0) {
+      ws.pages = this.pages;
+      ws.activePageId = this.activePageId;
+    }
+    return ws;
   }
 
   /**

@@ -18,6 +18,8 @@ export const WorkspaceModel = (workspaceItem) => {
     "type",
     "label",
     "layout",
+    "pages",
+    "activePageId",
     "menuId",
     "version",
     "selectedProviders",
@@ -53,6 +55,8 @@ export const WorkspaceModel = (workspaceItem) => {
   workspace.label = "label" in obj ? obj["label"] : "New Dashboard";
   workspace.version = "version" in obj ? obj["version"] : 1;
   workspace.layout = "layout" in obj ? obj["layout"] : [];
+  workspace.pages = "pages" in obj ? obj["pages"] : [];
+  workspace.activePageId = "activePageId" in obj ? obj["activePageId"] : null;
   // workspace.layout =
   //     "layout" in obj
   //         ? sanitizeLayout(obj["layout"], workspace.id)
