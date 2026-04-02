@@ -24,6 +24,8 @@ export const DashboardHeader = ({
   onThemeChange = null,
   scrollableEnabled = false,
   onScrollableChange = null,
+  sidebarEnabled = false,
+  onSidebarChange = null,
 }) => {
   const [workspaceSelected, setWorkspaceSelected] = useState(workspace);
   const { currentTheme, themes: contextThemes } = useContext(ThemeContext);
@@ -126,6 +128,13 @@ export const DashboardHeader = ({
                 text="Scrollable"
                 enabled={scrollableEnabled}
                 setEnabled={onScrollableChange}
+              />
+            )}
+            {onSidebarChange && (
+              <Toggle
+                text="Sidebar"
+                enabled={sidebarEnabled}
+                setEnabled={onSidebarChange}
               />
             )}
           </div>
