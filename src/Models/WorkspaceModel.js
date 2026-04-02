@@ -20,6 +20,9 @@ export const WorkspaceModel = (workspaceItem) => {
     "layout",
     "pages",
     "activePageId",
+    "sidebarEnabled",
+    "sidebarLayout",
+    "sidebarWidth",
     "menuId",
     "version",
     "selectedProviders",
@@ -57,6 +60,10 @@ export const WorkspaceModel = (workspaceItem) => {
   workspace.layout = "layout" in obj ? obj["layout"] : [];
   workspace.pages = "pages" in obj ? obj["pages"] : [];
   workspace.activePageId = "activePageId" in obj ? obj["activePageId"] : null;
+  workspace.sidebarEnabled =
+    "sidebarEnabled" in obj ? obj["sidebarEnabled"] : false;
+  workspace.sidebarLayout = "sidebarLayout" in obj ? obj["sidebarLayout"] : [];
+  workspace.sidebarWidth = "sidebarWidth" in obj ? obj["sidebarWidth"] : 280;
   // workspace.layout =
   //     "layout" in obj
   //         ? sanitizeLayout(obj["layout"], workspace.id)

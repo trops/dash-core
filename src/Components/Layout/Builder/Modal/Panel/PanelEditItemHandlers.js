@@ -137,11 +137,21 @@ export const PanelEditItemHandlers = ({ workspace, onUpdate, item = null }) => {
       )
     : [];
 
-  // Get available source widgets with events
-  const layoutArray =
-    workspaceSelected !== null && Array.isArray(workspaceSelected.layout)
-      ? workspaceSelected.layout
-      : [];
+  // Get available source widgets from ALL pages + sidebar + root layout
+  function getAllWidgetLayouts(ws) {
+    if (!ws) return [];
+    const all = [...(Array.isArray(ws.layout) ? ws.layout : [])];
+    if (ws.pages?.length > 0) {
+      ws.pages.forEach((page) => {
+        if (Array.isArray(page.layout)) all.push(...page.layout);
+      });
+    }
+    if (Array.isArray(ws.sidebarLayout) && ws.sidebarLayout.length > 0) {
+      all.push(...ws.sidebarLayout);
+    }
+    return all;
+  }
+  const layoutArray = getAllWidgetLayouts(workspaceSelected);
   const sourceWidgets = layoutArray
     .filter(
       (l) =>

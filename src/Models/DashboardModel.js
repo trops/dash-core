@@ -47,6 +47,11 @@ export class DashboardModel {
     this.layout = "layout" in obj ? obj["layout"] : this._initializeLayout();
     this.menuId = "menuId" in obj ? obj["menuId"] : 1;
 
+    // Sidebar support
+    this.sidebarEnabled = "sidebarEnabled" in obj ? obj.sidebarEnabled : false;
+    this.sidebarLayout = "sidebarLayout" in obj ? obj.sidebarLayout : [];
+    this.sidebarWidth = "sidebarWidth" in obj ? obj.sidebarWidth : 280;
+
     // Multi-page support: migrate single-page workspaces
     if ("pages" in obj && Array.isArray(obj.pages) && obj.pages.length > 0) {
       this.pages = obj.pages;
@@ -163,6 +168,11 @@ export class DashboardModel {
     if (this.pages && this.pages.length > 0) {
       ws.pages = this.pages;
       ws.activePageId = this.activePageId;
+    }
+    if (this.sidebarEnabled || this.sidebarLayout?.length > 0) {
+      ws.sidebarEnabled = this.sidebarEnabled;
+      ws.sidebarLayout = this.sidebarLayout;
+      ws.sidebarWidth = this.sidebarWidth;
     }
     return ws;
   }

@@ -37,6 +37,7 @@ import { DashboardWizardModal } from "../Layout/DashboardWizard";
 import { DashCommandPalette } from "../Navigation/DashCommandPalette";
 import { DashTabBar } from "../Navigation/DashTabBar";
 import { PageTabBar } from "../Navigation/PageTabBar";
+import { PinnedSidebar } from "./PinnedSidebar";
 import { DashSidebar } from "../Navigation/DashSidebar";
 import { WidgetSidebar } from "../Navigation/WidgetSidebar";
 
@@ -149,6 +150,25 @@ const DashboardStageInner = ({
 }) => {
   const { pub } = useContext(DashboardContext);
   const appContext = useContext(AppContext);
+
+  // Stable callback refs for props passed to memoized children.
+  // The ref wrapper keeps a stable function identity while the
+  // implementation stays current (avoids useCallback dependency lists).
+  const stableProviderSelectRef = useRef(null);
+  const stableTogglePreviewRef = useRef(null);
+  const stableWidgetPopoutRef = useRef(null);
+  const stableProviderSelect = useCallback(
+    (...args) => stableProviderSelectRef.current?.(...args),
+    [],
+  );
+  const stableTogglePreview = useCallback(
+    (...args) => stableTogglePreviewRef.current?.(...args),
+    [],
+  );
+  const stableWidgetPopout = useCallback(
+    (...args) => stableWidgetPopoutRef.current?.(...args),
+    [],
+  );
 
   /**
    * ThemeContext — consumed here, inside DashboardWrapper/ThemeWrapper
@@ -505,6 +525,12 @@ const DashboardStageInner = ({
             return page;
           });
         }
+        // Normalize sidebar layout
+        if (ws.sidebarLayout && Array.isArray(ws.sidebarLayout)) {
+          ws.sidebarLayout = ws.sidebarLayout.map((layoutOG) =>
+            LayoutModel(layoutOG, workspaces, ws["id"]),
+          );
+        }
         return WorkspaceModel(ws);
       });
 
@@ -598,11 +624,40 @@ const DashboardStageInner = ({
     }
   }
 
+  // ─── Sidebar State ────────────────────────────────────────────────
+  const sidebarEnabled = workspaceSelected?.sidebarEnabled || false;
+  const sidebarLayout = workspaceSelected?.sidebarLayout || [];
+  const sidebarWidth = workspaceSelected?.sidebarWidth || 280;
+  const sidebarWorkspaceRef = useRef(null);
+
+  function handleSidebarToggle(enabled) {
+    if (!workspaceSelected) return;
+    handleWorkspaceChange({
+      ...workspaceSelected,
+      sidebarEnabled: enabled,
+    });
+  }
+
   // ─── Page State ──────────────────────────────────────────────────
   const [activePageId, setActivePageId] = useState(null);
 
   const workspacePages = workspaceSelected?.pages || [];
   const hasPages = workspacePages.length > 0;
+
+  // Memoize sorted pages so page object references stay stable across re-renders
+  const sortedPagesForRender = useMemo(
+    () =>
+      hasPages
+        ? [...workspacePages].sort((a, b) => (a.order || 0) - (b.order || 0))
+        : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      hasPages,
+      workspacePages.length,
+      // Re-sort when page names/order change but not on every parent render
+      workspacePages.map((p) => `${p.id}:${p.order}:${p.name}`).join(","),
+    ],
+  );
   const currentActivePageId =
     activePageId ||
     workspaceSelected?.activePageId ||
@@ -699,24 +754,29 @@ const DashboardStageInner = ({
     return pageRefsMap.current[pageId];
   }
 
-  function handlePageWorkspaceChange(updatedWorkspace, pageId) {
-    // When LayoutBuilder saves a page's layout, write it back to the correct page
-    if (!workspaceSelected || !hasPages) {
-      handleWorkspaceChange(updatedWorkspace);
-      return;
-    }
-    // Store in per-page ref
+  const handlePageWorkspaceChange = useCallback((updatedWorkspace, pageId) => {
+    // Store in per-page ref (used by save function)
     pageRefsMap.current[pageId] = { current: updatedWorkspace };
+  }, []);
 
-    const updatedPages = workspacePages.map((p) =>
-      p.id === pageId ? { ...p, layout: updatedWorkspace.layout } : p,
-    );
-    handleWorkspaceChange({
-      ...workspaceSelected,
-      pages: updatedPages,
-      activePageId: currentActivePageId,
-    });
-  }
+  // Keep stable callback refs current
+  stableProviderSelectRef.current = handleProviderSelect;
+  stableTogglePreviewRef.current = handleToggleEditMode;
+  stableWidgetPopoutRef.current = handleWidgetPopout;
+
+  // Stable callbacks for sidebar (avoids PinnedSidebar re-renders)
+  const stableWorkspaceChangeRef = useRef(null);
+  stableWorkspaceChangeRef.current = handleWorkspaceChange;
+  const stableWorkspaceChange = useCallback(
+    (...args) => stableWorkspaceChangeRef.current?.(...args),
+    [],
+  );
+  const stableSwitchPageRef = useRef(null);
+  stableSwitchPageRef.current = handleSwitchPage;
+  const stableSwitchPage = useCallback(
+    (...args) => stableSwitchPageRef.current?.(...args),
+    [],
+  );
 
   function renderComponent(workspaceItem) {
     try {
@@ -724,12 +784,9 @@ const DashboardStageInner = ({
 
       // Multi-page mode
       if (hasPages) {
-        const sortedPages = [...workspacePages].sort(
-          (a, b) => (a.order || 0) - (b.order || 0),
-        );
         return (
           <>
-            {sortedPages.map((page) => {
+            {sortedPagesForRender.map((page) => {
               const isActive = page.id === currentActivePageId;
               return (
                 <div
@@ -743,10 +800,10 @@ const DashboardStageInner = ({
                     previewMode={previewMode}
                     editMode={editMode}
                     onPageWorkspaceChange={handlePageWorkspaceChange}
-                    onProviderSelect={handleProviderSelect}
-                    onTogglePreview={handleToggleEditMode}
+                    onProviderSelect={stableProviderSelect}
+                    onTogglePreview={stableTogglePreview}
                     workspaceRef={getPageRef(page.id)}
-                    onWidgetPopout={popout ? null : handleWidgetPopout}
+                    onWidgetPopout={stableWidgetPopout}
                   />
                 </div>
               );
@@ -941,6 +998,17 @@ const DashboardStageInner = ({
           return layoutItem;
         });
         workspaceToSave["layout"] = layout;
+      }
+
+      // Gather sidebar layout from its LayoutBuilder ref
+      if (sidebarWorkspaceRef.current?.layout) {
+        workspaceToSave.sidebarLayout = sidebarWorkspaceRef.current.layout.map(
+          (item) => {
+            const copy = { ...item };
+            delete copy.widgetConfig;
+            return copy;
+          },
+        );
       }
 
       // Clean orphaned layout items and stale listener references before save
@@ -1138,6 +1206,8 @@ const DashboardStageInner = ({
                   onThemeChange={popout ? null : handleWorkspaceThemeChange}
                   scrollableEnabled={getRootScrollable()}
                   onScrollableChange={popout ? null : handleScrollableChange}
+                  sidebarEnabled={sidebarEnabled}
+                  onSidebarChange={popout ? null : handleSidebarToggle}
                 />
                 <DashboardThemeProvider themeKey={workspaceSelected?.themeKey}>
                   {/* Missing widgets banner */}
@@ -1188,14 +1258,32 @@ const DashboardStageInner = ({
                       editMode={!previewMode}
                     />
                   )}
-                  <div
-                    className={`flex flex-col w-full flex-1 ${
-                      popout || previewMode === true
-                        ? "overflow-y-auto"
-                        : "overflow-clip"
-                    }`}
-                  >
-                    {renderComponent(workspaceSelected)}
+                  <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
+                    {sidebarEnabled && !popout && (
+                      <PinnedSidebar
+                        pages={workspacePages}
+                        activePageId={currentActivePageId}
+                        onSwitchPage={stableSwitchPage}
+                        sidebarLayout={sidebarLayout}
+                        workspace={workspaceSelected}
+                        width={sidebarWidth}
+                        editMode={!previewMode}
+                        onWorkspaceChange={stableWorkspaceChange}
+                        onProviderSelect={stableProviderSelect}
+                        onTogglePreview={stableTogglePreview}
+                        onWidgetPopout={stableWidgetPopout}
+                        sidebarRef={sidebarWorkspaceRef}
+                      />
+                    )}
+                    <div
+                      className={`flex flex-col w-full flex-1 ${
+                        popout || previewMode === true
+                          ? "overflow-y-auto"
+                          : "overflow-clip"
+                      }`}
+                    >
+                      {renderComponent(workspaceSelected)}
+                    </div>
                   </div>
                 </DashboardThemeProvider>
                 {!popout && (
