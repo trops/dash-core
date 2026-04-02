@@ -710,7 +710,7 @@ export const WidgetSidebar = ({ collapsed, onCollapsedChange }) => {
               onChange={(e) => setFilterAuthor(e.target.value)}
               className={selectClassName}
             >
-              <option value="all">All Authors</option>
+              <option value="all">All Packages</option>
               {uniqueAuthors.map((a) => (
                 <option key={a} value={a}>
                   {a}

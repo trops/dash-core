@@ -1340,7 +1340,7 @@ export const EnhancedWidgetDropdown = ({
                         onChange={(e) => setSelectedAuthor(e.target.value)}
                         className={`px-2 py-1 rounded text-xs bg-transparent border ${currentTheme["border-primary-medium"] || "border-gray-700"} ${currentTheme["text-primary-light"] || "text-gray-300"} focus:outline-none appearance-none cursor-pointer`}
                       >
-                        <option value="all">All Authors</option>
+                        <option value="all">All Packages</option>
                         {getUniqueAuthors().map((author) => (
                           <option key={author} value={author}>
                             {author}
