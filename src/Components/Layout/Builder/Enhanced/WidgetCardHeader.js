@@ -273,24 +273,38 @@ export const WidgetCardHeader = ({
                       <DropdownPanel.Header>
                         Select {providerType}
                       </DropdownPanel.Header>
-                      {availableProviders.map((provider) => (
-                        <MenuItem2
-                          key={provider.id}
-                          onClick={() =>
-                            handleProviderSelect(providerType, provider.id)
-                          }
-                          selected={provider.id === selectedProviderId}
-                        >
-                          <div>
-                            <div className="font-medium">{provider.name}</div>
-                            {provider.description && (
-                              <div className="text-xs opacity-60 mt-0.5">
-                                {provider.description}
+                      {availableProviders.map((provider) => {
+                        const isSelected = provider.id === selectedProviderId;
+                        return (
+                          <MenuItem2
+                            key={provider.id}
+                            onClick={() =>
+                              handleProviderSelect(providerType, provider.id)
+                            }
+                            selected={isSelected}
+                          >
+                            <div className="flex items-center gap-2 w-full">
+                              <span
+                                className={`w-4 text-center text-xs flex-shrink-0 ${
+                                  isSelected ? "text-green-400" : "opacity-0"
+                                }`}
+                              >
+                                ✓
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium">
+                                  {provider.name}
+                                </div>
+                                {provider.description && (
+                                  <div className="text-xs opacity-60 mt-0.5">
+                                    {provider.description}
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
-                        </MenuItem2>
-                      ))}
+                            </div>
+                          </MenuItem2>
+                        );
+                      })}
                       <DropdownPanel.Divider />
                     </>
                   ) : (
