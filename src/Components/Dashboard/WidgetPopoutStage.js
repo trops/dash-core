@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext, Profiler } from "react";
 import { DashboardWrapper, DashboardThemeProvider } from "../../Context";
-import { DashboardContext } from "../../Context";
+import { DashboardContext, WorkspaceContext } from "../../Context";
 import { WidgetFactory } from "../../Widget";
 import { LayoutModel, WorkspaceModel } from "../../Models";
 import { deepCopy } from "@trops/dash-react";
@@ -51,10 +51,24 @@ const WidgetPopoutInner = ({ dashApi, credentials, workspaceId, widgetId }) => {
         try {
           const workspaces = deepCopy(message["workspaces"]);
           const workspacesTemp = workspaces.map((ws) => {
-            const tempLayout = ws["layout"].map((layoutOG) => {
-              return LayoutModel(layoutOG, workspaces, ws["id"]);
-            });
-            ws["layout"] = tempLayout;
+            ws["layout"] = ws["layout"].map((layoutOG) =>
+              LayoutModel(layoutOG, workspaces, ws["id"]),
+            );
+            if (ws.pages && Array.isArray(ws.pages)) {
+              ws.pages = ws.pages.map((page) => {
+                if (page.layout && Array.isArray(page.layout)) {
+                  page.layout = page.layout.map((layoutOG) =>
+                    LayoutModel(layoutOG, workspaces, ws["id"]),
+                  );
+                }
+                return page;
+              });
+            }
+            if (ws.sidebarLayout && Array.isArray(ws.sidebarLayout)) {
+              ws.sidebarLayout = ws.sidebarLayout.map((layoutOG) =>
+                LayoutModel(layoutOG, workspaces, ws["id"]),
+              );
+            }
             return WorkspaceModel(ws);
           });
 
@@ -66,17 +80,39 @@ const WidgetPopoutInner = ({ dashApi, credentials, workspaceId, widgetId }) => {
 
           setWorkspace(target);
 
-          // Find the widget in the layout by ID
-          const widget = target.layout.find((item) => item.id === widgetId);
+          // Find the widget across all layout locations
+          let widget = target.layout.find((item) => item.id === widgetId);
+
+          if (!widget && target.pages && Array.isArray(target.pages)) {
+            for (const page of target.pages) {
+              if (page.layout && Array.isArray(page.layout)) {
+                widget = page.layout.find((item) => item.id === widgetId);
+                if (widget) break;
+              }
+            }
+          }
+
+          if (
+            !widget &&
+            target.sidebarLayout &&
+            Array.isArray(target.sidebarLayout)
+          ) {
+            widget = target.sidebarLayout.find((item) => item.id === widgetId);
+          }
+
           if (!widget) {
             setError("Widget not found in workspace");
             return;
           }
 
-          // Merge workspace-level provider selections into the widget item
+          // Merge provider selections: widget-level (persisted on layout item)
+          // takes priority, workspace-level (keyed by uuid) is the fallback
           const widgetWithProviders = {
             ...widget,
-            selectedProviders: target.selectedProviders?.[widgetId] || {},
+            selectedProviders: {
+              ...(target.selectedProviders?.[widget.uuid] || {}),
+              ...(widget.selectedProviders || {}),
+            },
           };
 
           setWidgetItem(widgetWithProviders);
@@ -144,9 +180,16 @@ const WidgetPopoutInner = ({ dashApi, credentials, workspaceId, widgetId }) => {
 
   return (
     <DashboardThemeProvider themeKey={workspace?.themeKey}>
-      <div className="flex flex-col w-full h-full overflow-auto">
-        {renderComponent(widgetItem.component, widgetItem.id, widgetItem, null)}
-      </div>
+      <WorkspaceContext.Provider value={{ workspaceData: workspace }}>
+        <div className="flex flex-col w-full h-full overflow-auto">
+          {renderComponent(
+            widgetItem.component,
+            widgetItem.id,
+            widgetItem,
+            null,
+          )}
+        </div>
+      </WorkspaceContext.Provider>
     </DashboardThemeProvider>
   );
 };
