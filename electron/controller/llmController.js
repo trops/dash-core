@@ -11,6 +11,8 @@
 const Anthropic = require("@anthropic-ai/sdk");
 const mcpController = require("./mcpController");
 const cliController = require("./cliController");
+const toolDefinitions = require("../mcp/toolDefinitions");
+const toolHandlers = require("../mcp/toolHandlers");
 const {
   LLM_STREAM_DELTA,
   LLM_STREAM_TOOL_CALL,
@@ -18,6 +20,45 @@ const {
   LLM_STREAM_COMPLETE,
   LLM_STREAM_ERROR,
 } = require("../events/llmEvents");
+
+/**
+ * Internal Dash MCP tools — always available to the LLM.
+ * Collected from all tool definition groups and mapped to their handlers.
+ */
+const DASH_TOOL_SERVER = "__dash_internal__";
+const dashToolDefs = [
+  ...toolDefinitions.dashboardTools,
+  ...toolDefinitions.widgetTools,
+  ...toolDefinitions.themeTools,
+  ...toolDefinitions.providerTools,
+  ...toolDefinitions.guideTools,
+  ...toolDefinitions.layoutTools,
+];
+const dashToolHandlerMap = {
+  list_dashboards: toolHandlers.handleListDashboards,
+  get_dashboard: toolHandlers.handleGetDashboard,
+  create_dashboard: toolHandlers.handleCreateDashboard,
+  delete_dashboard: toolHandlers.handleDeleteDashboard,
+  get_app_stats: toolHandlers.handleGetAppStats,
+  add_widget: toolHandlers.handleAddWidget,
+  remove_widget: toolHandlers.handleRemoveWidget,
+  configure_widget: toolHandlers.handleConfigureWidget,
+  list_widgets: toolHandlers.handleListWidgets,
+  search_widgets: toolHandlers.handleSearchWidgets,
+  install_widget: toolHandlers.handleInstallWidget,
+  list_themes: toolHandlers.handleListThemes,
+  get_theme: toolHandlers.handleGetTheme,
+  create_theme: toolHandlers.handleCreateTheme,
+  create_theme_from_url: toolHandlers.handleCreateThemeFromUrl,
+  apply_theme: toolHandlers.handleApplyTheme,
+  list_providers: toolHandlers.handleListProviders,
+  add_provider: toolHandlers.handleAddProvider,
+  remove_provider: toolHandlers.handleRemoveProvider,
+  get_setup_guide: toolHandlers.handleGetSetupGuide,
+  set_layout: toolHandlers.handleSetLayout,
+  update_layout: toolHandlers.handleUpdateLayout,
+  move_widget: toolHandlers.handleMoveWidget,
+};
 
 /**
  * In-flight requests for cancellation support.
@@ -107,8 +148,15 @@ const llmController = {
 
       const client = new Anthropic({ apiKey });
 
+      // Inject Dash internal tools alongside any externally connected tools
+      const allTools = [...tools, ...dashToolDefs];
+      const mergedToolServerMap = { ...toolServerMap };
+      for (const def of dashToolDefs) {
+        mergedToolServerMap[def.name] = DASH_TOOL_SERVER;
+      }
+
       // Convert MCP tools to Anthropic format
-      const anthropicTools = tools.map(mcpToolToAnthropic);
+      const anthropicTools = allTools.map(mcpToolToAnthropic);
 
       // Build the conversation — mutable copy for tool-use loop
       let currentMessages = [...messages];
@@ -186,7 +234,7 @@ const llmController = {
         for (const toolBlock of toolUseBlocks) {
           if (abortController.signal.aborted) return;
 
-          const serverName = toolServerMap[toolBlock.name];
+          const serverName = mergedToolServerMap[toolBlock.name];
 
           // Notify renderer of tool call
           if (win && !win.isDestroyed()) {
@@ -194,7 +242,7 @@ const llmController = {
               requestId,
               toolUseId: toolBlock.id,
               toolName: toolBlock.name,
-              serverName,
+              serverName: serverName === DASH_TOOL_SERVER ? "Dash" : serverName,
               input: toolBlock.input,
             });
           }
@@ -202,7 +250,33 @@ const llmController = {
           let resultText;
           let isError = false;
 
-          if (!serverName) {
+          if (serverName === DASH_TOOL_SERVER) {
+            // Route to local Dash tool handler
+            const handler = dashToolHandlerMap[toolBlock.name];
+            if (!handler) {
+              resultText = `Error: Unknown Dash tool "${toolBlock.name}".`;
+              isError = true;
+            } else {
+              try {
+                const dashResult = await handler(toolBlock.input || {});
+                if (dashResult.isError) {
+                  resultText = dashResult.content
+                    .filter((c) => c.type === "text")
+                    .map((c) => c.text)
+                    .join("\n");
+                  isError = true;
+                } else {
+                  resultText = dashResult.content
+                    .filter((c) => c.type === "text")
+                    .map((c) => c.text)
+                    .join("\n");
+                }
+              } catch (err) {
+                resultText = `Error calling Dash tool: ${err.message}`;
+                isError = true;
+              }
+            }
+          } else if (!serverName) {
             resultText = `Error: No MCP server found for tool "${toolBlock.name}". The server may have disconnected.`;
             isError = true;
           } else {

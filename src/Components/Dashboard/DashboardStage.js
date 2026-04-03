@@ -70,6 +70,7 @@ export const DashboardStage = ({
   showWelcomePrompt = false,
   onAcceptWelcome = null,
   onDismissWelcome = null,
+  renderAiAssistant = null,
 }) => {
   return (
     <Profiler id="myapp" onRender={() => {}}>
@@ -86,6 +87,7 @@ export const DashboardStage = ({
           backgroundColor={backgroundColor}
           popout={popout}
           popoutWorkspaceId={popoutWorkspaceId}
+          renderAiAssistant={renderAiAssistant}
         />
       </DashboardWrapper>
     </Profiler>
@@ -147,6 +149,7 @@ const DashboardStageInner = ({
   backgroundColor = null,
   popout = false,
   popoutWorkspaceId = null,
+  renderAiAssistant = null,
 }) => {
   const { pub } = useContext(DashboardContext);
   const appContext = useContext(AppContext);
@@ -1338,6 +1341,7 @@ const DashboardStageInner = ({
               onCollapsedChange={setWidgetSidebarCollapsed}
             />
           )}
+          {!popout && renderAiAssistant}
         </div>
 
         {/* ─── Modals (hidden in popout mode) ────────── */}
