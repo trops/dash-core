@@ -40,12 +40,14 @@ export const MessageBubble = ({ message, isStreaming, streamingText }) => {
           : "";
 
     return (
-      <div className="mb-4 pt-3 border-t border-gray-700/30">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-indigo-400 mb-1.5">
-          You
-        </div>
-        <div className="text-sm text-gray-100 whitespace-pre-wrap break-words leading-relaxed">
-          {text}
+      <div className="flex justify-end mb-4">
+        <div className="max-w-[85%]">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-indigo-400 mb-1 text-right">
+            You
+          </div>
+          <div className="px-3 py-2 rounded-lg bg-indigo-700/40 text-sm text-gray-100 whitespace-pre-wrap break-words leading-relaxed">
+            {text}
+          </div>
         </div>
       </div>
     );
@@ -78,10 +80,10 @@ export const MessageBubble = ({ message, isStreaming, streamingText }) => {
 
     return (
       <div className="mb-4">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
           Assistant
         </div>
-        <div className="text-sm leading-relaxed">
+        <div className="text-sm leading-relaxed px-3 py-2 rounded-lg bg-gray-800/40">
           {isStreaming && (
             <div className="text-gray-200">
               <StreamingText text={streamingText} isStreaming={true} />
