@@ -1186,17 +1186,33 @@ export const LayoutGridContainer = memo(
     function renderEmptyCellContent(cellNumber) {
       return (
         <div
-          className="w-full h-full min-h-16 flex flex-col items-center justify-center hover:bg-gray-800/50 cursor-pointer transition-colors"
-          onClick={() => handleClickAdd(cellNumber)}
+          className="w-full h-full min-h-16 flex flex-col items-center justify-center gap-2"
           onContextMenu={(e) => handleCellRightClick(e, cellNumber)}
         >
-          <ButtonIcon
-            icon="plus"
-            textColor="text-gray-600"
-            hoverTextColor="hover:text-blue-400"
-            backgroundColor="bg-transparent"
-          />
-          <span className="text-xs text-gray-600 mt-1">Add widget</span>
+          <div
+            className="flex flex-col items-center cursor-pointer hover:bg-gray-800/50 rounded-lg px-4 py-2 transition-colors"
+            onClick={() => handleClickAdd(cellNumber)}
+          >
+            <ButtonIcon
+              icon="plus"
+              textColor="text-gray-600"
+              hoverTextColor="hover:text-blue-400"
+              backgroundColor="bg-transparent"
+            />
+            <span className="text-xs text-gray-600 mt-1">Add widget</span>
+          </div>
+          <button
+            onClick={() =>
+              window.dispatchEvent(new Event("dash:open-widget-builder"))
+            }
+            className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs text-indigo-400/70 hover:text-indigo-300 hover:bg-indigo-900/20 transition-colors"
+          >
+            <FontAwesomeIcon
+              icon="wand-magic-sparkles"
+              className="h-2.5 w-2.5"
+            />
+            Build with AI
+          </button>
         </div>
       );
     }
