@@ -36,6 +36,7 @@ export function ChatCore({
   persistKey = null,
   backend = "anthropic",
   onPublishEvent = null,
+  hideToolsBanner = false,
 }) {
   const mainApi = window.mainApi;
 
@@ -519,12 +520,16 @@ export function ChatCore({
       )}
 
       {/* No tools info (anthropic only) */}
-      {isAnthropicBackend && !hasTools && apiKey && messages.length === 0 && (
-        <div className="mx-3 mt-2 p-2 bg-gray-800/50 border border-gray-700 rounded text-gray-400 text-xs">
-          No MCP tools connected. Connect providers (GitHub, Slack, etc.) to
-          enable tool-use.
-        </div>
-      )}
+      {!hideToolsBanner &&
+        isAnthropicBackend &&
+        !hasTools &&
+        apiKey &&
+        messages.length === 0 && (
+          <div className="mx-3 mt-2 p-2 bg-gray-800/50 border border-gray-700 rounded text-gray-400 text-xs">
+            No MCP tools connected. Connect providers (GitHub, Slack, etc.) to
+            enable tool-use.
+          </div>
+        )}
 
       {/* CLI tools info */}
       {isCliBackend && cliAvailable && messages.length === 0 && (
