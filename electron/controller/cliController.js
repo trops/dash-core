@@ -106,7 +106,7 @@ const cliController = {
    * @param {object} params - { model, messages, systemPrompt, maxToolRounds, widgetUuid }
    */
   sendMessage: async (win, requestId, params) => {
-    const { model, messages, systemPrompt, widgetUuid } = params;
+    const { model, messages, systemPrompt, widgetUuid, cwd } = params;
 
     const binaryPath = resolveCliBinary();
     if (!binaryPath) {
@@ -159,10 +159,14 @@ const cliController = {
 
     try {
       const fullPath = getShellPath();
-      const child = spawn(binaryPath, args, {
+      const spawnOpts = {
         env: { ...process.env, PATH: fullPath },
         stdio: ["pipe", "pipe", "pipe"],
-      });
+      };
+      if (cwd) {
+        spawnOpts.cwd = cwd;
+      }
+      const child = spawn(binaryPath, args, spawnOpts);
 
       activeProcesses.set(requestId, child);
 
