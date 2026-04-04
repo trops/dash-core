@@ -37,6 +37,7 @@ export function ChatCore({
   backend = "anthropic",
   onPublishEvent = null,
   hideToolsBanner = false,
+  cwd = null,
 }) {
   const mainApi = window.mainApi;
 
@@ -315,6 +316,7 @@ export function ChatCore({
         systemPrompt,
         maxToolRounds: parseInt(maxToolRounds, 10) || 10,
         widgetUuid: uuid || persistKey,
+        cwd: cwd || undefined,
       });
     },
     [
