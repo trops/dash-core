@@ -164,6 +164,10 @@ const cliController = {
         stdio: ["pipe", "pipe", "pipe"],
       };
       if (cwd) {
+        const fs = require("fs");
+        if (!fs.existsSync(cwd)) {
+          fs.mkdirSync(cwd, { recursive: true });
+        }
         spawnOpts.cwd = cwd;
       }
       const child = spawn(binaryPath, args, spawnOpts);
