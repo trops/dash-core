@@ -1,4 +1,10 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, {
+  useContext,
+  useEffect,
+  useCallback,
+  useRef,
+  useState,
+} from "react";
 import { AppContext, DashboardContext, AppThemeScope } from "../../../Context";
 import {
   addItemToItemLayout,
@@ -141,6 +147,65 @@ export const LayoutBuilder = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentWorkspace]);
+
+  // Ref for current workspace state (avoids stale closure in event listener)
+  const wsRef = useRef(currentWorkspace);
+  useEffect(() => {
+    wsRef.current = currentWorkspace;
+  }, [currentWorkspace]);
+
+  // Listen for AI widget builder placement — modifies layout state directly
+  useEffect(() => {
+    const handler = (e) => {
+      const { widgetComponentName, cellNumber, gridItemId } = e.detail || {};
+      if (!widgetComponentName || !cellNumber || !gridItemId) return;
+
+      const ws = wsRef.current;
+      if (!ws?.layout) return;
+
+      const gridItem = ws.layout.find((item) => item.id === gridItemId);
+      if (!gridItem?.grid) return;
+
+      const config = ComponentManager.config(widgetComponentName);
+      if (!config) {
+        console.warn(
+          `[LayoutBuilder] Widget ${widgetComponentName} not found in ComponentManager`,
+        );
+        return;
+      }
+
+      try {
+        const hasChildren = config.type === "workspace";
+        const newLayout = addItemToItemLayout(
+          ws.layout,
+          gridItem.id,
+          { ...config, component: widgetComponentName },
+          hasChildren,
+        );
+        const newWidgetId = newLayout[newLayout.length - 1].id;
+        const updatedGrid = newLayout.find((item) => item.id === gridItem.id);
+        if (updatedGrid?.grid) {
+          updatedGrid.grid[cellNumber] = {
+            component: newWidgetId,
+            hide: false,
+          };
+        }
+        const newWorkspace = JSON.parse(JSON.stringify(ws));
+        newWorkspace.layout = newLayout;
+        setCurrentWorkspace(newWorkspace);
+        console.log(
+          `[LayoutBuilder] AI widget placed: ${widgetComponentName} → cell ${cellNumber}`,
+        );
+      } catch (err) {
+        console.error("[LayoutBuilder] Failed to place AI widget:", err);
+      }
+    };
+
+    window.addEventListener("dash:place-widget-in-cell", handler);
+    return () =>
+      window.removeEventListener("dash:place-widget-in-cell", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /**
    * onClickAdd

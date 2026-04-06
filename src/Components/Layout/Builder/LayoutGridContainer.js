@@ -1203,7 +1203,15 @@ export const LayoutGridContainer = memo(
           </div>
           <button
             onClick={() =>
-              window.dispatchEvent(new Event("dash:open-widget-builder"))
+              window.dispatchEvent(
+                new CustomEvent("dash:open-widget-builder", {
+                  detail: {
+                    cellNumber,
+                    gridItemId: item.id,
+                    workspaceId: workspace?.id,
+                  },
+                }),
+              )
             }
             className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs text-indigo-400/70 hover:text-indigo-300 hover:bg-indigo-900/20 transition-colors"
           >
