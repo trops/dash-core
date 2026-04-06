@@ -262,6 +262,28 @@ const widgetApi = {
   },
 
   /**
+   * Read widget source files (.js + .dash.js + manifest)
+   *
+   * @param {string} widgetName - Scoped widget package name (e.g., "@ai-built/counter")
+   * @param {string} [componentName] - Specific component to read (optional, defaults to first found)
+   * @returns {Promise<Object>} { success, componentCode, configCode, manifest, widgetName, componentName }
+   */
+  readSources: async (widgetName, componentName) => {
+    try {
+      return await ipcRenderer.invoke("widget:read-sources", {
+        widgetName,
+        componentName,
+      });
+    } catch (error) {
+      console.error(
+        `[WidgetApi] Error reading sources for ${widgetName}:`,
+        error,
+      );
+      return { success: false, error: error.message };
+    }
+  },
+
+  /**
    * Read CJS bundle sources for all installed widgets
    *
    * @returns {Promise<Array>} Array of { widgetName, source }

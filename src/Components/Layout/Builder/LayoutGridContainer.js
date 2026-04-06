@@ -1294,6 +1294,28 @@ export const LayoutGridContainer = memo(
                   }
                 : undefined
             }
+            onEditWithAI={
+              cellComponent
+                ? () => {
+                    window.dispatchEvent(
+                      new CustomEvent("dash:edit-widget-with-ai", {
+                        detail: {
+                          cellNumber,
+                          gridItemId: item.id,
+                          workspaceId: workspace?.id,
+                          widgetComponentName: cellComponent.component,
+                          widgetId: cellComponent.id,
+                          sourcePackage:
+                            ComponentManager.config(
+                              cellComponent.component,
+                              cellComponent,
+                            )?._sourcePackage || null,
+                        },
+                      }),
+                    );
+                  }
+                : undefined
+            }
           />
           {cellComponent &&
           ComponentManager.config(cellComponent.component, cellComponent) ? (
