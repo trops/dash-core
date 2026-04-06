@@ -47,6 +47,7 @@ const WidgetCardHeader_Component = ({
   onDelete,
   onSplitHorizontal = null,
   onSplitVertical = null,
+  onEditWithAI,
   // Merge selection props
   isSelected = false,
   isSelectable = true,
@@ -70,6 +71,7 @@ const WidgetCardHeader_Component = ({
       onDelete={onDelete}
       onSplitHorizontal={onSplitHorizontal}
       onSplitVertical={onSplitVertical}
+      onEditWithAI={onEditWithAI}
       isSelected={isSelected}
       isSelectable={isSelectable}
       onToggleSelect={onToggleSelect}
