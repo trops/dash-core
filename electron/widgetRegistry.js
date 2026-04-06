@@ -1130,6 +1130,84 @@ function setupWidgetRegistryHandlers() {
     }
   });
 
+  ipcMain.handle(
+    "widget:read-sources",
+    async (event, { widgetName, componentName }) => {
+      try {
+        const registry = getWidgetRegistry();
+        const widget = registry.getWidget(widgetName);
+        if (!widget || !widget.path) {
+          return {
+            success: false,
+            error: `Widget not found: ${widgetName}`,
+          };
+        }
+
+        const widgetsDir = findWidgetsDir(widget.path);
+        if (!widgetsDir) {
+          return {
+            success: false,
+            error: `No source files found for: ${widgetName}`,
+          };
+        }
+
+        // Find target component (use componentName or first .dash.js file)
+        const files = fs.readdirSync(widgetsDir);
+        const target =
+          componentName ||
+          files.find((f) => f.endsWith(".dash.js"))?.replace(".dash.js", "");
+
+        if (!target) {
+          return {
+            success: false,
+            error: `No widget component found in: ${widgetsDir}`,
+          };
+        }
+
+        const componentPath = path.join(widgetsDir, `${target}.js`);
+        const configPath = path.join(widgetsDir, `${target}.dash.js`);
+
+        if (!fs.existsSync(componentPath)) {
+          return {
+            success: false,
+            error: `Component source not found: ${target}.js`,
+          };
+        }
+
+        const componentCode = fs.readFileSync(componentPath, "utf8");
+        const configCode = fs.existsSync(configPath)
+          ? fs.readFileSync(configPath, "utf8")
+          : "";
+
+        // Read manifest
+        const manifestPath = path.join(widget.path, "dash.json");
+        let manifest = null;
+        if (fs.existsSync(manifestPath)) {
+          try {
+            manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+          } catch (_) {
+            /* ignore parse errors */
+          }
+        }
+
+        return {
+          success: true,
+          componentCode,
+          configCode,
+          manifest,
+          widgetName,
+          componentName: target,
+        };
+      } catch (error) {
+        console.error(
+          `[WidgetRegistry] Error reading sources for ${widgetName}:`,
+          error,
+        );
+        return { success: false, error: error.message };
+      }
+    },
+  );
+
   ipcMain.handle("widget:read-all-bundles", async () => {
     try {
       const registry = getWidgetRegistry();

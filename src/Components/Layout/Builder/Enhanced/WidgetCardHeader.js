@@ -34,6 +34,7 @@ export const WidgetCardHeader = ({
   onSplitHorizontal = null,
   onSplitVertical = null,
   onMoreOptions,
+  onEditWithAI,
   // Merge selection props
   isSelected = false,
   isSelectable = true,
@@ -133,6 +134,16 @@ export const WidgetCardHeader = ({
       label: "Configure",
       onClick: () => {
         onConfigure(widgetItem);
+        setShowOverflowMenu(false);
+      },
+    });
+  }
+  if (onEditWithAI && widgetItem) {
+    overflowActions.push({
+      icon: "wand-magic-sparkles",
+      label: "Edit with AI",
+      onClick: () => {
+        onEditWithAI(widgetItem);
         setShowOverflowMenu(false);
       },
     });
@@ -339,6 +350,15 @@ export const WidgetCardHeader = ({
                 icon="cog"
                 onClick={() => onConfigure(widgetItem)}
                 title="Configure widget"
+                theme={false}
+              />
+            )}
+
+            {onEditWithAI && widgetItem && (
+              <ButtonIcon2
+                icon="wand-magic-sparkles"
+                onClick={() => onEditWithAI(widgetItem)}
+                title="Edit with AI"
                 theme={false}
               />
             )}

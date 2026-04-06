@@ -207,6 +207,53 @@ export const LayoutBuilder = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Listen for AI widget remix — swaps existing widget component in-place
+  useEffect(() => {
+    const handler = (e) => {
+      const { widgetComponentName, widgetId } = e.detail || {};
+      if (!widgetComponentName || !widgetId) return;
+
+      const ws = wsRef.current;
+      if (!ws?.layout) return;
+
+      const config = ComponentManager.config(widgetComponentName);
+      if (!config) {
+        console.warn(
+          `[LayoutBuilder] Widget ${widgetComponentName} not found in ComponentManager`,
+        );
+        return;
+      }
+
+      try {
+        const newLayout = updateLayoutItem(ws.layout, {
+          id: widgetId,
+          component: widgetComponentName,
+        });
+
+        if (!newLayout) {
+          console.warn(
+            `[LayoutBuilder] Could not find layout item ${widgetId} to swap`,
+          );
+          return;
+        }
+
+        const newWorkspace = JSON.parse(JSON.stringify(ws));
+        newWorkspace.layout = newLayout;
+        setCurrentWorkspace(newWorkspace);
+        console.log(
+          `[LayoutBuilder] AI widget swapped: ${widgetComponentName} → item ${widgetId}`,
+        );
+      } catch (err) {
+        console.error("[LayoutBuilder] Failed to swap AI widget:", err);
+      }
+    };
+
+    window.addEventListener("dash:swap-widget-in-cell", handler);
+    return () =>
+      window.removeEventListener("dash:swap-widget-in-cell", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /**
    * onClickAdd
    * From the Widget or Container, clicked plus button to add a widget
