@@ -992,15 +992,25 @@ const DashboardStageInner = ({
           return copy;
         });
       } else {
-        // Single-page: use workspaceRef as before
-        workspaceToSave = deepCopy(
-          currentWorkspaceRef.current || workspaceSelected,
-        );
-        const layout = workspaceToSave["layout"].map((layoutItem) => {
-          delete layoutItem["widgetConfig"];
-          return layoutItem;
-        });
-        workspaceToSave["layout"] = layout;
+        // Single-page: merge workspace-level properties (themeKey, name, menuId, etc.)
+        // from workspaceSelected with the latest layout from currentWorkspaceRef.
+        // The ref only tracks layout changes; header-level property changes
+        // (theme, folder, scrollable) are tracked in workspaceSelected.
+        workspaceToSave = deepCopy(workspaceSelected);
+        const refLayout = currentWorkspaceRef.current?.layout;
+        if (refLayout) {
+          workspaceToSave["layout"] = refLayout.map((layoutItem) => {
+            delete layoutItem["widgetConfig"];
+            return layoutItem;
+          });
+        } else {
+          workspaceToSave["layout"] = (workspaceToSave["layout"] || []).map(
+            (layoutItem) => {
+              delete layoutItem["widgetConfig"];
+              return layoutItem;
+            },
+          );
+        }
       }
 
       // Gather sidebar layout from its LayoutBuilder ref
