@@ -926,6 +926,9 @@ const DashboardStageInner = ({
       currentWorkspaceRef.current || workspaceSelected,
     );
     tempWorkspace["menuId"] = Number(menuId);
+    if (currentWorkspaceRef.current) {
+      currentWorkspaceRef.current.menuId = Number(menuId);
+    }
     updateTabWorkspace(tempWorkspace);
   }
 
@@ -935,6 +938,10 @@ const DashboardStageInner = ({
       currentWorkspaceRef.current || workspaceSelected,
     );
     tempWorkspace["themeKey"] = themeKey || null;
+    // Sync themeKey to the LayoutBuilder ref so save picks it up
+    if (currentWorkspaceRef.current) {
+      currentWorkspaceRef.current.themeKey = themeKey || null;
+    }
     updateTabWorkspace(tempWorkspace);
   }
 
