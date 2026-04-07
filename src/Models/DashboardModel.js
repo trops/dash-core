@@ -46,6 +46,9 @@ export class DashboardModel {
     this.version = "version" in obj ? obj["version"] : 1;
     this.layout = "layout" in obj ? obj["layout"] : this._initializeLayout();
     this.menuId = "menuId" in obj ? obj["menuId"] : 1;
+    this.themeKey = "themeKey" in obj ? obj["themeKey"] : null;
+    this.selectedProviders =
+      "selectedProviders" in obj ? obj["selectedProviders"] : {};
 
     // Sidebar support
     this.sidebarEnabled = "sidebarEnabled" in obj ? obj.sidebarEnabled : false;
@@ -164,6 +167,8 @@ export class DashboardModel {
       version: this.version,
       layout: this.layout,
       menuId: this.menuId,
+      themeKey: this.themeKey,
+      selectedProviders: this.selectedProviders,
     };
     if (this.pages && this.pages.length > 0) {
       ws.pages = this.pages;
