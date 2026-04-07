@@ -92,7 +92,13 @@ export const DashboardHeader = ({
                     icon: m.icon || m.folder || "folder",
                   }))
                   .sort((a, b) => (a.label || "").localeCompare(b.label || ""))}
-                onChange={onFolderChange}
+                onChange={(menuId) => {
+                  setWorkspaceSelected((prev) => ({
+                    ...prev,
+                    menuId,
+                  }));
+                  onFolderChange(menuId);
+                }}
                 placeholder="Folder"
                 backgroundColor={currentTheme["bg-primary-very-dark"]}
                 textColor={currentTheme["text-primary-medium"]}
@@ -114,7 +120,13 @@ export const DashboardHeader = ({
                     icon: "palette",
                     badge: <ThemeColorDots theme={t} />,
                   }))}
-                onChange={onThemeChange}
+                onChange={(themeKey) => {
+                  setWorkspaceSelected((prev) => ({
+                    ...prev,
+                    themeKey,
+                  }));
+                  onThemeChange(themeKey);
+                }}
                 placeholder="Select a theme"
                 backgroundColor={currentTheme["bg-primary-very-dark"]}
                 textColor={currentTheme["text-primary-medium"]}
