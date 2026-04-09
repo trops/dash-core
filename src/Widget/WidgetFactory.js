@@ -4,6 +4,7 @@ import { DashboardPublisher } from "../DashboardPublisher";
 import { DashboardContext, WidgetContext } from "../Context";
 import { WidgetHelpers } from "../Api/WidgetHelpers";
 import { WidgetApi } from "../Api/WidgetApi";
+import { DashboardActionsApi } from "../Api/DashboardActionsApi";
 import { getUUID } from "@trops/dash-react";
 import { WidgetCardStatusBar } from "../Components/Layout/Builder/Enhanced/WidgetCardStatusBar";
 import { WidgetNotFound } from "./WidgetNotFound";
@@ -174,6 +175,7 @@ const WidgetRenderer = ({
               helpers.publishEvent(eventName, payload)
             }
             api={w}
+            dashboardApi={DashboardActionsApi}
             {...params}
             {...userPrefs}
             backgroundColor={bgColor}
@@ -189,6 +191,7 @@ const WidgetRenderer = ({
               helpers.publishEvent(eventName, payload)
             }
             api={w}
+            dashboardApi={DashboardActionsApi}
             id={`widget-kids-${widgetKey}`}
             key={`widget-kids-${widgetKey}`}
             {...params}

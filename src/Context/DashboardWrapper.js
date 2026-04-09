@@ -1,6 +1,7 @@
 import { DashboardContext } from "./DashboardContext";
 import { DashboardPublisher } from "../DashboardPublisher";
 import { WidgetApi } from "../Api";
+import { DashboardActionsApi } from "../Api/DashboardActionsApi";
 import { AppWrapper } from "./App/AppWrapper";
 import { ThemeWrapper } from "./ThemeWrapper";
 import { MainSection } from "@trops/dash-react";
@@ -37,6 +38,7 @@ export const DashboardWrapper = ({
       widgetApi,
       pub: DashboardPublisher,
       dashApi,
+      dashboardApi: DashboardActionsApi,
       credentials,
       providers,
     }),
