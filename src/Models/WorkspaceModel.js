@@ -88,10 +88,24 @@ export const WorkspaceModel = (workspaceItem) => {
   workspace.type = "type" in obj ? sanitizeType(obj["type"]) : "workspace";
   workspace.label = "label" in obj ? obj["label"] : "New Dashboard";
   workspace.version = "version" in obj ? obj["version"] : 1;
-  workspace.layout =
+  // Use the provided layout if it exists and is non-empty; otherwise
+  // create a default 1x1 grid so the workspace always has a renderable
+  // grid container.
+  const rawLayout =
     "layout" in obj && Array.isArray(obj["layout"]) && obj["layout"].length > 0
       ? obj["layout"]
       : defaultGridLayout();
+
+  // Normalize each layout item through LayoutModel so renderers get a
+  // fully-shaped object (contexts, listeners, eventHandlers, etc.).
+  // Without this, layouts coming from createLayoutFromTemplate (the
+  // wizard) are missing fields and the grid container fails to render.
+  // Skip items already produced by LayoutModel (idempotent: LayoutModel
+  // is safe to call on its own output).
+  const wsId = "id" in obj ? obj["id"] : workspace.id;
+  workspace.layout = rawLayout.map((item) =>
+    LayoutModel(item, rawLayout, wsId),
+  );
   workspace.pages = "pages" in obj ? obj["pages"] : [];
   workspace.activePageId = "activePageId" in obj ? obj["activePageId"] : null;
 
