@@ -93,75 +93,79 @@ export const PageTabBar = ({
         currentTheme["border-primary-dark"] || "border-gray-700"
       } ${currentTheme["bg-primary-medium"] || "bg-gray-800/50"} scrollbar-none`}
     >
-      {sortedPages.map((page) => {
-        const isActive = page.id === activePageId;
-        const isDragOver = page.id === dragOverId;
+      {/* Only show page tabs when there are 2+ pages.
+          With a lone page, the tab is hidden but the page still
+          renders normally — adding a 2nd page reveals both tabs. */}
+      {pages.length > 1 &&
+        sortedPages.map((page) => {
+          const isActive = page.id === activePageId;
+          const isDragOver = page.id === dragOverId;
 
-        return (
-          <button
-            key={page.id}
-            type="button"
-            onClick={() => onSwitchPage && onSwitchPage(page.id)}
-            onDoubleClick={() => startRename(page)}
-            draggable={editMode}
-            onDragStart={(e) => handleDragStart(e, page.id)}
-            onDragOver={(e) => handleDragOver(e, page.id)}
-            onDrop={(e) => handleDrop(e, page.id)}
-            onDragEnd={handleDragEnd}
-            className={`group flex items-center gap-1.5 px-3 py-1 text-xs rounded-md whitespace-nowrap transition-all duration-100 cursor-pointer ${
-              isActive
-                ? "bg-white/15 text-white"
-                : "text-gray-400 hover:bg-white/10 hover:text-gray-200"
-            } ${isDragOver ? "ring-1 ring-blue-400" : ""} ${
-              editMode ? "cursor-grab active:cursor-grabbing" : ""
-            }`}
-          >
-            {editingId === page.id ? (
-              <input
-                ref={inputRef}
-                type="text"
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                onBlur={commitRename}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") commitRename();
-                  if (e.key === "Escape") setEditingId(null);
-                }}
-                className="bg-transparent border-b border-blue-400 text-xs text-white outline-none w-20"
-                onClick={(e) => e.stopPropagation()}
-              />
-            ) : (
-              <span className="truncate max-w-[140px]">{page.name}</span>
-            )}
+          return (
+            <button
+              key={page.id}
+              type="button"
+              onClick={() => onSwitchPage && onSwitchPage(page.id)}
+              onDoubleClick={() => startRename(page)}
+              draggable={editMode}
+              onDragStart={(e) => handleDragStart(e, page.id)}
+              onDragOver={(e) => handleDragOver(e, page.id)}
+              onDrop={(e) => handleDrop(e, page.id)}
+              onDragEnd={handleDragEnd}
+              className={`group flex items-center gap-1.5 px-3 py-1 text-xs rounded-md whitespace-nowrap transition-all duration-100 cursor-pointer ${
+                isActive
+                  ? "bg-white/15 text-white"
+                  : "text-gray-400 hover:bg-white/10 hover:text-gray-200"
+              } ${isDragOver ? "ring-1 ring-blue-400" : ""} ${
+                editMode ? "cursor-grab active:cursor-grabbing" : ""
+              }`}
+            >
+              {editingId === page.id ? (
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onBlur={commitRename}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitRename();
+                    if (e.key === "Escape") setEditingId(null);
+                  }}
+                  className="bg-transparent border-b border-blue-400 text-xs text-white outline-none w-20"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <span className="truncate max-w-[140px]">{page.name}</span>
+              )}
 
-            {editMode && pages.length > 1 && editingId !== page.id && (
-              <span
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeletePage && onDeletePage(page.id);
-                }}
-                className={`flex items-center justify-center h-4 w-4 rounded-sm hover:bg-white/10 ${
-                  isActive ? "opacity-60" : "opacity-0 group-hover:opacity-60"
-                }`}
-              >
-                <svg
-                  className="h-2.5 w-2.5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2.5}
+              {editMode && pages.length > 1 && editingId !== page.id && (
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeletePage && onDeletePage(page.id);
+                  }}
+                  className={`flex items-center justify-center h-4 w-4 rounded-sm hover:bg-white/10 ${
+                    isActive ? "opacity-60" : "opacity-0 group-hover:opacity-60"
+                  }`}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </span>
-            )}
-          </button>
-        );
-      })}
+                  <svg
+                    className="h-2.5 w-2.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </span>
+              )}
+            </button>
+          );
+        })}
 
       {editMode && onAddPage && (
         <button
@@ -174,7 +178,9 @@ export const PageTabBar = ({
         </button>
       )}
 
-      {editMode && onScrollableChange && (
+      {/* Scrollable toggle only appears here in multi-page mode.
+          In single-page mode, the toggle lives in DashboardHeader. */}
+      {editMode && pages.length > 1 && onScrollableChange && (
         <div className="ml-auto flex items-center shrink-0">
           <Toggle
             text="Scrollable"
