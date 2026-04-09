@@ -20,6 +20,7 @@ import {
   ThemeContext,
   EmptyState,
   ButtonIcon,
+  Toast,
 } from "@trops/dash-react";
 import { LayoutModel, DashboardModel } from "../../Models";
 import { ThemeManagerModal } from "../../Components/Theme";
@@ -190,6 +191,9 @@ const DashboardStageInner = ({
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [widgetSidebarCollapsed, setWidgetSidebarCollapsed] = useState(true);
+
+  // ─── In-app toasts (driven by DashboardActionsApi.notify) ────────
+  const [toasts, setToasts] = useState([]);
 
   // ─── Recents + Session ──────────────────────────────────────────
   const [recentDashboards, setRecentDashboards] = useState([]);
@@ -644,23 +648,78 @@ const DashboardStageInner = ({
   // ─── Page State ──────────────────────────────────────────────────
   const [activePageId, setActivePageId] = useState(null);
 
+  // Page history stack for goBack() — pushes the previous page id
+  // whenever a navigation happens through navigateToPage().
+  const pageHistoryRef = useRef([]);
+
+  // Wrapper that records history before switching pages.
+  // Pass recordHistory=false to switch without recording (e.g. for goBack).
+  const navigateToPage = useCallback(
+    (pageId, recordHistory = true) => {
+      if (!pageId) return;
+      if (recordHistory) {
+        const prevId =
+          activePageId ||
+          workspaceSelected?.activePageId ||
+          (workspaceSelected?.pages?.[0]?.id ?? null);
+        if (prevId && prevId !== pageId) {
+          pageHistoryRef.current.push(prevId);
+        }
+      }
+      setActivePageId(pageId);
+    },
+    [activePageId, workspaceSelected?.activePageId, workspaceSelected?.pages],
+  );
+
   // Listen for programmatic page switches via DashboardActionsApi
   useEffect(() => {
     function onSwitchPage(e) {
       const { pageId, pageName } = e.detail || {};
       if (pageId) {
-        setActivePageId(pageId);
+        navigateToPage(pageId);
       } else if (pageName) {
         const pages = workspaceSelected?.pages || [];
         const match = pages.find(
           (p) => p.name.toLowerCase() === pageName.toLowerCase(),
         );
-        if (match) setActivePageId(match.id);
+        if (match) navigateToPage(match.id);
       }
     }
     window.addEventListener("dash:switch-page", onSwitchPage);
     return () => window.removeEventListener("dash:switch-page", onSwitchPage);
-  }, [workspaceSelected?.pages]);
+  }, [workspaceSelected?.pages, navigateToPage]);
+
+  // Listen for runtime UX actions: goBack, sidebar control, notify
+  useEffect(() => {
+    function onGoBack() {
+      const prev = pageHistoryRef.current.pop();
+      if (prev) setActivePageId(prev); // bypass history recording
+    }
+    function onSetNavSidebar(e) {
+      setSidebarCollapsed(!!e.detail?.collapsed);
+    }
+    function onToggleNavSidebar() {
+      setSidebarCollapsed((c) => !c);
+    }
+    function onNotify(e) {
+      const id = `${Date.now()}-${Math.random()}`;
+      const toast = { id, ...(e.detail || {}) };
+      setToasts((prev) => [...prev, toast]);
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, toast.duration || 4000);
+    }
+    window.addEventListener("dash:go-back", onGoBack);
+    window.addEventListener("dash:set-nav-sidebar", onSetNavSidebar);
+    window.addEventListener("dash:toggle-nav-sidebar", onToggleNavSidebar);
+    window.addEventListener("dash:notify", onNotify);
+    return () => {
+      window.removeEventListener("dash:go-back", onGoBack);
+      window.removeEventListener("dash:set-nav-sidebar", onSetNavSidebar);
+      window.removeEventListener("dash:toggle-nav-sidebar", onToggleNavSidebar);
+      window.removeEventListener("dash:notify", onNotify);
+    };
+  }, []);
 
   const workspacePages = workspaceSelected?.pages || [];
 
@@ -679,6 +738,70 @@ const DashboardStageInner = ({
     workspaceSelected?.activePageId ||
     (workspacePages[0]?.id ?? null);
 
+  // Stable refs for tab/dashboard handlers so the open/close-dashboard
+  // listener doesn't have to re-subscribe on every render.
+  const handleOpenTabRef = useRef(null);
+  const handleCloseTabRef = useRef(null);
+  const workspaceConfigRef = useRef([]);
+  const openTabsRef = useRef([]);
+  const activeTabIdRef = useRef(null);
+  handleOpenTabRef.current = handleOpenTab;
+  handleCloseTabRef.current = handleCloseTab;
+  workspaceConfigRef.current = workspaceConfig;
+  openTabsRef.current = openTabs;
+  activeTabIdRef.current = activeTabId;
+
+  // Listen for open/close dashboard actions via DashboardActionsApi
+  useEffect(() => {
+    function onOpen(e) {
+      const name = e.detail?.name;
+      if (!name) return;
+      const ws = (workspaceConfigRef.current || []).find(
+        (w) => (w.name || "").toLowerCase() === name.toLowerCase(),
+      );
+      if (ws && handleOpenTabRef.current) handleOpenTabRef.current(ws);
+    }
+    function onClose(e) {
+      const name = e.detail?.name;
+      if (name) {
+        const tab = (openTabsRef.current || []).find(
+          (t) => (t.name || "").toLowerCase() === name.toLowerCase(),
+        );
+        if (tab && handleCloseTabRef.current) handleCloseTabRef.current(tab.id);
+      } else if (activeTabIdRef.current && handleCloseTabRef.current) {
+        handleCloseTabRef.current(activeTabIdRef.current);
+      }
+    }
+    window.addEventListener("dash:open-dashboard", onOpen);
+    window.addEventListener("dash:close-dashboard", onClose);
+    return () => {
+      window.removeEventListener("dash:open-dashboard", onOpen);
+      window.removeEventListener("dash:close-dashboard", onClose);
+    };
+  }, []);
+
+  // Maintain window.__dashState so DashboardActionsApi read methods
+  // (getCurrentPageName, listPages, etc.) return up-to-date values.
+  useEffect(() => {
+    const activePage = workspacePages.find((p) => p.id === currentActivePageId);
+    window.__dashState = {
+      currentPageId: currentActivePageId,
+      currentPageName: activePage?.name || null,
+      currentDashboardId: workspaceSelected?.id || null,
+      currentDashboardName: workspaceSelected?.name || null,
+      pages: workspacePages.map((p) => ({
+        id: p.id,
+        name: p.name,
+        order: p.order,
+      })),
+    };
+  }, [
+    currentActivePageId,
+    workspacePages,
+    workspaceSelected?.id,
+    workspaceSelected?.name,
+  ]);
+
   function handleAddPage() {
     if (!workspaceSelected) return;
     const existingPages = [...workspacePages];
@@ -696,7 +819,7 @@ const DashboardStageInner = ({
   }
 
   function handleSwitchPage(pageId) {
-    setActivePageId(pageId);
+    navigateToPage(pageId);
   }
 
   function handleRenamePage(pageId, newName) {
@@ -1146,6 +1269,23 @@ const DashboardStageInner = ({
       scrollable={false}
       grow={true}
     >
+      {/* ─── Toast container (driven by DashboardActionsApi.notify) ── */}
+      {toasts.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
+          {toasts.map((t) => (
+            <div key={t.id} className="pointer-events-auto">
+              <Toast
+                title={t.title}
+                message={t.message}
+                onClose={() =>
+                  setToasts((prev) => prev.filter((x) => x.id !== t.id))
+                }
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ─── Main Content Area ──────────────────────── */}
       <DndProvider backend={HTML5Backend}>
         <div className="flex flex-row flex-1 overflow-hidden">
