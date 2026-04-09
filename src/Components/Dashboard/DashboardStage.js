@@ -647,12 +647,20 @@ const DashboardStageInner = ({
   // Listen for programmatic page switches via DashboardActionsApi
   useEffect(() => {
     function onSwitchPage(e) {
-      const { pageId } = e.detail || {};
-      if (pageId) setActivePageId(pageId);
+      const { pageId, pageName } = e.detail || {};
+      if (pageId) {
+        setActivePageId(pageId);
+      } else if (pageName) {
+        const pages = workspaceSelected?.pages || [];
+        const match = pages.find(
+          (p) => p.name.toLowerCase() === pageName.toLowerCase(),
+        );
+        if (match) setActivePageId(match.id);
+      }
     }
     window.addEventListener("dash:switch-page", onSwitchPage);
     return () => window.removeEventListener("dash:switch-page", onSwitchPage);
-  }, []);
+  }, [workspaceSelected?.pages]);
 
   const workspacePages = workspaceSelected?.pages || [];
 
