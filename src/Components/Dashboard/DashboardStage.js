@@ -644,6 +644,16 @@ const DashboardStageInner = ({
   // ─── Page State ──────────────────────────────────────────────────
   const [activePageId, setActivePageId] = useState(null);
 
+  // Listen for programmatic page switches via DashboardActionsApi
+  useEffect(() => {
+    function onSwitchPage(e) {
+      const { pageId } = e.detail || {};
+      if (pageId) setActivePageId(pageId);
+    }
+    window.addEventListener("dash:switch-page", onSwitchPage);
+    return () => window.removeEventListener("dash:switch-page", onSwitchPage);
+  }, []);
+
   const workspacePages = workspaceSelected?.pages || [];
 
   // Memoize sorted pages so page object references stay stable across re-renders
