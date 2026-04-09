@@ -1,4 +1,35 @@
 import { deepCopy } from "@trops/dash-react";
+import { LayoutModel } from "./LayoutModel";
+
+/**
+ * Default layout for a brand-new workspace: a single 1x1 grid container
+ * with one empty cell. Mirrors DashboardModel._initializeLayout().
+ */
+function defaultGridLayout() {
+  return [
+    LayoutModel(
+      {
+        id: 1,
+        order: 1,
+        type: "grid",
+        component: "LayoutGridContainer",
+        hasChildren: 1,
+        scrollable: false,
+        parent: 0,
+        menuId: 1,
+        width: "w-full",
+        height: "h-full",
+        grid: {
+          rows: 1,
+          cols: 1,
+          gap: "gap-2",
+          1.1: { component: null, hide: false },
+        },
+      },
+      [],
+    ),
+  ];
+}
 
 /**
  * A Model for a Workspace (Dashboard)
@@ -57,20 +88,25 @@ export const WorkspaceModel = (workspaceItem) => {
   workspace.type = "type" in obj ? sanitizeType(obj["type"]) : "workspace";
   workspace.label = "label" in obj ? obj["label"] : "New Dashboard";
   workspace.version = "version" in obj ? obj["version"] : 1;
-  workspace.layout = "layout" in obj ? obj["layout"] : [];
+  workspace.layout =
+    "layout" in obj && Array.isArray(obj["layout"]) && obj["layout"].length > 0
+      ? obj["layout"]
+      : defaultGridLayout();
   workspace.pages = "pages" in obj ? obj["pages"] : [];
   workspace.activePageId = "activePageId" in obj ? obj["activePageId"] : null;
 
   // Always-pages model: every workspace must have at least one page.
-  // If the source data is single-page (empty pages array but populated
-  // layout), wrap the layout into pages[0] now so renderers always have
-  // a page to display. Idempotent: a no-op if pages is already populated.
+  // If the source data is single-page (empty pages array), wrap the
+  // layout into pages[0] so renderers always have a page to display.
+  // The page is named "Page 1" — when only one page exists, the
+  // PageTabBar hides it; when the user adds a second page, both
+  // "Page 1" and the new page become visible. Idempotent.
   if (!Array.isArray(workspace.pages) || workspace.pages.length === 0) {
     const page = {
       id: `page-${workspace.id || Date.now()}`,
-      name: workspace.name || "Page 1",
+      name: "Page 1",
       order: 0,
-      layout: workspace.layout || [],
+      layout: workspace.layout,
     };
     workspace.pages = [page];
     workspace.activePageId = page.id;

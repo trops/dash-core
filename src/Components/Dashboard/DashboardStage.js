@@ -804,7 +804,15 @@ const DashboardStageInner = ({
 
   function handleAddPage() {
     if (!workspaceSelected) return;
-    const existingPages = [...workspacePages];
+    // Sync existing pages with their live layouts from refs so any
+    // unsaved user edits to the current page are preserved when
+    // adding a new page (especially relevant when going from 1 → 2
+    // pages where the lone page's tab is hidden but its grid is live).
+    const existingPages = workspacePages.map((p) => {
+      const pageRef = pageRefsMap.current[p.id];
+      const liveLayout = pageRef?.current?.layout;
+      return liveLayout ? { ...p, layout: liveLayout } : p;
+    });
     const newPage = DashboardModel.createPage(
       `Page ${existingPages.length + 1}`,
     );
@@ -1324,6 +1332,14 @@ const DashboardStageInner = ({
                   onThemeChange={popout ? null : handleWorkspaceThemeChange}
                   sidebarEnabled={sidebarEnabled}
                   onSidebarChange={popout ? null : handleSidebarToggle}
+                  scrollableEnabled={
+                    workspacePages.length <= 1 ? getRootScrollable() : undefined
+                  }
+                  onScrollableChange={
+                    workspacePages.length <= 1 && !popout
+                      ? handleScrollableChange
+                      : null
+                  }
                 />
                 <DashboardThemeProvider themeKey={workspaceSelected?.themeKey}>
                   {/* Missing widgets banner */}
