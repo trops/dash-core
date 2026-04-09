@@ -20,7 +20,6 @@ import {
   ThemeContext,
   EmptyState,
   ButtonIcon,
-  Toast,
 } from "@trops/dash-react";
 import { LayoutModel, DashboardModel } from "../../Models";
 import { ThemeManagerModal } from "../../Components/Theme";
@@ -1271,18 +1270,72 @@ const DashboardStageInner = ({
     >
       {/* ─── Toast container (driven by DashboardActionsApi.notify) ── */}
       {toasts.length > 0 && (
-        <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
-          {toasts.map((t) => (
-            <div key={t.id} className="pointer-events-auto">
-              <Toast
-                title={t.title}
-                message={t.message}
-                onClose={() =>
-                  setToasts((prev) => prev.filter((x) => x.id !== t.id))
-                }
-              />
-            </div>
-          ))}
+        <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none w-80">
+          {toasts.map((t) => {
+            const typeStyles = {
+              success: {
+                bg: "bg-emerald-950/95",
+                border: "border-emerald-500",
+                accent: "text-emerald-400",
+                icon: "circle-check",
+              },
+              error: {
+                bg: "bg-rose-950/95",
+                border: "border-rose-500",
+                accent: "text-rose-400",
+                icon: "circle-xmark",
+              },
+              warning: {
+                bg: "bg-amber-950/95",
+                border: "border-amber-500",
+                accent: "text-amber-400",
+                icon: "triangle-exclamation",
+              },
+              info: {
+                bg: "bg-sky-950/95",
+                border: "border-sky-500",
+                accent: "text-sky-400",
+                icon: "circle-info",
+              },
+            };
+            const style = typeStyles[t.type] || typeStyles.info;
+            return (
+              <div
+                key={t.id}
+                className={`pointer-events-auto rounded-md border-l-4 ${style.border} ${style.bg} shadow-lg p-3 text-white animate-in slide-in-from-right`}
+                role="status"
+              >
+                <div className="flex items-start gap-3">
+                  <FontAwesomeIcon
+                    icon={style.icon}
+                    className={`h-4 w-4 mt-0.5 flex-shrink-0 ${style.accent}`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    {t.title && (
+                      <div className={`font-semibold text-sm ${style.accent}`}>
+                        {t.title}
+                      </div>
+                    )}
+                    {t.message && (
+                      <div className="text-sm text-white/90 break-words">
+                        {t.message}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setToasts((prev) => prev.filter((x) => x.id !== t.id))
+                    }
+                    className="text-white/60 hover:text-white text-lg leading-none flex-shrink-0"
+                    aria-label="Close toast"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
