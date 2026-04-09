@@ -1,5 +1,5 @@
 import React, { useState, useRef, useContext } from "react";
-import { ThemeContext, FontAwesomeIcon } from "@trops/dash-react";
+import { ThemeContext, FontAwesomeIcon, Toggle } from "@trops/dash-react";
 
 /**
  * PageTabBar — tabbed navigation for pages within a workspace.
@@ -20,6 +20,8 @@ export const PageTabBar = ({
   onDeletePage = null,
   onReorderPages = null,
   editMode = false,
+  scrollableEnabled = false,
+  onScrollableChange = null,
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const [editingId, setEditingId] = useState(null);
@@ -170,6 +172,16 @@ export const PageTabBar = ({
           <FontAwesomeIcon icon="plus" className="h-2.5 w-2.5" />
           <span>Add Page</span>
         </button>
+      )}
+
+      {editMode && onScrollableChange && (
+        <div className="ml-auto flex items-center shrink-0">
+          <Toggle
+            text="Scrollable"
+            enabled={scrollableEnabled}
+            setEnabled={onScrollableChange}
+          />
+        </div>
       )}
     </div>
   );

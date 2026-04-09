@@ -645,17 +645,12 @@ const DashboardStageInner = ({
   const [activePageId, setActivePageId] = useState(null);
 
   const workspacePages = workspaceSelected?.pages || [];
-  const hasPages = workspacePages.length > 0;
 
   // Memoize sorted pages so page object references stay stable across re-renders
   const sortedPagesForRender = useMemo(
-    () =>
-      hasPages
-        ? [...workspacePages].sort((a, b) => (a.order || 0) - (b.order || 0))
-        : [],
+    () => [...workspacePages].sort((a, b) => (a.order || 0) - (b.order || 0)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
-      hasPages,
       workspacePages.length,
       // Re-sort when page names/order change but not on every parent render
       workspacePages.map((p) => `${p.id}:${p.order}:${p.name}`).join(","),
@@ -668,26 +663,11 @@ const DashboardStageInner = ({
 
   function handleAddPage() {
     if (!workspaceSelected) return;
-
-    let existingPages = [...workspacePages];
-
-    // If this is the first time adding a page to a single-page dashboard,
-    // migrate the existing layout into page 1 first.
-    if (existingPages.length === 0 && workspaceSelected.layout?.length > 0) {
-      const page1 = {
-        id: `page-${Date.now() - 1}`,
-        name: workspaceSelected.name || "Page 1",
-        order: 0,
-        layout: workspaceSelected.layout,
-      };
-      existingPages = [page1];
-    }
-
+    const existingPages = [...workspacePages];
     const newPage = DashboardModel.createPage(
       `Page ${existingPages.length + 1}`,
     );
     newPage.order = existingPages.length;
-
     const updatedWorkspace = {
       ...workspaceSelected,
       pages: [...existingPages, newPage],
@@ -717,19 +697,6 @@ const DashboardStageInner = ({
         ? updatedPages[0]?.id
         : currentActivePageId;
     setActivePageId(newActiveId);
-
-    // If only one page remains, convert back to single-page mode
-    if (updatedPages.length === 1) {
-      handleWorkspaceChange({
-        ...workspaceSelected,
-        layout: updatedPages[0].layout,
-        pages: [],
-        activePageId: null,
-      });
-      setActivePageId(null);
-      return;
-    }
-
     handleWorkspaceChange({
       ...workspaceSelected,
       pages: updatedPages,
@@ -784,51 +751,31 @@ const DashboardStageInner = ({
   function renderComponent(workspaceItem) {
     try {
       if (workspaceItem === undefined) return null;
-
-      // Multi-page mode
-      if (hasPages) {
-        return (
-          <>
-            {sortedPagesForRender.map((page) => {
-              const isActive = page.id === currentActivePageId;
-              return (
-                <div
-                  key={page.id}
-                  style={{ display: isActive ? "flex" : "none" }}
-                  className="flex-col w-full flex-1"
-                >
-                  <PageLayoutBuilder
-                    page={page}
-                    workspaceItem={workspaceItem}
-                    previewMode={previewMode}
-                    editMode={editMode}
-                    onPageWorkspaceChange={handlePageWorkspaceChange}
-                    onProviderSelect={stableProviderSelect}
-                    onTogglePreview={stableTogglePreview}
-                    workspaceRef={getPageRef(page.id)}
-                    onWidgetPopout={stableWidgetPopout}
-                  />
-                </div>
-              );
-            })}
-          </>
-        );
-      }
-
-      // Single-page mode (backward compatible)
       return (
-        <LayoutBuilder
-          dashboardId={workspaceItem["id"]}
-          preview={previewMode}
-          workspace={workspaceItem}
-          onWorkspaceChange={handleWorkspaceChange}
-          onProviderSelect={handleProviderSelect}
-          onTogglePreview={handleToggleEditMode}
-          key={`LayoutBuilder-${workspaceItem["id"]}`}
-          editMode={editMode}
-          workspaceRef={currentWorkspaceRef}
-          onWidgetPopout={popout ? null : handleWidgetPopout}
-        />
+        <>
+          {sortedPagesForRender.map((page) => {
+            const isActive = page.id === currentActivePageId;
+            return (
+              <div
+                key={page.id}
+                style={{ display: isActive ? "flex" : "none" }}
+                className="flex-col w-full flex-1"
+              >
+                <PageLayoutBuilder
+                  page={page}
+                  workspaceItem={workspaceItem}
+                  previewMode={previewMode}
+                  editMode={editMode}
+                  onPageWorkspaceChange={handlePageWorkspaceChange}
+                  onProviderSelect={stableProviderSelect}
+                  onTogglePreview={stableTogglePreview}
+                  workspaceRef={getPageRef(page.id)}
+                  onWidgetPopout={stableWidgetPopout}
+                />
+              </div>
+            );
+          })}
+        </>
       );
     } catch (e) {
       console.log(e);
@@ -950,22 +897,37 @@ const DashboardStageInner = ({
     const tempWorkspace = deepCopy(
       currentWorkspaceRef.current || workspaceSelected,
     );
-    // Find the root grid container layout item
-    const rootItem = tempWorkspace.layout?.find((item) => item.parent === 0);
-    if (rootItem) {
-      rootItem.scrollable = enabled;
+    // Update the active page's root layout item
+    tempWorkspace.pages = (tempWorkspace.pages || []).map((page) => {
+      if (page.id !== currentActivePageId) return page;
+      return {
+        ...page,
+        layout: (page.layout || []).map((item) =>
+          item.parent === 0 ? { ...item, scrollable: enabled } : item,
+        ),
+      };
+    });
+    // Update page ref immediately so getRootScrollable() reads the new value
+    const pageRef = pageRefsMap.current[currentActivePageId];
+    if (pageRef?.current) {
+      pageRef.current.layout = (pageRef.current.layout || []).map((item) =>
+        item.parent === 0 ? { ...item, scrollable: enabled } : item,
+      );
     }
-    // Update ref immediately so getRootScrollable() reads the new value
-    // before LayoutBuilder's async useEffect syncs it
     currentWorkspaceRef.current = tempWorkspace;
     updateTabWorkspace(tempWorkspace);
   }
 
-  // Derive scrollable state from root layout item
+  // Derive scrollable state from the active page's root layout item
   function getRootScrollable() {
     const ws = currentWorkspaceRef.current || workspaceSelected;
-    if (!ws?.layout) return false;
-    const rootItem = ws.layout.find((item) => item.parent === 0);
+    if (!ws) return false;
+    const pageRef = pageRefsMap.current[currentActivePageId];
+    const layout =
+      pageRef?.current?.layout ||
+      ws.pages?.find((p) => p.id === currentActivePageId)?.layout;
+    if (!layout) return false;
+    const rootItem = layout.find((item) => item.parent === 0);
     return rootItem?.scrollable || false;
   }
 
@@ -974,50 +936,27 @@ const DashboardStageInner = ({
       console.log("dashboard clicked save workspace ", workspaceSelected);
       // we have to remove the widgetConfig which contains the component
       // sanitize the workspace layout remove widgetConfig items
-      let workspaceToSave;
-
-      if (hasPages) {
-        // Multi-page: gather latest layout from each page's LayoutBuilder ref
-        workspaceToSave = deepCopy(workspaceSelected);
-        workspaceToSave.pages = (workspaceToSave.pages || []).map((page) => {
-          const pageRef = pageRefsMap.current[page.id];
-          const latestLayout = pageRef?.current?.layout || page.layout || [];
-          return {
-            ...page,
-            layout: latestLayout.map((item) => {
-              const copy = { ...item };
-              delete copy.widgetConfig;
-              return copy;
-            }),
-          };
-        });
-        workspaceToSave.activePageId = currentActivePageId;
-        // Also sanitize the root layout (may be stale from pre-pages era)
-        workspaceToSave.layout = (workspaceToSave.layout || []).map((item) => {
-          const copy = { ...item };
-          delete copy.widgetConfig;
-          return copy;
-        });
-      } else {
-        // Single-page: merge workspace-level properties (themeKey, name, menuId, etc.)
-        // from workspaceSelected with the latest layout from currentWorkspaceRef.
-        // The ref only tracks layout changes; header-level property changes
-        // (theme, folder, scrollable) are tracked in workspaceSelected.
-        workspaceToSave = deepCopy(workspaceSelected);
-        const refLayout = currentWorkspaceRef.current?.layout;
-        if (refLayout) {
-          workspaceToSave["layout"] = refLayout.map((layoutItem) => {
-            delete layoutItem["widgetConfig"];
-            return layoutItem;
-          });
-        } else {
-          workspaceToSave["layout"] = (workspaceToSave["layout"] || []).map(
-            (layoutItem) => {
-              delete layoutItem["widgetConfig"];
-              return layoutItem;
-            },
-          );
-        }
+      // Gather latest layout from each page's LayoutBuilder ref
+      let workspaceToSave = deepCopy(workspaceSelected);
+      workspaceToSave.pages = (workspaceToSave.pages || []).map((page) => {
+        const pageRef = pageRefsMap.current[page.id];
+        const latestLayout = pageRef?.current?.layout || page.layout || [];
+        return {
+          ...page,
+          layout: latestLayout.map((item) => {
+            const copy = { ...item };
+            delete copy.widgetConfig;
+            return copy;
+          }),
+        };
+      });
+      workspaceToSave.activePageId = currentActivePageId;
+      // Sync root layout from active page for backward compat
+      const activePage = workspaceToSave.pages.find(
+        (p) => p.id === currentActivePageId,
+      );
+      if (activePage) {
+        workspaceToSave.layout = activePage.layout;
       }
 
       // Gather sidebar layout from its LayoutBuilder ref
@@ -1224,8 +1163,6 @@ const DashboardStageInner = ({
                   themes={themes || {}}
                   onFolderChange={popout ? null : handleWorkspaceFolderChange}
                   onThemeChange={popout ? null : handleWorkspaceThemeChange}
-                  scrollableEnabled={getRootScrollable()}
-                  onScrollableChange={popout ? null : handleScrollableChange}
                   sidebarEnabled={sidebarEnabled}
                   onSidebarChange={popout ? null : handleSidebarToggle}
                 />
@@ -1266,18 +1203,18 @@ const DashboardStageInner = ({
                         </button>
                       </div>
                     )}
-                  {(hasPages || !previewMode) && (
-                    <PageTabBar
-                      pages={workspacePages}
-                      activePageId={currentActivePageId}
-                      onSwitchPage={handleSwitchPage}
-                      onAddPage={handleAddPage}
-                      onRenamePage={handleRenamePage}
-                      onDeletePage={handleDeletePage}
-                      onReorderPages={handleReorderPages}
-                      editMode={!previewMode}
-                    />
-                  )}
+                  <PageTabBar
+                    pages={workspacePages}
+                    activePageId={currentActivePageId}
+                    onSwitchPage={handleSwitchPage}
+                    onAddPage={handleAddPage}
+                    onRenamePage={handleRenamePage}
+                    onDeletePage={handleDeletePage}
+                    onReorderPages={handleReorderPages}
+                    editMode={!previewMode}
+                    scrollableEnabled={getRootScrollable()}
+                    onScrollableChange={popout ? null : handleScrollableChange}
+                  />
                   <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
                     {sidebarEnabled && !popout && (
                       <PinnedSidebar
