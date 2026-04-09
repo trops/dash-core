@@ -60,6 +60,21 @@ export const WorkspaceModel = (workspaceItem) => {
   workspace.layout = "layout" in obj ? obj["layout"] : [];
   workspace.pages = "pages" in obj ? obj["pages"] : [];
   workspace.activePageId = "activePageId" in obj ? obj["activePageId"] : null;
+
+  // Always-pages model: every workspace must have at least one page.
+  // If the source data is single-page (empty pages array but populated
+  // layout), wrap the layout into pages[0] now so renderers always have
+  // a page to display. Idempotent: a no-op if pages is already populated.
+  if (!Array.isArray(workspace.pages) || workspace.pages.length === 0) {
+    const page = {
+      id: `page-${workspace.id || Date.now()}`,
+      name: workspace.name || "Page 1",
+      order: 0,
+      layout: workspace.layout || [],
+    };
+    workspace.pages = [page];
+    workspace.activePageId = page.id;
+  }
   workspace.sidebarEnabled =
     "sidebarEnabled" in obj ? obj["sidebarEnabled"] : false;
   workspace.sidebarLayout = "sidebarLayout" in obj ? obj["sidebarLayout"] : [];
