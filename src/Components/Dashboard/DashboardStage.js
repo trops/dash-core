@@ -652,6 +652,16 @@ const DashboardStageInner = ({
   // whenever a navigation happens through navigateToPage().
   const pageHistoryRef = useRef([]);
 
+  // Reset local activePageId when the active tab changes so the next
+  // render falls back to the new workspace's saved activePageId
+  // (or its first page). Without this, a stale activePageId from a
+  // previously-active dashboard would prevent the new dashboard's
+  // pages from rendering (no page matches → all hidden).
+  useEffect(() => {
+    setActivePageId(null);
+    pageHistoryRef.current = [];
+  }, [activeTabId]);
+
   // Wrapper that records history before switching pages.
   // Pass recordHistory=false to switch without recording (e.g. for goBack).
   const navigateToPage = useCallback(
