@@ -10,12 +10,22 @@
  */
 export const DashboardActionsApi = {
   /**
-   * Switch the active page in the current dashboard.
+   * Switch the active page by its internal ID.
    * @param {string} pageId - The ID of the page to switch to
    */
   switchPage(pageId) {
     window.dispatchEvent(
       new CustomEvent("dash:switch-page", { detail: { pageId } }),
+    );
+  },
+
+  /**
+   * Switch the active page by its display name.
+   * @param {string} pageName - The display name of the page (e.g. "Opp Detail")
+   */
+  switchPageByName(pageName) {
+    window.dispatchEvent(
+      new CustomEvent("dash:switch-page", { detail: { pageName } }),
     );
   },
 };
