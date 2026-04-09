@@ -1,7 +1,7 @@
 # PRD: Multi-Page Dashboard Layouts
 
 **Status:** Implemented
-**Last Updated:** 2026-04-02
+**Last Updated:** 2026-04-08
 **Owner:** Core Team
 **Related PRDs:** [Command Palette Navigation](command-palette-navigation.md), [Layout Builder Hybrid](layout-builder-hybrid.md), [Dashboard Marketplace](dashboard-marketplace.md)
 **Repos:** dash-core (v0.1.306+), dash-electron (v0.0.325+)
@@ -55,14 +55,10 @@ workspace = {
 
 ### Migration Rules
 
-- When `pages` is absent or empty, the workspace operates in **single-page mode** using `layout` directly
-- When the user clicks "Add Page" on a single-page dashboard:
-  1. The existing `layout` is moved into `pages[0]` (named after the workspace)
-  2. A new empty page is created as `pages[1]`
-- When the user deletes pages down to 1 remaining:
-  1. The last page's layout is moved back to the root `layout` field
-  2. `pages` is cleared to `[]`
-  3. The dashboard returns to single-page mode (no tabs shown)
+- Every workspace always has at least one page in the `pages` array
+- On load, single-page workspaces (no `pages` or empty `pages`) are auto-migrated: the existing `layout` is wrapped into `pages[0]`
+- The root `layout` field is kept in sync with the active page for backward compatibility
+- Deleting pages is prevented when only 1 page remains (minimum 1 page enforced)
 
 ---
 
@@ -86,6 +82,12 @@ workspace = {
 | Single page, edit mode | Tab bar with "Add Page" button only |
 | Multiple pages, preview mode | Tabs shown |
 | Multiple pages, edit mode | Tabs shown with add/delete/reorder controls |
+
+### Per-Page Settings
+
+The **Scrollable** toggle is a page-level setting, configured independently for each page. It appears in the `PageTabBar` row (right side, edit mode only), not in the workspace-level `DashboardHeader`.
+
+The **Sidebar** remains a workspace-level setting — it persists across all pages.
 
 ### Widget Persistence
 
@@ -176,3 +178,4 @@ DashboardStage
 | Date | Version | Changes |
 |------|---------|---------|
 | 2026-04-02 | 1.0 | Initial implementation — Phases 1-4 complete |
+| 2026-04-08 | 1.1 | Always-pages model: auto-migrate single-page workspaces, per-page scrollable toggle in PageTabBar |

@@ -55,15 +55,22 @@ export class DashboardModel {
     this.sidebarLayout = "sidebarLayout" in obj ? obj.sidebarLayout : [];
     this.sidebarWidth = "sidebarWidth" in obj ? obj.sidebarWidth : 280;
 
-    // Multi-page support: migrate single-page workspaces
+    // Multi-page support: every workspace always has at least one page.
+    // Existing multi-page workspaces load as-is; single-page workspaces
+    // are auto-migrated by wrapping their layout into a page.
     if ("pages" in obj && Array.isArray(obj.pages) && obj.pages.length > 0) {
       this.pages = obj.pages;
       this.activePageId = obj.activePageId || obj.pages[0].id;
     } else {
-      // Single-page workspace — no migration yet, pages stay empty
-      // Pages are created on demand when user clicks "Add Page"
-      this.pages = [];
-      this.activePageId = null;
+      // Auto-migrate: wrap existing layout into a single page
+      const page = {
+        id: `page-${this.id || Date.now()}`,
+        name: this.name || "Page 1",
+        order: 0,
+        layout: this.layout,
+      };
+      this.pages = [page];
+      this.activePageId = page.id;
     }
 
     obj = null;
@@ -170,10 +177,8 @@ export class DashboardModel {
       themeKey: this.themeKey,
       selectedProviders: this.selectedProviders,
     };
-    if (this.pages && this.pages.length > 0) {
-      ws.pages = this.pages;
-      ws.activePageId = this.activePageId;
-    }
+    ws.pages = this.pages;
+    ws.activePageId = this.activePageId;
     if (this.sidebarEnabled || this.sidebarLayout?.length > 0) {
       ws.sidebarEnabled = this.sidebarEnabled;
       ws.sidebarLayout = this.sidebarLayout;
