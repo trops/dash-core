@@ -1,6 +1,6 @@
 {
     "name": "@trops/dash-core",
-    "version": "0.1.337",
+    "version": "0.1.338",
     "description": "Core framework for Dash dashboard applications",
     "main": "dist/index.js",
     "module": "dist/index.esm.js",
@@ -19,7 +19,7 @@
     "scripts": {
         "build": "npm run build:renderer && npm run build:electron",
         "build:renderer": "rollup -c rollup.config.renderer.mjs",
-        "build:electron": "rollup -c rollup.config.electron.mjs && mkdir -p dist/mcp && cp electron/mcp/mcpServerCatalog.json dist/mcp/ && rm -rf dist/mcp/servers && cp -r electron/mcp/servers dist/mcp/",
+        "build:electron": "rollup -c rollup.config.electron.mjs && mkdir -p dist/mcp && cp electron/mcp/mcpServerCatalog.json dist/mcp/ && rm -rf dist/mcp/servers && cp -r electron/mcp/servers dist/mcp/ && node scripts/inject-secrets.js",
         "clean": "rm -rf dist",
         "prepublishOnly": "npm run clean && npm run build",
         "test:mcp": "node --test electron/controller/mcpController.test.js electron/mcp/mcpServerCatalog.test.js",

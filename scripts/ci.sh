@@ -83,6 +83,7 @@ mkdir -p dist/mcp
 cp electron/mcp/mcpServerCatalog.json dist/mcp/
 rm -rf dist/mcp/servers
 cp -r electron/mcp/servers dist/mcp/
+node scripts/inject-secrets.js
 
 # 5. Run Jest tests
 step "Running Jest tests"
