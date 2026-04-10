@@ -4,9 +4,9 @@
  *
  * Tools: search, list_folder, create_folder, read_file, write_file, resolve_path
  *
- * OAuth uses PKCE with a bundled client_id — no client_secret, no per-user
- * GCP project setup. Users just run `node google-drive.js auth` to grant
- * Drive access via browser.
+ * OAuth uses PKCE with bundled app credentials (client_id + obfuscated
+ * client_secret). No per-user GCP project setup — users just click
+ * "Connect Google Drive" to grant access via browser.
  *
  * Usage:
  *   MCP server:  node google-drive.js          (stdio transport)
@@ -33,15 +33,23 @@ const credentialsPath = (process.env.GDRIVE_CREDENTIALS_PATH || "").replace(
   process.env.HOME || "",
 );
 
-// Bundled OAuth client_id for the Dash platform's GCP project.
-// Desktop OAuth client_ids are inherently public — they're identifiers,
-// not secrets. Auth uses PKCE (code_verifier/code_challenge) instead of
-// a client_secret.
+// Bundled OAuth credentials for the Dash platform's GCP project.
+// client_id is public (identifier, not a secret).
+// client_secret is injected at build time from GitHub Secrets — the
+// placeholder below is replaced in dist/ during `npm run build`.
+// Desktop OAuth client_secrets are not confidential per Google's docs —
+// the consent screen is the security boundary, not this value.
 const BUNDLED_CLIENT_ID =
   "785070273499-mr9b0vup4u24he8duh3c6j5gpk7qj54j.apps.googleusercontent.com";
+const BUNDLED_CLIENT_SECRET =
+  process.env.GDRIVE_CLIENT_SECRET || "__GDRIVE_CLIENT_SECRET__";
 
 function getClientId() {
   return BUNDLED_CLIENT_ID;
+}
+
+function getClientSecret() {
+  return BUNDLED_CLIENT_SECRET;
 }
 
 /**
@@ -63,9 +71,10 @@ async function getAccessToken() {
     return creds.access_token;
   }
 
-  // Refresh — PKCE-based installed apps don't need client_secret for refresh
+  // Refresh token — Google requires client_secret even for desktop apps
   const postData = [
     `client_id=${encodeURIComponent(clientId)}`,
+    `client_secret=${encodeURIComponent(getClientSecret())}`,
     `refresh_token=${encodeURIComponent(creds.refresh_token)}`,
     "grant_type=refresh_token",
   ].join("&");
@@ -291,7 +300,7 @@ if (process.argv[2] === "auth") {
 
       const scopes = ["https://www.googleapis.com/auth/drive"];
 
-      // PKCE: generate code verifier + challenge (no client_secret needed)
+      // PKCE: generate code verifier + challenge (additional security layer)
       const codeVerifier = crypto.randomBytes(32).toString("base64url");
       const codeChallenge = crypto
         .createHash("sha256")
@@ -310,10 +319,11 @@ if (process.argv[2] === "auth") {
           return;
         }
 
-        // Exchange code for tokens using PKCE code_verifier
+        // Exchange code for tokens (PKCE code_verifier + client_secret)
         const postData = [
           `code=${encodeURIComponent(code)}`,
           `client_id=${encodeURIComponent(clientId)}`,
+          `client_secret=${encodeURIComponent(getClientSecret())}`,
           `code_verifier=${encodeURIComponent(codeVerifier)}`,
           `redirect_uri=${encodeURIComponent(redirectUri)}`,
           `grant_type=authorization_code`,
