@@ -12,14 +12,22 @@ describe("mcpServerCatalog structural validation", () => {
     assert.ok(catalog.servers.length > 0);
   });
 
-  it("every Google-tagged entry has tokenRefresh config", () => {
+  it("every Google-tagged entry has tokenRefresh config or bundled credentials", () => {
     const googleServers = catalog.servers.filter((s) =>
       s.tags?.includes("google"),
     );
     assert.ok(googleServers.length > 0, "Should have Google-tagged servers");
 
     for (const server of googleServers) {
-      // Skip servers that don't use OAuth (e.g., google-calendar uses its own auth)
+      // Skip servers that handle token refresh internally
+      // (e.g., bundled PKCE credentials — no external tokenRefresh needed)
+      if (
+        Object.keys(server.credentialSchema || {}).length === 0 &&
+        !server.mcpConfig.tokenRefresh
+      ) {
+        continue;
+      }
+      // Skip servers that don't use OAuth
       if (!server.mcpConfig.staticEnv && !server.mcpConfig.tokenRefresh) {
         continue;
       }
