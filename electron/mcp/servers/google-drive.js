@@ -2,12 +2,11 @@
 /**
  * Custom Google Drive MCP server.
  *
- * Replaces the archived @modelcontextprotocol/server-gdrive which has a
- * fundamental bug: it creates OAuth2 clients without client_id/client_secret,
- * so it can never refresh tokens.
+ * Tools: search, list_folder, create_folder, read_file, write_file, resolve_path
  *
- * Exposes a single "search" tool with { query: string } input — identical
- * interface to the original, so no widget changes are needed.
+ * OAuth uses PKCE with a bundled client_id — no client_secret, no per-user
+ * GCP project setup. Users just run `node google-drive.js auth` to grant
+ * Drive access via browser.
  *
  * Usage:
  *   MCP server:  node google-drive.js          (stdio transport)
@@ -15,7 +14,6 @@
  *
  * Environment variables:
  *   GDRIVE_CREDENTIALS_PATH — path to stored OAuth credentials (access/refresh tokens)
- *   GDRIVE_OAUTH_PATH       — path to Google OAuth client keys file
  */
 const { Server } = require("@modelcontextprotocol/sdk/server/index.js");
 const {
@@ -28,26 +26,22 @@ const {
 const fs = require("fs");
 const https = require("https");
 const path = require("path");
+const crypto = require("crypto");
 
 const credentialsPath = (process.env.GDRIVE_CREDENTIALS_PATH || "").replace(
   /^~/,
   process.env.HOME || "",
 );
-const oauthKeysPath = (process.env.GDRIVE_OAUTH_PATH || "").replace(
-  /^~/,
-  process.env.HOME || "",
-);
 
-/**
- * Read OAuth client credentials from the keys file.
- */
-function getClientCredentials() {
-  const keysFile = JSON.parse(fs.readFileSync(oauthKeysPath, "utf8"));
-  const keyData = keysFile.installed || keysFile.web;
-  return {
-    client_id: keyData.client_id,
-    client_secret: keyData.client_secret,
-  };
+// Bundled OAuth client_id for the Dash platform's GCP project.
+// Desktop OAuth client_ids are inherently public — they're identifiers,
+// not secrets. Auth uses PKCE (code_verifier/code_challenge) instead of
+// a client_secret.
+const BUNDLED_CLIENT_ID =
+  "785070273499-mr9b0vup4u24he8duh3c6j5gpk7qj54j.apps.googleusercontent.com";
+
+function getClientId() {
+  return BUNDLED_CLIENT_ID;
 }
 
 /**
@@ -62,17 +56,16 @@ function readCredentials() {
  */
 async function getAccessToken() {
   let creds = readCredentials();
-  const { client_id, client_secret } = getClientCredentials();
+  const clientId = getClientId();
 
   // Still valid (>60s remaining)?
   if (creds.expiry_date && creds.expiry_date > Date.now() + 60 * 1000) {
     return creds.access_token;
   }
 
-  // Refresh
+  // Refresh — PKCE-based installed apps don't need client_secret for refresh
   const postData = [
-    `client_id=${encodeURIComponent(client_id)}`,
-    `client_secret=${encodeURIComponent(client_secret)}`,
+    `client_id=${encodeURIComponent(clientId)}`,
     `refresh_token=${encodeURIComponent(creds.refresh_token)}`,
     "grant_type=refresh_token",
   ].join("&");
@@ -117,32 +110,175 @@ async function getAccessToken() {
 }
 
 /**
- * Make a Google Drive API request.
+ * Make a Google Drive API request (GET, POST, PATCH, etc.).
  */
-function driveRequest(path, token) {
+function driveRequest(apiPath, token, method = "GET", body = null) {
   return new Promise((resolve, reject) => {
+    const headers = { Authorization: `Bearer ${token}` };
+    if (body) {
+      headers["Content-Type"] = "application/json";
+      headers["Content-Length"] = Buffer.byteLength(body);
+    }
     const req = https.request(
-      {
-        hostname: "www.googleapis.com",
-        path,
-        method: "GET",
-        headers: { Authorization: `Bearer ${token}` },
-      },
+      { hostname: "www.googleapis.com", path: apiPath, method, headers },
       (res) => {
         let data = "";
         res.on("data", (chunk) => (data += chunk));
         res.on("end", () => {
-          if (res.statusCode === 200) {
-            resolve(JSON.parse(data));
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              resolve(JSON.parse(data));
+            } catch {
+              resolve(data);
+            }
           } else {
-            reject(new Error(`Drive API error (${res.statusCode}): ${data}`));
+            reject(
+              new Error(`Drive API ${method} (${res.statusCode}): ${data}`),
+            );
           }
         });
       },
     );
     req.on("error", reject);
+    if (body) req.write(body);
     req.end();
   });
+}
+
+/**
+ * Multipart upload to Google Drive (for creating/updating file content).
+ */
+function driveUploadRequest(
+  apiPath,
+  token,
+  method,
+  metadata,
+  content,
+  mimeType,
+) {
+  return new Promise((resolve, reject) => {
+    const boundary = "dash_boundary_" + Date.now().toString(36);
+    const body =
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
+      `${JSON.stringify(metadata)}\r\n` +
+      `--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n` +
+      `${content}\r\n` +
+      `--${boundary}--`;
+
+    const req = https.request(
+      {
+        hostname: "www.googleapis.com",
+        path: apiPath,
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": `multipart/related; boundary=${boundary}`,
+          "Content-Length": Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (c) => (data += c));
+        res.on("end", () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              resolve(JSON.parse(data));
+            } catch {
+              resolve(data);
+            }
+          } else {
+            reject(
+              new Error(`Drive upload ${method} (${res.statusCode}): ${data}`),
+            );
+          }
+        });
+      },
+    );
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+// ── Tool helper functions ────────────────────────────────────────────
+
+async function listFolder(token, folderId) {
+  const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
+  const fields = encodeURIComponent("files(id,name,mimeType)");
+  const result = await driveRequest(
+    `/drive/v3/files?q=${q}&fields=${fields}&pageSize=200`,
+    token,
+  );
+  return result.files || [];
+}
+
+async function createFolder(token, parentId, name) {
+  const body = JSON.stringify({
+    name,
+    mimeType: "application/vnd.google-apps.folder",
+    parents: [parentId],
+  });
+  return await driveRequest(
+    "/drive/v3/files?fields=id,name",
+    token,
+    "POST",
+    body,
+  );
+}
+
+async function readFile(token, fileId) {
+  return await driveRequest(`/drive/v3/files/${fileId}?alt=media`, token);
+}
+
+async function writeFile(token, parentId, name, content, mimeType) {
+  mimeType = mimeType || "text/markdown";
+  // Upsert: check if file with this name already exists in parent
+  const escapedName = name.replace(/'/g, "\\'");
+  const q = encodeURIComponent(
+    `name='${escapedName}' and '${parentId}' in parents and trashed=false`,
+  );
+  const existing = await driveRequest(
+    `/drive/v3/files?q=${q}&fields=files(id)`,
+    token,
+  );
+  const existingId = existing.files?.[0]?.id;
+
+  if (existingId) {
+    const result = await driveUploadRequest(
+      `/upload/drive/v3/files/${existingId}?uploadType=multipart&fields=id,name`,
+      token,
+      "PATCH",
+      {},
+      content,
+      mimeType,
+    );
+    return { ...result, _action: "updated" };
+  } else {
+    const result = await driveUploadRequest(
+      `/upload/drive/v3/files?uploadType=multipart&fields=id,name`,
+      token,
+      "POST",
+      { name, parents: [parentId], mimeType },
+      content,
+      mimeType,
+    );
+    return { ...result, _action: "created" };
+  }
+}
+
+async function resolvePath(token, pathStr) {
+  const segments = pathStr
+    .split("/")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  let currentId = "root";
+  for (const segment of segments) {
+    const children = await listFolder(token, currentId);
+    const match = children.find((c) => c.name === segment);
+    if (!match) return null;
+    currentId = match.id;
+  }
+  return currentId;
 }
 
 // ── Auth subcommand ──────────────────────────────────────────────────
@@ -151,9 +287,17 @@ if (process.argv[2] === "auth") {
     try {
       const http = require("http");
       const { URL } = require("url");
-      const { client_id, client_secret } = getClientCredentials();
+      const clientId = getClientId();
 
-      const scopes = ["https://www.googleapis.com/auth/drive.readonly"];
+      const scopes = ["https://www.googleapis.com/auth/drive"];
+
+      // PKCE: generate code verifier + challenge (no client_secret needed)
+      const codeVerifier = crypto.randomBytes(32).toString("base64url");
+      const codeChallenge = crypto
+        .createHash("sha256")
+        .update(codeVerifier)
+        .digest("base64url");
+
       let redirectUri;
 
       // Start local server to catch the callback
@@ -166,11 +310,11 @@ if (process.argv[2] === "auth") {
           return;
         }
 
-        // Exchange code for tokens
+        // Exchange code for tokens using PKCE code_verifier
         const postData = [
           `code=${encodeURIComponent(code)}`,
-          `client_id=${encodeURIComponent(client_id)}`,
-          `client_secret=${encodeURIComponent(client_secret)}`,
+          `client_id=${encodeURIComponent(clientId)}`,
+          `code_verifier=${encodeURIComponent(codeVerifier)}`,
           `redirect_uri=${encodeURIComponent(redirectUri)}`,
           `grant_type=authorization_code`,
         ].join("&");
@@ -246,12 +390,14 @@ if (process.argv[2] === "auth") {
 
         const authUrl =
           `https://accounts.google.com/o/oauth2/v2/auth?` +
-          `client_id=${encodeURIComponent(client_id)}` +
+          `client_id=${encodeURIComponent(clientId)}` +
           `&redirect_uri=${encodeURIComponent(redirectUri)}` +
           `&response_type=code` +
           `&scope=${encodeURIComponent(scopes.join(" "))}` +
           `&access_type=offline` +
-          `&prompt=consent`;
+          `&prompt=consent` +
+          `&code_challenge=${encodeURIComponent(codeChallenge)}` +
+          `&code_challenge_method=S256`;
 
         const { exec } = require("child_process");
         exec(`open "${authUrl}"`);
@@ -280,72 +426,269 @@ if (process.argv[2] === "auth") {
           inputSchema: {
             type: "object",
             properties: {
-              query: {
-                type: "string",
-                description: "Search query",
-              },
+              query: { type: "string", description: "Search query" },
             },
             required: ["query"],
+          },
+        },
+        {
+          name: "list_folder",
+          description:
+            "List children of a Google Drive folder by ID. Use 'root' for My Drive.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              folderId: {
+                type: "string",
+                description: "Folder ID, or 'root' for My Drive",
+              },
+            },
+            required: ["folderId"],
+          },
+        },
+        {
+          name: "create_folder",
+          description:
+            "Create a new folder inside a parent folder. Returns the new folder's ID.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              parentId: { type: "string", description: "Parent folder ID" },
+              name: { type: "string", description: "New folder name" },
+            },
+            required: ["parentId", "name"],
+          },
+        },
+        {
+          name: "read_file",
+          description:
+            "Read the text content of a Drive file by ID. Plain text files only.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              fileId: { type: "string", description: "File ID" },
+            },
+            required: ["fileId"],
+          },
+        },
+        {
+          name: "write_file",
+          description:
+            "Create or update a text file in a folder (upsert by name).",
+          inputSchema: {
+            type: "object",
+            properties: {
+              parentId: { type: "string", description: "Parent folder ID" },
+              name: { type: "string", description: "File name" },
+              content: { type: "string", description: "File content" },
+              mimeType: {
+                type: "string",
+                description: "Optional MIME type (default: text/markdown)",
+              },
+            },
+            required: ["parentId", "name", "content"],
+          },
+        },
+        {
+          name: "resolve_path",
+          description:
+            "Walk a slash-separated path from My Drive root and return the final file/folder ID, or null if any segment is missing.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              path: {
+                type: "string",
+                description:
+                  "Slash-separated path, e.g. 'Sales Pipeline/AMER/ENT/Acme Corp'",
+              },
+            },
+            required: ["path"],
           },
         },
       ],
     }));
 
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      if (request.params.name !== "search") {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Unknown tool: ${request.params.name}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-
-      const query = request.params.arguments?.query;
-      if (!query) {
-        return {
-          content: [{ type: "text", text: "Missing required argument: query" }],
-          isError: true,
-        };
-      }
+      const toolName = request.params.name;
+      const args = request.params.arguments || {};
 
       try {
         const token = await getAccessToken();
-        const encodedQuery = encodeURIComponent(
-          `fullText contains '${query.replace(/'/g, "\\'")}'`,
-        );
-        const result = await driveRequest(
-          `/drive/v3/files?q=${encodedQuery}&fields=files(id,name,mimeType,modifiedTime,webViewLink)&pageSize=20`,
-          token,
-        );
 
-        const files = result.files || [];
-        if (files.length === 0) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `No files found for query: ${query}`,
-              },
-            ],
-          };
+        switch (toolName) {
+          case "search": {
+            const query = args.query;
+            if (!query) {
+              return {
+                content: [
+                  { type: "text", text: "Missing required argument: query" },
+                ],
+                isError: true,
+              };
+            }
+            const encodedQuery = encodeURIComponent(
+              `fullText contains '${query.replace(/'/g, "\\'")}'`,
+            );
+            const result = await driveRequest(
+              `/drive/v3/files?q=${encodedQuery}&fields=files(id,name,mimeType,modifiedTime,webViewLink)&pageSize=20`,
+              token,
+            );
+            const files = result.files || [];
+            if (files.length === 0) {
+              return {
+                content: [
+                  { type: "text", text: `No files found for query: ${query}` },
+                ],
+              };
+            }
+            const lines = files.map(
+              (f) =>
+                `${f.name} (${f.mimeType})${f.webViewLink ? ` - ${f.webViewLink}` : ""}`,
+            );
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Found ${files.length} files:\n${lines.join("\n")}`,
+                },
+              ],
+            };
+          }
+
+          case "list_folder": {
+            if (!args.folderId) {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: "Missing required argument: folderId",
+                  },
+                ],
+                isError: true,
+              };
+            }
+            const children = await listFolder(token, args.folderId);
+            if (children.length === 0) {
+              return {
+                content: [{ type: "text", text: "Folder is empty." }],
+              };
+            }
+            const childLines = children.map(
+              (f) => `${f.name} (${f.mimeType}) [${f.id}]`,
+            );
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `${children.length} children:\n${childLines.join("\n")}`,
+                },
+              ],
+            };
+          }
+
+          case "create_folder": {
+            if (!args.parentId || !args.name) {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: "Missing required arguments: parentId, name",
+                  },
+                ],
+                isError: true,
+              };
+            }
+            const folder = await createFolder(token, args.parentId, args.name);
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Created folder "${folder.name}" [${folder.id}]`,
+                },
+              ],
+            };
+          }
+
+          case "read_file": {
+            if (!args.fileId) {
+              return {
+                content: [
+                  { type: "text", text: "Missing required argument: fileId" },
+                ],
+                isError: true,
+              };
+            }
+            const content = await readFile(token, args.fileId);
+            return {
+              content: [
+                {
+                  type: "text",
+                  text:
+                    typeof content === "string"
+                      ? content
+                      : JSON.stringify(content),
+                },
+              ],
+            };
+          }
+
+          case "write_file": {
+            if (!args.parentId || !args.name || args.content == null) {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: "Missing required arguments: parentId, name, content",
+                  },
+                ],
+                isError: true,
+              };
+            }
+            const writeResult = await writeFile(
+              token,
+              args.parentId,
+              args.name,
+              args.content,
+              args.mimeType,
+            );
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `${writeResult._action} "${writeResult.name}" [${writeResult.id}]`,
+                },
+              ],
+            };
+          }
+
+          case "resolve_path": {
+            if (!args.path) {
+              return {
+                content: [
+                  { type: "text", text: "Missing required argument: path" },
+                ],
+                isError: true,
+              };
+            }
+            const resolvedId = await resolvePath(token, args.path);
+            if (resolvedId) {
+              return {
+                content: [
+                  { type: "text", text: `Resolved to ID: ${resolvedId}` },
+                ],
+              };
+            }
+            return {
+              content: [{ type: "text", text: `Path not found: ${args.path}` }],
+            };
+          }
+
+          default:
+            return {
+              content: [{ type: "text", text: `Unknown tool: ${toolName}` }],
+              isError: true,
+            };
         }
-
-        const lines = files.map(
-          (f) =>
-            `${f.name} (${f.mimeType})${f.webViewLink ? ` - ${f.webViewLink}` : ""}`,
-        );
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Found ${files.length} files:\n${lines.join("\n")}`,
-            },
-          ],
-        };
       } catch (err) {
         return {
           content: [{ type: "text", text: `Error: ${err.message}` }],

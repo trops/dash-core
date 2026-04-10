@@ -195,47 +195,25 @@
     {
       "id": "google-drive",
       "name": "Google Drive",
-      "description": "List, read, and search files in Google Drive with automatic format conversion for Docs, Sheets, and Slides.",
+      "description": "Search, read, and write files in Google Drive. Supports folder listing, file creation, and path resolution.",
       "icon": "google-drive",
       "tags": ["google", "files", "cloud-storage"],
       "mcpConfig": {
         "transport": "stdio",
         "command": "node",
         "args": ["{{MCP_DIR}}/servers/google-drive.js"],
-        "envMapping": {
-          "GDRIVE_OAUTH_PATH": "oauthKeysPath"
-        },
         "staticEnv": {
           "GDRIVE_CREDENTIALS_PATH": "~/.gdrive-mcp/credentials.json"
-        },
-        "tokenRefresh": {
-          "credentialsPath": "~/.gdrive-mcp/credentials.json",
-          "oauthKeysPath": "~/.gdrive-mcp/gcp-oauth.keys.json"
         }
       },
       "authCommand": {
         "command": "node",
         "args": ["{{MCP_DIR}}/servers/google-drive.js", "auth"],
-        "setup": {
-          "copyCredential": {
-            "from": "oauthKeysPath",
-            "to": "~/.gdrive-mcp/gcp-oauth.keys.json"
-          }
-        },
         "staticEnv": {
-          "GDRIVE_CREDENTIALS_PATH": "~/.gdrive-mcp/credentials.json",
-          "GDRIVE_OAUTH_PATH": "~/.gdrive-mcp/gcp-oauth.keys.json"
+          "GDRIVE_CREDENTIALS_PATH": "~/.gdrive-mcp/credentials.json"
         }
       },
-      "credentialSchema": {
-        "oauthKeysPath": {
-          "type": "file",
-          "displayName": "OAuth Keys File",
-          "required": false,
-          "secret": false,
-          "instructions": "Path to your Google OAuth keys file (gcp-oauth.keys.json). Create one at console.cloud.google.com > APIs & Services > Credentials > OAuth 2.0 Client IDs."
-        }
-      }
+      "credentialSchema": {}
     },
     {
       "id": "gmail",
