@@ -11,6 +11,7 @@ export * from "./validation";
 export * from "./mcpUtils";
 export * from "./providerUtils";
 export * from "./themeGenerator";
+export * from "./markdownFormParser";
 // Note: DynamicWidgetLoader and WidgetRegistry are Electron-only
 // export * from "./DynamicWidgetLoader";
 // export * from "./WidgetRegistry";
