@@ -326,8 +326,8 @@ export const WidgetCardHeader = ({
                     </div>
                   )}
 
-                  {/* Unset (only for optional providers with a current selection) */}
-                  {!providerReq.required && selectedProviderId && (
+                  {/* Unset (available for all optional providers) */}
+                  {!providerReq.required && (
                     <MenuItem2
                       onClick={() => {
                         handleProviderSelect(providerType, "_unset");
