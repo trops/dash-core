@@ -120,6 +120,8 @@ export const WidgetCardHeader = ({
   const handleProviderSelect = (providerType, providerId) => {
     if (providerId === "_new") {
       onProviderChange(providerType, null, true); // true = create new
+    } else if (providerId === "_unset") {
+      onProviderChange(providerType, null, false); // unset — no provider
     } else {
       onProviderChange(providerType, providerId);
     }
@@ -322,6 +324,19 @@ export const WidgetCardHeader = ({
                     <div className="px-3 py-2 text-xs opacity-50 italic">
                       No {providerType} providers configured
                     </div>
+                  )}
+
+                  {/* Unset (only for optional providers with a current selection) */}
+                  {!providerReq.required && selectedProviderId && (
+                    <MenuItem2
+                      onClick={() => {
+                        handleProviderSelect(providerType, "_unset");
+                      }}
+                    >
+                      <span className="text-gray-400">
+                        &times; Unset {providerType}
+                      </span>
+                    </MenuItem2>
                   )}
 
                   {/* Create new provider */}
