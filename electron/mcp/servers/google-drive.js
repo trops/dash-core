@@ -213,7 +213,7 @@ function driveUploadRequest(
 
 async function listFolder(token, folderId) {
   const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
-  const fields = encodeURIComponent("files(id,name,mimeType)");
+  const fields = encodeURIComponent("files(id,name,mimeType,modifiedTime)");
   const result = await driveRequest(
     `/drive/v3/files?q=${q}&fields=${fields}&pageSize=200`,
     token,
@@ -584,7 +584,8 @@ if (process.argv[2] === "auth") {
               };
             }
             const childLines = children.map(
-              (f) => `${f.name} (${f.mimeType}) [${f.id}]`,
+              (f) =>
+                `${f.name} (${f.mimeType}) [${f.id}]${f.modifiedTime ? ` @${f.modifiedTime}` : ""}`,
             );
             return {
               content: [
