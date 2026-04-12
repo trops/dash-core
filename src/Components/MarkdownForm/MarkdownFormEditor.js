@@ -22,10 +22,26 @@ import { parse, serialize } from "../../utils/markdownFormParser";
 
 // ─── Table Cell Editor ───────────────────────────────────────────────────────
 
-function CellEditor({ value, columnType, onChange, onChangeWithNewOption }) {
+function cellMatches(value, query) {
+  if (!query || !query.trim() || !value) return false;
+  return value.toLowerCase().includes(query.toLowerCase());
+}
+
+function CellEditor({
+  value,
+  columnType,
+  onChange,
+  onChangeWithNewOption,
+  searchQuery = "",
+}) {
   const [enteringCustom, setEnteringCustom] = useState(false);
   const [customValue, setCustomValue] = useState("");
   const customInputRef = useRef(null);
+
+  const matches = cellMatches(value, searchQuery);
+  const matchClass = matches
+    ? "search-match-cell ring-2 ring-yellow-500/60 bg-yellow-900/10"
+    : "";
 
   useEffect(() => {
     if (enteringCustom && customInputRef.current) {
@@ -63,7 +79,7 @@ function CellEditor({ value, columnType, onChange, onChangeWithNewOption }) {
             }}
             onBlur={submitCustom}
             placeholder="Type custom value..."
-            className="flex-1 px-2 py-1.5 bg-gray-800 border border-indigo-500 rounded text-sm text-gray-200 focus:outline-none"
+            className={`flex-1 px-2 py-1.5 bg-gray-800 border border-indigo-500 rounded text-sm text-gray-200 focus:outline-none ${matchClass}`}
           />
         </div>
       );
@@ -88,7 +104,7 @@ function CellEditor({ value, columnType, onChange, onChangeWithNewOption }) {
             onChange(e.target.value);
           }
         }}
-        className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700/50 rounded text-sm text-gray-200 focus:outline-none focus:border-indigo-500"
+        className={`w-full px-2 py-1.5 bg-gray-800 border border-gray-700/50 rounded text-sm text-gray-200 focus:outline-none focus:border-indigo-500 ${matchClass}`}
       >
         <option value="">—</option>
         {columnType.options.map((opt) => (
@@ -110,7 +126,7 @@ function CellEditor({ value, columnType, onChange, onChangeWithNewOption }) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         rows={2}
-        className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700/50 rounded text-sm text-gray-200 focus:outline-none focus:border-indigo-500 resize-none"
+        className={`w-full px-2 py-1.5 bg-gray-800 border border-gray-700/50 rounded text-sm text-gray-200 focus:outline-none focus:border-indigo-500 resize-none ${matchClass}`}
       />
     );
   }
@@ -122,14 +138,20 @@ function CellEditor({ value, columnType, onChange, onChangeWithNewOption }) {
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={columnType.type === "date" ? "YYYY-MM-DD" : ""}
-      className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700/50 rounded text-sm text-gray-200 focus:outline-none focus:border-indigo-500"
+      className={`w-full px-2 py-1.5 bg-gray-800 border border-gray-700/50 rounded text-sm text-gray-200 focus:outline-none focus:border-indigo-500 ${matchClass}`}
     />
   );
 }
 
 // ─── Table Block Editor ──────────────────────────────────────────────────────
 
-function TableEditor({ block, blockIndex, onBlockChange }) {
+function rowMatchesQuery(row, query) {
+  if (!query || !query.trim()) return true;
+  const q = query.toLowerCase();
+  return row.some((cell) => cell && String(cell).toLowerCase().includes(q));
+}
+
+function TableEditor({ block, blockIndex, onBlockChange, searchQuery = "" }) {
   const handleCellChange = useCallback(
     (rowIdx, colIdx, value) => {
       const newRows = block.rows.map((row, ri) =>
@@ -214,35 +236,39 @@ function TableEditor({ block, blockIndex, onBlockChange }) {
           </tr>
         </thead>
         <tbody>
-          {block.rows.map((row, ri) => (
-            <tr key={ri} className="group hover:bg-gray-800/30">
-              {block.columns.map((_, ci) => (
-                <td key={ci} className="px-0.5 py-0.5">
-                  <CellEditor
-                    value={row[ci] || ""}
-                    columnType={
-                      block.columnTypes[ci] || {
-                        type: "text",
+          {block.rows
+            .map((row, ri) => ({ row, ri }))
+            .filter(({ row }) => rowMatchesQuery(row, searchQuery))
+            .map(({ row, ri }) => (
+              <tr key={ri} className="group hover:bg-gray-800/30">
+                {block.columns.map((_, ci) => (
+                  <td key={ci} className="px-0.5 py-0.5">
+                    <CellEditor
+                      value={row[ci] || ""}
+                      columnType={
+                        block.columnTypes[ci] || {
+                          type: "text",
+                        }
                       }
-                    }
-                    onChange={(val) => handleCellChange(ri, ci, val)}
-                    onChangeWithNewOption={(val) =>
-                      handleCellChangeWithNewOption(ri, ci, val)
-                    }
-                  />
+                      onChange={(val) => handleCellChange(ri, ci, val)}
+                      onChangeWithNewOption={(val) =>
+                        handleCellChangeWithNewOption(ri, ci, val)
+                      }
+                      searchQuery={searchQuery}
+                    />
+                  </td>
+                ))}
+                <td className="px-0.5 py-0.5">
+                  <button
+                    onClick={() => handleDeleteRow(ri)}
+                    className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all p-1"
+                    title="Delete row"
+                  >
+                    <FontAwesomeIcon icon="times" className="h-2.5 w-2.5" />
+                  </button>
                 </td>
-              ))}
-              <td className="px-0.5 py-0.5">
-                <button
-                  onClick={() => handleDeleteRow(ri)}
-                  className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all p-1"
-                  title="Delete row"
-                >
-                  <FontAwesomeIcon icon="times" className="h-2.5 w-2.5" />
-                </button>
-              </td>
-            </tr>
-          ))}
+              </tr>
+            ))}
         </tbody>
       </table>
       <button
@@ -364,7 +390,12 @@ function ListEditor({ block, blockIndex, onBlockChange }) {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-export function MarkdownFormEditor({ content, onChange, readOnly = false }) {
+export function MarkdownFormEditor({
+  content,
+  onChange,
+  readOnly = false,
+  searchQuery = "",
+}) {
   const [blocks, setBlocks] = useState([]);
   const debounceRef = useRef(null);
   const internalChangeRef = useRef(false);
@@ -452,7 +483,7 @@ export function MarkdownFormEditor({ content, onChange, readOnly = false }) {
     }
 
     return elements;
-  }, [blocks, handleBlockChange]);
+  }, [blocks, handleBlockChange, searchQuery]);
 
   function renderBlock(block, index) {
     switch (block.type) {
@@ -463,6 +494,7 @@ export function MarkdownFormEditor({ content, onChange, readOnly = false }) {
             block={block}
             blockIndex={index}
             onBlockChange={handleBlockChange}
+            searchQuery={searchQuery}
           />
         );
       case "paragraph":
