@@ -40,7 +40,7 @@ function CellEditor({
 
   const matches = cellMatches(value, searchQuery);
   const matchClass = matches
-    ? "search-match-cell ring-2 ring-yellow-500/60 bg-yellow-900/10"
+    ? "search-match-cell border-yellow-400 bg-yellow-800 text-yellow-100"
     : "";
 
   useEffect(() => {
