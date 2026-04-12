@@ -19,6 +19,52 @@ const {
 } = require("@modelcontextprotocol/sdk/client/streamableHttp.js");
 const path = require("path");
 const fs = require("fs");
+const responseCache = require("../utils/responseCache");
+
+/**
+ * Tool name prefixes considered safe to cache (read-only).
+ * Writes/mutations are NOT cached so they always hit the source.
+ */
+const READ_ONLY_PREFIXES = [
+  "list_",
+  "get_",
+  "read_",
+  "search_",
+  "resolve_",
+  "find_",
+  "fetch_",
+  "describe_",
+];
+
+const WRITE_PREFIXES = [
+  "create_",
+  "write_",
+  "update_",
+  "delete_",
+  "remove_",
+  "append_",
+  "set_",
+  "put_",
+  "post_",
+  "patch_",
+  "send_",
+  "execute_",
+  "run_",
+];
+
+function isReadOnlyTool(toolName) {
+  if (!toolName) return false;
+  const lower = toolName.toLowerCase();
+  // Explicit write prefix wins (in case a tool starts with read_ but actually writes)
+  if (WRITE_PREFIXES.some((p) => lower.startsWith(p))) return false;
+  return READ_ONLY_PREFIXES.some((p) => lower.startsWith(p));
+}
+
+/**
+ * Default TTL for cached MCP tool calls (milliseconds).
+ * Short enough to keep data fresh, long enough to dedupe concurrent widget loads.
+ */
+const DEFAULT_TOOL_CACHE_TTL = 5000;
 
 /**
  * Cached shell PATH result (resolved once, reused for all spawns).
@@ -640,17 +686,31 @@ const mcpController = {
         );
       }
 
-      console.log(`[mcpController] Calling tool: ${serverName}/${toolName}`);
-
-      const result = await server.client.callTool({
-        name: toolName,
-        arguments: args || {},
-      });
-
-      return {
-        success: true,
-        result,
+      const doCall = async () => {
+        console.log(`[mcpController] Calling tool: ${serverName}/${toolName}`);
+        const result = await server.client.callTool({
+          name: toolName,
+          arguments: args || {},
+        });
+        return {
+          success: true,
+          result,
+        };
       };
+
+      // Cache read-only tool calls with in-flight dedup.
+      // Writes always hit the source (and we invalidate the server's cache).
+      if (isReadOnlyTool(toolName)) {
+        const key = `mcp:${serverName}:${toolName}:${JSON.stringify(args || {})}`;
+        return responseCache.get(key, doCall, {
+          ttl: DEFAULT_TOOL_CACHE_TTL,
+        });
+      }
+
+      // Write/mutation: invalidate any cached reads for this server
+      // (safest default — broad invalidation when state changes)
+      responseCache.invalidatePrefix(`mcp:${serverName}:`);
+      return doCall();
     } catch (error) {
       console.error(
         `[mcpController] Error calling tool ${serverName}/${toolName}:`,
