@@ -13,6 +13,18 @@
 const path = require("path");
 const fs = require("fs");
 const { toPackageId } = require("../utils/packageId");
+const { getStoredToken } = require("./registryAuthController");
+
+/**
+ * Build request headers for the registry. When the user is signed in, we
+ * include the Bearer token so the server returns private packages that
+ * the user owns or has been granted entitlements for. Anonymous fetches
+ * still work and simply return only public packages.
+ */
+function buildAuthHeaders() {
+  const stored = getStoredToken();
+  return stored?.token ? { Authorization: `Bearer ${stored.token}` } : {};
+}
 
 // Default registry API base URL
 const DEFAULT_REGISTRY_API_URL = "https://main.d919rwhuzp7rj.amplifyapp.com";
@@ -20,8 +32,15 @@ const DEFAULT_REGISTRY_API_URL = "https://main.d919rwhuzp7rj.amplifyapp.com";
 // Cache TTL: 5 minutes
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-let cachedIndex = null;
-let cacheTimestamp = 0;
+// Cache is keyed by userId so anonymous + authenticated results don't mix.
+// When a user signs in, their cache entry is empty and gets populated with
+// their owned/entitled private packages alongside the public set.
+const caches = new Map(); // userId | "anon" -> { data, timestamp }
+
+function getCacheKey() {
+  const stored = getStoredToken();
+  return stored?.userId || "anon";
+}
 
 /**
  * Get the local test registry path for dev mode
@@ -50,11 +69,15 @@ function isDev() {
  */
 async function fetchRegistryIndex(forceRefresh = false) {
   const now = Date.now();
+  const cacheKey = getCacheKey();
+  const cached = caches.get(cacheKey);
 
   // Return cached data if still valid
-  if (!forceRefresh && cachedIndex && now - cacheTimestamp < CACHE_TTL_MS) {
-    console.log("[RegistryController] Returning cached registry index");
-    return cachedIndex;
+  if (!forceRefresh && cached && now - cached.timestamp < CACHE_TTL_MS) {
+    console.log(
+      `[RegistryController] Returning cached registry index (key=${cacheKey})`,
+    );
+    return cached.data;
   }
 
   try {
@@ -79,7 +102,9 @@ async function fetchRegistryIndex(forceRefresh = false) {
           "[RegistryController] Fetching registry from:",
           registryUrl,
         );
-        const response = await fetch(registryUrl);
+        const response = await fetch(registryUrl, {
+          headers: buildAuthHeaders(),
+        });
         if (!response.ok) {
           throw new Error(
             `Failed to fetch registry: ${response.status} ${response.statusText}`,
@@ -94,7 +119,9 @@ async function fetchRegistryIndex(forceRefresh = false) {
         `${process.env.DASH_REGISTRY_API_URL || DEFAULT_REGISTRY_API_URL}/api/packages`;
       console.log("[RegistryController] Fetching registry from:", registryUrl);
 
-      const response = await fetch(registryUrl);
+      const response = await fetch(registryUrl, {
+        headers: buildAuthHeaders(),
+      });
       if (!response.ok) {
         throw new Error(
           `Failed to fetch registry: ${response.status} ${response.statusText}`,
@@ -112,22 +139,22 @@ async function fetchRegistryIndex(forceRefresh = false) {
     }
 
     // Cache the result
-    cachedIndex = indexData;
-    cacheTimestamp = now;
+    caches.set(cacheKey, { data: indexData, timestamp: now });
 
     console.log(
-      `[RegistryController] Loaded ${indexData.packages?.length || 0} packages`,
+      `[RegistryController] Loaded ${indexData.packages?.length || 0} packages (key=${cacheKey})`,
     );
     return indexData;
   } catch (error) {
     console.error("[RegistryController] Error fetching registry:", error);
 
     // Return stale cache if available
-    if (cachedIndex) {
+    const stale = caches.get(cacheKey);
+    if (stale) {
       console.log(
         "[RegistryController] Returning stale cache after fetch error",
       );
-      return cachedIndex;
+      return stale.data;
     }
 
     throw error;
