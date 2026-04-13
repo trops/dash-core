@@ -37,13 +37,14 @@ function sanitizeName(name) {
  *
  * @param {Object} themeData - The raw theme object
  * @param {string} themeKey - The theme key/name
- * @param {Object} options - Publish options { authorName, description, tags, scope }
+ * @param {Object} options - Publish options { authorName, description, tags, scope, visibility }
  * @returns {Object} Registry manifest
  */
 function generateThemeRegistryManifest(themeData, themeKey, options = {}) {
   const humanName = themeData.name || themeKey;
   const sanitizedName = sanitizeName(humanName);
   const colors = extractColors(themeData);
+  const visibility = options.visibility === "private" ? "private" : "public";
 
   return {
     scope: options.scope || "",
@@ -52,6 +53,7 @@ function generateThemeRegistryManifest(themeData, themeKey, options = {}) {
     author: options.authorName || "",
     description: options.description || "",
     version: "1.0.0",
+    visibility,
     type: "theme",
     category: "general",
     tags: options.tags || [],

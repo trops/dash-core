@@ -409,6 +409,7 @@ const { toDisplayColor } = require("../../src/utils/colorUtils");
  * @param {string} options.category - Registry category (default: "general")
  * @param {string} options.repository - Repository URL (optional)
  * @param {string} options.appOrigin - Originating app package name (optional)
+ * @param {"public"|"private"} options.visibility - Initial visibility (default: "public")
  * @returns {Object} Registry manifest object
  */
 function generateRegistryManifest(dashboardConfig, options = {}) {
@@ -419,6 +420,7 @@ function generateRegistryManifest(dashboardConfig, options = {}) {
 
   const githubUser = options.githubUser || "";
   const version = "1.0.0";
+  const visibility = options.visibility === "private" ? "private" : "public";
 
   const manifest = {
     githubUser,
@@ -427,6 +429,7 @@ function generateRegistryManifest(dashboardConfig, options = {}) {
     author: dashboardConfig.author?.name || "",
     description: dashboardConfig.description || "",
     version,
+    visibility,
     type: "dashboard",
     category: options.category || "general",
     tags: dashboardConfig.tags || [],

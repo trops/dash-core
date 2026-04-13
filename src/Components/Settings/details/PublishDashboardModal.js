@@ -78,6 +78,9 @@ export const PublishDashboardModal = ({
   const [isPublishing, setIsPublishing] = useState(false);
   const [result, setResult] = useState(null);
 
+  // Visibility — chosen on the Details step. Defaults to public.
+  const [visibility, setVisibility] = useState("public");
+
   // Fetch publish preview (widget names) on open
   useEffect(() => {
     if (!isOpen || !appId || !workspaceId) return;
@@ -140,6 +143,7 @@ export const PublishDashboardModal = ({
     setPreview(null);
     setIsPublishing(false);
     setResult(null);
+    setVisibility("public");
   }
 
   function handleClose() {
@@ -183,6 +187,7 @@ export const PublishDashboardModal = ({
         description: description.trim() || undefined,
         tags: selectedTags,
         icon: icon || undefined,
+        visibility,
         componentConfigs,
       };
       const res =
@@ -430,6 +435,61 @@ export const PublishDashboardModal = ({
                 placeholder="A brief description of this dashboard..."
                 rows={3}
               />
+              <div>
+                <label className="block text-sm font-medium opacity-70 mb-2">
+                  Visibility
+                </label>
+                <div className="space-y-2">
+                  {[
+                    {
+                      value: "public",
+                      label: "Public",
+                      desc: "Anyone can find and install this dashboard.",
+                    },
+                    {
+                      value: "private",
+                      label: "Private",
+                      desc: "Only you and users you grant access to can install. The package is hidden from search and listings.",
+                    },
+                  ].map((opt) => {
+                    const active = visibility === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setVisibility(opt.value)}
+                        className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors ${
+                          active
+                            ? "bg-indigo-900/20 border-indigo-500/60"
+                            : "bg-white/5 border-white/10 hover:bg-white/10"
+                        }`}
+                      >
+                        <div className="flex items-start gap-2.5">
+                          <div
+                            className={`mt-0.5 h-4 w-4 rounded-full border flex-shrink-0 ${
+                              active
+                                ? "border-indigo-400 bg-indigo-500"
+                                : "border-white/30"
+                            }`}
+                          >
+                            {active && (
+                              <div className="h-full w-full rounded-full border-2 border-gray-900" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium">
+                              {opt.label}
+                            </div>
+                            <div className="text-xs opacity-60 mt-0.5">
+                              {opt.desc}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </Stepper.Step>
 
