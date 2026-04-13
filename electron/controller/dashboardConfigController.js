@@ -1244,6 +1244,7 @@ async function prepareDashboardForPublish(
       category: options.category || "general",
       repository: options.repository || "",
       appOrigin: appId,
+      visibility: options.visibility || "public",
     });
 
     // 9. Show save dialog for the publish package
