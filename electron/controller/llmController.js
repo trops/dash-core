@@ -75,8 +75,30 @@ const DEFAULT_MAX_TOOL_ROUNDS = 10;
  * Convert MCP tool format to Anthropic tool format.
  * MCP: { name, description, inputSchema }
  * Anthropic: { name, description, input_schema }
+ *
+ * Server-side tools (web_search, code_execution, computer_use, bash, etc.)
+ * carry a `type` field and are handled by Anthropic's servers — pass them
+ * through unchanged. They do NOT need input_schema or local execution.
  */
+const ANTHROPIC_SERVER_TOOL_TYPE_PREFIXES = [
+  "web_search",
+  "code_execution",
+  "computer_",
+  "bash_",
+  "text_editor_",
+];
+
+function isAnthropicServerTool(tool) {
+  if (!tool?.type) return false;
+  return ANTHROPIC_SERVER_TOOL_TYPE_PREFIXES.some((p) =>
+    tool.type.startsWith(p),
+  );
+}
+
 function mcpToolToAnthropic(tool) {
+  if (isAnthropicServerTool(tool)) {
+    return tool;
+  }
   return {
     name: tool.name,
     description: tool.description || "",
