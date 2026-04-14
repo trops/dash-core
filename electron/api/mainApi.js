@@ -122,6 +122,7 @@ function createMainApi(extensions = {}) {
       publish: (eventType, content) => {
         ipcRenderer.send("widget-event:publish", { eventType, content });
       },
+      getLastEvents: () => ipcRenderer.invoke("widget-event:get-last-events"),
     },
 
     // Merge template-specific extensions
