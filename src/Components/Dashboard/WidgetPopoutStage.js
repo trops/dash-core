@@ -147,8 +147,17 @@ const WidgetPopoutInner = ({ dashApi, credentials, workspaceId, widgetId }) => {
                 component: i.component,
               })),
             };
-            console.warn("[WidgetPopout] widget not found:", dump);
-            setError("Widget not found in workspace");
+            console.error(
+              "[WidgetPopout] widget NOT FOUND — searched:",
+              widgetId,
+            );
+            console.error("[WidgetPopout] suffix:", tail);
+            console.error("[WidgetPopout] mainLayout items:", dump.mainLayout);
+            console.error("[WidgetPopout] pages items:", dump.pages);
+            console.error("[WidgetPopout] sidebar items:", dump.sidebar);
+            setError(
+              `Widget not found — searched for "${widgetId}". Check console for details.`,
+            );
             return;
           }
 
