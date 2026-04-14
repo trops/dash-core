@@ -405,6 +405,19 @@ const PackageItem = ({
     );
   }
 
+  const isPrivate = pkg.visibility === "private";
+
+  function openAccessPage(e) {
+    e.stopPropagation();
+    // Registry web URL. If we ever move off Amplify Hosting's default
+    // domain this centralizes nicely into a config, but hardcoded is
+    // consistent with how other files in the app already reference it.
+    const url = `https://main.d919rwhuzp7rj.amplifyapp.com/package/${encodeURIComponent(
+      pkg.scope,
+    )}/${encodeURIComponent(pkg.name)}/access`;
+    window.mainApi?.shell?.openExternal(url);
+  }
+
   return (
     <div
       onClick={onEdit}
@@ -422,13 +435,23 @@ const PackageItem = ({
           )}
           <span
             className={`text-[10px] px-1.5 py-0.5 rounded ${
-              pkg.visibility === "private"
+              isPrivate
                 ? "bg-amber-500/20 text-amber-300"
                 : "bg-emerald-500/20 text-emerald-300"
             }`}
           >
             {pkg.visibility || "public"}
           </span>
+          {isPrivate && (
+            <button
+              type="button"
+              onClick={openAccessPage}
+              title="Open the access management page in your browser"
+              className="ml-auto text-[10px] px-2 py-0.5 rounded border border-indigo-500/40 text-indigo-300 hover:text-white hover:bg-indigo-600/20 transition-colors"
+            >
+              Manage access &rarr;
+            </button>
+          )}
         </div>
         {pkg.description && (
           <p className="text-xs opacity-50 truncate">{pkg.description}</p>
