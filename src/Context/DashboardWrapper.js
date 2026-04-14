@@ -27,7 +27,18 @@ export const DashboardWrapper = ({
   }, [dashApi]);
 
   useEffect(() => {
-    DashboardPublisher.enableIpcBridge();
+    // Only popout windows replay cached events on subscribe — keeps the
+    // main dashboard from resurrecting stale state when reopened while
+    // still letting popped-out widgets hydrate from current state.
+    // Electron uses hash routing, so the popout path lives in
+    // window.location.hash (e.g. "#/popout-widget/..."), not pathname.
+    const isPopout =
+      typeof window !== "undefined" &&
+      ((typeof window.location?.hash === "string" &&
+        window.location.hash.includes("/popout")) ||
+        (typeof window.location?.pathname === "string" &&
+          window.location.pathname.includes("/popout")));
+    DashboardPublisher.enableIpcBridge({ replay: isPopout });
     return () => DashboardPublisher.disableIpcBridge();
   }, []);
 
