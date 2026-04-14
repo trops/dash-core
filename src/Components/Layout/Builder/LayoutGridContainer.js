@@ -1163,8 +1163,14 @@ export const LayoutGridContainer = memo(
       );
 
       if (onWidgetPopout && cellComponent.component) {
+        // Prefer uuid over id — uuid is `${dashboardId}-${component}-${id}`
+        // which is globally unique, while id is only unique within a
+        // single page/container. Passing bare id causes WidgetPopoutStage
+        // to find-first-match across layout/pages and render the wrong
+        // widget when two pages share the same numeric id.
+        const popoutKey = cellComponent.uuid || cellComponent.id;
         return (
-          <PopoutOverlay onPopout={() => onWidgetPopout(cellComponent.id)}>
+          <PopoutOverlay onPopout={() => onWidgetPopout(popoutKey)}>
             {rendered}
           </PopoutOverlay>
         );
