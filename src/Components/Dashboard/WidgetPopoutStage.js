@@ -80,13 +80,28 @@ const WidgetPopoutInner = ({ dashApi, credentials, workspaceId, widgetId }) => {
 
           setWorkspace(target);
 
-          // `widgetId` carries the layout item's uuid (globally unique
-          // across pages/containers) but older callers may still pass a
-          // bare numeric id. Match uuid first, then fall back to id.
-          // Without the uuid match, widgets on a non-first page get
-          // masked by same-numeric-id widgets in the main layout.
-          const matches = (item) =>
-            item.uuid === widgetId || item.id === widgetId;
+          // `widgetId` carries the layout item's uuid. That uuid is
+          //   `${dashboardId}-${component}-${id}`
+          // but the dashboardId prefix can differ between the main
+          // window's LayoutModel instance and the one rebuilt here,
+          // so we match on several shapes to be robust:
+          //
+          //   1. full uuid match (preferred)
+          //   2. trailing `component-id` suffix (strip dashboardId)
+          //   3. bare numeric id (legacy callers that pre-date uuid)
+          //
+          // Extract the suffix once: everything after the first "-"
+          // when the string starts with a dashboard-looking prefix.
+          const tail = String(widgetId).split("-").slice(-2).join("-");
+          const matches = (item) => {
+            if (item.uuid === widgetId) return true;
+            if (item.uuid && item.uuid.endsWith("-" + tail)) return true;
+            const itemTail = `${item.component}-${item.id}`;
+            if (itemTail === widgetId) return true;
+            if (itemTail === tail) return true;
+            if (item.id === widgetId) return true;
+            return false;
+          };
 
           let widget = target.layout.find(matches);
 
@@ -108,6 +123,31 @@ const WidgetPopoutInner = ({ dashApi, credentials, workspaceId, widgetId }) => {
           }
 
           if (!widget) {
+            // Diagnostic dump — helps pinpoint id/uuid mismatches when
+            // the user reports a "Widget not available" popout.
+            const dump = {
+              searchedFor: widgetId,
+              suffix: tail,
+              mainLayout: (target.layout || []).map((i) => ({
+                id: i.id,
+                uuid: i.uuid,
+                component: i.component,
+              })),
+              pages: (target.pages || []).map((p) => ({
+                pageId: p.id,
+                items: (p.layout || []).map((i) => ({
+                  id: i.id,
+                  uuid: i.uuid,
+                  component: i.component,
+                })),
+              })),
+              sidebar: (target.sidebarLayout || []).map((i) => ({
+                id: i.id,
+                uuid: i.uuid,
+                component: i.component,
+              })),
+            };
+            console.warn("[WidgetPopout] widget not found:", dump);
             setError("Widget not found in workspace");
             return;
           }
