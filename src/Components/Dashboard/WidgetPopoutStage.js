@@ -80,13 +80,20 @@ const WidgetPopoutInner = ({ dashApi, credentials, workspaceId, widgetId }) => {
 
           setWorkspace(target);
 
-          // Find the widget across all layout locations
-          let widget = target.layout.find((item) => item.id === widgetId);
+          // `widgetId` carries the layout item's uuid (globally unique
+          // across pages/containers) but older callers may still pass a
+          // bare numeric id. Match uuid first, then fall back to id.
+          // Without the uuid match, widgets on a non-first page get
+          // masked by same-numeric-id widgets in the main layout.
+          const matches = (item) =>
+            item.uuid === widgetId || item.id === widgetId;
+
+          let widget = target.layout.find(matches);
 
           if (!widget && target.pages && Array.isArray(target.pages)) {
             for (const page of target.pages) {
               if (page.layout && Array.isArray(page.layout)) {
-                widget = page.layout.find((item) => item.id === widgetId);
+                widget = page.layout.find(matches);
                 if (widget) break;
               }
             }
@@ -97,7 +104,7 @@ const WidgetPopoutInner = ({ dashApi, credentials, workspaceId, widgetId }) => {
             target.sidebarLayout &&
             Array.isArray(target.sidebarLayout)
           ) {
-            widget = target.sidebarLayout.find((item) => item.id === widgetId);
+            widget = target.sidebarLayout.find(matches);
           }
 
           if (!widget) {
