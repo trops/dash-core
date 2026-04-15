@@ -152,9 +152,13 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
       };
     }
     const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
+    // Scope resolution: the caller's registry username always wins. The
+    // package.json may use a local naming convention (e.g. `@ai-built/…`
+    // for AI-generated widgets) but the registry only allows publishing
+    // under the authenticated user's scope. `options.scope` is honored
+    // only if explicitly provided (e.g. for future org publishing).
     const parsedName = parsePackageName(pkgJson.name || "");
-    const resolvedScope =
-      options.scope || parsedName.scope || widget.scope || callerScope;
+    const resolvedScope = options.scope || callerScope;
 
     // 4. Compute + persist new version
     const previousVersion = pkgJson.version || "1.0.0";

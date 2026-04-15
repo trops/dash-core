@@ -53,6 +53,7 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
 
   const [authStatus, setAuthStatus] = useState("loading");
   const [authError, setAuthError] = useState(null);
+  const [username, setUsername] = useState(null);
   const [bump, setBump] = useState("patch");
   const [visibility, setVisibility] = useState("public");
   const [isPublishing, setIsPublishing] = useState(false);
@@ -68,7 +69,7 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
     setResult(null);
   }, [isOpen]);
 
-  // Check auth status
+  // Check auth status + fetch username for the "publishing as" preview
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
@@ -76,9 +77,16 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
       try {
         const status = await window.mainApi.registryAuth.getStatus();
         if (cancelled) return;
-        setAuthStatus(
-          status?.authenticated ? "authenticated" : "unauthenticated",
-        );
+        if (status?.authenticated) {
+          const profile = await window.mainApi.registryAuth.getProfile();
+          if (cancelled) return;
+          setUsername(profile?.username || null);
+          setAuthStatus(
+            profile?.username ? "authenticated" : "unauthenticated",
+          );
+        } else {
+          setAuthStatus("unauthenticated");
+        }
       } catch {
         if (!cancelled) setAuthStatus("unauthenticated");
       }
@@ -206,21 +214,25 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
               {/* Widget summary */}
               <div className="bg-white/5 border border-white/10 rounded-lg p-3 text-sm">
                 <div className="flex gap-2">
-                  <span className="opacity-50 w-28 flex-shrink-0">Package</span>
-                  <span className="font-mono text-xs">
-                    {widget.scope ? `${widget.scope}/` : ""}
-                    {widget.name}
+                  <span className="opacity-50 w-28 flex-shrink-0">Local</span>
+                  <span className="font-mono text-xs opacity-80">
+                    {widget.scope ? `@${widget.scope}/` : ""}
+                    {(widget.name || "").replace(/^@[^/]+\//, "")}
                   </span>
-                </div>
-                <div className="flex gap-2 mt-1">
-                  <span className="opacity-50 w-28 flex-shrink-0">Current</span>
-                  <span>v{currentVersion}</span>
                 </div>
                 <div className="flex gap-2 mt-1">
                   <span className="opacity-50 w-28 flex-shrink-0">
                     Publishing as
                   </span>
-                  <span className="text-indigo-300">v{newVersion}</span>
+                  <span className="font-mono text-xs text-indigo-300">
+                    {username ? `@${username}/` : ""}
+                    {(widget.name || "").replace(/^@[^/]+\//, "")}
+                    <span className="text-gray-400"> v{newVersion}</span>
+                  </span>
+                </div>
+                <div className="flex gap-2 mt-1">
+                  <span className="opacity-50 w-28 flex-shrink-0">Current</span>
+                  <span>v{currentVersion}</span>
                 </div>
               </div>
 
