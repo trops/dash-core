@@ -16,6 +16,7 @@ const DASHBOARD_CONFIG_SELECT_FILE = "dashboard-config-select-file";
 const DASHBOARD_CONFIG_INSTALL_PROGRESS = "dashboard-config-install-progress";
 const DASHBOARD_CONFIG_COLLECT_DEPENDENCIES =
   "dashboard-config-collect-dependencies";
+const DASHBOARD_CONFIG_PUBLISH_PLAN = "dashboard-config-publish-plan";
 
 module.exports = {
   DASHBOARD_CONFIG_EXPORT,
@@ -30,4 +31,5 @@ module.exports = {
   DASHBOARD_CONFIG_SELECT_FILE,
   DASHBOARD_CONFIG_INSTALL_PROGRESS,
   DASHBOARD_CONFIG_COLLECT_DEPENDENCIES,
+  DASHBOARD_CONFIG_PUBLISH_PLAN,
 };
