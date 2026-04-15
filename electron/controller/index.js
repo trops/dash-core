@@ -107,6 +107,7 @@ const {
   installThemeFromRegistry,
   getThemePublishPreview,
 } = require("./themeRegistryController");
+const { prepareWidgetForPublish } = require("./widgetRegistryController");
 const {
   assignRoles,
   matchTailwindFamily,
@@ -194,6 +195,7 @@ module.exports = {
   prepareThemeForPublish,
   installThemeFromRegistry,
   getThemePublishPreview,
+  prepareWidgetForPublish,
   assignRoles,
   matchTailwindFamily,
   generateThemeFromPalette,

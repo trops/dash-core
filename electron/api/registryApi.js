@@ -110,6 +110,32 @@ const registryApi = {
       throw error;
     }
   },
+
+  /**
+   * Publish a widget package to the registry.
+   *
+   * Zips the widget directory (source files, not dist/), generates a
+   * registry manifest from package.json + .dash.js configs, optionally
+   * bumps the version, and POSTs to /api/publish.
+   *
+   * @param {string} appId - Application identifier
+   * @param {string} packageId - Widget packageId (e.g. "@scope/name")
+   * @param {Object} options - { bump?, version?, visibility?, description?,
+   *                             tags?, icon?, category?, authorName? }
+   * @returns {Promise<Object>} { success, manifest, registryResult, previousVersion, newVersion, error? }
+   */
+  publishWidget: async (appId, packageId, options = {}) => {
+    try {
+      return await ipcRenderer.invoke("registry:publish-widget", {
+        appId,
+        packageId,
+        options,
+      });
+    } catch (error) {
+      console.error("[RegistryApi] Error publishing widget:", error);
+      throw error;
+    }
+  },
 };
 
 module.exports = registryApi;
