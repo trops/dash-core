@@ -1151,6 +1151,100 @@ async function collectDashboardDependencies(
 }
 
 /**
+ * Build an enriched dependency plan for batch-publishing a dashboard.
+ *
+ * Combines local dependency info (collectDashboardDependencies) with the
+ * registry's current state (POST /api/packages/resolve) so the batch-
+ * publish UI can decorate each widget + theme row with "already in
+ * registry at vX.Y.Z", "owned by you", "public/private", etc.
+ *
+ * Each returned widget has a `registry` sub-object that is either null
+ * (registry call failed or the package didn't exist) or the resolved
+ * entry from the API. Never throws on registry failures — the UI can
+ * still fall back to local-only info.
+ *
+ * @param {string} appId - Application identifier
+ * @param {number|string} workspaceId - Workspace ID
+ * @param {Object} widgetRegistry - WidgetRegistry instance
+ * @param {Object} options - { componentConfigs?: Object }
+ * @returns {Promise<Object>} { success, widgets, theme, registryError? }
+ */
+async function getDashboardPublishPlan(
+  appId,
+  workspaceId,
+  widgetRegistry = null,
+  options = {},
+) {
+  try {
+    const { resolvePackages } = require("./registryApiController");
+
+    const deps = await collectDashboardDependencies(
+      appId,
+      workspaceId,
+      widgetRegistry,
+      options,
+    );
+    if (!deps.success) {
+      return { success: false, error: deps.error };
+    }
+
+    const refs = [];
+    for (const w of deps.widgets) {
+      if (w.scope && w.packageName) {
+        refs.push({ scope: w.scope, name: w.packageName });
+      }
+    }
+    if (deps.theme && deps.theme.scope && deps.theme.name) {
+      refs.push({ scope: deps.theme.scope, name: deps.theme.name });
+    }
+
+    let registryError = null;
+    const resolvedByKey = new Map();
+    if (refs.length > 0) {
+      const res = await resolvePackages(refs);
+      if (res.success && Array.isArray(res.resolved)) {
+        for (const r of res.resolved) {
+          resolvedByKey.set(`${r.scope}/${r.name}`, r);
+        }
+      } else {
+        registryError = res.error || "Registry lookup failed";
+      }
+    }
+
+    const widgets = deps.widgets.map((w) => {
+      const key =
+        w.scope && w.packageName ? `${w.scope}/${w.packageName}` : null;
+      return {
+        ...w,
+        registry: key ? resolvedByKey.get(key) || null : null,
+      };
+    });
+
+    let theme = null;
+    if (deps.theme) {
+      const key =
+        deps.theme.scope && deps.theme.name
+          ? `${deps.theme.scope}/${deps.theme.name}`
+          : null;
+      theme = {
+        ...deps.theme,
+        registry: key ? resolvedByKey.get(key) || null : null,
+      };
+    }
+
+    return {
+      success: true,
+      widgets,
+      theme,
+      ...(registryError ? { registryError } : {}),
+    };
+  } catch (error) {
+    console.error("[dashboardConfig] getDashboardPublishPlan failed:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Prepare a dashboard for publishing to the registry.
  *
  * Validates that the workspace is shareable, builds the dashboard config,
@@ -1619,6 +1713,7 @@ module.exports = {
   checkCompatibility,
   prepareDashboardForPublish,
   collectDashboardDependencies,
+  getDashboardPublishPlan,
   getDashboardPreview,
   checkDashboardUpdatesForApp,
   getProviderSetupManifest,

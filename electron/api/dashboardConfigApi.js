@@ -18,6 +18,7 @@ const {
   DASHBOARD_CONFIG_PUBLISH_PREVIEW,
   DASHBOARD_CONFIG_INSTALL_PROGRESS,
   DASHBOARD_CONFIG_COLLECT_DEPENDENCIES,
+  DASHBOARD_CONFIG_PUBLISH_PLAN,
 } = require("../events");
 
 const dashboardConfigApi = {
@@ -116,6 +117,23 @@ const dashboardConfigApi = {
    */
   collectDashboardDependencies: (appId, workspaceId, options = {}) =>
     ipcRenderer.invoke(DASHBOARD_CONFIG_COLLECT_DEPENDENCIES, {
+      appId,
+      workspaceId,
+      options,
+    }),
+
+  /**
+   * Build an enriched dependency plan for batch-publishing a dashboard.
+   * Merges local dep info with registry state (existence, version,
+   * visibility, ownership) so the UI can decorate each row.
+   *
+   * @param {string} appId - Application identifier
+   * @param {number|string} workspaceId - Workspace ID
+   * @param {Object} options - { componentConfigs?: Object }
+   * @returns {Promise<Object>} { success, widgets, theme, registryError? }
+   */
+  getDashboardPublishPlan: (appId, workspaceId, options = {}) =>
+    ipcRenderer.invoke(DASHBOARD_CONFIG_PUBLISH_PLAN, {
       appId,
       workspaceId,
       options,

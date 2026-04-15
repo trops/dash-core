@@ -79,6 +79,55 @@ async function publishToRegistry(zipPath, manifest) {
 }
 
 /**
+ * Bulk-resolve package refs to their registry state. Used by the
+ * batch-publish dialog to decorate dependency rows with ownership +
+ * latest version + visibility.
+ *
+ * Sends token if available (authenticated callers see their private
+ * packages too). Anonymous calls still work — only public data is
+ * returned.
+ *
+ * @param {Array<{scope: string, name: string}>} refs
+ * @returns {Promise<Object>} { success, resolved: [...], error? }
+ */
+async function resolvePackages(refs) {
+  if (!Array.isArray(refs) || refs.length === 0) {
+    return { success: true, resolved: [] };
+  }
+
+  try {
+    const headers = { "Content-Type": "application/json" };
+    const auth = getStoredToken();
+    if (auth?.token) {
+      headers.Authorization = `Bearer ${auth.token}`;
+    }
+
+    const response = await fetch(`${REGISTRY_BASE_URL}/api/packages/resolve`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ refs }),
+    });
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data?.error || `Resolve failed: ${response.status}`,
+      };
+    }
+
+    return { success: true, resolved: Array.isArray(data) ? data : [] };
+  } catch (err) {
+    console.error("[RegistryApiController] Resolve error:", err);
+    return {
+      success: false,
+      error: err.message || "Failed to resolve packages",
+    };
+  }
+}
+
+/**
  * Get the registry URL for a published package.
  *
  * @param {string} scope - Package scope (username)
@@ -91,6 +140,7 @@ function getRegistryUrl(scope, name) {
 
 module.exports = {
   publishToRegistry,
+  resolvePackages,
   getRegistryUrl,
   REGISTRY_BASE_URL,
 };
