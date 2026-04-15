@@ -2,6 +2,7 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const {
   collectComponentNames,
+  collectComponentNamesFromWorkspace,
   extractEventWiring,
   buildWidgetDependencies,
   buildProviderRequirements,
@@ -75,6 +76,52 @@ describe("collectComponentNames", () => {
     const names = collectComponentNames(layout);
     const searchCount = names.filter((n) => n === "SearchWidget").length;
     assert.equal(searchCount, 1);
+  });
+});
+
+describe("collectComponentNamesFromWorkspace", () => {
+  it("walks main layout, every page layout, and sidebar layout", () => {
+    const workspace = {
+      layout: [{ id: 1, type: "widget", component: "MainWidget" }],
+      pages: [
+        {
+          id: "p1",
+          layout: [{ id: 2, type: "widget", component: "PageOneWidget" }],
+        },
+        {
+          id: "p2",
+          layout: [{ id: 3, type: "widget", component: "PageTwoWidget" }],
+        },
+      ],
+      sidebarLayout: [{ id: 4, type: "widget", component: "SidebarWidget" }],
+    };
+
+    const names = collectComponentNamesFromWorkspace(workspace);
+    assert.ok(names.includes("MainWidget"));
+    assert.ok(names.includes("PageOneWidget"));
+    assert.ok(names.includes("PageTwoWidget"));
+    assert.ok(names.includes("SidebarWidget"));
+  });
+
+  it("deduplicates components that appear in multiple layouts", () => {
+    const workspace = {
+      layout: [{ id: 1, type: "widget", component: "Shared" }],
+      pages: [
+        { id: "p1", layout: [{ id: 2, type: "widget", component: "Shared" }] },
+      ],
+      sidebarLayout: [{ id: 3, type: "widget", component: "Shared" }],
+    };
+
+    const names = collectComponentNamesFromWorkspace(workspace);
+    assert.equal(names.filter((n) => n === "Shared").length, 1);
+  });
+
+  it("handles missing layout/pages/sidebar fields gracefully", () => {
+    assert.deepEqual(collectComponentNamesFromWorkspace({}), []);
+    assert.deepEqual(
+      collectComponentNamesFromWorkspace({ layout: null, pages: null }),
+      [],
+    );
   });
 });
 

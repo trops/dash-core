@@ -24,6 +24,7 @@ const {
 } = require("../schema/dashboardConfigValidator");
 const {
   collectComponentNames,
+  collectComponentNamesFromWorkspace,
   extractEventWiring,
   buildWidgetDependencies,
   buildProviderRequirements,
@@ -1036,6 +1037,120 @@ async function checkCompatibility(dashboardWidgets, widgetRegistry = null) {
 }
 
 /**
+ * Collect enriched dependency info for a workspace — widgets + theme.
+ *
+ * Read-only. Used by the batch-publish dialog to build its dependency
+ * table. Resolves local state (scope, name, version from each widget's
+ * package.json, and packageDir for later zipping). Does NOT query the
+ * registry — that's the caller's job (see registry resolve endpoint).
+ *
+ * @param {string} appId - Application identifier
+ * @param {number|string} workspaceId - Workspace ID
+ * @param {Object} widgetRegistry - WidgetRegistry instance
+ * @param {Object} options - { componentConfigs?: Object }
+ * @returns {Promise<Object>} { success, widgets, theme }
+ */
+async function collectDashboardDependencies(
+  appId,
+  workspaceId,
+  widgetRegistry = null,
+  options = {},
+) {
+  try {
+    // 1. Read workspace
+    const filename = path.join(
+      app.getPath("userData"),
+      appName,
+      appId,
+      configFilename,
+    );
+    const workspacesArray = getFileContents(filename);
+    const workspace = workspacesArray.find(
+      (w) => w.id === workspaceId || w.id === Number(workspaceId),
+    );
+
+    if (!workspace) {
+      return {
+        success: false,
+        error: `Workspace not found: ${workspaceId}`,
+      };
+    }
+
+    // 2. Collect component names from main + pages + sidebar layouts
+    const componentNames = collectComponentNamesFromWorkspace(workspace);
+
+    // 3. Resolve widget refs (scope, packageName, widgetName, version)
+    const deps = buildWidgetDependencies(
+      componentNames,
+      widgetRegistry,
+      options.componentConfigs || null,
+    );
+
+    // 4. Enrich with packageDir + componentNames-in-package (from registry)
+    //    so the caller can zip and publish each widget.
+    const installedWidgets = widgetRegistry ? widgetRegistry.getWidgets() : [];
+
+    const widgets = deps.map((dep) => {
+      // Find the installed widget whose componentNames contains this dep's widgetName
+      const match = installedWidgets.find(
+        (w) =>
+          (w.componentNames && w.componentNames.includes(dep.widgetName)) ||
+          (w.scope === dep.scope &&
+            (w.name === dep.packageName ||
+              w.packageId === `${dep.scope}/${dep.packageName}`)),
+      );
+
+      return {
+        scope: dep.scope || null,
+        packageName: dep.packageName,
+        widgetName: dep.widgetName,
+        component: dep.widgetName,
+        localVersion: dep.version,
+        packageDir: match?.path || null,
+        packageId: match?.packageId || null,
+        author: dep.author || "",
+        hasLocalPackage: !!match?.path,
+      };
+    });
+
+    // 5. Resolve theme (if workspace has one)
+    let theme = null;
+    if (workspace.themeKey) {
+      try {
+        const themeResult = themeController.listThemesForApplication(
+          null,
+          appId,
+        );
+        const themeData = themeResult?.themes?.[workspace.themeKey];
+        if (themeData) {
+          const registryMeta = themeData._registryMeta || {};
+          theme = {
+            themeKey: workspace.themeKey,
+            scope: registryMeta.scope || null,
+            name: registryMeta.name || workspace.themeKey,
+            localVersion: registryMeta.version || null,
+            hasRegistryMeta: !!themeData._registryMeta,
+          };
+        }
+      } catch (err) {
+        console.warn(
+          "[dashboardConfig] Could not resolve theme for dependencies:",
+          err.message,
+        );
+      }
+    }
+
+    return { success: true, widgets, theme };
+  } catch (error) {
+    console.error(
+      "[dashboardConfig] collectDashboardDependencies failed:",
+      error,
+    );
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Prepare a dashboard for publishing to the registry.
  *
  * Validates that the workspace is shareable, builds the dashboard config,
@@ -1503,6 +1618,7 @@ module.exports = {
   installDashboardFromRegistry,
   checkCompatibility,
   prepareDashboardForPublish,
+  collectDashboardDependencies,
   getDashboardPreview,
   checkDashboardUpdatesForApp,
   getProviderSetupManifest,

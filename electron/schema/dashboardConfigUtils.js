@@ -670,8 +670,34 @@ function checkApiCompatibility(providers = [], appCapabilities = []) {
   };
 }
 
+/**
+ * Collect unique component names across a workspace's main layout, every
+ * page layout, and the sidebar layout. Matches what a user actually sees
+ * on screen — `collectComponentNames` only walks a single layout array
+ * and misses widgets placed on non-active pages or in the sidebar.
+ *
+ * @param {Object} workspace - Workspace object ({layout, pages, sidebarLayout})
+ * @returns {string[]} Unique component names
+ */
+function collectComponentNamesFromWorkspace(workspace) {
+  const names = new Set();
+  const pushAll = (layout) => {
+    if (!Array.isArray(layout)) return;
+    for (const n of collectComponentNames(layout)) names.add(n);
+  };
+
+  pushAll(workspace?.layout);
+  pushAll(workspace?.sidebarLayout);
+  if (Array.isArray(workspace?.pages)) {
+    for (const page of workspace.pages) pushAll(page?.layout);
+  }
+
+  return Array.from(names);
+}
+
 module.exports = {
   collectComponentNames,
+  collectComponentNamesFromWorkspace,
   extractEventWiring,
   buildWidgetDependencies,
   buildProviderRequirements,
