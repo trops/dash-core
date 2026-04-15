@@ -14,6 +14,8 @@ const DASHBOARD_CONFIG_PROVIDER_SETUP = "dashboard-config-provider-setup";
 const DASHBOARD_CONFIG_PUBLISH_PREVIEW = "dashboard-config-publish-preview";
 const DASHBOARD_CONFIG_SELECT_FILE = "dashboard-config-select-file";
 const DASHBOARD_CONFIG_INSTALL_PROGRESS = "dashboard-config-install-progress";
+const DASHBOARD_CONFIG_COLLECT_DEPENDENCIES =
+  "dashboard-config-collect-dependencies";
 
 module.exports = {
   DASHBOARD_CONFIG_EXPORT,
@@ -27,4 +29,5 @@ module.exports = {
   DASHBOARD_CONFIG_PUBLISH_PREVIEW,
   DASHBOARD_CONFIG_SELECT_FILE,
   DASHBOARD_CONFIG_INSTALL_PROGRESS,
+  DASHBOARD_CONFIG_COLLECT_DEPENDENCIES,
 };

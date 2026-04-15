@@ -17,6 +17,7 @@ const {
   DASHBOARD_CONFIG_PROVIDER_SETUP,
   DASHBOARD_CONFIG_PUBLISH_PREVIEW,
   DASHBOARD_CONFIG_INSTALL_PROGRESS,
+  DASHBOARD_CONFIG_COLLECT_DEPENDENCIES,
 } = require("../events");
 
 const dashboardConfigApi = {
@@ -96,6 +97,25 @@ const dashboardConfigApi = {
    */
   prepareDashboardForPublish: (appId, workspaceId, options = {}) =>
     ipcRenderer.invoke(DASHBOARD_CONFIG_PUBLISH, {
+      appId,
+      workspaceId,
+      options,
+    }),
+
+  /**
+   * Collect enriched widget + theme dependency info for a workspace.
+   * Used by the batch-publish dialog to build its dependency table.
+   *
+   * Returns local state only — the caller is responsible for enriching
+   * with registry state (ownership, latest published version, visibility).
+   *
+   * @param {string} appId - Application identifier
+   * @param {number|string} workspaceId - Workspace ID
+   * @param {Object} options - { componentConfigs?: Object }
+   * @returns {Promise<Object>} { success, widgets, theme }
+   */
+  collectDashboardDependencies: (appId, workspaceId, options = {}) =>
+    ipcRenderer.invoke(DASHBOARD_CONFIG_COLLECT_DEPENDENCIES, {
       appId,
       workspaceId,
       options,
