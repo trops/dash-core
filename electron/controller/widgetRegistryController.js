@@ -250,6 +250,65 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
   }
 }
 
+/**
+ * Inspect a locally-installed widget package and return a summary of
+ * metadata the publish UI can display — package.json fields, the
+ * caller's scope, and the list of component widgets the package exposes.
+ *
+ * @param {string} packageId - Widget packageId (e.g. "@scope/name")
+ * @returns {Promise<Object>} { success, packageId, scope, name, version, displayName, description, components: [...] }
+ */
+async function inspectWidgetPackage(packageId) {
+  try {
+    const registry = widgetRegistryModule.getWidgetRegistry();
+    const widget = registry.getWidget(packageId);
+    if (!widget || !widget.path) {
+      return {
+        success: false,
+        error: `Widget package not found locally: ${packageId}`,
+      };
+    }
+
+    let pkgJson = {};
+    const pkgJsonPath = path.join(widget.path, "package.json");
+    if (fs.existsSync(pkgJsonPath)) {
+      try {
+        pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
+      } catch {
+        /* ignore */
+      }
+    }
+    const parsed = parsePackageName(pkgJson.name || packageId);
+
+    let widgetConfigs = widget.widgets || [];
+    if (!widgetConfigs.length) {
+      widgetConfigs = await scanWidgetConfigs(widget.path);
+    }
+
+    const components = widgetConfigs.map((cfg) => ({
+      name: cfg.component || cfg.name,
+      displayName: cfg.name || cfg.component,
+      description: cfg.description || "",
+      icon: cfg.icon || "square",
+    }));
+
+    return {
+      success: true,
+      packageId,
+      localScope: parsed.scope || widget.scope || null,
+      name: parsed.name,
+      version: pkgJson.version || widget.version || null,
+      displayName: pkgJson.displayName || widget.displayName || parsed.name,
+      description: pkgJson.description || widget.description || "",
+      path: widget.path,
+      components,
+    };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
 module.exports = {
   prepareWidgetForPublish,
+  inspectWidgetPackage,
 };

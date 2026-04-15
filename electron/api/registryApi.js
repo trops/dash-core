@@ -136,6 +136,25 @@ const registryApi = {
       throw error;
     }
   },
+
+  /**
+   * Inspect a locally-installed widget package and return its metadata
+   * + list of component widgets. Used by the publish modal to show
+   * "what's getting published" before the user hits Publish.
+   *
+   * @param {string} packageId - Widget packageId (e.g. "@scope/name")
+   * @returns {Promise<Object>} { success, packageId, localScope, name, version, displayName, description, components: [{name, displayName, description, icon}] }
+   */
+  inspectWidgetPackage: async (packageId) => {
+    try {
+      return await ipcRenderer.invoke("registry:inspect-widget-package", {
+        packageId,
+      });
+    } catch (error) {
+      console.error("[RegistryApi] Error inspecting package:", error);
+      throw error;
+    }
+  },
 };
 
 module.exports = registryApi;

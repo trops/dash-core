@@ -58,6 +58,7 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
   const [visibility, setVisibility] = useState("public");
   const [isPublishing, setIsPublishing] = useState(false);
   const [result, setResult] = useState(null);
+  const [packageInfo, setPackageInfo] = useState(null);
 
   // Reset modal state on open
   useEffect(() => {
@@ -67,7 +68,28 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
     setVisibility("public");
     setIsPublishing(false);
     setResult(null);
+    setPackageInfo(null);
   }, [isOpen]);
+
+  // Inspect the package to get its metadata + component list
+  useEffect(() => {
+    if (!isOpen || !widget) return;
+    let cancelled = false;
+    const packageId = widget?.packageId || widget?.name;
+    if (!packageId) return;
+    window.mainApi.registry
+      .inspectWidgetPackage(packageId)
+      .then((res) => {
+        if (cancelled) return;
+        if (res?.success) setPackageInfo(res);
+      })
+      .catch(() => {
+        /* ignore */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, widget]);
 
   // Check auth status + fetch username for the "publishing as" preview
   useEffect(() => {
@@ -178,7 +200,12 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
         {/* Header */}
         <div className="flex-shrink-0 flex flex-row items-center justify-between p-4 border-b border-white/10">
           <span className="text-lg font-semibold truncate">
-            Publish "{widget.displayName || widget.name}"
+            Publish{" "}
+            <span className="font-mono text-base">
+              {packageInfo?.localScope
+                ? `@${packageInfo.localScope}/${packageInfo.name}`
+                : widget.packageId || widget.name}
+            </span>
           </span>
           <button
             type="button"
@@ -211,13 +238,14 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
 
           {authStatus === "authenticated" && !result && (
             <>
-              {/* Widget summary */}
+              {/* Package summary */}
               <div className="bg-white/5 border border-white/10 rounded-lg p-3 text-sm">
                 <div className="flex gap-2">
                   <span className="opacity-50 w-28 flex-shrink-0">Local</span>
                   <span className="font-mono text-xs opacity-80">
-                    {widget.scope ? `@${widget.scope}/` : ""}
-                    {(widget.name || "").replace(/^@[^/]+\//, "")}
+                    {packageInfo?.localScope
+                      ? `@${packageInfo.localScope}/${packageInfo.name}`
+                      : widget.packageId || widget.name}
                   </span>
                 </div>
                 <div className="flex gap-2 mt-1">
@@ -226,7 +254,8 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
                   </span>
                   <span className="font-mono text-xs text-indigo-300">
                     {username ? `@${username}/` : ""}
-                    {(widget.name || "").replace(/^@[^/]+\//, "")}
+                    {packageInfo?.name ||
+                      (widget.name || "").replace(/^@[^/]+\//, "")}
                     <span className="text-gray-400"> v{newVersion}</span>
                   </span>
                 </div>
@@ -235,6 +264,38 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
                   <span>v{currentVersion}</span>
                 </div>
               </div>
+
+              {/* Components bundled inside this package */}
+              {packageInfo?.components && packageInfo.components.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium opacity-70 mb-2">
+                    Widgets in this package ({packageInfo.components.length})
+                  </label>
+                  <div className="bg-white/5 border border-white/10 rounded-lg divide-y divide-white/10 max-h-48 overflow-y-auto">
+                    {packageInfo.components.map((c) => (
+                      <div
+                        key={c.name}
+                        className="flex items-center gap-2 px-3 py-2 text-sm"
+                      >
+                        <FontAwesomeIcon
+                          icon={c.icon || "square"}
+                          className="h-3.5 w-3.5 opacity-60 flex-shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">
+                            {c.displayName || c.name}
+                          </div>
+                          {c.description && (
+                            <div className="text-xs opacity-60 truncate">
+                              {c.description}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Version bump */}
               <div>
