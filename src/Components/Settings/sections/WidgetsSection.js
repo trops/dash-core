@@ -645,6 +645,7 @@ export const WidgetsSection = ({
     detailContent = (
       <InstalledWidgetDetail
         widget={selectedWidget}
+        appId={credentials?.appId}
         onDelete={(w) => handleDeleteRequest(w)}
         updateInfo={updates.get(selectedWidget?.name) || null}
         onUpdate={updateWidget}

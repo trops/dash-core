@@ -1,4 +1,4 @@
-import React, { useContext } from "react";
+import React, { useContext, useState } from "react";
 import {
   ThemeContext,
   Button,
@@ -10,6 +10,7 @@ import {
 } from "@trops/dash-react";
 import { resolveIcon } from "../../../utils/resolveIcon";
 import { getUserConfigurableProviders } from "../../../utils/providerUtils";
+import { PublishWidgetModal } from "./PublishWidgetModal";
 
 /**
  * InstalledWidgetDetail — detail panel for a selected installed widget.
@@ -19,6 +20,7 @@ import { getUserConfigurableProviders } from "../../../utils/providerUtils";
  */
 export const InstalledWidgetDetail = ({
   widget,
+  appId,
   onDelete,
   updateInfo = null,
   onUpdate,
@@ -29,6 +31,7 @@ export const InstalledWidgetDetail = ({
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,
   });
+  const [isPublishOpen, setIsPublishOpen] = useState(false);
 
   if (!widget) return null;
 
@@ -189,12 +192,23 @@ export const InstalledWidgetDetail = ({
             />
           )}
           <Button
+            title="Publish…"
+            onClick={() => setIsPublishOpen(true)}
+            size="sm"
+          />
+          <Button
             title="Uninstall"
             onClick={() => onDelete(widget)}
             size="sm"
           />
         </div>
       )}
+      <PublishWidgetModal
+        isOpen={isPublishOpen}
+        setIsOpen={setIsPublishOpen}
+        appId={appId}
+        widget={widget}
+      />
     </div>
   );
 };
