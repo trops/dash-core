@@ -9,6 +9,7 @@ const REGISTRY_GET_PACKAGE = "registry:get-package";
 const REGISTRY_CHECK_UPDATES = "registry:check-updates";
 const REGISTRY_SEARCH_DASHBOARDS = "registry:search-dashboards";
 const REGISTRY_SEARCH_THEMES = "registry:search-themes";
+const REGISTRY_PUBLISH_WIDGET = "registry:publish-widget";
 
 module.exports = {
   REGISTRY_FETCH_INDEX,
@@ -17,4 +18,5 @@ module.exports = {
   REGISTRY_CHECK_UPDATES,
   REGISTRY_SEARCH_DASHBOARDS,
   REGISTRY_SEARCH_THEMES,
+  REGISTRY_PUBLISH_WIDGET,
 };
