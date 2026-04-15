@@ -337,6 +337,13 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
             <div className="p-3 bg-red-900/20 border border-red-700/40 rounded text-sm text-red-200">
               <div className="font-semibold mb-1">Publish failed</div>
               <div className="text-xs opacity-80">{result.error}</div>
+              {Array.isArray(result.details) && result.details.length > 0 && (
+                <ul className="text-xs opacity-70 mt-2 list-disc list-inside space-y-0.5">
+                  {result.details.map((d, i) => (
+                    <li key={i}>{d}</li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
         </div>

@@ -21,11 +21,44 @@ const {
   getRegistryProfile,
 } = require("./registryAuthController");
 const widgetRegistryModule = require("../widgetRegistry");
+const { dynamicWidgetLoader } = require("../dynamicWidgetLoader");
+const { findWidgetsDir } = require("../widgetCompiler");
 const {
   resolveNextVersion,
   parsePackageName,
   generateWidgetRegistryManifest,
 } = require("../schema/widgetPublishManifest");
+
+/**
+ * Scan a widget package directory for `.dash.js` component configs and
+ * return the parsed configs. Used when the widget registry's cached
+ * `config.widgets` is missing or empty (e.g. for orphaned / locally-
+ * registered widgets) — lets us build a valid manifest from source.
+ */
+async function scanWidgetConfigs(widgetPath) {
+  try {
+    const widgetsDir =
+      findWidgetsDir(widgetPath) || path.join(widgetPath, "widgets");
+    if (!fs.existsSync(widgetsDir)) return [];
+    const files = fs.readdirSync(widgetsDir);
+    const configs = [];
+    for (const file of files) {
+      if (!file.endsWith(".dash.js")) continue;
+      const configPath = path.join(widgetsDir, file);
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const cfg = await dynamicWidgetLoader.loadConfigFile(configPath);
+        if (cfg && typeof cfg === "object") configs.push(cfg);
+      } catch (err) {
+        console.warn(`[widgetRegistry] skip ${file}: ${err.message}`);
+      }
+    }
+    return configs;
+  } catch (err) {
+    console.warn("[widgetRegistry] scanWidgetConfigs failed:", err.message);
+    return [];
+  }
+}
 
 // ─── ZIP builder ─────────────────────────────────────────────────────────────
 
@@ -131,22 +164,33 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
       fs.writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + "\n");
     }
 
-    // 5. Build manifest using the widget's component configs
-    const manifest = generateWidgetRegistryManifest(
-      pkgJson,
-      widget.widgets || [],
-      {
-        scope: resolvedScope,
-        version: newVersion,
-        visibility: options.visibility,
-        description: options.description,
-        tags: options.tags,
-        icon: options.icon,
-        category: options.category,
-        authorName: options.authorName,
-        appOrigin: appId,
-      },
-    );
+    // 5. Build manifest using the widget's component configs. The
+    //    registry cache may be missing widgets (orphaned / locally-
+    //    registered packages), so fall back to scanning the package's
+    //    .dash.js files from disk.
+    let widgetConfigs = widget.widgets || [];
+    if (!widgetConfigs.length) {
+      widgetConfigs = await scanWidgetConfigs(widget.path);
+    }
+
+    if (!widgetConfigs.length) {
+      return {
+        success: false,
+        error: `No .dash.js widget configs found under ${widget.path}. A widget package must expose at least one component.`,
+      };
+    }
+
+    const manifest = generateWidgetRegistryManifest(pkgJson, widgetConfigs, {
+      scope: resolvedScope,
+      version: newVersion,
+      visibility: options.visibility,
+      description: options.description,
+      tags: options.tags,
+      icon: options.icon,
+      category: options.category,
+      authorName: options.authorName,
+      appOrigin: appId,
+    });
 
     // 6. Zip the widget directory to a temp file
     const zipName = `widget-${manifest.scope}-${manifest.name}-v${manifest.version}.zip`;
@@ -161,13 +205,18 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
       manifest,
     );
 
-    // 8. On failure: revert package.json
-    if (!registryResult.success && newVersion !== previousVersion) {
-      try {
-        pkgJson.version = previousVersion;
-        fs.writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + "\n");
-      } catch {
-        /* best effort */
+    // 8. On failure: revert package.json (if we bumped) and surface details
+    if (!registryResult.success) {
+      if (newVersion !== previousVersion) {
+        try {
+          pkgJson.version = previousVersion;
+          fs.writeFileSync(
+            pkgJsonPath,
+            JSON.stringify(pkgJson, null, 2) + "\n",
+          );
+        } catch {
+          /* best effort */
+        }
       }
       return {
         success: false,
