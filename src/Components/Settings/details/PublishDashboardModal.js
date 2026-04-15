@@ -29,6 +29,72 @@ const DASHBOARD_TAGS = [
   "utilities",
 ];
 
+const BUMP_OPTIONS = [
+  { value: "patch", label: "Patch (bug fix)" },
+  { value: "minor", label: "Minor (new feature)" },
+  { value: "major", label: "Major (breaking change)" },
+  { value: "none", label: "Keep current version" },
+];
+
+// Pulled out as a small helper so the Dependencies loader and the
+// dashboard publish call share the same shape.
+function collectComponentConfigs() {
+  const configMap = ComponentManager.componentMap();
+  const componentConfigs = {};
+  for (const [key, config] of Object.entries(configMap)) {
+    if (config && (config.id || config.scope || config.packageName)) {
+      componentConfigs[config.name || key] = {
+        id: config.id || null,
+        scope: config.scope || "",
+        packageName: config.packageName || "",
+      };
+    }
+  }
+  return componentConfigs;
+}
+
+// Build default per-dependency selections. Owned dependencies default
+// to "include + patch bump" unless the local version is newer than what's
+// in the registry (then "include + use local"). Third-party refs get a
+// fixed "reference" entry.
+function seedSelections(plan, dashboardVisibility) {
+  const selections = {};
+  for (const w of plan.widgets || []) {
+    if (!w.scope || !w.packageName) continue;
+    const key = `${w.scope}/${w.packageName}`;
+    const reg = w.registry;
+    const owned = reg?.ownedByMe || !reg?.exists;
+    selections[key] = {
+      kind: "widget",
+      owned,
+      // Default: include owned rows, skip third-party
+      include: !!owned,
+      // Bump default: none if not yet in registry (publish local version as-is),
+      // patch if already in registry at same version
+      bump:
+        !reg?.exists || reg.latestVersion !== w.localVersion ? "none" : "patch",
+      // Per-widget visibility inherits dashboard visibility by default
+      visibility: reg?.visibility || dashboardVisibility || "public",
+    };
+  }
+  if (plan.theme && plan.theme.scope && plan.theme.name) {
+    const key = `${plan.theme.scope}/${plan.theme.name}`;
+    const reg = plan.theme.registry;
+    const owned = reg?.ownedByMe || !reg?.exists;
+    selections[key] = {
+      kind: "theme",
+      owned,
+      include: !!owned,
+      bump:
+        !reg?.exists || reg.latestVersion !== plan.theme.localVersion
+          ? "none"
+          : "patch",
+      visibility: reg?.visibility || dashboardVisibility || "public",
+    };
+  }
+  return selections;
+}
+
 /**
  * PublishDashboardModal — multi-step stepper for preparing a dashboard
  * for registry publishing.
@@ -74,9 +140,18 @@ export const PublishDashboardModal = ({
   // Publish preview (widget names)
   const [preview, setPreview] = useState(null);
 
-  // Step 4: Publish
+  // Step 4: Dependencies — enriched plan (local + registry state) + per-dep user selections
+  const [plan, setPlan] = useState(null);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [planError, setPlanError] = useState(null);
+  // selections keyed by `${scope}/${name}`: { include, bump, visibility }
+  const [depSelections, setDepSelections] = useState({});
+
+  // Step 5: Publish
   const [isPublishing, setIsPublishing] = useState(false);
   const [result, setResult] = useState(null);
+  // Per-step progress during batch publish
+  const [publishSteps, setPublishSteps] = useState([]);
 
   // Visibility — chosen on the Details step. Defaults to public.
   const [visibility, setVisibility] = useState("public");
@@ -144,6 +219,11 @@ export const PublishDashboardModal = ({
     setIsPublishing(false);
     setResult(null);
     setVisibility("public");
+    setPlan(null);
+    setPlanLoading(false);
+    setPlanError(null);
+    setDepSelections({});
+    setPublishSteps([]);
   }
 
   function handleClose() {
@@ -158,6 +238,42 @@ export const PublishDashboardModal = ({
     setStep(nextStep);
   }
 
+  // Load the enriched dependency plan when user enters the Dependencies
+  // step. Seeds per-dep selections: owned + not published OR owned + upstream
+  // changed → include. Third-party refs stay read-only.
+  useEffect(() => {
+    if (!isOpen || step !== 4 || plan || planLoading) return;
+    setPlanLoading(true);
+    setPlanError(null);
+    window.mainApi.dashboardConfig
+      .getDashboardPublishPlan(appId, workspaceId, {
+        componentConfigs: collectComponentConfigs(),
+      })
+      .then((res) => {
+        if (!res?.success) {
+          setPlanError(res?.error || "Failed to load publish plan");
+          setPlanLoading(false);
+          return;
+        }
+        setPlan(res);
+        setDepSelections(seedSelections(res, visibility));
+        setPlanLoading(false);
+      })
+      .catch((err) => {
+        console.error("[PublishDashboardModal] plan error:", err);
+        setPlanError(err.message || "Failed to load publish plan");
+        setPlanLoading(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, isOpen]);
+
+  function updateDepSelection(key, patch) {
+    setDepSelections((prev) => ({
+      ...prev,
+      [key]: { ...prev[key], ...patch },
+    }));
+  }
+
   function toggleTag(tag) {
     setSelectedTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
@@ -168,35 +284,142 @@ export const PublishDashboardModal = ({
     if (!appId || !workspaceId) return;
     setIsPublishing(true);
     setResult(null);
-    try {
-      // Collect component configs from ComponentManager for scope resolution
-      const configMap = ComponentManager.componentMap();
-      const componentConfigs = {};
-      for (const [key, config] of Object.entries(configMap)) {
-        if (config && (config.id || config.scope || config.packageName)) {
-          componentConfigs[config.name || key] = {
-            id: config.id || null,
-            scope: config.scope || "",
-            packageName: config.packageName || "",
-          };
+
+    // Build the ordered step list: each selected owned widget → theme → dashboard.
+    // Third-party deps aren't published (they're just referenced by the manifest).
+    const steps = [];
+    if (plan) {
+      for (const w of plan.widgets || []) {
+        if (!w.scope || !w.packageName) continue;
+        const key = `${w.scope}/${w.packageName}`;
+        const sel = depSelections[key];
+        if (!sel || !sel.owned || !sel.include) continue;
+        steps.push({
+          kind: "widget",
+          key,
+          label: `Publish widget ${key}`,
+          packageId: w.packageId || `${w.scope}/${w.packageName}`,
+          selection: sel,
+        });
+      }
+      if (plan.theme && plan.theme.scope && plan.theme.name) {
+        const key = `${plan.theme.scope}/${plan.theme.name}`;
+        const sel = depSelections[key];
+        if (sel?.owned && sel.include) {
+          steps.push({
+            kind: "theme",
+            key,
+            label: `Publish theme ${plan.theme.themeKey || key}`,
+            themeKey: plan.theme.themeKey,
+            selection: sel,
+          });
         }
       }
+    }
+    steps.push({
+      kind: "dashboard",
+      key: "dashboard",
+      label: `Publish dashboard`,
+    });
 
-      const options = {
-        authorName: authorName.trim(),
-        description: description.trim() || undefined,
-        tags: selectedTags,
-        icon: icon || undefined,
-        visibility,
-        componentConfigs,
-      };
-      const res =
-        await window.mainApi.dashboardConfig.prepareDashboardForPublish(
-          appId,
-          workspaceId,
-          options,
-        );
-      setResult(res);
+    // Initialize progress state (pending for all)
+    setPublishSteps(
+      steps.map((s) => ({ ...s, status: "pending", message: null })),
+    );
+
+    const updateStep = (idx, patch) => {
+      setPublishSteps((prev) => {
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...patch };
+        return next;
+      });
+    };
+
+    try {
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        updateStep(i, { status: "running" });
+
+        if (step.kind === "widget") {
+          const bump = step.selection.bump;
+          const options = {
+            ...(bump && bump !== "none" ? { bump } : {}),
+            visibility: step.selection.visibility,
+          };
+          const res = await window.mainApi.registry.publishWidget(
+            appId,
+            step.packageId,
+            options,
+          );
+          if (!res?.success) {
+            updateStep(i, {
+              status: "error",
+              message: res?.error || "Publish failed",
+            });
+            setResult({
+              success: false,
+              error: `Failed to publish widget ${step.key}: ${res?.error || "unknown error"}`,
+            });
+            setIsPublishing(false);
+            return;
+          }
+          updateStep(i, {
+            status: "complete",
+            message: `v${res.newVersion || res.manifest?.version}`,
+          });
+        } else if (step.kind === "theme") {
+          const res = await window.mainApi.themes.publishTheme(
+            appId,
+            step.themeKey,
+            { visibility: step.selection.visibility },
+          );
+          if (!res?.success) {
+            updateStep(i, {
+              status: "error",
+              message: res?.error || "Theme publish failed",
+            });
+            setResult({
+              success: false,
+              error: `Failed to publish theme ${step.themeKey}: ${res?.error || "unknown error"}`,
+            });
+            setIsPublishing(false);
+            return;
+          }
+          updateStep(i, {
+            status: "complete",
+            message: "published",
+          });
+        } else if (step.kind === "dashboard") {
+          const options = {
+            authorName: authorName.trim(),
+            description: description.trim() || undefined,
+            tags: selectedTags,
+            icon: icon || undefined,
+            visibility,
+            componentConfigs: collectComponentConfigs(),
+          };
+          const res =
+            await window.mainApi.dashboardConfig.prepareDashboardForPublish(
+              appId,
+              workspaceId,
+              options,
+            );
+          if (!res?.success) {
+            updateStep(i, {
+              status: "error",
+              message: res?.error || "Dashboard publish failed",
+            });
+            setResult({
+              success: false,
+              error: res?.error || "Failed to publish dashboard",
+            });
+            setIsPublishing(false);
+            return;
+          }
+          updateStep(i, { status: "complete", message: "published" });
+          setResult(res);
+        }
+      }
     } catch (err) {
       console.error("[PublishDashboardModal] Publish error:", err);
       setResult({
@@ -266,7 +489,8 @@ export const PublishDashboardModal = ({
     }
   }
 
-  const isLastStep = step === 4;
+  // Steps: 0=Account, 1=Details, 2=Tags, 3=Icon, 4=Dependencies, 5=Publish
+  const isLastStep = step === 5;
   const canAdvance =
     step === 0
       ? authStatus === "authenticated"
@@ -274,7 +498,9 @@ export const PublishDashboardModal = ({
         ? !!authorName.trim()
         : step === 2
           ? selectedTags.length > 0
-          : true;
+          : step === 4
+            ? !planLoading
+            : true;
 
   return (
     <Modal
@@ -528,10 +754,52 @@ export const PublishDashboardModal = ({
             </div>
           </Stepper.Step>
 
-          {/* Step 4: Publish */}
+          {/* Step 4: Dependencies */}
+          <Stepper.Step label="Dependencies">
+            <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-4">
+              <p className="text-sm opacity-70">
+                Choose which owned widgets + theme to publish alongside this
+                dashboard. Third-party dependencies are referenced only — users
+                install them separately.
+              </p>
+
+              {planLoading && (
+                <div className="text-sm opacity-60 py-6 text-center">
+                  Resolving dependencies…
+                </div>
+              )}
+
+              {planError && (
+                <div className="p-3 bg-red-900/20 border border-red-700/40 rounded text-sm text-red-200">
+                  {planError}
+                </div>
+              )}
+
+              {plan?.registryError && (
+                <div className="p-2 bg-amber-900/20 border border-amber-700/40 rounded text-xs text-amber-200">
+                  Registry lookup failed: {plan.registryError}. Dependencies
+                  shown are local-only.
+                </div>
+              )}
+
+              {plan && !planLoading && (
+                <DependencyTable
+                  plan={plan}
+                  selections={depSelections}
+                  onChange={updateDepSelection}
+                />
+              )}
+            </div>
+          </Stepper.Step>
+
+          {/* Step 5: Publish */}
           <Stepper.Step label="Publish">
             <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-4">
-              {!result ? (
+              {/* Show live per-step progress during batch publish */}
+              {(isPublishing || publishSteps.length > 0) && (
+                <PublishProgressList steps={publishSteps} />
+              )}
+              {!result && !isPublishing && publishSteps.length === 0 ? (
                 <>
                   <p className="text-sm opacity-70">
                     Review your dashboard details before publishing.
@@ -730,7 +998,7 @@ export const PublishDashboardModal = ({
             />
           </div>
           <div className="flex-1 text-center">
-            <span className="text-xs opacity-40">Step {step + 1} of 5</span>
+            <span className="text-xs opacity-40">Step {step + 1} of 6</span>
           </div>
           <div className="flex flex-row gap-2">
             {result?.success ? (
@@ -754,3 +1022,183 @@ export const PublishDashboardModal = ({
     </Modal>
   );
 };
+
+/**
+ * Compact per-step progress list shown during batch publish.
+ */
+function PublishProgressList({ steps }) {
+  if (!steps || steps.length === 0) return null;
+  const iconFor = (status) => {
+    switch (status) {
+      case "complete":
+        return { icon: "circle-check", color: "text-green-400" };
+      case "running":
+        return { icon: "spinner", color: "text-indigo-400 animate-spin" };
+      case "error":
+        return { icon: "circle-xmark", color: "text-red-400" };
+      default:
+        return { icon: "circle", color: "opacity-30" };
+    }
+  };
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-1.5 text-sm">
+      {steps.map((s, i) => {
+        const { icon, color } = iconFor(s.status);
+        return (
+          <div key={i} className="flex items-center gap-2">
+            <FontAwesomeIcon icon={icon} className={`h-3.5 w-3.5 ${color}`} />
+            <span className="flex-1 truncate">{s.label}</span>
+            {s.message && (
+              <span
+                className={`text-xs ${
+                  s.status === "error" ? "text-red-300" : "opacity-60"
+                }`}
+              >
+                {s.message}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Table of widget + theme dependencies. Owned rows are editable (include,
+ * bump, visibility). Third-party rows show as read-only references.
+ */
+function DependencyTable({ plan, selections, onChange }) {
+  const rows = [];
+
+  for (const w of plan.widgets || []) {
+    if (!w.scope || !w.packageName) continue;
+    const key = `${w.scope}/${w.packageName}`;
+    rows.push({ key, kind: "widget", data: w });
+  }
+  if (plan.theme && plan.theme.scope && plan.theme.name) {
+    const key = `${plan.theme.scope}/${plan.theme.name}`;
+    rows.push({ key, kind: "theme", data: plan.theme });
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="text-sm opacity-60 py-6 text-center">
+        No dependencies detected.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {rows.map(({ key, kind, data }) => {
+        const sel = selections[key];
+        if (!sel) return null;
+        const reg = data.registry;
+        return (
+          <div
+            key={key}
+            className="bg-white/5 border border-white/10 rounded-lg p-3"
+          >
+            <div className="flex items-start gap-3">
+              {/* Include toggle — only for owned deps */}
+              <div className="pt-0.5">
+                {sel.owned ? (
+                  <input
+                    type="checkbox"
+                    checked={sel.include}
+                    onChange={(e) =>
+                      onChange(key, { include: e.target.checked })
+                    }
+                    className="h-4 w-4 accent-indigo-500 cursor-pointer"
+                  />
+                ) : (
+                  <FontAwesomeIcon
+                    icon="lock"
+                    className="h-3 w-3 opacity-40"
+                    title="Third-party — referenced only"
+                  />
+                )}
+              </div>
+
+              <div className="flex-1 min-w-0">
+                {/* Name row */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="text-sm font-medium truncate">
+                    {data.scope}/{data.packageName || data.name}
+                  </div>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded ${
+                      kind === "theme"
+                        ? "bg-purple-900/30 text-purple-200"
+                        : "bg-blue-900/30 text-blue-200"
+                    }`}
+                  >
+                    {kind}
+                  </span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded ${
+                      sel.owned
+                        ? "bg-emerald-900/30 text-emerald-200"
+                        : "bg-gray-700/40 text-gray-300"
+                    }`}
+                  >
+                    {sel.owned ? "owned" : "third-party"}
+                  </span>
+                </div>
+
+                {/* Version state row */}
+                <div className="text-xs opacity-60 mt-1">
+                  Local v{data.localVersion || "?"}
+                  {reg?.exists ? (
+                    <>
+                      {" "}
+                      · Registry v{reg.latestVersion} ({reg.visibility})
+                    </>
+                  ) : (
+                    <> · Not yet in registry</>
+                  )}
+                </div>
+
+                {/* Edit controls (owned only) */}
+                {sel.owned && sel.include && (
+                  <div className="mt-2 flex items-center gap-3 flex-wrap">
+                    <label className="text-xs opacity-60 flex items-center gap-2">
+                      Bump
+                      <select
+                        value={sel.bump}
+                        onChange={(e) =>
+                          onChange(key, { bump: e.target.value })
+                        }
+                        className="text-xs bg-gray-800 border border-white/10 rounded px-2 py-1"
+                      >
+                        {BUMP_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs opacity-60 flex items-center gap-2">
+                      Visibility
+                      <select
+                        value={sel.visibility}
+                        onChange={(e) =>
+                          onChange(key, { visibility: e.target.value })
+                        }
+                        className="text-xs bg-gray-800 border border-white/10 rounded px-2 py-1"
+                      >
+                        <option value="public">public</option>
+                        <option value="private">private</option>
+                      </select>
+                    </label>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}

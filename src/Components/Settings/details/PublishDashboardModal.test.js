@@ -45,6 +45,22 @@ function mockMainApi() {
         success: true,
         preview: {},
       }),
+      getDashboardPublishPlan: jest.fn().mockResolvedValue({
+        success: true,
+        widgets: [],
+        theme: null,
+      }),
+    },
+    registry: {
+      publishWidget: jest.fn().mockResolvedValue({
+        success: true,
+        newVersion: "1.0.1",
+      }),
+    },
+    themes: {
+      publishTheme: jest.fn().mockResolvedValue({
+        success: true,
+      }),
     },
   };
 }
@@ -267,7 +283,7 @@ describe("PublishDashboardModal", () => {
   });
 
   describe("Step count", () => {
-    test("footer shows Step X of 5", async () => {
+    test("footer shows Step X of 6", async () => {
       window.mainApi.registryAuth.getStatus.mockResolvedValue({
         authenticated: true,
       });
@@ -280,7 +296,7 @@ describe("PublishDashboardModal", () => {
         renderModal();
       });
 
-      expect(screen.getByText("Step 1 of 5")).toBeInTheDocument();
+      expect(screen.getByText("Step 1 of 6")).toBeInTheDocument();
 
       // Advance to step 2
       const nextBtn = screen.getByText("Next");
@@ -288,7 +304,7 @@ describe("PublishDashboardModal", () => {
         nextBtn.click();
       });
 
-      expect(screen.getByText("Step 2 of 5")).toBeInTheDocument();
+      expect(screen.getByText("Step 2 of 6")).toBeInTheDocument();
     });
   });
 
@@ -308,7 +324,7 @@ describe("PublishDashboardModal", () => {
       });
 
       // Should still be on step 1 (Account)
-      expect(screen.getByText("Step 1 of 5")).toBeInTheDocument();
+      expect(screen.getByText("Step 1 of 6")).toBeInTheDocument();
     });
 
     test("uses username as fallback when displayName is empty", async () => {
@@ -330,7 +346,7 @@ describe("PublishDashboardModal", () => {
         nextBtn.click();
       });
 
-      expect(screen.getByText("Step 2 of 5")).toBeInTheDocument();
+      expect(screen.getByText("Step 2 of 6")).toBeInTheDocument();
 
       // Author name field uses profile data (read-only) — Next should be enabled
       const nextBtn2 = screen.getByText("Next");
@@ -371,12 +387,24 @@ describe("PublishDashboardModal", () => {
         screen.getByText("Next").click();
       });
 
-      // Step 3 -> 4 (Icon -> Publish)
+      // Step 3 -> 4 (Icon -> Dependencies)
       await act(async () => {
         screen.getByText("Next").click();
       });
 
-      expect(screen.getByText("Step 5 of 5")).toBeInTheDocument();
+      // Wait for Dependencies step to finish loading its plan
+      await waitFor(() =>
+        expect(
+          window.mainApi.dashboardConfig.getDashboardPublishPlan,
+        ).toHaveBeenCalled(),
+      );
+
+      // Step 4 -> 5 (Dependencies -> Publish)
+      await act(async () => {
+        screen.getByText("Next").click();
+      });
+
+      expect(screen.getByText("Step 6 of 6")).toBeInTheDocument();
       expect(
         screen.getByText("Review your dashboard details before publishing."),
       ).toBeInTheDocument();
