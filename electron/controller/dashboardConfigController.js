@@ -1190,6 +1190,7 @@ async function getDashboardPublishPlan(
 ) {
   try {
     const { resolvePackages } = require("./registryApiController");
+    const { getRegistryProfile } = require("./registryAuthController");
 
     const deps = await collectDashboardDependencies(
       appId,
@@ -1201,19 +1202,35 @@ async function getDashboardPublishPlan(
       return { success: false, error: deps.error };
     }
 
-    // Dedupe by scope/name — many components can share the same package,
-    // and there's no point sending duplicate refs to the registry.
+    // Local scopes (e.g. `@ai-built/…` for AI-generated widgets) differ
+    // from the registry scope — widgets always publish under the caller's
+    // username. Resolve against the caller's scope so "exists / owned /
+    // latest version" reflect reality.
+    const profile = await getRegistryProfile().catch(() => null);
+    const callerScope = profile?.username || null;
+
+    const publishScopeFor = (w) => {
+      if (!w.scope || !w.packageName) return null;
+      return callerScope || w.scope;
+    };
+
+    // Dedupe by publish-scope/name — many components share the same
+    // package, and duplicate refs waste registry calls.
     const refs = [];
     const seenRefs = new Set();
     for (const w of deps.widgets) {
-      if (!w.scope || !w.packageName) continue;
-      const key = `${w.scope}/${w.packageName}`;
+      const scope = publishScopeFor(w);
+      if (!scope || !w.packageName) continue;
+      const key = `${scope}/${w.packageName}`;
       if (seenRefs.has(key)) continue;
       seenRefs.add(key);
-      refs.push({ scope: w.scope, name: w.packageName });
+      refs.push({ scope, name: w.packageName });
     }
     if (deps.theme && deps.theme.scope && deps.theme.name) {
-      refs.push({ scope: deps.theme.scope, name: deps.theme.name });
+      refs.push({
+        scope: callerScope || deps.theme.scope,
+        name: deps.theme.name,
+      });
     }
 
     let registryError = null;
@@ -1230,22 +1247,28 @@ async function getDashboardPublishPlan(
     }
 
     const widgets = deps.widgets.map((w) => {
+      const publishScope = publishScopeFor(w);
       const key =
-        w.scope && w.packageName ? `${w.scope}/${w.packageName}` : null;
+        publishScope && w.packageName
+          ? `${publishScope}/${w.packageName}`
+          : null;
       return {
         ...w,
+        publishScope,
         registry: key ? resolvedByKey.get(key) || null : null,
       };
     });
 
     let theme = null;
     if (deps.theme) {
+      const themeScope = callerScope || deps.theme.scope;
       const key =
-        deps.theme.scope && deps.theme.name
-          ? `${deps.theme.scope}/${deps.theme.name}`
+        themeScope && deps.theme.name
+          ? `${themeScope}/${deps.theme.name}`
           : null;
       theme = {
         ...deps.theme,
+        publishScope: themeScope,
         registry: key ? resolvedByKey.get(key) || null : null,
       };
     }
@@ -1254,6 +1277,7 @@ async function getDashboardPublishPlan(
       success: true,
       widgets,
       theme,
+      callerScope,
       ...(registryError ? { registryError } : {}),
     };
   } catch (error) {

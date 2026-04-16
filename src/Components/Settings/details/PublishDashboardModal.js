@@ -59,11 +59,20 @@ function collectComponentConfigs() {
       config.id || config.scope || config.packageName || config._sourcePackage;
     if (!hasExplicit) continue;
     const parsed = parseScopeAndName(config._sourcePackage);
-    componentConfigs[config.name || key] = {
+    const entry = {
       id: config.id || null,
       scope: config.scope || parsed.scope || "",
       packageName: config.packageName || parsed.packageName || "",
     };
+    // Key by the ComponentManager registration key (what layouts
+    // actually store) AND by config.name (display name). The layout
+    // writes the component name, so keying only by config.name broke
+    // registry lookup for widgets whose display name differs from
+    // their component name (common for AI-built widgets).
+    componentConfigs[key] = entry;
+    if (config.name && config.name !== key) {
+      componentConfigs[config.name] = entry;
+    }
   }
   return componentConfigs;
 }
@@ -1154,11 +1163,21 @@ function DependencyTable({ plan, selections, onChange }) {
               </div>
 
               <div className="flex-1 min-w-0">
-                {/* Name row */}
+                {/* Name row — show publish identity (what ends up in the
+                    registry) as primary, with the local identity as a
+                    subtle annotation when it differs. */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  <div className="text-sm font-medium truncate">
-                    {data.scope}/{data.packageName || data.name}
+                  <div className="text-sm font-medium truncate font-mono">
+                    @{data.publishScope || data.scope}/
+                    {data.packageName || data.name}
                   </div>
+                  {data.publishScope &&
+                    data.scope &&
+                    data.publishScope !== data.scope && (
+                      <span className="text-[10px] opacity-50 font-mono">
+                        (local @{data.scope}/{data.packageName})
+                      </span>
+                    )}
                   <span
                     className={`text-[10px] px-1.5 py-0.5 rounded ${
                       kind === "theme"
