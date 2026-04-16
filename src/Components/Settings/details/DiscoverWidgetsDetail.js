@@ -489,6 +489,27 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
         onConfirm={handleConfirmInstall}
         onCancel={() => setToolConflictWarning(null)}
       />
+
+      {/* Sign-in modal triggered from the persistent banner */}
+      <RegistryAuthModal
+        isOpen={showAuthFromEmpty}
+        setIsOpen={setShowAuthFromEmpty}
+        onAuthenticated={async () => {
+          setShowAuthFromEmpty(false);
+          setRegistryAuthed(true);
+          // Force-refresh the cached registry index so the now-
+          // authenticated user immediately sees their private packages
+          // (the previous anon-cache fetch otherwise lingers for 5 min).
+          try {
+            await window.mainApi?.registry?.fetchIndex?.(true);
+          } catch {
+            /* best effort */
+          }
+          retry();
+        }}
+        onCancel={() => setShowAuthFromEmpty(false)}
+        message="Sign in to see your private widgets and ones granted to you."
+      />
     </div>
   );
 };
