@@ -1201,11 +1201,16 @@ async function getDashboardPublishPlan(
       return { success: false, error: deps.error };
     }
 
+    // Dedupe by scope/name — many components can share the same package,
+    // and there's no point sending duplicate refs to the registry.
     const refs = [];
+    const seenRefs = new Set();
     for (const w of deps.widgets) {
-      if (w.scope && w.packageName) {
-        refs.push({ scope: w.scope, name: w.packageName });
-      }
+      if (!w.scope || !w.packageName) continue;
+      const key = `${w.scope}/${w.packageName}`;
+      if (seenRefs.has(key)) continue;
+      seenRefs.add(key);
+      refs.push({ scope: w.scope, name: w.packageName });
     }
     if (deps.theme && deps.theme.scope && deps.theme.name) {
       refs.push({ scope: deps.theme.scope, name: deps.theme.name });
