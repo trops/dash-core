@@ -11,6 +11,7 @@ import {
 } from "@trops/dash-react";
 import { RegistryDashboardDetail } from "./RegistryDashboardDetail";
 import { RegistryAuthModal } from "../../Registry/RegistryAuthModal";
+import { RegistrySignInBanner } from "../../Registry/RegistrySignInBanner";
 
 /**
  * DiscoverDashboardsDetail — registry browser for dashboard packages.
@@ -146,27 +147,12 @@ export const DiscoverDashboardsDetail = ({
     );
   } else if (packages.length === 0) {
     listBody = (
-      <div className="px-4 py-8 text-center space-y-3">
+      <div className="px-4 py-8 text-center">
         <Paragraph className="text-sm opacity-50">
           {searchQuery
             ? "No dashboards match your search."
             : "No dashboard packages available."}
         </Paragraph>
-        {registryAuthed === false && (
-          <div className="inline-flex flex-col items-center gap-2 px-4 py-3 rounded-lg bg-amber-900/15 border border-amber-700/30">
-            <Paragraph className="text-xs text-amber-200">
-              Sign in to the registry to see your private dashboards.
-            </Paragraph>
-            <Button
-              title="Sign in to Registry"
-              bgColor="bg-indigo-600"
-              hoverBackgroundColor="hover:bg-indigo-500"
-              textSize="text-sm"
-              padding="py-1 px-3"
-              onClick={() => setShowAuthFromEmpty(true)}
-            />
-          </div>
-        )}
       </div>
     );
   } else {
@@ -221,6 +207,13 @@ export const DiscoverDashboardsDetail = ({
           inputClassName="py-1.5 text-xs"
         />
       </div>
+
+      {/* Sign-in nudge — persistent above the list while unauthenticated */}
+      <RegistrySignInBanner
+        visible={registryAuthed === false}
+        onSignIn={() => setShowAuthFromEmpty(true)}
+        noun="dashboard"
+      />
 
       {/* Package list */}
       <div className="flex-1 min-h-0 overflow-y-auto px-2">{listBody}</div>
