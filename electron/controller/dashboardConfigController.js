@@ -1530,9 +1530,12 @@ async function prepareDashboardForPublish(
       registryCheckFailed = true;
     }
 
-    // 8. Generate registry manifest
+    // 8. Generate registry manifest — pass callerScope so local-only
+    //    scopes (e.g. `@ai-built/…`) get rewritten to the publisher's
+    //    actual registry scope on the way out.
     const manifest = generateRegistryManifest(dashboardConfig, {
       githubUser: registryUsername,
+      callerScope: registryUsername,
       category: options.category || "general",
       repository: options.repository || "",
       appOrigin: appId,

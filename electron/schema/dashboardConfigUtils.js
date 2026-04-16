@@ -437,17 +437,27 @@ function generateRegistryManifest(dashboardConfig, options = {}) {
     downloadUrl: `https://github.com/${githubUser}/dash-registry/releases/download/${githubUser}--${name}--v{version}/dashboard-${name}-v{version}.zip`,
     repository: options.repository || "",
     publishedAt: new Date().toISOString(),
-    widgets: (dashboardConfig.widgets || []).map((w) => ({
-      id: w.id,
-      scope: w.scope || "",
-      packageName: w.packageName || w.package || "",
-      widgetName: w.widgetName || (w.id ? w.id.split(".").pop() : w.package),
-      name: w.id ? w.id.split(".").pop() : w.package,
-      package: w.package,
-      version: w.version || "*",
-      required: w.required !== false,
-      author: w.author || "",
-    })),
+    widgets: (dashboardConfig.widgets || []).map((w) => {
+      // Remap local scopes (e.g. `@ai-built/…` for AI-generated widgets)
+      // to the caller's published scope. Local conventions are private to
+      // the publisher's machine — installers can only resolve packages
+      // under the scope they were actually published as.
+      const remappedScope =
+        options.callerScope && w.scope && w.scope !== options.callerScope
+          ? options.callerScope
+          : w.scope || "";
+      return {
+        id: w.id,
+        scope: remappedScope,
+        packageName: w.packageName || w.package || "",
+        widgetName: w.widgetName || (w.id ? w.id.split(".").pop() : w.package),
+        name: w.id ? w.id.split(".").pop() : w.package,
+        package: w.package,
+        version: w.version || "*",
+        required: w.required !== false,
+        author: w.author || "",
+      };
+    }),
     providers: dashboardConfig.providers || [],
     eventWiring: dashboardConfig.eventWiring || [],
   };
