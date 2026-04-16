@@ -883,7 +883,7 @@ export const PublishDashboardModal = ({
                       )}
                   </div>
                 </>
-              ) : result.success ? (
+              ) : result?.success ? (
                 <div className="space-y-3">
                   {/* Registry publish result */}
                   {result.registrySubmission?.success ? (
@@ -1001,7 +1001,7 @@ export const PublishDashboardModal = ({
                     </div>
                   )}
                 </div>
-              ) : (
+              ) : result ? (
                 <div className="flex items-center gap-2">
                   <FontAwesomeIcon
                     icon="circle-xmark"
@@ -1011,7 +1011,7 @@ export const PublishDashboardModal = ({
                     {result.error || "Publish preparation failed."}
                   </span>
                 </div>
-              )}
+              ) : null}
             </div>
           </Stepper.Step>
         </Stepper>
