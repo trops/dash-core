@@ -1457,49 +1457,9 @@ async function prepareDashboardForPublish(
 
     // 6. Check which widgets exist in the registry (soft warning, not blocking)
     const { fetchRegistryIndex } = require("./registryController");
-    let registryPackages = [];
-    let registryCheckFailed = false;
-    try {
-      const index = await fetchRegistryIndex();
-      registryPackages = index.packages || [];
-    } catch (err) {
-      console.warn(
-        `[DashboardConfigController] Unable to verify registry: ${err.message}`,
-      );
-      registryCheckFailed = true;
-    }
-
-    let missingFromRegistry = [];
-    if (!registryCheckFailed) {
-      const registryNames = new Set(registryPackages.map((p) => p.name));
-      const registryWidgetNames = new Set();
-      for (const pkg of registryPackages) {
-        if (pkg.widgets) {
-          for (const w of pkg.widgets) {
-            if (w.name) registryWidgetNames.add(w.name);
-          }
-        }
-      }
-      const missingWidgets = widgets.filter(
-        (w) =>
-          w.required !== false &&
-          !registryNames.has(w.package) &&
-          !registryWidgetNames.has(w.package),
-      );
-      const grouped = {};
-      for (const w of missingWidgets) {
-        if (!grouped[w.package]) grouped[w.package] = [];
-        const widgetName = w.id.includes(".") ? w.id.split(".")[1] : w.id;
-        if (!grouped[w.package].includes(widgetName)) {
-          grouped[w.package].push(widgetName);
-        }
-      }
-      missingFromRegistry = Object.entries(grouped).map(
-        ([pkg, widgetNames]) => ({ package: pkg, widgets: widgetNames }),
-      );
-    }
-
-    // 7. Resolve registry username for scope
+    // 7. Resolve registry username for scope (needed by the missing-widget
+    //    check so we look up each dep under the caller's actual scope,
+    //    not the local scope from the package.json).
     let registryUsername = options.githubUser || "";
     if (!registryUsername) {
       try {
@@ -1509,6 +1469,65 @@ async function prepareDashboardForPublish(
       } catch {
         registryUsername = options.authorId || "";
       }
+    }
+
+    // Check each widget dep's existence in the registry via the dynamic
+    // resolve endpoint (static registry-index.json lags behind freshly-
+    // published packages). Auth-scoped so private packages owned by the
+    // caller surface as existing.
+    let missingFromRegistry = [];
+    let registryCheckFailed = false;
+    try {
+      const { resolvePackages } = require("./registryApiController");
+      const seen = new Set();
+      const refs = [];
+      for (const w of widgets) {
+        if (w.required === false) continue;
+        const scope = w.scope || registryUsername;
+        const name = w.package || w.packageName;
+        if (!scope || !name) continue;
+        const key = `${scope}/${name}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        // Resolve under the caller's scope — that's where the package
+        // would have been published regardless of the local scope on disk.
+        refs.push({ scope: registryUsername || scope, name });
+      }
+      if (refs.length > 0) {
+        const res = await resolvePackages(refs);
+        if (!res.success) {
+          registryCheckFailed = true;
+        } else {
+          const existsByKey = new Map();
+          for (const r of res.resolved || []) {
+            existsByKey.set(`${r.scope}/${r.name}`, r.exists);
+          }
+          const grouped = {};
+          for (const w of widgets) {
+            if (w.required === false) continue;
+            const name = w.package || w.packageName;
+            if (!name) continue;
+            const resolveKey = `${registryUsername || w.scope}/${name}`;
+            const exists = existsByKey.get(resolveKey);
+            if (exists) continue;
+            const widgetName = w.id?.includes(".")
+              ? w.id.split(".")[1]
+              : w.id || name;
+            if (!grouped[name]) grouped[name] = [];
+            if (!grouped[name].includes(widgetName)) {
+              grouped[name].push(widgetName);
+            }
+          }
+          missingFromRegistry = Object.entries(grouped).map(
+            ([pkg, widgetNames]) => ({ package: pkg, widgets: widgetNames }),
+          );
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `[DashboardConfigController] Unable to verify registry: ${err.message}`,
+      );
+      registryCheckFailed = true;
     }
 
     // 8. Generate registry manifest
