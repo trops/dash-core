@@ -36,19 +36,34 @@ const BUMP_OPTIONS = [
   { value: "none", label: "Keep current version" },
 ];
 
+// Parse "@scope/name" → { scope, packageName }. Returns empty strings
+// for unscoped names so callers can use the || fallback chain.
+function parseScopeAndName(sourcePackage) {
+  if (!sourcePackage) return { scope: "", packageName: "" };
+  const m = sourcePackage.match(/^@([^/]+)\/(.+)$/);
+  if (m) return { scope: m[1], packageName: m[2] };
+  return { scope: "", packageName: sourcePackage };
+}
+
 // Pulled out as a small helper so the Dependencies loader and the
-// dashboard publish call share the same shape.
+// dashboard publish call share the same shape. Widgets registered from
+// a package (via `_sourcePackage`) inherit scope + packageName from that
+// package ID — otherwise the main-process resolver has no way to map a
+// bare component name to its owning package.
 function collectComponentConfigs() {
   const configMap = ComponentManager.componentMap();
   const componentConfigs = {};
   for (const [key, config] of Object.entries(configMap)) {
-    if (config && (config.id || config.scope || config.packageName)) {
-      componentConfigs[config.name || key] = {
-        id: config.id || null,
-        scope: config.scope || "",
-        packageName: config.packageName || "",
-      };
-    }
+    if (!config || config.type !== "widget") continue;
+    const hasExplicit =
+      config.id || config.scope || config.packageName || config._sourcePackage;
+    if (!hasExplicit) continue;
+    const parsed = parseScopeAndName(config._sourcePackage);
+    componentConfigs[config.name || key] = {
+      id: config.id || null,
+      scope: config.scope || parsed.scope || "",
+      packageName: config.packageName || parsed.packageName || "",
+    };
   }
   return componentConfigs;
 }
@@ -285,15 +300,19 @@ export const PublishDashboardModal = ({
     setIsPublishing(true);
     setResult(null);
 
-    // Build the ordered step list: each selected owned widget → theme → dashboard.
-    // Third-party deps aren't published (they're just referenced by the manifest).
+    // Build the ordered step list: one step per unique widget package,
+    // then theme, then the dashboard itself. Third-party deps aren't
+    // published — they're just referenced by the manifest.
     const steps = [];
     if (plan) {
+      const seenPackages = new Set();
       for (const w of plan.widgets || []) {
         if (!w.scope || !w.packageName) continue;
         const key = `${w.scope}/${w.packageName}`;
+        if (seenPackages.has(key)) continue;
         const sel = depSelections[key];
         if (!sel || !sel.owned || !sel.include) continue;
+        seenPackages.add(key);
         steps.push({
           kind: "widget",
           key,
@@ -1069,16 +1088,29 @@ function PublishProgressList({ steps }) {
  * bump, visibility). Third-party rows show as read-only references.
  */
 function DependencyTable({ plan, selections, onChange }) {
-  const rows = [];
-
+  // Dedupe: multiple widgets from the same package collapse into a single
+  // row. Each row shows the list of component widgets that live inside it
+  // so the user knows what's getting published.
+  const byKey = new Map();
   for (const w of plan.widgets || []) {
     if (!w.scope || !w.packageName) continue;
     const key = `${w.scope}/${w.packageName}`;
-    rows.push({ key, kind: "widget", data: w });
+    const entry = byKey.get(key) || {
+      key,
+      kind: "widget",
+      data: w,
+      widgetNames: new Set(),
+    };
+    if (w.component) entry.widgetNames.add(w.component);
+    byKey.set(key, entry);
   }
+  const rows = Array.from(byKey.values()).map((e) => ({
+    ...e,
+    widgetNames: Array.from(e.widgetNames).sort(),
+  }));
   if (plan.theme && plan.theme.scope && plan.theme.name) {
     const key = `${plan.theme.scope}/${plan.theme.name}`;
-    rows.push({ key, kind: "theme", data: plan.theme });
+    rows.push({ key, kind: "theme", data: plan.theme, widgetNames: [] });
   }
 
   if (rows.length === 0) {
@@ -1091,7 +1123,7 @@ function DependencyTable({ plan, selections, onChange }) {
 
   return (
     <div className="space-y-2">
-      {rows.map(({ key, kind, data }) => {
+      {rows.map(({ key, kind, data, widgetNames }) => {
         const sel = selections[key];
         if (!sel) return null;
         const reg = data.registry;
@@ -1159,6 +1191,15 @@ function DependencyTable({ plan, selections, onChange }) {
                     <> · Not yet in registry</>
                   )}
                 </div>
+
+                {/* Bundled widgets (only for widget packages) */}
+                {kind === "widget" && widgetNames && widgetNames.length > 0 && (
+                  <div className="text-[11px] opacity-60 mt-1">
+                    Bundles {widgetNames.length} widget
+                    {widgetNames.length === 1 ? "" : "s"}:{" "}
+                    <span className="opacity-80">{widgetNames.join(", ")}</span>
+                  </div>
+                )}
 
                 {/* Edit controls (owned only) */}
                 {sel.owned && sel.include && (
