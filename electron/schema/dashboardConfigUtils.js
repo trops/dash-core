@@ -695,10 +695,36 @@ function collectComponentNamesFromWorkspace(workspace) {
   return Array.from(names);
 }
 
+/**
+ * Extract event wiring across a workspace's main layout, every page
+ * layout, and the sidebar layout. Mirrors collectComponentNamesFromWorkspace
+ * — the single-layout `extractEventWiring` misses widgets on non-active
+ * pages or in the sidebar.
+ *
+ * @param {Object} workspace - Workspace object
+ * @returns {Array} Event wiring array
+ */
+function extractEventWiringFromWorkspace(workspace) {
+  const wiring = [];
+  const pushAll = (layout) => {
+    if (!Array.isArray(layout)) return;
+    for (const entry of extractEventWiring(layout)) wiring.push(entry);
+  };
+
+  pushAll(workspace?.layout);
+  pushAll(workspace?.sidebarLayout);
+  if (Array.isArray(workspace?.pages)) {
+    for (const page of workspace.pages) pushAll(page?.layout);
+  }
+
+  return wiring;
+}
+
 module.exports = {
   collectComponentNames,
   collectComponentNamesFromWorkspace,
   extractEventWiring,
+  extractEventWiringFromWorkspace,
   buildWidgetDependencies,
   buildProviderRequirements,
   applyEventWiringToLayout,

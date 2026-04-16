@@ -26,6 +26,7 @@ const {
   collectComponentNames,
   collectComponentNamesFromWorkspace,
   extractEventWiring,
+  extractEventWiringFromWorkspace,
   buildWidgetDependencies,
   buildProviderRequirements,
   applyEventWiringToLayout,
@@ -78,9 +79,11 @@ async function exportDashboardConfig(
 
     const layout = workspace.layout || [];
 
-    // 2. Collect components, extract wiring, resolve deps
-    const componentNames = collectComponentNames(layout);
-    const eventWiring = extractEventWiring(layout);
+    // 2. Collect components, extract wiring, resolve deps — walk main
+    //    layout, every page, and the sidebar so multi-page / sidebar
+    //    dashboards export the full picture.
+    const componentNames = collectComponentNamesFromWorkspace(workspace);
+    const eventWiring = extractEventWiringFromWorkspace(workspace);
     const widgets = buildWidgetDependencies(componentNames, widgetRegistry);
     const providers = buildProviderRequirements(componentNames, widgetRegistry);
 
@@ -102,6 +105,16 @@ async function exportDashboardConfig(
         label: workspace.label || workspace.name,
         version: workspace.version || 1,
         layout,
+        ...(Array.isArray(workspace.pages) && workspace.pages.length > 0
+          ? { pages: workspace.pages, activePageId: workspace.activePageId }
+          : {}),
+        ...(Array.isArray(workspace.sidebarLayout) &&
+        workspace.sidebarLayout.length > 0
+          ? {
+              sidebarLayout: workspace.sidebarLayout,
+              sidebarEnabled: workspace.sidebarEnabled !== false,
+            }
+          : {}),
         menuId: workspace.menuId || 1,
       },
       widgets,
@@ -1311,9 +1324,9 @@ async function prepareDashboardForPublish(
 
     const layout = workspace.layout || [];
 
-    // 3. Build the dashboard config (reuse export logic)
-    const componentNames = collectComponentNames(layout);
-    const eventWiring = extractEventWiring(layout);
+    // 3. Build the dashboard config — walk main + pages + sidebar
+    const componentNames = collectComponentNamesFromWorkspace(workspace);
+    const eventWiring = extractEventWiringFromWorkspace(workspace);
 
     // Build componentConfigs map from renderer-supplied data
     // This resolves scope/packageName for built-in widgets that aren't in widgetRegistry
@@ -1349,6 +1362,16 @@ async function prepareDashboardForPublish(
         label: workspace.label || workspace.name,
         version: workspace.version || 1,
         layout,
+        ...(Array.isArray(workspace.pages) && workspace.pages.length > 0
+          ? { pages: workspace.pages, activePageId: workspace.activePageId }
+          : {}),
+        ...(Array.isArray(workspace.sidebarLayout) &&
+        workspace.sidebarLayout.length > 0
+          ? {
+              sidebarLayout: workspace.sidebarLayout,
+              sidebarEnabled: workspace.sidebarEnabled !== false,
+            }
+          : {}),
         menuId: workspace.menuId || 1,
       },
       widgets,
@@ -1685,8 +1708,7 @@ function getDashboardPublishPreview(appId, workspaceId, widgetRegistry = null) {
       return { success: false, error: `Workspace not found: ${workspaceId}` };
     }
 
-    const layout = workspace.layout || [];
-    const componentNames = collectComponentNames(layout);
+    const componentNames = collectComponentNamesFromWorkspace(workspace);
     const widgets = buildWidgetDependencies(componentNames, widgetRegistry);
 
     return {
