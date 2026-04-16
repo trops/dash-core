@@ -4,6 +4,7 @@ const {
   collectComponentNames,
   collectComponentNamesFromWorkspace,
   extractEventWiring,
+  extractEventWiringFromWorkspace,
   buildWidgetDependencies,
   buildProviderRequirements,
   applyEventWiringToLayout,
@@ -122,6 +123,43 @@ describe("collectComponentNamesFromWorkspace", () => {
       collectComponentNamesFromWorkspace({ layout: null, pages: null }),
       [],
     );
+  });
+});
+
+describe("extractEventWiringFromWorkspace", () => {
+  it("collects wiring across main layout, pages, and sidebar", () => {
+    const workspace = {
+      layout: [
+        {
+          id: 1,
+          component: "Main",
+          listeners: { a: { SrcMain: "onA" } },
+        },
+      ],
+      pages: [
+        {
+          id: "p1",
+          layout: [
+            { id: 2, component: "Page1", listeners: { b: { SrcP1: "onB" } } },
+          ],
+        },
+      ],
+      sidebarLayout: [
+        { id: 3, component: "Side", listeners: { c: { SrcSide: "onC" } } },
+      ],
+    };
+    const wiring = extractEventWiringFromWorkspace(workspace);
+    const targets = wiring.map((w) => w.target.widget).sort();
+    assert.deepEqual(targets, ["Main", "Page1", "Side"]);
+  });
+
+  it("returns empty array when no listeners anywhere", () => {
+    const workspace = {
+      layout: [{ id: 1, component: "X" }],
+      pages: [{ id: "p", layout: [{ id: 2, component: "Y" }] }],
+      sidebarLayout: [{ id: 3, component: "Z" }],
+    };
+    assert.deepEqual(extractEventWiringFromWorkspace(workspace), []);
   });
 });
 
