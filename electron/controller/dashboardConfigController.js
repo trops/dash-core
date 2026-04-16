@@ -1104,13 +1104,21 @@ async function collectDashboardDependencies(
     const installedWidgets = widgetRegistry ? widgetRegistry.getWidgets() : [];
 
     const widgets = deps.map((dep) => {
-      // Find the installed widget whose componentNames contains this dep's widgetName
+      // Match by componentName OR by any shape of the package id.
+      // Registry packages are stored as `@scope/name` but callers may
+      // synthesize `scope/name`; try both before giving up.
+      const candidateIds = new Set();
+      if (dep.scope && dep.packageName) {
+        candidateIds.add(`@${dep.scope}/${dep.packageName}`);
+        candidateIds.add(`${dep.scope}/${dep.packageName}`);
+      }
       const match = installedWidgets.find(
         (w) =>
           (w.componentNames && w.componentNames.includes(dep.widgetName)) ||
           (w.scope === dep.scope &&
             (w.name === dep.packageName ||
-              w.packageId === `${dep.scope}/${dep.packageName}`)),
+              candidateIds.has(w.packageId) ||
+              candidateIds.has(w.name))),
       );
 
       return {
@@ -1120,7 +1128,11 @@ async function collectDashboardDependencies(
         component: dep.widgetName,
         localVersion: dep.version,
         packageDir: match?.path || null,
-        packageId: match?.packageId || null,
+        packageId:
+          match?.packageId ||
+          (dep.scope && dep.packageName
+            ? `@${dep.scope}/${dep.packageName}`
+            : null),
         author: dep.author || "",
         hasLocalPackage: !!match?.path,
       };

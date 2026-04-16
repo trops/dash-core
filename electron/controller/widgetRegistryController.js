@@ -30,6 +30,29 @@ const {
 } = require("../schema/widgetPublishManifest");
 
 /**
+ * Resilient widget lookup. Callers pass identifiers in different shapes —
+ * `@scope/name`, `scope/name`, sometimes bare `name`. Try a few common
+ * variants so the batch-publish dialog (which synthesizes a fallback
+ * packageId from scope/packageName without the `@` prefix) still finds
+ * the registered package.
+ */
+function findWidget(registry, packageId) {
+  if (!packageId) return null;
+  const candidates = new Set();
+  candidates.add(packageId);
+  if (packageId.startsWith("@")) {
+    candidates.add(packageId.slice(1));
+  } else if (packageId.includes("/")) {
+    candidates.add(`@${packageId}`);
+  }
+  for (const id of candidates) {
+    const w = registry.getWidget(id);
+    if (w) return w;
+  }
+  return null;
+}
+
+/**
  * Scan a widget package directory for `.dash.js` component configs and
  * return the parsed configs. Used when the widget registry's cached
  * `config.widgets` is missing or empty (e.g. for orphaned / locally-
@@ -135,7 +158,7 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
 
     // 2. Look up widget in local registry
     const registry = widgetRegistryModule.getWidgetRegistry();
-    const widget = registry.getWidget(packageId);
+    const widget = findWidget(registry, packageId);
     if (!widget || !widget.path) {
       return {
         success: false,
@@ -261,7 +284,7 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
 async function inspectWidgetPackage(packageId) {
   try {
     const registry = widgetRegistryModule.getWidgetRegistry();
-    const widget = registry.getWidget(packageId);
+    const widget = findWidget(registry, packageId);
     if (!widget || !widget.path) {
       return {
         success: false,
