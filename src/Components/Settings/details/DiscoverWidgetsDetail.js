@@ -20,6 +20,7 @@ import { AppContext } from "../../../Context/App/AppContext";
 import { ComponentManager } from "../../../ComponentManager";
 import { RegistryPackageDetail } from "./RegistryPackageDetail";
 import { RegistryAuthModal } from "../../Registry/RegistryAuthModal";
+import { RegistrySignInBanner } from "../../Registry/RegistrySignInBanner";
 import { InstallProgressModal } from "./InstallProgressModal";
 import { useRegistrySearch } from "../../../hooks/useRegistrySearch";
 
@@ -366,27 +367,12 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
     );
   } else if (packages.length === 0) {
     listBody = (
-      <div className="px-4 py-8 text-center space-y-3">
+      <div className="px-4 py-8 text-center">
         <Paragraph className="text-sm opacity-50">
           {searchQuery
             ? "No packages match your search."
             : "No packages available."}
         </Paragraph>
-        {registryAuthed === false && (
-          <div className="inline-flex flex-col items-center gap-2 px-4 py-3 rounded-lg bg-amber-900/15 border border-amber-700/30">
-            <Paragraph className="text-xs text-amber-200">
-              Sign in to the registry to see your private packages.
-            </Paragraph>
-            <Button
-              title="Sign in to Registry"
-              bgColor="bg-indigo-600"
-              hoverBackgroundColor="hover:bg-indigo-500"
-              textSize="text-sm"
-              padding="py-1 px-3"
-              onClick={() => setShowAuthFromEmpty(true)}
-            />
-          </div>
-        )}
       </div>
     );
   } else {
@@ -463,6 +449,13 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
           Show all packages
         </label>
       </div>
+
+      {/* Sign-in nudge — persistent above the list while unauthenticated */}
+      <RegistrySignInBanner
+        visible={registryAuthed === false}
+        onSignIn={() => setShowAuthFromEmpty(true)}
+        noun="widget"
+      />
 
       {/* Package list */}
       <div className="flex-1 min-h-0 overflow-y-auto px-2">{listBody}</div>
