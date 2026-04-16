@@ -10,6 +10,7 @@ import {
   themeObjects,
 } from "@trops/dash-react";
 import { RegistryThemeDetail } from "./RegistryThemeDetail";
+import { RegistryAuthModal } from "../../Registry/RegistryAuthModal";
 
 import { toDisplayColor } from "../../../utils/colorUtils";
 import { ThemeColorDots } from "../../Theme/ThemeColorDots";
@@ -31,6 +32,24 @@ export const DiscoverThemesDetail = ({ onBack, appId, onInstallComplete }) => {
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPackageName, setSelectedPackageName] = useState(null);
+
+  // Auth state for the empty-state hint.
+  const [registryAuthed, setRegistryAuthed] = useState(null);
+  const [showAuthFromEmpty, setShowAuthFromEmpty] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const status = await window.mainApi?.registryAuth?.getStatus();
+        if (!cancelled) setRegistryAuthed(!!status?.authenticated);
+      } catch {
+        if (!cancelled) setRegistryAuthed(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showAuthFromEmpty]);
 
   const search = useCallback(async (query) => {
     if (!window.mainApi?.registry?.searchThemes) {
@@ -122,12 +141,27 @@ export const DiscoverThemesDetail = ({ onBack, appId, onInstallComplete }) => {
     );
   } else if (packages.length === 0) {
     listBody = (
-      <div className="px-4 py-8 text-center">
+      <div className="px-4 py-8 text-center space-y-3">
         <Paragraph className="text-sm opacity-50">
           {searchQuery
             ? "No themes match your search."
             : "No theme packages available."}
         </Paragraph>
+        {registryAuthed === false && (
+          <div className="inline-flex flex-col items-center gap-2 px-4 py-3 rounded-lg bg-amber-900/15 border border-amber-700/30">
+            <Paragraph className="text-xs text-amber-200">
+              Sign in to the registry to see your private themes.
+            </Paragraph>
+            <Button
+              title="Sign in to Registry"
+              bgColor="bg-indigo-600"
+              hoverBackgroundColor="hover:bg-indigo-500"
+              textSize="text-sm"
+              padding="py-1 px-3"
+              onClick={() => setShowAuthFromEmpty(true)}
+            />
+          </div>
+        )}
       </div>
     );
   } else {
@@ -185,6 +219,18 @@ export const DiscoverThemesDetail = ({ onBack, appId, onInstallComplete }) => {
           {packages.length !== 1 ? "s" : ""}
         </div>
       )}
+
+      <RegistryAuthModal
+        isOpen={showAuthFromEmpty}
+        setIsOpen={setShowAuthFromEmpty}
+        onAuthenticated={() => {
+          setShowAuthFromEmpty(false);
+          setRegistryAuthed(true);
+          search(searchQuery);
+        }}
+        onCancel={() => setShowAuthFromEmpty(false)}
+        message="Sign in to see your private themes and install ones you've published."
+      />
     </div>
   );
 };

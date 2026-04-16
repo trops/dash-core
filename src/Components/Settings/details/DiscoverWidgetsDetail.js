@@ -57,6 +57,26 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
   const [selectedPackageName, setSelectedPackageName] = useState(null);
   const [toolConflictWarning, setToolConflictWarning] = useState(null);
 
+  // Auth state — used to nudge unauthenticated users toward signing in
+  // when the empty state appears (so they realize private packages are
+  // hidden behind auth).
+  const [registryAuthed, setRegistryAuthed] = useState(null);
+  const [showAuthFromEmpty, setShowAuthFromEmpty] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const status = await window.mainApi?.registryAuth?.getStatus();
+        if (!cancelled) setRegistryAuthed(!!status?.authenticated);
+      } catch {
+        if (!cancelled) setRegistryAuthed(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [needsAuth, showAuthFromEmpty]);
+
   // Install progress modal state
   const [showProgressModal, setShowProgressModal] = useState(false);
   const [progressWidgets, setProgressWidgets] = useState([]);
@@ -298,6 +318,20 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
           onCancel={clearNeedsAuth}
           message="Sign in to install this widget from the Dash Registry."
         />
+
+        <RegistryAuthModal
+          isOpen={showAuthFromEmpty}
+          setIsOpen={setShowAuthFromEmpty}
+          onAuthenticated={() => {
+            setShowAuthFromEmpty(false);
+            setRegistryAuthed(true);
+            // Trigger a refresh of the list now that the user can see
+            // their private packages.
+            retry();
+          }}
+          onCancel={() => setShowAuthFromEmpty(false)}
+          message="Sign in to see your private packages and install widgets you've published."
+        />
       </div>
     );
   }
@@ -332,12 +366,27 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
     );
   } else if (packages.length === 0) {
     listBody = (
-      <div className="px-4 py-8 text-center">
+      <div className="px-4 py-8 text-center space-y-3">
         <Paragraph className="text-sm opacity-50">
           {searchQuery
             ? "No packages match your search."
             : "No packages available."}
         </Paragraph>
+        {registryAuthed === false && (
+          <div className="inline-flex flex-col items-center gap-2 px-4 py-3 rounded-lg bg-amber-900/15 border border-amber-700/30">
+            <Paragraph className="text-xs text-amber-200">
+              Sign in to the registry to see your private packages.
+            </Paragraph>
+            <Button
+              title="Sign in to Registry"
+              bgColor="bg-indigo-600"
+              hoverBackgroundColor="hover:bg-indigo-500"
+              textSize="text-sm"
+              padding="py-1 px-3"
+              onClick={() => setShowAuthFromEmpty(true)}
+            />
+          </div>
+        )}
       </div>
     );
   } else {
