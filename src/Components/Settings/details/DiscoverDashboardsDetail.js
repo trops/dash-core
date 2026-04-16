@@ -29,7 +29,10 @@ export const DiscoverDashboardsDetail = ({
   });
 
   const [packages, setPackages] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
+  // Start in the loading state so the empty UI doesn't flash while the
+  // initial debounce is pending — otherwise the sign-in nudge appears
+  // briefly then disappears as soon as the registry returns results.
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPackageName, setSelectedPackageName] = useState(null);

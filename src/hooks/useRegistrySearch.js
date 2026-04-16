@@ -25,7 +25,10 @@ import { cleanIpcError } from "../utils/errorUtils";
  *   appCapabilities – the app's API namespaces
  */
 export const useRegistrySearch = ({ filterByCapabilities = true } = {}) => {
-  const [isLoading, setIsLoading] = useState(false);
+  // Start in the loading state so consumers don't briefly render an
+  // empty-list state during the initial debounce window before the first
+  // search fires.
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [packages, setPackages] = useState([]);
   const [flatWidgets, setFlatWidgets] = useState([]);
