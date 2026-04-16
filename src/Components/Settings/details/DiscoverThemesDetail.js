@@ -28,7 +28,9 @@ export const DiscoverThemesDetail = ({ onBack, appId, onInstallComplete }) => {
   });
 
   const [packages, setPackages] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
+  // Start loading so the empty state with sign-in nudge doesn't flash
+  // before the first fetch resolves.
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPackageName, setSelectedPackageName] = useState(null);
