@@ -229,9 +229,16 @@ export const DiscoverDashboardsDetail = ({
       <RegistryAuthModal
         isOpen={showAuthFromEmpty}
         setIsOpen={setShowAuthFromEmpty}
-        onAuthenticated={() => {
+        onAuthenticated={async () => {
           setShowAuthFromEmpty(false);
           setRegistryAuthed(true);
+          // Force-refresh the cached registry index so the now-
+          // authenticated user immediately sees their private packages.
+          try {
+            await window.mainApi?.registry?.fetchIndex?.(true);
+          } catch {
+            /* best effort */
+          }
           search(searchQuery);
         }}
         onCancel={() => setShowAuthFromEmpty(false)}
