@@ -78,6 +78,13 @@ export const MessageBubble = ({ message, isStreaming, streamingText }) => {
 
     const text = textParts.join("");
 
+    // Hide empty assistant bubbles (e.g., tool-use-only responses from
+    // the CLI backend where content is [] and tool calls are tracked
+    // separately). Nothing useful to show the user.
+    if (!isStreaming && !text && toolBlocks.length === 0) {
+      return null;
+    }
+
     return (
       <div className="mb-4">
         <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
