@@ -1311,6 +1311,8 @@ export const LayoutGridContainer = memo(
                           workspaceId: workspace?.id,
                           widgetComponentName: cellComponent.component,
                           widgetId: cellComponent.id,
+                          selectedProviders:
+                            cellComponent.selectedProviders || null,
                           sourcePackage:
                             ComponentManager.config(
                               cellComponent.component,

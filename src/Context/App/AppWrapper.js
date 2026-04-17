@@ -1,7 +1,21 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { AppContext } from "./AppContext";
 import { SettingsModel } from "../../Models";
 import { deepCopy } from "@trops/dash-react";
+
+/**
+ * Broadcasts the AppContext (providers, settings) so components rendered
+ * outside the AppWrapper tree (e.g., WidgetBuilderModal) can access them.
+ */
+function AppContextBroadcast({ ctx }) {
+  useEffect(() => {
+    if (ctx && typeof window !== "undefined") {
+      window.__dashAppContext = ctx;
+      window.dispatchEvent(new Event("dash:app-context-changed"));
+    }
+  }, [ctx]);
+  return null;
+}
 
 // TODO
 // make theme files or have a Theme context which we can populate with a plugin or config
@@ -278,6 +292,9 @@ export const AppWrapper = ({ children, credentials = null, dashApi }) => {
   ]);
 
   return (
-    <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>
+    <AppContext.Provider value={contextValue}>
+      <AppContextBroadcast ctx={contextValue} />
+      {children}
+    </AppContext.Provider>
   );
 };
