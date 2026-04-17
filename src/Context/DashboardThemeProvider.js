@@ -1,5 +1,19 @@
-import React, { useContext, useMemo } from "react";
+import React, { useContext, useEffect, useMemo } from "react";
 import { ThemeContext } from "@trops/dash-react";
+
+/**
+ * Broadcasts the active dashboard theme so components rendered outside
+ * the theme tree (e.g., WidgetBuilderModal) can read it reactively.
+ */
+function ThemeBroadcast({ ctx }) {
+  useEffect(() => {
+    if (ctx?.currentTheme && typeof window !== "undefined") {
+      window.__dashThemeContext = ctx;
+      window.dispatchEvent(new Event("dash:theme-changed"));
+    }
+  }, [ctx]);
+  return null;
+}
 
 /**
  * DashboardThemeProvider
@@ -36,10 +50,21 @@ export const DashboardThemeProvider = ({ themeKey, children }) => {
     };
   }, [themeKey, themes, themeVariant, parentContext]);
 
-  if (!contextValue) return <>{children}</>;
+  // Broadcast the effective theme (dashboard override or parent)
+  const effectiveCtx = contextValue || parentContext;
+
+  if (!contextValue) {
+    return (
+      <>
+        <ThemeBroadcast ctx={effectiveCtx} />
+        {children}
+      </>
+    );
+  }
 
   return (
     <ThemeContext.Provider value={contextValue}>
+      <ThemeBroadcast ctx={contextValue} />
       {children}
     </ThemeContext.Provider>
   );
