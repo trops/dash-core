@@ -1151,11 +1151,24 @@ function setupWidgetRegistryHandlers() {
           };
         }
 
-        // Find target component (use componentName or first .dash.js file)
+        // Find target component (use componentName or first .dash.js file).
+        // Strip scope prefix from scoped IDs like "trops.algolia.AlgoliaSearchWidget"
+        // since the file on disk is just "AlgoliaSearchWidget.js".
         const files = fs.readdirSync(widgetsDir);
-        const target =
-          componentName ||
-          files.find((f) => f.endsWith(".dash.js"))?.replace(".dash.js", "");
+        let target = componentName;
+        if (target && target.includes(".")) {
+          const bare = target.split(".").pop();
+          if (
+            files.some((f) => f === `${bare}.js` || f === `${bare}.dash.js`)
+          ) {
+            target = bare;
+          }
+        }
+        if (!target) {
+          target = files
+            .find((f) => f.endsWith(".dash.js"))
+            ?.replace(".dash.js", "");
+        }
 
         if (!target) {
           return {

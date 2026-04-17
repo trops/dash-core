@@ -118,9 +118,15 @@ async function compileWidget(widgetPath) {
     );
 
     if (hasComponent) {
-      // Import the component and merge with config
+      // Import the component and merge with config.
+      // Use namespace import so both default and named exports work:
+      //   export default function Foo → _Mod.default
+      //   export const Foo = ...      → _Mod.Foo
       imports.push(
-        `import ${componentName}Comp from "${relWidgetsDir}/${componentFile}";`,
+        `import * as ${componentName}_Mod from "${relWidgetsDir}/${componentFile}";`,
+      );
+      imports.push(
+        `const ${componentName}Comp = ${componentName}_Mod.default || ${componentName}_Mod.${componentName} || Object.values(${componentName}_Mod).find(v => typeof v === 'function');`,
       );
       exportParts.push(
         `export const ${componentName} = { ...${componentName}Config, component: ${componentName}Comp };`,
@@ -173,6 +179,9 @@ async function compileWidget(widgetPath) {
       ],
       // Treat .js files as JSX (widget sources use JSX in .js files)
       loader: { ".js": "jsx" },
+      // Use automatic JSX runtime (React 17+) so sources don't need
+      // explicit `import React from "react"`.
+      jsx: "automatic",
       logLevel: "warning",
     });
 
