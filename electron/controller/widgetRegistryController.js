@@ -166,15 +166,28 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
       };
     }
 
-    // 3. Read package.json
+    // 3. Read package.json (or fall back to dash.json for registry-installed widgets)
     const pkgJsonPath = path.join(widget.path, "package.json");
-    if (!fs.existsSync(pkgJsonPath)) {
+    const dashJsonPath = path.join(widget.path, "dash.json");
+    let pkgJson;
+    if (fs.existsSync(pkgJsonPath)) {
+      pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
+    } else if (fs.existsSync(dashJsonPath)) {
+      // Registry-installed widgets only have dash.json — synthesize
+      // the fields the publish flow needs from it.
+      const dashJson = JSON.parse(fs.readFileSync(dashJsonPath, "utf8"));
+      pkgJson = {
+        name: dashJson.name ? `@${callerScope}/${dashJson.name}` : packageId,
+        version: dashJson.version || "1.0.0",
+        description: dashJson.description || "",
+        author: dashJson.author || profile?.displayName || "",
+      };
+    } else {
       return {
         success: false,
-        error: `Widget package is missing package.json: ${widget.path}`,
+        error: `Widget package is missing package.json and dash.json: ${widget.path}`,
       };
     }
-    const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
     // Scope resolution: the caller's registry username always wins. The
     // package.json may use a local naming convention (e.g. `@ai-built/…`
     // for AI-generated widgets) but the registry only allows publishing
@@ -188,7 +201,17 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
     const newVersion = resolveNextVersion(previousVersion, options);
     if (newVersion !== previousVersion) {
       pkgJson.version = newVersion;
-      fs.writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + "\n");
+      // Persist to whichever metadata file exists
+      if (fs.existsSync(pkgJsonPath)) {
+        fs.writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + "\n");
+      } else if (fs.existsSync(dashJsonPath)) {
+        const dashJson = JSON.parse(fs.readFileSync(dashJsonPath, "utf8"));
+        dashJson.version = newVersion;
+        fs.writeFileSync(
+          dashJsonPath,
+          JSON.stringify(dashJson, null, 2) + "\n",
+        );
+      }
     }
 
     // 5. Build manifest using the widget's component configs. The
