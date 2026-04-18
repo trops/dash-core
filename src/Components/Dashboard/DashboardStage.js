@@ -324,6 +324,38 @@ const DashboardStageInner = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ─── Listen for external "open workspace" requests ──────────────
+  // Fired by: Dash.js notification click, MCP state-changed for
+  // create_dashboard, etc. Any code that wants to switch the active
+  // dashboard from outside this component dispatches
+  //   window.dispatchEvent(new CustomEvent("dash:navigate-workspace",
+  //     { detail: { workspaceId: <number> } }))
+  // We record the requested ID and open it once it appears in
+  // workspaceConfig — handles the case where the workspace was just
+  // created and the config reload is still in flight.
+  const [pendingOpenWorkspaceId, setPendingOpenWorkspaceId] = useState(null);
+  useEffect(() => {
+    const handler = (e) => {
+      const id = e?.detail?.workspaceId;
+      if (id != null) setPendingOpenWorkspaceId(Number(id));
+    };
+    window.addEventListener("dash:navigate-workspace", handler);
+    return () => window.removeEventListener("dash:navigate-workspace", handler);
+  }, []);
+  useEffect(() => {
+    if (pendingOpenWorkspaceId == null) return;
+    const ws = workspaceConfig.find(
+      (w) => Number(w.id) === Number(pendingOpenWorkspaceId),
+    );
+    if (ws) {
+      handleOpenTab(ws);
+      setPendingOpenWorkspaceId(null);
+    }
+    // If not found yet, keep the pending ID and wait for the next
+    // workspaceConfig update (workspace:saved triggers a reload).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingOpenWorkspaceId, workspaceConfig]);
+
   // ─── Load recents on mount ───────────────────────────────────────
   useEffect(() => {
     if (popout) return;
@@ -548,6 +580,23 @@ const DashboardStageInner = ({
         workspacesTemp,
       );
       setWorkspaceConfig(() => workspacesTemp);
+      // Also sync fresh workspace data into any open tabs. Without this,
+      // MCP-driven mutations (update_layout, add_widget, etc.) update the
+      // config but the active tab keeps its stale snapshot — users only
+      // see the change after closing and reopening the tab.
+      setOpenTabs((prevTabs) =>
+        prevTabs.map((tab) => {
+          const fresh = workspacesTemp.find(
+            (w) => Number(w.id) === Number(tab.id),
+          );
+          if (!fresh) return tab; // workspace was deleted; leave tab for handleCloseTab to reap
+          return {
+            ...tab,
+            name: fresh.name || tab.name,
+            workspace: fresh,
+          };
+        }),
+      );
       setIsLoadingWorkspaces(false);
     } catch (e) {
       console.log("handle load workspaces complete ERROR", e.message);
@@ -733,13 +782,17 @@ const DashboardStageInner = ({
 
   const workspacePages = workspaceSelected?.pages || [];
 
-  // Memoize sorted pages so page object references stay stable across re-renders
+  // Memoize sorted pages so page object references stay stable across re-renders.
+  // Depend on `workspaceSelected` so the memo invalidates whenever the workspace
+  // is refreshed (e.g. after an MCP-driven layout/widget change). Without this,
+  // PageLayoutBuilder's React.memo would see the same page reference and skip
+  // re-rendering even though the page's layout array changed underneath.
   const sortedPagesForRender = useMemo(
     () => [...workspacePages].sort((a, b) => (a.order || 0) - (b.order || 0)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
+      workspaceSelected,
       workspacePages.length,
-      // Re-sort when page names/order change but not on every parent render
       workspacePages.map((p) => `${p.id}:${p.order}:${p.name}`).join(","),
     ],
   );

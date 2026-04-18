@@ -167,6 +167,17 @@ async function handleCreateDashboard({ name, layout }) {
     };
   }
 
+  // Default to a 1×1 grid when the caller omits `layout`. A bare
+  // container dashboard has no grid cells, so widgets can't be added
+  // without further editing — even a single-cell grid avoids that
+  // dead-end while staying unopinionated about layout. Callers that
+  // want a specific size pass an explicit `layout` object. Callers
+  // that genuinely want a layout-less container must pass
+  // `layout: null` explicitly.
+  if (layout === undefined) {
+    layout = { rows: 1, cols: 1 };
+  }
+
   // Validate optional layout parameter
   if (layout !== undefined && layout !== null) {
     if (typeof layout !== "object" || Array.isArray(layout)) {

@@ -174,11 +174,21 @@ const cliController = {
     // to — causing long reasoning loops or silent hangs. We pass only the
     // caller's `systemPrompt` as context.
     //
+    // --permission-mode bypassPermissions: in an embedded in-app assistant,
+    // the user has already opted into the configured MCP servers (they
+    // ran `claude mcp add` themselves). Prompting for tool-use approval
+    // on every call produces "I need permission to..." replies instead of
+    // actual actions. Bypassing matches the user's intent — if they
+    // didn't want the assistant to use a tool, they wouldn't have
+    // configured it.
+    //
     // (We intentionally avoid `--bare` — it also disables keychain reads,
     // which breaks OAuth login for users authenticated via `claude login`.)
     const args = [
       "-p",
       "--disable-slash-commands",
+      "--permission-mode",
+      "bypassPermissions",
       "--output-format",
       "stream-json",
       "--verbose",

@@ -17,6 +17,7 @@
  */
 const https = require("https");
 const { randomUUID } = require("crypto");
+const { BrowserWindow } = require("electron");
 const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
 const {
   StreamableHTTPServerTransport,
@@ -24,6 +25,52 @@ const {
 
 const settingsController = require("./settingsController");
 const { getOrCreateCert } = require("../mcp/tlsCert");
+
+// Tool-name prefixes that indicate a mutation. After a successful call
+// to any of these, the renderer is notified via "dash-mcp:state-changed"
+// so it can refresh the relevant UI slice (themes, dashboards, widgets,
+// providers, etc.) without requiring a manual reload.
+const MUTATING_PREFIXES = [
+  "create_",
+  "add_",
+  "remove_",
+  "delete_",
+  "update_",
+  "apply_",
+  "install_",
+  "move_",
+  "set_",
+  "configure_",
+];
+
+function isMutatingTool(name) {
+  return MUTATING_PREFIXES.some((p) => name.startsWith(p));
+}
+
+function broadcastStateChanged(toolName, result) {
+  // Best-effort parse of the tool's first text content block. MCP tool
+  // results are of shape { content: [{ type: "text", text: "<json>" }] }.
+  // Expose the parsed JSON as `result` so renderers can act on specifics
+  // (e.g. the new dashboard ID from create_dashboard) without a round
+  // trip back to fetch state.
+  let parsed = null;
+  try {
+    const firstText = result?.content?.find?.((c) => c.type === "text")?.text;
+    if (firstText) parsed = JSON.parse(firstText);
+  } catch {
+    /* leave null */
+  }
+  const payload = { toolName, result: parsed };
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      try {
+        win.webContents.send("dash-mcp:state-changed", payload);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
 
 // --- State ---
 let mcpServer = null;
@@ -108,14 +155,22 @@ const { jsonSchemaToZod } = require("../mcp/jsonSchemaToZod");
 function applyRegistrations(server) {
   for (const tool of registeredTools) {
     const zodSchema = jsonSchemaToZod(tool.inputSchema);
+    // Wrap mutating tool handlers so a successful invocation broadcasts
+    // "dash-mcp:state-changed" to all renderer windows. Read-only tools
+    // (list_, get_, search_) are passed through unwrapped.
+    const mutating = isMutatingTool(tool.name);
+    const handler = mutating
+      ? async (...args) => {
+          const result = await tool.handler(...args);
+          if (result && !result.isError) {
+            broadcastStateChanged(tool.name, result);
+          }
+          return result;
+        }
+      : tool.handler;
     // server.tool() expects a raw Zod shape (e.g. { name: z.string() }),
     // NOT a z.object() wrapper. Extract .shape from the Zod object.
-    server.tool(
-      tool.name,
-      tool.description,
-      zodSchema.shape || {},
-      tool.handler,
-    );
+    server.tool(tool.name, tool.description, zodSchema.shape || {}, handler);
   }
   for (const resource of registeredResources) {
     server.resource(

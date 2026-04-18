@@ -35,7 +35,7 @@ const dashboardTools = [
   {
     name: "create_dashboard",
     description:
-      "Create a new dashboard with the given name. Optionally provide a layout to create a grid dashboard. Returns the dashboard ID. After creating, use search_widgets or list_widgets to find widgets, then add_widget to populate the dashboard.",
+      "Create a new dashboard with the given name. Defaults to a 1×1 grid layout if `layout` is omitted — the resulting dashboard has a single cell ready for a widget. Pass an explicit `layout` object to use different dimensions. Pass `layout: null` only if the caller specifically wants a layout-less container dashboard (rare — widgets cannot be added without further editing). Returns the dashboard ID.",
     inputSchema: {
       type: "object",
       properties: {
