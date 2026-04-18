@@ -119,8 +119,24 @@ const cliController = {
       return;
     }
 
-    // Build CLI args
-    const args = ["-p", "--output-format", "stream-json", "--verbose"];
+    // Build CLI args.
+    //
+    // --disable-slash-commands: prevent Claude from auto-triggering project
+    // skills by description match. When running in a project with a
+    // `.claude/skills/<name>/SKILL.md`, Claude would otherwise internalize
+    // that skill's content even when the host app's system prompt says not
+    // to — causing long reasoning loops or silent hangs. We pass only the
+    // caller's `systemPrompt` as context.
+    //
+    // (We intentionally avoid `--bare` — it also disables keychain reads,
+    // which breaks OAuth login for users authenticated via `claude login`.)
+    const args = [
+      "-p",
+      "--disable-slash-commands",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+    ];
 
     if (model) {
       args.push("--model", model);

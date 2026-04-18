@@ -189,6 +189,11 @@ export function ChatCore({
         tc.isError = data.isError;
         tc.isLoading = false;
       }
+      // Force re-render so MessageBubble picks up the updated tool
+      // result state (isLoading=false, result populated). Can't rely on
+      // setStreamingText since it may already be empty (tool-only
+      // response from CLI backend).
+      setMessages((prev) => [...prev]);
       setStreamingText("");
       if (onPublishEvent) {
         onPublishEvent("toolUsed", {
@@ -557,6 +562,7 @@ export function ChatCore({
         messages={messages}
         streamingRequestId={isLoading ? activeRequestId.current : null}
         streamingText={streamingText}
+        isLoading={isLoading}
       />
 
       {/* Input */}

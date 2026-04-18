@@ -25,7 +25,12 @@ function AssistantTextContent({ text }) {
   );
 }
 
-export const MessageBubble = ({ message, isStreaming, streamingText }) => {
+export const MessageBubble = ({
+  message,
+  isStreaming,
+  streamingText,
+  isLast = false,
+}) => {
   const { role, content, toolCalls } = message;
 
   if (role === "user") {
@@ -76,12 +81,42 @@ export const MessageBubble = ({ message, isStreaming, streamingText }) => {
       textParts.push(content);
     }
 
+    // Fallback: CLI backend (Claude Code) tracks tool calls on the
+    // message's `toolCalls` field without placing tool_use blocks in
+    // `content`. If we found no tool blocks in content but have toolCalls,
+    // render those directly so the user sees what Claude is doing.
+    if (toolBlocks.length === 0 && Array.isArray(toolCalls)) {
+      for (const tc of toolCalls) {
+        toolBlocks.push({
+          id: tc.toolUseId,
+          name: tc.toolName,
+          input: tc.input,
+          serverName: tc.serverName,
+          result: tc.result,
+          isError: tc.isError,
+          isLoading: tc.isLoading,
+        });
+      }
+    }
+
     const text = textParts.join("");
 
-    // Hide empty assistant bubbles (e.g., tool-use-only responses from
-    // the CLI backend where content is [] and tool calls are tracked
-    // separately). Nothing useful to show the user.
+    // Hide empty assistant bubbles (tool-use-only responses from the
+    // CLI backend). But if this is the LAST message, show a thinking
+    // indicator so the user knows the AI is working.
     if (!isStreaming && !text && toolBlocks.length === 0) {
+      if (isLast) {
+        return (
+          <div className="mb-4">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
+              Assistant
+            </div>
+            <div className="text-sm leading-relaxed px-3 py-2 rounded-lg bg-gray-800/40 text-gray-500 italic">
+              Thinking...
+            </div>
+          </div>
+        );
+      }
       return null;
     }
 
