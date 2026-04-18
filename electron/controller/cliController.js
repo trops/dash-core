@@ -17,6 +17,8 @@ const {
   LLM_STREAM_ERROR,
 } = require("../events/llmEvents");
 
+const IS_WINDOWS = process.platform === "win32";
+
 /**
  * Cached shell PATH result (resolved once, reused for all spawns).
  * Same pattern as mcpController.js.
@@ -25,6 +27,13 @@ let _shellPath = null;
 
 function getShellPath() {
   if (_shellPath !== null) return _shellPath;
+
+  // Windows: no POSIX login-shell trick — just use the inherited PATH,
+  // which is typically correct for GUI-launched Electron apps.
+  if (IS_WINDOWS) {
+    _shellPath = process.env.PATH || "";
+    return _shellPath;
+  }
 
   try {
     const shell = process.env.SHELL || "/bin/bash";
@@ -40,7 +49,7 @@ function getShellPath() {
 }
 
 /**
- * Cached CLI binary path (resolved once via `which claude`).
+ * Cached CLI binary path (resolved once via `which` / `where`).
  */
 let _cliBinaryPath = undefined; // undefined = not yet checked
 
@@ -49,11 +58,21 @@ function resolveCliBinary() {
 
   try {
     const fullPath = getShellPath();
-    _cliBinaryPath = execSync("which claude", {
+    // `where` on Windows, `which` everywhere else. `where` may list
+    // multiple matches on separate lines (e.g. claude.cmd + claude.ps1)
+    // — take the first hit.
+    const lookup = IS_WINDOWS ? "where claude" : "which claude";
+    const result = execSync(lookup, {
       encoding: "utf8",
       timeout: 5000,
       env: { ...process.env, PATH: fullPath },
-    }).trim();
+    });
+    _cliBinaryPath = IS_WINDOWS
+      ? result
+          .split(/\r?\n/)
+          .find((l) => l.trim())
+          ?.trim() || null
+      : result.trim();
   } catch {
     _cliBinaryPath = null;
   }
@@ -66,6 +85,33 @@ function resolveCliBinary() {
  * Map<requestId, ChildProcess>
  */
 const activeProcesses = new Map();
+
+/**
+ * Kill a child process and its descendants. On Windows, spawning with
+ * shell:true (needed for .cmd targets) means child.kill() only
+ * terminates the cmd.exe — the real CLI keeps running. Use taskkill
+ * with /T (tree) /F (force) to clean up.
+ */
+function killChildTree(child) {
+  if (!child || child.killed || typeof child.pid !== "number") return;
+  if (IS_WINDOWS) {
+    try {
+      execSync(`taskkill /pid ${child.pid} /T /F`, {
+        stdio: "ignore",
+        timeout: 5000,
+      });
+    } catch {
+      // Fall back to plain kill — best-effort
+      try {
+        child.kill();
+      } catch {
+        /* ignore */
+      }
+    }
+  } else {
+    child.kill("SIGTERM");
+  }
+}
 
 /**
  * Session IDs for conversation continuity.
@@ -178,6 +224,10 @@ const cliController = {
       const spawnOpts = {
         env: { ...process.env, PATH: fullPath },
         stdio: ["pipe", "pipe", "pipe"],
+        // On Windows, the Claude CLI is typically installed as claude.cmd
+        // (a batch wrapper). Node's child_process.spawn can't launch .cmd
+        // files directly without a shell — ENOENT otherwise.
+        shell: IS_WINDOWS,
       };
       if (cwd) {
         const fs = require("fs");
@@ -382,7 +432,7 @@ const cliController = {
   abortRequest: (requestId) => {
     const child = activeProcesses.get(requestId);
     if (child) {
-      child.kill("SIGTERM");
+      killChildTree(child);
       activeProcesses.delete(requestId);
       return { success: true };
     }
@@ -439,7 +489,7 @@ const cliController = {
     // Kill any active processes for this widget
     for (const [reqId, child] of activeProcesses) {
       if (reqId.startsWith(widgetUuid)) {
-        child.kill("SIGTERM");
+        killChildTree(child);
         activeProcesses.delete(reqId);
       }
     }

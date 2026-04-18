@@ -19,6 +19,7 @@ const {
 } = require("@modelcontextprotocol/sdk/client/streamableHttp.js");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 const responseCache = require("../utils/responseCache");
 
 /**
@@ -66,6 +67,8 @@ function isReadOnlyTool(toolName) {
  */
 const DEFAULT_TOOL_CACHE_TTL = 5000;
 
+const IS_WINDOWS = process.platform === "win32";
+
 /**
  * Cached shell PATH result (resolved once, reused for all spawns).
  */
@@ -102,11 +105,21 @@ function isNodeEsmError(errorText) {
 function getShellPath() {
   if (_shellPath !== null) return _shellPath;
 
+  // Windows: skip the POSIX shell-path discovery entirely. The nvm /
+  // homebrew / volta fallback dirs below are *nix-specific, and
+  // Windows Electron apps typically inherit a working PATH from the
+  // launcher. Users managing Node via nvm-windows or fnm should
+  // already have their shims on PATH.
+  if (IS_WINDOWS) {
+    _shellPath = process.env.PATH || "";
+    return _shellPath;
+  }
+
   const { execSync } = require("child_process");
   const fallbackDirs = ["/usr/local/bin", "/opt/homebrew/bin"];
 
   // Scan nvm versions, tracking both latest and best compatible version
-  const home = process.env.HOME || "";
+  const home = os.homedir();
   let compatibleNvmBin = null;
   if (home) {
     fallbackDirs.push(`${home}/.volta/bin`);
@@ -245,7 +258,7 @@ function interpolate(template, credentials) {
  * @param {object} tokenRefresh { credentialsPath, oauthKeysPath }
  */
 async function refreshGoogleOAuthToken(tokenRefresh) {
-  const home = process.env.HOME || "";
+  const home = os.homedir();
   const credPath = tokenRefresh.credentialsPath.replace(/^~/, home);
   const keysPath = tokenRefresh.oauthKeysPath.replace(/^~/, home);
 
@@ -441,7 +454,7 @@ const mcpController = {
           // Merge static env vars from mcpConfig (with ~ expansion)
           if (mcpConfig.staticEnv) {
             Object.entries(mcpConfig.staticEnv).forEach(([envVar, value]) => {
-              env[envVar] = value.replace(/^~/, process.env.HOME || "");
+              env[envVar] = value.replace(/^~/, os.homedir());
             });
           }
 
@@ -941,7 +954,7 @@ const mcpController = {
       const { from, to } = authCommand.setup.copyCredential;
       const sourcePath = credentials?.[from];
       if (sourcePath) {
-        const destPath = to.replace(/^~/, process.env.HOME || "");
+        const destPath = to.replace(/^~/, os.homedir());
         const destDir = require("path").dirname(destPath);
         try {
           fs.mkdirSync(destDir, { recursive: true });
@@ -976,7 +989,7 @@ const mcpController = {
     // Merge static env vars from authCommand with ~ expansion
     if (authCommand.staticEnv) {
       Object.entries(authCommand.staticEnv).forEach(([key, value]) => {
-        env[key] = value.replace(/^~/, process.env.HOME || "");
+        env[key] = value.replace(/^~/, os.homedir());
       });
     }
 
@@ -992,6 +1005,8 @@ const mcpController = {
       const proc = spawn(authCommand.command, resolvedArgs, {
         env,
         stdio: ["ignore", "pipe", "pipe"],
+        // Needed so Windows can launch .cmd/.bat wrappers (npx.cmd, etc).
+        shell: IS_WINDOWS,
       });
 
       let stdout = "";
