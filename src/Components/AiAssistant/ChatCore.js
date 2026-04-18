@@ -448,6 +448,10 @@ export function ChatCore({
     setStreamingText("");
     setSessionActive(false);
     saveConversation([]);
+    // Allow the initial-message auto-send to re-fire on the fresh
+    // empty conversation. Without this reset, the greeting only ever
+    // appears once per mount, and New Chat leaves the panel blank.
+    initialMessageFiredRef.current = false;
 
     if (isCliBackend && mainApi?.llm?.clearCliSession) {
       mainApi.llm.clearCliSession(uuid || persistKey || sessionKey);
