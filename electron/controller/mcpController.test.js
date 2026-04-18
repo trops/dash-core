@@ -23,12 +23,13 @@ const fnSource = mcpControllerSource.substring(fnStart, fnEnd);
 const testModule = new Function(
   "require",
   "process",
+  "os",
   `
     const fs = require("fs");
     ${fnSource}
     return { refreshGoogleOAuthToken };
 `,
-)(require, process);
+)(require, process, require("os"));
 
 const { refreshGoogleOAuthToken } = testModule;
 
