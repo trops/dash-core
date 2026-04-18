@@ -31,7 +31,12 @@ export const MessageBubble = ({
   streamingText,
   isLast = false,
 }) => {
-  const { role, content, toolCalls } = message;
+  const { role, content, toolCalls, hidden } = message;
+
+  // App-injected priming messages (e.g. widget-builder "Hello…" seed)
+  // are kept in state for conversation continuity but suppressed from
+  // the rendered timeline — the user sees only the agent's reply.
+  if (hidden) return null;
 
   if (role === "user") {
     const text =

@@ -34,10 +34,21 @@ export function ChatCore({
   api = null,
   uuid = null,
   persistKey = null,
+  // Like persistKey but uses sessionStorage — chat survives component
+  // unmount/remount within the same Electron window (e.g. collapsing
+  // and re-opening a sidebar) but resets when the app window closes.
+  // Useful for sidebar-style assistants where long-lived
+  // cross-session history isn't desired.
+  sessionKey = null,
   backend = "anthropic",
   onPublishEvent = null,
   hideToolsBanner = false,
   cwd = null,
+  // Optional starter message auto-sent when the chat mounts with an
+  // empty conversation. Used by callers that want the AI to greet /
+  // orient the user before they type anything (e.g. the widget
+  // builder introducing the widget being edited).
+  initialMessage = null,
 }) {
   const mainApi = window.mainApi;
 
@@ -104,9 +115,15 @@ export function ChatCore({
         } catch (e) {
           /* ignore quota errors */
         }
+      } else if (sessionKey) {
+        try {
+          sessionStorage.setItem(sessionKey, JSON.stringify(data));
+        } catch (e) {
+          /* ignore quota errors */
+        }
       }
     },
-    [api, uuid, persistKey, enabledTools],
+    [api, uuid, persistKey, sessionKey, enabledTools],
   );
 
   // Load saved conversation on mount
@@ -139,8 +156,23 @@ export function ChatCore({
       } catch (e) {
         /* ignore */
       }
+    } else if (sessionKey) {
+      try {
+        const raw = sessionStorage.getItem(sessionKey);
+        if (raw) {
+          const data = JSON.parse(raw);
+          if (data?.messages && Array.isArray(data.messages)) {
+            setMessages(data.messages);
+          }
+          if (data?.enabledTools) {
+            setEnabledTools(data.enabledTools);
+          }
+        }
+      } catch (e) {
+        /* ignore */
+      }
     }
-  }, [api, uuid, persistKey]);
+  }, [api, uuid, persistKey, sessionKey]);
 
   // Discover connected MCP tools (only for anthropic backend)
   const refreshTools = useCallback(() => {
@@ -257,9 +289,12 @@ export function ChatCore({
     };
   }, [mainApi, onPublishEvent, saveConversation]);
 
-  // Send message
+  // Send message. `options.hidden` marks the user message so
+  // MessageBubble skips rendering it — useful for app-injected
+  // priming prompts where the agent's reply should appear first,
+  // but the prompt still needs to be in conversation history.
   const handleSend = useCallback(
-    (text) => {
+    (text, options = {}) => {
       if (!mainApi?.llm || isLoading) return;
 
       setError(null);
@@ -268,6 +303,7 @@ export function ChatCore({
         id: `msg-${Date.now()}`,
         role: "user",
         content: text,
+        hidden: options.hidden === true,
       };
 
       const updatedMessages = [...messages, userMessage];
@@ -295,7 +331,7 @@ export function ChatCore({
         }
       }
 
-      const requestId = generateRequestId(uuid || persistKey);
+      const requestId = generateRequestId(uuid || persistKey || sessionKey);
       activeRequestId.current = requestId;
       toolCallsRef.current = [];
       setIsLoading(true);
@@ -320,7 +356,7 @@ export function ChatCore({
         toolServerMap,
         systemPrompt,
         maxToolRounds: parseInt(maxToolRounds, 10) || 10,
-        widgetUuid: uuid || persistKey,
+        widgetUuid: uuid || persistKey || sessionKey,
         cwd: cwd || undefined,
       });
     },
@@ -378,6 +414,32 @@ export function ChatCore({
     }
   }, [mainApi, streamingText, saveConversation]);
 
+  // Auto-send an initial message once the chat is ready and empty.
+  // Runs at most once per mount. Skipped if the conversation was
+  // restored from persistence (messages already populated) or the
+  // backend isn't ready yet.
+  const initialMessageFiredRef = useRef(false);
+  useEffect(() => {
+    if (initialMessageFiredRef.current) return;
+    if (!initialMessage) return;
+    if (!mainApi?.llm) return;
+    if (isLoading) return;
+    if (messages.length !== 0) return;
+    // CLI backend: wait for availability check to resolve.
+    if (isCliBackend && cliAvailable === null) return;
+    if (isCliBackend && !cliAvailable) return;
+    initialMessageFiredRef.current = true;
+    handleSend(initialMessage, { hidden: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    initialMessage,
+    mainApi,
+    messages,
+    isCliBackend,
+    cliAvailable,
+    isLoading,
+  ]);
+
   // New chat
   const handleNewChat = () => {
     if (isLoading) handleStop();
@@ -388,7 +450,7 @@ export function ChatCore({
     saveConversation([]);
 
     if (isCliBackend && mainApi?.llm?.clearCliSession) {
-      mainApi.llm.clearCliSession(uuid || persistKey);
+      mainApi.llm.clearCliSession(uuid || persistKey || sessionKey);
     }
   };
 
@@ -396,7 +458,7 @@ export function ChatCore({
   const handleEndSession = () => {
     if (!isCliBackend || !mainApi?.llm?.endCliSession) return;
     if (isLoading) handleStop();
-    mainApi.llm.endCliSession(uuid || persistKey);
+    mainApi.llm.endCliSession(uuid || persistKey || sessionKey);
     setSessionActive(false);
   };
 
