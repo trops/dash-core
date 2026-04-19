@@ -12,6 +12,7 @@ const {
   handleCreateDashboard,
   handleDeleteDashboard,
   handleGetAppStats,
+  handleSearchRegistryDashboards,
 } = require("./toolHandlers");
 
 // Map tool names to handler functions
@@ -21,6 +22,7 @@ const handlerMap = {
   create_dashboard: handleCreateDashboard,
   delete_dashboard: handleDeleteDashboard,
   get_app_stats: handleGetAppStats,
+  search_registry_dashboards: handleSearchRegistryDashboards,
 };
 
 /**

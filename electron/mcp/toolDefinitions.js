@@ -98,6 +98,27 @@ const dashboardTools = [
       required: [],
     },
   },
+  {
+    name: "search_registry_dashboards",
+    description:
+      "Search the online Dash registry for pre-built dashboard templates. Returns matching dashboards with their names, descriptions, and the list of widgets they require. Useful when the user asks for a dashboard by topic (e.g. 'find me a sales dashboard'). If `compatibleWidgetsOnly` is true, only dashboards whose required widgets are ALL already installed are returned — safe to install without additional widget downloads. Otherwise, include dashboards that may require pulling in new widget packages first.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description:
+            "Search keyword to match against dashboard names, descriptions, and tags",
+        },
+        compatibleWidgetsOnly: {
+          type: "boolean",
+          description:
+            "When true, restrict results to dashboards whose required widgets are already installed. Defaults to false (returns all matches).",
+        },
+      },
+      required: ["query"],
+    },
+  },
 ];
 
 const widgetTools = [
@@ -304,6 +325,22 @@ const themeTools = [
         },
       },
       required: ["name"],
+    },
+  },
+  {
+    name: "search_registry_themes",
+    description:
+      "Search the online Dash registry for themes by keyword. Returns matching theme packages with their names, descriptions, and preview metadata. Useful when the user asks for a theme style (e.g. 'find me a dark purple theme') and the local `list_themes` set doesn't have a good match. Each result includes an `installed` boolean — if false, call `install_registry_theme` to pull it in, then `apply_theme` to activate.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description:
+            "Search keyword to match against theme names, descriptions, and tags",
+        },
+      },
+      required: ["query"],
     },
   },
 ];

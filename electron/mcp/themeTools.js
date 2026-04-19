@@ -12,6 +12,7 @@ const {
   handleCreateTheme,
   handleCreateThemeFromUrl,
   handleApplyTheme,
+  handleSearchRegistryThemes,
 } = require("./toolHandlers");
 
 // Map tool names to handler functions
@@ -21,6 +22,7 @@ const handlerMap = {
   create_theme: handleCreateTheme,
   create_theme_from_url: handleCreateThemeFromUrl,
   apply_theme: handleApplyTheme,
+  search_registry_themes: handleSearchRegistryThemes,
 };
 
 /**
