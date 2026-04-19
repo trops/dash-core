@@ -194,6 +194,50 @@ const cliController = {
       "--verbose",
     ];
 
+    // Auto-wire the hosted Dash MCP server so the assistant can use Dash
+    // tools (apply_theme, create_dashboard, add_widget, etc.) without
+    // the user running `claude mcp add dash ...` themselves. We pass an
+    // inline --mcp-config every spawn; merges with any user-configured
+    // MCPs so their other tools (github, slack, etc.) remain available.
+    //
+    // Prereqs: the Dash MCP server is running and has issued a bearer
+    // token. If either is missing (server disabled, first launch before
+    // auto-start completes), we silently skip — the assistant still
+    // works for non-Dash queries, and the setup banner remains visible
+    // as a manual fallback.
+    try {
+      const mcpDashServerController = require("./mcpDashServerController");
+      const status = mcpDashServerController.getStatus?.(win);
+      if (status?.running) {
+        const token = mcpDashServerController.getOrCreateToken?.(win);
+        if (token) {
+          const port = status.port || 3141;
+          const mcpConfig = JSON.stringify({
+            mcpServers: {
+              dash: {
+                type: "stdio",
+                command: "npx",
+                args: [
+                  "mcp-remote",
+                  `https://127.0.0.1:${port}/mcp`,
+                  "--header",
+                  `Authorization: Bearer ${token}`,
+                ],
+                env: { NODE_TLS_REJECT_UNAUTHORIZED: "0" },
+              },
+            },
+          });
+          args.push("--mcp-config", mcpConfig);
+        }
+      }
+    } catch (err) {
+      // Non-fatal: log and continue without Dash MCP.
+      console.warn(
+        "[cliController] Failed to inject Dash MCP config:",
+        err?.message,
+      );
+    }
+
     if (model) {
       args.push("--model", model);
     }
