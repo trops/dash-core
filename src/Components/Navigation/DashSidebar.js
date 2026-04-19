@@ -188,6 +188,7 @@ const FooterPopover = ({
 }) => {
   const buttonRef = useRef(null);
   const [doNotDisturb, setDoNotDisturb] = useState(false);
+  const { currentTheme } = useContext(ThemeContext) || {};
 
   const displayName =
     authStatus === "authenticated" && authProfile
@@ -267,7 +268,7 @@ const FooterPopover = ({
                 />
                 <Popover.Panel
                   static
-                  className="fixed w-52 rounded-lg border border-white/10 bg-neutral-900 shadow-xl"
+                  className={`fixed w-52 rounded-lg border border-white/10 ${currentTheme?.["bg-primary-dark"] || "bg-neutral-900"} shadow-xl`}
                   style={{
                     zIndex: 9999,
                     left: rect?.left ?? 0,

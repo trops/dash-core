@@ -4,6 +4,8 @@
  * Renders a single message — user, assistant (with markdown), or tool-use blocks.
  * Includes role labels for clear visual differentiation.
  */
+import { useContext } from "react";
+import { ThemeContext } from "@trops/dash-react";
 import { StreamingText } from "./StreamingText";
 import { ToolCallBlock } from "./ToolCallBlock";
 import { marked } from "marked";
@@ -32,6 +34,18 @@ export const MessageBubble = ({
   isLast = false,
 }) => {
   const { role, content, toolCalls, hidden } = message;
+  const { currentTheme } = useContext(ThemeContext) || {};
+  // Prefer theme-provided panel colors so assistant chrome follows the
+  // active app theme. Fall back to the original muted neutral if no
+  // theme is in scope.
+  const bubbleBg =
+    currentTheme?.["bg-secondary-dark"] ||
+    currentTheme?.["bg-primary-dark"] ||
+    "bg-gray-800/40";
+  const userBubbleBg =
+    currentTheme?.["bg-primary-bright"] ||
+    currentTheme?.["bg-primary"] ||
+    "bg-indigo-700/40";
 
   // App-injected priming messages (e.g. widget-builder "Hello…" seed)
   // are kept in state for conversation continuity but suppressed from
@@ -55,7 +69,9 @@ export const MessageBubble = ({
           <div className="text-[10px] font-semibold uppercase tracking-wider text-indigo-400 mb-1 text-right">
             You
           </div>
-          <div className="px-3 py-2 rounded-lg bg-indigo-700/40 text-sm text-gray-100 whitespace-pre-wrap break-words leading-relaxed">
+          <div
+            className={`px-3 py-2 rounded-lg text-sm text-gray-100 whitespace-pre-wrap break-words leading-relaxed ${userBubbleBg}`}
+          >
             {text}
           </div>
         </div>
@@ -116,7 +132,9 @@ export const MessageBubble = ({
             <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
               Assistant
             </div>
-            <div className="text-sm leading-relaxed px-3 py-2 rounded-lg bg-gray-800/40 text-gray-500 italic">
+            <div
+              className={`text-sm leading-relaxed px-3 py-2 rounded-lg text-gray-500 italic ${bubbleBg}`}
+            >
               Thinking...
             </div>
           </div>
@@ -130,7 +148,9 @@ export const MessageBubble = ({
         <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
           Assistant
         </div>
-        <div className="text-sm leading-relaxed px-3 py-2 rounded-lg bg-gray-800/40">
+        <div
+          className={`text-sm leading-relaxed px-3 py-2 rounded-lg ${bubbleBg}`}
+        >
           {isStreaming && (
             <div className="text-gray-200">
               <StreamingText text={streamingText} isStreaming={true} />

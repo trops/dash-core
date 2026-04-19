@@ -324,6 +324,20 @@ const DashboardStageInner = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ─── Listen for external "apply theme" requests ─────────────────
+  // MCP-driven apply_theme updates settings in the main process; this
+  // listener pulls the new theme into ThemeContext without a remount.
+  useEffect(() => {
+    const handler = (e) => {
+      const themeKey = e?.detail?.themeKey;
+      if (themeKey && typeof changeCurrentTheme === "function") {
+        changeCurrentTheme(themeKey);
+      }
+    };
+    window.addEventListener("dash:apply-theme", handler);
+    return () => window.removeEventListener("dash:apply-theme", handler);
+  }, [changeCurrentTheme]);
+
   // ─── Listen for external "open workspace" requests ──────────────
   // Fired by: Dash.js notification click, MCP state-changed for
   // create_dashboard, etc. Any code that wants to switch the active

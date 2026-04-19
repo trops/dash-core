@@ -289,13 +289,18 @@ const themeTools = [
   {
     name: "apply_theme",
     description:
-      "Apply a saved theme to the active dashboard. The theme must already exist -- use list_themes to see available themes, or create one first with create_theme or create_theme_from_url.",
+      "Apply a saved theme. Omit `dashboard` to set the app-wide default theme (affects every dashboard that doesn't have its own override). Pass `dashboard` (name or ID) to set that dashboard's theme override instead — useful when the user asks for a theme on a specific dashboard (e.g. 'apply ocean to my Sales dashboard'). The theme must already exist; use list_themes to see available themes or create one with create_theme / create_theme_from_url.",
     inputSchema: {
       type: "object",
       properties: {
         name: {
           type: "string",
           description: "Name of the theme to apply",
+        },
+        dashboard: {
+          type: "string",
+          description:
+            "Optional dashboard name or numeric ID. Omit for app-wide application.",
         },
       },
       required: ["name"],
