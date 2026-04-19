@@ -351,24 +351,38 @@ const cliController = {
               activeToolCalls.set(parsed.index, {
                 toolUseId: toolBlock.id,
                 toolName: toolBlock.name,
+                // Seed with any input already present on the start event.
+                seedInput: toolBlock.input || {},
                 partialInput: "",
               });
-              safeSend(win, LLM_STREAM_TOOL_CALL, {
-                requestId,
-                toolUseId: toolBlock.id,
-                toolName: toolBlock.name,
-                serverName: "Claude Code",
-                input: toolBlock.input || {},
-              });
+              // Emission deferred to content_block_stop so the renderer
+              // receives the fully-parsed input (the Anthropic streaming
+              // format delivers input as incremental JSON deltas).
             }
           } else if (parsed.type === "content_block_stop") {
-            // Tool call completed — try to parse the accumulated input
+            // Tool call completed — parse accumulated input and emit the
+            // single LLM_STREAM_TOOL_CALL for this tool with the real input.
             const tc = activeToolCalls.get(parsed.index);
-            if (tc && tc.partialInput) {
-              try {
-                tc.finalInput = JSON.parse(tc.partialInput);
-              } catch {
-                tc.finalInput = tc.partialInput;
+            if (tc) {
+              if (tc.partialInput) {
+                try {
+                  tc.finalInput = JSON.parse(tc.partialInput);
+                } catch {
+                  tc.finalInput = tc.partialInput;
+                }
+              }
+              const resolvedInput =
+                tc.finalInput !== undefined
+                  ? tc.finalInput
+                  : tc.seedInput || {};
+              if (tc.toolUseId && tc.toolName) {
+                safeSend(win, LLM_STREAM_TOOL_CALL, {
+                  requestId,
+                  toolUseId: tc.toolUseId,
+                  toolName: tc.toolName,
+                  serverName: "Claude Code",
+                  input: resolvedInput,
+                });
               }
             }
           } else if (parsed.type === "message_stop") {
