@@ -197,3 +197,21 @@ describe("searchDashboards", () => {
     assert.equal(result.packages[0].name, "simple-dashboard");
   });
 });
+
+describe("fetchPackageSource — validation", () => {
+  it("throws when packageName is missing", async () => {
+    const { fetchPackageSource } = require("./registryController");
+    await assert.rejects(
+      () => fetchPackageSource(""),
+      /packageName is required/,
+    );
+  });
+
+  it("throws when package is not found in the registry", async () => {
+    const { fetchPackageSource } = require("./registryController");
+    await assert.rejects(
+      () => fetchPackageSource("non-existent-package"),
+      /not found in the registry/,
+    );
+  });
+});
