@@ -12,6 +12,7 @@
 
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 const { toPackageId } = require("../utils/packageId");
 const { getStoredToken } = require("./registryAuthController");
 
@@ -404,6 +405,169 @@ async function searchThemes(query = "", filters = {}) {
   return searchRegistry(query, { ...filters, type: "theme" });
 }
 
+/**
+ * Fetch a registry package's source files into a temp directory and return
+ * the parsed component + config source (and prebuilt bundle, if present)
+ * WITHOUT installing the package into the user's widget library.
+ *
+ * Used by read-only preview flows (e.g. the Widget Builder's Discover tab)
+ * where the user is browsing registry widgets and wants to see them render
+ * inline before choosing to install or remix.
+ *
+ * @param {string} packageName - Any form accepted by getPackage()
+ *   (bare name, scoped "scope/name", or displayName)
+ * @returns {Promise<Object>} {
+ *   componentCode, configCode, bundleSource, widgetName,
+ *   displayName, description, packageName, scope, downloadUrl
+ * }
+ */
+async function fetchPackageSource(packageName) {
+  if (!packageName) {
+    throw new Error("fetchPackageSource: packageName is required");
+  }
+
+  // adm-zip is only available in the host app's node_modules (dash-electron),
+  // so defer loading until the function actually runs.
+  const AdmZip = require("adm-zip");
+  const { validateZipEntries } = require("../widgetRegistry");
+
+  const pkg = await getPackage(packageName);
+  if (!pkg) {
+    throw new Error(`Package "${packageName}" not found in the registry`);
+  }
+  if (!pkg.downloadUrl) {
+    throw new Error(`Package "${packageName}" has no downloadUrl`);
+  }
+
+  const parsedUrl = new URL(pkg.downloadUrl);
+  if (parsedUrl.protocol !== "https:") {
+    throw new Error(
+      `Registry downloads must use HTTPS. Refusing to fetch: ${pkg.downloadUrl}`,
+    );
+  }
+
+  const fetchOpts = {};
+  const registryBase =
+    process.env.DASH_REGISTRY_API_URL ||
+    "https://main.d919rwhuzp7rj.amplifyapp.com";
+  if (
+    pkg.downloadUrl.includes(registryBase) ||
+    pkg.downloadUrl.includes("/api/packages/")
+  ) {
+    const auth = getStoredToken();
+    if (auth?.token) {
+      fetchOpts.headers = { Authorization: `Bearer ${auth.token}` };
+    }
+  }
+
+  const response = await fetch(pkg.downloadUrl, fetchOpts);
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error("Authentication required to preview this package");
+    }
+    throw new Error(`Failed to fetch package: ${response.statusText}`);
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  let buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length === 0) {
+    throw new Error("Preview failed: registry returned an empty response");
+  }
+  if (contentType.includes("text/html")) {
+    throw new Error(
+      "Preview failed: registry returned an HTML page instead of package data",
+    );
+  }
+  if (contentType.includes("application/json")) {
+    const jsonData = JSON.parse(buffer.toString("utf-8"));
+    if (jsonData.error) {
+      throw new Error(`Preview failed: ${jsonData.error}`);
+    }
+    if (jsonData.downloadUrl) {
+      const zipResponse = await fetch(jsonData.downloadUrl);
+      if (!zipResponse.ok) {
+        throw new Error(
+          `Preview failed: storage returned ${zipResponse.status} ${zipResponse.statusText}`,
+        );
+      }
+      buffer = Buffer.from(await zipResponse.arrayBuffer());
+    }
+  }
+
+  const zip = new AdmZip(buffer);
+  const safeName = (pkg.name || "pkg").replace(/[^a-zA-Z0-9-_]/g, "_");
+  const tempDir = path.join(
+    os.tmpdir(),
+    `dash-registry-preview-${safeName}-${Date.now()}`,
+  );
+
+  try {
+    validateZipEntries(zip, tempDir);
+    zip.extractAllTo(tempDir, true);
+
+    const widgetsDir = path.join(tempDir, "widgets");
+    let componentCode = "";
+    let configCode = "";
+    let widgetName = null;
+
+    if (fs.existsSync(widgetsDir)) {
+      const files = fs.readdirSync(widgetsDir);
+      const configFile = files.find((f) => f.endsWith(".dash.js"));
+      if (configFile) {
+        configCode = fs.readFileSync(path.join(widgetsDir, configFile), "utf8");
+        widgetName = configFile.replace(/\.dash\.js$/, "");
+      }
+      const componentFile = files.find(
+        (f) => f.endsWith(".js") && !f.endsWith(".dash.js"),
+      );
+      if (componentFile) {
+        componentCode = fs.readFileSync(
+          path.join(widgetsDir, componentFile),
+          "utf8",
+        );
+        if (!widgetName) widgetName = componentFile.replace(/\.js$/, "");
+      }
+    }
+
+    let bundleSource = null;
+    const bundlePath = path.join(tempDir, "dist", "index.cjs.js");
+    if (fs.existsSync(bundlePath)) {
+      bundleSource = fs.readFileSync(bundlePath, "utf8");
+    }
+
+    let dashMeta = {};
+    const dashPath = path.join(tempDir, "dash.json");
+    if (fs.existsSync(dashPath)) {
+      try {
+        dashMeta = JSON.parse(fs.readFileSync(dashPath, "utf8"));
+      } catch {
+        // Ignore — metadata is optional for preview
+      }
+    }
+
+    return {
+      componentCode,
+      configCode,
+      bundleSource,
+      widgetName,
+      displayName: pkg.displayName || dashMeta.displayName || widgetName,
+      description: pkg.description || dashMeta.description || "",
+      packageName: pkg.name,
+      scope: pkg.scope,
+      downloadUrl: pkg.downloadUrl,
+    };
+  } finally {
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    } catch (err) {
+      console.warn(
+        `[RegistryController] Failed to clean up preview temp dir ${tempDir}:`,
+        err.message,
+      );
+    }
+  }
+}
+
 module.exports = {
   fetchRegistryIndex,
   searchRegistry,
@@ -411,4 +575,5 @@ module.exports = {
   searchThemes,
   getPackage,
   checkUpdates,
+  fetchPackageSource,
 };

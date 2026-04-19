@@ -155,6 +155,27 @@ const registryApi = {
       throw error;
     }
   },
+
+  /**
+   * Fetch a registry package's source (component + config + bundle) into a
+   * temp directory and return the source strings without installing the
+   * package. Used by read-only preview flows (e.g. the Widget Builder's
+   * Discover tab).
+   *
+   * @param {string} packageName - Name of the package (any form)
+   * @returns {Promise<Object>} { componentCode, configCode, bundleSource, widgetName, displayName, description, packageName, scope, downloadUrl }
+   */
+  previewFetch: async (packageName) => {
+    try {
+      return await ipcRenderer.invoke("registry:preview-fetch", packageName);
+    } catch (error) {
+      console.error(
+        `[RegistryApi] Error fetching preview source for ${packageName}:`,
+        error,
+      );
+      throw error;
+    }
+  },
 };
 
 module.exports = registryApi;
