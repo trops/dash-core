@@ -1943,6 +1943,159 @@ async function handleApplyTheme({ name, dashboard }) {
   };
 }
 
+/**
+ * search_registry_themes — Search the online Dash registry for themes by
+ * keyword. Companion to list_themes (which lists already-saved themes).
+ */
+async function handleSearchRegistryThemes({ query }) {
+  if (!query || typeof query !== "string" || !query.trim()) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "query is required and must be a non-empty string",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  try {
+    const result = await registryController.searchThemes(query.trim());
+    const packages = result.packages || [];
+
+    // Build a set of locally-saved theme names so the LLM knows which
+    // registry themes are already available.
+    let installedNames = new Set();
+    try {
+      const { win, appId } = requireContext();
+      const local = themeController.listThemesForApplication(win, appId);
+      const themeMap = local?.themes || {};
+      installedNames = new Set(Object.keys(themeMap));
+    } catch {
+      /* best-effort — continue with empty set if context unavailable */
+    }
+
+    const themes = packages.map((pkg) => ({
+      name: pkg.name,
+      scope: pkg.scope || null,
+      displayName: pkg.displayName || pkg.name,
+      description: pkg.description || "",
+      icon: pkg.icon || null,
+      installed: installedNames.has(pkg.name),
+      preview: pkg.preview || null,
+    }));
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            { query: query.trim(), themes, count: themes.length },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  } catch (err) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: `Failed to search theme registry: ${err.message}`,
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+}
+
+/**
+ * search_registry_dashboards — Search the online Dash registry for
+ * pre-built dashboard templates.
+ */
+async function handleSearchRegistryDashboards({
+  query,
+  compatibleWidgetsOnly = false,
+}) {
+  if (!query || typeof query !== "string" || !query.trim()) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "query is required and must be a non-empty string",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  try {
+    // If compatibility filter requested, compute the list of widget
+    // scoped IDs the user currently has installed. The registry
+    // filter in searchDashboards then prunes dashboards whose required
+    // widgets aren't all present.
+    let filters = {};
+    if (compatibleWidgetsOnly) {
+      const installedPkgs = getInstalledPackageNames();
+      filters.compatibleWidgets = Array.from(installedPkgs);
+    }
+
+    const result = await registryController.searchDashboards(
+      query.trim(),
+      filters,
+    );
+    const packages = result.packages || [];
+
+    const dashboards = packages.map((pkg) => ({
+      name: pkg.name,
+      scope: pkg.scope || null,
+      displayName: pkg.displayName || pkg.name,
+      description: pkg.description || "",
+      icon: pkg.icon || null,
+      requiredWidgets: pkg.requiredWidgets || pkg.widgets || [],
+      preview: pkg.preview || null,
+    }));
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              query: query.trim(),
+              compatibleWidgetsOnly,
+              dashboards,
+              count: dashboards.length,
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  } catch (err) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: `Failed to search dashboard registry: ${err.message}`,
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+}
+
 // --- Provider Tool Handlers ---
 
 const { PROVIDER_LIST_COMPLETE } = require("../events");
@@ -2808,6 +2961,8 @@ module.exports = {
   handleCreateTheme,
   handleCreateThemeFromUrl,
   handleApplyTheme,
+  handleSearchRegistryThemes,
+  handleSearchRegistryDashboards,
   handleListProviders,
   handleAddProvider,
   handleRemoveProvider,

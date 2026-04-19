@@ -51,6 +51,8 @@ const dashToolHandlerMap = {
   create_theme: toolHandlers.handleCreateTheme,
   create_theme_from_url: toolHandlers.handleCreateThemeFromUrl,
   apply_theme: toolHandlers.handleApplyTheme,
+  search_registry_themes: toolHandlers.handleSearchRegistryThemes,
+  search_registry_dashboards: toolHandlers.handleSearchRegistryDashboards,
   list_providers: toolHandlers.handleListProviders,
   add_provider: toolHandlers.handleAddProvider,
   remove_provider: toolHandlers.handleRemoveProvider,
