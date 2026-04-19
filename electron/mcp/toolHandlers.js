@@ -1771,7 +1771,7 @@ async function handleCreateThemeFromUrl({ url, name }) {
  * apply_theme — Applies a saved theme to the active dashboard.
  * Updates settings to set the active theme key and notifies the renderer.
  */
-async function handleApplyTheme({ name }) {
+async function handleApplyTheme({ name, dashboard }) {
   if (!name || typeof name !== "string" || !name.trim()) {
     return {
       content: [
@@ -1818,7 +1818,93 @@ async function handleApplyTheme({ name }) {
     };
   }
 
-  // Update settings to set the active theme
+  // Dashboard-scoped apply: if the caller provided `dashboard`
+  // (either a workspace ID or a workspace name), set that workspace's
+  // theme override instead of the global default. Empty/omitted
+  // `dashboard` means app-level.
+  const dashboardRef =
+    typeof dashboard === "string" ? dashboard.trim() : dashboard;
+  if (
+    dashboardRef !== undefined &&
+    dashboardRef !== null &&
+    dashboardRef !== ""
+  ) {
+    const wsList = workspaceController.listWorkspacesForApplication(win, appId);
+    if (wsList?.error) {
+      return {
+        content: [
+          { type: "text", text: JSON.stringify({ error: wsList.message }) },
+        ],
+        isError: true,
+      };
+    }
+    const workspaces = wsList?.workspaces || [];
+    // Match by numeric ID first, then by name (case-insensitive).
+    const asNumber = Number(dashboardRef);
+    const match =
+      (!Number.isNaN(asNumber) &&
+        workspaces.find((w) => Number(w.id) === asNumber)) ||
+      workspaces.find(
+        (w) =>
+          typeof w.name === "string" &&
+          w.name.toLowerCase() === String(dashboardRef).toLowerCase(),
+      );
+    if (!match) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              error: `Dashboard not found: ${dashboardRef}. Use list_dashboards to see available dashboards.`,
+            }),
+          },
+        ],
+        isError: true,
+      };
+    }
+    // The renderer reads `workspace.themeKey` (via WorkspaceModel and
+    // DashboardThemeProvider) — NOT `workspace.theme`. Set both for
+    // forward-compat in case anything else reads the older field, but
+    // `themeKey` is the one that actually drives the override.
+    const updated = { ...match, themeKey: themeName, theme: themeName };
+    const saveResult = workspaceController.saveWorkspaceForApplication(
+      win,
+      appId,
+      updated,
+    );
+    if (saveResult?.error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ error: saveResult.message }),
+          },
+        ],
+        isError: true,
+      };
+    }
+    win.webContents.send("workspace:saved");
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              name: themeName,
+              applied: true,
+              scope: "dashboard",
+              dashboardId: String(match.id),
+              dashboardName: match.name,
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  }
+
+  // App-level apply: update application settings
   const settingsResult = settingsController.getSettingsForApplication(win);
   const settings = settingsResult?.settings || {};
   settings.theme = themeName;
@@ -1847,7 +1933,11 @@ async function handleApplyTheme({ name }) {
     content: [
       {
         type: "text",
-        text: JSON.stringify({ name: themeName, applied: true }, null, 2),
+        text: JSON.stringify(
+          { name: themeName, applied: true, scope: "app" },
+          null,
+          2,
+        ),
       },
     ],
   };
