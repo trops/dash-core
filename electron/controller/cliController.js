@@ -330,6 +330,36 @@ const cliController = {
             sessions.set(widgetUuid, capturedSessionId);
           }
 
+          // Claude Code's stream-json emits complete-message envelopes
+          // ({"type": "assistant", "message": {content: [...]}}) rather
+          // than the granular content_block_start/delta/stop events used
+          // by the raw Anthropic streaming API. We handle both shapes —
+          // the complete-message path is the one that actually fires in
+          // CLI mode today (the content_block_* branches remain in case a
+          // future CLI version or --include-partial-messages flag brings
+          // back the granular form).
+          if (parsed.type === "assistant" && parsed.message?.content) {
+            for (const block of parsed.message.content) {
+              if (block?.type === "text" && block.text) {
+                // Emit as a single delta so the renderer sees the text.
+                // (Granular deltas aren't produced in this mode.)
+                safeSend(win, LLM_STREAM_DELTA, {
+                  requestId,
+                  text: block.text,
+                });
+              } else if (block?.type === "tool_use" && block.id && block.name) {
+                safeSend(win, LLM_STREAM_TOOL_CALL, {
+                  requestId,
+                  toolUseId: block.id,
+                  toolName: block.name,
+                  serverName: "Claude Code",
+                  input: block.input || {},
+                });
+              }
+            }
+            continue;
+          }
+
           // Map CLI stream-json events to IPC events
           if (parsed.type === "content_block_delta") {
             if (parsed.delta?.type === "text_delta" && parsed.delta.text) {
