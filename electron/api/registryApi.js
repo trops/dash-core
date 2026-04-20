@@ -163,11 +163,18 @@ const registryApi = {
    * Discover tab).
    *
    * @param {string} packageName - Name of the package (any form)
+   * @param {string} [componentName] - Specific widget in a multi-widget
+   *   package. Accepts either a bare name ("FlipClockWidget") or a dotted
+   *   scoped id ("trops.clock.FlipClockWidget").
    * @returns {Promise<Object>} { componentCode, configCode, bundleSource, widgetName, displayName, description, packageName, scope, downloadUrl }
    */
-  previewFetch: async (packageName) => {
+  previewFetch: async (packageName, componentName = null) => {
     try {
-      return await ipcRenderer.invoke("registry:preview-fetch", packageName);
+      return await ipcRenderer.invoke(
+        "registry:preview-fetch",
+        packageName,
+        componentName,
+      );
     } catch (error) {
       console.error(
         `[RegistryApi] Error fetching preview source for ${packageName}:`,
