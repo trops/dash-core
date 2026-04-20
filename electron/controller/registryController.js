@@ -414,14 +414,23 @@ async function searchThemes(query = "", filters = {}) {
  * where the user is browsing registry widgets and wants to see them render
  * inline before choosing to install or remix.
  *
+ * Multi-widget packages (e.g. @trops/clock contains Analog/Digital/Flip/Text
+ * clocks) ship with one .js + .dash.js pair per widget. Pass `componentName`
+ * to pick a specific widget — otherwise we return the alphabetically-first
+ * widget found, which is almost never what the caller wants for UI previews.
+ *
  * @param {string} packageName - Any form accepted by getPackage()
  *   (bare name, scoped "scope/name", or displayName)
+ * @param {string} [componentName] - Specific widget inside the package to
+ *   return. Matched against file names in `widgets/`. Accepts either a
+ *   bare name ("FlipClockWidget") or a dotted scoped id
+ *   ("trops.clock.FlipClockWidget") — the last dotted segment is used.
  * @returns {Promise<Object>} {
  *   componentCode, configCode, bundleSource, widgetName,
  *   displayName, description, packageName, scope, downloadUrl
  * }
  */
-async function fetchPackageSource(packageName) {
+async function fetchPackageSource(packageName, componentName = null) {
   if (!packageName) {
     throw new Error("fetchPackageSource: packageName is required");
   }
@@ -512,14 +521,40 @@ async function fetchPackageSource(packageName) {
 
     if (fs.existsSync(widgetsDir)) {
       const files = fs.readdirSync(widgetsDir);
-      const configFile = files.find((f) => f.endsWith(".dash.js"));
+      const dashFiles = files.filter((f) => f.endsWith(".dash.js"));
+      const componentFiles = files.filter(
+        (f) => f.endsWith(".js") && !f.endsWith(".dash.js") && f !== "index.js",
+      );
+
+      // Normalize componentName hint: accept "FlipClockWidget" or the
+      // dotted form "trops.clock.FlipClockWidget" (last segment wins).
+      const bareHint =
+        typeof componentName === "string" && componentName.length
+          ? componentName.split(".").pop()
+          : null;
+
+      // Pick the .dash.js pair that matches the hint; fall back to the
+      // first file so pre-hint callers still work.
+      let configFile = null;
+      if (bareHint) {
+        configFile = dashFiles.find((f) => f === `${bareHint}.dash.js`);
+      }
+      if (!configFile) configFile = dashFiles[0];
+
       if (configFile) {
         configCode = fs.readFileSync(path.join(widgetsDir, configFile), "utf8");
         widgetName = configFile.replace(/\.dash\.js$/, "");
       }
-      const componentFile = files.find(
-        (f) => f.endsWith(".js") && !f.endsWith(".dash.js"),
-      );
+
+      let componentFile = null;
+      if (widgetName) {
+        componentFile = componentFiles.find((f) => f === `${widgetName}.js`);
+      }
+      if (!componentFile && bareHint) {
+        componentFile = componentFiles.find((f) => f === `${bareHint}.js`);
+      }
+      if (!componentFile) componentFile = componentFiles[0];
+
       if (componentFile) {
         componentCode = fs.readFileSync(
           path.join(widgetsDir, componentFile),
