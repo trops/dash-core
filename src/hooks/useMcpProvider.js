@@ -73,9 +73,16 @@ export const useMcpProvider = (providerType, options = {}) => {
   // Get the widget data and compute effective allowed tools
   const widgetData = widgetContext?.widgetData;
 
-  // Get the selected MCP provider for this widget
-  // First check widget-level selectedProviders (set by handleSelectProvider on the layout item),
-  // then fall back to workspace-level lookup
+  // Get the selected MCP provider for this widget. Resolution chain,
+  // highest priority first:
+  //   1. Widget-level     — layoutItem.selectedProviders[type]
+  //   2. Workspace-level  — workspace.selectedProviders[widgetId][type]
+  //   3. App default      — any provider of matching type flagged
+  //                         isDefaultForType in app.providers (managed via
+  //                         Settings → Providers "Use as default…" toggle)
+  //   4. null             — will render MissingProviderPrompt
+  // Existing widgets/workspaces retain their explicit bindings — the
+  // default layer only activates for widgets with no explicit binding.
   const widgetId = widgetData?.uuidString;
   const selectedProviderName = (() => {
     // Widget-level: stored directly on the layout item
@@ -88,6 +95,19 @@ export const useMcpProvider = (providerType, options = {}) => {
       workspace?.workspaceData?.selectedProviders?.[widgetId]?.[providerType]
     ) {
       return workspace.workspaceData.selectedProviders[widgetId][providerType];
+    }
+    // App-level default for this provider type. `app.providers` is a
+    // map keyed by provider name, so walk its entries.
+    const appProviders = app?.providers;
+    if (appProviders && typeof appProviders === "object") {
+      for (const [name, data] of Object.entries(appProviders)) {
+        if (
+          data?.type === providerType &&
+          data?.isDefaultForType === true
+        ) {
+          return name;
+        }
+      }
     }
     return null;
   })();

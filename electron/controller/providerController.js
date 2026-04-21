@@ -30,6 +30,10 @@ const providerController = {
    * @param {object} mcpConfig MCP server config (transport, command, args, envMapping) - only for providerClass "mcp"
    * @param {string[]|null} allowedTools optional list of allowed tool names - only for providerClass "mcp"
    * @param {object} wsConfig WebSocket config (url, headers, subprotocols) - only for providerClass "websocket"
+   * @param {boolean} [isDefaultForType=false] mark this provider as the app-wide default for its type.
+   *   Single-winner invariant: if true, every other provider with the same
+   *   `providerType` has its `isDefaultForType` cleared in the same save.
+   *   Consumed by the 3-layer resolution in `useMcpProvider`.
    */
   saveProvider: (
     win,
@@ -41,6 +45,9 @@ const providerController = {
     mcpConfig = null,
     allowedTools = null,
     wsConfig = null,
+    // `undefined` means "preserve whatever the saved provider has";
+    // explicit `true`/`false` flips the flag.
+    isDefaultForType = undefined,
   ) => {
     try {
       // Build file path
@@ -84,6 +91,31 @@ const providerController = {
       // Add wsConfig for WebSocket providers
       if (providerClass === "websocket" && wsConfig) {
         providerEntry.wsConfig = wsConfig;
+      }
+
+      // Preserve existing flag if caller didn't pass one; otherwise honor
+      // the caller's value. Explicit false from the caller MUST clear an
+      // existing true flag — this is how the "unset default" path works.
+      const prev = providers[providerName] || {};
+      if (typeof isDefaultForType === "boolean") {
+        providerEntry.isDefaultForType = isDefaultForType;
+      } else if (prev.isDefaultForType) {
+        providerEntry.isDefaultForType = true;
+      }
+
+      // Single-winner invariant: when flipping this provider's flag to
+      // true, clear it on every other provider with the same type. Run
+      // this BEFORE we set `providers[providerName] = providerEntry` so
+      // self is excluded naturally. Stable per-type: clearing siblings
+      // only touches `isDefaultForType` + `dateUpdated`, nothing else.
+      if (providerEntry.isDefaultForType) {
+        for (const [name, data] of Object.entries(providers)) {
+          if (name === providerName) continue;
+          if (data?.type === providerType && data?.isDefaultForType) {
+            data.isDefaultForType = false;
+            data.dateUpdated = new Date().toISOString();
+          }
+        }
       }
 
       providers[providerName] = providerEntry;
@@ -168,6 +200,7 @@ const providerController = {
             credentials,
             dateCreated: data.dateCreated,
             dateUpdated: data.dateUpdated,
+            isDefaultForType: data.isDefaultForType === true,
           };
 
           // Include mcpConfig for MCP providers
@@ -263,6 +296,7 @@ const providerController = {
         credentials,
         dateCreated: providerData.dateCreated,
         dateUpdated: providerData.dateUpdated,
+        isDefaultForType: providerData.isDefaultForType === true,
       };
 
       // Include mcpConfig for MCP providers
