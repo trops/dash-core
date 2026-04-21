@@ -18,7 +18,14 @@ jobs:
                   node-version: 22.22.1
                   registry-url: https://registry.npmjs.org/
             - run: npm ci
+            # Secret is injected into dist/mcp/servers/google-drive.js by
+            # scripts/inject-secrets.js, which the build:electron step
+            # runs. Without this env var the published package contains
+            # the literal placeholder "__GDRIVE_CLIENT_SECRET__" and the
+            # Google OAuth flow returns invalid_client at runtime.
             - run: npm run build
+              env:
+                  GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
             - run: npm publish --provenance --access public
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
