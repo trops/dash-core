@@ -1508,6 +1508,10 @@ const DashboardStageInner = ({
                       ? handleScrollableChange
                       : null
                   }
+                  onOpenConfig={
+                    popout ? null : () => setIsConfigModalOpen(true)
+                  }
+                  configUnresolvedCount={unresolvedCount}
                 />
                 <DashboardThemeProvider themeKey={workspaceSelected?.themeKey}>
                   {/* Missing widgets banner */}

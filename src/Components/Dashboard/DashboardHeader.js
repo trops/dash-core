@@ -26,6 +26,10 @@ export const DashboardHeader = ({
   onScrollableChange = null,
   sidebarEnabled = false,
   onSidebarChange = null,
+  // Dashboard Config modal trigger. Present = render a gear button in
+  // the header. `configUnresolvedCount` drives an amber dot indicator.
+  onOpenConfig = null,
+  configUnresolvedCount = 0,
 }) => {
   const [workspaceSelected, setWorkspaceSelected] = useState(workspace);
   const { currentTheme, themes: contextThemes } = useContext(ThemeContext);
@@ -52,6 +56,12 @@ export const DashboardHeader = ({
             className="font-bold text-base"
           />
           <div className="flex flex-row items-center gap-1">
+            {onOpenConfig !== null && (
+              <DashboardConfigButton
+                onClick={onOpenConfig}
+                unresolvedCount={configUnresolvedCount}
+              />
+            )}
             {onPopout !== null && (
               <ButtonIcon
                 icon="arrow-up-right-from-square"
@@ -150,7 +160,13 @@ export const DashboardHeader = ({
               />
             )}
           </div>
-          <div className="flex flex-row space-x-1 shrink-0">
+          <div className="flex flex-row space-x-1 shrink-0 items-center">
+            {onOpenConfig !== null && (
+              <DashboardConfigButton
+                onClick={onOpenConfig}
+                unresolvedCount={configUnresolvedCount}
+              />
+            )}
             {onClickEdit !== null && (
               <ButtonIcon2
                 icon="xmark"
@@ -174,3 +190,29 @@ export const DashboardHeader = ({
     </div>
   );
 };
+
+/**
+ * DashboardConfigButton — gear icon with an optional amber dot when the
+ * current dashboard has unresolved provider bindings. Opens the
+ * Dashboard Config modal. Kept local to DashboardHeader because no
+ * other caller needs it.
+ */
+function DashboardConfigButton({ onClick, unresolvedCount = 0 }) {
+  return (
+    <div className="relative inline-flex">
+      <ButtonIcon
+        icon="sliders"
+        onClick={onClick}
+        hoverBackgroundColor={"hover:bg-indigo-700"}
+      />
+      {unresolvedCount > 0 && (
+        <span
+          className="absolute top-1 right-1 h-2 w-2 rounded-full bg-amber-400 border border-black/40 pointer-events-none"
+          title={`${unresolvedCount} unresolved provider${
+            unresolvedCount === 1 ? "" : "s"
+          }`}
+        />
+      )}
+    </div>
+  );
+}
