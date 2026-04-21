@@ -257,6 +257,46 @@ export const ProvidersSection = ({
         setIsEditingMcp(false);
         resetForm();
         refreshProviders && refreshProviders();
+
+        // Bounce the running MCP subprocess so the edit takes effect without
+        // requiring the user to fully quit and relaunch the app. stopServer
+        // is a no-op if nothing was running; we always start after stopping
+        // so a disconnected provider still picks up the new config on next
+        // tool call. Errors are logged but don't block the save UX.
+        const bounceName = originalName || providerName;
+        if (bounceName) {
+          dashApi.mcpStopServer(
+            bounceName,
+            () => {},
+            (e, err) =>
+              console.warn(
+                `[ProvidersSection] mcpStopServer after save failed for ${bounceName}:`,
+                err?.message,
+              ),
+          );
+        }
+        dashApi.mcpStartServer(
+          providerName,
+          mcpConfig,
+          mcpCredentials,
+          (event, result) => {
+            if (result?.error) {
+              console.warn(
+                `[ProvidersSection] mcpStartServer after save failed for ${providerName}:`,
+                result.message,
+              );
+            } else {
+              console.log(
+                `[ProvidersSection] ${providerName} restarted with new config`,
+              );
+            }
+          },
+          (e, err) =>
+            console.warn(
+              `[ProvidersSection] mcpStartServer after save errored for ${providerName}:`,
+              err?.message,
+            ),
+        );
       },
       (e, err) => console.error("Save MCP provider error:", err),
     );
@@ -544,6 +584,7 @@ export const ProvidersSection = ({
         initialCredentials={selectedProvider.credentials || {}}
         initialAllowedTools={selectedProvider.allowedTools || null}
         initialAuthCommand={editCatalogEntry?.authCommand || null}
+        initialMcpConfig={mc}
         onSave={handleMcpEditSave}
         onBack={() => setIsEditingMcp(false)}
       />
