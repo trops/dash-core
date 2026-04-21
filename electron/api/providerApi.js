@@ -37,6 +37,10 @@ const providerApi = {
     mcpConfig = null,
     allowedTools = null,
     wsConfig = null,
+    // `undefined` (not `false`) means "don't touch the existing flag".
+    // The controller uses this to distinguish "caller didn't pass a
+    // value, preserve what's on disk" from "caller explicitly unset it".
+    isDefaultForType = undefined,
   ) =>
     ipcRenderer.invoke(PROVIDER_SAVE, {
       appId,
@@ -47,6 +51,7 @@ const providerApi = {
       mcpConfig,
       allowedTools,
       wsConfig,
+      isDefaultForType,
     }),
 
   /**

@@ -31,6 +31,7 @@ export const ProviderDetail = ({
   onCreate,
   onDelete,
   onSaveAllowedTools,
+  onToggleDefaultForType,
   catalogAuthCommand = null,
   catalogCredentialSchema = {},
 }) => {
@@ -515,6 +516,9 @@ export const ProviderDetail = ({
             <div className="flex flex-row items-center gap-2">
               <span className="text-sm opacity-50">Type:</span>
               <Tag text={provider.type} />
+              {provider.isDefaultForType && (
+                <Tag text={`Default for ${provider.type}`} />
+              )}
             </div>
           )}
           <div className="flex flex-row items-center gap-2">
@@ -525,6 +529,32 @@ export const ProviderDetail = ({
               }
             />
           </div>
+          {/* Default-for-type toggle. When set, any widget that requires
+              this provider type and hasn't been bound explicitly will use
+              this provider automatically. Single-winner per type: flipping
+              this on clears the flag on every sibling provider of the same
+              type. */}
+          {provider.type && onToggleDefaultForType && (
+            <div className="flex flex-row items-center gap-2 pt-1">
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!provider.isDefaultForType}
+                  onChange={(e) =>
+                    onToggleDefaultForType(providerName, provider, e.target.checked)
+                  }
+                  className="h-4 w-4"
+                />
+                <span>
+                  Use as default for{" "}
+                  <code className="text-xs bg-white/5 px-1.5 py-0.5 rounded">
+                    {provider.type}
+                  </code>{" "}
+                  widgets
+                </span>
+              </label>
+            </div>
+          )}
         </div>
 
         {/* MCP-specific info */}

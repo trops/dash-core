@@ -317,11 +317,40 @@ export const ProvidersSection = ({
         providerClass: "mcp",
         mcpConfig: existingProvider.mcpConfig,
         allowedTools,
+        isDefaultForType: !!existingProvider.isDefaultForType,
       },
       () => {
         refreshProviders && refreshProviders();
       },
       (e, err) => console.error("Save allowed tools error:", err),
+    );
+  }
+
+  // Flip the app-wide "default for this type" flag on a provider.
+  // Single-winner invariant is enforced in providerController.saveProvider
+  // itself (siblings of the same type get their flag cleared in the same
+  // save), so this handler just passes the new value through. We forward
+  // the provider's full existing config so saveProvider doesn't lose any
+  // other field (mcpConfig, wsConfig, allowedTools, etc.).
+  function handleToggleDefaultForType(providerName, prov, newDefault) {
+    if (!dashApi || !appId || !prov) return;
+    dashApi.saveProvider(
+      appId,
+      providerName,
+      {
+        providerType: prov.type,
+        credentials: prov.credentials,
+        providerClass: prov.providerClass || "credential",
+        mcpConfig: prov.mcpConfig || null,
+        allowedTools: prov.allowedTools || null,
+        wsConfig: prov.wsConfig || null,
+        isDefaultForType: !!newDefault,
+      },
+      () => {
+        refreshProviders && refreshProviders();
+      },
+      (e, err) =>
+        console.error("Toggle default-for-type failed:", err?.message || err),
     );
   }
 
@@ -610,6 +639,7 @@ export const ProvidersSection = ({
         onStartEdit={handleStartEdit}
         onDelete={(name) => setDeleteTarget(name)}
         onSaveAllowedTools={handleSaveAllowedTools}
+        onToggleDefaultForType={handleToggleDefaultForType}
         catalogAuthCommand={catalogEntry?.authCommand || null}
         catalogCredentialSchema={catalogEntry?.credentialSchema || {}}
       />

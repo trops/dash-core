@@ -74,10 +74,13 @@ export const useWebSocketProvider = (providerType, options = {}) => {
   // Get the widget data
   const widgetData = widgetContext?.widgetData;
 
-  // Get the selected WebSocket provider for this widget
-  // Same two-layer lookup as useMcpProvider:
-  // 1. Widget-level: stored directly on the layout item
-  // 2. Workspace-level: stored as workspace.selectedProviders[widgetId][providerType]
+  // Get the selected WebSocket provider for this widget. 3-layer
+  // resolution matches useMcpProvider:
+  //   1. Widget-level     — layoutItem.selectedProviders[type]
+  //   2. Workspace-level  — workspace.selectedProviders[widgetId][type]
+  //   3. App default      — provider of matching type flagged
+  //                         isDefaultForType in app.providers
+  //   4. null             — widget renders MissingProviderPrompt
   const widgetId = widgetData?.uuidString;
   const selectedProviderName = (() => {
     if (widgetData?.selectedProviders?.[providerType]) {
@@ -88,6 +91,17 @@ export const useWebSocketProvider = (providerType, options = {}) => {
       workspace?.workspaceData?.selectedProviders?.[widgetId]?.[providerType]
     ) {
       return workspace.workspaceData.selectedProviders[widgetId][providerType];
+    }
+    const appProviders = app?.providers;
+    if (appProviders && typeof appProviders === "object") {
+      for (const [name, data] of Object.entries(appProviders)) {
+        if (
+          data?.type === providerType &&
+          data?.isDefaultForType === true
+        ) {
+          return name;
+        }
+      }
     }
     return null;
   })();

@@ -45,6 +45,9 @@ import { WidgetSidebar } from "../Navigation/WidgetSidebar";
 import { AppContext } from "../../Context/App/AppContext";
 import { useMissingWidgets } from "../../hooks/useMissingWidgets";
 import { MissingWidgetsModal } from "../../Widget/MissingWidgetsModal";
+import { DashboardConfigModal } from "./DashboardConfigModal";
+import { getUnresolvedProviders } from "../../utils/providerResolution";
+import { ComponentManager } from "../../ComponentManager";
 
 /**
  * DashboardStage - Main application wrapper component
@@ -236,6 +239,15 @@ const DashboardStageInner = ({
   const [isMissingWidgetsModalOpen, setIsMissingWidgetsModalOpen] =
     useState(false);
   const [dismissedMissingForWorkspace, setDismissedMissingForWorkspace] =
+    useState(new Set());
+
+  // Dashboard Config modal — bulk provider wiring for the current
+  // workspace. Auto-opens on first load of a workspace with unresolved
+  // providers (tracked per session via `configModalAutoOpenedFor` so
+  // switching tabs doesn't re-fire the modal).
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const configModalAutoOpenedFor = useRef(new Set());
+  const [dismissedUnresolvedForWorkspace, setDismissedUnresolvedForWorkspace] =
     useState(new Set());
 
   // Unified App Settings Modal
@@ -693,6 +705,85 @@ const DashboardStageInner = ({
       }
     }
   }
+
+  // ─── Bulk provider binding save (Dashboard Config modal) ──────────
+  // Takes [{ widgetId, providerType, providerName }] and writes the
+  // updated workspace ONCE via saveWorkspace — avoids N round-trips
+  // that the per-widget handleProviderSelect would produce for a
+  // bulk-assign.
+  function handleBulkProviderBindings(changes) {
+    if (!Array.isArray(changes) || changes.length === 0) return;
+    if (!workspaceSelected || !dashApi || !credentials?.appId) return;
+
+    // Start from the current map, layer changes on top.
+    const nextSelectedProviders = {
+      ...(workspaceSelected.selectedProviders || {}),
+    };
+    for (const { widgetId, providerType, providerName } of changes) {
+      if (!widgetId || !providerType) continue;
+      const prevForWidget = nextSelectedProviders[widgetId]
+        ? { ...nextSelectedProviders[widgetId] }
+        : {};
+      if (providerName) {
+        prevForWidget[providerType] = providerName;
+      } else {
+        // Empty string means "clear" — remove the binding so it falls
+        // back to app default (or null) on next resolve.
+        delete prevForWidget[providerType];
+      }
+      nextSelectedProviders[widgetId] = prevForWidget;
+    }
+
+    const updatedWorkspace = {
+      ...workspaceSelected,
+      selectedProviders: nextSelectedProviders,
+    };
+    updateTabWorkspace(updatedWorkspace);
+
+    try {
+      dashApi.saveWorkspace(
+        credentials.appId,
+        updatedWorkspace,
+        (e, result) =>
+          console.log(
+            "Workspace saved with bulk provider bindings:",
+            result,
+          ),
+        (e, error) =>
+          console.error(
+            "Failed to save workspace with bulk provider bindings:",
+            error,
+          ),
+      );
+    } catch (e) {
+      console.error("Error saving workspace:", e);
+    }
+  }
+
+  // ─── Unresolved providers (Dashboard Config modal + auto-open) ───
+  const unresolvedProviders = useMemo(
+    () =>
+      getUnresolvedProviders({
+        workspace: workspaceSelected,
+        appProviders: appContext?.providers || {},
+        getWidgetRequirements: (name) =>
+          (name && ComponentManager.componentMap()[name]?.providers) || [],
+      }),
+    [workspaceSelected, appContext?.providers],
+  );
+  const unresolvedCount = unresolvedProviders.length;
+
+  // Auto-open the Dashboard Config modal the FIRST time a workspace with
+  // unresolved providers is loaded in this session. Tracked per workspace
+  // id so switching tabs or re-selecting doesn't nag the user every time.
+  useEffect(() => {
+    if (!workspaceSelected?.id) return;
+    if (unresolvedCount === 0) return;
+    if (configModalAutoOpenedFor.current.has(workspaceSelected.id)) return;
+    if (dismissedUnresolvedForWorkspace.has(workspaceSelected.id)) return;
+    configModalAutoOpenedFor.current.add(workspaceSelected.id);
+    setIsConfigModalOpen(true);
+  }, [workspaceSelected?.id, unresolvedCount, dismissedUnresolvedForWorkspace]);
 
   // ─── Sidebar State ────────────────────────────────────────────────
   const sidebarEnabled = workspaceSelected?.sidebarEnabled || false;
@@ -1455,6 +1546,46 @@ const DashboardStageInner = ({
                         </button>
                       </div>
                     )}
+                  {/* Unresolved providers banner — same pattern as the
+                      missing-widgets banner above. Clicking Configure
+                      opens the Dashboard Config modal at the Providers
+                      tab. X-button dismisses the banner for the current
+                      session so the user can fix it later without nag. */}
+                  {unresolvedCount > 0 &&
+                    !dismissedUnresolvedForWorkspace.has(
+                      workspaceSelected?.id,
+                    ) && (
+                      <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 flex-shrink-0">
+                        <FontAwesomeIcon
+                          icon="triangle-exclamation"
+                          className="h-3.5 w-3.5 text-amber-400 flex-shrink-0"
+                        />
+                        <span className="text-xs text-amber-300/90 flex-1">
+                          {unresolvedCount} widget
+                          {unresolvedCount === 1 ? "" : "s"} in this dashboard
+                          need a provider wired up.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIsConfigModalOpen(true)}
+                          className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium"
+                        >
+                          Configure
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDismissedUnresolvedForWorkspace(
+                              (prev) =>
+                                new Set([...prev, workspaceSelected?.id]),
+                            )
+                          }
+                          className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                        >
+                          <FontAwesomeIcon icon="xmark" className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
                   <PageTabBar
                     pages={workspacePages}
                     activePageId={currentActivePageId}
@@ -1636,6 +1767,18 @@ const DashboardStageInner = ({
                   (prev) => new Set([...prev, workspaceSelected?.id]),
                 );
               }}
+            />
+
+            <DashboardConfigModal
+              isOpen={isConfigModalOpen}
+              setIsOpen={setIsConfigModalOpen}
+              workspace={workspaceSelected}
+              appProviders={appContext?.providers || {}}
+              getWidgetRequirements={(name) =>
+                (name && ComponentManager.componentMap()[name]?.providers) ||
+                []
+              }
+              onSaveBindings={handleBulkProviderBindings}
             />
           </>
         )}
