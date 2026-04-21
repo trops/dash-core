@@ -95,6 +95,101 @@ const ZIP_EXCLUDE_DIRS = new Set([
   "coverage",
 ]);
 
+// ─── Personal-path scanner ───────────────────────────────────────────────────
+
+// Text files we scan for personal paths. Binary / huge files are skipped.
+const SCANNABLE_EXTS = new Set([
+  ".js",
+  ".jsx",
+  ".ts",
+  ".tsx",
+  ".mjs",
+  ".cjs",
+  ".json",
+  ".md",
+  ".html",
+  ".css",
+]);
+const MAX_FINDINGS = 50;
+const MAX_FILE_SIZE = 2 * 1024 * 1024;
+
+// Patterns that strongly suggest a personal filesystem path got baked into
+// source. Conservative by design — we'd rather ask the user than leak
+// something. Tildes (`~/…`) are NOT flagged because they're ubiquitous in
+// widget defaults and don't reveal identity.
+const PERSONAL_PATH_PATTERNS = [
+  // /Users/<username>/...  — macOS. Username after /Users is the leak.
+  /\/Users\/[A-Za-z][\w.-]{1,32}\/[\w./ -]+/g,
+  // /home/<username>/...   — Linux.
+  /\/home\/[a-z][\w.-]{1,32}\/[\w./ -]+/g,
+  // C:\Users\<username>\... — Windows. Allow both \\ and / separators so
+  // JSON-escaped paths match too.
+  /[Cc]:[\\/]+Users[\\/]+[A-Za-z][\w.-]{1,32}[\\/]+[\w\\/. -]+/g,
+];
+
+/**
+ * Walk a widget package directory and collect any strings that look like
+ * a user's personal filesystem path. Returns an array of
+ * `{ file, line, match, context }` findings, capped at MAX_FINDINGS.
+ *
+ * Applies the same exclude rules as the ZIP builder — we don't want to
+ * warn about paths in files that won't ship anyway.
+ */
+function scanForPersonalPaths(packagePath) {
+  const findings = [];
+  const walk = (absDir, relDir = "") => {
+    if (findings.length >= MAX_FINDINGS) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(absDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (findings.length >= MAX_FINDINGS) break;
+      if (ZIP_EXCLUDE_DIRS.has(entry.name)) continue;
+      if (entry.name.startsWith(".")) continue;
+      const abs = path.join(absDir, entry.name);
+      const rel = relDir ? path.join(relDir, entry.name) : entry.name;
+      if (entry.isDirectory()) {
+        walk(abs, rel);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const ext = path.extname(entry.name).toLowerCase();
+      if (!SCANNABLE_EXTS.has(ext)) continue;
+      let content;
+      try {
+        const stat = fs.statSync(abs);
+        if (stat.size > MAX_FILE_SIZE) continue;
+        content = fs.readFileSync(abs, "utf8");
+      } catch {
+        continue;
+      }
+      const lines = content.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        if (findings.length >= MAX_FINDINGS) break;
+        const line = lines[i];
+        for (const pattern of PERSONAL_PATH_PATTERNS) {
+          pattern.lastIndex = 0;
+          const m = pattern.exec(line);
+          if (m) {
+            findings.push({
+              file: rel,
+              line: i + 1,
+              match: m[0],
+              context: line.trim().slice(0, 200),
+            });
+            break; // one finding per line keeps the list digestible
+          }
+        }
+      }
+    }
+  };
+  walk(packagePath);
+  return findings;
+}
+
 /**
  * Recursively add a directory to a ZIP, skipping excluded dirs + dotfiles.
  */
@@ -195,6 +290,24 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
     // only if explicitly provided (e.g. for future org publishing).
     const parsedName = parsePackageName(pkgJson.name || "");
     const resolvedScope = options.scope || callerScope;
+
+    // 3.5 Pre-zip privacy scan. Flag any personal filesystem paths baked
+    //     into shipped source (e.g. someone edited a `.dash.js`'s
+    //     `defaultValue` from `~/Library/...` to `/Users/me/...` to skip
+    //     re-entering it every install). We run BEFORE any state mutation
+    //     so that a "cancel" on the confirmation dialog leaves the package
+    //     exactly as it was — no version bump, no file rewrites.
+    if (!options.confirmPersonalPaths) {
+      const personalPathFindings = scanForPersonalPaths(widget.path);
+      if (personalPathFindings.length > 0) {
+        return {
+          success: false,
+          needsConfirmation: true,
+          reason: "personal-paths",
+          personalPathFindings,
+        };
+      }
+    }
 
     // 4. Compute + persist new version
     const previousVersion = pkgJson.version || "1.0.0";
