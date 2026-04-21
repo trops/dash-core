@@ -94,6 +94,31 @@ function isNodeEsmError(errorText) {
 }
 
 /**
+ * When a catalog entry says `command: "node"`, spawn Electron itself in
+ * ELECTRON_RUN_AS_NODE mode rather than the user's system node. This
+ * matters in two ways:
+ *
+ *   1. In a packaged app the MCP server scripts live inside app.asar.
+ *      Electron's fs patches understand asar paths; a standalone Node
+ *      does not, so system `node` + asar path produces MODULE_NOT_FOUND.
+ *   2. The host no longer depends on the user having a compatible Node
+ *      version (18–22) installed on PATH — Electron ships its own.
+ *
+ * Other commands (`npx`, shell scripts, etc.) still run via the
+ * resolved shell PATH, so the PATH/nvm discovery elsewhere in this
+ * file stays relevant for them.
+ */
+function resolveNodeCommand(command, env) {
+  if (command === "node" && process.versions.electron) {
+    return {
+      command: process.execPath,
+      env: { ...env, ELECTRON_RUN_AS_NODE: "1" },
+    };
+  }
+  return { command, env };
+}
+
+/**
  * Get the user's full shell PATH (including nvm, homebrew, volta, etc.).
  * Electron GUI apps on macOS don't inherit the shell PATH, so we
  * resolve it once by invoking a login shell.
@@ -503,10 +528,11 @@ const mcpController = {
             }
           }
 
+          const resolved = resolveNodeCommand(mcpConfig.command, env);
           transport = new StdioClientTransport({
-            command: mcpConfig.command,
+            command: resolved.command,
             args,
-            env,
+            env: resolved.env,
           });
         }
 
@@ -1002,8 +1028,9 @@ const mcpController = {
     );
 
     return new Promise((resolve) => {
-      const proc = spawn(authCommand.command, resolvedArgs, {
-        env,
+      const resolvedCmd = resolveNodeCommand(authCommand.command, env);
+      const proc = spawn(resolvedCmd.command, resolvedArgs, {
+        env: resolvedCmd.env,
         stdio: ["ignore", "pipe", "pipe"],
         // Needed so Windows can launch .cmd/.bat wrappers (npx.cmd, etc).
         shell: IS_WINDOWS,
