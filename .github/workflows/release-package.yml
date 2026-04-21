@@ -26,6 +26,11 @@ jobs:
             - run: npm run build
               env:
                   GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+            # `prepublishOnly` re-runs `npm run build`, so the secret
+            # has to be available here too — otherwise the rebuild
+            # wipes the injected placeholder and publishes the literal
+            # "__GDRIVE_CLIENT_SECRET__" string instead of the secret.
             - run: npm publish --provenance --access public
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+                  GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
