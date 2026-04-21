@@ -47,6 +47,10 @@ import { useMissingWidgets } from "../../hooks/useMissingWidgets";
 import { MissingWidgetsModal } from "../../Widget/MissingWidgetsModal";
 import { DashboardConfigModal } from "./DashboardConfigModal";
 import { getUnresolvedProviders } from "../../utils/providerResolution";
+import {
+  getOrphanedListeners,
+  applyWiringChanges,
+} from "../../utils/listenerResolution";
 import { ComponentManager } from "../../ComponentManager";
 
 /**
@@ -760,7 +764,45 @@ const DashboardStageInner = ({
     }
   }
 
-  // ─── Unresolved providers (Dashboard Config modal + auto-open) ───
+  // ─── Bulk listener binding save ──────────────────────────────────
+  // Takes { adds, removes } from the Dashboard Config modal's
+  // Listeners tab and writes the updated workspace once. Applies the
+  // delta via applyWiringChanges (uses item.listeners directly so the
+  // existing PanelEditItemHandlers / runtime stays consistent).
+  function handleBulkListenerBindings(changes) {
+    if (!workspaceSelected || !dashApi || !credentials?.appId) return;
+    if (
+      !changes ||
+      ((!changes.adds || changes.adds.length === 0) &&
+        (!changes.removes || changes.removes.length === 0))
+    ) {
+      return;
+    }
+
+    const updatedWorkspace = applyWiringChanges(workspaceSelected, changes);
+    updateTabWorkspace(updatedWorkspace);
+
+    try {
+      dashApi.saveWorkspace(
+        credentials.appId,
+        updatedWorkspace,
+        (e, result) =>
+          console.log(
+            "Workspace saved with bulk listener bindings:",
+            result,
+          ),
+        (e, error) =>
+          console.error(
+            "Failed to save workspace with bulk listener bindings:",
+            error,
+          ),
+      );
+    } catch (e) {
+      console.error("Error saving workspace:", e);
+    }
+  }
+
+  // ─── Unresolved providers + listener orphans (modal + auto-open) ─
   const unresolvedProviders = useMemo(
     () =>
       getUnresolvedProviders({
@@ -771,11 +813,21 @@ const DashboardStageInner = ({
       }),
     [workspaceSelected, appContext?.providers],
   );
-  const unresolvedCount = unresolvedProviders.length;
+  const orphanedListeners = useMemo(
+    () =>
+      getOrphanedListeners(
+        workspaceSelected,
+        (name) => (name && ComponentManager.componentMap()[name]) || null,
+      ),
+    [workspaceSelected],
+  );
+  const unresolvedProvidersCount = unresolvedProviders.length;
+  const orphanedListenersCount = orphanedListeners.length;
+  const unresolvedCount = unresolvedProvidersCount + orphanedListenersCount;
 
-  // Auto-open the Dashboard Config modal the FIRST time a workspace with
-  // unresolved providers is loaded in this session. Tracked per workspace
-  // id so switching tabs or re-selecting doesn't nag the user every time.
+  // Auto-open the Dashboard Config modal the FIRST time a workspace
+  // with unresolved providers OR orphaned listeners loads in this
+  // session. Tracked per workspace id so switching tabs doesn't nag.
   useEffect(() => {
     if (!workspaceSelected?.id) return;
     if (unresolvedCount === 0) return;
@@ -1509,7 +1561,9 @@ const DashboardStageInner = ({
                       : null
                   }
                   onOpenConfig={
-                    popout ? null : () => setIsConfigModalOpen(true)
+                    popout || previewMode
+                      ? null
+                      : () => setIsConfigModalOpen(true)
                   }
                   configUnresolvedCount={unresolvedCount}
                 />
@@ -1550,12 +1604,12 @@ const DashboardStageInner = ({
                         </button>
                       </div>
                     )}
-                  {/* Unresolved providers banner — same pattern as the
-                      missing-widgets banner above. Clicking Configure
-                      opens the Dashboard Config modal at the Providers
-                      tab. X-button dismisses the banner for the current
-                      session so the user can fix it later without nag. */}
+                  {/* Unresolved-config banner — separates providers vs
+                      listeners so the message is honest. Clicking
+                      Configure opens the modal; X dismisses the banner
+                      for the session. */}
                   {unresolvedCount > 0 &&
+                    !previewMode &&
                     !dismissedUnresolvedForWorkspace.has(
                       workspaceSelected?.id,
                     ) && (
@@ -1565,9 +1619,14 @@ const DashboardStageInner = ({
                           className="h-3.5 w-3.5 text-amber-400 flex-shrink-0"
                         />
                         <span className="text-xs text-amber-300/90 flex-1">
-                          {unresolvedCount} widget
-                          {unresolvedCount === 1 ? "" : "s"} in this dashboard
-                          need a provider wired up.
+                          {[
+                            unresolvedProvidersCount > 0 &&
+                              `${unresolvedProvidersCount} widget${unresolvedProvidersCount === 1 ? "" : "s"} need${unresolvedProvidersCount === 1 ? "s" : ""} a provider`,
+                            orphanedListenersCount > 0 &&
+                              `${orphanedListenersCount} orphaned event listener${orphanedListenersCount === 1 ? "" : "s"}`,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
                         </span>
                         <button
                           type="button"
@@ -1782,7 +1841,16 @@ const DashboardStageInner = ({
                 (name && ComponentManager.componentMap()[name]?.providers) ||
                 []
               }
+              getWidgetConfig={(name) =>
+                (name && ComponentManager.componentMap()[name]) || null
+              }
               onSaveBindings={handleBulkProviderBindings}
+              onSaveListeners={handleBulkListenerBindings}
+              initialTab={
+                orphanedListenersCount > unresolvedProvidersCount
+                  ? "listeners"
+                  : "providers"
+              }
             />
           </>
         )}
