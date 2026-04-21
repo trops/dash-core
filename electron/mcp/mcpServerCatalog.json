@@ -122,11 +122,11 @@
       },
       "credentialSchema": {
         "allowedPaths": {
-          "type": "text",
-          "displayName": "Allowed Paths",
-          "required": false,
+          "type": "directory-list",
+          "displayName": "Allowed Directories",
+          "required": true,
           "secret": false,
-          "instructions": "Comma-separated list of directory paths the server can access (e.g., /Users/you/Documents,/tmp)."
+          "instructions": "Absolute paths this server is permitted to read and write. Use the Choose folder… button — `~` shortcuts are not expanded by the server process."
         }
       }
     },

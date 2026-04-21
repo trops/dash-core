@@ -19,16 +19,131 @@ import {
 } from "../../../utils/mcpUtils";
 import { ToolSelector } from "./ToolSelector";
 
+/**
+ * Credential-field renderer for `type: "directory-list"`.
+ *
+ * Owns the in-progress row state locally so adding an empty row via
+ * "Add directory" produces a new input immediately, even though empty
+ * rows are stripped out of the persisted comma-separated string passed
+ * back via `onChange`. Derives its initial rows from `value`; subsequent
+ * external changes to `value` don't clobber in-progress typing.
+ */
+const DirectoryListField = ({ field, value, onChange, errorText }) => {
+  const initialRows = useMemo(() => {
+    const parsed = (value || "")
+      .split(",")
+      .map((p) => p.trim());
+    const nonEmpty = parsed.filter(Boolean);
+    return nonEmpty.length === 0 ? [""] : nonEmpty;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [rows, setRows] = useState(initialRows);
+
+  const updateRows = (next) => {
+    setRows(next);
+    onChange(
+      next
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .join(","),
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <FormLabel label={field.displayName} required={field.required} />
+      {field.instructions && (
+        <p className="text-xs opacity-50">{field.instructions}</p>
+      )}
+      <div className="flex flex-col gap-2">
+        {rows.map((rowValue, idx) => (
+          <div key={idx} className="flex gap-2 items-center">
+            <div className="flex-1">
+              <InputText
+                type="text"
+                value={rowValue}
+                onChange={(v) => {
+                  const next = [...rows];
+                  next[idx] = v;
+                  updateRows(next);
+                }}
+                placeholder="/Users/you/some/folder"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                const picked = await window.mainApi.dialog.chooseFile(
+                  false,
+                  [],
+                );
+                if (picked) {
+                  const next = [...rows];
+                  next[idx] = picked;
+                  updateRows(next);
+                }
+              }}
+              className="px-3 py-1.5 text-sm rounded bg-white/10 hover:bg-white/20 transition-colors whitespace-nowrap"
+            >
+              Choose folder…
+            </button>
+            {rows.length > 1 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const next = rows.filter((_, i) => i !== idx);
+                  updateRows(next.length ? next : [""]);
+                }}
+                className="px-2 py-1.5 text-sm rounded bg-white/5 hover:bg-red-500/20 text-red-300 transition-colors"
+                aria-label="Remove path"
+              >
+                <FontAwesomeIcon icon="xmark" className="text-xs" />
+              </button>
+            )}
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={() => setRows([...rows, ""])}
+          className="text-sm text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1 self-start"
+        >
+          <FontAwesomeIcon icon="plus" className="text-xs" />
+          <span>Add directory</span>
+        </button>
+      </div>
+      {errorText && <p className="text-sm text-red-400">{errorText}</p>}
+    </div>
+  );
+};
+
 let rowIdCounter = 0;
 const nextRowId = () => `row_${++rowIdCounter}`;
 
 /**
  * Build an mcpConfig object from the current form state.
+ *
+ * `baseConfig` is the existing mcpConfig this save is derived from (either a
+ * catalog entry's config or the saved provider's current config). Fields the
+ * form doesn't render (argsMapping, staticEnv, tokenRefresh, etc.) are copied
+ * through so editing a provider never drops them.
  */
 function buildMcpConfig(
   transport,
   { command, args, envMappingRows, url, headerRows },
+  baseConfig = {},
 ) {
+  // Everything on baseConfig that the form doesn't own gets preserved.
+  const {
+    transport: _baseTransport,
+    command: _baseCommand,
+    args: _baseArgs,
+    envMapping: _baseEnvMapping,
+    url: _baseUrl,
+    headerTemplate: _baseHeaderTemplate,
+    headers: _baseHeaders,
+    ...passThrough
+  } = baseConfig;
+
   if (transport === "stdio") {
     const envMapping = {};
     envMappingRows.forEach((row) => {
@@ -39,6 +154,7 @@ function buildMcpConfig(
       }
     });
     return {
+      ...passThrough,
       transport: "stdio",
       command: command.trim(),
       args: args.trim().split(/\s+/).filter(Boolean),
@@ -56,6 +172,7 @@ function buildMcpConfig(
     }
   });
   const config = {
+    ...passThrough,
     transport: "streamable_http",
     url: url.trim(),
   };
@@ -83,6 +200,9 @@ function buildMcpConfig(
  * @param {string} initialUrl - Pre-populated URL (edit mode)
  * @param {Array} initialHeaderRows - Pre-populated header rows (edit mode)
  * @param {object} initialCredentials - Pre-populated credential values (edit mode)
+ * @param {object} initialMcpConfig - The full saved/catalog mcpConfig. Fields
+ *   the form does NOT own (argsMapping, staticEnv, tokenRefresh, etc.) are
+ *   preserved verbatim on save so editing never silently drops them.
  */
 export const CustomMcpServerForm = ({
   onSave,
@@ -100,6 +220,7 @@ export const CustomMcpServerForm = ({
   initialCredentials = {},
   initialAllowedTools = null,
   initialAuthCommand = null,
+  initialMcpConfig = null,
 }) => {
   const appContext = useContext(AppContext);
   const dashApi = appContext?.dashApi;
@@ -171,17 +292,31 @@ export const CustomMcpServerForm = ({
     setWizardStep(newStep);
   };
 
-  // Build mcpConfig from current state
+  // Build mcpConfig from current state. Pass the initial mcpConfig so fields
+  // the form doesn't manage (argsMapping, staticEnv, tokenRefresh, etc.) are
+  // preserved on save instead of being silently dropped.
   const mcpConfig = useMemo(
     () =>
-      buildMcpConfig(transport, {
-        command,
-        args,
-        envMappingRows,
-        url,
-        headerRows,
-      }),
-    [transport, command, args, envMappingRows, url, headerRows],
+      buildMcpConfig(
+        transport,
+        {
+          command,
+          args,
+          envMappingRows,
+          url,
+          headerRows,
+        },
+        initialMcpConfig || {},
+      ),
+    [
+      transport,
+      command,
+      args,
+      envMappingRows,
+      url,
+      headerRows,
+      initialMcpConfig,
+    ],
   );
 
   // Invalidate test result when config changes after a test
@@ -297,8 +432,23 @@ export const CustomMcpServerForm = ({
       }
     }
     formFields.forEach((field) => {
-      if (field.required && !credentialData[field.key]?.trim()) {
+      const raw = credentialData[field.key];
+      if (field.required && !raw?.trim()) {
         errors[field.key] = `${field.displayName} is required`;
+        return;
+      }
+      // directory-list: every non-empty entry must be an absolute path.
+      // `~` is not expanded by child_process.spawn, so the MCP filesystem
+      // server would never match a real path against a tilde prefix.
+      if (field.type === "directory-list" && raw?.trim()) {
+        const bad = raw
+          .split(",")
+          .map((p) => p.trim())
+          .filter(Boolean)
+          .find((p) => !p.startsWith("/"));
+        if (bad) {
+          errors[field.key] = `"${bad}" must be an absolute path (no \`~\`, use /Users/you/...)`;
+        }
       }
     });
     setFormErrors(errors);
@@ -405,13 +555,17 @@ export const CustomMcpServerForm = ({
         setJsonError("Provider name is required");
         return;
       }
-      const config = buildMcpConfig(result.transport, {
-        command: result.command,
-        args: result.args,
-        envMappingRows: result.envMappingRows,
-        url: result.url,
-        headerRows: result.headerRows,
-      });
+      const config = buildMcpConfig(
+        result.transport,
+        {
+          command: result.command,
+          args: result.args,
+          envMappingRows: result.envMappingRows,
+          url: result.url,
+          headerRows: result.headerRows,
+        },
+        initialMcpConfig || {},
+      );
       onSave(
         name,
         initialProviderType,
@@ -813,51 +967,79 @@ export const CustomMcpServerForm = ({
                         </p>
                       </div>
 
-                      {formFields.map((field) => (
-                        <div key={field.key} className="flex flex-col gap-2">
-                          <FormLabel
-                            label={field.displayName}
-                            required={field.required}
-                          />
-                          <div className="flex gap-2">
-                            <div className="flex-1">
-                              <InputText
-                                type={field.secret ? "password" : "text"}
-                                value={credentialData[field.key] || ""}
-                                onChange={(value) =>
-                                  handleCredentialChange(field.key, value)
-                                }
-                                placeholder={
-                                  field.type === "file"
-                                    ? "Select a file..."
-                                    : `Enter ${field.displayName.toLowerCase()}`
-                                }
-                              />
+                      {formFields.map((field) => {
+                        // directory-list: repeating rows with an absolute-path
+                        // input + directory picker. Local state inside the
+                        // component so adding an empty row doesn't get
+                        // immediately stripped by the filter on write.
+                        if (field.type === "directory-list") {
+                          return (
+                            <DirectoryListField
+                              key={field.key}
+                              field={field}
+                              value={credentialData[field.key] || ""}
+                              onChange={(v) =>
+                                handleCredentialChange(field.key, v)
+                              }
+                              errorText={formErrors[field.key]}
+                            />
+                          );
+                        }
+
+                        // Default: single text/password input with optional
+                        // "Browse" button for file-type credentials.
+                        return (
+                          <div
+                            key={field.key}
+                            className="flex flex-col gap-2"
+                          >
+                            <FormLabel
+                              label={field.displayName}
+                              required={field.required}
+                            />
+                            <div className="flex gap-2">
+                              <div className="flex-1">
+                                <InputText
+                                  type={field.secret ? "password" : "text"}
+                                  value={credentialData[field.key] || ""}
+                                  onChange={(value) =>
+                                    handleCredentialChange(field.key, value)
+                                  }
+                                  placeholder={
+                                    field.type === "file"
+                                      ? "Select a file..."
+                                      : `Enter ${field.displayName.toLowerCase()}`
+                                  }
+                                />
+                              </div>
+                              {field.type === "file" && (
+                                <button
+                                  onClick={async () => {
+                                    const filepath =
+                                      await window.mainApi.dialog.chooseFile(
+                                        true,
+                                        ["json"],
+                                      );
+                                    if (filepath)
+                                      handleCredentialChange(
+                                        field.key,
+                                        filepath,
+                                      );
+                                  }}
+                                  className="px-3 py-1.5 text-sm rounded bg-white/10 hover:bg-white/20 transition-colors"
+                                >
+                                  Browse
+                                </button>
+                              )}
                             </div>
-                            {field.type === "file" && (
-                              <button
-                                onClick={async () => {
-                                  const filepath =
-                                    await window.mainApi.dialog.chooseFile(
-                                      true,
-                                      ["json"],
-                                    );
-                                  if (filepath)
-                                    handleCredentialChange(field.key, filepath);
-                                }}
-                                className="px-3 py-1.5 text-sm rounded bg-white/10 hover:bg-white/20 transition-colors"
-                              >
-                                Browse
-                              </button>
+                            {formErrors[field.key] && (
+                              <p className="text-sm text-red-400">
+                                {formErrors[field.key]}
+                              </p>
                             )}
                           </div>
-                          {formErrors[field.key] && (
-                            <p className="text-sm text-red-400">
-                              {formErrors[field.key]}
-                            </p>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </>
                   )}
                 </>
