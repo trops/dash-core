@@ -24,46 +24,40 @@
  *   4. null                     (truly unresolved)
  */
 export function resolveProviderName({
-    providerType,
-    layoutItem,
-    widgetId,
-    workspace,
-    appProviders,
+  providerType,
+  layoutItem,
+  widgetId,
+  workspace,
+  appProviders,
 }) {
-    // 1. Widget-level
-    const widgetLevel = layoutItem?.selectedProviders?.[providerType];
-    if (widgetLevel) return widgetLevel;
+  // 1. Widget-level
+  const widgetLevel = layoutItem?.selectedProviders?.[providerType];
+  if (widgetLevel) return widgetLevel;
 
-    // 2. Workspace-level
-    const workspaceLevel =
-        widgetId && workspace?.selectedProviders?.[widgetId]?.[providerType];
-    if (workspaceLevel) return workspaceLevel;
+  // 2. Workspace-level
+  const workspaceLevel =
+    widgetId && workspace?.selectedProviders?.[widgetId]?.[providerType];
+  if (workspaceLevel) return workspaceLevel;
 
-    // 3. App default — appProviders is either a map keyed by name or an
-    //    array. Support both because different callers shape it either way.
-    if (appProviders) {
-        if (Array.isArray(appProviders)) {
-            for (const data of appProviders) {
-                if (
-                    data?.type === providerType &&
-                    data?.isDefaultForType === true
-                ) {
-                    return data.name;
-                }
-            }
-        } else if (typeof appProviders === "object") {
-            for (const [name, data] of Object.entries(appProviders)) {
-                if (
-                    data?.type === providerType &&
-                    data?.isDefaultForType === true
-                ) {
-                    return name;
-                }
-            }
+  // 3. App default — appProviders is either a map keyed by name or an
+  //    array. Support both because different callers shape it either way.
+  if (appProviders) {
+    if (Array.isArray(appProviders)) {
+      for (const data of appProviders) {
+        if (data?.type === providerType && data?.isDefaultForType === true) {
+          return data.name;
         }
+      }
+    } else if (typeof appProviders === "object") {
+      for (const [name, data] of Object.entries(appProviders)) {
+        if (data?.type === providerType && data?.isDefaultForType === true) {
+          return name;
+        }
+      }
     }
+  }
 
-    return null;
+  return null;
 }
 
 /**
@@ -80,45 +74,45 @@ export function resolveProviderName({
  * Providers/Listeners tabs render one row per reference.
  */
 export function forEachWidget(workspace, visit) {
-    if (!workspace) return;
+  if (!workspace) return;
 
-    const visitedObjects = new WeakSet();
-    const visitedIds = new Set();
+  const visitedObjects = new WeakSet();
+  const visitedIds = new Set();
 
-    const stableId = (item) =>
-        item?.uuidString ||
-        item?.uuid ||
-        (item?.component != null && item?.id != null
-            ? `${item.component}|${item.id}`
-            : null);
+  const stableId = (item) =>
+    item?.uuidString ||
+    item?.uuid ||
+    (item?.component != null && item?.id != null
+      ? `${item.component}|${item.id}`
+      : null);
 
-    const walk = (items) => {
-        if (!Array.isArray(items)) return;
-        for (const item of items) {
-            if (!item || typeof item !== "object") continue;
-            // A "widget" is any layout item with a component name.
-            // Containers can have both a component name AND nested items
-            // (e.g. LayoutGridContainer), so still recurse.
-            if (item.component) {
-                const id = stableId(item);
-                const alreadyByRef = visitedObjects.has(item);
-                const alreadyById = id != null && visitedIds.has(id);
-                if (!alreadyByRef && !alreadyById) {
-                    visitedObjects.add(item);
-                    if (id != null) visitedIds.add(id);
-                    visit(item);
-                }
-            }
-            if (Array.isArray(item.items)) walk(item.items);
-            if (Array.isArray(item.layout)) walk(item.layout);
+  const walk = (items) => {
+    if (!Array.isArray(items)) return;
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+      // A "widget" is any layout item with a component name.
+      // Containers can have both a component name AND nested items
+      // (e.g. LayoutGridContainer), so still recurse.
+      if (item.component) {
+        const id = stableId(item);
+        const alreadyByRef = visitedObjects.has(item);
+        const alreadyById = id != null && visitedIds.has(id);
+        if (!alreadyByRef && !alreadyById) {
+          visitedObjects.add(item);
+          if (id != null) visitedIds.add(id);
+          visit(item);
         }
-    };
-
-    walk(workspace.layout);
-    if (Array.isArray(workspace.pages)) {
-        for (const page of workspace.pages) walk(page?.layout);
+      }
+      if (Array.isArray(item.items)) walk(item.items);
+      if (Array.isArray(item.layout)) walk(item.layout);
     }
-    walk(workspace.sidebarLayout);
+  };
+
+  walk(workspace.layout);
+  if (Array.isArray(workspace.pages)) {
+    for (const page of workspace.pages) walk(page?.layout);
+  }
+  walk(workspace.sidebarLayout);
 }
 
 /**
@@ -138,45 +132,44 @@ export function forEachWidget(workspace, visit) {
  *   a binding.
  */
 export function getUnresolvedProviders({
-    workspace,
-    appProviders,
-    getWidgetRequirements,
+  workspace,
+  appProviders,
+  getWidgetRequirements,
 }) {
-    if (!workspace || typeof getWidgetRequirements !== "function") return [];
+  if (!workspace || typeof getWidgetRequirements !== "function") return [];
 
-    const unresolved = [];
+  const unresolved = [];
 
-    forEachWidget(workspace, (item) => {
-        const requirements = getWidgetRequirements(item.component) || [];
-        if (!Array.isArray(requirements) || requirements.length === 0) return;
+  forEachWidget(workspace, (item) => {
+    const requirements = getWidgetRequirements(item.component) || [];
+    if (!Array.isArray(requirements) || requirements.length === 0) return;
 
-        const widgetId =
-            item.uuidString || item.uuid || item.id || null;
+    const widgetId = item.uuidString || item.uuid || item.id || null;
 
-        for (const req of requirements) {
-            if (!req || !req.type) continue;
-            if (req.required === false) continue; // optional, skip
+    for (const req of requirements) {
+      if (!req || !req.type) continue;
+      if (req.required === false) continue; // optional, skip
 
-            const name = resolveProviderName({
-                providerType: req.type,
-                layoutItem: item,
-                widgetId,
-                workspace,
-                appProviders,
-            });
-            if (!name) {
-                unresolved.push({
-                    widgetId,
-                    component: item.component,
-                    providerType: req.type,
-                    providerClass: req.providerClass || null,
-                    layoutItem: item,
-                });
-            }
-        }
-    });
+      const name = resolveProviderName({
+        providerType: req.type,
+        layoutItem: item,
+        widgetId,
+        workspace,
+        appProviders,
+      });
+      if (!name) {
+        unresolved.push({
+          widgetId,
+          component: item.component,
+          providerType: req.type,
+          providerClass: req.providerClass || null,
+          layoutItem: item,
+        });
+      }
+    }
+  });
 
-    return unresolved;
+  return unresolved;
 }
 
 /**
@@ -185,13 +178,13 @@ export function getUnresolvedProviders({
  * type with N widgets beneath.
  */
 export function groupByProviderType(unresolved) {
-    const byType = new Map();
-    for (const u of unresolved || []) {
-        if (!u?.providerType) continue;
-        if (!byType.has(u.providerType)) byType.set(u.providerType, []);
-        byType.get(u.providerType).push(u);
-    }
-    return byType;
+  const byType = new Map();
+  for (const u of unresolved || []) {
+    if (!u?.providerType) continue;
+    if (!byType.has(u.providerType)) byType.set(u.providerType, []);
+    byType.get(u.providerType).push(u);
+  }
+  return byType;
 }
 
 /**
@@ -202,40 +195,40 @@ export function groupByProviderType(unresolved) {
  * already resolved via the app default.
  */
 export function getAllProviderBindings({
-    workspace,
-    appProviders,
-    getWidgetRequirements,
+  workspace,
+  appProviders,
+  getWidgetRequirements,
 }) {
-    if (!workspace || typeof getWidgetRequirements !== "function") return [];
+  if (!workspace || typeof getWidgetRequirements !== "function") return [];
 
-    const bindings = [];
+  const bindings = [];
 
-    forEachWidget(workspace, (item) => {
-        const requirements = getWidgetRequirements(item.component) || [];
-        if (!Array.isArray(requirements) || requirements.length === 0) return;
+  forEachWidget(workspace, (item) => {
+    const requirements = getWidgetRequirements(item.component) || [];
+    if (!Array.isArray(requirements) || requirements.length === 0) return;
 
-        const widgetId = item.uuidString || item.uuid || item.id || null;
+    const widgetId = item.uuidString || item.uuid || item.id || null;
 
-        for (const req of requirements) {
-            if (!req || !req.type) continue;
-            const name = resolveProviderName({
-                providerType: req.type,
-                layoutItem: item,
-                widgetId,
-                workspace,
-                appProviders,
-            });
-            bindings.push({
-                widgetId,
-                component: item.component,
-                providerType: req.type,
-                providerClass: req.providerClass || null,
-                required: req.required !== false,
-                resolvedProviderName: name,
-                layoutItem: item,
-            });
-        }
-    });
+    for (const req of requirements) {
+      if (!req || !req.type) continue;
+      const name = resolveProviderName({
+        providerType: req.type,
+        layoutItem: item,
+        widgetId,
+        workspace,
+        appProviders,
+      });
+      bindings.push({
+        widgetId,
+        component: item.component,
+        providerType: req.type,
+        providerClass: req.providerClass || null,
+        required: req.required !== false,
+        resolvedProviderName: name,
+        layoutItem: item,
+      });
+    }
+  });
 
-    return bindings;
+  return bindings;
 }

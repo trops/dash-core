@@ -31,19 +31,19 @@ const EVENT_STRING_RE = /^([^[]+)\[([^\]]+)\]\.(.+)$/;
 
 /** Parse "Component[itemId].event" → { component, itemId, event }. */
 export function parseEventString(eventString) {
-    if (typeof eventString !== "string") return null;
-    const m = eventString.match(EVENT_STRING_RE);
-    if (!m) return null;
-    return {
-        component: m[1],
-        itemId: m[2],
-        event: m[3],
-    };
+  if (typeof eventString !== "string") return null;
+  const m = eventString.match(EVENT_STRING_RE);
+  if (!m) return null;
+  return {
+    component: m[1],
+    itemId: m[2],
+    event: m[3],
+  };
 }
 
 /** Build an event string in the canonical runtime format. */
 export function formatEventString(component, itemId, event) {
-    return `${component}[${itemId}].${event}`;
+  return `${component}[${itemId}].${event}`;
 }
 
 /**
@@ -53,11 +53,11 @@ export function formatEventString(component, itemId, event) {
  * default to that and fall back to the others for resilience.
  */
 function itemIdOf(item) {
-    if (item == null) return null;
-    if (item.id !== undefined && item.id !== null) return String(item.id);
-    if (item.uuidString) return item.uuidString;
-    if (item.uuid) return item.uuid;
-    return null;
+  if (item == null) return null;
+  if (item.id !== undefined && item.id !== null) return String(item.id);
+  if (item.uuidString) return item.uuidString;
+  if (item.uuid) return item.uuid;
+  return null;
 }
 
 /**
@@ -65,13 +65,12 @@ function itemIdOf(item) {
  * widget config display name, then component name + short id.
  */
 function labelFor(item, getWidgetConfig) {
-    const cfg = getWidgetConfig?.(item.component) || null;
-    const explicit =
-        item?.userPrefs?.title || item?.userConfig?.title;
-    if (explicit) return explicit;
-    if (cfg?.displayName) return cfg.displayName;
-    const id = itemIdOf(item);
-    return `${item.component || "widget"}${id ? `[${String(id).slice(0, 6)}]` : ""}`;
+  const cfg = getWidgetConfig?.(item.component) || null;
+  const explicit = item?.userPrefs?.title || item?.userConfig?.title;
+  if (explicit) return explicit;
+  if (cfg?.displayName) return cfg.displayName;
+  const id = itemIdOf(item);
+  return `${item.component || "widget"}${id ? `[${String(id).slice(0, 6)}]` : ""}`;
 }
 
 /**
@@ -83,17 +82,17 @@ function labelFor(item, getWidgetConfig) {
  * widget code declares the event/handler, the binding is valid.
  */
 function eventsOf(item, getWidgetConfig) {
-    const inline = Array.isArray(item.events) ? item.events : [];
-    const cfg = getWidgetConfig?.(item.component) || {};
-    const fromCfg = Array.isArray(cfg.events) ? cfg.events : [];
-    return [...new Set([...inline, ...fromCfg])];
+  const inline = Array.isArray(item.events) ? item.events : [];
+  const cfg = getWidgetConfig?.(item.component) || {};
+  const fromCfg = Array.isArray(cfg.events) ? cfg.events : [];
+  return [...new Set([...inline, ...fromCfg])];
 }
 
 function eventHandlersOf(item, getWidgetConfig) {
-    const inline = Array.isArray(item.eventHandlers) ? item.eventHandlers : [];
-    const cfg = getWidgetConfig?.(item.component) || {};
-    const fromCfg = Array.isArray(cfg.eventHandlers) ? cfg.eventHandlers : [];
-    return [...new Set([...inline, ...fromCfg])];
+  const inline = Array.isArray(item.eventHandlers) ? item.eventHandlers : [];
+  const cfg = getWidgetConfig?.(item.component) || {};
+  const fromCfg = Array.isArray(cfg.eventHandlers) ? cfg.eventHandlers : [];
+  return [...new Set([...inline, ...fromCfg])];
 }
 
 /**
@@ -104,23 +103,23 @@ function eventHandlersOf(item, getWidgetConfig) {
  * @returns {Array<{ itemId, component, label, events: string[], key: string }>}
  */
 export function getEmitters(workspace, getWidgetConfig) {
-    const byKey = new Map();
-    forEachWidget(workspace, (item) => {
-        const events = eventsOf(item, getWidgetConfig);
-        if (events.length === 0) return;
-        const itemId = itemIdOf(item);
-        if (itemId == null) return;
-        const key = `${item.component}|${itemId}`;
-        if (byKey.has(key)) return;
-        byKey.set(key, {
-            key,
-            itemId,
-            component: item.component,
-            label: labelFor(item, getWidgetConfig),
-            events,
-        });
+  const byKey = new Map();
+  forEachWidget(workspace, (item) => {
+    const events = eventsOf(item, getWidgetConfig);
+    if (events.length === 0) return;
+    const itemId = itemIdOf(item);
+    if (itemId == null) return;
+    const key = `${item.component}|${itemId}`;
+    if (byKey.has(key)) return;
+    byKey.set(key, {
+      key,
+      itemId,
+      component: item.component,
+      label: labelFor(item, getWidgetConfig),
+      events,
     });
-    return Array.from(byKey.values());
+  });
+  return Array.from(byKey.values());
 }
 
 /**
@@ -130,24 +129,24 @@ export function getEmitters(workspace, getWidgetConfig) {
  * @returns {Array<{ itemId, component, label, eventHandlers: string[], listeners: object, key: string }>}
  */
 export function getReceivers(workspace, getWidgetConfig) {
-    const byKey = new Map();
-    forEachWidget(workspace, (item) => {
-        const handlers = eventHandlersOf(item, getWidgetConfig);
-        if (handlers.length === 0) return;
-        const itemId = itemIdOf(item);
-        if (itemId == null) return;
-        const key = `${item.component}|${itemId}`;
-        if (byKey.has(key)) return;
-        byKey.set(key, {
-            key,
-            itemId,
-            component: item.component,
-            label: labelFor(item, getWidgetConfig),
-            eventHandlers: handlers,
-            listeners: item.listeners || {},
-        });
+  const byKey = new Map();
+  forEachWidget(workspace, (item) => {
+    const handlers = eventHandlersOf(item, getWidgetConfig);
+    if (handlers.length === 0) return;
+    const itemId = itemIdOf(item);
+    if (itemId == null) return;
+    const key = `${item.component}|${itemId}`;
+    if (byKey.has(key)) return;
+    byKey.set(key, {
+      key,
+      itemId,
+      component: item.component,
+      label: labelFor(item, getWidgetConfig),
+      eventHandlers: handlers,
+      listeners: item.listeners || {},
     });
-    return Array.from(byKey.values());
+  });
+  return Array.from(byKey.values());
 }
 
 /**
@@ -157,37 +156,37 @@ export function getReceivers(workspace, getWidgetConfig) {
  * event string for round-trip fidelity on remove.
  */
 export function getCurrentWiring(workspace) {
-    const wiring = [];
-    forEachWidget(workspace, (item) => {
-        const receiverItemId = itemIdOf(item);
-        if (receiverItemId == null) return;
-        const listeners = item.listeners;
-        if (!listeners || typeof listeners !== "object") return;
+  const wiring = [];
+  forEachWidget(workspace, (item) => {
+    const receiverItemId = itemIdOf(item);
+    if (receiverItemId == null) return;
+    const listeners = item.listeners;
+    if (!listeners || typeof listeners !== "object") return;
 
-        for (const [handlerName, eventList] of Object.entries(listeners)) {
-            // Live format is array; defensive guard for legacy object
-            // form (a single source widget keyed under the handler).
-            const events = Array.isArray(eventList)
-                ? eventList
-                : typeof eventList === "string"
-                ? [eventList]
-                : [];
-            for (const raw of events) {
-                const parsed = parseEventString(raw);
-                if (!parsed) continue;
-                wiring.push({
-                    receiverItemId,
-                    receiverComponent: item.component,
-                    handlerName,
-                    sourceComponent: parsed.component,
-                    sourceItemId: parsed.itemId,
-                    eventName: parsed.event,
-                    raw,
-                });
-            }
-        }
-    });
-    return wiring;
+    for (const [handlerName, eventList] of Object.entries(listeners)) {
+      // Live format is array; defensive guard for legacy object
+      // form (a single source widget keyed under the handler).
+      const events = Array.isArray(eventList)
+        ? eventList
+        : typeof eventList === "string"
+          ? [eventList]
+          : [];
+      for (const raw of events) {
+        const parsed = parseEventString(raw);
+        if (!parsed) continue;
+        wiring.push({
+          receiverItemId,
+          receiverComponent: item.component,
+          handlerName,
+          sourceComponent: parsed.component,
+          sourceItemId: parsed.itemId,
+          eventName: parsed.event,
+          raw,
+        });
+      }
+    }
+  });
+  return wiring;
 }
 
 /**
@@ -198,62 +197,60 @@ export function getCurrentWiring(workspace) {
  * message.
  */
 export function getOrphanedListeners(workspace, getWidgetConfig) {
-    const wiring = getCurrentWiring(workspace);
-    if (wiring.length === 0) return [];
+  const wiring = getCurrentWiring(workspace);
+  if (wiring.length === 0) return [];
 
-    // Build two lookups:
-    //   byCompositeKey: `${component}|${itemId}` → widget meta  (primary)
-    //   byItemId:       `${itemId}`              → widget meta  (fallback,
-    //                      used only for the "source-missing" check where
-    //                      the wiring's component can't be trusted yet)
-    // The composite key matches how the runtime event-string
-    // (`Component[itemId].event`) identifies a widget, so orphan
-    // decisions line up with what actually fires at runtime.
-    const byCompositeKey = new Map();
-    const byItemId = new Map();
-    forEachWidget(workspace, (item) => {
-        const id = itemIdOf(item);
-        if (id == null) return;
-        const meta = {
-            component: item.component,
-            events: eventsOf(item, getWidgetConfig),
-            eventHandlers: eventHandlersOf(item, getWidgetConfig),
-        };
-        byCompositeKey.set(`${item.component}|${id}`, meta);
-        // First-seen wins on numeric-id collisions; good enough for the
-        // "does any widget with this id exist?" fallback.
-        if (!byItemId.has(id)) byItemId.set(id, meta);
-    });
+  // Build two lookups:
+  //   byCompositeKey: `${component}|${itemId}` → widget meta  (primary)
+  //   byItemId:       `${itemId}`              → widget meta  (fallback,
+  //                      used only for the "source-missing" check where
+  //                      the wiring's component can't be trusted yet)
+  // The composite key matches how the runtime event-string
+  // (`Component[itemId].event`) identifies a widget, so orphan
+  // decisions line up with what actually fires at runtime.
+  const byCompositeKey = new Map();
+  const byItemId = new Map();
+  forEachWidget(workspace, (item) => {
+    const id = itemIdOf(item);
+    if (id == null) return;
+    const meta = {
+      component: item.component,
+      events: eventsOf(item, getWidgetConfig),
+      eventHandlers: eventHandlersOf(item, getWidgetConfig),
+    };
+    byCompositeKey.set(`${item.component}|${id}`, meta);
+    // First-seen wins on numeric-id collisions; good enough for the
+    // "does any widget with this id exist?" fallback.
+    if (!byItemId.has(id)) byItemId.set(id, meta);
+  });
 
-    const orphans = [];
-    for (const w of wiring) {
-        const srcKey = `${w.sourceComponent}|${w.sourceItemId}`;
-        const src = byCompositeKey.get(srcKey);
-        if (!src) {
-            // No (component, id) match. If some OTHER widget still owns
-            // this id, the source component changed; otherwise it's truly
-            // missing. Preserves the user's ability to see whether a
-            // rename happened vs. a delete.
-            const fallback = byItemId.get(String(w.sourceItemId));
-            orphans.push({
-                ...w,
-                reason: fallback
-                    ? "source-component-mismatch"
-                    : "source-missing",
-            });
-            continue;
-        }
-        if (!src.events.includes(w.eventName)) {
-            orphans.push({ ...w, reason: "event-not-emitted" });
-            continue;
-        }
-        const receiverKey = `${w.receiverComponent}|${w.receiverItemId}`;
-        const receiver = byCompositeKey.get(receiverKey);
-        if (receiver && !receiver.eventHandlers.includes(w.handlerName)) {
-            orphans.push({ ...w, reason: "handler-not-declared" });
-        }
+  const orphans = [];
+  for (const w of wiring) {
+    const srcKey = `${w.sourceComponent}|${w.sourceItemId}`;
+    const src = byCompositeKey.get(srcKey);
+    if (!src) {
+      // No (component, id) match. If some OTHER widget still owns
+      // this id, the source component changed; otherwise it's truly
+      // missing. Preserves the user's ability to see whether a
+      // rename happened vs. a delete.
+      const fallback = byItemId.get(String(w.sourceItemId));
+      orphans.push({
+        ...w,
+        reason: fallback ? "source-component-mismatch" : "source-missing",
+      });
+      continue;
     }
-    return orphans;
+    if (!src.events.includes(w.eventName)) {
+      orphans.push({ ...w, reason: "event-not-emitted" });
+      continue;
+    }
+    const receiverKey = `${w.receiverComponent}|${w.receiverItemId}`;
+    const receiver = byCompositeKey.get(receiverKey);
+    if (receiver && !receiver.eventHandlers.includes(w.handlerName)) {
+      orphans.push({ ...w, reason: "handler-not-declared" });
+    }
+  }
+  return orphans;
 }
 
 /**
@@ -275,68 +272,68 @@ export function getOrphanedListeners(workspace, getWidgetConfig) {
  * @returns {number} count of bindings removed (for logging/diagnostics)
  */
 export function pruneDeadListenerReferences(workspace) {
-    if (!workspace) return 0;
+  if (!workspace) return 0;
 
-    // Build the set of live widgets in the tree, keyed by the same
-    // `${component}|${itemId}` the runtime uses to resolve events.
-    const liveKeys = new Set();
-    const walkForLive = (items) => {
-        if (!Array.isArray(items)) return;
-        for (const item of items) {
-            if (!item || typeof item !== "object") continue;
-            if (item.component) {
-                const id = itemIdOf(item);
-                if (id != null) liveKeys.add(`${item.component}|${id}`);
-            }
-            if (Array.isArray(item.items)) walkForLive(item.items);
-            if (Array.isArray(item.layout)) walkForLive(item.layout);
-        }
-    };
-    walkForLive(workspace.layout);
-    if (Array.isArray(workspace.pages)) {
-        for (const page of workspace.pages) walkForLive(page?.layout);
+  // Build the set of live widgets in the tree, keyed by the same
+  // `${component}|${itemId}` the runtime uses to resolve events.
+  const liveKeys = new Set();
+  const walkForLive = (items) => {
+    if (!Array.isArray(items)) return;
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+      if (item.component) {
+        const id = itemIdOf(item);
+        if (id != null) liveKeys.add(`${item.component}|${id}`);
+      }
+      if (Array.isArray(item.items)) walkForLive(item.items);
+      if (Array.isArray(item.layout)) walkForLive(item.layout);
     }
-    walkForLive(workspace.sidebarLayout);
+  };
+  walkForLive(workspace.layout);
+  if (Array.isArray(workspace.pages)) {
+    for (const page of workspace.pages) walkForLive(page?.layout);
+  }
+  walkForLive(workspace.sidebarLayout);
 
-    let removed = 0;
-    const pruneListeners = (items) => {
-        if (!Array.isArray(items)) return;
-        for (const item of items) {
-            if (!item || typeof item !== "object") continue;
-            if (item.listeners && typeof item.listeners === "object") {
-                for (const handler of Object.keys(item.listeners)) {
-                    const events = item.listeners[handler];
-                    if (!Array.isArray(events)) continue;
-                    const kept = [];
-                    for (const raw of events) {
-                        const parsed = parseEventString(raw);
-                        if (
-                            parsed &&
-                            liveKeys.has(`${parsed.component}|${parsed.itemId}`)
-                        ) {
-                            kept.push(raw);
-                        } else {
-                            removed += 1;
-                        }
-                    }
-                    if (kept.length === 0) {
-                        delete item.listeners[handler];
-                    } else if (kept.length !== events.length) {
-                        item.listeners[handler] = kept;
-                    }
-                }
+  let removed = 0;
+  const pruneListeners = (items) => {
+    if (!Array.isArray(items)) return;
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+      if (item.listeners && typeof item.listeners === "object") {
+        for (const handler of Object.keys(item.listeners)) {
+          const events = item.listeners[handler];
+          if (!Array.isArray(events)) continue;
+          const kept = [];
+          for (const raw of events) {
+            const parsed = parseEventString(raw);
+            if (
+              parsed &&
+              liveKeys.has(`${parsed.component}|${parsed.itemId}`)
+            ) {
+              kept.push(raw);
+            } else {
+              removed += 1;
             }
-            if (Array.isArray(item.items)) pruneListeners(item.items);
-            if (Array.isArray(item.layout)) pruneListeners(item.layout);
+          }
+          if (kept.length === 0) {
+            delete item.listeners[handler];
+          } else if (kept.length !== events.length) {
+            item.listeners[handler] = kept;
+          }
         }
-    };
-    pruneListeners(workspace.layout);
-    if (Array.isArray(workspace.pages)) {
-        for (const page of workspace.pages) pruneListeners(page?.layout);
+      }
+      if (Array.isArray(item.items)) pruneListeners(item.items);
+      if (Array.isArray(item.layout)) pruneListeners(item.layout);
     }
-    pruneListeners(workspace.sidebarLayout);
+  };
+  pruneListeners(workspace.layout);
+  if (Array.isArray(workspace.pages)) {
+    for (const page of workspace.pages) pruneListeners(page?.layout);
+  }
+  pruneListeners(workspace.sidebarLayout);
 
-    return removed;
+  return removed;
 }
 
 /**
@@ -350,104 +347,101 @@ export function pruneDeadListenerReferences(workspace) {
  * a precise match; otherwise we match on the canonical formatted form.
  */
 export function applyWiringChanges(workspace, { adds = [], removes = [] }) {
-    if (!workspace) return workspace;
-    if (adds.length === 0 && removes.length === 0) return workspace;
+  if (!workspace) return workspace;
+  if (adds.length === 0 && removes.length === 0) return workspace;
 
-    // Group changes by receiver for cheap per-item updates.
-    const byReceiver = new Map();
-    const ensure = (id) => {
-        if (!byReceiver.has(id))
-            byReceiver.set(id, { adds: [], removes: [] });
-        return byReceiver.get(id);
-    };
-    for (const a of adds) {
-        if (!a.receiverItemId) continue;
-        ensure(String(a.receiverItemId)).adds.push(a);
-    }
-    for (const r of removes) {
-        if (!r.receiverItemId) continue;
-        ensure(String(r.receiverItemId)).removes.push(r);
-    }
+  // Group changes by receiver for cheap per-item updates.
+  const byReceiver = new Map();
+  const ensure = (id) => {
+    if (!byReceiver.has(id)) byReceiver.set(id, { adds: [], removes: [] });
+    return byReceiver.get(id);
+  };
+  for (const a of adds) {
+    if (!a.receiverItemId) continue;
+    ensure(String(a.receiverItemId)).adds.push(a);
+  }
+  for (const r of removes) {
+    if (!r.receiverItemId) continue;
+    ensure(String(r.receiverItemId)).removes.push(r);
+  }
 
-    // Walk the tree and rebuild listeners on every touched item. We do
-    // shallow clones along the path so React change detection is
-    // reliable — but the tree shape is preserved.
-    const cloneList = (items) =>
-        Array.isArray(items)
-            ? items.map((item) => transform(item))
-            : items;
+  // Walk the tree and rebuild listeners on every touched item. We do
+  // shallow clones along the path so React change detection is
+  // reliable — but the tree shape is preserved.
+  const cloneList = (items) =>
+    Array.isArray(items) ? items.map((item) => transform(item)) : items;
 
-    const transform = (item) => {
-        if (!item || typeof item !== "object") return item;
-        let next = item;
+  const transform = (item) => {
+    if (!item || typeof item !== "object") return item;
+    let next = item;
 
-        const id = itemIdOf(item);
-        const change = id != null ? byReceiver.get(String(id)) : null;
-        if (change) {
-            const newListeners = applyToItem(item.listeners || {}, change);
-            next = { ...next, listeners: newListeners };
-        }
-        if (Array.isArray(next.items)) {
-            next = { ...next, items: cloneList(next.items) };
-        }
-        if (Array.isArray(next.layout)) {
-            next = { ...next, layout: cloneList(next.layout) };
-        }
-        return next;
-    };
+    const id = itemIdOf(item);
+    const change = id != null ? byReceiver.get(String(id)) : null;
+    if (change) {
+      const newListeners = applyToItem(item.listeners || {}, change);
+      next = { ...next, listeners: newListeners };
+    }
+    if (Array.isArray(next.items)) {
+      next = { ...next, items: cloneList(next.items) };
+    }
+    if (Array.isArray(next.layout)) {
+      next = { ...next, layout: cloneList(next.layout) };
+    }
+    return next;
+  };
 
-    const updatedWs = { ...workspace };
-    if (Array.isArray(workspace.layout)) {
-        updatedWs.layout = cloneList(workspace.layout);
-    }
-    if (Array.isArray(workspace.pages)) {
-        updatedWs.pages = workspace.pages.map((page) => ({
-            ...page,
-            layout: cloneList(page.layout),
-        }));
-    }
-    if (Array.isArray(workspace.sidebarLayout)) {
-        updatedWs.sidebarLayout = cloneList(workspace.sidebarLayout);
-    }
-    return updatedWs;
+  const updatedWs = { ...workspace };
+  if (Array.isArray(workspace.layout)) {
+    updatedWs.layout = cloneList(workspace.layout);
+  }
+  if (Array.isArray(workspace.pages)) {
+    updatedWs.pages = workspace.pages.map((page) => ({
+      ...page,
+      layout: cloneList(page.layout),
+    }));
+  }
+  if (Array.isArray(workspace.sidebarLayout)) {
+    updatedWs.sidebarLayout = cloneList(workspace.sidebarLayout);
+  }
+  return updatedWs;
 }
 
 function applyToItem(listeners, { adds, removes }) {
-    // Deep enough clone for handler arrays.
-    const next = {};
-    for (const [k, v] of Object.entries(listeners)) {
-        next[k] = Array.isArray(v) ? [...v] : v;
-    }
+  // Deep enough clone for handler arrays.
+  const next = {};
+  for (const [k, v] of Object.entries(listeners)) {
+    next[k] = Array.isArray(v) ? [...v] : v;
+  }
 
-    // Removes first so a re-add (rare) lands.
-    for (const r of removes) {
-        const target = r.handlerName;
-        if (!target) continue;
-        const events = next[target];
-        if (!Array.isArray(events)) continue;
-        const eventStr =
-            r.raw ||
-            formatEventString(r.sourceComponent, r.sourceItemId, r.eventName);
-        const filtered = events.filter((e) => e !== eventStr);
-        if (filtered.length === 0) {
-            delete next[target];
-        } else {
-            next[target] = filtered;
-        }
+  // Removes first so a re-add (rare) lands.
+  for (const r of removes) {
+    const target = r.handlerName;
+    if (!target) continue;
+    const events = next[target];
+    if (!Array.isArray(events)) continue;
+    const eventStr =
+      r.raw ||
+      formatEventString(r.sourceComponent, r.sourceItemId, r.eventName);
+    const filtered = events.filter((e) => e !== eventStr);
+    if (filtered.length === 0) {
+      delete next[target];
+    } else {
+      next[target] = filtered;
     }
+  }
 
-    for (const a of adds) {
-        const target = a.handlerName;
-        if (!target) continue;
-        const eventStr = formatEventString(
-            a.sourceComponent,
-            a.sourceItemId,
-            a.eventName,
-        );
-        const existing = Array.isArray(next[target]) ? next[target] : [];
-        if (existing.includes(eventStr)) continue;
-        next[target] = [...existing, eventStr];
-    }
+  for (const a of adds) {
+    const target = a.handlerName;
+    if (!target) continue;
+    const eventStr = formatEventString(
+      a.sourceComponent,
+      a.sourceItemId,
+      a.eventName,
+    );
+    const existing = Array.isArray(next[target]) ? next[target] : [];
+    if (existing.includes(eventStr)) continue;
+    next[target] = [...existing, eventStr];
+  }
 
-    return next;
+  return next;
 }

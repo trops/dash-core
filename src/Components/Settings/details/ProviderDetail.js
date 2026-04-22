@@ -541,7 +541,11 @@ export const ProviderDetail = ({
                   type="checkbox"
                   checked={!!provider.isDefaultForType}
                   onChange={(e) =>
-                    onToggleDefaultForType(providerName, provider, e.target.checked)
+                    onToggleDefaultForType(
+                      providerName,
+                      provider,
+                      e.target.checked,
+                    )
                   }
                   className="h-4 w-4"
                 />
