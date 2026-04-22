@@ -2,6 +2,7 @@ import React, { useContext, useMemo, useCallback } from "react";
 import { ThemeContext, FontAwesomeIcon } from "@trops/dash-react";
 import { LayoutBuilder } from "../Layout";
 import { LayoutModel } from "../../Models/LayoutModel";
+import { WorkspaceScopeContext } from "../Layout/Builder/LayoutGridContainer";
 
 /**
  * Default empty 1x1 grid for the sidebar drop zone.
@@ -170,18 +171,20 @@ export const PinnedSidebar = React.memo(
             <div
               className={`flex flex-col overflow-y-auto ${hasWidget ? "flex-1 min-h-0" : "flex-1 basis-1/2"}`}
             >
-              <LayoutBuilder
-                dashboardId={workspace?.id}
-                preview={false}
-                workspace={sidebarWorkspace}
-                onWorkspaceChange={handleSidebarChange}
-                onProviderSelect={onProviderSelect}
-                onTogglePreview={onTogglePreview}
-                key={`sidebar-edit-${workspace?.id}-${hasWidget}`}
-                editMode="all"
-                workspaceRef={sidebarRef}
-                onWidgetPopout={onWidgetPopout}
-              />
+              <WorkspaceScopeContext.Provider value="sidebar">
+                <LayoutBuilder
+                  dashboardId={workspace?.id}
+                  preview={false}
+                  workspace={sidebarWorkspace}
+                  onWorkspaceChange={handleSidebarChange}
+                  onProviderSelect={onProviderSelect}
+                  onTogglePreview={onTogglePreview}
+                  key={`sidebar-edit-${workspace?.id}-${hasWidget}`}
+                  editMode="all"
+                  workspaceRef={sidebarRef}
+                  onWidgetPopout={onWidgetPopout}
+                />
+              </WorkspaceScopeContext.Provider>
             </div>
             {/* Help text + page list when no widget placed */}
             {!hasWidget && (
@@ -200,18 +203,20 @@ export const PinnedSidebar = React.memo(
         {/* Preview mode with widget */}
         {!editMode && hasWidget && sidebarWorkspace && (
           <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
-            <LayoutBuilder
-              dashboardId={workspace?.id}
-              preview={true}
-              workspace={sidebarWorkspace}
-              onWorkspaceChange={handleSidebarChange}
-              onProviderSelect={onProviderSelect}
-              onTogglePreview={onTogglePreview}
-              key={`sidebar-preview-${workspace?.id}-${hasWidget}`}
-              editMode="all"
-              workspaceRef={sidebarRef}
-              onWidgetPopout={onWidgetPopout}
-            />
+            <WorkspaceScopeContext.Provider value="sidebar">
+              <LayoutBuilder
+                dashboardId={workspace?.id}
+                preview={true}
+                workspace={sidebarWorkspace}
+                onWorkspaceChange={handleSidebarChange}
+                onProviderSelect={onProviderSelect}
+                onTogglePreview={onTogglePreview}
+                key={`sidebar-preview-${workspace?.id}-${hasWidget}`}
+                editMode="all"
+                workspaceRef={sidebarRef}
+                onWidgetPopout={onWidgetPopout}
+              />
+            </WorkspaceScopeContext.Provider>
           </div>
         )}
 

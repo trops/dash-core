@@ -50,6 +50,7 @@ import { getUnresolvedProviders } from "../../utils/providerResolution";
 import {
   applyWiringChanges,
 } from "../../utils/listenerResolution";
+import { moveWidgetAcrossContainers } from "../../utils/layout";
 import { ComponentManager } from "../../ComponentManager";
 
 /**
@@ -449,6 +450,66 @@ const DashboardStageInner = ({
       cancelled = true;
     };
   }, [popout]);
+
+  // ─── Cross-container widget drag/drop ─────────────────────────────
+  // Each LayoutBuilder (main dashboard + pinned sidebar) only owns one
+  // bucket of the workspace. A drop across them (sidebar ↔ main grid)
+  // fires a "dash:cross-container-widget-move" window CustomEvent from
+  // LayoutGridContainer's drop handler. We listen here, at the level
+  // that owns the full workspace, rewire both grid cells + move the
+  // widget layout item between buckets via moveWidgetAcrossContainers,
+  // and save once.
+  useEffect(() => {
+    if (popout) return;
+    const handler = (e) => {
+      const detail = e?.detail || {};
+      if (!workspaceSelected) return;
+      const updated = moveWidgetAcrossContainers(
+        workspaceSelected,
+        detail.sourceGridContainerId,
+        detail.sourceCellNumber,
+        detail.targetGridContainerId,
+        detail.targetCellNumber,
+      );
+      if (!updated) {
+        console.warn(
+          "[DashboardStage] cross-container move failed — grid containers not found",
+          detail,
+        );
+        return;
+      }
+      updateTabWorkspace(updated);
+      if (dashApi && credentials?.appId) {
+        try {
+          dashApi.saveWorkspace(
+            credentials.appId,
+            updated,
+            () =>
+              console.log(
+                `[DashboardStage] Cross-container move saved (${detail.sourceScope} → ${detail.targetScope})`,
+              ),
+            (err) =>
+              console.error(
+                "[DashboardStage] Cross-container move save failed:",
+                err,
+              ),
+          );
+        } catch (err) {
+          console.error(
+            "[DashboardStage] Cross-container move save threw:",
+            err,
+          );
+        }
+      }
+    };
+    window.addEventListener("dash:cross-container-widget-move", handler);
+    return () =>
+      window.removeEventListener(
+        "dash:cross-container-widget-move",
+        handler,
+      );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [popout, workspaceSelected, dashApi, credentials?.appId]);
 
   // ─── Tab Handlers ─────────────────────────────────────────────────
 
