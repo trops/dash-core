@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useContext } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   SelectMenu,
   InputText,
@@ -9,21 +9,13 @@ import { replaceItemInLayout } from "../../../../../utils/layout";
 import { LayoutModel, WorkspaceModel } from "../../../../../Models";
 import deepEqual from "deep-equal";
 import { ComponentManager } from "../../../../../ComponentManager";
-import { AppContext } from "../../../../../Context/App/AppContext";
 
 export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
-  const appContext = useContext(AppContext);
   const [itemSelected, setItemSelected] = useState(item);
   const [workspaceSelected, setWorkspaceSelected] = useState(workspace);
   const [, updateState] = useState();
   const forceUpdate = useCallback(() => updateState({}), []);
 
-  const allProviders = appContext?.providers || {};
-  const widgetConfig = itemSelected
-    ? ComponentManager.config(itemSelected.component, itemSelected)
-    : null;
-  const providerRequirements = widgetConfig?.providers || [];
-  const selectedProviders = itemSelected?.selectedProviders || {};
   useEffect(() => {
     if (deepEqual(item, itemSelected) === false) {
       setItemSelected(() => item);
@@ -46,33 +38,6 @@ export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
     );
     workspaceTemp.layout = newLayout;
     onUpdate(data, workspaceTemp);
-    forceUpdate();
-  }
-
-  function handleProviderChange(providerType, providerId) {
-    const newItem = JSON.parse(JSON.stringify(itemSelected));
-    newItem.selectedProviders = newItem.selectedProviders || {};
-    newItem.selectedProviders[providerType] = providerId;
-
-    const workspaceTemp = WorkspaceModel(workspaceSelected);
-    const newLayout = replaceItemInLayout(
-      workspaceTemp.layout,
-      newItem["id"],
-      newItem,
-    );
-    workspaceTemp.layout = newLayout;
-
-    // Also update workspace-level selectedProviders
-    const uuid = newItem.uuid || newItem.uuidString;
-    if (uuid) {
-      workspaceTemp.selectedProviders = workspaceTemp.selectedProviders || {};
-      workspaceTemp.selectedProviders[uuid] = {
-        ...(workspaceTemp.selectedProviders[uuid] || {}),
-        [providerType]: providerId,
-      };
-    }
-
-    onUpdate(newItem, workspaceTemp);
     forceUpdate();
   }
 
@@ -214,50 +179,9 @@ export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
           </div>
         )}
 
-        {providerRequirements.length > 0 && (
-          <div className="flex flex-col space-y-3">
-            <SubHeading3 title="Providers" padding={false} />
-            {providerRequirements.map((req) => {
-              const providerType = req.type;
-              const currentSelection = selectedProviders[providerType] || "";
-
-              const availableProviders = Object.entries(allProviders)
-                .filter(([, p]) => p.type === providerType)
-                .map(([name, p]) => ({ name, ...p }));
-
-              return (
-                <div key={providerType} className="flex flex-col space-y-1">
-                  <div className="flex items-center gap-1">
-                    <FormLabel title={providerType} textSize="text-sm" />
-                    {req.required && (
-                      <span className="text-red-500 text-sm">*</span>
-                    )}
-                  </div>
-                  <SelectMenu
-                    name={`provider-${providerType}`}
-                    textSize="text-sm"
-                    selectedValue={currentSelection}
-                    onChange={(e) =>
-                      handleProviderChange(providerType, e.target.value)
-                    }
-                  >
-                    <option value="">-- Select Provider --</option>
-                    {availableProviders.map((provider) => (
-                      <option key={provider.name} value={provider.name}>
-                        {provider.name}
-                      </option>
-                    ))}
-                  </SelectMenu>
-                  {availableProviders.length === 0 && (
-                    <span className="text-xs opacity-40">
-                      No {providerType} providers configured
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+        {/* Provider bindings used to render here. They now live in
+            their own "Providers" sidebar section (PanelEditItemProviders)
+            so the Settings panel stays focused on userConfig only. */}
       </div>
     )
   );
