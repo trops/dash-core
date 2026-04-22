@@ -1313,6 +1313,11 @@ export const LayoutGridContainer = memo(
                           widgetId: cellComponent.id,
                           selectedProviders:
                             cellComponent.selectedProviders || null,
+                          // Pass the live widget's userPrefs so the
+                          // preview renders the same configured state
+                          // the user sees on the dashboard (titles,
+                          // defaults, etc.) instead of blank values.
+                          userPrefs: cellComponent.userPrefs || null,
                           sourcePackage:
                             ComponentManager.config(
                               cellComponent.component,
