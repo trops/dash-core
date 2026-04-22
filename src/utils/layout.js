@@ -1193,10 +1193,18 @@ export function moveWidgetAcrossContainers(
 
   // Build a list of every bucket with a stable name so we can locate
   // grid containers across them and patch them back in place.
+  //
+  // IMPORTANT: pages are listed BEFORE the top-level `layout` bucket.
+  // `handleClickSaveWorkspace` writes `workspace.layout = activePage.layout`
+  // as a backward-compat mirror of the active page — so a dashboard
+  // grid's id typically exists in BOTH `workspace.layout` AND
+  // `workspace.pages[activeIdx].layout`. If we checked `layout` first,
+  // findBucket would match there and we'd mutate a bucket React never
+  // renders (renderers read from pages[i].layout), so the user would
+  // see the widget "disappear" with no visible target update.
+  // Sidebar is last because its ids (90000+) can never collide with
+  // page grids.
   const buckets = [];
-  if (Array.isArray(workspace.layout)) {
-    buckets.push({ key: "layout", get: () => workspace.layout });
-  }
   if (Array.isArray(workspace.pages)) {
     for (let i = 0; i < workspace.pages.length; i++) {
       if (Array.isArray(workspace.pages[i]?.layout)) {
@@ -1207,6 +1215,9 @@ export function moveWidgetAcrossContainers(
         });
       }
     }
+  }
+  if (Array.isArray(workspace.layout)) {
+    buckets.push({ key: "layout", get: () => workspace.layout });
   }
   if (Array.isArray(workspace.sidebarLayout)) {
     buckets.push({ key: "sidebarLayout", get: () => workspace.sidebarLayout });

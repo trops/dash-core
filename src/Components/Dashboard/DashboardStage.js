@@ -501,6 +501,7 @@ const DashboardStageInner = ({
         return;
       }
 
+
       // Sync the refs so when LayoutBuilder's useEffect re-seeds
       // currentWorkspace from the new workspace prop below, and the
       // refs are also updated for the next save/cross-move.
