@@ -1,5 +1,12 @@
 import React, { memo, useState, useContext, useRef, useEffect } from "react";
 import { useDrag, useDrop } from "react-dnd";
+
+// Identifies which "bucket" of the workspace a LayoutBuilder belongs
+// to so drop handlers on grid cells can distinguish a same-container
+// swap from a cross-container move (sidebar ↔ main dashboard). Wrap
+// the sidebar's LayoutBuilder with value "sidebar"; everything else
+// defaults to "main".
+export const WorkspaceScopeContext = React.createContext("main");
 import {
   ButtonIcon,
   DropComponent,
@@ -35,13 +42,14 @@ const DraggableDroppableCellBody = ({
   children,
   padding,
 }) => {
+  const workspaceScope = useContext(WorkspaceScopeContext);
   const [{ isDragging }, drag] = useDrag(
     () => ({
       type: GRID_CELL_WIDGET_TYPE,
-      item: { cellNumber, gridContainerId, hasSpan },
+      item: { cellNumber, gridContainerId, hasSpan, workspaceScope },
       collect: (monitor) => ({ isDragging: monitor.isDragging() }),
     }),
-    [cellNumber, gridContainerId, hasSpan],
+    [cellNumber, gridContainerId, hasSpan, workspaceScope],
   );
 
   const [{ isOver, canDrop, itemType }, drop] = useDrop(
@@ -50,6 +58,12 @@ const DraggableDroppableCellBody = ({
       canDrop: (dragItem, monitor) => {
         const itemType = monitor.getItemType();
         if (itemType === SIDEBAR_WIDGET_TYPE) return true;
+        // Allow cross-scope drops (sidebar ↔ main dashboard). Same-scope
+        // drops keep the old constraints: no self-drop, no span cells.
+        if ((dragItem.workspaceScope || "main") !== workspaceScope) {
+          if (dragItem.hasSpan || hasSpan) return false;
+          return true;
+        }
         if (dragItem.gridContainerId !== gridContainerId) return false;
         if (dragItem.cellNumber === cellNumber) return false;
         if (dragItem.hasSpan || hasSpan) return false;
@@ -64,14 +78,33 @@ const DraggableDroppableCellBody = ({
               cellNumber,
               dragItem.widgetKey,
             );
-        } else {
-          if (onMoveWidgetToCell)
-            onMoveWidgetToCell(
-              gridContainerId,
-              dragItem.cellNumber,
-              cellNumber,
-            );
+          return;
         }
+        // Cross-scope drop (sidebar ↔ main): can't handle here because
+        // a LayoutBuilder only sees one bucket of the workspace. Emit
+        // a window event so something up the tree (DashboardStage)
+        // can mutate the FULL workspace + save atomically.
+        if ((dragItem.workspaceScope || "main") !== workspaceScope) {
+          window.dispatchEvent(
+            new CustomEvent("dash:cross-container-widget-move", {
+              detail: {
+                sourceScope: dragItem.workspaceScope || "main",
+                sourceGridContainerId: dragItem.gridContainerId,
+                sourceCellNumber: dragItem.cellNumber,
+                targetScope: workspaceScope,
+                targetGridContainerId: gridContainerId,
+                targetCellNumber: cellNumber,
+              },
+            }),
+          );
+          return;
+        }
+        if (onMoveWidgetToCell)
+          onMoveWidgetToCell(
+            gridContainerId,
+            dragItem.cellNumber,
+            cellNumber,
+          );
       },
       collect: (monitor) => ({
         isOver: monitor.isOver(),
@@ -85,6 +118,7 @@ const DraggableDroppableCellBody = ({
       onMoveWidgetToCell,
       onDropWidgetFromSidebar,
       hasSpan,
+      workspaceScope,
     ],
   );
 
@@ -121,12 +155,15 @@ const DroppableEmptyCell = ({
   onDropWidgetFromSidebar,
   children,
 }) => {
+  const workspaceScope = useContext(WorkspaceScopeContext);
   const [{ isOver, canDrop }, drop] = useDrop(
     () => ({
       accept: [GRID_CELL_WIDGET_TYPE, SIDEBAR_WIDGET_TYPE],
       canDrop: (dragItem, monitor) => {
         const itemType = monitor.getItemType();
         if (itemType === SIDEBAR_WIDGET_TYPE) return true;
+        // Cross-scope drop onto an empty cell is always allowed.
+        if ((dragItem.workspaceScope || "main") !== workspaceScope) return true;
         return (
           dragItem.cellNumber !== cellNumber &&
           dragItem.gridContainerId === gridContainerId
@@ -141,21 +178,42 @@ const DroppableEmptyCell = ({
               cellNumber,
               dragItem.widgetKey,
             );
-        } else {
-          if (onMoveWidgetToCell)
-            onMoveWidgetToCell(
-              gridContainerId,
-              dragItem.cellNumber,
-              cellNumber,
-            );
+          return;
         }
+        if ((dragItem.workspaceScope || "main") !== workspaceScope) {
+          window.dispatchEvent(
+            new CustomEvent("dash:cross-container-widget-move", {
+              detail: {
+                sourceScope: dragItem.workspaceScope || "main",
+                sourceGridContainerId: dragItem.gridContainerId,
+                sourceCellNumber: dragItem.cellNumber,
+                targetScope: workspaceScope,
+                targetGridContainerId: gridContainerId,
+                targetCellNumber: cellNumber,
+              },
+            }),
+          );
+          return;
+        }
+        if (onMoveWidgetToCell)
+          onMoveWidgetToCell(
+            gridContainerId,
+            dragItem.cellNumber,
+            cellNumber,
+          );
       },
       collect: (monitor) => ({
         isOver: monitor.isOver(),
         canDrop: monitor.canDrop(),
       }),
     }),
-    [cellNumber, gridContainerId, onMoveWidgetToCell, onDropWidgetFromSidebar],
+    [
+      cellNumber,
+      gridContainerId,
+      onMoveWidgetToCell,
+      onDropWidgetFromSidebar,
+      workspaceScope,
+    ],
   );
 
   return (

@@ -1148,6 +1148,151 @@ export function replaceItemInLayout(tempLayout, id, item) {
 }
 
 /**
+ * moveWidgetAcrossContainers
+ *
+ * Moves a widget (and optionally swaps with another) between two grid
+ * containers that live in different "buckets" of the workspace — e.g.
+ * from `workspace.sidebarLayout` into `workspace.pages[i].layout`, or
+ * vice versa. Each LayoutBuilder only sees one bucket, so same-grid
+ * moves go through `DashboardModel.moveWidgetToCell`; cross-bucket
+ * moves need this function because they have to rewrite two buckets
+ * atomically.
+ *
+ * The workspace shape we handle:
+ *   workspace.layout         — legacy top-level layout (may be empty
+ *                              if everything lives under pages)
+ *   workspace.pages[i].layout — one layout array per page
+ *   workspace.sidebarLayout  — one layout array for the pinned sidebar
+ *
+ * Each bucket is a flat array of layout items where grid containers
+ * reference their widgets via `grid[cellKey].component = widgetId`
+ * and widget items carry `parent = gridContainerId`.
+ *
+ * Semantics:
+ *  - Source cell has a widget (enforced by the drag source).
+ *  - If target cell has a widget → SWAP (target widget lands where
+ *    source came from).
+ *  - If target cell is empty → MOVE.
+ *  - Widget layout items get moved between buckets and their `parent`
+ *    pointer is updated to the new grid container id.
+ *
+ * Returns a NEW workspace object (deep-cloned along the mutated
+ * path); does not mutate the input.
+ *
+ * @returns {object|null} updated workspace, or null if source/target
+ *                        couldn't be located.
+ */
+export function moveWidgetAcrossContainers(
+  workspace,
+  sourceGridId,
+  sourceCell,
+  targetGridId,
+  targetCell,
+) {
+  if (!workspace) return null;
+
+  // Build a list of every bucket with a stable name so we can locate
+  // grid containers across them and patch them back in place.
+  const buckets = [];
+  if (Array.isArray(workspace.layout)) {
+    buckets.push({ key: "layout", get: () => workspace.layout });
+  }
+  if (Array.isArray(workspace.pages)) {
+    for (let i = 0; i < workspace.pages.length; i++) {
+      if (Array.isArray(workspace.pages[i]?.layout)) {
+        const idx = i;
+        buckets.push({
+          key: `pages[${idx}]`,
+          get: () => workspace.pages[idx].layout,
+        });
+      }
+    }
+  }
+  if (Array.isArray(workspace.sidebarLayout)) {
+    buckets.push({ key: "sidebarLayout", get: () => workspace.sidebarLayout });
+  }
+
+  const findBucket = (gridId) => {
+    for (const b of buckets) {
+      const items = b.get();
+      if (items.some((i) => i.id === gridId)) return b;
+    }
+    return null;
+  };
+
+  const sourceBucketDef = findBucket(sourceGridId);
+  const targetBucketDef = findBucket(targetGridId);
+  if (!sourceBucketDef || !targetBucketDef) return null;
+
+  // Deep-clone the workspace so we can mutate freely.
+  const cloned = JSON.parse(JSON.stringify(workspace));
+  const getBucketArray = (def) => {
+    if (def.key === "layout") return cloned.layout;
+    if (def.key === "sidebarLayout") return cloned.sidebarLayout;
+    const m = def.key.match(/^pages\[(\d+)\]$/);
+    if (m) return cloned.pages[Number(m[1])].layout;
+    return null;
+  };
+
+  const sourceBucket = getBucketArray(sourceBucketDef);
+  const targetBucket = getBucketArray(targetBucketDef);
+
+  const sourceGrid = sourceBucket.find((i) => i.id === sourceGridId);
+  const targetGrid = targetBucket.find((i) => i.id === targetGridId);
+  if (!sourceGrid?.grid || !targetGrid?.grid) return null;
+
+  const sourceCellData = sourceGrid.grid[sourceCell];
+  const targetCellData = targetGrid.grid[targetCell];
+  if (!sourceCellData) return null;
+
+  const sourceWidgetId = sourceCellData.component;
+  const targetWidgetId = targetCellData ? targetCellData.component : null;
+  if (sourceWidgetId == null) return null;
+
+  // Rewire the grid pointers first (swap works for empty target too —
+  // targetWidgetId is null then and the source cell becomes empty).
+  sourceGrid.grid[sourceCell] = {
+    ...sourceCellData,
+    component: targetWidgetId,
+  };
+  if (!targetCellData) {
+    targetGrid.grid[targetCell] = { component: sourceWidgetId, hide: false };
+  } else {
+    targetGrid.grid[targetCell] = {
+      ...targetCellData,
+      component: sourceWidgetId,
+    };
+  }
+
+  // Move the widget layout item(s) between buckets when buckets differ.
+  // Same-bucket swaps just update parent pointers (cheap) but we still
+  // bail out early because DashboardModel.moveWidgetToCell is the
+  // canonical same-container path.
+  if (sourceBucketDef !== targetBucketDef) {
+    const sourceWidgetIdx = sourceBucket.findIndex(
+      (i) => i.id === sourceWidgetId,
+    );
+    if (sourceWidgetIdx >= 0) {
+      const [srcWidget] = sourceBucket.splice(sourceWidgetIdx, 1);
+      srcWidget.parent = targetGridId;
+      targetBucket.push(srcWidget);
+    }
+    if (targetWidgetId != null) {
+      const targetWidgetIdx = targetBucket.findIndex(
+        (i) => i.id === targetWidgetId,
+      );
+      if (targetWidgetIdx >= 0) {
+        const [tgtWidget] = targetBucket.splice(targetWidgetIdx, 1);
+        tgtWidget.parent = sourceGridId;
+        sourceBucket.push(tgtWidget);
+      }
+    }
+  }
+
+  return cloned;
+}
+
+/**
  * getNearestParentWorkspace
  * Find the nearest workspace that matches the workspace type
  * that is not a layout workspace....
