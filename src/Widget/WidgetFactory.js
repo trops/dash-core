@@ -1,4 +1,4 @@
-import React, { useContext, Component } from "react";
+import React, { useContext, useEffect, useState, Component } from "react";
 import { ComponentManager } from "../ComponentManager";
 import { DashboardPublisher } from "../DashboardPublisher";
 import { DashboardContext, WidgetContext } from "../Context";
@@ -89,6 +89,31 @@ const WidgetRenderer = ({
 }) => {
   const { dashApi } = useContext(DashboardContext);
 
+  // When a widget package is updated via Settings > Widgets (or the AI
+  // Widget Builder), the main process broadcasts "widget:installed"
+  // and Dash.js rebroadcasts a "dash:widget-installed" CustomEvent on
+  // window. We listen here, per-instance, and bump a local version
+  // counter when OUR component is the one that was updated. The counter
+  // is embedded in the child's React key so only matching instances
+  // re-mount — unrelated widgets, the sidebar, and the Settings modal
+  // are untouched. Replaces the old global stageKey remount in Dash.js.
+  const [componentVersion, setComponentVersion] = useState(0);
+  useEffect(() => {
+    const onWidgetInstalled = (e) => {
+      const installed = e?.detail?.widgetName;
+      if (!installed) return;
+      if (installed === component) {
+        setComponentVersion((v) => v + 1);
+      }
+    };
+    window.addEventListener("dash:widget-installed", onWidgetInstalled);
+    return () =>
+      window.removeEventListener(
+        "dash:widget-installed",
+        onWidgetInstalled,
+      );
+  }, [component]);
+
   try {
     const m = ComponentManager.componentMap();
 
@@ -167,7 +192,7 @@ const WidgetRenderer = ({
         children === null ? (
           <WidgetComponent
             id={`widget-nokids-${widgetKey}`}
-            key={`widget-nokids-${widgetKey}`}
+            key={`widget-nokids-${widgetKey}-v${componentVersion}`}
             listen={(listeners, handlers) =>
               helpers.listen(listeners, handlers)
             }
@@ -193,7 +218,7 @@ const WidgetRenderer = ({
             api={w}
             dashboardApi={DashboardActionsApi}
             id={`widget-kids-${widgetKey}`}
-            key={`widget-kids-${widgetKey}`}
+            key={`widget-kids-${widgetKey}-v${componentVersion}`}
             {...params}
             {...userPrefs}
             backgroundColor={bgColor}
