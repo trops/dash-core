@@ -137,8 +137,7 @@ export const DashboardConfigModal = ({
     if (Array.isArray(appProviders)) {
       for (const p of appProviders) push(p?.name, p);
     } else {
-      for (const [name, data] of Object.entries(appProviders))
-        push(name, data);
+      for (const [name, data] of Object.entries(appProviders)) push(name, data);
     }
     return byType;
   }, [appProviders]);
@@ -151,7 +150,8 @@ export const DashboardConfigModal = ({
   // orphans. All recompute when the workspace or staged delta changes
   // so the UI reflects pending edits without saving first.
   const wConfig = useMemo(
-    () => (typeof getWidgetConfig === "function" ? getWidgetConfig : () => null),
+    () =>
+      typeof getWidgetConfig === "function" ? getWidgetConfig : () => null,
     [getWidgetConfig],
   );
   const emitters = useMemo(
@@ -187,7 +187,14 @@ export const DashboardConfigModal = ({
         if (!next.some((w) => sameWiringEntry(w, a))) {
           next = [
             ...next,
-            { ...a, raw: formatEventString(a.sourceComponent, a.sourceItemId, a.eventName) },
+            {
+              ...a,
+              raw: formatEventString(
+                a.sourceComponent,
+                a.sourceItemId,
+                a.eventName,
+              ),
+            },
           ];
         }
       }
@@ -210,8 +217,7 @@ export const DashboardConfigModal = ({
   const visibleOrphans = useMemo(
     () =>
       orphans.filter(
-        (o) =>
-          !stagedListeners.removes.some((r) => sameWiringEntry(r, o)),
+        (o) => !stagedListeners.removes.some((r) => sameWiringEntry(r, o)),
       ),
     [orphans, stagedListeners.removes],
   );
@@ -300,17 +306,13 @@ export const DashboardConfigModal = ({
         });
       }
     }
-    if (
-      providerChanges.length > 0 &&
-      typeof onSaveBindings === "function"
-    ) {
+    if (providerChanges.length > 0 && typeof onSaveBindings === "function") {
       onSaveBindings(providerChanges);
     }
 
     // Listener changes
     if (
-      (stagedListeners.adds.length > 0 ||
-        stagedListeners.removes.length > 0) &&
+      (stagedListeners.adds.length > 0 || stagedListeners.removes.length > 0) &&
       typeof onSaveListeners === "function"
     ) {
       onSaveListeners(stagedListeners);
@@ -434,9 +436,7 @@ export const DashboardConfigModal = ({
  */
 function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
   const typeEntries = useMemo(() => Array.from(grouped.entries()), [grouped]);
-  const [selectedType, setSelectedType] = useState(
-    typeEntries[0]?.[0] || null,
-  );
+  const [selectedType, setSelectedType] = useState(typeEntries[0]?.[0] || null);
 
   // If the selected type disappears (workspace changed), fall back.
   useMemo(() => {
@@ -598,8 +598,8 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
                                 needsAttention
                                   ? "bg-red-600 text-white"
                                   : isRequired
-                                  ? "bg-indigo-800 text-indigo-100"
-                                  : "bg-gray-700 text-gray-300"
+                                    ? "bg-indigo-800 text-indigo-100"
+                                    : "bg-gray-700 text-gray-300"
                               }`}
                             >
                               {isRequired ? "required" : "optional"}
@@ -806,13 +806,7 @@ const ORPHAN_REASON_LABEL = {
  * adjusts wiring per handler from a single dropdown of all emitters'
  * (widget × event) pairs.
  */
-function ListenersTab({
-  emitters,
-  receivers,
-  wiring,
-  onAdd,
-  onRemove,
-}) {
+function ListenersTab({ emitters, receivers, wiring, onAdd, onRemove }) {
   const [selectedReceiverKey, setSelectedReceiverKey] = useState(
     receivers[0]?.key || null,
   );
@@ -859,76 +853,76 @@ function ListenersTab({
   return (
     <div className="flex flex-col gap-3 h-full min-h-0">
       <div className="flex flex-row gap-3 flex-1 min-h-0">
-      {/* Sidebar: receivers */}
-      <div className="w-56 flex-shrink-0 bg-white/5 border border-white/10 rounded-lg overflow-hidden flex flex-col">
-        <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider border-b border-white/10">
-          Widgets
+        {/* Sidebar: receivers */}
+        <div className="w-56 flex-shrink-0 bg-white/5 border border-white/10 rounded-lg overflow-hidden flex flex-col">
+          <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider border-b border-white/10">
+            Widgets
+          </div>
+          <div className="overflow-y-auto flex-1">
+            {receivers.map((r) => {
+              const isActive = r.key === selectedReceiverKey;
+              return (
+                <button
+                  key={r.key}
+                  type="button"
+                  onClick={() => setSelectedReceiverKey(r.key)}
+                  className={`w-full text-left px-3 py-2 border-l-2 ${
+                    isActive
+                      ? "bg-indigo-900/30 border-indigo-400"
+                      : "border-transparent hover:bg-white/5"
+                  }`}
+                >
+                  <span className="text-sm font-medium truncate">
+                    {r.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <div className="overflow-y-auto flex-1">
-          {receivers.map((r) => {
-            const isActive = r.key === selectedReceiverKey;
-            return (
-              <button
-                key={r.key}
-                type="button"
-                onClick={() => setSelectedReceiverKey(r.key)}
-                className={`w-full text-left px-3 py-2 border-l-2 ${
-                  isActive
-                    ? "bg-indigo-900/30 border-indigo-400"
-                    : "border-transparent hover:bg-white/5"
-                }`}
-              >
-                <span className="text-sm font-medium truncate">
-                  {r.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
 
-      {/* Handlers column (middle) + events column (right), mirroring
+        {/* Handlers column (middle) + events column (right), mirroring
           the two-column layout from the per-widget settings panel. */}
-      {selectedReceiver ? (
-        <>
-          <HandlersColumn
-            receiver={selectedReceiver}
-            myWiring={wiring.filter(
-              (w) =>
-                w.receiverComponent === selectedReceiver.component &&
-                String(w.receiverItemId) === String(selectedReceiver.itemId),
-            )}
-            selectedHandler={
-              selectedHandler &&
-              selectedReceiver.eventHandlers.includes(selectedHandler)
-                ? selectedHandler
-                : null
-            }
-            onSelectHandler={setSelectedHandler}
-          />
-          <EventsColumn
-            receiver={selectedReceiver}
-            handlerName={
-              selectedHandler &&
-              selectedReceiver.eventHandlers.includes(selectedHandler)
-                ? selectedHandler
-                : null
-            }
-            myWiring={wiring.filter(
-              (w) =>
-                w.receiverComponent === selectedReceiver.component &&
-                String(w.receiverItemId) === String(selectedReceiver.itemId),
-            )}
-            emitters={emitters}
-            onAdd={onAdd}
-            onRemove={onRemove}
-          />
-        </>
-      ) : (
-        <div className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg flex items-center justify-center text-sm opacity-60">
-          Pick a widget on the left to wire its handlers.
-        </div>
-      )}
+        {selectedReceiver ? (
+          <>
+            <HandlersColumn
+              receiver={selectedReceiver}
+              myWiring={wiring.filter(
+                (w) =>
+                  w.receiverComponent === selectedReceiver.component &&
+                  String(w.receiverItemId) === String(selectedReceiver.itemId),
+              )}
+              selectedHandler={
+                selectedHandler &&
+                selectedReceiver.eventHandlers.includes(selectedHandler)
+                  ? selectedHandler
+                  : null
+              }
+              onSelectHandler={setSelectedHandler}
+            />
+            <EventsColumn
+              receiver={selectedReceiver}
+              handlerName={
+                selectedHandler &&
+                selectedReceiver.eventHandlers.includes(selectedHandler)
+                  ? selectedHandler
+                  : null
+              }
+              myWiring={wiring.filter(
+                (w) =>
+                  w.receiverComponent === selectedReceiver.component &&
+                  String(w.receiverItemId) === String(selectedReceiver.itemId),
+              )}
+              emitters={emitters}
+              onAdd={onAdd}
+              onRemove={onRemove}
+            />
+          </>
+        ) : (
+          <div className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg flex items-center justify-center text-sm opacity-60">
+            Pick a widget on the left to wire its handlers.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -944,7 +938,10 @@ function ListenersTab({
 function OrphanBanner({ orphans, receiverByKey, onRemove }) {
   const labelForReceiver = (o) => {
     const key = `${o.receiverComponent}|${o.receiverItemId}`;
-    return receiverByKey.get(key)?.label || `${o.receiverComponent}[${o.receiverItemId}]`;
+    return (
+      receiverByKey.get(key)?.label ||
+      `${o.receiverComponent}[${o.receiverItemId}]`
+    );
   };
 
   return (
@@ -960,8 +957,8 @@ function OrphanBanner({ orphans, receiverByKey, onRemove }) {
             {orphans.length === 1 ? "" : "s"} found
           </div>
           <div className="text-xs text-amber-200 opacity-80">
-            Saved bindings that point at widgets, events, or handlers that
-            no longer exist. Removing them is always safe.
+            Saved bindings that point at widgets, events, or handlers that no
+            longer exist. Removing them is always safe.
           </div>
         </div>
         <button
@@ -1123,8 +1120,7 @@ function EventsColumn({
     const key = `${source.sourceComponent}|${source.sourceItemId}|${source.eventName}`;
     if (wiredKeys.has(key)) {
       const existing = wiredHere.find(
-        (w) =>
-          `${w.sourceComponent}|${w.sourceItemId}|${w.eventName}` === key,
+        (w) => `${w.sourceComponent}|${w.sourceItemId}|${w.eventName}` === key,
       );
       onRemove(existing);
     } else {
@@ -1152,8 +1148,7 @@ function EventsColumn({
   return (
     <div className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg overflow-hidden flex flex-col">
       <div className="flex-shrink-0 px-4 py-2 border-b border-white/10 text-xs opacity-60">
-        Check an event to fire{" "}
-        <code className="text-xs">{handlerName}</code> on{" "}
+        Check an event to fire <code className="text-xs">{handlerName}</code> on{" "}
         <span className="font-medium">{receiver.label}</span>.
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
@@ -1163,7 +1158,10 @@ function EventsColumn({
           </div>
         ) : (
           emittersForList.map((e) => (
-            <div key={e.key || `${e.component}|${e.itemId}`} className="space-y-1">
+            <div
+              key={e.key || `${e.component}|${e.itemId}`}
+              className="space-y-1"
+            >
               <div className="text-xs font-semibold opacity-50 uppercase tracking-wider">
                 {e.label}
               </div>
@@ -1174,9 +1172,7 @@ function EventsColumn({
                   <label
                     key={key}
                     className={`flex items-center gap-3 px-3 py-1.5 rounded-md cursor-pointer text-sm ${
-                      selected
-                        ? "opacity-100"
-                        : "opacity-70 hover:opacity-100"
+                      selected ? "opacity-100" : "opacity-70 hover:opacity-100"
                     }`}
                   >
                     <FontAwesomeIcon

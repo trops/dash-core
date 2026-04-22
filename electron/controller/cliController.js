@@ -20,6 +20,20 @@ const {
 const IS_WINDOWS = process.platform === "win32";
 
 /**
+ * Quote a string for cmd.exe when `shell: true` is in effect. With
+ * shell:true on Windows, Node joins command+args into one string and
+ * hands it to `cmd.exe /d /s /c`, which tokenizes on whitespace. A
+ * path like `C:\Users\First Name\AppData\...\claude.cmd` would parse
+ * as two tokens (`C:\Users\First` + junk) without quoting. No-op when
+ * the string has no whitespace or quote character.
+ */
+function windowsQuote(s) {
+  const str = String(s);
+  if (!/[\s"]/.test(str)) return str;
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
+/**
  * Cached shell PATH result (resolved once, reused for all spawns).
  * Same pattern as mcpController.js.
  */
@@ -290,7 +304,9 @@ const cliController = {
         }
         spawnOpts.cwd = cwd;
       }
-      const child = spawn(binaryPath, args, spawnOpts);
+      const spawnCmd = IS_WINDOWS ? windowsQuote(binaryPath) : binaryPath;
+      const spawnArgs = IS_WINDOWS ? args.map(windowsQuote) : args;
+      const child = spawn(spawnCmd, spawnArgs, spawnOpts);
 
       activeProcesses.set(requestId, child);
 

@@ -70,6 +70,22 @@ const DEFAULT_TOOL_CACHE_TTL = 5000;
 const IS_WINDOWS = process.platform === "win32";
 
 /**
+ * Quote a string for cmd.exe when `shell: true` is in effect. With
+ * shell:true on Windows, Node joins command+args into one string and
+ * hands it to `cmd.exe /d /s /c`, which tokenizes on whitespace. A
+ * path like `C:\Users\First Name\AppData\Local\Programs\Dash\Dash.exe`
+ * (what `process.execPath` returns for a packaged app when the user's
+ * folder name contains a space) parses as two tokens without quoting
+ * and the spawn fails with ENOENT. No-op when the string has no
+ * whitespace or quote character.
+ */
+function windowsQuote(s) {
+  const str = String(s);
+  if (!/[\s"]/.test(str)) return str;
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
+/**
  * Cached shell PATH result (resolved once, reused for all spawns).
  */
 let _shellPath = null;
@@ -1029,7 +1045,13 @@ const mcpController = {
 
     return new Promise((resolve) => {
       const resolvedCmd = resolveNodeCommand(authCommand.command, env);
-      const proc = spawn(resolvedCmd.command, resolvedArgs, {
+      const spawnCmd = IS_WINDOWS
+        ? windowsQuote(resolvedCmd.command)
+        : resolvedCmd.command;
+      const spawnArgs = IS_WINDOWS
+        ? resolvedArgs.map(windowsQuote)
+        : resolvedArgs;
+      const proc = spawn(spawnCmd, spawnArgs, {
         env: resolvedCmd.env,
         stdio: ["ignore", "pipe", "pipe"],
         // Needed so Windows can launch .cmd/.bat wrappers (npx.cmd, etc).

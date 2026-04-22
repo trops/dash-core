@@ -87,8 +87,8 @@ export const PanelEditItemProviders = ({
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
       <div className="text-sm opacity-70">
-        Bind each required provider so the widget can connect to its
-        data source. Changes save immediately.
+        Bind each required provider so the widget can connect to its data
+        source. Changes save immediately.
       </div>
 
       <div className="space-y-3">

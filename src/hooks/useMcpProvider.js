@@ -101,10 +101,7 @@ export const useMcpProvider = (providerType, options = {}) => {
     const appProviders = app?.providers;
     if (appProviders && typeof appProviders === "object") {
       for (const [name, data] of Object.entries(appProviders)) {
-        if (
-          data?.type === providerType &&
-          data?.isDefaultForType === true
-        ) {
+        if (data?.type === providerType && data?.isDefaultForType === true) {
           return name;
         }
       }

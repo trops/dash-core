@@ -108,10 +108,7 @@ const WidgetRenderer = ({
     };
     window.addEventListener("dash:widget-installed", onWidgetInstalled);
     return () =>
-      window.removeEventListener(
-        "dash:widget-installed",
-        onWidgetInstalled,
-      );
+      window.removeEventListener("dash:widget-installed", onWidgetInstalled);
   }, [component]);
 
   try {

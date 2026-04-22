@@ -48,7 +48,8 @@ function enrichEntryFromDisk(entry, pkgPath) {
         if (!entry.description && manifest.description)
           entry.description = manifest.description;
         if (!entry.author && manifest.author) entry.author = manifest.author;
-        if (!entry.version && manifest.version) entry.version = manifest.version;
+        if (!entry.version && manifest.version)
+          entry.version = manifest.version;
       } catch (err) {
         console.warn(
           `[WidgetRegistry] Could not parse dash.json at ${dashJsonPath}:`,

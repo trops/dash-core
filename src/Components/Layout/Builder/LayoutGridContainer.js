@@ -100,11 +100,7 @@ const DraggableDroppableCellBody = ({
           return;
         }
         if (onMoveWidgetToCell)
-          onMoveWidgetToCell(
-            gridContainerId,
-            dragItem.cellNumber,
-            cellNumber,
-          );
+          onMoveWidgetToCell(gridContainerId, dragItem.cellNumber, cellNumber);
       },
       collect: (monitor) => ({
         isOver: monitor.isOver(),
@@ -196,11 +192,7 @@ const DroppableEmptyCell = ({
           return;
         }
         if (onMoveWidgetToCell)
-          onMoveWidgetToCell(
-            gridContainerId,
-            dragItem.cellNumber,
-            cellNumber,
-          );
+          onMoveWidgetToCell(gridContainerId, dragItem.cellNumber, cellNumber);
       },
       collect: (monitor) => ({
         isOver: monitor.isOver(),

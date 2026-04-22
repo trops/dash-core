@@ -47,9 +47,7 @@ import { useMissingWidgets } from "../../hooks/useMissingWidgets";
 import { MissingWidgetsModal } from "../../Widget/MissingWidgetsModal";
 import { DashboardConfigModal } from "./DashboardConfigModal";
 import { getUnresolvedProviders } from "../../utils/providerResolution";
-import {
-  applyWiringChanges,
-} from "../../utils/listenerResolution";
+import { applyWiringChanges } from "../../utils/listenerResolution";
 import { moveWidgetAcrossContainers } from "../../utils/layout";
 import { ComponentManager } from "../../ComponentManager";
 
@@ -501,7 +499,6 @@ const DashboardStageInner = ({
         return;
       }
 
-
       // Sync the refs so when LayoutBuilder's useEffect re-seeds
       // currentWorkspace from the new workspace prop below, and the
       // refs are also updated for the next save/cross-move.
@@ -545,10 +542,7 @@ const DashboardStageInner = ({
     };
     window.addEventListener("dash:cross-container-widget-move", handler);
     return () =>
-      window.removeEventListener(
-        "dash:cross-container-widget-move",
-        handler,
-      );
+      window.removeEventListener("dash:cross-container-widget-move", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [popout, workspaceSelected, dashApi, credentials?.appId]);
 
@@ -850,10 +844,7 @@ const DashboardStageInner = ({
         credentials.appId,
         updatedWorkspace,
         (e, result) =>
-          console.log(
-            "Workspace saved with bulk provider bindings:",
-            result,
-          ),
+          console.log("Workspace saved with bulk provider bindings:", result),
         (e, error) =>
           console.error(
             "Failed to save workspace with bulk provider bindings:",
@@ -888,10 +879,7 @@ const DashboardStageInner = ({
         credentials.appId,
         updatedWorkspace,
         (e, result) =>
-          console.log(
-            "Workspace saved with bulk listener bindings:",
-            result,
-          ),
+          console.log("Workspace saved with bulk listener bindings:", result),
         (e, error) =>
           console.error(
             "Failed to save workspace with bulk listener bindings:",
@@ -1924,8 +1912,7 @@ const DashboardStageInner = ({
               workspace={workspaceSelected}
               appProviders={appContext?.providers || {}}
               getWidgetRequirements={(name) =>
-                (name && ComponentManager.componentMap()[name]?.providers) ||
-                []
+                (name && ComponentManager.componentMap()[name]?.providers) || []
               }
               getWidgetConfig={(name) =>
                 (name && ComponentManager.componentMap()[name]) || null

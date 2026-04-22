@@ -30,9 +30,7 @@ import { ToolSelector } from "./ToolSelector";
  */
 const DirectoryListField = ({ field, value, onChange, errorText }) => {
   const initialRows = useMemo(() => {
-    const parsed = (value || "")
-      .split(",")
-      .map((p) => p.trim());
+    const parsed = (value || "").split(",").map((p) => p.trim());
     const nonEmpty = parsed.filter(Boolean);
     return nonEmpty.length === 0 ? [""] : nonEmpty;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -447,7 +445,8 @@ export const CustomMcpServerForm = ({
           .filter(Boolean)
           .find((p) => !p.startsWith("/"));
         if (bad) {
-          errors[field.key] = `"${bad}" must be an absolute path (no \`~\`, use /Users/you/...)`;
+          errors[field.key] =
+            `"${bad}" must be an absolute path (no \`~\`, use /Users/you/...)`;
         }
       }
     });
@@ -989,10 +988,7 @@ export const CustomMcpServerForm = ({
                         // Default: single text/password input with optional
                         // "Browse" button for file-type credentials.
                         return (
-                          <div
-                            key={field.key}
-                            className="flex flex-col gap-2"
-                          >
+                          <div key={field.key} className="flex flex-col gap-2">
                             <FormLabel
                               label={field.displayName}
                               required={field.required}
