@@ -464,8 +464,30 @@ const DashboardStageInner = ({
     const handler = (e) => {
       const detail = e?.detail || {};
       if (!workspaceSelected) return;
+
+      // CRITICAL: LayoutBuilder edits (deletes, same-container moves,
+      // new widget drops) live in each LayoutBuilder's internal state
+      // and propagate upward only via refs — they never write back
+      // into `workspaceSelected`. So we must overlay the LIVE refs
+      // before applying the cross-container move, otherwise we'd base
+      // the move on stale state and clobber the user's unsaved edits
+      // (they'd see deleted widgets reappear after a cross-container
+      // drop). This mirrors `handleClickSaveWorkspace`'s own logic.
+      let liveWorkspace = JSON.parse(JSON.stringify(workspaceSelected));
+      liveWorkspace.pages = (liveWorkspace.pages || []).map((page) => {
+        const pageRef = pageRefsMap.current[page.id];
+        const liveLayout = pageRef?.current?.layout;
+        return liveLayout ? { ...page, layout: liveLayout } : page;
+      });
+      if (
+        sidebarWorkspaceRef.current?.layout &&
+        Array.isArray(sidebarWorkspaceRef.current.layout)
+      ) {
+        liveWorkspace.sidebarLayout = sidebarWorkspaceRef.current.layout;
+      }
+
       const updated = moveWidgetAcrossContainers(
-        workspaceSelected,
+        liveWorkspace,
         detail.sourceGridContainerId,
         detail.sourceCellNumber,
         detail.targetGridContainerId,
@@ -478,7 +500,25 @@ const DashboardStageInner = ({
         );
         return;
       }
+
+      // Sync the refs so when LayoutBuilder's useEffect re-seeds
+      // currentWorkspace from the new workspace prop below, and the
+      // refs are also updated for the next save/cross-move.
+      (updated.pages || []).forEach((page) => {
+        if (!pageRefsMap.current[page.id]) {
+          pageRefsMap.current[page.id] = { current: null };
+        }
+        pageRefsMap.current[page.id].current = { layout: page.layout };
+      });
+      if (sidebarWorkspaceRef.current) {
+        sidebarWorkspaceRef.current = {
+          ...(sidebarWorkspaceRef.current || {}),
+          layout: updated.sidebarLayout || [],
+        };
+      }
+
       updateTabWorkspace(updated);
+
       if (dashApi && credentials?.appId) {
         try {
           dashApi.saveWorkspace(
