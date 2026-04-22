@@ -80,8 +80,8 @@ export const LayoutBuilderGridItem = ({
     onChangeOrder(item, direction);
   }
 
-  function handleOpenConfig() {
-    onOpenConfig(item);
+  function handleOpenConfig(widgetItem, section) {
+    onOpenConfig(item, section);
   }
 
   function renderArrows() {

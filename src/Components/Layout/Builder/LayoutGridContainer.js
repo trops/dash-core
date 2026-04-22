@@ -1288,8 +1288,8 @@ export const LayoutGridContainer = memo(
             }
             onConfigure={
               cellComponent
-                ? () => {
-                    if (onOpenConfig) onOpenConfig(cellComponent);
+                ? (widgetItem, section) => {
+                    if (onOpenConfig) onOpenConfig(cellComponent, section);
                   }
                 : undefined
             }

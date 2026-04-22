@@ -84,25 +84,11 @@ export const WidgetCardHeader = ({
 
   const providerRequirements = getProviderRequirements();
 
-  // Get providers filtered by type
-  const getProvidersForType = (type) => {
-    return providers.filter((p) => p.type === type);
-  };
-
-  // Check if provider is configured
+  // Check if provider is configured — used only for the amber-dot
+  // indicator now. Actual provider editing lives in the config
+  // modal's Providers section (opened via the "Providers" menu item).
   const isProviderConfigured = (providerType) => {
     return selectedProviders[providerType] != null;
-  };
-
-  // Handle provider selection
-  const handleProviderSelect = (providerType, providerId) => {
-    if (providerId === "_new") {
-      onProviderChange(providerType, null, true); // true = create new
-    } else if (providerId === "_unset") {
-      onProviderChange(providerType, null, false); // unset — no provider
-    } else {
-      onProviderChange(providerType, providerId);
-    }
   };
 
   // True when any required provider lacks a selection — drives the
@@ -112,8 +98,12 @@ export const WidgetCardHeader = ({
     (req) => req.required && !isProviderConfigured(req.type),
   );
 
-  // Build overflow actions list — single source of truth for both
-  // the dropdown items and any future quick-access surface.
+  // Build overflow actions list — single source of truth for the
+  // dropdown items. Provider editing used to live inline in this
+  // menu as dropdowns per provider; that's moved to the widget
+  // config modal under a "Providers" section, so here we just show
+  // a "Providers" entry (when the widget declares any) that opens
+  // the modal pre-selected on that section.
   const overflowActions = [];
   if (onConfigure) {
     overflowActions.push({
@@ -121,6 +111,27 @@ export const WidgetCardHeader = ({
       label: "Configure",
       onClick: () => {
         onConfigure(widgetItem);
+        setShowOverflowMenu(false);
+      },
+    });
+  }
+  if (onConfigure && providerRequirements.length > 0) {
+    overflowActions.push({
+      icon: "plug",
+      label: "Providers",
+      badge: hasUnresolvedRequiredProvider ? "!" : null,
+      onClick: () => {
+        onConfigure(widgetItem, "providers");
+        setShowOverflowMenu(false);
+      },
+    });
+  }
+  if (onConfigure) {
+    overflowActions.push({
+      icon: "phone",
+      label: "Listeners",
+      onClick: () => {
+        onConfigure(widgetItem, "handlers");
         setShowOverflowMenu(false);
       },
     });
@@ -256,86 +267,24 @@ export const WidgetCardHeader = ({
             portal={true}
             align="right"
           >
-            {/* Providers section — each required/optional provider
-                the widget declares gets an inline <select>. Picking
-                a value fires onProviderChange; the menu stays open
-                so the user can tweak multiple providers in one go. */}
-            {providerRequirements.length > 0 && (
-              <>
-                <DropdownPanel.Header>Providers</DropdownPanel.Header>
-                {providerRequirements.map((providerReq) => {
-                  const providerType = providerReq.type;
-                  const availableProviders =
-                    getProvidersForType(providerType);
-                  const selectedProviderId =
-                    selectedProviders[providerType] || "";
-                  const isConfigured = isProviderConfigured(providerType);
-                  return (
-                    <div
-                      key={providerType}
-                      className="px-3 py-2 text-xs"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-gray-200">
-                          {providerType}
-                        </span>
-                        {providerReq.required && !isConfigured && (
-                          <span className="text-[10px] text-amber-300 uppercase tracking-wide">
-                            required
-                          </span>
-                        )}
-                      </div>
-                      <select
-                        value={selectedProviderId}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          if (v === "_new") {
-                            handleProviderSelect(providerType, "_new");
-                          } else if (v === "") {
-                            handleProviderSelect(providerType, "_unset");
-                          } else {
-                            handleProviderSelect(providerType, v);
-                          }
-                        }}
-                        className="w-full bg-gray-800 border border-gray-700 text-gray-100 text-xs rounded px-2 py-1"
-                      >
-                        <option value="">
-                          {providerReq.required
-                            ? "— select provider —"
-                            : "— none —"}
-                        </option>
-                        {availableProviders.map((provider) => (
-                          <option key={provider.id} value={provider.id}>
-                            {provider.name}
-                          </option>
-                        ))}
-                        <option value="_new">+ Create new…</option>
-                      </select>
-                    </div>
-                  );
-                })}
-                {overflowActions.length > 0 && <DropdownPanel.Divider />}
-              </>
-            )}
-
-            {/* Actions section — Configure, Edit with AI, Split,
-                Remove, etc. All action buttons collapsed here so the
-                widget title always has room. */}
-            {overflowActions.length > 0 && (
-              <>
-                <DropdownPanel.Header>Actions</DropdownPanel.Header>
-                {overflowActions.map((action) => (
-                  <MenuItem2 key={action.label} onClick={action.onClick}>
-                    <FontAwesomeIcon
-                      icon={action.icon}
-                      className="w-4 text-center opacity-60"
-                    />
-                    <span>{action.label}</span>
-                  </MenuItem2>
-                ))}
-              </>
-            )}
+            {/* Every action opens the widget config modal or acts on
+                the widget directly. Provider editing lives inside
+                the config modal's Providers tab now, not inline
+                here, so the menu stays short and the title has room. */}
+            {overflowActions.map((action) => (
+              <MenuItem2 key={action.label} onClick={action.onClick}>
+                <FontAwesomeIcon
+                  icon={action.icon}
+                  className="w-4 text-center opacity-60"
+                />
+                <span className="flex-1">{action.label}</span>
+                {action.badge && (
+                  <span className="ml-auto text-[10px] font-bold text-amber-300">
+                    {action.badge}
+                  </span>
+                )}
+              </MenuItem2>
+            ))}
           </DropdownPanel>
         </div>
       )}

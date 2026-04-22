@@ -72,8 +72,8 @@ export const WidgetContainerGridItem = ({
     onChangeOrder(item, direction);
   }
 
-  function handleOpenConfig() {
-    onOpenConfig(item);
+  function handleOpenConfig(widgetItem, section) {
+    onOpenConfig(item, section);
   }
 
   function handleProviderChange(providerType, providerId, createNew = false) {
