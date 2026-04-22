@@ -48,7 +48,6 @@ import { MissingWidgetsModal } from "../../Widget/MissingWidgetsModal";
 import { DashboardConfigModal } from "./DashboardConfigModal";
 import { getUnresolvedProviders } from "../../utils/providerResolution";
 import {
-  getOrphanedListeners,
   applyWiringChanges,
 } from "../../utils/listenerResolution";
 import { ComponentManager } from "../../ComponentManager";
@@ -813,29 +812,16 @@ const DashboardStageInner = ({
       }),
     [workspaceSelected, appContext?.providers],
   );
-  const orphanedListeners = useMemo(
-    () =>
-      getOrphanedListeners(
-        workspaceSelected,
-        (name) => (name && ComponentManager.componentMap()[name]) || null,
-      ),
-    [workspaceSelected],
-  );
   const unresolvedProvidersCount = unresolvedProviders.length;
-  const orphanedListenersCount = orphanedListeners.length;
-  const unresolvedCount = unresolvedProvidersCount + orphanedListenersCount;
+  // Listener orphans are pruned in WorkspaceModel / DashboardModel at
+  // load time, so the badge only counts unresolved provider bindings.
+  const unresolvedCount = unresolvedProvidersCount;
 
-  // Auto-open the Dashboard Config modal the FIRST time a workspace
-  // with unresolved providers OR orphaned listeners loads in this
-  // session. Tracked per workspace id so switching tabs doesn't nag.
-  useEffect(() => {
-    if (!workspaceSelected?.id) return;
-    if (unresolvedCount === 0) return;
-    if (configModalAutoOpenedFor.current.has(workspaceSelected.id)) return;
-    if (dismissedUnresolvedForWorkspace.has(workspaceSelected.id)) return;
-    configModalAutoOpenedFor.current.add(workspaceSelected.id);
-    setIsConfigModalOpen(true);
-  }, [workspaceSelected?.id, unresolvedCount, dismissedUnresolvedForWorkspace]);
+  // (No auto-open.) Earlier versions popped the modal on first load
+  // when anything was unresolved — turned out to be jarring,
+  // especially on dashboards that had a long-standing orphan list.
+  // Awareness is delivered passively now: the gear icon's amber dot
+  // and the banner. The user opens the modal when they're ready.
 
   // ─── Sidebar State ────────────────────────────────────────────────
   const sidebarEnabled = workspaceSelected?.sidebarEnabled || false;
@@ -1622,8 +1608,6 @@ const DashboardStageInner = ({
                           {[
                             unresolvedProvidersCount > 0 &&
                               `${unresolvedProvidersCount} widget${unresolvedProvidersCount === 1 ? "" : "s"} need${unresolvedProvidersCount === 1 ? "s" : ""} a provider`,
-                            orphanedListenersCount > 0 &&
-                              `${orphanedListenersCount} orphaned event listener${orphanedListenersCount === 1 ? "" : "s"}`,
                           ]
                             .filter(Boolean)
                             .join(" · ")}
@@ -1846,11 +1830,7 @@ const DashboardStageInner = ({
               }
               onSaveBindings={handleBulkProviderBindings}
               onSaveListeners={handleBulkListenerBindings}
-              initialTab={
-                orphanedListenersCount > unresolvedProvidersCount
-                  ? "listeners"
-                  : "providers"
-              }
+              initialTab="providers"
             />
           </>
         )}

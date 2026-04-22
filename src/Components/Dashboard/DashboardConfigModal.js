@@ -166,9 +166,15 @@ export const DashboardConfigModal = ({
     () => getCurrentWiring(workspace),
     [workspace],
   );
+  const orphans = useMemo(
+    () => getOrphanedListeners(workspace, wConfig),
+    [workspace, wConfig],
+  );
   const effectiveWiring = useMemo(() => {
     // Apply staged removes/adds to the persisted wiring for an
-    // accurate "what will be there after save" view.
+    // accurate "what will be there after save" view, then annotate
+    // each entry with its orphan reason (if any) so HandlerCard chips
+    // can render a stale-binding warning inline.
     let next = persistedWiring;
     if (stagedListeners.removes.length > 0) {
       next = next.filter(
@@ -186,12 +192,20 @@ export const DashboardConfigModal = ({
         }
       }
     }
-    return next;
-  }, [persistedWiring, stagedListeners]);
-  const orphans = useMemo(
-    () => getOrphanedListeners(workspace, wConfig),
-    [workspace, wConfig],
-  );
+    if (orphans.length === 0) return next;
+    const orphanIndex = new Map();
+    for (const o of orphans) {
+      orphanIndex.set(
+        `${o.receiverItemId}|${o.handlerName}|${o.sourceComponent}|${o.sourceItemId}|${o.eventName}`,
+        o.reason,
+      );
+    }
+    return next.map((w) => {
+      const key = `${w.receiverItemId}|${w.handlerName}|${w.sourceComponent}|${w.sourceItemId}|${w.eventName}`;
+      const reason = orphanIndex.get(key);
+      return reason ? { ...w, isOrphan: true, orphanReason: reason } : w;
+    });
+  }, [persistedWiring, stagedListeners, orphans]);
   // Orphans reduced by what the user has already staged for removal.
   const visibleOrphans = useMemo(
     () =>
@@ -316,12 +330,16 @@ export const DashboardConfigModal = ({
   if (!isOpen) return null;
 
   return (
-    <Modal isOpen={isOpen} setIsOpen={handleCancel} width="w-full max-w-3xl">
+    <Modal
+      isOpen={isOpen}
+      setIsOpen={handleCancel}
+      width="w-11/12 xl:w-5/6"
+      height="h-5/6"
+    >
       <div
-        className={`flex flex-col rounded-lg overflow-clip border ${
+        className={`flex flex-col h-full w-full rounded-lg overflow-clip border ${
           panelStyles.backgroundColor || ""
         } ${panelStyles.borderColor || ""} ${panelStyles.textColor || ""}`}
-        style={{ maxHeight: "80vh" }}
       >
         {/* Header */}
         <div className="flex-shrink-0 flex flex-row items-center justify-between p-4 border-b border-white/10">
@@ -370,60 +388,27 @@ export const DashboardConfigModal = ({
             }`}
           >
             Listeners
-            {visibleOrphans.length > 0 && (
-              <span className="ml-2 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 align-middle" />
-            )}
           </button>
         </div>
 
-        {/* Body */}
-        <div className="p-5 space-y-4 overflow-y-auto flex-1">
+        {/* Body — flex-1 so it fills the fixed-height modal; min-h-0 so
+            inner columns can own their own scroll containers. */}
+        <div className="p-5 flex-1 min-h-0">
           {activeTab === "listeners" ? (
             <ListenersTab
               emitters={emitters}
               receivers={receivers}
               wiring={effectiveWiring}
-              orphans={visibleOrphans}
               onAdd={stageListenerAdd}
               onRemove={stageListenerRemove}
             />
           ) : (
-            <>
-          {grouped.size === 0 && (
-            <div className="text-sm opacity-60 text-center py-6">
-              No widgets in this dashboard require providers.
-            </div>
-          )}
-
-          {Array.from(grouped.entries()).map(([providerType, rows]) => {
-            const options = providersByType.get(providerType) || [];
-            const unresolvedHere = rows.filter(
-              (r) => r.required && !r.resolvedProviderName,
-            ).length;
-            // The "top" dropdown reflects the currently-agreeable choice:
-            // if every row has the same resolved value, show it; otherwise
-            // show "" (mixed) so the dropdown is neutral.
-            const allSame = rows.every(
-              (r) => r.resolvedProviderName === rows[0].resolvedProviderName,
-            );
-            const topValue = allSame ? rows[0].resolvedProviderName || "" : "";
-
-            return (
-              <ProviderTypeRow
-                key={providerType}
-                providerType={providerType}
-                rows={rows}
-                options={options}
-                topValue={topValue}
-                unresolvedHere={unresolvedHere}
-                onBulk={(name) => stageBulk(providerType, name)}
-                onPerWidget={(widgetId, name) =>
-                  stageBinding(widgetId, providerType, name)
-                }
-              />
-            );
-          })}
-            </>
+            <ProvidersTab
+              grouped={grouped}
+              providersByType={providersByType}
+              onBulk={stageBulk}
+              onPerWidget={stageBinding}
+            />
           )}
         </div>
 
@@ -442,8 +427,236 @@ export const DashboardConfigModal = ({
 };
 
 /**
- * A single provider-type row: bulk dropdown + expandable per-widget
- * list. Local state for whether the per-widget overrides panel is open.
+ * Providers tab with a sidebar/detail layout mirroring the Listeners
+ * tab. Column 1 lists provider types in this workspace (with an amber
+ * dot per-type when any widget of that type is unresolved). Column 2
+ * shows the selected type's bulk dropdown + per-widget dropdowns.
+ */
+function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
+  const typeEntries = useMemo(() => Array.from(grouped.entries()), [grouped]);
+  const [selectedType, setSelectedType] = useState(
+    typeEntries[0]?.[0] || null,
+  );
+
+  // If the selected type disappears (workspace changed), fall back.
+  useMemo(() => {
+    if (selectedType && !grouped.has(selectedType)) {
+      setSelectedType(typeEntries[0]?.[0] || null);
+    }
+  }, [grouped, selectedType, typeEntries]);
+
+  if (typeEntries.length === 0) {
+    return (
+      <div className="text-sm opacity-60 text-center py-6">
+        No widgets in this dashboard require providers.
+      </div>
+    );
+  }
+
+  const selectedRows = selectedType ? grouped.get(selectedType) || [] : [];
+  const selectedOptions = selectedType
+    ? providersByType.get(selectedType) || []
+    : [];
+  const allSame =
+    selectedRows.length > 0 &&
+    selectedRows.every(
+      (r) => r.resolvedProviderName === selectedRows[0].resolvedProviderName,
+    );
+  const topValue = allSame ? selectedRows[0]?.resolvedProviderName || "" : "";
+
+  return (
+    <div className="flex flex-row gap-3 h-full min-h-0">
+      {/* Sidebar: provider types */}
+      <div className="w-56 flex-shrink-0 bg-white/5 border border-white/10 rounded-lg overflow-hidden flex flex-col">
+        <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider border-b border-white/10">
+          Provider Types
+        </div>
+        <div className="overflow-y-auto flex-1">
+          {typeEntries.map(([providerType, rows]) => {
+            const isActive = selectedType === providerType;
+            const unresolvedHere = rows.filter(
+              (r) => r.required && !r.resolvedProviderName,
+            ).length;
+            return (
+              <button
+                key={providerType}
+                type="button"
+                onClick={() => setSelectedType(providerType)}
+                className={`w-full text-left px-3 py-2 border-l-2 ${
+                  isActive
+                    ? "bg-indigo-900/30 border-indigo-400"
+                    : "border-transparent hover:bg-white/5"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium truncate">
+                    {providerType}
+                  </span>
+                  {unresolvedHere > 0 && (
+                    <span className="text-[10px] text-amber-300 flex items-center gap-1">
+                      <FontAwesomeIcon
+                        icon="triangle-exclamation"
+                        className="h-2.5 w-2.5"
+                      />
+                      {unresolvedHere}
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs opacity-50 mt-0.5">
+                  {rows.length} widget{rows.length === 1 ? "" : "s"}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Detail: bulk assign + per-widget overrides for selected type */}
+      <div className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg overflow-hidden flex flex-col">
+        {selectedType ? (
+          <>
+            <div className="px-4 py-3 border-b border-white/10 flex-shrink-0">
+              <div className="text-sm font-semibold">
+                {selectedType}{" "}
+                <span className="opacity-60 font-normal">provider</span>
+              </div>
+              <div className="text-xs opacity-60 mt-1">
+                Apply one provider to every widget of this type, or adjust
+                per-widget below.
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Bulk assign */}
+              <div className="flex items-center gap-3">
+                <span className="text-xs opacity-60 flex-shrink-0 w-20">
+                  Bulk assign
+                </span>
+                <select
+                  value={topValue}
+                  onChange={(e) => onBulk(selectedType, e.target.value)}
+                  className="flex-1 bg-gray-800 border border-white/10 rounded px-3 py-1.5 text-sm"
+                >
+                  <option value="">— Select provider —</option>
+                  {selectedOptions.map((opt) => (
+                    <option key={opt.name} value={opt.name}>
+                      {opt.name}
+                      {opt.isDefaultForType ? "  (default)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Per-widget overrides */}
+              <div>
+                <div className="text-xs font-semibold opacity-50 uppercase tracking-wider mb-2">
+                  Per-widget
+                </div>
+                <div>
+                  {selectedRows.map((row) => {
+                    const hasExplicitOverride =
+                      !!row.layoutItem?.selectedProviders?.[selectedType];
+                    const isRequired = !!row.required;
+                    const isMissing = !row.resolvedProviderName;
+                    const needsAttention = isRequired && isMissing;
+                    return (
+                      <div
+                        key={`${row.widgetId}:${row.providerType}`}
+                        className={`flex flex-row items-center gap-3 py-2 px-2 rounded border-l-2 ${
+                          needsAttention
+                            ? "bg-red-900 border-red-500"
+                            : "border-transparent"
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div
+                            className={`text-sm truncate flex items-center gap-1.5 ${
+                              needsAttention
+                                ? "font-semibold text-red-100"
+                                : "font-medium"
+                            }`}
+                          >
+                            <span className="truncate">
+                              {row.component || "widget"}
+                            </span>
+                            {isRequired && (
+                              <span
+                                className={
+                                  needsAttention
+                                    ? "text-red-300"
+                                    : "text-indigo-300"
+                                }
+                                title="Required provider"
+                                aria-label="required"
+                              >
+                                *
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-1 text-[10px]">
+                            <span
+                              className={`uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold ${
+                                needsAttention
+                                  ? "bg-red-600 text-white"
+                                  : isRequired
+                                  ? "bg-indigo-800 text-indigo-100"
+                                  : "bg-gray-700 text-gray-300"
+                              }`}
+                            >
+                              {isRequired ? "required" : "optional"}
+                            </span>
+                            {hasExplicitOverride && (
+                              <span className="uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold bg-indigo-900 text-indigo-200">
+                                override
+                              </span>
+                            )}
+                            <span className="opacity-40 truncate ml-1">
+                              {(row.widgetId || "").slice(0, 8)}
+                            </span>
+                          </div>
+                        </div>
+                        <select
+                          value={row.resolvedProviderName || ""}
+                          onChange={(e) =>
+                            onPerWidget(
+                              row.widgetId,
+                              selectedType,
+                              e.target.value,
+                            )
+                          }
+                          className={`bg-gray-800 border rounded px-2 py-1 text-xs min-w-[12rem] ${
+                            needsAttention
+                              ? "border-red-400"
+                              : "border-gray-700"
+                          }`}
+                        >
+                          <option value="">— none —</option>
+                          {selectedOptions.map((opt) => (
+                            <option key={opt.name} value={opt.name}>
+                              {opt.name}
+                              {opt.isDefaultForType ? "  (default)" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-sm opacity-60">
+            Pick a provider type to bulk-assign or adjust per widget.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Legacy inline provider-type card (unused by the new ProvidersTab
+ * layout but kept for any callers that still embed it directly).
  */
 function ProviderTypeRow({
   providerType,
@@ -577,284 +790,415 @@ function sameWiringEntry(a, b) {
 }
 
 const ORPHAN_REASON_LABEL = {
-  "source-missing": "source widget no longer exists",
-  "source-component-mismatch": "source id now belongs to a different widget",
-  "event-not-emitted": "source widget no longer emits this event",
-  "handler-not-declared": "receiver no longer declares this handler",
+  "source-missing": "The emitting widget was deleted.",
+  "source-component-mismatch":
+    "The emitter's id is now held by a different widget.",
+  "event-not-emitted": "The emitting widget no longer emits this event.",
+  "handler-not-declared":
+    "This widget no longer declares this handler in its code.",
 };
 
+/**
+ * Receiver-centric sidebar/detail layout. Mirrors the per-widget
+ * PanelEditItemHandlers pattern (handler-by-handler editing) but
+ * scoped to the whole dashboard. Picking a widget on the left shows
+ * its handlers + currently wired sources on the right; the user
+ * adjusts wiring per handler from a single dropdown of all emitters'
+ * (widget × event) pairs.
+ */
 function ListenersTab({
   emitters,
   receivers,
   wiring,
-  orphans,
   onAdd,
   onRemove,
 }) {
-  // Build a lookup so we can render receiver labels in the rows
-  // without re-walking the workspace each render.
-  const receiverById = useMemo(() => {
+  const [selectedReceiverKey, setSelectedReceiverKey] = useState(
+    receivers[0]?.key || null,
+  );
+  const [selectedHandler, setSelectedHandler] = useState(null);
+
+  // Re-anchor selection if the previously-selected widget disappeared
+  // (workspace switched, widget deleted, etc.).
+  useMemo(() => {
+    if (
+      selectedReceiverKey &&
+      !receivers.some((r) => r.key === selectedReceiverKey)
+    ) {
+      setSelectedReceiverKey(receivers[0]?.key || null);
+    }
+  }, [receivers, selectedReceiverKey]);
+
+  // Receiver lookup (by composite key) for label resolution in chips.
+  const receiverByKey = useMemo(() => {
     const m = new Map();
-    for (const r of receivers) m.set(String(r.itemId), r);
+    for (const r of receivers) m.set(r.key, r);
     return m;
   }, [receivers]);
 
-  if (emitters.length === 0 && receivers.length === 0) {
+  if (receivers.length === 0) {
     return (
-      <div className="text-sm opacity-60 text-center py-6">
-        No widgets in this dashboard emit or handle events.
+      <div className="flex items-center justify-center h-full text-sm opacity-60 text-center">
+        <div>
+          No widgets in this dashboard declare event handlers.
+          {emitters.length > 0 && (
+            <div className="mt-2">
+              ({emitters.length} widget{emitters.length === 1 ? "" : "s"} emit
+              events but nothing is set up to receive.)
+            </div>
+          )}
+        </div>
       </div>
     );
   }
 
-  return (
-    <>
-      {orphans.length > 0 && (
-        <div className="bg-amber-900/20 border border-amber-700/40 rounded-lg p-3 space-y-2">
-          <div className="flex items-center gap-2">
-            <FontAwesomeIcon
-              icon="triangle-exclamation"
-              className="h-4 w-4 text-amber-300"
-            />
-            <span className="text-sm font-semibold text-amber-200">
-              {orphans.length} orphaned listener
-              {orphans.length === 1 ? "" : "s"}
-            </span>
-            <button
-              type="button"
-              onClick={() => orphans.forEach(onRemove)}
-              className="ml-auto text-xs text-amber-300 hover:text-amber-100"
-            >
-              Remove all
-            </button>
-          </div>
-          <ul className="space-y-1 text-xs">
-            {orphans.map((o, idx) => (
-              <li
-                key={`${o.receiverItemId}:${o.handlerName}:${o.raw}:${idx}`}
-                className="flex items-center gap-2"
-              >
-                <code className="opacity-80">
-                  {o.receiverComponent || "?"}.{o.handlerName}
-                </code>
-                <span className="opacity-50">←</span>
-                <code className="opacity-60">{o.raw}</code>
-                <span className="opacity-50">·</span>
-                <span className="opacity-70">
-                  {ORPHAN_REASON_LABEL[o.reason] || o.reason}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onRemove(o)}
-                  className="ml-auto text-amber-300 hover:text-amber-100"
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+  const selectedReceiver = selectedReceiverKey
+    ? receiverByKey.get(selectedReceiverKey) || null
+    : null;
 
-      {emitters.length === 0 ? (
-        <div className="text-sm opacity-60 text-center py-6">
-          No widgets in this dashboard emit events. Add a widget that
-          declares <code>events</code> in its config to wire up
-          listeners.
+  return (
+    <div className="flex flex-col gap-3 h-full min-h-0">
+      <div className="flex flex-row gap-3 flex-1 min-h-0">
+      {/* Sidebar: receivers */}
+      <div className="w-56 flex-shrink-0 bg-white/5 border border-white/10 rounded-lg overflow-hidden flex flex-col">
+        <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider border-b border-white/10">
+          Widgets
         </div>
-      ) : (
-        emitters.map((e) => (
-          <EmitterEventsRow
-            key={e.itemId}
-            emitter={e}
-            wiring={wiring}
-            receivers={receivers}
-            receiverById={receiverById}
+        <div className="overflow-y-auto flex-1">
+          {receivers.map((r) => {
+            const isActive = r.key === selectedReceiverKey;
+            return (
+              <button
+                key={r.key}
+                type="button"
+                onClick={() => setSelectedReceiverKey(r.key)}
+                className={`w-full text-left px-3 py-2 border-l-2 ${
+                  isActive
+                    ? "bg-indigo-900/30 border-indigo-400"
+                    : "border-transparent hover:bg-white/5"
+                }`}
+              >
+                <span className="text-sm font-medium truncate">
+                  {r.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Handlers column (middle) + events column (right), mirroring
+          the two-column layout from the per-widget settings panel. */}
+      {selectedReceiver ? (
+        <>
+          <HandlersColumn
+            receiver={selectedReceiver}
+            myWiring={wiring.filter(
+              (w) =>
+                w.receiverComponent === selectedReceiver.component &&
+                String(w.receiverItemId) === String(selectedReceiver.itemId),
+            )}
+            selectedHandler={
+              selectedHandler &&
+              selectedReceiver.eventHandlers.includes(selectedHandler)
+                ? selectedHandler
+                : null
+            }
+            onSelectHandler={setSelectedHandler}
+          />
+          <EventsColumn
+            receiver={selectedReceiver}
+            handlerName={
+              selectedHandler &&
+              selectedReceiver.eventHandlers.includes(selectedHandler)
+                ? selectedHandler
+                : null
+            }
+            myWiring={wiring.filter(
+              (w) =>
+                w.receiverComponent === selectedReceiver.component &&
+                String(w.receiverItemId) === String(selectedReceiver.itemId),
+            )}
+            emitters={emitters}
             onAdd={onAdd}
             onRemove={onRemove}
           />
-        ))
+        </>
+      ) : (
+        <div className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg flex items-center justify-center text-sm opacity-60">
+          Pick a widget on the left to wire its handlers.
+        </div>
       )}
-    </>
-  );
-}
-
-function EmitterEventsRow({
-  emitter,
-  wiring,
-  receivers,
-  receiverById,
-  onAdd,
-  onRemove,
-}) {
-  return (
-    <div className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-3">
-      <div className="text-sm font-semibold">
-        {emitter.label}
-        <span className="ml-2 text-xs opacity-50 font-normal">
-          {emitter.component}
-        </span>
       </div>
-      {emitter.events.map((eventName) => {
-        // Wiring entries listening to THIS specific (emitter, event)
-        const listeningHere = wiring.filter(
-          (w) =>
-            String(w.sourceItemId) === String(emitter.itemId) &&
-            w.eventName === eventName,
-        );
-        // Receivers eligible to be added: any with at least one
-        // handler declaration. Self-loop allowed; the host runtime
-        // doesn't enforce a same-component exclusion.
-        const eligibleReceivers = receivers.filter(
-          (r) => r.eventHandlers.length > 0,
-        );
-        return (
-          <div
-            key={eventName}
-            className="pl-3 border-l border-white/10 space-y-2"
-          >
-            <div className="text-xs font-mono opacity-80">
-              {eventName}
-            </div>
-            {listeningHere.length === 0 ? (
-              <div className="text-xs opacity-50">No receivers wired</div>
-            ) : (
-              <ul className="space-y-1">
-                {listeningHere.map((w) => {
-                  const r = receiverById.get(String(w.receiverItemId));
-                  return (
-                    <li
-                      key={`${w.receiverItemId}:${w.handlerName}:${w.raw}`}
-                      className="flex items-center gap-2 text-xs"
-                    >
-                      <span className="opacity-60">→</span>
-                      <span>
-                        {r?.label || w.receiverComponent || "?"}
-                      </span>
-                      <span className="opacity-50">·</span>
-                      <code className="opacity-80">{w.handlerName}</code>
-                      <button
-                        type="button"
-                        onClick={() => onRemove(w)}
-                        className="ml-auto opacity-60 hover:opacity-100 text-red-300"
-                        title="Remove listener"
-                      >
-                        <FontAwesomeIcon icon="xmark" className="h-3 w-3" />
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            {eligibleReceivers.length > 0 && (
-              <AddReceiverPicker
-                emitter={emitter}
-                eventName={eventName}
-                receivers={eligibleReceivers}
-                onAdd={onAdd}
-              />
-            )}
-          </div>
-        );
-      })}
     </div>
   );
 }
 
-function AddReceiverPicker({ emitter, eventName, receivers, onAdd }) {
-  const [open, setOpen] = useState(false);
-  const [receiverId, setReceiverId] = useState("");
-  const [handlerName, setHandlerName] = useState("");
+/**
+ * Top-of-tab banner surfacing every orphaned listener binding with a
+ * bulk "Remove all" action plus per-binding removes. An orphan is a
+ * saved connection to a widget/event/handler that no longer exists in
+ * the current workspace. Lives above the 3-column layout so it's
+ * always visible regardless of which widget the user has selected.
+ */
+function OrphanBanner({ orphans, receiverByKey, onRemove }) {
+  const labelForReceiver = (o) => {
+    const key = `${o.receiverComponent}|${o.receiverItemId}`;
+    return receiverByKey.get(key)?.label || `${o.receiverComponent}[${o.receiverItemId}]`;
+  };
 
-  const selectedReceiver = useMemo(
-    () => receivers.find((r) => String(r.itemId) === String(receiverId)) || null,
-    [receivers, receiverId],
+  return (
+    <div className="flex-shrink-0 bg-amber-900/20 border border-amber-700/40 rounded-lg">
+      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-amber-700/30">
+        <FontAwesomeIcon
+          icon="triangle-exclamation"
+          className="h-4 w-4 text-amber-300 flex-shrink-0"
+        />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-amber-100">
+            {orphans.length} stale connection
+            {orphans.length === 1 ? "" : "s"} found
+          </div>
+          <div className="text-xs text-amber-200 opacity-80">
+            Saved bindings that point at widgets, events, or handlers that
+            no longer exist. Removing them is always safe.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => orphans.forEach((o) => onRemove(o))}
+          className="flex-shrink-0 text-xs bg-amber-800 hover:bg-amber-700 text-amber-100 rounded px-3 py-1.5"
+        >
+          Remove all
+        </button>
+      </div>
+      <ul className="max-h-32 overflow-y-auto text-xs text-amber-100 divide-y divide-amber-700/20">
+        {orphans.map((o) => (
+          <li
+            key={`${o.receiverComponent}|${o.receiverItemId}|${o.handlerName}|${o.sourceComponent}|${o.sourceItemId}|${o.eventName}`}
+            className="flex items-center gap-2 px-4 py-1.5"
+          >
+            <span className="flex-1 min-w-0 truncate">
+              <span className="font-medium">{labelForReceiver(o)}</span>
+              <span className="opacity-70">'s </span>
+              <code>{o.handlerName}</code>
+              <span className="opacity-70"> ← </span>
+              <code>
+                {o.sourceComponent}[{o.sourceItemId}].{o.eventName}
+              </code>
+              <span className="opacity-70 ml-2">
+                ({ORPHAN_REASON_LABEL[o.reason] || "stale"})
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => onRemove(o)}
+              className="flex-shrink-0 text-amber-300 hover:text-amber-100 underline underline-offset-2"
+            >
+              Remove
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Second column (within ListenersTab): the selected receiver's
+ * handlers with connection counts. Picking one lights up the
+ * third column. Matches the left-column look from
+ * PanelEditItemHandlers.
+ */
+function HandlersColumn({
+  receiver,
+  myWiring,
+  selectedHandler,
+  onSelectHandler,
+}) {
+  const countsByHandler = useMemo(() => {
+    const m = new Map();
+    for (const w of myWiring) {
+      m.set(w.handlerName, (m.get(w.handlerName) || 0) + 1);
+    }
+    return m;
+  }, [myWiring]);
+
+  return (
+    <div className="w-56 flex-shrink-0 bg-white/5 border border-white/10 rounded-lg overflow-hidden flex flex-col">
+      <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider border-b border-white/10">
+        Event Handlers
+      </div>
+      <div className="overflow-y-auto flex-1">
+        {receiver.eventHandlers.length === 0 ? (
+          <div className="text-xs opacity-50 text-center py-6 px-3">
+            This widget declares no event handlers.
+          </div>
+        ) : (
+          receiver.eventHandlers.map((h) => {
+            const isActive = h === selectedHandler;
+            const count = countsByHandler.get(h) || 0;
+            return (
+              <button
+                key={h}
+                type="button"
+                onClick={() => onSelectHandler(h)}
+                className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 border-l-2 ${
+                  isActive
+                    ? "bg-indigo-900/30 border-indigo-400"
+                    : "border-transparent hover:bg-white/5"
+                }`}
+              >
+                <span className="flex items-center gap-2 min-w-0">
+                  <FontAwesomeIcon
+                    icon="bolt"
+                    className="h-3 w-3 opacity-60 flex-shrink-0"
+                  />
+                  <code className="truncate">{h}</code>
+                </span>
+                <span className="text-xs opacity-60 flex-shrink-0">
+                  {count}
+                </span>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Third column: for the selected (receiver, handler), show every
+ * emitter widget as a section with a checkbox list of its events.
+ * Checked = wired; toggling commits an add/remove. Mirrors the
+ * right-column UX of PanelEditItemHandlers.
+ */
+function EventsColumn({
+  receiver,
+  handlerName,
+  myWiring,
+  emitters,
+  onAdd,
+  onRemove,
+}) {
+  // Wired-for-this-handler: dedupe defensively (legacy workspaces
+  // occasionally contain duplicate entries under the same handler).
+  const wiredHere = useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    for (const w of myWiring) {
+      if (w.handlerName !== handlerName) continue;
+      const key = `${w.sourceComponent}|${w.sourceItemId}|${w.eventName}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(w);
+    }
+    return out;
+  }, [myWiring, handlerName]);
+
+  const wiredKeys = useMemo(
+    () =>
+      new Set(
+        wiredHere.map(
+          (w) => `${w.sourceComponent}|${w.sourceItemId}|${w.eventName}`,
+        ),
+      ),
+    [wiredHere],
   );
 
-  // Pre-select handler when receiver chosen — pick the one matching
-  // event name if present, else first handler.
-  const handlerOptions = selectedReceiver?.eventHandlers || [];
-  const effectiveHandler =
-    handlerName ||
-    (handlerOptions.includes(eventName) ? eventName : handlerOptions[0] || "");
+  // Separate orphans — these reference sources no longer in the
+  // workspace, so they don't appear in the emitter sections below.
+  const orphansHere = wiredHere.filter((w) => w.isOrphan);
 
-  if (!open) {
+  if (!handlerName) {
     return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
-      >
-        <FontAwesomeIcon icon="plus" className="h-3 w-3" />
-        Add receiver
-      </button>
+      <div className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg flex items-center justify-center text-sm opacity-60">
+        Select a handler to view available events.
+      </div>
     );
   }
 
-  function commit() {
-    if (!selectedReceiver || !effectiveHandler) return;
-    onAdd({
-      receiverItemId: selectedReceiver.itemId,
-      receiverComponent: selectedReceiver.component,
-      handlerName: effectiveHandler,
-      sourceComponent: emitter.component,
-      sourceItemId: emitter.itemId,
-      eventName,
-    });
-    setOpen(false);
-    setReceiverId("");
-    setHandlerName("");
+  function toggle(source) {
+    const key = `${source.sourceComponent}|${source.sourceItemId}|${source.eventName}`;
+    if (wiredKeys.has(key)) {
+      const existing = wiredHere.find(
+        (w) =>
+          `${w.sourceComponent}|${w.sourceItemId}|${w.eventName}` === key,
+      );
+      onRemove(existing);
+    } else {
+      onAdd({
+        receiverItemId: receiver.itemId,
+        receiverComponent: receiver.component,
+        handlerName,
+        sourceComponent: source.sourceComponent,
+        sourceItemId: source.sourceItemId,
+        eventName: source.eventName,
+      });
+    }
   }
 
+  // Hide the selected receiver from its own emitter list — a widget
+  // listening to its own events is almost always a mistake.
+  const emittersForList = emitters.filter(
+    (e) =>
+      !(
+        e.component === receiver.component &&
+        String(e.itemId) === String(receiver.itemId)
+      ),
+  );
+
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      <select
-        value={receiverId}
-        onChange={(e) => {
-          setReceiverId(e.target.value);
-          setHandlerName("");
-        }}
-        className="bg-gray-800 border border-white/10 rounded px-2 py-1 text-xs"
-      >
-        <option value="">— Receiver —</option>
-        {receivers.map((r) => (
-          <option key={r.itemId} value={r.itemId}>
-            {r.label}
-          </option>
-        ))}
-      </select>
-      <select
-        value={effectiveHandler}
-        onChange={(e) => setHandlerName(e.target.value)}
-        disabled={!selectedReceiver}
-        className="bg-gray-800 border border-white/10 rounded px-2 py-1 text-xs disabled:opacity-40"
-      >
-        <option value="">— Handler —</option>
-        {handlerOptions.map((h) => (
-          <option key={h} value={h}>
-            {h}
-          </option>
-        ))}
-      </select>
-      <button
-        type="button"
-        onClick={commit}
-        disabled={!selectedReceiver || !effectiveHandler}
-        className="px-2 py-1 text-xs rounded bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        Add
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          setOpen(false);
-          setReceiverId("");
-          setHandlerName("");
-        }}
-        className="text-xs opacity-60 hover:opacity-100"
-      >
-        Cancel
-      </button>
+    <div className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg overflow-hidden flex flex-col">
+      <div className="flex-shrink-0 px-4 py-2 border-b border-white/10 text-xs opacity-60">
+        Check an event to fire{" "}
+        <code className="text-xs">{handlerName}</code> on{" "}
+        <span className="font-medium">{receiver.label}</span>.
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-5">
+        {emittersForList.length === 0 ? (
+          <div className="text-sm opacity-60">
+            No other widgets in this dashboard emit events.
+          </div>
+        ) : (
+          emittersForList.map((e) => (
+            <div key={e.key || `${e.component}|${e.itemId}`} className="space-y-1">
+              <div className="text-xs font-semibold opacity-50 uppercase tracking-wider">
+                {e.label}
+              </div>
+              {e.events.map((eventName) => {
+                const key = `${e.component}|${e.itemId}|${eventName}`;
+                const selected = wiredKeys.has(key);
+                return (
+                  <label
+                    key={key}
+                    className={`flex items-center gap-3 px-3 py-1.5 rounded-md cursor-pointer text-sm ${
+                      selected
+                        ? "opacity-100"
+                        : "opacity-70 hover:opacity-100"
+                    }`}
+                  >
+                    <FontAwesomeIcon
+                      icon={selected ? "square-check" : "square"}
+                      className="h-4 w-4 flex-shrink-0"
+                      onClick={(ev) => {
+                        ev.preventDefault();
+                        toggle({
+                          sourceComponent: e.component,
+                          sourceItemId: e.itemId,
+                          eventName,
+                        });
+                      }}
+                    />
+                    <span>{eventName}</span>
+                  </label>
+                );
+              })}
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

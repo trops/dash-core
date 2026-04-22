@@ -1,5 +1,6 @@
 import { deepCopy } from "@trops/dash-react";
 import { LayoutModel } from "./LayoutModel";
+import { pruneDeadListenerReferences } from "../utils/listenerResolution";
 
 /**
  * Default layout for a brand-new workspace: a single 1x1 grid container
@@ -160,6 +161,13 @@ export const WorkspaceModel = (workspaceItem) => {
   workspace.selectedProviders =
     "selectedProviders" in obj ? obj["selectedProviders"] : {};
   workspace.themeKey = "themeKey" in obj ? obj["themeKey"] : null;
+
+  // Strip any listener bindings whose source widget is no longer in
+  // the tree. These "orphan" bindings are dead — they don't match any
+  // live publisher and never fire — so they're safe to remove at load
+  // time before the renderer wires up subscriptions. Keeps stored
+  // workspaces self-consistent without the user having to do anything.
+  pruneDeadListenerReferences(workspace);
 
   return sanitizeWorkspaceObject(workspace);
   // return workspace;

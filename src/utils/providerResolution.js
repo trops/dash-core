@@ -71,9 +71,26 @@ export function resolveProviderName({
  * instance with its concrete layout item. Handles the main layout,
  * per-page layouts, the sidebar, and nested LayoutGridContainers whose
  * children are stored on `items`/`layout`.
+ *
+ * Deduplicates by object identity AND by stable id so that shared
+ * references across pages (or two structurally-distinct items that
+ * carry the same uuidString / id, which is the wiring key) are
+ * visited exactly once. Pipeline-style workspaces re-reference the
+ * same widget objects across page layouts; without this dedupe the
+ * Providers/Listeners tabs render one row per reference.
  */
 export function forEachWidget(workspace, visit) {
     if (!workspace) return;
+
+    const visitedObjects = new WeakSet();
+    const visitedIds = new Set();
+
+    const stableId = (item) =>
+        item?.uuidString ||
+        item?.uuid ||
+        (item?.component != null && item?.id != null
+            ? `${item.component}|${item.id}`
+            : null);
 
     const walk = (items) => {
         if (!Array.isArray(items)) return;
@@ -82,7 +99,16 @@ export function forEachWidget(workspace, visit) {
             // A "widget" is any layout item with a component name.
             // Containers can have both a component name AND nested items
             // (e.g. LayoutGridContainer), so still recurse.
-            if (item.component) visit(item);
+            if (item.component) {
+                const id = stableId(item);
+                const alreadyByRef = visitedObjects.has(item);
+                const alreadyById = id != null && visitedIds.has(id);
+                if (!alreadyByRef && !alreadyById) {
+                    visitedObjects.add(item);
+                    if (id != null) visitedIds.add(id);
+                    visit(item);
+                }
+            }
             if (Array.isArray(item.items)) walk(item.items);
             if (Array.isArray(item.layout)) walk(item.layout);
         }
