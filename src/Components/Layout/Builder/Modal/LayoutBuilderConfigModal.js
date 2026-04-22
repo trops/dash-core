@@ -12,9 +12,10 @@ import PanelEditItemGrid from "./Panel/PanelEditItemGrid";
 import PanelEditItemNotifications from "./Panel/PanelEditItemNotifications";
 import PanelEditItemSchedule from "./Panel/PanelEditItemSchedule";
 
-import { PanelEditItemHandlers } from "./Panel";
+import { PanelEditItemHandlers, PanelEditItemProviders } from "./Panel";
 import PanelCode from "./Panel/PanelCode";
 import { ComponentManager } from "../../../../ComponentManager";
+import { getUserConfigurableProviders } from "../../../../utils/providerUtils";
 
 const getSections = (item) => {
   const widgetConfig = item
@@ -22,6 +23,18 @@ const getSections = (item) => {
     : null;
   const hasNotifications = widgetConfig?.notifications?.length > 0;
   const hasScheduledTasks = widgetConfig?.scheduledTasks?.length > 0;
+  // Show the Providers section whenever the widget declares any
+  // user-configurable providers. Previously provider selection lived
+  // inline in the card header dropdown; this moves it into the
+  // widget config modal so the header stays uncluttered and there's
+  // room for richer per-provider UX.
+  const declaredProviders = Array.isArray(widgetConfig?.providers)
+    ? widgetConfig.providers
+    : Array.isArray(item?.providers)
+      ? item.providers
+      : [];
+  const userConfigurableProviders =
+    getUserConfigurableProviders(declaredProviders);
   return [
     { key: "edit", label: "Settings", icon: "cog" },
     ...(item?.type !== "widget" && item?.grid
@@ -35,6 +48,9 @@ const getSections = (item) => {
       : []),
     ...(item?.workspace !== "layout"
       ? [{ key: "handlers", label: "Listeners", icon: "phone" }]
+      : []),
+    ...(userConfigurableProviders.length > 0
+      ? [{ key: "providers", label: "Providers", icon: "plug" }]
       : []),
     { key: "code", label: "Code", icon: "code" },
   ];
@@ -160,6 +176,14 @@ export const LayoutBuilderConfigModal = ({
 
           {activeSection === "handlers" && (
             <PanelEditItemHandlers
+              item={itemSelected}
+              onUpdate={handleEditChange}
+              workspace={workspaceSelected}
+            />
+          )}
+
+          {activeSection === "providers" && (
+            <PanelEditItemProviders
               item={itemSelected}
               onUpdate={handleEditChange}
               workspace={workspaceSelected}

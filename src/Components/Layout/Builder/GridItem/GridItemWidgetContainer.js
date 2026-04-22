@@ -98,8 +98,8 @@ export const GridItemWidgetContainer = ({
     onChangeDirection(id, direction);
   }
 
-  function handleOpenConfig() {
-    onOpenConfig(item);
+  function handleOpenConfig(widgetItem, section) {
+    onOpenConfig(item, section);
   }
 
   function handleProviderChange(providerType, providerId, createNew = false) {
