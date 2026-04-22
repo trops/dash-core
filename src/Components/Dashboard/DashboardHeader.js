@@ -56,12 +56,10 @@ export const DashboardHeader = ({
             className="font-bold text-base"
           />
           <div className="flex flex-row items-center gap-1">
-            {onOpenConfig !== null && (
-              <DashboardConfigButton
-                onClick={onOpenConfig}
-                unresolvedCount={configUnresolvedCount}
-              />
-            )}
+            {/* Dashboard Config gear is intentionally NOT rendered in
+                preview mode — wiring is a configuration concern, not a
+                viewer concern. The button only appears in edit mode
+                below. */}
             {onPopout !== null && (
               <ButtonIcon
                 icon="arrow-up-right-from-square"

@@ -2,6 +2,7 @@ import { LayoutModel } from "./LayoutModel";
 import { ComponentManager } from "../ComponentManager";
 import { deepCopy } from "@trops/dash-react";
 import { getNextHighestId, getNextHighestOrder } from "../utils/layout";
+import { pruneDeadListenerReferences } from "../utils/listenerResolution";
 /**
  * A Model for a Workspace (Dashboard)
  * The Dashboard in this instance is the entire Layout inclusive of the workspaces and widgets
@@ -74,6 +75,12 @@ export class DashboardModel {
     }
 
     obj = null;
+
+    // Strip any listener bindings whose source widget is no longer in
+    // the tree — dead bindings never fire and just clutter the stored
+    // workspace. Safe at model-init time because it's purely tree-local
+    // (doesn't need ComponentManager).
+    pruneDeadListenerReferences(this);
 
     // Normalize all grids on load to repair any persisted corruption
     this._normalizeAllGrids();
