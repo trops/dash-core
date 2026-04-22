@@ -27,6 +27,75 @@ let WIDGETS_CACHE_DIR = null;
 let REGISTRY_CONFIG_FILE = null;
 
 /**
+ * Populate an existing registry entry with componentNames + widgets
+ * metadata derived from the package on disk. Tries, in order:
+ *   1. dash.json's `widgets` array (the canonical manifest)
+ *   2. scanning `widgets/` for *.dash.js files if dash.json is missing
+ * Mutates the entry in place. Safe to call on entries that already
+ * carry the metadata — only fills blanks, never overwrites existing
+ * values except to promote a more complete list.
+ */
+function enrichEntryFromDisk(entry, pkgPath) {
+  try {
+    const dashJsonPath = path.join(pkgPath, "dash.json");
+    let widgetsMeta = [];
+    if (fs.existsSync(dashJsonPath)) {
+      try {
+        const manifest = JSON.parse(fs.readFileSync(dashJsonPath, "utf8"));
+        if (Array.isArray(manifest.widgets)) widgetsMeta = manifest.widgets;
+        if (!entry.displayName && manifest.displayName)
+          entry.displayName = manifest.displayName;
+        if (!entry.description && manifest.description)
+          entry.description = manifest.description;
+        if (!entry.author && manifest.author) entry.author = manifest.author;
+        if (!entry.version && manifest.version) entry.version = manifest.version;
+      } catch (err) {
+        console.warn(
+          `[WidgetRegistry] Could not parse dash.json at ${dashJsonPath}:`,
+          err.message,
+        );
+      }
+    }
+    // Fallback: scan widgets/*.dash.js if dash.json didn't yield anything.
+    if (widgetsMeta.length === 0) {
+      const widgetsDir = path.join(pkgPath, "widgets");
+      if (fs.existsSync(widgetsDir)) {
+        try {
+          widgetsMeta = fs
+            .readdirSync(widgetsDir)
+            .filter((f) => f.endsWith(".dash.js"))
+            .map((f) => ({ name: f.replace(/\.dash\.js$/, "") }));
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    }
+    if (widgetsMeta.length > 0) {
+      const names = widgetsMeta
+        .map((w) => w && w.name)
+        .filter((n) => typeof n === "string" && n.length > 0);
+      if (
+        names.length >
+        (Array.isArray(entry.componentNames) ? entry.componentNames.length : 0)
+      ) {
+        entry.componentNames = names;
+      }
+      if (
+        widgetsMeta.length >
+        (Array.isArray(entry.widgets) ? entry.widgets.length : 0)
+      ) {
+        entry.widgets = widgetsMeta;
+      }
+    }
+  } catch (err) {
+    console.warn(
+      `[WidgetRegistry] enrichEntryFromDisk failed for ${pkgPath}:`,
+      err.message,
+    );
+  }
+}
+
+/**
  * Validate ZIP entries to prevent path traversal attacks.
  * Rejects entries containing '..' segments or absolute paths that would
  * write outside the target extraction directory.
@@ -226,25 +295,75 @@ class WidgetRegistry {
         this.saveRegistry();
         console.log("[WidgetRegistry] Disk reconciliation complete");
       }
+
+      // Back-fill componentNames / widgets metadata for any entries
+      // that still look stale (e.g. packages written by older install
+      // flows before metadata was tracked). Needed for the "Edit with
+      // AI" reverse lookup to find which package owns a component.
+      this.backfillMetadataFromDisk();
     } catch (err) {
       console.warn("[WidgetRegistry] Reconciliation error:", err.message);
     }
   }
 
   /**
-   * Re-register an orphaned widget package found on disk.
+   * Re-register an orphaned widget package found on disk. Reads the
+   * package's dash.json if present so the registry entry carries the
+   * full component list — without this, downstream flows that look up
+   * "which package contains component X?" (e.g. Edit with AI) hit an
+   * empty `componentNames` array and silently fail.
    */
   _reregisterOrphan(pkgId, pkgPath) {
     console.log(`[WidgetRegistry] Re-registering orphaned widget: ${pkgId}`);
     const { scope } = parsePackageId(pkgId);
-    this.widgets.set(pkgId, {
+    const entry = {
       name: pkgId,
       packageId: pkgId,
       scope: scope || null,
       path: pkgPath,
       version: null,
       orphaned: true,
-    });
+    };
+    enrichEntryFromDisk(entry, pkgPath);
+    this.widgets.set(pkgId, entry);
+  }
+
+  /**
+   * One-time pass over existing registry entries to back-fill missing
+   * component metadata from each package's dash.json / widgets folder.
+   * Needed for entries that were written by an older version of the
+   * install flow before componentNames was tracked — without this,
+   * "Edit with AI" and other reverse-lookups ("which package owns
+   * component X?") can't resolve the package.
+   */
+  backfillMetadataFromDisk() {
+    let changed = false;
+    for (const [pkgId, entry] of this.widgets.entries()) {
+      const needsBackfill =
+        !Array.isArray(entry.componentNames) ||
+        entry.componentNames.length === 0 ||
+        !Array.isArray(entry.widgets) ||
+        entry.widgets.length === 0;
+      if (!needsBackfill) continue;
+      if (!entry.path || !fs.existsSync(entry.path)) continue;
+      const before = {
+        cn: (entry.componentNames || []).length,
+        w: (entry.widgets || []).length,
+      };
+      enrichEntryFromDisk(entry, entry.path);
+      const after = {
+        cn: (entry.componentNames || []).length,
+        w: (entry.widgets || []).length,
+      };
+      if (after.cn !== before.cn || after.w !== before.w) {
+        console.log(
+          `[WidgetRegistry] Back-filled metadata for ${pkgId}: ` +
+            `componentNames ${before.cn} → ${after.cn}, widgets ${before.w} → ${after.w}`,
+        );
+        changed = true;
+      }
+    }
+    if (changed) this.saveRegistry();
   }
 
   /**
