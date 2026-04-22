@@ -9,14 +9,13 @@
  * - More menu (three-dot)
  */
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState } from "react";
 import {
   ButtonIcon2,
   DropdownPanel,
   FontAwesomeIcon,
   MenuItem2,
 } from "@trops/dash-react";
-import { ProviderBadge } from "./ProviderBadge";
 import { WidgetIcon } from "./WidgetIcon";
 import { ComponentManager } from "../../../../ComponentManager";
 import { getUserConfigurableProviders } from "../../../../utils/providerUtils";
@@ -40,24 +39,12 @@ export const WidgetCardHeader = ({
   isSelectable = true,
   onToggleSelect = null,
 }) => {
-  const [showProviderDropdown, setShowProviderDropdown] = useState(null);
-  const [isCompact, setIsCompact] = useState(false);
+  // One overflow menu holds both provider pickers AND action items,
+  // so the widget title always gets the full header width regardless
+  // of cell size. Previous design kept provider badges + action
+  // buttons inline (both flex-shrink-0) which cropped the title on
+  // narrow cells and made the config button unreachable.
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
-  const headerRef = useRef(null);
-
-  // ResizeObserver to detect compact mode
-  useEffect(() => {
-    const el = headerRef.current;
-    if (!el) return;
-
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setIsCompact(entry.contentRect.width < 320);
-      }
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   // Support both 'item' and 'widget' props
   const widgetItem = item || widget;
@@ -107,15 +94,6 @@ export const WidgetCardHeader = ({
     return selectedProviders[providerType] != null;
   };
 
-  // Get provider name
-  const getProviderName = (providerType) => {
-    const providerId = selectedProviders[providerType];
-    if (!providerId) return null;
-
-    const provider = providers.find((p) => p.id === providerId);
-    return provider?.name;
-  };
-
   // Handle provider selection
   const handleProviderSelect = (providerType, providerId) => {
     if (providerId === "_new") {
@@ -125,10 +103,17 @@ export const WidgetCardHeader = ({
     } else {
       onProviderChange(providerType, providerId);
     }
-    setShowProviderDropdown(null);
   };
 
-  // Build overflow actions for compact mode
+  // True when any required provider lacks a selection — drives the
+  // amber dot on the overflow button so the user can see unresolved
+  // state at a glance without opening the menu.
+  const hasUnresolvedRequiredProvider = providerRequirements.some(
+    (req) => req.required && !isProviderConfigured(req.type),
+  );
+
+  // Build overflow actions list — single source of truth for both
+  // the dropdown items and any future quick-access surface.
   const overflowActions = [];
   if (onConfigure) {
     overflowActions.push({
@@ -193,7 +178,6 @@ export const WidgetCardHeader = ({
 
   return (
     <div
-      ref={headerRef}
       className={`flex items-center gap-3 px-3 py-2.5 bg-transparent border-b border-gray-700 ${
         isSelected ? "ring-2 ring-blue-500 ring-inset" : ""
       }`}
@@ -244,214 +228,117 @@ export const WidgetCardHeader = ({
         </span>
       </div>
 
-      {/* Provider Badges/Selectors */}
-      {providerRequirements.length > 0 && (
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {providerRequirements.map((providerReq) => {
-            const providerType = providerReq.type;
-            const isConfigured = isProviderConfigured(providerType);
-            const providerName = getProviderName(providerType);
-            const availableProviders = getProvidersForType(providerType);
-            const selectedProviderId = selectedProviders[providerType];
-
-            return (
-              <div key={providerType} className="relative">
-                {/* Provider Badge (always visible) */}
-                <ProviderBadge
-                  providerType={providerType}
-                  providerId={selectedProviderId}
-                  providerName={providerName}
-                  isConfigured={isConfigured}
-                  isRequired={providerReq.required}
-                  onClick={() => {
-                    setShowOverflowMenu(false);
-                    setShowProviderDropdown(
-                      showProviderDropdown === providerType
-                        ? null
-                        : providerType,
-                    );
-                  }}
-                />
-
-                {/* Provider Dropdown (appears on click) */}
-                <DropdownPanel
-                  isOpen={showProviderDropdown === providerType}
-                  onClose={() => setShowProviderDropdown(null)}
-                  position="absolute top-full right-0 mt-1"
-                  portal={true}
-                  direction="right"
-                >
-                  {availableProviders.length > 0 ? (
-                    <>
-                      <DropdownPanel.Header>
-                        Select {providerType}
-                      </DropdownPanel.Header>
-                      {availableProviders.map((provider) => {
-                        const isSelected = provider.id === selectedProviderId;
-                        return (
-                          <MenuItem2
-                            key={provider.id}
-                            onClick={() =>
-                              handleProviderSelect(providerType, provider.id)
-                            }
-                            selected={isSelected}
-                          >
-                            <div className="flex items-center gap-2 w-full">
-                              <span
-                                className={`w-4 text-center text-xs flex-shrink-0 ${
-                                  isSelected ? "text-green-400" : "opacity-0"
-                                }`}
-                              >
-                                ✓
-                              </span>
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium">
-                                  {provider.name}
-                                </div>
-                                {provider.description && (
-                                  <div className="text-xs opacity-60 mt-0.5">
-                                    {provider.description}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </MenuItem2>
-                        );
-                      })}
-                      <DropdownPanel.Divider />
-                    </>
-                  ) : (
-                    <div className="px-3 py-2 text-xs opacity-50 italic">
-                      No {providerType} providers configured
-                    </div>
-                  )}
-
-                  {/* Unset (available for all optional providers) */}
-                  {!providerReq.required && (
-                    <MenuItem2
-                      onClick={() => {
-                        handleProviderSelect(providerType, "_unset");
-                      }}
-                    >
-                      <span className="text-gray-400">
-                        &times; Unset {providerType}
-                      </span>
-                    </MenuItem2>
-                  )}
-
-                  {/* Create new provider */}
-                  <MenuItem2
-                    onClick={() => {
-                      handleProviderSelect(providerType, "_new");
-                    }}
-                  >
-                    <span className="text-blue-400">
-                      + Create New {providerType}
-                    </span>
-                  </MenuItem2>
-                </DropdownPanel>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Action Buttons */}
-      <div className="flex items-center gap-0.5 flex-shrink-0">
-        {!isCompact ? (
-          <>
-            {onConfigure && (
-              <ButtonIcon2
-                icon="cog"
-                onClick={() => onConfigure(widgetItem)}
-                title="Configure widget"
-                theme={false}
-              />
-            )}
-
-            {onEditWithAI && widgetItem && (
-              <ButtonIcon2
-                icon="wand-magic-sparkles"
-                onClick={() => onEditWithAI(widgetItem)}
-                title="Edit with AI"
-                theme={false}
-              />
-            )}
-
-            {onSplitHorizontal && (
-              <ButtonIcon2
-                icon="arrows-left-right"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSplitHorizontal();
-                }}
-                title="Split horizontally (left/right)"
-                theme={false}
-              />
-            )}
-
-            {onSplitVertical && (
-              <ButtonIcon2
-                icon="arrows-up-down"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSplitVertical();
-                }}
-                title="Split vertically (top/bottom)"
-                theme={false}
-              />
-            )}
-
-            {handleDelete && (
-              <ButtonIcon2
-                icon="trash"
-                onClick={() => handleDelete(widgetItem)}
-                title="Remove widget"
-                theme={false}
-              />
-            )}
-
-            {onMoreOptions && (
-              <ButtonIcon2
-                icon="ellipsis-vertical"
-                onClick={() => onMoreOptions(widget)}
-                title="More options"
-                theme={false}
-              />
-            )}
-          </>
-        ) : overflowActions.length > 0 ? (
-          <div className="relative">
+      {/* One overflow button for the whole header — providers +
+          actions — so the widget title always gets full width.
+          Amber dot indicates any unresolved required provider. */}
+      {(providerRequirements.length > 0 ||
+        overflowActions.length > 0 ||
+        onMoreOptions) && (
+        <div className="relative flex-shrink-0">
+          <div className="relative inline-flex">
             <ButtonIcon2
-              icon="chevron-down"
-              onClick={() => {
-                setShowProviderDropdown(null);
-                setShowOverflowMenu(!showOverflowMenu);
-              }}
-              title="Actions"
+              icon="ellipsis-vertical"
+              onClick={() => setShowOverflowMenu((v) => !v)}
+              title="Providers & actions"
               theme={false}
             />
-            <DropdownPanel
-              isOpen={showOverflowMenu}
-              onClose={() => setShowOverflowMenu(false)}
-              position="absolute top-full right-0 mt-1"
-              portal={true}
-              align="right"
-            >
-              <DropdownPanel.Header>Actions</DropdownPanel.Header>
-              {overflowActions.map((action) => (
-                <MenuItem2 key={action.label} onClick={action.onClick}>
-                  <FontAwesomeIcon
-                    icon={action.icon}
-                    className="w-4 text-center opacity-60"
-                  />
-                  <span>{action.label}</span>
-                </MenuItem2>
-              ))}
-            </DropdownPanel>
+            {hasUnresolvedRequiredProvider && (
+              <span
+                className="absolute top-1 right-1 h-2 w-2 rounded-full bg-amber-400 border border-black pointer-events-none"
+                title="Required provider not set"
+              />
+            )}
           </div>
-        ) : null}
-      </div>
+          <DropdownPanel
+            isOpen={showOverflowMenu}
+            onClose={() => setShowOverflowMenu(false)}
+            position="absolute top-full right-0 mt-1"
+            portal={true}
+            align="right"
+          >
+            {/* Providers section — each required/optional provider
+                the widget declares gets an inline <select>. Picking
+                a value fires onProviderChange; the menu stays open
+                so the user can tweak multiple providers in one go. */}
+            {providerRequirements.length > 0 && (
+              <>
+                <DropdownPanel.Header>Providers</DropdownPanel.Header>
+                {providerRequirements.map((providerReq) => {
+                  const providerType = providerReq.type;
+                  const availableProviders =
+                    getProvidersForType(providerType);
+                  const selectedProviderId =
+                    selectedProviders[providerType] || "";
+                  const isConfigured = isProviderConfigured(providerType);
+                  return (
+                    <div
+                      key={providerType}
+                      className="px-3 py-2 text-xs"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-medium text-gray-200">
+                          {providerType}
+                        </span>
+                        {providerReq.required && !isConfigured && (
+                          <span className="text-[10px] text-amber-300 uppercase tracking-wide">
+                            required
+                          </span>
+                        )}
+                      </div>
+                      <select
+                        value={selectedProviderId}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === "_new") {
+                            handleProviderSelect(providerType, "_new");
+                          } else if (v === "") {
+                            handleProviderSelect(providerType, "_unset");
+                          } else {
+                            handleProviderSelect(providerType, v);
+                          }
+                        }}
+                        className="w-full bg-gray-800 border border-gray-700 text-gray-100 text-xs rounded px-2 py-1"
+                      >
+                        <option value="">
+                          {providerReq.required
+                            ? "— select provider —"
+                            : "— none —"}
+                        </option>
+                        {availableProviders.map((provider) => (
+                          <option key={provider.id} value={provider.id}>
+                            {provider.name}
+                          </option>
+                        ))}
+                        <option value="_new">+ Create new…</option>
+                      </select>
+                    </div>
+                  );
+                })}
+                {overflowActions.length > 0 && <DropdownPanel.Divider />}
+              </>
+            )}
+
+            {/* Actions section — Configure, Edit with AI, Split,
+                Remove, etc. All action buttons collapsed here so the
+                widget title always has room. */}
+            {overflowActions.length > 0 && (
+              <>
+                <DropdownPanel.Header>Actions</DropdownPanel.Header>
+                {overflowActions.map((action) => (
+                  <MenuItem2 key={action.label} onClick={action.onClick}>
+                    <FontAwesomeIcon
+                      icon={action.icon}
+                      className="w-4 text-center opacity-60"
+                    />
+                    <span>{action.label}</span>
+                  </MenuItem2>
+                ))}
+              </>
+            )}
+          </DropdownPanel>
+        </div>
+      )}
     </div>
   );
 };
