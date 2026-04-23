@@ -214,7 +214,38 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
       }
     }
 
-    // 5. Build manifest using the widget's component configs. The
+    // 5. Normalize dash.json's author field. The AI Widget Builder
+    //    scaffolds new @ai-built/* widgets with `author: "AI Assistant"`
+    //    as the placeholder, which ships unchanged to the registry and
+    //    is what installers see under the package's author — regardless
+    //    of who actually published it. If dash.json exists and its
+    //    author is blank or that placeholder, rewrite with the
+    //    publisher's registry display name (or username) before we zip
+    //    the package. Any other user-set author is preserved.
+    const authorOverride =
+      (options.authorName && options.authorName.trim()) ||
+      profile?.displayName ||
+      profile?.username ||
+      "";
+    if (authorOverride && fs.existsSync(dashJsonPath)) {
+      try {
+        const dashJson = JSON.parse(fs.readFileSync(dashJsonPath, "utf8"));
+        const current = (dashJson.author || "").trim();
+        const isPlaceholder = !current || current === "AI Assistant";
+        if (isPlaceholder && dashJson.author !== authorOverride) {
+          dashJson.author = authorOverride;
+          fs.writeFileSync(
+            dashJsonPath,
+            JSON.stringify(dashJson, null, 2) + "\n",
+          );
+        }
+      } catch {
+        // Best-effort only — a malformed dash.json will surface later
+        // during manifest generation with a clearer error.
+      }
+    }
+
+    // 6. Build manifest using the widget's component configs. The
     //    registry cache may be missing widgets (orphaned / locally-
     //    registered packages), so fall back to scanning the package's
     //    .dash.js files from disk.
@@ -238,24 +269,27 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
       tags: options.tags,
       icon: options.icon,
       category: options.category,
-      authorName: options.authorName,
+      // Prefer the caller-supplied authorName; otherwise fall back to
+      // the publisher's registry profile so the manifest author matches
+      // the (now-rewritten) dash.json we just zipped.
+      authorName: options.authorName || authorOverride || undefined,
       appOrigin: appId,
     });
 
-    // 6. Zip the widget directory to a temp file
+    // 7. Zip the widget directory to a temp file
     const zipName = `widget-${manifest.scope}-${manifest.name}-v${manifest.version}.zip`;
     const zipPath = path.join(app.getPath("temp"), zipName);
     const zip = new AdmZip();
     addDirToZip(zip, widget.path);
     zip.writeZip(zipPath);
 
-    // 7. Publish to registry
+    // 8. Publish to registry
     const registryResult = await registryApiController.publishToRegistry(
       zipPath,
       manifest,
     );
 
-    // 8. On failure: revert package.json (if we bumped) and surface details
+    // 9. On failure: revert package.json (if we bumped) and surface details
     if (!registryResult.success) {
       if (newVersion !== previousVersion) {
         try {

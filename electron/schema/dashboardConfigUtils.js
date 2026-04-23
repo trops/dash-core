@@ -115,6 +115,29 @@ function extractEventWiring(layout) {
 }
 
 /**
+ * Strip a `<scope>/` or `@<scope>/` prefix from a potentially-scoped
+ * package name. Widgets installed from the registry carry
+ * `w.name = "@scope/pkg"` alongside `w.scope = "scope"`; downstream
+ * code builds `${scope}/${packageName}` for display and for registry
+ * keys, so `packageName` must be the bare name or the scope doubles
+ * (e.g. `@trops/@ai-built/pipeline` instead of `@trops/pipeline`).
+ *
+ * @param {string} fullName Potentially scoped (e.g. "@ai-built/pipeline" or "ai-built/pipeline")
+ * @param {string} scope    Scope to strip (e.g. "ai-built" or "@ai-built")
+ * @returns {string} The bare package name
+ */
+function stripScopePrefix(fullName, scope) {
+  if (!fullName) return fullName || "";
+  if (!scope) return fullName;
+  const bareScope = scope.startsWith("@") ? scope.slice(1) : scope;
+  const variants = [`@${bareScope}/`, `${bareScope}/`];
+  for (const v of variants) {
+    if (fullName.startsWith(v)) return fullName.slice(v.length);
+  }
+  return fullName;
+}
+
+/**
  * Build the widget dependencies array from component names and
  * installed widget metadata.
  *
@@ -155,7 +178,9 @@ function buildWidgetDependencies(
       for (const w of installedWidgets) {
         if (w.componentNames && w.componentNames.includes(name)) {
           if (!scope && w.scope) scope = w.scope;
-          if (!packageName || packageName === name) packageName = w.name || "";
+          if (!packageName || packageName === name) {
+            packageName = stripScopePrefix(w.name, w.scope || scope) || "";
+          }
           version = w.version || "*";
           author =
             typeof w.author === "string" ? w.author : w.author?.name || "";
@@ -168,8 +193,9 @@ function buildWidgetDependencies(
     if (componentConfigs && componentConfigs[name]) {
       const config = componentConfigs[name];
       if (!scope && config.scope) scope = config.scope;
-      if ((!packageName || packageName === name) && config.packageName)
-        packageName = config.packageName;
+      if ((!packageName || packageName === name) && config.packageName) {
+        packageName = stripScopePrefix(config.packageName, scope);
+      }
       if (config.id && !scope) {
         const idParts = config.id.split(".");
         if (idParts.length === 3) {
