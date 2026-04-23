@@ -20,6 +20,7 @@ import {
   getOrphanedListeners,
   formatEventString,
 } from "../../utils/listenerResolution";
+import { WidgetsTab } from "./WidgetsTab";
 
 /**
  * DashboardConfigModal
@@ -54,7 +55,11 @@ import {
  *                                      Called with the staged listener changes on Save. Each entry is
  *                                      `{ receiverItemId, handlerName, sourceComponent, sourceItemId, eventName }`.
  *                                      Parent uses `applyWiringChanges` + saveWorkspace.
- * @param {"providers"|"listeners"} initialTab  Which tab to focus when the modal opens.
+ * @param {(changes: Array<{widgetId, key, value}>) => void} onSaveUserPrefs
+ *                                      Called with the staged widget userPrefs changes on Save. Parent
+ *                                      applies them to workspace + persists via saveWorkspace. Enables
+ *                                      bulk-edit of fields shared across widgets (e.g. basePath).
+ * @param {"providers"|"listeners"|"widgets"} initialTab  Which tab to focus when the modal opens.
  */
 export const DashboardConfigModal = ({
   isOpen,
@@ -65,6 +70,7 @@ export const DashboardConfigModal = ({
   getWidgetConfig = null,
   onSaveBindings,
   onSaveListeners,
+  onSaveUserPrefs = null,
   initialTab = "providers",
 }) => {
   const { currentTheme } = useContext(ThemeContext);
@@ -88,6 +94,11 @@ export const DashboardConfigModal = ({
     adds: [],
     removes: [],
   });
+
+  // Staged widget userPrefs changes — collected in the Widgets tab.
+  // Shape: { [widgetId]: { [fieldKey]: value } }. Committed alongside
+  // providers + listeners when the user clicks Save.
+  const [stagedPrefs, setStagedPrefs] = useState({});
 
   const bindings = useMemo(
     () =>
@@ -227,7 +238,27 @@ export const DashboardConfigModal = ({
       (wid) => Object.keys(staged[wid] || {}).length > 0,
     ) ||
     stagedListeners.adds.length > 0 ||
-    stagedListeners.removes.length > 0;
+    stagedListeners.removes.length > 0 ||
+    Object.keys(stagedPrefs).some(
+      (wid) => Object.keys(stagedPrefs[wid] || {}).length > 0,
+    );
+
+  function stagePrefField(widgetId, key, value) {
+    setStagedPrefs((prev) => ({
+      ...prev,
+      [widgetId]: { ...(prev[widgetId] || {}), [key]: value },
+    }));
+  }
+
+  function stagePrefFieldForAll(targetWidgets, key, value) {
+    setStagedPrefs((prev) => {
+      const next = { ...prev };
+      for (const w of targetWidgets) {
+        next[w.id] = { ...(next[w.id] || {}), [key]: value };
+      }
+      return next;
+    });
+  }
 
   function stageBinding(widgetId, providerType, providerName) {
     setStaged((prev) => {
@@ -318,14 +349,27 @@ export const DashboardConfigModal = ({
       onSaveListeners(stagedListeners);
     }
 
+    // Widget userPrefs changes (Widgets tab)
+    const prefChanges = [];
+    for (const [widgetId, fields] of Object.entries(stagedPrefs)) {
+      for (const [key, value] of Object.entries(fields)) {
+        prefChanges.push({ widgetId, key, value });
+      }
+    }
+    if (prefChanges.length > 0 && typeof onSaveUserPrefs === "function") {
+      onSaveUserPrefs(prefChanges);
+    }
+
     setStaged({});
     setStagedListeners({ adds: [], removes: [] });
+    setStagedPrefs({});
     setIsOpen(false);
   }
 
   function handleCancel() {
     setStaged({});
     setStagedListeners({ adds: [], removes: [] });
+    setStagedPrefs({});
     setIsOpen(false);
   }
 
@@ -391,12 +435,25 @@ export const DashboardConfigModal = ({
           >
             Listeners
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("widgets")}
+            className={`px-3 py-1.5 text-sm font-medium -mb-px border-b-2 ${
+              activeTab === "widgets"
+                ? "border-indigo-400"
+                : "border-transparent opacity-60 hover:opacity-100"
+            }`}
+          >
+            Widgets
+          </button>
         </div>
 
         {/* Body — flex-1 so it fills the fixed-height modal; min-h-0 so
             inner columns can own their own scroll containers. */}
-        <div className="p-5 flex-1 min-h-0">
-          {activeTab === "listeners" ? (
+        <div
+          className={`flex-1 min-h-0 ${activeTab === "widgets" ? "" : "p-5"}`}
+        >
+          {activeTab === "listeners" && (
             <ListenersTab
               emitters={emitters}
               receivers={receivers}
@@ -404,12 +461,22 @@ export const DashboardConfigModal = ({
               onAdd={stageListenerAdd}
               onRemove={stageListenerRemove}
             />
-          ) : (
+          )}
+          {activeTab === "providers" && (
             <ProvidersTab
               grouped={grouped}
               providersByType={providersByType}
               onBulk={stageBulk}
               onPerWidget={stageBinding}
+            />
+          )}
+          {activeTab === "widgets" && (
+            <WidgetsTab
+              workspace={workspace}
+              getWidgetConfig={getWidgetConfig}
+              stagedPrefs={stagedPrefs}
+              stagePrefField={stagePrefField}
+              stagePrefFieldForAll={stagePrefFieldForAll}
             />
           )}
         </div>

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useContext } from "react";
-import { Panel, SelectMenu, InputText } from "@trops/dash-react";
+import { Panel, InputText } from "@trops/dash-react";
 import deepEqual from "deep-equal";
 import { ThemeContext } from "../../";
+import { PanelEditForm } from "./PanelEditForm";
 
 export const PanelEditContext = ({ onUpdate, item }) => {
   useContext(ThemeContext);
@@ -46,110 +47,32 @@ export const PanelEditContext = ({ onUpdate, item }) => {
   // }
 
   function renderCustomSettings() {
-    if (itemSelected) {
-      console.log("renderCustomSettings ", itemSelected);
-
-      if ("userConfig" in itemSelected) {
-        const userConfig = itemSelected["userConfig"];
-        // get the user prefs for the key
-        // const layoutItem = LayoutModel(itemSelected, workspaceSelected);
-        const userPrefs = itemSelected["userPrefs"] || {};
-
-        console.log("userConfig", userConfig, userPrefs);
-        return Object.keys(userConfig).map((key) => {
-          // if (key in userPrefs) {
-          // depending on the type...
-          const configItem = userConfig[key];
-          const { instructions, displayName, required } = configItem;
-
-          // console.log("widget config", configItem);
-
-          return renderFormItem(
-            displayName,
-            key,
-            instructions,
-            required,
-            userPrefs[key] || "",
-            handleTextChangeCustom,
-            configItem,
-          );
-          //}
-        });
-      }
-    }
-    return null;
+    if (!itemSelected) return null;
+    if (!("userConfig" in itemSelected)) return null;
+    return (
+      <PanelEditForm
+        userConfig={itemSelected.userConfig}
+        userPrefs={itemSelected.userPrefs || {}}
+        onFieldChange={handleTextChangeCustom}
+      />
+    );
   }
 
   function handleTextChangeCustom(key, value) {
+    // Native <select> onChange fires with the event object; unwrap to
+    // the raw string value so userPrefs stores a primitive, not an
+    // SyntheticEvent. PanelEditForm normalizes its own text/secret
+    // inputs to pass the string directly, so only selects need this.
+    const resolvedValue =
+      value && typeof value === "object" && "target" in value
+        ? value.target.value
+        : value;
     const newItem = JSON.parse(JSON.stringify(itemSelected));
     if ("userPrefs" in itemSelected === false) {
       newItem["userPrefs"] = {};
     }
-    newItem["userPrefs"][key] = value;
-    //setItemSelected(() => newItem);
+    newItem["userPrefs"][key] = resolvedValue;
     onUpdate(newItem);
-  }
-
-  function renderFormItem(
-    displayName,
-    key,
-    instructions,
-    required,
-    value,
-    onChange,
-    configItem,
-  ) {
-    return (
-      <div
-        key={`config-item-${key}`}
-        className={`rounded flex flex-col p-2 space-y-1`}
-      >
-        <span className="text-gray-400 font-bold text-sm">
-          {displayName}{" "}
-          {required === true && <span className="text-red-500">*</span>}
-        </span>
-        <div className="text-xs text-gray-400 pb-1">{instructions}</div>
-        {configItem["type"] === "text" && (
-          <InputText
-            type="text"
-            name={key}
-            value={value}
-            onChange={(value) => onChange(key, value)}
-            inputClassName="text-sm"
-          />
-        )}
-        {configItem["type"] === "secret" && (
-          <InputText
-            type="password"
-            name={key}
-            value={value}
-            onChange={(value) => onChange(key, value)}
-            inputClassName="text-sm"
-          />
-        )}
-        {configItem["type"] === "select" && (
-          <SelectMenu
-            name={key}
-            selectedValue={value}
-            onChange={(e) => onChange(e, configItem)}
-            textSize="text-xs"
-            className="font-normal"
-          >
-            {"options" in configItem &&
-              configItem.options.map((option) => {
-                return (
-                  <option value={option.value} className={"text-sm"}>
-                    {option.displayName}
-                  </option>
-                );
-              })}
-            {"optionsValues" in configItem && (
-              <option>{configItem["optionsValues"]}</option>
-            )}
-          </SelectMenu>
-        )}
-      </div>
-    );
   }
 
   return (
