@@ -290,7 +290,13 @@ async function updateRegistryPackage(scope, name, updates) {
  */
 async function deleteRegistryPackage(scope, name) {
   const stored = getStoredToken();
-  if (!stored) return null;
+  if (!stored) {
+    return {
+      success: false,
+      error: "Not signed in to the registry.",
+      status: 0,
+    };
+  }
 
   try {
     const response = await fetch(
@@ -305,25 +311,49 @@ async function deleteRegistryPackage(scope, name) {
 
     if (response.status === 401) {
       clearToken();
-      return null;
+      return {
+        success: false,
+        error: "Session expired. Sign in again and retry.",
+        status: 401,
+      };
     }
-    if (!response.ok) return null;
 
-    // A successful DELETE frequently returns 204 No Content, in which
-    // case response.json() throws on empty body and the earlier version
-    // swallowed it as a null result — the UI then skipped its "onDeleted"
-    // refresh and looked like nothing happened. Handle 204 + unparseable
-    // success responses as a successful delete.
-    if (response.status === 204) {
+    // Read body text once so we can either parse JSON on success or
+    // surface the raw server error message on failure.
+    const bodyText = await response.text().catch(() => "");
+
+    if (!response.ok) {
+      let serverMsg = bodyText;
+      try {
+        const parsed = JSON.parse(bodyText);
+        serverMsg = parsed?.error || parsed?.message || bodyText;
+      } catch {
+        // bodyText is already a plain string; use it as-is.
+      }
+      return {
+        success: false,
+        error:
+          serverMsg ||
+          `Registry returned ${response.status} ${response.statusText || ""}`.trim(),
+        status: response.status,
+      };
+    }
+
+    // Success path — 204 No Content is common; JSON is optional.
+    if (response.status === 204 || !bodyText.trim()) {
       return { success: true };
     }
     try {
-      return await response.json();
+      return { success: true, ...JSON.parse(bodyText) };
     } catch {
       return { success: true };
     }
-  } catch {
-    return null;
+  } catch (err) {
+    return {
+      success: false,
+      error: `Network error: ${err?.message || "unknown"}`,
+      status: 0,
+    };
   }
 }
 

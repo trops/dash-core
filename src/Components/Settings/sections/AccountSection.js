@@ -264,6 +264,10 @@ const PackageItem = ({
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Last delete-attempt error. Rendered inline next to the delete
+  // button so a failed attempt surfaces its cause (auth expired, 404,
+  // server 500, network) instead of silently resetting.
+  const [deleteError, setDeleteError] = useState(null);
 
   async function handleSave() {
     setSaving(true);
@@ -295,16 +299,27 @@ const PackageItem = ({
 
   async function handleDelete() {
     setDeleting(true);
+    setDeleteError(null);
     try {
       const result = await window.mainApi?.registryAuth?.deletePackage(
         pkg.scope,
         pkg.name,
       );
-      if (result) {
+      if (result?.success) {
         onDeleted?.();
+        return;
       }
-    } catch {
-      // ignore
+      // New error-surface format: `{ success, error, status }`. Show
+      // the server-reported reason so the user (or the next bug
+      // reporter) knows exactly why the delete failed.
+      setDeleteError(
+        result?.error ||
+          (result?.status
+            ? `Delete failed (${result.status})`
+            : "Delete failed — no response from registry."),
+      );
+    } catch (err) {
+      setDeleteError(`Unexpected error: ${err?.message || String(err)}`);
     } finally {
       setDeleting(false);
       setConfirmingDelete(false);
@@ -357,7 +372,7 @@ const PackageItem = ({
           </div>
         </div>
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex items-center gap-3">
             {confirmingDelete ? (
               <div className="flex items-center gap-2">
                 <button
@@ -370,7 +385,10 @@ const PackageItem = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setConfirmingDelete(false)}
+                  onClick={() => {
+                    setConfirmingDelete(false);
+                    setDeleteError(null);
+                  }}
                   className="text-xs opacity-50 hover:opacity-80 cursor-pointer"
                 >
                   Cancel
@@ -379,11 +397,22 @@ const PackageItem = ({
             ) : (
               <button
                 type="button"
-                onClick={() => setConfirmingDelete(true)}
+                onClick={() => {
+                  setConfirmingDelete(true);
+                  setDeleteError(null);
+                }}
                 className="text-xs text-red-400/70 hover:text-red-400 cursor-pointer"
               >
                 Delete
               </button>
+            )}
+            {deleteError && (
+              <span
+                className="text-[11px] text-red-400 max-w-sm truncate"
+                title={deleteError}
+              >
+                {deleteError}
+              </span>
             )}
           </div>
           <div className="flex items-center gap-2">
