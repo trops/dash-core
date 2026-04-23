@@ -460,7 +460,30 @@ async function processDashboardConfig(
     dashboardConfig.widgets.length
   ) {
     const installedWidgets = widgetRegistry.getWidgets();
-    const installedPackages = new Set(installedWidgets.map((w) => w.name));
+    // Build a canonical id set — `@scope/name` — so lookups survive
+    // the publisher/installer having the widget under different
+    // keys. The widget-registry entry carries `w.packageId`,
+    // `w.name`, and `w.scope`; the dashboard dep carries
+    // `dep.package` (now scope-remapped at publish time). Seeding
+    // every form we've seen avoids silent "missing widget" misses
+    // on bare-vs-scoped mismatch.
+    const canonicalId = (w) => {
+      if (w?.packageId) return w.packageId;
+      if (w?.scope && w?.name) {
+        const scope = String(w.scope).replace(/^@/, "");
+        const bareName = String(w.name).replace(new RegExp(`^@?${scope}/`), "");
+        return `@${scope}/${bareName}`;
+      }
+      return w?.name || null;
+    };
+    const installedPackages = new Set();
+    for (const w of installedWidgets) {
+      const id = canonicalId(w);
+      if (id) installedPackages.add(id);
+      // Back-compat: keep bare name in the set too, so older
+      // dashboard configs (pre-scope-remap) still match.
+      if (w?.name) installedPackages.add(w.name);
+    }
 
     // Emit initial "pending" state for all widgets
     for (let i = 0; i < widgetTotal; i++) {
@@ -498,7 +521,20 @@ async function processDashboardConfig(
       const displayName =
         widgetDep.displayName || widgetDep.name || packageName;
 
-      if (installedPackages.has(packageName)) {
+      // Try both the fully-scoped id and a bare-name fallback — the
+      // installed set holds both forms, but the dashboard dep may
+      // carry either shape. Without this, a widget stored locally as
+      // `@trops/pipeline` and referenced as `pipeline` (or vice
+      // versa) silently flagged as "failed" even though it was
+      // installed.
+      const isInstalled =
+        installedPackages.has(packageName) ||
+        (packageName?.includes("/") &&
+          installedPackages.has(packageName.split("/").pop())) ||
+        (packageName &&
+          !packageName.startsWith("@") &&
+          installedPackages.has(`@${packageName}`));
+      if (isInstalled) {
         installSummary.alreadyInstalled.push(packageName);
         win.webContents.send(DASHBOARD_CONFIG_INSTALL_PROGRESS, {
           packageName,
@@ -530,6 +566,10 @@ async function processDashboardConfig(
           );
           installSummary.installed.push({ packageName, config });
           installedPackages.add(packageName);
+          // Also add the canonical form so a subsequent dep that
+          // references it under a different shape still hits.
+          const installedCanonical = canonicalId(config);
+          if (installedCanonical) installedPackages.add(installedCanonical);
           win.webContents.send(DASHBOARD_CONFIG_INSTALL_PROGRESS, {
             packageName,
             displayName,
@@ -1267,16 +1307,30 @@ async function getDashboardPublishPlan(
       }
     }
 
+    // Scopes that only exist on the publisher's machine and aren't
+    // resolvable from the registry as-is. Any dep under one of these
+    // scopes MUST be republished under the caller's scope for the
+    // dashboard's widget refs to work on another machine. The modal
+    // uses this flag to auto-check + lock such rows.
+    const LOCAL_ONLY_SCOPES = new Set(["ai-built", "@ai-built"]);
+
     const widgets = deps.widgets.map((w) => {
       const publishScope = publishScopeFor(w);
       const key =
         publishScope && w.packageName
           ? `${publishScope}/${w.packageName}`
           : null;
+      const isLocalOnlyScope =
+        !!w.scope && LOCAL_ONLY_SCOPES.has(String(w.scope).replace(/^@/, ""));
       return {
         ...w,
         publishScope,
         registry: key ? resolvedByKey.get(key) || null : null,
+        // True when this widget cannot be installed as-is under its
+        // local scope — the dashboard publish MUST republish it under
+        // the caller's scope alongside the dashboard itself. The
+        // modal treats this as mandatory rather than opt-in.
+        requiresRepublish: isLocalOnlyScope,
       };
     });
 
@@ -1340,6 +1394,7 @@ async function prepareDashboardForPublish(
     const {
       generateRegistryManifest,
     } = require("../schema/dashboardConfigUtils");
+    const { resolveNextVersion } = require("../schema/widgetPublishManifest");
 
     // 1. Read workspace
     const filename = path.join(
@@ -1371,6 +1426,19 @@ async function prepareDashboardForPublish(
           "This dashboard was imported and cannot be published. Only dashboards you created can be shared.",
       };
     }
+
+    // Resolve the version this publish will ship. Previous publishes
+    // store the last version on workspace._dashboardConfig.version; new
+    // dashboards start at 1.0.0. Caller may pass `options.version`
+    // (explicit) or `options.bump` ("patch"/"minor"/"major"). Without
+    // this, every dashboard republish used a hardcoded 1.0.0 — the
+    // registry never saw a new version, so the update-check never
+    // fired a notification for installers.
+    const previousVersion = workspace._dashboardConfig?.version || "1.0.0";
+    const nextVersion = resolveNextVersion(previousVersion, {
+      bump: options.bump,
+      version: options.version,
+    });
 
     // Strip publisher-specific personalization (userPrefs,
     // selectedProviders) from every widget instance before we snapshot
@@ -1408,6 +1476,10 @@ async function prepareDashboardForPublish(
       schemaVersion: CURRENT_SCHEMA_VERSION,
       name: workspace.name || workspace.label || "Dashboard",
       description: options.description || "",
+      // Package version (semver). Distinct from workspace.version
+      // (schema revision, integer). Persisted on the workspace after a
+      // successful publish so the next publish resolves from here.
+      version: nextVersion,
       ...(options.authorName
         ? { author: { name: options.authorName, id: options.authorId || "" } }
         : {}),
@@ -1562,6 +1634,7 @@ async function prepareDashboardForPublish(
       repository: options.repository || "",
       appOrigin: appId,
       visibility: options.visibility || "public",
+      version: nextVersion,
     });
 
     // 9. Show save dialog for the publish package
@@ -1609,6 +1682,35 @@ async function prepareDashboardForPublish(
           console.log(
             `[DashboardConfigController] Published to registry: ${registrySubmission.registryUrl}`,
           );
+          // Persist the resolved next version back onto the workspace
+          // so the NEXT publish resolves from it. Without this, the
+          // publisher would have to re-enter the same version every
+          // time (or keep bumping from 1.0.0, masking that the
+          // registry already advanced).
+          try {
+            const workspaceController = require("./workspaceController");
+            const nextWorkspace = {
+              ...workspace,
+              _dashboardConfig: {
+                ...(workspace._dashboardConfig || {}),
+                version: nextVersion,
+                registryPackage: manifest.name,
+                registryScope: manifest.scope || manifest.githubUser,
+              },
+            };
+            workspaceController.saveWorkspaceForApplication(
+              win,
+              appId,
+              nextWorkspace,
+            );
+          } catch (persistErr) {
+            // Non-fatal — registry is the source of truth for
+            // latestVersion, so the next publish can still resolve
+            // against it if this workspace write fails.
+            console.warn(
+              `[DashboardConfigController] Version persistence failed (continuing): ${persistErr.message}`,
+            );
+          }
         } else {
           console.warn(
             `[DashboardConfigController] Registry publish failed: ${registrySubmission.error}`,

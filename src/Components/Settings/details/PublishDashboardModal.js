@@ -87,12 +87,17 @@ function seedSelections(plan, dashboardVisibility) {
     if (!w.scope || !w.packageName) continue;
     const key = `${w.scope}/${w.packageName}`;
     const reg = w.registry;
-    const owned = reg?.ownedByMe || !reg?.exists;
+    // Widgets under a local-only scope (@ai-built/*) are always owned
+    // by the publisher for the purposes of this flow — the backend
+    // republishes them under the caller's scope. Force include=true.
+    const owned = w.requiresRepublish ? true : reg?.ownedByMe || !reg?.exists;
     selections[key] = {
       kind: "widget",
       owned,
-      // Default: include owned rows, skip third-party
-      include: !!owned,
+      // Default: include owned rows, skip third-party. Always include
+      // when the widget requires republishing (can't ship a dashboard
+      // pointing at a scope the installer can't resolve).
+      include: w.requiresRepublish ? true : !!owned,
       // Bump default: none if not yet in registry (publish local version as-is),
       // patch if already in registry at same version
       bump:
@@ -179,6 +184,13 @@ export const PublishDashboardModal = ({
 
   // Visibility — chosen on the Details step. Defaults to public.
   const [visibility, setVisibility] = useState("public");
+
+  // Dashboard version bump — chosen on the Details step. Defaults to
+  // "patch" so repeat-publishes auto-increment the registry's
+  // latestVersion. Without this, every republish used the same
+  // version string, the registry never saw a new version, and update
+  // notifications never fired on installers.
+  const [dashboardBump, setDashboardBump] = useState("patch");
 
   // Fetch publish preview (widget names) on open
   useEffect(() => {
@@ -431,6 +443,12 @@ export const PublishDashboardModal = ({
             icon: icon || undefined,
             visibility,
             componentConfigs: collectComponentConfigs(),
+            // Thread the bump through. "none" means keep the current
+            // version (caller should pass nothing). Any other value
+            // goes to resolveNextVersion backend-side.
+            ...(dashboardBump && dashboardBump !== "none"
+              ? { bump: dashboardBump }
+              : {}),
           };
           const res =
             await window.mainApi.dashboardConfig.prepareDashboardForPublish(
@@ -695,6 +713,27 @@ export const PublishDashboardModal = ({
                 placeholder="A brief description of this dashboard..."
                 rows={3}
               />
+              {/* Version bump — controls what version the registry
+                  publishes under. "Patch" is the default so a
+                  republish bumps latestVersion and triggers update
+                  notifications on installers. "Keep current version"
+                  is an escape hatch for typo-fix republishes. */}
+              <div>
+                <label className="block text-sm font-medium opacity-70 mb-2">
+                  Version Bump
+                </label>
+                <select
+                  value={dashboardBump}
+                  onChange={(e) => setDashboardBump(e.target.value)}
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm"
+                >
+                  {BUMP_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label className="block text-sm font-medium opacity-70 mb-2">
                   Visibility
@@ -1148,9 +1187,22 @@ function DependencyTable({ plan, selections, onChange }) {
             className="bg-white/5 border border-white/10 rounded-lg p-3"
           >
             <div className="flex items-start gap-3">
-              {/* Include toggle — only for owned deps */}
+              {/* Include toggle — only for owned deps. Widgets under
+                  a local-only scope (e.g. @ai-built/*) MUST be
+                  republished under the publisher's scope, otherwise
+                  the dashboard's dep ref won't resolve for installers.
+                  For those, the checkbox is forced-checked and
+                  disabled — treat as mandatory, not opt-in. */}
               <div className="pt-0.5">
-                {sel.owned ? (
+                {data?.requiresRepublish && sel.owned ? (
+                  <input
+                    type="checkbox"
+                    checked
+                    disabled
+                    className="h-4 w-4 accent-indigo-500 cursor-not-allowed opacity-80"
+                    title="Required — this widget only exists under a local scope and must be republished under your registry scope for installers to resolve it."
+                  />
+                ) : sel.owned ? (
                   <input
                     type="checkbox"
                     checked={sel.include}
