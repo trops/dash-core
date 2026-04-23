@@ -309,7 +309,19 @@ async function deleteRegistryPackage(scope, name) {
     }
     if (!response.ok) return null;
 
-    return await response.json();
+    // A successful DELETE frequently returns 204 No Content, in which
+    // case response.json() throws on empty body and the earlier version
+    // swallowed it as a null result — the UI then skipped its "onDeleted"
+    // refresh and looked like nothing happened. Handle 204 + unparseable
+    // success responses as a successful delete.
+    if (response.status === 204) {
+      return { success: true };
+    }
+    try {
+      return await response.json();
+    } catch {
+      return { success: true };
+    }
   } catch {
     return null;
   }
