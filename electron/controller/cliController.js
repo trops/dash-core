@@ -210,15 +210,26 @@ const cliController = {
 
     // Auto-wire the hosted Dash MCP server so the assistant can use Dash
     // tools (apply_theme, create_dashboard, add_widget, etc.) without
-    // the user running `claude mcp add dash ...` themselves. We pass an
-    // inline --mcp-config every spawn; merges with any user-configured
-    // MCPs so their other tools (github, slack, etc.) remain available.
+    // the user running `claude mcp add dash ...` themselves. We write
+    // the JSON to a short-lived temp file and pass its path via
+    // --mcp-config; merges with any user-configured MCPs so their
+    // other tools (github, slack, etc.) remain available.
+    //
+    // We use a file, not inline JSON, because the inline form is
+    // fragile on Windows: shell:true hands the arg to cmd.exe which
+    // tokenizes on embedded whitespace inside the JSON (notably in
+    // "Authorization: Bearer <UUID>" and the URL). Even with proper
+    // windowsQuote escaping, cmd.exe's `""` handling inside /d /s /c
+    // drops tokens — the user sees "MCP config file not found" with
+    // fragments of the JSON prepended to cwd. Writing the JSON to a
+    // file avoids every layer of that problem.
     //
     // Prereqs: the Dash MCP server is running and has issued a bearer
     // token. If either is missing (server disabled, first launch before
     // auto-start completes), we silently skip — the assistant still
     // works for non-Dash queries, and the setup banner remains visible
     // as a manual fallback.
+    let mcpConfigFilePath = null;
     try {
       const mcpDashServerController = require("./mcpDashServerController");
       const status = mcpDashServerController.getStatus?.(win);
@@ -241,7 +252,18 @@ const cliController = {
               },
             },
           });
-          args.push("--mcp-config", mcpConfig);
+          const os = require("os");
+          const path = require("path");
+          const fs = require("fs");
+          // Unique per-request filename so concurrent assistant calls
+          // don't race on the same file. The token is sensitive, so
+          // mode 0600 — owner read/write only.
+          mcpConfigFilePath = path.join(
+            os.tmpdir(),
+            `dash-mcp-config-${requestId}.json`,
+          );
+          fs.writeFileSync(mcpConfigFilePath, mcpConfig, { mode: 0o600 });
+          args.push("--mcp-config", mcpConfigFilePath);
         }
       }
     } catch (err) {
@@ -251,6 +273,19 @@ const cliController = {
         err?.message,
       );
     }
+
+    // Best-effort cleanup of the temp MCP config file. Called from
+    // both child exit handlers and the outer catch. Safe to call
+    // multiple times — becomes a no-op after the first unlink.
+    const cleanupMcpConfigFile = () => {
+      if (!mcpConfigFilePath) return;
+      try {
+        require("fs").unlinkSync(mcpConfigFilePath);
+      } catch {
+        // File may already be gone; ignore.
+      }
+      mcpConfigFilePath = null;
+    };
 
     if (model) {
       args.push("--model", model);
@@ -455,6 +490,7 @@ const cliController = {
       });
 
       child.on("error", (err) => {
+        cleanupMcpConfigFile();
         activeProcesses.delete(requestId);
         safeSend(win, LLM_STREAM_ERROR, {
           requestId,
@@ -464,6 +500,7 @@ const cliController = {
       });
 
       child.on("close", (code) => {
+        cleanupMcpConfigFile();
         activeProcesses.delete(requestId);
 
         // Process any remaining buffer
@@ -527,6 +564,7 @@ const cliController = {
         }
       });
     } catch (err) {
+      cleanupMcpConfigFile();
       activeProcesses.delete(requestId);
       safeSend(win, LLM_STREAM_ERROR, {
         requestId,
