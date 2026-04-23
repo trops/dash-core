@@ -79,6 +79,7 @@ const {
   updateRegistryProfile,
   getRegistryPackages,
   updateRegistryPackage,
+  deleteRegistryPackage,
   clearToken: clearRegistryToken,
 } = require("./registryAuthController");
 const {
@@ -184,6 +185,7 @@ module.exports = {
   updateRegistryProfile,
   getRegistryPackages,
   updateRegistryPackage,
+  deleteRegistryPackage,
   clearRegistryToken,
   publishToRegistry,
   getRegistryUrl,
