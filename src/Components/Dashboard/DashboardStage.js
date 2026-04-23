@@ -51,6 +51,7 @@ import {
   getUnresolvedProviders,
 } from "../../utils/providerResolution";
 import { applyWiringChanges } from "../../utils/listenerResolution";
+import { reconcileWorkspaceAfterLayoutChange } from "../../utils/workspaceReconciliation";
 import { moveWidgetAcrossContainers } from "../../utils/layout";
 import { ComponentManager } from "../../ComponentManager";
 
@@ -518,13 +519,17 @@ const DashboardStageInner = ({
         };
       }
 
-      updateTabWorkspace(updated);
+      // Reconcile cross-widget state before persisting. Cross-container
+      // moves can orphan listener bindings and provider entries when a
+      // widget ends up outside the layout during the move.
+      const reconciled = reconcileWorkspaceAfterLayoutChange(updated);
+      updateTabWorkspace(reconciled);
 
       if (dashApi && credentials?.appId) {
         try {
           dashApi.saveWorkspace(
             credentials.appId,
-            updated,
+            reconciled,
             () =>
               console.log(
                 `[DashboardStage] Cross-container move saved (${detail.sourceScope} → ${detail.targetScope})`,
@@ -784,14 +789,15 @@ const DashboardStageInner = ({
         },
       };
 
+      const reconciled = reconcileWorkspaceAfterLayoutChange(updatedWorkspace);
       // Update the tab's workspace reference
-      updateTabWorkspace(updatedWorkspace);
+      updateTabWorkspace(reconciled);
 
       // Persist to main app via IPC
       try {
         dashApi.saveWorkspace(
           credentials.appId,
-          updatedWorkspace,
+          reconciled,
           (e, result) => {
             console.log("Workspace saved with provider selections:", result);
           },
@@ -840,12 +846,13 @@ const DashboardStageInner = ({
       ...workspaceSelected,
       selectedProviders: nextSelectedProviders,
     };
-    updateTabWorkspace(updatedWorkspace);
+    const reconciled = reconcileWorkspaceAfterLayoutChange(updatedWorkspace);
+    updateTabWorkspace(reconciled);
 
     try {
       dashApi.saveWorkspace(
         credentials.appId,
-        updatedWorkspace,
+        reconciled,
         (e, result) =>
           console.log("Workspace saved with bulk provider bindings:", result),
         (e, error) =>
@@ -892,12 +899,13 @@ const DashboardStageInner = ({
     };
     forEachWidget(updatedWorkspace, patchItem);
 
-    updateTabWorkspace(updatedWorkspace);
+    const reconciled = reconcileWorkspaceAfterLayoutChange(updatedWorkspace);
+    updateTabWorkspace(reconciled);
 
     try {
       dashApi.saveWorkspace(
         credentials.appId,
-        updatedWorkspace,
+        reconciled,
         (e, result) =>
           console.log("Workspace saved with bulk userPrefs:", result),
         (e, error) =>
@@ -924,12 +932,13 @@ const DashboardStageInner = ({
     }
 
     const updatedWorkspace = applyWiringChanges(workspaceSelected, changes);
-    updateTabWorkspace(updatedWorkspace);
+    const reconciled = reconcileWorkspaceAfterLayoutChange(updatedWorkspace);
+    updateTabWorkspace(reconciled);
 
     try {
       dashApi.saveWorkspace(
         credentials.appId,
-        updatedWorkspace,
+        reconciled,
         (e, result) =>
           console.log("Workspace saved with bulk listener bindings:", result),
         (e, error) =>
@@ -1471,6 +1480,15 @@ const DashboardStageInner = ({
       const dashboardForCleanup = new DashboardModel(workspaceToSave);
       dashboardForCleanup.cleanOrphanedItems();
       workspaceToSave = dashboardForCleanup.workspace();
+
+      // Final reconciliation pass: prune every surviving widget's
+      // `item.listeners` of references to widgets that aren't in the
+      // layout anymore, and drop `selectedProviders` entries keyed by
+      // deleted widgetIds. Running this at the main-save boundary
+      // guarantees the persisted workspace never carries dangling
+      // cross-widget state regardless of which mutation path got us
+      // here. Idempotent — no-op on a clean workspace.
+      workspaceToSave = reconcileWorkspaceAfterLayoutChange(workspaceToSave);
 
       // lets set a version so that we can compare...
       workspaceToSave["version"] = Date.now();

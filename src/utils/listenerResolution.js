@@ -61,6 +61,30 @@ function itemIdOf(item) {
 }
 
 /**
+ * Canonical identity key for a layout item: `component|id-ish`.
+ * Single source of truth for dedupe in every query below and in
+ * `forEachWidget` (providerResolution.js). Including the component
+ * prefix prevents two structurally-different widgets from colliding
+ * when they happen to share a uuid (rare, but possible when items
+ * are pasted between workspaces).
+ *
+ * Priority matches forEachWidget's stableId so a widget that
+ * forEachWidget visited once produces exactly one map entry across
+ * every listener-side consumer — no more `STAGEGATECHECKLIST[4]`
+ * appearing twice because one caller used `uuidString` and the
+ * other used `id`.
+ */
+export function canonicalItemKey(item) {
+  if (!item || !item.component) return null;
+  if (item.uuidString) return `${item.component}|${item.uuidString}`;
+  if (item.uuid) return `${item.component}|${item.uuid}`;
+  if (item.id !== undefined && item.id !== null) {
+    return `${item.component}|${item.id}`;
+  }
+  return null;
+}
+
+/**
  * Best-effort human label for a layout item: explicit title, then
  * widget config display name, then component name + short id.
  */
@@ -107,13 +131,12 @@ export function getEmitters(workspace, getWidgetConfig) {
   forEachWidget(workspace, (item) => {
     const events = eventsOf(item, getWidgetConfig);
     if (events.length === 0) return;
-    const itemId = itemIdOf(item);
-    if (itemId == null) return;
-    const key = `${item.component}|${itemId}`;
+    const key = canonicalItemKey(item);
+    if (!key) return;
     if (byKey.has(key)) return;
     byKey.set(key, {
       key,
-      itemId,
+      itemId: itemIdOf(item),
       component: item.component,
       label: labelFor(item, getWidgetConfig),
       events,
@@ -133,13 +156,12 @@ export function getReceivers(workspace, getWidgetConfig) {
   forEachWidget(workspace, (item) => {
     const handlers = eventHandlersOf(item, getWidgetConfig);
     if (handlers.length === 0) return;
-    const itemId = itemIdOf(item);
-    if (itemId == null) return;
-    const key = `${item.component}|${itemId}`;
+    const key = canonicalItemKey(item);
+    if (!key) return;
     if (byKey.has(key)) return;
     byKey.set(key, {
       key,
-      itemId,
+      itemId: itemIdOf(item),
       component: item.component,
       label: labelFor(item, getWidgetConfig),
       eventHandlers: handlers,
