@@ -445,7 +445,13 @@ function generateRegistryManifest(dashboardConfig, options = {}) {
     .toLowerCase();
 
   const githubUser = options.githubUser || "";
-  const version = "1.0.0";
+  // Prefer an explicitly-passed version (caller resolved it already,
+  // e.g. via resolveNextVersion + bump). Fall back to the dashboard's
+  // own version, then a 1.0.0 baseline. The previous hardcoded
+  // "1.0.0" meant every republish looked identical to the registry;
+  // latestVersion never advanced, so downstream update-check never
+  // saw a diff and no notification fired.
+  const version = options.version || dashboardConfig.version || "1.0.0";
   const visibility = options.visibility === "private" ? "private" : "public";
 
   const manifest = {
@@ -605,11 +611,27 @@ function buildDashboardPreview(source) {
  * @returns {Array} Update records with workspace info and version comparison
  */
 function checkDashboardUpdates(workspaces = [], registryPackages = []) {
-  const registryByName = new Map();
+  // Index the registry by canonical `@scope/name` so the lookup
+  // survives installs that capture scope differently from the
+  // registry's raw `name` field. The previous map was keyed by bare
+  // `pkg.name`, which misses anytime the installed config recorded
+  // `@scope/name` (our new publish flow writes that) or when two
+  // users publish the same bare name. Key both forms for safety.
+  const registryByKey = new Map();
+  const asKey = (scope, name) => {
+    if (!name) return null;
+    if (!scope) return name;
+    const bareScope = String(scope).replace(/^@/, "");
+    return `@${bareScope}/${name}`;
+  };
   for (const pkg of registryPackages) {
-    if (pkg.name && (pkg.type || "widget") === "dashboard") {
-      registryByName.set(pkg.name, pkg);
-    }
+    if (!pkg.name) continue;
+    if ((pkg.type || "widget") !== "dashboard") continue;
+    const scoped = asKey(pkg.scope, pkg.name);
+    if (scoped) registryByKey.set(scoped, pkg);
+    // Back-compat: also store under bare name so installed configs
+    // that predate the scope-aware write continue to match.
+    registryByKey.set(pkg.name, pkg);
   }
 
   const updates = [];
@@ -618,7 +640,24 @@ function checkDashboardUpdates(workspaces = [], registryPackages = []) {
     const config = ws._dashboardConfig;
     if (!config || !config.registryPackage) continue;
 
-    const registryPkg = registryByName.get(config.registryPackage);
+    // Lookup chain: try the scoped form first, fall back to bare. The
+    // installed config may record either. Scope is stored on the
+    // config by the install flow (or set here by the publish persist
+    // step we just added).
+    const installedScope =
+      config.registryScope ||
+      (config.registryPackage.startsWith("@")
+        ? config.registryPackage.slice(1).split("/")[0]
+        : null);
+    const installedName = config.registryPackage.includes("/")
+      ? config.registryPackage.split("/").pop()
+      : config.registryPackage;
+    const scopedKey = asKey(installedScope, installedName);
+
+    const registryPkg =
+      (scopedKey && registryByKey.get(scopedKey)) ||
+      registryByKey.get(config.registryPackage) ||
+      registryByKey.get(installedName);
     if (!registryPkg) continue;
 
     const installedVersion = config.installedVersion || "0.0.0";
@@ -629,6 +668,7 @@ function checkDashboardUpdates(workspaces = [], registryPackages = []) {
         workspaceId: ws.id,
         workspaceName: ws.name || ws.label || "",
         registryPackage: config.registryPackage,
+        registryScope: installedScope,
         installedVersion,
         latestVersion,
         importedAt: config.importedAt || null,

@@ -45,14 +45,20 @@ function generateThemeRegistryManifest(themeData, themeKey, options = {}) {
   const sanitizedName = sanitizeName(humanName);
   const colors = extractColors(themeData);
   const visibility = options.visibility === "private" ? "private" : "public";
+  // Prefer an explicitly-resolved version (caller already bumped),
+  // then the theme's own stored version, then the 1.0.0 baseline.
+  // The old hardcoded 1.0.0 meant republishes silently clobbered the
+  // registry record — update notifications never fired downstream.
+  const version = options.version || themeData.version || "1.0.0";
 
   return {
     scope: options.scope || "",
     name: sanitizedName,
     displayName: humanName,
-    author: options.authorName || "",
+    author:
+      options.authorName || themeData.author || options.fallbackAuthor || "",
     description: options.description || "",
-    version: "1.0.0",
+    version,
     visibility,
     type: "theme",
     category: "general",
@@ -122,6 +128,7 @@ function extractColors(themeData) {
  */
 async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
   try {
+    const { resolveNextVersion } = require("../schema/widgetPublishManifest");
     // Read the theme data
     const themesResult = themeController.listThemesForApplication(win, appId);
     if (themesResult.error) {
@@ -155,11 +162,33 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
       };
     }
 
+    // Resolve version: prefer explicit, then bump the theme's stored
+    // version, then start at 1.0.0. Without this themes always
+    // published as 1.0.0 and update-check could never diff.
+    const previousVersion = themeData.version || "1.0.0";
+    const nextVersion = resolveNextVersion(previousVersion, {
+      bump: options.bump,
+      version: options.version,
+    });
+
+    // Author fallback chain (F7): explicit → theme data → registry
+    // profile displayName/username → blank. Matches the widget
+    // author-normalization shape so ai-built / scaffolded themes
+    // don't ship to the registry with a blank author field.
+    const resolvedAuthor =
+      options.authorName ||
+      themeData.author ||
+      profile?.displayName ||
+      profile?.username ||
+      "";
+
     // Generate manifest
     const manifest = generateThemeRegistryManifest(themeData, themeKey, {
       ...options,
       scope,
       appOrigin: appId,
+      version: nextVersion,
+      authorName: resolvedAuthor,
     });
 
     // Validate colors
@@ -216,6 +245,35 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
         "[ThemeRegistryController] Registry publish result:",
         registryResult,
       );
+      // Persist the resolved version + author back onto the theme so
+      // the NEXT publish picks up from here. Without this, the
+      // publisher would be bumping from 1.0.0 every time and the
+      // manifest's author normalization would be re-applied every
+      // run (OK but confusing).
+      if (registryResult?.success) {
+        try {
+          const updatedTheme = {
+            ...themeData,
+            version: nextVersion,
+            author: resolvedAuthor || themeData.author,
+            _registryMeta: {
+              ...(themeData._registryMeta || {}),
+              packageName: `${scope}/${manifest.name}`,
+              scope,
+              lastPublishedAt: new Date().toISOString(),
+              lastPublishedVersion: nextVersion,
+            },
+          };
+          themeController.saveThemeForApplication(win, appId, {
+            key: themeKey,
+            theme: updatedTheme,
+          });
+        } catch (persistErr) {
+          console.warn(
+            `[ThemeRegistryController] Version persist failed (continuing): ${persistErr.message}`,
+          );
+        }
+      }
     }
 
     return {
@@ -556,10 +614,118 @@ function getThemePublishPreview(appId, themeKey) {
   }
 }
 
+/**
+ * Check installed themes for available updates against the registry.
+ *
+ * Reads every theme from the app's theme file, picks the ones that
+ * carry a `_registryMeta.packageName` (i.e. were installed from the
+ * registry, not locally created), resolves each against the registry
+ * index by `@scope/name` (with a bare-name fallback), and returns a
+ * diff record for each stale theme.
+ *
+ * Mirrors `checkDashboardUpdatesForApp` — callable standalone, works
+ * the same way on the renderer side.
+ *
+ * @param {BrowserWindow} win
+ * @param {string} appId
+ * @returns {Promise<{success, updates, totalInstalled, error?}>}
+ */
+async function checkThemeUpdatesForApp(win, appId) {
+  try {
+    const { fetchRegistryIndex } = require("./registryController");
+    const themesResult = themeController.listThemesForApplication(win, appId);
+    if (themesResult.error) {
+      return {
+        success: false,
+        error: themesResult.message || "Failed to read themes",
+        updates: [],
+      };
+    }
+    const themes = themesResult.themes || {};
+
+    // Filter to registry-installed themes only.
+    const installed = [];
+    for (const [themeKey, themeData] of Object.entries(themes)) {
+      const meta = themeData?._registryMeta;
+      if (!meta?.packageName) continue;
+      installed.push({
+        themeKey,
+        packageName: meta.packageName,
+        scope: meta.scope || null,
+        version: themeData.version || meta.lastPublishedVersion || "0.0.0",
+      });
+    }
+
+    if (installed.length === 0) {
+      return { success: true, updates: [], totalInstalled: 0 };
+    }
+
+    const index = await fetchRegistryIndex();
+    const packages = (index.packages || []).filter(
+      (p) => (p.type || "widget") === "theme",
+    );
+
+    // Index registry packages by scoped + bare key, same pattern as
+    // dashboard update check.
+    const registryByKey = new Map();
+    for (const pkg of packages) {
+      if (!pkg.name) continue;
+      if (pkg.scope) {
+        const bareScope = String(pkg.scope).replace(/^@/, "");
+        registryByKey.set(`@${bareScope}/${pkg.name}`, pkg);
+      }
+      registryByKey.set(pkg.name, pkg);
+    }
+
+    const updates = [];
+    for (const inst of installed) {
+      const scope = inst.scope
+        ? String(inst.scope).replace(/^@/, "")
+        : inst.packageName.startsWith("@")
+          ? inst.packageName.slice(1).split("/")[0]
+          : null;
+      const bareName = inst.packageName.includes("/")
+        ? inst.packageName.split("/").pop()
+        : inst.packageName;
+      const scopedKey = scope ? `@${scope}/${bareName}` : null;
+      const registryPkg =
+        (scopedKey && registryByKey.get(scopedKey)) ||
+        registryByKey.get(inst.packageName) ||
+        registryByKey.get(bareName);
+      if (!registryPkg) continue;
+
+      const latestVersion = registryPkg.version || "0.0.0";
+      if (inst.version !== latestVersion) {
+        updates.push({
+          themeKey: inst.themeKey,
+          packageName: inst.packageName,
+          scope,
+          installedVersion: inst.version,
+          latestVersion,
+          downloadUrl: registryPkg.downloadUrl || null,
+        });
+      }
+    }
+
+    return {
+      success: true,
+      updates,
+      totalInstalled: installed.length,
+    };
+  } catch (err) {
+    console.error(
+      "[ThemeRegistryController] Error checking theme updates:",
+      err,
+    );
+    return { success: false, error: err.message, updates: [] };
+  }
+}
+
 module.exports = {
   prepareThemeForPublish,
   installThemeFromRegistry,
   getThemePublishPreview,
   generateThemeRegistryManifest,
   extractColors,
+  checkThemeUpdatesForApp,
 };

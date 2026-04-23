@@ -107,6 +107,7 @@ const {
   prepareThemeForPublish,
   installThemeFromRegistry,
   getThemePublishPreview,
+  checkThemeUpdatesForApp,
 } = require("./themeRegistryController");
 const {
   prepareWidgetForPublish,
@@ -200,6 +201,7 @@ module.exports = {
   prepareThemeForPublish,
   installThemeFromRegistry,
   getThemePublishPreview,
+  checkThemeUpdatesForApp,
   prepareWidgetForPublish,
   inspectWidgetPackage,
   assignRoles,
