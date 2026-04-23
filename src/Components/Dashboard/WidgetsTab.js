@@ -6,6 +6,28 @@ import { PanelEditForm } from "../../Context/Modal/Panel/PanelEditForm";
 const ALL_WIDGETS_ID = "__ALL__";
 
 /**
+ * Build the scoped registry identifier for a widget. Surfaces the
+ * `scope.packageName.component` triple in the settings UI so users
+ * can verify what a widget's registry identity is — useful when
+ * diagnosing dashboard-install warnings ("why didn't this widget
+ * install?" → scoped id in the warning vs scoped id shown here).
+ * Returns just the component name when scope/package metadata is
+ * unavailable (e.g. bare built-ins).
+ */
+function buildScopedId(widget) {
+  if (!widget?.component) return null;
+  const scope = widget.scope ? String(widget.scope).replace(/^@/, "") : null;
+  const pkg = widget.packageName
+    ? scope
+      ? String(widget.packageName).replace(new RegExp(`^@?${scope}/`), "")
+      : String(widget.packageName).replace(/^@/, "")
+    : null;
+  if (scope && pkg) return `${scope}.${pkg}.${widget.component}`;
+  if (pkg) return `${pkg}.${widget.component}`;
+  return widget.component;
+}
+
+/**
  * WidgetsTab
  *
  * Renders inside DashboardConfigModal as a third tab alongside
@@ -53,6 +75,11 @@ export const WidgetsTab = ({
         section,
         userConfig: cfg.userConfig || {},
         userPrefs: item.userPrefs || {},
+        // Identity fields for the registry-identifier label. Prefer
+        // values from the widget's component manager entry since the
+        // layout item itself often doesn't carry scope/packageName.
+        scope: cfg.scope || item.scope || null,
+        packageName: cfg.packageName || cfg.name || item.packageName || null,
       });
     };
     const walkWithSection = (items, section) => {
@@ -207,6 +234,7 @@ export const WidgetsTab = ({
 
 function SingleWidgetPane({ widget, effectivePrefs, onFieldChange }) {
   const hasFields = Object.keys(widget.userConfig).length > 0;
+  const scopedId = buildScopedId(widget);
   return (
     <div>
       <div className="mb-3">
@@ -214,6 +242,14 @@ function SingleWidgetPane({ widget, effectivePrefs, onFieldChange }) {
         <div className="text-xs text-gray-500">
           {widget.component} · {widget.section}
         </div>
+        {scopedId && scopedId !== widget.component && (
+          <code
+            className="block mt-1 text-[11px] text-gray-500 font-mono truncate"
+            title={scopedId}
+          >
+            {scopedId}
+          </code>
+        )}
       </div>
       {hasFields ? (
         <PanelEditForm

@@ -472,13 +472,31 @@ function generateRegistryManifest(dashboardConfig, options = {}) {
         options.callerScope && w.scope && w.scope !== options.callerScope
           ? options.callerScope
           : w.scope || "";
+      // Packaged id — the scoped "@<scope>/<packageName>" string that
+      // the install flow looks up in the registry. Build this from the
+      // REMAPPED scope + bare packageName so installers resolve against
+      // the scope the widget was actually published as, not the local
+      // `@ai-built` convention. Stripping the scope prefix from a
+      // potentially-scoped packageName keeps the result canonical.
+      const bareName = stripScopePrefix(
+        w.packageName || w.package || "",
+        remappedScope || w.scope,
+      );
+      const scopedPackageId = remappedScope
+        ? `@${remappedScope.replace(/^@/, "")}/${bareName}`
+        : bareName;
       return {
         id: w.id,
         scope: remappedScope,
-        packageName: w.packageName || w.package || "",
+        packageName: bareName,
         widgetName: w.widgetName || (w.id ? w.id.split(".").pop() : w.package),
         name: w.id ? w.id.split(".").pop() : w.package,
-        package: w.package,
+        // `package` is consumed by the install flow as the registry
+        // package id (see installDashboardFromRegistry in
+        // dashboardConfigController.js). Must carry the remapped
+        // scope, otherwise installers look up an @ai-built/... id that
+        // only exists on the publisher's machine.
+        package: scopedPackageId,
         version: w.version || "*",
         required: w.required !== false,
         author: w.author || "",
@@ -756,6 +774,67 @@ function extractEventWiringFromWorkspace(workspace) {
   return wiring;
 }
 
+/**
+ * Strip publisher-specific personalization (userPrefs + selectedProviders)
+ * from every widget instance in a layout-ish structure. Used by the
+ * dashboard publish flow so the installer starts with the widget's
+ * own defaultValue on every field instead of inheriting the
+ * publisher's absolute paths, region tags, credentials, etc.
+ *
+ * Walks the standard layout shapes that forEachWidget handles:
+ *   - top-level `layout` arrays
+ *   - `workspace.pages[*].layout`
+ *   - `workspace.sidebarLayout`
+ *   - `LayoutGridContainer` children stored on `item.items` / `item.layout`
+ *
+ * Returns a deep copy — never mutates the input workspace.
+ *
+ * Title-ish defaults (widget.name) are intentionally preserved — they
+ * are part of the dashboard template, not personal data. Anything else
+ * under userPrefs is dropped; the installer's widget re-reads the
+ * `defaultValue` declared in the component's `.dash.js`.
+ */
+function stripPersonalizationFromWorkspace(workspace) {
+  if (!workspace) return workspace;
+  const cleanItem = (item) => {
+    if (!item || typeof item !== "object") return item;
+    // Preserve the layout position + children, but blank out the
+    // user-set config values that are tied to the publisher's machine.
+    const cleaned = { ...item };
+    if ("userPrefs" in cleaned) delete cleaned.userPrefs;
+    if ("selectedProviders" in cleaned) delete cleaned.selectedProviders;
+    if (Array.isArray(cleaned.items)) {
+      cleaned.items = cleaned.items.map(cleanItem);
+    }
+    if (Array.isArray(cleaned.layout)) {
+      cleaned.layout = cleaned.layout.map(cleanItem);
+    }
+    return cleaned;
+  };
+  const cleaned = { ...workspace };
+  if (Array.isArray(cleaned.layout))
+    cleaned.layout = cleaned.layout.map(cleanItem);
+  if (Array.isArray(cleaned.sidebarLayout))
+    cleaned.sidebarLayout = cleaned.sidebarLayout.map(cleanItem);
+  if (Array.isArray(cleaned.pages)) {
+    cleaned.pages = cleaned.pages.map((page) =>
+      page
+        ? {
+            ...page,
+            ...(Array.isArray(page.layout)
+              ? { layout: page.layout.map(cleanItem) }
+              : {}),
+          }
+        : page,
+    );
+  }
+  // Workspace-level selectedProviders map lives at the top level for
+  // some older workspaces; drop it too so the installer doesn't get
+  // bindings to provider names that don't exist on their machine.
+  if ("selectedProviders" in cleaned) delete cleaned.selectedProviders;
+  return cleaned;
+}
+
 module.exports = {
   collectComponentNames,
   collectComponentNamesFromWorkspace,
@@ -770,4 +849,5 @@ module.exports = {
   checkDashboardUpdates,
   buildProviderSetupManifest,
   checkApiCompatibility,
+  stripPersonalizationFromWorkspace,
 };

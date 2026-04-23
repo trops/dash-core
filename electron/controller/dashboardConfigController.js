@@ -30,6 +30,7 @@ const {
   buildWidgetDependencies,
   buildProviderRequirements,
   applyEventWiringToLayout,
+  stripPersonalizationFromWorkspace,
 } = require("../schema/dashboardConfigUtils");
 const { searchRegistry, getPackage } = require("./registryController");
 const { getStoredToken, clearToken } = require("./registryAuthController");
@@ -77,7 +78,11 @@ async function exportDashboardConfig(
       };
     }
 
-    const layout = workspace.layout || [];
+    // Strip publisher-specific personalization (userPrefs,
+    // selectedProviders) so the exported file carries a clean
+    // template, not one pre-filled with the publisher's paths.
+    const sharedWorkspace = stripPersonalizationFromWorkspace(workspace);
+    const layout = sharedWorkspace.layout || [];
 
     // 2. Collect components, extract wiring, resolve deps — walk main
     //    layout, every page, and the sidebar so multi-page / sidebar
@@ -105,13 +110,17 @@ async function exportDashboardConfig(
         label: workspace.label || workspace.name,
         version: workspace.version || 1,
         layout,
-        ...(Array.isArray(workspace.pages) && workspace.pages.length > 0
-          ? { pages: workspace.pages, activePageId: workspace.activePageId }
-          : {}),
-        ...(Array.isArray(workspace.sidebarLayout) &&
-        workspace.sidebarLayout.length > 0
+        ...(Array.isArray(sharedWorkspace.pages) &&
+        sharedWorkspace.pages.length > 0
           ? {
-              sidebarLayout: workspace.sidebarLayout,
+              pages: sharedWorkspace.pages,
+              activePageId: workspace.activePageId,
+            }
+          : {}),
+        ...(Array.isArray(sharedWorkspace.sidebarLayout) &&
+        sharedWorkspace.sidebarLayout.length > 0
+          ? {
+              sidebarLayout: sharedWorkspace.sidebarLayout,
               sidebarEnabled: workspace.sidebarEnabled !== false,
             }
           : {}),
@@ -1363,7 +1372,16 @@ async function prepareDashboardForPublish(
       };
     }
 
-    const layout = workspace.layout || [];
+    // Strip publisher-specific personalization (userPrefs,
+    // selectedProviders) from every widget instance before we snapshot
+    // the workspace into the dashboardConfig. Without this, every
+    // installer inherits the publisher's absolute filesystem paths,
+    // region tags, and provider bindings as their "defaults" — a
+    // widget's own `defaultValue` on each field never gets a chance.
+    // Layout position, ordering, nested containers, and any title text
+    // are preserved (they're part of the template, not personal).
+    const sharedWorkspace = stripPersonalizationFromWorkspace(workspace);
+    const layout = sharedWorkspace.layout || [];
 
     // 3. Build the dashboard config — walk main + pages + sidebar
     const componentNames = collectComponentNamesFromWorkspace(workspace);
@@ -1403,13 +1421,17 @@ async function prepareDashboardForPublish(
         label: workspace.label || workspace.name,
         version: workspace.version || 1,
         layout,
-        ...(Array.isArray(workspace.pages) && workspace.pages.length > 0
-          ? { pages: workspace.pages, activePageId: workspace.activePageId }
-          : {}),
-        ...(Array.isArray(workspace.sidebarLayout) &&
-        workspace.sidebarLayout.length > 0
+        ...(Array.isArray(sharedWorkspace.pages) &&
+        sharedWorkspace.pages.length > 0
           ? {
-              sidebarLayout: workspace.sidebarLayout,
+              pages: sharedWorkspace.pages,
+              activePageId: workspace.activePageId,
+            }
+          : {}),
+        ...(Array.isArray(sharedWorkspace.sidebarLayout) &&
+        sharedWorkspace.sidebarLayout.length > 0
+          ? {
+              sidebarLayout: sharedWorkspace.sidebarLayout,
               sidebarEnabled: workspace.sidebarEnabled !== false,
             }
           : {}),
