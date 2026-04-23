@@ -235,6 +235,14 @@ async function createFolder(token, parentId, name) {
   );
 }
 
+async function getFileMetadata(token, fileId) {
+  const fields = encodeURIComponent("id,name,mimeType");
+  return await driveRequest(
+    `/drive/v3/files/${fileId}?fields=${fields}`,
+    token,
+  );
+}
+
 async function readFile(token, fileId) {
   return await driveRequest(`/drive/v3/files/${fileId}?alt=media`, token);
 }
@@ -515,6 +523,21 @@ if (process.argv[2] === "auth") {
             required: ["path"],
           },
         },
+        {
+          name: "get_folder_info",
+          description:
+            "Return metadata (id, name, mimeType) for a folder or file by ID. Primarily used to resolve a Drive folder's own name from an ID (the other list/read tools only describe a folder's children, not the folder itself).",
+          inputSchema: {
+            type: "object",
+            properties: {
+              fileId: {
+                type: "string",
+                description: "Drive file or folder ID",
+              },
+            },
+            required: ["fileId"],
+          },
+        },
       ],
     }));
 
@@ -691,6 +714,21 @@ if (process.argv[2] === "auth") {
             }
             return {
               content: [{ type: "text", text: `Path not found: ${args.path}` }],
+            };
+          }
+
+          case "get_folder_info": {
+            if (!args.fileId) {
+              return {
+                content: [
+                  { type: "text", text: "Missing required argument: fileId" },
+                ],
+                isError: true,
+              };
+            }
+            const meta = await getFileMetadata(token, args.fileId);
+            return {
+              content: [{ type: "text", text: JSON.stringify(meta) }],
             };
           }
 
