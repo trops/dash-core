@@ -373,6 +373,12 @@ export const PublishDashboardModal = ({
           const options = {
             ...(bump && bump !== "none" ? { bump } : {}),
             visibility: step.selection.visibility,
+            // Plumb the publisher's display name through to the widget
+            // publish call so the manifest — and the rewritten dash.json
+            // inside the zipped package — records the actual human who
+            // published, not the AI Widget Builder's "AI Assistant"
+            // placeholder.
+            authorName: authorName.trim() || undefined,
           };
           const res = await window.mainApi.registry.publishWidget(
             appId,
