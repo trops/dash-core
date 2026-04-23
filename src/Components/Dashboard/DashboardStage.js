@@ -46,7 +46,10 @@ import { AppContext } from "../../Context/App/AppContext";
 import { useMissingWidgets } from "../../hooks/useMissingWidgets";
 import { MissingWidgetsModal } from "../../Widget/MissingWidgetsModal";
 import { DashboardConfigModal } from "./DashboardConfigModal";
-import { getUnresolvedProviders } from "../../utils/providerResolution";
+import {
+  forEachWidget,
+  getUnresolvedProviders,
+} from "../../utils/providerResolution";
 import { applyWiringChanges } from "../../utils/listenerResolution";
 import { moveWidgetAcrossContainers } from "../../utils/layout";
 import { ComponentManager } from "../../ComponentManager";
@@ -850,6 +853,55 @@ const DashboardStageInner = ({
             "Failed to save workspace with bulk provider bindings:",
             error,
           ),
+      );
+    } catch (e) {
+      console.error("Error saving workspace:", e);
+    }
+  }
+
+  // ─── Bulk widget userPrefs save ───────────────────────────────────
+  // Takes an array of `{ widgetId, key, value }` from the Dashboard
+  // Config modal's Widgets tab and writes every change to the correct
+  // widget instance's `userPrefs` in one workspace mutation. Mirrors
+  // the pattern in handleBulkProviderBindings — the Widgets tab stages
+  // edits in-memory so a bulk-apply across many widgets persists as a
+  // single saveWorkspace round-trip instead of N.
+  function handleBulkUserPrefs(changes) {
+    if (!Array.isArray(changes) || changes.length === 0) return;
+    if (!workspaceSelected || !dashApi || !credentials?.appId) return;
+
+    // Group changes by widgetId so we can patch each item once.
+    const byWidget = new Map();
+    for (const { widgetId, key, value } of changes) {
+      if (!widgetId || !key) continue;
+      if (!byWidget.has(widgetId)) byWidget.set(widgetId, {});
+      byWidget.get(widgetId)[key] = value;
+    }
+
+    // Deep-clone the workspace, then walk every item and patch
+    // userPrefs in place when its uuidString/uuid/id is in byWidget.
+    // Uses forEachWidget's walk under the hood by visiting each item
+    // in the cloned containers.
+    const updatedWorkspace = JSON.parse(JSON.stringify(workspaceSelected));
+    const patchItem = (item) => {
+      if (!item || !item.component) return;
+      const id = item.uuidString || item.uuid || item.id;
+      if (!id || !byWidget.has(id)) return;
+      const patch = byWidget.get(id);
+      item.userPrefs = { ...(item.userPrefs || {}), ...patch };
+    };
+    forEachWidget(updatedWorkspace, patchItem);
+
+    updateTabWorkspace(updatedWorkspace);
+
+    try {
+      dashApi.saveWorkspace(
+        credentials.appId,
+        updatedWorkspace,
+        (e, result) =>
+          console.log("Workspace saved with bulk userPrefs:", result),
+        (e, error) =>
+          console.error("Failed to save workspace with bulk userPrefs:", error),
       );
     } catch (e) {
       console.error("Error saving workspace:", e);
@@ -1919,6 +1971,7 @@ const DashboardStageInner = ({
               }
               onSaveBindings={handleBulkProviderBindings}
               onSaveListeners={handleBulkListenerBindings}
+              onSaveUserPrefs={handleBulkUserPrefs}
               initialTab="providers"
             />
           </>
