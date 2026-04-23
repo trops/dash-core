@@ -4,6 +4,29 @@ import deepEqual from "deep-equal";
 import { ThemeContext } from "../../";
 import { PanelEditForm } from "./PanelEditForm";
 
+/**
+ * Build the scoped registry identifier for a widget instance, using
+ * whatever identity fields are on the layout item. Prefers the
+ * canonical `scope.packageName.component` triple; falls back to
+ * `packageName.component` or just the component name when the item
+ * lacks scope/package info (e.g. bare built-ins). Returns null when
+ * there's nothing meaningful to show.
+ */
+function buildScopedWidgetId(item) {
+  if (!item) return null;
+  const component = item.component || null;
+  if (!component) return null;
+  const scope = item.scope || item.registryScope || item.publishScope || null;
+  const pkgName = item.packageName || item.package || null;
+  if (scope && pkgName) {
+    const bareScope = String(scope).replace(/^@/, "");
+    const barePkg = String(pkgName).replace(new RegExp(`^@?${bareScope}/`), "");
+    return `${bareScope}.${barePkg}.${component}`;
+  }
+  if (pkgName) return `${String(pkgName).replace(/^@/, "")}.${component}`;
+  return component;
+}
+
 export const PanelEditContext = ({ onUpdate, item }) => {
   useContext(ThemeContext);
 
@@ -107,6 +130,28 @@ export const PanelEditContext = ({ onUpdate, item }) => {
               >
                 <div className="flex flex-col w-full space-y-2 h-full overflow-y-auto">
                   <div className="flex flex-col w-full">
+                    {/* Scoped identifier — the `scope.packageName.component`
+                        string that identifies this widget across the
+                        registry. Surfaces the registry identity so users
+                        can diagnose install warnings ("why did this
+                        widget fail to install from the dashboard?"),
+                        debug remix lookups, and verify the published
+                        scope after a republish. Hidden when insufficient
+                        data is present (e.g. built-ins without a scope). */}
+                    {buildScopedWidgetId(itemSelected) && (
+                      <div className="rounded flex flex-col px-2 pt-2 pb-1">
+                        <span className="text-[10px] uppercase tracking-wider text-gray-500">
+                          Registry Identifier
+                        </span>
+                        <code
+                          className="text-[11px] text-gray-400 font-mono truncate"
+                          title={buildScopedWidgetId(itemSelected)}
+                        >
+                          {buildScopedWidgetId(itemSelected)}
+                        </code>
+                      </div>
+                    )}
+
                     {/* name given by the user to identify the context */}
                     <div
                       key={`config-item-name}`}
