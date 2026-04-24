@@ -1,9 +1,9 @@
 # PRD: Dashboard Configuration Marketplace
 
 **Status:** Implemented
-**Last Updated:** 2026-03-07
+**Last Updated:** 2026-04-24
 **Owner:** Core Team
-**Related PRDs:** None
+**Related PRDs:** [Widget Installation Model](widget-installation-model.md)
 **Epic:** DASH-10
 
 ---
@@ -1179,8 +1179,47 @@ Requires a backend service or registry extension for storing ratings. This is a 
 
 ---
 
+## Implementation Notes (2026-04-24)
+
+Shipping the full publish-then-install loop surfaced several subtle
+invariants that the initial PRD didn't spell out. Recording them here
+so the next person touching this flow knows what NOT to regress.
+
+-   **Publish-time dependency attribution is exact, not inferred.**
+    Each layout item records a `packageId` when the widget is added
+    (see [Widget Installation Model](widget-installation-model.md)).
+    `buildWidgetDependencies` looks it up in the registry directly.
+    The coverage-ranking fallback only runs for items that predate
+    the field. Sources: `electron/schema/dashboardConfigUtils.js`,
+    `electron/schema/dashboardConfigUtils.test.js`.
+-   **The Dashboard Config modal's Dependencies tab MUST mirror the
+    publish modal's attribution.** Both read the same source of truth
+    (`item.packageId` first, then registry coverage rank) so the user
+    never sees the in-app tab and the publish step disagree about
+    which package a widget came from.
+-   **Listener event strings use the layout item's numeric `id`, not
+    its composite `uuid`.** The reconciler that prunes orphaned
+    listeners on save must accept every id-ish form (`id`, `uuid`,
+    `uuidString`). Regression tests live in
+    `src/utils/workspaceReconciliation.test.js`.
+-   **Dashboard config schema allows a top-level `version` field.**
+    The generated config carries the package's semver (distinct from
+    `workspace.version`, which is an integer schema revision). Added
+    to the JSON schema so `validateDashboardConfig` doesn't reject
+    the publisher's own output.
+-   **Widget `providers` arrays get sanitized on both publish AND
+    install.** Sparse arrays (trailing commas, undefined conditionals
+    in a `.dash.js`) no longer escape the publisher's machine or
+    crash the installer's `useMemo` chain. See
+    `electron/schema/widgetPublishManifest.test.js` ("drops null /
+    undefined entries from widget providers arrays") +
+    `src/utils/providerUtils.test.js` for the three-layer coverage.
+
+---
+
 ## Revision History
 
 | Version | Date       | Author    | Changes       |
 | ------- | ---------- | --------- | ------------- |
 | 1.0     | 2026-03-07 | Core Team | Initial draft |
+| 1.1     | 2026-04-24 | Core Team | Publish-dep attribution uses exact `packageId` from layout items; Dashboard Config gains a Dependencies tab; reconciler identity + schema `version` field + 3-layer sparse-providers defense documented. dash-core v0.1.421–v0.1.427. |
