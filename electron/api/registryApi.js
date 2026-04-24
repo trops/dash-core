@@ -157,6 +157,27 @@ const registryApi = {
   },
 
   /**
+   * Scan a widget package's `.dash.js` configs and return the list of
+   * non-empty `userConfig[field].defaultValue` entries. Powers the
+   * publish modal's "Verify defaults" step — lets the publisher
+   * review (and optionally blank / edit) values set during
+   * development before the ZIP ships.
+   *
+   * @param {string} packageId - Widget packageId (e.g. "@scope/name")
+   * @returns {Promise<Object>} { success, defaults: [{widgetName, field, currentDefault, displayName, type, instructions}], error? }
+   */
+  scanWidgetDefaults: async (packageId) => {
+    try {
+      return await ipcRenderer.invoke("registry:scan-widget-defaults", {
+        packageId,
+      });
+    } catch (error) {
+      console.error("[RegistryApi] Error scanning widget defaults:", error);
+      throw error;
+    }
+  },
+
+  /**
    * Fetch a registry package's source (component + config + bundle) into a
    * temp directory and return the source strings without installing the
    * package. Used by read-only preview flows (e.g. the Widget Builder's

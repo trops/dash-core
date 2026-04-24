@@ -112,6 +112,7 @@ const {
 const {
   prepareWidgetForPublish,
   inspectWidgetPackage,
+  scanWidgetDefaults,
 } = require("./widgetRegistryController");
 const {
   assignRoles,
@@ -204,6 +205,7 @@ module.exports = {
   checkThemeUpdatesForApp,
   prepareWidgetForPublish,
   inspectWidgetPackage,
+  scanWidgetDefaults,
   assignRoles,
   matchTailwindFamily,
   generateThemeFromPalette,

@@ -11,6 +11,7 @@ const REGISTRY_SEARCH_DASHBOARDS = "registry:search-dashboards";
 const REGISTRY_SEARCH_THEMES = "registry:search-themes";
 const REGISTRY_PUBLISH_WIDGET = "registry:publish-widget";
 const REGISTRY_INSPECT_WIDGET_PACKAGE = "registry:inspect-widget-package";
+const REGISTRY_SCAN_WIDGET_DEFAULTS = "registry:scan-widget-defaults";
 const REGISTRY_PREVIEW_FETCH = "registry:preview-fetch";
 
 module.exports = {
@@ -22,5 +23,6 @@ module.exports = {
   REGISTRY_SEARCH_THEMES,
   REGISTRY_PUBLISH_WIDGET,
   REGISTRY_INSPECT_WIDGET_PACKAGE,
+  REGISTRY_SCAN_WIDGET_DEFAULTS,
   REGISTRY_PREVIEW_FETCH,
 };

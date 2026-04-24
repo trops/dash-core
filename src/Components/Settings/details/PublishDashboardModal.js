@@ -176,7 +176,19 @@ export const PublishDashboardModal = ({
   // selections keyed by `${scope}/${name}`: { include, bump, visibility }
   const [depSelections, setDepSelections] = useState({});
 
-  // Step 5: Publish
+  // Step 5: Defaults verification — surfaced values from each owned
+  // widget package's `.dash.js` userConfig[field].defaultValue. Lets
+  // the publisher review (and optionally blank/edit) values set
+  // during development before the ZIP ships.
+  //   defaultsByPackage: { [packageId]: Array<{widgetName, field, currentDefault, displayName, type, instructions}> }
+  //   defaultsOverrides: { [packageId]: { [widgetName]: { [field]: newValue } } }
+  //     — only fields the user actually edited appear here. Undefined
+  //     = "no change"; explicit empty-string = "blank it out".
+  const [defaultsByPackage, setDefaultsByPackage] = useState({});
+  const [defaultsLoading, setDefaultsLoading] = useState(false);
+  const [defaultsOverrides, setDefaultsOverrides] = useState({});
+
+  // Step 6: Publish
   const [isPublishing, setIsPublishing] = useState(false);
   const [result, setResult] = useState(null);
   // Per-step progress during batch publish
@@ -303,6 +315,73 @@ export const PublishDashboardModal = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, isOpen]);
 
+  // Load per-package default-value scans when the user arrives at the
+  // Defaults step. We only scan packages that are actually going to be
+  // republished (include + owned) to keep the step focused — a
+  // third-party package the user isn't republishing can't have its
+  // defaults changed anyway.
+  useEffect(() => {
+    if (!isOpen || step !== 5 || !plan || defaultsLoading) return;
+    const packagesToScan = [];
+    for (const w of plan.widgets || []) {
+      if (!w.scope || !w.packageName) continue;
+      const key = `${w.scope}/${w.packageName}`;
+      const sel = depSelections[key];
+      if (!sel?.include || !sel?.owned) continue;
+      // Resolve the local package id the scanner expects — same shape
+      // the inspect IPC already takes.
+      const localPkgId = w.packageId || `@${w.scope}/${w.packageName}`;
+      if (!defaultsByPackage[localPkgId]) packagesToScan.push(localPkgId);
+    }
+    if (packagesToScan.length === 0) return;
+    setDefaultsLoading(true);
+    Promise.all(
+      packagesToScan.map((pkgId) =>
+        window.mainApi.registry
+          .scanWidgetDefaults(pkgId)
+          .then((res) => ({ pkgId, res }))
+          .catch((err) => ({
+            pkgId,
+            res: { success: false, error: err?.message || String(err) },
+          })),
+      ),
+    ).then((results) => {
+      setDefaultsByPackage((prev) => {
+        const next = { ...prev };
+        for (const { pkgId, res } of results) {
+          next[pkgId] = res?.success ? res.defaults || [] : [];
+        }
+        return next;
+      });
+      setDefaultsLoading(false);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, isOpen, plan, depSelections]);
+
+  function setDefaultOverride(packageId, widgetName, field, newValue) {
+    setDefaultsOverrides((prev) => {
+      const next = { ...prev };
+      const forPkg = { ...(next[packageId] || {}) };
+      const forWidget = { ...(forPkg[widgetName] || {}) };
+      if (newValue === undefined) {
+        delete forWidget[field];
+      } else {
+        forWidget[field] = newValue;
+      }
+      if (Object.keys(forWidget).length === 0) {
+        delete forPkg[widgetName];
+      } else {
+        forPkg[widgetName] = forWidget;
+      }
+      if (Object.keys(forPkg).length === 0) {
+        delete next[packageId];
+      } else {
+        next[packageId] = forPkg;
+      }
+      return next;
+    });
+  }
+
   function updateDepSelection(key, patch) {
     setDepSelections((prev) => ({
       ...prev,
@@ -391,6 +470,15 @@ export const PublishDashboardModal = ({
             // published, not the AI Widget Builder's "AI Assistant"
             // placeholder.
             authorName: authorName.trim() || undefined,
+            // Per-widget, per-field userConfig defaults the publisher
+            // verified on the Defaults step. Absent keys preserve the
+            // existing defaultValue; explicit empty string blanks it.
+            // The electron side stages a copy of the package under
+            // os.tmpdir(), rewrites the .dash.js entries, and zips
+            // from that — the publisher's source files stay untouched.
+            ...(defaultsOverrides[step.packageId]
+              ? { defaultsOverride: defaultsOverrides[step.packageId] }
+              : {}),
           };
           const res = await window.mainApi.registry.publishWidget(
             appId,
@@ -541,8 +629,8 @@ export const PublishDashboardModal = ({
     }
   }
 
-  // Steps: 0=Account, 1=Details, 2=Tags, 3=Icon, 4=Dependencies, 5=Publish
-  const isLastStep = step === 5;
+  // Steps: 0=Account, 1=Details, 2=Tags, 3=Icon, 4=Dependencies, 5=Defaults, 6=Publish
+  const isLastStep = step === 6;
   const canAdvance =
     step === 0
       ? authStatus === "authenticated"
@@ -552,7 +640,9 @@ export const PublishDashboardModal = ({
           ? selectedTags.length > 0
           : step === 4
             ? !planLoading
-            : true;
+            : step === 5
+              ? !defaultsLoading
+              : true;
 
   return (
     <Modal
@@ -865,7 +955,37 @@ export const PublishDashboardModal = ({
             </div>
           </Stepper.Step>
 
-          {/* Step 5: Publish */}
+          {/* Step 5: Defaults — verify per-field defaultValue entries
+              across every owned widget package about to be republished.
+              Edits here stage into a temp copy at publish time; the
+              publisher's source files stay untouched. */}
+          <Stepper.Step label="Defaults">
+            <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-4">
+              <p className="text-sm opacity-70">
+                Review <code>userConfig</code> default values the widget's
+                dev-time dash.js ships. Anything you leave as-is gets published
+                as the current default. Values you blank or edit here get
+                rewritten in a staged copy before the ZIP is built — your local
+                source files are untouched.
+              </p>
+              {defaultsLoading && (
+                <div className="text-sm opacity-60 py-6 text-center">
+                  Scanning widget configs for default values…
+                </div>
+              )}
+              {!defaultsLoading && (
+                <DefaultsReviewList
+                  plan={plan}
+                  depSelections={depSelections}
+                  defaultsByPackage={defaultsByPackage}
+                  overrides={defaultsOverrides}
+                  onChange={setDefaultOverride}
+                />
+              )}
+            </div>
+          </Stepper.Step>
+
+          {/* Step 6: Publish */}
           <Stepper.Step label="Publish">
             <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-4">
               {/* Show live per-step progress during batch publish */}
@@ -1071,7 +1191,7 @@ export const PublishDashboardModal = ({
             />
           </div>
           <div className="flex-1 text-center">
-            <span className="text-xs opacity-40">Step {step + 1} of 6</span>
+            <span className="text-xs opacity-40">Step {step + 1} of 7</span>
           </div>
           <div className="flex flex-row gap-2">
             {result?.success ? (
@@ -1313,6 +1433,146 @@ function DependencyTable({ plan, selections, onChange }) {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Per-package editable list of every non-empty userConfig default.
+ * Renders once per owned package selected for republish. Edits are
+ * two-way: typing into a field stages an override; hitting "Reset"
+ * clears the override so the original defaultValue ships. The
+ * outside world treats `overrides[packageId][widgetName][field]` as
+ * the source of truth for the publish call.
+ */
+function DefaultsReviewList({
+  plan,
+  depSelections,
+  defaultsByPackage,
+  overrides,
+  onChange,
+}) {
+  // Collect the packages we're actually about to republish so the UI
+  // stays aligned with Dependencies — no surprises about WHICH
+  // package's defaults you're editing.
+  const rows = [];
+  for (const w of plan?.widgets || []) {
+    if (!w.scope || !w.packageName) continue;
+    const key = `${w.scope}/${w.packageName}`;
+    const sel = depSelections[key];
+    if (!sel?.include || !sel?.owned) continue;
+    const localPkgId = w.packageId || `@${w.scope}/${w.packageName}`;
+    const defaults = defaultsByPackage[localPkgId];
+    if (!Array.isArray(defaults)) continue;
+    rows.push({
+      key,
+      localPkgId,
+      label: `@${w.scope}/${w.packageName}`,
+      defaults,
+    });
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="text-sm opacity-60 py-6 text-center">
+        No non-empty defaults found in any owned widget. Nothing to review.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {rows.map(({ key, localPkgId, label, defaults }) => {
+        if (defaults.length === 0) {
+          return (
+            <div
+              key={key}
+              className="border border-white/10 rounded-lg px-4 py-3 bg-white/5"
+            >
+              <div className="text-sm font-semibold font-mono">{label}</div>
+              <div className="text-xs opacity-60 mt-1">
+                No non-empty <code>defaultValue</code> entries detected.
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div
+            key={key}
+            className="border border-white/10 rounded-lg px-4 py-3 bg-white/5"
+          >
+            <div className="text-sm font-semibold font-mono mb-2">{label}</div>
+            <div className="flex flex-col gap-3">
+              {defaults.map((d) => {
+                const overriddenValue =
+                  overrides?.[localPkgId]?.[d.widgetName]?.[d.field];
+                const isOverridden = overriddenValue !== undefined;
+                const displayValue = isOverridden
+                  ? String(overriddenValue ?? "")
+                  : String(d.currentDefault ?? "");
+                return (
+                  <div
+                    key={`${d.widgetName}|${d.field}`}
+                    className="flex flex-col gap-1"
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <code className="text-xs opacity-70">
+                        {d.widgetName}.{d.field}
+                      </code>
+                      <span className="text-[10px] opacity-50">({d.type})</span>
+                      <span className="text-[10px] opacity-50">
+                        {d.displayName}
+                      </span>
+                      {isOverridden && (
+                        <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-200">
+                          edited
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={displayValue}
+                        onChange={(e) =>
+                          onChange(
+                            localPkgId,
+                            d.widgetName,
+                            d.field,
+                            e.target.value,
+                          )
+                        }
+                        className="flex-1 bg-gray-900 border border-white/10 rounded px-2 py-1 text-xs font-mono"
+                      />
+                      {isOverridden && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onChange(
+                              localPkgId,
+                              d.widgetName,
+                              d.field,
+                              undefined,
+                            )
+                          }
+                          className="text-xs opacity-60 hover:opacity-100 underline underline-offset-2"
+                          title="Discard edit — ship the original defaultValue"
+                        >
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                    {d.instructions && (
+                      <div className="text-[10px] opacity-50">
+                        {d.instructions}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         );
