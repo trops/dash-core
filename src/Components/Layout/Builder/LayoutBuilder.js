@@ -154,6 +154,17 @@ export const LayoutBuilder = ({
     wsRef.current = currentWorkspace;
   }, [currentWorkspace]);
 
+  // Stable ref to onWorkspaceChange so the window-event handlers below can
+  // propagate mutations upstream without resubscribing on every render.
+  // Without this, swap/place handlers only update LayoutBuilder-local
+  // state — the parent (PinnedSidebar / PageLayoutBuilder) never learns
+  // about the change, so the next parent re-render reverts it via the
+  // `[workspace]` useEffect above and the save path reads stale state.
+  const onWorkspaceChangeRef = useRef(onWorkspaceChange);
+  useEffect(() => {
+    onWorkspaceChangeRef.current = onWorkspaceChange;
+  }, [onWorkspaceChange]);
+
   // Listen for AI widget builder placement — modifies layout state directly
   useEffect(() => {
     const handler = (e) => {
@@ -193,6 +204,9 @@ export const LayoutBuilder = ({
         const newWorkspace = JSON.parse(JSON.stringify(ws));
         newWorkspace.layout = newLayout;
         setCurrentWorkspace(newWorkspace);
+        if (typeof onWorkspaceChangeRef.current === "function") {
+          onWorkspaceChangeRef.current(newWorkspace);
+        }
         console.log(
           `[LayoutBuilder] AI widget placed: ${widgetComponentName} → cell ${cellNumber}`,
         );
@@ -240,6 +254,9 @@ export const LayoutBuilder = ({
         const newWorkspace = JSON.parse(JSON.stringify(ws));
         newWorkspace.layout = newLayout;
         setCurrentWorkspace(newWorkspace);
+        if (typeof onWorkspaceChangeRef.current === "function") {
+          onWorkspaceChangeRef.current(newWorkspace);
+        }
         console.log(
           `[LayoutBuilder] AI widget swapped: ${widgetComponentName} → item ${widgetId}`,
         );
