@@ -157,6 +157,110 @@ export const DashboardConfigModal = ({
     (b) => b.required && !b.resolvedProviderName,
   ).length;
 
+  // Dependencies tab data — groups every widget instance in the
+  // workspace by the package it belongs to, so the user can audit
+  // which packages the dashboard actually references (and see which
+  // pages/sidebar hold each instance). Matches the same derivation
+  // order we use in WidgetCardHeader / LayoutBuilderConfigModal's
+  // footer so the same package label shows in every surface.
+  const dependencies = useMemo(() => {
+    const byPackage = new Map();
+    const stripTrailingComponent = (s) => {
+      if (typeof s !== "string") return "";
+      const lastDot = s.lastIndexOf(".");
+      return lastDot > 0 ? s.slice(0, lastDot) : s;
+    };
+    const derivePackage = (item) => {
+      const cfg =
+        typeof getWidgetConfig === "function"
+          ? getWidgetConfig(item.component)
+          : null;
+      const fromId = stripTrailingComponent(cfg?.id || "");
+      if (fromId) return fromId;
+      if (cfg?.package) return String(cfg.package);
+      const ws = item?.workspace;
+      if (typeof ws === "string" && ws && ws !== "layout") {
+        return ws.startsWith("@") ? ws : `@${ws}`;
+      }
+      return "(unknown)";
+    };
+
+    // Tag each visit with its location so we can show users exactly
+    // where in the tree a package is referenced. forEachWidget walks
+    // the standard places but doesn't surface which one — so we do a
+    // lightweight parallel walk and annotate.
+    const annotatedWalks = [];
+    if (Array.isArray(workspace?.layout)) {
+      annotatedWalks.push({ location: "root", layout: workspace.layout });
+    }
+    if (Array.isArray(workspace?.pages)) {
+      for (const page of workspace.pages) {
+        if (Array.isArray(page?.layout)) {
+          annotatedWalks.push({
+            location: `page: ${page.name || page.id || "?"}`,
+            layout: page.layout,
+          });
+        }
+      }
+    }
+    if (Array.isArray(workspace?.sidebarLayout)) {
+      annotatedWalks.push({
+        location: "sidebar",
+        layout: workspace.sidebarLayout,
+      });
+    }
+
+    const visitedByLocation = new WeakSet();
+    const collect = (items, location) => {
+      if (!Array.isArray(items)) return;
+      for (const item of items) {
+        if (!item || typeof item !== "object") continue;
+        if (item.component && !visitedByLocation.has(item)) {
+          visitedByLocation.add(item);
+          // Ignore layout containers — they're not widgets.
+          if (
+            item.component !== "Container" &&
+            item.component !== "LayoutGridContainer"
+          ) {
+            const pkg = derivePackage(item);
+            if (!byPackage.has(pkg)) {
+              byPackage.set(pkg, {
+                packageLabel: pkg,
+                components: new Map(),
+                locations: new Set(),
+                total: 0,
+              });
+            }
+            const entry = byPackage.get(pkg);
+            entry.total += 1;
+            entry.locations.add(location);
+            const cKey = item.component;
+            entry.components.set(cKey, (entry.components.get(cKey) || 0) + 1);
+          }
+        }
+        if (Array.isArray(item.items)) collect(item.items, location);
+        if (Array.isArray(item.layout)) collect(item.layout, location);
+      }
+    };
+    for (const w of annotatedWalks) collect(w.layout, w.location);
+
+    return Array.from(byPackage.values())
+      .map((e) => ({
+        ...e,
+        components: Array.from(e.components.entries()).map(
+          ([component, count]) => ({ component, count }),
+        ),
+        locations: Array.from(e.locations),
+      }))
+      .sort((a, b) => a.packageLabel.localeCompare(b.packageLabel));
+  }, [workspace, getWidgetConfig]);
+  const dependencyCount = dependencies.length;
+  // Second pass used for the badge when the user has an `(unknown)`
+  // bucket — usually a sign of a stale reference they want to clean up.
+  const hasUnknownDependency = dependencies.some(
+    (d) => d.packageLabel === "(unknown)",
+  );
+
   // Listeners tab data — emitter list, receiver list, current wiring,
   // orphans. All recompute when the workspace or staged delta changes
   // so the UI reflects pending edits without saving first.
@@ -446,6 +550,25 @@ export const DashboardConfigModal = ({
           >
             Widgets
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("dependencies")}
+            className={`px-3 py-1.5 text-sm font-medium -mb-px border-b-2 ${
+              activeTab === "dependencies"
+                ? "border-indigo-400"
+                : "border-transparent opacity-60 hover:opacity-100"
+            }`}
+          >
+            Dependencies
+            {dependencyCount > 0 && (
+              <span className="ml-2 text-[10px] opacity-60">
+                ({dependencyCount})
+              </span>
+            )}
+            {hasUnknownDependency && (
+              <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 align-middle" />
+            )}
+          </button>
         </div>
 
         {/* Body — flex-1 so it fills the fixed-height modal; min-h-0 so
@@ -478,6 +601,9 @@ export const DashboardConfigModal = ({
               stagePrefField={stagePrefField}
               stagePrefFieldForAll={stagePrefFieldForAll}
             />
+          )}
+          {activeTab === "dependencies" && (
+            <DependenciesTab dependencies={dependencies} />
           )}
         </div>
 
@@ -833,6 +959,83 @@ function ProviderTypeRow({
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Dependencies tab ──────────────────────────────────────────────────────
+
+/**
+ * Read-only breakdown of every widget package referenced by the
+ * workspace. Same source of truth as the dashboard publish plan (it
+ * walks layout + pages + sidebar + nested LayoutGridContainer items),
+ * surfaced earlier in the authoring flow so the user can verify which
+ * packages the dashboard actually pulls in — and catch stale references
+ * before hitting the Publish modal.
+ *
+ * `(unknown)` buckets mean a component we couldn't map back to a
+ * package (no `config.id` / `config.package` / item.workspace hint).
+ * Usually this is a stale layout item whose widget got uninstalled.
+ */
+function DependenciesTab({ dependencies }) {
+  if (!dependencies || dependencies.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-sm opacity-60 text-center">
+        <div>No widget packages referenced by this dashboard.</div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col h-full min-h-0 overflow-y-auto gap-3">
+      <div className="text-xs opacity-60">
+        Every widget instance in this workspace, grouped by the package it
+        belongs to. Locations show where each package is referenced.
+      </div>
+      {dependencies.map((dep) => {
+        const isUnknown = dep.packageLabel === "(unknown)";
+        return (
+          <div
+            key={dep.packageLabel}
+            className={`border rounded-lg px-4 py-3 ${
+              isUnknown
+                ? "bg-amber-900/10 border-amber-700/40"
+                : "bg-white/5 border-white/10"
+            }`}
+          >
+            <div className="flex items-center gap-2 flex-wrap">
+              <code
+                className={`text-sm font-semibold ${
+                  isUnknown ? "text-amber-200" : ""
+                }`}
+              >
+                {dep.packageLabel}
+              </code>
+              <span className="text-xs opacity-60">
+                {dep.total} instance{dep.total === 1 ? "" : "s"}
+              </span>
+              {isUnknown && (
+                <span className="text-[10px] text-amber-300 uppercase tracking-wide">
+                  no package mapping
+                </span>
+              )}
+            </div>
+            <div className="mt-2 text-xs opacity-70">
+              <div>
+                <span className="opacity-60 mr-1">Widgets:</span>
+                {dep.components
+                  .map(
+                    (c) => `${c.component}${c.count > 1 ? ` ×${c.count}` : ""}`,
+                  )
+                  .join(", ")}
+              </div>
+              <div className="mt-1">
+                <span className="opacity-60 mr-1">Locations:</span>
+                {dep.locations.join(", ")}
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
