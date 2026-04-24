@@ -12,6 +12,12 @@
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
       "examples": ["1.0.0"]
     },
+    "version": {
+      "type": "string",
+      "description": "Package version (semver) of the published dashboard. Distinct from workspace.version (integer schema revision). Bumped on each republish.",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$",
+      "examples": ["1.0.0", "1.2.3-beta"]
+    },
     "name": {
       "type": "string",
       "description": "Display name of the dashboard",

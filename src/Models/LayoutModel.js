@@ -182,6 +182,22 @@ export const LayoutModel = (layoutItem, workspaceLayout, dashboardId) => {
     layout.selectedProviders =
       "selectedProviders" in obj ? obj.selectedProviders : {};
 
+    // Record the exact source package id (e.g. "@ai-built/pipeline")
+    // from which this widget instance was added. Used by the publish
+    // flow to attribute the widget to the correct package without
+    // guessing when multiple installed packages declare the same
+    // component name. Back-compat: read `_sourcePackage` (set by
+    // dash-electron's widget registration) if `packageId` is missing.
+    // Legacy layout items (added before this field existed) carry
+    // neither — those still go through the ranking heuristic in
+    // buildWidgetDependencies as a fallback.
+    layout.packageId =
+      "packageId" in obj
+        ? obj["packageId"]
+        : obj._sourcePackage
+          ? obj._sourcePackage
+          : null;
+
     /**
      * @param {Object} grid Grid layout configuration
      * Structure: {

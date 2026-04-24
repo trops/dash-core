@@ -106,6 +106,38 @@ export const LayoutBuilderConfigModal = ({
   const activeDef =
     sections.find((s) => s.key === activeSection) || sections[0];
 
+  // Scope/package label for the footer so the user can tell which
+  // package a widget comes from (ambiguous component names like
+  // `ProspectListColumn` can live under either `@ai-built/…` or
+  // `@trops/pipeline`). Same derivation order as WidgetCardHeader:
+  // widget config id → widget config package → layout item workspace.
+  const footerPackageLabel = (() => {
+    if (!itemSelected) return "";
+    const cfg = ComponentManager.config(itemSelected.component, itemSelected);
+    const dropTrailingComponent = (s) => {
+      if (typeof s !== "string") return "";
+      const lastDot = s.lastIndexOf(".");
+      return lastDot > 0 ? s.slice(0, lastDot) : s;
+    };
+    const fromId = dropTrailingComponent(cfg?.id || "");
+    if (fromId) return fromId;
+    if (cfg?.package) return String(cfg.package);
+    const ws = itemSelected.workspace;
+    if (typeof ws === "string" && ws && ws !== "layout") {
+      return ws.startsWith("@") ? ws : `@${ws}`;
+    }
+    return "";
+  })();
+  const componentName = itemSelected ? itemSelected["component"] : "";
+  const footerLeftContent = footerPackageLabel ? (
+    <span className="flex flex-col leading-tight">
+      <span>{componentName}</span>
+      <span className="text-[10px] opacity-50">{footerPackageLabel}</span>
+    </span>
+  ) : (
+    componentName
+  );
+
   return (
     itemSelected !== null && (
       <SettingsModal isOpen={open} setIsOpen={setIsOpen}>
@@ -199,7 +231,7 @@ export const LayoutBuilderConfigModal = ({
           )}
         </SettingsModal.Body>
 
-        <SettingsModal.Footer leftContent={itemSelected["component"]}>
+        <SettingsModal.Footer leftContent={footerLeftContent}>
           <Button title={"Cancel"} onClick={() => setIsOpen(false)} />
           <Button
             title={"Save Changes"}

@@ -1,0 +1,319 @@
+const { describe, it } = require("node:test");
+const assert = require("node:assert/strict");
+
+const {
+  collectComponentNames,
+  collectComponentNamesFromWorkspace,
+  buildWidgetDependencies,
+} = require("./dashboardConfigUtils");
+
+// In-memory stand-in for the electron widget registry. Real
+// widgetRegistry.getWidgets() returns entries with { scope, name,
+// componentNames, version, author, ... } — these tests mock just the
+// shape buildWidgetDependencies reads.
+function fakeRegistry(widgets) {
+  return { getWidgets: () => widgets };
+}
+
+/**
+ * The publish flow reads workspaces.json from disk and walks every
+ * layout location (main layout, per-page layouts, sidebar layout) to
+ * compute the dashboard's widget dependencies. If a widget is only in
+ * the sidebar but that walk misses it — or a stale reference is still
+ * there after the user replaced it — the publish modal shows the
+ * wrong packages. These tests pin the walk against the exact
+ * shapes we produce so a regression here surfaces immediately.
+ */
+describe("collectComponentNamesFromWorkspace — sidebar coverage", () => {
+  it("includes widgets only present in sidebarLayout", () => {
+    const workspace = {
+      layout: [{ id: 1, component: "LayoutGridContainer", type: "grid" }],
+      pages: [
+        {
+          id: "p1",
+          layout: [
+            {
+              id: 1,
+              component: "LayoutGridContainer",
+              type: "grid",
+            },
+          ],
+        },
+      ],
+      sidebarLayout: [
+        {
+          id: 90001,
+          component: "LayoutGridContainer",
+          type: "grid",
+          parent: 0,
+        },
+        {
+          id: 90002,
+          component: "ProspectListColumn",
+          type: "widget",
+          parent: 90001,
+        },
+      ],
+    };
+    const names = collectComponentNamesFromWorkspace(workspace);
+    assert.ok(
+      names.includes("ProspectListColumn"),
+      `expected ProspectListColumn in dependencies, got ${JSON.stringify(names)}`,
+    );
+  });
+
+  it("does NOT include a sidebar widget the user removed (disk state is authoritative)", () => {
+    // After a successful save, the publisher's disk state should
+    // no longer contain the replaced widget anywhere. This is the
+    // post-fix expectation: the publish flow reads disk, so the
+    // save path MUST persist the sidebarLayout mutation.
+    const workspace = {
+      layout: [{ id: 1, component: "LayoutGridContainer", type: "grid" }],
+      pages: [
+        {
+          id: "p1",
+          layout: [
+            {
+              id: 1,
+              component: "LayoutGridContainer",
+              type: "grid",
+            },
+          ],
+        },
+      ],
+      sidebarLayout: [
+        {
+          id: 90001,
+          component: "LayoutGridContainer",
+          type: "grid",
+          parent: 0,
+        },
+        // Replaced widget — publisher intended `PipelineProspectList`.
+        {
+          id: 90003,
+          component: "PipelineProspectList",
+          type: "widget",
+          parent: 90001,
+        },
+      ],
+    };
+    const names = collectComponentNamesFromWorkspace(workspace);
+    assert.ok(
+      !names.includes("ProspectListColumn"),
+      "disk no longer has ProspectListColumn, publish must not list it",
+    );
+    assert.ok(names.includes("PipelineProspectList"));
+  });
+
+  it("includes widgets from all three locations simultaneously", () => {
+    const workspace = {
+      layout: [
+        { id: 1, component: "LayoutGridContainer", type: "grid" },
+        { id: 2, component: "RootWidget", type: "widget", parent: 1 },
+      ],
+      pages: [
+        {
+          id: "p1",
+          layout: [
+            {
+              id: 1,
+              component: "LayoutGridContainer",
+              type: "grid",
+            },
+            {
+              id: 2,
+              component: "PageWidget",
+              type: "widget",
+              parent: 1,
+            },
+          ],
+        },
+      ],
+      sidebarLayout: [
+        {
+          id: 90001,
+          component: "LayoutGridContainer",
+          type: "grid",
+          parent: 0,
+        },
+        {
+          id: 90002,
+          component: "SidebarWidget",
+          type: "widget",
+          parent: 90001,
+        },
+      ],
+    };
+    const names = collectComponentNamesFromWorkspace(workspace);
+    assert.ok(names.includes("RootWidget"));
+    assert.ok(names.includes("PageWidget"));
+    assert.ok(names.includes("SidebarWidget"));
+    assert.ok(!names.includes("LayoutGridContainer"));
+  });
+});
+
+describe("collectComponentNames — grid cell component references", () => {
+  it("picks up widgets referenced by grid cells (string component names)", () => {
+    const layout = [
+      {
+        id: 1,
+        component: "LayoutGridContainer",
+        type: "grid",
+        grid: {
+          rows: 1,
+          cols: 1,
+          1.1: { component: "PipelineKanban", hide: false },
+        },
+      },
+    ];
+    const names = collectComponentNames(layout);
+    assert.ok(names.includes("PipelineKanban"));
+  });
+
+  it("uses the layout item's packageId authoritatively when present", () => {
+    // New adds stamp the source packageId on the layout item so
+    // publish-time attribution is exact, not inferred. If two
+    // installed packages both provide `ProspectListColumn`, the
+    // layout item's `packageId` decides which one wins.
+    const refs = [
+      { component: "ProspectListColumn", packageId: "@ai-built/pipeline" },
+    ];
+    const registry = fakeRegistry([
+      {
+        scope: "ai-built",
+        name: "@ai-built/prospectlistcolumn",
+        componentNames: ["ProspectListColumn"],
+        version: "1.0.0",
+      },
+      {
+        scope: "ai-built",
+        name: "@ai-built/pipeline",
+        componentNames: ["ProspectListColumn"],
+        version: "1.0.0",
+      },
+    ]);
+    const deps = buildWidgetDependencies(refs, registry, null);
+    assert.equal(deps[0].packageName, "pipeline");
+    assert.equal(deps[0].scope, "ai-built");
+  });
+
+  it("routes a shared component to the bundle when the bundle's componentNames are fresh", () => {
+    // Regression for the observed publish bug: `@ai-built/pipeline`
+    // gained `ProspectListColumn` in its `dash.json`, but the
+    // registry cache wasn't refreshed from disk, so pipeline's
+    // componentNames was missing that entry — and the singleton
+    // `@ai-built/prospectlistcolumn` won by default. With the cache
+    // refresh in place (see widgetRegistry.backfillMetadataFromDisk),
+    // pipeline's componentNames includes ProspectListColumn and the
+    // coverage-ranking fallback routes correctly.
+    const refs = [
+      { component: "PipelineKanban", packageId: null },
+      { component: "PipelineSummary", packageId: null },
+      { component: "ProspectListColumn", packageId: null },
+      { component: "MeddpiccScorecard", packageId: null },
+    ];
+    const registry = fakeRegistry([
+      {
+        scope: "ai-built",
+        name: "@ai-built/prospectlistcolumn",
+        componentNames: ["ProspectListColumn"],
+        version: "1.0.0",
+      },
+      {
+        scope: "ai-built",
+        name: "@ai-built/pipeline",
+        componentNames: [
+          "PipelineKanban",
+          "PipelineSummary",
+          "ProspectListColumn",
+          "MeddpiccScorecard",
+        ],
+        version: "1.0.0",
+      },
+    ]);
+    const deps = buildWidgetDependencies(refs, registry, null);
+    const prospect = deps.find((d) => d.widgetName === "ProspectListColumn");
+    assert.equal(prospect.packageName, "pipeline");
+    assert.equal(deps.length, 4);
+    assert.equal(new Set(deps.map((d) => d.packageName)).size, 1);
+  });
+
+  it("falls back to coverage-ranked resolution when packageId is missing (legacy data)", () => {
+    // Regression for the Pipeline File publish bug: the dashboard
+    // uses 6 widgets that `@ai-built/pipeline` provides AND a 7th
+    // (ProspectListColumn) that lives in both `@ai-built/pipeline`
+    // AND a legacy `@ai-built/prospectlistcolumn` singleton. When
+    // ranked, pipeline covers 7/7 and prospectlistcolumn covers 1/7,
+    // so pipeline must win the attribution for ProspectListColumn.
+    const componentNames = [
+      "PipelineKanban",
+      "PipelineSummary",
+      "PipelineSummaryAggregate",
+      "ProspectWorkspace",
+      "MeddpiccScorecard",
+      "StageGateChecklist",
+      "ProspectListColumn",
+    ];
+    const registry = fakeRegistry([
+      // Ordered so the singleton comes first — this was the bug:
+      // first-match won, so singleton used to win the attribution.
+      {
+        scope: "ai-built",
+        name: "@ai-built/prospectlistcolumn",
+        componentNames: ["ProspectListColumn"],
+        version: "1.0.0",
+        author: "test",
+      },
+      {
+        scope: "ai-built",
+        name: "@ai-built/pipeline",
+        componentNames: componentNames,
+        version: "1.0.0",
+        author: "test",
+      },
+    ]);
+    const deps = buildWidgetDependencies(componentNames, registry, null);
+    const prospect = deps.find((d) => d.widgetName === "ProspectListColumn");
+    assert.equal(
+      prospect.packageName,
+      "pipeline",
+      `expected ProspectListColumn attributed to pipeline (which provides ${componentNames.length} of the dashboard's widgets), got ${prospect.packageName}`,
+    );
+    // All 7 widgets should resolve to the same package → only one
+    // dependency entry per package, not a split across both.
+    const uniquePackages = new Set(deps.map((d) => d.packageName));
+    assert.equal(
+      uniquePackages.size,
+      1,
+      `expected a single package for all 7 widgets, got ${[...uniquePackages].join(", ")}`,
+    );
+  });
+
+  it("ignores numeric grid cell component values (layout item IDs)", () => {
+    // When a widget is placed in a cell, the cell's component key
+    // is set to that widget's numeric id — the actual widget
+    // lives as a separate layout item with the same id. Walking
+    // should not treat the number as a component name.
+    const layout = [
+      {
+        id: 1,
+        component: "LayoutGridContainer",
+        type: "grid",
+        grid: {
+          rows: 1,
+          cols: 1,
+          1.1: { component: 42, hide: false },
+        },
+      },
+      {
+        id: 42,
+        component: "PipelineKanban",
+        type: "widget",
+        parent: 1,
+      },
+    ];
+    const names = collectComponentNames(layout);
+    assert.ok(names.includes("PipelineKanban"));
+    assert.ok(!names.some((n) => typeof n === "number"));
+  });
+});

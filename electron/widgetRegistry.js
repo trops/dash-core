@@ -340,13 +340,16 @@ class WidgetRegistry {
   backfillMetadataFromDisk() {
     let changed = false;
     for (const [pkgId, entry] of this.widgets.entries()) {
-      const needsBackfill =
-        !Array.isArray(entry.componentNames) ||
-        entry.componentNames.length === 0 ||
-        !Array.isArray(entry.widgets) ||
-        entry.widgets.length === 0;
-      if (!needsBackfill) continue;
       if (!entry.path || !fs.existsSync(entry.path)) continue;
+      // Always re-enrich from disk — don't gate on whether the cache
+      // looks populated. A package's `dash.json` can gain new widgets
+      // between sessions (author edits, AI-builder adds, etc.), and
+      // skipping enrichment here is exactly how publish ends up
+      // attributing a shared component to the wrong package:
+      // `@scope/bundle` appears to not provide it (stale cache),
+      // so a singleton `@scope/name` wins by elimination.
+      // `enrichEntryFromDisk` already guards against shrinking the
+      // list, so re-running it on every entry is idempotent.
       const before = {
         cn: (entry.componentNames || []).length,
         w: (entry.widgets || []).length,
@@ -358,7 +361,7 @@ class WidgetRegistry {
       };
       if (after.cn !== before.cn || after.w !== before.w) {
         console.log(
-          `[WidgetRegistry] Back-filled metadata for ${pkgId}: ` +
+          `[WidgetRegistry] Refreshed metadata for ${pkgId}: ` +
             `componentNames ${before.cn} → ${after.cn}, widgets ${before.w} → ${after.w}`,
         );
         changed = true;

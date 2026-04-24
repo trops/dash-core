@@ -25,6 +25,7 @@ const {
 const {
   collectComponentNames,
   collectComponentNamesFromWorkspace,
+  collectDependencyRefsFromWorkspace,
   extractEventWiring,
   extractEventWiringFromWorkspace,
   buildWidgetDependencies,
@@ -1138,12 +1139,14 @@ async function collectDashboardDependencies(
       };
     }
 
-    // 2. Collect component names from main + pages + sidebar layouts
-    const componentNames = collectComponentNamesFromWorkspace(workspace);
+    // 2. Collect dependency refs — each carries the exact packageId
+    //    recorded on the layout item when the widget was added, so
+    //    publish attribution is authoritative instead of heuristic.
+    const refs = collectDependencyRefsFromWorkspace(workspace);
 
     // 3. Resolve widget refs (scope, packageName, widgetName, version)
     const deps = buildWidgetDependencies(
-      componentNames,
+      refs,
       widgetRegistry,
       options.componentConfigs || null,
     );

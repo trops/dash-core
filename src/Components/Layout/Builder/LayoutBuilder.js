@@ -190,7 +190,11 @@ export const LayoutBuilder = ({
         const newLayout = addItemToItemLayout(
           ws.layout,
           gridItem.id,
-          { ...config, component: widgetComponentName },
+          {
+            ...config,
+            component: widgetComponentName,
+            packageId: config._sourcePackage || config.packageId || null,
+          },
           hasChildren,
         );
         const newWidgetId = newLayout[newLayout.length - 1].id;
@@ -242,6 +246,10 @@ export const LayoutBuilder = ({
         const newLayout = updateLayoutItem(ws.layout, {
           id: widgetId,
           component: widgetComponentName,
+          // Stamp the replacement's source package onto the item so
+          // publish-time attribution routes to the new package, not
+          // whatever the item was previously carrying.
+          packageId: config._sourcePackage || config.packageId || null,
         });
 
         if (!newLayout) {
@@ -456,13 +464,11 @@ export const LayoutBuilder = ({
       dashboard.removeItemFromLayout(id);
 
       console.log("new workspace after remove ", dashboard.workspace());
-      setCurrentWorkspace(dashboard.workspace());
-
-      // const layout = currentWorkspace["layout"];
-      // const newLayout = removeItemFromLayout(layout, id);
-      // const newWorkspace = JSON.parse(JSON.stringify(currentWorkspace));
-      // newWorkspace["layout"] = newLayout;
-      // setCurrentWorkspace(newWorkspace);
+      const nextWorkspace = dashboard.workspace();
+      setCurrentWorkspace(nextWorkspace);
+      if (typeof onWorkspaceChangeRef.current === "function") {
+        onWorkspaceChangeRef.current(nextWorkspace);
+      }
     } catch (e) {
       console.log(e);
     }
@@ -1050,6 +1056,7 @@ export const LayoutBuilder = ({
         ...config,
         component: widgetKey,
         key: widgetKey,
+        packageId: config._sourcePackage || config.packageId || null,
       };
 
       // Remove old widget from layout if the target cell is already occupied
@@ -1089,6 +1096,9 @@ export const LayoutBuilder = ({
       const newWorkspace = JSON.parse(JSON.stringify(workspace));
       newWorkspace["layout"] = newLayout;
       setCurrentWorkspace(newWorkspace);
+      if (typeof onWorkspaceChangeRef.current === "function") {
+        onWorkspaceChangeRef.current(newWorkspace);
+      }
     } catch (e) {
       console.log("[LayoutBuilder] Error in handleDropWidgetFromSidebar:", e);
     }
@@ -1114,6 +1124,9 @@ export const LayoutBuilder = ({
       );
       const newWorkspace = dashboard.workspace();
       setCurrentWorkspace(newWorkspace);
+      if (typeof onWorkspaceChangeRef.current === "function") {
+        onWorkspaceChangeRef.current(newWorkspace);
+      }
     } catch (e) {
       console.error("[LayoutBuilder] Error moving widget:", e);
     }

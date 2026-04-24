@@ -761,6 +761,33 @@ const DashboardStageInner = ({
           ),
         );
       }
+
+      // Mirror the change into the layout refs so the save path always
+      // sees the same truth regardless of whether it reads from refs or
+      // state. Previously a mutation that propagated via
+      // onWorkspaceChange (drag-drop, swap, place, delete) would update
+      // openTabs but leave sidebarWorkspaceRef/pageRefsMap stale, and
+      // `handleClickSaveWorkspace` reads from those refs FIRST — so it
+      // clobbered the new sidebarLayout with the stale ref contents on
+      // save. Keeping everything in sync here closes that window.
+      if (Array.isArray(wsModel.sidebarLayout)) {
+        sidebarWorkspaceRef.current = {
+          ...(sidebarWorkspaceRef.current || {}),
+          layout: wsModel.sidebarLayout,
+        };
+      }
+      if (Array.isArray(wsModel.pages)) {
+        for (const page of wsModel.pages) {
+          if (!page || !page.id || !Array.isArray(page.layout)) continue;
+          if (!pageRefsMap.current[page.id]) {
+            pageRefsMap.current[page.id] = { current: null };
+          }
+          pageRefsMap.current[page.id].current = {
+            ...(pageRefsMap.current[page.id].current || {}),
+            layout: page.layout,
+          };
+        }
+      }
     }
   }
 
