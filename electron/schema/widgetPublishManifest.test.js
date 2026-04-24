@@ -146,4 +146,37 @@ describe("generateWidgetRegistryManifest", () => {
     assert.deepEqual(m.widgets, []);
     assert.deepEqual(m.providers, []);
   });
+
+  it("drops null/undefined entries from widget providers arrays", () => {
+    // Publish-side defense: if a widget's .dash.js ships a sparse
+    // providers array (trailing comma, undefined conditional), we
+    // must NOT emit them into the registry manifest. Consumers used
+    // to crash on `undefined.providerClass` after installing such a
+    // package. The cleanup happens inside generateWidgetRegistryManifest
+    // so everyone downstream only ever sees well-formed entries.
+    const dirtyWidgets = [
+      {
+        component: "PipelineKanban",
+        name: "Pipeline Kanban",
+        providers: [
+          { type: "google-drive", providerClass: "mcp" },
+          null,
+          undefined,
+          { type: "filesystem", providerClass: "mcp" },
+        ],
+      },
+    ];
+    const m = generateWidgetRegistryManifest(samplePkg, dirtyWidgets, {});
+    assert.equal(m.widgets.length, 1);
+    assert.equal(m.widgets[0].providers.length, 2);
+    assert.deepEqual(m.widgets[0].providers.map((p) => p.type).sort(), [
+      "filesystem",
+      "google-drive",
+    ]);
+    // Aggregated providers list must also be clean.
+    assert.equal(
+      m.providers.every((p) => p && typeof p === "object"),
+      true,
+    );
+  });
 });

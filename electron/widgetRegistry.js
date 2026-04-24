@@ -39,10 +39,26 @@ function enrichEntryFromDisk(entry, pkgPath) {
   try {
     const dashJsonPath = path.join(pkgPath, "dash.json");
     let widgetsMeta = [];
+    // Drop non-object provider entries before caching. A sparse array
+    // in a widget's dash.json (trailing comma, conditional include
+    // that returned undefined) otherwise propagates into every renderer
+    // useMemo that iterates `widget.providers` and crashes on
+    // `p.providerClass`. Sanitizing at install/enrich time keeps the
+    // in-process cache clean regardless of what shipped in the ZIP.
+    const sanitizeWidget = (w) => {
+      if (!w || typeof w !== "object") return w;
+      if (!Array.isArray(w.providers)) return w;
+      const clean = w.providers.filter((p) => p && typeof p === "object");
+      return clean.length === w.providers.length
+        ? w
+        : { ...w, providers: clean };
+    };
     if (fs.existsSync(dashJsonPath)) {
       try {
         const manifest = JSON.parse(fs.readFileSync(dashJsonPath, "utf8"));
-        if (Array.isArray(manifest.widgets)) widgetsMeta = manifest.widgets;
+        if (Array.isArray(manifest.widgets)) {
+          widgetsMeta = manifest.widgets.map(sanitizeWidget);
+        }
         if (!entry.displayName && manifest.displayName)
           entry.displayName = manifest.displayName;
         if (!entry.description && manifest.description)
