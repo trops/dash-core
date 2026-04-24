@@ -15,6 +15,53 @@ const path = require("path");
 const vm = require("vm");
 const { findWidgetsDir } = require("./widgetCompiler");
 
+// Scan an ES-module source and return an object stubbing every imported
+// name (named, default, namespace) to `undefined`. Used to keep `vm.runInContext`
+// from throwing ReferenceError on identifiers referenced inside the
+// config literal whose real imports we don't (and can't) resolve from
+// here — we only need the config metadata, not the imported values.
+function collectImportedNames(source) {
+  const stubs = {};
+  if (typeof source !== "string") return stubs;
+
+  // import { a, b as c } from "..."
+  const namedRe =
+    /import\s+(?:[A-Za-z_$][\w$]*\s*,\s*)?\{\s*([^}]+)\s*\}\s*from\s*["'][^"']+["']/g;
+  let m;
+  while ((m = namedRe.exec(source))) {
+    for (const part of m[1].split(",")) {
+      const name = part
+        .trim()
+        .split(/\s+as\s+/)
+        .pop()
+        .trim();
+      if (name) stubs[name] = undefined;
+    }
+  }
+
+  // import foo from "..."
+  const defaultRe = /import\s+([A-Za-z_$][\w$]*)\s+from\s*["'][^"']+["']/g;
+  while ((m = defaultRe.exec(source))) {
+    stubs[m[1]] = undefined;
+  }
+
+  // import foo, { a, b } from "..." — capture the default name too
+  const defaultWithNamedRe =
+    /import\s+([A-Za-z_$][\w$]*)\s*,\s*\{[^}]*\}\s*from\s*["'][^"']+["']/g;
+  while ((m = defaultWithNamedRe.exec(source))) {
+    stubs[m[1]] = undefined;
+  }
+
+  // import * as foo from "..."
+  const namespaceRe =
+    /import\s+\*\s+as\s+([A-Za-z_$][\w$]*)\s+from\s*["'][^"']+["']/g;
+  while ((m = namespaceRe.exec(source))) {
+    stubs[m[1]] = undefined;
+  }
+
+  return stubs;
+}
+
 class DynamicWidgetLoader {
   constructor(componentManager = null) {
     this.loadedWidgets = new Map();
@@ -143,7 +190,20 @@ class DynamicWidgetLoader {
         'component: "$1"',
       );
 
-      const context = vm.createContext({ module: { exports: {} } });
+      // Stub every named import in the source so references like
+      // `providers: [algoliaProvider]` inside the literal don't throw
+      // a ReferenceError when we eval it in a bare VM context. We
+      // can't follow the real `./foo` imports from here — we only
+      // care about the config metadata (events, eventHandlers,
+      // userConfig, etc.). Imported values show up as `undefined` in
+      // the parsed config; callers that iterate arrays (providers,
+      // …) are expected to filter out nullish entries.
+      const importStubs = collectImportedNames(source);
+
+      const context = vm.createContext({
+        module: { exports: {} },
+        ...importStubs,
+      });
       vm.runInContext(`module.exports = ${exportedObjectStr}`, context);
 
       return context.module.exports;
