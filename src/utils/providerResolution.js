@@ -79,12 +79,18 @@ export function forEachWidget(workspace, visit) {
   const visitedObjects = new WeakSet();
   const visitedIds = new Set();
 
-  const stableId = (item) =>
-    item?.uuidString ||
-    item?.uuid ||
-    (item?.component != null && item?.id != null
-      ? `${item.component}|${item.id}`
-      : null);
+  // Canonical identity: `component|id-ish`. Including the component
+  // prefix in every form aligns this with `canonicalItemKey` in
+  // listenerResolution.js — they MUST agree or duplicates slip
+  // between the visit loop and downstream dedupes. Prefer uuidString
+  // (stable across sessions), then uuid, then numeric id.
+  const stableId = (item) => {
+    if (!item || !item.component) return null;
+    if (item.uuidString) return `${item.component}|${item.uuidString}`;
+    if (item.uuid) return `${item.component}|${item.uuid}`;
+    if (item.id != null) return `${item.component}|${item.id}`;
+    return null;
+  };
 
   const walk = (items) => {
     if (!Array.isArray(items)) return;
