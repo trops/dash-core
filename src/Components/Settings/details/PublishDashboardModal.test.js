@@ -296,7 +296,7 @@ describe("PublishDashboardModal", () => {
         renderModal();
       });
 
-      expect(screen.getByText("Step 1 of 6")).toBeInTheDocument();
+      expect(screen.getByText("Step 1 of 7")).toBeInTheDocument();
 
       // Advance to step 2
       const nextBtn = screen.getByText("Next");
@@ -304,7 +304,7 @@ describe("PublishDashboardModal", () => {
         nextBtn.click();
       });
 
-      expect(screen.getByText("Step 2 of 6")).toBeInTheDocument();
+      expect(screen.getByText("Step 2 of 7")).toBeInTheDocument();
     });
   });
 
@@ -324,7 +324,7 @@ describe("PublishDashboardModal", () => {
       });
 
       // Should still be on step 1 (Account)
-      expect(screen.getByText("Step 1 of 6")).toBeInTheDocument();
+      expect(screen.getByText("Step 1 of 7")).toBeInTheDocument();
     });
 
     test("uses username as fallback when displayName is empty", async () => {
@@ -346,7 +346,7 @@ describe("PublishDashboardModal", () => {
         nextBtn.click();
       });
 
-      expect(screen.getByText("Step 2 of 6")).toBeInTheDocument();
+      expect(screen.getByText("Step 2 of 7")).toBeInTheDocument();
 
       // Author name field uses profile data (read-only) — Next should be enabled
       const nextBtn2 = screen.getByText("Next");
@@ -399,12 +399,18 @@ describe("PublishDashboardModal", () => {
         ).toHaveBeenCalled(),
       );
 
-      // Step 4 -> 5 (Dependencies -> Publish)
+      // Step 4 -> 5 (Dependencies -> Defaults)
       await act(async () => {
         screen.getByText("Next").click();
       });
 
-      expect(screen.getByText("Step 6 of 6")).toBeInTheDocument();
+      // Step 5 -> 6 (Defaults -> Publish). Defaults auto-scans empty
+      // for this test's mock plan, so advancing is unconditional.
+      await act(async () => {
+        screen.getByText("Next").click();
+      });
+
+      expect(screen.getByText("Step 7 of 7")).toBeInTheDocument();
       expect(
         screen.getByText("Review your dashboard details before publishing."),
       ).toBeInTheDocument();

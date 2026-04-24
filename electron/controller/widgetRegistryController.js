@@ -83,6 +83,151 @@ async function scanWidgetConfigs(widgetPath) {
   }
 }
 
+// ─── Publish-time defaults scan + staged rewrite ─────────────────────────────
+
+/**
+ * Scan a widget package's `.dash.js` files and return every non-empty
+ * `userConfig[field].defaultValue` as a structured ref. Powers the
+ * publish modal's "Verify defaults" step — surfaces values the
+ * developer set during testing (regional paths, test tokens, etc.)
+ * so the publisher can keep, blank, or edit each one before the ZIP
+ * ships.
+ *
+ * @param {string} packageId e.g. "@ai-built/pipeline"
+ * @returns {Promise<{success: boolean, defaults: Array, error?: string}>}
+ */
+async function scanWidgetDefaults(packageId) {
+  try {
+    const registry = widgetRegistryModule.getWidgetRegistry();
+    const widget = findWidget(registry, packageId);
+    if (!widget || !widget.path) {
+      return {
+        success: false,
+        error: `Widget package not found locally: ${packageId}`,
+      };
+    }
+
+    const configs = await scanWidgetConfigs(widget.path);
+    const defaults = [];
+    for (const cfg of configs) {
+      const widgetName = cfg.component || cfg.name;
+      if (!widgetName) continue;
+      const userConfig = cfg.userConfig;
+      if (!userConfig || typeof userConfig !== "object") continue;
+      for (const [field, spec] of Object.entries(userConfig)) {
+        if (!spec || typeof spec !== "object") continue;
+        const value = spec.defaultValue;
+        // "non-empty" = not nullish, not empty-string. `false` and `0`
+        // are legitimate defaults (checkbox-off, numeric zero) so we
+        // keep them. Arrays/objects only surface if non-empty.
+        const isEmpty =
+          value === null ||
+          value === undefined ||
+          value === "" ||
+          (Array.isArray(value) && value.length === 0) ||
+          (typeof value === "object" &&
+            !Array.isArray(value) &&
+            Object.keys(value).length === 0);
+        if (isEmpty) continue;
+        defaults.push({
+          widgetName,
+          field,
+          currentDefault: value,
+          displayName: spec.displayName || field,
+          type: spec.type || "text",
+          instructions: spec.instructions || "",
+        });
+      }
+    }
+    return { success: true, defaults };
+  } catch (error) {
+    console.error("[widgetRegistry] scanWidgetDefaults failed:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Return the exported-default object from a `.dash.js` serialized as
+ * pretty-printed JS. We use JSON.stringify (plus a couple of minor
+ * touch-ups) because dash configs are pure data — no functions, no
+ * imports, no regex literals. The source file shape we emit matches
+ * the scaffolded template so dynamicWidgetLoader reads it back
+ * unchanged.
+ */
+function serializeDashConfig(config) {
+  const json = JSON.stringify(config, null, 4);
+  return `export default ${json};\n`;
+}
+
+/**
+ * Copy a source widget directory into `dstDir`, then rewrite the
+ * `userConfig[field].defaultValue` for every entry in `overrides`.
+ * `overrides` shape: `{ [widgetName]: { [field]: newValue } }`.
+ *
+ * Returns the list of files that were actually rewritten (useful for
+ * the UI / logs). Pure file-system side effect; does NOT touch the
+ * original source directory.
+ */
+async function stageOverrides(srcDir, dstDir, overrides) {
+  // Copy the whole package tree into dstDir.
+  fs.cpSync(srcDir, dstDir, {
+    recursive: true,
+    filter: (src) => {
+      const base = path.basename(src);
+      if (ZIP_EXCLUDE_DIRS.has(base)) return false;
+      if (base.startsWith(".")) return false;
+      return true;
+    },
+  });
+
+  if (!overrides || Object.keys(overrides).length === 0) return [];
+
+  const widgetsDir = findWidgetsDir(dstDir) || path.join(dstDir, "widgets");
+  if (!fs.existsSync(widgetsDir)) return [];
+
+  const rewritten = [];
+  const files = fs.readdirSync(widgetsDir);
+  for (const file of files) {
+    if (!file.endsWith(".dash.js")) continue;
+    const filePath = path.join(widgetsDir, file);
+    let cfg;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      cfg = await dynamicWidgetLoader.loadConfigFile(filePath);
+    } catch (err) {
+      console.warn(
+        `[widgetRegistry] Could not load ${file} for override: ${err.message}`,
+      );
+      continue;
+    }
+    if (!cfg || typeof cfg !== "object") continue;
+    const widgetName = cfg.component || cfg.name;
+    if (!widgetName || !overrides[widgetName]) continue;
+    const fieldOverrides = overrides[widgetName];
+
+    if (!cfg.userConfig || typeof cfg.userConfig !== "object") continue;
+    let changed = false;
+    for (const [field, newValue] of Object.entries(fieldOverrides)) {
+      if (!cfg.userConfig[field] || typeof cfg.userConfig[field] !== "object") {
+        continue;
+      }
+      // Undefined = "no change" from the UI side. Explicit null / ""
+      // = user wants to blank it out.
+      if (newValue === undefined) continue;
+      cfg.userConfig[field] = {
+        ...cfg.userConfig[field],
+        defaultValue: newValue,
+      };
+      changed = true;
+    }
+    if (!changed) continue;
+
+    fs.writeFileSync(filePath, serializeDashConfig(cfg));
+    rewritten.push(file);
+  }
+  return rewritten;
+}
+
 // ─── ZIP builder ─────────────────────────────────────────────────────────────
 
 const ZIP_EXCLUDE_DIRS = new Set([
@@ -276,45 +421,73 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
       appOrigin: appId,
     });
 
-    // 7. Zip the widget directory to a temp file
+    // 7. Zip the widget directory to a temp file. When the caller
+    //    supplied `defaultsOverride`, stage a copy of the package
+    //    under os.tmpdir() and rewrite the targeted
+    //    `userConfig[field].defaultValue` entries there before
+    //    zipping — source files on the publisher's machine stay
+    //    untouched.
     const zipName = `widget-${manifest.scope}-${manifest.name}-v${manifest.version}.zip`;
     const zipPath = path.join(app.getPath("temp"), zipName);
-    const zip = new AdmZip();
-    addDirToZip(zip, widget.path);
-    zip.writeZip(zipPath);
+    const hasOverrides =
+      options.defaultsOverride &&
+      typeof options.defaultsOverride === "object" &&
+      Object.keys(options.defaultsOverride).length > 0;
+    const stagedDir = hasOverrides
+      ? fs.mkdtempSync(path.join(app.getPath("temp"), `dash-publish-stage-`))
+      : null;
+    let registryResult;
+    try {
+      let sourceDir = widget.path;
+      if (stagedDir) {
+        await stageOverrides(widget.path, stagedDir, options.defaultsOverride);
+        sourceDir = stagedDir;
+      }
+      const zip = new AdmZip();
+      addDirToZip(zip, sourceDir);
+      zip.writeZip(zipPath);
 
-    // 8. Publish to registry
-    const registryResult = await registryApiController.publishToRegistry(
-      zipPath,
-      manifest,
-    );
+      // 8. Publish to registry
+      registryResult = await registryApiController.publishToRegistry(
+        zipPath,
+        manifest,
+      );
 
-    // 9. On failure: revert package.json (if we bumped) and surface details
-    if (!registryResult.success) {
-      if (newVersion !== previousVersion) {
+      // 9. On failure: revert package.json (if we bumped) and surface details
+      if (!registryResult.success) {
+        if (newVersion !== previousVersion) {
+          try {
+            pkgJson.version = previousVersion;
+            fs.writeFileSync(
+              pkgJsonPath,
+              JSON.stringify(pkgJson, null, 2) + "\n",
+            );
+          } catch {
+            /* best effort */
+          }
+        }
+        return {
+          success: false,
+          error: registryResult.error,
+          details: registryResult.details,
+          manifest,
+        };
+      }
+
+      // Clean up the temp zip on success.
+      try {
+        fs.unlinkSync(zipPath);
+      } catch {
+        /* ignore */
+      }
+    } finally {
+      if (stagedDir) {
         try {
-          pkgJson.version = previousVersion;
-          fs.writeFileSync(
-            pkgJsonPath,
-            JSON.stringify(pkgJson, null, 2) + "\n",
-          );
+          fs.rmSync(stagedDir, { recursive: true, force: true });
         } catch {
           /* best effort */
         }
       }
-      return {
-        success: false,
-        error: registryResult.error,
-        details: registryResult.details,
-        manifest,
-      };
-    }
-
-    // Clean up the temp zip
-    try {
-      fs.unlinkSync(zipPath);
-    } catch {
-      /* ignore */
     }
 
     return {
@@ -391,4 +564,5 @@ async function inspectWidgetPackage(packageId) {
 module.exports = {
   prepareWidgetForPublish,
   inspectWidgetPackage,
+  scanWidgetDefaults,
 };
