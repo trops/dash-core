@@ -147,16 +147,87 @@ function stripScopePrefix(fullName, scope) {
  * @returns {Array} Widget dependency objects for the dashboard config
  */
 function buildWidgetDependencies(
-  componentNames,
+  componentNamesOrRefs,
   widgetRegistry = null,
   componentConfigs = null,
 ) {
   const widgets = [];
   const seen = new Set();
 
-  for (const name of componentNames) {
-    if (seen.has(name)) continue;
-    seen.add(name);
+  // Accept both the legacy string-array shape and the new
+  // `{component, packageId}` ref shape. Refs carry the exact source
+  // package recorded at widget-add time — no guessing needed. Legacy
+  // layout items that predate packageId pass `packageId: null` and
+  // still fall through to the registry fallback.
+  const refs = (componentNamesOrRefs || []).map((entry) =>
+    typeof entry === "string"
+      ? { component: entry, packageId: null }
+      : { component: entry.component, packageId: entry.packageId || null },
+  );
+
+  // Pre-index the installed widgets by packageId for O(1) lookup when
+  // refs specify one. The secondary map by component name is used for
+  // the legacy/fallback path where packageId isn't known. When a
+  // shared component appears without a packageId, rank candidates by
+  // how many of THIS dashboard's widgets they provide so the
+  // best-fit bundle wins over a single-widget package that happens
+  // to share the name.
+  const installedWidgets = widgetRegistry ? widgetRegistry.getWidgets() : [];
+  const byPackageId = new Map();
+  const byComponentName = new Map();
+  for (const w of installedWidgets) {
+    // packageId on the registry entry is usually `@scope/name`; also
+    // index by the bare `scope/name` form since callers occasionally
+    // strip the @.
+    const ids = new Set();
+    if (w.packageId) ids.add(w.packageId);
+    if (w.name) ids.add(w.name);
+    if (w.scope && w.name) {
+      const bareScope = String(w.scope).replace(/^@/, "");
+      const bareName = stripScopePrefix(w.name, w.scope);
+      ids.add(`@${bareScope}/${bareName}`);
+      ids.add(`${bareScope}/${bareName}`);
+    }
+    for (const id of ids) {
+      if (id && !byPackageId.has(id)) byPackageId.set(id, w);
+    }
+    if (Array.isArray(w.componentNames)) {
+      for (const cn of w.componentNames) {
+        if (!byComponentName.has(cn)) byComponentName.set(cn, []);
+        byComponentName.get(cn).push(w);
+      }
+    }
+  }
+
+  const requestedComponentSet = new Set(refs.map((r) => r.component));
+  const rankCandidates = (candidates) =>
+    [...candidates].sort((a, b) => {
+      const aMatches = (a.componentNames || []).filter((n) =>
+        requestedComponentSet.has(n),
+      ).length;
+      const bMatches = (b.componentNames || []).filter((n) =>
+        requestedComponentSet.has(n),
+      ).length;
+      if (aMatches !== bMatches) return bMatches - aMatches;
+      return (b.componentNames?.length || 0) - (a.componentNames?.length || 0);
+    });
+
+  const applyRegistryMatch = (w, name, resolved) => {
+    if (!resolved.scope && w.scope) resolved.scope = w.scope;
+    if (!resolved.packageName || resolved.packageName === name) {
+      resolved.packageName =
+        stripScopePrefix(w.name, w.scope || resolved.scope) || "";
+    }
+    resolved.version = w.version || "*";
+    resolved.author =
+      typeof w.author === "string" ? w.author : w.author?.name || "";
+  };
+
+  for (const ref of refs) {
+    const name = ref.component;
+    const dedupeKey = `${name}|${ref.packageId || ""}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
 
     let scope = "";
     let packageName = "";
@@ -172,22 +243,33 @@ function buildWidgetDependencies(
       widgetName = parts[2];
     }
 
-    // Try to resolve from widget registry
-    if (widgetRegistry) {
-      const installedWidgets = widgetRegistry.getWidgets();
-      for (const w of installedWidgets) {
-        if (w.componentNames && w.componentNames.includes(name)) {
-          if (!scope && w.scope) scope = w.scope;
-          if (!packageName || packageName === name) {
-            packageName = stripScopePrefix(w.name, w.scope || scope) || "";
-          }
-          version = w.version || "*";
-          author =
-            typeof w.author === "string" ? w.author : w.author?.name || "";
-          break;
-        }
+    const resolved = { scope, packageName, version, author };
+
+    // Authoritative path: the layout item told us exactly which
+    // package this widget came from. Look it up directly. No guessing.
+    let matched = false;
+    if (ref.packageId) {
+      const w = byPackageId.get(ref.packageId);
+      if (w) {
+        applyRegistryMatch(w, name, resolved);
+        matched = true;
       }
     }
+
+    // Fallback path: no packageId on the layout item (legacy data).
+    // Rank candidates by how much of this dashboard they cover so
+    // shared-component bundles beat stray singleton packages.
+    if (!matched) {
+      const candidates = byComponentName.get(name);
+      if (Array.isArray(candidates) && candidates.length > 0) {
+        const ranked = rankCandidates(candidates);
+        applyRegistryMatch(ranked[0], name, resolved);
+      }
+    }
+    scope = resolved.scope;
+    packageName = resolved.packageName;
+    version = resolved.version;
+    author = resolved.author;
 
     // Fallback: resolve from component configs (built-in widgets)
     if (componentConfigs && componentConfigs[name]) {
@@ -790,6 +872,68 @@ function collectComponentNamesFromWorkspace(workspace) {
 }
 
 /**
+ * Walk the workspace and return one dependency ref per unique
+ * (component, packageId) pair. `packageId` is the exact source
+ * package id (e.g. `"@ai-built/pipeline"`) that was recorded on the
+ * layout item when the widget was added. Items that predate the
+ * packageId field carry `packageId: null`, and the caller falls back
+ * to registry-based resolution for those.
+ *
+ * Unlike `collectComponentNamesFromWorkspace`, this walk is the
+ * authoritative source for publish-time attribution — the publish
+ * flow no longer needs to guess which installed package provides a
+ * shared component when the layout item already says so.
+ *
+ * @param {Object} workspace - Workspace (layout/pages/sidebarLayout)
+ * @returns {Array<{component: string, packageId: string|null}>}
+ */
+function collectDependencyRefsFromWorkspace(workspace) {
+  const byKey = new Map();
+  const walk = (items) => {
+    if (!Array.isArray(items)) return;
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+      const component = item.component;
+      if (
+        component &&
+        component !== "Container" &&
+        component !== "LayoutGridContainer"
+      ) {
+        const packageId = item.packageId || null;
+        const key = `${component}|${packageId || ""}`;
+        if (!byKey.has(key)) byKey.set(key, { component, packageId });
+      }
+      // Grid cells may carry a string component name (new widget
+      // placed directly in a cell) with no corresponding layout item
+      // yet — capture it without a packageId so the fallback path
+      // still picks it up.
+      if (item.grid && typeof item.grid === "object") {
+        for (const [cellKey, cell] of Object.entries(item.grid)) {
+          if (!/^\d+\.\d+$/.test(cellKey)) continue;
+          if (cell && typeof cell.component === "string") {
+            const cellKey2 = `${cell.component}|`;
+            if (!byKey.has(cellKey2)) {
+              byKey.set(cellKey2, {
+                component: cell.component,
+                packageId: null,
+              });
+            }
+          }
+        }
+      }
+      if (Array.isArray(item.items)) walk(item.items);
+      if (Array.isArray(item.layout)) walk(item.layout);
+    }
+  };
+  walk(workspace?.layout);
+  walk(workspace?.sidebarLayout);
+  if (Array.isArray(workspace?.pages)) {
+    for (const page of workspace.pages) walk(page?.layout);
+  }
+  return Array.from(byKey.values());
+}
+
+/**
  * Extract event wiring across a workspace's main layout, every page
  * layout, and the sidebar layout. Mirrors collectComponentNamesFromWorkspace
  * — the single-layout `extractEventWiring` misses widgets on non-active
@@ -878,6 +1022,7 @@ function stripPersonalizationFromWorkspace(workspace) {
 module.exports = {
   collectComponentNames,
   collectComponentNamesFromWorkspace,
+  collectDependencyRefsFromWorkspace,
   extractEventWiring,
   extractEventWiringFromWorkspace,
   buildWidgetDependencies,

@@ -171,10 +171,16 @@ export const DashboardConfigModal = ({
       return lastDot > 0 ? s.slice(0, lastDot) : s;
     };
     const derivePackage = (item) => {
+      // The layout item records the exact source package id when the
+      // widget was added. If present, trust it — no heuristics. This
+      // matches the publish flow's attribution, so the Dependencies
+      // tab and the Publish modal always agree.
+      if (item?.packageId) return String(item.packageId);
       const cfg =
         typeof getWidgetConfig === "function"
           ? getWidgetConfig(item.component)
           : null;
+      if (cfg?._sourcePackage) return String(cfg._sourcePackage);
       const fromId = stripTrailingComponent(cfg?.id || "");
       if (fromId) return fromId;
       if (cfg?.package) return String(cfg.package);
