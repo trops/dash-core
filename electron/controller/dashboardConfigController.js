@@ -32,6 +32,7 @@ const {
   buildProviderRequirements,
   applyEventWiringToLayout,
   stripPersonalizationFromWorkspace,
+  remapLayoutPackageScopes,
 } = require("../schema/dashboardConfigUtils");
 const { searchRegistry, getPackage } = require("./registryController");
 const { getStoredToken, clearToken } = require("./registryAuthController");
@@ -1451,7 +1452,33 @@ async function prepareDashboardForPublish(
     // widget's own `defaultValue` on each field never gets a chance.
     // Layout position, ordering, nested containers, and any title text
     // are preserved (they're part of the template, not personal).
-    const sharedWorkspace = stripPersonalizationFromWorkspace(workspace);
+    let sharedWorkspace = stripPersonalizationFromWorkspace(workspace);
+
+    // Remap layout-item `packageId` from any local-only scope (e.g.
+    // `@ai-built/foo`) to the publisher's scope (`@<callerScope>/foo`).
+    // The widget-deps array in the dashboard manifest already gets
+    // remapped (see generateRegistryManifest), but the per-instance
+    // `packageId` on the layout items themselves was being shipped
+    // as-is — so installers' ComponentManager (which registers
+    // widgets under the published scope) couldn't reverse-look-up by
+    // `packageId` on a layout item, breaking the Dependencies tab and
+    // the publish-flow attribution on chained republishes.
+    let resolvedCallerScope = options.callerScope || options.githubUser || "";
+    if (!resolvedCallerScope) {
+      try {
+        const { getRegistryProfile } = require("./registryAuthController");
+        const profile = await getRegistryProfile();
+        resolvedCallerScope = profile?.username || options.authorId || "";
+      } catch {
+        resolvedCallerScope = options.authorId || "";
+      }
+    }
+    if (resolvedCallerScope) {
+      sharedWorkspace = remapLayoutPackageScopes(
+        sharedWorkspace,
+        resolvedCallerScope,
+      );
+    }
     const layout = sharedWorkspace.layout || [];
 
     // 3. Build the dashboard config — walk main + pages + sidebar

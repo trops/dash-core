@@ -5,6 +5,7 @@ const {
   collectComponentNames,
   collectComponentNamesFromWorkspace,
   buildWidgetDependencies,
+  remapLayoutPackageScopes,
 } = require("./dashboardConfigUtils");
 
 // In-memory stand-in for the electron widget registry. Real
@@ -315,5 +316,80 @@ describe("collectComponentNames — grid cell component references", () => {
     const names = collectComponentNames(layout);
     assert.ok(names.includes("PipelineKanban"));
     assert.ok(!names.some((n) => typeof n === "number"));
+  });
+});
+
+describe("remapLayoutPackageScopes — publish-time scope remap", () => {
+  it("remaps @ai-built/foo to @<callerScope>/foo on layout items", () => {
+    const workspace = {
+      layout: [
+        {
+          id: 1,
+          component: "PipelineKanban",
+          packageId: "@ai-built/pipeline",
+          _sourcePackage: "@ai-built/pipeline",
+        },
+      ],
+    };
+    const out = remapLayoutPackageScopes(workspace, "trops");
+    assert.equal(out.layout[0].packageId, "@trops/pipeline");
+    assert.equal(out.layout[0]._sourcePackage, "@trops/pipeline");
+  });
+
+  it("does not touch packageIds under non-local scopes", () => {
+    const workspace = {
+      layout: [
+        {
+          id: 1,
+          component: "ChatAnthropicWidget",
+          packageId: "@trops/chat",
+        },
+      ],
+    };
+    const out = remapLayoutPackageScopes(workspace, "alice");
+    // Already under a registry scope; remap is a no-op.
+    assert.equal(out.layout[0].packageId, "@trops/chat");
+  });
+
+  it("walks pages[].layout, sidebarLayout, and nested items/layout", () => {
+    const workspace = {
+      layout: [],
+      pages: [
+        {
+          id: "p1",
+          layout: [
+            {
+              id: 1,
+              component: "PipelineKanban",
+              packageId: "@ai-built/pipeline",
+            },
+          ],
+        },
+      ],
+      sidebarLayout: [
+        {
+          id: 90001,
+          component: "LayoutGridContainer",
+          items: [
+            {
+              id: 90002,
+              component: "ProspectListColumn",
+              packageId: "@ai-built/pipeline",
+            },
+          ],
+        },
+      ],
+    };
+    const out = remapLayoutPackageScopes(workspace, "trops");
+    assert.equal(out.pages[0].layout[0].packageId, "@trops/pipeline");
+    assert.equal(out.sidebarLayout[0].items[0].packageId, "@trops/pipeline");
+  });
+
+  it("is a no-op when callerScope is empty", () => {
+    const workspace = {
+      layout: [{ id: 1, component: "Foo", packageId: "@ai-built/foo" }],
+    };
+    const out = remapLayoutPackageScopes(workspace, "");
+    assert.equal(out.layout[0].packageId, "@ai-built/foo");
   });
 });

@@ -1019,6 +1019,74 @@ function stripPersonalizationFromWorkspace(workspace) {
   return cleaned;
 }
 
+/**
+ * Remap each layout item's `packageId` from a local-only scope (e.g.
+ * `@ai-built/foo`) to the caller's published scope (`@<callerScope>/foo`)
+ * so the installer's ComponentManager — which registers widgets under
+ * the published scope — can look them up.
+ *
+ * Mirrors the scope-remap that `generateRegistryManifest` already does
+ * for the dashboard's widget DEPENDENCIES list. Without this, the deps
+ * list is correct (`@callerScope/foo`) but the per-instance layout
+ * items still say `packageId: "@ai-built/foo"` — every Dependencies
+ * tab + publish-flow attribution on the installer's machine misses.
+ *
+ * Returns a deep copy. Idempotent: items already under the caller
+ * scope (or any non-local scope) pass through untouched.
+ *
+ * @param {Object} workspace
+ * @param {string} callerScope - Publisher's registry username (e.g. "trops")
+ * @param {string[]} [localOnlyScopes=["ai-built"]] - Scopes that must be remapped
+ */
+function remapLayoutPackageScopes(
+  workspace,
+  callerScope,
+  localOnlyScopes = ["ai-built"],
+) {
+  if (!workspace || !callerScope) return workspace;
+  const localScopeSet = new Set(
+    localOnlyScopes.map((s) => String(s).replace(/^@/, "")),
+  );
+  const remapPackageId = (pkgId) => {
+    if (typeof pkgId !== "string" || pkgId.length === 0) return pkgId;
+    // Match `@<scope>/<rest>` or `<scope>/<rest>`. Tolerant of either form.
+    const m = pkgId.match(/^@?([^/]+)\/(.+)$/);
+    if (!m) return pkgId;
+    const scope = m[1];
+    const rest = m[2];
+    if (!localScopeSet.has(scope)) return pkgId;
+    return `@${callerScope.replace(/^@/, "")}/${rest}`;
+  };
+  const remapItem = (item) => {
+    if (!item || typeof item !== "object") return item;
+    const next = { ...item };
+    if (item.packageId) {
+      const remapped = remapPackageId(item.packageId);
+      if (remapped !== item.packageId) next.packageId = remapped;
+    }
+    if (item._sourcePackage) {
+      const remapped = remapPackageId(item._sourcePackage);
+      if (remapped !== item._sourcePackage) next._sourcePackage = remapped;
+    }
+    if (Array.isArray(item.items)) next.items = item.items.map(remapItem);
+    if (Array.isArray(item.layout)) next.layout = item.layout.map(remapItem);
+    return next;
+  };
+  const next = { ...workspace };
+  if (Array.isArray(next.layout)) next.layout = next.layout.map(remapItem);
+  if (Array.isArray(next.sidebarLayout)) {
+    next.sidebarLayout = next.sidebarLayout.map(remapItem);
+  }
+  if (Array.isArray(next.pages)) {
+    next.pages = next.pages.map((page) =>
+      page && Array.isArray(page.layout)
+        ? { ...page, layout: page.layout.map(remapItem) }
+        : page,
+    );
+  }
+  return next;
+}
+
 module.exports = {
   collectComponentNames,
   collectComponentNamesFromWorkspace,
@@ -1035,4 +1103,5 @@ module.exports = {
   buildProviderSetupManifest,
   checkApiCompatibility,
   stripPersonalizationFromWorkspace,
+  remapLayoutPackageScopes,
 };
