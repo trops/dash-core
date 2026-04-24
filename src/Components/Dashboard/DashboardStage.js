@@ -681,27 +681,31 @@ const DashboardStageInner = ({
       console.log("handleLoadWorkspacesComplete called", e, message);
       console.log("workspaces array length:", message["workspaces"]?.length);
       const workspaces = deepCopy(message["workspaces"]);
+      // LayoutModel returns null when normalization throws (e.g. a
+      // widget config that references a component the registry can't
+      // resolve yet — common right after a fresh dashboard install
+      // where some widgets are still downloading). Filter nulls so
+      // every renderer that walks the layout sees only well-formed
+      // items and never crashes on `Cannot read properties of null
+      // (reading 'type')` or similar.
       const workspacesTemp = workspaces.map((ws) => {
-        const tempLayout = ws["layout"].map((layoutOG) => {
-          return LayoutModel(layoutOG, workspaces, ws["id"]);
-        });
-        ws["layout"] = tempLayout;
-        // Normalize page layouts too
+        ws["layout"] = (ws["layout"] || [])
+          .map((layoutOG) => LayoutModel(layoutOG, workspaces, ws["id"]))
+          .filter((item) => item != null);
         if (ws.pages && Array.isArray(ws.pages)) {
           ws.pages = ws.pages.map((page) => {
             if (page.layout && Array.isArray(page.layout)) {
-              page.layout = page.layout.map((layoutOG) =>
-                LayoutModel(layoutOG, workspaces, ws["id"]),
-              );
+              page.layout = page.layout
+                .map((layoutOG) => LayoutModel(layoutOG, workspaces, ws["id"]))
+                .filter((item) => item != null);
             }
             return page;
           });
         }
-        // Normalize sidebar layout
         if (ws.sidebarLayout && Array.isArray(ws.sidebarLayout)) {
-          ws.sidebarLayout = ws.sidebarLayout.map((layoutOG) =>
-            LayoutModel(layoutOG, workspaces, ws["id"]),
-          );
+          ws.sidebarLayout = ws.sidebarLayout
+            .map((layoutOG) => LayoutModel(layoutOG, workspaces, ws["id"]))
+            .filter((item) => item != null);
         }
         return WorkspaceModel(ws);
       });
@@ -1536,13 +1540,14 @@ const DashboardStageInner = ({
   function handleSaveWorkspaceComplete(e, message) {
     console.log("handle save complete ", e, message);
 
-    // Reconstruct workspaces through LayoutModel (same as load path)
+    // Reconstruct workspaces through LayoutModel (same as load path).
+    // Filter nulls so a partially-failed normalize doesn't poison the
+    // layout array — see handleLoadWorkspacesComplete for the rationale.
     const workspaces = deepCopy(message["workspaces"]);
     const workspacesTemp = workspaces.map((ws) => {
-      const tempLayout = ws["layout"].map((layoutOG) => {
-        return LayoutModel(layoutOG, workspaces, ws["id"]);
-      });
-      ws["layout"] = tempLayout;
+      ws["layout"] = (ws["layout"] || [])
+        .map((layoutOG) => LayoutModel(layoutOG, workspaces, ws["id"]))
+        .filter((item) => item != null);
       return WorkspaceModel(ws);
     });
 

@@ -1236,25 +1236,31 @@ function setupWidgetRegistryHandlers() {
 
       let bundlePath = findBundlePath(widget.path);
 
-      // Auto-compile if no bundle exists (same as read-all-bundles)
+      // Auto-compile if no bundle exists (registry installs ship the
+      // bundle pre-compiled, so this fallback only fires for older
+      // packages or local installs).
+      let compileError = null;
       if (!bundlePath) {
         try {
           const compiled = await compileWidget(widget.path);
           if (compiled) {
             bundlePath = compiled;
           }
-        } catch (compileError) {
-          console.warn(
-            `[WidgetRegistry] Could not compile ${widgetName}:`,
-            compileError,
-          );
+        } catch (err) {
+          compileError = err;
+          // dash-core's electron build strips console.* — surface
+          // the actual cause through the IPC return so the renderer
+          // can show it to the user.
         }
       }
 
       if (!bundlePath) {
+        const detail = compileError
+          ? ` (auto-compile failed: ${compileError.message})`
+          : "";
         return {
           success: false,
-          error: `No bundle found in: ${widget.path}`,
+          error: `No bundle found in: ${widget.path}${detail}`,
         };
       }
 

@@ -22,7 +22,7 @@ const {
 } = require("./registryAuthController");
 const widgetRegistryModule = require("../widgetRegistry");
 const { dynamicWidgetLoader } = require("../dynamicWidgetLoader");
-const { findWidgetsDir } = require("../widgetCompiler");
+const { findWidgetsDir, compileWidget } = require("../widgetCompiler");
 const {
   resolveNextVersion,
   parsePackageName,
@@ -230,9 +230,13 @@ async function stageOverrides(srcDir, dstDir, overrides) {
 
 // ─── ZIP builder ─────────────────────────────────────────────────────────────
 
+// `dist` is intentionally NOT excluded — the publish flow runs
+// `compileWidget` against the staged package right before zipping so
+// the installer doesn't have to recompile (and fail silently because
+// `console.*` is stripped from dash-core's electron build, masking
+// any esbuild error). Shipping the bundle makes install zero-config.
 const ZIP_EXCLUDE_DIRS = new Set([
   "node_modules",
-  "dist",
   ".git",
   ".DS_Store",
   ".next",
@@ -443,6 +447,25 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
         await stageOverrides(widget.path, stagedDir, options.defaultsOverride);
         sourceDir = stagedDir;
       }
+
+      // Compile the widget into `dist/index.cjs.js` before zipping.
+      // The installer also runs compileWidget at first-load, but
+      // dash-core strips `console.*` from its electron bundle, so any
+      // esbuild error during install-time compile vanishes silently
+      // and the user just sees `No bundle found`. Compiling at
+      // publish time (where errors WILL surface to the publisher who
+      // can fix them) and shipping the bundle in the ZIP makes
+      // install zero-config.
+      try {
+        await compileWidget(sourceDir);
+      } catch (compileErr) {
+        return {
+          success: false,
+          error: `Widget compilation failed: ${compileErr.message}. Fix the source error and republish; otherwise installers won't be able to load the widget.`,
+          manifest,
+        };
+      }
+
       const zip = new AdmZip();
       addDirToZip(zip, sourceDir);
       zip.writeZip(zipPath);
