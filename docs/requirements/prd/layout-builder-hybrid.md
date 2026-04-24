@@ -1,9 +1,9 @@
 # PRD: LayoutBuilder Hybrid Redesign
 
 **Status:** Phase 1 Complete
-**Last Updated:** 2026-02-19
+**Last Updated:** 2026-04-24
 **Owner:** Core Team
-**Related PRDs:** None
+**Related PRDs:** [Dashboard Marketplace](dashboard-marketplace.md), [Widget Installation Model](widget-installation-model.md)
 
 ---
 
@@ -1272,3 +1272,35 @@ Column/row gutter labels in `LayoutGridContainer.js` use `getColGutterSpan()` / 
 | 1.1     | 2026-02-16 | Core Team | Added US-009, FR-005: Grid cell integrity fix (\_normalizeGrid + pre-steps)  |
 | 1.2     | 2026-02-19 | Core Team | US-009: Added load-time grid repair, column/row compaction, gutter span fix  |
 | 1.3     | 2026-02-19 | Core Team | Added US-010, FR-006: Edit mode snapshot/restore — Cancel discards all edits |
+| 1.4     | 2026-04-24 | Core Team | Mutation handlers (swap/drop/delete/place) now propagate via `onWorkspaceChange` so the Dashboard Config modal and publish flow see the same state as the save path. `packageId` recorded on new layout items. Added Implementation Notes section with invariants. dash-core v0.1.422, v0.1.425. |
+
+---
+
+## Implementation Notes (2026-04-24)
+
+The hybrid builder's mutation handlers (`handleDropWidgetFromSidebar`,
+`dash:place-widget-in-cell`, `dash:swap-widget-in-cell`,
+`handleMoveWidgetToCell`, `onClickRemove`) historically updated
+LayoutBuilder's local `currentWorkspace` via `setCurrentWorkspace` but
+did NOT call `onWorkspaceChange`. That worked for the save path (which
+reads from refs kept in sync with `currentWorkspace`) but broke every
+OTHER consumer: the Dashboard Config modal's workspace prop, the
+Dependencies tab, and the publish flow all read from `openTabs` in
+`DashboardStage` — which only gets updated when `onWorkspaceChange`
+fires upstream. Symptom: user dragged a widget into the sidebar, saved,
+published — and the publish modal showed the pre-drag widget because
+`workspaceSelected` was stale even though disk got the new state.
+
+**Invariants to preserve:**
+
+-   Every mutation handler that calls `setCurrentWorkspace` MUST also
+    call `onWorkspaceChangeRef.current(newWorkspace)`. Use the ref
+    pattern (see `LayoutBuilder.js`) so the empty-deps useEffect that
+    registers window listeners doesn't need to resubscribe.
+-   `handleWorkspaceChange` in `DashboardStage` mirrors the incoming
+    workspace into `sidebarWorkspaceRef` and `pageRefsMap` — refs and
+    openTabs stay in sync regardless of which code path mutated them.
+    Any new ref introduced for save-path reads MUST be added here too.
+-   When a widget is added to any layout, stamp `packageId` (from
+    `config._sourcePackage`) onto the new layout item. Publish reads
+    this to route the widget to its exact source package.

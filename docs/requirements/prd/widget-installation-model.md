@@ -1,10 +1,10 @@
 # PRD: Widget Installation Model
 
 **Status:** Implemented
-**Last Updated:** 2026-03-20
+**Last Updated:** 2026-04-24
 **Owner:** Core Team
 **Related PRDs:** [Dashboard Marketplace](dashboard-marketplace.md), [Widget Dropdown](widget-dropdown.md)
-**Repos:** dash-core (v0.1.239+), dash-electron (v0.0.239+)
+**Repos:** dash-core (v0.1.239+, hardened in v0.1.425–v0.1.427), dash-electron (v0.0.239+)
 
 ---
 
@@ -300,6 +300,32 @@ The previous "Welcome Prompt" (Kitchen Sink sample workspace) has been removed. 
 | 2026-03-20 | Use npm-style `@scope/name` for widget identity     | Prevents name collisions, familiar convention                       |
 | 2026-03-20 | Remove Kitchen Sink welcome prompt                  | Wizard provides a better onboarding experience                      |
 | 2026-03-20 | Wizard auto-installs widgets before layout creation | Prevents broken layout references to uninstalled widgets            |
+| 2026-04-24 | Layout items record `packageId` at widget-add time  | Lets publish attribute each instance to the exact source package — no guessing when two installed packages both declare the same component (see `LayoutModel.js`, `handleDropWidgetFromSidebar`, `dash:place-widget-in-cell`, `dash:swap-widget-in-cell`) |
+| 2026-04-24 | Registry re-enriches `componentNames` on every startup | `backfillMetadataFromDisk` always runs against each installed entry. Previously it skipped entries whose cache looked populated, so a package that gained widgets after first install never advertised them — publish attribution fell through to singletons |
+| 2026-04-24 | Publish-side + install-side sanitize `providers` arrays | `generateWidgetRegistryManifest` and `enrichEntryFromDisk` drop falsy/non-object entries. Consumers (`getUserConfigurableProviders`, `useMemo` flatMaps) ALSO null-guard — three layers so a single sparse array never takes the renderer down |
+
+---
+
+## Invariants to Preserve
+
+These constraints were violated by past bugs; the tests at
+`src/utils/providerUtils.test.js`, `electron/schema/widgetPublishManifest.test.js`,
+and `electron/schema/dashboardConfigUtils.test.js` lock them in.
+
+-   **Shared-component attribution is NOT a guess.** When a layout item
+    carries `packageId`, the publish flow looks it up by id — it must
+    NOT fall through to component-name-based resolution. Only items
+    predating the field (migrated from older workspaces) are allowed
+    to use the coverage-ranked fallback.
+-   **Registry `componentNames` must reflect disk.** If a package's
+    `dash.json` advertises N widgets, the registry cache must
+    eventually show N. The backfill logic monotonically grows the
+    cached list (enrichEntryFromDisk only overwrites when the new
+    list is longer), so NEW widgets surface; deletions require a
+    reinstall.
+-   **`providers` arrays can contain `null` entries.** Older or
+    author-malformed packages occasionally do. Every walker must
+    filter before reading per-entry properties.
 
 ---
 
@@ -308,3 +334,4 @@ The previous "Welcome Prompt" (Kitchen Sink sample workspace) has been removed. 
 | Version | Date       | Author    | Changes                                                                                       |
 | ------- | ---------- | --------- | --------------------------------------------------------------------------------------------- |
 | 1.0     | 2026-03-20 | Core Team | Initial version -- documents registry-first model, scoped identity, three installation tracks |
+| 1.1     | 2026-04-24 | Core Team | Adds `packageId` on layout items, registry cache refresh-on-startup, and three-layer sparse-providers sanitization. See dash-core v0.1.425–v0.1.427. |
