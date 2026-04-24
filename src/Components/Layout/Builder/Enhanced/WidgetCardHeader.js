@@ -62,7 +62,35 @@ export const WidgetCardHeader = ({
 
   // Get widget name from config or item
   const widgetName =
-    widgetConfig?.name || widgetItem?.name || widgetItem?.component;
+    widgetConfig?.displayName ||
+    widgetConfig?.name ||
+    widgetItem?.name ||
+    widgetItem?.component;
+
+  // Build a scope/package subtitle so ambiguous component names like
+  // `ProspectListColumn` (which might come from `@ai-built/…` or
+  // `@trops/pipeline`) are disambiguated in the layout builder. Derives
+  // from whatever identity the config / layout item carries:
+  //   - widgetConfig.id:   e.g. "@ai-built/prospectlistcolumn.ProspectListColumn"
+  //   - widgetConfig.package: e.g. "@ai-built/prospectlistcolumn"
+  //   - widgetItem.workspace: fallback hint ("ai-built" / "@trops/pipeline")
+  // Falls back to empty string so we can skip rendering if we have
+  // nothing meaningful beyond the component name itself.
+  const packageLabel = (() => {
+    const dropTrailingComponent = (s) => {
+      if (typeof s !== "string") return "";
+      const lastDot = s.lastIndexOf(".");
+      return lastDot > 0 ? s.slice(0, lastDot) : s;
+    };
+    const fromId = dropTrailingComponent(widgetConfig?.id || "");
+    if (fromId) return fromId;
+    if (widgetConfig?.package) return String(widgetConfig.package);
+    const wsHint = widgetItem?.workspace;
+    if (typeof wsHint === "string" && wsHint && wsHint !== "layout") {
+      return wsHint.startsWith("@") ? wsHint : `@${wsHint}`;
+    }
+    return "";
+  })();
 
   // Get provider requirements from widget config (not from item directly)
   // Filter out providerClass: "api" so only user-configurable providers show badges
@@ -229,14 +257,27 @@ export const WidgetCardHeader = ({
             isWidgetMissing ? "text-amber-500" : "text-white/60"
           }`}
         />
-        <span className="font-medium text-sm text-gray-100 truncate">
-          {widgetName || cellNumber || "Empty"}
-          {isWidgetMissing && (
-            <span className="text-amber-500/70 font-normal ml-1">
-              (not found)
+        <div className="flex flex-col min-w-0 leading-tight">
+          <span className="font-medium text-sm text-gray-100 truncate">
+            {widgetName || cellNumber || "Empty"}
+            {isWidgetMissing && (
+              <span className="text-amber-500/70 font-normal ml-1">
+                (not found)
+              </span>
+            )}
+          </span>
+          {packageLabel && (
+            <span
+              className="text-[10px] text-gray-500 truncate"
+              title={`${packageLabel} · ${widgetItem?.component || ""}`}
+            >
+              {packageLabel}
+              {widgetItem?.component && widgetItem.component !== widgetName
+                ? ` · ${widgetItem.component}`
+                : ""}
             </span>
           )}
-        </span>
+        </div>
       </div>
 
       {/* One overflow button for the whole header — providers +
