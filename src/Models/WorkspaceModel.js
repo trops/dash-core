@@ -104,9 +104,15 @@ export const WorkspaceModel = (workspaceItem) => {
   // Skip items already produced by LayoutModel (idempotent: LayoutModel
   // is safe to call on its own output).
   const wsId = "id" in obj ? obj["id"] : workspace.id;
-  workspace.layout = rawLayout.map((item) =>
-    LayoutModel(item, rawLayout, wsId),
-  );
+  // LayoutModel returns null when an item can't be normalized (e.g.
+  // throw inside its catch). A null in the layout array crashes
+  // downstream forEach/map consumers with `Cannot read properties of
+  // null (reading 'type')`. Filter nulls so the renderer never sees
+  // them — the original raw item is already lost at that point, so
+  // dropping it is the only safe action.
+  workspace.layout = rawLayout
+    .map((item) => LayoutModel(item, rawLayout, wsId))
+    .filter((item) => item != null);
   workspace.pages = "pages" in obj ? obj["pages"] : [];
   workspace.activePageId = "activePageId" in obj ? obj["activePageId"] : null;
 
