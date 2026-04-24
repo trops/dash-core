@@ -128,13 +128,14 @@ export const LayoutBuilderConfigModal = ({
     }
     return "";
   })();
+  const componentName = itemSelected ? itemSelected["component"] : "";
   const footerLeftContent = footerPackageLabel ? (
     <span className="flex flex-col leading-tight">
-      <span>{itemSelected["component"]}</span>
+      <span>{componentName}</span>
       <span className="text-[10px] opacity-50">{footerPackageLabel}</span>
     </span>
   ) : (
-    itemSelected["component"]
+    componentName
   );
 
   return (
