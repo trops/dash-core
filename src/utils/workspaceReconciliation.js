@@ -21,20 +21,38 @@
  */
 
 import { forEachWidget } from "./providerResolution";
-import { canonicalItemKey, parseEventString } from "./listenerResolution";
+import { parseEventString } from "./listenerResolution";
 
 /**
  * Build the set of canonical keys and the set of itemIds for every
  * widget currently in the workspace's layout tree. Keys drive
  * listener pruning; the itemId set drives provider-binding pruning
  * (selectedProviders is keyed by raw widgetId).
+ *
+ * Listener event strings are written as `${component}[${itemId}].${event}`
+ * where `itemId` is whichever id-ish field the emitter had at wire time
+ * (in practice `itemIdOf` prefers numeric `id`). `canonicalItemKey`'s
+ * preference order (uuidString → uuid → id) doesn't match that, and
+ * `LayoutModel` decorates every persisted item with a composite
+ * `uuid = "${dashboardId}-${component}-${id}"` while leaving
+ * `uuidString` unset — so canonicalItemKey would produce
+ * `Component|{dashId}-{Component}-{123}` while the event string produces
+ * `Component|123`. Record every id-ish form as a separate live key so
+ * reconciliation is tolerant of whichever shape the stored binding
+ * carries.
  */
 function collectLiveIdentity(workspace) {
   const liveCanonicalKeys = new Set();
   const liveItemIds = new Set();
   forEachWidget(workspace, (item) => {
-    const key = canonicalItemKey(item);
-    if (key) liveCanonicalKeys.add(key);
+    const comp = item.component;
+    if (comp) {
+      if (item.id != null) liveCanonicalKeys.add(`${comp}|${item.id}`);
+      if (item.uuidString) {
+        liveCanonicalKeys.add(`${comp}|${item.uuidString}`);
+      }
+      if (item.uuid) liveCanonicalKeys.add(`${comp}|${item.uuid}`);
+    }
     // Track every id-ish the runtime might key by. selectedProviders
     // uses `item.uuidString` or `item.uuid` or `item.id` depending on
     // when the binding was written, so accept any of them.

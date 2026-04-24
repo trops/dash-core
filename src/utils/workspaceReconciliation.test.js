@@ -158,6 +158,81 @@ describe("reconcileWorkspaceAfterLayoutChange — delete-widget steel thread", (
   });
 });
 
+describe("reconcileWorkspaceAfterLayoutChange — LayoutModel-shape identity", () => {
+  // Simulates what LayoutModel produces on workspace load: numeric `id`
+  // plus a composite `uuid = ${dashboardId}-${component}-${id}`. No
+  // `uuidString` — that's a WidgetFactory runtime-only field. Event
+  // strings on persisted listeners use the numeric `id`, so the
+  // reconciler must recognize this item by `component|id` even though
+  // `uuid` is set to a different-looking string.
+  function mkLayoutModelWidget(component, id, extras = {}) {
+    const dashboardId = 42;
+    return {
+      component,
+      id,
+      uuid: `${dashboardId}-${component}-${id}`,
+      ...extras,
+    };
+  }
+
+  test("preserves listener bound by numeric id when emitter has composite uuid", () => {
+    const workspace = {
+      layout: [
+        mkLayoutModelWidget("Kanban", 123),
+        mkLayoutModelWidget("Workspace", 456, {
+          listeners: {
+            prospectSelected: ["Kanban[123].prospectSelected"],
+          },
+        }),
+      ],
+    };
+    const out = reconcileWorkspaceAfterLayoutChange(workspace);
+    const recv = out.layout.find((i) => i.component === "Workspace");
+    expect(recv.listeners.prospectSelected).toEqual([
+      "Kanban[123].prospectSelected",
+    ]);
+  });
+
+  test("drops listener bound to a widget that is truly absent", () => {
+    const workspace = {
+      layout: [
+        mkLayoutModelWidget("Workspace", 456, {
+          listeners: {
+            prospectSelected: ["Kanban[999].prospectSelected"],
+          },
+        }),
+      ],
+    };
+    const out = reconcileWorkspaceAfterLayoutChange(workspace);
+    const recv = out.layout.find((i) => i.component === "Workspace");
+    expect(recv.listeners).toBeUndefined();
+  });
+
+  test("preserves listener across pages[].layout for LayoutModel-shape items", () => {
+    const workspace = {
+      layout: [],
+      pages: [
+        {
+          id: "p1",
+          layout: [
+            mkLayoutModelWidget("Kanban", 123),
+            mkLayoutModelWidget("Workspace", 456, {
+              listeners: {
+                prospectSelected: ["Kanban[123].prospectSelected"],
+              },
+            }),
+          ],
+        },
+      ],
+    };
+    const out = reconcileWorkspaceAfterLayoutChange(workspace);
+    const recv = out.pages[0].layout.find((i) => i.component === "Workspace");
+    expect(recv.listeners.prospectSelected).toEqual([
+      "Kanban[123].prospectSelected",
+    ]);
+  });
+});
+
 describe("reconcileWorkspaceAfterLayoutChange — invariants", () => {
   test("idempotent: reconcile(reconcile(ws)) deep-equals reconcile(ws)", () => {
     const workspace = {
