@@ -52,11 +52,19 @@ function generateWidgetRegistryManifest(
   const version = options.version || packageJson.version || "1.0.0";
   const visibility = options.visibility === "private" ? "private" : "public";
 
+  // Drop falsy / non-object entries from a providers array before we
+  // iterate or reshape it. `.dash.js` configs occasionally ship sparse
+  // arrays (trailing commas, stripped comments, conditional includes
+  // that returned undefined) and those used to crash every consumer
+  // that iterated the array with `p.providerClass`. Publish-side
+  // sanitization means installed packages never carry the bad entry.
+  const sanitizeProviderList = (list) =>
+    Array.isArray(list) ? list.filter((p) => p && typeof p === "object") : [];
+
   const providerKeys = new Set();
   const providers = [];
   for (const cfg of widgetConfigs || []) {
-    if (!Array.isArray(cfg.providers)) continue;
-    for (const p of cfg.providers) {
+    for (const p of sanitizeProviderList(cfg.providers)) {
       const key = `${p.type}:${p.providerClass || "mcp"}`;
       if (providerKeys.has(key)) continue;
       providerKeys.add(key);
@@ -73,13 +81,11 @@ function generateWidgetRegistryManifest(
     displayName: cfg.name || cfg.component,
     description: cfg.description || "",
     icon: cfg.icon || "square",
-    providers: Array.isArray(cfg.providers)
-      ? cfg.providers.map((p) => ({
-          type: p.type,
-          required: p.required !== false,
-          providerClass: p.providerClass || "mcp",
-        }))
-      : [],
+    providers: sanitizeProviderList(cfg.providers).map((p) => ({
+      type: p.type,
+      required: p.required !== false,
+      providerClass: p.providerClass || "mcp",
+    })),
   }));
 
   return {
