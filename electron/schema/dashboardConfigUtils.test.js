@@ -392,4 +392,44 @@ describe("remapLayoutPackageScopes — publish-time scope remap", () => {
     const out = remapLayoutPackageScopes(workspace, "");
     assert.equal(out.layout[0].packageId, "@ai-built/foo");
   });
+
+  it("remaps scoped component refs on layout items", () => {
+    // Layout items now carry the canonical scoped form
+    // `scope.package.Component`. Publish-time remap MUST rewrite the
+    // leading scope segment for any local-only scope so the installer
+    // — which registers widgets under the published scope — finds an
+    // exact match for `item.component` in ComponentManager.
+    const workspace = {
+      layout: [
+        { id: 1, component: "ai-built.pipeline.PipelineKanban" },
+        { id: 2, component: "ai-built.pipeline.MeddpiccScorecard" },
+      ],
+      sidebarLayout: [
+        { id: 90002, component: "ai-built.pipeline.ProspectListColumn" },
+      ],
+    };
+    const out = remapLayoutPackageScopes(workspace, "trops");
+    assert.equal(out.layout[0].component, "trops.pipeline.PipelineKanban");
+    assert.equal(out.layout[1].component, "trops.pipeline.MeddpiccScorecard");
+    assert.equal(
+      out.sidebarLayout[0].component,
+      "trops.pipeline.ProspectListColumn",
+    );
+  });
+
+  it("leaves bare component refs alone (legacy layouts)", () => {
+    const workspace = {
+      layout: [{ id: 1, component: "PipelineKanban" }],
+    };
+    const out = remapLayoutPackageScopes(workspace, "trops");
+    assert.equal(out.layout[0].component, "PipelineKanban");
+  });
+
+  it("leaves non-local scope component refs alone", () => {
+    const workspace = {
+      layout: [{ id: 1, component: "trops.chat.ChatAnthropicWidget" }],
+    };
+    const out = remapLayoutPackageScopes(workspace, "alice");
+    assert.equal(out.layout[0].component, "trops.chat.ChatAnthropicWidget");
+  });
 });

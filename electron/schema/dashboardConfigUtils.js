@@ -1047,6 +1047,7 @@ function remapLayoutPackageScopes(
   const localScopeSet = new Set(
     localOnlyScopes.map((s) => String(s).replace(/^@/, "")),
   );
+  const callerScopeBare = String(callerScope).replace(/^@/, "");
   const remapPackageId = (pkgId) => {
     if (typeof pkgId !== "string" || pkgId.length === 0) return pkgId;
     // Match `@<scope>/<rest>` or `<scope>/<rest>`. Tolerant of either form.
@@ -1055,7 +1056,24 @@ function remapLayoutPackageScopes(
     const scope = m[1];
     const rest = m[2];
     if (!localScopeSet.has(scope)) return pkgId;
-    return `@${callerScope.replace(/^@/, "")}/${rest}`;
+    return `@${callerScopeBare}/${rest}`;
+  };
+  // Layout items now carry a SCOPED `component` (e.g.
+  // "ai-built.pipeline.ProspectListColumn"). On publish we have to
+  // rewrite the scope segment to the caller's so the installer can
+  // resolve the same component against its registry-installed widget
+  // (which lives under "@<caller>/pipeline"). Bare component names
+  // (legacy layouts) pass through untouched — ComponentManager's
+  // bare-name fallback handles them on the install side.
+  const remapComponent = (component) => {
+    if (typeof component !== "string" || component.length === 0) {
+      return component;
+    }
+    const parts = component.split(".");
+    if (parts.length !== 3) return component;
+    const [scope, pkg, comp] = parts;
+    if (!localScopeSet.has(scope)) return component;
+    return `${callerScopeBare}.${pkg}.${comp}`;
   };
   const remapItem = (item) => {
     if (!item || typeof item !== "object") return item;
@@ -1067,6 +1085,10 @@ function remapLayoutPackageScopes(
     if (item._sourcePackage) {
       const remapped = remapPackageId(item._sourcePackage);
       if (remapped !== item._sourcePackage) next._sourcePackage = remapped;
+    }
+    if (item.component) {
+      const remapped = remapComponent(item.component);
+      if (remapped !== item.component) next.component = remapped;
     }
     if (Array.isArray(item.items)) next.items = item.items.map(remapItem);
     if (Array.isArray(item.layout)) next.layout = item.layout.map(remapItem);

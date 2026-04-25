@@ -168,6 +168,20 @@ export const LayoutModel = (layoutItem, workspaceLayout, dashboardId) => {
       if (Array.isArray(widgetConfig.eventHandlers)) {
         layout.eventHandlers = widgetConfig.eventHandlers;
       }
+      // Migrate legacy bare `component` references to the canonical
+      // scoped form (`scope.package.Component`). ComponentManager.config
+      // returns the resolved scoped key on `widgetConfig.component`, so
+      // we just lift it. Idempotent: items already scoped pass through
+      // unchanged because resolveComponentKey returns the input verbatim
+      // when it's already in the map. Persisted on next save — no
+      // separate migration step needed.
+      if (
+        typeof widgetConfig.component === "string" &&
+        widgetConfig.component &&
+        widgetConfig.component !== layout.component
+      ) {
+        layout.component = widgetConfig.component;
+      }
     }
 
     // Merge user-entered config values (from EnhancedWidgetDropdown) into userPrefs
