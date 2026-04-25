@@ -1,9 +1,57 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { FontAwesomeIcon } from "@trops/dash-react";
 import { forEachWidget } from "../../utils/providerResolution";
+import {
+  bareComponentName,
+  parseScopedComponentId,
+} from "../../utils/scopedComponentId";
 import { PanelEditForm } from "../../Context/Modal/Panel/PanelEditForm";
 
 const ALL_WIDGETS_ID = "__ALL__";
+
+/**
+ * Pick the most user-friendly display name for a widget instance.
+ * Priority: per-instance user title → widget's default title → widget
+ * developer's friendly displayName → widget config name → the bare
+ * component name (last segment of the scoped id) → the full scoped
+ * id (last resort, never preferred — but always present).
+ *
+ * This is what shows on the primary line of the WidgetsTab list and
+ * detail header. The scoped registry identity (`@scope/package`) is
+ * surfaced separately via `pickPackageRef` below, so the user sees
+ * BOTH a friendly name and an unambiguous reference.
+ */
+function pickDisplayName(item, cfg) {
+  const prefsTitle = item?.userPrefs?.title;
+  if (typeof prefsTitle === "string" && prefsTitle.trim()) return prefsTitle;
+  const configDefault = item?.userConfig?.title?.defaultValue;
+  if (typeof configDefault === "string" && configDefault.trim()) {
+    return configDefault;
+  }
+  if (cfg?.displayName) return cfg.displayName;
+  if (cfg?.name) return cfg.name;
+  const bare = bareComponentName(item?.component);
+  if (bare) return bare;
+  return item?.component || "Widget";
+}
+
+/**
+ * Format the `@scope/package` reference for the subtitle. Derives
+ * from the layout item's scoped component id (`scope.package.X`),
+ * falling back to the cfg fields when the item is non-canonical.
+ * Returns null if no scope/package can be determined — caller hides
+ * the subtitle in that case.
+ */
+function pickPackageRef(item, cfg) {
+  const parsed = parseScopedComponentId(item?.component);
+  if (parsed) return `@${parsed.scope}/${parsed.packageName}`;
+  const scope = cfg?.scope || item?.scope;
+  const pkg = cfg?.packageName || item?.packageName;
+  if (!scope || !pkg) return null;
+  const bareScope = String(scope).replace(/^@/, "");
+  const barePkg = String(pkg).replace(new RegExp(`^@?${bareScope}/`), "");
+  return `@${bareScope}/${barePkg}`;
+}
 
 /**
  * Build the scoped registry identifier for a widget. Surfaces the
@@ -71,13 +119,11 @@ export const WidgetsTab = ({
       result.push({
         id,
         component: item.component,
-        displayName: item.name || cfg.name || cfg.displayName || item.component,
+        displayName: pickDisplayName(item, cfg),
+        packageRef: pickPackageRef(item, cfg),
         section,
         userConfig: cfg.userConfig || {},
         userPrefs: item.userPrefs || {},
-        // Identity fields for the registry-identifier label. Prefer
-        // values from the widget's component manager entry since the
-        // layout item itself often doesn't carry scope/packageName.
         scope: cfg.scope || item.scope || null,
         packageName: cfg.packageName || cfg.name || item.packageName || null,
       });
@@ -192,6 +238,14 @@ export const WidgetsTab = ({
                       </span>
                     )}
                   </div>
+                  {w.packageRef && (
+                    <div
+                      className="text-[10px] text-gray-500 font-mono truncate mt-0.5"
+                      title={w.packageRef}
+                    >
+                      {w.packageRef}
+                    </div>
+                  )}
                   <div className="text-[10px] text-gray-600 mt-0.5">
                     {fieldCount === 0
                       ? "No configurable fields"
@@ -239,9 +293,15 @@ function SingleWidgetPane({ widget, effectivePrefs, onFieldChange }) {
     <div>
       <div className="mb-3">
         <div className="text-gray-200 font-semibold">{widget.displayName}</div>
-        <div className="text-xs text-gray-500">
-          {widget.component} · {widget.section}
-        </div>
+        {widget.packageRef && (
+          <div
+            className="text-xs text-gray-500 font-mono truncate mt-0.5"
+            title={widget.packageRef}
+          >
+            {widget.packageRef}
+          </div>
+        )}
+        <div className="text-xs text-gray-600 mt-0.5">{widget.section}</div>
         {scopedId && scopedId !== widget.component && (
           <code
             className="block mt-1 text-[11px] text-gray-500 font-mono truncate"

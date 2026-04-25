@@ -60,12 +60,29 @@ export const WidgetCardHeader = ({
   // Detect missing widgets (component key exists but not in ComponentManager)
   const isWidgetMissing = widgetItem?.component && !widgetConfig;
 
-  // Get widget name from config or item
-  const widgetName =
-    widgetConfig?.displayName ||
-    widgetConfig?.name ||
-    widgetItem?.name ||
-    widgetItem?.component;
+  // Display name priority: per-instance user title → widget's default
+  // title → developer's friendly displayName → widget config name →
+  // bare component name (last segment) → full scoped id (last resort).
+  // Mirrors WidgetsTab so the same widget shows the same name in both
+  // surfaces.
+  const widgetName = (() => {
+    const prefsTitle = widgetItem?.userPrefs?.title;
+    if (typeof prefsTitle === "string" && prefsTitle.trim()) return prefsTitle;
+    const configDefault = widgetConfig?.userConfig?.title?.defaultValue;
+    if (typeof configDefault === "string" && configDefault.trim()) {
+      return configDefault;
+    }
+    if (widgetConfig?.displayName) return widgetConfig.displayName;
+    if (widgetConfig?.name) return widgetConfig.name;
+    if (widgetItem?.name) return widgetItem.name;
+    const comp = widgetItem?.component;
+    if (typeof comp === "string") {
+      const parts = comp.split(".");
+      if (parts.length === 3) return parts[2];
+      return comp;
+    }
+    return "Widget";
+  })();
 
   // Derive the "@scope/package" label from the layout item's scoped
   // component id (`scope.package.Component`). Strict — the layout item
