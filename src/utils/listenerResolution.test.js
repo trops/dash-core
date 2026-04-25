@@ -306,7 +306,7 @@ describe("applyWiringChanges — adds/removes round-trip", () => {
     expect(recv.listeners.prospectSelected).toBeUndefined();
   });
 
-  test("aliased workspace.layout === pages[0].layout still patches every reference", () => {
+  test("aliased workspace.layout === pages[0].layout still patches every reference (listener edition)", () => {
     // Same shape applyBulkUserPrefs has to handle — WorkspaceModel
     // sets `page.layout = workspace.layout` when no pages are
     // explicitly defined, so the same item appears in BOTH locations.
@@ -364,6 +364,109 @@ describe("applyWiringChanges — adds/removes round-trip", () => {
     expect(pageRecv.listeners.prospectSelected).toEqual([
       "Kanban[k-1].prospectSelected",
     ]);
+  });
+});
+
+describe("cross-dashboard isolation", () => {
+  // Reproduces the production bug: two dashboards open, the
+  // Listeners tab for a widget in dashboard B shows widgets that
+  // belong to dashboard A. LayoutModel stamps `dashboardId` on every
+  // item — getEmitters / getReceivers / getCurrentWiring /
+  // getOrphanedListeners must filter on it so cross-dashboard
+  // contamination (shared array refs, stale caches, copy/paste
+  // between dashboards, anything) can't surface widgets the user
+  // isn't actually editing.
+  const cfg = mkConfig({
+    Kanban: { events: ["prospectSelected"] },
+    Workspace: { eventHandlers: ["prospectSelected"] },
+  });
+
+  test("getEmitters drops items stamped with a different dashboardId", () => {
+    const workspace = {
+      id: "dash-B",
+      layout: [
+        // Belongs to this workspace — should appear.
+        {
+          component: "Kanban",
+          uuidString: "k-b1",
+          dashboardId: "dash-B",
+        },
+        // Stamped to dashboard A — must NOT appear.
+        {
+          component: "Kanban",
+          uuidString: "k-a1",
+          dashboardId: "dash-A",
+        },
+      ],
+    };
+    const emitters = getEmitters(workspace, cfg);
+    expect(emitters).toHaveLength(1);
+    expect(emitters[0].itemId).toMatch(/k-b1/);
+  });
+
+  test("getReceivers drops items stamped with a different dashboardId", () => {
+    const workspace = {
+      id: 2,
+      layout: [
+        { component: "Workspace", uuidString: "w-1", dashboardId: 2 },
+        { component: "Workspace", uuidString: "w-foreign", dashboardId: 99 },
+      ],
+    };
+    const receivers = getReceivers(workspace, cfg);
+    expect(receivers).toHaveLength(1);
+    expect(receivers[0].itemId).toMatch(/w-1/);
+  });
+
+  test("getCurrentWiring ignores listeners on items from another dashboard", () => {
+    // A foreign widget that somehow ended up in this workspace's
+    // tree carries a listener pointing at its OWN (foreign)
+    // emitter. Surfacing it would let the user "remove" wiring
+    // they don't own. Filtered.
+    const workspace = {
+      id: "dash-B",
+      layout: [
+        {
+          component: "Workspace",
+          id: 1,
+          dashboardId: "dash-B",
+          listeners: {
+            prospectSelected: ["Kanban[k-b1].prospectSelected"],
+          },
+        },
+        {
+          component: "Workspace",
+          id: 2,
+          dashboardId: "dash-A",
+          listeners: {
+            prospectSelected: ["Kanban[k-a1].prospectSelected"],
+          },
+        },
+      ],
+    };
+    const wiring = getCurrentWiring(workspace);
+    expect(wiring).toHaveLength(1);
+    expect(wiring[0].sourceItemId).toBe("k-b1");
+  });
+
+  test("workspace without an id falls back to permissive (synthetic test fixtures still work)", () => {
+    // Many existing tests pass workspaces without an `id`. The
+    // filter must not regress them — items with no dashboardId
+    // stamp pass through when the workspace also has no id.
+    const workspace = {
+      layout: [{ component: "Kanban", uuidString: "k-1" }],
+    };
+    expect(getEmitters(workspace, cfg)).toHaveLength(1);
+  });
+
+  test("legacy items without a dashboardId stamp pass through (back-compat)", () => {
+    // Pre-LayoutModel data may not carry a dashboardId. We still
+    // surface those items so a partially-migrated workspace
+    // doesn't lose its emitters.
+    const workspace = {
+      id: "dash-B",
+      layout: [{ component: "Kanban", uuidString: "k-legacy" }],
+    };
+    expect(getEmitters(workspace, cfg)).toHaveLength(1);
   });
 });
 
