@@ -106,16 +106,14 @@ export const LayoutBuilderConfigModal = ({
   const activeDef =
     sections.find((s) => s.key === activeSection) || sections[0];
 
-  // Footer label: derive @scope/package straight from the layout
-  // item's scoped component id. Strict — no workspace fallback.
+  // Footer label: full scoped id (`scope.package.Component`) so the
+  // user always sees the underlying widget identity, even when the
+  // primary title is a custom per-instance label. No workspace fallback.
   const footerPackageLabel = (() => {
     const scopedId = itemSelected?.component || "";
     if (typeof scopedId !== "string") return "";
     const parts = scopedId.split(".");
-    if (parts.length !== 3) return "";
-    const [scope, pkg] = parts;
-    if (!scope || !pkg) return "";
-    return `@${scope}/${pkg}`;
+    return parts.length === 3 ? scopedId : "";
   })();
   const componentName = itemSelected ? itemSelected["component"] : "";
   const footerLeftContent = footerPackageLabel ? (

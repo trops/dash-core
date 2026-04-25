@@ -60,26 +60,40 @@ export const WidgetCardHeader = ({
   // Detect missing widgets (component key exists but not in ComponentManager)
   const isWidgetMissing = widgetItem?.component && !widgetConfig;
 
-  // Get widget name from config or item
-  const widgetName =
-    widgetConfig?.displayName ||
-    widgetConfig?.name ||
-    widgetItem?.name ||
-    widgetItem?.component;
+  // Display name priority: per-instance user title → widget's default
+  // title → developer's friendly displayName → widget config name →
+  // bare component name (last segment) → full scoped id (last resort).
+  // Mirrors WidgetsTab so the same widget shows the same name in both
+  // surfaces.
+  const widgetName = (() => {
+    const prefsTitle = widgetItem?.userPrefs?.title;
+    if (typeof prefsTitle === "string" && prefsTitle.trim()) return prefsTitle;
+    const configDefault = widgetConfig?.userConfig?.title?.defaultValue;
+    if (typeof configDefault === "string" && configDefault.trim()) {
+      return configDefault;
+    }
+    if (widgetConfig?.displayName) return widgetConfig.displayName;
+    if (widgetConfig?.name) return widgetConfig.name;
+    if (widgetItem?.name) return widgetItem.name;
+    const comp = widgetItem?.component;
+    if (typeof comp === "string") {
+      const parts = comp.split(".");
+      if (parts.length === 3) return parts[2];
+      return comp;
+    }
+    return "Widget";
+  })();
 
-  // Derive the "@scope/package" label from the layout item's scoped
-  // component id (`scope.package.Component`). Strict — the layout item
-  // is the source of truth. If the item isn't scoped (a legacy layout
-  // that LayoutModel couldn't migrate, or a missing widget) the label
-  // is empty rather than guessed from the workspace category.
+  // Show the full scoped registry id (`scope.package.Component`) as
+  // the subtitle. The friendly title on line 1 may be a custom user
+  // title that doesn't reveal which widget is mounted; the subtitle
+  // pins down the underlying identity. Strict — the layout item is
+  // the source of truth.
   const packageLabel = (() => {
     const scopedId = widgetItem?.component || widgetConfig?.id || "";
     if (typeof scopedId !== "string") return "";
     const parts = scopedId.split(".");
-    if (parts.length !== 3) return "";
-    const [scope, pkg] = parts;
-    if (!scope || !pkg) return "";
-    return `@${scope}/${pkg}`;
+    return parts.length === 3 ? scopedId : "";
   })();
 
   // Get provider requirements from widget config (not from item directly)
