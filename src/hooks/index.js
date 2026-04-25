@@ -1,4 +1,5 @@
 export { useDashboard } from "./useDashboard";
+export { useWidgetRegistryVersion } from "./useWidgetRegistryVersion";
 export { useWidgetProviders } from "./useWidgetProviders";
 export { useMcpProvider } from "./useMcpProvider";
 export { useWidgetEvents } from "./useWidgetEvents";

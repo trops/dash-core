@@ -162,6 +162,37 @@ verify each of these still holds:
       / dashboards must NEVER ship to the registry with `local.*` or
       `ai-built.*` ids.
 
+## Live registry updates (v0.1.440)
+
+`ComponentManager.componentMap()` is a plain JS object held at module
+scope. React doesn't observe it. Every surface that derives a list
+from `componentMap()` therefore needs a counter to include in its
+`useMemo`/`useEffect` deps so it re-runs when the registry mutates
+(install, update, uninstall).
+
+The contract:
+
+  1. **Producer side** — dash-electron's `Dash.js#handleWidgetInstalled`,
+     `handleWidgetsLoaded`, and `handleWidgetUninstalled` each call
+     `window.dispatchEvent(new Event("dash:widgets-updated"))` after
+     mutating the registry.
+  2. **Consumer side** — `useWidgetRegistryVersion()` (in
+     `src/hooks/useWidgetRegistryVersion.js`) listens for that
+     event and returns a monotonically-increasing counter. Drop the
+     value into deps and the surface re-derives on every mutation.
+
+Surfaces that subscribe through the hook:
+
+  - `WidgetSidebar` — Installed list and Discover tab "Installed" badges
+  - `EnhancedWidgetDropdown` — re-loads when the dropdown is open
+  - `DiscoverWidgetsDetail` — Settings → Widgets → Discover panel
+  - `LayoutBuilderAddItemModal` — re-renders the available-widgets list
+  - `useInstalledWidgets` — used by Settings → Widgets list
+  - `useMissingWidgets` — re-evaluates "is this widget resolvable" after install
+
+If you add a new panel that walks `componentMap()`, add the hook.
+The audit query is `grep -r 'ComponentManager.map\|componentMap()'`.
+
 ## Known gaps (follow-up)
 
 - **`WidgetFactory dash:widget-installed` matcher** does direct
@@ -170,10 +201,9 @@ verify each of these still holds:
   update. Low-severity — manual reload works around it. Fix in a
   separate PR with a test that covers the matcher logic.
 - **Themes and dashboards** still use ad-hoc identifiers. The
-  v0.1.436 PR ships widgets only; themes follow in 0.1.437,
-  dashboards in 0.1.438. Each rollout brings its own
-  `migrate*InWorkspace`-style pre-pass, registration choke point,
-  and audit checklist update.
+  v0.1.436 PR shipped widgets only; themes and dashboards each get
+  their own `migrate*InWorkspace`-style pre-pass, registration
+  choke point, and audit checklist update.
 
 ## Lessons (internal, for future-me)
 

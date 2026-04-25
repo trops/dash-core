@@ -23,6 +23,7 @@ import { RegistryAuthModal } from "../../Registry/RegistryAuthModal";
 import { RegistrySignInBanner } from "../../Registry/RegistrySignInBanner";
 import { InstallProgressModal } from "./InstallProgressModal";
 import { useRegistrySearch } from "../../../hooks/useRegistrySearch";
+import { useWidgetRegistryVersion } from "../../../hooks/useWidgetRegistryVersion";
 
 /**
  * DiscoverWidgetsDetail — registry browser that lives inside the detail panel.
@@ -115,13 +116,14 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
     }
   }, []);
 
+  // Re-load whenever the registry mutates (install / update /
+  // uninstall). The shared hook means this surface stays in sync
+  // with the widget sidebar and Settings → Widgets without each
+  // re-implementing the same listener.
+  const widgetRegistryVersion = useWidgetRegistryVersion();
   useEffect(() => {
     loadInstalledPackages();
-    const handleWidgetsUpdated = () => loadInstalledPackages();
-    window.addEventListener("dash:widgets-updated", handleWidgetsUpdated);
-    return () =>
-      window.removeEventListener("dash:widgets-updated", handleWidgetsUpdated);
-  }, [loadInstalledPackages]);
+  }, [loadInstalledPackages, widgetRegistryVersion]);
 
   // Watch for install completion — same pattern as WidgetSidebar
   useEffect(() => {
