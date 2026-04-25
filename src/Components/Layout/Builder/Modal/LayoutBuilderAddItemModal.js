@@ -15,6 +15,7 @@ import { LayoutContainer } from "../../../../Components/Layout";
 import { ComponentManager } from "../../../../ComponentManager";
 import { LayoutModel, DashboardModel } from "../../../../Models";
 import { ThemeContext } from "../../../../Context";
+import { useWidgetRegistryVersion } from "../../../../hooks/useWidgetRegistryVersion";
 
 /**
  * @param {Object} workspace the current workspace for the overall dashboard being edited
@@ -28,6 +29,11 @@ export const LayoutBuilderAddItemModal = ({
   item = null,
   onSaveItem = null,
 }) => {
+  // Re-render when the widget registry mutates (install / update /
+  // uninstall) so the available-widgets list reflects the live state
+  // without requiring the modal to be closed and reopened.
+  // eslint-disable-next-line no-unused-vars
+  const _widgetRegistryVersion = useWidgetRegistryVersion();
   const { currentTheme } = useContext(ThemeContext);
 
   const [searchTerm, setSearchTerm] = useState("");

@@ -46,6 +46,7 @@ import { getUserConfigurableProviders } from "../../../../utils/providerUtils";
 import { RegistryAuthModal } from "../../../Registry/RegistryAuthModal";
 import { InstallProgressModal } from "../../../Settings/details/InstallProgressModal";
 import { cleanIpcError } from "../../../../utils/errorUtils";
+import { useWidgetRegistryVersion } from "../../../../hooks/useWidgetRegistryVersion";
 
 export const EnhancedWidgetDropdown = ({
   isOpen,
@@ -413,17 +414,13 @@ export const EnhancedWidgetDropdown = ({
     return Object.values(groups);
   };
 
-  // Refresh widget list when installed widgets change
+  // Refresh widget list when installed widgets change. Subscribing
+  // via the shared registry-version hook keeps this in sync with
+  // every other widget-list surface (sidebar, settings, etc.).
+  const widgetRegistryVersion = useWidgetRegistryVersion();
   useEffect(() => {
-    const handleWidgetsUpdated = () => {
-      if (isOpen && selectedSource === "Installed") {
-        loadWidgets();
-      }
-    };
-    window.addEventListener("dash:widgets-updated", handleWidgetsUpdated);
-    return () =>
-      window.removeEventListener("dash:widgets-updated", handleWidgetsUpdated);
-  }, [isOpen, selectedSource, loadWidgets]);
+    if (isOpen && selectedSource === "Installed") loadWidgets();
+  }, [widgetRegistryVersion, isOpen, selectedSource, loadWidgets]);
 
   // Load widgets when source changes
   useEffect(() => {

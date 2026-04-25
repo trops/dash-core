@@ -17,6 +17,7 @@ import { ComponentManager } from "../../ComponentManager";
 import { SIDEBAR_WIDGET_TYPE } from "../../utils/dragTypes";
 import { getUserConfigurableProviders } from "../../utils/providerUtils";
 import { bareComponentName } from "../../utils/scopedComponentId";
+import { useWidgetRegistryVersion } from "../../hooks/useWidgetRegistryVersion";
 import { useRegistrySearch } from "../../hooks/useRegistrySearch";
 import { RegistryAuthModal } from "../Registry/RegistryAuthModal";
 import { InstallProgressModal } from "../Settings/details/InstallProgressModal";
@@ -496,15 +497,9 @@ export const WidgetSidebar = ({ collapsed, onCollapsedChange }) => {
   const [filterHasEvents, setFilterHasEvents] = useState("all");
   const [filterHasHandlers, setFilterHasHandlers] = useState("all");
 
-  // Counter to trigger re-computation when installed widgets change
-  const [widgetVersion, setWidgetVersion] = useState(0);
-
-  useEffect(() => {
-    const handleWidgetsUpdated = () => setWidgetVersion((v) => v + 1);
-    window.addEventListener("dash:widgets-updated", handleWidgetsUpdated);
-    return () =>
-      window.removeEventListener("dash:widgets-updated", handleWidgetsUpdated);
-  }, []);
+  // Counter from the shared `dash:widgets-updated` event so the
+  // sidebar re-derives whenever widgets install / update / uninstall.
+  const widgetVersion = useWidgetRegistryVersion();
 
   // Flat list of all widgets
   const allWidgets = useMemo(() => {

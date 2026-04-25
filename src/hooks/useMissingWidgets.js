@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { collectComponentsFromLayout } from "./useInstalledWidgets";
 import { isWidgetResolvable } from "../utils/layout";
+import { useWidgetRegistryVersion } from "./useWidgetRegistryVersion";
 
 /**
  * useMissingWidgets — detects unresolvable widget components in a workspace layout.
@@ -28,15 +29,10 @@ export const useMissingWidgets = (workspace) => {
     setMissingComponents(missing);
   }, [workspace?.layout]);
 
+  const widgetRegistryVersion = useWidgetRegistryVersion();
   useEffect(() => {
     check();
-  }, [check]);
-
-  useEffect(() => {
-    const handler = () => check();
-    window.addEventListener("dash:widgets-updated", handler);
-    return () => window.removeEventListener("dash:widgets-updated", handler);
-  }, [check]);
+  }, [check, widgetRegistryVersion]);
 
   return {
     missingComponents,

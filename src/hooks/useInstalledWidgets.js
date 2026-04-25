@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { ComponentManager } from "../ComponentManager";
+import { useWidgetRegistryVersion } from "./useWidgetRegistryVersion";
 
 /**
  * Walk a workspace layout and collect widget component keys that are
@@ -216,13 +217,10 @@ export const useInstalledWidgets = () => {
     [refresh, widgets],
   );
 
+  const widgetRegistryVersion = useWidgetRegistryVersion();
   useEffect(() => {
     refresh();
-    const handleWidgetsUpdated = () => refresh();
-    window.addEventListener("dash:widgets-updated", handleWidgetsUpdated);
-    return () =>
-      window.removeEventListener("dash:widgets-updated", handleWidgetsUpdated);
-  }, [refresh]);
+  }, [refresh, widgetRegistryVersion]);
 
   return { widgets, isLoading, error, uninstallWidget, refresh };
 };
