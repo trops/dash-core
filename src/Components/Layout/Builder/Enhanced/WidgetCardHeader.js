@@ -19,6 +19,7 @@ import {
 import { WidgetIcon } from "./WidgetIcon";
 import { ComponentManager } from "../../../../ComponentManager";
 import { getUserConfigurableProviders } from "../../../../utils/providerUtils";
+import { pickWidgetDisplayName } from "../../../../utils/widgetIdentity";
 
 export const WidgetCardHeader = ({
   item, // Widget/component item
@@ -60,29 +61,11 @@ export const WidgetCardHeader = ({
   // Detect missing widgets (component key exists but not in ComponentManager)
   const isWidgetMissing = widgetItem?.component && !widgetConfig;
 
-  // Display name priority: per-instance user title → widget's default
-  // title → developer's friendly displayName → widget config name →
-  // bare component name (last segment) → full scoped id (last resort).
-  // Mirrors WidgetsTab so the same widget shows the same name in both
-  // surfaces.
-  const widgetName = (() => {
-    const prefsTitle = widgetItem?.userPrefs?.title;
-    if (typeof prefsTitle === "string" && prefsTitle.trim()) return prefsTitle;
-    const configDefault = widgetConfig?.userConfig?.title?.defaultValue;
-    if (typeof configDefault === "string" && configDefault.trim()) {
-      return configDefault;
-    }
-    if (widgetConfig?.displayName) return widgetConfig.displayName;
-    if (widgetConfig?.name) return widgetConfig.name;
-    if (widgetItem?.name) return widgetItem.name;
-    const comp = widgetItem?.component;
-    if (typeof comp === "string") {
-      const parts = comp.split(".");
-      if (parts.length === 3) return parts[2];
-      return comp;
-    }
-    return "Widget";
-  })();
+  // Display name + scope.package.Component subtitle. Single source of
+  // truth: `pickWidgetDisplayName` so the same widget shows the same
+  // name in WidgetsTab, Listeners tab, Providers tab, and the layout
+  // footer.
+  const widgetName = pickWidgetDisplayName(widgetItem, widgetConfig);
 
   // Show the full scoped registry id (`scope.package.Component`) as
   // the subtitle. The friendly title on line 1 may be a custom user

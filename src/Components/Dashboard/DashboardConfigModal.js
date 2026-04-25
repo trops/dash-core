@@ -770,7 +770,7 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
                             }`}
                           >
                             <span className="truncate">
-                              {row.component || "widget"}
+                              {row.label || row.component || "widget"}
                             </span>
                             {isRequired && (
                               <span
@@ -786,6 +786,14 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
                               </span>
                             )}
                           </div>
+                          {(row.widgetRef || row.component) && (
+                            <div
+                              className="text-[10px] opacity-50 font-mono truncate mt-0.5"
+                              title={row.widgetRef || row.component}
+                            >
+                              {row.widgetRef || row.component}
+                            </div>
+                          )}
                           <div className="flex items-center gap-1.5 mt-1 text-[10px]">
                             <span
                               className={`uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold ${
@@ -1143,9 +1151,15 @@ function ListenersTab({ emitters, receivers, wiring, onAdd, onRemove }) {
                       : "border-transparent hover:bg-white/5"
                   }`}
                 >
-                  <span className="text-sm font-medium truncate">
-                    {r.label}
-                  </span>
+                  <div className="text-sm font-medium truncate">{r.label}</div>
+                  {r.widgetRef && (
+                    <div
+                      className="text-[10px] opacity-50 font-mono truncate mt-0.5"
+                      title={r.widgetRef}
+                    >
+                      {r.widgetRef}
+                    </div>
+                  )}
                 </button>
               );
             })}
@@ -1433,8 +1447,14 @@ function EventsColumn({
               key={e.key || `${e.component}|${e.itemId}`}
               className="space-y-1"
             >
-              <div className="text-xs font-semibold opacity-50 uppercase tracking-wider">
-                {e.label}
+              <div className="flex flex-col gap-0.5 mb-1">
+                <div className="text-sm font-semibold">{e.label}</div>
+                {(e.widgetRef || e.component) && (
+                  <div className="text-[10px] opacity-50 font-mono truncate">
+                    {(e.widgetRef || e.component) +
+                      (e.itemId != null ? `[${e.itemId}]` : "")}
+                  </div>
+                )}
               </div>
               {e.events.map((eventName) => {
                 const key = `${e.component}|${e.itemId}|${eventName}`;

@@ -16,6 +16,7 @@ import {
 import { ComponentManager } from "../../ComponentManager";
 import { SIDEBAR_WIDGET_TYPE } from "../../utils/dragTypes";
 import { getUserConfigurableProviders } from "../../utils/providerUtils";
+import { bareComponentName } from "../../utils/scopedComponentId";
 import { useRegistrySearch } from "../../hooks/useRegistrySearch";
 import { RegistryAuthModal } from "../Registry/RegistryAuthModal";
 import { InstallProgressModal } from "../Settings/details/InstallProgressModal";
@@ -62,7 +63,10 @@ const DraggableWidgetItem = ({ widgetKey, widget }) => {
           />
         )}
         <span className="truncate font-medium opacity-90">
-          {widget.name || widgetKey}
+          {widget.displayName ||
+            widget.name ||
+            bareComponentName(widgetKey) ||
+            widgetKey}
         </span>
       </div>
       {(providerTypes.length > 0 || hasEventInfo) && (
@@ -86,9 +90,12 @@ const DraggableWidgetItem = ({ widgetKey, widget }) => {
           )}
         </div>
       )}
-      {widget.package && (
-        <span className="text-[10px] pl-5 opacity-40 truncate">
-          {widget.package}
+      {widgetKey && (
+        <span
+          className="text-[10px] pl-5 opacity-40 font-mono truncate"
+          title={widgetKey}
+        >
+          {widgetKey}
         </span>
       )}
     </div>
@@ -413,41 +420,45 @@ const SidebarDiscoverContent = ({
         <div className="flex flex-col gap-1 px-3 py-1">
           {registry.packages.map((pkg) => {
             const isInstalled = isPackageInstalled(pkg);
+            const packageRef =
+              pkg.scope && pkg.name
+                ? `@${String(pkg.scope).replace(/^@/, "")}/${pkg.name}`
+                : pkg.name;
+            const widgetCount = pkg.widgets?.length || 0;
             return (
               <button
                 key={pkg.name}
                 type="button"
                 onClick={() => setSelectedPackageName(pkg.name)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-md text-left
-                                bg-white/5 hover:bg-white/10 transition-colors w-full${isInstalled ? " opacity-50" : ""}`}
+                className={`flex items-start gap-2 px-3 py-2 rounded-md text-left
+                                bg-white/5 hover:bg-white/10 transition-colors w-full${isInstalled ? " opacity-60" : ""}`}
               >
                 <FontAwesomeIcon
                   icon="cube"
-                  className="h-3 w-3 opacity-40 flex-shrink-0"
+                  className="h-3 w-3 opacity-40 flex-shrink-0 mt-0.5"
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium opacity-90 truncate">
-                    {pkg.displayName || pkg.name}
-                  </div>
-                  <div className="flex items-center gap-1 text-[10px] opacity-50">
-                    {pkg.author && (
-                      <span className="truncate">{pkg.author}</span>
-                    )}
-                    {pkg.author && pkg.widgets?.length > 0 && (
-                      <span>&middot;</span>
-                    )}
-                    {pkg.widgets?.length > 0 && (
-                      <span>
-                        {pkg.widgets.length} widget
-                        {pkg.widgets.length !== 1 ? "s" : ""}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium opacity-90 truncate flex-1 min-w-0">
+                      {pkg.displayName || pkg.name}
+                    </span>
+                    {isInstalled && (
+                      <span className="text-[10px] text-emerald-400 flex-shrink-0">
+                        Installed
                       </span>
                     )}
-                    {isInstalled && (
-                      <>
-                        <span>&middot;</span>
-                        <span className="text-emerald-400">Installed</span>
-                      </>
-                    )}
+                  </div>
+                  {packageRef && (
+                    <div
+                      className="text-[10px] opacity-50 font-mono truncate mt-0.5"
+                      title={packageRef}
+                    >
+                      {packageRef}
+                    </div>
+                  )}
+                  <div className="text-[10px] opacity-40 truncate mt-0.5">
+                    {pkg.author ? `${pkg.author} · ` : ""}
+                    {widgetCount} widget{widgetCount !== 1 ? "s" : ""}
                   </div>
                 </div>
               </button>

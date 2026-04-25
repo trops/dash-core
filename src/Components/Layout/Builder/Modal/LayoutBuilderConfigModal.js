@@ -16,6 +16,7 @@ import { PanelEditItemHandlers, PanelEditItemProviders } from "./Panel";
 import PanelCode from "./Panel/PanelCode";
 import { ComponentManager } from "../../../../ComponentManager";
 import { getUserConfigurableProviders } from "../../../../utils/providerUtils";
+import { pickWidgetDisplayName } from "../../../../utils/widgetIdentity";
 
 const getSections = (item) => {
   const widgetConfig = item
@@ -115,14 +116,24 @@ export const LayoutBuilderConfigModal = ({
     const parts = scopedId.split(".");
     return parts.length === 3 ? scopedId : "";
   })();
-  const componentName = itemSelected ? itemSelected["component"] : "";
+  // Friendly name on the top line, full scoped id on the subtitle.
+  // Same priority chain the Listeners/Widgets tabs and WidgetCardHeader
+  // use, via the shared `pickWidgetDisplayName` helper.
+  const widgetCfg = itemSelected
+    ? ComponentManager.config(itemSelected.component, itemSelected)
+    : null;
+  const friendlyName = itemSelected
+    ? pickWidgetDisplayName(itemSelected, widgetCfg)
+    : "";
   const footerLeftContent = footerPackageLabel ? (
     <span className="flex flex-col leading-tight">
-      <span>{componentName}</span>
-      <span className="text-[10px] opacity-50">{footerPackageLabel}</span>
+      <span>{friendlyName}</span>
+      <span className="text-[10px] opacity-50 font-mono">
+        {footerPackageLabel}
+      </span>
     </span>
   ) : (
-    componentName
+    friendlyName
   );
 
   return (

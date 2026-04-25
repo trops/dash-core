@@ -6,6 +6,10 @@ import {
   parseEventString,
   applyWiringChanges,
 } from "../../../../../utils/listenerResolution";
+import {
+  pickWidgetDisplayName,
+  pickWidgetRef,
+} from "../../../../../utils/widgetIdentity";
 import deepEqual from "deep-equal";
 import { SectionLayout } from "../../../../Settings/SectionLayout";
 
@@ -223,46 +227,55 @@ export const PanelEditItemHandlers = ({ workspace, onUpdate, item = null }) => {
           </span>
         </div>
 
-        {sourceWidgets.map((layout) => (
-          <div
-            key={`${layout.component}|${layout.id}`}
-            className="flex flex-col space-y-2"
-          >
-            <span className="text-xs font-semibold opacity-40 uppercase tracking-wider">
-              {layout["component"]} [{layout["id"]}]
-            </span>
-            {layout.events
-              .filter((value, index, array) => array.indexOf(value) === index)
-              .map((event) => {
-                const eventString = formatEventString(
-                  layout.component,
-                  layout.id,
-                  event,
-                );
-                const selected = isSelectedEvent(eventString);
+        {sourceWidgets.map((layout) => {
+          const label = pickWidgetDisplayName(layout, null);
+          const ref = pickWidgetRef(layout) || layout.component;
+          return (
+            <div
+              key={`${layout.component}|${layout.id}`}
+              className="flex flex-col space-y-2"
+            >
+              <div className="flex flex-col gap-0.5 mb-1">
+                <span className="text-sm font-semibold opacity-90">
+                  {label}
+                </span>
+                <span className="text-[10px] opacity-50 font-mono truncate">
+                  {ref}[{layout["id"]}]
+                </span>
+              </div>
+              {layout.events
+                .filter((value, index, array) => array.indexOf(value) === index)
+                .map((event) => {
+                  const eventString = formatEventString(
+                    layout.component,
+                    layout.id,
+                    event,
+                  );
+                  const selected = isSelectedEvent(eventString);
 
-                return (
-                  <div
-                    key={eventString}
-                    onClick={() =>
-                      selected
-                        ? handleRemoveEvent(eventString)
-                        : handleSelectEvent(eventString)
-                    }
-                    className={`flex flex-row items-center gap-3 px-3 py-2 rounded-md cursor-pointer ${
-                      selected ? "opacity-100" : "opacity-60 hover:opacity-80"
-                    }`}
-                  >
-                    <FontAwesomeIcon
-                      icon={selected ? "square-check" : "square"}
-                      className="h-4 w-4 flex-shrink-0"
-                    />
-                    <span className="text-sm">{event}</span>
-                  </div>
-                );
-              })}
-          </div>
-        ))}
+                  return (
+                    <div
+                      key={eventString}
+                      onClick={() =>
+                        selected
+                          ? handleRemoveEvent(eventString)
+                          : handleSelectEvent(eventString)
+                      }
+                      className={`flex flex-row items-center gap-3 px-3 py-2 rounded-md cursor-pointer ${
+                        selected ? "opacity-100" : "opacity-60 hover:opacity-80"
+                      }`}
+                    >
+                      <FontAwesomeIcon
+                        icon={selected ? "square-check" : "square"}
+                        className="h-4 w-4 flex-shrink-0"
+                      />
+                      <span className="text-sm">{event}</span>
+                    </div>
+                  );
+                })}
+            </div>
+          );
+        })}
 
         {sourceWidgets.length === 0 && (
           <span className="text-sm opacity-40">
