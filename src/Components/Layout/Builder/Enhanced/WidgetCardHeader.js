@@ -255,13 +255,10 @@ export const WidgetCardHeader = ({
           </span>
           {packageLabel && (
             <span
-              className="text-[10px] text-gray-500 truncate"
-              title={`${packageLabel} · ${widgetItem?.component || ""}`}
+              className="text-[10px] text-gray-500 font-mono truncate"
+              title={packageLabel}
             >
               {packageLabel}
-              {widgetItem?.component && widgetItem.component !== widgetName
-                ? ` · ${widgetItem.component}`
-                : ""}
             </span>
           )}
         </div>
