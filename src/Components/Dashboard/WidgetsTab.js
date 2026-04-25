@@ -17,8 +17,8 @@ const ALL_WIDGETS_ID = "__ALL__";
  * id (last resort, never preferred — but always present).
  *
  * This is what shows on the primary line of the WidgetsTab list and
- * detail header. The scoped registry identity (`@scope/package`) is
- * surfaced separately via `pickPackageRef` below, so the user sees
+ * detail header. The full scoped registry id (`scope.package.X`) is
+ * surfaced separately via `pickWidgetRef` below, so the user sees
  * BOTH a friendly name and an unambiguous reference.
  */
 function pickDisplayName(item, cfg) {
@@ -36,21 +36,26 @@ function pickDisplayName(item, cfg) {
 }
 
 /**
- * Format the `@scope/package` reference for the subtitle. Derives
- * from the layout item's scoped component id (`scope.package.X`),
- * falling back to the cfg fields when the item is non-canonical.
- * Returns null if no scope/package can be determined — caller hides
- * the subtitle in that case.
+ * Format the full scoped registry id (`scope.package.Component`) for
+ * the subtitle. The friendly display name on line 1 may be a custom
+ * per-instance title that doesn't reveal which widget is actually
+ * mounted — the subtitle pins down the underlying widget identity so
+ * the user can always see "this 'Q4 Pipeline' is actually a
+ * `trops.pipeline.SalesPipeline`".
+ *
+ * Falls back to the cfg fields when the layout item is non-canonical
+ * (legacy bare names that LayoutModel couldn't migrate). Returns
+ * null when even those are missing — caller hides the subtitle.
  */
-function pickPackageRef(item, cfg) {
-  const parsed = parseScopedComponentId(item?.component);
-  if (parsed) return `@${parsed.scope}/${parsed.packageName}`;
+function pickWidgetRef(item, cfg) {
+  if (parseScopedComponentId(item?.component)) return item.component;
   const scope = cfg?.scope || item?.scope;
   const pkg = cfg?.packageName || item?.packageName;
-  if (!scope || !pkg) return null;
+  const comp = bareComponentName(item?.component) || cfg?.name;
+  if (!scope || !pkg || !comp) return item?.component || null;
   const bareScope = String(scope).replace(/^@/, "");
   const barePkg = String(pkg).replace(new RegExp(`^@?${bareScope}/`), "");
-  return `@${bareScope}/${barePkg}`;
+  return `${bareScope}.${barePkg}.${comp}`;
 }
 
 /**
@@ -120,7 +125,7 @@ export const WidgetsTab = ({
         id,
         component: item.component,
         displayName: pickDisplayName(item, cfg),
-        packageRef: pickPackageRef(item, cfg),
+        widgetRef: pickWidgetRef(item, cfg),
         section,
         userConfig: cfg.userConfig || {},
         userPrefs: item.userPrefs || {},
@@ -238,12 +243,12 @@ export const WidgetsTab = ({
                       </span>
                     )}
                   </div>
-                  {w.packageRef && (
+                  {w.widgetRef && (
                     <div
                       className="text-[10px] text-gray-500 font-mono truncate mt-0.5"
-                      title={w.packageRef}
+                      title={w.widgetRef}
                     >
-                      {w.packageRef}
+                      {w.widgetRef}
                     </div>
                   )}
                   <div className="text-[10px] text-gray-600 mt-0.5">
@@ -288,28 +293,19 @@ export const WidgetsTab = ({
 
 function SingleWidgetPane({ widget, effectivePrefs, onFieldChange }) {
   const hasFields = Object.keys(widget.userConfig).length > 0;
-  const scopedId = buildScopedId(widget);
   return (
     <div>
       <div className="mb-3">
         <div className="text-gray-200 font-semibold">{widget.displayName}</div>
-        {widget.packageRef && (
+        {widget.widgetRef && (
           <div
             className="text-xs text-gray-500 font-mono truncate mt-0.5"
-            title={widget.packageRef}
+            title={widget.widgetRef}
           >
-            {widget.packageRef}
+            {widget.widgetRef}
           </div>
         )}
         <div className="text-xs text-gray-600 mt-0.5">{widget.section}</div>
-        {scopedId && scopedId !== widget.component && (
-          <code
-            className="block mt-1 text-[11px] text-gray-500 font-mono truncate"
-            title={scopedId}
-          >
-            {scopedId}
-          </code>
-        )}
       </div>
       {hasFields ? (
         <PanelEditForm

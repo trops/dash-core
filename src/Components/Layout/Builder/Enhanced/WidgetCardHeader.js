@@ -84,19 +84,16 @@ export const WidgetCardHeader = ({
     return "Widget";
   })();
 
-  // Derive the "@scope/package" label from the layout item's scoped
-  // component id (`scope.package.Component`). Strict — the layout item
-  // is the source of truth. If the item isn't scoped (a legacy layout
-  // that LayoutModel couldn't migrate, or a missing widget) the label
-  // is empty rather than guessed from the workspace category.
+  // Show the full scoped registry id (`scope.package.Component`) as
+  // the subtitle. The friendly title on line 1 may be a custom user
+  // title that doesn't reveal which widget is mounted; the subtitle
+  // pins down the underlying identity. Strict — the layout item is
+  // the source of truth.
   const packageLabel = (() => {
     const scopedId = widgetItem?.component || widgetConfig?.id || "";
     if (typeof scopedId !== "string") return "";
     const parts = scopedId.split(".");
-    if (parts.length !== 3) return "";
-    const [scope, pkg] = parts;
-    if (!scope || !pkg) return "";
-    return `@${scope}/${pkg}`;
+    return parts.length === 3 ? scopedId : "";
   })();
 
   // Get provider requirements from widget config (not from item directly)

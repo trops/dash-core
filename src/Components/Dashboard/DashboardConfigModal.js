@@ -174,9 +174,11 @@ export const DashboardConfigModal = ({
       const scopedId =
         typeof item?.component === "string" ? item.component : "";
       const parts = scopedId.split(".");
-      if (parts.length === 3) {
-        const [scope, pkg] = parts;
-        if (scope && pkg) return `@${scope}/${pkg}`;
+      if (parts.length === 3 && parts[0] && parts[1]) {
+        // Group rows by `@scope/package` so two widgets from the same
+        // package show up under one heading. The full scoped id is
+        // surfaced per-row in the table (column-level identity).
+        return `@${parts[0]}/${parts[1]}`;
       }
       // Defensive: an explicit packageId on the item still wins for
       // legacy items the migration couldn't auto-resolve.
