@@ -1,12 +1,61 @@
 import { deepCopy } from "@trops/dash-react";
 import { ComponentConfigModel } from "./Models";
 import { resolveComponentKey } from "./utils/resolveComponentKey";
+import { makeScopedComponentId } from "./utils/scopedComponentId";
 
 export { resolveComponentKey };
 
 let _componentMap = {};
 let _containerComponent = null;
 let _gridContainerComponent = null;
+
+/**
+ * Compute the canonical `scope.package.Component` id for a widget
+ * config. Throws if the config doesn't carry enough origin metadata
+ * to derive an id.
+ *
+ * Order of precedence:
+ *   - `config.id` already scoped (3 dot-separated parts, no leading "@")
+ *   - `config.scope` + `config.packageName` + (`config.name` |
+ *     `config.component?.displayName` | `config.component?.name`)
+ *   - Otherwise throw — the config is missing origin info and would
+ *     register under an ambiguous key.
+ *
+ * The `widgetKey` is consulted ONLY when both above paths fail and
+ * the key itself is already a scoped id; this preserves compat with
+ * callers that pass a fully-qualified registration key.
+ */
+function canonicalScopedId(config, widgetKey) {
+  const looksScoped = (s) =>
+    typeof s === "string" && s.split(".").length === 3 && !s.includes("/");
+  if (looksScoped(config?.id)) return config.id;
+  if (looksScoped(widgetKey)) return widgetKey;
+  if (config?.scope && config?.packageName) {
+    const componentName =
+      config.name ||
+      config.component?.displayName ||
+      config.component?.name ||
+      null;
+    if (componentName) {
+      return makeScopedComponentId(
+        `${String(config.scope).replace(/^@/, "")}/${config.packageName}`,
+        componentName,
+      );
+    }
+  }
+  const dump = JSON.stringify({
+    id: config?.id,
+    scope: config?.scope,
+    packageName: config?.packageName,
+    name: config?.name,
+    widgetKey,
+  });
+  throw new Error(
+    `[ComponentManager] Cannot register widget — missing origin metadata. ` +
+      `Need either a scoped \`id\` (scope.package.Component) or ` +
+      `\`scope\` + \`packageName\` + \`name\`. Got: ${dump}`,
+  );
+}
 
 export const ComponentManager = {
   // _componentMap: {},
@@ -48,40 +97,51 @@ export const ComponentManager = {
   },
 
   /**
-   * Resolve a component name to its registered config — single source
-   * of truth for every render-path lookup. Routes through
-   * `resolveComponentKey` so legacy bare names (`"ProspectWorkspace"`)
-   * still find their registered scoped counterpart
-   * (`"ai-built.pipeline.ProspectWorkspace"`). Returns null when the
-   * widget isn't registered. Pass the layout item as `data` to use
-   * its `packageId` / `_sourcePackage` for disambiguation.
+   * Resolve a component reference to its registered config. Strict
+   * exact-match lookup against the registry. Layout items are
+   * expected to carry the canonical scoped id
+   * (`scope.package.Component`); `LayoutModel` migrates legacy bare
+   * names to the scoped form on dashboard load.
    *
-   * @param {string} component
-   * @param {object} [data]
+   * Returns null when the widget isn't registered — the renderer then
+   * shows `WidgetNotFound`. There is no fallback.
+   *
+   * @param {string} component - The scoped widget id
    * @returns {object|null} the live registered config, or null
    */
-  resolve: function (component, data) {
+  resolve: function (component) {
     const m = _componentMap;
     if (!m) return null;
-    const key = resolveComponentKey(m, component, data);
+    const key = resolveComponentKey(m, component);
     return key ? m[key] || null : null;
   },
 
   /**
-   * The method for registering the widget into the Dashboard application
-   * This is a requirement for the widget to be included into the Dash
+   * Register a widget config under its canonical scoped id.
    *
-   * @param {Object} widgetConfig the widget configuration script created by the developer
-   * @param {*} widgetKey the unique id for the widget
+   * Every widget that enters the registry MUST have a scope.package
+   * .Component id. The id is determined in this order:
+   *   1. `config.id` already in scoped form → trust it.
+   *   2. `config.scope` + `config.packageName` + `config.name` → derive.
+   *   3. Otherwise → throw. Silent fallbacks here are how layouts end
+   *      up referencing widgets that were registered under the wrong
+   *      key, so we fail loudly at registration instead of producing
+   *      a corrupt registry.
+   *
+   * `widgetKey` is kept for backwards compatibility with callers that
+   * pass a string key; it is consulted ONLY as a tiebreak when the
+   * config is otherwise complete.
+   *
+   * @param {Object} widgetConfig the widget configuration script
+   * @param {string} [widgetKey] legacy fallback key (informational only)
+   * @throws if origin metadata is missing
    */
   registerWidget: function (widgetConfig, widgetKey) {
     const tempComponentMap = this.componentMap();
-    // Handle both module exports (widgetConfig.default) and direct config objects
     const config = widgetConfig.default || widgetConfig;
-    // Register under a single canonical key: config.id (scoped widget ID) if
-    // available, otherwise the provided widgetKey. No aliases — one widget, one key.
-    const registrationKey = config.id || widgetKey;
-    tempComponentMap[registrationKey] = ComponentConfigModel(config);
+    const id = canonicalScopedId(config, widgetKey);
+    config.id = id;
+    tempComponentMap[id] = ComponentConfigModel(config);
     this.setComponentMap(tempComponentMap);
   },
 
@@ -133,15 +193,15 @@ export const ComponentManager = {
    * @param {string} component the component/widget in the componentMap
    * @returns {Widget} the Widget in the component map
    */
-  getComponent: function (component, data = {}) {
+  getComponent: function (component) {
     try {
-      // console.log("get component");
       if (component && this.componentMap()) {
         if (ComponentManager.isLayoutContainer(component) === false) {
           const m = this.componentMap();
-          // Resolve through the scoped/bare lookup pipeline so layouts
-          // authored under either format land at the same registry key.
-          const resolvedKey = resolveComponentKey(m, component, data);
+          // Strict scoped-id lookup. If the layout item didn't carry
+          // a scoped id, LayoutModel should have migrated it before
+          // we get here.
+          const resolvedKey = resolveComponentKey(m, component);
           let cmp = resolvedKey ? m[resolvedKey] : null;
 
           if (cmp !== null && cmp !== undefined) {
@@ -320,7 +380,6 @@ export const ComponentManager = {
   config: function (component, data = {}) {
     try {
       if (component) {
-        // console.log("config");
         const requiredFields = {
           type: { value: "text" },
           required: { value: false },
@@ -328,34 +387,21 @@ export const ComponentManager = {
           defaultValue: { value: "" },
         };
 
-        // get the component configuration from the map
         const components = this.map();
-        const resolvedKey = resolveComponentKey(components, component, data);
+        const resolvedKey = resolveComponentKey(components, component);
         if (resolvedKey && resolvedKey in components) {
-          // let c = deepCopy(components['component']);
-
-          // we have to make sure that we remove the component if this is a context
-
           const tempComponent = components[resolvedKey];
           delete tempComponent["component"];
           let c = JSON.parse(JSON.stringify(tempComponent));
-
-          // Carry the canonical scoped id forward so callers (LayoutModel,
-          // ComponentManager.getComponent) can rewrite layout items'
-          // `component` to the scoped form on first load.
           c["component"] = resolvedKey;
 
-          // if no userConfig key. let's add it for the next step
           if ("userConfig" in c === false) {
             c["userConfig"] = {};
           }
 
-          // if (isLayout === false) {
           let userPrefs = {};
-          // now we can make sure the configuration is "complete"
           if ("userConfig" in c) {
             Object.keys(c["userConfig"]).forEach((key) => {
-              // check the required fields!
               Object.keys(requiredFields).forEach((k) => {
                 if (k in c["userConfig"][key]) {
                   if (k in c["userConfig"][key] === false) {
@@ -363,7 +409,6 @@ export const ComponentManager = {
                   }
                 }
               });
-              // set the user preferences
               userPrefs[key] = ComponentManager.userPrefsForItem(
                 "userPrefs" in data ? data : c,
                 key,
@@ -372,12 +417,18 @@ export const ComponentManager = {
             });
           }
 
-          // set the user preferences here
           c["userPrefs"] = userPrefs;
 
+          // Identity fields (id/package/scope/...) are forwarded so
+          // consumers can derive the package label without reading
+          // the live registry directly. Without these, callers fall
+          // back to `item.workspace` which is a category, not a
+          // package, and produce labels like `@DashSamples-workspace`.
           return {
+            id: resolvedKey,
             type: c["type"],
             name: c["name"],
+            displayName: c["displayName"],
             workspace: c["workspace"],
             canHaveChildren: c["canHaveChildren"],
             userPrefs: c["userPrefs"],
@@ -389,6 +440,12 @@ export const ComponentManager = {
             notifications: "notifications" in c ? c["notifications"] : [],
             scheduledTasks: "scheduledTasks" in c ? c["scheduledTasks"] : [],
             icon: "icon" in c ? c["icon"] : null,
+            scope: c["scope"],
+            packageName: c["packageName"],
+            package: c["package"],
+            author: c["author"],
+            version: c["version"],
+            _sourcePackage: c["_sourcePackage"],
           };
         }
         return null;

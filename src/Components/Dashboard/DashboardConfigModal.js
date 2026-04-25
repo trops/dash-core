@@ -165,29 +165,22 @@ export const DashboardConfigModal = ({
   // footer so the same package label shows in every surface.
   const dependencies = useMemo(() => {
     const byPackage = new Map();
-    const stripTrailingComponent = (s) => {
-      if (typeof s !== "string") return "";
-      const lastDot = s.lastIndexOf(".");
-      return lastDot > 0 ? s.slice(0, lastDot) : s;
-    };
+    // Derive the @scope/package label from the layout item's scoped
+    // component id. Layout items are always scoped post-v0.1.435
+    // (LayoutModel migrates legacy bare names on load), so this is
+    // the single source of truth — no config lookup, no workspace
+    // fallback, no heuristics.
     const derivePackage = (item) => {
-      // The layout item records the exact source package id when the
-      // widget was added. If present, trust it — no heuristics. This
-      // matches the publish flow's attribution, so the Dependencies
-      // tab and the Publish modal always agree.
-      if (item?.packageId) return String(item.packageId);
-      const cfg =
-        typeof getWidgetConfig === "function"
-          ? getWidgetConfig(item.component)
-          : null;
-      if (cfg?._sourcePackage) return String(cfg._sourcePackage);
-      const fromId = stripTrailingComponent(cfg?.id || "");
-      if (fromId) return fromId;
-      if (cfg?.package) return String(cfg.package);
-      const ws = item?.workspace;
-      if (typeof ws === "string" && ws && ws !== "layout") {
-        return ws.startsWith("@") ? ws : `@${ws}`;
+      const scopedId =
+        typeof item?.component === "string" ? item.component : "";
+      const parts = scopedId.split(".");
+      if (parts.length === 3) {
+        const [scope, pkg] = parts;
+        if (scope && pkg) return `@${scope}/${pkg}`;
       }
+      // Defensive: an explicit packageId on the item still wins for
+      // legacy items the migration couldn't auto-resolve.
+      if (item?.packageId) return String(item.packageId);
       return "(unknown)";
     };
 

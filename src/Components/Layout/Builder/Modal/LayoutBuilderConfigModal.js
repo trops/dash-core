@@ -106,27 +106,16 @@ export const LayoutBuilderConfigModal = ({
   const activeDef =
     sections.find((s) => s.key === activeSection) || sections[0];
 
-  // Scope/package label for the footer so the user can tell which
-  // package a widget comes from (ambiguous component names like
-  // `ProspectListColumn` can live under either `@ai-built/…` or
-  // `@trops/pipeline`). Same derivation order as WidgetCardHeader:
-  // widget config id → widget config package → layout item workspace.
+  // Footer label: derive @scope/package straight from the layout
+  // item's scoped component id. Strict — no workspace fallback.
   const footerPackageLabel = (() => {
-    if (!itemSelected) return "";
-    const cfg = ComponentManager.config(itemSelected.component, itemSelected);
-    const dropTrailingComponent = (s) => {
-      if (typeof s !== "string") return "";
-      const lastDot = s.lastIndexOf(".");
-      return lastDot > 0 ? s.slice(0, lastDot) : s;
-    };
-    const fromId = dropTrailingComponent(cfg?.id || "");
-    if (fromId) return fromId;
-    if (cfg?.package) return String(cfg.package);
-    const ws = itemSelected.workspace;
-    if (typeof ws === "string" && ws && ws !== "layout") {
-      return ws.startsWith("@") ? ws : `@${ws}`;
-    }
-    return "";
+    const scopedId = itemSelected?.component || "";
+    if (typeof scopedId !== "string") return "";
+    const parts = scopedId.split(".");
+    if (parts.length !== 3) return "";
+    const [scope, pkg] = parts;
+    if (!scope || !pkg) return "";
+    return `@${scope}/${pkg}`;
   })();
   const componentName = itemSelected ? itemSelected["component"] : "";
   const footerLeftContent = footerPackageLabel ? (

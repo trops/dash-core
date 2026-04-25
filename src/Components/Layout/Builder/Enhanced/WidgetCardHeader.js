@@ -67,29 +67,19 @@ export const WidgetCardHeader = ({
     widgetItem?.name ||
     widgetItem?.component;
 
-  // Build a scope/package subtitle so ambiguous component names like
-  // `ProspectListColumn` (which might come from `@ai-built/…` or
-  // `@trops/pipeline`) are disambiguated in the layout builder. Derives
-  // from whatever identity the config / layout item carries:
-  //   - widgetConfig.id:   e.g. "@ai-built/prospectlistcolumn.ProspectListColumn"
-  //   - widgetConfig.package: e.g. "@ai-built/prospectlistcolumn"
-  //   - widgetItem.workspace: fallback hint ("ai-built" / "@trops/pipeline")
-  // Falls back to empty string so we can skip rendering if we have
-  // nothing meaningful beyond the component name itself.
+  // Derive the "@scope/package" label from the layout item's scoped
+  // component id (`scope.package.Component`). Strict — the layout item
+  // is the source of truth. If the item isn't scoped (a legacy layout
+  // that LayoutModel couldn't migrate, or a missing widget) the label
+  // is empty rather than guessed from the workspace category.
   const packageLabel = (() => {
-    const dropTrailingComponent = (s) => {
-      if (typeof s !== "string") return "";
-      const lastDot = s.lastIndexOf(".");
-      return lastDot > 0 ? s.slice(0, lastDot) : s;
-    };
-    const fromId = dropTrailingComponent(widgetConfig?.id || "");
-    if (fromId) return fromId;
-    if (widgetConfig?.package) return String(widgetConfig.package);
-    const wsHint = widgetItem?.workspace;
-    if (typeof wsHint === "string" && wsHint && wsHint !== "layout") {
-      return wsHint.startsWith("@") ? wsHint : `@${wsHint}`;
-    }
-    return "";
+    const scopedId = widgetItem?.component || widgetConfig?.id || "";
+    if (typeof scopedId !== "string") return "";
+    const parts = scopedId.split(".");
+    if (parts.length !== 3) return "";
+    const [scope, pkg] = parts;
+    if (!scope || !pkg) return "";
+    return `@${scope}/${pkg}`;
   })();
 
   // Get provider requirements from widget config (not from item directly)

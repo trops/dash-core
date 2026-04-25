@@ -1683,10 +1683,10 @@ export function addChildToLayoutItem(childComponent, layoutItem, workspace) {
  *                        widgets share the same bare name
  * @returns {boolean} true if the widget can be rendered
  */
-export function isWidgetResolvable(componentKey, data) {
+export function isWidgetResolvable(componentKey) {
   // Layout containers are always resolvable (handled specially by WidgetFactory)
   if (ComponentManager.isLayoutContainer(componentKey)) return true;
-  const config = ComponentManager.resolve(componentKey, data);
+  const config = ComponentManager.resolve(componentKey);
   return !!(config && typeof config.component === "function");
 }
 
