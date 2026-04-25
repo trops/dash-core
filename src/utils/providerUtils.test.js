@@ -57,4 +57,13 @@ describe("getUserConfigurableProviders", () => {
     const result = getUserConfigurableProviders(providers);
     expect(result.map((p) => p.type)).toEqual(["google-drive"]);
   });
+
+  test("combines null-drop and providerClass=api filter (both apply)", () => {
+    // The interesting case: a widget that declares ONLY an api
+    // provider with a stray null entry should produce [] (not
+    // [null], not crash). This is what WidgetSidebar's
+    // `uniqueProviders` saw before the fix.
+    const providers = [{ type: "claude", providerClass: "api" }, null];
+    expect(getUserConfigurableProviders(providers)).toEqual([]);
+  });
 });

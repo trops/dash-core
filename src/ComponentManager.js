@@ -1,57 +1,10 @@
 import { deepCopy } from "@trops/dash-react";
 import { ComponentConfigModel } from "./Models";
-import { makeScopedComponentId } from "./utils/scopedComponentId";
+import { resolveComponentKey } from "./utils/resolveComponentKey";
+
+export { resolveComponentKey };
 
 let _componentMap = {};
-
-/**
- * Resolve the registry key for a component lookup. Returns null if no
- * match exists.
- *
- * Lookup order (the LAYOUT ITEM is the source of truth):
- *   1. EXACT match on `component` — covers the new scoped form
- *      (`scope.package.X`) and any legacy `.dash.js` that already set
- *      `config.id` to a scoped value.
- *   2. If `component` is bare (no dots) AND we have a packageId hint
- *      on the layout item, build the scoped id and try that.
- *   3. Bare-name fallback: scan the map for any key ending in
- *      `.${component}`. If exactly one matches, use it. If multiple
- *      match (the collision case), prefer the one matching the layout
- *      item's `packageId` / `_sourcePackage`; otherwise fall through
- *      to the first match (deterministic, but also logs a warning so
- *      callers can spot the ambiguity).
- *
- * Step (3) is the back-compat path for layouts authored before scoped
- * registration landed. New layouts ALWAYS resolve via step (1) — the
- * `component` field is already scoped.
- */
-function resolveComponentKey(componentMap, component, data) {
-  if (!component) return null;
-  if (component in componentMap) return component;
-  if (typeof component !== "string") return null;
-  if (component.includes(".")) return null;
-
-  const packageId =
-    data?.packageId || data?._sourcePackage || data?.packageName || null;
-  if (packageId) {
-    const scoped = makeScopedComponentId(packageId, component);
-    if (scoped in componentMap) return scoped;
-  }
-
-  const suffix = `.${component}`;
-  const matches = Object.keys(componentMap).filter((k) => k.endsWith(suffix));
-  if (matches.length === 0) return null;
-  if (matches.length === 1) return matches[0];
-
-  if (packageId) {
-    const target = makeScopedComponentId(packageId, component);
-    if (matches.includes(target)) return target;
-  }
-  console.warn(
-    `[ComponentManager] Multiple registered widgets share the bare name "${component}": ${matches.join(", ")}. Resolving to "${matches[0]}". Add an explicit packageId on the layout item to disambiguate.`,
-  );
-  return matches[0];
-}
 let _containerComponent = null;
 let _gridContainerComponent = null;
 
@@ -92,6 +45,26 @@ export const ComponentManager = {
 
   componentMap: function () {
     return _componentMap;
+  },
+
+  /**
+   * Resolve a component name to its registered config — single source
+   * of truth for every render-path lookup. Routes through
+   * `resolveComponentKey` so legacy bare names (`"ProspectWorkspace"`)
+   * still find their registered scoped counterpart
+   * (`"ai-built.pipeline.ProspectWorkspace"`). Returns null when the
+   * widget isn't registered. Pass the layout item as `data` to use
+   * its `packageId` / `_sourcePackage` for disambiguation.
+   *
+   * @param {string} component
+   * @param {object} [data]
+   * @returns {object|null} the live registered config, or null
+   */
+  resolve: function (component, data) {
+    const m = _componentMap;
+    if (!m) return null;
+    const key = resolveComponentKey(m, component, data);
+    return key ? m[key] || null : null;
   },
 
   /**

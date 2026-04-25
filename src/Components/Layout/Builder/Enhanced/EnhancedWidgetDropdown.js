@@ -1095,18 +1095,25 @@ export const EnhancedWidgetDropdown = ({
                     {widget.description}
                   </div>
                 )}
-                {widget.providers?.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-0.5">
-                    {widget.providers.map((p) => (
-                      <span
-                        key={p.type}
-                        className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300"
-                      >
-                        {p.type}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                {(() => {
+                  // Same defensive null-safe iteration as WidgetSidebar:
+                  // a sparse `providers` array (null entries from a
+                  // malformed `.dash.js`) used to crash the chip render.
+                  const provs = getUserConfigurableProviders(widget.providers);
+                  if (provs.length === 0) return null;
+                  return (
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {provs.map((p) => (
+                        <span
+                          key={p.type}
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300"
+                        >
+                          {p.type}
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 {installedPackageNames.has(widget.packageName) && (

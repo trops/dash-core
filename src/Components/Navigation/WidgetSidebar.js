@@ -15,6 +15,7 @@ import {
 } from "@trops/dash-react";
 import { ComponentManager } from "../../ComponentManager";
 import { SIDEBAR_WIDGET_TYPE } from "../../utils/dragTypes";
+import { getUserConfigurableProviders } from "../../utils/providerUtils";
 import { useRegistrySearch } from "../../hooks/useRegistrySearch";
 import { RegistryAuthModal } from "../Registry/RegistryAuthModal";
 import { InstallProgressModal } from "../Settings/details/InstallProgressModal";
@@ -29,7 +30,14 @@ const DraggableWidgetItem = ({ widgetKey, widget }) => {
     [widgetKey],
   );
 
-  const providerTypes = (widget.providers || []).map((p) => p.type);
+  // Route through getUserConfigurableProviders — drops the `api`
+  // class AND null/undefined entries that occasionally appear in
+  // sparse `widget.providers` arrays. Without this, a single null
+  // slot crashes the whole sidebar with `Cannot read properties of
+  // null (reading 'type')`.
+  const providerTypes = getUserConfigurableProviders(widget.providers).map(
+    (p) => p.type,
+  );
   const eventCount = (widget.events || []).length;
   const handlerCount = (widget.eventHandlers || []).length;
   const hasEventInfo = eventCount > 0 || handlerCount > 0;
@@ -548,11 +556,19 @@ export const WidgetSidebar = ({ collapsed, onCollapsedChange }) => {
     [allWidgets],
   );
 
-  // Derive unique provider types for dropdown
+  // Derive unique provider types for the filter dropdown. Route
+  // through getUserConfigurableProviders so a single null entry in
+  // any widget's `providers` array doesn't crash the whole sidebar
+  // (it filters non-objects AND drops the `api` provider class that
+  // isn't user-configurable). Observed prod crash:
+  // `TypeError: Cannot read properties of null (reading 'type')` →
+  // unmounted WidgetSidebar via React error boundary.
   const uniqueProviders = useMemo(() => {
     const types = new Set();
     allWidgets.forEach(({ widget }) =>
-      (widget.providers || []).forEach((p) => types.add(p.type)),
+      getUserConfigurableProviders(widget?.providers).forEach((p) =>
+        types.add(p.type),
+      ),
     );
     return [...types].sort();
   }, [allWidgets]);
@@ -574,15 +590,13 @@ export const WidgetSidebar = ({ collapsed, onCollapsedChange }) => {
         if ((widget.package || widget.author || "Other") !== filterAuthor)
           return false;
       }
-      // Provider filter
+      // Provider filter — same null-safety as `uniqueProviders` above.
       if (filterProvider !== "all") {
+        const configurable = getUserConfigurableProviders(widget?.providers);
         if (filterProvider === "none") {
-          if (widget.providers && widget.providers.length > 0) return false;
+          if (configurable.length > 0) return false;
         } else {
-          if (
-            !widget.providers ||
-            !widget.providers.some((p) => p.type === filterProvider)
-          )
+          if (!configurable.some((p) => p.type === filterProvider))
             return false;
         }
       }

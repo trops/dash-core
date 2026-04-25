@@ -750,7 +750,11 @@ export function renderComponent(component, id, params = {}, children = null) {
       // Check if widget exists before attempting render —
       // WidgetFactory.render() always returns a React element (truthy),
       // so the old ternary fallback could never fire.
-      if (!isWidgetResolvable(component)) {
+      // Pass `params` (the layout item) so `packageId` /
+      // `_sourcePackage` can disambiguate when a legacy layout
+      // references a bare component name and multiple installed
+      // packages register a widget with the same trailing name.
+      if (!isWidgetResolvable(component, params)) {
         return <WidgetNotFound component={component} />;
       }
 
@@ -1665,20 +1669,25 @@ export function addChildToLayoutItem(childComponent, layoutItem, workspace) {
 }
 
 /**
- * Check if a widget component key is resolvable in ComponentManager
+ * Check if a widget component key is resolvable in ComponentManager.
+ * Routes through `ComponentManager.resolve` so a legacy bare component
+ * key (e.g. `"ProspectWorkspace"`) finds its registered scoped form
+ * (`"ai-built.pipeline.ProspectWorkspace"`). Without this routing the
+ * function would return false for every legacy-layout widget after the
+ * scoped-IDs migration, and the renderer would show `WidgetNotFound`
+ * for working dashboards.
+ *
  * @param {string} componentKey the component key to check
+ * @param {object} [data] the layout item — used for `packageId`
+ *                        disambiguation when multiple registered
+ *                        widgets share the same bare name
  * @returns {boolean} true if the widget can be rendered
  */
-export function isWidgetResolvable(componentKey) {
+export function isWidgetResolvable(componentKey, data) {
   // Layout containers are always resolvable (handled specially by WidgetFactory)
   if (ComponentManager.isLayoutContainer(componentKey)) return true;
-  const m = ComponentManager.componentMap();
-  if (!m) return false;
-  // Exact key match (scoped id)
-  if (m[componentKey] && typeof m[componentKey].component === "function") {
-    return true;
-  }
-  return false;
+  const config = ComponentManager.resolve(componentKey, data);
+  return !!(config && typeof config.component === "function");
 }
 
 // export {

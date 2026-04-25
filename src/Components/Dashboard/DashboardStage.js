@@ -989,8 +989,12 @@ const DashboardStageInner = ({
       getUnresolvedProviders({
         workspace: workspaceSelected,
         appProviders: appContext?.providers || {},
+        // Use ComponentManager.config so a legacy layout referencing
+        // a bare component name (`"PipelineKanban"`) still resolves
+        // to its scoped registration. Direct `componentMap[name]`
+        // returns undefined after the v0.1.432 scoped-IDs migration.
         getWidgetRequirements: (name) =>
-          (name && ComponentManager.componentMap()[name]?.providers) || [],
+          (name && ComponentManager.config(name)?.providers) || [],
       }),
     [workspaceSelected, appContext?.providers],
   );
@@ -2013,11 +2017,15 @@ const DashboardStageInner = ({
               setIsOpen={setIsConfigModalOpen}
               workspace={workspaceSelected}
               appProviders={appContext?.providers || {}}
+              // Use ComponentManager.config so legacy bare component
+              // refs in `workspaceSelected.layout` still resolve to
+              // their registered scoped form (post-v0.1.432). Direct
+              // `componentMap[name]` returns undefined for those.
               getWidgetRequirements={(name) =>
-                (name && ComponentManager.componentMap()[name]?.providers) || []
+                (name && ComponentManager.config(name)?.providers) || []
               }
               getWidgetConfig={(name) =>
-                (name && ComponentManager.componentMap()[name]) || null
+                (name && ComponentManager.config(name)) || null
               }
               onSaveBindings={handleBulkProviderBindings}
               onSaveListeners={handleBulkListenerBindings}
