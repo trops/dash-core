@@ -2,61 +2,12 @@ import React, { useState, useMemo, useEffect } from "react";
 import { FontAwesomeIcon } from "@trops/dash-react";
 import { forEachWidget } from "../../utils/providerResolution";
 import {
-  bareComponentName,
-  parseScopedComponentId,
-} from "../../utils/scopedComponentId";
+  pickWidgetDisplayName,
+  pickWidgetRef,
+} from "../../utils/widgetIdentity";
 import { PanelEditForm } from "../../Context/Modal/Panel/PanelEditForm";
 
 const ALL_WIDGETS_ID = "__ALL__";
-
-/**
- * Pick the most user-friendly display name for a widget instance.
- * Priority: per-instance user title → widget's default title → widget
- * developer's friendly displayName → widget config name → the bare
- * component name (last segment of the scoped id) → the full scoped
- * id (last resort, never preferred — but always present).
- *
- * This is what shows on the primary line of the WidgetsTab list and
- * detail header. The full scoped registry id (`scope.package.X`) is
- * surfaced separately via `pickWidgetRef` below, so the user sees
- * BOTH a friendly name and an unambiguous reference.
- */
-function pickDisplayName(item, cfg) {
-  const prefsTitle = item?.userPrefs?.title;
-  if (typeof prefsTitle === "string" && prefsTitle.trim()) return prefsTitle;
-  const configDefault = item?.userConfig?.title?.defaultValue;
-  if (typeof configDefault === "string" && configDefault.trim()) {
-    return configDefault;
-  }
-  if (cfg?.displayName) return cfg.displayName;
-  if (cfg?.name) return cfg.name;
-  const bare = bareComponentName(item?.component);
-  if (bare) return bare;
-  return item?.component || "Widget";
-}
-
-/**
- * Format the full scoped registry id (`scope.package.Component`) for
- * the subtitle. The friendly display name on line 1 may be a custom
- * per-instance title that doesn't reveal which widget is actually
- * mounted — the subtitle pins down the underlying widget identity so
- * the user can always see "this 'Q4 Pipeline' is actually a
- * `trops.pipeline.SalesPipeline`".
- *
- * Falls back to the cfg fields when the layout item is non-canonical
- * (legacy bare names that LayoutModel couldn't migrate). Returns
- * null when even those are missing — caller hides the subtitle.
- */
-function pickWidgetRef(item, cfg) {
-  if (parseScopedComponentId(item?.component)) return item.component;
-  const scope = cfg?.scope || item?.scope;
-  const pkg = cfg?.packageName || item?.packageName;
-  const comp = bareComponentName(item?.component) || cfg?.name;
-  if (!scope || !pkg || !comp) return item?.component || null;
-  const bareScope = String(scope).replace(/^@/, "");
-  const barePkg = String(pkg).replace(new RegExp(`^@?${bareScope}/`), "");
-  return `${bareScope}.${barePkg}.${comp}`;
-}
 
 /**
  * Build the scoped registry identifier for a widget. Surfaces the
@@ -124,8 +75,8 @@ export const WidgetsTab = ({
       result.push({
         id,
         component: item.component,
-        displayName: pickDisplayName(item, cfg),
-        widgetRef: pickWidgetRef(item, cfg),
+        displayName: pickWidgetDisplayName(item, cfg),
+        widgetRef: pickWidgetRef(item),
         section,
         userConfig: cfg.userConfig || {},
         userPrefs: item.userPrefs || {},

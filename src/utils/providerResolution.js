@@ -11,6 +11,7 @@
  * Both places need the same answer, so keep the logic here to avoid drift
  * with the resolution inside `useMcpProvider` / `useWebSocketProvider`.
  */
+import { pickWidgetDisplayName, pickWidgetRef } from "./widgetIdentity";
 
 /**
  * Resolve which provider name a given widget instance would bind to for
@@ -227,6 +228,12 @@ export function getAllProviderBindings({
       bindings.push({
         widgetId,
         component: item.component,
+        // Friendly display name + canonical scoped id, derived once
+        // here so every provider-tab consumer (Bulk pane, Per-widget
+        // rows, override badges) shows the same label/subtitle as
+        // the Listeners tab and the Widgets tab.
+        label: pickWidgetDisplayName(item, null),
+        widgetRef: pickWidgetRef(item),
         providerType: req.type,
         providerClass: req.providerClass || null,
         required: req.required !== false,

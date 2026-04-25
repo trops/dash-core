@@ -26,6 +26,7 @@
  */
 
 import { forEachWidget } from "./providerResolution";
+import { pickWidgetDisplayName, pickWidgetRef } from "./widgetIdentity";
 
 const EVENT_STRING_RE = /^([^[]+)\[([^\]]+)\]\.(.+)$/;
 
@@ -84,17 +85,12 @@ export function canonicalItemKey(item) {
   return null;
 }
 
-/**
- * Best-effort human label for a layout item: explicit title, then
- * widget config display name, then component name + short id.
- */
+// Label/widgetRef derivation lives in `widgetIdentity.js` so every
+// surface (Listeners tab, Providers tab, Widgets tab, widget card
+// header, layout footer) shows the same widget name + scope.package
+// .Component subtitle. Local thin wrapper just attaches the cfg.
 function labelFor(item, getWidgetConfig) {
-  const cfg = getWidgetConfig?.(item.component) || null;
-  const explicit = item?.userPrefs?.title || item?.userConfig?.title;
-  if (explicit) return explicit;
-  if (cfg?.displayName) return cfg.displayName;
-  const id = itemIdOf(item);
-  return `${item.component || "widget"}${id ? `[${String(id).slice(0, 6)}]` : ""}`;
+  return pickWidgetDisplayName(item, getWidgetConfig?.(item.component));
 }
 
 /**
@@ -139,6 +135,7 @@ export function getEmitters(workspace, getWidgetConfig) {
       itemId: itemIdOf(item),
       component: item.component,
       label: labelFor(item, getWidgetConfig),
+      widgetRef: pickWidgetRef(item),
       events,
     });
   });
@@ -149,7 +146,7 @@ export function getEmitters(workspace, getWidgetConfig) {
  * Every widget instance in the workspace that accepts at least one
  * handler. Used to populate the receiver dropdown. Deduplicated by
  * `${component}|${itemId}` (see getEmitters).
- * @returns {Array<{ itemId, component, label, eventHandlers: string[], listeners: object, key: string }>}
+ * @returns {Array<{ itemId, component, label, widgetRef, eventHandlers: string[], listeners: object, key: string }>}
  */
 export function getReceivers(workspace, getWidgetConfig) {
   const byKey = new Map();
@@ -164,6 +161,7 @@ export function getReceivers(workspace, getWidgetConfig) {
       itemId: itemIdOf(item),
       component: item.component,
       label: labelFor(item, getWidgetConfig),
+      widgetRef: pickWidgetRef(item),
       eventHandlers: handlers,
       listeners: item.listeners || {},
     });
