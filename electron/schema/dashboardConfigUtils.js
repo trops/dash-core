@@ -1109,6 +1109,99 @@ function remapLayoutPackageScopes(
   return next;
 }
 
+/**
+ * Defense-in-depth guard: throw if any layout item in `workspace`
+ * still references a local-only scope (e.g. `@ai-built/...`).
+ *
+ * `remapLayoutPackageScopes` rewrites local scopes to the publisher's
+ * scope BUT silently no-ops when no `callerScope` is available
+ * (failed auth, no profile, no `authorId` fallback). When that
+ * happens the publish would otherwise ship a manifest that no
+ * installer can resolve — `@ai-built/...` only exists on the
+ * publisher's machine.
+ *
+ * This function is meant to be called immediately after
+ * `remapLayoutPackageScopes` on the publish path. It walks layout,
+ * sidebarLayout, and every `pages[].layout`, and checks each item's
+ * `packageId`, `_sourcePackage`, and scoped `component` field.
+ *
+ * Throws a single descriptive Error listing every violation (capped
+ * at the first 10 to keep messages readable). Pure / side-effect-free
+ * on the success path.
+ *
+ * @param {Object} workspace
+ * @param {string[]} [localOnlyScopes=["ai-built"]]
+ * @throws {Error} if any local-only scope reference remains
+ */
+function assertNoLocalScopes(workspace, localOnlyScopes = ["ai-built"]) {
+  if (!workspace || typeof workspace !== "object") return;
+  const localSet = new Set(
+    localOnlyScopes.map((s) => String(s).replace(/^@/, "")),
+  );
+  const violations = [];
+
+  const checkPackageId = (pkgId, where) => {
+    if (typeof pkgId !== "string" || pkgId.length === 0) return;
+    const m = pkgId.match(/^@?([^/]+)\//);
+    if (m && localSet.has(m[1])) {
+      violations.push(`${where}: ${pkgId}`);
+    }
+  };
+  const checkComponent = (component, where) => {
+    if (typeof component !== "string" || component.length === 0) return;
+    const parts = component.split(".");
+    if (parts.length === 3 && localSet.has(parts[0])) {
+      violations.push(`${where}: ${component}`);
+    }
+  };
+
+  const walkItem = (item, path) => {
+    if (!item || typeof item !== "object") return;
+    const at = `${path}#${item.id ?? item.uuid ?? "?"}`;
+    if (item.packageId) checkPackageId(item.packageId, `${at}.packageId`);
+    if (item._sourcePackage) {
+      checkPackageId(item._sourcePackage, `${at}._sourcePackage`);
+    }
+    if (item.component) checkComponent(item.component, `${at}.component`);
+    if (Array.isArray(item.items)) {
+      item.items.forEach((c, i) => walkItem(c, `${at}.items[${i}]`));
+    }
+    if (Array.isArray(item.layout)) {
+      item.layout.forEach((c, i) => walkItem(c, `${at}.layout[${i}]`));
+    }
+  };
+
+  if (Array.isArray(workspace.layout)) {
+    workspace.layout.forEach((item, i) => walkItem(item, `layout[${i}]`));
+  }
+  if (Array.isArray(workspace.sidebarLayout)) {
+    workspace.sidebarLayout.forEach((item, i) =>
+      walkItem(item, `sidebarLayout[${i}]`),
+    );
+  }
+  if (Array.isArray(workspace.pages)) {
+    workspace.pages.forEach((page, pi) => {
+      if (page && Array.isArray(page.layout)) {
+        page.layout.forEach((item, i) =>
+          walkItem(item, `pages[${pi}].layout[${i}]`),
+        );
+      }
+    });
+  }
+
+  if (violations.length === 0) return;
+  const scopesList = [...localSet].join(", ");
+  const head = violations.slice(0, 10).join("\n  - ");
+  const tail =
+    violations.length > 10 ? `\n  - ...and ${violations.length - 10} more` : "";
+  throw new Error(
+    `Refusing to publish: ${violations.length} layout item(s) still reference ` +
+      `local-only scope(s) [${scopesList}] after rescoping. This usually ` +
+      `means the publisher has no resolved caller scope (registry auth ` +
+      `missing, no githubUser, no authorId). Violations:\n  - ${head}${tail}`,
+  );
+}
+
 module.exports = {
   collectComponentNames,
   collectComponentNamesFromWorkspace,
@@ -1126,4 +1219,5 @@ module.exports = {
   checkApiCompatibility,
   stripPersonalizationFromWorkspace,
   remapLayoutPackageScopes,
+  assertNoLocalScopes,
 };

@@ -33,6 +33,7 @@ const {
   applyEventWiringToLayout,
   stripPersonalizationFromWorkspace,
   remapLayoutPackageScopes,
+  assertNoLocalScopes,
 } = require("../schema/dashboardConfigUtils");
 const { searchRegistry, getPackage } = require("./registryController");
 const { getStoredToken, clearToken } = require("./registryAuthController");
@@ -1479,6 +1480,14 @@ async function prepareDashboardForPublish(
         resolvedCallerScope,
       );
     }
+    // Defense in depth: if remap was a no-op (no resolved caller scope)
+    // OR if a code path slipped a local-scope reference in after the
+    // remap, fail loudly instead of shipping a manifest no installer
+    // can resolve. `@ai-built/...` only exists on the publisher's
+    // machine — letting it through silently produces "package not
+    // found" errors at install time, which is the harder failure mode
+    // to debug.
+    assertNoLocalScopes(sharedWorkspace);
     const layout = sharedWorkspace.layout || [];
 
     // 3. Build the dashboard config — walk main + pages + sidebar
