@@ -1,14 +1,32 @@
 import { useState, useEffect } from "react";
+import { FontAwesomeIcon, Sidebar, SubHeading3 } from "@trops/dash-react";
+import { forEachWidget } from "../../../../../utils/providerResolution";
 import {
-  FontAwesomeIcon,
-  Sidebar,
-  SubHeading3,
-  deepCopy,
-} from "@trops/dash-react";
-import { replaceItemInLayout } from "../../../../../utils/layout";
+  formatEventString,
+  parseEventString,
+  applyWiringChanges,
+} from "../../../../../utils/listenerResolution";
 import deepEqual from "deep-equal";
 import { SectionLayout } from "../../../../Settings/SectionLayout";
 
+/**
+ * PanelEditItemHandlers
+ *
+ * Per-widget listener editor (opens from a widget's overflow menu).
+ * Lets the user wire one widget's event handlers to events emitted by
+ * other widgets in the same workspace.
+ *
+ * Two earlier bugs lived here:
+ *   1. The right-hand source list double-counted widgets because
+ *      `pages[0].layout === workspace.layout` (shared reference set
+ *      by WorkspaceModel when no explicit pages exist). The fix is
+ *      `forEachWidget` — same canonical dedup the dashboard-config
+ *      Listeners tab uses.
+ *   2. Saves silently failed when the receiver widget lived in a page
+ *      or the sidebar — `getLayoutItemById` only searched
+ *      `workspace.layout`. The fix is `applyWiringChanges`, which
+ *      walks every layout location.
+ */
 export const PanelEditItemHandlers = ({ workspace, onUpdate, item = null }) => {
   const [itemSelected, setItemSelected] = useState(item);
   const [workspaceSelected, setWorkspaceSelected] = useState(workspace);
@@ -25,109 +43,101 @@ export const PanelEditItemHandlers = ({ workspace, onUpdate, item = null }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace, item]);
 
-  function handleSelectEvent(eventString) {
-    try {
-      if (eventString && eventHandlerSelected !== null) {
-        let tempEvents = [];
-        let currentListeners = deepCopy(itemSelected["listeners"] || {});
-
-        if (eventHandlerSelected in currentListeners) {
-          tempEvents = currentListeners[eventHandlerSelected];
-        }
-
-        tempEvents.push(eventString);
-        const uniqueEventsSelected = tempEvents.filter(
-          (value, index, array) => array.indexOf(value) === index,
-        );
-
-        currentListeners[eventHandlerSelected] = uniqueEventsSelected;
-        handleSaveChanges(currentListeners);
+  // Build the deduped list of source widgets — every widget in the
+  // workspace that emits at least one event AND isn't the receiver
+  // itself. forEachWidget dedupes by `${component}|${id}` so a widget
+  // referenced from multiple locations (root layout AND pages) shows
+  // up once.
+  const sourceWidgets = (() => {
+    const list = [];
+    const seen = new Set();
+    forEachWidget(workspaceSelected, (li) => {
+      if (!li || !li.component) return;
+      if (li.component === "Container" || li.component === "LayoutContainer") {
+        return;
       }
-    } catch (e) {
-      // select event failed
-    }
-  }
-
-  function handleRemoveEvent(eventString) {
-    try {
-      if (eventHandlerSelected) {
-        let currentListeners = deepCopy(itemSelected["listeners"] || {});
-
-        const eventsSelectedTemp =
-          eventHandlerSelected in currentListeners
-            ? currentListeners[eventHandlerSelected].filter(
-                (event) => event !== eventString,
-              )
-            : [];
-
-        if (eventsSelectedTemp.length > 0) {
-          if (eventHandlerSelected in currentListeners) {
-            currentListeners[eventHandlerSelected] = eventsSelectedTemp;
-          }
-        } else {
-          delete currentListeners[eventHandlerSelected];
-        }
-
-        handleSaveChanges(currentListeners);
+      if (
+        li.id === itemSelected?.id &&
+        li.component === itemSelected?.component
+      ) {
+        return;
       }
-    } catch (e) {
-      // remove event failed
-    }
-  }
+      if (!Array.isArray(li.events) || li.events.length === 0) return;
+      const key = `${li.component}|${li.id}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      list.push(li);
+    });
+    return list;
+  })();
 
   function handleSelectEventHandler(handler) {
     setEventHandlerSelected(() => handler);
   }
 
-  function getLayoutItemById(id) {
-    if (workspaceSelected !== null && Array.isArray(workspaceSelected.layout)) {
-      const layoutItems = workspaceSelected.layout.filter((layoutItem) => {
-        return layoutItem["id"] === parseInt(id, 10);
-      });
-      if (layoutItems.length > 0) {
-        return layoutItems[0];
+  function commitChange({ adds = [], removes = [] }) {
+    if (!workspaceSelected || !itemSelected) return;
+    if (adds.length === 0 && removes.length === 0) return;
+    const nextWorkspace = applyWiringChanges(workspaceSelected, {
+      adds,
+      removes,
+    });
+    // Find the post-change receiver item so the parent's onUpdate
+    // gets the updated layout-item shape (some callers cache it).
+    let nextItem = itemSelected;
+    forEachWidget(nextWorkspace, (li) => {
+      if (
+        li?.id === itemSelected.id &&
+        li.component === itemSelected.component
+      ) {
+        nextItem = li;
       }
-    }
-    return null;
+    });
+    setWorkspaceSelected(nextWorkspace);
+    setItemSelected(nextItem);
+    onUpdate(nextItem, nextWorkspace);
   }
 
-  function handleSaveChanges(currentListeners = {}) {
-    try {
-      if (
-        workspaceSelected !== null &&
-        eventHandlerSelected !== null &&
-        "id" in itemSelected &&
-        itemSelected["id"] !== null
-      ) {
-        const tempWorkspace = deepCopy(workspaceSelected);
-        const layoutItem = getLayoutItemById(itemSelected["id"]);
+  function handleSelectEvent(eventString) {
+    if (!eventString || !eventHandlerSelected) return;
+    const parsed = parseEventString(eventString);
+    if (!parsed) return;
+    commitChange({
+      adds: [
+        {
+          receiverItemId: itemSelected.id,
+          handlerName: eventHandlerSelected,
+          sourceComponent: parsed.component,
+          sourceItemId: parsed.itemId,
+          eventName: parsed.event,
+        },
+      ],
+    });
+  }
 
-        layoutItem["listeners"] = currentListeners;
-        tempWorkspace["layout"] = replaceItemInLayout(
-          tempWorkspace.layout,
-          layoutItem["id"],
-          layoutItem,
-        );
-        onUpdate(layoutItem, tempWorkspace);
-      }
-    } catch (e) {
-      // save changes failed
-    }
+  function handleRemoveEvent(eventString) {
+    if (!eventString || !eventHandlerSelected) return;
+    const parsed = parseEventString(eventString);
+    if (!parsed) return;
+    commitChange({
+      removes: [
+        {
+          receiverItemId: itemSelected.id,
+          handlerName: eventHandlerSelected,
+          sourceComponent: parsed.component,
+          sourceItemId: parsed.itemId,
+          eventName: parsed.event,
+          raw: eventString,
+        },
+      ],
+    });
   }
 
   function isSelectedEvent(event) {
-    try {
-      if (event && eventHandlerSelected) {
-        const itemListeners = itemSelected?.["listeners"] || {};
-        if (eventHandlerSelected in itemListeners) {
-          return itemListeners[eventHandlerSelected].includes(event);
-        }
-        return false;
-      }
-      return false;
-    } catch (e) {
-      return false;
-    }
+    if (!event || !eventHandlerSelected) return false;
+    const itemListeners = itemSelected?.["listeners"] || {};
+    const list = itemListeners[eventHandlerSelected];
+    return Array.isArray(list) && list.includes(event);
   }
 
   // Get the event handlers for the current item
@@ -137,37 +147,15 @@ export const PanelEditItemHandlers = ({ workspace, onUpdate, item = null }) => {
       )
     : [];
 
-  // Get available source widgets from ALL pages + sidebar + root layout
-  function getAllWidgetLayouts(ws) {
-    if (!ws) return [];
-    const all = [...(Array.isArray(ws.layout) ? ws.layout : [])];
-    if (ws.pages?.length > 0) {
-      ws.pages.forEach((page) => {
-        if (Array.isArray(page.layout)) all.push(...page.layout);
-      });
-    }
-    if (Array.isArray(ws.sidebarLayout) && ws.sidebarLayout.length > 0) {
-      all.push(...ws.sidebarLayout);
-    }
-    return all;
-  }
-  const layoutArray = getAllWidgetLayouts(workspaceSelected);
-  const sourceWidgets = layoutArray
-    .filter(
-      (l) =>
-        l["component"] !== "Container" && l["component"] !== "LayoutContainer",
-    )
-    .filter((e) => Array.isArray(e.events) && e.events.length > 0)
-    .filter((li) => li["component"] !== itemSelected?.["component"]);
-
-  // Build a set of valid event strings from widgets currently in the layout
+  // Build a set of valid event strings so we only count "connected"
+  // listeners that still point at a live emitter. Stale references
+  // are dropped from the count even before pruneDeadListenerReferences
+  // runs on the next save.
   const validEventStrings = new Set();
-  sourceWidgets.forEach((layout) => {
-    if (Array.isArray(layout.events)) {
-      layout.events.forEach((event) => {
-        validEventStrings.add(
-          `${layout["component"]}[${layout["id"]}].${event}`,
-        );
+  sourceWidgets.forEach((li) => {
+    if (Array.isArray(li.events)) {
+      li.events.forEach((event) => {
+        validEventStrings.add(formatEventString(li.component, li.id, event));
       });
     }
   });
@@ -185,7 +173,6 @@ export const PanelEditItemHandlers = ({ workspace, onUpdate, item = null }) => {
     }
   });
 
-  // Count connected events for a handler
   function getConnectedCount(handler) {
     return (listeners[handler] || []).length;
   }
@@ -237,14 +224,21 @@ export const PanelEditItemHandlers = ({ workspace, onUpdate, item = null }) => {
         </div>
 
         {sourceWidgets.map((layout) => (
-          <div key={layout["id"]} className="flex flex-col space-y-2">
+          <div
+            key={`${layout.component}|${layout.id}`}
+            className="flex flex-col space-y-2"
+          >
             <span className="text-xs font-semibold opacity-40 uppercase tracking-wider">
               {layout["component"]} [{layout["id"]}]
             </span>
             {layout.events
               .filter((value, index, array) => array.indexOf(value) === index)
               .map((event) => {
-                const eventString = `${layout["component"]}[${layout["id"]}].${event}`;
+                const eventString = formatEventString(
+                  layout.component,
+                  layout.id,
+                  event,
+                );
                 const selected = isSelectedEvent(eventString);
 
                 return (
