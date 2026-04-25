@@ -52,6 +52,7 @@ import {
 } from "../../utils/providerResolution";
 import { applyWiringChanges } from "../../utils/listenerResolution";
 import { reconcileWorkspaceAfterLayoutChange } from "../../utils/workspaceReconciliation";
+import { applyBulkUserPrefs } from "../../utils/applyBulkUserPrefs";
 import { moveWidgetAcrossContainers } from "../../utils/layout";
 import { ComponentManager } from "../../ComponentManager";
 
@@ -908,28 +909,12 @@ const DashboardStageInner = ({
     if (!Array.isArray(changes) || changes.length === 0) return;
     if (!workspaceSelected || !dashApi || !credentials?.appId) return;
 
-    // Group changes by widgetId so we can patch each item once.
-    const byWidget = new Map();
-    for (const { widgetId, key, value } of changes) {
-      if (!widgetId || !key) continue;
-      if (!byWidget.has(widgetId)) byWidget.set(widgetId, {});
-      byWidget.get(widgetId)[key] = value;
-    }
-
-    // Deep-clone the workspace, then walk every item and patch
-    // userPrefs in place when its uuidString/uuid/id is in byWidget.
-    // Uses forEachWidget's walk under the hood by visiting each item
-    // in the cloned containers.
-    const updatedWorkspace = JSON.parse(JSON.stringify(workspaceSelected));
-    const patchItem = (item) => {
-      if (!item || !item.component) return;
-      const id = item.uuidString || item.uuid || item.id;
-      if (!id || !byWidget.has(id)) return;
-      const patch = byWidget.get(id);
-      item.userPrefs = { ...(item.userPrefs || {}), ...patch };
-    };
-    forEachWidget(updatedWorkspace, patchItem);
-
+    // Pure utility — given the staged change set, returns a new
+    // workspace with userPrefs patched on each matching widget.
+    // Identity matches `WidgetsTab.widgets[].id` (uuidString → uuid
+    // → id) AND tolerates string/number id mismatches that can sneak
+    // in through React state serialization.
+    const updatedWorkspace = applyBulkUserPrefs(workspaceSelected, changes);
     const reconciled = reconcileWorkspaceAfterLayoutChange(updatedWorkspace);
     updateTabWorkspace(reconciled);
 

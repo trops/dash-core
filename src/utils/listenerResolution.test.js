@@ -305,6 +305,66 @@ describe("applyWiringChanges — adds/removes round-trip", () => {
     // Empty handler array → the key is dropped entirely.
     expect(recv.listeners.prospectSelected).toBeUndefined();
   });
+
+  test("aliased workspace.layout === pages[0].layout still patches every reference", () => {
+    // Same shape applyBulkUserPrefs has to handle — WorkspaceModel
+    // sets `page.layout = workspace.layout` when no pages are
+    // explicitly defined, so the same item appears in BOTH locations.
+    // applyWiringChanges must produce a workspace where both
+    // locations carry the new listener, otherwise renders that read
+    // from page.layout (the typical path post-WorkspaceModel
+    // migration) see stale data.
+    const sharedItem = {
+      id: 2,
+      component: "Workspace",
+      eventHandlers: ["prospectSelected"],
+      listeners: {},
+    };
+    const ws = {
+      layout: [
+        {
+          id: 1,
+          component: "Kanban",
+          uuidString: "k-1",
+          events: ["prospectSelected"],
+        },
+        sharedItem,
+      ],
+      pages: [
+        {
+          id: "p1",
+          layout: [
+            {
+              id: 1,
+              component: "Kanban",
+              uuidString: "k-1",
+              events: ["prospectSelected"],
+            },
+            sharedItem,
+          ],
+        },
+      ],
+    };
+    const next = applyWiringChanges(ws, {
+      adds: [
+        {
+          receiverItemId: 2,
+          handlerName: "prospectSelected",
+          sourceComponent: "Kanban",
+          sourceItemId: "k-1",
+          eventName: "prospectSelected",
+        },
+      ],
+    });
+    const rootRecv = next.layout.find((i) => i.id === 2);
+    const pageRecv = next.pages[0].layout.find((i) => i.id === 2);
+    expect(rootRecv.listeners.prospectSelected).toEqual([
+      "Kanban[k-1].prospectSelected",
+    ]);
+    expect(pageRecv.listeners.prospectSelected).toEqual([
+      "Kanban[k-1].prospectSelected",
+    ]);
+  });
 });
 
 describe("event string format round-trip", () => {
