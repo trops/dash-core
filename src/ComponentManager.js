@@ -1,7 +1,57 @@
 import { deepCopy } from "@trops/dash-react";
 import { ComponentConfigModel } from "./Models";
+import { makeScopedComponentId } from "./utils/scopedComponentId";
 
 let _componentMap = {};
+
+/**
+ * Resolve the registry key for a component lookup. Returns null if no
+ * match exists.
+ *
+ * Lookup order (the LAYOUT ITEM is the source of truth):
+ *   1. EXACT match on `component` — covers the new scoped form
+ *      (`scope.package.X`) and any legacy `.dash.js` that already set
+ *      `config.id` to a scoped value.
+ *   2. If `component` is bare (no dots) AND we have a packageId hint
+ *      on the layout item, build the scoped id and try that.
+ *   3. Bare-name fallback: scan the map for any key ending in
+ *      `.${component}`. If exactly one matches, use it. If multiple
+ *      match (the collision case), prefer the one matching the layout
+ *      item's `packageId` / `_sourcePackage`; otherwise fall through
+ *      to the first match (deterministic, but also logs a warning so
+ *      callers can spot the ambiguity).
+ *
+ * Step (3) is the back-compat path for layouts authored before scoped
+ * registration landed. New layouts ALWAYS resolve via step (1) — the
+ * `component` field is already scoped.
+ */
+function resolveComponentKey(componentMap, component, data) {
+  if (!component) return null;
+  if (component in componentMap) return component;
+  if (typeof component !== "string") return null;
+  if (component.includes(".")) return null;
+
+  const packageId =
+    data?.packageId || data?._sourcePackage || data?.packageName || null;
+  if (packageId) {
+    const scoped = makeScopedComponentId(packageId, component);
+    if (scoped in componentMap) return scoped;
+  }
+
+  const suffix = `.${component}`;
+  const matches = Object.keys(componentMap).filter((k) => k.endsWith(suffix));
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return matches[0];
+
+  if (packageId) {
+    const target = makeScopedComponentId(packageId, component);
+    if (matches.includes(target)) return target;
+  }
+  console.warn(
+    `[ComponentManager] Multiple registered widgets share the bare name "${component}": ${matches.join(", ")}. Resolving to "${matches[0]}". Add an explicit packageId on the layout item to disambiguate.`,
+  );
+  return matches[0];
+}
 let _containerComponent = null;
 let _gridContainerComponent = null;
 
@@ -116,11 +166,13 @@ export const ComponentManager = {
       if (component && this.componentMap()) {
         if (ComponentManager.isLayoutContainer(component) === false) {
           const m = this.componentMap();
-          // Try exact match first (works for both scoped ids and legacy names)
-          let cmp = component in m ? m[component] : null;
+          // Resolve through the scoped/bare lookup pipeline so layouts
+          // authored under either format land at the same registry key.
+          const resolvedKey = resolveComponentKey(m, component, data);
+          let cmp = resolvedKey ? m[resolvedKey] : null;
 
-          if (cmp !== null) {
-            cmp["componentName"] = component;
+          if (cmp !== null && cmp !== undefined) {
+            cmp["componentName"] = resolvedKey;
             return cmp;
           }
         } else {
@@ -305,17 +357,20 @@ export const ComponentManager = {
 
         // get the component configuration from the map
         const components = this.map();
-        if (component in components) {
+        const resolvedKey = resolveComponentKey(components, component, data);
+        if (resolvedKey && resolvedKey in components) {
           // let c = deepCopy(components['component']);
 
           // we have to make sure that we remove the component if this is a context
 
-          const tempComponent = components[component];
+          const tempComponent = components[resolvedKey];
           delete tempComponent["component"];
           let c = JSON.parse(JSON.stringify(tempComponent));
 
-          // tack on the component name
-          c["component"] = component;
+          // Carry the canonical scoped id forward so callers (LayoutModel,
+          // ComponentManager.getComponent) can rewrite layout items'
+          // `component` to the scoped form on first load.
+          c["component"] = resolvedKey;
 
           // if no userConfig key. let's add it for the next step
           if ("userConfig" in c === false) {
