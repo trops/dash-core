@@ -33,14 +33,17 @@ export const NotificationsSection = ({ workspaces = [] }) => {
     });
   }, []);
 
-  // Collect all widget instances with notifications from workspaces
+  // Collect all widget instances with notifications from workspaces.
+  // Route through `ComponentManager.resolve` so a legacy layout
+  // referencing a bare component name still finds its registered
+  // scoped form (post-v0.1.432). Direct `componentMap[item.component]`
+  // returns undefined for bare names after the migration.
   const widgetInstances = [];
-  const componentMap = ComponentManager.componentMap() || {};
 
   workspaces.forEach((ws) => {
     const items = flattenLayout(ws.layout);
     items.forEach((item) => {
-      const config = componentMap[item.component];
+      const config = ComponentManager.resolve(item.component, item);
       if (config?.notifications?.length > 0) {
         widgetInstances.push({
           uuid: item.uuid || item.uuidString,
