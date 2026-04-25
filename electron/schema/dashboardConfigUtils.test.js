@@ -6,6 +6,7 @@ const {
   collectComponentNamesFromWorkspace,
   buildWidgetDependencies,
   remapLayoutPackageScopes,
+  assertNoLocalScopes,
 } = require("./dashboardConfigUtils");
 
 // In-memory stand-in for the electron widget registry. Real
@@ -431,5 +432,181 @@ describe("remapLayoutPackageScopes — publish-time scope remap", () => {
     };
     const out = remapLayoutPackageScopes(workspace, "alice");
     assert.equal(out.layout[0].component, "trops.chat.ChatAnthropicWidget");
+  });
+});
+
+/**
+ * Defense-in-depth tests for the publish-time guard. The `remap`
+ * function silently no-ops when no callerScope is available — this
+ * guard catches that and any other code path that might leave an
+ * `@ai-built/...` reference in the workspace before it ships to the
+ * registry.
+ */
+describe("assertNoLocalScopes — publish-time guard", () => {
+  it("passes silently for a clean trops-scoped workspace", () => {
+    const workspace = {
+      layout: [
+        {
+          id: 1,
+          packageId: "@trops/pipeline",
+          component: "trops.pipeline.PipelineKanban",
+        },
+      ],
+    };
+    assert.doesNotThrow(() => assertNoLocalScopes(workspace));
+  });
+
+  it("passes when input is null/undefined/empty", () => {
+    assert.doesNotThrow(() => assertNoLocalScopes(null));
+    assert.doesNotThrow(() => assertNoLocalScopes(undefined));
+    assert.doesNotThrow(() => assertNoLocalScopes({}));
+    assert.doesNotThrow(() => assertNoLocalScopes({ layout: [] }));
+  });
+
+  it("throws when packageId still references @ai-built/ after remap-noop", () => {
+    // Production failure mode: remap was called with empty callerScope
+    // and silently returned the workspace untouched. Guard must catch.
+    const workspace = {
+      layout: [
+        {
+          id: 1,
+          packageId: "@ai-built/pipeline",
+          component: "PipelineKanban",
+        },
+      ],
+    };
+    assert.throws(
+      () => assertNoLocalScopes(workspace),
+      /Refusing to publish.*ai-built.*packageId.*@ai-built\/pipeline/s,
+    );
+  });
+
+  it("throws when scoped component still references ai-built.*", () => {
+    const workspace = {
+      layout: [
+        {
+          id: 1,
+          component: "ai-built.pipeline.PipelineKanban",
+        },
+      ],
+    };
+    assert.throws(
+      () => assertNoLocalScopes(workspace),
+      /Refusing to publish.*ai-built\.pipeline\.PipelineKanban/s,
+    );
+  });
+
+  it("throws when _sourcePackage still references @ai-built/", () => {
+    const workspace = {
+      layout: [
+        {
+          id: 1,
+          _sourcePackage: "@ai-built/pipeline",
+          component: "trops.pipeline.PipelineKanban",
+        },
+      ],
+    };
+    assert.throws(
+      () => assertNoLocalScopes(workspace),
+      /Refusing to publish.*_sourcePackage.*@ai-built\/pipeline/s,
+    );
+  });
+
+  it("walks pages[].layout and reports nested violations", () => {
+    const workspace = {
+      layout: [],
+      pages: [
+        {
+          name: "p1",
+          layout: [
+            {
+              id: 1,
+              items: [
+                {
+                  id: 2,
+                  packageId: "@ai-built/pipeline",
+                  component: "PipelineKanban",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    assert.throws(
+      () => assertNoLocalScopes(workspace),
+      /pages\[0\]\.layout\[0\][^\n]*items\[0\][^\n]*@ai-built\/pipeline/s,
+    );
+  });
+
+  it("walks sidebarLayout and reports violations", () => {
+    const workspace = {
+      sidebarLayout: [
+        {
+          id: 1,
+          component: "ai-built.pipeline.SidebarWidget",
+        },
+      ],
+    };
+    assert.throws(
+      () => assertNoLocalScopes(workspace),
+      /sidebarLayout\[0\].*ai-built\.pipeline\.SidebarWidget/s,
+    );
+  });
+
+  it("collects multiple violations and caps at 10 in the error message", () => {
+    const layout = [];
+    for (let i = 0; i < 15; i += 1) {
+      layout.push({
+        id: i,
+        packageId: "@ai-built/pipeline",
+        component: "X",
+      });
+    }
+    assert.throws(
+      () => assertNoLocalScopes({ layout }),
+      /15 layout item.*and 5 more/s,
+    );
+  });
+
+  it("respects custom localOnlyScopes — flags @sandbox/ but not @ai-built/", () => {
+    const workspace = {
+      layout: [
+        { id: 1, packageId: "@ai-built/pipeline" },
+        { id: 2, packageId: "@sandbox/foo" },
+      ],
+    };
+    // Custom guard: only @sandbox is local. The @ai-built entry must
+    // pass through; only @sandbox should fail.
+    assert.throws(
+      () => assertNoLocalScopes(workspace, ["sandbox"]),
+      /sandbox.*@sandbox\/foo/s,
+    );
+  });
+
+  it("ignores unscoped/short/non-string component fields without throwing", () => {
+    const workspace = {
+      layout: [
+        { id: 1, component: "PipelineKanban" }, // bare, no scope segment
+        { id: 2, component: "" },
+        { id: 3, component: null },
+        { id: 4 }, // no component at all
+      ],
+    };
+    assert.doesNotThrow(() => assertNoLocalScopes(workspace));
+  });
+
+  it("integrates with remapLayoutPackageScopes — clean post-remap workspace passes", () => {
+    const workspace = {
+      layout: [
+        {
+          id: 1,
+          packageId: "@ai-built/pipeline",
+          component: "ai-built.pipeline.PipelineKanban",
+        },
+      ],
+    };
+    const remapped = remapLayoutPackageScopes(workspace, "trops");
+    assert.doesNotThrow(() => assertNoLocalScopes(remapped));
   });
 });
