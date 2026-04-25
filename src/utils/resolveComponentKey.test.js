@@ -1,94 +1,50 @@
 /**
  * resolveComponentKey.test.js
  *
- * Pure-function tests for the registry lookup fallback chain.
- *
- * The renderer's lookup pipeline ALWAYS has to find a registered
- * widget when:
- *   - layout has the canonical scoped form (`scope.package.X`)
- *   - layout has a legacy bare name and the registry has only the
- *     scoped form (post-v0.1.432 migration)
- *   - layout has a legacy bare name and the registry has BOTH scoped
- *     forms — packageId hint disambiguates
- * If any of these fail the entire dashboard renders WidgetNotFound.
- *
- * Lives in utils/ (not next to ComponentManager) so we can test it
- * without dragging in Models → LayoutModel → utils/layout →
- * Components/Layout/... and the React/clsx/headlessui chain that
- * ComponentManager pulls.
+ * Pins the strict exact-match contract. Pre-v0.1.435 this function
+ * had a suffix-scan + packageId-hint fallback chain; that turned out
+ * to silently resolve the wrong widget when bundles changed or
+ * layouts referenced unregistered widgets. Post-v0.1.435 the only
+ * legitimate input is a fully scoped id; legacy bare names are
+ * migrated by `LayoutModel` (via `migrateBareComponentName`) before
+ * they ever reach the resolver.
  */
 
 import { resolveComponentKey } from "./resolveComponentKey";
 
-describe("resolveComponentKey", () => {
-  test("exact scoped match wins", () => {
+describe("resolveComponentKey — strict exact match", () => {
+  test("scoped id present in registry → returns the same key", () => {
     const map = {
-      "ai-built.pipeline.PipelineKanban": { type: "widget" },
+      "trops.pipeline.PipelineKanban": { type: "widget" },
     };
-    expect(resolveComponentKey(map, "ai-built.pipeline.PipelineKanban")).toBe(
-      "ai-built.pipeline.PipelineKanban",
+    expect(resolveComponentKey(map, "trops.pipeline.PipelineKanban")).toBe(
+      "trops.pipeline.PipelineKanban",
     );
   });
 
-  test("bare name resolves to a single registered scoped key (legacy layouts)", () => {
-    // This is the production failure mode the v0.1.432 migration
-    // introduced: layout still says `component: "ProspectWorkspace"`
-    // but the registry only has the scoped form.
+  test("scoped id NOT in registry → returns null (no scan)", () => {
+    // The previous behavior would have suffix-scanned and silently
+    // resolved this to any registered key ending in `.X`. Now it
+    // returns null — the renderer shows WidgetNotFound rather than
+    // mounting the wrong React component.
     const map = {
-      "ai-built.pipeline.ProspectWorkspace": { type: "widget" },
+      "trops.pipeline.PipelineKanban": { type: "widget" },
+      "trops.pipeline.ProspectListColumn": { type: "widget" },
     };
-    expect(resolveComponentKey(map, "ProspectWorkspace")).toBe(
-      "ai-built.pipeline.ProspectWorkspace",
-    );
+    expect(resolveComponentKey(map, "PipelineKanban")).toBe(null);
+    expect(resolveComponentKey(map, "ProspectListColumn")).toBe(null);
   });
 
-  test("bare name with multiple matches uses packageId hint to disambiguate", () => {
-    const map = {
-      "ai-built.pipeline.ProspectListColumn": { type: "widget" },
-      "ai-built.prospectlistcolumn.ProspectListColumn": { type: "widget" },
-    };
-    expect(
-      resolveComponentKey(map, "ProspectListColumn", {
-        packageId: "@ai-built/pipeline",
-      }),
-    ).toBe("ai-built.pipeline.ProspectListColumn");
-    expect(
-      resolveComponentKey(map, "ProspectListColumn", {
-        packageId: "@ai-built/prospectlistcolumn",
-      }),
-    ).toBe("ai-built.prospectlistcolumn.ProspectListColumn");
-  });
-
-  test("bare name with multiple matches uses _sourcePackage as a hint", () => {
-    const map = {
-      "ai-built.pipeline.ProspectListColumn": { type: "widget" },
-      "ai-built.prospectlistcolumn.ProspectListColumn": { type: "widget" },
-    };
-    // Some legacy items carry _sourcePackage instead of packageId
-    // — the resolver checks both.
-    expect(
-      resolveComponentKey(map, "ProspectListColumn", {
-        _sourcePackage: "@ai-built/pipeline",
-      }),
-    ).toBe("ai-built.pipeline.ProspectListColumn");
-  });
-
-  test("bare name with multiple matches and no hint falls back to first match + warns", () => {
-    const map = {
-      "ai-built.pipeline.ProspectListColumn": { type: "widget" },
-      "ai-built.prospectlistcolumn.ProspectListColumn": { type: "widget" },
-    };
-    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
-    const got = resolveComponentKey(map, "ProspectListColumn");
-    // Either match is acceptable as long as the warning fires —
-    // both are valid registrations, just ambiguous without a hint.
-    expect(got).toBeTruthy();
-    expect(warn).toHaveBeenCalled();
-    warn.mockRestore();
+  test("bare name with single match → returns null (no fallback)", () => {
+    // Even a SINGLE-match bare name does not fallback. Legacy
+    // bare names must be migrated upstream by LayoutModel; if
+    // they survive to the resolver, something else is wrong.
+    const map = { "trops.pipeline.PipelineKanban": { type: "widget" } };
+    expect(resolveComponentKey(map, "PipelineKanban")).toBe(null);
   });
 
   test("missing widget returns null", () => {
-    const map = { "ai-built.pipeline.PipelineKanban": { type: "widget" } };
+    const map = { "trops.pipeline.PipelineKanban": { type: "widget" } };
     expect(resolveComponentKey(map, "NonExistent")).toBe(null);
   });
 
@@ -98,28 +54,37 @@ describe("resolveComponentKey", () => {
     expect(resolveComponentKey({}, undefined)).toBe(null);
   });
 
-  test("scoped lookup takes precedence over bare-suffix scan", () => {
-    // If a layout already carries the scoped form, never scan —
-    // an exact scoped match wins regardless of how many other
-    // packages share the trailing component name.
-    const map = {
-      "ai-built.pipeline.ProspectListColumn": { type: "widget" },
-      "ai-built.prospectlistcolumn.ProspectListColumn": { type: "widget" },
-    };
-    expect(
-      resolveComponentKey(map, "ai-built.pipeline.ProspectListColumn"),
-    ).toBe("ai-built.pipeline.ProspectListColumn");
+  test("non-string component returns null", () => {
+    expect(resolveComponentKey({}, 42)).toBe(null);
+    expect(resolveComponentKey({}, {})).toBe(null);
+    expect(resolveComponentKey({}, [])).toBe(null);
   });
 
-  test("dotted component name with no exact match returns null (no scan)", () => {
-    // A scoped-form name that doesn't match anything must NOT
-    // fall through to the bare-name suffix scan — that would let
-    // a typo silently resolve to the wrong widget.
+  test("the previous packageId hint is ignored — exact match still required", () => {
+    // Pre-v0.1.435, passing `data.packageId` would let a bare name
+    // resolve via `makeScopedComponentId`. New API takes no `data`.
     const map = {
-      "ai-built.pipeline.ProspectListColumn": { type: "widget" },
+      "trops.pipeline.PipelineKanban": { type: "widget" },
     };
+    // Even if a third arg sneaks in via legacy callers, behavior
+    // must be the same — strict exact match.
+    // eslint-disable-next-line no-extra-args
     expect(
-      resolveComponentKey(map, "ai-built.othrpkg.ProspectListColumn"),
+      resolveComponentKey(map, "PipelineKanban", {
+        packageId: "@trops/pipeline",
+      }),
     ).toBe(null);
+  });
+
+  test("non-canonical input forms (4 parts, leading dots) → null", () => {
+    const map = {
+      "trops.pipeline.PipelineKanban": { type: "widget" },
+    };
+    expect(resolveComponentKey(map, "trops.pipeline.sub.PipelineKanban")).toBe(
+      null,
+    );
+    expect(resolveComponentKey(map, ".trops.pipeline.PipelineKanban")).toBe(
+      null,
+    );
   });
 });

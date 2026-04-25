@@ -36,11 +36,7 @@ jest.mock("../Widget/WidgetNotFound", () => ({
 jest.mock("../Models", () => ({
   DashboardModel: class {},
   LayoutModel: class {},
-  ComponentConfigModel: class {
-    constructor(c) {
-      return c;
-    }
-  },
+  ComponentConfigModel: (c) => c,
 }));
 
 import { isWidgetResolvable } from "./layout";
@@ -48,74 +44,54 @@ import { ComponentManager } from "../ComponentManager";
 
 const stubComponent = () => null;
 
-describe("isWidgetResolvable", () => {
+describe("isWidgetResolvable — strict scoped lookup", () => {
   afterEach(() => ComponentManager.setComponentMap({}));
 
-  test("legacy bare-name layout resolves to its scoped registration", () => {
-    // The exact production failure mode: layout says
-    // "ProspectWorkspace" but registry only has the scoped form.
-    // Pre-fix this returned false → `WidgetNotFound` for every
-    // widget on the dashboard.
+  test("scoped layout id resolves directly", () => {
     ComponentManager.setComponentMap({
-      "ai-built.pipeline.ProspectWorkspace": {
+      "trops.pipeline.PipelineKanban": {
         component: stubComponent,
         type: "widget",
       },
     });
-    expect(isWidgetResolvable("ProspectWorkspace")).toBe(true);
+    expect(isWidgetResolvable("trops.pipeline.PipelineKanban")).toBe(true);
   });
 
-  test("scoped layout resolves directly", () => {
+  test("bare names return false — no fallback (LayoutModel migrates first)", () => {
+    // Pre-v0.1.435 a bare name with a single suffix match resolved
+    // to true. Post-v0.1.435 it returns false; the renderer shows
+    // WidgetNotFound, which is the right signal that the layout
+    // never went through LayoutModel migration (or has an ambiguous
+    // / unregistered widget).
     ComponentManager.setComponentMap({
-      "ai-built.pipeline.ProspectWorkspace": {
+      "trops.pipeline.PipelineKanban": {
         component: stubComponent,
         type: "widget",
       },
     });
-    expect(isWidgetResolvable("ai-built.pipeline.ProspectWorkspace")).toBe(
-      true,
-    );
+    expect(isWidgetResolvable("PipelineKanban")).toBe(false);
   });
 
-  test("unregistered widget returns false", () => {
+  test("unregistered scoped widget returns false", () => {
     ComponentManager.setComponentMap({
-      "ai-built.pipeline.ProspectWorkspace": {
+      "trops.pipeline.PipelineKanban": {
         component: stubComponent,
         type: "widget",
       },
     });
-    expect(isWidgetResolvable("NonExistentWidget")).toBe(false);
+    expect(isWidgetResolvable("trops.pipeline.NonExistent")).toBe(false);
   });
 
   test("registered config without a component function returns false", () => {
-    // A registry entry that's missing its React component (e.g.
-    // a stub left over from a failed dynamic load) must NOT
-    // satisfy the gate — otherwise the renderer tries to mount
-    // `undefined` and throws.
+    // A registry entry that's missing its React component (e.g. a
+    // stub left over from a failed dynamic load) must NOT satisfy
+    // the gate — otherwise the renderer tries to mount `undefined`.
     ComponentManager.setComponentMap({
-      "ai-built.pipeline.Broken": {
+      "trops.pipeline.Broken": {
         type: "widget",
         // no `component` field
       },
     });
-    expect(isWidgetResolvable("Broken")).toBe(false);
-  });
-
-  test("packageId on the layout item disambiguates between two scoped registrations", () => {
-    ComponentManager.setComponentMap({
-      "ai-built.pipeline.ProspectListColumn": {
-        component: stubComponent,
-        type: "widget",
-      },
-      "ai-built.prospectlistcolumn.ProspectListColumn": {
-        component: stubComponent,
-        type: "widget",
-      },
-    });
-    expect(
-      isWidgetResolvable("ProspectListColumn", {
-        packageId: "@ai-built/pipeline",
-      }),
-    ).toBe(true);
+    expect(isWidgetResolvable("trops.pipeline.Broken")).toBe(false);
   });
 });

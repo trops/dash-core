@@ -1,6 +1,7 @@
 import { ComponentManager } from "../ComponentManager";
 import { deepCopy } from "@trops/dash-react";
 import { getNearestParentWorkspace } from "../utils/layout";
+import { migrateBareComponentName } from "../utils/migrateBareComponentName";
 /**
  * The model for all layout components used primarily in the renderLayout method
  * @param {Object} layoutItem an object containing various attributes of the layout item
@@ -81,6 +82,17 @@ export const LayoutModel = (layoutItem, workspaceLayout, dashboardId) => {
       layout.component = obj["componentName"];
     }
 
+    // Legacy bare-name migration. Pre-v0.1.435 layouts stored
+    // `component: "PipelineKanban"`; the registry is now strictly
+    // keyed by `scope.package.Component`. If the layout item still
+    // carries a bare name AND the registry has exactly one matching
+    // scoped key, rewrite to the scoped form. The next save persists
+    // the migration. Idempotent — already-scoped names pass through.
+    layout.component = migrateBareComponentName(
+      ComponentManager.componentMap(),
+      layout.component,
+    );
+
     /**
      * @param {String} direction Layout direction (row|col)
      * @deprecated Use grid layout instead of flexbox direction
@@ -152,7 +164,10 @@ export const LayoutModel = (layoutItem, workspaceLayout, dashboardId) => {
         ? `${dashboardId}-${layout["component"]}-${layout.id}`
         : `${layout["component"]}-${layout.id}`;
 
-    /// widget configuration
+    // Resolve widget configuration — strict scoped lookup. By this
+    // point `layout.component` has already been migrated from any
+    // legacy bare name above, so config() either returns the live
+    // entry or null (renderer shows WidgetNotFound).
     const widgetConfig = ComponentManager.config(layout["component"], obj);
     layout.userPrefs = {};
     layout.widgetConfig = widgetConfig;
@@ -167,20 +182,6 @@ export const LayoutModel = (layoutItem, workspaceLayout, dashboardId) => {
       }
       if (Array.isArray(widgetConfig.eventHandlers)) {
         layout.eventHandlers = widgetConfig.eventHandlers;
-      }
-      // Migrate legacy bare `component` references to the canonical
-      // scoped form (`scope.package.Component`). ComponentManager.config
-      // returns the resolved scoped key on `widgetConfig.component`, so
-      // we just lift it. Idempotent: items already scoped pass through
-      // unchanged because resolveComponentKey returns the input verbatim
-      // when it's already in the map. Persisted on next save — no
-      // separate migration step needed.
-      if (
-        typeof widgetConfig.component === "string" &&
-        widgetConfig.component &&
-        widgetConfig.component !== layout.component
-      ) {
-        layout.component = widgetConfig.component;
       }
     }
 
