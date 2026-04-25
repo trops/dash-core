@@ -1,6 +1,8 @@
 import { deepCopy } from "@trops/dash-react";
 import { LayoutModel } from "./LayoutModel";
 import { pruneDeadListenerReferences } from "../utils/listenerResolution";
+import { migrateScopedIdsInWorkspace } from "../utils/migrateScopedIdsInWorkspace";
+import { ComponentManager } from "../ComponentManager";
 
 /**
  * Default layout for a brand-new workspace: a single 1x1 grid container
@@ -168,13 +170,20 @@ export const WorkspaceModel = (workspaceItem) => {
     "selectedProviders" in obj ? obj["selectedProviders"] : {};
   workspace.themeKey = "themeKey" in obj ? obj["themeKey"] : null;
 
+  // Migrate legacy bare component refs (`PipelineKanban`) and the
+  // listener event strings that reference them (`PipelineKanban[5].evt`)
+  // to the canonical scoped form (`trops.pipeline.PipelineKanban`).
+  // Runs BEFORE pruneDeadListenerReferences — without this, prune
+  // sees bare listener strings vs scoped layout items, treats every
+  // legacy listener as an orphan, and silently deletes the user's
+  // wiring on first load post-v0.1.435.
+  migrateScopedIdsInWorkspace(workspace, ComponentManager.componentMap());
+
   // Strip any listener bindings whose source widget is no longer in
   // the tree. These "orphan" bindings are dead — they don't match any
   // live publisher and never fire — so they're safe to remove at load
-  // time before the renderer wires up subscriptions. Keeps stored
-  // workspaces self-consistent without the user having to do anything.
+  // time before the renderer wires up subscriptions.
   pruneDeadListenerReferences(workspace);
 
   return sanitizeWorkspaceObject(workspace);
-  // return workspace;
 };
