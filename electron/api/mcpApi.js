@@ -14,6 +14,9 @@ const {
   MCP_READ_RESOURCE,
   MCP_SERVER_STATUS,
   MCP_GET_CATALOG,
+  MCP_GET_KNOWN_EXTERNAL,
+  MCP_INSTALL_KNOWN_EXTERNAL_CONFIRM,
+  MCP_INSTALL_KNOWN_EXTERNAL_RESULT,
   MCP_RUN_AUTH,
 } = require("../events");
 
@@ -109,6 +112,45 @@ const mcpApi = {
    * @returns {Promise<{ catalog } | { error, message }>}
    */
   getCatalog: () => ipcRenderer.invoke(MCP_GET_CATALOG),
+
+  /**
+   * getKnownExternalCatalog
+   * Load the curated allow-list of MCP servers known to exist outside the
+   * built-in catalog. The AI Widget Builder reads this to advertise
+   * "you can install <X> via Add Custom MCP" and as the trust boundary
+   * for the `install_known_mcp_server` dash MCP tool — only ids in this
+   * list are installable via that path.
+   *
+   * @returns {Promise<{ success, servers } | { error, message, servers }>}
+   */
+  getKnownExternalCatalog: () => ipcRenderer.invoke(MCP_GET_KNOWN_EXTERNAL),
+
+  /**
+   * onInstallKnownExternalConfirm
+   * Subscribe to install-confirm requests emitted by the dash MCP server
+   * tool `install_known_mcp_server`. The renderer renders a confirmation
+   * modal and replies with { confirmed, credentials } via
+   * sendInstallKnownExternalResult().
+   *
+   * @param {(payload: { id, requestId, server }) => void} callback
+   * @returns {() => void} cleanup
+   */
+  onInstallKnownExternalConfirm: (callback) => {
+    const handler = (_e, data) => callback(data);
+    ipcRenderer.on(MCP_INSTALL_KNOWN_EXTERNAL_CONFIRM, handler);
+    return () =>
+      ipcRenderer.removeListener(MCP_INSTALL_KNOWN_EXTERNAL_CONFIRM, handler);
+  },
+
+  /**
+   * sendInstallKnownExternalResult
+   * Reply to a confirm request with the user's decision + credentials.
+   *
+   * @param {string} requestId
+   * @param {{ confirmed: boolean, credentials?: object, error?: string }} result
+   */
+  sendInstallKnownExternalResult: (requestId, result) =>
+    ipcRenderer.send(MCP_INSTALL_KNOWN_EXTERNAL_RESULT, { requestId, result }),
 
   /**
    * runAuth

@@ -85,6 +85,9 @@ const { registerThemeTools } = require("./mcp/themeTools");
 const { registerProviderTools } = require("./mcp/providerTools");
 const { registerGuideTools } = require("./mcp/guideTools");
 const { registerLayoutTools } = require("./mcp/layoutTools");
+const {
+  registerInstallKnownMcpServerTool,
+} = require("./mcp/installExternalMcpTool");
 const { registerResources } = require("./mcp/resources");
 const { registerPrompts } = require("./mcp/promptRegistration");
 registerDashboardTools();
@@ -93,6 +96,7 @@ registerThemeTools();
 registerProviderTools();
 registerGuideTools();
 registerLayoutTools();
+registerInstallKnownMcpServerTool();
 registerResources();
 registerPrompts();
 
