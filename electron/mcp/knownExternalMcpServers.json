@@ -1,0 +1,557 @@
+{
+  "version": "1.0.0",
+  "_meta": {
+    "purpose": "Curated allow-list of MCP servers that are NOT in the built-in mcpServerCatalog.json but exist in the official Anthropic-maintained MCP servers repo (github.com/modelcontextprotocol/servers). The AI Widget Builder may install entries from this list via the install_known_mcp_server dash MCP tool, gated by a user confirmation modal in the renderer. The id field is the trust boundary — only entries listed here are installable via that path.",
+    "source": "https://github.com/modelcontextprotocol/servers",
+    "policy": "Hand-maintained. To add a server: open a PR adding an entry below, sourced from the official repo's Reference servers or Official integrations sections. Do not add community/random sources at runtime."
+  },
+  "servers": [
+    {
+      "id": "fetch",
+      "name": "Fetch",
+      "description": "Generic HTTP fetch tool — retrieve any URL and convert to text/markdown for the LLM.",
+      "icon": "globe",
+      "tags": ["web", "http", "general"],
+      "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "uvx",
+        "args": ["mcp-server-fetch"],
+        "envMapping": {}
+      },
+      "credentialSchema": {}
+    },
+    {
+      "id": "git",
+      "name": "Git",
+      "description": "Read and search local Git repositories.",
+      "icon": "code-branch",
+      "tags": ["developer", "git", "code"],
+      "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/main/src/git",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "uvx",
+        "args": ["mcp-server-git", "--repository", "{repoPath}"],
+        "envMapping": {},
+        "argsMapping": {
+          "repoPath": { "type": "interpolate", "placeholder": "{repoPath}" }
+        }
+      },
+      "credentialSchema": {
+        "repoPath": {
+          "type": "directory",
+          "displayName": "Repository Path",
+          "required": true,
+          "secret": false,
+          "instructions": "Absolute path to the local Git repository this server should access."
+        }
+      }
+    },
+    {
+      "id": "time",
+      "name": "Time",
+      "description": "Get the current time across timezones — useful for scheduling and reporting widgets.",
+      "icon": "clock",
+      "tags": ["utility", "time", "timezone"],
+      "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/main/src/time",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "uvx",
+        "args": ["mcp-server-time"],
+        "envMapping": {}
+      },
+      "credentialSchema": {}
+    },
+    {
+      "id": "google-maps",
+      "name": "Google Maps",
+      "description": "Geocoding, directions, and place search via the Google Maps Platform.",
+      "icon": "map-location-dot",
+      "tags": ["maps", "geo", "places"],
+      "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/main/src/google-maps",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-google-maps"],
+        "envMapping": {
+          "GOOGLE_MAPS_API_KEY": "apiKey"
+        }
+      },
+      "credentialSchema": {
+        "apiKey": {
+          "type": "text",
+          "displayName": "Google Maps API Key",
+          "required": true,
+          "secret": true,
+          "instructions": "Create at console.cloud.google.com/google/maps-apis. Enable Places API + Geocoding API on the project."
+        }
+      }
+    },
+    {
+      "id": "puppeteer",
+      "name": "Puppeteer",
+      "description": "Headless browser automation — navigate pages, take screenshots, extract content.",
+      "icon": "browser",
+      "tags": ["browser", "automation", "scraping"],
+      "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/main/src/puppeteer",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
+        "envMapping": {}
+      },
+      "credentialSchema": {}
+    },
+    {
+      "id": "sqlite",
+      "name": "SQLite",
+      "description": "Query and manage local SQLite databases.",
+      "icon": "database",
+      "tags": ["database", "sql", "local"],
+      "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/main/src/sqlite",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "uvx",
+        "args": ["mcp-server-sqlite", "--db-path", "{dbPath}"],
+        "envMapping": {},
+        "argsMapping": {
+          "dbPath": { "type": "interpolate", "placeholder": "{dbPath}" }
+        }
+      },
+      "credentialSchema": {
+        "dbPath": {
+          "type": "text",
+          "displayName": "Database File Path",
+          "required": true,
+          "secret": false,
+          "instructions": "Absolute path to a SQLite .db file."
+        }
+      }
+    },
+    {
+      "id": "redis",
+      "name": "Redis",
+      "description": "Read, write, and inspect Redis keys, lists, hashes, and streams.",
+      "icon": "database",
+      "tags": ["database", "cache", "redis"],
+      "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/main/src/redis",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-redis", "{redisUrl}"],
+        "envMapping": {},
+        "argsMapping": {
+          "redisUrl": { "type": "interpolate", "placeholder": "{redisUrl}" }
+        }
+      },
+      "credentialSchema": {
+        "redisUrl": {
+          "type": "text",
+          "displayName": "Redis URL",
+          "required": true,
+          "secret": true,
+          "instructions": "Connection string, e.g. redis://default:password@host:6379"
+        }
+      }
+    },
+    {
+      "id": "sequential-thinking",
+      "name": "Sequential Thinking",
+      "description": "Helper that lets the LLM reason in structured, revisable steps. Useful for widgets that need multi-step planning.",
+      "icon": "brain",
+      "tags": ["utility", "reasoning"],
+      "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+        "envMapping": {}
+      },
+      "credentialSchema": {}
+    },
+    {
+      "id": "everart",
+      "name": "EverArt",
+      "description": "Generate images via EverArt's API.",
+      "icon": "image",
+      "tags": ["image", "generation", "ai"],
+      "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/main/src/everart",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-everart"],
+        "envMapping": {
+          "EVERART_API_KEY": "apiKey"
+        }
+      },
+      "credentialSchema": {
+        "apiKey": {
+          "type": "text",
+          "displayName": "EverArt API Key",
+          "required": true,
+          "secret": true,
+          "instructions": "Sign up at everart.ai and create an API key."
+        }
+      }
+    },
+    {
+      "id": "stripe",
+      "name": "Stripe",
+      "description": "Read customers, payments, subscriptions, and products from your Stripe account.",
+      "icon": "credit-card",
+      "tags": ["payments", "billing", "finance"],
+      "sourceUrl": "https://github.com/stripe/agent-toolkit",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@stripe/mcp", "--tools=all", "--api-key={apiKey}"],
+        "envMapping": {},
+        "argsMapping": {
+          "apiKey": { "type": "interpolate", "placeholder": "{apiKey}" }
+        }
+      },
+      "credentialSchema": {
+        "apiKey": {
+          "type": "text",
+          "displayName": "Stripe Secret Key",
+          "required": true,
+          "secret": true,
+          "instructions": "Use a restricted key with read-only scopes from dashboard.stripe.com/apikeys. Begins with sk_live_ or sk_test_."
+        }
+      }
+    },
+    {
+      "id": "cloudflare",
+      "name": "Cloudflare",
+      "description": "Manage Cloudflare Workers, KV, R2, D1, and other Cloudflare APIs.",
+      "icon": "cloud",
+      "tags": ["infrastructure", "cdn", "edge"],
+      "sourceUrl": "https://github.com/cloudflare/mcp-server-cloudflare",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@cloudflare/mcp-server-cloudflare"],
+        "envMapping": {
+          "CLOUDFLARE_API_TOKEN": "apiToken",
+          "CLOUDFLARE_ACCOUNT_ID": "accountId"
+        }
+      },
+      "credentialSchema": {
+        "apiToken": {
+          "type": "text",
+          "displayName": "API Token",
+          "required": true,
+          "secret": true,
+          "instructions": "Create at dash.cloudflare.com/profile/api-tokens with the scopes you need."
+        },
+        "accountId": {
+          "type": "text",
+          "displayName": "Account ID",
+          "required": true,
+          "secret": false,
+          "instructions": "Find at dash.cloudflare.com under Account → Account ID."
+        }
+      }
+    },
+    {
+      "id": "sentry",
+      "name": "Sentry",
+      "description": "Read errors, issues, and project info from Sentry.",
+      "icon": "circle-exclamation",
+      "tags": ["monitoring", "errors", "observability"],
+      "sourceUrl": "https://github.com/getsentry/sentry-mcp",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@sentry/mcp-server"],
+        "envMapping": {
+          "SENTRY_AUTH_TOKEN": "authToken"
+        }
+      },
+      "credentialSchema": {
+        "authToken": {
+          "type": "text",
+          "displayName": "Auth Token",
+          "required": true,
+          "secret": true,
+          "instructions": "Create a User Auth Token at sentry.io/settings/account/api/auth-tokens."
+        }
+      }
+    },
+    {
+      "id": "supabase",
+      "name": "Supabase",
+      "description": "Query Supabase Postgres tables, run SQL, and manage projects.",
+      "icon": "database",
+      "tags": ["database", "backend", "postgres"],
+      "sourceUrl": "https://github.com/supabase-community/supabase-mcp",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@supabase/mcp-server-supabase@latest", "--access-token={accessToken}"],
+        "envMapping": {},
+        "argsMapping": {
+          "accessToken": { "type": "interpolate", "placeholder": "{accessToken}" }
+        }
+      },
+      "credentialSchema": {
+        "accessToken": {
+          "type": "text",
+          "displayName": "Personal Access Token",
+          "required": true,
+          "secret": true,
+          "instructions": "Create at supabase.com/dashboard/account/tokens."
+        }
+      }
+    },
+    {
+      "id": "atlassian",
+      "name": "Atlassian (Jira + Confluence)",
+      "description": "Read Jira issues + Confluence pages.",
+      "icon": "jira",
+      "tags": ["project-management", "issues", "wiki"],
+      "sourceUrl": "https://github.com/sooperset/mcp-atlassian",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "uvx",
+        "args": ["mcp-atlassian"],
+        "envMapping": {
+          "JIRA_URL": "siteUrl",
+          "JIRA_USERNAME": "username",
+          "JIRA_API_TOKEN": "apiToken"
+        }
+      },
+      "credentialSchema": {
+        "siteUrl": {
+          "type": "text",
+          "displayName": "Site URL",
+          "required": true,
+          "secret": false,
+          "instructions": "e.g. https://your-org.atlassian.net"
+        },
+        "username": {
+          "type": "text",
+          "displayName": "Email / Username",
+          "required": true,
+          "secret": false,
+          "instructions": "Your Atlassian login email."
+        },
+        "apiToken": {
+          "type": "text",
+          "displayName": "API Token",
+          "required": true,
+          "secret": true,
+          "instructions": "Create at id.atlassian.com/manage-profile/security/api-tokens."
+        }
+      }
+    },
+    {
+      "id": "asana",
+      "name": "Asana",
+      "description": "Read tasks, projects, and workspaces from Asana.",
+      "icon": "list-check",
+      "tags": ["project-management", "tasks"],
+      "sourceUrl": "https://github.com/roychri/mcp-server-asana",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@roychri/mcp-server-asana"],
+        "envMapping": {
+          "ASANA_ACCESS_TOKEN": "accessToken"
+        }
+      },
+      "credentialSchema": {
+        "accessToken": {
+          "type": "text",
+          "displayName": "Personal Access Token",
+          "required": true,
+          "secret": true,
+          "instructions": "Create at app.asana.com/0/my-apps."
+        }
+      }
+    },
+    {
+      "id": "trello",
+      "name": "Trello",
+      "description": "Read boards, lists, and cards from Trello.",
+      "icon": "trello",
+      "tags": ["project-management", "kanban"],
+      "sourceUrl": "https://github.com/delorenj/mcp-server-trello",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@delorenj/mcp-server-trello"],
+        "envMapping": {
+          "TRELLO_API_KEY": "apiKey",
+          "TRELLO_TOKEN": "token"
+        }
+      },
+      "credentialSchema": {
+        "apiKey": {
+          "type": "text",
+          "displayName": "API Key",
+          "required": true,
+          "secret": true,
+          "instructions": "Get from trello.com/app-key."
+        },
+        "token": {
+          "type": "text",
+          "displayName": "OAuth Token",
+          "required": true,
+          "secret": true,
+          "instructions": "Generate via the Manual Token link on trello.com/app-key."
+        }
+      }
+    },
+    {
+      "id": "perplexity",
+      "name": "Perplexity",
+      "description": "Search the web with Perplexity's answer-engine API.",
+      "icon": "magnifying-glass",
+      "tags": ["search", "web", "research"],
+      "sourceUrl": "https://github.com/ppl-ai/modelcontextprotocol",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "server-perplexity-ask"],
+        "envMapping": {
+          "PERPLEXITY_API_KEY": "apiKey"
+        }
+      },
+      "credentialSchema": {
+        "apiKey": {
+          "type": "text",
+          "displayName": "API Key",
+          "required": true,
+          "secret": true,
+          "instructions": "Create at perplexity.ai/settings/api."
+        }
+      }
+    },
+    {
+      "id": "tavily",
+      "name": "Tavily",
+      "description": "Web search + extraction tuned for LLM agents.",
+      "icon": "magnifying-glass",
+      "tags": ["search", "web", "research"],
+      "sourceUrl": "https://github.com/tavily-ai/tavily-mcp",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "tavily-mcp@latest"],
+        "envMapping": {
+          "TAVILY_API_KEY": "apiKey"
+        }
+      },
+      "credentialSchema": {
+        "apiKey": {
+          "type": "text",
+          "displayName": "API Key",
+          "required": true,
+          "secret": true,
+          "instructions": "Sign up at tavily.com and create an API key."
+        }
+      }
+    },
+    {
+      "id": "exa",
+      "name": "Exa Search",
+      "description": "Neural web search optimized for LLM agents.",
+      "icon": "magnifying-glass",
+      "tags": ["search", "web", "research"],
+      "sourceUrl": "https://github.com/exa-labs/exa-mcp-server",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "exa-mcp-server"],
+        "envMapping": {
+          "EXA_API_KEY": "apiKey"
+        }
+      },
+      "credentialSchema": {
+        "apiKey": {
+          "type": "text",
+          "displayName": "API Key",
+          "required": true,
+          "secret": true,
+          "instructions": "Get from dashboard.exa.ai."
+        }
+      }
+    },
+    {
+      "id": "firecrawl",
+      "name": "Firecrawl",
+      "description": "Scrape, crawl, and extract structured data from web pages.",
+      "icon": "spider",
+      "tags": ["web", "scraping", "crawl"],
+      "sourceUrl": "https://github.com/mendableai/firecrawl-mcp-server",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "firecrawl-mcp"],
+        "envMapping": {
+          "FIRECRAWL_API_KEY": "apiKey"
+        }
+      },
+      "credentialSchema": {
+        "apiKey": {
+          "type": "text",
+          "displayName": "API Key",
+          "required": true,
+          "secret": true,
+          "instructions": "Get from firecrawl.dev/app/api-keys."
+        }
+      }
+    },
+    {
+      "id": "heroku",
+      "name": "Heroku",
+      "description": "Manage Heroku apps, dynos, and add-ons.",
+      "icon": "cloud",
+      "tags": ["deployment", "cloud", "paas"],
+      "sourceUrl": "https://github.com/heroku/heroku-mcp-server",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@heroku/mcp-server"],
+        "envMapping": {
+          "HEROKU_API_KEY": "apiKey"
+        }
+      },
+      "credentialSchema": {
+        "apiKey": {
+          "type": "text",
+          "displayName": "API Key",
+          "required": true,
+          "secret": true,
+          "instructions": "Get from dashboard.heroku.com/account → API Key."
+        }
+      }
+    },
+    {
+      "id": "neon",
+      "name": "Neon",
+      "description": "Manage Neon serverless Postgres projects + branches.",
+      "icon": "database",
+      "tags": ["database", "postgres", "serverless"],
+      "sourceUrl": "https://github.com/neondatabase/mcp-server-neon",
+      "mcpConfig": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@neondatabase/mcp-server-neon", "start"],
+        "envMapping": {
+          "NEON_API_KEY": "apiKey"
+        }
+      },
+      "credentialSchema": {
+        "apiKey": {
+          "type": "text",
+          "displayName": "API Key",
+          "required": true,
+          "secret": true,
+          "instructions": "Create at console.neon.tech/app/settings/api-keys."
+        }
+      }
+    }
+  ]
+}

@@ -955,6 +955,48 @@ const mcpController = {
   },
 
   /**
+   * getKnownExternalCatalog
+   * Load the curated allow-list of MCP servers known to exist outside the
+   * built-in catalog. Used by the AI Widget Builder to suggest installable
+   * servers and as the trust boundary for `install_known_mcp_server` —
+   * the install tool will reject any id that doesn't appear here.
+   *
+   * @returns {{ success, servers } | { error, message, servers }}
+   */
+  getKnownExternalCatalog: () => {
+    try {
+      const catalogPath = path.join(
+        __dirname,
+        "..",
+        "mcp",
+        "knownExternalMcpServers.json",
+      );
+
+      if (!fs.existsSync(catalogPath)) {
+        return { success: true, servers: [] };
+      }
+
+      const catalogData = fs.readFileSync(catalogPath, "utf8");
+      const catalog = JSON.parse(catalogData);
+
+      return {
+        success: true,
+        servers: catalog.servers || [],
+      };
+    } catch (error) {
+      console.error(
+        "[mcpController] Error loading known-external catalog:",
+        error,
+      );
+      return {
+        error: true,
+        message: error.message,
+        servers: [],
+      };
+    }
+  },
+
+  /**
    * listConnectedServers
    * Returns all connected servers with their cached tool lists.
    * Used by llmController to discover available MCP tools.
