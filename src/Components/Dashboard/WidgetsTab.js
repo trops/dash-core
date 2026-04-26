@@ -4,6 +4,8 @@ import { forEachWidget } from "../../utils/providerResolution";
 import {
   pickWidgetDisplayName,
   pickWidgetRef,
+  belongsToWorkspace,
+  isUserWidget,
 } from "../../utils/widgetIdentity";
 import { PanelEditForm } from "../../Context/Modal/Panel/PanelEditForm";
 
@@ -68,6 +70,13 @@ export const WidgetsTab = ({
     const seen = new Set();
     const result = [];
     const pushFromSection = (section) => (item) => {
+      // Skip framework chrome (LayoutGridContainer / Container) —
+      // the WidgetsTab is for user-configurable widgets only.
+      if (!isUserWidget(item)) return;
+      // Cross-dashboard isolation: skip items whose dashboardId
+      // stamp doesn't match this workspace. Closes the same leak
+      // the Listeners tab already filters against.
+      if (!belongsToWorkspace(item, workspace)) return;
       const id = item.uuidString || item.uuid || item.id;
       if (!id || seen.has(id)) return;
       seen.add(id);

@@ -26,7 +26,12 @@
  */
 
 import { forEachWidget } from "./providerResolution";
-import { pickWidgetDisplayName, pickWidgetRef } from "./widgetIdentity";
+import {
+  pickWidgetDisplayName,
+  pickWidgetRef,
+  belongsToWorkspace,
+  isUserWidget,
+} from "./widgetIdentity";
 
 const EVENT_STRING_RE = /^([^[]+)\[([^\]]+)\]\.(.+)$/;
 
@@ -115,29 +120,9 @@ function eventHandlersOf(item, getWidgetConfig) {
   return [...new Set([...inline, ...fromCfg])];
 }
 
-/**
- * Cross-dashboard isolation gate. Every layout item carries a
- * `dashboardId` stamp from `LayoutModel`; this helper drops items
- * whose stamp doesn't match the surrounding workspace's id. Closes
- * the loophole where a workspace tree somehow ends up holding refs
- * to items from another dashboard (shared array reference, stale
- * cache, etc.) — without this, the dashboard config modal's
- * Listeners / Providers / Widgets tabs surface widgets the user
- * isn't editing and can't actually wire to.
- *
- * Intentionally permissive: when the workspace has no id (synthetic
- * test workspace, in-memory sandbox) OR an item has no dashboardId
- * stamp (legacy pre-LayoutModel data), the item passes through.
- * Strict matching only applies when BOTH have ids — which is the
- * case in production after a full LayoutModel pass.
- */
-function belongsToWorkspace(item, workspace) {
-  const wsId = workspace?.id;
-  if (wsId === undefined || wsId === null) return true;
-  const itemDashId = item?.dashboardId;
-  if (itemDashId === undefined || itemDashId === null) return true;
-  return String(itemDashId) === String(wsId);
-}
+// belongsToWorkspace lives in `widgetIdentity.js` (imported above) so
+// every workspace-walker — Listeners, Providers, Widgets, bulk-edit
+// panes — uses the same cross-dashboard isolation gate.
 
 /**
  * Every widget instance in the workspace that emits at least one event.
@@ -149,6 +134,7 @@ function belongsToWorkspace(item, workspace) {
 export function getEmitters(workspace, getWidgetConfig) {
   const byKey = new Map();
   forEachWidget(workspace, (item) => {
+    if (!isUserWidget(item)) return;
     if (!belongsToWorkspace(item, workspace)) return;
     const events = eventsOf(item, getWidgetConfig);
     if (events.length === 0) return;
@@ -176,6 +162,7 @@ export function getEmitters(workspace, getWidgetConfig) {
 export function getReceivers(workspace, getWidgetConfig) {
   const byKey = new Map();
   forEachWidget(workspace, (item) => {
+    if (!isUserWidget(item)) return;
     if (!belongsToWorkspace(item, workspace)) return;
     const handlers = eventHandlersOf(item, getWidgetConfig);
     if (handlers.length === 0) return;

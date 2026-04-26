@@ -458,15 +458,18 @@ describe("cross-dashboard isolation", () => {
     expect(getEmitters(workspace, cfg)).toHaveLength(1);
   });
 
-  test("legacy items without a dashboardId stamp pass through (back-compat)", () => {
-    // Pre-LayoutModel data may not carry a dashboardId. We still
-    // surface those items so a partially-migrated workspace
-    // doesn't lose its emitters.
+  test("strict mode: items with no dashboardId stamp are filtered when workspace has an id", () => {
+    // Tightened from the v0.1.442 permissive fallback. With strict
+    // mode, ANY item that didn't go through LayoutModel (no
+    // dashboardId stamp) gets dropped from the listener UI when
+    // the workspace itself has an id. Hides foreign items leaked
+    // into a workspace tree, even when LayoutModel didn't run on
+    // them.
     const workspace = {
       id: "dash-B",
-      layout: [{ component: "Kanban", uuidString: "k-legacy" }],
+      layout: [{ component: "Kanban", uuidString: "k-no-stamp" }],
     };
-    expect(getEmitters(workspace, cfg)).toHaveLength(1);
+    expect(getEmitters(workspace, cfg)).toHaveLength(0);
   });
 });
 

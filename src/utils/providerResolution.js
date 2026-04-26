@@ -11,7 +11,12 @@
  * Both places need the same answer, so keep the logic here to avoid drift
  * with the resolution inside `useMcpProvider` / `useWebSocketProvider`.
  */
-import { pickWidgetDisplayName, pickWidgetRef } from "./widgetIdentity";
+import {
+  pickWidgetDisplayName,
+  pickWidgetRef,
+  belongsToWorkspace,
+  isUserWidget,
+} from "./widgetIdentity";
 
 /**
  * Resolve which provider name a given widget instance would bind to for
@@ -148,6 +153,8 @@ export function getUnresolvedProviders({
   const unresolved = [];
 
   forEachWidget(workspace, (item) => {
+    if (!isUserWidget(item)) return;
+    if (!belongsToWorkspace(item, workspace)) return;
     const requirements = getWidgetRequirements(item.component) || [];
     if (!Array.isArray(requirements) || requirements.length === 0) return;
 
@@ -211,6 +218,8 @@ export function getAllProviderBindings({
   const bindings = [];
 
   forEachWidget(workspace, (item) => {
+    if (!isUserWidget(item)) return;
+    if (!belongsToWorkspace(item, workspace)) return;
     const requirements = getWidgetRequirements(item.component) || [];
     if (!Array.isArray(requirements) || requirements.length === 0) return;
 
