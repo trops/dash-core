@@ -107,12 +107,19 @@ export const LayoutModel = (layoutItem, workspaceLayout, dashboardId) => {
     /**
      * @param {Boolean} canHaveChildren if the layout item can have children (if widget - cannot!)
      */
+    // Containers can have children; widgets cannot. Defaults derived
+    // from component name so a pre-v0.1.444 layout item without an
+    // explicit `canHaveChildren` field still classifies correctly.
+    const isContainerComponent =
+      obj.component === "LayoutGridContainer" ||
+      obj.component === "Container" ||
+      obj.component === "LayoutContainer";
     layout.canHaveChildren =
       "canHaveChildren" in obj
         ? obj.canHaveChildren !== undefined
           ? obj.canHaveChildren
-          : obj.type !== "widget"
-        : true;
+          : isContainerComponent
+        : isContainerComponent;
 
     layout.width = "width" in obj ? obj.width : "w-full";
     layout.height = "height" in obj ? obj.height : "h-full";
@@ -120,9 +127,30 @@ export const LayoutModel = (layoutItem, workspaceLayout, dashboardId) => {
 
     /**
      * @param {String} type The type of the component (widget|grid|workspace|layout)
-     * Note: "grid" is the new primary container type, "layout"/"workspace" are deprecated
+     *
+     * Default is "widget" because users only ever ADD widgets via the
+     * sidebar / drag-drop. Framework chrome (LayoutGridContainer,
+     * Container, etc.) is created by the framework itself and ALWAYS
+     * sets `type` explicitly. Defaulting to "widget" means user data
+     * persisted without an explicit type is correctly typed as a widget
+     * by every consumer (widgets list, listener filter, validation).
+     *
+     * Pre-v0.1.444 the default was "layout", which silently mistyped
+     * thousands of widget instances and broke the WidgetsTab list
+     * filter. The bare-component fallback of `obj.type ||
+     * (FRAMEWORK_CONTAINERS.has(obj.component) ? "layout" : "widget")`
+     * is a defensive snap-back: if a framework container was
+     * persisted without a type, force the right one rather than
+     * trust the new default.
      */
-    layout.type = "type" in obj ? obj.type : "layout";
+    layout.type =
+      "type" in obj
+        ? obj.type
+        : obj.component === "LayoutGridContainer"
+          ? "grid"
+          : obj.component === "Container" || obj.component === "LayoutContainer"
+            ? "layout"
+            : "widget";
 
     /**
      * @param {String} workspace The name of the Workspace the component belongs to (can exist in as a child)
