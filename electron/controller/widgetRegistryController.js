@@ -53,6 +53,99 @@ function findWidget(registry, packageId) {
 }
 
 /**
+ * Dedup duplicate `{type: "..."}` entries inside a `providers: [...]`
+ * array literal in a .dash.js source string. Mirrors the regex used at
+ * AI-build write time in dash-electron's WidgetBuilderModal so old
+ * AI-generated widgets get healed before publish (the runtime parse
+ * dedup keeps consumers correct, but the raw .dash.js text on disk
+ * stays dirty unless we rewrite it).
+ *
+ * Conservative: only handles a single-level array of object literals.
+ * More exotic forms fall through unchanged and the runtime dedup picks
+ * up the slack.
+ *
+ * @param {string} source
+ * @returns {{ source: string, dropped: number }}
+ */
+function dedupProvidersInDashSource(source) {
+  if (!source) return { source, dropped: 0 };
+  let totalDropped = 0;
+  const cleaned = source.replace(
+    /(providers\s*:\s*\[)([^[\]]*?)(\])/,
+    (match, head, body, tail) => {
+      const chunks = body
+        .split(/(\{[^{}]*\})/)
+        .filter((s) => s && /\S/.test(s));
+      const seenTypes = new Set();
+      const kept = [];
+      let dropped = 0;
+      for (const chunk of chunks) {
+        if (!chunk.startsWith("{")) continue;
+        const typeMatch = chunk.match(/type\s*:\s*["']([^"']+)["']/);
+        if (!typeMatch) {
+          kept.push(chunk.trim());
+          continue;
+        }
+        const t = typeMatch[1];
+        if (seenTypes.has(t)) {
+          dropped++;
+          continue;
+        }
+        seenTypes.add(t);
+        kept.push(chunk.trim());
+      }
+      if (dropped === 0) return match;
+      totalDropped += dropped;
+      return `${head}${kept.join(", ")}${tail}`;
+    },
+  );
+  return { source: cleaned, dropped: totalDropped };
+}
+
+/**
+ * Walk a widget package's `.dash.js` files and rewrite any with
+ * duplicate provider-type entries. Returns counts so the publish
+ * caller can log what was healed. Errors are non-fatal — a single
+ * unparseable .dash.js shouldn't block the whole publish.
+ */
+function cleanupProvidersInWidgetPackage(widgetPath) {
+  const summary = { filesScanned: 0, filesRewritten: 0, totalDropped: 0 };
+  try {
+    const widgetsDir =
+      findWidgetsDir(widgetPath) || path.join(widgetPath, "widgets");
+    if (!fs.existsSync(widgetsDir)) return summary;
+    for (const file of fs.readdirSync(widgetsDir)) {
+      if (!file.endsWith(".dash.js")) continue;
+      const filePath = path.join(widgetsDir, file);
+      try {
+        const original = fs.readFileSync(filePath, "utf8");
+        summary.filesScanned++;
+        const { source: deduped, dropped } =
+          dedupProvidersInDashSource(original);
+        if (dropped > 0 && deduped !== original) {
+          fs.writeFileSync(filePath, deduped, "utf8");
+          summary.filesRewritten++;
+          summary.totalDropped += dropped;
+          console.log(
+            `[widgetRegistry] Cleaned ${dropped} duplicate provider(s) from ${file}`,
+          );
+        }
+      } catch (err) {
+        console.warn(
+          `[widgetRegistry] cleanupProviders skip ${file}: ${err.message}`,
+        );
+      }
+    }
+  } catch (err) {
+    console.warn(
+      "[widgetRegistry] cleanupProvidersInWidgetPackage failed:",
+      err.message,
+    );
+  }
+  return summary;
+}
+
+/**
  * Scan a widget package directory for `.dash.js` component configs and
  * return the parsed configs. Used when the widget registry's cached
  * `config.widgets` is missing or empty (e.g. for orphaned / locally-
@@ -392,6 +485,21 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
         // Best-effort only — a malformed dash.json will surface later
         // during manifest generation with a clearer error.
       }
+    }
+
+    // 5b. Heal `.dash.js` source files that have duplicate
+    //     provider-type entries before we read configs / build the
+    //     manifest / zip. AI-generated configs occasionally double a
+    //     `{type:"..."}` entry; the runtime dedup makes it invisible
+    //     on the publisher's machine, but we don't want the dirty raw
+    //     text shipping to the registry. Mirrors the write-time dedup
+    //     in dash-electron's WidgetBuilderModal so older widgets
+    //     authored before that fix landed get cleaned at publish.
+    const providerCleanupSummary = cleanupProvidersInWidgetPackage(widget.path);
+    if (providerCleanupSummary.filesRewritten > 0) {
+      console.log(
+        `[widgetRegistry] Provider cleanup: rewrote ${providerCleanupSummary.filesRewritten} file(s), removed ${providerCleanupSummary.totalDropped} duplicate(s)`,
+      );
     }
 
     // 6. Build manifest using the widget's component configs. The

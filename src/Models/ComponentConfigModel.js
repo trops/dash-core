@@ -109,7 +109,27 @@ export const ComponentConfigModel = (obj = {}) => {
   obj.description = "description" in obj ? obj["description"] : null;
   obj.icon = "icon" in obj ? obj["icon"] : null;
   obj.package = "package" in obj ? obj["package"] : null;
-  obj.providers = "providers" in obj ? obj["providers"] : [];
+  // Dedup providers by `type`. AI-built widget configs occasionally
+  // ship `providers: [{type:"x"}, {type:"x"}]` — left alone, every
+  // consumer (Providers tab, publish manifest, listener resolution)
+  // doubles its per-widget rows. The Model is the single canonical
+  // entry point for every widget config that gets registered, so
+  // dedup here protects every downstream caller. Source-side fixes
+  // (write-time + publish-time) keep the .dash.js text on disk
+  // clean; this is the runtime-data backstop.
+  if ("providers" in obj && Array.isArray(obj.providers)) {
+    const seen = new Set();
+    const cleaned = [];
+    for (const p of obj.providers) {
+      if (!p || typeof p !== "object" || !p.type) continue;
+      if (seen.has(p.type)) continue;
+      seen.add(p.type);
+      cleaned.push(p);
+    }
+    obj.providers = cleaned;
+  } else {
+    obj.providers = [];
+  }
 
   /**
    * notifications
