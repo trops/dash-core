@@ -2,6 +2,7 @@ import { deepCopy } from "@trops/dash-react";
 import { LayoutModel } from "./LayoutModel";
 import { pruneDeadListenerReferences } from "../utils/listenerResolution";
 import { migrateScopedIdsInWorkspace } from "../utils/migrateScopedIdsInWorkspace";
+import { cleanForeignWidgetsFromWorkspace } from "../utils/cleanForeignWidgetsFromWorkspace";
 import { ComponentManager } from "../ComponentManager";
 
 /**
@@ -169,6 +170,13 @@ export const WorkspaceModel = (workspaceItem) => {
   workspace.selectedProviders =
     "selectedProviders" in obj ? obj["selectedProviders"] : {};
   workspace.themeKey = "themeKey" in obj ? obj["themeKey"] : null;
+
+  // Cross-dashboard contamination cleanup. Some earlier code path
+  // (most likely a shared sidebarLayout array reference between two
+  // open dashboards) leaked items from other workspaces' trees into
+  // this one. Running on every load means the next save writes the
+  // cleaned shape; corrupted state is self-healing.
+  cleanForeignWidgetsFromWorkspace(workspace);
 
   // Migrate legacy bare component refs (`PipelineKanban`) and the
   // listener event strings that reference them (`PipelineKanban[5].evt`)

@@ -65,3 +65,58 @@ export function pickWidgetRef(item) {
   const parts = c.split(".");
   return parts.length === 3 ? c : null;
 }
+
+/**
+ * Cross-dashboard isolation gate. Layout items carry a `dashboardId`
+ * stamp from `LayoutModel`; this helper drops items whose stamp
+ * doesn't match the surrounding workspace's id. Used at every
+ * workspace-walking surface (Listeners / Providers / Widgets tabs,
+ * bulk-edit panes, dependency resolution) to prevent items leaked
+ * from another dashboard's tree from showing up.
+ *
+ * STRICT mode (workspace has an id): item must have a matching
+ * `dashboardId`. No dashboardId → reject. Different dashboardId → reject.
+ *
+ * PERMISSIVE mode (workspace has no id — synthetic test fixtures
+ * and in-memory sandboxes): everything passes.
+ *
+ * @param {Object} item
+ * @param {Object} workspace
+ * @returns {boolean}
+ */
+export function belongsToWorkspace(item, workspace) {
+  const wsId = workspace?.id;
+  if (wsId === undefined || wsId === null) return true;
+  const itemDashId = item?.dashboardId;
+  if (itemDashId === undefined || itemDashId === null) return false;
+  return String(itemDashId) === String(wsId);
+}
+
+const FRAMEWORK_CONTAINER_COMPONENTS = new Set([
+  "LayoutGridContainer",
+  "Container",
+  "LayoutContainer",
+]);
+
+/**
+ * Is this layout item a USER widget (i.e. something the user added
+ * via the widget sidebar / drag-drop)? False for framework chrome —
+ * `LayoutGridContainer`, `Container`, `LayoutContainer` — which the
+ * dashboard config UI shouldn't expose as a configurable widget,
+ * even though the layout walker visits them.
+ *
+ * Filter is by COMPONENT NAME only, not by `item.type`.
+ * `LayoutModel` defaults `type: "layout"` when the source data
+ * doesn't set it explicitly (`layout.type = "type" in obj ? obj.type
+ * : "layout"`), and most persisted user widgets fall into that
+ * default — so a `type !== "widget"` check would silently drop
+ * legitimate widgets from every list.
+ *
+ * @param {Object} item
+ * @returns {boolean}
+ */
+export function isUserWidget(item) {
+  if (!item || typeof item !== "object" || !item.component) return false;
+  if (FRAMEWORK_CONTAINER_COMPONENTS.has(item.component)) return false;
+  return true;
+}
