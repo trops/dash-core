@@ -59,6 +59,7 @@ export const DashboardWizardModal = ({
 
   const isLastStep = state.step === 1;
   const isCreating = createHandlerRef.current?.creating ?? false;
+  const isCreated = !!createHandlerRef.current?.createdDashboard;
   const canCreate = canProceed && !isCreating;
 
   return (
@@ -136,57 +137,62 @@ export const DashboardWizardModal = ({
             </Stepper.Step>
           </Stepper>
 
-          {/* Custom navigation footer */}
-          <div className="flex flex-row justify-between items-center pt-4 mt-4 border-t border-gray-700/50">
-            <Button
-              onClick={state.step === 0 ? handleClose : prevStep}
-              title={state.step === 0 ? "Cancel" : "Back"}
-              textSize="text-sm"
-              padding="py-2 px-4"
-              backgroundColor="bg-gray-700"
-              textColor="text-gray-300"
-              hoverTextColor="hover:text-white"
-              hoverBackgroundColor="hover:bg-gray-600"
-            />
-            <span className="text-xs text-gray-500">
-              Step {state.step + 1} of {STEP_LABELS.length}
-            </span>
-            {isLastStep ? (
+          {/* Custom navigation footer — hidden once the dashboard has
+              been created so the success state's "Open Dashboard" CTA
+              is the only call-to-action and the footer Create button
+              can't accidentally re-fire the install. */}
+          {!isCreated && (
+            <div className="flex flex-row justify-between items-center pt-4 mt-4 border-t border-gray-700/50">
               <Button
-                onClick={() => createHandlerRef.current?.handleCreate?.()}
-                title={isCreating ? "Creating..." : "Create Dashboard"}
+                onClick={state.step === 0 ? handleClose : prevStep}
+                title={state.step === 0 ? "Cancel" : "Back"}
                 textSize="text-sm"
                 padding="py-2 px-4"
-                backgroundColor={canCreate ? "bg-green-600" : "bg-gray-700"}
-                textColor={canCreate ? "text-white" : "text-gray-500"}
-                hoverTextColor={
-                  canCreate ? "hover:text-white" : "hover:text-gray-500"
-                }
-                hoverBackgroundColor={
-                  canCreate ? "hover:bg-green-500" : "hover:bg-gray-700"
-                }
-                disabled={!canCreate}
-                icon={isCreating ? "spinner" : "plus"}
+                backgroundColor="bg-gray-700"
+                textColor="text-gray-300"
+                hoverTextColor="hover:text-white"
+                hoverBackgroundColor="hover:bg-gray-600"
               />
-            ) : (
-              <Button
-                onClick={handleNext}
-                title="Next"
-                textSize="text-sm"
-                padding="py-2 px-4"
-                backgroundColor={canProceed ? "bg-blue-600" : "bg-gray-700"}
-                textColor={canProceed ? "text-white" : "text-gray-500"}
-                hoverTextColor={
-                  canProceed ? "hover:text-white" : "hover:text-gray-500"
-                }
-                hoverBackgroundColor={
-                  canProceed ? "hover:bg-blue-500" : "hover:bg-gray-700"
-                }
-                disabled={!canProceed}
-                icon="arrow-right"
-              />
-            )}
-          </div>
+              <span className="text-xs text-gray-500">
+                Step {state.step + 1} of {STEP_LABELS.length}
+              </span>
+              {isLastStep ? (
+                <Button
+                  onClick={() => createHandlerRef.current?.handleCreate?.()}
+                  title={isCreating ? "Creating..." : "Create Dashboard"}
+                  textSize="text-sm"
+                  padding="py-2 px-4"
+                  backgroundColor={canCreate ? "bg-green-600" : "bg-gray-700"}
+                  textColor={canCreate ? "text-white" : "text-gray-500"}
+                  hoverTextColor={
+                    canCreate ? "hover:text-white" : "hover:text-gray-500"
+                  }
+                  hoverBackgroundColor={
+                    canCreate ? "hover:bg-green-500" : "hover:bg-gray-700"
+                  }
+                  disabled={!canCreate}
+                  icon={isCreating ? "spinner" : "plus"}
+                />
+              ) : (
+                <Button
+                  onClick={handleNext}
+                  title="Next"
+                  textSize="text-sm"
+                  padding="py-2 px-4"
+                  backgroundColor={canProceed ? "bg-blue-600" : "bg-gray-700"}
+                  textColor={canProceed ? "text-white" : "text-gray-500"}
+                  hoverTextColor={
+                    canProceed ? "hover:text-white" : "hover:text-gray-500"
+                  }
+                  hoverBackgroundColor={
+                    canProceed ? "hover:bg-blue-500" : "hover:bg-gray-700"
+                  }
+                  disabled={!canProceed}
+                  icon="arrow-right"
+                />
+              )}
+            </div>
+          )}
         </div>
       </div>
     </Modal>

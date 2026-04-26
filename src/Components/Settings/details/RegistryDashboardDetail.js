@@ -17,6 +17,7 @@ import { ComponentManager } from "../../../ComponentManager";
 import { StarRating } from "./StarRating";
 import { InstallProgressModal } from "./InstallProgressModal";
 import { RegistryAuthModal } from "../../Registry/RegistryAuthModal";
+import { DashboardInstallOptionsModal } from "./DashboardInstallOptionsModal";
 
 /**
  * RegistryDashboardDetail — detail panel for a registry dashboard package.
@@ -46,6 +47,12 @@ export const RegistryDashboardDetail = ({
   const [progressComplete, setProgressComplete] = useState(false);
   const progressResultRef = useRef(null);
   const cleanupProgressRef = useRef(null);
+
+  // Pre-install options modal: choose folder + rename. Lets the user
+  // override the publisher's menuId (which would otherwise collide
+  // with their local folder ids) and pick a friendlier display name.
+  const [showOptionsModal, setShowOptionsModal] = useState(false);
+  const [menuItems, setMenuItems] = useState([]);
 
   const pkg = dashboardPackage;
   if (!pkg) return null;
@@ -82,7 +89,34 @@ export const RegistryDashboardDetail = ({
     };
   }, [pkg.name]);
 
-  async function handleInstall() {
+  // Click handler on the "Install" button: load the user's existing
+  // folders + open the options modal. The actual install fires from
+  // the modal's onConfirm so we have the user's name/menuId choice.
+  async function handleInstallClick() {
+    if (!appId || !pkg.name) return;
+    setInstallResult(null);
+    try {
+      const result = await window.mainApi?.menuItems?.listMenuItems?.(appId);
+      const list = (result?.menuItems || []).filter((m) => m && m.id != null);
+      setMenuItems(list);
+    } catch (err) {
+      console.error("[RegistryDashboardDetail] listMenuItems failed:", err);
+      setMenuItems([]);
+    }
+    setShowOptionsModal(true);
+  }
+
+  async function handleCreateFolder(menuItem) {
+    if (!appId) return { success: false, message: "No appId" };
+    return window.mainApi?.menuItems?.saveMenuItem?.(appId, menuItem);
+  }
+
+  async function handleOptionsConfirm({ name, menuId }) {
+    setShowOptionsModal(false);
+    await runInstall({ name, menuId });
+  }
+
+  async function runInstall(installOptions = {}) {
     if (!appId || !pkg.name) return;
     setIsInstalling(true);
     setInstallResult(null);
@@ -132,6 +166,7 @@ export const RegistryDashboardDetail = ({
         await window.mainApi.dashboardConfig.installDashboardFromRegistry(
           appId,
           pkg.name,
+          installOptions,
         );
       if (result?.authRequired) {
         // Auth needed — close progress modal, show inline auth prompt
@@ -506,11 +541,21 @@ export const RegistryDashboardDetail = ({
               hoverBackgroundColor={isInstalling ? "" : "hover:bg-blue-700"}
               textSize="text-sm"
               padding="py-1.5 px-4"
-              onClick={handleInstall}
+              onClick={handleInstallClick}
               disabled={isInstalling}
             />
           </div>
         )}
+
+      {/* Pre-install options: name + folder */}
+      <DashboardInstallOptionsModal
+        isOpen={showOptionsModal}
+        setIsOpen={setShowOptionsModal}
+        pkg={pkg}
+        menuItems={menuItems}
+        onCreateFolder={handleCreateFolder}
+        onConfirm={handleOptionsConfirm}
+      />
 
       {/* Progress Modal */}
       <InstallProgressModal
@@ -529,7 +574,10 @@ export const RegistryDashboardDetail = ({
         }}
         onAuthenticated={() => {
           setInstallResult(null);
-          handleInstall();
+          // Re-open the options modal so the user can confirm again
+          // post-auth (cheaper than caching their first selection
+          // through the auth round-trip).
+          handleInstallClick();
         }}
         onCancel={() => setInstallResult(null)}
         message={installResult?.message || "Sign in to install this dashboard."}
