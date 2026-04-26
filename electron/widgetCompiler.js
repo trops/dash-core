@@ -12,6 +12,90 @@ const fs = require("fs");
 const path = require("path");
 
 /**
+ * Structured error thrown by compileWidget() when the underlying
+ * esbuild spawn fails (typically ENOENT — the native helper binary is
+ * missing on this arch in a packaged build). The renderer surfaces
+ * `.code` + `.diagnostics` to give the user something actionable
+ * instead of a raw "spawn ENOENT".
+ */
+class WidgetCompileError extends Error {
+  constructor(message, code, diagnostics) {
+    super(message);
+    this.name = "WidgetCompileError";
+    this.code = code;
+    this.diagnostics = diagnostics;
+  }
+}
+
+/**
+ * Probe the on-disk state of esbuild + its arch-specific native helper.
+ * Returns a flat object suitable for logging/UI display. Never throws.
+ */
+function getEsbuildDiagnostics() {
+  const diagnostics = {
+    platform: process.platform,
+    arch: process.arch,
+    esbuildVersion: null,
+    esbuildPackageDir: null,
+    archPackage: `@esbuild/${process.platform}-${process.arch}`,
+    nativeBinaryPath: null,
+    nativeBinaryExists: false,
+  };
+
+  try {
+    const pkgJsonPath = require.resolve("esbuild/package.json");
+    diagnostics.esbuildPackageDir = path.dirname(pkgJsonPath);
+    diagnostics.esbuildVersion = require(pkgJsonPath).version;
+  } catch (err) {
+    diagnostics.esbuildResolveError = err.message;
+  }
+
+  try {
+    const archPkgJson = require.resolve(
+      `${diagnostics.archPackage}/package.json`,
+    );
+    const archDir = path.dirname(archPkgJson);
+    // esbuild's native binary on macOS/Linux is bin/esbuild;
+    // on Windows it's esbuild.exe at the package root.
+    const candidate =
+      process.platform === "win32"
+        ? path.join(archDir, "esbuild.exe")
+        : path.join(archDir, "bin", "esbuild");
+    diagnostics.nativeBinaryPath = candidate;
+    diagnostics.nativeBinaryExists = fs.existsSync(candidate);
+  } catch (err) {
+    diagnostics.archResolveError = err.message;
+  }
+
+  return diagnostics;
+}
+
+/**
+ * Quick liveness probe for the widget compiler. Runs a no-op
+ * `esbuild.transform("")` so any missing-native-binary failure surfaces
+ * before the user tries to compile a real widget. Returns
+ * `{ ok, error?, code?, diagnostics }` — never throws.
+ */
+async function healthCheck() {
+  const diagnostics = getEsbuildDiagnostics();
+  try {
+    const esbuild = require("esbuild");
+    await esbuild.transform("", { loader: "js" });
+    return { ok: true, diagnostics };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err.message,
+      code:
+        err.code === "ENOENT" || /spawn|ENOENT/i.test(err.message || "")
+          ? "ESBUILD_SPAWN_FAILED"
+          : "ESBUILD_UNAVAILABLE",
+      diagnostics,
+    };
+  }
+}
+
+/**
  * Find the widgets/ directory, handling nested ZIP extraction.
  *
  * ZIP extraction can create a nested structure like:
@@ -192,6 +276,18 @@ async function compileWidget(widgetPath) {
       `[WidgetCompiler] Compilation failed for ${widgetPath}:`,
       error,
     );
+    // ENOENT on the esbuild path means the native helper binary
+    // wasn't found — usually a packaging issue (wrong arch in the
+    // universal asar, asar-unpacked glob missing the arch package,
+    // dev install never ran for the runtime arch). Wrap with
+    // diagnostics so the UI can show something useful.
+    if (error.code === "ENOENT" || /spawn|ENOENT/i.test(error.message || "")) {
+      throw new WidgetCompileError(
+        `Widget compiler unavailable: ${error.message}`,
+        "ESBUILD_SPAWN_FAILED",
+        getEsbuildDiagnostics(),
+      );
+    }
     throw error;
   } finally {
     // Clean up temporary entry file
@@ -209,4 +305,10 @@ async function compileWidget(widgetPath) {
   }
 }
 
-module.exports = { compileWidget, findWidgetsDir };
+module.exports = {
+  compileWidget,
+  findWidgetsDir,
+  healthCheck,
+  getEsbuildDiagnostics,
+  WidgetCompileError,
+};
