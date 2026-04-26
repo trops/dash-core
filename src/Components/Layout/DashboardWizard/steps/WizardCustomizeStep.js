@@ -131,10 +131,21 @@ export const WizardCustomizeStep = ({
         } else if (
           window.mainApi?.dashboardConfig?.installDashboardFromRegistry
         ) {
+          // Pass the user's customizations as install options so the
+          // controller applies them inside processDashboardConfig (one
+          // write, no race). Previously we installed with the publisher's
+          // menuId then overwrote it via saveWorkspaceForApplication —
+          // that left the layout briefly attached to a non-existent
+          // folder on the user's machine.
           const installResult =
             await window.mainApi.dashboardConfig.installDashboardFromRegistry(
               appId,
               state.selectedDashboard.name || state.selectedDashboard.key,
+              {
+                name: name.trim(),
+                menuId: menuId || 1,
+                themeKey: theme,
+              },
             );
           if (installResult?.authRequired) {
             setAuthNeeded(
@@ -144,17 +155,7 @@ export const WizardCustomizeStep = ({
             return;
           }
           if (installResult?.workspace) {
-            const updatedWorkspace = {
-              ...installResult.workspace,
-              name: name.trim(),
-              menuId: menuId || 1,
-              themeKey: theme,
-            };
-            await window.mainApi.workspace.saveWorkspaceForApplication(
-              appId,
-              updatedWorkspace,
-            );
-            result = { success: true, workspace: updatedWorkspace };
+            result = { success: true, workspace: installResult.workspace };
           } else if (installResult?.error) {
             throw new Error(installResult.error);
           }
@@ -250,12 +251,16 @@ export const WizardCustomizeStep = ({
     }
   }, [state, isPrebuilt, onInstallDashboard, onCreateWorkspace, appId]);
 
-  // Expose handleCreate and creating state to parent via ref (DASH-183)
+  // Expose handleCreate, creating, and createdDashboard state to parent
+  // via ref (DASH-183). The parent uses `createdDashboard` to swap the
+  // footer "Create Dashboard" button out once the success state is
+  // rendered — otherwise the user could accidentally re-fire the
+  // install.
   useEffect(() => {
     if (createHandlerRef) {
-      createHandlerRef.current = { handleCreate, creating };
+      createHandlerRef.current = { handleCreate, creating, createdDashboard };
     }
-  }, [createHandlerRef, handleCreate, creating]);
+  }, [createHandlerRef, handleCreate, creating, createdDashboard]);
 
   const handleNameChange = useCallback(
     (val) => {

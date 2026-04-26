@@ -65,12 +65,19 @@ const dashboardConfigApi = {
    *
    * @param {string} appId - Application identifier
    * @param {string} packageName - Registry package name
+   * @param {Object} [options]
+   * @param {string} [options.name] - Override the workspace name
+   *   (defaults to the publisher's name). Does NOT change the
+   *   published scope.
+   * @param {string|number} [options.menuId] - Override the destination
+   *   folder. Defaults to the publisher's menuId.
    * @returns {Promise<Object>} Result with success, workspace, and summary
    */
-  installDashboardFromRegistry: (appId, packageName) =>
+  installDashboardFromRegistry: (appId, packageName, options = {}) =>
     ipcRenderer.invoke(DASHBOARD_CONFIG_INSTALL, {
       appId,
       packageName,
+      options,
     }),
 
   /**

@@ -40,9 +40,6 @@ export const LayoutManagerModal = ({
   const [selectedThemeKey, setSelectedThemeKey] = useState(null);
   const [localMenuItems, setLocalMenuItems] = useState([]);
 
-  // Post-install workspace for registry stepper customization
-  const [importedWorkspace, setImportedWorkspace] = useState(null);
-
   // Pre-import file selection (file preview, not yet saved)
   const [selectedFile, setSelectedFile] = useState(null);
 
@@ -68,7 +65,6 @@ export const LayoutManagerModal = ({
           )[0]?.[0] || null
         : null;
       setSelectedThemeKey(appThemeKey || fallback);
-      setImportedWorkspace(null);
       setSelectedFile(null);
       setIsCreatingFolder(false);
       setNewFolderName("");
@@ -151,16 +147,23 @@ export const LayoutManagerModal = ({
   }
 
   function handleRegistryInstallComplete(result) {
-    setImportedWorkspace(result.workspace);
-    setDashboardName(result.workspace?.name || "");
-    setSelectedMenuId(
-      result.workspace?.menuId || (menuItems.length > 0 ? menuItems[0].id : 1),
-    );
-    setSelectedThemeKey(result.workspace?.themeKey || null);
-    setActiveStep(0);
+    // The pre-install DashboardInstallOptionsModal already collected
+    // the user's name + folder choice and the install IPC applied
+    // them, so the workspace on disk is final. Skip the legacy
+    // post-install Name/Organize/Theme stepper (it would just ask
+    // for the same fields again) — close out and open the new
+    // dashboard.
+    if (onReloadWorkspaces) onReloadWorkspaces();
+    loadThemes();
+    if (onOpenWorkspace && result?.workspace) {
+      onOpenWorkspace(result.workspace);
+    }
+    handleClose();
   }
 
-  async function handleImportRegistryConfirm() {
+  async function handleImportConfirm() {
+    if (!selectedFile) return;
+
     let menuId = selectedMenuId;
 
     if (isCreatingFolder && newFolderName.trim() && newFolderIcon) {
@@ -175,53 +178,26 @@ export const LayoutManagerModal = ({
       }
     }
 
-    // Import flow: file not yet saved, call importDashboardConfig with overrides
-    if (creationMethod === "import" && selectedFile) {
-      try {
-        const result =
-          await window.mainApi.dashboardConfig.importDashboardConfig(appId, {
-            filePath: selectedFile.filePath,
-            name: dashboardName.trim(),
-            menuId,
-            themeKey: selectedThemeKey,
-          });
-        if (result && result.success) {
-          onReloadWorkspaces && onReloadWorkspaces();
-          loadThemes();
-          if (onOpenWorkspace && result.workspace) {
-            onOpenWorkspace(result.workspace);
-          }
-          handleClose();
-        }
-      } catch (err) {
-        console.error("[LayoutManagerModal] Import error:", err);
-      }
-      return;
-    }
-
-    // Registry flow: workspace already saved, update it on disk
-    if (!importedWorkspace) return;
-
-    const updatedWorkspace = {
-      ...importedWorkspace,
-      name: dashboardName.trim(),
-      menuId,
-      themeKey: selectedThemeKey,
-    };
-
     try {
-      await window.mainApi.workspace.saveWorkspaceForApplication(
+      const result = await window.mainApi.dashboardConfig.importDashboardConfig(
         appId,
-        updatedWorkspace,
+        {
+          filePath: selectedFile.filePath,
+          name: dashboardName.trim(),
+          menuId,
+          themeKey: selectedThemeKey,
+        },
       );
-      onReloadWorkspaces && onReloadWorkspaces();
-      loadThemes();
-      if (onOpenWorkspace) {
-        onOpenWorkspace(updatedWorkspace);
+      if (result && result.success) {
+        onReloadWorkspaces && onReloadWorkspaces();
+        loadThemes();
+        if (onOpenWorkspace && result.workspace) {
+          onOpenWorkspace(result.workspace);
+        }
+        handleClose();
       }
-      handleClose();
     } catch (err) {
-      console.error("[LayoutManagerModal] Update error:", err);
+      console.error("[LayoutManagerModal] Import error:", err);
     }
   }
 
@@ -533,8 +509,10 @@ export const LayoutManagerModal = ({
       );
     }
 
-    // Registry browser: show until install completes
-    if (creationMethod === "registry" && !importedWorkspace) {
+    // Registry browser: install completes inside DiscoverDashboardsDetail
+    // (via the DashboardInstallOptionsModal) and the onInstallComplete
+    // handler closes this modal directly — no post-install stepper.
+    if (creationMethod === "registry") {
       return (
         <Panel backgroundColor="bg-slate-800" padding={false}>
           <Panel.Body scrollable={false} className="h-full">
@@ -562,32 +540,6 @@ export const LayoutManagerModal = ({
               <Stepper.Step label="File" description="Select a file">
                 {renderFileStep()}
               </Stepper.Step>
-              <Stepper.Step label="Name" description="Name your dashboard">
-                {renderNameStep()}
-              </Stepper.Step>
-              <Stepper.Step label="Organize" description="Choose a folder">
-                {renderFolderStep()}
-              </Stepper.Step>
-              <Stepper.Step label="Choose Theme" description="Dashboard theme">
-                {renderThemeStep()}
-              </Stepper.Step>
-            </Stepper>
-          </Panel.Body>
-        </Panel>
-      );
-    }
-
-    // Registry stepper: 3 steps (Name, Folder, Theme)
-    if (creationMethod === "registry" && importedWorkspace) {
-      return (
-        <Panel backgroundColor="bg-slate-800" padding={false}>
-          <Panel.Body scrollable={false} className="h-full">
-            <Stepper
-              activeStep={activeStep}
-              onStepChange={setActiveStep}
-              showNavigation={false}
-              className="h-full p-6 pb-0"
-            >
               <Stepper.Step label="Name" description="Name your dashboard">
                 {renderNameStep()}
               </Stepper.Step>
@@ -658,7 +610,7 @@ export const LayoutManagerModal = ({
     }
 
     // Registry browser: Cancel only (DiscoverDashboardsDetail has its own inline back button)
-    if (creationMethod === "registry" && !importedWorkspace) {
+    if (creationMethod === "registry") {
       return (
         <Modal.Footer>
           <div className="flex flex-row space-x-2">
@@ -769,90 +721,7 @@ export const LayoutManagerModal = ({
                   hoverBackgroundColor="hover:bg-gray-600"
                 />
                 <Button
-                  onClick={handleImportRegistryConfirm}
-                  title="Save"
-                  textSize="text-base xl:text-lg"
-                  padding="py-2 px-4"
-                  backgroundColor="bg-blue-600"
-                  textColor="text-white"
-                  hoverTextColor="hover:text-white"
-                  hoverBackgroundColor="hover:bg-blue-500"
-                />
-              </>
-            )}
-          </div>
-        </Modal.Footer>
-      );
-    }
-
-    // Registry stepper footer: 3 steps (Name, Organize, Theme)
-    if (creationMethod === "registry" && importedWorkspace) {
-      return (
-        <Modal.Footer>
-          <div className="flex flex-row space-x-2">
-            {activeStep === 0 && (
-              <>
-                <Button
-                  onClick={handleClose}
-                  title="Cancel"
-                  textSize="text-base xl:text-lg"
-                  padding="py-2 px-4"
-                  backgroundColor="bg-gray-700"
-                  textColor="text-gray-300"
-                  hoverTextColor="hover:text-gray-100"
-                  hoverBackgroundColor="hover:bg-gray-600"
-                />
-                <Button
-                  onClick={() => setActiveStep(1)}
-                  title="Next"
-                  textSize="text-base xl:text-lg"
-                  padding="py-2 px-4"
-                  backgroundColor="bg-blue-600"
-                  textColor="text-white"
-                  hoverTextColor="hover:text-white"
-                  hoverBackgroundColor="hover:bg-blue-500"
-                  disabled={!dashboardName.trim()}
-                />
-              </>
-            )}
-            {activeStep === 1 && (
-              <>
-                <Button
-                  onClick={() => setActiveStep(0)}
-                  title="Back"
-                  textSize="text-base xl:text-lg"
-                  padding="py-2 px-4"
-                  backgroundColor="bg-gray-700"
-                  textColor="text-gray-300"
-                  hoverTextColor="hover:text-gray-100"
-                  hoverBackgroundColor="hover:bg-gray-600"
-                />
-                <Button
-                  onClick={() => setActiveStep(2)}
-                  title="Next"
-                  textSize="text-base xl:text-lg"
-                  padding="py-2 px-4"
-                  backgroundColor="bg-blue-600"
-                  textColor="text-white"
-                  hoverTextColor="hover:text-white"
-                  hoverBackgroundColor="hover:bg-blue-500"
-                />
-              </>
-            )}
-            {activeStep === 2 && (
-              <>
-                <Button
-                  onClick={() => setActiveStep(1)}
-                  title="Back"
-                  textSize="text-base xl:text-lg"
-                  padding="py-2 px-4"
-                  backgroundColor="bg-gray-700"
-                  textColor="text-gray-300"
-                  hoverTextColor="hover:text-gray-100"
-                  hoverBackgroundColor="hover:bg-gray-600"
-                />
-                <Button
-                  onClick={handleImportRegistryConfirm}
+                  onClick={handleImportConfirm}
                   title="Save"
                   textSize="text-base xl:text-lg"
                   padding="py-2 px-4"

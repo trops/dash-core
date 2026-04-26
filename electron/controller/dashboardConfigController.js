@@ -877,6 +877,7 @@ async function installDashboardFromRegistry(
   appId,
   packageName,
   widgetRegistry = null,
+  installOptions = {},
 ) {
   try {
     // 1. Look up the dashboard package in the registry
@@ -1043,7 +1044,9 @@ async function installDashboardFromRegistry(
       };
     }
 
-    // 6. Delegate to shared import pipeline
+    // 6. Delegate to shared import pipeline. User overrides (name /
+    // menuId from the install-time options modal) are forwarded so
+    // the workspace is named + filed where the user wants it.
     return await processDashboardConfig(
       win,
       appId,
@@ -1053,6 +1056,9 @@ async function installDashboardFromRegistry(
         source: "registry",
         registryPackage: packageName,
         installedVersion: registryPkg.version || null,
+        name: installOptions.name,
+        menuId: installOptions.menuId,
+        themeKey: installOptions.themeKey,
       },
     );
   } catch (error) {
