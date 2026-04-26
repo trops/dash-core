@@ -286,6 +286,11 @@ interface IDashboardApi {
 
   mcpGetCatalog: (onSuccess: Function, onError: Function) => Boolean;
 
+  mcpGetKnownExternalCatalog: (
+    onSuccess: Function,
+    onError: Function,
+  ) => Boolean;
+
   mcpRunAuth: (
     mcpConfig: any,
     credentials: any,
