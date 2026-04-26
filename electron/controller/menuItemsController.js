@@ -3,6 +3,7 @@ const path = require("path");
 const { writeFileSync } = require("fs");
 const events = require("../events");
 const { getFileContents } = require("../utils/file");
+const { upsertMenuItem } = require("../utils/upsertMenuItem");
 
 const configFilename = "menuItems.json";
 const appName = "Dashboard";
@@ -10,38 +11,20 @@ const appName = "Dashboard";
 const menuItemsController = {
   saveMenuItemForApplication: (win, appId, menuItem) => {
     try {
-      // filename to the pages file (live pages)
       const filename = path.join(
         app.getPath("userData"),
         appName,
         appId,
         configFilename,
       );
-      const menuItemsArray = getFileContents(filename);
-
-      menuItemsArray.filter((mi) => mi !== null);
-
-      // add the menuItems object to the file
-      menuItemsArray.push(menuItem);
-
-      // write the new pages configuration back to the file
-      writeFileSync(filename, JSON.stringify(menuItemsArray, null, 2));
-
+      const raw = getFileContents(filename) || [];
+      const deduped = upsertMenuItem(raw, menuItem);
+      writeFileSync(filename, JSON.stringify(deduped, null, 2));
       console.log("[menuItemsController] Menu item saved successfully");
-
-      // Return the data for ipcMain.handle() - modern promise-based approach
-      return {
-        menuItems: menuItemsArray,
-        success: true,
-      };
+      return { menuItems: deduped, success: true };
     } catch (e) {
       console.error("[menuItemsController] Error saving menu item:", e);
-      // Return error object with empty menu items array
-      return {
-        error: true,
-        message: e.message,
-        menuItems: [],
-      };
+      return { error: true, message: e.message, menuItems: [] };
     }
   },
 

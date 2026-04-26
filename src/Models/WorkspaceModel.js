@@ -3,6 +3,7 @@ import { LayoutModel } from "./LayoutModel";
 import { pruneDeadListenerReferences } from "../utils/listenerResolution";
 import { migrateScopedIdsInWorkspace } from "../utils/migrateScopedIdsInWorkspace";
 import { cleanForeignWidgetsFromWorkspace } from "../utils/cleanForeignWidgetsFromWorkspace";
+import { migrateLayoutItemTypes } from "../utils/migrateLayoutItemTypes";
 import { ComponentManager } from "../ComponentManager";
 
 /**
@@ -186,6 +187,14 @@ export const WorkspaceModel = (workspaceItem) => {
   // legacy listener as an orphan, and silently deletes the user's
   // wiring on first load post-v0.1.435.
   migrateScopedIdsInWorkspace(workspace, ComponentManager.componentMap());
+
+  // Pre-v0.1.444 LayoutModel defaulted `item.type` to "layout" — every
+  // widget instance persisted without an explicit type was silently
+  // typed as a container, breaking any UI that filtered by type.
+  // The new default infers from component name; this migration applies
+  // the same inference to legacy on-disk data so existing
+  // workspaces.json heals on the next save.
+  migrateLayoutItemTypes(workspace);
 
   // Strip any listener bindings whose source widget is no longer in
   // the tree. These "orphan" bindings are dead — they don't match any
