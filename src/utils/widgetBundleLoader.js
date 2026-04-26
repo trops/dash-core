@@ -95,6 +95,11 @@ export function evaluateBundle(source, widgetName) {
  * a `type` of "widget" or "workspace") or a frozen wrapper around
  * a `default` export that is such a config.
  *
+ * Note: provider-array dedup is handled centrally in
+ * `Models/ComponentConfigModel` so every widget that gets registered
+ * via `ComponentManager.registerWidget` is normalized in one place.
+ * Don't duplicate the logic here.
+ *
  * @param {object} bundleExports - The module.exports from evaluateBundle
  * @returns {Array<{key: string, config: object}>} Extracted configs
  */
