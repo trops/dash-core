@@ -160,8 +160,15 @@ export function getUnresolvedProviders({
 
     const widgetId = item.uuidString || item.uuid || item.id || null;
 
+    // Dedup requirements by provider type within a widget. AI-built
+    // widget configs sometimes ship a `providers: [...]` array with
+    // the same `type` listed twice (a Claude code-gen quirk), which
+    // would otherwise produce duplicate rows in the Providers tab.
+    const seenTypes = new Set();
     for (const req of requirements) {
       if (!req || !req.type) continue;
+      if (seenTypes.has(req.type)) continue;
+      seenTypes.add(req.type);
       if (req.required === false) continue; // optional, skip
 
       const name = resolveProviderName({
@@ -225,8 +232,15 @@ export function getAllProviderBindings({
 
     const widgetId = item.uuidString || item.uuid || item.id || null;
 
+    // Dedup requirements by provider type within a widget — AI-built
+    // configs sometimes list the same `type` twice (a Claude code-gen
+    // quirk) which would otherwise duplicate the per-widget row in
+    // the Providers tab.
+    const seenTypes = new Set();
     for (const req of requirements) {
       if (!req || !req.type) continue;
+      if (seenTypes.has(req.type)) continue;
+      seenTypes.add(req.type);
       const name = resolveProviderName({
         providerType: req.type,
         layoutItem: item,
