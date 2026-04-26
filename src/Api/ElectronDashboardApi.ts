@@ -764,6 +764,38 @@ class ElectronDashboardApi implements IDashboardApi {
     }
   }
 
+  /**
+   * Load the curated allow-list of MCP servers known to exist outside
+   * the built-in catalog. Surfaced in Settings → Providers → Add MCP
+   * alongside the built-in entries so users have one place to install
+   * any catalog-listed provider, regardless of whether the AI Widget
+   * Builder triggered it. Mirrors mcpGetCatalog's callback shape.
+   */
+  mcpGetKnownExternalCatalog(onSuccess, onError): Boolean {
+    if (this.api !== null) {
+      try {
+        this.api.mcp
+          .getKnownExternalCatalog()
+          .then((result) => {
+            // Reuse the existing CATALOG_COMPLETE event — callers
+            // discriminate via the `external: true` flag we add in
+            // ProvidersSection / McpCatalogDetail when merging.
+            onSuccess(this.events.MCP_GET_CATALOG_COMPLETE, result);
+          })
+          .catch((error) => {
+            onError(this.events.MCP_GET_CATALOG_ERROR, error);
+          });
+        return true;
+      } catch (e) {
+        onError(this.events.MCP_GET_CATALOG_ERROR, e);
+        return false;
+      }
+    } else {
+      onError(this.events.MCP_GET_CATALOG_ERROR, new Error("No Api found"));
+      return false;
+    }
+  }
+
   mcpRunAuth(mcpConfig, credentials, authCommand, onSuccess, onError): Boolean {
     if (this.api !== null) {
       try {

@@ -101,20 +101,59 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
     );
   }, [selectedServer, effectiveMcpConfig]);
 
-  // Load catalog on mount
+  // Load catalog on mount. Merges the built-in catalog (already-bundled
+  // MCP servers) with the curated known-external allow-list so the user
+  // sees everything in one place. Known-external entries are tagged
+  // with `_external: true` so the UI can mark them visually.
   useEffect(() => {
-    if (dashApi && catalog.length === 0) {
-      setIsLoadingCatalog(true);
-      dashApi.mcpGetCatalog(
-        (event, result) => {
-          setCatalog(result.catalog || []);
-          setIsLoadingCatalog(false);
+    if (!dashApi || catalog.length > 0) return;
+    setIsLoadingCatalog(true);
+    let pending = 2;
+    let merged = [];
+    const finish = () => {
+      if (--pending === 0) {
+        setCatalog(merged);
+        setIsLoadingCatalog(false);
+      }
+    };
+    dashApi.mcpGetCatalog(
+      (_event, result) => {
+        const builtIn = (result.catalog || []).map((s) => ({
+          ...s,
+          _external: false,
+        }));
+        merged = merged.concat(builtIn);
+        finish();
+      },
+      (_event, err) => {
+        console.error(
+          "[McpCatalogDetail] Error loading built-in catalog:",
+          err,
+        );
+        finish();
+      },
+    );
+    if (typeof dashApi.mcpGetKnownExternalCatalog === "function") {
+      dashApi.mcpGetKnownExternalCatalog(
+        (_event, result) => {
+          const external = (result.servers || []).map((s) => ({
+            ...s,
+            _external: true,
+          }));
+          merged = merged.concat(external);
+          finish();
         },
-        (event, err) => {
-          console.error("[McpCatalogDetail] Error loading catalog:", err);
-          setIsLoadingCatalog(false);
+        (_event, err) => {
+          console.warn(
+            "[McpCatalogDetail] Error loading known-external catalog:",
+            err,
+          );
+          finish();
         },
       );
+    } else {
+      // Older dashApi without known-external support — skip cleanly.
+      finish();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashApi]);
@@ -736,6 +775,14 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
                 <div className="flex items-center gap-3 mb-2">
                   <Icon2 icon={getIconForServer(server)} size="h-5 w-5" />
                   <span className="font-semibold text-lg">{server.name}</span>
+                  {server._external && (
+                    <span
+                      className="ml-auto text-xs px-2 py-0.5 rounded bg-indigo-900 text-indigo-200"
+                      title="From the curated known-external allow-list (github.com/modelcontextprotocol/servers). Installs the same way as built-in entries."
+                    >
+                      external
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm opacity-70 mb-3">{server.description}</p>
                 <div className="flex flex-wrap gap-1">
