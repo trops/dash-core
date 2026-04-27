@@ -158,16 +158,26 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashApi]);
 
-  // Filter catalog by search
-  const filteredCatalog = catalog.filter((server) => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      server.name.toLowerCase().includes(q) ||
-      server.description.toLowerCase().includes(q) ||
-      (server.tags || []).some((tag) => tag.toLowerCase().includes(q))
+  // Filter catalog by search, then sort alphabetically by display name.
+  // Built-in and known-external entries are interleaved alphabetically —
+  // the per-card "external" badge keeps the source obvious without
+  // needing a separate group header.
+  const filteredCatalog = catalog
+    .filter((server) => {
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        server.name.toLowerCase().includes(q) ||
+        server.description.toLowerCase().includes(q) ||
+        (server.tags || []).some((tag) => tag.toLowerCase().includes(q))
+      );
+    })
+    .slice()
+    .sort((a, b) =>
+      String(a.name || "").localeCompare(String(b.name || ""), undefined, {
+        sensitivity: "base",
+      }),
     );
-  });
 
   // Dynamic wizard steps based on whether auth is needed
   const hasAuth = !!selectedServer?.authCommand;
