@@ -81,6 +81,7 @@ step "Building electron (Rollup + MCP catalog)"
 npx rollup -c rollup.config.electron.mjs
 mkdir -p dist/mcp
 cp electron/mcp/mcpServerCatalog.json dist/mcp/
+cp electron/mcp/knownExternalMcpServers.json dist/mcp/
 rm -rf dist/mcp/servers
 cp -r electron/mcp/servers dist/mcp/
 node scripts/inject-secrets.js
@@ -91,7 +92,7 @@ npx jest --watchAll=false
 
 # 6. Run MCP tests
 step "Running MCP tests"
-node --test electron/controller/mcpController.test.js electron/mcp/mcpServerCatalog.test.js
+node --test electron/controller/mcpController.test.js electron/mcp/mcpServerCatalog.test.js electron/mcp/installExternalMcpTool.test.js
 
 # 6b. Run controller auth tests
 step "Running controller auth tests"
@@ -99,7 +100,13 @@ node --test electron/controller/installDashboardAuth.test.js
 
 # 7. Verify output
 step "Verifying build output"
-for f in dist/index.js dist/index.esm.js dist/electron/index.js; do
+for f in \
+    dist/index.js \
+    dist/index.esm.js \
+    dist/electron/index.js \
+    dist/mcp/mcpServerCatalog.json \
+    dist/mcp/knownExternalMcpServers.json \
+; do
     if [[ ! -f "$f" ]]; then
         echo "Error: $f not found"
         exit 1

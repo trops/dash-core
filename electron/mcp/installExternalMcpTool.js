@@ -124,7 +124,14 @@ async function handleInstallKnownMcpServer({ id, name }) {
     if (decision?.error) {
       return fail({ success: false, error: decision.error });
     }
-    return ok({ success: false, declined: true });
+    // User declined the install. We mark this with `isError: true` so
+    // mcpDashServerController's `applyRegistrations` wrapper SKIPS the
+    // `dash-mcp:state-changed` broadcast — declining isn't a state
+    // mutation and we don't want the renderer's onStateChanged listener
+    // to run loadInstalledWidgets / dispatch dash:widgets-updated, which
+    // can tear down the open Widget Builder modal's internal state and
+    // make the user lose their generated widget.
+    return fail({ success: false, declined: true });
   }
 
   // Route through the existing add-provider tool handler. The renderer
