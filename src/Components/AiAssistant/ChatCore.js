@@ -458,14 +458,6 @@ export function ChatCore({
     }
   };
 
-  // End CLI session
-  const handleEndSession = () => {
-    if (!isCliBackend || !mainApi?.llm?.endCliSession) return;
-    if (isLoading) handleStop();
-    mainApi.llm.endCliSession(uuid || persistKey || sessionKey);
-    setSessionActive(false);
-  };
-
   // Toggle tool
   const handleToggleTool = (toolName) => {
     setEnabledTools((prev) => {
@@ -496,14 +488,6 @@ export function ChatCore({
             )}
           </div>
           <div className="flex items-center gap-1">
-            {isCliBackend && sessionActive && (
-              <button
-                onClick={handleEndSession}
-                className="px-2 py-1 text-xs rounded bg-red-900/50 hover:bg-red-800/50 text-red-300 transition-colors"
-              >
-                End Session
-              </button>
-            )}
             <button
               onClick={handleNewChat}
               className="px-2 py-1 text-xs rounded bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
@@ -514,14 +498,6 @@ export function ChatCore({
         </div>
       ) : (
         <div className="flex items-center justify-end px-3 py-1 shrink-0">
-          {isCliBackend && sessionActive && (
-            <button
-              onClick={handleEndSession}
-              className="px-2 py-1 text-xs rounded bg-red-900/50 hover:bg-red-800/50 text-red-300 transition-colors mr-1"
-            >
-              End Session
-            </button>
-          )}
           <button
             onClick={handleNewChat}
             className="px-2 py-1 text-xs rounded bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"

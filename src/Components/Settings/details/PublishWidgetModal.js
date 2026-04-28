@@ -261,186 +261,197 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
           )}
 
           {/* Privacy warning: personal filesystem paths detected in source */}
-          {authStatus === "authenticated" && personalPathFindings && !result && (
-            <div className="space-y-3">
-              <div className="p-3 bg-amber-900/20 border border-amber-700/40 rounded text-sm text-amber-200">
-                <div className="font-semibold flex items-center gap-2 mb-1">
-                  <FontAwesomeIcon icon="triangle-exclamation" className="h-4 w-4" />
-                  Personal paths detected in this package
-                </div>
-                <div className="text-xs opacity-90">
-                  The following lines look like absolute paths on your
-                  machine. Publishing will include them. If any of these are
-                  your local filesystem, replace them with a tilde (e.g.
-                  <code className="px-1 opacity-90">~/pipeline</code>) or a
-                  schema <code className="px-1 opacity-90">defaultValue</code>{" "}
-                  before publishing.
-                </div>
-              </div>
-              <div className="bg-white/5 border border-white/10 rounded-lg divide-y divide-white/10 max-h-60 overflow-y-auto">
-                {personalPathFindings.map((f, idx) => (
-                  <div
-                    key={`${f.file}:${f.line}:${idx}`}
-                    className="px-3 py-2 text-xs"
-                  >
-                    <div className="font-mono text-amber-200 truncate">
-                      {f.file}:{f.line}
-                    </div>
-                    <div className="font-mono opacity-80 mt-0.5 break-all">
-                      {f.match}
-                    </div>
-                    {f.context && f.context !== f.match && (
-                      <div className="font-mono opacity-50 mt-0.5 truncate">
-                        {f.context}
-                      </div>
-                    )}
+          {authStatus === "authenticated" &&
+            personalPathFindings &&
+            !result && (
+              <div className="space-y-3">
+                <div className="p-3 bg-amber-900/20 border border-amber-700/40 rounded text-sm text-amber-200">
+                  <div className="font-semibold flex items-center gap-2 mb-1">
+                    <FontAwesomeIcon
+                      icon="triangle-exclamation"
+                      className="h-4 w-4"
+                    />
+                    Personal paths detected in this package
                   </div>
-                ))}
+                  <div className="text-xs opacity-90">
+                    The following lines look like absolute paths on your
+                    machine. Publishing will include them. If any of these are
+                    your local filesystem, replace them with a tilde (e.g.
+                    <code className="px-1 opacity-90">~/pipeline</code>) or a
+                    schema <code className="px-1 opacity-90">defaultValue</code>{" "}
+                    before publishing.
+                  </div>
+                </div>
+                <div className="bg-white/5 border border-white/10 rounded-lg divide-y divide-white/10 max-h-60 overflow-y-auto">
+                  {personalPathFindings.map((f, idx) => (
+                    <div
+                      key={`${f.file}:${f.line}:${idx}`}
+                      className="px-3 py-2 text-xs"
+                    >
+                      <div className="font-mono text-amber-200 truncate">
+                        {f.file}:{f.line}
+                      </div>
+                      <div className="font-mono opacity-80 mt-0.5 break-all">
+                        {f.match}
+                      </div>
+                      {f.context && f.context !== f.match && (
+                        <div className="font-mono opacity-50 mt-0.5 truncate">
+                          {f.context}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="text-xs opacity-60">
+                  Total findings: {personalPathFindings.length}
+                  {personalPathFindings.length >= 50 && " (capped)"}
+                </div>
               </div>
-              <div className="text-xs opacity-60">
-                Total findings: {personalPathFindings.length}
-                {personalPathFindings.length >= 50 && " (capped)"}
-              </div>
-            </div>
-          )}
+            )}
 
-          {authStatus === "authenticated" && !result && !personalPathFindings && (
-            <>
-              {/* Package summary */}
-              <div className="bg-white/5 border border-white/10 rounded-lg p-3 text-sm">
-                <div className="flex gap-2">
-                  <span className="opacity-50 w-28 flex-shrink-0">Local</span>
-                  <span className="font-mono text-xs opacity-80">
-                    {packageInfo?.localScope
-                      ? `@${packageInfo.localScope}/${packageInfo.name}`
-                      : widget.packageId || widget.name}
-                  </span>
+          {authStatus === "authenticated" &&
+            !result &&
+            !personalPathFindings && (
+              <>
+                {/* Package summary */}
+                <div className="bg-white/5 border border-white/10 rounded-lg p-3 text-sm">
+                  <div className="flex gap-2">
+                    <span className="opacity-50 w-28 flex-shrink-0">Local</span>
+                    <span className="font-mono text-xs opacity-80">
+                      {packageInfo?.localScope
+                        ? `@${packageInfo.localScope}/${packageInfo.name}`
+                        : widget.packageId || widget.name}
+                    </span>
+                  </div>
+                  <div className="flex gap-2 mt-1">
+                    <span className="opacity-50 w-28 flex-shrink-0">
+                      Publishing as
+                    </span>
+                    <span className="font-mono text-xs text-indigo-300">
+                      {username ? `@${username}/` : ""}
+                      {packageInfo?.name ||
+                        (widget.name || "").replace(/^@[^/]+\//, "")}
+                      <span className="text-gray-400"> v{newVersion}</span>
+                    </span>
+                  </div>
+                  <div className="flex gap-2 mt-1">
+                    <span className="opacity-50 w-28 flex-shrink-0">
+                      Current
+                    </span>
+                    <span>v{currentVersion}</span>
+                  </div>
                 </div>
-                <div className="flex gap-2 mt-1">
-                  <span className="opacity-50 w-28 flex-shrink-0">
-                    Publishing as
-                  </span>
-                  <span className="font-mono text-xs text-indigo-300">
-                    {username ? `@${username}/` : ""}
-                    {packageInfo?.name ||
-                      (widget.name || "").replace(/^@[^/]+\//, "")}
-                    <span className="text-gray-400"> v{newVersion}</span>
-                  </span>
-                </div>
-                <div className="flex gap-2 mt-1">
-                  <span className="opacity-50 w-28 flex-shrink-0">Current</span>
-                  <span>v{currentVersion}</span>
-                </div>
-              </div>
 
-              {/* Components bundled inside this package */}
-              {packageInfo?.components && packageInfo.components.length > 0 && (
+                {/* Components bundled inside this package */}
+                {packageInfo?.components &&
+                  packageInfo.components.length > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium opacity-70 mb-2">
+                        Widgets in this package ({packageInfo.components.length}
+                        )
+                      </label>
+                      <div className="bg-white/5 border border-white/10 rounded-lg divide-y divide-white/10 max-h-48 overflow-y-auto">
+                        {packageInfo.components.map((c) => (
+                          <div
+                            key={c.name}
+                            className="flex items-center gap-2 px-3 py-2 text-sm"
+                          >
+                            <FontAwesomeIcon
+                              icon={c.icon || "square"}
+                              className="h-3.5 w-3.5 opacity-60 flex-shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium truncate">
+                                {c.displayName || c.name}
+                              </div>
+                              {c.description && (
+                                <div className="text-xs opacity-60 truncate">
+                                  {c.description}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                {/* Version bump */}
                 <div>
                   <label className="block text-sm font-medium opacity-70 mb-2">
-                    Widgets in this package ({packageInfo.components.length})
+                    Version Bump
                   </label>
-                  <div className="bg-white/5 border border-white/10 rounded-lg divide-y divide-white/10 max-h-48 overflow-y-auto">
-                    {packageInfo.components.map((c) => (
-                      <div
-                        key={c.name}
-                        className="flex items-center gap-2 px-3 py-2 text-sm"
-                      >
-                        <FontAwesomeIcon
-                          icon={c.icon || "square"}
-                          className="h-3.5 w-3.5 opacity-60 flex-shrink-0"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">
-                            {c.displayName || c.name}
-                          </div>
-                          {c.description && (
-                            <div className="text-xs opacity-60 truncate">
-                              {c.description}
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                  <select
+                    value={bump}
+                    onChange={(e) => setBump(e.target.value)}
+                    className="w-full bg-gray-800 border border-white/10 rounded px-3 py-2 text-sm"
+                  >
+                    {BUMP_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
                     ))}
+                  </select>
+                </div>
+
+                {/* Visibility */}
+                <div>
+                  <label className="block text-sm font-medium opacity-70 mb-2">
+                    Visibility
+                  </label>
+                  <div className="space-y-2">
+                    {[
+                      {
+                        value: "public",
+                        label: "Public",
+                        desc: "Anyone can find and install this widget.",
+                      },
+                      {
+                        value: "private",
+                        label: "Private",
+                        desc: "Only you and users you grant access to can install.",
+                      },
+                    ].map((opt) => {
+                      const active = visibility === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setVisibility(opt.value)}
+                          className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
+                            active
+                              ? "bg-indigo-900/20 border-indigo-500/60"
+                              : "bg-white/5 border-white/10 hover:bg-white/10"
+                          }`}
+                        >
+                          <div className="flex items-start gap-2.5">
+                            <div
+                              className={`mt-0.5 h-4 w-4 rounded-full border flex-shrink-0 ${
+                                active
+                                  ? "border-indigo-400 bg-indigo-500"
+                                  : "border-white/30"
+                              }`}
+                            >
+                              {active && (
+                                <div className="h-full w-full rounded-full border-2 border-gray-900" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium">
+                                {opt.label}
+                              </div>
+                              <div className="text-xs opacity-60 mt-0.5">
+                                {opt.desc}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-              )}
-
-              {/* Version bump */}
-              <div>
-                <label className="block text-sm font-medium opacity-70 mb-2">
-                  Version Bump
-                </label>
-                <select
-                  value={bump}
-                  onChange={(e) => setBump(e.target.value)}
-                  className="w-full bg-gray-800 border border-white/10 rounded px-3 py-2 text-sm"
-                >
-                  {BUMP_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Visibility */}
-              <div>
-                <label className="block text-sm font-medium opacity-70 mb-2">
-                  Visibility
-                </label>
-                <div className="space-y-2">
-                  {[
-                    {
-                      value: "public",
-                      label: "Public",
-                      desc: "Anyone can find and install this widget.",
-                    },
-                    {
-                      value: "private",
-                      label: "Private",
-                      desc: "Only you and users you grant access to can install.",
-                    },
-                  ].map((opt) => {
-                    const active = visibility === opt.value;
-                    return (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => setVisibility(opt.value)}
-                        className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
-                          active
-                            ? "bg-indigo-900/20 border-indigo-500/60"
-                            : "bg-white/5 border-white/10 hover:bg-white/10"
-                        }`}
-                      >
-                        <div className="flex items-start gap-2.5">
-                          <div
-                            className={`mt-0.5 h-4 w-4 rounded-full border flex-shrink-0 ${
-                              active
-                                ? "border-indigo-400 bg-indigo-500"
-                                : "border-white/30"
-                            }`}
-                          >
-                            {active && (
-                              <div className="h-full w-full rounded-full border-2 border-gray-900" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium">
-                              {opt.label}
-                            </div>
-                            <div className="text-xs opacity-60 mt-0.5">
-                              {opt.desc}
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-          )}
+              </>
+            )}
 
           {result?.success && (
             <div className="space-y-3">
