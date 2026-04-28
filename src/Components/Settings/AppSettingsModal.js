@@ -41,6 +41,13 @@ export const AppSettingsModal = ({
   initialSection = "general",
   initialProviderName = null,
   initialCreateProvider = false,
+  // Optional: when initialCreateProvider is true, pre-select the
+  // provider type (and route the create flow by class). Used by the
+  // cross-modal "Add new <type>" CTA from the Widget Builder so the
+  // user lands on the right form/catalog detail with the type
+  // already filled in.
+  initialProviderType = null,
+  initialProviderClass = null,
   workspaces = [],
   menuItems = [],
   dashApi = null,
@@ -180,6 +187,8 @@ export const AppSettingsModal = ({
             onCreateAcknowledged={() => setCreateRequested(false)}
             initialProviderName={initialProviderName}
             initialCreateRequested={initialCreateProvider}
+            initialProviderType={initialProviderType}
+            initialProviderClass={initialProviderClass}
           />
         )}
         {activeSection === "themes" && (

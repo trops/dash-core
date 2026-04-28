@@ -54,7 +54,16 @@ const getIconForServer = (server) => {
  * @param {Function} onSave - (providerName, providerType, credentials, mcpConfig) => void
  * @param {Function} onCancel - Called when the user cancels (returns to empty state)
  */
-export const McpCatalogDetail = ({ onSave, onCancel }) => {
+export const McpCatalogDetail = ({
+  onSave,
+  onCancel,
+  // Optional: pre-select a catalog entry by id (the entry's `id`
+  // field, e.g. "filesystem" or "slack"). Used by the cross-modal
+  // "Add new <type>" CTA from the Widget Builder so the user lands
+  // directly on the credentials form for the type they picked,
+  // instead of having to find it in the catalog grid.
+  initialSelectedId = null,
+}) => {
   const appContext = useContext(AppContext);
   const dashApi = appContext?.dashApi;
 
@@ -157,6 +166,20 @@ export const McpCatalogDetail = ({ onSave, onCancel }) => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashApi]);
+
+  // Pre-select a catalog entry when initialSelectedId is provided
+  // (used by the cross-modal "Add new <type>" CTA from the Widget
+  // Builder). Fires once the catalog finishes loading; if no entry
+  // matches the id (e.g. type isn't in the catalog), silently no-ops
+  // and the user lands on the catalog grid to pick manually.
+  useEffect(() => {
+    if (!initialSelectedId || selectedServer || catalog.length === 0) return;
+    const match = catalog.find((s) => s && s.id === initialSelectedId);
+    if (match) {
+      setSelectedServer(match);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog, initialSelectedId]);
 
   // Filter catalog by search, then sort alphabetically by display name.
   // Built-in and known-external entries are interleaved alphabetically —
