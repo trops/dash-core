@@ -41,20 +41,42 @@ class WidgetErrorBoundary extends Component {
         errorMessage.includes("Widget ID not found in Context") ||
         errorMessage.includes("WidgetContext");
 
+      // AI-built widgets live under @ai-built/* — they get an "Open
+      // in AI Builder" recovery button that dispatches the existing
+      // dash:edit-widget-with-ai event (dash-electron's Dash.js
+      // listens for it and reopens the failing widget in remix mode).
+      const isAiBuilt =
+        typeof widgetName === "string" &&
+        /(^|[./])ai-built\b/i.test(widgetName);
+
+      const openInBuilder = () => {
+        try {
+          window.dispatchEvent(
+            new CustomEvent("dash:edit-widget-with-ai", {
+              detail: { widgetComponentName: widgetName },
+            }),
+          );
+        } catch (err) {
+          console.warn(
+            "[WidgetErrorBoundary] Failed to dispatch dash:edit-widget-with-ai:",
+            err,
+          );
+        }
+      };
+
       return (
-        <div className="flex flex-col h-full w-full bg-red-900 border-2 border-red-600 rounded p-4 text-red-100">
-          <div className="text-xl font-bold mb-2">⚠️ Widget Error</div>
-          <div className="text-sm mb-3">
-            <strong>Widget:</strong> {widgetName}
+        <div className="flex flex-col h-full w-full bg-amber-950 border border-amber-700 rounded p-4 text-amber-100">
+          <div className="text-base font-semibold mb-2 text-amber-200">
+            Widget couldn't render
           </div>
-          <div className="text-sm mb-3">
-            <strong>Error:</strong> {errorMessage}
+          <div className="text-xs mb-2 break-words">
+            <span className="text-amber-300">{widgetName}</span> threw{" "}
+            <span className="font-mono">{errorMessage}</span>
           </div>
           {isContextError && (
-            <div className="text-sm bg-red-800 border border-red-700 rounded p-3 mt-2">
+            <div className="text-xs bg-amber-900 border border-amber-700 rounded p-2 mt-2 mb-2">
               <strong>Fix:</strong> This widget uses <code>WidgetContext</code>{" "}
               but is missing the <code>&lt;Widget&gt;</code> wrapper.
-              <br />
               <br />
               Add the wrapper in your widget component:
               <pre className="bg-gray-900 p-2 rounded mt-2 text-xs overflow-auto">
@@ -70,6 +92,22 @@ export const ${widgetName} = (props) => {
               </pre>
             </div>
           )}
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              onClick={() => this.setState({ hasError: false, error: null })}
+              className="px-3 py-1 rounded text-xs bg-amber-700 hover:bg-amber-600 text-amber-100 transition-colors"
+            >
+              Retry
+            </button>
+            {isAiBuilt && (
+              <button
+                onClick={openInBuilder}
+                className="px-3 py-1 rounded text-xs bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+              >
+                Open in AI Builder
+              </button>
+            )}
+          </div>
         </div>
       );
     }
