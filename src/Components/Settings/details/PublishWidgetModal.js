@@ -59,6 +59,12 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
   const [isPublishing, setIsPublishing] = useState(false);
   const [result, setResult] = useState(null);
   const [packageInfo, setPackageInfo] = useState(null);
+  // When the main-process pre-publish scan finds personal filesystem
+  // paths in the package source, it returns `{ needsConfirmation: true,
+  // personalPathFindings: [...] }` instead of publishing. We stash the
+  // findings and surface a confirm-or-cancel panel; "Publish anyway"
+  // retries with `confirmPersonalPaths: true`.
+  const [personalPathFindings, setPersonalPathFindings] = useState(null);
 
   // Reset modal state on open
   useEffect(() => {
@@ -69,6 +75,7 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
     setIsPublishing(false);
     setResult(null);
     setPackageInfo(null);
+    setPersonalPathFindings(null);
   }, [isOpen]);
 
   // Inspect the package to get its metadata + component list
@@ -157,14 +164,16 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
     }
   }
 
-  async function handlePublish() {
+  async function handlePublish({ confirmPersonalPaths = false } = {}) {
     if (!widget) return;
     setIsPublishing(true);
     setResult(null);
+    if (!confirmPersonalPaths) setPersonalPathFindings(null);
     try {
       const options = {
         visibility,
         ...(bump && bump !== "none" ? { bump } : {}),
+        ...(confirmPersonalPaths ? { confirmPersonalPaths: true } : {}),
       };
       const packageId = widget.packageId || widget.name;
       const res = await window.mainApi.registry.publishWidget(
@@ -172,7 +181,14 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
         packageId,
         options,
       );
-      setResult(res);
+      // Main process asked us to confirm a privacy warning before it ships
+      // the package. Stash the findings and render the confirm panel —
+      // don't mark as a completed result.
+      if (res?.needsConfirmation && res?.reason === "personal-paths") {
+        setPersonalPathFindings(res.personalPathFindings || []);
+      } else {
+        setResult(res);
+      }
     } catch (err) {
       setResult({
         success: false,
@@ -181,6 +197,14 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
     } finally {
       setIsPublishing(false);
     }
+  }
+
+  function handleCancelPersonalPathsConfirm() {
+    setPersonalPathFindings(null);
+  }
+
+  function handleConfirmPersonalPathsAndPublish() {
+    handlePublish({ confirmPersonalPaths: true });
   }
 
   if (!widget) return null;
@@ -236,7 +260,51 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
             </div>
           )}
 
-          {authStatus === "authenticated" && !result && (
+          {/* Privacy warning: personal filesystem paths detected in source */}
+          {authStatus === "authenticated" && personalPathFindings && !result && (
+            <div className="space-y-3">
+              <div className="p-3 bg-amber-900/20 border border-amber-700/40 rounded text-sm text-amber-200">
+                <div className="font-semibold flex items-center gap-2 mb-1">
+                  <FontAwesomeIcon icon="triangle-exclamation" className="h-4 w-4" />
+                  Personal paths detected in this package
+                </div>
+                <div className="text-xs opacity-90">
+                  The following lines look like absolute paths on your
+                  machine. Publishing will include them. If any of these are
+                  your local filesystem, replace them with a tilde (e.g.
+                  <code className="px-1 opacity-90">~/pipeline</code>) or a
+                  schema <code className="px-1 opacity-90">defaultValue</code>{" "}
+                  before publishing.
+                </div>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-lg divide-y divide-white/10 max-h-60 overflow-y-auto">
+                {personalPathFindings.map((f, idx) => (
+                  <div
+                    key={`${f.file}:${f.line}:${idx}`}
+                    className="px-3 py-2 text-xs"
+                  >
+                    <div className="font-mono text-amber-200 truncate">
+                      {f.file}:{f.line}
+                    </div>
+                    <div className="font-mono opacity-80 mt-0.5 break-all">
+                      {f.match}
+                    </div>
+                    {f.context && f.context !== f.match && (
+                      <div className="font-mono opacity-50 mt-0.5 truncate">
+                        {f.context}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="text-xs opacity-60">
+                Total findings: {personalPathFindings.length}
+                {personalPathFindings.length >= 50 && " (capped)"}
+              </div>
+            </div>
+          )}
+
+          {authStatus === "authenticated" && !result && !personalPathFindings && (
             <>
               {/* Package summary */}
               <div className="bg-white/5 border border-white/10 rounded-lg p-3 text-sm">
@@ -423,16 +491,32 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
 
         {/* Footer */}
         <div className="flex-shrink-0 flex flex-row justify-end gap-2 p-4 border-t border-white/10">
-          <Button3
-            title={result?.success ? "Close" : "Cancel"}
-            onClick={handleClose}
-          />
-          {!result?.success && (
-            <Button2
-              title={isPublishing ? "Publishing…" : "Publish"}
-              onClick={handlePublish}
-              disabled={!canPublish}
-            />
+          {personalPathFindings ? (
+            <>
+              <Button3
+                title="Go back"
+                onClick={handleCancelPersonalPathsConfirm}
+              />
+              <Button2
+                title={isPublishing ? "Publishing…" : "Publish anyway"}
+                onClick={handleConfirmPersonalPathsAndPublish}
+                disabled={isPublishing}
+              />
+            </>
+          ) : (
+            <>
+              <Button3
+                title={result?.success ? "Close" : "Cancel"}
+                onClick={handleClose}
+              />
+              {!result?.success && (
+                <Button2
+                  title={isPublishing ? "Publishing…" : "Publish"}
+                  onClick={() => handlePublish()}
+                  disabled={!canPublish}
+                />
+              )}
+            </>
           )}
         </div>
       </div>
