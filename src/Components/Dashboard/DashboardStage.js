@@ -265,15 +265,29 @@ const DashboardStageInner = ({
     useState(null);
   const [appSettingsCreateProvider, setAppSettingsCreateProvider] =
     useState(false);
+  // Optional pre-fills used by the cross-modal "Add new <type>"
+  // flow dispatched from dash-electron's WidgetBuilderModal.
+  // initialProviderType is the type id (e.g. "filesystem", "slack").
+  // initialProviderClass routes the create flow: "mcp" opens the
+  // catalog detail with that type pre-selected; otherwise opens
+  // the credential create form with formType pre-filled.
+  const [appSettingsInitialProviderType, setAppSettingsInitialProviderType] =
+    useState(null);
+  const [appSettingsInitialProviderClass, setAppSettingsInitialProviderClass] =
+    useState(null);
 
   function openAppSettings(
     section = "general",
     providerName = null,
     createProvider = false,
+    providerType = null,
+    providerClass = null,
   ) {
     setAppSettingsInitialSection(section);
     setAppSettingsInitialProvider(providerName);
     setAppSettingsCreateProvider(createProvider);
+    setAppSettingsInitialProviderType(providerType);
+    setAppSettingsInitialProviderClass(providerClass);
     setIsAppSettingsOpen(true);
   }
 
@@ -356,6 +370,24 @@ const DashboardStageInner = ({
     window.addEventListener("dash:apply-theme", handler);
     return () => window.removeEventListener("dash:apply-theme", handler);
   }, [changeCurrentTheme]);
+
+  // ─── Listen for "open Settings to create a provider of type X" ──
+  // Dispatched by dash-electron's Widget Builder PreviewProviderPicker
+  // when the user clicks "Add new <type>" because no instances of the
+  // chosen type exist yet. Detail: { type, providerClass }. The
+  // Widget Builder's own listener (in dash-electron/Dash.js) handles
+  // closing the builder modal — this listener only opens Settings.
+  useEffect(() => {
+    const handler = (e) => {
+      const { type, providerClass } = e?.detail || {};
+      if (!type) return;
+      openAppSettings("providers", null, true, type, providerClass || null);
+    };
+    window.addEventListener("dash:open-settings-create-provider", handler);
+    return () =>
+      window.removeEventListener("dash:open-settings-create-provider", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─── Listen for external "open workspace" requests ──────────────
   // Fired by: Dash.js notification click, MCP state-changed for
@@ -1919,11 +1951,15 @@ const DashboardStageInner = ({
                 if (!open) {
                   setAppSettingsInitialProvider(null);
                   setAppSettingsCreateProvider(false);
+                  setAppSettingsInitialProviderType(null);
+                  setAppSettingsInitialProviderClass(null);
                 }
               }}
               initialSection={appSettingsInitialSection}
               initialProviderName={appSettingsInitialProvider}
               initialCreateProvider={appSettingsCreateProvider}
+              initialProviderType={appSettingsInitialProviderType}
+              initialProviderClass={appSettingsInitialProviderClass}
               workspaces={workspaceConfig}
               menuItems={menuItems}
               dashApi={dashApi}

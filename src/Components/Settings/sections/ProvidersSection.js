@@ -22,6 +22,11 @@ export const ProvidersSection = ({
   credentials = null,
   createRequested = false,
   onCreateAcknowledged = null,
+  // Optional: when createRequested fires, pre-route the create flow
+  // by class and pre-select the provider type. Used by the
+  // cross-modal "Add new <type>" CTA from the Widget Builder.
+  initialProviderType = null,
+  initialProviderClass = null,
 }) => {
   const appContext = useContext(AppContext);
   const providers = appContext?.providers || {};
@@ -411,14 +416,29 @@ export const ProvidersSection = ({
     );
   }
 
-  // Respond to external create trigger from header
+  // Respond to external create trigger from header (or from the
+  // cross-modal "Add new <type>" event dispatched by the Widget
+  // Builder, with optional initialProviderType/initialProviderClass
+  // for type pre-fill / catalog pre-select).
   const prevCreateRequested = useRef(false);
   useEffect(() => {
     if (createRequested && !prevCreateRequested.current) {
       resetForm();
       setSelectedName(null);
-      setIsAddingMcp(false);
-      setIsCreating(true);
+      if (initialProviderClass === "mcp") {
+        // MCP class: open the catalog detail. Pre-select happens in
+        // McpCatalogDetail via the initialSelectedId prop passed below.
+        setIsCreating(false);
+        setIsAddingMcp(true);
+      } else {
+        // Credential class (default): open the credential create form
+        // and pre-fill the type field if provided.
+        setIsAddingMcp(false);
+        setIsCreating(true);
+        if (initialProviderType) {
+          setFormType(initialProviderType);
+        }
+      }
     }
     prevCreateRequested.current = createRequested;
     if (createRequested && onCreateAcknowledged) {
@@ -573,6 +593,7 @@ export const ProvidersSection = ({
       <McpCatalogDetail
         onSave={handleMcpSave}
         onCancel={() => setIsAddingMcp(false)}
+        initialSelectedId={initialProviderType}
       />
     );
   } else if (isCreating) {
