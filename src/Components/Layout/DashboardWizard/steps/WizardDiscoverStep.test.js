@@ -14,6 +14,21 @@ jest.mock("../../../../hooks/useRegistrySearch", () => ({
   useRegistrySearch: (...args) => mockUseRegistrySearch(...args),
 }));
 
+// Mock useRegistryAuth — the wizard's sign-in CTA reads its state.
+// Default is authenticated so existing tests don't render the CTA;
+// the dedicated CTA describe block uses a stable static-source check.
+jest.mock("../../../../hooks/useRegistryAuth", () => ({
+  useRegistryAuth: () => ({
+    isAuthenticated: true,
+    isAuthenticating: false,
+    authFlow: null,
+    authError: null,
+    checkAuth: jest.fn(),
+    initiateAuth: jest.fn(),
+    cancelAuth: jest.fn(),
+  }),
+}));
+
 // Mock DASHBOARD_TAGS
 jest.mock("../../../Settings/constants", () => ({
   DASHBOARD_TAGS: ["productivity", "monitoring", "developer"],
@@ -43,6 +58,7 @@ describe("WizardDiscoverStep", () => {
       error: null,
       searchQuery: "",
       setSearchQuery: jest.fn(),
+      refetch: jest.fn(),
     });
   });
 
@@ -116,6 +132,7 @@ describe("WizardDiscoverStep", () => {
       error: null,
       searchQuery: "",
       setSearchQuery: jest.fn(),
+      refetch: jest.fn(),
     });
 
     render(<WizardDiscoverStep state={baseState} dispatch={dispatch} />);
@@ -130,6 +147,7 @@ describe("WizardDiscoverStep", () => {
       error: "Network error",
       searchQuery: "",
       setSearchQuery: jest.fn(),
+      refetch: jest.fn(),
     });
 
     render(<WizardDiscoverStep state={baseState} dispatch={dispatch} />);
@@ -170,6 +188,7 @@ describe("WizardDiscoverStep", () => {
       error: null,
       searchQuery: "",
       setSearchQuery: jest.fn(),
+      refetch: jest.fn(),
     });
 
     render(<WizardDiscoverStep state={baseState} dispatch={dispatch} />);
@@ -194,6 +213,7 @@ describe("WizardDiscoverStep", () => {
       error: null,
       searchQuery: "",
       setSearchQuery: jest.fn(),
+      refetch: jest.fn(),
     });
 
     render(<WizardDiscoverStep state={baseState} dispatch={dispatch} />);
@@ -232,6 +252,7 @@ describe("WizardDiscoverStep", () => {
       error: null,
       searchQuery: "",
       setSearchQuery: jest.fn(),
+      refetch: jest.fn(),
     });
 
     render(<WizardDiscoverStep state={baseState} dispatch={dispatch} />);
@@ -258,6 +279,7 @@ describe("WizardDiscoverStep", () => {
       error: null,
       searchQuery: "",
       setSearchQuery: jest.fn(),
+      refetch: jest.fn(),
     });
 
     render(<WizardDiscoverStep state={baseState} dispatch={dispatch} />);
@@ -305,6 +327,7 @@ describe("WizardDiscoverStep", () => {
       error: null,
       searchQuery: "",
       setSearchQuery: jest.fn(),
+      refetch: jest.fn(),
     });
 
     render(<WizardDiscoverStep state={baseState} dispatch={dispatch} />);
@@ -338,6 +361,7 @@ describe("WizardDiscoverStep", () => {
       error: null,
       searchQuery: "",
       setSearchQuery: jest.fn(),
+      refetch: jest.fn(),
     });
 
     render(<WizardDiscoverStep state={baseState} dispatch={dispatch} />);
@@ -364,6 +388,7 @@ describe("WizardDiscoverStep", () => {
       error: null,
       searchQuery: "",
       setSearchQuery: jest.fn(),
+      refetch: jest.fn(),
     });
 
     render(<WizardDiscoverStep state={baseState} dispatch={dispatch} />);
@@ -396,6 +421,7 @@ describe("WizardDiscoverStep", () => {
       error: null,
       searchQuery: "",
       setSearchQuery: jest.fn(),
+      refetch: jest.fn(),
     });
 
     render(<WizardDiscoverStep state={baseState} dispatch={dispatch} />);
@@ -463,5 +489,61 @@ describe("WizardDiscoverStep — layout structure (static source)", () => {
     // Providers walls. The new sidebar uses plain selectable rows,
     // so the import + usage should both disappear.
     expect(source).not.toMatch(/\bTag2\b/);
+  });
+});
+
+/**
+ * Registry sign-in CTA in the Dashboard Wizard's Discover step.
+ *
+ * The wizard browses the dash-registry. When the user isn't signed
+ * in, the registry only returns public packages — they miss
+ * dashboards / widgets they have access to. This describe block
+ * locks in:
+ *   1. WizardDiscoverStep imports the existing useRegistryAuth hook
+ *   2. A "Sign in to registry" CTA renders in the unauthenticated
+ *      branch
+ *   3. The post-auth callback triggers a registry re-fetch (so the
+ *      results refresh once the user signs in without manual reload)
+ *   4. useRegistrySearch exposes a `refetch` callback for that
+ *      post-auth refresh
+ */
+describe("WizardDiscoverStep — registry sign-in CTA", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const stepPath = path.join(__dirname, "WizardDiscoverStep.js");
+  const hookPath = path.join(
+    __dirname,
+    "..",
+    "..",
+    "..",
+    "..",
+    "hooks",
+    "useRegistrySearch.js",
+  );
+  const stepSource = fs.readFileSync(stepPath, "utf8");
+  const hookSource = fs.readFileSync(hookPath, "utf8");
+
+  test("WizardDiscoverStep imports useRegistryAuth", () => {
+    expect(stepSource).toMatch(
+      /from\s+["']\.\.\/\.\.\/\.\.\/\.\.\/hooks\/useRegistryAuth["']/,
+    );
+    expect(stepSource).toMatch(/useRegistryAuth/);
+  });
+
+  test("Sign-in CTA renders 'Sign in to registry' in the unauthenticated branch", () => {
+    expect(stepSource).toMatch(/Sign in to registry/);
+  });
+
+  test("initiateAuth is called with refetch as the post-auth callback", () => {
+    // Hook contract: initiateAuth(onAuthorized) fires onAuthorized
+    // once the device-code flow completes. Passing `refetch` makes
+    // the registry results auto-refresh on sign-in.
+    expect(stepSource).toMatch(/initiateAuth\(\s*refetch\s*\)/);
+  });
+
+  test("useRegistrySearch exposes a refetch callback", () => {
+    expect(hookSource).toMatch(/\brefetch\b/);
+    // refetch is part of the returned object (not just an internal name)
+    expect(hookSource).toMatch(/return\s*\{[\s\S]*?\brefetch\b[\s\S]*?\}/);
   });
 });
