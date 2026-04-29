@@ -2,6 +2,7 @@ import React, { useState, useContext, useRef, useEffect } from "react";
 import {
   ConfirmationModal,
   FontAwesomeIcon,
+  InputText,
   Sidebar,
   Tag3,
   Tabs3,
@@ -45,7 +46,8 @@ export const ProvidersSection = ({
     );
   }, [dashApi]);
 
-  const [providerTab, setProviderTab] = useState("credentials");
+  const [providerTab, setProviderTab] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedName, setSelectedName] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
   // When the user clicks "+ New Provider" without a pre-selected
@@ -482,22 +484,43 @@ export const ProvidersSection = ({
   const selectedProvider =
     selectedName && providers[selectedName] ? providers[selectedName] : null;
 
-  const activeProviders =
-    providerTab === "credentials"
-      ? credentialProviders
-      : providerTab === "mcp"
-        ? mcpProviders
-        : wsProviders;
-  const activeIcon =
-    providerTab === "credentials"
-      ? "key"
-      : providerTab === "mcp"
-        ? "server"
-        : "plug";
+  // Class filter (All + 3 classes). "All" merges every group so the
+  // user gets one alphabetized list by default — mirrors the Widgets
+  // sidebar pattern.
+  const tabFilteredProviders =
+    providerTab === "all"
+      ? [...credentialProviders, ...mcpProviders, ...wsProviders]
+      : providerTab === "credentials"
+        ? credentialProviders
+        : providerTab === "mcp"
+          ? mcpProviders
+          : wsProviders;
+
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+  const visibleProviders = tabFilteredProviders
+    .filter(([name, provider]) => {
+      if (!trimmedQuery) return true;
+      return (
+        name.toLowerCase().includes(trimmedQuery) ||
+        (provider.type || "").toLowerCase().includes(trimmedQuery)
+      );
+    })
+    .slice()
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+
+  const iconForClass = (cls) =>
+    cls === "mcp" ? "server" : cls === "websocket" ? "plug" : "key";
 
   const listContent = (
     <>
-      <div className="px-2 pt-2">
+      <div className="px-2 pt-2 pb-2">
+        <InputText
+          value={searchQuery}
+          onChange={(value) => setSearchQuery(value)}
+          placeholder="Search providers..."
+        />
+      </div>
+      <div className="px-2">
         <Tabs3
           value={providerTab}
           onValueChange={setProviderTab}
@@ -505,6 +528,9 @@ export const ProvidersSection = ({
           spacing="p-0"
         >
           <Tabs3.List className="w-full flex" spacing="p-0.5">
+            <Tabs3.Trigger value="all" className="flex-1">
+              All
+            </Tabs3.Trigger>
             <Tabs3.Trigger value="credentials" className="flex-1">
               Credentials
             </Tabs3.Trigger>
@@ -517,14 +543,24 @@ export const ProvidersSection = ({
           </Tabs3.List>
         </Tabs3>
       </div>
+      <div className="px-3 pt-2 pb-1">
+        <span className="text-xs opacity-40">
+          {visibleProviders.length} provider
+          {visibleProviders.length === 1 ? "" : "s"}
+        </span>
+      </div>
       <Sidebar.Content>
-        {activeProviders.map(([name, provider]) => {
+        {visibleProviders.map(([name, provider]) => {
           const isSelected = selectedName === name && !isCreating;
+          const cls = provider.providerClass || "credential";
           return (
             <Sidebar.Item
               key={name}
               icon={
-                <FontAwesomeIcon icon={activeIcon} className="h-3.5 w-3.5" />
+                <FontAwesomeIcon
+                  icon={iconForClass(cls)}
+                  className="h-3.5 w-3.5"
+                />
               }
               active={isSelected}
               onClick={() => {
@@ -547,49 +583,18 @@ export const ProvidersSection = ({
           );
         })}
 
-        {activeProviders.length === 0 && (
+        {visibleProviders.length === 0 && (
           <span className="text-sm opacity-40 py-8 text-center">
-            {providerTab === "credentials"
-              ? "No API credentials configured"
-              : providerTab === "mcp"
-                ? "No MCP servers configured"
-                : "No WebSocket providers configured"}
+            {trimmedQuery
+              ? `No providers match "${searchQuery.trim()}"`
+              : providerTab === "all"
+                ? "No providers configured"
+                : providerTab === "credentials"
+                  ? "No API credentials configured"
+                  : providerTab === "mcp"
+                    ? "No MCP servers configured"
+                    : "No WebSocket providers configured"}
           </span>
-        )}
-
-        {providerTab === "mcp" && (
-          <div className="px-3 py-3 mt-2 border-t border-white/10">
-            <button
-              onClick={() => {
-                setIsAddingMcp(true);
-                setSelectedName(null);
-                setIsCreating(false);
-                setIsEditing(false);
-              }}
-              className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors w-full"
-            >
-              <FontAwesomeIcon icon="plus" className="h-3 w-3" />
-              Add MCP Server
-            </button>
-          </div>
-        )}
-
-        {providerTab === "websocket" && (
-          <div className="px-3 py-3 mt-2 border-t border-white/10">
-            <button
-              onClick={() => {
-                setIsAddingWs(true);
-                setSelectedName(null);
-                setIsCreating(false);
-                setIsEditing(false);
-                setIsAddingMcp(false);
-              }}
-              className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors w-full"
-            >
-              <FontAwesomeIcon icon="plus" className="h-3 w-3" />
-              Add WebSocket Provider
-            </button>
-          </div>
         )}
       </Sidebar.Content>
     </>
