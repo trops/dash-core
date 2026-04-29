@@ -532,6 +532,11 @@ export const ProvidersSection = ({
                 setIsCreating(false);
                 setIsEditing(false);
                 setIsAddingMcp(false);
+                setIsAddingWs(false);
+                setIsEditingMcp(false);
+                setIsEditingWs(false);
+                setIsShowingClassChooser(false);
+                setCameFromClassChooser(false);
                 resetForm();
               }}
               badge={provider.type ? <Tag3 text={provider.type} /> : null}

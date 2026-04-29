@@ -138,4 +138,19 @@ describe("Create-provider forms — consistent back-to-chooser button", () => {
     // on cameFromClassChooser so the edit/deep-link paths stay unaffected.
     expect(source).toMatch(/onBack=\{cameFromClassChooser/);
   });
+
+  test("Sidebar list-item click dismisses the class chooser", () => {
+    // Bug repro: chooser open + click an existing provider → list
+    // highlights but chooser stays. Render-branch order has
+    // isShowingClassChooser ahead of the selected-provider branch, so
+    // the click was silently setting selectedName behind the chooser.
+    // The list-item onClick must clear every detail-overlay flag so
+    // the read-only detail wins on the next render.
+    const source = readSection("ProvidersSection.js");
+    const onClickBlock = source.match(
+      /onClick=\{\(\)\s*=>\s*\{[\s\S]{0,800}setSelectedName\(name\)[\s\S]{0,800}\}\}/,
+    );
+    expect(onClickBlock).toBeTruthy();
+    expect(onClickBlock[0]).toMatch(/setIsShowingClassChooser\(false\)/);
+  });
 });
