@@ -83,7 +83,12 @@ export const useMcpProvider = (providerType, options = {}) => {
   //   4. null             — will render MissingProviderPrompt
   // Existing widgets/workspaces retain their explicit bindings — the
   // default layer only activates for widgets with no explicit binding.
-  const widgetId = widgetData?.uuidString;
+  // Identity-key fallback chain matches the bulk-save canonical
+  // chain (`item.uuidString || item.uuid || item.id`). Without the
+  // fallback, widgets that lack `uuidString` (older / AI-built
+  // instances) silently miss workspace-level bindings written by
+  // the dashboard config bulk edit modal.
+  const widgetId = widgetData?.uuidString || widgetData?.uuid || widgetData?.id;
   const selectedProviderName = (() => {
     // Widget-level: stored directly on the layout item
     if (widgetData?.selectedProviders?.[providerType]) {

@@ -44,7 +44,12 @@ export const useWidgetProviders = () => {
   const widgetContext = useContext(WidgetContext);
 
   const widgetData = widgetContext?.widgetData;
-  const widgetId = widgetData?.uuidString;
+  // Identity-key fallback chain matches the bulk-save canonical
+  // chain (`item.uuidString || item.uuid || item.id`). Without the
+  // fallback, widgets that lack `uuidString` (older / AI-built
+  // instances) silently miss workspace-level bindings written by
+  // the dashboard config bulk edit modal.
+  const widgetId = widgetData?.uuidString || widgetData?.uuid || widgetData?.id;
 
   // Get all provider type declarations from the widget config
   const providerDeclarations = widgetData?.providers || [];
