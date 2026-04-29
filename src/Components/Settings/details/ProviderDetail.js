@@ -34,6 +34,7 @@ export const ProviderDetail = ({
   onToggleDefaultForType,
   catalogAuthCommand = null,
   catalogCredentialSchema = {},
+  onBack = null,
 }) => {
   const appContext = useContext(AppContext);
   const dashApi = appContext?.dashApi;
@@ -305,6 +306,16 @@ export const ProviderDetail = ({
       <div className="flex flex-col flex-1 min-h-0">
         {/* Body */}
         <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex items-center gap-2 text-sm opacity-60 hover:opacity-100 transition-opacity"
+            >
+              <FontAwesomeIcon icon="chevron-left" className="h-3 w-3" />
+              Back
+            </button>
+          )}
           <SubHeading3
             title={isCreating ? "New Provider" : "Edit Provider"}
             padding={false}

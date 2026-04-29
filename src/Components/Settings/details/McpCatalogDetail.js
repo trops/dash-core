@@ -63,6 +63,12 @@ export const McpCatalogDetail = ({
   // directly on the credentials form for the type they picked,
   // instead of having to find it in the catalog grid.
   initialSelectedId = null,
+  // Optional: ← Back affordance. Wired by ProvidersSection only when
+  // the user reached this screen via the NewProviderPicker class chooser
+  // (so the deep-link / list-edit entry paths don't get a button that
+  // has no chooser to return to). Internal stage 1 → stage 2 navigation
+  // continues to use the local handleBack.
+  onBack = null,
 }) => {
   const appContext = useContext(AppContext);
   const dashApi = appContext?.dashApi;
@@ -765,6 +771,16 @@ export const McpCatalogDetail = ({
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex items-center gap-2 text-sm opacity-60 hover:opacity-100 transition-opacity"
+          >
+            <FontAwesomeIcon icon="chevron-left" className="h-3 w-3" />
+            Back
+          </button>
+        )}
         <div className="flex items-center justify-between">
           <SubHeading3 title="Add MCP Server" padding={false} />
           <button

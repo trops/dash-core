@@ -69,3 +69,73 @@ describe("NewProviderPicker — class chooser wiring", () => {
     expect(source).toMatch(/initialProviderClass.*===\s*["']websocket["']/);
   });
 });
+
+/**
+ * Back-button consistency — chooser → form → ← Back
+ *
+ * When the user reaches a create-provider form via the NewProviderPicker
+ * class chooser (Credential / MCP / WebSocket), each form must render a
+ * "← Back" affordance that returns to the chooser. The button is opt-in
+ * via an `onBack` prop so the deep-link entry path (Widget Builder
+ * dispatch) and the edit-mode entry path (list click → Edit) do not show
+ * a button that has no chooser to return to.
+ *
+ * Static source-presence tests, mirroring the existing chooser-wiring tests
+ * above. Behavior verified end-to-end via the dash-electron-side hand-off.
+ */
+describe("Create-provider forms — consistent back-to-chooser button", () => {
+  const detailsDir = path.join(__dirname);
+  const sectionsDir = path.join(__dirname, "..", "sections");
+
+  const readDetail = (name) =>
+    fs.readFileSync(path.join(detailsDir, name), "utf8");
+  const readSection = (name) =>
+    fs.readFileSync(path.join(sectionsDir, name), "utf8");
+
+  test("ProviderDetail accepts onBack prop and renders Back conditionally", () => {
+    const source = readDetail("ProviderDetail.js");
+    // Prop is destructured in the component signature
+    expect(source).toMatch(/onBack[\s,=}]/);
+    // Renders only when onBack is provided
+    expect(source).toMatch(/\{onBack\s*&&/);
+    // Uses a chevron-left back arrow + "Back" label in that branch
+    expect(source).toMatch(/\{onBack\s*&&[\s\S]{0,500}chevron-left/);
+    expect(source).toMatch(/\{onBack\s*&&[\s\S]{0,500}Back/);
+  });
+
+  test("McpCatalogDetail accepts onBack prop and renders Back conditionally", () => {
+    const source = readDetail("McpCatalogDetail.js");
+    expect(source).toMatch(/onBack[\s,=}]/);
+    expect(source).toMatch(/\{onBack\s*&&/);
+    expect(source).toMatch(/\{onBack\s*&&[\s\S]{0,500}chevron-left/);
+    expect(source).toMatch(/\{onBack\s*&&[\s\S]{0,500}Back/);
+  });
+
+  test("WebSocketProviderForm accepts onBack prop and renders Back conditionally", () => {
+    const source = readDetail("WebSocketProviderForm.js");
+    expect(source).toMatch(/onBack[\s,=}]/);
+    expect(source).toMatch(/\{onBack\s*&&/);
+    expect(source).toMatch(/\{onBack\s*&&[\s\S]{0,500}chevron-left/);
+    expect(source).toMatch(/\{onBack\s*&&[\s\S]{0,500}Back/);
+  });
+
+  test("ProvidersSection tracks chooser-entry and re-opens chooser via onBack", () => {
+    const source = readSection("ProvidersSection.js");
+    // A flag that distinguishes chooser-entry from deep-link / list-click entry
+    expect(source).toMatch(/cameFromClassChooser/);
+    // The chooser onSelect sets it true so the next form knows to show ← Back
+    expect(source).toMatch(/setCameFromClassChooser\(true\)/);
+    // Re-opening the chooser happens in more than one place (the original
+    // createRequested useEffect path, plus the new onBack handler).
+    const reopens = (source.match(/setIsShowingClassChooser\(true\)/g) || [])
+      .length;
+    expect(reopens).toBeGreaterThan(1);
+  });
+
+  test("ProvidersSection passes onBack only on the chooser-entry path", () => {
+    const source = readSection("ProvidersSection.js");
+    // onBack is forwarded to each of the three create-flow details, gated
+    // on cameFromClassChooser so the edit/deep-link paths stay unaffected.
+    expect(source).toMatch(/onBack=\{cameFromClassChooser/);
+  });
+});
