@@ -223,4 +223,26 @@ describe("Providers list — search and class filter", () => {
     expect(source).not.toMatch(/Add MCP Server/);
     expect(source).not.toMatch(/Add WebSocket Provider/);
   });
+
+  test("Providers search uses SearchInput (matches DashboardsSection styling)", () => {
+    const source = readSection("ProvidersSection.js");
+    // Imported from @trops/dash-react so the magnifying-glass icon
+    // and compact size match the Dashboards sidebar exactly.
+    expect(source).toMatch(/\bSearchInput\b/);
+    // The compact inputClassName matches Dashboards' "py-1.5 text-xs"
+    // so the search box height is consistent across Settings sections.
+    const dashboards = fs.readFileSync(
+      path.join(sectionsDir, "DashboardsSection.js"),
+      "utf8",
+    );
+    const dashboardsClass = dashboards.match(
+      /<SearchInput[\s\S]*?inputClassName=["']([^"']+)["']/,
+    );
+    expect(dashboardsClass).toBeTruthy();
+    const providersClass = source.match(
+      /<SearchInput[\s\S]*?inputClassName=["']([^"']+)["']/,
+    );
+    expect(providersClass).toBeTruthy();
+    expect(providersClass[1]).toBe(dashboardsClass[1]);
+  });
 });

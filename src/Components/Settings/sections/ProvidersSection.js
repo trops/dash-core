@@ -2,7 +2,7 @@ import React, { useState, useContext, useRef, useEffect } from "react";
 import {
   ConfirmationModal,
   FontAwesomeIcon,
-  InputText,
+  SearchInput,
   Sidebar,
   Tag3,
   Tabs3,
@@ -514,10 +514,11 @@ export const ProvidersSection = ({
   const listContent = (
     <>
       <div className="px-2 pt-2 pb-2">
-        <InputText
+        <SearchInput
           value={searchQuery}
-          onChange={(value) => setSearchQuery(value)}
+          onChange={setSearchQuery}
           placeholder="Search providers..."
+          inputClassName="py-1.5 text-xs"
         />
       </div>
       <div className="px-2">
