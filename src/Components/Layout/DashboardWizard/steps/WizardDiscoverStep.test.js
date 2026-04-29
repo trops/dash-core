@@ -403,3 +403,65 @@ describe("WizardDiscoverStep", () => {
     expect(screen.queryByText("Sales")).not.toBeInTheDocument();
   });
 });
+
+/**
+ * Layout structure — left-sidebar filter pane.
+ *
+ * Replaces the previous horizontal Categories/Providers pill walls
+ * with a vertical filter sidebar (TYPE / CATEGORIES / PROVIDERS),
+ * mirroring the dash-registry homepage style. The Dashboards/Widgets
+ * tab bar is folded into a TYPE filter so the right pane is a single
+ * result surface (All / Dashboards / Widgets).
+ *
+ * Static source-presence tests, mirroring the NewProviderPicker
+ * pattern. The behavioral tests above continue to cover dispatch
+ * wiring, filtering, and result rendering.
+ */
+describe("WizardDiscoverStep — layout structure (static source)", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const stepPath = path.join(__dirname, "WizardDiscoverStep.js");
+  const source = fs.readFileSync(stepPath, "utf8");
+
+  test("Outer layout is a 2-column row (flex-row, sidebar + content)", () => {
+    expect(source).toMatch(/flex\s+flex-row/);
+  });
+
+  test("Sidebar has uppercase TYPE label", () => {
+    expect(source).toMatch(/>\s*TYPE\s*</);
+  });
+
+  test("Sidebar has uppercase CATEGORIES label", () => {
+    expect(source).toMatch(/>\s*CATEGORIES\s*</);
+  });
+
+  test("Sidebar has uppercase PROVIDERS label", () => {
+    expect(source).toMatch(/>\s*PROVIDERS\s*</);
+  });
+
+  test("TYPE filter is binary: 'dashboards' / 'widgets'", () => {
+    // Mutual-exclusion data model: selecting a dashboard clears
+    // widget selection (path="prebuilt"), and selecting a widget
+    // clears the dashboard (path="custom"). An "All" option would
+    // imply you can browse both freely when the first click locks
+    // you into one of two paths.
+    expect(source).toMatch(/typeFilter/);
+    expect(source).toMatch(/["']dashboards["']/);
+    expect(source).toMatch(/["']widgets["']/);
+  });
+
+  test("Category list is still driven by DASHBOARD_TAGS", () => {
+    expect(source).toMatch(/DASHBOARD_TAGS\.map/);
+  });
+
+  test("Provider list is still driven by KNOWN_PROVIDERS", () => {
+    expect(source).toMatch(/KNOWN_PROVIDERS\.map/);
+  });
+
+  test("The previous horizontal Tag2 pill rows are gone", () => {
+    // Tag2 was the chip used for the old horizontal Categories /
+    // Providers walls. The new sidebar uses plain selectable rows,
+    // so the import + usage should both disappear.
+    expect(source).not.toMatch(/\bTag2\b/);
+  });
+});
