@@ -168,11 +168,26 @@ export const LayoutBuilder = ({
   // Listen for AI widget builder placement — modifies layout state directly
   useEffect(() => {
     const handler = (e) => {
-      const { widgetComponentName, cellNumber, gridItemId } = e.detail || {};
+      const { widgetComponentName, cellNumber, gridItemId, workspaceId } =
+        e.detail || {};
       if (!widgetComponentName || !cellNumber || !gridItemId) return;
 
       const ws = wsRef.current;
       if (!ws?.layout) return;
+
+      // Workspace-id guard: multiple LayoutBuilders are mounted (one per
+      // open dashboard tab) and all listen to this global event. If the
+      // event carries a workspaceId, only the matching workspace acts —
+      // otherwise gridItemId collisions across workspaces (small ints)
+      // would let the wrong dashboard handle the placement and silently
+      // overwrite a cell. Older dash-electron versions that don't yet
+      // pass workspaceId fall through (opt-in guard, backward-compatible).
+      if (workspaceId && wsRef.current?.id !== workspaceId) {
+        console.warn(
+          `[LayoutBuilder] place-widget event for workspace ${workspaceId} ignored by workspace ${wsRef.current?.id}`,
+        );
+        return;
+      }
 
       const gridItem = ws.layout.find((item) => item.id === gridItemId);
       if (!gridItem?.grid) return;
@@ -228,11 +243,21 @@ export const LayoutBuilder = ({
   // Listen for AI widget remix — swaps existing widget component in-place
   useEffect(() => {
     const handler = (e) => {
-      const { widgetComponentName, widgetId } = e.detail || {};
+      const { widgetComponentName, widgetId, workspaceId } = e.detail || {};
       if (!widgetComponentName || !widgetId) return;
 
       const ws = wsRef.current;
       if (!ws?.layout) return;
+
+      // Same workspace-id guard as the place-widget handler — keeps
+      // the swap from acting on a different open dashboard's widget
+      // when widgetIds collide across workspaces.
+      if (workspaceId && wsRef.current?.id !== workspaceId) {
+        console.warn(
+          `[LayoutBuilder] swap-widget event for workspace ${workspaceId} ignored by workspace ${wsRef.current?.id}`,
+        );
+        return;
+      }
 
       const config = ComponentManager.config(widgetComponentName);
       if (!config) {
