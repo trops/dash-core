@@ -339,26 +339,49 @@ describe("useWizardState", () => {
     expect(result.current.canProceed).toBe(true);
   });
 
-  test("step 1 canProceed requires non-empty name", () => {
+  test("step 1 canProceed requires name AND theme", () => {
     act(() => {
       result.current.dispatch({ type: "SET_STEP", payload: 1 });
     });
     expect(result.current.canProceed).toBe(false);
+
+    // Name alone is not enough — theme is also required so the
+    // Create button can't fire before the user has at least confirmed
+    // a theme (the wizard auto-defaults theme to the user's active
+    // app theme; this gate locks the contract).
     act(() => {
       result.current.dispatch({
         type: "SET_CUSTOMIZATION",
         payload: { name: "Dashboard" },
       });
     });
+    expect(result.current.canProceed).toBe(false);
+
+    // Theme alone is not enough.
+    act(() => {
+      result.current.dispatch({
+        type: "SET_CUSTOMIZATION",
+        payload: { name: "", theme: "default-1" },
+      });
+    });
+    expect(result.current.canProceed).toBe(false);
+
+    // Both name + theme → can proceed.
+    act(() => {
+      result.current.dispatch({
+        type: "SET_CUSTOMIZATION",
+        payload: { name: "Dashboard", theme: "default-1" },
+      });
+    });
     expect(result.current.canProceed).toBe(true);
   });
 
-  test("step 1 whitespace-only name does not pass", () => {
+  test("step 1 whitespace-only name does not pass even with theme", () => {
     act(() => {
       result.current.dispatch({ type: "SET_STEP", payload: 1 });
       result.current.dispatch({
         type: "SET_CUSTOMIZATION",
-        payload: { name: "   " },
+        payload: { name: "   ", theme: "default-1" },
       });
     });
     expect(result.current.canProceed).toBe(false);

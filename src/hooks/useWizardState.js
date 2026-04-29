@@ -134,7 +134,15 @@ function getCanProceed(state) {
         state.selectedDashboard !== null || state.selectedWidgets.length > 0
       );
     case 1:
-      return state.customization.name.trim().length > 0;
+      // Create can fire only when the user has both a name and a theme.
+      // The wizard auto-defaults theme to the user's active app theme,
+      // so this gate is mostly belt-and-suspenders — but it locks the
+      // contract so a future refactor that drops the auto-default
+      // can't quietly let the Create button enable on name alone.
+      return (
+        state.customization.name.trim().length > 0 &&
+        !!state.customization.theme
+      );
     default:
       return false;
   }

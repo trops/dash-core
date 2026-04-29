@@ -192,304 +192,307 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
     "text-xs font-semibold text-gray-400 uppercase tracking-wide px-3 mb-1";
 
   return (
-    <div className="flex flex-row gap-4">
-      {/* Left sidebar — filters */}
-      <aside className="flex-shrink-0 w-56 flex flex-col gap-4 overflow-y-auto">
-        {/* Registry sign-in CTA */}
-        {!isAuthenticated && (
-          <div className="flex flex-col gap-2 px-3 py-3 rounded bg-gray-800 text-gray-300">
-            <span className="text-xs font-semibold text-gray-200">
-              Sign in to registry
-            </span>
+    <div className="flex flex-col gap-4">
+      {/* Registry sign-in banner — horizontal at the top of the step
+          so it spans the full width and matches the Settings →
+          Dashboards banner pattern. Only renders when unauthenticated;
+          collapses when signed in to keep visual noise low. */}
+      {!isAuthenticated && (
+        <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-gray-800 text-gray-300">
+          <FontAwesomeIcon
+            icon="circle-info"
+            className="text-blue-400 text-sm flex-shrink-0"
+          />
+          <div className="flex-1 min-w-0 flex flex-col">
+            <span className="text-sm text-gray-200">Sign in to registry</span>
             <span className="text-xs text-gray-400">
               See dashboards and widgets you have access to
             </span>
-            {!isAuthenticating ? (
-              <button
-                type="button"
-                onClick={handleSignIn}
-                className="mt-1 text-xs py-1.5 px-3 rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors"
-              >
-                Sign in
-              </button>
-            ) : (
-              <div className="mt-1 flex flex-col gap-1">
-                <span className="text-xs text-gray-400">
-                  Waiting for browser…
-                </span>
-                <button
-                  type="button"
-                  onClick={cancelAuth}
-                  className="text-xs text-gray-400 hover:text-gray-200 underline self-start"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-            {authError && (
-              <span className="text-xs text-red-400">{authError}</span>
-            )}
           </div>
-        )}
-        {isAuthenticated && (
-          <div className="flex items-center gap-2 px-3 text-xs text-gray-500">
-            <FontAwesomeIcon
-              icon="circle-check"
-              className="text-green-400 text-xs"
-            />
-            <span>Signed in</span>
-          </div>
-        )}
-
-        {/* TYPE */}
-        <div className="flex flex-col">
-          <span className={sectionLabelClass}>TYPE</span>
-          {TYPE_OPTIONS.map((opt) => {
-            const active = typeFilter === opt.key;
-            const showBadge =
-              opt.key === "widgets" && state.selectedWidgets.length > 0;
-            return (
-              <button
-                key={opt.key}
-                type="button"
-                onClick={() => setTypeFilter(opt.key)}
-                className={rowClass(active)}
-              >
-                <span>{opt.label}</span>
-                {showBadge && (
-                  <Tag3 text={`${state.selectedWidgets.length} selected`} />
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* CATEGORIES */}
-        <div className="flex flex-col">
-          <span className={sectionLabelClass}>CATEGORIES</span>
-          {DASHBOARD_TAGS.map((tag) => {
-            const active = filters.categories.includes(tag);
-            return (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => handleToggleCategory(tag)}
-                className={`${rowClass(active)} capitalize`}
-              >
-                <span>{tag}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* PROVIDERS */}
-        <div className="flex flex-col">
-          <span className={sectionLabelClass}>PROVIDERS</span>
-          {KNOWN_PROVIDERS.map((prov) => {
-            const active = filters.providers.includes(prov.key);
-            return (
-              <button
-                key={prov.key}
-                type="button"
-                onClick={() => handleToggleProvider(prov.key)}
-                className={rowClass(active)}
-              >
-                <span>{prov.name}</span>
-              </button>
-            );
-          })}
-        </div>
-      </aside>
-
-      {/* Right content */}
-      <div className="flex-1 min-w-0 flex flex-col gap-4">
-        {/* Search bar + Clear Selection */}
-        <div className="flex items-center gap-3">
-          <div className="flex-1">
-            <InputText
-              value={searchQuery}
-              onChange={handleSearchChange}
-              placeholder="Search registry..."
-            />
-          </div>
-          {hasSelection && (
-            <Button
-              onClick={handleClearSelection}
-              title="Clear Selection"
-              textSize="text-xs"
-              padding="py-1 px-3"
-              backgroundColor="bg-gray-700"
-              textColor="text-gray-400"
-              hoverTextColor="hover:text-white"
-              hoverBackgroundColor="hover:bg-gray-600"
-              icon="xmark"
-            />
-          )}
-        </div>
-
-        {/* Result count line — mirrors the Widgets sidebar pattern */}
-        {!isLoading && !error && (
-          <div className="text-xs text-gray-500 px-1">
-            {showDashboards
-              ? `${visibleDashboards.length} dashboard${visibleDashboards.length === 1 ? "" : "s"}`
-              : `${visibleWidgets.length} widget${visibleWidgets.length === 1 ? "" : "s"}`}
-          </div>
-        )}
-
-        {/* Results body */}
-        <div className="flex flex-col gap-6">
-          {isLoading ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-12 text-gray-400">
-              <FontAwesomeIcon icon="spinner" spin fixedWidth />
-              <span>Searching registry...</span>
-            </div>
-          ) : error ? (
-            <div className="flex items-center gap-2 text-red-400 py-4">
-              <FontAwesomeIcon icon="circle-exclamation" fixedWidth />
-              <span>{error}</span>
-            </div>
-          ) : !hasResults ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-12 text-gray-500">
-              <FontAwesomeIcon icon="magnifying-glass" fixedWidth />
-              <p>No results match your search.</p>
-              {hasActiveFilters && (
-                <p className="text-xs text-gray-600">
-                  Try removing some filters to see more results.
-                </p>
-              )}
-            </div>
+          {!isAuthenticating ? (
+            <button
+              type="button"
+              onClick={handleSignIn}
+              className="flex-shrink-0 text-xs py-1.5 px-3 rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors"
+            >
+              Sign in
+            </button>
           ) : (
-            <>
-              {/* Dashboards */}
-              {showDashboards && visibleDashboards.length > 0 && (
-                <div className="flex flex-col gap-3">
-                  <div className="grid grid-cols-3 gap-3">
-                    {visibleDashboards.map((dash) => {
-                      const isSelected =
-                        state.selectedDashboard &&
-                        state.selectedDashboard.name === dash.name;
-                      const widgetCount = (dash.widgets || []).length;
-                      const providerTags = (dash.providers || [])
-                        .map((p) => p.name || p.type)
-                        .filter(Boolean);
-
-                      return (
-                        <Card2
-                          key={dash.name}
-                          hover
-                          selected={isSelected}
-                          padding="p-5"
-                          rounded="rounded-lg"
-                          className="hover:shadow-lg"
-                          onClick={() => handleSelectDashboard(dash)}
-                        >
-                          <div className="flex flex-col items-center text-center gap-2">
-                            <div className="relative">
-                              <span className="text-2xl">
-                                <FontAwesomeIcon
-                                  icon={resolveIcon(dash.icon || "grid-2")}
-                                  fixedWidth
-                                  className="text-gray-400"
-                                />
-                              </span>
-                              {isSelected && (
-                                <FontAwesomeIcon
-                                  icon="circle-check"
-                                  className="absolute -top-1 -right-3 text-blue-400 text-xs"
-                                />
-                              )}
-                            </div>
-                            <span className="text-sm font-semibold text-gray-200">
-                              {dash.displayName || dash.name}
-                            </span>
-                          </div>
-                          {dash.description && (
-                            <p className="text-xs text-gray-400 mt-2 line-clamp-2 text-center">
-                              {dash.description}
-                            </p>
-                          )}
-                          <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-700/50">
-                            <span className="text-xs text-gray-500">
-                              {widgetCount} widget
-                              {widgetCount !== 1 ? "s" : ""}
-                            </span>
-                            {providerTags.length > 0 && (
-                              <div className="flex flex-wrap gap-1 justify-end">
-                                {providerTags.slice(0, 3).map((tag) => (
-                                  <span
-                                    key={tag}
-                                    className="text-xs px-1.5 py-0.5 rounded bg-gray-800 text-gray-400"
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </Card2>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Widgets */}
-              {showWidgets && visibleWidgets.length > 0 && (
-                <div className="flex flex-col gap-3">
-                  <div className="grid grid-cols-3 gap-3">
-                    {visibleWidgets.map((widget) => {
-                      const checked = isWidgetSelected(widget);
-                      return (
-                        <Card2
-                          key={widget.key}
-                          hover
-                          selected={checked}
-                          padding="p-4"
-                          rounded="rounded-lg"
-                          className="hover:shadow-lg flex flex-col"
-                          onClick={() => handleToggleWidget(widget)}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-1.5">
-                              {widget.icon && (
-                                <FontAwesomeIcon
-                                  icon={resolveIcon(widget.icon)}
-                                  fixedWidth
-                                  className="text-gray-400 text-sm"
-                                />
-                              )}
-                              <span className="text-sm font-medium text-gray-200 truncate">
-                                {widget.name}
-                              </span>
-                            </div>
-                            <FontAwesomeIcon
-                              icon={checked ? "square-check" : "square"}
-                              fixedWidth
-                              className={
-                                checked
-                                  ? "text-blue-400 flex-shrink-0"
-                                  : "text-gray-500 flex-shrink-0"
-                              }
-                            />
-                          </div>
-                          {widget.description && (
-                            <p className="text-xs text-gray-400 line-clamp-2 mt-1.5 flex-1">
-                              {widget.description}
-                            </p>
-                          )}
-                          {widget.packageDisplayName && (
-                            <span className="text-xs text-gray-500 mt-2 pt-1.5 border-t border-gray-700/50 truncate">
-                              {widget.packageDisplayName}
-                            </span>
-                          )}
-                        </Card2>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span className="text-xs text-gray-400">
+                Waiting for browser…
+              </span>
+              <button
+                type="button"
+                onClick={cancelAuth}
+                className="text-xs text-gray-400 hover:text-gray-200 underline"
+              >
+                Cancel
+              </button>
+            </div>
           )}
+          {authError && (
+            <span className="flex-shrink-0 text-xs text-red-400">
+              {authError}
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-row gap-4">
+        {/* Left sidebar — filters. `sticky top-0 self-start` keeps the
+            filter pane visible as the user scrolls the result grid. */}
+        <aside className="flex-shrink-0 w-56 flex flex-col gap-4 sticky top-0 self-start">
+          {/* TYPE */}
+          <div className="flex flex-col">
+            <span className={sectionLabelClass}>TYPE</span>
+            {TYPE_OPTIONS.map((opt) => {
+              const active = typeFilter === opt.key;
+              const showBadge =
+                opt.key === "widgets" && state.selectedWidgets.length > 0;
+              return (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setTypeFilter(opt.key)}
+                  className={rowClass(active)}
+                >
+                  <span>{opt.label}</span>
+                  {showBadge && (
+                    <Tag3 text={`${state.selectedWidgets.length} selected`} />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* CATEGORIES */}
+          <div className="flex flex-col">
+            <span className={sectionLabelClass}>CATEGORIES</span>
+            {DASHBOARD_TAGS.map((tag) => {
+              const active = filters.categories.includes(tag);
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => handleToggleCategory(tag)}
+                  className={`${rowClass(active)} capitalize`}
+                >
+                  <span>{tag}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* PROVIDERS */}
+          <div className="flex flex-col">
+            <span className={sectionLabelClass}>PROVIDERS</span>
+            {KNOWN_PROVIDERS.map((prov) => {
+              const active = filters.providers.includes(prov.key);
+              return (
+                <button
+                  key={prov.key}
+                  type="button"
+                  onClick={() => handleToggleProvider(prov.key)}
+                  className={rowClass(active)}
+                >
+                  <span>{prov.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        {/* Right content */}
+        <div className="flex-1 min-w-0 flex flex-col gap-4">
+          {/* Search bar + Clear Selection */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <InputText
+                value={searchQuery}
+                onChange={handleSearchChange}
+                placeholder="Search registry..."
+              />
+            </div>
+            {hasSelection && (
+              <Button
+                onClick={handleClearSelection}
+                title="Clear Selection"
+                textSize="text-xs"
+                padding="py-1 px-3"
+                backgroundColor="bg-gray-700"
+                textColor="text-gray-400"
+                hoverTextColor="hover:text-white"
+                hoverBackgroundColor="hover:bg-gray-600"
+                icon="xmark"
+              />
+            )}
+          </div>
+
+          {/* Result count line — mirrors the Widgets sidebar pattern */}
+          {!isLoading && !error && (
+            <div className="text-xs text-gray-500 px-1">
+              {showDashboards
+                ? `${visibleDashboards.length} dashboard${visibleDashboards.length === 1 ? "" : "s"}`
+                : `${visibleWidgets.length} widget${visibleWidgets.length === 1 ? "" : "s"}`}
+            </div>
+          )}
+
+          {/* Results body */}
+          <div className="flex flex-col gap-6">
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-12 text-gray-400">
+                <FontAwesomeIcon icon="spinner" spin fixedWidth />
+                <span>Searching registry...</span>
+              </div>
+            ) : error ? (
+              <div className="flex items-center gap-2 text-red-400 py-4">
+                <FontAwesomeIcon icon="circle-exclamation" fixedWidth />
+                <span>{error}</span>
+              </div>
+            ) : !hasResults ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-12 text-gray-500">
+                <FontAwesomeIcon icon="magnifying-glass" fixedWidth />
+                <p>No results match your search.</p>
+                {hasActiveFilters && (
+                  <p className="text-xs text-gray-600">
+                    Try removing some filters to see more results.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <>
+                {/* Dashboards */}
+                {showDashboards && visibleDashboards.length > 0 && (
+                  <div className="flex flex-col gap-3">
+                    <div className="grid grid-cols-3 gap-3">
+                      {visibleDashboards.map((dash) => {
+                        const isSelected =
+                          state.selectedDashboard &&
+                          state.selectedDashboard.name === dash.name;
+                        const widgetCount = (dash.widgets || []).length;
+                        const providerTags = (dash.providers || [])
+                          .map((p) => p.name || p.type)
+                          .filter(Boolean);
+
+                        return (
+                          <Card2
+                            key={dash.name}
+                            hover
+                            selected={isSelected}
+                            padding="p-5"
+                            rounded="rounded-lg"
+                            className="hover:shadow-lg"
+                            onClick={() => handleSelectDashboard(dash)}
+                          >
+                            <div className="flex flex-col items-center text-center gap-2">
+                              <div className="relative">
+                                <span className="text-2xl">
+                                  <FontAwesomeIcon
+                                    icon={resolveIcon(dash.icon || "grid-2")}
+                                    fixedWidth
+                                    className="text-gray-400"
+                                  />
+                                </span>
+                                {isSelected && (
+                                  <FontAwesomeIcon
+                                    icon="circle-check"
+                                    className="absolute -top-1 -right-3 text-blue-400 text-xs"
+                                  />
+                                )}
+                              </div>
+                              <span className="text-sm font-semibold text-gray-200">
+                                {dash.displayName || dash.name}
+                              </span>
+                            </div>
+                            {dash.description && (
+                              <p className="text-xs text-gray-400 mt-2 line-clamp-2 text-center">
+                                {dash.description}
+                              </p>
+                            )}
+                            <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-700/50">
+                              <span className="text-xs text-gray-500">
+                                {widgetCount} widget
+                                {widgetCount !== 1 ? "s" : ""}
+                              </span>
+                              {providerTags.length > 0 && (
+                                <div className="flex flex-wrap gap-1 justify-end">
+                                  {providerTags.slice(0, 3).map((tag) => (
+                                    <span
+                                      key={tag}
+                                      className="text-xs px-1.5 py-0.5 rounded bg-gray-800 text-gray-400"
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </Card2>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Widgets */}
+                {showWidgets && visibleWidgets.length > 0 && (
+                  <div className="flex flex-col gap-3">
+                    <div className="grid grid-cols-3 gap-3">
+                      {visibleWidgets.map((widget) => {
+                        const checked = isWidgetSelected(widget);
+                        return (
+                          <Card2
+                            key={widget.key}
+                            hover
+                            selected={checked}
+                            padding="p-4"
+                            rounded="rounded-lg"
+                            className="hover:shadow-lg flex flex-col"
+                            onClick={() => handleToggleWidget(widget)}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-1.5">
+                                {widget.icon && (
+                                  <FontAwesomeIcon
+                                    icon={resolveIcon(widget.icon)}
+                                    fixedWidth
+                                    className="text-gray-400 text-sm"
+                                  />
+                                )}
+                                <span className="text-sm font-medium text-gray-200 truncate">
+                                  {widget.name}
+                                </span>
+                              </div>
+                              <FontAwesomeIcon
+                                icon={checked ? "square-check" : "square"}
+                                fixedWidth
+                                className={
+                                  checked
+                                    ? "text-blue-400 flex-shrink-0"
+                                    : "text-gray-500 flex-shrink-0"
+                                }
+                              />
+                            </div>
+                            {widget.description && (
+                              <p className="text-xs text-gray-400 line-clamp-2 mt-1.5 flex-1">
+                                {widget.description}
+                              </p>
+                            )}
+                            {widget.packageDisplayName && (
+                              <span className="text-xs text-gray-500 mt-2 pt-1.5 border-t border-gray-700/50 truncate">
+                                {widget.packageDisplayName}
+                              </span>
+                            )}
+                          </Card2>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
