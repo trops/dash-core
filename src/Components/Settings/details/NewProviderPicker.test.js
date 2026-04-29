@@ -154,3 +154,73 @@ describe("Create-provider forms — consistent back-to-chooser button", () => {
     expect(onClickBlock[0]).toMatch(/setIsShowingClassChooser\(false\)/);
   });
 });
+
+/**
+ * Providers list — search + class filter + alphabetized All view.
+ *
+ * The Settings → Providers sidebar has been reorganized to mirror
+ * the Widgets sidebar: a search box up top, a 4-pill class filter
+ * (All / Credentials / MCP / WebSocket), and a single alphabetized
+ * list when the filter is "All". The per-class footer "Add MCP
+ * Server" / "Add WebSocket Provider" buttons are removed in favor
+ * of the chooser opened by the section-header "+ New Provider"
+ * button (which got a "← Back" affordance in 0.1.455).
+ */
+describe("Providers list — search and class filter", () => {
+  const sectionsDir = path.join(__dirname, "..", "sections");
+  const readSection = (name) =>
+    fs.readFileSync(path.join(sectionsDir, name), "utf8");
+
+  test("Sidebar has a search input for filtering providers", () => {
+    const source = readSection("ProvidersSection.js");
+    expect(source).toMatch(/placeholder=["']Search providers/i);
+  });
+
+  test("searchQuery state is declared and wired to a setter", () => {
+    const source = readSection("ProvidersSection.js");
+    expect(source).toMatch(/searchQuery/);
+    expect(source).toMatch(/setSearchQuery/);
+  });
+
+  test("Default class filter is 'all'", () => {
+    const source = readSection("ProvidersSection.js");
+    // The providerTab useState initializer must be "all".
+    expect(source).toMatch(/providerTab[^=]*=\s*useState\(["']all["']\)/);
+  });
+
+  test("Sidebar has 4 class-filter triggers (All / Credentials / MCP / WebSocket)", () => {
+    const source = readSection("ProvidersSection.js");
+    expect(source).toMatch(/Tabs3\.Trigger\s+value=["']all["']/);
+    expect(source).toMatch(/Tabs3\.Trigger\s+value=["']credentials["']/);
+    expect(source).toMatch(/Tabs3\.Trigger\s+value=["']mcp["']/);
+    expect(source).toMatch(/Tabs3\.Trigger\s+value=["']websocket["']/);
+  });
+
+  test("Filter logic has an 'all' branch that merges all three groups", () => {
+    const source = readSection("ProvidersSection.js");
+    // Some branch must compare providerTab to "all" and produce a
+    // merged list containing credential + mcp + websocket providers.
+    expect(source).toMatch(/providerTab\s*===\s*["']all["']/);
+    // The merged-all expression spreads all three groups; capture the
+    // shape of `[...credentialProviders, ...mcpProviders, ...wsProviders]`
+    // (or any permutation, in case of refactor).
+    expect(source).toMatch(/\.\.\.credentialProviders/);
+    expect(source).toMatch(/\.\.\.mcpProviders/);
+    expect(source).toMatch(/\.\.\.wsProviders/);
+  });
+
+  test("Sidebar shows a count of visible providers", () => {
+    const source = readSection("ProvidersSection.js");
+    // Mirrors "127 widgets" in the Widgets sidebar — assert the
+    // pattern `<length>` followed by the word "provider".
+    expect(source).toMatch(/\.length\}\s*\n?\s*provider/);
+  });
+
+  test("Per-tab footer 'Add MCP Server' / 'Add WebSocket Provider' buttons are removed", () => {
+    const source = readSection("ProvidersSection.js");
+    // The new chooser ("+ New Provider" header button) is the
+    // canonical add path.
+    expect(source).not.toMatch(/Add MCP Server/);
+    expect(source).not.toMatch(/Add WebSocket Provider/);
+  });
+});
