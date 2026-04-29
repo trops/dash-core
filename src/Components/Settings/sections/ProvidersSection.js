@@ -12,6 +12,7 @@ import { ProviderDetail } from "../details/ProviderDetail";
 import { McpCatalogDetail } from "../details/McpCatalogDetail";
 import { CustomMcpServerForm } from "../details/CustomMcpServerForm";
 import { WebSocketProviderForm } from "../details/WebSocketProviderForm";
+import { NewProviderPicker } from "../details/NewProviderPicker";
 import {
   envMappingToRows,
   headerTemplateToRows,
@@ -47,6 +48,12 @@ export const ProvidersSection = ({
   const [providerTab, setProviderTab] = useState("credentials");
   const [selectedName, setSelectedName] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
+  // When the user clicks "+ New Provider" without a pre-selected
+  // class (Settings header button), show the class chooser
+  // (Credential / MCP / WebSocket) instead of defaulting to the
+  // credential form. Widget Builder's deep-link path passes a class
+  // explicitly and bypasses this chooser.
+  const [isShowingClassChooser, setIsShowingClassChooser] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [formName, setFormName] = useState("");
   const [formType, setFormType] = useState("");
@@ -425,19 +432,35 @@ export const ProvidersSection = ({
     if (createRequested && !prevCreateRequested.current) {
       resetForm();
       setSelectedName(null);
+      setIsShowingClassChooser(false);
       if (initialProviderClass === "mcp") {
         // MCP class: open the catalog detail. Pre-select happens in
         // McpCatalogDetail via the initialSelectedId prop passed below.
         setIsCreating(false);
         setIsAddingMcp(true);
-      } else {
-        // Credential class (default): open the credential create form
-        // and pre-fill the type field if provided.
+      } else if (initialProviderClass === "websocket") {
+        // WebSocket class: open the WebSocket add form. Reachable via
+        // a future Widget Builder deep-link for ws-typed widgets.
+        setIsCreating(false);
+        setIsAddingMcp(false);
+        setIsAddingWs(true);
+      } else if (initialProviderClass === "credential") {
+        // Credential class: open the credential create form and
+        // pre-fill the type field if provided.
         setIsAddingMcp(false);
         setIsCreating(true);
         if (initialProviderType) {
           setFormType(initialProviderType);
         }
+      } else {
+        // No class specified — Settings header "+ New Provider"
+        // button hits this branch. Show the chooser so the user
+        // picks Credential / MCP / WebSocket explicitly instead of
+        // landing on the credential form by default.
+        setIsAddingMcp(false);
+        setIsCreating(false);
+        setIsAddingWs(false);
+        setIsShowingClassChooser(true);
       }
     }
     prevCreateRequested.current = createRequested;
@@ -586,6 +609,21 @@ export const ProvidersSection = ({
         initialCredentials={selectedProvider.credentials || {}}
         onSave={handleWsEditSave}
         onCancel={() => setIsEditingWs(false)}
+      />
+    );
+  } else if (isShowingClassChooser) {
+    detailContent = (
+      <NewProviderPicker
+        onSelect={(cls) => {
+          setIsShowingClassChooser(false);
+          if (cls === "mcp") {
+            setIsAddingMcp(true);
+          } else if (cls === "websocket") {
+            setIsAddingWs(true);
+          } else {
+            setIsCreating(true);
+          }
+        }}
       />
     );
   } else if (isAddingMcp) {
