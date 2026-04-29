@@ -225,6 +225,11 @@ export const useRegistrySearch = ({ filterByCapabilities = true } = {}) => {
     search,
     installPackage,
     retry,
+    // refetch is an alias of retry, exposed under the name the
+    // Wizard's sign-in flow uses to re-fetch the registry once
+    // the user signs in (so private results show up without a
+    // manual reload).
+    refetch: retry,
     showAllPackages,
     setShowAllPackages,
     appCapabilities,

@@ -7,6 +7,7 @@ import {
   InputText,
 } from "@trops/dash-react";
 import { useRegistrySearch } from "../../../../hooks/useRegistrySearch";
+import { useRegistryAuth } from "../../../../hooks/useRegistryAuth";
 import { resolveIcon } from "../../../../utils/resolveIcon";
 import { DASHBOARD_TAGS } from "../../../Settings/constants";
 
@@ -57,7 +58,30 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
     error,
     searchQuery,
     setSearchQuery,
+    refetch,
   } = useRegistrySearch({ filterByCapabilities: true });
+
+  // --- Registry auth (device-code OAuth) ---
+  // Surfaces a sign-in CTA when the user isn't authenticated so they
+  // see private dashboards/widgets they have access to. After
+  // successful auth, `refetch` re-runs the registry search so the
+  // results refresh automatically — no manual reload needed.
+  const {
+    isAuthenticated,
+    isAuthenticating,
+    authError,
+    checkAuth,
+    initiateAuth,
+    cancelAuth,
+  } = useRegistryAuth();
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
+  const handleSignIn = useCallback(() => {
+    initiateAuth(refetch);
+  }, [initiateAuth, refetch]);
 
   // Sync search query from wizard state on mount
   useEffect(() => {
@@ -171,6 +195,52 @@ export const WizardDiscoverStep = ({ state, dispatch }) => {
     <div className="flex flex-row gap-4">
       {/* Left sidebar — filters */}
       <aside className="flex-shrink-0 w-56 flex flex-col gap-4 overflow-y-auto">
+        {/* Registry sign-in CTA */}
+        {!isAuthenticated && (
+          <div className="flex flex-col gap-2 px-3 py-3 rounded bg-gray-800 text-gray-300">
+            <span className="text-xs font-semibold text-gray-200">
+              Sign in to registry
+            </span>
+            <span className="text-xs text-gray-400">
+              See dashboards and widgets you have access to
+            </span>
+            {!isAuthenticating ? (
+              <button
+                type="button"
+                onClick={handleSignIn}
+                className="mt-1 text-xs py-1.5 px-3 rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors"
+              >
+                Sign in
+              </button>
+            ) : (
+              <div className="mt-1 flex flex-col gap-1">
+                <span className="text-xs text-gray-400">
+                  Waiting for browser…
+                </span>
+                <button
+                  type="button"
+                  onClick={cancelAuth}
+                  className="text-xs text-gray-400 hover:text-gray-200 underline self-start"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            {authError && (
+              <span className="text-xs text-red-400">{authError}</span>
+            )}
+          </div>
+        )}
+        {isAuthenticated && (
+          <div className="flex items-center gap-2 px-3 text-xs text-gray-500">
+            <FontAwesomeIcon
+              icon="circle-check"
+              className="text-green-400 text-xs"
+            />
+            <span>Signed in</span>
+          </div>
+        )}
+
         {/* TYPE */}
         <div className="flex flex-col">
           <span className={sectionLabelClass}>TYPE</span>
