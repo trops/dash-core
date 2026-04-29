@@ -547,3 +547,61 @@ describe("WizardDiscoverStep — registry sign-in CTA", () => {
     expect(hookSource).toMatch(/return\s*\{[\s\S]*?\brefetch\b[\s\S]*?\}/);
   });
 });
+
+/**
+ * Wizard layout polish — sticky sidebar + sign-in banner placement +
+ * Summary block lifted above the Customize sub-steps.
+ *
+ * The user feedback was:
+ *   - The sign-in CTA looked awkward in the sidebar; it should sit
+ *     horizontally at the top of the step (matching the Settings →
+ *     Dashboards banner).
+ *   - The filter sidebar scrolled with the result list, which was
+ *     disorienting when scanning through dozens of widgets.
+ *   - The Summary panel appeared *below* the Customize sub-step
+ *     content, so the user had to scroll past the form to see what
+ *     they were about to create.
+ *
+ * Static source-presence tests covering all three.
+ */
+describe("Wizard layout polish — sticky sidebar, banner, Summary", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const stepPath = path.join(__dirname, "WizardDiscoverStep.js");
+  const customizePath = path.join(__dirname, "WizardCustomizeStep.js");
+  const stepSource = fs.readFileSync(stepPath, "utf8");
+  const customizeSource = fs.readFileSync(customizePath, "utf8");
+
+  test("Discover sidebar is sticky (stays fixed while results scroll)", () => {
+    // The aside element must use Tailwind sticky positioning so it
+    // doesn't scroll along with the result grid.
+    expect(stepSource).toMatch(/<aside[^>]*className=["'][^"']*\bsticky\b/);
+  });
+
+  test("Sign-in CTA renders OUTSIDE the filter sidebar (above the 2-column row)", () => {
+    // The sign-in CTA used to live inside the <aside>. The user wants
+    // it horizontal at the top of the step. Assert: the "Sign in to
+    // registry" banner appears in the source BEFORE the <aside> tag,
+    // so it sits above the 2-column flex-row layout.
+    const ctaIndex = stepSource.indexOf("Sign in to registry");
+    const asideIndex = stepSource.indexOf("<aside");
+    expect(ctaIndex).toBeGreaterThan(-1);
+    expect(asideIndex).toBeGreaterThan(-1);
+    expect(ctaIndex).toBeLessThan(asideIndex);
+  });
+
+  test("Customize step renders Summary above the Name input", () => {
+    // The Summary block lifted out from the bottom of the substep
+    // container so the user sees what they're creating before they
+    // start filling in fields.
+    const summaryIndex = customizeSource.indexOf(">Summary<");
+    const nameInputIndex = customizeSource.indexOf("Dashboard Name");
+    expect(summaryIndex).toBeGreaterThan(-1);
+    expect(nameInputIndex).toBeGreaterThan(-1);
+    expect(summaryIndex).toBeLessThan(nameInputIndex);
+  });
+
+  test("Customize step shows '(default)' indicator on the active theme", () => {
+    expect(customizeSource).toMatch(/\(default\)/);
+  });
+});

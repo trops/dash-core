@@ -429,6 +429,62 @@ export const WizardCustomizeStep = ({
         Customize your dashboard
       </h3>
 
+      {/* Summary — lifted to the top of the step so the user sees what
+          they're about to create before filling in the form, instead
+          of being tucked at the bottom under the substep content. */}
+      <div className="rounded-lg border border-gray-700/50 bg-gray-800/50 p-4 flex flex-col gap-2">
+        <span className="text-sm font-semibold text-gray-300">Summary</span>
+        {state.customization.name.trim() && (
+          <div className="flex items-center gap-2 text-sm text-gray-300">
+            <FontAwesomeIcon icon="clone" className="text-blue-400" />
+            <span>{state.customization.name.trim()}</span>
+          </div>
+        )}
+        {selectedFolder && (
+          <div className="flex items-center gap-2 text-sm text-gray-300">
+            <FontAwesomeIcon
+              icon={selectedFolder.icon || selectedFolder.folder || "folder"}
+              className="text-blue-400"
+            />
+            <span>{selectedFolder.name}</span>
+          </div>
+        )}
+        {selectedTheme && (
+          <div className="flex items-center gap-2 text-sm text-gray-300">
+            <FontAwesomeIcon icon="palette" className="text-blue-400" />
+            <span>{selectedTheme.name || state.customization.theme}</span>
+            {state.customization.theme === appThemeKey && (
+              <span className="text-xs text-gray-500">(default)</span>
+            )}
+            <div className="flex flex-row space-x-1 ml-2">
+              {selectedTheme.primary && (
+                <div
+                  className={`w-3 h-3 rounded bg-${selectedTheme.primary}-500`}
+                />
+              )}
+              {selectedTheme.secondary && (
+                <div
+                  className={`w-3 h-3 rounded bg-${selectedTheme.secondary}-500`}
+                />
+              )}
+            </div>
+          </div>
+        )}
+        <div className="flex items-center gap-2 text-sm text-gray-300">
+          <FontAwesomeIcon
+            icon={isPrebuilt ? "box" : "grid-2"}
+            className="text-blue-400"
+          />
+          <span>
+            {isPrebuilt
+              ? state.selectedDashboard?.displayName ||
+                state.selectedDashboard?.name ||
+                "Pre-built dashboard"
+              : `${state.selectedWidgets.length} widget${state.selectedWidgets.length !== 1 ? "s" : ""}`}
+          </span>
+        </div>
+      </div>
+
       {/* Mini-stepper (DASH-188) */}
       <div className="flex items-center gap-2 mb-2">
         {SUB_STEPS.map((s, i) => (
@@ -724,57 +780,6 @@ export const WizardCustomizeStep = ({
             </div>
           </div>
         )}
-
-        {/* --- Summary sidebar --- */}
-        <div className="rounded-lg border border-gray-700/50 bg-gray-800/50 p-4 flex flex-col gap-2">
-          <span className="text-sm font-semibold text-gray-300">Summary</span>
-          {state.customization.name.trim() && (
-            <div className="flex items-center gap-2 text-sm text-gray-300">
-              <FontAwesomeIcon icon="clone" className="text-blue-400" />
-              <span>{state.customization.name.trim()}</span>
-            </div>
-          )}
-          {selectedFolder && (
-            <div className="flex items-center gap-2 text-sm text-gray-300">
-              <FontAwesomeIcon
-                icon={selectedFolder.icon || selectedFolder.folder || "folder"}
-                className="text-blue-400"
-              />
-              <span>{selectedFolder.name}</span>
-            </div>
-          )}
-          {selectedTheme && (
-            <div className="flex items-center gap-2 text-sm text-gray-300">
-              <FontAwesomeIcon icon="palette" className="text-blue-400" />
-              <span>{selectedTheme.name || state.customization.theme}</span>
-              <div className="flex flex-row space-x-1 ml-2">
-                {selectedTheme.primary && (
-                  <div
-                    className={`w-3 h-3 rounded bg-${selectedTheme.primary}-500`}
-                  />
-                )}
-                {selectedTheme.secondary && (
-                  <div
-                    className={`w-3 h-3 rounded bg-${selectedTheme.secondary}-500`}
-                  />
-                )}
-              </div>
-            </div>
-          )}
-          <div className="flex items-center gap-2 text-sm text-gray-300">
-            <FontAwesomeIcon
-              icon={isPrebuilt ? "box" : "grid-2"}
-              className="text-blue-400"
-            />
-            <span>
-              {isPrebuilt
-                ? state.selectedDashboard?.displayName ||
-                  state.selectedDashboard?.name ||
-                  "Pre-built dashboard"
-                : `${state.selectedWidgets.length} widget${state.selectedWidgets.length !== 1 ? "s" : ""}`}
-            </span>
-          </div>
-        </div>
 
         {/* --- Auth prompt (device-code flow for registry install) --- */}
         {authNeeded && (
