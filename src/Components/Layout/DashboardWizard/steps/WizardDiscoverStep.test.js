@@ -605,3 +605,77 @@ describe("Wizard layout polish — sticky sidebar, banner, Summary", () => {
     expect(customizeSource).toMatch(/\(default\)/);
   });
 });
+
+/**
+ * Wizard step restructure — Discover (browse) → 1.Name → 2.Folder →
+ * 3.Theme → 4.Review.
+ *
+ * The Customize step's internal subStep state is replaced by direct
+ * use of state.step, and the mini-stepper is gone (modal footer's
+ * Next/Back drive advancement). The modal hides its top-level
+ * Stepper while in Discover and shows the 4-entry numbered Stepper
+ * thereafter. Create only fires from the Review step (step 4) and
+ * is gated on the full customization (name + folder + theme), with
+ * any failure surfaced inline so the click never silently no-ops.
+ */
+describe("Wizard step restructure — Discover + 4 numbered steps", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const customizePath = path.join(__dirname, "WizardCustomizeStep.js");
+  const modalPath = path.join(__dirname, "..", "DashboardWizardModal.js");
+  const customizeSource = fs.readFileSync(customizePath, "utf8");
+  const modalSource = fs.readFileSync(modalPath, "utf8");
+
+  test("Customize step routes by state.step (1=Name, 2=Folder, 3=Theme, 4=Review)", () => {
+    expect(customizeSource).toMatch(/state\.step\s*===\s*1/);
+    expect(customizeSource).toMatch(/state\.step\s*===\s*2/);
+    expect(customizeSource).toMatch(/state\.step\s*===\s*3/);
+    expect(customizeSource).toMatch(/state\.step\s*===\s*4/);
+  });
+
+  test("Customize step's internal subStep state is removed", () => {
+    // The mini-stepper from DASH-188 is gone; the modal footer's
+    // Next/Back drives advancement now.
+    expect(customizeSource).not.toMatch(/\bsubStep\b/);
+    expect(customizeSource).not.toMatch(/\bsetSubStep\b/);
+  });
+
+  test("Customize step renders an inline error banner so handleCreate failures are visible", () => {
+    // Without an inline surface, errors land in console.error which
+    // is stripped by rollup-strip in the dash-core dist — making the
+    // Create click look like a no-op. The banner must be in the
+    // step's source so prod users see the failure.
+    expect(customizeSource).toMatch(
+      /\{error\s*&&[\s\S]{0,400}circle-exclamation/,
+    );
+  });
+
+  test("Modal hides the Stepper on step 0 (Discover is a browse phase)", () => {
+    // When state.step === 0, the modal renders the Discover step on
+    // its own — no numbered Stepper above it. The 4-entry Stepper
+    // appears for steps 1..4.
+    expect(modalSource).toMatch(/isDiscover/);
+    expect(modalSource).toMatch(/isDiscover\s*\?/);
+  });
+
+  test("Modal's STEP_LABELS list has 4 entries (Name/Folder/Theme/Review)", () => {
+    expect(modalSource).toMatch(/Name/);
+    expect(modalSource).toMatch(/Folder/);
+    expect(modalSource).toMatch(/Theme/);
+    expect(modalSource).toMatch(/Review/);
+    // 4 numbered steps means STEP_LABELS.length === 4 — assert the
+    // modal computes its 'Step X of 4' counter against that.
+    expect(modalSource).toMatch(/STEP_LABELS\.length/);
+  });
+
+  test("Modal computes canCreate from full customization (name + folder + theme)", () => {
+    // Cycle 2: canCreate must NOT be canProceed alone (canProceed
+    // for step 4 is always true by design). The modal re-checks the
+    // underlying customization fields so a click on Review's Create
+    // button can't fire when an earlier step's data is missing.
+    expect(modalSource).toMatch(/customizationComplete/);
+    expect(modalSource).toMatch(/customization\.name/);
+    expect(modalSource).toMatch(/customization\.menuId/);
+    expect(modalSource).toMatch(/customization\.theme/);
+  });
+});

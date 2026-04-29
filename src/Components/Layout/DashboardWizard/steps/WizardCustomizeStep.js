@@ -77,8 +77,11 @@ export const WizardCustomizeStep = ({
     };
   }, []);
 
-  // Sub-step state (DASH-188): 0 = Name, 1 = Folder, 2 = Theme
-  const [subStep, setSubStep] = useState(0);
+  // Cycle 2: the inner pages were promoted to top-level wizard steps
+  // (state.step 1=Name, 2=Folder, 3=Theme, 4=Review). The internal
+  // mini-stepper from DASH-188 is gone — the modal footer's
+  // Next/Back drives advancement now, and the wizard's per-step
+  // canProceed gates each transition.
 
   const isPrebuilt = state.path === "prebuilt";
 
@@ -275,7 +278,6 @@ export const WizardCustomizeStep = ({
       setIsCreatingFolder(false);
       setNewFolderName("");
       setNewFolderIcon(null);
-      setSubStep(2); // Auto-advance to Theme
     },
     [dispatch],
   );
@@ -417,12 +419,6 @@ export const WizardCustomizeStep = ({
       ? themes[state.customization.theme]
       : null;
 
-  const SUB_STEPS = [
-    { label: "Name", icon: "input-text" },
-    { label: "Folder", icon: "folder" },
-    { label: "Theme", icon: "palette" },
-  ];
-
   return (
     <div className="flex flex-col gap-4">
       <h3 className="text-lg font-semibold text-gray-200">
@@ -485,36 +481,25 @@ export const WizardCustomizeStep = ({
         </div>
       </div>
 
-      {/* Mini-stepper (DASH-188) */}
-      <div className="flex items-center gap-2 mb-2">
-        {SUB_STEPS.map((s, i) => (
-          <React.Fragment key={s.label}>
-            {i > 0 && (
-              <div
-                className={`flex-1 h-px ${i <= subStep ? "bg-blue-500" : "bg-gray-700"}`}
-              />
-            )}
-            <button
-              type="button"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                i === subStep
-                  ? "bg-blue-600 text-white"
-                  : i < subStep
-                    ? "bg-blue-900/50 text-blue-300 cursor-pointer"
-                    : "bg-gray-800 text-gray-500"
-              }`}
-              onClick={() => setSubStep(i)}
-            >
-              <FontAwesomeIcon icon={s.icon} fixedWidth />
-              {s.label}
-            </button>
-          </React.Fragment>
-        ))}
-      </div>
+      {/* Visible failure surface for the Create handler — surfaces
+          install errors and registry-auth prompts to the user
+          (otherwise console.error is stripped by rollup-strip and the
+          click silently no-ops). Renders on every numbered step so
+          the user sees the issue regardless of where they were when
+          Create fired. */}
+      {error && (
+        <div className="rounded-lg border border-red-500 bg-red-900 p-3 flex items-start gap-2">
+          <FontAwesomeIcon
+            icon="circle-exclamation"
+            className="text-red-400 mt-0.5 flex-shrink-0"
+          />
+          <span className="text-sm text-red-200">{error}</span>
+        </div>
+      )}
 
       <div className="flex flex-col gap-6">
-        {/* --- Sub-step 0: Name --- */}
-        {subStep === 0 && (
+        {/* --- Step 1: Name --- */}
+        {state.step === 1 && (
           <div className="flex flex-col gap-3">
             <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
               <FontAwesomeIcon icon="input-text" fixedWidth />
@@ -526,41 +511,11 @@ export const WizardCustomizeStep = ({
               placeholder="My Dashboard"
               autoFocus={true}
             />
-            <div className="flex justify-end mt-2">
-              <Button
-                onClick={() => setSubStep(1)}
-                title="Next"
-                textSize="text-sm"
-                padding="py-1.5 px-4"
-                backgroundColor={
-                  state.customization.name.trim()
-                    ? "bg-blue-600"
-                    : "bg-gray-700"
-                }
-                textColor={
-                  state.customization.name.trim()
-                    ? "text-white"
-                    : "text-gray-500"
-                }
-                hoverTextColor={
-                  state.customization.name.trim()
-                    ? "hover:text-white"
-                    : "hover:text-gray-500"
-                }
-                hoverBackgroundColor={
-                  state.customization.name.trim()
-                    ? "hover:bg-blue-500"
-                    : "hover:bg-gray-700"
-                }
-                disabled={!state.customization.name.trim()}
-                icon="arrow-right"
-              />
-            </div>
           </div>
         )}
 
-        {/* --- Sub-step 1: Folder picker --- */}
-        {subStep === 1 && (
+        {/* --- Step 2: Folder picker --- */}
+        {state.step === 2 && (
           <div className="flex flex-col gap-3">
             <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
               <FontAwesomeIcon icon="folder" fixedWidth />
@@ -662,24 +617,11 @@ export const WizardCustomizeStep = ({
                 );
               })}
             </div>
-            <div className="flex justify-end mt-2">
-              <Button
-                onClick={() => setSubStep(2)}
-                title="Next"
-                textSize="text-sm"
-                padding="py-1.5 px-4"
-                backgroundColor="bg-blue-600"
-                textColor="text-white"
-                hoverTextColor="hover:text-white"
-                hoverBackgroundColor="hover:bg-blue-500"
-                icon="arrow-right"
-              />
-            </div>
           </div>
         )}
 
-        {/* --- Sub-step 2: Theme picker --- */}
-        {subStep === 2 && (
+        {/* --- Step 3: Theme picker --- */}
+        {state.step === 3 && (
           <div className="flex flex-col gap-3">
             <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
               <FontAwesomeIcon icon="palette" fixedWidth />
@@ -778,6 +720,21 @@ export const WizardCustomizeStep = ({
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* --- Step 4: Review — confirm and Create --- */}
+        {state.step === 4 && (
+          <div className="flex flex-col gap-3">
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
+              <FontAwesomeIcon icon="circle-check" fixedWidth />
+              Review
+            </label>
+            <p className="text-sm text-gray-400">
+              Confirm the dashboard details above. Click{" "}
+              <strong className="text-gray-200">Create Dashboard</strong> when
+              you're ready — the modal footer holds the action.
+            </p>
           </div>
         )}
 

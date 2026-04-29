@@ -4,9 +4,14 @@ import { useWizardState } from "../../../hooks/useWizardState";
 import { WizardDiscoverStep } from "./steps/WizardDiscoverStep";
 import { WizardCustomizeStep } from "./steps/WizardCustomizeStep";
 
+// Step 0 (Discover) is the browse phase — no stepper entry, no
+// numbered position. The numbered wizard begins once the user has
+// selected a dashboard or widgets and clicks Next.
 const STEP_LABELS = [
-  { label: "Discover", description: "Search & select" },
-  { label: "Customize", description: "Name, folder & theme" },
+  { label: "Name", description: "Pick a name" },
+  { label: "Folder", description: "Where it lives" },
+  { label: "Theme", description: "How it looks" },
+  { label: "Review", description: "Confirm & create" },
 ];
 
 /**
@@ -57,10 +62,20 @@ export const DashboardWizardModal = ({
     nextStep();
   }, [canProceed, nextStep]);
 
-  const isLastStep = state.step === 1;
+  const isDiscover = state.step === 0;
+  const isLastStep = state.step === 4;
   const isCreating = createHandlerRef.current?.creating ?? false;
   const isCreated = !!createHandlerRef.current?.createdDashboard;
-  const canCreate = canProceed && !isCreating;
+  // Create only fires when every prior step has been validated. The
+  // Review step (canProceed=true by design) doesn't tell us whether
+  // Name/Folder/Theme were filled, so we re-check the underlying
+  // customization here — belt-and-suspenders for clicks that race
+  // the stepper.
+  const customizationComplete =
+    state.customization.name.trim().length > 0 &&
+    state.customization.menuId !== null &&
+    !!state.customization.theme;
+  const canCreate = customizationComplete && !isCreating;
 
   return (
     <Modal
@@ -96,46 +111,50 @@ export const DashboardWizardModal = ({
           </button>
         </div>
 
-        {/* Stepper + content */}
+        {/* Content — Stepper renders only for the 4 numbered steps
+            (Name/Folder/Theme/Review). Discover is a browse phase
+            without a numbered position so users aren't told they're
+            "in step 1 of N" before they've even chosen what to
+            create. */}
         <div className="flex flex-col flex-1 min-h-0 px-6 py-4">
-          <Stepper
-            activeStep={state.step}
-            onStepChange={handleStepChange}
-            showNavigation={false}
-            className="flex-1 min-h-0"
-          >
-            <Stepper.Step
-              label={STEP_LABELS[0].label}
-              description={STEP_LABELS[0].description}
+          {isDiscover ? (
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <WizardDiscoverStep state={state} dispatch={dispatch} />
+            </div>
+          ) : (
+            <Stepper
+              activeStep={state.step - 1}
+              onStepChange={(s) => handleStepChange(s + 1)}
+              showNavigation={false}
+              className="flex-1 min-h-0"
             >
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                <WizardDiscoverStep state={state} dispatch={dispatch} />
-              </div>
-            </Stepper.Step>
-
-            <Stepper.Step
-              label={STEP_LABELS[1].label}
-              description={STEP_LABELS[1].description}
-            >
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                <WizardCustomizeStep
-                  state={state}
-                  dispatch={dispatch}
-                  menuItems={menuItems}
-                  onSaveMenuItem={onSaveMenuItem}
-                  onCreateWorkspace={onCreateWorkspace}
-                  onInstallDashboard={onInstallDashboard}
-                  onOpenDashboard={(ws) => {
-                    handleClose();
-                    if (onOpenDashboard) onOpenDashboard(ws);
-                    if (onReloadWorkspaces) onReloadWorkspaces();
-                  }}
-                  appId={appId}
-                  createHandlerRef={createHandlerRef}
-                />
-              </div>
-            </Stepper.Step>
-          </Stepper>
+              {STEP_LABELS.map((label) => (
+                <Stepper.Step
+                  key={label.label}
+                  label={label.label}
+                  description={label.description}
+                >
+                  <div className="flex-1 min-h-0 overflow-y-auto">
+                    <WizardCustomizeStep
+                      state={state}
+                      dispatch={dispatch}
+                      menuItems={menuItems}
+                      onSaveMenuItem={onSaveMenuItem}
+                      onCreateWorkspace={onCreateWorkspace}
+                      onInstallDashboard={onInstallDashboard}
+                      onOpenDashboard={(ws) => {
+                        handleClose();
+                        if (onOpenDashboard) onOpenDashboard(ws);
+                        if (onReloadWorkspaces) onReloadWorkspaces();
+                      }}
+                      appId={appId}
+                      createHandlerRef={createHandlerRef}
+                    />
+                  </div>
+                </Stepper.Step>
+              ))}
+            </Stepper>
+          )}
 
           {/* Custom navigation footer — hidden once the dashboard has
               been created so the success state's "Open Dashboard" CTA
@@ -154,7 +173,9 @@ export const DashboardWizardModal = ({
                 hoverBackgroundColor="hover:bg-gray-600"
               />
               <span className="text-xs text-gray-500">
-                Step {state.step + 1} of {STEP_LABELS.length}
+                {isDiscover
+                  ? "Browse"
+                  : `Step ${state.step} of ${STEP_LABELS.length}`}
               </span>
               {isLastStep ? (
                 <Button

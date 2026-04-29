@@ -284,7 +284,7 @@ describe("useWizardState", () => {
     expect(result.current.state.step).toBe(0);
   });
 
-  test("goToStep navigates to valid steps only", () => {
+  test("goToStep navigates to valid steps only (0..4)", () => {
     act(() => {
       result.current.goToStep(1);
     });
@@ -295,25 +295,36 @@ describe("useWizardState", () => {
     });
     expect(result.current.state.step).toBe(1);
 
+    // 5 is out of range — total steps are 0..4
     act(() => {
-      result.current.goToStep(2);
+      result.current.goToStep(5);
     });
     expect(result.current.state.step).toBe(1);
+
+    // 4 is the final step (Review)
+    act(() => {
+      result.current.goToStep(4);
+    });
+    expect(result.current.state.step).toBe(4);
   });
 
-  test("nextStep does not exceed max step", () => {
+  test("nextStep does not exceed max step (4 = Review)", () => {
     act(() => {
-      result.current.dispatch({ type: "SET_STEP", payload: 1 });
+      result.current.dispatch({ type: "SET_STEP", payload: 4 });
     });
     act(() => {
       result.current.nextStep();
     });
-    expect(result.current.state.step).toBe(1);
+    expect(result.current.state.step).toBe(4);
   });
 
   // --- canProceed per step ---
+  // Steps: 0 = Discover, 1 = Name, 2 = Folder, 3 = Theme, 4 = Review.
+  // The wizard restructure (Cycle 2) splits the old "Customize" step
+  // into four discrete steps so the user has to land on each one and
+  // make an explicit choice before Create fires from Review.
 
-  test("step 0 canProceed requires dashboard or widget selection", () => {
+  test("step 0 (Discover) canProceed requires dashboard or widget selection", () => {
     expect(result.current.canProceed).toBe(false);
 
     // Dashboard selection satisfies
@@ -339,52 +350,70 @@ describe("useWizardState", () => {
     expect(result.current.canProceed).toBe(true);
   });
 
-  test("step 1 canProceed requires name AND theme", () => {
+  test("step 1 (Name) canProceed requires non-empty name", () => {
     act(() => {
       result.current.dispatch({ type: "SET_STEP", payload: 1 });
     });
     expect(result.current.canProceed).toBe(false);
 
-    // Name alone is not enough — theme is also required so the
-    // Create button can't fire before the user has at least confirmed
-    // a theme (the wizard auto-defaults theme to the user's active
-    // app theme; this gate locks the contract).
     act(() => {
       result.current.dispatch({
         type: "SET_CUSTOMIZATION",
         payload: { name: "Dashboard" },
       });
     });
-    expect(result.current.canProceed).toBe(false);
+    expect(result.current.canProceed).toBe(true);
+  });
 
-    // Theme alone is not enough.
+  test("step 1 (Name) whitespace-only name does not pass", () => {
     act(() => {
+      result.current.dispatch({ type: "SET_STEP", payload: 1 });
       result.current.dispatch({
         type: "SET_CUSTOMIZATION",
-        payload: { name: "", theme: "default-1" },
+        payload: { name: "   " },
       });
     });
     expect(result.current.canProceed).toBe(false);
+  });
 
-    // Both name + theme → can proceed.
+  test("step 2 (Folder) canProceed requires menuId set", () => {
+    act(() => {
+      result.current.dispatch({ type: "SET_STEP", payload: 2 });
+    });
+    expect(result.current.canProceed).toBe(false);
+
     act(() => {
       result.current.dispatch({
         type: "SET_CUSTOMIZATION",
-        payload: { name: "Dashboard", theme: "default-1" },
+        payload: { menuId: 1 },
       });
     });
     expect(result.current.canProceed).toBe(true);
   });
 
-  test("step 1 whitespace-only name does not pass even with theme", () => {
+  test("step 3 (Theme) canProceed requires theme set", () => {
     act(() => {
-      result.current.dispatch({ type: "SET_STEP", payload: 1 });
-      result.current.dispatch({
-        type: "SET_CUSTOMIZATION",
-        payload: { name: "   ", theme: "default-1" },
-      });
+      result.current.dispatch({ type: "SET_STEP", payload: 3 });
     });
     expect(result.current.canProceed).toBe(false);
+
+    act(() => {
+      result.current.dispatch({
+        type: "SET_CUSTOMIZATION",
+        payload: { theme: "default-1" },
+      });
+    });
+    expect(result.current.canProceed).toBe(true);
+  });
+
+  test("step 4 (Review) canProceed is always true — Create is the action", () => {
+    act(() => {
+      result.current.dispatch({ type: "SET_STEP", payload: 4 });
+    });
+    // Review step: the footer's Create button replaces Next; the gate
+    // for *firing* Create is the modal-side `canCreate` (which checks
+    // earlier-step state), not canProceed.
+    expect(result.current.canProceed).toBe(true);
   });
 
   // --- Unknown action ---

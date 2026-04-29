@@ -1,6 +1,6 @@
 import { useReducer, useCallback, useMemo } from "react";
 
-const TOTAL_STEPS = 2; // Steps 0-1: Discover, Customize
+const TOTAL_STEPS = 5; // Steps 0-4: Discover, Name, Folder, Theme, Review
 
 const initialState = {
   step: 0,
@@ -128,21 +128,28 @@ export function widgetCountToTemplate(count) {
 }
 
 function getCanProceed(state) {
+  // Step semantics (Cycle 2 restructure):
+  //   0 = Discover (browse + select)
+  //   1 = Name
+  //   2 = Folder
+  //   3 = Theme
+  //   4 = Review (final — Create button replaces Next)
   switch (state.step) {
     case 0:
       return (
         state.selectedDashboard !== null || state.selectedWidgets.length > 0
       );
     case 1:
-      // Create can fire only when the user has both a name and a theme.
-      // The wizard auto-defaults theme to the user's active app theme,
-      // so this gate is mostly belt-and-suspenders — but it locks the
-      // contract so a future refactor that drops the auto-default
-      // can't quietly let the Create button enable on name alone.
-      return (
-        state.customization.name.trim().length > 0 &&
-        !!state.customization.theme
-      );
+      return state.customization.name.trim().length > 0;
+    case 2:
+      return state.customization.menuId !== null;
+    case 3:
+      return !!state.customization.theme;
+    case 4:
+      // Review is the final step — there's no "next" beyond it. The
+      // modal's footer swaps Next for Create on this step; the actual
+      // gate for *firing* Create is composed there (`canCreate`).
+      return true;
     default:
       return false;
   }
