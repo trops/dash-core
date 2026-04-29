@@ -54,6 +54,11 @@ export const ProvidersSection = ({
   // credential form. Widget Builder's deep-link path passes a class
   // explicitly and bypasses this chooser.
   const [isShowingClassChooser, setIsShowingClassChooser] = useState(false);
+  // Tracks whether the current create-flow detail was reached via the
+  // chooser (vs. the Widget Builder deep-link or list-edit). Only the
+  // chooser-entry path renders the "← Back" affordance, since that's
+  // the only path that has somewhere to go back to.
+  const [cameFromClassChooser, setCameFromClassChooser] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [formName, setFormName] = useState("");
   const [formType, setFormType] = useState("");
@@ -433,6 +438,10 @@ export const ProvidersSection = ({
       resetForm();
       setSelectedName(null);
       setIsShowingClassChooser(false);
+      // External create requests (deep-link or header button) do NOT
+      // come via the chooser, so any leftover "came from chooser" state
+      // from a prior session must be cleared before routing.
+      setCameFromClassChooser(false);
       if (initialProviderClass === "mcp") {
         // MCP class: open the catalog detail. Pre-select happens in
         // McpCatalogDetail via the initialSelectedId prop passed below.
@@ -581,12 +590,25 @@ export const ProvidersSection = ({
     </>
   );
 
+  // Closes whichever create-flow detail is open and re-opens the
+  // class chooser. Only attached to the detail's onBack prop when
+  // the user reached it via the chooser (cameFromClassChooser).
+  const goBackToClassChooser = () => {
+    resetForm();
+    setIsAddingWs(false);
+    setIsAddingMcp(false);
+    setIsCreating(false);
+    setCameFromClassChooser(false);
+    setIsShowingClassChooser(true);
+  };
+
   let detailContent = null;
   if (isAddingWs) {
     detailContent = (
       <WebSocketProviderForm
         onSave={handleWsSave}
         onCancel={() => setIsAddingWs(false)}
+        onBack={cameFromClassChooser ? goBackToClassChooser : null}
       />
     );
   } else if (isEditingWs && selectedName && selectedProvider) {
@@ -616,6 +638,7 @@ export const ProvidersSection = ({
       <NewProviderPicker
         onSelect={(cls) => {
           setIsShowingClassChooser(false);
+          setCameFromClassChooser(true);
           if (cls === "mcp") {
             setIsAddingMcp(true);
           } else if (cls === "websocket") {
@@ -632,6 +655,7 @@ export const ProvidersSection = ({
         onSave={handleMcpSave}
         onCancel={() => setIsAddingMcp(false)}
         initialSelectedId={initialProviderType}
+        onBack={cameFromClassChooser ? goBackToClassChooser : null}
       />
     );
   } else if (isCreating) {
@@ -649,6 +673,7 @@ export const ProvidersSection = ({
           resetForm();
           setIsCreating(false);
         }}
+        onBack={cameFromClassChooser ? goBackToClassChooser : null}
       />
     );
   } else if (isEditingMcp && selectedName && selectedProvider) {
