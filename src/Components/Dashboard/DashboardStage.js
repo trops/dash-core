@@ -53,6 +53,7 @@ import {
 import { applyWiringChanges } from "../../utils/listenerResolution";
 import { reconcileWorkspaceAfterLayoutChange } from "../../utils/workspaceReconciliation";
 import { applyBulkUserPrefs } from "../../utils/applyBulkUserPrefs";
+import { applyBulkProviderBindings } from "../../utils/applyBulkProviderBindings";
 import { moveWidgetAcrossContainers } from "../../utils/layout";
 import { ComponentManager } from "../../ComponentManager";
 
@@ -887,29 +888,17 @@ const DashboardStageInner = ({
     if (!Array.isArray(changes) || changes.length === 0) return;
     if (!workspaceSelected || !dashApi || !credentials?.appId) return;
 
-    // Start from the current map, layer changes on top.
-    const nextSelectedProviders = {
-      ...(workspaceSelected.selectedProviders || {}),
-    };
-    for (const { widgetId, providerType, providerName } of changes) {
-      if (!widgetId || !providerType) continue;
-      const prevForWidget = nextSelectedProviders[widgetId]
-        ? { ...nextSelectedProviders[widgetId] }
-        : {};
-      if (providerName) {
-        prevForWidget[providerType] = providerName;
-      } else {
-        // Empty string means "clear" — remove the binding so it falls
-        // back to app default (or null) on next resolve.
-        delete prevForWidget[providerType];
-      }
-      nextSelectedProviders[widgetId] = prevForWidget;
-    }
-
-    const updatedWorkspace = {
-      ...workspaceSelected,
-      selectedProviders: nextSelectedProviders,
-    };
+    // Write through to BOTH layers — workspace.selectedProviders[id]
+    // (layer 2) AND every matching layout item's selectedProviders
+    // (layer 1). Without the layer-1 write, a stale per-widget
+    // value silently shadows the bulk pick because resolveProviderName
+    // checks layer 1 first. See `applyBulkProviderBindings` for the
+    // full rationale.
+    const updatedWorkspace = applyBulkProviderBindings(
+      workspaceSelected,
+      changes,
+    );
+    if (updatedWorkspace === workspaceSelected) return; // no-op
     const reconciled = reconcileWorkspaceAfterLayoutChange(updatedWorkspace);
     updateTabWorkspace(reconciled);
 
