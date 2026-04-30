@@ -71,6 +71,37 @@ export const PanelEditItemProviders = ({
       updatedItem,
     );
 
+    // Write through to layer 2 (workspace.selectedProviders[widgetId])
+    // so the bulk-edit modal — which reads via resolveProviderName,
+    // which falls back from layer 1 to layer 2 — sees the change. If
+    // we only write layer 1, an unset here clears layer 1 but leaves
+    // a stale layer-2 value, and the bulk modal renders the OLD
+    // provider as still set (resolveProviderName falls through empty
+    // layer 1 to find layer 2). Matches the canonical-key chain
+    // `applyBulkProviderBindings` uses on the bulk path.
+    const widgetId =
+      updatedItem.uuidString || updatedItem.uuid || updatedItem.id;
+    if (widgetId != null) {
+      const wsKey = String(widgetId);
+      const nextSelectedProviders = {
+        ...(updatedWorkspace.selectedProviders || {}),
+      };
+      const prevForWidget = nextSelectedProviders[wsKey]
+        ? { ...nextSelectedProviders[wsKey] }
+        : {};
+      if (providerName) {
+        prevForWidget[providerType] = providerName;
+      } else {
+        delete prevForWidget[providerType];
+      }
+      if (Object.keys(prevForWidget).length === 0) {
+        delete nextSelectedProviders[wsKey];
+      } else {
+        nextSelectedProviders[wsKey] = prevForWidget;
+      }
+      updatedWorkspace.selectedProviders = nextSelectedProviders;
+    }
+
     setItemSelected(() => updatedItem);
     setWorkspaceSelected(() => updatedWorkspace);
     onUpdate(updatedItem, updatedWorkspace);
