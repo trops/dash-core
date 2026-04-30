@@ -1271,10 +1271,51 @@ const DashboardStageInner = ({
     return pageRefsMap.current[pageId];
   }
 
-  const handlePageWorkspaceChange = useCallback((updatedWorkspace, pageId) => {
-    // Store in per-page ref (used by save function)
-    pageRefsMap.current[pageId] = { current: updatedWorkspace };
-  }, []);
+  const handlePageWorkspaceChange = useCallback(
+    (updatedWorkspace, pageId) => {
+      // Store in per-page ref (used by save function)
+      pageRefsMap.current[pageId] = { current: updatedWorkspace };
+
+      // Also update the React state so workspaceSelected (which the
+      // dashboard config bulk-edit modal reads) stays in sync. Before
+      // this, page-level edits only flowed into pageRefsMap and the
+      // bulk modal kept rendering pre-edit data — even when the
+      // PanelEditItemProviders fix correctly wrote both layers and
+      // the LayoutBuilder fix correctly propagated up. The data
+      // arrived; it just never reached the React state the bulk
+      // modal subscribes to.
+      //
+      // Mirror the new page's `layout` into the active tab's matching
+      // page, AND bring forward the workspace-level
+      // `selectedProviders` map so layer-2 writes from per-widget
+      // edits land in state the bulk modal can see.
+      if (!activeTabId || !updatedWorkspace) return;
+      setOpenTabs((prev) =>
+        prev.map((tab) => {
+          if (tab.id !== activeTabId) return tab;
+          const tabWs = tab.workspace;
+          if (!tabWs) return tab;
+          const nextPages = Array.isArray(tabWs.pages)
+            ? tabWs.pages.map((p) =>
+                p && p.id === pageId
+                  ? { ...p, layout: updatedWorkspace.layout }
+                  : p,
+              )
+            : tabWs.pages;
+          return {
+            ...tab,
+            workspace: {
+              ...tabWs,
+              pages: nextPages,
+              selectedProviders:
+                updatedWorkspace.selectedProviders ?? tabWs.selectedProviders,
+            },
+          };
+        }),
+      );
+    },
+    [activeTabId],
+  );
 
   // Keep stable callback refs current
   stableProviderSelectRef.current = handleProviderSelect;
