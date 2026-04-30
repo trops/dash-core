@@ -849,6 +849,14 @@ export const LayoutBuilder = ({
       }
 
       setCurrentWorkspace(newWorkspace);
+      // Propagate to the parent (DashboardStage) so workspaceSelected
+      // — what the dashboard config bulk-edit modal reads from —
+      // stays in sync with per-widget provider edits. Mirrors the
+      // pattern in the AI placement / remix handlers above. Without
+      // this, the bulk modal opens with stale provider bindings.
+      if (typeof onWorkspaceChangeRef.current === "function") {
+        onWorkspaceChangeRef.current(newWorkspace);
+      }
     }
   }
 
