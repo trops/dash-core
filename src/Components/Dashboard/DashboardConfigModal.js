@@ -377,12 +377,25 @@ export const DashboardConfigModal = ({
 
   // Bulk-apply: write this provider as the binding for every widget of
   // this type that doesn't already have an explicit widget-level override.
+  //
+  // Override-detection consults the staged state first so a freshly
+  // staged unset is recognised as "no override" and gets bulked. A
+  // non-empty staged value is treated as an explicit pick and is
+  // preserved (bulk skips). Without this, the user could stage an
+  // unset and then click Bulk and the widget they just unset would
+  // be skipped because the *original* layer-1 value still lived on
+  // `b.layoutItem.selectedProviders`.
   function stageBulk(providerType, providerName) {
-    const affected = effectiveBindings.filter(
-      (b) =>
-        b.providerType === providerType &&
-        !b.layoutItem?.selectedProviders?.[providerType],
-    );
+    const affected = effectiveBindings.filter((b) => {
+      if (b.providerType !== providerType) return false;
+      const stagedValue = staged[b.widgetId]?.[providerType];
+      if (stagedValue !== undefined) {
+        // Empty/null staged value → user staged an unset → include
+        // in bulk. Non-empty → explicit pick, preserve it.
+        return !stagedValue;
+      }
+      return !b.layoutItem?.selectedProviders?.[providerType];
+    });
     setStaged((prev) => {
       const next = { ...prev };
       for (const b of affected) {
