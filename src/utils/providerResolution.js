@@ -120,10 +120,21 @@ export function forEachWidget(workspace, visit) {
     }
   };
 
-  walk(workspace.layout);
+  // Walk pages BEFORE workspace.layout. WorkspaceModel auto-migrates a
+  // workspace with no persisted `pages` by aliasing pages[0].layout to
+  // workspace.layout. After any per-page edit, pages[0].layout is
+  // replaced with a new array (fresh) but workspace.layout is left
+  // pointing at the original (stale) array. Walking layout first +
+  // dedupe-by-stableId then visited the stale top-level item and
+  // skipped the fresh page version, so the bulk-edit modal kept
+  // reading pre-edit provider bindings. Walking pages first means the
+  // fresh data wins; workspace.layout remains as a fallback for
+  // widgets that only live there (e.g. AI-place writes that bypass
+  // the page handler).
   if (Array.isArray(workspace.pages)) {
     for (const page of workspace.pages) walk(page?.layout);
   }
+  walk(workspace.layout);
   walk(workspace.sidebarLayout);
 }
 
