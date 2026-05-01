@@ -41,6 +41,8 @@ export const NotificationsSection = ({ workspaces = [] }) => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedKey, setSelectedKey] = useState(GLOBAL_KEY);
+  const [filterDashboard, setFilterDashboard] = useState("all");
+  const [filterPackage, setFilterPackage] = useState("all");
 
   // Load preferences on mount
   useEffect(() => {
@@ -86,18 +88,51 @@ export const NotificationsSection = ({ workspaces = [] }) => {
     );
   }, [workspaces]);
 
-  // Filter by search.
+  // Derive dropdown option lists. Both sorted alphabetically so the
+  // dropdowns don't shuffle as the underlying list changes order.
+  const dashboardOptions = useMemo(() => {
+    const set = new Set();
+    widgetInstances.forEach((wi) => {
+      if (wi.workspaceName) set.add(wi.workspaceName);
+    });
+    return [...set].sort((a, b) =>
+      String(a).localeCompare(String(b), undefined, { sensitivity: "base" }),
+    );
+  }, [widgetInstances]);
+  const packageOptions = useMemo(() => {
+    const set = new Set();
+    widgetInstances.forEach((wi) => {
+      if (wi.package) set.add(wi.package);
+    });
+    return [...set].sort((a, b) =>
+      String(a).localeCompare(String(b), undefined, { sensitivity: "base" }),
+    );
+  }, [widgetInstances]);
+  const hasActiveFilters =
+    searchQuery.trim() !== "" ||
+    filterDashboard !== "all" ||
+    filterPackage !== "all";
+  const clearFilters = () => {
+    setSearchQuery("");
+    setFilterDashboard("all");
+    setFilterPackage("all");
+  };
+
+  // Filter by search + dashboard + package (composed AND).
   const filteredInstances = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return widgetInstances;
     return widgetInstances.filter((wi) => {
+      if (filterDashboard !== "all" && wi.workspaceName !== filterDashboard)
+        return false;
+      if (filterPackage !== "all" && wi.package !== filterPackage) return false;
+      if (!q) return true;
       const hay = [wi.title, wi.package, wi.workspaceName, wi.componentName]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [widgetInstances, searchQuery]);
+  }, [widgetInstances, searchQuery, filterDashboard, filterPackage]);
 
   function handleGlobalToggle(value) {
     setGlobalEnabled(value);
@@ -149,9 +184,49 @@ export const NotificationsSection = ({ workspaces = [] }) => {
           placeholder="Search widgets..."
           inputClassName="py-1.5 text-xs"
         />
-        <div className="text-[10px] opacity-50 px-0.5">
-          {filteredInstances.length} of {widgetInstances.length} widget
-          {widgetInstances.length === 1 ? "" : "s"}
+        <div className="grid grid-cols-2 gap-1.5">
+          <select
+            value={filterDashboard}
+            onChange={(e) => setFilterDashboard(e.target.value)}
+            className="w-full px-2 py-1 text-xs bg-gray-800/50 border border-white/10 rounded text-gray-200 focus:outline-none"
+          >
+            <option value="all">All Dashboards</option>
+            {dashboardOptions.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filterPackage}
+            onChange={(e) => setFilterPackage(e.target.value)}
+            className="w-full px-2 py-1 text-xs bg-gray-800/50 border border-white/10 rounded text-gray-200 focus:outline-none"
+          >
+            <option value="all">All Packages</option>
+            {packageOptions.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center justify-between text-[10px] px-0.5">
+          <span className="opacity-50">
+            {hasActiveFilters
+              ? `${filteredInstances.length} of ${widgetInstances.length} widgets`
+              : `${widgetInstances.length} widget${
+                  widgetInstances.length === 1 ? "" : "s"
+                }`}
+          </span>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="opacity-60 hover:opacity-100 transition-opacity text-gray-300 hover:bg-white/10 px-1.5 py-0.5 rounded"
+            >
+              Clear
+            </button>
+          )}
         </div>
       </div>
       <Sidebar.Content>

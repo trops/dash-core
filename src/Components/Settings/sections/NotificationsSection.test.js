@@ -74,4 +74,42 @@ describe("NotificationsSection — master-detail layout", () => {
     expect(source).toMatch(/globalEnabled/);
     expect(source).toMatch(/doNotDisturb/);
   });
+
+  // ── Filter dropdowns ────────────────────────────────────────────
+
+  test("holds filter state for Dashboard + Package", () => {
+    // Both filters need to be useState so the user can swap them
+    // independently. Match either single-letter or full names.
+    expect(source).toMatch(
+      /const\s*\[\s*filterDashboard\s*,\s*setFilterDashboard\s*\]\s*=\s*useState/,
+    );
+    expect(source).toMatch(
+      /const\s*\[\s*filterPackage\s*,\s*setFilterPackage\s*\]\s*=\s*useState/,
+    );
+  });
+
+  test("offers an 'All Dashboards' option (default)", () => {
+    expect(source).toMatch(/All Dashboards/);
+  });
+
+  test("offers an 'All Packages' option (default)", () => {
+    expect(source).toMatch(/All Packages/);
+  });
+
+  test("renders a Clear link when filters are active", () => {
+    // Mirror WidgetsSection: when any filter is set away from
+    // "all", a Clear link resets all of them.
+    expect(source).toMatch(/Clear/);
+    expect(source).toMatch(/hasActiveFilters|hasFilters/);
+  });
+
+  test("filter options are alphabetical", () => {
+    // Both option lists should be derived via .sort() so the
+    // dropdowns don't shuffle as the underlying workspaces /
+    // widgets array changes order.
+    const sortHits = (source.match(/\.sort\(/g) || []).length;
+    // We expect at least three sorts now: instances list,
+    // dashboard options, package options.
+    expect(sortHits).toBeGreaterThanOrEqual(3);
+  });
 });
