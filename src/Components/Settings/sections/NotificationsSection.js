@@ -1,23 +1,46 @@
-import React, { useState, useEffect, useContext } from "react";
-import { Switch, SubHeading3 } from "@trops/dash-react";
+import React, { useState, useEffect, useMemo, useContext } from "react";
+import {
+  Switch,
+  SubHeading3,
+  SearchInput,
+  Sidebar,
+  FontAwesomeIcon,
+} from "@trops/dash-react";
 import { AppContext } from "../../../Context/App/AppContext";
 import { ComponentManager } from "../../../ComponentManager";
+import { SectionLayout } from "../SectionLayout";
 
 /**
  * NotificationsSection
  *
- * Global notification settings panel inside App Settings.
- * Shows all widget instances that declare notifications[],
- * grouped by widget type, with per-type toggles.
+ * Master-detail layout for notification preferences. Mirrors the
+ * WidgetsSection pattern (SectionLayout + Sidebar + SearchInput):
+ *
+ *   - Left list: a pinned "Global" entry (master enable + DND
+ *     toggles), then an alphabetical, searchable list of every
+ *     widget instance in the user's workspaces that declares
+ *     notifications.
+ *   - Right detail: when a widget instance is selected, shows its
+ *     notification toggles. When "Global" is selected (or nothing
+ *     is selected yet), shows the global controls.
+ *
+ * The data flow is unchanged from the previous flat-list version:
+ *   `mainApi.notifications.getPreferences/setPreferences/setGlobal`
+ *   own the persistence; this component is purely the UI.
  */
+
+const GLOBAL_KEY = "__global__";
+
 export const NotificationsSection = ({ workspaces = [] }) => {
   const appContext = useContext(AppContext);
-  const dashApi = appContext?.dashApi;
+  void appContext; // referenced for future use; not consumed here yet.
 
   const [globalEnabled, setGlobalEnabled] = useState(true);
   const [doNotDisturb, setDoNotDisturb] = useState(false);
   const [instances, setInstances] = useState({});
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedKey, setSelectedKey] = useState(GLOBAL_KEY);
 
   // Load preferences on mount
   useEffect(() => {
@@ -33,37 +56,48 @@ export const NotificationsSection = ({ workspaces = [] }) => {
     });
   }, []);
 
-  // Collect all widget instances with notifications from workspaces.
-  // Route through `ComponentManager.resolve` so a legacy layout
-  // referencing a bare component name still finds its registered
-  // scoped form (post-v0.1.432). Direct `componentMap[item.component]`
-  // returns undefined for bare names after the migration.
-  const widgetInstances = [];
-
-  workspaces.forEach((ws) => {
-    const items = flattenLayout(ws.layout);
-    items.forEach((item) => {
-      const config = ComponentManager.resolve(item.component, item);
-      if (config?.notifications?.length > 0) {
-        widgetInstances.push({
-          uuid: item.uuid || item.uuidString,
-          componentName: item.component,
-          title: item.userPrefs?.title || config.displayName || item.component,
-          workspaceName: ws.name || ws.id,
-          notifications: config.notifications,
-          package: config.package,
-        });
-      }
+  // Collect every widget instance with notifications, alphabetized
+  // by display title. Route through `ComponentManager.resolve` so a
+  // legacy layout referencing a bare component name still finds the
+  // registered scoped form.
+  const widgetInstances = useMemo(() => {
+    const out = [];
+    workspaces.forEach((ws) => {
+      const items = flattenLayout(ws.layout);
+      items.forEach((item) => {
+        const config = ComponentManager.resolve(item.component, item);
+        if (config?.notifications?.length > 0) {
+          out.push({
+            uuid: item.uuid || item.uuidString,
+            componentName: item.component,
+            title:
+              item.userPrefs?.title || config.displayName || item.component,
+            workspaceName: ws.name || ws.id,
+            notifications: config.notifications,
+            package: config.package || "Other",
+          });
+        }
+      });
     });
-  });
+    return out.sort((a, b) =>
+      String(a.title).localeCompare(String(b.title), undefined, {
+        sensitivity: "base",
+      }),
+    );
+  }, [workspaces]);
 
-  // Group by package
-  const grouped = {};
-  widgetInstances.forEach((wi) => {
-    const pkg = wi.package || "Other";
-    if (!grouped[pkg]) grouped[pkg] = [];
-    grouped[pkg].push(wi);
-  });
+  // Filter by search.
+  const filteredInstances = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return widgetInstances;
+    return widgetInstances.filter((wi) => {
+      const hay = [wi.title, wi.package, wi.workspaceName, wi.componentName]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [widgetInstances, searchQuery]);
 
   function handleGlobalToggle(value) {
     setGlobalEnabled(value);
@@ -105,12 +139,81 @@ export const NotificationsSection = ({ workspaces = [] }) => {
     );
   }
 
-  return (
-    <div className="flex-1 overflow-y-auto p-6">
-      <div className="flex flex-col space-y-6">
-        {/* Global toggles */}
+  // ── Left list ──────────────────────────────────────────────────────
+  const listContent = (
+    <div className="flex flex-col h-full">
+      <div className="flex flex-col gap-2 px-3 py-2 flex-shrink-0 border-b border-white/10">
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search widgets..."
+          inputClassName="py-1.5 text-xs"
+        />
+        <div className="text-[10px] opacity-50 px-0.5">
+          {filteredInstances.length} of {widgetInstances.length} widget
+          {widgetInstances.length === 1 ? "" : "s"}
+        </div>
+      </div>
+      <Sidebar.Content>
+        <Sidebar.Item
+          icon={
+            <FontAwesomeIcon
+              icon={globalEnabled ? "bell" : "bell-slash"}
+              className="h-3.5 w-3.5"
+            />
+          }
+          active={selectedKey === GLOBAL_KEY}
+          onClick={() => setSelectedKey(GLOBAL_KEY)}
+        >
+          <span className="flex flex-col">
+            <span className="font-medium">Global</span>
+            <span className="text-[10px] opacity-40">
+              Master switch + Do Not Disturb
+            </span>
+          </span>
+        </Sidebar.Item>
+        {filteredInstances.length === 0 && widgetInstances.length === 0 && (
+          <div className="px-3 py-2 text-xs opacity-50">
+            No widgets with notification support found. Add widgets that declare
+            notifications to see per-type controls here.
+          </div>
+        )}
+        {filteredInstances.length === 0 && widgetInstances.length > 0 && (
+          <div className="px-3 py-2 text-xs opacity-50">
+            No widgets match "{searchQuery}".
+          </div>
+        )}
+        {filteredInstances.map((wi) => {
+          const isActive = selectedKey === wi.uuid;
+          return (
+            <Sidebar.Item
+              key={wi.uuid}
+              icon={<FontAwesomeIcon icon="bell" className="h-3.5 w-3.5" />}
+              active={isActive}
+              onClick={() => setSelectedKey(wi.uuid)}
+              className={isActive ? "bg-white/10 opacity-100" : ""}
+            >
+              <span className="flex flex-col">
+                <span className="font-medium truncate">{wi.title}</span>
+                <span className="text-[10px] opacity-40 truncate">
+                  {wi.package}
+                  {wi.workspaceName ? ` · ${wi.workspaceName}` : ""}
+                </span>
+              </span>
+            </Sidebar.Item>
+          );
+        })}
+      </Sidebar.Content>
+    </div>
+  );
+
+  // ── Right detail ───────────────────────────────────────────────────
+  let detailContent;
+  if (selectedKey === GLOBAL_KEY) {
+    detailContent = (
+      <div className="flex flex-col p-6 space-y-6">
+        <SubHeading3 title="Global" padding={false} />
         <div className="flex flex-col space-y-3">
-          <SubHeading3 title="Global" padding={false} />
           <div className="flex flex-row items-center justify-between py-2">
             <div className="flex flex-col">
               <span className="text-sm font-medium">Notifications Enabled</span>
@@ -130,57 +233,64 @@ export const NotificationsSection = ({ workspaces = [] }) => {
             <Switch checked={doNotDisturb} onChange={handleDndToggle} />
           </div>
         </div>
-
-        {/* Per-widget-instance toggles */}
-        {Object.keys(grouped).length > 0 ? (
-          Object.entries(grouped).map(([pkg, widgets]) => (
-            <div key={pkg} className="flex flex-col space-y-3">
-              <SubHeading3 title={pkg} padding={false} />
-              {widgets.map((wi) => (
-                <div
-                  key={wi.uuid}
-                  className="flex flex-col space-y-2 pl-2 border-l-2 border-white/10"
-                >
-                  <span className="text-sm font-medium opacity-80">
-                    {wi.title}
-                  </span>
-                  {wi.notifications.map((notif) => (
-                    <div
-                      key={notif.key}
-                      className="flex flex-row items-center justify-between py-1 pl-2"
-                    >
-                      <div className="flex flex-col">
-                        <span className="text-sm">{notif.displayName}</span>
-                        {notif.description && (
-                          <span className="text-xs opacity-50">
-                            {notif.description}
-                          </span>
-                        )}
-                      </div>
-                      <Switch
-                        checked={getTypeEnabled(
-                          wi.uuid,
-                          notif.key,
-                          notif.defaultEnabled,
-                        )}
-                        onChange={(value) =>
-                          handleTypeToggle(wi.uuid, notif.key, value)
-                        }
-                      />
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          ))
-        ) : (
-          <div className="text-sm opacity-50">
-            No widgets with notification support found. Add widgets that declare
-            notifications to see per-type controls here.
-          </div>
-        )}
       </div>
-    </div>
+    );
+  } else {
+    const wi = widgetInstances.find((w) => w.uuid === selectedKey);
+    if (!wi) {
+      detailContent = (
+        <div className="flex-1 p-6 text-sm opacity-50">
+          Select a widget on the left to configure its notifications.
+        </div>
+      );
+    } else {
+      detailContent = (
+        <div className="flex flex-col p-6 space-y-4">
+          <div className="flex flex-col space-y-1">
+            <SubHeading3 title={wi.title} padding={false} />
+            <span className="text-xs opacity-50">
+              {wi.package}
+              {wi.workspaceName ? ` · ${wi.workspaceName}` : ""}
+            </span>
+          </div>
+          <div className="flex flex-col space-y-3">
+            {wi.notifications.map((notif) => (
+              <div
+                key={notif.key}
+                className="flex flex-row items-center justify-between py-1"
+              >
+                <div className="flex flex-col">
+                  <span className="text-sm">{notif.displayName}</span>
+                  {notif.description && (
+                    <span className="text-xs opacity-50">
+                      {notif.description}
+                    </span>
+                  )}
+                </div>
+                <Switch
+                  checked={getTypeEnabled(
+                    wi.uuid,
+                    notif.key,
+                    notif.defaultEnabled,
+                  )}
+                  onChange={(value) =>
+                    handleTypeToggle(wi.uuid, notif.key, value)
+                  }
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+  }
+
+  return (
+    <SectionLayout
+      listContent={listContent}
+      detailContent={detailContent}
+      emptyDetailMessage="Select a widget to configure notifications"
+    />
   );
 };
 
