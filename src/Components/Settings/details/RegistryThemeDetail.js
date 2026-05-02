@@ -192,8 +192,6 @@ export const RegistryThemeDetail = ({
     if (!appId || !pkg.name) return;
     setIsInstalling(true);
     setInstallResult(null);
-    setAuthFlow(null);
-    setAuthError(null);
     try {
       // Send scoped name (scope/name) for unambiguous package lookup;
       // fall back to bare name if scope is missing
