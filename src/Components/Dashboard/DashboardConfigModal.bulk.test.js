@@ -133,4 +133,36 @@ describe("DashboardConfigModal — Notifications tab", () => {
     expect(source).toMatch(/wi\.component/);
     expect(source).toMatch(/wi\.itemId/);
   });
+
+  // ── Dedup ──────────────────────────────────────────────────────────
+  //
+  // WorkspaceModel auto-migrates legacy non-paged workspaces by
+  // aliasing pages[0].layout = workspace.layout (same reference). The
+  // visit walks both, so without dedup the same widget gets pushed
+  // twice. Mirror the stable-id Set pattern from providerResolution.js
+  // forEachWidget.
+
+  test("widget collection tracks a 'seen' Set to dedupe", () => {
+    // Pull the widgetInstances useMemo block specifically.
+    const memoMatch = source.match(
+      /const widgetInstances = useMemo\(\(\) => \{([\s\S]*?)\n {2}\}, \[workspace\]\);/,
+    );
+    expect(memoMatch).not.toBeNull();
+    const body = memoMatch[1];
+    expect(body).toMatch(/new Set\(\)/);
+    expect(body).toMatch(/seen\.has\(/);
+    expect(body).toMatch(/seen\.add\(/);
+  });
+
+  test("dedup key combines component + uuid/uuidString/id", () => {
+    // Mirrors providerResolution.js forEachWidget stableId formula.
+    const memoMatch = source.match(
+      /const widgetInstances = useMemo\(\(\) => \{([\s\S]*?)\n {2}\}, \[workspace\]\);/,
+    );
+    const body = memoMatch[1];
+    // Expect a template literal that interpolates item.component with
+    // one of uuidString / uuid / id.
+    expect(body).toMatch(/item\.component/);
+    expect(body).toMatch(/uuidString|uuid/);
+  });
 });

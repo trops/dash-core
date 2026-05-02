@@ -695,6 +695,12 @@ function NotificationsTab({ workspace }) {
   // Notifications collection logic but scoped to one workspace.
   const widgetInstances = useMemo(() => {
     const out = [];
+    // Dedup by stable id. WorkspaceModel auto-migrates legacy
+    // non-paged workspaces by aliasing pages[0].layout = workspace.layout
+    // (same reference), so visiting both yields duplicate pushes for
+    // every widget. Same stableId formula as providerResolution.js
+    // forEachWidget so the two stay consistent.
+    const seen = new Set();
     const visit = (item) => {
       if (!item) return;
       if (Array.isArray(item)) {
@@ -702,25 +708,33 @@ function NotificationsTab({ workspace }) {
         return;
       }
       if (item.component) {
-        const config = ComponentManager.resolve(item.component, item);
-        if (config?.notifications?.length > 0) {
-          out.push({
-            uuid: item.uuid || item.uuidString,
-            title:
-              item.userPrefs?.title || config.displayName || item.component,
-            package: config.package || "Other",
-            // Scoped component id (e.g. "trops.google.GoogleWidget")
-            // — disambiguates rows when several widgets share a
-            // title or display the same package label. Mirrors the
-            // Listeners tab convention so the user only learns one
-            // identification scheme.
-            component: item.component,
-            // Layout instance id — disambiguates two widgets of the
-            // SAME component on the dashboard (e.g. two GitHub
-            // widgets in the same workspace).
-            itemId: item.id,
-            notifications: config.notifications,
-          });
+        const idPart = item.uuidString || item.uuid || item.id;
+        const stableId = idPart != null ? `${item.component}|${idPart}` : null;
+        if (stableId && seen.has(stableId)) {
+          // Already collected — fall through to children walk so we
+          // don't accidentally drop a nested widget under this node.
+        } else {
+          if (stableId) seen.add(stableId);
+          const config = ComponentManager.resolve(item.component, item);
+          if (config?.notifications?.length > 0) {
+            out.push({
+              uuid: item.uuid || item.uuidString,
+              title:
+                item.userPrefs?.title || config.displayName || item.component,
+              package: config.package || "Other",
+              // Scoped component id (e.g. "trops.google.GoogleWidget")
+              // — disambiguates rows when several widgets share a
+              // title or display the same package label. Mirrors the
+              // Listeners tab convention so the user only learns one
+              // identification scheme.
+              component: item.component,
+              // Layout instance id — disambiguates two widgets of the
+              // SAME component on the dashboard (e.g. two GitHub
+              // widgets in the same workspace).
+              itemId: item.id,
+              notifications: config.notifications,
+            });
+          }
         }
       }
       if (Array.isArray(item.children)) item.children.forEach(visit);
