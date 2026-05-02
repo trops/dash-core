@@ -59,3 +59,54 @@ describe("DashboardConfigModal — stageBulk consults staged state", () => {
     expect(body).toMatch(/layoutItem[\s\S]{0,80}selectedProviders/);
   });
 });
+
+/**
+ * Notifications tab in the dashboard bulk-edit modal.
+ *
+ * Adds a dashboard-scoped view of every widget instance that declares
+ * notifications, with bulk Enable/Disable controls so a user managing
+ * a busy dashboard doesn't have to drill into Settings → Notifications
+ * and toggle one widget at a time. Toggles persist immediately via
+ * `mainApi.notifications.setPreferences` — same path the Settings
+ * panel uses, so the two views stay consistent.
+ */
+describe("DashboardConfigModal — Notifications tab", () => {
+  const modalPath = path.join(__dirname, "DashboardConfigModal.js");
+  const source = fs.readFileSync(modalPath, "utf8");
+
+  test("notifications tab is registered as a value", () => {
+    expect(source).toMatch(/setActiveTab\(\s*["']notifications["']\s*\)/);
+    expect(source).toMatch(/activeTab\s*===\s*["']notifications["']/);
+  });
+
+  test("notifications tab has a visible label/button", () => {
+    // Tab labels are rendered as plain text inside the tab buttons —
+    // expect the word "Notifications" to appear at least once near
+    // the tab block.
+    expect(source).toMatch(/>\s*Notifications\s*</);
+  });
+
+  test('"Enable all" and "Disable all" bulk controls exist', () => {
+    expect(source).toMatch(/Enable all/);
+    expect(source).toMatch(/Disable all/);
+  });
+
+  test("notifications tab has its own search input", () => {
+    // Either a SearchInput component or a placeholder text that
+    // identifies the search box.
+    expect(source).toMatch(/Search widgets|Search notifications/);
+  });
+
+  test("toggles persist via mainApi.notifications.setPreferences", () => {
+    // Same IPC the Settings → Notifications panel uses; bulk and
+    // single-toggle paths must both call it so state stays in sync.
+    expect(source).toMatch(/mainApi\?\.notifications\?\.setPreferences/);
+  });
+
+  test("widget instances are alphabetized by title", () => {
+    // The .sort with localeCompare in the bulk modal is the signal —
+    // a sort already exists for providers, so allow >= 1 match. Pair
+    // with a presence check on `title.localeCompare` specifically.
+    expect(source).toMatch(/title[^.]*\.localeCompare/);
+  });
+});
