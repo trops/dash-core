@@ -6,9 +6,12 @@ import {
   Button2,
   Button3,
   Tag,
+  Switch,
+  SearchInput,
   getStylesForItem,
   themeObjects,
 } from "@trops/dash-react";
+import { ComponentManager } from "../../ComponentManager";
 import {
   getAllProviderBindings,
   groupByProviderType,
@@ -555,6 +558,17 @@ export const DashboardConfigModal = ({
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab("notifications")}
+            className={`px-3 py-1.5 text-sm font-medium -mb-px border-b-2 ${
+              activeTab === "notifications"
+                ? "border-indigo-400"
+                : "border-transparent opacity-60 hover:opacity-100"
+            }`}
+          >
+            Notifications
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab("widgets")}
             className={`px-3 py-1.5 text-sm font-medium -mb-px border-b-2 ${
               activeTab === "widgets"
@@ -607,6 +621,9 @@ export const DashboardConfigModal = ({
               onPerWidget={stageBinding}
             />
           )}
+          {activeTab === "notifications" && (
+            <NotificationsTab workspace={workspace} />
+          )}
           {activeTab === "widgets" && (
             <WidgetsTab
               workspace={workspace}
@@ -634,6 +651,225 @@ export const DashboardConfigModal = ({
     </Modal>
   );
 };
+
+/**
+ * Notifications tab — dashboard-scoped view of every widget instance
+ * in the current workspace that declares notifications. Bulk Enable
+ * all / Disable all controls flip every notification toggle in the
+ * filtered list at once. Per-widget toggles persist immediately via
+ * `mainApi.notifications.setPreferences` — same path Settings →
+ * Notifications uses, so the two views stay consistent.
+ *
+ * Toggles are uncontrolled-with-respect-to-the-server: we mirror them
+ * locally for snappy UI but the IPC call is fire-and-forget. If a
+ * write fails the user can re-toggle. No staging — the bulk modal
+ * doesn't gate the user behind a Save button for boolean prefs.
+ */
+function NotificationsTab({ workspace }) {
+  const [searchQuery, setSearchQuery] = useState("");
+  // Local mirror of widgetUuid -> { typeKey: bool }. Seeded from the
+  // main process on mount; updated optimistically on toggle.
+  const [prefs, setPrefs] = useState({});
+  const [loaded, setLoaded] = useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!window.mainApi?.notifications?.getPreferences) {
+      setLoaded(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+    window.mainApi.notifications.getPreferences().then((p) => {
+      if (cancelled) return;
+      setPrefs(p?.instances || {});
+      setLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Collect every widget instance in THIS workspace that declares
+  // notifications, alphabetized by title. Mirrors the Settings →
+  // Notifications collection logic but scoped to one workspace.
+  const widgetInstances = useMemo(() => {
+    const out = [];
+    const visit = (item) => {
+      if (!item) return;
+      if (Array.isArray(item)) {
+        item.forEach(visit);
+        return;
+      }
+      if (item.component) {
+        const config = ComponentManager.resolve(item.component, item);
+        if (config?.notifications?.length > 0) {
+          out.push({
+            uuid: item.uuid || item.uuidString,
+            title:
+              item.userPrefs?.title || config.displayName || item.component,
+            package: config.package || "Other",
+            notifications: config.notifications,
+          });
+        }
+      }
+      if (Array.isArray(item.children)) item.children.forEach(visit);
+      if (Array.isArray(item.layout)) item.layout.forEach(visit);
+      if (Array.isArray(item.items)) item.items.forEach(visit);
+    };
+    visit(workspace?.layout);
+    if (Array.isArray(workspace?.pages)) {
+      workspace.pages.forEach((p) => visit(p?.layout));
+    }
+    visit(workspace?.sidebarLayout);
+    return out.sort((a, b) =>
+      String(a.title).localeCompare(String(b.title), undefined, {
+        sensitivity: "base",
+      }),
+    );
+  }, [workspace]);
+
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return widgetInstances;
+    return widgetInstances.filter((wi) => {
+      const hay = [
+        wi.title,
+        wi.package,
+        ...wi.notifications.map((n) => `${n.key} ${n.displayName || ""}`),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [widgetInstances, searchQuery]);
+
+  const isEnabled = (uuid, typeKey, defaultEnabled) => {
+    const w = prefs[uuid];
+    if (w && typeof w[typeKey] === "boolean") return w[typeKey];
+    return !!defaultEnabled;
+  };
+
+  const setOne = (uuid, typeKey, value) => {
+    setPrefs((prev) => ({
+      ...prev,
+      [uuid]: { ...(prev[uuid] || {}), [typeKey]: value },
+    }));
+    window.mainApi?.notifications?.setPreferences(uuid, {
+      [typeKey]: value,
+    });
+  };
+
+  const setAllVisible = (value) => {
+    // Update local state in one pass + fire one IPC per widget.
+    setPrefs((prev) => {
+      const next = { ...prev };
+      filtered.forEach((wi) => {
+        const w = { ...(next[wi.uuid] || {}) };
+        wi.notifications.forEach((n) => {
+          w[n.key] = value;
+        });
+        next[wi.uuid] = w;
+      });
+      return next;
+    });
+    filtered.forEach((wi) => {
+      const update = {};
+      wi.notifications.forEach((n) => {
+        update[n.key] = value;
+      });
+      window.mainApi?.notifications?.setPreferences(wi.uuid, update);
+    });
+  };
+
+  if (!loaded) {
+    return <div className="p-4 text-sm opacity-50">Loading…</div>;
+  }
+
+  if (widgetInstances.length === 0) {
+    return (
+      <div className="p-4 text-sm opacity-50">
+        No widgets in this dashboard declare notifications. Add widgets that
+        declare notifications to see per-type controls here.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex flex-col gap-2 px-2 py-2 flex-shrink-0 border-b border-white/10">
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search widgets..."
+          inputClassName="py-1.5 text-xs"
+        />
+        <div className="flex flex-row items-center justify-between text-[10px]">
+          <span className="opacity-50">
+            {filtered.length} of {widgetInstances.length} widget
+            {widgetInstances.length === 1 ? "" : "s"}
+          </span>
+          <div className="flex flex-row items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setAllVisible(true)}
+              className="px-2 py-1 rounded bg-green-700 hover:bg-green-600 text-white text-xs font-medium transition-colors"
+              data-testid="bulk-notifications-enable-all"
+            >
+              Enable all
+            </button>
+            <button
+              type="button"
+              onClick={() => setAllVisible(false)}
+              className="px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs font-medium transition-colors"
+              data-testid="bulk-notifications-disable-all"
+            >
+              Disable all
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto px-2 py-2 space-y-3">
+        {filtered.map((wi) => (
+          <div
+            key={wi.uuid}
+            className="border border-white/10 rounded p-3 space-y-2"
+          >
+            <div className="flex flex-col">
+              <span className="text-sm font-medium">{wi.title}</span>
+              <span className="text-[10px] opacity-50">{wi.package}</span>
+            </div>
+            <div className="flex flex-col gap-1.5 pl-2 border-l border-white/10">
+              {wi.notifications.map((notif) => (
+                <div
+                  key={notif.key}
+                  className="flex flex-row items-center justify-between py-0.5"
+                >
+                  <div className="flex flex-col">
+                    <span className="text-xs">{notif.displayName}</span>
+                    {notif.description && (
+                      <span className="text-[10px] opacity-50">
+                        {notif.description}
+                      </span>
+                    )}
+                  </div>
+                  <Switch
+                    checked={isEnabled(
+                      wi.uuid,
+                      notif.key,
+                      notif.defaultEnabled,
+                    )}
+                    onChange={(value) => setOne(wi.uuid, notif.key, value)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /**
  * Providers tab with a sidebar/detail layout mirroring the Listeners
