@@ -109,4 +109,28 @@ describe("DashboardConfigModal — Notifications tab", () => {
     // with a presence check on `title.localeCompare` specifically.
     expect(source).toMatch(/title[^.]*\.localeCompare/);
   });
+
+  test("each row carries the scoped component id (item.component)", () => {
+    // When two widgets share a title (e.g. two GitHub widgets), the
+    // user can only distinguish them by the scoped component id +
+    // the layout instance id. Make sure the collection captures
+    // item.component as a field on the row data.
+    expect(source).toMatch(/component:\s*item\.component/);
+  });
+
+  test("each row carries the layout instance id (item.id)", () => {
+    // The numeric instance id is what disambiguates two rows with
+    // the SAME component name (e.g. two GitHub widgets in the same
+    // dashboard). Mirror the Listeners tab convention.
+    expect(source).toMatch(/itemId:\s*item\.id/);
+  });
+
+  test("the rendered row displays the component id + instance id", () => {
+    // The row's secondary line (under the title) must surface both
+    // the scoped component id and the instance id so the user can
+    // tell duplicates apart at a glance.
+    // Look for a JSX expression that interpolates both fields.
+    expect(source).toMatch(/wi\.component/);
+    expect(source).toMatch(/wi\.itemId/);
+  });
 });

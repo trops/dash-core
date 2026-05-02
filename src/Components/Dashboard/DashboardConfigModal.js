@@ -709,6 +709,16 @@ function NotificationsTab({ workspace }) {
             title:
               item.userPrefs?.title || config.displayName || item.component,
             package: config.package || "Other",
+            // Scoped component id (e.g. "trops.google.GoogleWidget")
+            // — disambiguates rows when several widgets share a
+            // title or display the same package label. Mirrors the
+            // Listeners tab convention so the user only learns one
+            // identification scheme.
+            component: item.component,
+            // Layout instance id — disambiguates two widgets of the
+            // SAME component on the dashboard (e.g. two GitHub
+            // widgets in the same workspace).
+            itemId: item.id,
             notifications: config.notifications,
           });
         }
@@ -736,6 +746,8 @@ function NotificationsTab({ workspace }) {
       const hay = [
         wi.title,
         wi.package,
+        wi.component,
+        wi.itemId != null ? `#${wi.itemId}` : "",
         ...wi.notifications.map((n) => `${n.key} ${n.displayName || ""}`),
       ]
         .join(" ")
@@ -837,7 +849,11 @@ function NotificationsTab({ workspace }) {
           >
             <div className="flex flex-col">
               <span className="text-sm font-medium">{wi.title}</span>
-              <span className="text-[10px] opacity-50">{wi.package}</span>
+              <span className="text-[10px] opacity-50 font-mono">
+                {wi.component}
+                {wi.itemId != null ? ` · #${wi.itemId}` : ""}
+              </span>
+              <span className="text-[10px] opacity-40">{wi.package}</span>
             </div>
             <div className="flex flex-col gap-1.5 pl-2 border-l border-white/10">
               {wi.notifications.map((notif) => (
