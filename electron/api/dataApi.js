@@ -17,7 +17,6 @@ const {
   TRANSFORM_FILE,
   READ_JSON,
   READ_DATA_URL,
-  EXTRACT_COLORS_FROM_IMAGE,
 } = require("../events");
 
 const dataApi = {
@@ -100,12 +99,6 @@ const dataApi = {
       outFilepath,
       mappingFunctionBody,
       args,
-    });
-  },
-
-  extractColorsFromImageURL: (url) => {
-    ipcRenderer.invoke(EXTRACT_COLORS_FROM_IMAGE, {
-      url,
     });
   },
 };

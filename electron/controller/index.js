@@ -28,7 +28,6 @@ const {
   transformFile,
   readJSONFromFile,
   readDataFromURL,
-  extractColorsFromImageURL,
 } = require("./dataController");
 const {
   saveSettingsForApplication,
@@ -145,7 +144,6 @@ module.exports = {
   transformFile,
   readJSONFromFile,
   readDataFromURL,
-  extractColorsFromImageURL,
   saveProvider,
   listProviders,
   getProvider,
