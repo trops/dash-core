@@ -264,10 +264,12 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
               lastPublishedVersion: nextVersion,
             },
           };
-          themeController.saveThemeForApplication(win, appId, {
-            key: themeKey,
-            theme: updatedTheme,
-          });
+          themeController.saveThemeForApplication(
+            win,
+            appId,
+            themeKey,
+            updatedTheme,
+          );
         } catch (persistErr) {
           console.warn(
             `[ThemeRegistryController] Version persist failed (continuing): ${persistErr.message}`,
