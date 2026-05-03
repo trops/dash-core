@@ -1,7 +1,6 @@
 import resolve from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
 import json from "@rollup/plugin-json";
-import filesize from "rollup-plugin-filesize";
 
 const INPUT_FILE_PATH = "electron/index.js";
 
@@ -49,7 +48,6 @@ const config = {
         }),
         commonjs(),
         json(),
-        filesize(),
     ],
     external: EXTERNAL,
 };
