@@ -44,11 +44,6 @@ const TRANSFORM_FILE_UPDATE = "transform-file-update";
 const TRANSFORM_FILE_COMPLETE = "transform-file-complete";
 const TRANSFORM_FILE_ERROR = "transform-file-error";
 
-const EXTRACT_COLORS_FROM_IMAGE = "extract-colors-from-image";
-const EXTRACT_COLORS_FROM_IMAGE_UPDATE = "extract-colors-from-image-update";
-const EXTRACT_COLORS_FROM_IMAGE_COMPLETE = "extract-colors-from-image-complete";
-const EXTRACT_COLORS_FROM_IMAGE_ERROR = "extract-colors-from-image-error";
-
 module.exports = {
   DATA_JSON_TO_CSV_FILE,
   DATA_JSON_TO_CSV_FILE_COMPLETE,
@@ -95,9 +90,4 @@ module.exports = {
   TRANSFORM_FILE_COMPLETE,
   TRANSFORM_FILE_UPDATE,
   TRANSFORM_FILE_ERROR,
-
-  EXTRACT_COLORS_FROM_IMAGE,
-  EXTRACT_COLORS_FROM_IMAGE_COMPLETE,
-  EXTRACT_COLORS_FROM_IMAGE_UPDATE,
-  EXTRACT_COLORS_FROM_IMAGE_ERROR,
 };

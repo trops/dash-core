@@ -7,7 +7,6 @@ const { getFileContents, writeToFile } = require("../utils/file");
 // Convert Json to Csv
 const ObjectsToCsv = require("objects-to-csv");
 const Transform = require("../utils/transform");
-const { extractColorsFromImageURL } = require("../utils/color");
 const https = require("https");
 
 const configFilename = "data.json";
@@ -455,28 +454,6 @@ const dataController = {
         succes: false,
         message: e.message,
       });
-    }
-  },
-
-  extractColorsFromImageURL: (win, url) => {
-    try {
-      console.log(url);
-      const fileExtension = ".jpg";
-      const filename = path.join(
-        app.getPath("userData"),
-        appName,
-        "@algolia/dash-electron",
-        "data",
-        "imageExtract" + fileExtension,
-      );
-
-      console.log("filename", filename);
-
-      extractColorsFromImageURL(url, filename)
-        .then((result) => console.log(result))
-        .catch((e) => console.log(e));
-    } catch (e) {
-      console.log(e);
     }
   },
 };
