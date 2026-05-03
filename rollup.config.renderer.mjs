@@ -2,7 +2,6 @@ import babel from "@rollup/plugin-babel";
 import resolve from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
 import typescript from "@rollup/plugin-typescript";
-import filesize from "rollup-plugin-filesize";
 import external from "rollup-plugin-peer-deps-external";
 import strip from "@rollup/plugin-strip";
 import json from "@rollup/plugin-json";
@@ -37,7 +36,6 @@ const PLUGINS = [
         include: "node_modules/**",
     }),
     json(),
-    filesize(),
     strip(),
 ];
 
