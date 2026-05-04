@@ -42,11 +42,22 @@ require.cache["__stub_electron_perm_gate__"] = {
 };
 
 const { gateToolCall, isWriteTool } = require("./permissionGate");
-const { clearCache } = require("./widgetPermissions");
+const { parseManifestPermissions, clearCache } = require("./widgetPermissions");
+const {
+  setGrant,
+  revokeGrant,
+  clearCache: clearGrantCache,
+} = require("./grantedPermissions");
 
-// Helper: install a fake widget under userData/widgets/ with the
-// supplied package.json contents.
-function installFakeWidget(widgetId, pkgJson) {
+// Helper: install a fake widget under userData/widgets/ with the supplied
+// package.json contents AND (by default) a matching grant — so each
+// existing test exercises only its target decision point (allowlist hit,
+// path containment, etc.) without first having to model install consent.
+//
+// Pass `{ writeGrant: false }` to install the manifest WITHOUT a grant —
+// used by the Slice-2 baseline test below to prove a declared manifest
+// alone does not grant access.
+function installFakeWidget(widgetId, pkgJson, opts = {}) {
   const parts = widgetId.startsWith("@") ? widgetId.split("/") : [widgetId];
   const dir = path.join(tmpRoot, "userData", "widgets", ...parts);
   fs.mkdirSync(dir, { recursive: true });
@@ -57,6 +68,17 @@ function installFakeWidget(widgetId, pkgJson) {
     JSON.stringify(pkgJson, null, 2),
   );
   clearCache();
+  clearGrantCache();
+  // Default: simulate the user having granted exactly what the manifest
+  // declared. Slice 2 separates the two; existing tests still want the
+  // happy path where consent matches the request.
+  if (opts.writeGrant !== false) {
+    const declared = parseManifestPermissions(pkgJson);
+    if (declared) {
+      revokeGrant(widgetId);
+      setGrant(widgetId, declared);
+    }
+  }
   return { dir, allowedRoot };
 }
 
@@ -80,16 +102,17 @@ test("allow: tool in allowlist, no path arg", () => {
   assert.deepStrictEqual(r, { allow: true });
 });
 
-test("deny: widget has no manifest", () => {
+test("deny: widget has no grant", () => {
   clearCache();
+  clearGrantCache();
   const r = gateToolCall({
-    widgetId: "@trops/no-manifest",
+    widgetId: "@trops/no-grant",
     serverName: "github",
     toolName: "search_repositories",
     args: {},
   });
   assert.strictEqual(r.allow, false);
-  assert.match(r.reason, /no MCP permission manifest/i);
+  assert.match(r.reason, /no MCP permissions granted/i);
 });
 
 test("deny: missing widgetId", () => {
@@ -278,4 +301,37 @@ test("path arg under tilde-expanded path resolves correctly", () => {
     "expected expanded path to start with homedir, got: " + expanded,
   );
   assert.ok(expanded.endsWith(path.join("Documents", "notes")));
+});
+
+// Slice 2 — granted-vs-declared separation.
+//
+// Pre-Slice-2 the manifest was both the request AND the grant: declaring
+// `dash.permissions.mcp` granted access. Slice 2 splits those: the manifest
+// is just a request, and the gate enforces only what the user has actually
+// granted via grantedPermissions (set at install consent time or in
+// Settings → Privacy & Security). A widget with a manifest but no grant
+// must be denied — fail-closed.
+test("Slice 2: declared manifest alone does NOT grant access — user must consent", () => {
+  // writeGrant: false → install manifest only, do NOT write a matching grant.
+  // This is the post-install / pre-consent state.
+  installFakeWidget(
+    "@trops/widget-slice2-baseline",
+    {
+      name: "@trops/widget-slice2-baseline",
+      dash: {
+        permissions: {
+          mcp: { github: { tools: ["search_repositories"] } },
+        },
+      },
+    },
+    { writeGrant: false },
+  );
+  const r = gateToolCall({
+    widgetId: "@trops/widget-slice2-baseline",
+    serverName: "github",
+    toolName: "search_repositories",
+    args: { query: "rust" },
+  });
+  assert.strictEqual(r.allow, false);
+  assert.match(r.reason, /no MCP permissions granted/i);
 });
