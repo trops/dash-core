@@ -21,6 +21,7 @@ import { AccountSection } from "./sections/AccountSection";
 import { NotificationsSection } from "./sections/NotificationsSection";
 import { McpServerSection } from "./sections/McpServerSection";
 import { AiAssistantSection } from "./sections/AiAssistantSection";
+import { PrivacySecuritySection } from "./sections/PrivacySecuritySection";
 
 const SECTIONS = [
   { key: "general", label: "General", icon: "cog" },
@@ -33,6 +34,11 @@ const SECTIONS = [
   { key: "notifications", label: "Notifications", icon: "bell" },
   { key: "mcp-server", label: "MCP Server", icon: "server" },
   { key: "ai-assistant", label: "AI Assistant", icon: "wand-magic-sparkles" },
+  {
+    key: "privacy-security",
+    label: "Privacy & Security",
+    icon: "shield-halved",
+  },
 ];
 
 export const AppSettingsModal = ({
@@ -251,6 +257,15 @@ export const AppSettingsModal = ({
             }`}
           >
             <AiAssistantSection />
+          </div>
+        )}
+        {activeSection === "privacy-security" && (
+          <div
+            className={`flex-1 overflow-y-auto ${
+              panelStyles.textColor || "text-gray-200"
+            }`}
+          >
+            <PrivacySecuritySection />
           </div>
         )}
       </SettingsModal.Body>

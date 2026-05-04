@@ -32,6 +32,7 @@ const paletteToThemeMapper = require("./controller/paletteToThemeMapper");
 const webSocketController = require("./controller/webSocketController");
 const extractionCacheController = require("./controller/extractionCacheController");
 const mcpDashServerController = require("./controller/mcpDashServerController");
+const widgetMcpGrantsController = require("./controller/widgetMcpGrantsController");
 
 // --- Errors ---
 const themeFromUrlErrors = require("./errors/themeFromUrlErrors");
@@ -136,6 +137,7 @@ module.exports = {
   webSocketController,
   extractionCacheController,
   mcpDashServerController,
+  widgetMcpGrantsController,
 
   // Controller functions (flat) — spread for convenient destructuring
   ...controllers,

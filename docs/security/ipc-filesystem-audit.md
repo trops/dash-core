@@ -11,13 +11,13 @@ string that is supplied by the renderer. Each finding is rated **CRITICAL**,
 
 ## Threat-class summary
 
-| Class | Count | Top issue |
-|---|---|---|
-| **CRITICAL** — RCE in main process | 0 (was 1; resolved in 0.1.484) | `mainApi.data.transformFile` previously evaluated renderer-supplied JS via dynamic-function compilation. Now sandboxed via QuickJS WASM — see `electron/utils/safeJsExecutor.js`. |
-| **HIGH** — arbitrary path write | 0 (was 5; resolved in 0.1.487) | `saveData`, `convertJsonToCsvFile`, `parseXMLStream`, `parseCSVStream`, `readDataFromURL` now run their renderer-supplied paths through `safePath()` containment — see `electron/utils/safePath.js`. |
-| **HIGH** — arbitrary path read | 0 (was 4; resolved in 0.1.487) | `readJSONFromFile`, `readLinesFromFile`, `algoliaApi.createBatchesFromFile`, `algoliaApi.partialUpdateObjectsFromDirectory` migrated to `safePath()`. |
-| **MEDIUM** — partial scoping but `path.join` traversal | 0 (was 1; resolved in 0.1.487) | `saveData`'s naive `path.join` was the canonical example — `safePath()`'s `path.resolve` + realpath + containment fixes it. |
-| **INFO** — main-controlled paths (already safe) | many | `settingsApi`, `themeApi`, `workspaceApi`, `layoutApi`, etc. — paths constructed entirely from `app.getPath('userData')` + literal segments |
+| Class                                                  | Count                          | Top issue                                                                                                                                                                                            |
+| ------------------------------------------------------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CRITICAL** — RCE in main process                     | 0 (was 1; resolved in 0.1.484) | `mainApi.data.transformFile` previously evaluated renderer-supplied JS via dynamic-function compilation. Now sandboxed via QuickJS WASM — see `electron/utils/safeJsExecutor.js`.                    |
+| **HIGH** — arbitrary path write                        | 0 (was 5; resolved in 0.1.487) | `saveData`, `convertJsonToCsvFile`, `parseXMLStream`, `parseCSVStream`, `readDataFromURL` now run their renderer-supplied paths through `safePath()` containment — see `electron/utils/safePath.js`. |
+| **HIGH** — arbitrary path read                         | 0 (was 4; resolved in 0.1.487) | `readJSONFromFile`, `readLinesFromFile`, `algoliaApi.createBatchesFromFile`, `algoliaApi.partialUpdateObjectsFromDirectory` migrated to `safePath()`.                                                |
+| **MEDIUM** — partial scoping but `path.join` traversal | 0 (was 1; resolved in 0.1.487) | `saveData`'s naive `path.join` was the canonical example — `safePath()`'s `path.resolve` + realpath + containment fixes it.                                                                          |
+| **INFO** — main-controlled paths (already safe)        | many                           | `settingsApi`, `themeApi`, `workspaceApi`, `layoutApi`, etc. — paths constructed entirely from `app.getPath('userData')` + literal segments                                                          |
 
 ## Critical findings
 
@@ -49,8 +49,8 @@ that test as they're discovered.
 
 - Side-channel info leakage via the returned record values — user code can still
   encode arbitrary data into the output records and the host writes them. The
-  sandbox prevents *capability acquisition*, not data exfiltration *if the
-  caller already has read access to the input*. Out of scope for the sandbox;
+  sandbox prevents _capability acquisition_, not data exfiltration _if the
+  caller already has read access to the input_. Out of scope for the sandbox;
   Phase B's path-scoping limits which input files transformFile can read.
 
 ### 2–6. Arbitrary path write — `dataApi`
@@ -58,13 +58,13 @@ that test as they're discovered.
 All five accept renderer-supplied path arguments and pass them directly (or via
 `path.join` without containment) to `writeFileSync`:
 
-| API method | File:line | Path arg | Containment |
-|---|---|---|---|
-| `mainApi.data.saveData` | `dataController.js:300` | `filename` | `path.join(userData, "Dashboard", "data", filename)` — `..` segments traverse |
-| `mainApi.data.convertJsonToCsvFile` | dataController | `filename` | none verified |
-| `mainApi.data.parseXMLStream` | dataController | `outpath` | none |
-| `mainApi.data.parseCSVStream` | dataController | `outpath` | none |
-| `mainApi.data.readDataFromURL` | dataController | `toFilepath` | none — also fetches arbitrary URL |
+| API method                          | File:line               | Path arg     | Containment                                                                   |
+| ----------------------------------- | ----------------------- | ------------ | ----------------------------------------------------------------------------- |
+| `mainApi.data.saveData`             | `dataController.js:300` | `filename`   | `path.join(userData, "Dashboard", "data", filename)` — `..` segments traverse |
+| `mainApi.data.convertJsonToCsvFile` | dataController          | `filename`   | none verified                                                                 |
+| `mainApi.data.parseXMLStream`       | dataController          | `outpath`    | none                                                                          |
+| `mainApi.data.parseCSVStream`       | dataController          | `outpath`    | none                                                                          |
+| `mainApi.data.readDataFromURL`      | dataController          | `toFilepath` | none — also fetches arbitrary URL                                             |
 
 **Path traversal demo for `saveData`:**
 
@@ -98,12 +98,12 @@ handler are typically:
 
 Same shape as the writes:
 
-| API method | Path arg | Risk |
-|---|---|---|
-| `mainApi.data.readJSONFromFile` | `filepath` | Reads any JSON file the user can read; widget exfiltrates |
-| `mainApi.data.readLinesFromFile` | `filepath` | Reads any text file |
-| `mainApi.algolia.createBatchesFromFile` | `filepath`, `batchFilepath` | Read + write |
-| `mainApi.algolia.partialUpdateObjectsFromDirectory` | `dir` | Reads every file in a directory |
+| API method                                          | Path arg                    | Risk                                                      |
+| --------------------------------------------------- | --------------------------- | --------------------------------------------------------- |
+| `mainApi.data.readJSONFromFile`                     | `filepath`                  | Reads any JSON file the user can read; widget exfiltrates |
+| `mainApi.data.readLinesFromFile`                    | `filepath`                  | Reads any text file                                       |
+| `mainApi.algolia.createBatchesFromFile`             | `filepath`, `batchFilepath` | Read + write                                              |
+| `mainApi.algolia.partialUpdateObjectsFromDirectory` | `dir`                       | Reads every file in a directory                           |
 
 Read access is less catastrophic than write+RCE but still leaks secrets
 (`~/.aws/credentials`, `~/.ssh/id_rsa`, browser cookies, etc.) to a hostile
@@ -148,8 +148,13 @@ scoping alone and warrants immediate attention before Phase B path work.
   ("filesystem MCP delete files") is governed by the MCP client, not by these
   IPC handlers. **Slice 1 of the MCP allowlist plan landed in 0.1.489** —
   see `electron/mcp/widgetPermissions.js` and `electron/mcp/permissionGate.js`.
-  Slice 2 (install consent UI, Settings panel) and Slice 3 (per-dashboard
-  MCP server scope reconfiguration) are deferred plans.
+  **Slice 2 lands in 0.1.490** — separates the manifest _request_ from the
+  user _grant_: the gate now reads from `electron/mcp/grantedPermissions.js`
+  only. A widget with a manifest but no grant is denied (fail-closed). The
+  user grants permissions via the install-time consent modal
+  (`WidgetMcpConsentModal` in dash-electron) or revokes/reviews them in
+  Settings → Privacy & Security. Slice 3 (per-dashboard MCP server scope
+  reconfiguration) is a deferred plan.
 - **CSP-level script injection.** Widget can inject `<script src=evil>` because
   CSP allows `'unsafe-inline'`. Future plan.
 - **Renderer sandbox per widget.** Widgets currently share the renderer

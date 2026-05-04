@@ -4,33 +4,41 @@
  * Per-widget gating for MCP tool calls.
  *
  * When `gateToolCall` is invoked with a widget identity, server name,
- * tool name, and tool arguments, it consults the widget's installed
- * permission manifest (electron/mcp/widgetPermissions.js) and either
- * permits the call or returns a clear denial reason.
+ * tool name, and tool arguments, it consults the widget's GRANTED
+ * permissions (electron/mcp/grantedPermissions.js) and either permits
+ * the call or returns a clear denial reason.
+ *
+ * **Granted vs declared (Slice 2):** the widget's package.json
+ * `dash.permissions.mcp` block is the *request* — read by
+ * widgetPermissions.js and shown to the user at install time. The
+ * *grant* is what the user actually approved. The runtime gate reads
+ * grants only. A widget with a declared manifest but no grant entry
+ * has no MCP access — fail-closed. The user grants permissions via
+ * the install consent modal or Settings → Privacy & Security.
  *
  * Two layers:
  *
- *   1. **Tool-name allowlist** — the manifest's `tools[]` array for the
+ *   1. **Tool-name allowlist** — the granted `tools[]` array for the
  *      target server determines which tool names this widget may
  *      invoke. Anything outside the list is rejected.
  *
  *   2. **Path-argument containment** — for tools whose arguments
  *      include a path-shaped key (`path`, `uri`, `filepath`, `file`,
  *      `directory`), the supplied path is validated with safePath()
- *      against the widget's declared `readPaths` or `writePaths` for
+ *      against the widget's granted `readPaths` or `writePaths` for
  *      the target server. The read/write distinction is heuristic
  *      based on the tool name (e.g. `write_file` is treated as a
  *      write).
  *
- * This is the runtime enforcement layer. Install-time consent UI and
- * per-dashboard MCP-server scope reconfiguration are separate plans
- * (Slices 2 and 3). When the feature flag is OFF (default), this gate
- * is bypassed entirely; mcpController behaves as before. When ON,
- * every callTool dispatch goes through this gate.
+ * This is the runtime enforcement layer. Install-time consent UI is
+ * Slice 2. Per-dashboard MCP-server scope reconfiguration is Slice 3.
+ * When the feature flag is OFF (default), this gate is bypassed
+ * entirely; mcpController behaves as before. When ON, every callTool
+ * dispatch goes through this gate.
  */
 "use strict";
 
-const { getWidgetMcpPermissions } = require("./widgetPermissions");
+const { getGrant } = require("./grantedPermissions");
 const { safePath } = require("../utils/safePath");
 
 // Argument keys that look like paths. Different MCP servers use
@@ -61,18 +69,18 @@ function gateToolCall({ widgetId, serverName, toolName, args }) {
     };
   }
 
-  const perms = getWidgetMcpPermissions(widgetId);
+  const perms = getGrant(widgetId);
   if (!perms) {
     return {
       allow: false,
       reason:
         "widget '" +
         widgetId +
-        "' has no MCP permission manifest; declare dash.permissions.mcp in its package.json to grant access",
+        "' has no MCP permissions granted; user must approve at install time or in Settings → Privacy & Security",
     };
   }
 
-  const serverPerms = perms.servers[serverName];
+  const serverPerms = perms.servers && perms.servers[serverName];
   if (!serverPerms) {
     return {
       allow: false,

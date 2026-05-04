@@ -22,6 +22,10 @@ const { dynamicWidgetLoader } = require("./dynamicWidgetLoader");
 const { compileWidget, findWidgetsDir } = require("./widgetCompiler");
 const { toPackageId, parsePackageId } = require("./utils/packageId");
 const { getStoredToken } = require("./controller/registryAuthController");
+const {
+  getWidgetMcpPermissions,
+  clearCache: clearWidgetPermsCache,
+} = require("./mcp/widgetPermissions");
 
 let WIDGETS_CACHE_DIR = null;
 let REGISTRY_CONFIG_FILE = null;
@@ -1097,6 +1101,38 @@ function findBundlePath(widgetPath) {
 }
 
 /**
+ * If a freshly-installed widget declares dash.permissions.mcp, ping the
+ * renderer so the consent modal can pop up. The renderer subscribes via
+ * `widget:mcp-consent-required` and either calls widget-mcp:set-grant
+ * with the user's selections (Slice 2) or quietly drops the message
+ * (older renderer pre-Slice-2 — the gate still fail-closes).
+ *
+ * Cache invalidation: widgetPermissions caches per-process, so an upgrade
+ * over a stale cached entry would otherwise keep the old manifest. Drop
+ * the whole cache here — cheap, infrequent.
+ */
+function maybeEmitMcpConsentRequired(widgetName) {
+  try {
+    clearWidgetPermsCache();
+    const declared = getWidgetMcpPermissions(widgetName);
+    if (!declared) return;
+    BrowserWindow.getAllWindows().forEach((win) => {
+      win.webContents.send("widget:mcp-consent-required", {
+        widgetId: widgetName,
+        declared,
+      });
+    });
+  } catch (e) {
+    console.warn(
+      "[widgetRegistry] mcp consent emit failed for " +
+        widgetName +
+        ": " +
+        e.message,
+    );
+  }
+}
+
+/**
  * Setup IPC handlers for widget management (use in main.js)
  */
 function setupWidgetRegistryHandlers() {
@@ -1122,6 +1158,8 @@ function setupWidgetRegistryHandlers() {
         });
       });
 
+      maybeEmitMcpConsentRequired(widgetName);
+
       return config;
     },
   );
@@ -1142,6 +1180,8 @@ function setupWidgetRegistryHandlers() {
           config,
         });
       });
+
+      maybeEmitMcpConsentRequired(widgetName);
 
       return config;
     },
