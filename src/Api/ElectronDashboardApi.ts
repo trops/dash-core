@@ -582,11 +582,18 @@ class ElectronDashboardApi implements IDashboardApi {
     onSuccess,
     onError,
     workspaceId = null,
+    pathScope = null,
   ): Boolean {
     if (this.api !== null) {
       try {
         this.api.mcp
-          .startServer(serverName, mcpConfig, credentials, workspaceId)
+          .startServer(
+            serverName,
+            mcpConfig,
+            credentials,
+            workspaceId,
+            pathScope,
+          )
           .then((result) => {
             onSuccess(this.events.MCP_START_SERVER_COMPLETE, result);
           })

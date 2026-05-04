@@ -30,6 +30,46 @@ function rendererStateKey(workspaceId, serverName) {
 }
 
 /**
+ * Slice 3b: compute the union of granted paths for a server across a
+ * set of widgets. Mirrors electron/utils/mcpScopeResolver.unionPathScope
+ * but inline here because the electron/ helper isn't reachable from the
+ * renderer build. The mainline path-scope test runs against the
+ * electron-side helper; this one is exercised at runtime when widgets
+ * connect.
+ */
+function unionPathScope(grants, serverName) {
+  const reads = new Set();
+  const writes = new Set();
+  if (!Array.isArray(grants)) {
+    return { readPaths: [], writePaths: [], allowedPaths: [] };
+  }
+  for (const entry of grants) {
+    if (!entry || typeof entry !== "object") continue;
+    const granted = entry.granted;
+    if (!granted || typeof granted !== "object") continue;
+    const servers = granted.servers;
+    if (!servers || typeof servers !== "object") continue;
+    const serverPerms = servers[serverName];
+    if (!serverPerms || typeof serverPerms !== "object") continue;
+    if (Array.isArray(serverPerms.readPaths)) {
+      for (const p of serverPerms.readPaths) {
+        if (typeof p === "string" && p) reads.add(p);
+      }
+    }
+    if (Array.isArray(serverPerms.writePaths)) {
+      for (const p of serverPerms.writePaths) {
+        if (typeof p === "string" && p) writes.add(p);
+      }
+    }
+  }
+  return {
+    readPaths: [...reads],
+    writePaths: [...writes],
+    allowedPaths: [...new Set([...reads, ...writes])],
+  };
+}
+
+/**
  * useMcpProvider Hook
  *
  * Provides access to an MCP server's tools and resources for a widget.
@@ -212,6 +252,45 @@ export const useMcpProvider = (providerType, options = {}) => {
     const workspaceId = workspace?.workspaceData?.id || null;
     const stateKey = rendererStateKey(workspaceId, selectedProviderName);
 
+    // Slice 3b: compute the workspace's path-scope union from grants.
+    // Enumerate widgets on this workspace that bind to this server,
+    // look up their grants, union the read+write paths. Server spawns
+    // with that union as its allowed-paths. Widget-level bindings on
+    // layout items that aren't reflected in workspaceData.selectedProviders
+    // are not enumerated — those widgets must rely on workspace-level
+    // bindings to contribute to the union (known limitation).
+    let pathScope = null;
+    try {
+      const wsBindings = workspace?.workspaceData?.selectedProviders;
+      const widgetIdsOnServer = new Set();
+      // Always include the calling widget itself.
+      if (widgetId) widgetIdsOnServer.add(widgetId);
+      if (wsBindings && typeof wsBindings === "object") {
+        for (const [wId, bindings] of Object.entries(wsBindings)) {
+          if (
+            bindings &&
+            typeof bindings === "object" &&
+            bindings[providerType] === selectedProviderName
+          ) {
+            widgetIdsOnServer.add(wId);
+          }
+        }
+      }
+      if (widgetIdsOnServer.size > 0 && window.mainApi?.widgetMcp?.listAll) {
+        const allGrants = (await window.mainApi.widgetMcp.listAll()) || [];
+        const relevant = allGrants.filter((g) =>
+          widgetIdsOnServer.has(g.widgetId),
+        );
+        if (relevant.length > 0) {
+          pathScope = unionPathScope(relevant, selectedProviderName);
+        }
+      }
+    } catch (e) {
+      // Non-fatal — fall through to spawn without scope override (the
+      // main-process feature flag gates the override anyway).
+      console.warn("[useMcpProvider] failed to compute pathScope:", e?.message);
+    }
+
     // 1. Already connected at module level? Verify with main process before trusting cache.
     //    The server may have been stopped externally (e.g., Test Connection in settings).
     const cached = serverStates.get(stateKey);
@@ -307,6 +386,7 @@ export const useMcpProvider = (providerType, options = {}) => {
           reject(err);
         },
         workspaceId,
+        pathScope,
       );
     });
 

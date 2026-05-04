@@ -23,6 +23,7 @@ const os = require("os");
 const responseCache = require("../utils/responseCache");
 const { gateToolCall } = require("../mcp/permissionGate");
 const { serverKey, parseServerKey } = require("../utils/mcpServerKey");
+const { applyPathScopeToCredentials } = require("../utils/mcpScopeResolver");
 const { app } = require("electron");
 
 // Read the widget-MCP-enforcement feature flag from settings.json.
@@ -417,15 +418,41 @@ const mcpController = {
    * Pass `null`/`undefined` workspaceId to land on the legacy
    * NO_WORKSPACE bucket (e.g. dash MCP server tools, AI Builder previews).
    *
+   * Slice 3b: when `security.enforceWidgetMcpPermissions` is on AND a
+   * non-empty `pathScope` is supplied, the scope's allowed paths
+   * override the server's existing path-style credentials before the
+   * catalog's argsMapping spreads them into spawn args. This scopes
+   * the server's OS-level capability to the union of widget grants on
+   * the active workspace.
+   *
    * @param {BrowserWindow} win the main window
    * @param {string} serverName unique name for this server instance
    * @param {object} mcpConfig { transport, command, args, envMapping }
    * @param {object} credentials decrypted credentials object
    * @param {string|null} workspaceId active workspace id (Slice 3a)
+   * @param {object|null} pathScope { readPaths, writePaths, allowedPaths } (Slice 3b)
    * @returns {{ success, serverName, tools, status } | { error, message }}
    */
-  startServer: async (win, serverName, mcpConfig, credentials, workspaceId) => {
+  startServer: async (
+    win,
+    serverName,
+    mcpConfig,
+    credentials,
+    workspaceId,
+    pathScope = null,
+  ) => {
     const key = serverKey(workspaceId, serverName);
+    // Slice 3b: when the gate is enforced, override credentials with
+    // the workspace's union of granted paths so the spawned process
+    // can't see anything broader than the user has consented to.
+    if (
+      isWidgetPermissionEnforcementEnabled() &&
+      pathScope &&
+      Array.isArray(pathScope.allowedPaths) &&
+      pathScope.allowedPaths.length > 0
+    ) {
+      credentials = applyPathScopeToCredentials(credentials, pathScope);
+    }
     // 1. Already connected? Return existing connection
     const existing = activeServers.get(key);
     if (existing && existing.status === STATUS.CONNECTED && existing.client) {

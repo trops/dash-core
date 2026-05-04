@@ -30,14 +30,25 @@ const mcpApi = {
    * @param {object} credentials decrypted credentials object
    * @param {string|null} workspaceId active workspace id (Slice 3a) —
    *   server processes are keyed per workspace.
+   * @param {object|null} pathScope (Slice 3b) — when provided, the
+   *   workspace's union of granted paths overrides the server's
+   *   path-style credentials at spawn time. Shape:
+   *   `{ readPaths, writePaths, allowedPaths }`.
    * @returns {Promise<{ success, serverName, tools, status } | { error, message }>}
    */
-  startServer: (serverName, mcpConfig, credentials, workspaceId = null) =>
+  startServer: (
+    serverName,
+    mcpConfig,
+    credentials,
+    workspaceId = null,
+    pathScope = null,
+  ) =>
     ipcRenderer.invoke(MCP_START_SERVER, {
       serverName,
       mcpConfig,
       credentials,
       workspaceId,
+      pathScope,
     }),
 
   /**
