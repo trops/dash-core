@@ -146,7 +146,10 @@ scoping alone and warrants immediate attention before Phase B path work.
   of this filesystem audit. Future plan.
 - **MCP tool gating.** The user's threat-model example
   ("filesystem MCP delete files") is governed by the MCP client, not by these
-  IPC handlers. Future plan: per-widget MCP tool allowlist.
+  IPC handlers. **Slice 1 of the MCP allowlist plan landed in 0.1.489** —
+  see `electron/mcp/widgetPermissions.js` and `electron/mcp/permissionGate.js`.
+  Slice 2 (install consent UI, Settings panel) and Slice 3 (per-dashboard
+  MCP server scope reconfiguration) are deferred plans.
 - **CSP-level script injection.** Widget can inject `<script src=evil>` because
   CSP allows `'unsafe-inline'`. Future plan.
 - **Renderer sandbox per widget.** Widgets currently share the renderer
