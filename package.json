@@ -23,6 +23,8 @@
         "clean": "rm -rf dist",
         "prepublishOnly": "npm run clean && npm run build",
         "test:mcp": "node --test electron/controller/mcpController.test.js electron/mcp/mcpServerCatalog.test.js electron/mcp/installExternalMcpTool.test.js",
+        "test:untracked-pin": "node scripts/test-untracked-sources-pin.js",
+        "check:untracked": "node scripts/check-untracked-sources.js",
         "test": "jest --watchAll=false",
         "prettify": "prettier --write \"src/**/*.{js,jsx,ts,tsx}\" \"electron/**/*.js\"",
         "ci": "./scripts/ci.sh",

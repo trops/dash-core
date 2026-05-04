@@ -102,6 +102,10 @@ node --test electron/controller/installDashboardAuth.test.js
 step "Running safeJsExecutor sandbox tests"
 node --test electron/utils/safeJsExecutor.test.js
 
+# 6d. Untracked-sources gate regression-pin
+step "Validating untracked-sources gate config"
+npm run test:untracked-pin
+
 # 7. Verify output
 step "Verifying build output"
 for f in \
@@ -143,6 +147,15 @@ step "Configuring git credentials via gh"
 gh auth setup-git
 
 # --- Commit ---
+step "Checking for untracked source files"
+# Aborts the release if anything in electron/, src/, scripts/, docs/ is
+# untracked. `git add -u` below only stages tracked-modified files;
+# brand-new files would silently get dropped from the release commit
+# otherwise. Dash-core hit this in v0.1.484 — safeJsExecutor.js was
+# referenced by transform.js but never committed, so the npm publish
+# rollup build failed with "Could not resolve './safeJsExecutor'".
+npm run check:untracked
+
 step "Committing changes"
 git add -u
 git commit -m "$COMMIT_MSG"
