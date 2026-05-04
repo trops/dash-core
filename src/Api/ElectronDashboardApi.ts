@@ -581,11 +581,12 @@ class ElectronDashboardApi implements IDashboardApi {
     credentials,
     onSuccess,
     onError,
+    workspaceId = null,
   ): Boolean {
     if (this.api !== null) {
       try {
         this.api.mcp
-          .startServer(serverName, mcpConfig, credentials)
+          .startServer(serverName, mcpConfig, credentials, workspaceId)
           .then((result) => {
             onSuccess(this.events.MCP_START_SERVER_COMPLETE, result);
           })
@@ -603,11 +604,11 @@ class ElectronDashboardApi implements IDashboardApi {
     }
   }
 
-  mcpStopServer(serverName, onSuccess, onError): Boolean {
+  mcpStopServer(serverName, onSuccess, onError, workspaceId = null): Boolean {
     if (this.api !== null) {
       try {
         this.api.mcp
-          .stopServer(serverName)
+          .stopServer(serverName, workspaceId)
           .then((result) => {
             onSuccess(this.events.MCP_STOP_SERVER_COMPLETE, result);
           })
@@ -632,11 +633,15 @@ class ElectronDashboardApi implements IDashboardApi {
     allowedTools,
     onSuccess,
     onError,
+    workspaceId = null,
   ): Boolean {
     if (this.api !== null) {
       try {
+        // widgetId is not threaded here; mcpApi.callTool defaults it to
+        // null. Slice 3a: workspaceId scopes the MCP server process per
+        // workspace.
         this.api.mcp
-          .callTool(serverName, toolName, args, allowedTools)
+          .callTool(serverName, toolName, args, allowedTools, null, workspaceId)
           .then((result) => {
             onSuccess(this.events.MCP_CALL_TOOL_COMPLETE, result);
           })
@@ -654,11 +659,11 @@ class ElectronDashboardApi implements IDashboardApi {
     }
   }
 
-  mcpListTools(serverName, onSuccess, onError): Boolean {
+  mcpListTools(serverName, onSuccess, onError, workspaceId = null): Boolean {
     if (this.api !== null) {
       try {
         this.api.mcp
-          .listTools(serverName)
+          .listTools(serverName, workspaceId)
           .then((result) => {
             onSuccess(this.events.MCP_LIST_TOOLS_COMPLETE, result);
           })
@@ -676,11 +681,16 @@ class ElectronDashboardApi implements IDashboardApi {
     }
   }
 
-  mcpListResources(serverName, onSuccess, onError): Boolean {
+  mcpListResources(
+    serverName,
+    onSuccess,
+    onError,
+    workspaceId = null,
+  ): Boolean {
     if (this.api !== null) {
       try {
         this.api.mcp
-          .listResources(serverName)
+          .listResources(serverName, workspaceId)
           .then((result) => {
             onSuccess(this.events.MCP_LIST_RESOURCES_COMPLETE, result);
           })
@@ -698,11 +708,17 @@ class ElectronDashboardApi implements IDashboardApi {
     }
   }
 
-  mcpReadResource(serverName, uri, onSuccess, onError): Boolean {
+  mcpReadResource(
+    serverName,
+    uri,
+    onSuccess,
+    onError,
+    workspaceId = null,
+  ): Boolean {
     if (this.api !== null) {
       try {
         this.api.mcp
-          .readResource(serverName, uri)
+          .readResource(serverName, uri, workspaceId)
           .then((result) => {
             onSuccess(this.events.MCP_READ_RESOURCE_COMPLETE, result);
           })
@@ -720,11 +736,16 @@ class ElectronDashboardApi implements IDashboardApi {
     }
   }
 
-  mcpGetServerStatus(serverName, onSuccess, onError): Boolean {
+  mcpGetServerStatus(
+    serverName,
+    onSuccess,
+    onError,
+    workspaceId = null,
+  ): Boolean {
     if (this.api !== null) {
       try {
         this.api.mcp
-          .getServerStatus(serverName)
+          .getServerStatus(serverName, workspaceId)
           .then((result) => {
             onSuccess(this.events.MCP_SERVER_STATUS_COMPLETE, result);
           })

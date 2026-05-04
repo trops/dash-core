@@ -106,6 +106,10 @@ node --test electron/utils/safeJsExecutor.test.js
 step "Running safePath containment tests"
 node --test electron/utils/safePath.test.js
 
+# 6c3. Run MCP allowlist (Slice 1+2) and per-workspace key (Slice 3a) pins
+step "Running MCP allowlist + per-workspace key tests"
+node --test electron/mcp/permissionGate.test.js electron/mcp/grantedPermissions.test.js electron/utils/mcpServerKey.test.js
+
 # 6d. Untracked-sources gate regression-pin
 step "Validating untracked-sources gate config"
 npm run test:untracked-pin

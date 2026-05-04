@@ -28,13 +28,16 @@ const mcpApi = {
    * @param {string} serverName unique name for this server instance
    * @param {object} mcpConfig { transport, command, args, envMapping }
    * @param {object} credentials decrypted credentials object
+   * @param {string|null} workspaceId active workspace id (Slice 3a) —
+   *   server processes are keyed per workspace.
    * @returns {Promise<{ success, serverName, tools, status } | { error, message }>}
    */
-  startServer: (serverName, mcpConfig, credentials) =>
+  startServer: (serverName, mcpConfig, credentials, workspaceId = null) =>
     ipcRenderer.invoke(MCP_START_SERVER, {
       serverName,
       mcpConfig,
       credentials,
+      workspaceId,
     }),
 
   /**
@@ -42,19 +45,22 @@ const mcpApi = {
    * Stop a running MCP server
    *
    * @param {string} serverName the server to stop
+   * @param {string|null} workspaceId active workspace id (Slice 3a)
    * @returns {Promise<{ success, serverName } | { error, message }>}
    */
-  stopServer: (serverName) =>
-    ipcRenderer.invoke(MCP_STOP_SERVER, { serverName }),
+  stopServer: (serverName, workspaceId = null) =>
+    ipcRenderer.invoke(MCP_STOP_SERVER, { serverName, workspaceId }),
 
   /**
    * listTools
    * List available tools for a running MCP server
    *
    * @param {string} serverName the server name
+   * @param {string|null} workspaceId active workspace id (Slice 3a)
    * @returns {Promise<{ tools } | { error, message }>}
    */
-  listTools: (serverName) => ipcRenderer.invoke(MCP_LIST_TOOLS, { serverName }),
+  listTools: (serverName, workspaceId = null) =>
+    ipcRenderer.invoke(MCP_LIST_TOOLS, { serverName, workspaceId }),
 
   /**
    * callTool
@@ -69,6 +75,9 @@ const mcpApi = {
    *   used to look up the widget's MCP permission manifest and gate
    *   the call accordingly. Should be the npm package name of the
    *   calling widget (e.g. "@trops/notes-summarizer").
+   * @param {string|null} workspaceId active workspace id (Slice 3a) —
+   *   the server process is scoped per (workspace, server). Slice 3b
+   *   will tie path scope to this id.
    * @returns {Promise<{ result } | { error, message }>}
    */
   callTool: (
@@ -77,6 +86,7 @@ const mcpApi = {
     args,
     allowedTools = null,
     widgetId = null,
+    workspaceId = null,
   ) =>
     ipcRenderer.invoke(MCP_CALL_TOOL, {
       serverName,
@@ -84,6 +94,7 @@ const mcpApi = {
       args,
       allowedTools,
       widgetId,
+      workspaceId,
     }),
 
   /**
@@ -91,10 +102,11 @@ const mcpApi = {
    * List available resources for a running MCP server
    *
    * @param {string} serverName the server name
+   * @param {string|null} workspaceId active workspace id (Slice 3a)
    * @returns {Promise<{ resources } | { error, message }>}
    */
-  listResources: (serverName) =>
-    ipcRenderer.invoke(MCP_LIST_RESOURCES, { serverName }),
+  listResources: (serverName, workspaceId = null) =>
+    ipcRenderer.invoke(MCP_LIST_RESOURCES, { serverName, workspaceId }),
 
   /**
    * readResource
@@ -102,20 +114,22 @@ const mcpApi = {
    *
    * @param {string} serverName the server name
    * @param {string} uri the resource URI
+   * @param {string|null} workspaceId active workspace id (Slice 3a)
    * @returns {Promise<{ resource } | { error, message }>}
    */
-  readResource: (serverName, uri) =>
-    ipcRenderer.invoke(MCP_READ_RESOURCE, { serverName, uri }),
+  readResource: (serverName, uri, workspaceId = null) =>
+    ipcRenderer.invoke(MCP_READ_RESOURCE, { serverName, uri, workspaceId }),
 
   /**
    * getServerStatus
    * Get the connection status of a server
    *
    * @param {string} serverName the server name
+   * @param {string|null} workspaceId active workspace id (Slice 3a)
    * @returns {Promise<{ status, tools, error }>}
    */
-  getServerStatus: (serverName) =>
-    ipcRenderer.invoke(MCP_SERVER_STATUS, { serverName }),
+  getServerStatus: (serverName, workspaceId = null) =>
+    ipcRenderer.invoke(MCP_SERVER_STATUS, { serverName, workspaceId }),
 
   /**
    * getCatalog
