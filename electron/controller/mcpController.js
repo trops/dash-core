@@ -22,6 +22,7 @@ const fs = require("fs");
 const os = require("os");
 const responseCache = require("../utils/responseCache");
 const { gateToolCall } = require("../mcp/permissionGate");
+const { serverKey, parseServerKey } = require("../utils/mcpServerKey");
 const { app } = require("electron");
 
 // Read the widget-MCP-enforcement feature flag from settings.json.
@@ -411,17 +412,24 @@ const mcpController = {
    * startServer
    * Start an MCP server with the given config and credentials
    *
+   * Slice 3a: server instances are keyed by `(workspaceId, serverName)`
+   * so two workspaces using the same server type get separate processes.
+   * Pass `null`/`undefined` workspaceId to land on the legacy
+   * NO_WORKSPACE bucket (e.g. dash MCP server tools, AI Builder previews).
+   *
    * @param {BrowserWindow} win the main window
    * @param {string} serverName unique name for this server instance
    * @param {object} mcpConfig { transport, command, args, envMapping }
    * @param {object} credentials decrypted credentials object
+   * @param {string|null} workspaceId active workspace id (Slice 3a)
    * @returns {{ success, serverName, tools, status } | { error, message }}
    */
-  startServer: async (win, serverName, mcpConfig, credentials) => {
+  startServer: async (win, serverName, mcpConfig, credentials, workspaceId) => {
+    const key = serverKey(workspaceId, serverName);
     // 1. Already connected? Return existing connection
-    const existing = activeServers.get(serverName);
+    const existing = activeServers.get(key);
     if (existing && existing.status === STATUS.CONNECTED && existing.client) {
-      console.log(`[mcpController] Server already connected: ${serverName}`);
+      console.log(`[mcpController] Server already connected: ${key}`);
       return {
         success: true,
         serverName,
@@ -432,19 +440,19 @@ const mcpController = {
     }
 
     // 2. Already starting? Piggyback on the pending promise
-    if (pendingStarts.has(serverName)) {
+    if (pendingStarts.has(key)) {
       console.log(
-        `[mcpController] Server already starting, deduplicating: ${serverName}`,
+        `[mcpController] Server already starting, deduplicating: ${key}`,
       );
-      return pendingStarts.get(serverName);
+      return pendingStarts.get(key);
     }
 
     // 3. Fresh start — wrap in a promise and track it
     const startPromise = (async () => {
       try {
         // Stop if in stale/error state
-        if (activeServers.has(serverName)) {
-          await mcpController.stopServer(win, serverName);
+        if (activeServers.has(key)) {
+          await mcpController.stopServer(win, serverName, workspaceId);
         }
 
         // Merge with catalog entry to pick up updated command/args
@@ -575,12 +583,14 @@ const mcpController = {
         }
 
         // Update status to connecting
-        activeServers.set(serverName, {
+        activeServers.set(key, {
           client: null,
           transport,
           tools: [],
           resources: [],
           status: STATUS.CONNECTING,
+          workspaceId: workspaceId || null,
+          serverName,
         });
 
         // Create MCP client
@@ -614,16 +624,18 @@ const mcpController = {
         }
 
         // Store the active connection
-        activeServers.set(serverName, {
+        activeServers.set(key, {
           client,
           transport,
           tools,
           resources,
           status: STATUS.CONNECTED,
+          workspaceId: workspaceId || null,
+          serverName,
         });
 
         console.log(
-          `[mcpController] Server connected: ${serverName} (${tools.length} tools, ${resources.length} resources)`,
+          `[mcpController] Server connected: ${key} (${tools.length} tools, ${resources.length} resources)`,
         );
 
         return {
@@ -648,13 +660,15 @@ const mcpController = {
         }
 
         // Mark as error state
-        activeServers.set(serverName, {
+        activeServers.set(key, {
           client: null,
           transport: null,
           tools: [],
           resources: [],
           status: STATUS.ERROR,
           error: errorMessage,
+          workspaceId: workspaceId || null,
+          serverName,
         });
 
         return {
@@ -664,11 +678,11 @@ const mcpController = {
           status: STATUS.ERROR,
         };
       } finally {
-        pendingStarts.delete(serverName);
+        pendingStarts.delete(key);
       }
     })();
 
-    pendingStarts.set(serverName, startPromise);
+    pendingStarts.set(key, startPromise);
     return startPromise;
   },
 
@@ -678,20 +692,22 @@ const mcpController = {
    *
    * @param {BrowserWindow} win the main window
    * @param {string} serverName the server to stop
+   * @param {string|null} workspaceId active workspace id (Slice 3a)
    * @returns {{ success, serverName } | { error, message }}
    */
-  stopServer: async (win, serverName) => {
+  stopServer: async (win, serverName, workspaceId) => {
+    const key = serverKey(workspaceId, serverName);
     try {
       // Wait for any in-flight start to finish before stopping
-      if (pendingStarts.has(serverName)) {
+      if (pendingStarts.has(key)) {
         try {
-          await pendingStarts.get(serverName);
+          await pendingStarts.get(key);
         } catch (e) {
           /* stopping anyway */
         }
       }
 
-      const server = activeServers.get(serverName);
+      const server = activeServers.get(key);
       if (!server) {
         return {
           success: true,
@@ -700,7 +716,7 @@ const mcpController = {
         };
       }
 
-      console.log(`[mcpController] Stopping server: ${serverName}`);
+      console.log(`[mcpController] Stopping server: ${key}`);
 
       // Close the client connection
       if (server.client) {
@@ -708,27 +724,24 @@ const mcpController = {
           await server.client.close();
         } catch (closeError) {
           console.warn(
-            `[mcpController] Error closing client for ${serverName}:`,
+            `[mcpController] Error closing client for ${key}:`,
             closeError.message,
           );
         }
       }
 
-      activeServers.delete(serverName);
+      activeServers.delete(key);
 
-      console.log(`[mcpController] Server stopped: ${serverName}`);
+      console.log(`[mcpController] Server stopped: ${key}`);
 
       return {
         success: true,
         serverName,
       };
     } catch (error) {
-      console.error(
-        `[mcpController] Error stopping server ${serverName}:`,
-        error,
-      );
+      console.error(`[mcpController] Error stopping server ${key}:`, error);
       // Clean up anyway
-      activeServers.delete(serverName);
+      activeServers.delete(key);
       return {
         error: true,
         message: error.message,
@@ -745,6 +758,10 @@ const mcpController = {
    * @param {string} toolName the tool to call
    * @param {object} args arguments for the tool
    * @param {Array<string>} allowedTools optional whitelist of allowed tool names
+   * @param {string|null} widgetId the widget originating the call (Slice 1+2)
+   * @param {string|null} workspaceId the active workspace (Slice 3a) — used
+   *                       to scope the server process per workspace.
+   *                       Slice 3b will tie path scope to this id.
    * @returns {{ result } | { error, message }}
    */
   callTool: async (
@@ -754,11 +771,13 @@ const mcpController = {
     args,
     allowedTools = null,
     widgetId = null,
+    workspaceId = null,
   ) => {
+    const key = serverKey(workspaceId, serverName);
     try {
-      const server = activeServers.get(serverName);
+      const server = activeServers.get(key);
       if (!server || !server.client) {
-        throw new Error(`Server not connected: ${serverName}`);
+        throw new Error(`Server not connected: ${key}`);
       }
 
       // Per-widget manifest gate. Activated by the
@@ -791,7 +810,7 @@ const mcpController = {
       }
 
       const doCall = async () => {
-        console.log(`[mcpController] Calling tool: ${serverName}/${toolName}`);
+        console.log(`[mcpController] Calling tool: ${key}/${toolName}`);
         const result = await server.client.callTool({
           name: toolName,
           arguments: args || {},
@@ -802,18 +821,21 @@ const mcpController = {
         };
       };
 
-      // Cache read-only tool calls with in-flight dedup.
-      // Writes always hit the source (and we invalidate the server's cache).
+      // Cache read-only tool calls with in-flight dedup. Cache key is
+      // scoped per (workspace, server, tool, args) so two workspaces
+      // calling the same read on the same server type don't share a
+      // cached response — they're separate processes with potentially
+      // different scopes (Slice 3b will make that explicit).
       if (isReadOnlyTool(toolName)) {
-        const key = `mcp:${serverName}:${toolName}:${JSON.stringify(args || {})}`;
-        return responseCache.get(key, doCall, {
+        const cacheKey = `mcp:${key}:${toolName}:${JSON.stringify(args || {})}`;
+        return responseCache.get(cacheKey, doCall, {
           ttl: DEFAULT_TOOL_CACHE_TTL,
         });
       }
 
       // Write/mutation: invalidate any cached reads for this server
       // (safest default — broad invalidation when state changes)
-      responseCache.invalidatePrefix(`mcp:${serverName}:`);
+      responseCache.invalidatePrefix(`mcp:${key}:`);
       return doCall();
     } catch (error) {
       console.error(
@@ -833,13 +855,15 @@ const mcpController = {
    *
    * @param {BrowserWindow} win the main window
    * @param {string} serverName the server name
+   * @param {string|null} workspaceId active workspace id (Slice 3a)
    * @returns {{ tools } | { error, message }}
    */
-  listTools: async (win, serverName) => {
+  listTools: async (win, serverName, workspaceId) => {
+    const key = serverKey(workspaceId, serverName);
     try {
-      const server = activeServers.get(serverName);
+      const server = activeServers.get(key);
       if (!server || !server.client) {
-        throw new Error(`Server not connected: ${serverName}`);
+        throw new Error(`Server not connected: ${key}`);
       }
 
       // Refresh tool list from server
@@ -871,13 +895,15 @@ const mcpController = {
    *
    * @param {BrowserWindow} win the main window
    * @param {string} serverName the server name
+   * @param {string|null} workspaceId active workspace id (Slice 3a)
    * @returns {{ resources } | { error, message }}
    */
-  listResources: async (win, serverName) => {
+  listResources: async (win, serverName, workspaceId) => {
+    const key = serverKey(workspaceId, serverName);
     try {
-      const server = activeServers.get(serverName);
+      const server = activeServers.get(key);
       if (!server || !server.client) {
-        throw new Error(`Server not connected: ${serverName}`);
+        throw new Error(`Server not connected: ${key}`);
       }
 
       const resourcesResult = await server.client.listResources();
@@ -909,13 +935,15 @@ const mcpController = {
    * @param {BrowserWindow} win the main window
    * @param {string} serverName the server name
    * @param {string} uri the resource URI
+   * @param {string|null} workspaceId active workspace id (Slice 3a)
    * @returns {{ resource } | { error, message }}
    */
-  readResource: async (win, serverName, uri) => {
+  readResource: async (win, serverName, uri, workspaceId) => {
+    const key = serverKey(workspaceId, serverName);
     try {
-      const server = activeServers.get(serverName);
+      const server = activeServers.get(key);
       if (!server || !server.client) {
-        throw new Error(`Server not connected: ${serverName}`);
+        throw new Error(`Server not connected: ${key}`);
       }
 
       const result = await server.client.readResource({ uri });
@@ -944,8 +972,9 @@ const mcpController = {
    * @param {string} serverName the server name
    * @returns {{ status, tools, error }}
    */
-  getServerStatus: (win, serverName) => {
-    const server = activeServers.get(serverName);
+  getServerStatus: (win, serverName, workspaceId) => {
+    const key = serverKey(workspaceId, serverName);
+    const server = activeServers.get(key);
     if (!server) {
       return {
         serverName,
@@ -1207,11 +1236,38 @@ const mcpController = {
       `[mcpController] Stopping all servers (${activeServers.size} active)`,
     );
     const promises = [];
-    for (const [serverName] of activeServers) {
-      promises.push(mcpController.stopServer(null, serverName));
+    // Slice 3a: keys are compound `(workspaceId, serverName)`. Parse
+    // to call stopServer with the original args.
+    for (const [key] of activeServers) {
+      const { workspaceId, serverName } = parseServerKey(key);
+      promises.push(mcpController.stopServer(null, serverName, workspaceId));
     }
     await Promise.allSettled(promises);
     console.log("[mcpController] All servers stopped");
+  },
+
+  /**
+   * stopServersForWorkspace
+   * Stop every server keyed under the given workspaceId. Called when
+   * a workspace unmounts so its scoped MCP processes don't leak.
+   *
+   * @param {string} workspaceId the workspace whose servers to stop
+   */
+  stopServersForWorkspace: async (workspaceId) => {
+    if (!workspaceId) return;
+    const promises = [];
+    for (const [key] of activeServers) {
+      const parsed = parseServerKey(key);
+      if (parsed.workspaceId !== workspaceId) continue;
+      promises.push(
+        mcpController.stopServer(null, parsed.serverName, workspaceId),
+      );
+    }
+    if (promises.length === 0) return;
+    console.log(
+      `[mcpController] Stopping ${promises.length} server(s) for workspace ${workspaceId}`,
+    );
+    await Promise.allSettled(promises);
   },
 };
 

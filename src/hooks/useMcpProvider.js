@@ -5,17 +5,29 @@ import { WidgetContext } from "../Context/WidgetContext";
 
 /**
  * Module-level shared state for MCP server connections.
- * Prevents multiple hook instances (e.g., 4 widgets using "slack") from
- * each firing their own IPC startServer call.
+ * Prevents multiple hook instances (e.g., 4 widgets on the same dashboard
+ * using "slack") from each firing their own IPC startServer call.
  *
- * serverStates: tracks connection result + consumer reference count per server
- * pendingConnects: deduplicates in-flight IPC calls so only 1 fires per server
+ * Slice 3a: keys are scoped per `(workspaceId, serverName)` so two
+ * dashboards using the same provider name don't share renderer state
+ * (the main process spawns separate server instances for each).
+ *
+ * serverStates: tracks connection result + consumer reference count
+ * pendingConnects: deduplicates in-flight IPC calls
  */
 const serverStates = new Map();
-// Map<serverName, { status, tools, resources, consumerCount }>
+// Map<`${workspaceId}::${serverName}`, { status, tools, resources, consumerCount }>
 
 const pendingConnects = new Map();
-// Map<serverName, Promise<result>>
+// Map<`${workspaceId}::${serverName}`, Promise<result>>
+
+const NO_WORKSPACE = "__no_workspace__";
+
+function rendererStateKey(workspaceId, serverName) {
+  const wid =
+    workspaceId && typeof workspaceId === "string" ? workspaceId : NO_WORKSPACE;
+  return wid + "::" + serverName;
+}
 
 /**
  * useMcpProvider Hook
@@ -192,9 +204,17 @@ export const useMcpProvider = (providerType, options = {}) => {
       return;
     }
 
+    // Slice 3a: scope state per (workspace, provider). Two dashboards
+    // using the same provider name get separate server instances in the
+    // main process, so the renderer state must mirror that or one
+    // dashboard's "connected" cache will short-circuit a second
+    // dashboard's connect that needs its own backing process.
+    const workspaceId = workspace?.workspaceData?.id || null;
+    const stateKey = rendererStateKey(workspaceId, selectedProviderName);
+
     // 1. Already connected at module level? Verify with main process before trusting cache.
     //    The server may have been stopped externally (e.g., Test Connection in settings).
-    const cached = serverStates.get(selectedProviderName);
+    const cached = serverStates.get(stateKey);
     if (cached && cached.status === "connected") {
       try {
         const statusResult = await new Promise((resolve, reject) => {
@@ -202,6 +222,7 @@ export const useMcpProvider = (providerType, options = {}) => {
             selectedProviderName,
             (event, result) => resolve(result),
             (event, err) => reject(err),
+            workspaceId,
           );
         });
         if (statusResult?.status === "connected") {
@@ -210,9 +231,9 @@ export const useMcpProvider = (providerType, options = {}) => {
           return;
         }
         // Server was stopped externally — clear stale cache and reconnect
-        serverStates.delete(selectedProviderName);
+        serverStates.delete(stateKey);
       } catch {
-        serverStates.delete(selectedProviderName);
+        serverStates.delete(stateKey);
       }
     }
 
@@ -220,9 +241,9 @@ export const useMcpProvider = (providerType, options = {}) => {
     setError(null);
 
     // 2. Another hook instance already connecting? Piggyback on its promise
-    if (pendingConnects.has(selectedProviderName)) {
+    if (pendingConnects.has(stateKey)) {
       try {
-        const result = await pendingConnects.get(selectedProviderName);
+        const result = await pendingConnects.get(stateKey);
         if (!mountedRef.current) return;
 
         if (result.error) {
@@ -233,7 +254,7 @@ export const useMcpProvider = (providerType, options = {}) => {
         }
 
         // Increment consumer count and apply
-        const state = serverStates.get(selectedProviderName);
+        const state = serverStates.get(stateKey);
         if (state) state.consumerCount++;
         applyResult(result);
       } catch (err) {
@@ -252,10 +273,10 @@ export const useMcpProvider = (providerType, options = {}) => {
         provider.mcpConfig,
         provider.credentials,
         (event, result) => {
-          pendingConnects.delete(selectedProviderName);
+          pendingConnects.delete(stateKey);
 
           if (result.error) {
-            serverStates.set(selectedProviderName, {
+            serverStates.set(stateKey, {
               status: "error",
               tools: [],
               resources: [],
@@ -266,7 +287,7 @@ export const useMcpProvider = (providerType, options = {}) => {
           }
 
           // Store in module-level shared state
-          serverStates.set(selectedProviderName, {
+          serverStates.set(stateKey, {
             status: "connected",
             tools: result.tools || [],
             resources: result.resources || [],
@@ -276,8 +297,8 @@ export const useMcpProvider = (providerType, options = {}) => {
           resolve(result);
         },
         (event, err) => {
-          pendingConnects.delete(selectedProviderName);
-          serverStates.set(selectedProviderName, {
+          pendingConnects.delete(stateKey);
+          serverStates.set(stateKey, {
             status: "error",
             tools: [],
             resources: [],
@@ -285,10 +306,11 @@ export const useMcpProvider = (providerType, options = {}) => {
           });
           reject(err);
         },
+        workspaceId,
       );
     });
 
-    pendingConnects.set(selectedProviderName, connectPromise);
+    pendingConnects.set(stateKey, connectPromise);
 
     try {
       const result = await connectPromise;
@@ -308,7 +330,14 @@ export const useMcpProvider = (providerType, options = {}) => {
       setIsConnecting(false);
       setStatus("error");
     }
-  }, [dashApi, provider, providerType, selectedProviderName, applyResult]);
+  }, [
+    dashApi,
+    provider,
+    providerType,
+    selectedProviderName,
+    applyResult,
+    workspace,
+  ]);
 
   /**
    * Disconnect from the MCP server.
@@ -317,7 +346,10 @@ export const useMcpProvider = (providerType, options = {}) => {
   const disconnect = useCallback(async () => {
     if (!dashApi || !selectedProviderName) return;
 
-    const state = serverStates.get(selectedProviderName);
+    const workspaceId = workspace?.workspaceData?.id || null;
+    const stateKey = rendererStateKey(workspaceId, selectedProviderName);
+
+    const state = serverStates.get(stateKey);
     if (state) {
       state.consumerCount = Math.max(0, state.consumerCount - 1);
 
@@ -332,7 +364,7 @@ export const useMcpProvider = (providerType, options = {}) => {
       }
 
       // Last consumer — actually stop the server
-      serverStates.delete(selectedProviderName);
+      serverStates.delete(stateKey);
     }
 
     // Clear state synchronously BEFORE the IPC call so that
@@ -342,7 +374,7 @@ export const useMcpProvider = (providerType, options = {}) => {
     setResources([]);
     setStatus("disconnected");
     connectedRef.current = false;
-    pendingConnects.delete(selectedProviderName);
+    pendingConnects.delete(stateKey);
 
     return new Promise((resolve) => {
       dashApi.mcpStopServer(
@@ -352,9 +384,10 @@ export const useMcpProvider = (providerType, options = {}) => {
           console.error("[useMcpProvider] Error disconnecting:", err?.message);
           resolve();
         },
+        workspaceId,
       );
     });
-  }, [dashApi, selectedProviderName]);
+  }, [dashApi, selectedProviderName, workspace]);
 
   /**
    * Call a tool on the MCP server
@@ -382,6 +415,11 @@ export const useMcpProvider = (providerType, options = {}) => {
           )}${isRequired ? `. Note: "${toolName}" is declared as a required tool by this widget — update the provider's allowed tools in Settings → Providers.` : ""}`,
         );
       }
+
+      // Slice 3a: scope the MCP server process per workspace. The
+      // workspace UUID is the canonical "current dashboard" identity
+      // (see useNotifications, useScheduler for the same pattern).
+      const workspaceId = workspace?.workspaceData?.id || null;
 
       console.log(`[useMcpProvider] Calling tool: ${toolName}`, args);
 
@@ -411,6 +449,7 @@ export const useMcpProvider = (providerType, options = {}) => {
             clearTimeout(timeout);
             reject(new Error(err?.message || "Failed to call MCP tool"));
           },
+          workspaceId,
         );
       });
     },
@@ -420,6 +459,7 @@ export const useMcpProvider = (providerType, options = {}) => {
       effectiveAllowedTools,
       widgetData,
       providerType,
+      workspace,
     ],
   );
 
@@ -473,7 +513,9 @@ export const useMcpProvider = (providerType, options = {}) => {
 
       // Decrement consumer count; only stop server if last consumer
       if (connectedRef.current && dashApi && selectedProviderName) {
-        const state = serverStates.get(selectedProviderName);
+        const workspaceId = workspace?.workspaceData?.id || null;
+        const stateKey = rendererStateKey(workspaceId, selectedProviderName);
+        const state = serverStates.get(stateKey);
         if (state) {
           state.consumerCount = Math.max(0, state.consumerCount - 1);
 
@@ -483,17 +525,18 @@ export const useMcpProvider = (providerType, options = {}) => {
           }
 
           // Last consumer — stop the server
-          serverStates.delete(selectedProviderName);
+          serverStates.delete(stateKey);
         }
 
         dashApi.mcpStopServer(
           selectedProviderName,
           () => {},
           () => {},
+          workspaceId,
         );
       }
     };
-  }, [dashApi, selectedProviderName]);
+  }, [dashApi, selectedProviderName, workspace]);
 
   return {
     isConnected,
