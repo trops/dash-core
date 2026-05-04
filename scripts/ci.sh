@@ -98,6 +98,10 @@ node --test electron/controller/mcpController.test.js electron/mcp/mcpServerCata
 step "Running controller auth tests"
 node --test electron/controller/installDashboardAuth.test.js
 
+# 6c. Run safe-JS-executor sandbox pin
+step "Running safeJsExecutor sandbox tests"
+node --test electron/utils/safeJsExecutor.test.js
+
 # 7. Verify output
 step "Verifying build output"
 for f in \

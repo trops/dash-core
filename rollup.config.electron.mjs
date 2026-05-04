@@ -51,6 +51,7 @@ const EXTERNAL = [
     "node-vibrant/node",
     "objects-to-csv",
     "openai",
+    "quickjs-emscripten",
     "ws",
     "xml2js",
     "xtreamer",

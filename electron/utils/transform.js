@@ -16,9 +16,15 @@ var csv = require("csv-parser");
 const path = require("path");
 const { app } = require("electron");
 const { ensureDirectoryExistence } = require("./file");
+const safeJsExecutor = require("./safeJsExecutor");
 
 const TRANSFORM_APP_NAME = "Dashboard";
 const MAX_MAPPING_BODY_SIZE = 10240; // 10KB limit for mapping function body
+// Per-record execution limit. Each mapping function call inside the
+// streaming transform must complete within this budget; a runaway loop
+// in the user's mapping triggers an "interrupted" error and the record
+// is skipped rather than blocking the whole stream.
+const PER_RECORD_TIMEOUT_MS = 1000;
 
 /**
  * XtreamerClientTransform
@@ -324,45 +330,78 @@ class Transform {
       // JSON parser
       var parser = JSONStream.parse("*");
 
-      if (fs.existsSync(resolvedFilepath)) {
-        console.log("file exists ", resolvedFilepath);
-        // create the readStream to parse the large file (json)
-        var readStream = fs.createReadStream(resolvedFilepath).pipe(parser);
+      if (!fs.existsSync(resolvedFilepath)) {
+        return reject(new Error("File doesnt exist"));
+      }
+      console.log("file exists ", resolvedFilepath);
+      // create the readStream to parse the large file (json)
+      var readStream = fs.createReadStream(resolvedFilepath).pipe(parser);
 
-        ensureDirectoryExistence(resolvedOutFilepath);
+      ensureDirectoryExistence(resolvedOutFilepath);
 
-        var writeStream = fs.createWriteStream(resolvedOutFilepath);
+      var writeStream = fs.createWriteStream(resolvedOutFilepath);
 
-        let sep = "";
-        let count = 0;
+      let sep = "";
+      let count = 0;
 
-        // create our mapping function
-        const fn = new Function(args, mappingFunctionBody);
+      // Compile the user-supplied mapping function inside a QuickJS
+      // sandbox. The previous implementation compiled the body with
+      // full Node.js privileges (filesystem, network, process). The
+      // sandbox gives the body a tiny pure-JS surface (Math, JSON,
+      // Date, primitives) and no host globals — see
+      // electron/utils/safeJsExecutor.js for full rationale.
+      //
+      // createCompiled is async (the WASM module must be loaded). Use
+      // .then/.catch instead of await because we're inside a sync
+      // Promise executor.
+      safeJsExecutor
+        .createCompiled({
+          body: mappingFunctionBody,
+          args,
+        })
+        .then((executor) => {
+          startStreamingWithExecutor(executor);
+        })
+        .catch((e) => {
+          reject(
+            new Error(
+              "mappingFunctionBody failed to compile: " +
+                (e && e.message ? e.message : String(e)),
+            ),
+          );
+        });
 
+      function startStreamingWithExecutor(executor) {
         // begin the write stream
         writeStream.write("[\n");
 
         readStream.on("data", (data) => {
           try {
-            //console.log("in stream", count, data);
-            // data in this case is the JSON object...
             if (count > 0) {
               sep = ",\n";
             }
 
             if (data) {
-              // transform the data here...
-              const newValue = fn(data, count);
-
-              writeStream.write(sep + JSON.stringify(newValue));
-
-              if (callbackEvent !== null && win !== null) {
-                win.webContents.send(callbackEvent, {
-                  count,
-                });
+              const result = executor.run([data, count], PER_RECORD_TIMEOUT_MS);
+              if (result.error) {
+                // Don't block the stream on a single bad record — log,
+                // skip, continue. Matches the previous try/catch in the
+                // unsandboxed implementation.
+                console.log(
+                  "[transform] mapping error on record " +
+                    count +
+                    ": " +
+                    result.error,
+                );
+                return;
               }
 
-              // increment the counter
+              writeStream.write(sep + JSON.stringify(result.value));
+
+              if (callbackEvent !== null && win !== null) {
+                win.webContents.send(callbackEvent, { count });
+              }
+
               count++;
             }
           } catch (e) {
@@ -370,19 +409,19 @@ class Transform {
           }
         });
 
-        readStream.on("end", (data) => {
+        readStream.on("end", () => {
           writeStream.write("\n]");
           writeStream.close();
+          executor.dispose();
           resolve("Complete: wrote " + count + " objects");
         });
 
         readStream.on("error", (err) => {
           console.log("read stream error transform ", err.message);
+          executor.dispose();
           reject(err);
         });
-      } else {
-        reject(new Error("File doesnt exist"));
-      }
+      } // end startStreamingWithExecutor
     });
   };
 

