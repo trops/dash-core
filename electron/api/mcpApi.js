@@ -63,15 +63,27 @@ const mcpApi = {
    * @param {string} serverName the server name
    * @param {string} toolName the tool to call
    * @param {object} args tool arguments
-   * @param {Array<string>} allowedTools optional whitelist of allowed tool names
+   * @param {Array<string>} allowedTools optional whitelist of allowed tool names (legacy — prefer per-widget manifest)
+   * @param {string} widgetId optional widget identity. When the
+   *   security.enforceWidgetMcpPermissions setting is enabled, this is
+   *   used to look up the widget's MCP permission manifest and gate
+   *   the call accordingly. Should be the npm package name of the
+   *   calling widget (e.g. "@trops/notes-summarizer").
    * @returns {Promise<{ result } | { error, message }>}
    */
-  callTool: (serverName, toolName, args, allowedTools = null) =>
+  callTool: (
+    serverName,
+    toolName,
+    args,
+    allowedTools = null,
+    widgetId = null,
+  ) =>
     ipcRenderer.invoke(MCP_CALL_TOOL, {
       serverName,
       toolName,
       args,
       allowedTools,
+      widgetId,
     }),
 
   /**
