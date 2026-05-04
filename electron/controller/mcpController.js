@@ -21,6 +21,28 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const responseCache = require("../utils/responseCache");
+const { gateToolCall } = require("../mcp/permissionGate");
+const { app } = require("electron");
+
+// Read the widget-MCP-enforcement feature flag from settings.json.
+// Default is OFF — flipping ON activates per-widget gating in
+// permissionGate.gateToolCall(). See docs/security/ipc-filesystem-audit.md
+// and electron/mcp/permissionGate.js for context.
+function isWidgetPermissionEnforcementEnabled() {
+  try {
+    const settingsPath = path.join(
+      app.getPath("userData"),
+      "Dashboard",
+      "settings.json",
+    );
+    if (!fs.existsSync(settingsPath)) return false;
+    const raw = fs.readFileSync(settingsPath, "utf8");
+    const settings = JSON.parse(raw);
+    return Boolean(settings?.security?.enforceWidgetMcpPermissions);
+  } catch (_e) {
+    return false;
+  }
+}
 
 /**
  * Tool name prefixes considered safe to cache (read-only).
@@ -725,14 +747,41 @@ const mcpController = {
    * @param {Array<string>} allowedTools optional whitelist of allowed tool names
    * @returns {{ result } | { error, message }}
    */
-  callTool: async (win, serverName, toolName, args, allowedTools = null) => {
+  callTool: async (
+    win,
+    serverName,
+    toolName,
+    args,
+    allowedTools = null,
+    widgetId = null,
+  ) => {
     try {
       const server = activeServers.get(serverName);
       if (!server || !server.client) {
         throw new Error(`Server not connected: ${serverName}`);
       }
 
-      // Enforce tool scoping if allowedTools is specified
+      // Per-widget manifest gate. Activated by the
+      // security.enforceWidgetMcpPermissions setting. When enabled
+      // and a widgetId is supplied, the widget's installed
+      // package.json's dash.permissions.mcp block determines what
+      // tools and paths are allowed.
+      if (isWidgetPermissionEnforcementEnabled() && widgetId) {
+        const gate = gateToolCall({
+          widgetId,
+          serverName,
+          toolName,
+          args,
+        });
+        if (!gate.allow) {
+          throw new Error(`Widget permission gate: ${gate.reason}`);
+        }
+      }
+
+      // Legacy renderer-supplied allowedTools whitelist. Kept for
+      // backward compatibility with callers that pre-date the
+      // manifest-based gate. Once the manifest gate is enforced
+      // everywhere, this can be removed.
       if (allowedTools && !allowedTools.includes(toolName)) {
         throw new Error(
           `Tool "${toolName}" is not in the allowed tools list for this widget. Allowed: ${allowedTools.join(
