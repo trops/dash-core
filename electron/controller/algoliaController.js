@@ -10,6 +10,7 @@ const algoliasearch = require("algoliasearch");
 const events = require("../events");
 const AlgoliaIndex = require("../utils/algolia");
 var fs = require("fs");
+const { safePath, getAllowedRoots } = require("../utils/safePath");
 
 const algoliaController = {
   /**
@@ -166,10 +167,19 @@ const algoliaController = {
     createIfNotExists = false,
   ) {
     try {
+      let validatedDir;
+      try {
+        validatedDir = safePath(dir, getAllowedRoots("data"));
+      } catch (pathErr) {
+        win.webContents.send(events.ALGOLIA_PARTIAL_UPDATE_OBJECTS_ERROR, {
+          error: pathErr.message,
+        });
+        return;
+      }
       const a = new AlgoliaIndex(appId, apiKey, indexName);
       // now we can make the call to the utility and we are passing in the createIfNotExists FALSE by default
       a.partialUpdateObjectsFromDirectorySync(
-        dir,
+        validatedDir,
         createIfNotExists,
         (data) => {
           win.webContents.send(
@@ -209,10 +219,21 @@ const algoliaController = {
     batchSize = 500,
   ) => {
     try {
+      let validatedIn, validatedOut;
+      try {
+        const roots = getAllowedRoots("data");
+        validatedIn = safePath(filepath, roots);
+        validatedOut = safePath(batchFilepath, roots);
+      } catch (pathErr) {
+        win.webContents.send(events.ALGOLIA_CREATE_BATCH_ERROR, {
+          error: pathErr.message,
+        });
+        return;
+      }
       const a = new AlgoliaIndex();
       a.createBatchesFromJSONFile(
-        filepath,
-        batchFilepath,
+        validatedIn,
+        validatedOut,
         batchSize,
         (data) => {
           win.webContents.send(events.ALGOLIA_CREATE_BATCH_UPDATE, data);

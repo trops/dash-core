@@ -102,6 +102,10 @@ node --test electron/controller/installDashboardAuth.test.js
 step "Running safeJsExecutor sandbox tests"
 node --test electron/utils/safeJsExecutor.test.js
 
+# 6c2. Run safe-path containment pin
+step "Running safePath containment tests"
+node --test electron/utils/safePath.test.js
+
 # 6d. Untracked-sources gate regression-pin
 step "Validating untracked-sources gate config"
 npm run test:untracked-pin

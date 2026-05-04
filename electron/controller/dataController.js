@@ -3,6 +3,7 @@ var fs = require("fs");
 const path = require("path");
 const events = require("../events");
 const { getFileContents, writeToFile } = require("../utils/file");
+const { safePath, getAllowedRoots } = require("../utils/safePath");
 
 // Convert Json to Csv
 const ObjectsToCsv = require("objects-to-csv");
@@ -23,14 +24,25 @@ const dataController = {
    */
   convertJsonToCsvFile: (win, appId, jsonObject, toFilename = "test.csv") => {
     try {
-      // filename to the pages file (live pages)
-      const filename = path.join(
+      // Validate the renderer-supplied filename is contained within
+      // the data directory. path.join doesn't reject `..` segments;
+      // safePath does.
+      const candidate = path.join(
         app.getPath("userData"),
         appName,
         appId,
         "data",
         toFilename,
       );
+      let filename;
+      try {
+        filename = safePath(candidate, getAllowedRoots("data"));
+      } catch (pathErr) {
+        win.webContents.send(events.DATA_JSON_TO_CSV_FILE_ERROR, {
+          error: pathErr.message,
+        });
+        return;
+      }
 
       // make sure the file exists...
       const fileContents = getFileContents(filename, "");
@@ -88,8 +100,17 @@ const dataController = {
 
   readLinesFromFile: (win, filepath, lineCount) => {
     try {
+      let validated;
+      try {
+        validated = safePath(filepath, getAllowedRoots("data"));
+      } catch (pathErr) {
+        win.webContents.send(events.READ_LINES_ERROR, {
+          error: pathErr.message,
+        });
+        return;
+      }
       const t = new Transform();
-      t.readLinesFromFile(win, filepath, lineCount, events.READ_LINES_UPDATE)
+      t.readLinesFromFile(win, validated, lineCount, events.READ_LINES_UPDATE)
         .then((res) => {
           win.webContents.send(events.READ_LINES_COMPLETE, {
             success: true,
@@ -113,9 +134,18 @@ const dataController = {
 
   readJSONFromFile: (win, filepath, objectCount = null) => {
     try {
-      console.log("reading json from file ", filepath, objectCount);
+      let validated;
+      try {
+        validated = safePath(filepath, getAllowedRoots("data"));
+      } catch (pathErr) {
+        win.webContents.send(events.READ_JSON_ERROR, {
+          error: pathErr.message,
+        });
+        return;
+      }
+      console.log("reading json from file ", validated, objectCount);
       const t = new Transform();
-      t.readJSONFromFile(win, filepath, objectCount, events.READ_JSON_UPDATE)
+      t.readJSONFromFile(win, validated, objectCount, events.READ_JSON_UPDATE)
         .then((res) => {
           win.webContents.send(events.READ_JSON_COMPLETE, {
             success: true,
@@ -151,14 +181,10 @@ const dataController = {
         );
       }
 
-      // Validate toFilepath is within the app data directory
-      const appDataDir = path.join(app.getPath("userData"), appName);
-      const resolvedFilepath = path.resolve(toFilepath);
-      if (!resolvedFilepath.startsWith(appDataDir + path.sep)) {
-        throw new Error(
-          "File path must be within the application data directory",
-        );
-      }
+      // Validate toFilepath is within the app data directory.
+      // safePath replaces the previous inline check; same containment
+      // intent, plus realpath/symlink protection.
+      const resolvedFilepath = safePath(toFilepath, getAllowedRoots("data"));
 
       const writeStream = fs.createWriteStream(resolvedFilepath);
 
@@ -205,10 +231,21 @@ const dataController = {
     objectIdKey = null,
   ) => {
     try {
+      let validatedIn, validatedOut;
+      try {
+        const roots = getAllowedRoots("data");
+        validatedIn = safePath(filepath, roots);
+        validatedOut = safePath(outpath, roots);
+      } catch (pathErr) {
+        win.webContents.send(events.PARSE_XML_STREAM_ERROR, {
+          error: pathErr.message,
+        });
+        return;
+      }
       const t = new Transform();
       t.parseXMLStream(
-        filepath,
-        outpath,
+        validatedIn,
+        validatedOut,
         start,
         // recordNode,
         // objectIdKey,
@@ -254,10 +291,21 @@ const dataController = {
     limit = null,
   ) => {
     try {
+      let validatedIn, validatedOut;
+      try {
+        const roots = getAllowedRoots("data");
+        validatedIn = safePath(filepath, roots);
+        validatedOut = safePath(outpath, roots);
+      } catch (pathErr) {
+        win.webContents.send(events.PARSE_CSV_STREAM_ERROR, {
+          error: pathErr.message,
+        });
+        return;
+      }
       const t = new Transform();
       t.parseCSVStream(
-        filepath,
-        outpath,
+        validatedIn,
+        validatedOut,
         delimiter,
         objectIdKey,
         headers,
@@ -300,13 +348,25 @@ const dataController = {
   saveToFile: (win, data, filename, append, returnEmpty = {}) => {
     try {
       if (data) {
-        // filename to the pages file (live pages)
-        const toFilename = path.join(
+        // Validate filename is contained within the data directory.
+        // path.join doesn't reject `..` segments; safePath does.
+        const candidate = path.join(
           app.getPath("userData"),
           appName,
           "data",
           filename,
         );
+        let toFilename;
+        try {
+          toFilename = safePath(candidate, getAllowedRoots("data"));
+        } catch (pathErr) {
+          win.webContents.send(events.DATA_SAVE_TO_FILE_ERROR, {
+            success: false,
+            filename,
+            message: pathErr.message,
+          });
+          return;
+        }
 
         //console.log("saving to file ", toFilename);
 

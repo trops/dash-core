@@ -14,9 +14,9 @@ string that is supplied by the renderer. Each finding is rated **CRITICAL**,
 | Class | Count | Top issue |
 |---|---|---|
 | **CRITICAL** — RCE in main process | 0 (was 1; resolved in 0.1.484) | `mainApi.data.transformFile` previously evaluated renderer-supplied JS via dynamic-function compilation. Now sandboxed via QuickJS WASM — see `electron/utils/safeJsExecutor.js`. |
-| **HIGH** — arbitrary path write | 5 | `saveData`, `convertJsonToCsvFile`, `parseXMLStream`, `parseCSVStream`, `readDataFromURL` |
-| **HIGH** — arbitrary path read | 4 | `readJSONFromFile`, `readLinesFromFile`, `algoliaApi.createBatchesFromFile`, `algoliaApi.partialUpdateObjectsFromDirectory` |
-| **MEDIUM** — partial scoping but `path.join` traversal | 1 | `saveData` joins under userData but accepts `../` segments |
+| **HIGH** — arbitrary path write | 0 (was 5; resolved in 0.1.487) | `saveData`, `convertJsonToCsvFile`, `parseXMLStream`, `parseCSVStream`, `readDataFromURL` now run their renderer-supplied paths through `safePath()` containment — see `electron/utils/safePath.js`. |
+| **HIGH** — arbitrary path read | 0 (was 4; resolved in 0.1.487) | `readJSONFromFile`, `readLinesFromFile`, `algoliaApi.createBatchesFromFile`, `algoliaApi.partialUpdateObjectsFromDirectory` migrated to `safePath()`. |
+| **MEDIUM** — partial scoping but `path.join` traversal | 0 (was 1; resolved in 0.1.487) | `saveData`'s naive `path.join` was the canonical example — `safePath()`'s `path.resolve` + realpath + containment fixes it. |
 | **INFO** — main-controlled paths (already safe) | many | `settingsApi`, `themeApi`, `workspaceApi`, `layoutApi`, etc. — paths constructed entirely from `app.getPath('userData')` + literal segments |
 
 ## Critical findings
