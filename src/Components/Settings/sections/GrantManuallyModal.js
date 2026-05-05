@@ -93,7 +93,7 @@ export const GrantManuallyModal = ({
 
   return (
     <Modal isOpen={isOpen} setIsOpen={setIsOpen}>
-      <div className="flex flex-col w-full max-w-xl ring-2 ring-amber-500">
+      <div className="flex flex-col w-full max-w-xl border-2 border-amber-500 rounded">
         <div className="px-5 py-4 border-b border-gray-700">
           <div className="text-base font-semibold">
             Grant manually: {widgetId}
@@ -112,17 +112,15 @@ export const GrantManuallyModal = ({
             </label>
             <input
               type="text"
-              list="known-mcp-servers"
               value={serverName}
               onChange={(e) => setServerName(e.target.value)}
-              placeholder="e.g. filesystem, github, slack"
-              className="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700"
+              placeholder={
+                knownServerNames.length > 0
+                  ? `e.g. ${knownServerNames.slice(0, 3).join(", ")}`
+                  : "e.g. filesystem, github, slack"
+              }
+              className="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-200"
             />
-            <datalist id="known-mcp-servers">
-              {knownServerNames.map((n) => (
-                <option key={n} value={n} />
-              ))}
-            </datalist>
           </div>
 
           <div className="flex flex-col gap-1">
@@ -134,7 +132,7 @@ export const GrantManuallyModal = ({
               value={toolsText}
               onChange={(e) => setToolsText(e.target.value)}
               placeholder="e.g. read_file, list_directory"
-              className="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 font-mono"
+              className="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-200 font-mono"
             />
           </div>
 
@@ -147,7 +145,7 @@ export const GrantManuallyModal = ({
               onChange={(e) => setReadPathsText(e.target.value)}
               placeholder="/Users/jane/Documents&#10;/tmp/notes"
               rows={3}
-              className="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 font-mono"
+              className="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-200 font-mono"
             />
           </div>
 
@@ -160,12 +158,12 @@ export const GrantManuallyModal = ({
               onChange={(e) => setWritePathsText(e.target.value)}
               placeholder="/tmp/output"
               rows={3}
-              className="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 font-mono"
+              className="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-200 font-mono"
             />
           </div>
 
           {error && (
-            <div className="text-xs text-red-400 bg-red-900 bg-opacity-20 border border-red-700 rounded px-3 py-2">
+            <div className="text-xs text-red-400 bg-red-950 border border-red-700 rounded px-3 py-2">
               {error}
             </div>
           )}
