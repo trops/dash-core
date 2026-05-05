@@ -543,6 +543,22 @@ const WidgetGrantRow = ({
             />
           </div>
         )}
+
+      {/* Phase 3 — network domain grants (hostname allowlist for
+          outbound URL fetches and WebSocket connect). */}
+      {granted?.domains?.network &&
+        (granted.domains.network.hosts || []).length > 0 && (
+          <div className="flex flex-col space-y-2 border-t border-gray-800 pt-2">
+            <span className="text-xs uppercase tracking-wider opacity-70">
+              network
+            </span>
+            <PermsList
+              label="Allowed hosts"
+              declaredItems={[]}
+              grantedItems={granted.domains.network.hosts || []}
+            />
+          </div>
+        )}
     </div>
   );
 };

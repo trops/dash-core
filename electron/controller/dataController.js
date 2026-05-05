@@ -5,6 +5,10 @@ const events = require("../events");
 const { getFileContents, writeToFile } = require("../utils/file");
 const { safePath, getAllowedRoots } = require("../utils/safePath");
 const { gateFsCall, gateFsCallWithJit } = require("../security/fsGate");
+const {
+  gateNetworkCall,
+  gateNetworkCallWithJit,
+} = require("../security/networkGate");
 const { readEnforceFlag, readJitFlag } = require("../utils/securityFlags");
 
 // Reads the enforcement + JIT flags from settings.json. Mirrors the
@@ -44,6 +48,30 @@ async function _runFsGate(win, action, widgetId, args, errorEvent) {
     win.webContents.send(errorEvent, {
       success: false,
       message: "fs permission gate: " + gate.reason,
+    });
+  }
+  return false;
+}
+
+/**
+ * Phase 3 network gate. Same shape as _runFsGate but for outbound
+ * URLs. Mirrors fs's "disabled / no widgetId / sync vs async" branching.
+ */
+async function _runNetworkGate(win, action, widgetId, args, errorEvent) {
+  const settings = _loadFlags();
+  if (!readEnforceFlag(settings)) return true;
+  if (!widgetId) return true;
+  const gate = readJitFlag(settings)
+    ? await gateNetworkCallWithJit(
+        { widgetId, action, args },
+        { enableJit: true },
+      )
+    : gateNetworkCall({ widgetId, action, args });
+  if (gate.allow) return true;
+  if (win && errorEvent) {
+    win.webContents.send(errorEvent, {
+      success: false,
+      message: "network permission gate: " + gate.reason,
     });
   }
   return false;
@@ -210,7 +238,18 @@ const dataController = {
     }
   },
 
-  readDataFromURL: (win, url, toFilepath) => {
+  readDataFromURL: async (win, url, toFilepath, widgetId = null) => {
+    // Phase 3 network gate. Runs before HTTPS-protocol + safePath
+    // checks so JIT can prompt the user without leaking URL parser
+    // edge cases through error timing.
+    const gateOk = await _runNetworkGate(
+      win,
+      "readDataFromURL",
+      widgetId,
+      { url },
+      events.READ_DATA_URL_ERROR,
+    );
+    if (!gateOk) return;
     try {
       // Validate URL is https protocol only
       let parsedUrl;

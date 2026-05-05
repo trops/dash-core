@@ -297,3 +297,53 @@ test("domains: pre-existing servers grant is preserved when domains added later"
   assert.ok(before.servers.github);
   assert.strictEqual(before.domains, undefined);
 });
+
+// ---- domains.network (Phase 3 JIT consent) ----------------------------
+
+test("domains.network: setGrant + getGrant round-trips a network grant", () => {
+  resetState();
+  setGrant("@trops/net-widget", {
+    grantOrigin: "manual",
+    servers: {},
+    domains: {
+      network: {
+        hosts: ["api.example.com", "*"],
+      },
+    },
+  });
+  const got = getGrant("@trops/net-widget");
+  assert.ok(got.domains?.network);
+  assert.deepStrictEqual(got.domains.network.hosts, ["api.example.com", "*"]);
+});
+
+test("domains.network: malformed entries are sanitized", () => {
+  resetState();
+  setGrant("@trops/bad-net", {
+    grantOrigin: "manual",
+    domains: {
+      network: {
+        hosts: ["good.example.com", 42, null, "also.example.com"],
+      },
+    },
+  });
+  const got = getGrant("@trops/bad-net");
+  assert.deepStrictEqual(got.domains.network.hosts, [
+    "good.example.com",
+    "also.example.com",
+  ]);
+});
+
+test("domains: fs and network coexist on the same grant", () => {
+  resetState();
+  setGrant("@trops/multi", {
+    grantOrigin: "manual",
+    servers: {},
+    domains: {
+      fs: { readPaths: ["a.json"], writePaths: [] },
+      network: { hosts: ["api.example.com"] },
+    },
+  });
+  const got = getGrant("@trops/multi");
+  assert.deepStrictEqual(got.domains.fs.readPaths, ["a.json"]);
+  assert.deepStrictEqual(got.domains.network.hosts, ["api.example.com"]);
+});
