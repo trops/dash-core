@@ -74,20 +74,30 @@ const dataApi = {
    * @param {object} options { filename, extension }
    * @param {object} returnEmpty the return empty object
    */
-  saveData: (data, filename, append, returnEmpty, uuid) =>
+  saveData: (data, filename, append, returnEmpty, widgetId = null) =>
     ipcRenderer.invoke(DATA_SAVE_TO_FILE, {
       data,
       filename,
       append,
       returnEmpty,
+      widgetId,
     }),
 
   /*
    * readData
    * @param {string} filename the filename to read (not path)
+   * @param {string|null} widgetId Phase 2 JIT consent — the widget's
+   *   package name (e.g. "@trops/notes-summarizer"). Used by the fs
+   *   gate to scope per-widget read access. Null disables the gate
+   *   for legacy callers (`enforceWidgetMcpPermissions` flag still
+   *   gates the gate itself).
    */
-  readData: (filename, returnEmpty = []) =>
-    ipcRenderer.invoke(DATA_READ_FROM_FILE, { filename, returnEmpty }),
+  readData: (filename, returnEmpty = [], widgetId = null) =>
+    ipcRenderer.invoke(DATA_READ_FROM_FILE, {
+      filename,
+      returnEmpty,
+      widgetId,
+    }),
 
   /**
    * transformFile

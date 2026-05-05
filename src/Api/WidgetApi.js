@@ -151,6 +151,13 @@ export const WidgetApi = {
     append = true,
     returnEmpty = {},
     uuid,
+    // Phase 2 JIT consent — package-level identity for the fs gate.
+    // Distinct from `uuid` which is the instance id used to compute
+    // the filename. Callers pass widgetId from their widget context
+    // (e.g. widgetData.name); when undefined, the gate is a no-op
+    // (legacy callers continue to work, subject to the global
+    // enforceWidgetMcpPermissions flag).
+    widgetId = null,
   }) {
     try {
       // set the filename
@@ -175,7 +182,7 @@ export const WidgetApi = {
             );
           }
           // request.
-          eApi.data.saveData(data, toFilename, append, returnEmpty);
+          eApi.data.saveData(data, toFilename, append, returnEmpty, widgetId);
         }
       }
     } catch (e) {
@@ -200,6 +207,8 @@ export const WidgetApi = {
     callbackComplete = null,
     callbackError = null,
     uuid,
+    // Phase 2 JIT consent — see storeData for the rationale.
+    widgetId = null,
   }) {
     try {
       const toFilename = filename !== null ? filename : `${uuid}.json`;
@@ -231,7 +240,7 @@ export const WidgetApi = {
             callbackError(response),
           );
         }
-        eApi.data.readData(toFilename);
+        eApi.data.readData(toFilename, [], widgetId);
       }
     } catch (e) {
       console.log(e);

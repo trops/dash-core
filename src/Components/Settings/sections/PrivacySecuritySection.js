@@ -520,6 +520,29 @@ const WidgetGrantRow = ({
           </div>
         );
       })}
+
+      {/* Phase 2 — fs domain grants. Rendered as its own labeled
+          section beneath any MCP server sections so users see at a
+          glance that the widget has filesystem access too. */}
+      {granted?.domains?.fs &&
+        ((granted.domains.fs.readPaths || []).length > 0 ||
+          (granted.domains.fs.writePaths || []).length > 0) && (
+          <div className="flex flex-col space-y-2 border-t border-gray-800 pt-2">
+            <span className="text-xs uppercase tracking-wider opacity-70">
+              filesystem
+            </span>
+            <PermsList
+              label="Read filenames"
+              declaredItems={[]}
+              grantedItems={granted.domains.fs.readPaths || []}
+            />
+            <PermsList
+              label="Write filenames"
+              declaredItems={[]}
+              grantedItems={granted.domains.fs.writePaths || []}
+            />
+          </div>
+        )}
     </div>
   );
 };
@@ -693,6 +716,24 @@ const EXAMPLE_FIXTURES = [
           tools: ["read_file"],
           readPaths: ["~/Documents/notes/today.md"],
           writePaths: [],
+        },
+      },
+    },
+  },
+  {
+    caption:
+      "Phase 2 fs grant — widget granted access to a specific data file via JIT consent on saveData/readData.",
+    widgetId: "@example/fs-domain-widget",
+    hasManifest: false,
+    grantOrigin: "live",
+    declared: null,
+    granted: {
+      grantOrigin: "live",
+      servers: {},
+      domains: {
+        fs: {
+          readPaths: ["notes-state.json"],
+          writePaths: ["notes-state.json"],
         },
       },
     },

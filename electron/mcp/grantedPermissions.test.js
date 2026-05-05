@@ -246,3 +246,54 @@ test("grantOrigin: legacy grants without the field round-trip without crashing",
   // Field is absent or null — both are acceptable; consumers handle either
   assert.ok(got.grantOrigin == null);
 });
+
+// ---- domains.fs (Phase 2 JIT consent) ---------------------------------
+
+test("domains.fs: setGrant + getGrant round-trips a fs grant alongside servers", () => {
+  resetState();
+  setGrant("@trops/multi-domain", {
+    grantOrigin: "manual",
+    servers: { github: { tools: ["search_repositories"] } },
+    domains: {
+      fs: {
+        readPaths: ["data.json"],
+        writePaths: ["out.json"],
+      },
+    },
+  });
+  const got = getGrant("@trops/multi-domain");
+  assert.ok(got.servers.github);
+  assert.ok(got.domains?.fs);
+  assert.deepStrictEqual(got.domains.fs.readPaths, ["data.json"]);
+  assert.deepStrictEqual(got.domains.fs.writePaths, ["out.json"]);
+});
+
+test("domains.fs: malformed fs entries are sanitized", () => {
+  resetState();
+  setGrant("@trops/bad-fs", {
+    grantOrigin: "manual",
+    domains: {
+      fs: {
+        readPaths: ["good", 42, null, "alsoGood"],
+        writePaths: "not-an-array",
+        unknownKey: "ignored",
+      },
+    },
+  });
+  const got = getGrant("@trops/bad-fs");
+  assert.deepStrictEqual(got.domains.fs.readPaths, ["good", "alsoGood"]);
+  assert.deepStrictEqual(got.domains.fs.writePaths, []);
+  assert.ok(!("unknownKey" in got.domains.fs));
+});
+
+test("domains: pre-existing servers grant is preserved when domains added later", () => {
+  resetState();
+  // Slice 2 era: only servers
+  setGrant("@trops/legacy-mcp", {
+    grantOrigin: "declared",
+    servers: { github: { tools: ["x"] } },
+  });
+  const before = getGrant("@trops/legacy-mcp");
+  assert.ok(before.servers.github);
+  assert.strictEqual(before.domains, undefined);
+});

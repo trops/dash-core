@@ -108,29 +108,70 @@ const ALLOWED_GRANT_ORIGINS = new Set([
  *
  * Optional `grantOrigin` field is preserved when it's one of the
  * recognized values; bogus values are dropped.
+ *
+ * Phase 2 (JIT consent for non-MCP domains): also accepts a top-level
+ * `domains` block. Each known domain has its own shape — `domains.fs`
+ * has `readPaths`/`writePaths`, future domains will have their own.
+ * The `servers` block (MCP) and `domains` block coexist on the same
+ * grant; either or both may be present.
+ *
+ * Either `servers` (MCP) or any `domains.*` block is enough to make the
+ * grant non-empty. If neither is present, the grant is rejected as
+ * malformed.
  */
 function sanitizePerms(perms) {
   if (!perms || typeof perms !== "object") return null;
   const rawServers =
     perms.servers && typeof perms.servers === "object" ? perms.servers : null;
-  if (!rawServers) return null;
+  const rawDomains =
+    perms.domains && typeof perms.domains === "object" ? perms.domains : null;
+  if (!rawServers && !rawDomains) return null;
 
-  const servers = {};
-  for (const [name, raw] of Object.entries(rawServers)) {
-    if (!raw || typeof raw !== "object") continue;
-    servers[name] = {
-      tools: Array.isArray(raw.tools)
-        ? raw.tools.filter((t) => typeof t === "string")
-        : [],
-      readPaths: Array.isArray(raw.readPaths)
-        ? raw.readPaths.filter((p) => typeof p === "string")
-        : [],
-      writePaths: Array.isArray(raw.writePaths)
-        ? raw.writePaths.filter((p) => typeof p === "string")
-        : [],
-    };
+  const out = {};
+
+  if (rawServers) {
+    const servers = {};
+    for (const [name, raw] of Object.entries(rawServers)) {
+      if (!raw || typeof raw !== "object") continue;
+      servers[name] = {
+        tools: Array.isArray(raw.tools)
+          ? raw.tools.filter((t) => typeof t === "string")
+          : [],
+        readPaths: Array.isArray(raw.readPaths)
+          ? raw.readPaths.filter((p) => typeof p === "string")
+          : [],
+        writePaths: Array.isArray(raw.writePaths)
+          ? raw.writePaths.filter((p) => typeof p === "string")
+          : [],
+      };
+    }
+    out.servers = servers;
+  } else {
+    // Always emit `servers` so consumers don't have to null-check it.
+    out.servers = {};
   }
-  const out = { servers };
+
+  if (rawDomains) {
+    const domains = {};
+    for (const [name, raw] of Object.entries(rawDomains)) {
+      if (!raw || typeof raw !== "object") continue;
+      if (name === "fs") {
+        domains.fs = {
+          readPaths: Array.isArray(raw.readPaths)
+            ? raw.readPaths.filter((p) => typeof p === "string")
+            : [],
+          writePaths: Array.isArray(raw.writePaths)
+            ? raw.writePaths.filter((p) => typeof p === "string")
+            : [],
+        };
+      }
+      // Future domains plug in here. Unknown domain names are dropped.
+    }
+    if (Object.keys(domains).length > 0) {
+      out.domains = domains;
+    }
+  }
+
   if (
     typeof perms.grantOrigin === "string" &&
     ALLOWED_GRANT_ORIGINS.has(perms.grantOrigin)
