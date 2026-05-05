@@ -217,6 +217,27 @@ const EnforcementToggles = () => {
     setPendingDisable(null);
   };
 
+  // One-click JIT trigger for testing. Calls the gate via a fake widget
+  // identity that has no grant — the gate denies, JIT escalates, the
+  // modal pops. After approval, the call proceeds to the (nonexistent)
+  // "test-server" and errors with "server not connected"; that's the
+  // expected response since the goal is to exercise the consent flow,
+  // not the server's response.
+  const triggerTestJitPrompt = async () => {
+    try {
+      await window.mainApi?.mcp?.callTool?.(
+        "test-server",
+        "test_tool",
+        { path: "/tmp/jit-probe.txt" },
+        null,
+        "@test/jit-probe",
+      );
+    } catch (e) {
+      // Expected — see comment above.
+      console.log("[JIT test]", e?.message || String(e));
+    }
+  };
+
   return (
     <div className="flex flex-col space-y-4 border border-gray-700 rounded p-4">
       <div className="flex flex-row items-start justify-between gap-4">
@@ -261,6 +282,26 @@ const EnforcementToggles = () => {
         onCancel={() => setPendingDisable(null)}
         onConfirm={confirmDisable}
       />
+
+      {enforceEnabled && jitEnabled && (
+        <div className="flex flex-row items-center justify-between gap-4 border-t border-gray-800 pt-4">
+          <div className="flex flex-col">
+            <span className="text-sm font-medium text-gray-200">
+              Test JIT consent prompt
+            </span>
+            <span className="text-xs text-gray-400 mt-1">
+              Fires a fake tool call from <code>@test/jit-probe</code> to{" "}
+              <code>test-server</code>. The gate runs first (no real server
+              needed), so you'll see the JIT modal exactly as it appears in
+              production. Approve and the call proceeds — the fake server isn't
+              running, so a "server not connected" error follows in the console.
+              That's the expected response; the goal is to validate the consent
+              flow.
+            </span>
+          </div>
+          <Button title="Test prompt" onClick={triggerTestJitPrompt} />
+        </div>
+      )}
     </div>
   );
 };

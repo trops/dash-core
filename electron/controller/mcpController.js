@@ -818,11 +818,6 @@ const mcpController = {
   ) => {
     const key = serverKey(workspaceId, serverName);
     try {
-      const server = activeServers.get(key);
-      if (!server || !server.client) {
-        throw new Error(`Server not connected: ${key}`);
-      }
-
       // Per-widget manifest gate. Activated by the
       // security.enforceWidgetMcpPermissions setting. When enabled
       // and a widgetId is supplied, the widget's persisted grant
@@ -833,6 +828,16 @@ const mcpController = {
       // (jitConsent.requestApproval → renderer modal → grant write +
       // re-evaluate). Other denial reasons (path traversal, malformed
       // args, etc.) stay synchronous.
+      //
+      // **Order: gate runs BEFORE the server-connected check.** A
+      // permission denial is a semantic answer ("you can't ask for
+      // this"); a server-not-connected error is operational state
+      // ("we couldn't reach the thing"). Running the gate first
+      // (a) lets JIT prompt even when the server isn't started yet —
+      // critical for testability and for first-call scenarios where
+      // startServer happens after the gate decides — and (b) avoids
+      // leaking server-running state through error timing to a
+      // probing widget that doesn't have permission anyway.
       if (isWidgetPermissionEnforcementEnabled() && widgetId) {
         const gateReq = { widgetId, serverName, toolName, args };
         const gate = isJitConsentEnabled()
@@ -841,6 +846,11 @@ const mcpController = {
         if (!gate.allow) {
           throw new Error(`Widget permission gate: ${gate.reason}`);
         }
+      }
+
+      const server = activeServers.get(key);
+      if (!server || !server.client) {
+        throw new Error(`Server not connected: ${key}`);
       }
 
       // Legacy renderer-supplied allowedTools whitelist. Kept for
