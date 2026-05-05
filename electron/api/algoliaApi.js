@@ -9,7 +9,6 @@ const { ipcRenderer } = require("electron");
 const {
   ALGOLIA_LIST_INDICES,
   ALGOLIA_ANALYTICS_FOR_QUERY,
-  ALGOLIA_SAVE_SYNONYMS,
   ALGOLIA_PARTIAL_UPDATE_OBJECTS,
   ALGOLIA_CREATE_BATCH,
   ALGOLIA_BROWSE_OBJECTS,
@@ -28,8 +27,6 @@ const algoliaApi = {
       dir,
     });
   },
-
-  saveSynonyms: () => ipcRenderer.invoke(ALGOLIA_SAVE_SYNONYMS, {}),
 
   getAnalyticsForQuery: (application, indexName, query) =>
     ipcRenderer.invoke(ALGOLIA_ANALYTICS_FOR_QUERY, {

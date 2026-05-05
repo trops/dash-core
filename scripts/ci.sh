@@ -115,7 +115,7 @@ node --test electron/utils/safePath.test.js
 #   - widgetMcpGrantsListing: panel data joiner
 #   - jitConsent: just-in-time consent state machine
 step "Running MCP + fs security tests"
-node --test electron/mcp/permissionGate.test.js electron/mcp/grantedPermissions.test.js electron/utils/mcpServerKey.test.js electron/utils/mcpScopeResolver.test.js electron/utils/manifestScanner.test.js electron/controller/widgetMcpGrantsListing.test.js electron/mcp/jitConsent.test.js electron/utils/securityFlags.test.js electron/security/fsGate.test.js electron/api/secureStoreApi.test.js
+node --test electron/mcp/permissionGate.test.js electron/mcp/grantedPermissions.test.js electron/utils/mcpServerKey.test.js electron/utils/mcpScopeResolver.test.js electron/utils/manifestScanner.test.js electron/controller/widgetMcpGrantsListing.test.js electron/mcp/jitConsent.test.js electron/utils/securityFlags.test.js electron/security/fsGate.test.js electron/api/secureStoreApi.test.js electron/api/algoliaApi.test.js electron/api/layoutApi.test.js electron/api/clientCacheApi.test.js
 
 # 6d. Untracked-sources gate regression-pin
 step "Validating untracked-sources gate config"

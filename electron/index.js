@@ -63,7 +63,6 @@ const openaiApi = require("./api/openaiApi");
 const menuItemsApi = require("./api/menuItemsApi");
 const pluginApi = require("./api/pluginApi");
 const llmApi = require("./api/llmApi");
-const clientCacheApi = require("./api/clientCacheApi");
 const dashboardConfigApi = require("./api/dashboardConfigApi");
 const registryAuthApi = require("./api/registryAuthApi");
 const notificationApi = require("./api/notificationApi");
@@ -161,7 +160,6 @@ module.exports = {
   menuItemsApi,
   pluginApi,
   llmApi,
-  clientCacheApi,
   dashboardConfigApi,
   registryAuthApi,
   notificationApi,
