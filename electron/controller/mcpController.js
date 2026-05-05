@@ -24,46 +24,42 @@ const responseCache = require("../utils/responseCache");
 const { gateToolCall, gateToolCallWithJit } = require("../mcp/permissionGate");
 const { serverKey, parseServerKey } = require("../utils/mcpServerKey");
 const { applyPathScopeToCredentials } = require("../utils/mcpScopeResolver");
+const { readEnforceFlag, readJitFlag } = require("../utils/securityFlags");
 const { app } = require("electron");
 
-// Read the widget-MCP-enforcement feature flag from settings.json.
-// Default is OFF — flipping ON activates per-widget gating in
-// permissionGate.gateToolCall(). See docs/security/ipc-filesystem-audit.md
-// and electron/mcp/permissionGate.js for context.
-function isWidgetPermissionEnforcementEnabled() {
+/**
+ * Load the user's settings.json (or null on absence/parse error). The
+ * file is small; reading it on every MCP call is acceptable. If we
+ * ever care about overhead, cache + invalidate-on-change.
+ */
+function loadSettingsForFlags() {
   try {
     const settingsPath = path.join(
       app.getPath("userData"),
       "Dashboard",
       "settings.json",
     );
-    if (!fs.existsSync(settingsPath)) return false;
+    if (!fs.existsSync(settingsPath)) return null;
     const raw = fs.readFileSync(settingsPath, "utf8");
-    const settings = JSON.parse(raw);
-    return Boolean(settings?.security?.enforceWidgetMcpPermissions);
+    return JSON.parse(raw);
   } catch (_e) {
-    return false;
+    return null;
   }
 }
 
-// Just-in-time consent feature flag (Phase 1 of the JIT consent slice).
-// When ON and the gate would deny for "no grant", we pause the call
-// and prompt the user via the JitConsentModal. Default OFF — the gate
-// fails closed as before until the user opts in.
+// MCP enforcement flag. **Default ON** — only an explicit
+// `security.enforceWidgetMcpPermissions: false` in settings.json opts
+// out. The Privacy & Security panel surfaces a UI toggle with a
+// confirm-on-disable dialog. See electron/utils/securityFlags.js for
+// the pinned default semantics.
+function isWidgetPermissionEnforcementEnabled() {
+  return readEnforceFlag(loadSettingsForFlags());
+}
+
+// JIT consent flag. **Default ON.** Same semantics as the enforcement
+// flag — explicit false to opt out, otherwise on.
 function isJitConsentEnabled() {
-  try {
-    const settingsPath = path.join(
-      app.getPath("userData"),
-      "Dashboard",
-      "settings.json",
-    );
-    if (!fs.existsSync(settingsPath)) return false;
-    const raw = fs.readFileSync(settingsPath, "utf8");
-    const settings = JSON.parse(raw);
-    return Boolean(settings?.security?.enableJitConsent);
-  } catch (_e) {
-    return false;
-  }
+  return readJitFlag(loadSettingsForFlags());
 }
 
 /**
