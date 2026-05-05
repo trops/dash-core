@@ -82,11 +82,22 @@ function writeToDisk(data) {
   fs.renameSync(tmp, p);
 }
 
+// Recognized origins for a persisted grant. "declared" means the user
+// approved against the developer's declared dash.permissions.mcp block;
+// "discovered" means the install-time scanner produced a synthetic
+// manifest the user approved; "manual" means the user typed entries
+// themselves in Settings → Privacy & Security with no manifest backing.
+// Other values are dropped on persist (legacy grants stay null).
+const ALLOWED_GRANT_ORIGINS = new Set(["declared", "discovered", "manual"]);
+
 /**
  * Sanitize a perms object before persisting. Drops unknown keys, coerces
  * arrays of strings, and silently ignores malformed servers. Mirrors the
  * shape produced by parseManifestPermissions so the gate reads either
  * declared or granted with the same code path.
+ *
+ * Optional `grantOrigin` field is preserved when it's one of the
+ * recognized values; bogus values are dropped.
  */
 function sanitizePerms(perms) {
   if (!perms || typeof perms !== "object") return null;
@@ -109,7 +120,14 @@ function sanitizePerms(perms) {
         : [],
     };
   }
-  return { servers };
+  const out = { servers };
+  if (
+    typeof perms.grantOrigin === "string" &&
+    ALLOWED_GRANT_ORIGINS.has(perms.grantOrigin)
+  ) {
+    out.grantOrigin = perms.grantOrigin;
+  }
+  return out;
 }
 
 function getGrant(widgetId) {
@@ -205,4 +223,5 @@ module.exports = {
   revokeServer,
   listAllGrants,
   clearCache,
+  ALLOWED_GRANT_ORIGINS,
 };
