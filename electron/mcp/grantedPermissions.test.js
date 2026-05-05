@@ -211,6 +211,18 @@ test("grantOrigin: setGrant + getGrant round-trips a manual grant", () => {
   assert.strictEqual(got.grantOrigin, "manual");
 });
 
+test("grantOrigin: setGrant + getGrant round-trips a live (JIT) grant", () => {
+  resetState();
+  setGrant("@trops/jit", {
+    grantOrigin: "live",
+    servers: {
+      filesystem: { tools: ["read_file"], readPaths: ["/Users/jane/notes.md"] },
+    },
+  });
+  const got = getGrant("@trops/jit");
+  assert.strictEqual(got.grantOrigin, "live");
+});
+
 test("grantOrigin: invalid origin is rejected (not silently dropped to a default)", () => {
   resetState();
   setGrant("@trops/bogus", {

@@ -38,8 +38,9 @@
  */
 "use strict";
 
-const { getGrant } = require("./grantedPermissions");
+const { getGrant, setGrant } = require("./grantedPermissions");
 const { safePath } = require("../utils/safePath");
+const { requestApproval } = require("./jitConsent");
 
 // Argument keys that look like paths. Different MCP servers use
 // different conventions; this list covers the common filesystem-style
@@ -155,8 +156,148 @@ function gateToolCall({ widgetId, serverName, toolName, args }) {
   return { allow: true };
 }
 
+/**
+ * Heuristic — "no grant" is the only denial reason JIT can recover.
+ * Other denials (missing widgetId, malformed args, server-not-declared
+ * post-grant, path-traversal-rejected) are bugs or attempted abuse,
+ * not consent gaps; the user shouldn't be prompted about those.
+ */
+function _isNoGrantDenial(reason) {
+  return (
+    typeof reason === "string" && /no MCP permissions granted/i.test(reason)
+  );
+}
+
+/**
+ * Merge `addition` (a grant blob) into the widget's existing grant. Used
+ * by the JIT path to extend an existing grant with a new tool/path
+ * without clobbering grants for other servers.
+ */
+function _mergeGrant(current, addition) {
+  const out = {
+    grantOrigin: addition.grantOrigin || current?.grantOrigin || null,
+    servers: { ...(current?.servers || {}) },
+  };
+  for (const [name, perms] of Object.entries(addition.servers || {})) {
+    const existing = out.servers[name] || {
+      tools: [],
+      readPaths: [],
+      writePaths: [],
+    };
+    out.servers[name] = {
+      tools: [...new Set([...(existing.tools || []), ...(perms.tools || [])])],
+      readPaths: [
+        ...new Set([...(existing.readPaths || []), ...(perms.readPaths || [])]),
+      ],
+      writePaths: [
+        ...new Set([
+          ...(existing.writePaths || []),
+          ...(perms.writePaths || []),
+        ]),
+      ],
+    };
+  }
+  return out;
+}
+
+/**
+ * Async wrapper around gateToolCall that escalates "no grant" denials
+ * to a just-in-time consent prompt when `opts.enableJit` is true.
+ * On approval, the user's chosen grant shape (carried on
+ * `decision.granted`) is merged into the persisted grant and the gate
+ * re-evaluates. On denial / timeout / disabled-flag, returns the
+ * synchronous decision unchanged.
+ *
+ * @returns {Promise<{ allow: true } | { allow: false, reason: string }>}
+ */
+async function gateToolCallWithJit(req, opts = {}) {
+  const initial = gateToolCall(req);
+  if (initial.allow) return initial;
+  if (!opts.enableJit) return initial;
+  if (!_isNoGrantDenial(initial.reason)) return initial;
+
+  let decision;
+  try {
+    decision = await requestApproval(
+      {
+        widgetId: req.widgetId,
+        domain: "mcp",
+        action: "callTool",
+        args: {
+          serverName: req.serverName,
+          toolName: req.toolName,
+          args: req.args || {},
+        },
+      },
+      { timeoutMs: opts.timeoutMs },
+    );
+  } catch (e) {
+    return {
+      allow: false,
+      reason:
+        "JIT consent " +
+        (e && e.message ? e.message : "failed") +
+        "; original denial: " +
+        initial.reason,
+    };
+  }
+
+  if (!decision || decision.approve !== true) {
+    return {
+      allow: false,
+      reason:
+        "user declined JIT consent for widget '" +
+        req.widgetId +
+        "' calling '" +
+        req.toolName +
+        "' on '" +
+        req.serverName +
+        "'",
+    };
+  }
+
+  // The renderer is expected to carry the chosen grant shape on
+  // decision.granted. Fall back to a minimal tool-level grant if the
+  // shape is missing — never silently grant paths the user didn't
+  // explicitly approve.
+  const addition =
+    decision.granted && typeof decision.granted === "object"
+      ? decision.granted
+      : {
+          grantOrigin: "live",
+          servers: {
+            [req.serverName]: {
+              tools: [req.toolName],
+              readPaths: [],
+              writePaths: [],
+            },
+          },
+        };
+  // Force grantOrigin: "live" regardless of what the renderer sent.
+  addition.grantOrigin = "live";
+
+  try {
+    const current = getGrant(req.widgetId);
+    const merged = _mergeGrant(current, addition);
+    setGrant(req.widgetId, merged);
+  } catch (e) {
+    return {
+      allow: false,
+      reason:
+        "JIT consent: failed to persist grant: " +
+        (e && e.message ? e.message : String(e)),
+    };
+  }
+
+  // Re-evaluate against the freshly-persisted grant. If the user's
+  // grant shape didn't actually cover the requested call (e.g. they
+  // approved a different tool or path), the gate denies as usual.
+  return gateToolCall(req);
+}
+
 module.exports = {
   gateToolCall,
+  gateToolCallWithJit,
   isWriteTool,
   PATH_ARG_KEYS,
 };

@@ -21,7 +21,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const responseCache = require("../utils/responseCache");
-const { gateToolCall } = require("../mcp/permissionGate");
+const { gateToolCall, gateToolCallWithJit } = require("../mcp/permissionGate");
 const { serverKey, parseServerKey } = require("../utils/mcpServerKey");
 const { applyPathScopeToCredentials } = require("../utils/mcpScopeResolver");
 const { app } = require("electron");
@@ -41,6 +41,26 @@ function isWidgetPermissionEnforcementEnabled() {
     const raw = fs.readFileSync(settingsPath, "utf8");
     const settings = JSON.parse(raw);
     return Boolean(settings?.security?.enforceWidgetMcpPermissions);
+  } catch (_e) {
+    return false;
+  }
+}
+
+// Just-in-time consent feature flag (Phase 1 of the JIT consent slice).
+// When ON and the gate would deny for "no grant", we pause the call
+// and prompt the user via the JitConsentModal. Default OFF — the gate
+// fails closed as before until the user opts in.
+function isJitConsentEnabled() {
+  try {
+    const settingsPath = path.join(
+      app.getPath("userData"),
+      "Dashboard",
+      "settings.json",
+    );
+    if (!fs.existsSync(settingsPath)) return false;
+    const raw = fs.readFileSync(settingsPath, "utf8");
+    const settings = JSON.parse(raw);
+    return Boolean(settings?.security?.enableJitConsent);
   } catch (_e) {
     return false;
   }
@@ -809,16 +829,19 @@ const mcpController = {
 
       // Per-widget manifest gate. Activated by the
       // security.enforceWidgetMcpPermissions setting. When enabled
-      // and a widgetId is supplied, the widget's installed
-      // package.json's dash.permissions.mcp block determines what
-      // tools and paths are allowed.
+      // and a widgetId is supplied, the widget's persisted grant
+      // determines what tools and paths are allowed.
+      //
+      // JIT consent: when security.enableJitConsent is also on, the
+      // gate escalates "no grant" denials into a runtime prompt
+      // (jitConsent.requestApproval → renderer modal → grant write +
+      // re-evaluate). Other denial reasons (path traversal, malformed
+      // args, etc.) stay synchronous.
       if (isWidgetPermissionEnforcementEnabled() && widgetId) {
-        const gate = gateToolCall({
-          widgetId,
-          serverName,
-          toolName,
-          args,
-        });
+        const gateReq = { widgetId, serverName, toolName, args };
+        const gate = isJitConsentEnabled()
+          ? await gateToolCallWithJit(gateReq, { enableJit: true })
+          : gateToolCall(gateReq);
         if (!gate.allow) {
           throw new Error(`Widget permission gate: ${gate.reason}`);
         }

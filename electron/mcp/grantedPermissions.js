@@ -82,13 +82,23 @@ function writeToDisk(data) {
   fs.renameSync(tmp, p);
 }
 
-// Recognized origins for a persisted grant. "declared" means the user
-// approved against the developer's declared dash.permissions.mcp block;
-// "discovered" means the install-time scanner produced a synthetic
-// manifest the user approved; "manual" means the user typed entries
-// themselves in Settings → Privacy & Security with no manifest backing.
+// Recognized origins for a persisted grant.
+//   "declared"   — user approved against the developer's declared
+//                  dash.permissions.mcp block at install time.
+//   "discovered" — install-time scanner produced a synthetic manifest
+//                  the user approved.
+//   "manual"     — user typed entries themselves in
+//                  Settings → Privacy & Security with no manifest backing.
+//   "live"       — user approved a just-in-time consent prompt at
+//                  runtime when a tool call hit the gate without a
+//                  matching grant.
 // Other values are dropped on persist (legacy grants stay null).
-const ALLOWED_GRANT_ORIGINS = new Set(["declared", "discovered", "manual"]);
+const ALLOWED_GRANT_ORIGINS = new Set([
+  "declared",
+  "discovered",
+  "manual",
+  "live",
+]);
 
 /**
  * Sanitize a perms object before persisting. Drops unknown keys, coerces
