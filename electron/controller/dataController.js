@@ -4,6 +4,50 @@ const path = require("path");
 const events = require("../events");
 const { getFileContents, writeToFile } = require("../utils/file");
 const { safePath, getAllowedRoots } = require("../utils/safePath");
+const { gateFsCall, gateFsCallWithJit } = require("../security/fsGate");
+const { readEnforceFlag, readJitFlag } = require("../utils/securityFlags");
+
+// Reads the enforcement + JIT flags from settings.json. Mirrors the
+// helper in mcpController. The flag is shared across MCP and fs domains
+// — see Phase 2 plan for rationale (the cosmetic rename to a
+// domain-neutral name is a separate slice).
+function _loadFlags() {
+  try {
+    const settingsPath = path.join(
+      app.getPath("userData"),
+      appName,
+      "settings.json",
+    );
+    if (!fs.existsSync(settingsPath)) return null;
+    return JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+  } catch (_e) {
+    return null;
+  }
+}
+
+/**
+ * Run the fs gate before a dataController handler does its work.
+ * On deny, sends an error event to the renderer and returns false so
+ * the caller can early-out. On allow, returns true.
+ *
+ * @returns {Promise<boolean>}
+ */
+async function _runFsGate(win, action, widgetId, args, errorEvent) {
+  const settings = _loadFlags();
+  if (!readEnforceFlag(settings)) return true; // gate disabled
+  if (!widgetId) return true; // legacy callers without widgetId — see plan
+  const gate = readJitFlag(settings)
+    ? await gateFsCallWithJit({ widgetId, action, args }, { enableJit: true })
+    : gateFsCall({ widgetId, action, args });
+  if (gate.allow) return true;
+  if (win && errorEvent) {
+    win.webContents.send(errorEvent, {
+      success: false,
+      message: "fs permission gate: " + gate.reason,
+    });
+  }
+  return false;
+}
 
 // Convert Json to Csv
 const ObjectsToCsv = require("objects-to-csv");
@@ -345,7 +389,25 @@ const dataController = {
    * @param {*} append
    * @param {*} returnEmpty
    */
-  saveToFile: (win, data, filename, append, returnEmpty = {}) => {
+  saveToFile: async (
+    win,
+    data,
+    filename,
+    append,
+    returnEmpty = {},
+    widgetId = null,
+  ) => {
+    // Phase 2 fs gate. Runs before safePath containment so JIT can
+    // prompt the user without leaking path-shape information through
+    // error timing. See electron/security/fsGate.js.
+    const gateOk = await _runFsGate(
+      win,
+      "saveToFile",
+      widgetId,
+      { filename },
+      events.DATA_SAVE_TO_FILE_ERROR,
+    );
+    if (!gateOk) return;
     try {
       if (data) {
         // Validate filename is contained within the data directory.
@@ -439,7 +501,16 @@ const dataController = {
     }
   },
 
-  readFromFile: (win, filename, returnIfEmpty = {}) => {
+  readFromFile: async (win, filename, returnIfEmpty = {}, widgetId = null) => {
+    // Phase 2 fs gate — same as saveToFile.
+    const gateOk = await _runFsGate(
+      win,
+      "readFromFile",
+      widgetId,
+      { filename },
+      events.DATA_READ_FROM_FILE_ERROR,
+    );
+    if (!gateOk) return;
     try {
       if (filename) {
         // filename to the pages file (live pages)
