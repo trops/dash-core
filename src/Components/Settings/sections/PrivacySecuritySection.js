@@ -318,6 +318,7 @@ const GrantOriginBadge = ({ origin }) => {
     declared: { label: "declared", color: "text-green-400" },
     discovered: { label: "discovered", color: "text-amber-400" },
     manual: { label: "manual", color: "text-blue-400" },
+    live: { label: "live", color: "text-purple-400" },
   };
   const style = styles[origin];
   if (!style) return null;
@@ -399,6 +400,24 @@ const EXAMPLE_FIXTURES = [
           tools: ["read_file", "write_file"],
           readPaths: ["~/Downloads"],
           writePaths: ["/tmp/widget-output"],
+        },
+      },
+    },
+  },
+  {
+    caption:
+      "Granted live, when the widget triggered a tool call without a pre-existing grant (just-in-time consent prompt).",
+    widgetId: "@example/just-in-time-widget",
+    hasManifest: false,
+    grantOrigin: "live",
+    declared: null,
+    granted: {
+      grantOrigin: "live",
+      servers: {
+        filesystem: {
+          tools: ["read_file"],
+          readPaths: ["~/Documents/notes/today.md"],
+          writePaths: [],
         },
       },
     },
