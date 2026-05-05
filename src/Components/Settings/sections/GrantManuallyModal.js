@@ -98,7 +98,7 @@ export const GrantManuallyModal = ({
           <div className="text-base font-semibold">
             Grant manually: {widgetId}
           </div>
-          <div className="text-xs opacity-60 mt-1">
+          <div className="text-xs text-gray-400 mt-1">
             This widget did not declare its MCP needs and the install-time
             scanner found nothing. You are granting access based on your own
             judgment — be conservative. Revoke any time.
@@ -107,7 +107,7 @@ export const GrantManuallyModal = ({
 
         <div className="flex flex-col gap-4 px-5 py-4 max-h-96 overflow-y-auto">
           <div className="flex flex-col gap-1">
-            <label className="text-xs uppercase tracking-wider opacity-60">
+            <label className="text-xs uppercase tracking-wider text-gray-300">
               Server name
             </label>
             <input
@@ -124,7 +124,7 @@ export const GrantManuallyModal = ({
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs uppercase tracking-wider opacity-60">
+            <label className="text-xs uppercase tracking-wider text-gray-300">
               Tools (comma-separated)
             </label>
             <input
@@ -137,7 +137,7 @@ export const GrantManuallyModal = ({
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs uppercase tracking-wider opacity-60">
+            <label className="text-xs uppercase tracking-wider text-gray-300">
               Read paths (one per line, optional)
             </label>
             <textarea
@@ -150,7 +150,7 @@ export const GrantManuallyModal = ({
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs uppercase tracking-wider opacity-60">
+            <label className="text-xs uppercase tracking-wider text-gray-300">
               Write paths (one per line, optional)
             </label>
             <textarea

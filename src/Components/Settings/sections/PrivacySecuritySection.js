@@ -1,6 +1,13 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { Button, SubHeading3, FontAwesomeIcon } from "@trops/dash-react";
+import React, { useEffect, useState, useCallback, useContext } from "react";
+import {
+  Button,
+  Modal,
+  SubHeading3,
+  FontAwesomeIcon,
+  Switch,
+} from "@trops/dash-react";
 import { GrantManuallyModal } from "./GrantManuallyModal";
+import { AppContext } from "../../../Context/App/AppContext";
 
 /**
  * Privacy & Security
@@ -109,6 +116,8 @@ export const PrivacySecuritySection = () => {
         </span>
       </div>
 
+      <EnforcementToggles />
+
       <HowThisWorksPanel />
 
       {error && (
@@ -148,6 +157,162 @@ export const PrivacySecuritySection = () => {
         }}
       />
     </div>
+  );
+};
+
+/**
+ * UI controls for the two security flags that gate the rest of this
+ * stack. Without UI, users would have to hand-edit
+ * userData/Dashboard/settings.json — fine for the dev who shipped the
+ * feature, hostile to anyone else. Both flags are read on every gate
+ * call (settings.json is re-read each time), so toggling takes effect
+ * immediately for new tool calls; in-flight calls aren't interrupted.
+ */
+const EnforcementToggles = () => {
+  const appContext = useContext(AppContext);
+  const settings = appContext?.settings || {};
+  const security = settings.security || {};
+  // Default-on semantics — anything except explicit `false` is treated
+  // as enabled. Mirrors electron/utils/securityFlags.js so the UI shows
+  // the same state the runtime sees.
+  const enforceEnabled = security.enforceWidgetMcpPermissions !== false;
+  const jitEnabled = security.enableJitConsent !== false;
+
+  // pendingDisable: { flag: 'enforce' | 'jit' } | null
+  // When the user toggles a flag from ON → OFF, we open a confirm modal
+  // before persisting. ON → ON or OFF → ON go through immediately.
+  const [pendingDisable, setPendingDisable] = useState(null);
+
+  const writeSecurity = (updates) => {
+    if (!appContext?.changeSettings) return;
+    const next = {
+      ...settings,
+      security: { ...security, ...updates },
+    };
+    appContext.changeSettings(next);
+  };
+
+  const handleEnforceToggle = (v) => {
+    if (v === false && enforceEnabled) {
+      setPendingDisable({ flag: "enforce" });
+      return;
+    }
+    writeSecurity({ enforceWidgetMcpPermissions: v });
+  };
+
+  const handleJitToggle = (v) => {
+    if (v === false && jitEnabled) {
+      setPendingDisable({ flag: "jit" });
+      return;
+    }
+    writeSecurity({ enableJitConsent: v });
+  };
+
+  const confirmDisable = () => {
+    if (!pendingDisable) return;
+    if (pendingDisable.flag === "enforce") {
+      writeSecurity({ enforceWidgetMcpPermissions: false });
+    } else if (pendingDisable.flag === "jit") {
+      writeSecurity({ enableJitConsent: false });
+    }
+    setPendingDisable(null);
+  };
+
+  return (
+    <div className="flex flex-col space-y-4 border border-gray-700 rounded p-4">
+      <div className="flex flex-row items-start justify-between gap-4">
+        <div className="flex flex-col">
+          <span className="text-sm font-medium text-gray-200">
+            Enforce widget MCP permissions
+          </span>
+          <span className="text-xs text-gray-400 mt-1">
+            When ON, every widget MCP tool call goes through the runtime gate.
+            Calls without a matching grant are denied. When OFF, widgets can
+            call any MCP server (legacy behavior).
+          </span>
+        </div>
+        <Switch checked={enforceEnabled} onChange={handleEnforceToggle} />
+      </div>
+
+      <div className="flex flex-row items-start justify-between gap-4 border-t border-gray-800 pt-4">
+        <div className="flex flex-col">
+          <span
+            className={`text-sm font-medium ${
+              enforceEnabled ? "text-gray-200" : "text-gray-500"
+            }`}
+          >
+            Just-in-time consent prompts
+          </span>
+          <span className="text-xs text-gray-400 mt-1">
+            When ON (and enforcement is also ON), a "no grant" denial pauses the
+            call and prompts you with the exact tool/path the widget is
+            requesting. Approve once and the grant is saved. When OFF, denials
+            are silent — widgets just get an error.
+          </span>
+        </div>
+        <Switch
+          checked={jitEnabled && enforceEnabled}
+          onChange={handleJitToggle}
+          disabled={!enforceEnabled}
+        />
+      </div>
+
+      <ConfirmDisableModal
+        pending={pendingDisable}
+        onCancel={() => setPendingDisable(null)}
+        onConfirm={confirmDisable}
+      />
+    </div>
+  );
+};
+
+const DISABLE_COPY = {
+  enforce: {
+    title: "Disable widget MCP permissions enforcement?",
+    body:
+      "Widgets will be able to call any MCP server with any tool or path. " +
+      "Granted paths in this panel will no longer matter — the runtime gate " +
+      "becomes a no-op. This is the pre-security-stack behavior. " +
+      "You can re-enable any time.",
+    confirmLabel: "Disable enforcement",
+  },
+  jit: {
+    title: "Disable just-in-time consent prompts?",
+    body:
+      'Tool calls without an existing grant will fail silently with a "no grant" error. ' +
+      "You'll need to grant in this panel manually before the widget retries. " +
+      "Enforcement stays on; you just stop being prompted at runtime.",
+    confirmLabel: "Disable prompts",
+  },
+};
+
+const ConfirmDisableModal = ({ pending, onCancel, onConfirm }) => {
+  if (!pending) return null;
+  const copy = DISABLE_COPY[pending.flag];
+  if (!copy) return null;
+  return (
+    <Modal isOpen={!!pending} setIsOpen={(open) => !open && onCancel()}>
+      <div className="flex flex-col w-full max-w-md border-2 border-amber-500 rounded">
+        <div className="px-5 py-4 border-b border-gray-700">
+          <div className="flex flex-row items-center gap-2">
+            <FontAwesomeIcon
+              icon="triangle-exclamation"
+              className="h-4 w-4 text-amber-500"
+            />
+            <span className="text-base font-semibold text-gray-100">
+              {copy.title}
+            </span>
+          </div>
+        </div>
+        <div className="px-5 py-4 text-xs text-gray-300 leading-relaxed">
+          {copy.body}
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-700">
+          <Button title="Cancel" onClick={onCancel} />
+          <Button title={copy.confirmLabel} onClick={onConfirm} />
+        </div>
+      </div>
+    </Modal>
   );
 };
 
@@ -452,11 +617,12 @@ const noop = () => {};
 /**
  * Collapsible explainer that documents how grants flow per-widget vs
  * per-dashboard, with a concrete example table and rendered preview rows
- * for each grant state. Default-collapsed so users who don't care never
- * see it.
+ * for each grant state. Default-expanded so the example rows
+ * (including the live-grant fixture) are visible without an extra click;
+ * users who don't want the wall of text collapse manually.
  */
 const HowThisWorksPanel = () => {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   return (
     <div className="border border-gray-700 rounded">
       <button
