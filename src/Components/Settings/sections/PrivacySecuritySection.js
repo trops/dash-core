@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useCallback, useContext } from "react";
 import {
   Button,
-  Modal,
   SubHeading3,
   FontAwesomeIcon,
   Switch,
@@ -257,7 +256,7 @@ const EnforcementToggles = () => {
         />
       </div>
 
-      <ConfirmDisableModal
+      <ConfirmDisableInline
         pending={pendingDisable}
         onCancel={() => setPendingDisable(null)}
         onConfirm={confirmDisable}
@@ -286,33 +285,37 @@ const DISABLE_COPY = {
   },
 };
 
-const ConfirmDisableModal = ({ pending, onCancel, onConfirm }) => {
+/**
+ * Inline confirmation prompt — rendered directly under the toggles
+ * inside the EnforcementToggles container, NOT as a nested Modal.
+ *
+ * Why inline: the Settings panel itself is already a Modal, so a
+ * nested Modal positions relative to the panel's content area rather
+ * than the viewport, landing visibly off-center. Inline avoids the
+ * nesting entirely; the user keeps context and the warning is
+ * impossible to miss right where the toggle lives.
+ */
+const ConfirmDisableInline = ({ pending, onCancel, onConfirm }) => {
   if (!pending) return null;
   const copy = DISABLE_COPY[pending.flag];
   if (!copy) return null;
   return (
-    <Modal isOpen={!!pending} setIsOpen={(open) => !open && onCancel()}>
-      <div className="flex flex-col w-full max-w-md border-2 border-amber-500 rounded">
-        <div className="px-5 py-4 border-b border-gray-700">
-          <div className="flex flex-row items-center gap-2">
-            <FontAwesomeIcon
-              icon="triangle-exclamation"
-              className="h-4 w-4 text-amber-500"
-            />
-            <span className="text-base font-semibold text-gray-100">
-              {copy.title}
-            </span>
-          </div>
-        </div>
-        <div className="px-5 py-4 text-xs text-gray-300 leading-relaxed">
-          {copy.body}
-        </div>
-        <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-700">
-          <Button title="Cancel" onClick={onCancel} />
-          <Button title={copy.confirmLabel} onClick={onConfirm} />
-        </div>
+    <div className="flex flex-col gap-3 border-2 border-amber-500 rounded p-3 mt-2">
+      <div className="flex flex-row items-center gap-2">
+        <FontAwesomeIcon
+          icon="triangle-exclamation"
+          className="h-4 w-4 text-amber-500"
+        />
+        <span className="text-sm font-semibold text-gray-100">
+          {copy.title}
+        </span>
       </div>
-    </Modal>
+      <div className="text-xs text-gray-300 leading-relaxed">{copy.body}</div>
+      <div className="flex justify-end gap-2">
+        <Button title="Cancel" onClick={onCancel} />
+        <Button title={copy.confirmLabel} onClick={onConfirm} />
+      </div>
+    </div>
   );
 };
 
