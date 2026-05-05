@@ -199,6 +199,7 @@ const WidgetGrantRow = ({
       {allServerNames.map((serverName) => {
         const decl = declaredServers[serverName] || {};
         const grant = grantedServers[serverName];
+        const allStale = isServerEntirelyStale(decl, grant);
         return (
           <div
             key={serverName}
@@ -220,6 +221,12 @@ const WidgetGrantRow = ({
                 />
               )}
             </div>
+            {allStale && (
+              <div className="text-xs text-amber-400 bg-amber-900 bg-opacity-20 border border-amber-700 rounded px-2 py-1.5">
+                All grants on this server are no longer in the manifest — the
+                widget likely no longer uses this server. Consider revoking.
+              </div>
+            )}
             <PermsList
               label="Tools"
               declaredItems={decl.tools || []}
@@ -253,20 +260,23 @@ const PermsList = ({ label, declaredItems, grantedItems }) => {
       {all.map((item) => {
         const isGranted = grantedSet.has(item);
         const isDeclared = declaredSet.has(item);
+        const isStale = isGranted && !isDeclared;
         return (
           <span
             key={item}
             className={`text-xs font-mono break-all ${
-              isGranted
-                ? "opacity-100"
-                : isDeclared
-                  ? "opacity-50 line-through"
-                  : "opacity-100 text-amber-400"
+              isStale
+                ? "text-amber-400"
+                : isGranted
+                  ? "opacity-100"
+                  : "opacity-50 line-through"
             }`}
           >
             {item}
-            {!isDeclared && isGranted && (
-              <span className="ml-2 opacity-60">(no longer declared)</span>
+            {isStale && (
+              <span className="ml-2 not-italic font-sans normal-case tracking-normal text-amber-400">
+                (stale — widget no longer requests this; consider revoking)
+              </span>
             )}
           </span>
         );
@@ -274,6 +284,29 @@ const PermsList = ({ label, declaredItems, grantedItems }) => {
     </div>
   );
 };
+
+/**
+ * True when the granted entry has at least one item AND every granted
+ * item is missing from the current declared block (i.e. all of this
+ * server's grants are unused by the current manifest). Used to surface
+ * a "this whole server's grant looks unused" suggestion at the row level.
+ */
+function isServerEntirelyStale(decl, grant) {
+  if (!grant) return false;
+  const declTools = new Set(decl.tools || []);
+  const declRead = new Set(decl.readPaths || []);
+  const declWrite = new Set(decl.writePaths || []);
+  const grantedTools = grant.tools || [];
+  const grantedRead = grant.readPaths || [];
+  const grantedWrite = grant.writePaths || [];
+  const total = grantedTools.length + grantedRead.length + grantedWrite.length;
+  if (total === 0) return false;
+  const stale =
+    grantedTools.every((t) => !declTools.has(t)) &&
+    grantedRead.every((p) => !declRead.has(p)) &&
+    grantedWrite.every((p) => !declWrite.has(p));
+  return stale;
+}
 
 /**
  * Renders a small badge showing how the user got to this grant. Helps
@@ -366,6 +399,29 @@ const EXAMPLE_FIXTURES = [
           tools: ["read_file", "write_file"],
           readPaths: ["~/Downloads"],
           writePaths: ["/tmp/widget-output"],
+        },
+      },
+    },
+  },
+  {
+    caption:
+      "Stale grant — the widget upgraded and dropped readPaths from its manifest, but the user's grant is still present.",
+    widgetId: "@example/upgraded-widget",
+    hasManifest: true,
+    grantOrigin: "declared",
+    declared: {
+      // Manifest now declares only the tool, no paths.
+      servers: {
+        filesystem: { tools: ["read_file"], readPaths: [], writePaths: [] },
+      },
+    },
+    granted: {
+      grantOrigin: "declared",
+      servers: {
+        filesystem: {
+          tools: ["read_file"],
+          readPaths: ["~/Documents/old-notes"],
+          writePaths: [],
         },
       },
     },
