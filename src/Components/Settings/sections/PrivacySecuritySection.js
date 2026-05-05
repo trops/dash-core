@@ -182,6 +182,20 @@ const EnforcementToggles = () => {
   // before persisting. ON → ON or OFF → ON go through immediately.
   const [pendingDisable, setPendingDisable] = useState(null);
 
+  // lastTestResult: feedback for the "Test prompt" button. Tells the
+  // user whether their JIT response was actually persisted, so they
+  // don't have to interpret the post-grant "server not connected"
+  // error as failure.
+  const [lastTestResult, setLastTestResult] = useState(null);
+
+  // Auto-clear the test result after 30 seconds so it doesn't linger
+  // forever after a successful test.
+  useEffect(() => {
+    if (!lastTestResult) return;
+    const timer = setTimeout(() => setLastTestResult(null), 30_000);
+    return () => clearTimeout(timer);
+  }, [lastTestResult]);
+
   const writeSecurity = (updates) => {
     if (!appContext?.changeSettings) return;
     const next = {
@@ -219,23 +233,66 @@ const EnforcementToggles = () => {
 
   // One-click JIT trigger for testing. Calls the gate via a fake widget
   // identity that has no grant — the gate denies, JIT escalates, the
-  // modal pops. After approval, the call proceeds to the (nonexistent)
-  // "test-server" and errors with "server not connected"; that's the
-  // expected response since the goal is to exercise the consent flow,
-  // not the server's response.
+  // modal pops. We classify the outcome so the user knows whether their
+  // JIT response was actually persisted (vs whether the test ran at all).
+  //
+  // Outcome classification:
+  //   message includes "Server not connected" → granted
+  //     (gate passed, post-gate server lookup expectedly failed because
+  //     "test-server" doesn't exist — the goal is the consent flow, not
+  //     the server response)
+  //   message includes "user declined" → denied
+  //   message includes "JIT consent timed out" → timeout
+  //   anything else → unknown error
   const triggerTestJitPrompt = async () => {
+    setLastTestResult({ status: "pending", message: "Waiting for response…" });
     try {
-      await window.mainApi?.mcp?.callTool?.(
+      const result = await window.mainApi?.mcp?.callTool?.(
         "test-server",
         "test_tool",
         { path: "/tmp/jit-probe.txt" },
         null,
         "@test/jit-probe",
       );
+      // callTool resolves to { error, message } on the main side; classify.
+      const msg = result?.message || JSON.stringify(result || {});
+      if (/server not connected/i.test(msg)) {
+        setLastTestResult({
+          status: "granted",
+          message:
+            "Granted — your response was saved as a 'live' grant for @test/jit-probe.",
+        });
+      } else if (/user declined/i.test(msg)) {
+        setLastTestResult({
+          status: "denied",
+          message: "Denied — no grant written.",
+        });
+      } else if (/timed out/i.test(msg)) {
+        setLastTestResult({
+          status: "timeout",
+          message: "Timed out — no response within 60s.",
+        });
+      } else {
+        setLastTestResult({
+          status: "unknown",
+          message: "Unexpected: " + msg,
+        });
+      }
     } catch (e) {
-      // Expected — see comment above.
-      console.log("[JIT test]", e?.message || String(e));
+      setLastTestResult({
+        status: "error",
+        message: "Test threw: " + (e?.message || String(e)),
+      });
     }
+  };
+
+  const TEST_RESULT_STYLE = {
+    pending: "text-gray-400",
+    granted: "text-green-400",
+    denied: "text-amber-400",
+    timeout: "text-amber-400",
+    unknown: "text-red-400",
+    error: "text-red-400",
   };
 
   return (
@@ -284,22 +341,31 @@ const EnforcementToggles = () => {
       />
 
       {enforceEnabled && jitEnabled && (
-        <div className="flex flex-row items-center justify-between gap-4 border-t border-gray-800 pt-4">
-          <div className="flex flex-col">
-            <span className="text-sm font-medium text-gray-200">
-              Test JIT consent prompt
-            </span>
-            <span className="text-xs text-gray-400 mt-1">
-              Fires a fake tool call from <code>@test/jit-probe</code> to{" "}
-              <code>test-server</code>. The gate runs first (no real server
-              needed), so you'll see the JIT modal exactly as it appears in
-              production. Approve and the call proceeds — the fake server isn't
-              running, so a "server not connected" error follows in the console.
-              That's the expected response; the goal is to validate the consent
-              flow.
-            </span>
+        <div className="flex flex-col gap-2 border-t border-gray-800 pt-4">
+          <div className="flex flex-row items-center justify-between gap-4">
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-gray-200">
+                Test JIT consent prompt
+              </span>
+              <span className="text-xs text-gray-400 mt-1">
+                Fires a fake tool call from <code>@test/jit-probe</code> to{" "}
+                <code>test-server</code>. The gate runs first (no real server
+                needed), so you'll see the JIT modal exactly as it appears in
+                production. The post-gate server lookup expectedly fails —
+                that's fine; the goal here is to exercise the consent flow.
+              </span>
+            </div>
+            <Button title="Test prompt" onClick={triggerTestJitPrompt} />
           </div>
-          <Button title="Test prompt" onClick={triggerTestJitPrompt} />
+          {lastTestResult && (
+            <div
+              className={`text-xs font-medium ${
+                TEST_RESULT_STYLE[lastTestResult.status] || "text-gray-400"
+              }`}
+            >
+              Last test ({lastTestResult.status}): {lastTestResult.message}
+            </div>
+          )}
         </div>
       )}
     </div>
