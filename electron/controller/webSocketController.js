@@ -13,8 +13,49 @@
  *
  * Uses the `ws` package (installed in dash-electron) for WebSocket clients.
  * Multiple widgets referencing the same provider share a single socket.
+ *
+ * Phase 3 (network domain JIT) gates `connect` by hostname when a
+ * widgetId is supplied. Once a connection exists, `send` /
+ * `disconnect` / `getStatus` / `getAll` operate on the
+ * already-authorized socket and are intentionally NOT re-gated —
+ * connections are designed to be shared across widgets via the
+ * `consumers: Set` field, and re-gating sends would break that.
  */
+const { app } = require("electron");
+const fs = require("fs");
+const path = require("path");
 const WebSocket = require("ws");
+const {
+  gateNetworkCall,
+  gateNetworkCallWithJit,
+} = require("../security/networkGate");
+const { readEnforceFlag, readJitFlag } = require("../utils/securityFlags");
+
+function _loadFlags() {
+  try {
+    const settingsPath = path.join(
+      app.getPath("userData"),
+      "Dashboard",
+      "settings.json",
+    );
+    if (!fs.existsSync(settingsPath)) return null;
+    return JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+  } catch (_e) {
+    return null;
+  }
+}
+
+async function _runNetworkGate(action, widgetId, args) {
+  const settings = _loadFlags();
+  if (!readEnforceFlag(settings)) return { allow: true };
+  if (!widgetId) return { allow: true }; // legacy callers
+  return readJitFlag(settings)
+    ? await gateNetworkCallWithJit(
+        { widgetId, action, args },
+        { enableJit: true },
+      )
+    : gateNetworkCall({ widgetId, action, args });
+}
 
 /**
  * Active WebSocket connections
@@ -445,7 +486,26 @@ const webSocketController = {
    * @param {object} config - { url, headers, subprotocols, credentials }
    * @returns {{ success, providerName, status } | { error, message }}
    */
-  connect: async (win, providerName, config) => {
+  connect: async (win, providerName, config, widgetId = null) => {
+    // Phase 3 network gate — fires only when an explicit widgetId is
+    // supplied. The interpolated URL (with credentials substituted) is
+    // what we actually open the socket to, so the gate uses it for
+    // hostname extraction.
+    const interpolatedForGate = config?.credentials
+      ? interpolate(config.url, config.credentials)
+      : config?.url;
+    const gateResult = await _runNetworkGate("wsConnect", widgetId, {
+      url: interpolatedForGate,
+    });
+    if (!gateResult.allow) {
+      return {
+        error: true,
+        message: "network permission gate: " + gateResult.reason,
+        providerName,
+        status: STATUS.ERROR,
+      };
+    }
+
     // 1. Already connected? Return existing connection
     const existing = activeConnections.get(providerName);
     if (existing && existing.status === STATUS.CONNECTED) {

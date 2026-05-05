@@ -65,8 +65,8 @@ const dataApi = {
     ipcRenderer.invoke(READ_JSON, { filepath, objectCount });
   },
 
-  readDataFromURL: (url, toFilepath) => {
-    ipcRenderer.invoke(READ_DATA_URL, { url, toFilepath });
+  readDataFromURL: (url, toFilepath, widgetId = null) => {
+    ipcRenderer.invoke(READ_DATA_URL, { url, toFilepath, widgetId });
   },
 
   /*

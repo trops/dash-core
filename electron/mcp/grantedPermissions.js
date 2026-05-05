@@ -164,6 +164,12 @@ function sanitizePerms(perms) {
             ? raw.writePaths.filter((p) => typeof p === "string")
             : [],
         };
+      } else if (name === "network") {
+        domains.network = {
+          hosts: Array.isArray(raw.hosts)
+            ? raw.hosts.filter((h) => typeof h === "string")
+            : [],
+        };
       }
       // Future domains plug in here. Unknown domain names are dropped.
     }
