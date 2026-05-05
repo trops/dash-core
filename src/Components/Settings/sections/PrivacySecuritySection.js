@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Button, SubHeading3 } from "@trops/dash-react";
+import { Button, SubHeading3, FontAwesomeIcon } from "@trops/dash-react";
 import { GrantManuallyModal } from "./GrantManuallyModal";
 
 /**
@@ -104,11 +104,12 @@ export const PrivacySecuritySection = () => {
       <div className="flex flex-col space-y-2">
         <SubHeading3 title="Widget MCP permissions" padding={false} />
         <span className="text-xs opacity-60">
-          Tools and paths each widget is allowed to call via MCP. Granted paths
-          are visible to other widgets in the same dashboard that use the same
-          MCP server. Revoke any time.
+          Granting access here is a trust signal about the widget — not a
+          per-dashboard switch.
         </span>
       </div>
+
+      <HowThisWorksPanel />
 
       {error && (
         <div className="text-xs text-red-400 bg-red-900 bg-opacity-20 border border-red-700 rounded p-3">
@@ -294,5 +295,212 @@ const GrantOriginBadge = ({ origin }) => {
     >
       {style.label}
     </span>
+  );
+};
+
+// Mock fixtures for the "Example rows" section. These use the same
+// WidgetGrantRow component the real rows use, so the preview always
+// reflects the real rendering. Click handlers are no-ops — the panel is
+// for visualization only.
+const EXAMPLE_FIXTURES = [
+  {
+    caption: "Declared by the developer and granted by the user.",
+    widgetId: "@example/notes-summarizer",
+    hasManifest: true,
+    grantOrigin: "declared",
+    declared: {
+      servers: {
+        filesystem: {
+          tools: ["read_file", "list_directory"],
+          readPaths: ["~/Documents/notes"],
+          writePaths: [],
+        },
+      },
+    },
+    granted: {
+      grantOrigin: "declared",
+      servers: {
+        filesystem: {
+          tools: ["read_file", "list_directory"],
+          readPaths: ["~/Documents/notes"],
+          writePaths: [],
+        },
+      },
+    },
+  },
+  {
+    caption: "Declared by the developer — the user hasn't decided yet.",
+    widgetId: "@example/code-search",
+    hasManifest: true,
+    grantOrigin: null,
+    declared: {
+      servers: {
+        github: { tools: ["search_repositories", "get_file_contents"] },
+      },
+    },
+    granted: null,
+  },
+  {
+    caption: "Detected by the install-time scanner and granted.",
+    widgetId: "@example/file-helper",
+    hasManifest: false,
+    grantOrigin: "discovered",
+    declared: null,
+    granted: {
+      grantOrigin: "discovered",
+      servers: {
+        filesystem: { tools: ["read_file"], readPaths: [], writePaths: [] },
+      },
+    },
+  },
+  {
+    caption: "Granted manually because the widget had no manifest.",
+    widgetId: "@example/legacy-widget",
+    hasManifest: false,
+    grantOrigin: "manual",
+    declared: null,
+    granted: {
+      grantOrigin: "manual",
+      servers: {
+        filesystem: {
+          tools: ["read_file", "write_file"],
+          readPaths: ["~/Downloads"],
+          writePaths: ["/tmp/widget-output"],
+        },
+      },
+    },
+  },
+];
+
+const noop = () => {};
+
+/**
+ * Collapsible explainer that documents how grants flow per-widget vs
+ * per-dashboard, with a concrete example table and rendered preview rows
+ * for each grant state. Default-collapsed so users who don't care never
+ * see it.
+ */
+const HowThisWorksPanel = () => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border border-gray-700 rounded">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex flex-row items-center justify-between px-3 py-2 text-left text-sm hover:bg-gray-800"
+      >
+        <span>How widget MCP permissions work</span>
+        <FontAwesomeIcon
+          icon={open ? "chevron-up" : "chevron-down"}
+          className="h-3 w-3 opacity-60"
+        />
+      </button>
+
+      {open && (
+        <div className="flex flex-col space-y-4 px-3 py-3 border-t border-gray-800 text-xs leading-relaxed">
+          <div className="space-y-2">
+            <p>
+              <span className="font-semibold">
+                The grant is about the widget, not the dashboard.
+              </span>{" "}
+              When you grant <code>@trops/notes-summarizer</code> access to{" "}
+              <code>~/Documents</code>, you're saying "I trust this widget with
+              this path, anywhere." Grants live one-per-widget, regardless of
+              how many dashboards use it.
+            </p>
+            <p>
+              <span className="font-semibold">
+                Each dashboard automatically scopes its servers.
+              </span>{" "}
+              When you open a dashboard, Dash spawns a separate MCP server
+              process per dashboard. That server is configured with only the
+              paths granted to widgets actually on that dashboard — nothing
+              else. Two dashboards using the same widget share the same grant;
+              two dashboards using different widgets get different effective
+              scopes.
+            </p>
+            <p>
+              <span className="font-semibold">What this doesn't do.</span>{" "}
+              There's no way today to say "this widget can use filesystem on
+              Dashboard 1 but not Dashboard 2." Grants are per-widget;
+              per-(widget, dashboard) granularity would need a bigger UX rework.
+              If you don't want a widget to access a path on a particular
+              dashboard, the workaround is to remove it from that dashboard or
+              revoke the grant entirely.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="font-semibold">
+              Example: widget A granted <code>/Documents</code>, widget B
+              granted <code>/Code</code>
+            </div>
+            <table className="w-full text-xs border border-gray-800">
+              <thead>
+                <tr className="bg-gray-900">
+                  <th className="text-left px-2 py-1 border-b border-gray-800">
+                    Scenario
+                  </th>
+                  <th className="text-left px-2 py-1 border-b border-gray-800">
+                    Dashboard 1 sees
+                  </th>
+                  <th className="text-left px-2 py-1 border-b border-gray-800">
+                    Dashboard 2 sees
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="px-2 py-1 border-b border-gray-800">
+                    A on Dash 1, B on Dash 2
+                  </td>
+                  <td className="px-2 py-1 border-b border-gray-800 font-mono">
+                    /Documents
+                  </td>
+                  <td className="px-2 py-1 border-b border-gray-800 font-mono">
+                    /Code
+                  </td>
+                </tr>
+                <tr>
+                  <td className="px-2 py-1 border-b border-gray-800">
+                    A on both, B on Dash 2
+                  </td>
+                  <td className="px-2 py-1 border-b border-gray-800 font-mono">
+                    /Documents
+                  </td>
+                  <td className="px-2 py-1 border-b border-gray-800 font-mono">
+                    /Documents, /Code
+                  </td>
+                </tr>
+                <tr>
+                  <td className="px-2 py-1">A + B both on Dash 1</td>
+                  <td className="px-2 py-1 font-mono">/Documents, /Code</td>
+                  <td className="px-2 py-1 opacity-60">(no server)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="space-y-3">
+            <div className="font-semibold">What each row state looks like</div>
+            {EXAMPLE_FIXTURES.map((f) => (
+              <div key={f.widgetId} className="space-y-1">
+                <div className="italic opacity-60">{f.caption}</div>
+                <WidgetGrantRow
+                  widgetId={f.widgetId}
+                  declared={f.declared}
+                  granted={f.granted}
+                  hasManifest={f.hasManifest}
+                  grantOrigin={f.grantOrigin}
+                  onRevokeWidget={noop}
+                  onRevokeServer={noop}
+                  onGrantManually={noop}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
