@@ -178,3 +178,59 @@ test("corrupted grants file is treated as empty (fail-closed)", () => {
   setGrant("@trops/recover", { servers: { github: { tools: ["x"] } } });
   assert.ok(getGrant("@trops/recover"));
 });
+
+// ---- grantOrigin tracking (scanner/manual-grant slice) -----------------
+
+test("grantOrigin: setGrant + getGrant round-trips a declared grant", () => {
+  resetState();
+  setGrant("@trops/declared", {
+    grantOrigin: "declared",
+    servers: { github: { tools: ["x"] } },
+  });
+  const got = getGrant("@trops/declared");
+  assert.strictEqual(got.grantOrigin, "declared");
+});
+
+test("grantOrigin: setGrant + getGrant round-trips a discovered grant", () => {
+  resetState();
+  setGrant("@trops/discovered", {
+    grantOrigin: "discovered",
+    servers: { filesystem: { tools: ["read_file"] } },
+  });
+  const got = getGrant("@trops/discovered");
+  assert.strictEqual(got.grantOrigin, "discovered");
+});
+
+test("grantOrigin: setGrant + getGrant round-trips a manual grant", () => {
+  resetState();
+  setGrant("@trops/manual", {
+    grantOrigin: "manual",
+    servers: { filesystem: { tools: ["read_file"], readPaths: ["/x"] } },
+  });
+  const got = getGrant("@trops/manual");
+  assert.strictEqual(got.grantOrigin, "manual");
+});
+
+test("grantOrigin: invalid origin is rejected (not silently dropped to a default)", () => {
+  resetState();
+  setGrant("@trops/bogus", {
+    grantOrigin: "bogus-value",
+    servers: { github: { tools: ["x"] } },
+  });
+  const got = getGrant("@trops/bogus");
+  // The grant persists, but the bogus origin is dropped to null/missing
+  assert.ok(got);
+  assert.notStrictEqual(got.grantOrigin, "bogus-value");
+});
+
+test("grantOrigin: legacy grants without the field round-trip without crashing", () => {
+  resetState();
+  // Pre-feature grant: no grantOrigin
+  setGrant("@trops/legacy", {
+    servers: { github: { tools: ["x"] } },
+  });
+  const got = getGrant("@trops/legacy");
+  assert.ok(got);
+  // Field is absent or null — both are acceptable; consumers handle either
+  assert.ok(got.grantOrigin == null);
+});

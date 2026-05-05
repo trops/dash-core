@@ -26,6 +26,7 @@ const {
   getWidgetMcpPermissions,
   clearCache: clearWidgetPermsCache,
 } = require("./mcp/widgetPermissions");
+const { scanForMcpUsage } = require("./utils/manifestScanner");
 
 let WIDGETS_CACHE_DIR = null;
 let REGISTRY_CONFIG_FILE = null;
@@ -1107,6 +1108,14 @@ function findBundlePath(widgetPath) {
  * with the user's selections (Slice 2) or quietly drops the message
  * (older renderer pre-Slice-2 — the gate still fail-closes).
  *
+ * Fallback: if there's no manifest, run the literal-only scanner on the
+ * installed source. If the scan finds any literal MCP usage, emit the
+ * same event with `discovered: true` and a synthetic declared blob —
+ * the consent modal renders this with amber framing so the user knows
+ * they're approving a guess, not the developer's declaration. If the
+ * scan finds nothing, no event fires; the widget appears in
+ * Settings → Privacy & Security with a "Grant manually" button.
+ *
  * Cache invalidation: widgetPermissions caches per-process, so an upgrade
  * over a stale cached entry would otherwise keep the old manifest. Drop
  * the whole cache here — cheap, infrequent.
@@ -1115,11 +1124,41 @@ function maybeEmitMcpConsentRequired(widgetName) {
   try {
     clearWidgetPermsCache();
     const declared = getWidgetMcpPermissions(widgetName);
-    if (!declared) return;
+    if (declared) {
+      BrowserWindow.getAllWindows().forEach((win) => {
+        win.webContents.send("widget:mcp-consent-required", {
+          widgetId: widgetName,
+          declared,
+        });
+      });
+      return;
+    }
+
+    // No manifest — try a scan of the installed source.
+    if (!WIDGETS_CACHE_DIR) return;
+    const widgetPath = path.join(WIDGETS_CACHE_DIR, ...widgetName.split("/"));
+    if (!fs.existsSync(widgetPath)) return;
+    const scanResult = scanForMcpUsage({ dir: widgetPath });
+    const detectedServers = Object.keys(scanResult.servers);
+    if (detectedServers.length === 0) return; // nothing actionable to prompt about
+
+    // Build a synthetic declared blob in the same shape parseManifestPermissions
+    // produces so the consent modal can render it identically (modulo the
+    // amber "discovered" framing).
+    const syntheticServers = {};
+    for (const [name, entry] of Object.entries(scanResult.servers)) {
+      syntheticServers[name] = {
+        tools: entry.tools,
+        readPaths: [],
+        writePaths: [],
+      };
+    }
     BrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send("widget:mcp-consent-required", {
         widgetId: widgetName,
-        declared,
+        declared: { servers: syntheticServers },
+        discovered: true,
+        warnings: scanResult.warnings,
       });
     });
   } catch (e) {

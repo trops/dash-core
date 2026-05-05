@@ -24,6 +24,7 @@ const {
 } = require("../mcp/grantedPermissions");
 const { getWidgetMcpPermissions } = require("../mcp/widgetPermissions");
 const { getWidgetRegistry } = require("../widgetRegistry");
+const { buildGrantsListing } = require("./widgetMcpGrantsListing");
 
 function setupWidgetMcpGrantsHandlers() {
   ipcMain.handle("widget-mcp:get-grant", (event, widgetId) => {
@@ -42,18 +43,17 @@ function setupWidgetMcpGrantsHandlers() {
     return revokeServer(widgetId, serverName);
   });
 
-  // Joins all installed widgets with their declared and granted permission
-  // blocks. Returns one row per widget that has a declared manifest OR a
-  // grant — this surfaces both "freshly installed, awaiting consent" and
-  // "previously granted, now reviewable" cases in Settings.
+  // Joins all installed widgets with their declared manifests + persisted
+  // grants. Returns ONE row per installed widget regardless of whether it
+  // has a manifest or grant — that's how the Settings panel can offer
+  // "Grant manually" for unmanifested widgets. Plus orphan-grant rows for
+  // granted-but-uninstalled cases. Logic delegated to
+  // widgetMcpGrantsListing.buildGrantsListing for unit-testability.
   ipcMain.handle("widget-mcp:list-all", () => {
     const grantsByWidget = new Map();
     for (const { widgetId, granted } of listAllGrants()) {
       grantsByWidget.set(widgetId, granted);
     }
-
-    const rows = [];
-    const seen = new Set();
 
     let installedWidgets = [];
     try {
@@ -62,25 +62,19 @@ function setupWidgetMcpGrantsHandlers() {
       // Registry not initialized yet; fall back to grants-only listing.
     }
 
+    const declaredByWidget = new Map();
     for (const w of installedWidgets) {
       const widgetId = w?.name;
-      if (!widgetId || seen.has(widgetId)) continue;
-      seen.add(widgetId);
+      if (!widgetId) continue;
       const declared = getWidgetMcpPermissions(widgetId);
-      const granted = grantsByWidget.get(widgetId) || null;
-      // Skip widgets with neither — they have nothing to show.
-      if (!declared && !granted) continue;
-      rows.push({ widgetId, declared, granted });
+      if (declared) declaredByWidget.set(widgetId, declared);
     }
 
-    // Surface any grants whose widget is no longer installed (rare, but
-    // possible if uninstall didn't revoke). The user can still revoke them.
-    for (const [widgetId, granted] of grantsByWidget) {
-      if (seen.has(widgetId)) continue;
-      rows.push({ widgetId, declared: null, granted });
-    }
-
-    return rows;
+    return buildGrantsListing(
+      installedWidgets,
+      grantsByWidget,
+      declaredByWidget,
+    );
   });
 }
 

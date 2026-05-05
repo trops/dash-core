@@ -106,10 +106,10 @@ node --test electron/utils/safeJsExecutor.test.js
 step "Running safePath containment tests"
 node --test electron/utils/safePath.test.js
 
-# 6c3. Run MCP allowlist (Slice 1+2), per-workspace key (Slice 3a), and
-# path-scope union (Slice 3b) pins.
-step "Running MCP allowlist + per-workspace key + scope-resolver tests"
-node --test electron/mcp/permissionGate.test.js electron/mcp/grantedPermissions.test.js electron/utils/mcpServerKey.test.js electron/utils/mcpScopeResolver.test.js
+# 6c3. Run MCP allowlist (Slice 1+2), per-workspace key (Slice 3a),
+# path-scope union (Slice 3b), manifest scanner + grants listing pins.
+step "Running MCP allowlist + per-workspace key + scope-resolver + scanner + listing tests"
+node --test electron/mcp/permissionGate.test.js electron/mcp/grantedPermissions.test.js electron/utils/mcpServerKey.test.js electron/utils/mcpScopeResolver.test.js electron/utils/manifestScanner.test.js electron/controller/widgetMcpGrantsListing.test.js
 
 # 6d. Untracked-sources gate regression-pin
 step "Validating untracked-sources gate config"
