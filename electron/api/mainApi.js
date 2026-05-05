@@ -27,7 +27,6 @@ const openaiApi = require("./openaiApi");
 const menuItemsApi = require("./menuItemsApi");
 const pluginApi = require("./pluginApi");
 const llmApi = require("./llmApi");
-const clientCacheApi = require("./clientCacheApi");
 const dashboardConfigApi = require("./dashboardConfigApi");
 const dashboardRatingsApi = require("./dashboardRatingsApi");
 const registryAuthApi = require("./registryAuthApi");
@@ -107,7 +106,6 @@ function createMainApi(extensions = {}) {
     openai: openaiApi,
     menuItems: menuItemsApi,
     plugins: pluginApi,
-    clientCache: clientCacheApi,
     dashboardConfig: dashboardConfigApi,
     dashboardRatings: dashboardRatingsApi,
     registryAuth: registryAuthApi,

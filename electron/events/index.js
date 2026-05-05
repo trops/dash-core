@@ -17,7 +17,6 @@ const algoliaEvents = require("./algoliaEvents");
 const menuItemEvents = require("./menuItemEvents");
 const openaiEvents = require("./openaiEvents");
 const llmEvents = require("./llmEvents");
-const clientCacheEvents = require("./clientCacheEvents");
 const dashboardConfigEvents = require("./dashboardConfigEvents");
 const dashboardRatingsEvents = require("./dashboardRatingsEvents");
 const registryAuthEvents = require("./registryAuthEvents");
@@ -39,7 +38,6 @@ const publicEvents = {
  */
 const API_GROUPS = {
   algolia: Object.values(algoliaEvents),
-  cache: Object.values(clientCacheEvents),
   "dashboard-config": Object.values(dashboardConfigEvents),
   "dashboard-ratings": Object.values(dashboardRatingsEvents),
   data: Object.values(dataEvents),
@@ -80,7 +78,6 @@ module.exports = {
   ...menuItemEvents,
   ...openaiEvents,
   ...llmEvents,
-  ...clientCacheEvents,
   ...dashboardConfigEvents,
   ...dashboardRatingsEvents,
   ...registryAuthEvents,
