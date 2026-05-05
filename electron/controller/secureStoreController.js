@@ -1,18 +1,19 @@
 /**
- * secureStore
+ * secureStoreController
+ *
+ * Thin wrapper around Electron's `safeStorage` for renderer-side
+ * encryption checks. The `saveData` / `getData` helpers that previously
+ * lived here were unwired (no IPC handler in dash-electron) and
+ * lacked per-widget scoping; they were removed alongside their
+ * widget-facing API entries. See `electron/api/secureStoreApi.js`
+ * and the regression-pin in `secureStoreApi.test.js`.
+ *
+ * Provider credential encryption uses `safeStorage.encryptString` /
+ * `decryptString` directly inside `providerController` — that's the
+ * only internal caller and stays unchanged.
  */
 const { safeStorage } = require("electron");
-const Store = require("electron-store");
 const events = require("../events");
-
-const schema = {
-  appId: {
-    type: "string",
-  },
-  apiKey: {
-    type: "string",
-  },
-};
 
 const isEncryptionAvailable = (win) => {
   const result = safeStorage.isEncryptionAvailable();
@@ -29,34 +30,8 @@ const decryptString = (win, str) => {
   win.webContents.send("secure-storage-decrypt-string-complete", result);
 };
 
-const saveData = (key, value) => {
-  try {
-    const store = new Store({ schema });
-    store.set(key, value);
-    return getData(key);
-  } catch (e) {
-    return { data: null };
-  }
-};
-
-const getData = (key) => {
-  try {
-    const store = new Store({ schema });
-    const value = store.get(key);
-    if (value) {
-      return { [key]: value };
-    } else {
-      return null;
-    }
-  } catch (e) {
-    return null;
-  }
-};
-
 module.exports = {
   isEncryptionAvailable,
   encryptString,
   decryptString,
-  saveData,
-  getData,
 };
