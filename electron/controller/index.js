@@ -2,11 +2,7 @@
  * Controller exports.
  */
 const { showDialog, fileChosenError } = require("./dialogController");
-const {
-  isEncryptionAvailable,
-  saveData,
-  getData,
-} = require("./secureStoreController");
+const { isEncryptionAvailable } = require("./secureStoreController");
 const {
   listWorkspacesForApplication,
   saveWorkspaceForApplication,
@@ -124,8 +120,6 @@ module.exports = {
   showDialog,
   fileChosenError,
   isEncryptionAvailable,
-  saveData,
-  getData,
   listWorkspacesForApplication,
   saveWorkspaceForApplication,
   deleteWorkspaceForApplication,
