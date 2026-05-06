@@ -8,6 +8,7 @@ import { DashboardActionsApi } from "../Api/DashboardActionsApi";
 import { getUUID } from "@trops/dash-react";
 import { WidgetCardStatusBar } from "../Components/Layout/Builder/Enhanced/WidgetCardStatusBar";
 import { WidgetNotFound } from "./WidgetNotFound";
+import { MountTokenWrapper } from "./MountTokenWrapper";
 
 /**
  * WidgetErrorBoundary - Catches errors from widget rendering
@@ -218,9 +219,6 @@ const WidgetRenderer = ({
       // that delegate to DashboardPublisher), not the raw Electron dashApi
       const helpers = new WidgetHelpers(params, w);
 
-      // Memoize context value to prevent unnecessary re-renders
-      const widgetContextValue = { widgetData };
-
       const hasScheduledTasks = (config?.scheduledTasks || []).length > 0;
 
       const widgetElement =
@@ -262,9 +260,15 @@ const WidgetRenderer = ({
           </WidgetComponent>
         );
 
-      // Wrap widget rendering with WidgetContext + error boundary
+      // MountTokenWrapper owns the per-widget mount-token IPC
+      // (register at mount, unregister at unmount) and provides the
+      // WidgetContext value (widgetData + bound api) to descendants.
+      // The widgetId used for registration is the package name —
+      // that's what grants are keyed by, so the gate's
+      // token → widgetId resolution finds the right grant.
+      const widgetIdForGate = params?.name || component;
       return (
-        <WidgetContext.Provider value={widgetContextValue}>
+        <MountTokenWrapper widgetId={widgetIdForGate} widgetData={widgetData}>
           <WidgetErrorBoundary widgetName={component}>
             {hasScheduledTasks ? (
               <div className="flex flex-col w-full h-full min-h-0">
@@ -277,7 +281,7 @@ const WidgetRenderer = ({
               widgetElement
             )}
           </WidgetErrorBoundary>
-        </WidgetContext.Provider>
+        </MountTokenWrapper>
       );
     }
   } catch (e) {
