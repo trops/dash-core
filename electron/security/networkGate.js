@@ -41,6 +41,20 @@
 
 const { getGrant, setGrant } = require("../mcp/grantedPermissions");
 const { requestApproval } = require("../mcp/jitConsent");
+const { lookup: lookupMountToken } = require("./mountTokenRegistry");
+
+// See `mountTokenRegistry.js` and the matching block in fsGate.js —
+// when a token is supplied, it's the trusted identity source; the
+// renderer-claimed widgetId is ignored. Legacy widgetId-only callers
+// still work in slice 1 (additive); slice 2 will flip to deny.
+function _resolveIdentity({ token, widgetId }) {
+  if (typeof token === "string" && token.length > 0) {
+    const resolved = lookupMountToken(token);
+    if (resolved) return { widgetId: resolved, source: "token" };
+    return { widgetId: null, source: "token-unknown" };
+  }
+  return { widgetId: widgetId || null, source: "legacy" };
+}
 
 function _isNoGrantDenial(reason) {
   return (
@@ -83,7 +97,16 @@ function _parseHost(url) {
  * Synchronous gate evaluation.
  * @returns {{ allow: true } | { allow: false, reason: string }}
  */
-function gateNetworkCall({ widgetId, action, args }) {
+function gateNetworkCall({ widgetId, token, action, args }) {
+  const resolved = _resolveIdentity({ token, widgetId });
+  if (resolved.source === "token-unknown") {
+    return {
+      allow: false,
+      reason:
+        "network gate: unknown mount token; widget identity not verifiable",
+    };
+  }
+  widgetId = resolved.widgetId;
   if (!widgetId) {
     return {
       allow: false,
@@ -174,11 +197,21 @@ async function gateNetworkCallWithJit(req, opts = {}) {
   if (!opts.enableJit) return initial;
   if (!_isNoGrantDenial(initial.reason)) return initial;
 
+  // Same identity-resolution as the sync gate — the JIT prompt and
+  // grant write must use the verified widgetId, not whatever the
+  // renderer claimed.
+  const resolved = _resolveIdentity({
+    token: req.token,
+    widgetId: req.widgetId,
+  });
+  const verifiedWidgetId = resolved.widgetId;
+  if (!verifiedWidgetId) return initial;
+
   let decision;
   try {
     decision = await requestApproval(
       {
-        widgetId: req.widgetId,
+        widgetId: verifiedWidgetId,
         domain: "network",
         action: req.action,
         args: req.args || {},
@@ -201,7 +234,7 @@ async function gateNetworkCallWithJit(req, opts = {}) {
       allow: false,
       reason:
         "user declined JIT consent for widget '" +
-        req.widgetId +
+        verifiedWidgetId +
         "' calling network '" +
         req.action +
         "'",
@@ -219,9 +252,9 @@ async function gateNetworkCallWithJit(req, opts = {}) {
   addition.grantOrigin = "live";
 
   try {
-    const current = getGrant(req.widgetId);
+    const current = getGrant(verifiedWidgetId);
     const merged = _mergeNetworkGrant(current, addition);
-    setGrant(req.widgetId, merged);
+    setGrant(verifiedWidgetId, merged);
   } catch (e) {
     return {
       allow: false,

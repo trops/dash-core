@@ -41,6 +41,21 @@
 const { getGrant, setGrant } = require("./grantedPermissions");
 const { safePath } = require("../utils/safePath");
 const { requestApproval } = require("./jitConsent");
+const { lookup: lookupMountToken } = require("../security/mountTokenRegistry");
+
+// See `electron/security/mountTokenRegistry.js`. When a token is
+// supplied it's the trusted identity source — gates resolve widgetId
+// via lookupMountToken and ignore renderer-claimed widgetId. Slice 1
+// keeps the legacy widgetId-only path working (additive); slice 2 will
+// flip to deny-without-token.
+function _resolveIdentity({ token, widgetId }) {
+  if (typeof token === "string" && token.length > 0) {
+    const resolved = lookupMountToken(token);
+    if (resolved) return { widgetId: resolved, source: "token" };
+    return { widgetId: null, source: "token-unknown" };
+  }
+  return { widgetId: widgetId || null, source: "legacy" };
+}
 
 // Argument keys that look like paths. Different MCP servers use
 // different conventions; this list covers the common filesystem-style
@@ -62,7 +77,15 @@ function isWriteTool(toolName) {
 /**
  * @returns {{ allow: true } | { allow: false, reason: string }}
  */
-function gateToolCall({ widgetId, serverName, toolName, args }) {
+function gateToolCall({ widgetId, token, serverName, toolName, args }) {
+  const resolved = _resolveIdentity({ token, widgetId });
+  if (resolved.source === "token-unknown") {
+    return {
+      allow: false,
+      reason: "MCP gate: unknown mount token; widget identity not verifiable",
+    };
+  }
+  widgetId = resolved.widgetId;
   if (!widgetId) {
     return {
       allow: false,
@@ -216,11 +239,20 @@ async function gateToolCallWithJit(req, opts = {}) {
   if (!opts.enableJit) return initial;
   if (!_isNoGrantDenial(initial.reason)) return initial;
 
+  // Same identity-resolution as the sync gate — JIT prompt and grant
+  // write must use the verified widgetId.
+  const resolved = _resolveIdentity({
+    token: req.token,
+    widgetId: req.widgetId,
+  });
+  const verifiedWidgetId = resolved.widgetId;
+  if (!verifiedWidgetId) return initial;
+
   let decision;
   try {
     decision = await requestApproval(
       {
-        widgetId: req.widgetId,
+        widgetId: verifiedWidgetId,
         domain: "mcp",
         action: "callTool",
         args: {
@@ -247,7 +279,7 @@ async function gateToolCallWithJit(req, opts = {}) {
       allow: false,
       reason:
         "user declined JIT consent for widget '" +
-        req.widgetId +
+        verifiedWidgetId +
         "' calling '" +
         req.toolName +
         "' on '" +
@@ -277,9 +309,9 @@ async function gateToolCallWithJit(req, opts = {}) {
   addition.grantOrigin = "live";
 
   try {
-    const current = getGrant(req.widgetId);
+    const current = getGrant(verifiedWidgetId);
     const merged = _mergeGrant(current, addition);
-    setGrant(req.widgetId, merged);
+    setGrant(verifiedWidgetId, merged);
   } catch (e) {
     return {
       allow: false,

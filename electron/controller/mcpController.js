@@ -815,6 +815,7 @@ const mcpController = {
     allowedTools = null,
     widgetId = null,
     workspaceId = null,
+    token = null,
   ) => {
     const key = serverKey(workspaceId, serverName);
     try {
@@ -838,8 +839,12 @@ const mcpController = {
       // startServer happens after the gate decides — and (b) avoids
       // leaking server-running state through error timing to a
       // probing widget that doesn't have permission anyway.
-      if (isWidgetPermissionEnforcementEnabled() && widgetId) {
-        const gateReq = { widgetId, serverName, toolName, args };
+      // Slice 1 (additive): if a mount token is supplied it's the
+      // trusted identity source; widgetId is verified-or-overwritten
+      // inside the gate via mountTokenRegistry. Gate gets to run
+      // whenever EITHER token or widgetId is present.
+      if (isWidgetPermissionEnforcementEnabled() && (widgetId || token)) {
+        const gateReq = { widgetId, token, serverName, toolName, args };
         const gate = isJitConsentEnabled()
           ? await gateToolCallWithJit(gateReq, { enableJit: true })
           : gateToolCall(gateReq);

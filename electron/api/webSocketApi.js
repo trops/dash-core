@@ -25,8 +25,8 @@ const webSocketApi = {
    * @param {object} config { url, headers, subprotocols, credentials }
    * @returns {Promise<{ success, providerName, status } | { error, message }>}
    */
-  connect: (providerName, config, widgetId = null) =>
-    ipcRenderer.invoke(WS_CONNECT, { providerName, config, widgetId }),
+  connect: (providerName, config, widgetId = null, token = null) =>
+    ipcRenderer.invoke(WS_CONNECT, { providerName, config, widgetId, token }),
 
   /**
    * disconnect

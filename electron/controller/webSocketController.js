@@ -45,16 +45,16 @@ function _loadFlags() {
   }
 }
 
-async function _runNetworkGate(action, widgetId, args) {
+async function _runNetworkGate(action, widgetId, args, token) {
   const settings = _loadFlags();
   if (!readEnforceFlag(settings)) return { allow: true };
-  if (!widgetId) return { allow: true }; // legacy callers
+  if (!widgetId && !token) return { allow: true }; // legacy callers
   return readJitFlag(settings)
     ? await gateNetworkCallWithJit(
-        { widgetId, action, args },
+        { widgetId, token, action, args },
         { enableJit: true },
       )
-    : gateNetworkCall({ widgetId, action, args });
+    : gateNetworkCall({ widgetId, token, action, args });
 }
 
 /**
@@ -486,17 +486,20 @@ const webSocketController = {
    * @param {object} config - { url, headers, subprotocols, credentials }
    * @returns {{ success, providerName, status } | { error, message }}
    */
-  connect: async (win, providerName, config, widgetId = null) => {
-    // Phase 3 network gate — fires only when an explicit widgetId is
-    // supplied. The interpolated URL (with credentials substituted) is
-    // what we actually open the socket to, so the gate uses it for
+  connect: async (win, providerName, config, widgetId = null, token = null) => {
+    // Phase 3 network gate — fires when an explicit widgetId or token
+    // is supplied. The interpolated URL (with credentials substituted)
+    // is what we actually open the socket to, so the gate uses it for
     // hostname extraction.
     const interpolatedForGate = config?.credentials
       ? interpolate(config.url, config.credentials)
       : config?.url;
-    const gateResult = await _runNetworkGate("wsConnect", widgetId, {
-      url: interpolatedForGate,
-    });
+    const gateResult = await _runNetworkGate(
+      "wsConnect",
+      widgetId,
+      { url: interpolatedForGate },
+      token,
+    );
     if (!gateResult.allow) {
       return {
         error: true,

@@ -36,13 +36,19 @@ function _loadFlags() {
  *
  * @returns {Promise<boolean>}
  */
-async function _runFsGate(win, action, widgetId, args, errorEvent) {
+async function _runFsGate(win, action, widgetId, args, errorEvent, token) {
   const settings = _loadFlags();
   if (!readEnforceFlag(settings)) return true; // gate disabled
-  if (!widgetId) return true; // legacy callers without widgetId — see plan
+  // Slice 1 (additive): token is the trusted identity when present.
+  // If neither token nor widgetId is supplied, legacy bypass still
+  // applies; slice 2 will flip this to deny.
+  if (!widgetId && !token) return true;
   const gate = readJitFlag(settings)
-    ? await gateFsCallWithJit({ widgetId, action, args }, { enableJit: true })
-    : gateFsCall({ widgetId, action, args });
+    ? await gateFsCallWithJit(
+        { widgetId, token, action, args },
+        { enableJit: true },
+      )
+    : gateFsCall({ widgetId, token, action, args });
   if (gate.allow) return true;
   if (win && errorEvent) {
     win.webContents.send(errorEvent, {
@@ -57,16 +63,16 @@ async function _runFsGate(win, action, widgetId, args, errorEvent) {
  * Phase 3 network gate. Same shape as _runFsGate but for outbound
  * URLs. Mirrors fs's "disabled / no widgetId / sync vs async" branching.
  */
-async function _runNetworkGate(win, action, widgetId, args, errorEvent) {
+async function _runNetworkGate(win, action, widgetId, args, errorEvent, token) {
   const settings = _loadFlags();
   if (!readEnforceFlag(settings)) return true;
-  if (!widgetId) return true;
+  if (!widgetId && !token) return true;
   const gate = readJitFlag(settings)
     ? await gateNetworkCallWithJit(
-        { widgetId, action, args },
+        { widgetId, token, action, args },
         { enableJit: true },
       )
-    : gateNetworkCall({ widgetId, action, args });
+    : gateNetworkCall({ widgetId, token, action, args });
   if (gate.allow) return true;
   if (win && errorEvent) {
     win.webContents.send(errorEvent, {
@@ -238,7 +244,13 @@ const dataController = {
     }
   },
 
-  readDataFromURL: async (win, url, toFilepath, widgetId = null) => {
+  readDataFromURL: async (
+    win,
+    url,
+    toFilepath,
+    widgetId = null,
+    token = null,
+  ) => {
     // Phase 3 network gate. Runs before HTTPS-protocol + safePath
     // checks so JIT can prompt the user without leaking URL parser
     // edge cases through error timing.
@@ -248,6 +260,7 @@ const dataController = {
       widgetId,
       { url },
       events.READ_DATA_URL_ERROR,
+      token,
     );
     if (!gateOk) return;
     try {
@@ -435,6 +448,7 @@ const dataController = {
     append,
     returnEmpty = {},
     widgetId = null,
+    token = null,
   ) => {
     // Phase 2 fs gate. Runs before safePath containment so JIT can
     // prompt the user without leaking path-shape information through
@@ -445,6 +459,7 @@ const dataController = {
       widgetId,
       { filename },
       events.DATA_SAVE_TO_FILE_ERROR,
+      token,
     );
     if (!gateOk) return;
     try {
@@ -540,7 +555,13 @@ const dataController = {
     }
   },
 
-  readFromFile: async (win, filename, returnIfEmpty = {}, widgetId = null) => {
+  readFromFile: async (
+    win,
+    filename,
+    returnIfEmpty = {},
+    widgetId = null,
+    token = null,
+  ) => {
     // Phase 2 fs gate — same as saveToFile.
     const gateOk = await _runFsGate(
       win,
@@ -548,6 +569,7 @@ const dataController = {
       widgetId,
       { filename },
       events.DATA_READ_FROM_FILE_ERROR,
+      token,
     );
     if (!gateOk) return;
     try {
