@@ -445,3 +445,117 @@ test("gateNetworkCallWithJit: legacy grant (no actions[]) does NOT escalate when
   );
   assert.strictEqual(r.allow, true);
 });
+
+// ---- package-scope sibling batch grant (slice 5) ---------------------
+
+const NET_SIBS_REGISTRY = new Map([
+  [
+    "@trops/netsib",
+    {
+      packageId: "@trops/netsib",
+      componentNames: ["NetA", "NetB", "NetC"],
+    },
+  ],
+]);
+
+test("networkGate: applyToSiblings: true → grant written to every sibling", async () => {
+  reset();
+  jitDecisions.push(() => ({
+    approve: true,
+    applyToSiblings: true,
+    granted: {
+      grantOrigin: "live",
+      domains: {
+        network: {
+          actions: ["readDataFromURL"],
+          hosts: ["api.example.com"],
+        },
+      },
+    },
+  }));
+  const r = await networkGate.gateNetworkCallWithJit(
+    {
+      widgetId: "trops.netsib.NetA",
+      action: "readDataFromURL",
+      args: { url: "https://api.example.com/x" },
+    },
+    {
+      enableJit: true,
+      getRegistrySnapshot: () => NET_SIBS_REGISTRY,
+    },
+  );
+  assert.strictEqual(r.allow, true);
+  for (const id of [
+    "trops.netsib.NetA",
+    "trops.netsib.NetB",
+    "trops.netsib.NetC",
+  ]) {
+    const g = fakeGrantedPermissions.getGrant(id);
+    assert.ok(g, "expected grant for " + id);
+    assert.deepStrictEqual(g.domains.network.hosts, ["api.example.com"]);
+    assert.deepStrictEqual(g.domains.network.actions, ["readDataFromURL"]);
+  }
+});
+
+test("networkGate: applyToSiblings: false → only requesting widget gets grant", async () => {
+  reset();
+  jitDecisions.push(() => ({
+    approve: true,
+    applyToSiblings: false,
+    granted: {
+      grantOrigin: "live",
+      domains: {
+        network: {
+          actions: ["readDataFromURL"],
+          hosts: ["api.example.com"],
+        },
+      },
+    },
+  }));
+  await networkGate.gateNetworkCallWithJit(
+    {
+      widgetId: "trops.netsib.NetA",
+      action: "readDataFromURL",
+      args: { url: "https://api.example.com/x" },
+    },
+    {
+      enableJit: true,
+      getRegistrySnapshot: () => NET_SIBS_REGISTRY,
+    },
+  );
+  assert.ok(fakeGrantedPermissions.getGrant("trops.netsib.NetA"));
+  assert.strictEqual(
+    fakeGrantedPermissions.getGrant("trops.netsib.NetB"),
+    null,
+  );
+});
+
+test("networkGate: request payload includes packageId + siblingWidgetIds", async () => {
+  reset();
+  let received = null;
+  jitDecisions.push((req) => {
+    received = req;
+    return {
+      approve: true,
+      granted: {
+        grantOrigin: "live",
+        domains: {
+          network: { actions: ["readDataFromURL"], hosts: ["api.example.com"] },
+        },
+      },
+    };
+  });
+  await networkGate.gateNetworkCallWithJit(
+    {
+      widgetId: "trops.netsib.NetA",
+      action: "readDataFromURL",
+      args: { url: "https://api.example.com/x" },
+    },
+    {
+      enableJit: true,
+      getRegistrySnapshot: () => NET_SIBS_REGISTRY,
+    },
+  );
+  assert.strictEqual(received.packageId, "@trops/netsib");
+  assert.strictEqual(received.siblingWidgetIds.length, 3);
+});

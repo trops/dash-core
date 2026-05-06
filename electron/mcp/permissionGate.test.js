@@ -66,6 +66,7 @@ const {
 const { parseManifestPermissions, clearCache } = require("./widgetPermissions");
 const {
   setGrant,
+  getGrant,
   revokeGrant,
   clearCache: clearGrantCache,
 } = require("./grantedPermissions");
@@ -589,4 +590,173 @@ test("JIT does NOT escalate: no widgetId and no token — caller bug", async () 
   );
   assert.strictEqual(approvalCalled, false);
   assert.strictEqual(r.allow, false);
+});
+
+// ---- package-scope sibling batch grant (slice 5) ----------------------
+//
+// Resolved siblings are passed to requestApproval in the request
+// payload (modal renders the checkbox). On approval, the gate writes
+// the same merged grant to every sibling iff `decision.applyToSiblings`
+// is true. Each sibling's existing grant is preserved (merge, not
+// clobber).
+
+const SIBLINGS_REGISTRY = new Map([
+  [
+    "@trops/sibtest",
+    {
+      packageId: "@trops/sibtest",
+      componentNames: ["WidgetA", "WidgetB", "WidgetC"],
+    },
+  ],
+]);
+
+function setupSibTestWidget(name) {
+  installFakeWidget(
+    "trops.sibtest." + name,
+    { name: "trops.sibtest." + name },
+    { writeGrant: false },
+  );
+  // Sibling tests share ids — explicitly revoke A/B/C so state from a
+  // prior `applyToSiblings: true` test doesn't leak into the next one.
+  for (const sib of ["WidgetA", "WidgetB", "WidgetC"]) {
+    revokeGrant("trops.sibtest." + sib);
+  }
+}
+
+test("JIT request payload carries packageId + siblingWidgetIds", async () => {
+  setupSibTestWidget("WidgetA");
+  let received = null;
+  __mockApproval = async (req) => {
+    received = req;
+    return {
+      approve: true,
+      granted: {
+        grantOrigin: "live",
+        servers: { srv: { tools: ["t"], readPaths: [], writePaths: [] } },
+      },
+    };
+  };
+  await gateToolCallWithJit(
+    {
+      widgetId: "trops.sibtest.WidgetA",
+      serverName: "srv",
+      toolName: "t",
+      args: {},
+    },
+    { enableJit: true, getRegistrySnapshot: () => SIBLINGS_REGISTRY },
+  );
+  assert.strictEqual(received.packageId, "@trops/sibtest");
+  assert.deepStrictEqual(received.siblingWidgetIds, [
+    "trops.sibtest.WidgetA",
+    "trops.sibtest.WidgetB",
+    "trops.sibtest.WidgetC",
+  ]);
+});
+
+test("applyToSiblings: true → grant written to every sibling", async () => {
+  setupSibTestWidget("WidgetA");
+  __mockApproval = async () => ({
+    approve: true,
+    applyToSiblings: true,
+    granted: {
+      grantOrigin: "live",
+      servers: { srv: { tools: ["t"], readPaths: [], writePaths: [] } },
+    },
+  });
+  const r = await gateToolCallWithJit(
+    {
+      widgetId: "trops.sibtest.WidgetA",
+      serverName: "srv",
+      toolName: "t",
+      args: {},
+    },
+    { enableJit: true, getRegistrySnapshot: () => SIBLINGS_REGISTRY },
+  );
+  assert.strictEqual(r.allow, true);
+  // Each sibling now has the grant.
+  for (const id of [
+    "trops.sibtest.WidgetA",
+    "trops.sibtest.WidgetB",
+    "trops.sibtest.WidgetC",
+  ]) {
+    const g = getGrant(id);
+    assert.ok(g, "expected grant for " + id);
+    assert.deepStrictEqual(g.servers.srv.tools, ["t"]);
+  }
+});
+
+test("applyToSiblings: false → only requesting widget gets the grant", async () => {
+  setupSibTestWidget("WidgetA");
+  __mockApproval = async () => ({
+    approve: true,
+    applyToSiblings: false,
+    granted: {
+      grantOrigin: "live",
+      servers: { srv: { tools: ["t"], readPaths: [], writePaths: [] } },
+    },
+  });
+  await gateToolCallWithJit(
+    {
+      widgetId: "trops.sibtest.WidgetA",
+      serverName: "srv",
+      toolName: "t",
+      args: {},
+    },
+    { enableJit: true, getRegistrySnapshot: () => SIBLINGS_REGISTRY },
+  );
+  assert.ok(getGrant("trops.sibtest.WidgetA"));
+  assert.strictEqual(getGrant("trops.sibtest.WidgetB"), null);
+  assert.strictEqual(getGrant("trops.sibtest.WidgetC"), null);
+});
+
+test("applyToSiblings: true preserves siblings' existing grants on other servers", async () => {
+  setupSibTestWidget("WidgetA");
+  // Pre-existing grant on WidgetB for a DIFFERENT server.
+  setGrant("trops.sibtest.WidgetB", {
+    grantOrigin: "manual",
+    servers: {
+      "other-server": { tools: ["other-tool"], readPaths: [], writePaths: [] },
+    },
+  });
+  __mockApproval = async () => ({
+    approve: true,
+    applyToSiblings: true,
+    granted: {
+      grantOrigin: "live",
+      servers: {
+        "google-drive": { tools: ["search"], readPaths: [], writePaths: [] },
+      },
+    },
+  });
+  await gateToolCallWithJit(
+    {
+      widgetId: "trops.sibtest.WidgetA",
+      serverName: "google-drive",
+      toolName: "search",
+      args: {},
+    },
+    { enableJit: true, getRegistrySnapshot: () => SIBLINGS_REGISTRY },
+  );
+  // WidgetB now has BOTH grants — the prior one wasn't clobbered.
+  const b = getGrant("trops.sibtest.WidgetB");
+  assert.deepStrictEqual(b.servers["other-server"].tools, ["other-tool"]);
+  assert.deepStrictEqual(b.servers["google-drive"].tools, ["search"]);
+});
+
+test("applyToSiblings: true with deny → no grants written anywhere", async () => {
+  setupSibTestWidget("WidgetA");
+  __mockApproval = async () => ({ approve: false, applyToSiblings: true });
+  const r = await gateToolCallWithJit(
+    {
+      widgetId: "trops.sibtest.WidgetA",
+      serverName: "srv",
+      toolName: "t",
+      args: {},
+    },
+    { enableJit: true, getRegistrySnapshot: () => SIBLINGS_REGISTRY },
+  );
+  assert.strictEqual(r.allow, false);
+  assert.strictEqual(getGrant("trops.sibtest.WidgetA"), null);
+  assert.strictEqual(getGrant("trops.sibtest.WidgetB"), null);
+  assert.strictEqual(getGrant("trops.sibtest.WidgetC"), null);
 });

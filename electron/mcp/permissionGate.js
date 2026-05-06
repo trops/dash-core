@@ -42,6 +42,20 @@ const { getGrant, setGrant } = require("./grantedPermissions");
 const { safePath } = require("../utils/safePath");
 const { requestApproval } = require("./jitConsent");
 const { lookup: lookupMountToken } = require("../security/mountTokenRegistry");
+const { resolveSiblings } = require("../security/resolveSiblings");
+
+// Lazy default for the registry snapshot — `widgetRegistry.js` pulls
+// in a lot, so we don't want to require it at module-load time. The
+// JIT path calls this only on escalation. Tests inject their own via
+// `opts.getRegistrySnapshot` to avoid touching the real registry.
+function _defaultRegistrySnapshot() {
+  try {
+    const reg = require("../widgetRegistry").getWidgetRegistry();
+    return reg && reg.widgets ? reg.widgets : null;
+  } catch (_) {
+    return null;
+  }
+}
 
 // See `electron/security/mountTokenRegistry.js`. When a token is
 // supplied it's the trusted identity source — gates resolve widgetId
@@ -262,6 +276,14 @@ async function gateToolCallWithJit(req, opts = {}) {
   );
   if (hasToolInGrant) return gateToolCall(req);
 
+  // Slice 5: resolve siblings so the modal can offer "Apply to all
+  // widgets from <package>". Siblings are computed from the registry
+  // snapshot (currently-installed widgets only — newly-installed
+  // siblings after consent must re-prompt; supply-chain defense).
+  const getRegistrySnapshot =
+    opts.getRegistrySnapshot || _defaultRegistrySnapshot;
+  const siblingInfo = resolveSiblings(verifiedWidgetId, getRegistrySnapshot());
+
   let decision;
   try {
     decision = await requestApproval(
@@ -274,6 +296,8 @@ async function gateToolCallWithJit(req, opts = {}) {
           toolName: req.toolName,
           args: req.args || {},
         },
+        packageId: siblingInfo.packageId,
+        siblingWidgetIds: siblingInfo.siblingWidgetIds,
       },
       { timeoutMs: opts.timeoutMs },
     );
@@ -318,10 +342,25 @@ async function gateToolCallWithJit(req, opts = {}) {
   // Force grantOrigin: "live" regardless of what the renderer sent.
   addition.grantOrigin = "live";
 
+  // Slice 5: when the user opted into "Apply to all widgets from
+  // <package>", write the same merged grant for every sibling — each
+  // merge re-reads that sibling's existing grant so we don't clobber
+  // its prior grants on other servers/tools. When the option is off
+  // (or no siblings were resolved), behave as before: single-widget
+  // write to the requesting widget only.
+  const targetWidgetIds =
+    decision.applyToSiblings === true &&
+    Array.isArray(siblingInfo.siblingWidgetIds) &&
+    siblingInfo.siblingWidgetIds.length > 1
+      ? siblingInfo.siblingWidgetIds
+      : [verifiedWidgetId];
+
   try {
-    const current = getGrant(verifiedWidgetId);
-    const merged = _mergeGrant(current, addition);
-    setGrant(verifiedWidgetId, merged);
+    for (const targetId of targetWidgetIds) {
+      const current = getGrant(targetId);
+      const merged = _mergeGrant(current, addition);
+      setGrant(targetId, merged);
+    }
   } catch (e) {
     return {
       allow: false,

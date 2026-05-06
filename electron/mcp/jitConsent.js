@@ -163,6 +163,17 @@ function requestApproval(req, opts = {}) {
       domain: req.domain,
       action: req.action,
       args: req.args || {},
+      // Slice 5 (package-scope): the gate pre-resolves these via
+      // resolveSiblings before calling here. Modal renders the
+      // "Apply to all widgets from <package>" checkbox when
+      // siblingWidgetIds.length > 1; absence means single-widget.
+      packageId:
+        typeof req.packageId === "string" && req.packageId
+          ? req.packageId
+          : null,
+      siblingWidgetIds: Array.isArray(req.siblingWidgetIds)
+        ? req.siblingWidgetIds
+        : [req.widgetId],
     });
   });
 }
