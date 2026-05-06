@@ -9,6 +9,7 @@ import { getUUID } from "@trops/dash-react";
 import { WidgetCardStatusBar } from "../Components/Layout/Builder/Enhanced/WidgetCardStatusBar";
 import { WidgetNotFound } from "./WidgetNotFound";
 import { MountTokenWrapper } from "./MountTokenWrapper";
+import { buildWidgetData } from "./buildWidgetData";
 
 /**
  * WidgetErrorBoundary - Catches errors from widget rendering
@@ -200,14 +201,18 @@ const WidgetRenderer = ({
         bgColor = "backgroundColor" in styles ? styles["backgroundColor"] : "";
       }
 
-      // Build widgetData for WidgetContext — hooks read from this
+      // Build widgetData for WidgetContext — hooks read from this.
+      // `name` is set inside buildWidgetData (defaulting to `component`)
+      // so useMcpProvider/useWebSocketProvider produce a non-null
+      // widgetIdForGate. Without it, the runtime gate hits the legacy
+      // widgetId-null bypass and silently allows every MCP/WS call.
       const uuidString = getUUID(params.uuid);
-      const widgetData = {
-        ...params,
+      const widgetData = buildWidgetData({
+        params,
+        component,
+        config,
         uuidString,
-        providers: config?.providers || [],
-        notifications: config?.notifications || [],
-      };
+      });
 
       // need to set the electron api here.
       const w = WidgetApi;
