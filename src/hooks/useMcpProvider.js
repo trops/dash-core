@@ -23,6 +23,17 @@ const pendingConnects = new Map();
 
 const NO_WORKSPACE = "__no_workspace__";
 
+/**
+ * Renderer-side timeout for `callTool`. MUST exceed
+ * `electron/mcp/jitConsent.js`'s `DEFAULT_TIMEOUT_MS` (60_000) so that
+ * an in-flight JIT consent prompt can resolve before this Promise
+ * rejects. Pre-fix value (30_000) caused the renderer to error out
+ * mid-prompt — even on user approval the widget had already failed.
+ * 90_000 = 60s main JIT timeout + 30s slack for IPC roundtrip,
+ * grant write, and gate re-evaluation.
+ */
+export const CALL_TOOL_TIMEOUT_MS = 90_000;
+
 function rendererStateKey(workspaceId, serverName) {
   const wid =
     workspaceId && typeof workspaceId === "string" ? workspaceId : NO_WORKSPACE;
@@ -512,8 +523,12 @@ export const useMcpProvider = (providerType, options = {}) => {
 
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
-          reject(new Error(`Tool call "${toolName}" timed out after 30s`));
-        }, 30000);
+          reject(
+            new Error(
+              `Tool call "${toolName}" timed out after ${CALL_TOOL_TIMEOUT_MS}ms`,
+            ),
+          );
+        }, CALL_TOOL_TIMEOUT_MS);
 
         dashApi.mcpCallTool(
           selectedProviderName,
