@@ -50,7 +50,6 @@ const {
   saveMenuItemForApplication,
   listMenuItemsForApplication,
 } = require("./menuItemsController");
-const { install: pluginInstall } = require("./pluginController");
 const {
   exportDashboardConfig,
   selectDashboardFile,
@@ -152,7 +151,6 @@ module.exports = {
   describeImage,
   saveMenuItemForApplication,
   listMenuItemsForApplication,
-  pluginInstall,
   searchIndex,
   exportDashboardConfig,
   selectDashboardFile,

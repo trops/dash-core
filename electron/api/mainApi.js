@@ -25,7 +25,6 @@ const themeApi = require("./themeApi");
 const algoliaApi = require("./algoliaApi");
 const openaiApi = require("./openaiApi");
 const menuItemsApi = require("./menuItemsApi");
-const pluginApi = require("./pluginApi");
 const llmApi = require("./llmApi");
 const dashboardConfigApi = require("./dashboardConfigApi");
 const dashboardRatingsApi = require("./dashboardRatingsApi");
@@ -105,7 +104,6 @@ function createMainApi(extensions = {}) {
     algolia: algoliaApi,
     openai: openaiApi,
     menuItems: menuItemsApi,
-    plugins: pluginApi,
     dashboardConfig: dashboardConfigApi,
     dashboardRatings: dashboardRatingsApi,
     registryAuth: registryAuthApi,
