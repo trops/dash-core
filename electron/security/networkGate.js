@@ -56,12 +56,6 @@ function _resolveIdentity({ token, widgetId }) {
   return { widgetId: widgetId || null, source: "legacy" };
 }
 
-function _isNoGrantDenial(reason) {
-  return (
-    typeof reason === "string" && /no network permissions granted/i.test(reason)
-  );
-}
-
 function _hostMatches(host, allowedList) {
   if (!Array.isArray(allowedList) || allowedList.length === 0) return false;
   if (allowedList.includes("*")) return true;
@@ -147,6 +141,23 @@ function gateNetworkCall({ widgetId, token, action, args }) {
     };
   }
 
+  // Slice 4: per-action allowlist. Same Option A migration as fsGate —
+  // missing/empty `actions[]` falls through to the legacy "any action
+  // against allowed hosts" semantics so pre-slice grants keep working.
+  if (Array.isArray(netPerms.actions) && netPerms.actions.length > 0) {
+    if (!netPerms.actions.includes(action)) {
+      return {
+        allow: false,
+        reason:
+          "network gate: action '" +
+          action +
+          "' not in actions allowlist for widget '" +
+          widgetId +
+          "'",
+      };
+    }
+  }
+
   if (_hostMatches(host, netPerms.hosts)) {
     return { allow: true };
   }
@@ -174,7 +185,7 @@ function _mergeNetworkGrant(current, addition) {
   const additionNet = addition?.domains?.network;
   if (additionNet) {
     const existingNet = out.domains.network || { hosts: [] };
-    out.domains.network = {
+    const merged = {
       hosts: [
         ...new Set([
           ...(existingNet.hosts || []),
@@ -182,30 +193,73 @@ function _mergeNetworkGrant(current, addition) {
         ]),
       ],
     };
+    // Slice 4: union `actions[]`. Only emit when at least one side
+    // declared it — preserves Option A migration.
+    const existingActions = Array.isArray(existingNet.actions)
+      ? existingNet.actions
+      : null;
+    const additionActions = Array.isArray(additionNet.actions)
+      ? additionNet.actions
+      : null;
+    if (existingActions || additionActions) {
+      merged.actions = [
+        ...new Set([...(existingActions || []), ...(additionActions || [])]),
+      ];
+    }
+    out.domains.network = merged;
   }
   return out;
 }
 
 /**
- * Async gate that escalates "no network grant" denials to a JIT
- * consent prompt when `opts.enableJit` is true. On approval, merges
- * the decision's grant blob into the persisted grant and re-evaluates.
+ * Async gate that escalates "missing in grant" network denials to a
+ * JIT consent prompt when `opts.enableJit` is true. Escalation signal
+ * is STRUCTURAL: if the requested action+host isn't covered by the
+ * widget's grant (action absent from `actions[]`, or host absent from
+ * `hosts[]`), JIT fires. Identity-resolution failures and malformed-
+ * args / malformed-URL denials short-circuit to the sync verdict — not
+ * recoverable via consent. Once the request IS covered, the sync gate
+ * is authoritative.
  */
 async function gateNetworkCallWithJit(req, opts = {}) {
-  const initial = gateNetworkCall(req);
-  if (initial.allow) return initial;
-  if (!opts.enableJit) return initial;
-  if (!_isNoGrantDenial(initial.reason)) return initial;
+  if (!opts.enableJit) return gateNetworkCall(req);
 
-  // Same identity-resolution as the sync gate — the JIT prompt and
-  // grant write must use the verified widgetId, not whatever the
-  // renderer claimed.
+  // Identity must resolve. Unknown tokens / missing widgetId aren't
+  // consent gaps.
   const resolved = _resolveIdentity({
     token: req.token,
     widgetId: req.widgetId,
   });
+  if (resolved.source === "token-unknown" || !resolved.widgetId) {
+    return gateNetworkCall(req);
+  }
   const verifiedWidgetId = resolved.widgetId;
-  if (!verifiedWidgetId) return initial;
+
+  // Args must be well-formed enough to derive a host — malformed
+  // calls aren't consent gaps.
+  const url = req.args && typeof req.args === "object" ? req.args.url : null;
+  if (typeof url !== "string" || !url) {
+    return gateNetworkCall(req);
+  }
+  const host = _parseHost(url);
+  if (!host) {
+    return gateNetworkCall(req);
+  }
+
+  // Structural escalation: when the existing grant covers this
+  // (action, host) pair, the sync gate's verdict is authoritative.
+  const grant = getGrant(verifiedWidgetId);
+  const netPerms = grant && grant.domains && grant.domains.network;
+  if (netPerms) {
+    const actionsAllow =
+      !Array.isArray(netPerms.actions) ||
+      netPerms.actions.length === 0 ||
+      netPerms.actions.includes(req.action);
+    const hostsAllow = _hostMatches(host, netPerms.hosts || []);
+    if (actionsAllow && hostsAllow) {
+      return gateNetworkCall(req);
+    }
+  }
 
   let decision;
   try {
@@ -221,11 +275,7 @@ async function gateNetworkCallWithJit(req, opts = {}) {
   } catch (e) {
     return {
       allow: false,
-      reason:
-        "JIT consent " +
-        (e && e.message ? e.message : "failed") +
-        "; original denial: " +
-        initial.reason,
+      reason: "JIT consent " + (e && e.message ? e.message : "failed"),
     };
   }
 
@@ -241,13 +291,14 @@ async function gateNetworkCallWithJit(req, opts = {}) {
     };
   }
 
-  const host = _parseHost(req.args?.url) || "*";
   const addition =
     decision.granted && typeof decision.granted === "object"
       ? decision.granted
       : {
           grantOrigin: "live",
-          domains: { network: { hosts: [host] } },
+          domains: {
+            network: { actions: [req.action], hosts: [host] },
+          },
         };
   addition.grantOrigin = "live";
 

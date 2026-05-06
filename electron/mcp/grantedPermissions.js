@@ -164,12 +164,24 @@ function sanitizePerms(perms) {
             ? raw.writePaths.filter((p) => typeof p === "string")
             : [],
         };
+        // Slice 4: per-action grant scoping. Persist `actions[]` only
+        // when explicitly provided; the gate's legacy migration treats
+        // its absence as "any action allowed" so pre-slice grants
+        // continue to work.
+        if (Array.isArray(raw.actions)) {
+          domains.fs.actions = raw.actions.filter((a) => typeof a === "string");
+        }
       } else if (name === "network") {
         domains.network = {
           hosts: Array.isArray(raw.hosts)
             ? raw.hosts.filter((h) => typeof h === "string")
             : [],
         };
+        if (Array.isArray(raw.actions)) {
+          domains.network.actions = raw.actions.filter(
+            (a) => typeof a === "string",
+          );
+        }
       }
       // Future domains plug in here. Unknown domain names are dropped.
     }

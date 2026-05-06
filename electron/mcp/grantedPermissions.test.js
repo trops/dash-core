@@ -347,3 +347,90 @@ test("domains: fs and network coexist on the same grant", () => {
   assert.deepStrictEqual(got.domains.fs.readPaths, ["a.json"]);
   assert.deepStrictEqual(got.domains.network.hosts, ["api.example.com"]);
 });
+
+// ---- per-action grant scoping (slice 4) ------------------------------
+//
+// Mirrors MCP's `tools[]` allowlist for fs and network. Without a
+// persisted `actions[]` array the gate has no way to enforce
+// per-action consent — it'd silently authorize every action in the
+// read/write class against the same path scope. Pinning the round-
+// trip here is the regression guard: a future sanitize change that
+// drops the field re-introduces the bug.
+
+test("domains.fs.actions: array of strings is round-tripped", () => {
+  resetState();
+  setGrant("@trops/fs-actions", {
+    grantOrigin: "live",
+    domains: {
+      fs: {
+        actions: ["saveData", "convertJsonToCsvFile"],
+        readPaths: [],
+        writePaths: ["/tmp/x"],
+      },
+    },
+  });
+  const got = getGrant("@trops/fs-actions");
+  assert.deepStrictEqual(got.domains.fs.actions, [
+    "saveData",
+    "convertJsonToCsvFile",
+  ]);
+});
+
+test("domains.fs.actions: non-string entries are dropped (defensive sanitize)", () => {
+  resetState();
+  setGrant("@trops/fs-bad-actions", {
+    grantOrigin: "live",
+    domains: {
+      fs: {
+        actions: ["saveData", 42, null, "transformFile"],
+        readPaths: [],
+        writePaths: ["/tmp/x"],
+      },
+    },
+  });
+  const got = getGrant("@trops/fs-bad-actions");
+  assert.deepStrictEqual(got.domains.fs.actions, ["saveData", "transformFile"]);
+});
+
+test("domains.fs.actions: missing field is preserved as missing (legacy migration)", () => {
+  // Option A: grants written before slice 4 omit `actions`. Sanitize
+  // must not invent the field — gate logic uses absence as the legacy-
+  // fallback signal ("any action allowed").
+  resetState();
+  setGrant("@trops/fs-legacy", {
+    grantOrigin: "manual",
+    domains: { fs: { readPaths: ["a.json"], writePaths: [] } },
+  });
+  const got = getGrant("@trops/fs-legacy");
+  assert.ok(got.domains?.fs);
+  assert.strictEqual(got.domains.fs.actions, undefined);
+});
+
+test("domains.network.actions: array of strings is round-tripped", () => {
+  resetState();
+  setGrant("@trops/net-actions", {
+    grantOrigin: "live",
+    domains: {
+      network: {
+        actions: ["readDataFromURL", "connect"],
+        hosts: ["api.example.com"],
+      },
+    },
+  });
+  const got = getGrant("@trops/net-actions");
+  assert.deepStrictEqual(got.domains.network.actions, [
+    "readDataFromURL",
+    "connect",
+  ]);
+});
+
+test("domains.network.actions: missing field is preserved as missing (legacy migration)", () => {
+  resetState();
+  setGrant("@trops/net-legacy", {
+    grantOrigin: "manual",
+    domains: { network: { hosts: ["api.example.com"] } },
+  });
+  const got = getGrant("@trops/net-legacy");
+  assert.ok(got.domains?.network);
+  assert.strictEqual(got.domains.network.actions, undefined);
+});

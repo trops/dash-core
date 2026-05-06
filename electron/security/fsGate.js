@@ -73,12 +73,6 @@ function isFsWriteAction(action) {
   return WRITE_ACTIONS.has(action);
 }
 
-function _isNoGrantDenial(reason) {
-  return (
-    typeof reason === "string" && /no fs permissions granted/i.test(reason)
-  );
-}
-
 function _filenameMatches(filename, allowedList) {
   if (!Array.isArray(allowedList) || allowedList.length === 0) return false;
   if (allowedList.includes("*")) return true;
@@ -128,6 +122,25 @@ function gateFsCall({ widgetId, token, action, args }) {
         widgetId +
         "' has no fs permissions granted; user must approve at runtime or in Settings → Privacy & Security",
     };
+  }
+
+  // Slice 4: per-action allowlist. When `actions[]` is present and
+  // non-empty, only listed actions are allowed (path scope still
+  // applies). When absent / empty, fall through to legacy behavior
+  // (any read/write-class action allowed against the path scope) so
+  // pre-slice grants keep working — Option A migration.
+  if (Array.isArray(fsPerms.actions) && fsPerms.actions.length > 0) {
+    if (!fsPerms.actions.includes(action)) {
+      return {
+        allow: false,
+        reason:
+          "fs gate: action '" +
+          action +
+          "' not in actions allowlist for widget '" +
+          widgetId +
+          "'",
+      };
+    }
   }
 
   const isWrite = isFsWriteAction(action);
@@ -190,7 +203,7 @@ function _mergeFsGrant(current, addition) {
   const additionFs = addition?.domains?.fs;
   if (additionFs) {
     const existingFs = out.domains.fs || { readPaths: [], writePaths: [] };
-    out.domains.fs = {
+    const merged = {
       readPaths: [
         ...new Set([
           ...(existingFs.readPaths || []),
@@ -206,30 +219,80 @@ function _mergeFsGrant(current, addition) {
         ]),
       ],
     };
+    // Slice 4: union `actions[]`. Only emit the field when at least
+    // one side declared it — preserves Option A migration (a legacy
+    // grant being extended without an action allowlist on the
+    // addition still has none after merge).
+    const existingActions = Array.isArray(existingFs.actions)
+      ? existingFs.actions
+      : null;
+    const additionActions = Array.isArray(additionFs.actions)
+      ? additionFs.actions
+      : null;
+    if (existingActions || additionActions) {
+      merged.actions = [
+        ...new Set([...(existingActions || []), ...(additionActions || [])]),
+      ];
+    }
+    out.domains.fs = merged;
   }
   return out;
 }
 
 /**
- * Async gate that escalates "no fs grant" denials to a JIT consent
- * prompt when `opts.enableJit` is true. On approval, merges the
- * decision's grant blob into the persisted grant and re-evaluates.
+ * Async gate that escalates "missing in grant" fs denials to a JIT
+ * consent prompt when `opts.enableJit` is true. Escalation signal is
+ * STRUCTURAL, not message-based: if the requested action+filename
+ * isn't covered by the widget's grant (action absent from `actions[]`,
+ * or filename absent from the appropriate readPaths/writePaths), JIT
+ * fires. Identity-resolution failures and malformed-args denials short-
+ * circuit to the sync gate's verdict — those are abuse or caller bugs,
+ * not consent gaps. Once the request IS covered by the grant, the sync
+ * gate is authoritative (any denial it returns is structural).
  */
 async function gateFsCallWithJit(req, opts = {}) {
-  const initial = gateFsCall(req);
-  if (initial.allow) return initial;
-  if (!opts.enableJit) return initial;
-  if (!_isNoGrantDenial(initial.reason)) return initial;
+  if (!opts.enableJit) return gateFsCall(req);
 
-  // Resolve verified identity once (token wins over claimed widgetId).
-  // Re-using the same resolution as gateFsCall keeps the JIT prompt
-  // and grant write tied to the same identity the gate just denied.
+  // Identity must resolve to a concrete widgetId. Unknown tokens and
+  // missing widgetId are returned by the sync gate — those denials
+  // aren't recoverable via consent.
   const resolved = _resolveIdentity({
     token: req.token,
     widgetId: req.widgetId,
   });
+  if (resolved.source === "token-unknown" || !resolved.widgetId) {
+    return gateFsCall(req);
+  }
   const verifiedWidgetId = resolved.widgetId;
-  if (!verifiedWidgetId) return initial;
+
+  // Args must be well-formed enough to derive a filename — malformed
+  // calls are caller bugs, not consent gaps.
+  const filename =
+    req.args && typeof req.args === "object" ? req.args.filename : null;
+  if (typeof filename !== "string" || !filename) {
+    return gateFsCall(req);
+  }
+
+  // Structural escalation: when the existing grant covers this
+  // (action, filename) pair, the sync gate's verdict is authoritative.
+  // Otherwise the request is a consent gap; escalate. Mirrors
+  // permissionGate.gateToolCallWithJit's "tool in grant?" check.
+  const grant = getGrant(verifiedWidgetId);
+  const fsPerms = grant && grant.domains && grant.domains.fs;
+  if (fsPerms) {
+    const actionsAllow =
+      !Array.isArray(fsPerms.actions) ||
+      fsPerms.actions.length === 0 ||
+      fsPerms.actions.includes(req.action);
+    const isWrite = isFsWriteAction(req.action);
+    const allowedPaths = isWrite
+      ? fsPerms.writePaths || []
+      : [...(fsPerms.readPaths || []), ...(fsPerms.writePaths || [])];
+    const pathsAllow = _filenameMatches(filename, allowedPaths);
+    if (actionsAllow && pathsAllow) {
+      return gateFsCall(req);
+    }
+  }
 
   let decision;
   try {
@@ -245,11 +308,7 @@ async function gateFsCallWithJit(req, opts = {}) {
   } catch (e) {
     return {
       allow: false,
-      reason:
-        "JIT consent " +
-        (e && e.message ? e.message : "failed") +
-        "; original denial: " +
-        initial.reason,
+      reason: "JIT consent " + (e && e.message ? e.message : "failed"),
     };
   }
 
@@ -265,8 +324,8 @@ async function gateFsCallWithJit(req, opts = {}) {
     };
   }
 
-  const filename = req.args?.filename || "*";
-  const isWrite = isFsWriteAction(req.action);
+  const fallbackFilename = req.args?.filename || "*";
+  const fallbackIsWrite = isFsWriteAction(req.action);
   const addition =
     decision.granted && typeof decision.granted === "object"
       ? decision.granted
@@ -274,8 +333,9 @@ async function gateFsCallWithJit(req, opts = {}) {
           grantOrigin: "live",
           domains: {
             fs: {
-              readPaths: !isWrite ? [filename] : [],
-              writePaths: isWrite ? [filename] : [],
+              actions: [req.action],
+              readPaths: !fallbackIsWrite ? [fallbackFilename] : [],
+              writePaths: fallbackIsWrite ? [fallbackFilename] : [],
             },
           },
         };
