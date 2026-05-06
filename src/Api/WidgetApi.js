@@ -151,12 +151,12 @@ export const WidgetApi = {
     append = true,
     returnEmpty = {},
     uuid,
-    // Phase 2 JIT consent — package-level identity for the fs gate.
-    // Distinct from `uuid` which is the instance id used to compute
-    // the filename. Callers pass widgetId from their widget context
-    // (e.g. widgetData.name); when undefined, the gate is a no-op
-    // (legacy callers continue to work, subject to the global
-    // enforceWidgetMcpPermissions flag).
+    // Package-level identity for the fs gate. Defaults to the
+    // singleton's `params.name` (set by WidgetFactory at mount). An
+    // explicit widgetId passed by the caller wins. The widgetId param
+    // is what the gate's `getGrant(widgetId)` lookup keys on, so it
+    // MUST match the package name used when grants were written
+    // (install consent / Settings → Privacy & Security).
     widgetId = null,
   }) {
     try {
@@ -181,8 +181,19 @@ export const WidgetApi = {
               callbackError(response),
             );
           }
-          // request.
-          eApi.data.saveData(data, toFilename, append, returnEmpty, widgetId);
+          // Auto-thread widgetId from the singleton's per-widget
+          // state when the caller didn't supply one explicitly. This
+          // is what makes the fs gate fire for ordinary widgets that
+          // call `widgetApi.storeData({data, filename})` without
+          // knowing about widgetId.
+          const effectiveWidgetId = widgetId || this.params?.name || null;
+          eApi.data.saveData(
+            data,
+            toFilename,
+            append,
+            returnEmpty,
+            effectiveWidgetId,
+          );
         }
       }
     } catch (e) {
@@ -240,7 +251,9 @@ export const WidgetApi = {
             callbackError(response),
           );
         }
-        eApi.data.readData(toFilename, [], widgetId);
+        // Auto-thread widgetId from the singleton — same as storeData.
+        const effectiveWidgetId = widgetId || this.params?.name || null;
+        eApi.data.readData(toFilename, [], effectiveWidgetId);
       }
     } catch (e) {
       console.log(e);
