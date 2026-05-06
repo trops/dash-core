@@ -56,6 +56,12 @@ export const PrivacySecurityList = ({
   const keyFor = (group) =>
     group.packageId == null ? "__ungrouped__" : group.packageId;
 
+  // Special selection keys for the two non-package items at the top
+  // of the list. Keep them in the same selection state as packages so
+  // the right panel knows what to render via a single key.
+  const SETTINGS_KEY = "__settings__";
+  const HELP_KEY = "__help__";
+
   function renderPackageItem(group) {
     const key = keyFor(group);
     const isSelected = selectedPackageKey === key;
@@ -109,6 +115,41 @@ export const PrivacySecurityList = ({
       </div>
       <div className="flex-1 overflow-y-auto min-h-0">
         <Sidebar.Content>
+          {/* Configuration items at the top — render as their own
+              right-panel views instead of pushing the package list
+              below the fold. */}
+          <Sidebar.Group label="Configuration">
+            <Sidebar.Item
+              key={SETTINGS_KEY}
+              icon={<FontAwesomeIcon icon="gear" className="h-3.5 w-3.5" />}
+              active={selectedPackageKey === SETTINGS_KEY}
+              onClick={() => onSelectPackage(SETTINGS_KEY)}
+              className={
+                selectedPackageKey === SETTINGS_KEY
+                  ? "bg-white/10 opacity-100"
+                  : ""
+              }
+            >
+              Settings
+            </Sidebar.Item>
+            <Sidebar.Item
+              key={HELP_KEY}
+              icon={
+                <FontAwesomeIcon
+                  icon="circle-question"
+                  className="h-3.5 w-3.5"
+                />
+              }
+              active={selectedPackageKey === HELP_KEY}
+              onClick={() => onSelectPackage(HELP_KEY)}
+              className={
+                selectedPackageKey === HELP_KEY ? "bg-white/10 opacity-100" : ""
+              }
+            >
+              Help
+            </Sidebar.Item>
+          </Sidebar.Group>
+
           {viewMode === "grouped" ? (
             <>
               {withGrants.length > 0 && (
@@ -123,7 +164,9 @@ export const PrivacySecurityList = ({
               )}
             </>
           ) : (
-            filtered.map(renderPackageItem)
+            <Sidebar.Group label="Packages">
+              {filtered.map(renderPackageItem)}
+            </Sidebar.Group>
           )}
           {filtered.length === 0 && (
             <span className="text-sm opacity-40 py-8 text-center block">
