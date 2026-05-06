@@ -4,7 +4,6 @@ import {
   SubHeading3,
   FontAwesomeIcon,
   Switch,
-  Tabs3,
 } from "@trops/dash-react";
 import { GrantManuallyModal } from "./GrantManuallyModal";
 import { AppContext } from "../../../Context/App/AppContext";
@@ -40,12 +39,12 @@ export const PrivacySecuritySection = () => {
   const [knownServerNames, setKnownServerNames] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState("grouped");
-  const [selectedPackageKey, setSelectedPackageKey] = useState(null);
-  // Two top-level tabs so the inline `HowThisWorksPanel` (which carries
-  // example fixtures and is intentionally tall) doesn't push the
-  // package list/detail below the viewport. "permissions" is the
-  // default and contains the actual UI users came here to use.
-  const [activeTab, setActiveTab] = useState("permissions");
+  // Default to the Settings sidebar item so first-time visitors land
+  // on something useful rather than the empty-detail placeholder.
+  // "__settings__"/"__help__" are special selection keys (see
+  // PrivacySecurityList); a string starting without "__" is a
+  // packageId.
+  const [selectedPackageKey, setSelectedPackageKey] = useState("__settings__");
 
   const reload = useCallback(async () => {
     setError(null);
@@ -133,8 +132,10 @@ export const PrivacySecuritySection = () => {
   }
 
   const packageGroups = groupRowsByPackage(rows);
+  const isSettingsSelected = selectedPackageKey === "__settings__";
+  const isHelpSelected = selectedPackageKey === "__help__";
   const selectedGroup =
-    selectedPackageKey == null
+    selectedPackageKey == null || isSettingsSelected || isHelpSelected
       ? null
       : packageGroups.find((g) =>
           g.packageId == null
@@ -154,37 +155,45 @@ export const PrivacySecuritySection = () => {
     />
   );
 
-  const detailContent = selectedGroup ? (
-    <WidgetPackageDetail
-      packageGroup={selectedGroup}
-      onRevokeWidget={revokeWidget}
-      onRevokeServer={revokeServer}
-      onGrantManually={(widgetId) => setManualGrantWidgetId(widgetId)}
-      onRevokePackage={revokePackage}
-    />
-  ) : null;
+  // Detail panel content varies by what the user picked in the
+  // sidebar — Settings shows the toggles, Help shows the how-it-
+  // works panel, a package shows its widgets. Wrapping each non-
+  // package case in a scrollable container so long content (like
+  // the help fixtures) stays inside the panel and doesn't push the
+  // sidebar around.
+  let detailContent = null;
+  if (isSettingsSelected) {
+    detailContent = (
+      <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-6">
+        <EnforcementToggles />
+      </div>
+    );
+  } else if (isHelpSelected) {
+    detailContent = (
+      <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-6">
+        <HowThisWorksPanel />
+      </div>
+    );
+  } else if (selectedGroup) {
+    detailContent = (
+      <WidgetPackageDetail
+        packageGroup={selectedGroup}
+        onRevokeWidget={revokeWidget}
+        onRevokeServer={revokeServer}
+        onGrantManually={(widgetId) => setManualGrantWidgetId(widgetId)}
+        onRevokePackage={revokePackage}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex-shrink-0 flex flex-col space-y-3 px-6 pt-6 pb-3 border-b border-gray-800">
-        <div className="flex flex-col space-y-2">
-          <SubHeading3 title="Widget MCP permissions" padding={false} />
-          <span className="text-xs opacity-60">
-            Granting access here is a trust signal about the widget — not a
-            per-dashboard switch.
-          </span>
-        </div>
-        <Tabs3
-          value={activeTab}
-          onValueChange={setActiveTab}
-          backgroundColor="bg-transparent"
-          spacing="p-0"
-        >
-          <Tabs3.List spacing="p-0.5">
-            <Tabs3.Trigger value="permissions">Permissions</Tabs3.Trigger>
-            <Tabs3.Trigger value="help">Help</Tabs3.Trigger>
-          </Tabs3.List>
-        </Tabs3>
+      <div className="flex-shrink-0 flex flex-col space-y-2 px-6 pt-6 pb-3 border-b border-gray-800">
+        <SubHeading3 title="Widget MCP permissions" padding={false} />
+        <span className="text-xs opacity-60">
+          Granting access here is a trust signal about the widget — not a
+          per-dashboard switch.
+        </span>
         {error && (
           <div className="text-xs text-red-400 bg-red-900 bg-opacity-20 border border-red-700 rounded p-3">
             {error}
@@ -192,22 +201,11 @@ export const PrivacySecuritySection = () => {
         )}
       </div>
 
-      {activeTab === "permissions" ? (
-        <div className="flex flex-col flex-1 min-h-0">
-          <div className="flex-shrink-0 px-6 py-4 border-b border-gray-800">
-            <EnforcementToggles />
-          </div>
-          <SectionLayout
-            listContent={listContent}
-            detailContent={detailContent}
-            emptyDetailMessage="Select a package to view its grants"
-          />
-        </div>
-      ) : (
-        <div className="flex-1 overflow-y-auto p-6">
-          <HowThisWorksPanel />
-        </div>
-      )}
+      <SectionLayout
+        listContent={listContent}
+        detailContent={detailContent}
+        emptyDetailMessage="Select an item from the sidebar"
+      />
 
       <GrantManuallyModal
         isOpen={!!manualGrantWidgetId}
