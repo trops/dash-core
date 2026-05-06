@@ -37,6 +37,16 @@
 const { getGrant, setGrant } = require("../mcp/grantedPermissions");
 const { requestApproval } = require("../mcp/jitConsent");
 const { lookup: lookupMountToken } = require("./mountTokenRegistry");
+const { resolveSiblings } = require("./resolveSiblings");
+
+function _defaultRegistrySnapshot() {
+  try {
+    const reg = require("../widgetRegistry").getWidgetRegistry();
+    return reg && reg.widgets ? reg.widgets : null;
+  } catch (_) {
+    return null;
+  }
+}
 
 // If a token is supplied, the gate resolves widgetId via the mount
 // registry and ignores any renderer-supplied widgetId. Tokens are
@@ -294,6 +304,11 @@ async function gateFsCallWithJit(req, opts = {}) {
     }
   }
 
+  // Slice 5: resolve siblings for the package-scope checkbox.
+  const getRegistrySnapshot =
+    opts.getRegistrySnapshot || _defaultRegistrySnapshot;
+  const siblingInfo = resolveSiblings(verifiedWidgetId, getRegistrySnapshot());
+
   let decision;
   try {
     decision = await requestApproval(
@@ -302,6 +317,8 @@ async function gateFsCallWithJit(req, opts = {}) {
         domain: "fs",
         action: req.action,
         args: req.args || {},
+        packageId: siblingInfo.packageId,
+        siblingWidgetIds: siblingInfo.siblingWidgetIds,
       },
       { timeoutMs: opts.timeoutMs },
     );
@@ -341,10 +358,20 @@ async function gateFsCallWithJit(req, opts = {}) {
         };
   addition.grantOrigin = "live";
 
+  // Slice 5: batch-write to all siblings when applyToSiblings === true.
+  const targetWidgetIds =
+    decision.applyToSiblings === true &&
+    Array.isArray(siblingInfo.siblingWidgetIds) &&
+    siblingInfo.siblingWidgetIds.length > 1
+      ? siblingInfo.siblingWidgetIds
+      : [verifiedWidgetId];
+
   try {
-    const current = getGrant(verifiedWidgetId);
-    const merged = _mergeFsGrant(current, addition);
-    setGrant(verifiedWidgetId, merged);
+    for (const targetId of targetWidgetIds) {
+      const current = getGrant(targetId);
+      const merged = _mergeFsGrant(current, addition);
+      setGrant(targetId, merged);
+    }
   } catch (e) {
     return {
       allow: false,

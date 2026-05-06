@@ -61,7 +61,12 @@ require.cache[jitConsentPath] = {
 };
 
 const { gateFsCall, gateFsCallWithJit, isFsWriteAction } = require("./fsGate");
-const { setGrant, clearCache } = require("../mcp/grantedPermissions");
+const {
+  setGrant,
+  getGrant,
+  revokeGrant,
+  clearCache,
+} = require("../mcp/grantedPermissions");
 
 function reset() {
   clearCache();
@@ -485,4 +490,125 @@ test("gateFsCallWithJit: legacy grant (no actions[]) does NOT escalate when file
   );
   assert.strictEqual(approvalCalled, false);
   assert.strictEqual(r.allow, true);
+});
+
+// ---- package-scope sibling batch grant (slice 5) ---------------------
+
+const FS_SIBS_REGISTRY = new Map([
+  [
+    "@trops/fssib",
+    {
+      packageId: "@trops/fssib",
+      componentNames: ["FsA", "FsB", "FsC"],
+    },
+  ],
+]);
+
+function resetFsSibState() {
+  reset();
+  for (const sib of ["FsA", "FsB", "FsC"]) {
+    revokeGrant("trops.fssib." + sib);
+  }
+}
+
+test("fsGate: applyToSiblings: true → grant written to every sibling", async () => {
+  resetFsSibState();
+  __mockApproval = async () => ({
+    approve: true,
+    applyToSiblings: true,
+    granted: {
+      grantOrigin: "live",
+      domains: {
+        fs: {
+          actions: ["saveToFile"],
+          readPaths: [],
+          writePaths: ["/tmp/x"],
+        },
+      },
+    },
+  });
+  const r = await gateFsCallWithJit(
+    {
+      widgetId: "trops.fssib.FsA",
+      action: "saveToFile",
+      args: { filename: "/tmp/x" },
+    },
+    {
+      enableJit: true,
+      getRegistrySnapshot: () => FS_SIBS_REGISTRY,
+    },
+  );
+  assert.strictEqual(r.allow, true);
+  for (const id of ["trops.fssib.FsA", "trops.fssib.FsB", "trops.fssib.FsC"]) {
+    const g = getGrant(id);
+    assert.ok(g, "expected grant for " + id);
+    assert.deepStrictEqual(g.domains.fs.writePaths, ["/tmp/x"]);
+    assert.deepStrictEqual(g.domains.fs.actions, ["saveToFile"]);
+  }
+});
+
+test("fsGate: applyToSiblings: false → only requesting widget gets grant", async () => {
+  resetFsSibState();
+  __mockApproval = async () => ({
+    approve: true,
+    applyToSiblings: false,
+    granted: {
+      grantOrigin: "live",
+      domains: {
+        fs: {
+          actions: ["saveToFile"],
+          readPaths: [],
+          writePaths: ["/tmp/x"],
+        },
+      },
+    },
+  });
+  await gateFsCallWithJit(
+    {
+      widgetId: "trops.fssib.FsA",
+      action: "saveToFile",
+      args: { filename: "/tmp/x" },
+    },
+    {
+      enableJit: true,
+      getRegistrySnapshot: () => FS_SIBS_REGISTRY,
+    },
+  );
+  assert.ok(getGrant("trops.fssib.FsA"));
+  assert.strictEqual(getGrant("trops.fssib.FsB"), null);
+  assert.strictEqual(getGrant("trops.fssib.FsC"), null);
+});
+
+test("fsGate: request payload includes packageId + siblingWidgetIds", async () => {
+  resetFsSibState();
+  let received = null;
+  __mockApproval = async (req) => {
+    received = req;
+    return {
+      approve: true,
+      granted: {
+        grantOrigin: "live",
+        domains: {
+          fs: {
+            actions: ["saveToFile"],
+            readPaths: [],
+            writePaths: ["/tmp/x"],
+          },
+        },
+      },
+    };
+  };
+  await gateFsCallWithJit(
+    {
+      widgetId: "trops.fssib.FsA",
+      action: "saveToFile",
+      args: { filename: "/tmp/x" },
+    },
+    {
+      enableJit: true,
+      getRegistrySnapshot: () => FS_SIBS_REGISTRY,
+    },
+  );
+  assert.strictEqual(received.packageId, "@trops/fssib");
+  assert.strictEqual(received.siblingWidgetIds.length, 3);
 });
