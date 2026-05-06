@@ -14,7 +14,7 @@
  */
 "use strict";
 
-const { ipcMain } = require("electron");
+const { ipcMain, dialog, BrowserWindow } = require("electron");
 const {
   getGrant,
   setGrant,
@@ -25,13 +25,62 @@ const {
 const { getWidgetMcpPermissions } = require("../mcp/widgetPermissions");
 const { getWidgetRegistry } = require("../widgetRegistry");
 const { buildGrantsListing } = require("./widgetMcpGrantsListing");
+const { isBroadening } = require("./grantDiff");
+
+// Native confirm dialog for any set-grant call that broadens the
+// widget's current permissions. The dialog runs at OS level — a
+// renderer (including a malicious widget) cannot dismiss it
+// programmatically. This is the defense-in-depth fix for the
+// `widget-mcp:set-grant` consent-bypass gap documented in the IPC
+// audit doc: a widget calling `mainApi.widgetMcp.setGrant("@self",
+// {wide-open perms})` now triggers a system-level prompt the user
+// must explicitly approve. Reductions / equality pass unprompted.
+async function _confirmBroadening(event, widgetId, summary) {
+  const senderWindow =
+    BrowserWindow.fromWebContents(event.sender) ||
+    BrowserWindow.getFocusedWindow();
+  // Cap the listed lines so the dialog body stays readable.
+  const MAX_LINES = 20;
+  const trimmed = summary.slice(0, MAX_LINES);
+  const overflow =
+    summary.length > MAX_LINES
+      ? `\n  …and ${summary.length - MAX_LINES} more`
+      : "";
+  const detail =
+    "Widget '" +
+    widgetId +
+    "' will be granted the following NEW permissions:\n\n  " +
+    trimmed.join("\n  ") +
+    overflow +
+    "\n\nIf you didn't initiate this from Settings → Privacy & Security, " +
+    "click Cancel — a malicious widget may be trying to escalate its own " +
+    "permissions.";
+
+  const result = await dialog.showMessageBox(senderWindow, {
+    type: "warning",
+    title: "Confirm permissions change",
+    message: "Allow new permissions for " + widgetId + "?",
+    detail,
+    buttons: ["Cancel", "Allow"],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  });
+  return result.response === 1;
+}
 
 function setupWidgetMcpGrantsHandlers() {
   ipcMain.handle("widget-mcp:get-grant", (event, widgetId) => {
     return getGrant(widgetId);
   });
 
-  ipcMain.handle("widget-mcp:set-grant", (event, widgetId, perms) => {
+  ipcMain.handle("widget-mcp:set-grant", async (event, widgetId, perms) => {
+    const current = getGrant(widgetId);
+    const diff = isBroadening(current, perms);
+    if (diff.broadening) {
+      const approved = await _confirmBroadening(event, widgetId, diff.summary);
+      if (!approved) return false;
+    }
     return setGrant(widgetId, perms);
   });
 
