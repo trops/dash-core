@@ -65,8 +65,8 @@ const dataApi = {
     ipcRenderer.invoke(READ_JSON, { filepath, objectCount });
   },
 
-  readDataFromURL: (url, toFilepath, widgetId = null) => {
-    ipcRenderer.invoke(READ_DATA_URL, { url, toFilepath, widgetId });
+  readDataFromURL: (url, toFilepath, widgetId = null, token = null) => {
+    ipcRenderer.invoke(READ_DATA_URL, { url, toFilepath, widgetId, token });
   },
 
   /*
@@ -74,13 +74,21 @@ const dataApi = {
    * @param {object} options { filename, extension }
    * @param {object} returnEmpty the return empty object
    */
-  saveData: (data, filename, append, returnEmpty, widgetId = null) =>
+  saveData: (
+    data,
+    filename,
+    append,
+    returnEmpty,
+    widgetId = null,
+    token = null,
+  ) =>
     ipcRenderer.invoke(DATA_SAVE_TO_FILE, {
       data,
       filename,
       append,
       returnEmpty,
       widgetId,
+      token,
     }),
 
   /*
@@ -92,11 +100,12 @@ const dataApi = {
    *   for legacy callers (`enforceWidgetMcpPermissions` flag still
    *   gates the gate itself).
    */
-  readData: (filename, returnEmpty = [], widgetId = null) =>
+  readData: (filename, returnEmpty = [], widgetId = null, token = null) =>
     ipcRenderer.invoke(DATA_READ_FROM_FILE, {
       filename,
       returnEmpty,
       widgetId,
+      token,
     }),
 
   /**

@@ -36,6 +36,25 @@
 
 const { getGrant, setGrant } = require("../mcp/grantedPermissions");
 const { requestApproval } = require("../mcp/jitConsent");
+const { lookup: lookupMountToken } = require("./mountTokenRegistry");
+
+// If a token is supplied, the gate resolves widgetId via the mount
+// registry and ignores any renderer-supplied widgetId. Tokens are
+// server-generated and bound to a widgetId at WidgetFactory mount —
+// the renderer cannot fabricate a token for another widget. See
+// `mountTokenRegistry.js`.
+//
+// Legacy callers without a token fall through to the existing
+// widgetId-based path (Slice 1 keeps this for back-compat; Slice 2
+// flips to deny).
+function _resolveIdentity({ token, widgetId }) {
+  if (typeof token === "string" && token.length > 0) {
+    const resolved = lookupMountToken(token);
+    if (resolved) return { widgetId: resolved, source: "token" };
+    return { widgetId: null, source: "token-unknown" };
+  }
+  return { widgetId: widgetId || null, source: "legacy" };
+}
 
 // Action names treated as writes. Anything not in this set is a read.
 // Conservative — when in doubt, classify as a read so write-protected
@@ -70,7 +89,15 @@ function _filenameMatches(filename, allowedList) {
  * Synchronous gate evaluation.
  * @returns {{ allow: true } | { allow: false, reason: string }}
  */
-function gateFsCall({ widgetId, action, args }) {
+function gateFsCall({ widgetId, token, action, args }) {
+  const resolved = _resolveIdentity({ token, widgetId });
+  if (resolved.source === "token-unknown") {
+    return {
+      allow: false,
+      reason: "fs gate: unknown mount token; widget identity not verifiable",
+    };
+  }
+  widgetId = resolved.widgetId;
   if (!widgetId) {
     return {
       allow: false,
@@ -194,11 +221,21 @@ async function gateFsCallWithJit(req, opts = {}) {
   if (!opts.enableJit) return initial;
   if (!_isNoGrantDenial(initial.reason)) return initial;
 
+  // Resolve verified identity once (token wins over claimed widgetId).
+  // Re-using the same resolution as gateFsCall keeps the JIT prompt
+  // and grant write tied to the same identity the gate just denied.
+  const resolved = _resolveIdentity({
+    token: req.token,
+    widgetId: req.widgetId,
+  });
+  const verifiedWidgetId = resolved.widgetId;
+  if (!verifiedWidgetId) return initial;
+
   let decision;
   try {
     decision = await requestApproval(
       {
-        widgetId: req.widgetId,
+        widgetId: verifiedWidgetId,
         domain: "fs",
         action: req.action,
         args: req.args || {},
@@ -221,7 +258,7 @@ async function gateFsCallWithJit(req, opts = {}) {
       allow: false,
       reason:
         "user declined JIT consent for widget '" +
-        req.widgetId +
+        verifiedWidgetId +
         "' calling fs '" +
         req.action +
         "'",
@@ -245,9 +282,9 @@ async function gateFsCallWithJit(req, opts = {}) {
   addition.grantOrigin = "live";
 
   try {
-    const current = getGrant(req.widgetId);
+    const current = getGrant(verifiedWidgetId);
     const merged = _mergeFsGrant(current, addition);
-    setGrant(req.widgetId, merged);
+    setGrant(verifiedWidgetId, merged);
   } catch (e) {
     return {
       allow: false,

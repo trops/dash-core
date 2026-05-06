@@ -32,6 +32,7 @@ const webSocketController = require("./controller/webSocketController");
 const extractionCacheController = require("./controller/extractionCacheController");
 const mcpDashServerController = require("./controller/mcpDashServerController");
 const widgetMcpGrantsController = require("./controller/widgetMcpGrantsController");
+const widgetMountTokenController = require("./controller/widgetMountTokenController");
 const jitConsent = require("./mcp/jitConsent");
 
 // --- Errors ---
@@ -135,6 +136,7 @@ module.exports = {
   extractionCacheController,
   mcpDashServerController,
   widgetMcpGrantsController,
+  widgetMountTokenController,
   jitConsent,
 
   // Controller functions (flat) — spread for convenient destructuring

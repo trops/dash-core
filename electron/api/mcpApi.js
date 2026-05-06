@@ -98,6 +98,7 @@ const mcpApi = {
     allowedTools = null,
     widgetId = null,
     workspaceId = null,
+    token = null,
   ) =>
     ipcRenderer.invoke(MCP_CALL_TOOL, {
       serverName,
@@ -106,6 +107,7 @@ const mcpApi = {
       allowedTools,
       widgetId,
       workspaceId,
+      token,
     }),
 
   /**
