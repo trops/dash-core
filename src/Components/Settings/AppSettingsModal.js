@@ -261,7 +261,7 @@ export const AppSettingsModal = ({
         )}
         {activeSection === "privacy-security" && (
           <div
-            className={`flex-1 overflow-y-auto ${
+            className={`flex-1 flex flex-col min-h-0 ${
               panelStyles.textColor || "text-gray-200"
             }`}
           >
