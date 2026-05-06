@@ -501,6 +501,13 @@ export const useMcpProvider = (providerType, options = {}) => {
       // (see useNotifications, useScheduler for the same pattern).
       const workspaceId = workspace?.workspaceData?.id || null;
 
+      // widgetData.name is the package-level identity the MCP gate's
+      // grant store keys on. Without this, the gate's per-widget
+      // permissioning is silent (the legacy widgetId-null bypass
+      // skips the gate entirely). Threading it here makes JIT
+      // consent fire for widgets without the user-grant cached.
+      const widgetIdForGate = widgetData?.name || null;
+
       console.log(`[useMcpProvider] Calling tool: ${toolName}`, args);
 
       return new Promise((resolve, reject) => {
@@ -530,6 +537,7 @@ export const useMcpProvider = (providerType, options = {}) => {
             reject(new Error(err?.message || "Failed to call MCP tool"));
           },
           workspaceId,
+          widgetIdForGate,
         );
       });
     },

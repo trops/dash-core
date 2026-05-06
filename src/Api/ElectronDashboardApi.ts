@@ -641,14 +641,24 @@ class ElectronDashboardApi implements IDashboardApi {
     onSuccess,
     onError,
     workspaceId = null,
+    widgetId = null,
   ): Boolean {
     if (this.api !== null) {
       try {
-        // widgetId is not threaded here; mcpApi.callTool defaults it to
-        // null. Slice 3a: workspaceId scopes the MCP server process per
-        // workspace.
+        // widgetId is the package-level identity for the MCP gate.
+        // Callers (typically `useMcpProvider`) pass `widgetData.name`
+        // so the gate's `getGrant(widgetId)` lookup matches the grant
+        // written at install consent. workspaceId scopes the server
+        // process per workspace (Slice 3a).
         this.api.mcp
-          .callTool(serverName, toolName, args, allowedTools, null, workspaceId)
+          .callTool(
+            serverName,
+            toolName,
+            args,
+            allowedTools,
+            widgetId,
+            workspaceId,
+          )
           .then((result) => {
             onSuccess(this.events.MCP_CALL_TOOL_COMPLETE, result);
           })
