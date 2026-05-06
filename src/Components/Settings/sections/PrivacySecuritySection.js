@@ -7,6 +7,11 @@ import {
 } from "@trops/dash-react";
 import { GrantManuallyModal } from "./GrantManuallyModal";
 import { AppContext } from "../../../Context/App/AppContext";
+import { SectionLayout } from "../SectionLayout";
+import { groupRowsByPackage } from "./groupRowsByPackage";
+import { PrivacySecurityList } from "./PrivacySecurityList";
+import { WidgetPackageDetail } from "../details/WidgetPackageDetail";
+import { WidgetGrantRow, GrantOriginBadge } from "./WidgetGrantRow";
 
 /**
  * Privacy & Security
@@ -32,6 +37,9 @@ export const PrivacySecuritySection = () => {
   const [error, setError] = useState(null);
   const [manualGrantWidgetId, setManualGrantWidgetId] = useState(null);
   const [knownServerNames, setKnownServerNames] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState("grouped");
+  const [selectedPackageKey, setSelectedPackageKey] = useState(null);
 
   const reload = useCallback(async () => {
     setError(null);
@@ -55,9 +63,6 @@ export const PrivacySecuritySection = () => {
     reload();
   }, [reload]);
 
-  // Pull catalog server names once, used as a datalist hint in the
-  // manual-grant modal. Best-effort — if the API isn't there, the
-  // datalist is just empty.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -97,6 +102,22 @@ export const PrivacySecuritySection = () => {
     }
   };
 
+  const revokePackage = async (packageGroup) => {
+    // Sequential revoke so a mid-loop failure surfaces clearly and
+    // doesn't leave the UI in a half-applied state. The reload at the
+    // end picks up whatever did succeed.
+    try {
+      for (const w of packageGroup.widgets) {
+        if (!w.granted) continue;
+        await window.mainApi?.widgetMcp?.revoke?.(w.widgetId);
+      }
+      reload();
+    } catch (e) {
+      setError(e?.message || String(e));
+      reload();
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col p-6">
@@ -105,43 +126,65 @@ export const PrivacySecuritySection = () => {
     );
   }
 
+  const packageGroups = groupRowsByPackage(rows);
+  const selectedGroup =
+    selectedPackageKey == null
+      ? null
+      : packageGroups.find((g) =>
+          g.packageId == null
+            ? selectedPackageKey === "__ungrouped__"
+            : g.packageId === selectedPackageKey,
+        ) || null;
+
+  const listContent = (
+    <PrivacySecurityList
+      packageGroups={packageGroups}
+      selectedPackageKey={selectedPackageKey}
+      onSelectPackage={setSelectedPackageKey}
+      searchQuery={searchQuery}
+      onSearchChange={setSearchQuery}
+      viewMode={viewMode}
+      onViewModeChange={setViewMode}
+    />
+  );
+
+  const detailContent = selectedGroup ? (
+    <WidgetPackageDetail
+      packageGroup={selectedGroup}
+      onRevokeWidget={revokeWidget}
+      onRevokeServer={revokeServer}
+      onGrantManually={(widgetId) => setManualGrantWidgetId(widgetId)}
+      onRevokePackage={revokePackage}
+    />
+  ) : null;
+
   return (
-    <div className="flex flex-col space-y-6 p-6">
-      <div className="flex flex-col space-y-2">
-        <SubHeading3 title="Widget MCP permissions" padding={false} />
-        <span className="text-xs opacity-60">
-          Granting access here is a trust signal about the widget — not a
-          per-dashboard switch.
-        </span>
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex-shrink-0 flex flex-col space-y-4 p-6 border-b border-gray-800">
+        <div className="flex flex-col space-y-2">
+          <SubHeading3 title="Widget MCP permissions" padding={false} />
+          <span className="text-xs opacity-60">
+            Granting access here is a trust signal about the widget — not a
+            per-dashboard switch.
+          </span>
+        </div>
+
+        <EnforcementToggles />
+
+        <HowThisWorksPanel />
+
+        {error && (
+          <div className="text-xs text-red-400 bg-red-900 bg-opacity-20 border border-red-700 rounded p-3">
+            {error}
+          </div>
+        )}
       </div>
 
-      <EnforcementToggles />
-
-      <HowThisWorksPanel />
-
-      {error && (
-        <div className="text-xs text-red-400 bg-red-900 bg-opacity-20 border border-red-700 rounded p-3">
-          {error}
-        </div>
-      )}
-
-      {rows.length === 0 && (
-        <div className="text-sm opacity-60">No widgets installed.</div>
-      )}
-
-      {rows.map(({ widgetId, declared, granted, hasManifest, grantOrigin }) => (
-        <WidgetGrantRow
-          key={widgetId}
-          widgetId={widgetId}
-          declared={declared}
-          granted={granted}
-          hasManifest={hasManifest}
-          grantOrigin={grantOrigin}
-          onRevokeWidget={() => revokeWidget(widgetId)}
-          onRevokeServer={(serverName) => revokeServer(widgetId, serverName)}
-          onGrantManually={() => setManualGrantWidgetId(widgetId)}
-        />
-      ))}
+      <SectionLayout
+        listContent={listContent}
+        detailContent={detailContent}
+        emptyDetailMessage="Select a package to view its grants"
+      />
 
       <GrantManuallyModal
         isOpen={!!manualGrantWidgetId}
@@ -423,226 +466,6 @@ const ConfirmDisableInline = ({ pending, onCancel, onConfirm }) => {
         <Button title={copy.confirmLabel} onClick={onConfirm} />
       </div>
     </div>
-  );
-};
-
-const WidgetGrantRow = ({
-  widgetId,
-  declared,
-  granted,
-  hasManifest,
-  grantOrigin,
-  onRevokeWidget,
-  onRevokeServer,
-  onGrantManually,
-}) => {
-  const declaredServers = (declared && declared.servers) || {};
-  const grantedServers = (granted && granted.servers) || {};
-  const allServerNames = Array.from(
-    new Set([...Object.keys(declaredServers), ...Object.keys(grantedServers)]),
-  );
-
-  return (
-    <div className="flex flex-col space-y-3 border border-gray-700 rounded p-3">
-      <div className="flex flex-row items-center justify-between gap-2">
-        <div className="flex flex-row items-center gap-2 min-w-0">
-          <span className="text-sm font-mono break-all">{widgetId}</span>
-          {grantOrigin && <GrantOriginBadge origin={grantOrigin} />}
-          {!hasManifest && !granted && (
-            <span className="text-xs uppercase tracking-wider text-amber-400">
-              no manifest
-            </span>
-          )}
-        </div>
-        <div className="flex flex-row gap-2">
-          {!hasManifest && !granted && (
-            <Button title="Grant manually" onClick={onGrantManually} />
-          )}
-          {Object.keys(grantedServers).length > 0 && (
-            <Button title="Revoke all" onClick={onRevokeWidget} />
-          )}
-        </div>
-      </div>
-
-      {!declared && !granted && (
-        <span className="text-xs opacity-50">
-          This widget did not declare MCP permissions and the install-time
-          scanner found nothing. Use Grant manually if you trust it.
-        </span>
-      )}
-
-      {allServerNames.map((serverName) => {
-        const decl = declaredServers[serverName] || {};
-        const grant = grantedServers[serverName];
-        const allStale = isServerEntirelyStale(decl, grant);
-        return (
-          <div
-            key={serverName}
-            className="flex flex-col space-y-2 border-t border-gray-800 pt-2"
-          >
-            <div className="flex flex-row items-center justify-between">
-              <span className="text-xs uppercase tracking-wider opacity-70">
-                {serverName}
-                {!grant && (
-                  <span className="ml-2 text-amber-400 normal-case tracking-normal">
-                    (declared, not granted)
-                  </span>
-                )}
-              </span>
-              {grant && (
-                <Button
-                  title="Revoke server"
-                  onClick={() => onRevokeServer(serverName)}
-                />
-              )}
-            </div>
-            {allStale && (
-              <div className="text-xs text-amber-400 bg-amber-900 bg-opacity-20 border border-amber-700 rounded px-2 py-1.5">
-                All grants on this server are no longer in the manifest — the
-                widget likely no longer uses this server. Consider revoking.
-              </div>
-            )}
-            <PermsList
-              label="Tools"
-              declaredItems={decl.tools || []}
-              grantedItems={grant?.tools || []}
-            />
-            <PermsList
-              label="Read paths"
-              declaredItems={decl.readPaths || []}
-              grantedItems={grant?.readPaths || []}
-            />
-            <PermsList
-              label="Write paths"
-              declaredItems={decl.writePaths || []}
-              grantedItems={grant?.writePaths || []}
-            />
-          </div>
-        );
-      })}
-
-      {/* Phase 2 — fs domain grants. Rendered as its own labeled
-          section beneath any MCP server sections so users see at a
-          glance that the widget has filesystem access too. */}
-      {granted?.domains?.fs &&
-        ((granted.domains.fs.readPaths || []).length > 0 ||
-          (granted.domains.fs.writePaths || []).length > 0) && (
-          <div className="flex flex-col space-y-2 border-t border-gray-800 pt-2">
-            <span className="text-xs uppercase tracking-wider opacity-70">
-              filesystem
-            </span>
-            <PermsList
-              label="Read filenames"
-              declaredItems={[]}
-              grantedItems={granted.domains.fs.readPaths || []}
-            />
-            <PermsList
-              label="Write filenames"
-              declaredItems={[]}
-              grantedItems={granted.domains.fs.writePaths || []}
-            />
-          </div>
-        )}
-
-      {/* Phase 3 — network domain grants (hostname allowlist for
-          outbound URL fetches and WebSocket connect). */}
-      {granted?.domains?.network &&
-        (granted.domains.network.hosts || []).length > 0 && (
-          <div className="flex flex-col space-y-2 border-t border-gray-800 pt-2">
-            <span className="text-xs uppercase tracking-wider opacity-70">
-              network
-            </span>
-            <PermsList
-              label="Allowed hosts"
-              declaredItems={[]}
-              grantedItems={granted.domains.network.hosts || []}
-            />
-          </div>
-        )}
-    </div>
-  );
-};
-
-const PermsList = ({ label, declaredItems, grantedItems }) => {
-  if (declaredItems.length === 0 && grantedItems.length === 0) return null;
-  const grantedSet = new Set(grantedItems);
-  const declaredSet = new Set(declaredItems);
-  const all = Array.from(new Set([...declaredItems, ...grantedItems]));
-  return (
-    <div className="flex flex-col space-y-1">
-      <span className="text-xs opacity-50">{label}</span>
-      {all.map((item) => {
-        const isGranted = grantedSet.has(item);
-        const isDeclared = declaredSet.has(item);
-        const isStale = isGranted && !isDeclared;
-        return (
-          <span
-            key={item}
-            className={`text-xs font-mono break-all ${
-              isStale
-                ? "text-amber-400"
-                : isGranted
-                  ? "opacity-100"
-                  : "opacity-50 line-through"
-            }`}
-          >
-            {item}
-            {isStale && (
-              <span className="ml-2 not-italic font-sans normal-case tracking-normal text-amber-400">
-                (stale — widget no longer requests this; consider revoking)
-              </span>
-            )}
-          </span>
-        );
-      })}
-    </div>
-  );
-};
-
-/**
- * True when the granted entry has at least one item AND every granted
- * item is missing from the current declared block (i.e. all of this
- * server's grants are unused by the current manifest). Used to surface
- * a "this whole server's grant looks unused" suggestion at the row level.
- */
-function isServerEntirelyStale(decl, grant) {
-  if (!grant) return false;
-  const declTools = new Set(decl.tools || []);
-  const declRead = new Set(decl.readPaths || []);
-  const declWrite = new Set(decl.writePaths || []);
-  const grantedTools = grant.tools || [];
-  const grantedRead = grant.readPaths || [];
-  const grantedWrite = grant.writePaths || [];
-  const total = grantedTools.length + grantedRead.length + grantedWrite.length;
-  if (total === 0) return false;
-  const stale =
-    grantedTools.every((t) => !declTools.has(t)) &&
-    grantedRead.every((p) => !declRead.has(p)) &&
-    grantedWrite.every((p) => !declWrite.has(p));
-  return stale;
-}
-
-/**
- * Renders a small badge showing how the user got to this grant. Helps
- * the user audit grants that were approved against a scanner guess
- * rather than the developer's explicit declaration.
- */
-const GrantOriginBadge = ({ origin }) => {
-  const styles = {
-    declared: { label: "declared", color: "text-green-400" },
-    discovered: { label: "discovered", color: "text-amber-400" },
-    manual: { label: "manual", color: "text-blue-400" },
-    live: { label: "live", color: "text-purple-400" },
-  };
-  const style = styles[origin];
-  if (!style) return null;
-  return (
-    <span
-      className={`text-xs uppercase tracking-wider ${style.color}`}
-      title={`Origin: ${origin}`}
-    >
-      {style.label}
-    </span>
   );
 };
 
