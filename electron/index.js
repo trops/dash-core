@@ -18,7 +18,6 @@ const registryController = require("./controller/registryController");
 const algoliaController = require("./controller/algoliaController");
 const openaiController = require("./controller/openaiController");
 const menuItemsController = require("./controller/menuItemsController");
-const pluginController = require("./controller/pluginController");
 const llmController = require("./controller/llmController");
 const cliController = require("./controller/cliController");
 const dashboardConfigController = require("./controller/dashboardConfigController");
@@ -61,7 +60,6 @@ const themeApi = require("./api/themeApi");
 const algoliaApi = require("./api/algoliaApi");
 const openaiApi = require("./api/openaiApi");
 const menuItemsApi = require("./api/menuItemsApi");
-const pluginApi = require("./api/pluginApi");
 const llmApi = require("./api/llmApi");
 const dashboardConfigApi = require("./api/dashboardConfigApi");
 const registryAuthApi = require("./api/registryAuthApi");
@@ -123,7 +121,6 @@ module.exports = {
   algoliaController,
   openaiController,
   menuItemsController,
-  pluginController,
   llmController,
   cliController,
   dashboardConfigController,
@@ -158,7 +155,6 @@ module.exports = {
   algoliaApi,
   openaiApi,
   menuItemsApi,
-  pluginApi,
   llmApi,
   dashboardConfigApi,
   registryAuthApi,

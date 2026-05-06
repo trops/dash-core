@@ -22,7 +22,6 @@ module.exports = {
   openaiApi: require("./openaiApi"),
   menuItemsApi: require("./menuItemsApi"),
   llmApi: require("./llmApi"),
-  pluginApi: require("./pluginApi"),
   registryAuthApi: require("./registryAuthApi"),
   webSocketApi: require("./webSocketApi"),
 };
