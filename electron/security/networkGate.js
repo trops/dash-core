@@ -52,9 +52,23 @@ function _hostMatches(host, allowedList) {
   if (!Array.isArray(allowedList) || allowedList.length === 0) return false;
   if (allowedList.includes("*")) return true;
   const lower = host.toLowerCase();
-  return allowedList.some(
-    (h) => typeof h === "string" && h.toLowerCase() === lower,
-  );
+  for (const entry of allowedList) {
+    if (typeof entry !== "string") continue;
+    const entryLower = entry.toLowerCase();
+    // Exact match.
+    if (entryLower === lower) return true;
+    // Subdomain wildcard: "*.example.com" matches "example.com" and
+    // any host ending in ".example.com". The leading dot on the
+    // suffix-test is required — otherwise "*.example.com" would also
+    // match "attackerexample.com", which is the kind of confusion
+    // this feature is meant to avoid.
+    if (entryLower.startsWith("*.")) {
+      const base = entryLower.slice(2); // "example.com"
+      if (lower === base) return true;
+      if (lower.endsWith("." + base)) return true;
+    }
+  }
+  return false;
 }
 
 function _parseHost(url) {

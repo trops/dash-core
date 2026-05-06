@@ -213,6 +213,97 @@ test("gateNetworkCallWithJit: deny + JIT on + user declines → final deny", asy
   assert.match(r.reason, /declined/i);
 });
 
+test("gateNetworkCall: *.example.com matches the apex (example.com)", () => {
+  reset();
+  fakeGrantedPermissions.setGrant("@e2e/foo", {
+    grantOrigin: "manual",
+    servers: {},
+    domains: { network: { hosts: ["*.example.com"] } },
+  });
+  const r = networkGate.gateNetworkCall({
+    widgetId: "@e2e/foo",
+    action: "readDataFromURL",
+    args: { url: "https://example.com/x" },
+  });
+  assert.strictEqual(r.allow, true);
+});
+
+test("gateNetworkCall: *.example.com matches a subdomain (api.example.com)", () => {
+  reset();
+  fakeGrantedPermissions.setGrant("@e2e/foo", {
+    grantOrigin: "manual",
+    servers: {},
+    domains: { network: { hosts: ["*.example.com"] } },
+  });
+  const r = networkGate.gateNetworkCall({
+    widgetId: "@e2e/foo",
+    action: "readDataFromURL",
+    args: { url: "https://api.example.com/x" },
+  });
+  assert.strictEqual(r.allow, true);
+});
+
+test("gateNetworkCall: *.example.com matches a deep subdomain", () => {
+  reset();
+  fakeGrantedPermissions.setGrant("@e2e/foo", {
+    grantOrigin: "manual",
+    servers: {},
+    domains: { network: { hosts: ["*.example.com"] } },
+  });
+  const r = networkGate.gateNetworkCall({
+    widgetId: "@e2e/foo",
+    action: "readDataFromURL",
+    args: { url: "https://deep.api.example.com/x" },
+  });
+  assert.strictEqual(r.allow, true);
+});
+
+test("gateNetworkCall: *.example.com does NOT match attackerexample.com (suffix without dot)", () => {
+  reset();
+  fakeGrantedPermissions.setGrant("@e2e/foo", {
+    grantOrigin: "manual",
+    servers: {},
+    domains: { network: { hosts: ["*.example.com"] } },
+  });
+  const r = networkGate.gateNetworkCall({
+    widgetId: "@e2e/foo",
+    action: "readDataFromURL",
+    args: { url: "https://attackerexample.com/x" },
+  });
+  assert.strictEqual(r.allow, false);
+  assert.match(r.reason, /not in/i);
+});
+
+test("gateNetworkCall: *.example.com does NOT match example.org", () => {
+  reset();
+  fakeGrantedPermissions.setGrant("@e2e/foo", {
+    grantOrigin: "manual",
+    servers: {},
+    domains: { network: { hosts: ["*.example.com"] } },
+  });
+  const r = networkGate.gateNetworkCall({
+    widgetId: "@e2e/foo",
+    action: "readDataFromURL",
+    args: { url: "https://example.org/x" },
+  });
+  assert.strictEqual(r.allow, false);
+});
+
+test("gateNetworkCall: subdomain wildcard match is case-insensitive", () => {
+  reset();
+  fakeGrantedPermissions.setGrant("@e2e/foo", {
+    grantOrigin: "manual",
+    servers: {},
+    domains: { network: { hosts: ["*.Example.COM"] } },
+  });
+  const r = networkGate.gateNetworkCall({
+    widgetId: "@e2e/foo",
+    action: "readDataFromURL",
+    args: { url: "https://API.example.com/x" },
+  });
+  assert.strictEqual(r.allow, true);
+});
+
 test("gateNetworkCallWithJit: malformed url denial does NOT escalate to JIT", async () => {
   reset();
   // No decision queued — if JIT fired, requestApproval would throw.
