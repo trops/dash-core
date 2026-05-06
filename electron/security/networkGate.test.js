@@ -318,3 +318,130 @@ test("gateNetworkCallWithJit: malformed url denial does NOT escalate to JIT", as
   assert.strictEqual(r.allow, false);
   assert.match(r.reason, /malformed/i);
 });
+
+// ---- per-action grant scoping (slice 4) ------------------------------
+
+test("gateNetworkCall: action allowlist enforced when actions[] is present", () => {
+  reset();
+  fakeGrantedPermissions.setGrant("@e2e/foo", {
+    grantOrigin: "live",
+    domains: {
+      network: {
+        actions: ["readDataFromURL"],
+        hosts: ["api.example.com"],
+      },
+    },
+  });
+  // Action in allowlist → allowed
+  let r = networkGate.gateNetworkCall({
+    widgetId: "@e2e/foo",
+    action: "readDataFromURL",
+    args: { url: "https://api.example.com/x" },
+  });
+  assert.strictEqual(r.allow, true);
+  // Different action with same host → denied (NEW per slice 4)
+  r = networkGate.gateNetworkCall({
+    widgetId: "@e2e/foo",
+    action: "connect",
+    args: { url: "https://api.example.com/x" },
+  });
+  assert.strictEqual(r.allow, false);
+  assert.match(r.reason, /actions allowlist/i);
+});
+
+test("gateNetworkCall: legacy grant without actions[] allows any action (Option A migration)", () => {
+  reset();
+  fakeGrantedPermissions.setGrant("@e2e/foo-legacy", {
+    grantOrigin: "manual",
+    domains: { network: { hosts: ["api.example.com"] } },
+  });
+  let r = networkGate.gateNetworkCall({
+    widgetId: "@e2e/foo-legacy",
+    action: "readDataFromURL",
+    args: { url: "https://api.example.com/x" },
+  });
+  assert.strictEqual(r.allow, true);
+  r = networkGate.gateNetworkCall({
+    widgetId: "@e2e/foo-legacy",
+    action: "connect",
+    args: { url: "https://api.example.com/x" },
+  });
+  assert.strictEqual(r.allow, true);
+});
+
+test("gateNetworkCallWithJit: escalates when host not in allowed hosts (was silently denied)", async () => {
+  reset();
+  fakeGrantedPermissions.setGrant("@e2e/partial-net", {
+    grantOrigin: "live",
+    domains: {
+      network: { actions: ["readDataFromURL"], hosts: ["api.example.com"] },
+    },
+  });
+  jitDecisions.push(() => ({
+    approve: true,
+    granted: {
+      grantOrigin: "live",
+      domains: {
+        network: { actions: ["readDataFromURL"], hosts: ["api.other.com"] },
+      },
+    },
+  }));
+  const r = await networkGate.gateNetworkCallWithJit(
+    {
+      widgetId: "@e2e/partial-net",
+      action: "readDataFromURL",
+      args: { url: "https://api.other.com/x" },
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(r.allow, true);
+});
+
+test("gateNetworkCallWithJit: escalates when action not in actions[] (was silently denied)", async () => {
+  reset();
+  fakeGrantedPermissions.setGrant("@e2e/partial-actions-net", {
+    grantOrigin: "live",
+    domains: {
+      network: {
+        actions: ["readDataFromURL"],
+        hosts: ["api.example.com"],
+      },
+    },
+  });
+  jitDecisions.push(() => ({
+    approve: true,
+    granted: {
+      grantOrigin: "live",
+      domains: {
+        network: { actions: ["connect"], hosts: ["api.example.com"] },
+      },
+    },
+  }));
+  const r = await networkGate.gateNetworkCallWithJit(
+    {
+      widgetId: "@e2e/partial-actions-net",
+      action: "connect",
+      args: { url: "https://api.example.com/x" },
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(r.allow, true);
+});
+
+test("gateNetworkCallWithJit: legacy grant (no actions[]) does NOT escalate when host matches", async () => {
+  reset();
+  fakeGrantedPermissions.setGrant("@e2e/foo-legacy-jit", {
+    grantOrigin: "manual",
+    domains: { network: { hosts: ["api.example.com"] } },
+  });
+  // No decision queued — if JIT fired, requestApproval would throw.
+  const r = await networkGate.gateNetworkCallWithJit(
+    {
+      widgetId: "@e2e/foo-legacy-jit",
+      action: "readDataFromURL",
+      args: { url: "https://api.example.com/x" },
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(r.allow, true);
+});

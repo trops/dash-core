@@ -44,7 +44,23 @@ require.cache["__stub_electron_fsgate__"] = {
 };
 fs.mkdirSync(path.join(tmpRoot, "userData"), { recursive: true });
 
-const { gateFsCall, isFsWriteAction } = require("./fsGate");
+// Stub jitConsent.requestApproval BEFORE fsGate is required so the
+// JIT-flow tests can drive the renderer-decision side without touching
+// real IPC. Tests assign a function to `__mockApproval` per-case.
+let __mockApproval = (_req, _opts) => {
+  throw new Error("__mockApproval was called but the test didn't set one");
+};
+const jitConsentPath = require.resolve("../mcp/jitConsent");
+require.cache[jitConsentPath] = {
+  id: jitConsentPath,
+  filename: jitConsentPath,
+  loaded: true,
+  exports: {
+    requestApproval: (req, opts) => __mockApproval(req, opts),
+  },
+};
+
+const { gateFsCall, gateFsCallWithJit, isFsWriteAction } = require("./fsGate");
 const { setGrant, clearCache } = require("../mcp/grantedPermissions");
 
 function reset() {
@@ -206,4 +222,267 @@ test("gateFsCall: write tool can use either readPaths or writePaths? (no — str
     args: { filename: "x" },
   });
   assert.strictEqual(r.allow, false);
+});
+
+// ---- per-action grant scoping (slice 4) ------------------------------
+//
+// Slice 4 introduces an `actions[]` allowlist alongside readPaths/
+// writePaths. With it present, only listed actions are allowed (path
+// scope still applies). When absent, every action in the appropriate
+// read/write class is allowed — Option A migration so pre-slice grants
+// keep working until the user re-consents.
+
+test("gateFsCall: action allowlist enforced when actions[] is present", () => {
+  reset();
+  setGrant("@trops/widget-actions", {
+    grantOrigin: "live",
+    domains: {
+      fs: {
+        actions: ["saveToFile"],
+        readPaths: [],
+        writePaths: ["y"],
+      },
+    },
+  });
+  // Action in allowlist → allowed (path also matches)
+  let r = gateFsCall({
+    widgetId: "@trops/widget-actions",
+    action: "saveToFile",
+    args: { filename: "y" },
+  });
+  assert.strictEqual(r.allow, true);
+  // Different write action with same path → denied (NEW per slice 4)
+  r = gateFsCall({
+    widgetId: "@trops/widget-actions",
+    action: "transformFile",
+    args: { filename: "y" },
+  });
+  assert.strictEqual(r.allow, false);
+  assert.match(r.reason, /actions allowlist/i);
+});
+
+test("gateFsCall: legacy grant without actions[] allows any action (Option A migration)", () => {
+  // Pre-slice-4 grant — no `actions` field. Gate must continue to
+  // allow any read/write action against the existing path scope.
+  reset();
+  setGrant("@trops/widget-legacy", {
+    grantOrigin: "manual",
+    domains: { fs: { readPaths: [], writePaths: ["y"] } },
+  });
+  let r = gateFsCall({
+    widgetId: "@trops/widget-legacy",
+    action: "saveToFile",
+    args: { filename: "y" },
+  });
+  assert.strictEqual(r.allow, true);
+  r = gateFsCall({
+    widgetId: "@trops/widget-legacy",
+    action: "transformFile",
+    args: { filename: "y" },
+  });
+  assert.strictEqual(r.allow, true);
+});
+
+// ---- gateFsCallWithJit — structural escalation -----------------------
+
+test("gateFsCallWithJit: JIT off → returns sync gate verdict", async () => {
+  reset();
+  let approvalCalled = false;
+  __mockApproval = async () => {
+    approvalCalled = true;
+    return { approve: true };
+  };
+  const r = await gateFsCallWithJit(
+    {
+      widgetId: "@trops/no-grant-yet",
+      action: "saveToFile",
+      args: { filename: "x" },
+    },
+    { enableJit: false },
+  );
+  assert.strictEqual(approvalCalled, false);
+  assert.strictEqual(r.allow, false);
+});
+
+test("gateFsCallWithJit: escalates when widget has no fs grant", async () => {
+  reset();
+  let approvalCalled = false;
+  __mockApproval = async (req) => {
+    approvalCalled = true;
+    assert.strictEqual(req.widgetId, "@trops/no-grant-fs");
+    assert.strictEqual(req.domain, "fs");
+    return {
+      approve: true,
+      granted: {
+        grantOrigin: "live",
+        domains: {
+          fs: {
+            actions: ["saveToFile"],
+            readPaths: [],
+            writePaths: ["x"],
+          },
+        },
+      },
+    };
+  };
+  const r = await gateFsCallWithJit(
+    {
+      widgetId: "@trops/no-grant-fs",
+      action: "saveToFile",
+      args: { filename: "x" },
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(approvalCalled, true);
+  assert.strictEqual(r.allow, true);
+});
+
+test("gateFsCallWithJit: escalates when filename not in writePaths (was silently denied)", async () => {
+  reset();
+  setGrant("@trops/partial-fs", {
+    grantOrigin: "live",
+    domains: {
+      fs: { actions: ["saveToFile"], readPaths: [], writePaths: ["a"] },
+    },
+  });
+  let approvalCalled = false;
+  __mockApproval = async () => {
+    approvalCalled = true;
+    return {
+      approve: true,
+      granted: {
+        grantOrigin: "live",
+        domains: {
+          fs: { actions: ["saveToFile"], readPaths: [], writePaths: ["b"] },
+        },
+      },
+    };
+  };
+  const r = await gateFsCallWithJit(
+    {
+      widgetId: "@trops/partial-fs",
+      action: "saveToFile",
+      args: { filename: "b" },
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(approvalCalled, true);
+  assert.strictEqual(r.allow, true);
+});
+
+test("gateFsCallWithJit: escalates when action not in actions[] (was silently denied)", async () => {
+  reset();
+  setGrant("@trops/partial-actions", {
+    grantOrigin: "live",
+    domains: {
+      fs: { actions: ["saveToFile"], readPaths: [], writePaths: ["x"] },
+    },
+  });
+  let approvalCalled = false;
+  __mockApproval = async () => {
+    approvalCalled = true;
+    return {
+      approve: true,
+      granted: {
+        grantOrigin: "live",
+        domains: {
+          fs: {
+            actions: ["transformFile"],
+            readPaths: [],
+            writePaths: ["x"],
+          },
+        },
+      },
+    };
+  };
+  const r = await gateFsCallWithJit(
+    {
+      widgetId: "@trops/partial-actions",
+      action: "transformFile",
+      args: { filename: "x" },
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(approvalCalled, true);
+  assert.strictEqual(r.allow, true);
+});
+
+test("gateFsCallWithJit: does NOT escalate for unknown mount token", async () => {
+  reset();
+  let approvalCalled = false;
+  __mockApproval = async () => {
+    approvalCalled = true;
+    return { approve: true };
+  };
+  const r = await gateFsCallWithJit(
+    {
+      token: "bogus-token",
+      action: "saveToFile",
+      args: { filename: "x" },
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(approvalCalled, false);
+  assert.strictEqual(r.allow, false);
+  assert.match(r.reason, /unknown mount token/i);
+});
+
+test("gateFsCallWithJit: does NOT escalate for missing widgetId", async () => {
+  reset();
+  let approvalCalled = false;
+  __mockApproval = async () => {
+    approvalCalled = true;
+    return { approve: true };
+  };
+  const r = await gateFsCallWithJit(
+    { action: "saveToFile", args: { filename: "x" } },
+    { enableJit: true },
+  );
+  assert.strictEqual(approvalCalled, false);
+  assert.strictEqual(r.allow, false);
+});
+
+test("gateFsCallWithJit: does NOT escalate for missing args.filename", async () => {
+  reset();
+  let approvalCalled = false;
+  __mockApproval = async () => {
+    approvalCalled = true;
+    return { approve: true };
+  };
+  const r = await gateFsCallWithJit(
+    {
+      widgetId: "@trops/widget-no-fname",
+      action: "saveToFile",
+      args: {},
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(approvalCalled, false);
+  assert.strictEqual(r.allow, false);
+});
+
+test("gateFsCallWithJit: legacy grant (no actions[]) does NOT escalate when filename matches", async () => {
+  // Pre-slice-4 grant + a covered call → sync gate allows; JIT must
+  // not fire (would re-prompt the user for a permission they already
+  // have under legacy semantics).
+  reset();
+  setGrant("@trops/widget-legacy-jit", {
+    grantOrigin: "manual",
+    domains: { fs: { readPaths: [], writePaths: ["x"] } },
+  });
+  let approvalCalled = false;
+  __mockApproval = async () => {
+    approvalCalled = true;
+    return { approve: true };
+  };
+  const r = await gateFsCallWithJit(
+    {
+      widgetId: "@trops/widget-legacy-jit",
+      action: "saveToFile",
+      args: { filename: "x" },
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(approvalCalled, false);
+  assert.strictEqual(r.allow, true);
 });
