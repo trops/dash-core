@@ -180,18 +180,6 @@ function gateToolCall({ widgetId, token, serverName, toolName, args }) {
 }
 
 /**
- * Heuristic — "no grant" is the only denial reason JIT can recover.
- * Other denials (missing widgetId, malformed args, server-not-declared
- * post-grant, path-traversal-rejected) are bugs or attempted abuse,
- * not consent gaps; the user shouldn't be prompted about those.
- */
-function _isNoGrantDenial(reason) {
-  return (
-    typeof reason === "string" && /no MCP permissions granted/i.test(reason)
-  );
-}
-
-/**
  * Merge `addition` (a grant blob) into the widget's existing grant. Used
  * by the JIT path to extend an existing grant with a new tool/path
  * without clobbering grants for other servers.
@@ -224,29 +212,55 @@ function _mergeGrant(current, addition) {
 }
 
 /**
- * Async wrapper around gateToolCall that escalates "no grant" denials
- * to a just-in-time consent prompt when `opts.enableJit` is true.
+ * Async wrapper around gateToolCall that escalates "missing in grant"
+ * denials to a just-in-time consent prompt when `opts.enableJit` is true.
  * On approval, the user's chosen grant shape (carried on
  * `decision.granted`) is merged into the persisted grant and the gate
  * re-evaluates. On denial / timeout / disabled-flag, returns the
  * synchronous decision unchanged.
  *
+ * Escalation signal is STRUCTURAL, not message-based: if the requested
+ * tool isn't listed in the widget's grant for the requested server, JIT
+ * fires. This uniformly covers no-grant, server-not-in-grant, and
+ * tool-not-in-server's-allowlist — all three are recoverable by adding
+ * to the grant via the modal. If the tool IS in the grant, the sync
+ * gate's verdict stands: any denial it returns is a structural-integrity
+ * issue (path-arg traversal, path-arg without paths declared) that isn't
+ * a consent gap and shouldn't prompt. Identity-resolution failures
+ * (unknown token, missing widgetId) likewise short-circuit to the sync
+ * verdict — those are abuse or caller bugs, not consent gaps.
+ *
  * @returns {Promise<{ allow: true } | { allow: false, reason: string }>}
  */
 async function gateToolCallWithJit(req, opts = {}) {
-  const initial = gateToolCall(req);
-  if (initial.allow) return initial;
-  if (!opts.enableJit) return initial;
-  if (!_isNoGrantDenial(initial.reason)) return initial;
+  if (!opts.enableJit) return gateToolCall(req);
 
-  // Same identity-resolution as the sync gate — JIT prompt and grant
-  // write must use the verified widgetId.
+  // Identity must resolve to a concrete widgetId. Unknown tokens and
+  // missing widgetId are returned by the sync gate — those denials are
+  // not recoverable via consent.
   const resolved = _resolveIdentity({
     token: req.token,
     widgetId: req.widgetId,
   });
+  if (resolved.source === "token-unknown" || !resolved.widgetId) {
+    return gateToolCall(req);
+  }
   const verifiedWidgetId = resolved.widgetId;
-  if (!verifiedWidgetId) return initial;
+
+  // Structural escalation: when the tool already exists in the grant,
+  // the sync gate's verdict is authoritative — any denial is structural
+  // (containment / scope) and not recoverable by re-prompting. When the
+  // tool is missing from the grant, escalate regardless of which of the
+  // three "missing" shapes caused it.
+  const grant = getGrant(verifiedWidgetId);
+  const hasToolInGrant = !!(
+    grant &&
+    grant.servers &&
+    grant.servers[req.serverName] &&
+    Array.isArray(grant.servers[req.serverName].tools) &&
+    grant.servers[req.serverName].tools.includes(req.toolName)
+  );
+  if (hasToolInGrant) return gateToolCall(req);
 
   let decision;
   try {
@@ -266,11 +280,7 @@ async function gateToolCallWithJit(req, opts = {}) {
   } catch (e) {
     return {
       allow: false,
-      reason:
-        "JIT consent " +
-        (e && e.message ? e.message : "failed") +
-        "; original denial: " +
-        initial.reason,
+      reason: "JIT consent " + (e && e.message ? e.message : "failed"),
     };
   }
 

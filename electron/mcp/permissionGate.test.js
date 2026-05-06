@@ -41,7 +41,28 @@ require.cache["__stub_electron_perm_gate__"] = {
   exports: fakeElectron,
 };
 
-const { gateToolCall, isWriteTool } = require("./permissionGate");
+// Stub jitConsent.requestApproval BEFORE permissionGate is required so the
+// JIT-flow tests can drive the renderer-decision side without touching real
+// IPC. Tests assign a function to `__mockApproval` per-case; default rejects
+// to make accidental escalation visible.
+let __mockApproval = (_req, _opts) => {
+  throw new Error("__mockApproval was called but the test didn't set one");
+};
+const jitConsentPath = require.resolve("./jitConsent");
+require.cache[jitConsentPath] = {
+  id: jitConsentPath,
+  filename: jitConsentPath,
+  loaded: true,
+  exports: {
+    requestApproval: (req, opts) => __mockApproval(req, opts),
+  },
+};
+
+const {
+  gateToolCall,
+  gateToolCallWithJit,
+  isWriteTool,
+} = require("./permissionGate");
 const { parseManifestPermissions, clearCache } = require("./widgetPermissions");
 const {
   setGrant,
@@ -334,4 +355,238 @@ test("Slice 2: declared manifest alone does NOT grant access — user must conse
   });
   assert.strictEqual(r.allow, false);
   assert.match(r.reason, /no MCP permissions granted/i);
+});
+
+// ---------------------------------------------------------------
+// gateToolCallWithJit — structural escalation
+//
+// The JIT path used to grep the sync gate's denial-reason string to decide
+// whether to escalate. That left two recoverable cases (server-not-in-grant,
+// tool-not-in-grant) silently denied without prompting after the widget had
+// any prior grant. The structural rewrite escalates whenever the requested
+// tool isn't listed in the widget's grant for the requested server, and
+// delegates to the sync gate otherwise. Tests below pin both halves.
+// ---------------------------------------------------------------
+
+const WID_JIT = "@trops/widget-jit-flow";
+
+function setupJitWidget(initialGrant) {
+  installFakeWidget(
+    WID_JIT,
+    {
+      name: WID_JIT,
+      dash: {
+        permissions: {
+          mcp: {
+            "google-drive": { tools: ["search"] },
+          },
+        },
+      },
+    },
+    { writeGrant: false },
+  );
+  if (initialGrant) {
+    setGrant(WID_JIT, initialGrant);
+  }
+}
+
+test("JIT escalates: widget has no grant at all", async () => {
+  setupJitWidget(null);
+  let approvalCalled = false;
+  __mockApproval = async () => {
+    approvalCalled = true;
+    return {
+      approve: true,
+      granted: {
+        grantOrigin: "live",
+        servers: {
+          "google-drive": { tools: ["search"], readPaths: [], writePaths: [] },
+        },
+      },
+    };
+  };
+  const r = await gateToolCallWithJit(
+    {
+      widgetId: WID_JIT,
+      serverName: "google-drive",
+      toolName: "search",
+      args: { query: "x" },
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(approvalCalled, true);
+  assert.strictEqual(r.allow, true);
+});
+
+test("JIT escalates: server not in grant (recoverable, was silently denied)", async () => {
+  setupJitWidget({
+    grantOrigin: "live",
+    servers: {
+      "other-server": { tools: ["search"], readPaths: [], writePaths: [] },
+    },
+  });
+  let approvalCalled = false;
+  __mockApproval = async () => {
+    approvalCalled = true;
+    return {
+      approve: true,
+      granted: {
+        grantOrigin: "live",
+        servers: {
+          "google-drive": { tools: ["search"], readPaths: [], writePaths: [] },
+        },
+      },
+    };
+  };
+  const r = await gateToolCallWithJit(
+    {
+      widgetId: WID_JIT,
+      serverName: "google-drive",
+      toolName: "search",
+      args: { query: "x" },
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(approvalCalled, true);
+  assert.strictEqual(r.allow, true);
+});
+
+test("JIT escalates: tool not in server's allowlist (recoverable, was silently denied)", async () => {
+  setupJitWidget({
+    grantOrigin: "live",
+    servers: {
+      "google-drive": {
+        tools: ["search"],
+        readPaths: [],
+        writePaths: [],
+      },
+    },
+  });
+  let approvalCalled = false;
+  __mockApproval = async () => {
+    approvalCalled = true;
+    return {
+      approve: true,
+      granted: {
+        grantOrigin: "live",
+        servers: {
+          "google-drive": {
+            tools: ["list_folder"],
+            readPaths: [],
+            writePaths: [],
+          },
+        },
+      },
+    };
+  };
+  const r = await gateToolCallWithJit(
+    {
+      widgetId: WID_JIT,
+      serverName: "google-drive",
+      toolName: "list_folder",
+      args: {},
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(approvalCalled, true);
+  assert.strictEqual(r.allow, true);
+});
+
+test("JIT does NOT escalate: tool IS in grant but path arg traversal — security-critical", async () => {
+  setupJitWidget({
+    grantOrigin: "live",
+    servers: {
+      "google-drive": {
+        tools: ["read_file"],
+        readPaths: ["/safe/dir"],
+        writePaths: [],
+      },
+    },
+  });
+  let approvalCalled = false;
+  __mockApproval = async () => {
+    approvalCalled = true;
+    return { approve: true };
+  };
+  const r = await gateToolCallWithJit(
+    {
+      widgetId: WID_JIT,
+      serverName: "google-drive",
+      toolName: "read_file",
+      args: { path: "/safe/dir/../etc/passwd" },
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(approvalCalled, false);
+  assert.strictEqual(r.allow, false);
+});
+
+test("JIT does NOT escalate: tool IS in grant but no paths declared (path-arg gap)", async () => {
+  // Known friction: tool is granted but the user never declared any paths
+  // for that server. Sync gate denies. JIT does not prompt in this slice
+  // (would require path-picker UX in the modal — separate slice).
+  setupJitWidget({
+    grantOrigin: "live",
+    servers: {
+      "google-drive": {
+        tools: ["read_file"],
+        readPaths: [],
+        writePaths: [],
+      },
+    },
+  });
+  let approvalCalled = false;
+  __mockApproval = async () => {
+    approvalCalled = true;
+    return { approve: true };
+  };
+  const r = await gateToolCallWithJit(
+    {
+      widgetId: WID_JIT,
+      serverName: "google-drive",
+      toolName: "read_file",
+      args: { path: "/anywhere" },
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(approvalCalled, false);
+  assert.strictEqual(r.allow, false);
+});
+
+test("JIT does NOT escalate: unknown mount token — identity not verifiable", async () => {
+  let approvalCalled = false;
+  __mockApproval = async () => {
+    approvalCalled = true;
+    return { approve: true };
+  };
+  const r = await gateToolCallWithJit(
+    {
+      token: "bogus-token-not-in-registry",
+      serverName: "google-drive",
+      toolName: "search",
+      args: {},
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(approvalCalled, false);
+  assert.strictEqual(r.allow, false);
+  assert.match(r.reason, /unknown mount token/i);
+});
+
+test("JIT does NOT escalate: no widgetId and no token — caller bug", async () => {
+  let approvalCalled = false;
+  __mockApproval = async () => {
+    approvalCalled = true;
+    return { approve: true };
+  };
+  const r = await gateToolCallWithJit(
+    {
+      serverName: "google-drive",
+      toolName: "search",
+      args: {},
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(approvalCalled, false);
+  assert.strictEqual(r.allow, false);
 });
