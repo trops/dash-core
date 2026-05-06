@@ -4,6 +4,7 @@ import {
   SubHeading3,
   FontAwesomeIcon,
   Switch,
+  Tabs3,
 } from "@trops/dash-react";
 import { GrantManuallyModal } from "./GrantManuallyModal";
 import { AppContext } from "../../../Context/App/AppContext";
@@ -40,6 +41,11 @@ export const PrivacySecuritySection = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState("grouped");
   const [selectedPackageKey, setSelectedPackageKey] = useState(null);
+  // Two top-level tabs so the inline `HowThisWorksPanel` (which carries
+  // example fixtures and is intentionally tall) doesn't push the
+  // package list/detail below the viewport. "permissions" is the
+  // default and contains the actual UI users came here to use.
+  const [activeTab, setActiveTab] = useState("permissions");
 
   const reload = useCallback(async () => {
     setError(null);
@@ -160,7 +166,7 @@ export const PrivacySecuritySection = () => {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex-shrink-0 flex flex-col space-y-4 p-6 border-b border-gray-800">
+      <div className="flex-shrink-0 flex flex-col space-y-3 px-6 pt-6 pb-3 border-b border-gray-800">
         <div className="flex flex-col space-y-2">
           <SubHeading3 title="Widget MCP permissions" padding={false} />
           <span className="text-xs opacity-60">
@@ -168,11 +174,17 @@ export const PrivacySecuritySection = () => {
             per-dashboard switch.
           </span>
         </div>
-
-        <EnforcementToggles />
-
-        <HowThisWorksPanel />
-
+        <Tabs3
+          value={activeTab}
+          onValueChange={setActiveTab}
+          backgroundColor="bg-transparent"
+          spacing="p-0"
+        >
+          <Tabs3.List spacing="p-0.5">
+            <Tabs3.Trigger value="permissions">Permissions</Tabs3.Trigger>
+            <Tabs3.Trigger value="help">Help</Tabs3.Trigger>
+          </Tabs3.List>
+        </Tabs3>
         {error && (
           <div className="text-xs text-red-400 bg-red-900 bg-opacity-20 border border-red-700 rounded p-3">
             {error}
@@ -180,11 +192,22 @@ export const PrivacySecuritySection = () => {
         )}
       </div>
 
-      <SectionLayout
-        listContent={listContent}
-        detailContent={detailContent}
-        emptyDetailMessage="Select a package to view its grants"
-      />
+      {activeTab === "permissions" ? (
+        <div className="flex flex-col flex-1 min-h-0">
+          <div className="flex-shrink-0 px-6 py-4 border-b border-gray-800">
+            <EnforcementToggles />
+          </div>
+          <SectionLayout
+            listContent={listContent}
+            detailContent={detailContent}
+            emptyDetailMessage="Select a package to view its grants"
+          />
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto p-6">
+          <HowThisWorksPanel />
+        </div>
+      )}
 
       <GrantManuallyModal
         isOpen={!!manualGrantWidgetId}
