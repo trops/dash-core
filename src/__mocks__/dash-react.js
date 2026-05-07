@@ -109,6 +109,21 @@ function Button({ title, onClick, disabled }) {
   );
 }
 
+function ButtonIcon({ icon, text, title, onClick, disabled }) {
+  // Render visible text (from `text`) and a `title` attribute (from
+  // `title`) so RTL queries by either work. Either prop is optional.
+  return React.createElement(
+    "button",
+    {
+      onClick: onClick,
+      disabled: disabled,
+      title: title || undefined,
+      "data-icon": icon,
+    },
+    text || null,
+  );
+}
+
 // Tabs3 mock — renders only the active tab content
 function Tabs3({ value, onValueChange, children, className }) {
   return React.createElement(
@@ -226,6 +241,7 @@ module.exports = {
   Button,
   Button2,
   Button3,
+  ButtonIcon,
   Card2,
   Card3,
   Tag2,
