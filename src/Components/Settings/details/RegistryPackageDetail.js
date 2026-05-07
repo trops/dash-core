@@ -153,6 +153,45 @@ export const RegistryPackageDetail = ({
           </div>
         </div>
 
+        {/* Slice 13c: Required tools (sourced from `dash.permissions.mcp` in
+            the published manifest, populated by the scanner pipeline at
+            widget publish time). */}
+        {widget.permissions &&
+          typeof widget.permissions === "object" &&
+          Object.keys(widget.permissions).length > 0 && (
+            <div>
+              <span className="text-xs font-semibold opacity-50 mb-1 block">
+                REQUIRED TOOLS
+              </span>
+              <div className="space-y-2">
+                {Object.entries(widget.permissions).map(([server, block]) => (
+                  <div key={server}>
+                    <div className="text-xs font-mono uppercase tracking-wider opacity-70">
+                      {server}
+                    </div>
+                    {Array.isArray(block.tools) && block.tools.length > 0 && (
+                      <div className="text-xs opacity-80 ml-2 break-all">
+                        {block.tools.join(", ")}
+                      </div>
+                    )}
+                    {Array.isArray(block.readPaths) &&
+                      block.readPaths.length > 0 && (
+                        <div className="text-xs opacity-60 ml-2 break-all">
+                          Read paths: {block.readPaths.join(", ")}
+                        </div>
+                      )}
+                    {Array.isArray(block.writePaths) &&
+                      block.writePaths.length > 0 && (
+                        <div className="text-xs opacity-60 ml-2 break-all">
+                          Write paths: {block.writePaths.join(", ")}
+                        </div>
+                      )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
         {/* App Origin */}
         {widget.appOrigin && (
           <div className="flex items-center gap-1.5 text-xs opacity-50">

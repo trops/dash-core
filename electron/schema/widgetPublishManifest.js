@@ -88,7 +88,7 @@ function generateWidgetRegistryManifest(
     })),
   }));
 
-  return {
+  const manifest = {
     scope,
     name,
     displayName: options.displayName || packageJson.displayName || name,
@@ -109,6 +109,48 @@ function generateWidgetRegistryManifest(
     appOrigin: options.appOrigin || "",
     publishedAt: new Date().toISOString(),
   };
+
+  // Slice 13c: forward `dash.permissions.mcp` from package.json into
+  // the registry manifest so installers can show "what tools does
+  // this widget need" before downloading. The block is computed by
+  // the install/publish/boot scanner pipeline (slice 13a/13b) and
+  // sanitized here on the way out.
+  const sanitizedPermissions = sanitizePermissionsBlock(
+    packageJson?.dash?.permissions?.mcp,
+  );
+  if (sanitizedPermissions) manifest.permissions = sanitizedPermissions;
+
+  return manifest;
+}
+
+/**
+ * Defensive sanitizer — keeps the published manifest safe even if a
+ * widget's package.json has a malformed permissions block. Drops
+ * non-object server values and filters tools/readPaths/writePaths
+ * down to non-empty strings. Returns null if the block has no
+ * surviving content (caller omits the field entirely).
+ */
+function sanitizePermissionsBlock(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const out = {};
+  for (const [serverName, value] of Object.entries(raw)) {
+    if (!value || typeof value !== "object") continue;
+    const block = {};
+    if (Array.isArray(value.tools)) {
+      const tools = value.tools.filter((t) => typeof t === "string" && t);
+      if (tools.length > 0) block.tools = tools;
+    }
+    if (Array.isArray(value.readPaths)) {
+      const r = value.readPaths.filter((p) => typeof p === "string" && p);
+      if (r.length > 0) block.readPaths = r;
+    }
+    if (Array.isArray(value.writePaths)) {
+      const w = value.writePaths.filter((p) => typeof p === "string" && p);
+      if (w.length > 0) block.writePaths = w;
+    }
+    if (Object.keys(block).length > 0) out[serverName] = block;
+  }
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 module.exports = {

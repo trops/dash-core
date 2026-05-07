@@ -7,6 +7,7 @@ const {
   buildWidgetDependencies,
   remapLayoutPackageScopes,
   assertNoLocalScopes,
+  generateRegistryManifest,
 } = require("./dashboardConfigUtils");
 
 // In-memory stand-in for the electron widget registry. Real
@@ -608,5 +609,109 @@ describe("assertNoLocalScopes — publish-time guard", () => {
     };
     const remapped = remapLayoutPackageScopes(workspace, "trops");
     assert.doesNotThrow(() => assertNoLocalScopes(remapped));
+  });
+});
+
+describe("generateRegistryManifest — slice 13c permissions aggregation", () => {
+  const baseConfig = {
+    name: "Test Dashboard",
+    version: "1.0.0",
+    description: "x",
+    icon: "grip",
+    tags: [],
+    widgets: [
+      {
+        id: "trops.gmail.GmailCompose",
+        scope: "trops",
+        packageName: "gmail",
+        widgetName: "GmailCompose",
+        package: "@trops/gmail",
+        version: "1.2.0",
+      },
+      {
+        id: "trops.filesystem.FilesystemWidget",
+        scope: "trops",
+        packageName: "filesystem",
+        widgetName: "FilesystemWidget",
+        package: "@trops/filesystem",
+        version: "0.5.0",
+      },
+    ],
+    providers: [],
+    eventWiring: [],
+  };
+
+  it("embeds per-widget permissions on manifest.widgets[i].permissions", () => {
+    const widgetPermissions = [
+      {
+        packageId: "@trops/gmail",
+        version: "1.2.0",
+        permissions: { gmail: { tools: ["send_email"] } },
+      },
+      {
+        packageId: "@trops/filesystem",
+        version: "0.5.0",
+        permissions: { filesystem: { tools: ["read_file"] } },
+      },
+    ];
+    const m = generateRegistryManifest(baseConfig, {
+      githubUser: "trops",
+      callerScope: "trops",
+      widgetPermissions,
+    });
+    const gmail = m.widgets.find((w) => w.package === "@trops/gmail");
+    const fs = m.widgets.find((w) => w.package === "@trops/filesystem");
+    assert.deepEqual(gmail.permissions.gmail.tools, ["send_email"]);
+    assert.deepEqual(fs.permissions.filesystem.tools, ["read_file"]);
+  });
+
+  it("computes top-level aggregated permissions from widgetPermissions input", () => {
+    const widgetPermissions = [
+      {
+        packageId: "@trops/gmail",
+        version: "1.2.0",
+        permissions: { gmail: { tools: ["send_email"] } },
+      },
+      {
+        packageId: "@trops/filesystem",
+        version: "0.5.0",
+        permissions: { filesystem: { tools: ["read_file"] } },
+      },
+    ];
+    const m = generateRegistryManifest(baseConfig, {
+      githubUser: "trops",
+      callerScope: "trops",
+      widgetPermissions,
+    });
+    assert.deepEqual(Object.keys(m.permissions).sort(), [
+      "filesystem",
+      "gmail",
+    ]);
+    assert.deepEqual(m.permissions.gmail.tools, ["send_email"]);
+  });
+
+  it("omits manifest.permissions when widgetPermissions is empty/absent", () => {
+    const m = generateRegistryManifest(baseConfig, { githubUser: "trops" });
+    assert.equal(m.permissions, undefined);
+  });
+
+  it("widgets without a matching permissions entry get no permissions field", () => {
+    const widgetPermissions = [
+      {
+        packageId: "@trops/gmail",
+        version: "1.2.0",
+        permissions: { gmail: { tools: ["send_email"] } },
+      },
+      // no entry for @trops/filesystem
+    ];
+    const m = generateRegistryManifest(baseConfig, {
+      githubUser: "trops",
+      callerScope: "trops",
+      widgetPermissions,
+    });
+    const gmail = m.widgets.find((w) => w.package === "@trops/gmail");
+    const fs = m.widgets.find((w) => w.package === "@trops/filesystem");
+    assert.ok(gmail.permissions);
+    assert.equal(fs.permissions, undefined);
   });
 });
