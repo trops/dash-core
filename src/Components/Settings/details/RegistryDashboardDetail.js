@@ -236,6 +236,20 @@ export const RegistryDashboardDetail = ({
 
   const widgetDeps = preview?.widgets || pkg.widgets || [];
   const providers = preview?.providers || [];
+  // Slice 13c: aggregated MCP permissions for the dashboard, computed
+  // by the publisher at publish time across every widget's local
+  // package.json. Empty/missing means the dashboard either ships no
+  // tool-using widgets or pre-dates the aggregation.
+  const aggregatedPermissions = preview?.permissions || pkg.permissions || null;
+  // Per-widget permissions live on each widget dep itself —
+  // version-pinned next to the widget so the disclosure can't drift
+  // from the actual installed package.
+  const widgetsWithPermissions = widgetDeps.filter(
+    (w) =>
+      w.permissions &&
+      typeof w.permissions === "object" &&
+      Object.keys(w.permissions).length > 0,
+  );
 
   // Augment compatibility: check renderer-side ComponentManager for
   // built-in widgets that the electron-side WidgetRegistry doesn't know about
@@ -465,6 +479,66 @@ export const RegistryDashboardDetail = ({
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Required Tools — aggregated across widgets, then per-widget */}
+        {(aggregatedPermissions || widgetsWithPermissions.length > 0) && (
+          <div>
+            <span className="text-xs font-semibold opacity-50 mb-1 block">
+              REQUIRED TOOLS
+            </span>
+            {aggregatedPermissions &&
+              Object.entries(aggregatedPermissions).map(([server, block]) => (
+                <div key={server} className="mb-2">
+                  <div className="text-xs font-mono uppercase tracking-wider opacity-70">
+                    {server}
+                  </div>
+                  {Array.isArray(block.tools) && block.tools.length > 0 && (
+                    <div className="text-xs opacity-80 ml-2 break-all">
+                      {block.tools.join(", ")}
+                    </div>
+                  )}
+                  {Array.isArray(block.readPaths) &&
+                    block.readPaths.length > 0 && (
+                      <div className="text-xs opacity-60 ml-2 break-all">
+                        Read paths: {block.readPaths.join(", ")}
+                      </div>
+                    )}
+                  {Array.isArray(block.writePaths) &&
+                    block.writePaths.length > 0 && (
+                      <div className="text-xs opacity-60 ml-2 break-all">
+                        Write paths: {block.writePaths.join(", ")}
+                      </div>
+                    )}
+                </div>
+              ))}
+            {widgetsWithPermissions.length > 0 && (
+              <details className="mt-1">
+                <summary className="text-xs opacity-60 cursor-pointer">
+                  Per-widget breakdown ({widgetsWithPermissions.length} widget
+                  {widgetsWithPermissions.length === 1 ? "" : "s"})
+                </summary>
+                <div className="mt-1 space-y-2 ml-2">
+                  {widgetsWithPermissions.map((w, idx) => (
+                    <div key={idx} className="text-xs opacity-80">
+                      <div className="font-mono break-all">
+                        {w.package || w.packageName}
+                        {w.version ? (
+                          <span className="opacity-50"> v{w.version}</span>
+                        ) : null}
+                      </div>
+                      {Object.entries(w.permissions).map(([server, block]) => (
+                        <div key={server} className="ml-2 break-all">
+                          <span className="opacity-60">{server}:</span>{" "}
+                          {(block.tools || []).join(", ")}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
         )}
 

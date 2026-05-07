@@ -573,7 +573,16 @@ function generateRegistryManifest(dashboardConfig, options = {}) {
       const scopedPackageId = remappedScope
         ? `@${remappedScope.replace(/^@/, "")}/${bareName}`
         : bareName;
-      return {
+      // Slice 13c: pair each widget dependency with its
+      // `dash.permissions.mcp` block, sourced from the publisher's
+      // local install at publish time. The block stays paired with
+      // the pinned version next to it (`version` field above) so
+      // installers can verify "the permissions disclosure was
+      // computed against the version we're about to fetch."
+      const permEntry = (options.widgetPermissions || []).find(
+        (p) => p && p.packageId === scopedPackageId,
+      );
+      const out = {
         id: w.id,
         scope: remappedScope,
         packageName: bareName,
@@ -589,10 +598,27 @@ function generateRegistryManifest(dashboardConfig, options = {}) {
         required: w.required !== false,
         author: w.author || "",
       };
+      if (permEntry && permEntry.permissions) {
+        out.permissions = permEntry.permissions;
+      }
+      return out;
     }),
     providers: dashboardConfig.providers || [],
     eventWiring: dashboardConfig.eventWiring || [],
   };
+
+  // Slice 13c: top-level aggregated permissions for fast UI summary.
+  // The per-widget permissions on `manifest.widgets[i].permissions`
+  // remain the authoritative version-pinned source.
+  if (Array.isArray(options.widgetPermissions)) {
+    const {
+      aggregateWidgetPermissions,
+    } = require("./aggregateWidgetPermissions");
+    const aggregated = aggregateWidgetPermissions(options.widgetPermissions);
+    if (Object.keys(aggregated).length > 0) {
+      manifest.permissions = aggregated;
+    }
+  }
 
   if (options.appOrigin || dashboardConfig.appOrigin) {
     manifest.appOrigin = options.appOrigin || dashboardConfig.appOrigin;

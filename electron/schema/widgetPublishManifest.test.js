@@ -147,6 +147,47 @@ describe("generateWidgetRegistryManifest", () => {
     assert.deepEqual(m.providers, []);
   });
 
+  it("carries dash.permissions.mcp into manifest.permissions when present", () => {
+    const pkg = {
+      ...samplePkg,
+      dash: {
+        permissions: {
+          mcp: {
+            gmail: { tools: ["read_email", "send_email"] },
+            filesystem: { tools: ["read_file"], readPaths: ["/safe"] },
+          },
+        },
+      },
+    };
+    const m = generateWidgetRegistryManifest(pkg, sampleWidgets, {});
+    assert.deepEqual(m.permissions.gmail.tools, ["read_email", "send_email"]);
+    assert.deepEqual(m.permissions.filesystem.readPaths, ["/safe"]);
+  });
+
+  it("omits manifest.permissions when package.json has no dash.permissions.mcp", () => {
+    const m = generateWidgetRegistryManifest(samplePkg, sampleWidgets, {});
+    assert.equal(m.permissions, undefined);
+  });
+
+  it("sanitizes garbage permissions blocks (drops non-object servers, non-string tools)", () => {
+    const pkg = {
+      ...samplePkg,
+      dash: {
+        permissions: {
+          mcp: {
+            gmail: { tools: ["read_email", 42, null, "send_email"] },
+            broken: "not-an-object",
+            other: { tools: ["t"] },
+          },
+        },
+      },
+    };
+    const m = generateWidgetRegistryManifest(pkg, sampleWidgets, {});
+    assert.deepEqual(m.permissions.gmail.tools, ["read_email", "send_email"]);
+    assert.equal(m.permissions.broken, undefined);
+    assert.deepEqual(m.permissions.other.tools, ["t"]);
+  });
+
   it("drops null/undefined entries from widget providers arrays", () => {
     // Publish-side defense: if a widget's .dash.js ships a sparse
     // providers array (trailing comma, undefined conditional), we

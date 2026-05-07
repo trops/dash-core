@@ -1669,6 +1669,81 @@ async function prepareDashboardForPublish(
       registryCheckFailed = true;
     }
 
+    // Slice 13c: collect each widget's local `dash.permissions.mcp`
+    // block and pair it with the version on disk. This array becomes
+    // the source-of-truth for both the per-widget `permissions` field
+    // on each manifest.widgets[] entry AND the top-level aggregated
+    // `manifest.permissions` block. Includes third-party widgets too
+    // — every dashboard dependency lives under widgets/ on the
+    // publisher's machine, scanner pipeline (slice 13a/b) keeps each
+    // package.json's permissions block fresh.
+    const widgetPermissions = [];
+    const installedWidgets = widgetRegistry
+      ? widgetRegistry.getWidgets() || []
+      : [];
+    const unpinnedDeps = [];
+    for (const w of dashboardConfig.widgets || []) {
+      const remappedScope =
+        resolvedCallerScope && w.scope && w.scope !== resolvedCallerScope
+          ? resolvedCallerScope
+          : w.scope || "";
+      const bareName = (w.packageName || w.package || "").replace(
+        /^@[^/]+\//,
+        "",
+      );
+      const scopedPackageId = remappedScope
+        ? `@${String(remappedScope).replace(/^@/, "")}/${bareName}`
+        : bareName;
+      // Version-pin guard: refuse to publish a dashboard whose widget
+      // dep has no concrete version. Otherwise the permissions block
+      // we ship would be computed against one version while installers
+      // resolve `*` to potentially-newer versions with a different
+      // tool surface.
+      if (!w.version || w.version === "*") {
+        unpinnedDeps.push(scopedPackageId);
+        continue;
+      }
+      // Find the installed copy by trying a few aliases — registry
+      // entries are usually `@scope/name`, but local conventions
+      // sometimes elide the @.
+      const match = installedWidgets.find((iw) => {
+        if (!iw) return false;
+        const candidates = new Set();
+        if (iw.packageId) candidates.add(iw.packageId);
+        if (iw.name) candidates.add(iw.name);
+        return (
+          candidates.has(scopedPackageId) ||
+          candidates.has(`${remappedScope}/${bareName}`) ||
+          candidates.has(bareName)
+        );
+      });
+      if (!match || !match.path) continue;
+      const pkgJsonPath = path.join(match.path, "package.json");
+      if (!fs.existsSync(pkgJsonPath)) continue;
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
+        const perms = pkg?.dash?.permissions?.mcp;
+        if (perms && typeof perms === "object") {
+          widgetPermissions.push({
+            packageId: scopedPackageId,
+            version: w.version,
+            permissions: perms,
+          });
+        }
+      } catch (e) {
+        console.warn(
+          `[DashboardConfigController] Could not read permissions from ${pkgJsonPath}:`,
+          e.message,
+        );
+      }
+    }
+    if (unpinnedDeps.length > 0) {
+      return {
+        success: false,
+        error: `Cannot publish dashboard with unpinned widget versions: ${unpinnedDeps.join(", ")}. Reinstall these widgets from the registry to lock their versions before publishing.`,
+      };
+    }
+
     // 8. Generate registry manifest — pass callerScope so local-only
     //    scopes (e.g. `@ai-built/…`) get rewritten to the publisher's
     //    actual registry scope on the way out.
@@ -1680,6 +1755,7 @@ async function prepareDashboardForPublish(
       appOrigin: appId,
       visibility: options.visibility || "public",
       version: nextVersion,
+      widgetPermissions,
     });
 
     // 9. Show save dialog for the publish package
