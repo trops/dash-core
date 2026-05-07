@@ -25,6 +25,7 @@ const {
 const { getWidgetMcpPermissions } = require("../mcp/widgetPermissions");
 const { getWidgetRegistry } = require("../widgetRegistry");
 const { buildGrantsListing } = require("./widgetMcpGrantsListing");
+const { expandToComponentRows } = require("./expandToComponentRows");
 const { isBroadening } = require("./grantDiff");
 
 // Native confirm dialog for any set-grant call that broadens the
@@ -110,6 +111,13 @@ function setupWidgetMcpGrantsHandlers() {
     } catch (_e) {
       // Registry not initialized yet; fall back to grants-only listing.
     }
+    // Slice 13e.1: expand each installed package to one row per
+    // component so the Privacy panel keeps showing the per-widget
+    // entry even after a full revoke. Without this, rows for
+    // dotted-form widgetIds (`trops.gmail.GmailCompose`) only
+    // appeared via the orphan-grant loop, vanishing the moment the
+    // last tool grant was revoked.
+    installedWidgets = expandToComponentRows(installedWidgets);
 
     const declaredByWidget = new Map();
     for (const w of installedWidgets) {
