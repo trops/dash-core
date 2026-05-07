@@ -504,6 +504,23 @@ class WidgetRegistry {
         throw new Error(`Unsupported local source type: ${resolvedPath}`);
       }
 
+      // Slice 13a: scan the freshly-installed widget for MCP usage and
+      // update the package.json's `dash.permissions.mcp` block. Always
+      // runs (even when a manifest already exists) — catches author
+      // forgetfulness and version updates that introduced new tools.
+      // Merge is additive; hand-authored entries are preserved.
+      try {
+        const {
+          applyScanToPackageJson,
+        } = require("./utils/scanWidgetPackagePermissions");
+        applyScanToPackageJson(widgetPath);
+      } catch (e) {
+        console.warn(
+          `[WidgetRegistry] Permission scan failed for ${widgetName}: ${e.message}`,
+        );
+        // Non-fatal — the gate's runtime JIT still backs us up.
+      }
+
       let config = await this.loadWidgetConfig(widgetName, widgetPath);
 
       if (dashConfigPath) {

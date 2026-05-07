@@ -533,6 +533,30 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
     const parsedName = parsePackageName(pkgJson.name || "");
     const resolvedScope = options.scope || callerScope;
 
+    // Slice 13a: scan source for MCP usage and refresh the
+    // `dash.permissions.mcp` block in package.json BEFORE the zip is
+    // built. Always runs (even when a manifest exists) — catches
+    // author forgetfulness and version updates that introduced new
+    // tools. Merge is additive; hand-authored entries are preserved.
+    try {
+      const {
+        applyScanToPackageJson,
+      } = require("../utils/scanWidgetPackagePermissions");
+      const merged = applyScanToPackageJson(widget.path);
+      if (merged) {
+        // Re-read pkgJson so subsequent steps in this function see the
+        // updated manifest (the version bump below uses pkgJson too).
+        if (fs.existsSync(pkgJsonPath)) {
+          pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
+        }
+      }
+    } catch (e) {
+      console.warn(
+        `[widgetRegistryController] Permission scan failed for ${packageId}: ${e.message}`,
+      );
+      // Non-fatal — runtime gate is still in place.
+    }
+
     // 3.5 Pre-zip privacy scan. Flag any personal filesystem paths baked
     //     into shipped source (e.g. someone edited a `.dash.js`'s
     //     `defaultValue` from `~/Library/...` to `/Users/me/...` to skip
