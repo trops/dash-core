@@ -197,6 +197,11 @@ export function computeDashboardPreflight({ layout, allRows, registry }) {
       packageId,
       displayName: componentName,
       missing,
+      // Pre-merge convenience: caller building the post-approval
+      // grant unions `granted` with the user's checked subset of
+      // `missing`. Including granted here lets the renderer skip a
+      // round-trip to read it back.
+      granted: row.granted || null,
     });
     seenWidgetIds.add(row.widgetId);
   }
