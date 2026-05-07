@@ -14,6 +14,7 @@ import { WidgetPackageDetail } from "../details/WidgetPackageDetail";
 import { WidgetGrantRow, GrantOriginBadge } from "./WidgetGrantRow";
 import { normalizeGrantsByProviderType } from "../../../utils/normalizeGrantsByProviderType";
 import { applyToolToggle } from "./applyToolToggle";
+import { applyPathRemoval } from "./applyPathRemoval";
 
 /**
  * Privacy & Security
@@ -191,6 +192,24 @@ export const PrivacySecuritySection = () => {
     }
   };
 
+  // Remove a single read or write path from a server's grant block.
+  // Used by the per-path trash icon in PermsList. Resolves type → labels
+  // the same way toggleTool does, applies the removal pure-functionally,
+  // then writes back (or full-revokes if the grant became empty).
+  const deletePath = async (widgetId, serverName, kind, path) => {
+    try {
+      const row = rows.find((r) => r.widgetId === widgetId);
+      if (!row || !row.granted) return;
+      const labels = resolveLabels(row.granted, serverName, false);
+      if (labels.length === 0) return;
+      const next = applyPathRemoval(row.granted, labels, kind, path);
+      await writeGrantOrRevoke(widgetId, next);
+      reload();
+    } catch (e) {
+      setError(e?.message || String(e));
+    }
+  };
+
   // Per-server toggle-all: flip every declared tool on this server to
   // the target state in one shot. Reaches into the row's normalized
   // `declared.servers[serverName].tools` for the canonical tool list
@@ -302,6 +321,7 @@ export const PrivacySecuritySection = () => {
         onRevokePackage={revokePackage}
         onToggleTool={toggleTool}
         onToggleAllForServer={toggleAllForServer}
+        onDeletePath={deletePath}
       />
     );
   }
