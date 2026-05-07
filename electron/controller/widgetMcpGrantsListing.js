@@ -61,7 +61,11 @@ function buildGrantsListing(
     });
   }
 
-  // Orphan grants: granted but not in the installed list.
+  // Orphan grants: granted but not in the installed list. Honor any
+  // declared block the controller resolved for this dotted-form grant
+  // key — see widgetPermissions.dottedComponentIdToPackageId, which
+  // bridges grant keys (`trops.gmail.GmailCompose`) to on-disk package
+  // paths (`@trops/gmail`).
   for (const [widgetId, grant] of grants) {
     if (seen.has(widgetId)) continue;
     const grantOrigin =
@@ -70,11 +74,12 @@ function buildGrantsListing(
       typeof grant.grantOrigin === "string"
         ? grant.grantOrigin
         : null;
+    const decl = declared.get(widgetId) || null;
     rows.push({
       widgetId,
-      declared: null,
+      declared: decl,
       granted: grant,
-      hasManifest: false,
+      hasManifest: decl !== null,
       grantOrigin,
     });
   }

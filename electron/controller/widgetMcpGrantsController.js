@@ -118,6 +118,17 @@ function setupWidgetMcpGrantsHandlers() {
       const declared = getWidgetMcpPermissions(widgetId);
       if (declared) declaredByWidget.set(widgetId, declared);
     }
+    // Also resolve declared blocks for every dotted-form grant key.
+    // getWidgetMcpPermissions translates dotted ids to npm package
+    // paths internally, so the same package's manifest is shared
+    // across all of its components. Without this, orphan-grant rows
+    // ship to the renderer with declared:null and every granted tool
+    // looks "stale" in Settings → Privacy.
+    for (const widgetId of grantsByWidget.keys()) {
+      if (declaredByWidget.has(widgetId)) continue;
+      const declared = getWidgetMcpPermissions(widgetId);
+      if (declared) declaredByWidget.set(widgetId, declared);
+    }
 
     return buildGrantsListing(
       installedWidgets,
