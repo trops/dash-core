@@ -3,6 +3,7 @@ import { ButtonIcon } from "@trops/dash-react";
 import clsx from "clsx";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
+import { mergeRightOp, mergeDownOp } from "./gridMergeOps";
 
 const defaultGrid = {
   rows: 1,
@@ -45,50 +46,16 @@ export default function GridEditor({ onUpdate, initialGrid = defaultGrid }) {
   };
 
   const mergeRight = (row, col) => {
-    const currentKey = `${row}.${col}`;
-    let nextKey = `${row}.${col + 1}`;
-    // we have to make sure that the key exists, in case something had skipped..
-    if (!grid[nextKey]) {
-      Object.keys(grid)
-        .filter((v) => v !== "rows" && v !== "cols")
-        .forEach((k) => {
-          if (!grid[nextKey]) {
-            const parts = k.split(".");
-            const tempRow = parseInt(parts[0]);
-            const tempCol = parseInt(parts[1]);
-            if (tempRow === parseInt(row) && tempCol > parseInt(col)) {
-              nextKey = `${tempRow}.${tempCol}`;
-            }
-          }
-        });
-    }
-
-    if (grid[nextKey]) {
-      const newGrid = { ...grid };
-      newGrid[currentKey] = {
-        ...newGrid[currentKey],
-        colSpan: newGrid[currentKey].colSpan + 1,
-      };
-      delete newGrid[nextKey];
-
-      // now we have to sort the grid
-      saveGridChanges(newGrid);
-    }
+    // Pure helper preserves the absorbed cell's widget when the
+    // current cell is empty (see gridMergeOps.js for the bug fix
+    // that shipped this extraction).
+    const newGrid = mergeRightOp(grid, row, col);
+    if (newGrid !== grid) saveGridChanges(newGrid);
   };
 
   const mergeDown = (row, col) => {
-    const currentKey = `${row}.${col}`;
-    const belowKey = `${row + 1}.${col}`;
-    if (grid[belowKey]) {
-      const newGrid = { ...grid };
-      newGrid[currentKey] = {
-        ...newGrid[currentKey],
-        rowSpan: newGrid[currentKey].rowSpan + 1,
-      };
-      delete newGrid[belowKey];
-      // now we have to sort the grid
-      saveGridChanges(newGrid);
-    }
+    const newGrid = mergeDownOp(grid, row, col);
+    if (newGrid !== grid) saveGridChanges(newGrid);
   };
 
   /**
