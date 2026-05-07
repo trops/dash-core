@@ -4,6 +4,11 @@ import { deepCopy } from "@trops/dash-react";
 import { getNextHighestId, getNextHighestOrder } from "../utils/layout";
 import { pruneDeadListenerReferences } from "../utils/listenerResolution";
 import { mergeGridCellsOp } from "./mergeGridCellsOp";
+import { splitGridCellOp } from "./splitGridCellOp";
+import { addGridRowOp } from "./addGridRowOp";
+import { deleteGridRowOp } from "./deleteGridRowOp";
+import { addGridColumnOp } from "./addGridColumnOp";
+import { deleteGridColumnOp } from "./deleteGridColumnOp";
 /**
  * A Model for a Workspace (Dashboard)
  * The Dashboard in this instance is the entire Layout inclusive of the workspaces and widgets
@@ -1358,206 +1363,23 @@ export class DashboardModel {
         console.error("splitGridCell: Grid container not found or has no grid");
         return null;
       }
-
-      const grid = gridContainer.grid;
-      const [row, col] = cellNumber.split(".").map(Number);
-      const targetCell = grid[cellNumber];
-
-      if (direction === "horizontal") {
-        const targetSpanCol = targetCell?.span?.col || 1;
-        const targetSpanRow = targetCell?.span?.row || 1;
-
-        if (targetSpanCol % count === 0) {
-          // CASE A: Span is divisible — simple subdivision, no grid resize
-          const subSpan = targetSpanCol / count;
-          const component = targetCell?.component;
-
-          // Unhide cells covered by the old span
-          for (let sr = row; sr < row + targetSpanRow; sr++) {
-            for (let sc = col; sc < col + targetSpanCol; sc++) {
-              const k = `${sr}.${sc}`;
-              if (grid[k]) grid[k].hide = false;
-            }
-          }
-          delete targetCell.span;
-
-          // Create subdivided cells
-          for (let i = 0; i < count; i++) {
-            const key = `${row}.${col + i * subSpan}`;
-            grid[key] = {
-              component: i === 0 ? component : null,
-              hide: false,
-            };
-            if (subSpan > 1 || targetSpanRow > 1) {
-              grid[key].span = {};
-              if (subSpan > 1) grid[key].span.col = subSpan;
-              if (targetSpanRow > 1) grid[key].span.row = targetSpanRow;
-            }
-          }
-        } else {
-          // CASE B: Multiply grid resolution by count
-          const oldCols = grid.cols;
-
-          // 1. Collect all visible cells
-          const visibleCells = [];
-          for (let r = 1; r <= grid.rows; r++) {
-            for (let c = 1; c <= oldCols; c++) {
-              const key = `${r}.${c}`;
-              const cell = grid[key];
-              if (cell && !cell.hide) {
-                visibleCells.push({
-                  row: r,
-                  col: c,
-                  data: { ...cell },
-                  spanCol: cell.span?.col || 1,
-                  spanRow: cell.span?.row || 1,
-                });
-              }
-            }
-          }
-
-          // 2. Clear all cell keys
-          for (const key of Object.keys(grid)) {
-            if (/^\d+\.\d+$/.test(key)) delete grid[key];
-          }
-
-          // 3. Update grid dimensions
-          grid.cols = oldCols * count;
-
-          // 4. Reposition all cells with scaled positions and spans
-          for (const vc of visibleCells) {
-            const newCol = (vc.col - 1) * count + 1;
-            const key = `${vc.row}.${newCol}`;
-            grid[key] = {
-              ...vc.data,
-              hide: false,
-              span: {
-                row: vc.spanRow,
-                col: vc.spanCol * count,
-              },
-            };
-          }
-
-          // 5. Split the target cell into count sub-cells
-          const newTargetCol = (col - 1) * count + 1;
-          const newTargetSpan = (targetCell?.span?.col || 1) * count;
-          const subSpan = newTargetSpan / count;
-          const component = targetCell?.component;
-          const rowSpan = targetCell?.span?.row || 1;
-
-          for (let i = 0; i < count; i++) {
-            const key = `${row}.${newTargetCol + i * subSpan}`;
-            grid[key] = {
-              component: i === 0 ? component : null,
-              hide: false,
-            };
-            if (subSpan > 1 || rowSpan > 1) {
-              grid[key].span = {};
-              if (subSpan > 1) grid[key].span.col = subSpan;
-              if (rowSpan > 1) grid[key].span.row = rowSpan;
-            }
-          }
-        }
-      } else if (direction === "vertical") {
-        const targetSpanRow = targetCell?.span?.row || 1;
-        const targetSpanCol = targetCell?.span?.col || 1;
-
-        if (targetSpanRow % count === 0) {
-          // CASE A: Span is divisible — simple subdivision, no grid resize
-          const subSpan = targetSpanRow / count;
-          const component = targetCell?.component;
-
-          // Unhide cells covered by the old span
-          for (let sr = row; sr < row + targetSpanRow; sr++) {
-            for (let sc = col; sc < col + targetSpanCol; sc++) {
-              const k = `${sr}.${sc}`;
-              if (grid[k]) grid[k].hide = false;
-            }
-          }
-          delete targetCell.span;
-
-          // Create subdivided cells
-          for (let i = 0; i < count; i++) {
-            const key = `${row + i * subSpan}.${col}`;
-            grid[key] = {
-              component: i === 0 ? component : null,
-              hide: false,
-            };
-            if (subSpan > 1 || targetSpanCol > 1) {
-              grid[key].span = {};
-              if (subSpan > 1) grid[key].span.row = subSpan;
-              if (targetSpanCol > 1) grid[key].span.col = targetSpanCol;
-            }
-          }
-        } else {
-          // CASE B: Multiply grid resolution by count
-          const oldRows = grid.rows;
-
-          // 1. Collect all visible cells
-          const visibleCells = [];
-          for (let r = 1; r <= oldRows; r++) {
-            for (let c = 1; c <= grid.cols; c++) {
-              const key = `${r}.${c}`;
-              const cell = grid[key];
-              if (cell && !cell.hide) {
-                visibleCells.push({
-                  row: r,
-                  col: c,
-                  data: { ...cell },
-                  spanRow: cell.span?.row || 1,
-                  spanCol: cell.span?.col || 1,
-                });
-              }
-            }
-          }
-
-          // 2. Clear all cell keys
-          for (const key of Object.keys(grid)) {
-            if (/^\d+\.\d+$/.test(key)) delete grid[key];
-          }
-
-          // 3. Update grid dimensions
-          grid.rows = oldRows * count;
-
-          // 4. Reposition all cells with scaled positions and spans
-          for (const vc of visibleCells) {
-            const newRow = (vc.row - 1) * count + 1;
-            const key = `${newRow}.${vc.col}`;
-            grid[key] = {
-              ...vc.data,
-              hide: false,
-              span: {
-                row: vc.spanRow * count,
-                col: vc.spanCol,
-              },
-            };
-          }
-
-          // 5. Split the target cell into count sub-cells
-          const newTargetRow = (row - 1) * count + 1;
-          const newTargetSpan = (targetCell?.span?.row || 1) * count;
-          const subSpan = newTargetSpan / count;
-          const component = targetCell?.component;
-          const colSpan = targetCell?.span?.col || 1;
-
-          for (let i = 0; i < count; i++) {
-            const key = `${newTargetRow + i * subSpan}.${col}`;
-            grid[key] = {
-              component: i === 0 ? component : null,
-              hide: false,
-            };
-            if (subSpan > 1 || colSpan > 1) {
-              grid[key].span = {};
-              if (subSpan > 1) grid[key].span.row = subSpan;
-              if (colSpan > 1) grid[key].span.col = colSpan;
-            }
-          }
-        }
+      // Slice 11: pure helper handles both CASE A (divisible span)
+      // and CASE B (resolution multiply). Falls through to the legacy
+      // inline path below if the helper somehow returns the same
+      // grid (defensive — shouldn't happen for a valid cellNumber +
+      // direction).
+      const newGrid = splitGridCellOp(
+        gridContainer.grid,
+        cellNumber,
+        direction,
+        count,
+      );
+      if (newGrid !== gridContainer.grid) {
+        gridContainer.grid = newGrid;
+        this._normalizeGrid(gridContainer.grid);
+        this.updateLayoutItem(gridContainer);
       }
-
-      this._normalizeGrid(grid);
-      this.updateLayoutItem(gridContainer);
-      return grid;
+      return gridContainer.grid;
     } catch (e) {
       console.error("splitGridCell error:", e);
       return null;
@@ -1719,55 +1541,8 @@ export class DashboardModel {
         console.error("addGridRow: Grid container not found or has no grid");
         return null;
       }
-
-      const newRowNumber = afterRow + 1;
-      gridContainer.grid.rows += 1;
-
-      // Shift existing rows down
-      for (let r = gridContainer.grid.rows; r > newRowNumber; r--) {
-        for (let c = 1; c <= gridContainer.grid.cols; c++) {
-          const oldCell = `${r - 1}.${c}`;
-          const newCell = `${r}.${c}`;
-          if (oldCell in gridContainer.grid) {
-            gridContainer.grid[newCell] = gridContainer.grid[oldCell];
-            delete gridContainer.grid[oldCell];
-          }
-        }
-      }
-
-      // Create new empty cells for the new row
-      for (let c = 1; c <= gridContainer.grid.cols; c++) {
-        const cellNumber = `${newRowNumber}.${c}`;
-        gridContainer.grid[cellNumber] = {
-          component: null,
-          hide: false,
-        };
-      }
-
-      // Shift rowHeights keys down (rows after insertion point move +1)
-      if (gridContainer.grid.rowHeights) {
-        const shifted = {};
-        for (const [key, mult] of Object.entries(
-          gridContainer.grid.rowHeights,
-        )) {
-          const rowNum = Number(key);
-          shifted[String(rowNum >= newRowNumber ? rowNum + 1 : rowNum)] = mult;
-        }
-        gridContainer.grid.rowHeights =
-          Object.keys(shifted).length > 0 ? shifted : undefined;
-      }
-
-      // Shift rowModes keys down (rows after insertion point move +1)
-      if (gridContainer.grid.rowModes) {
-        const shifted = {};
-        for (const [key, mode] of Object.entries(gridContainer.grid.rowModes)) {
-          const rowNum = Number(key);
-          shifted[String(rowNum >= newRowNumber ? rowNum + 1 : rowNum)] = mode;
-        }
-        gridContainer.grid.rowModes =
-          Object.keys(shifted).length > 0 ? shifted : undefined;
-      }
-
+      // Slice 11: pure helper handles the row-insertion + shifting.
+      gridContainer.grid = addGridRowOp(gridContainer.grid, afterRow);
       this._normalizeGrid(gridContainer.grid);
       this.updateLayoutItem(gridContainer);
       return gridContainer.grid;
@@ -1790,64 +1565,19 @@ export class DashboardModel {
         console.error("deleteGridRow: Grid container not found or has no grid");
         return null;
       }
-
       if (gridContainer.grid.rows <= 1) {
         console.error("deleteGridRow: Cannot delete the only row");
         return null;
       }
-
-      // Remove components in the deleted row
-      for (let c = 1; c <= gridContainer.grid.cols; c++) {
-        const cellNumber = `${rowNumber}.${c}`;
-        if (
-          gridContainer.grid[cellNumber] &&
-          gridContainer.grid[cellNumber].component
-        ) {
-          this.removeItemFromLayout(gridContainer.grid[cellNumber].component);
-        }
-        delete gridContainer.grid[cellNumber];
+      // Slice 11: pure helper returns the updated grid + the list of
+      // widget components that lived on the deleted row. We remove
+      // those from the layout here to preserve the original
+      // destructive-delete behavior.
+      const result = deleteGridRowOp(gridContainer.grid, rowNumber);
+      gridContainer.grid = result.grid;
+      for (const componentId of result.orphanedComponents) {
+        this.removeItemFromLayout(componentId);
       }
-
-      // Shift rows up
-      for (let r = rowNumber + 1; r <= gridContainer.grid.rows; r++) {
-        for (let c = 1; c <= gridContainer.grid.cols; c++) {
-          const oldCell = `${r}.${c}`;
-          const newCell = `${r - 1}.${c}`;
-          if (oldCell in gridContainer.grid) {
-            gridContainer.grid[newCell] = gridContainer.grid[oldCell];
-            delete gridContainer.grid[oldCell];
-          }
-        }
-      }
-
-      gridContainer.grid.rows -= 1;
-
-      // Shift rowHeights keys up and remove the deleted row's entry
-      if (gridContainer.grid.rowHeights) {
-        const shifted = {};
-        for (const [key, mult] of Object.entries(
-          gridContainer.grid.rowHeights,
-        )) {
-          const rowNum = Number(key);
-          if (rowNum === rowNumber) continue;
-          shifted[String(rowNum > rowNumber ? rowNum - 1 : rowNum)] = mult;
-        }
-        gridContainer.grid.rowHeights =
-          Object.keys(shifted).length > 0 ? shifted : undefined;
-      }
-
-      // Shift rowModes keys up and remove the deleted row's entry
-      if (gridContainer.grid.rowModes) {
-        const shifted = {};
-        for (const [key, mode] of Object.entries(gridContainer.grid.rowModes)) {
-          const rowNum = Number(key);
-          if (rowNum === rowNumber) continue;
-          shifted[String(rowNum > rowNumber ? rowNum - 1 : rowNum)] = mode;
-        }
-        gridContainer.grid.rowModes =
-          Object.keys(shifted).length > 0 ? shifted : undefined;
-      }
-
       this._normalizeGrid(gridContainer.grid);
       this.updateLayoutItem(gridContainer);
       return gridContainer.grid;
@@ -1907,42 +1637,8 @@ export class DashboardModel {
         console.error("addGridColumn: Grid container not found or has no grid");
         return null;
       }
-
-      const newColNumber = afterCol + 1;
-      gridContainer.grid.cols += 1;
-
-      // Shift existing columns right
-      for (let r = 1; r <= gridContainer.grid.rows; r++) {
-        for (let c = gridContainer.grid.cols; c > newColNumber; c--) {
-          const oldCell = `${r}.${c - 1}`;
-          const newCell = `${r}.${c}`;
-          if (oldCell in gridContainer.grid) {
-            gridContainer.grid[newCell] = gridContainer.grid[oldCell];
-            delete gridContainer.grid[oldCell];
-          }
-        }
-      }
-
-      // Create new empty cells for the new column
-      for (let r = 1; r <= gridContainer.grid.rows; r++) {
-        const cellNumber = `${r}.${newColNumber}`;
-        gridContainer.grid[cellNumber] = {
-          component: null,
-          hide: false,
-        };
-      }
-
-      // Shift colModes keys right (columns after insertion point move +1)
-      if (gridContainer.grid.colModes) {
-        const shifted = {};
-        for (const [key, mode] of Object.entries(gridContainer.grid.colModes)) {
-          const colNum = Number(key);
-          shifted[String(colNum >= newColNumber ? colNum + 1 : colNum)] = mode;
-        }
-        gridContainer.grid.colModes =
-          Object.keys(shifted).length > 0 ? shifted : undefined;
-      }
-
+      // Slice 11: pure helper.
+      gridContainer.grid = addGridColumnOp(gridContainer.grid, afterCol);
       this._normalizeGrid(gridContainer.grid);
       this.updateLayoutItem(gridContainer);
       return gridContainer.grid;
@@ -1967,50 +1663,16 @@ export class DashboardModel {
         );
         return null;
       }
-
       if (gridContainer.grid.cols <= 1) {
         console.error("deleteGridColumn: Cannot delete the only column");
         return null;
       }
-
-      // Remove components in the deleted column
-      for (let r = 1; r <= gridContainer.grid.rows; r++) {
-        const cellNumber = `${r}.${colNumber}`;
-        if (
-          gridContainer.grid[cellNumber] &&
-          gridContainer.grid[cellNumber].component
-        ) {
-          this.removeItemFromLayout(gridContainer.grid[cellNumber].component);
-        }
-        delete gridContainer.grid[cellNumber];
+      // Slice 11: pure helper.
+      const result = deleteGridColumnOp(gridContainer.grid, colNumber);
+      gridContainer.grid = result.grid;
+      for (const componentId of result.orphanedComponents) {
+        this.removeItemFromLayout(componentId);
       }
-
-      // Shift columns left
-      for (let r = 1; r <= gridContainer.grid.rows; r++) {
-        for (let c = colNumber + 1; c <= gridContainer.grid.cols; c++) {
-          const oldCell = `${r}.${c}`;
-          const newCell = `${r}.${c - 1}`;
-          if (oldCell in gridContainer.grid) {
-            gridContainer.grid[newCell] = gridContainer.grid[oldCell];
-            delete gridContainer.grid[oldCell];
-          }
-        }
-      }
-
-      gridContainer.grid.cols -= 1;
-
-      // Shift colModes keys left and remove the deleted column's entry
-      if (gridContainer.grid.colModes) {
-        const shifted = {};
-        for (const [key, mode] of Object.entries(gridContainer.grid.colModes)) {
-          const colNum = Number(key);
-          if (colNum === colNumber) continue;
-          shifted[String(colNum > colNumber ? colNum - 1 : colNum)] = mode;
-        }
-        gridContainer.grid.colModes =
-          Object.keys(shifted).length > 0 ? shifted : undefined;
-      }
-
       this._normalizeGrid(gridContainer.grid);
       this.updateLayoutItem(gridContainer);
       return gridContainer.grid;
