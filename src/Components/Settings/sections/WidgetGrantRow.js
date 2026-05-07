@@ -6,6 +6,7 @@
  */
 import React from "react";
 import { Button } from "@trops/dash-react";
+import { computeStaleItems, isServerEntirelyStale } from "./grantStaleness";
 
 export const GrantOriginBadge = ({ origin }) => {
   const styles = {
@@ -26,18 +27,21 @@ export const GrantOriginBadge = ({ origin }) => {
   );
 };
 
-const PermsList = ({ label, declaredItems, grantedItems }) => {
+const PermsList = ({ label, declaredItems, grantedItems, validatesStale }) => {
   if (declaredItems.length === 0 && grantedItems.length === 0) return null;
   const grantedSet = new Set(grantedItems);
-  const declaredSet = new Set(declaredItems);
+  const staleSet = computeStaleItems(
+    declaredItems,
+    grantedItems,
+    validatesStale,
+  );
   const all = Array.from(new Set([...declaredItems, ...grantedItems]));
   return (
     <div className="flex flex-col space-y-1">
       <span className="text-xs opacity-50">{label}</span>
       {all.map((item) => {
         const isGranted = grantedSet.has(item);
-        const isDeclared = declaredSet.has(item);
-        const isStale = isGranted && !isDeclared;
+        const isStale = staleSet.has(item);
         return (
           <span
             key={item}
@@ -61,28 +65,6 @@ const PermsList = ({ label, declaredItems, grantedItems }) => {
     </div>
   );
 };
-
-/**
- * True when the granted entry has at least one item AND every granted
- * item is missing from the current declared block. Used to surface a
- * "this whole server's grant looks unused" suggestion at the row level.
- */
-function isServerEntirelyStale(decl, grant) {
-  if (!grant) return false;
-  const declTools = new Set(decl.tools || []);
-  const declRead = new Set(decl.readPaths || []);
-  const declWrite = new Set(decl.writePaths || []);
-  const grantedTools = grant.tools || [];
-  const grantedRead = grant.readPaths || [];
-  const grantedWrite = grant.writePaths || [];
-  const total = grantedTools.length + grantedRead.length + grantedWrite.length;
-  if (total === 0) return false;
-  const stale =
-    grantedTools.every((t) => !declTools.has(t)) &&
-    grantedRead.every((p) => !declRead.has(p)) &&
-    grantedWrite.every((p) => !declWrite.has(p));
-  return stale;
-}
 
 export const WidgetGrantRow = ({
   widgetId,
@@ -169,16 +151,19 @@ export const WidgetGrantRow = ({
               label="Tools"
               declaredItems={decl.tools || []}
               grantedItems={grant?.tools || []}
+              validatesStale={true}
             />
             <PermsList
               label="Read paths"
               declaredItems={decl.readPaths || []}
               grantedItems={grant?.readPaths || []}
+              validatesStale={false}
             />
             <PermsList
               label="Write paths"
               declaredItems={decl.writePaths || []}
               grantedItems={grant?.writePaths || []}
+              validatesStale={false}
             />
           </div>
         );
@@ -198,17 +183,20 @@ export const WidgetGrantRow = ({
                   label="Actions"
                   declaredItems={[]}
                   grantedItems={granted.domains.fs.actions}
+                  validatesStale={false}
                 />
               )}
             <PermsList
               label="Read filenames"
               declaredItems={[]}
               grantedItems={granted.domains.fs.readPaths || []}
+              validatesStale={false}
             />
             <PermsList
               label="Write filenames"
               declaredItems={[]}
               grantedItems={granted.domains.fs.writePaths || []}
+              validatesStale={false}
             />
           </div>
         )}
@@ -226,12 +214,14 @@ export const WidgetGrantRow = ({
                   label="Actions"
                   declaredItems={[]}
                   grantedItems={granted.domains.network.actions}
+                  validatesStale={false}
                 />
               )}
             <PermsList
               label="Allowed hosts"
               declaredItems={[]}
               grantedItems={granted.domains.network.hosts || []}
+              validatesStale={false}
             />
           </div>
         )}
