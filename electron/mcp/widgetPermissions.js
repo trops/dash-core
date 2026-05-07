@@ -93,16 +93,41 @@ function parseManifestPermissions(packageJson) {
 }
 
 /**
+ * Translate a dotted component widget id into the npm package id whose
+ * package.json holds the manifest. Mirrors the construction logic in
+ * `src/Components/Dashboard/WidgetsTab.js` (`<scope>.<pkg>.<comp>`):
+ *
+ *   "@trops/gmail"                       → "@trops/gmail"
+ *   "trops.gmail.GmailCompose"           → "@trops/gmail"
+ *   "ai-built.pipeline.ProspectWorkspace" → "@ai-built/pipeline"
+ *   "pipeline.AutomationHub"             → "pipeline"   (bare, no scope)
+ *   "legacy-bare-package"                → "legacy-bare-package"
+ *
+ * The grant store keys grants by the dotted form; the on-disk widget
+ * folder is keyed by the npm form. This bridges the two.
+ */
+function dottedComponentIdToPackageId(widgetId) {
+  if (typeof widgetId !== "string" || !widgetId) return null;
+  if (widgetId.startsWith("@")) return widgetId;
+  const parts = widgetId.split(".");
+  if (parts.length >= 3) return `@${parts[0]}/${parts[1]}`;
+  if (parts.length === 2) return parts[0];
+  return widgetId;
+}
+
+/**
  * Find a widget's installed package.json on disk. Widgets live under
  * userData/widgets/<scope>/<name>/ for scoped packages or
- * userData/widgets/<name>/ for unscoped. The widgetId is the npm
- * package name (e.g. "@trops/notes-summarizer" or "notes-summarizer").
+ * userData/widgets/<name>/ for unscoped. Accepts either npm package
+ * ids ("@trops/gmail") or dotted component ids
+ * ("trops.gmail.GmailCompose") — the latter is translated first.
  */
 function resolveWidgetPackagePath(widgetId) {
-  if (typeof widgetId !== "string" || !widgetId) return null;
+  const packageId = dottedComponentIdToPackageId(widgetId);
+  if (typeof packageId !== "string" || !packageId) return null;
   const widgetsRoot = path.join(app.getPath("userData"), "widgets");
   // Split scope from name for "@scope/name" form.
-  const parts = widgetId.startsWith("@") ? widgetId.split("/") : [widgetId];
+  const parts = packageId.startsWith("@") ? packageId.split("/") : [packageId];
   return path.join(widgetsRoot, ...parts, "package.json");
 }
 
@@ -146,6 +171,7 @@ function clearCache() {
 module.exports = {
   getWidgetMcpPermissions,
   parseManifestPermissions,
+  dottedComponentIdToPackageId,
   expandHome,
   clearCache,
 };
