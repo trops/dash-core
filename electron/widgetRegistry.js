@@ -268,6 +268,33 @@ class WidgetRegistry {
 
     // Reconcile: re-register orphaned widget packages found on disk
     this.reconcileWithDisk();
+
+    // Slice 13b: backfill `dash.permissions.mcp` for any registered
+    // widget that was installed before the publish/install scanner
+    // hooks existed (or that has since updated tools without
+    // re-publishing). Additive merge — idempotent across boots.
+    try {
+      const {
+        backfillPackagePermissions,
+      } = require("./utils/scanWidgetPackagePermissions");
+      const paths = Array.from(this.widgets.values())
+        .map((w) => w.path)
+        .filter(Boolean);
+      const summary = backfillPackagePermissions(paths);
+      if (summary.modified > 0) {
+        console.log(
+          `[WidgetRegistry] Backfilled MCP permissions for ${summary.modified}/${summary.scanned} widget(s)`,
+        );
+      }
+      if (summary.errors.length) {
+        console.warn(`[WidgetRegistry] MCP backfill errors:`, summary.errors);
+      }
+    } catch (e) {
+      console.warn(
+        "[WidgetRegistry] MCP permissions backfill failed:",
+        e.message,
+      );
+    }
   }
 
   /**

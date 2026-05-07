@@ -19,6 +19,7 @@ const {
   scanWidgetPackagePermissions,
   mergePermissions,
   applyScanToPackageJson,
+  backfillPackagePermissions,
 } = require("./scanWidgetPackagePermissions");
 
 function makeFixture(files) {
@@ -171,6 +172,93 @@ test("applyScanToPackageJson: no MCP usage → no write, returns null", () => {
   );
   assert.strictEqual(pkg.dash, undefined);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("backfillPackagePermissions: scans + modifies multiple packages, returns counts", () => {
+  const dirA = makeFixture({
+    "package.json": JSON.stringify({ name: "@test/a", version: "1.0.0" }),
+    "widgets/W.js": `
+      useMcpProvider("slack");
+      callTool("send_message", {});
+    `,
+  });
+  const dirB = makeFixture({
+    "package.json": JSON.stringify({ name: "@test/b", version: "1.0.0" }),
+    "src/W.js": `
+      useMcpProvider("github");
+      callTool("list_repos", {});
+    `,
+  });
+  const summary = backfillPackagePermissions([dirA, dirB]);
+  assert.strictEqual(summary.scanned, 2);
+  assert.strictEqual(summary.modified, 2);
+  assert.deepStrictEqual(summary.errors, []);
+
+  const pkgA = JSON.parse(
+    fs.readFileSync(path.join(dirA, "package.json"), "utf8"),
+  );
+  const pkgB = JSON.parse(
+    fs.readFileSync(path.join(dirB, "package.json"), "utf8"),
+  );
+  assert.deepStrictEqual(pkgA.dash.permissions.mcp.slack.tools, [
+    "send_message",
+  ]);
+  assert.deepStrictEqual(pkgB.dash.permissions.mcp.github.tools, [
+    "list_repos",
+  ]);
+
+  fs.rmSync(dirA, { recursive: true, force: true });
+  fs.rmSync(dirB, { recursive: true, force: true });
+});
+
+test("backfillPackagePermissions: skips packages with no MCP usage (modified count excludes them)", () => {
+  const dirHit = makeFixture({
+    "package.json": JSON.stringify({ name: "@test/hit", version: "1.0.0" }),
+    "widgets/W.js": `useMcpProvider("slack"); callTool("send_message", {});`,
+  });
+  const dirMiss = makeFixture({
+    "package.json": JSON.stringify({ name: "@test/miss", version: "1.0.0" }),
+    "widgets/W.js": `export default () => null;`,
+  });
+  const summary = backfillPackagePermissions([dirHit, dirMiss]);
+  assert.strictEqual(summary.scanned, 2);
+  assert.strictEqual(summary.modified, 1);
+  assert.deepStrictEqual(summary.errors, []);
+
+  const pkgMiss = JSON.parse(
+    fs.readFileSync(path.join(dirMiss, "package.json"), "utf8"),
+  );
+  assert.strictEqual(pkgMiss.dash, undefined);
+
+  fs.rmSync(dirHit, { recursive: true, force: true });
+  fs.rmSync(dirMiss, { recursive: true, force: true });
+});
+
+test("backfillPackagePermissions: errors on bad paths are captured, others continue", () => {
+  const goodDir = makeFixture({
+    "package.json": JSON.stringify({ name: "@test/good", version: "1.0.0" }),
+    "widgets/W.js": `useMcpProvider("slack"); callTool("send_message", {});`,
+  });
+  const summary = backfillPackagePermissions([
+    "/no/such/path/yyyyy",
+    goodDir,
+    null,
+    undefined,
+  ]);
+  // Two clearly invalid entries (null + undefined) and one nonexistent path
+  // contribute zero modified; the good one updates and is the only counted scan.
+  assert.strictEqual(summary.modified, 1);
+  // Bad paths short-circuit cleanly without throwing.
+  assert.deepStrictEqual(summary.errors, []);
+
+  const pkg = JSON.parse(
+    fs.readFileSync(path.join(goodDir, "package.json"), "utf8"),
+  );
+  assert.deepStrictEqual(pkg.dash.permissions.mcp.slack.tools, [
+    "send_message",
+  ]);
+
+  fs.rmSync(goodDir, { recursive: true, force: true });
 });
 
 test("applyScanToPackageJson: existing manifest is preserved + augmented", () => {

@@ -191,9 +191,37 @@ function applyScanToPackageJson(packageDir) {
   return merged;
 }
 
+/**
+ * Run `applyScanToPackageJson` over a list of widget package paths.
+ * Used at registry boot to backfill `dash.permissions.mcp` for widgets
+ * installed before the publish/install scanner hooks existed (or that
+ * have since updated their tool set without re-publishing). Idempotent
+ * — additive merge means repeated boots produce no further writes.
+ *
+ * @param {string[]} packagePaths
+ * @returns {{scanned: number, modified: number, errors: Array<{path: string, error: string}>}}
+ */
+function backfillPackagePermissions(packagePaths) {
+  const summary = { scanned: 0, modified: 0, errors: [] };
+  if (!Array.isArray(packagePaths)) return summary;
+  for (const pkgPath of packagePaths) {
+    if (typeof pkgPath !== "string" || !pkgPath) continue;
+    if (!fs.existsSync(pkgPath)) continue;
+    summary.scanned += 1;
+    try {
+      const merged = applyScanToPackageJson(pkgPath);
+      if (merged) summary.modified += 1;
+    } catch (e) {
+      summary.errors.push({ path: pkgPath, error: e.message });
+    }
+  }
+  return summary;
+}
+
 module.exports = {
   scanFileForMcpUsage,
   scanWidgetPackagePermissions,
   mergePermissions,
   applyScanToPackageJson,
+  backfillPackagePermissions,
 };
