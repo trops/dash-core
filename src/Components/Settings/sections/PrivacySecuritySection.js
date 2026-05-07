@@ -13,6 +13,7 @@ import { PrivacySecurityList } from "./PrivacySecurityList";
 import { WidgetPackageDetail } from "../details/WidgetPackageDetail";
 import { WidgetGrantRow, GrantOriginBadge } from "./WidgetGrantRow";
 import { normalizeGrantsByProviderType } from "../../../utils/normalizeGrantsByProviderType";
+import { applyToolToggle } from "./applyToolToggle";
 
 /**
  * Privacy & Security
@@ -128,6 +129,42 @@ export const PrivacySecuritySection = () => {
     }
   };
 
+  // Per-tool toggle: revoke or grant a single tool without going
+  // nuclear. `serverName` here is the renderer's display key — a
+  // provider TYPE (after normalizeGrantsByProviderType) when the user
+  // has a configured provider, or the raw label otherwise. We resolve
+  // the underlying instance LABELS via providers config (the runtime
+  // grant store keys by label), apply the toggle pure-functionally,
+  // then either setGrant the new shape or revoke entirely if the
+  // grant became structurally empty.
+  const toggleTool = async (widgetId, serverName, tool, on) => {
+    try {
+      const row = rows.find((r) => r.widgetId === widgetId);
+      if (!row || !row.granted) return;
+      const labels = [];
+      if (providers && typeof providers === "object") {
+        for (const label of Object.keys(row.granted.servers || {})) {
+          const t = providers[label]?.type;
+          if (t === serverName || label === serverName) labels.push(label);
+        }
+      }
+      // Fallback: serverName itself is a label (no provider entry).
+      if (labels.length === 0 && row.granted.servers?.[serverName]) {
+        labels.push(serverName);
+      }
+      if (labels.length === 0) return;
+      const next = applyToolToggle(row.granted, labels, tool, on);
+      if (next === null) {
+        await window.mainApi?.widgetMcp?.revoke?.(widgetId);
+      } else {
+        await window.mainApi?.widgetMcp?.setGrant?.(widgetId, next);
+      }
+      reload();
+    } catch (e) {
+      setError(e?.message || String(e));
+    }
+  };
+
   const revokePackage = async (packageGroup) => {
     // Sequential revoke so a mid-loop failure surfaces clearly and
     // doesn't leave the UI in a half-applied state. The reload at the
@@ -212,6 +249,7 @@ export const PrivacySecuritySection = () => {
         onRevokeServer={revokeServer}
         onGrantManually={(widgetId) => setManualGrantWidgetId(widgetId)}
         onRevokePackage={revokePackage}
+        onToggleTool={toggleTool}
       />
     );
   }

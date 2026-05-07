@@ -5,7 +5,7 @@
  * renderer used elsewhere in the section.
  */
 import React from "react";
-import { Button } from "@trops/dash-react";
+import { Button, Switch } from "@trops/dash-react";
 import { computeStaleItems, isServerEntirelyStale } from "./grantStaleness";
 
 export const GrantOriginBadge = ({ origin }) => {
@@ -24,6 +24,71 @@ export const GrantOriginBadge = ({ origin }) => {
     >
       {style.label}
     </span>
+  );
+};
+
+/**
+ * Tools-row variant with a per-tool Switch so the user can revoke a
+ * single tool without going nuclear ("Revoke server" or "Revoke all").
+ * Toggling OFF a granted tool calls onToggleTool(serverName, tool, false).
+ * Toggling ON a declared-but-not-granted tool calls (..., true) to add
+ * it to the existing grant — only enabled when the server already has
+ * at least one granted tool (so the renderer knows which provider
+ * instance label to write under). For pure declared-only servers the
+ * toggle stays disabled; the runtime JIT prompt is the entry point.
+ */
+const ToolToggleList = ({
+  declaredTools,
+  grantedTools,
+  serverName,
+  onToggleTool,
+  hasAnyGrantOnServer,
+}) => {
+  if (declaredTools.length === 0 && grantedTools.length === 0) return null;
+  const grantedSet = new Set(grantedTools);
+  const staleSet = computeStaleItems(declaredTools, grantedTools, true);
+  const all = Array.from(new Set([...declaredTools, ...grantedTools]));
+  return (
+    <div className="flex flex-col space-y-1">
+      <span className="text-xs opacity-50">Tools</span>
+      {all.map((tool) => {
+        const isGranted = grantedSet.has(tool);
+        const isStale = staleSet.has(tool);
+        // Disable toggling ON when there's no existing grant on the
+        // server — the renderer would have nowhere to write the
+        // change without a provider instance label. Toggling OFF is
+        // always allowed when the tool IS granted.
+        const disabled = !isGranted && !hasAnyGrantOnServer;
+        return (
+          <div
+            key={tool}
+            className="flex flex-row items-center justify-between gap-2"
+          >
+            <span
+              className={`text-xs font-mono break-all ${
+                isStale
+                  ? "text-amber-400"
+                  : isGranted
+                    ? "opacity-100"
+                    : "opacity-50"
+              }`}
+            >
+              {tool}
+              {isStale && (
+                <span className="ml-2 not-italic font-sans normal-case tracking-normal text-amber-400">
+                  (stale — widget no longer requests this)
+                </span>
+              )}
+            </span>
+            <Switch
+              checked={isGranted}
+              onChange={(next) => onToggleTool(serverName, tool, next)}
+              disabled={disabled}
+            />
+          </div>
+        );
+      })}
+    </div>
   );
 };
 
@@ -75,6 +140,7 @@ export const WidgetGrantRow = ({
   onRevokeWidget,
   onRevokeServer,
   onGrantManually,
+  onToggleTool,
 }) => {
   const declaredServers = (declared && declared.servers) || {};
   const grantedServers = (granted && granted.servers) || {};
@@ -147,11 +213,14 @@ export const WidgetGrantRow = ({
                 widget likely no longer uses this server. Consider revoking.
               </div>
             )}
-            <PermsList
-              label="Tools"
-              declaredItems={decl.tools || []}
-              grantedItems={grant?.tools || []}
-              validatesStale={true}
+            <ToolToggleList
+              declaredTools={decl.tools || []}
+              grantedTools={grant?.tools || []}
+              serverName={serverName}
+              hasAnyGrantOnServer={!!grant}
+              onToggleTool={(srv, tool, next) =>
+                onToggleTool && onToggleTool(widgetId, srv, tool, next)
+              }
             />
             <PermsList
               label="Read paths"
