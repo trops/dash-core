@@ -13,6 +13,8 @@ export * from "./providerUtils";
 export * from "./scopedComponentId";
 export * from "./themeGenerator";
 export * from "./markdownFormParser";
+export * from "./humanizeAction";
+export * from "./computeDashboardPreflight";
 // Note: DynamicWidgetLoader and WidgetRegistry are Electron-only
 // export * from "./DynamicWidgetLoader";
 // export * from "./WidgetRegistry";
