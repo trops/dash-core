@@ -137,28 +137,79 @@ export const PrivacySecuritySection = () => {
   // grant store keys by label), apply the toggle pure-functionally,
   // then either setGrant the new shape or revoke entirely if the
   // grant became structurally empty.
+  // Resolve which provider INSTANCE LABEL(s) a per-tool toggle should
+  // write under. Display rows are keyed by provider TYPE post-
+  // normalization; the runtime grant store is keyed by label.
+  //   - If the row already has grants on labels of matching type,
+  //     fan the change out across all of them.
+  //   - If the user is toggling ON for a server with no existing
+  //     grant, pick the first provider instance of that type.
+  //   - Final fallback: serverName itself is a label (system or
+  //     stale grant case with no provider entry).
+  const resolveLabels = (currentGrant, serverName, on) => {
+    const labels = [];
+    if (providers && typeof providers === "object") {
+      for (const label of Object.keys(currentGrant.servers || {})) {
+        const t = providers[label]?.type;
+        if (t === serverName || label === serverName) labels.push(label);
+      }
+      if (labels.length === 0 && on) {
+        for (const [label, p] of Object.entries(providers)) {
+          if (p?.type === serverName) {
+            labels.push(label);
+            break;
+          }
+        }
+      }
+    }
+    if (labels.length === 0 && currentGrant.servers?.[serverName]) {
+      labels.push(serverName);
+    }
+    return labels;
+  };
+
+  const writeGrantOrRevoke = async (widgetId, next) => {
+    if (next === null) {
+      await window.mainApi?.widgetMcp?.revoke?.(widgetId);
+    } else {
+      await window.mainApi?.widgetMcp?.setGrant?.(widgetId, next);
+    }
+  };
+
   const toggleTool = async (widgetId, serverName, tool, on) => {
     try {
       const row = rows.find((r) => r.widgetId === widgetId);
-      if (!row || !row.granted) return;
-      const labels = [];
-      if (providers && typeof providers === "object") {
-        for (const label of Object.keys(row.granted.servers || {})) {
-          const t = providers[label]?.type;
-          if (t === serverName || label === serverName) labels.push(label);
-        }
-      }
-      // Fallback: serverName itself is a label (no provider entry).
-      if (labels.length === 0 && row.granted.servers?.[serverName]) {
-        labels.push(serverName);
-      }
+      if (!row) return;
+      const currentGrant = row.granted || { servers: {} };
+      const labels = resolveLabels(currentGrant, serverName, on);
       if (labels.length === 0) return;
-      const next = applyToolToggle(row.granted, labels, tool, on);
-      if (next === null) {
-        await window.mainApi?.widgetMcp?.revoke?.(widgetId);
-      } else {
-        await window.mainApi?.widgetMcp?.setGrant?.(widgetId, next);
+      const next = applyToolToggle(currentGrant, labels, tool, on);
+      await writeGrantOrRevoke(widgetId, next);
+      reload();
+    } catch (e) {
+      setError(e?.message || String(e));
+    }
+  };
+
+  // Per-server toggle-all: flip every declared tool on this server to
+  // the target state in one shot. Reaches into the row's normalized
+  // `declared.servers[serverName].tools` for the canonical tool list
+  // (the manifest is the source of truth for "what tools could be
+  // granted") and chains applyToolToggle calls.
+  const toggleAllForServer = async (widgetId, serverName, on) => {
+    try {
+      const row = rows.find((r) => r.widgetId === widgetId);
+      if (!row) return;
+      const declaredTools = row.declared?.servers?.[serverName]?.tools || [];
+      if (declaredTools.length === 0) return;
+      const currentGrant = row.granted || { servers: {} };
+      const labels = resolveLabels(currentGrant, serverName, on);
+      if (labels.length === 0) return;
+      let next = currentGrant;
+      for (const tool of declaredTools) {
+        next = applyToolToggle(next || { servers: {} }, labels, tool, on);
       }
+      await writeGrantOrRevoke(widgetId, next);
       reload();
     } catch (e) {
       setError(e?.message || String(e));
@@ -250,6 +301,7 @@ export const PrivacySecuritySection = () => {
         onGrantManually={(widgetId) => setManualGrantWidgetId(widgetId)}
         onRevokePackage={revokePackage}
         onToggleTool={toggleTool}
+        onToggleAllForServer={toggleAllForServer}
       />
     );
   }

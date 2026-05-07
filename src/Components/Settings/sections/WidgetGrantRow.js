@@ -141,6 +141,7 @@ export const WidgetGrantRow = ({
   onRevokeServer,
   onGrantManually,
   onToggleTool,
+  onToggleAllForServer,
 }) => {
   const declaredServers = (declared && declared.servers) || {};
   const grantedServers = (granted && granted.servers) || {};
@@ -186,7 +187,7 @@ export const WidgetGrantRow = ({
             key={serverName}
             className="flex flex-col space-y-2 border-t border-gray-800 pt-2"
           >
-            <div className="flex flex-row items-center justify-between">
+            <div className="flex flex-row items-center justify-between gap-2">
               <span className="text-xs uppercase tracking-wider opacity-70">
                 {serverName}
                 {grant?._labels && grant._labels.length > 0 && (
@@ -200,12 +201,32 @@ export const WidgetGrantRow = ({
                   </span>
                 )}
               </span>
-              {grant && (
-                <Button
-                  title="Revoke server"
-                  onClick={() => onRevokeServer(serverName)}
-                />
-              )}
+              <div className="flex flex-row items-center gap-2">
+                {(decl.tools || []).length > 0 && onToggleAllForServer && (
+                  <div className="flex flex-row items-center gap-2">
+                    <span className="text-xs opacity-60 normal-case tracking-normal">
+                      Allow all
+                    </span>
+                    <Switch
+                      checked={
+                        (decl.tools || []).length > 0 &&
+                        (decl.tools || []).every((t) =>
+                          (grant?.tools || []).includes(t),
+                        )
+                      }
+                      onChange={(next) =>
+                        onToggleAllForServer(widgetId, serverName, next)
+                      }
+                    />
+                  </div>
+                )}
+                {grant && (
+                  <Button
+                    title="Revoke server"
+                    onClick={() => onRevokeServer(serverName)}
+                  />
+                )}
+              </div>
             </div>
             {allStale && (
               <div className="text-xs text-amber-400 bg-amber-900 bg-opacity-20 border border-amber-700 rounded px-2 py-1.5">

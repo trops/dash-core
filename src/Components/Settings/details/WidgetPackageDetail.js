@@ -23,6 +23,7 @@ export const WidgetPackageDetail = ({
   onGrantManually,
   onRevokePackage,
   onToggleTool,
+  onToggleAllForServer,
 }) => {
   const [confirmRevokeAll, setConfirmRevokeAll] = useState(false);
 
@@ -104,6 +105,7 @@ export const WidgetPackageDetail = ({
               }
               onGrantManually={() => onGrantManually(row.widgetId)}
               onToggleTool={onToggleTool}
+              onToggleAllForServer={onToggleAllForServer}
             />
           ))}
         </div>
