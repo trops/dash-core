@@ -266,6 +266,37 @@ class WidgetRegistry {
       console.error("[WidgetRegistry] Error loading registry:", error);
     }
 
+    // Slice 13f: clean up bare-name folders whose package.json declares
+    // a scoped name (legacy install artifact). Without this, the
+    // `reconcileWithDisk` orphan loop below re-registers them under
+    // the bare folder name and ComponentManager later crashes with
+    // "missing origin metadata" trying to derive a 3-segment id from
+    // a scope-less entry. Runs BEFORE reconcile so the registry's
+    // re-register pass sees a canonical layout.
+    try {
+      const { dedupeWidgetFolders } = require("./utils/dedupeWidgetFolders");
+      const dedup = dedupeWidgetFolders(WIDGETS_CACHE_DIR);
+      if (dedup.removed.length > 0 || dedup.migrated.length > 0) {
+        console.log(
+          `[WidgetRegistry] Folder dedupe: removed ${dedup.removed.length}, migrated ${dedup.migrated.length}`,
+        );
+        // Drop any registry entry that pointed at a now-removed bare
+        // folder, so reconcileWithDisk re-registers from the canonical
+        // scoped path on its next pass.
+        const removedSet = new Set(dedup.removed);
+        for (const [key, entry] of Array.from(this.widgets.entries())) {
+          if (entry?.path && removedSet.has(entry.path)) {
+            this.widgets.delete(key);
+          }
+        }
+      }
+      if (dedup.errors.length > 0) {
+        console.warn(`[WidgetRegistry] Folder dedupe errors:`, dedup.errors);
+      }
+    } catch (e) {
+      console.warn("[WidgetRegistry] Folder dedupe failed:", e.message);
+    }
+
     // Reconcile: re-register orphaned widget packages found on disk
     this.reconcileWithDisk();
 
