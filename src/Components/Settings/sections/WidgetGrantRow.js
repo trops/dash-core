@@ -4,9 +4,10 @@
  * file so the new package-detail panel can import the same row
  * renderer used elsewhere in the section.
  */
-import React from "react";
-import { Button, Switch } from "@trops/dash-react";
+import React, { useState } from "react";
+import { Button, Switch, FontAwesomeIcon } from "@trops/dash-react";
 import { computeStaleItems, isServerEntirelyStale } from "./grantStaleness";
+import { describeServerGrant, describeWidgetGrant } from "./grantSummary";
 
 export const GrantOriginBadge = ({ origin }) => {
   const styles = {
@@ -92,7 +93,13 @@ const ToolToggleList = ({
   );
 };
 
-const PermsList = ({ label, declaredItems, grantedItems, validatesStale }) => {
+const PermsList = ({
+  label,
+  declaredItems,
+  grantedItems,
+  validatesStale,
+  onDeleteItem,
+}) => {
   if (declaredItems.length === 0 && grantedItems.length === 0) return null;
   const grantedSet = new Set(grantedItems);
   const staleSet = computeStaleItems(
@@ -107,29 +114,68 @@ const PermsList = ({ label, declaredItems, grantedItems, validatesStale }) => {
       {all.map((item) => {
         const isGranted = grantedSet.has(item);
         const isStale = staleSet.has(item);
+        const showTrash = isGranted && typeof onDeleteItem === "function";
         return (
-          <span
+          <div
             key={item}
-            className={`text-xs font-mono break-all ${
-              isStale
-                ? "text-amber-400"
-                : isGranted
-                  ? "opacity-100"
-                  : "opacity-50 line-through"
-            }`}
+            className="flex flex-row items-start justify-between gap-2"
           >
-            {item}
-            {isStale && (
-              <span className="ml-2 not-italic font-sans normal-case tracking-normal text-amber-400">
-                (stale — widget no longer requests this; consider revoking)
-              </span>
+            <span
+              className={`text-xs font-mono break-all ${
+                isStale
+                  ? "text-amber-400"
+                  : isGranted
+                    ? "opacity-100"
+                    : "opacity-50 line-through"
+              }`}
+            >
+              {item}
+              {isStale && (
+                <span className="ml-2 not-italic font-sans normal-case tracking-normal text-amber-400">
+                  (stale — widget no longer requests this; consider revoking)
+                </span>
+              )}
+            </span>
+            {showTrash && (
+              <button
+                type="button"
+                onClick={() => onDeleteItem(item)}
+                title={`Remove ${item}`}
+                aria-label={`Remove ${item}`}
+                className="text-xs opacity-50 hover:opacity-100 hover:text-red-400 flex-shrink-0 px-1"
+              >
+                <FontAwesomeIcon icon="trash" className="h-3 w-3" />
+              </button>
             )}
-          </span>
+          </div>
         );
       })}
     </div>
   );
 };
+
+/**
+ * Inline confirmation banner for destructive actions. Reuses the
+ * amber-warning visual language of `ConfirmDisableInline` in
+ * PrivacySecuritySection so the user sees a consistent "are you
+ * sure?" pattern across the panel.
+ */
+const RevokeConfirmInline = ({ title, body, onCancel, onConfirm }) => (
+  <div className="flex flex-col gap-2 border border-amber-500 rounded p-2 mt-1">
+    <div className="flex flex-row items-center gap-2">
+      <FontAwesomeIcon
+        icon="triangle-exclamation"
+        className="h-3 w-3 text-amber-500"
+      />
+      <span className="text-xs font-semibold text-gray-100">{title}</span>
+    </div>
+    <div className="text-xs text-gray-300 leading-relaxed">{body}</div>
+    <div className="flex justify-end gap-2">
+      <Button title="Cancel" onClick={onCancel} size="sm" />
+      <Button title="Confirm" onClick={onConfirm} size="sm" />
+    </div>
+  </div>
+);
 
 export const WidgetGrantRow = ({
   widgetId,
@@ -142,12 +188,17 @@ export const WidgetGrantRow = ({
   onGrantManually,
   onToggleTool,
   onToggleAllForServer,
+  onDeletePath,
 }) => {
   const declaredServers = (declared && declared.servers) || {};
   const grantedServers = (granted && granted.servers) || {};
   const allServerNames = Array.from(
     new Set([...Object.keys(declaredServers), ...Object.keys(grantedServers)]),
   );
+  // Pending revoke state — null, "widget", or { type: "server", serverName }.
+  const [pendingRevoke, setPendingRevoke] = useState(null);
+
+  const widgetSummary = describeWidgetGrant(grantedServers);
 
   return (
     <div className="flex flex-col space-y-3 border border-gray-700 rounded p-3">
@@ -163,13 +214,33 @@ export const WidgetGrantRow = ({
         </div>
         <div className="flex flex-row gap-2">
           {!hasManifest && !granted && (
-            <Button title="Grant manually" onClick={onGrantManually} />
+            <Button
+              title="Grant manually"
+              onClick={onGrantManually}
+              size="sm"
+            />
           )}
           {Object.keys(grantedServers).length > 0 && (
-            <Button title="Revoke all" onClick={onRevokeWidget} />
+            <Button
+              title="Revoke all"
+              onClick={() => setPendingRevoke("widget")}
+              size="sm"
+            />
           )}
         </div>
       </div>
+
+      {pendingRevoke === "widget" && (
+        <RevokeConfirmInline
+          title={`Revoke all grants for ${widgetId}?`}
+          body={`This will remove ${widgetSummary}. The widget will need to re-prompt for consent the next time it tries to use any of these.`}
+          onCancel={() => setPendingRevoke(null)}
+          onConfirm={() => {
+            setPendingRevoke(null);
+            onRevokeWidget && onRevokeWidget();
+          }}
+        />
+      )}
 
       {!declared && !granted && (
         <span className="text-xs opacity-50">
@@ -223,11 +294,27 @@ export const WidgetGrantRow = ({
                 {grant && (
                   <Button
                     title="Revoke server"
-                    onClick={() => onRevokeServer(serverName)}
+                    onClick={() =>
+                      setPendingRevoke({ type: "server", serverName })
+                    }
+                    size="sm"
                   />
                 )}
               </div>
             </div>
+
+            {pendingRevoke?.type === "server" &&
+              pendingRevoke.serverName === serverName && (
+                <RevokeConfirmInline
+                  title={`Revoke all ${serverName} grants?`}
+                  body={`This will remove ${describeServerGrant(grant)} from this widget. Tool toggles you flipped off and any path entries will be wiped. Use the per-tool toggles or the trash icon next to a path if you only want to remove specific items.`}
+                  onCancel={() => setPendingRevoke(null)}
+                  onConfirm={() => {
+                    setPendingRevoke(null);
+                    onRevokeServer && onRevokeServer(serverName);
+                  }}
+                />
+              )}
             {allStale && (
               <div className="text-xs text-amber-400 bg-amber-900 bg-opacity-20 border border-amber-700 rounded px-2 py-1.5">
                 All grants on this server are no longer in the manifest — the
@@ -248,12 +335,22 @@ export const WidgetGrantRow = ({
               declaredItems={decl.readPaths || []}
               grantedItems={grant?.readPaths || []}
               validatesStale={false}
+              onDeleteItem={
+                onDeletePath
+                  ? (p) => onDeletePath(widgetId, serverName, "readPaths", p)
+                  : undefined
+              }
             />
             <PermsList
               label="Write paths"
               declaredItems={decl.writePaths || []}
               grantedItems={grant?.writePaths || []}
               validatesStale={false}
+              onDeleteItem={
+                onDeletePath
+                  ? (p) => onDeletePath(widgetId, serverName, "writePaths", p)
+                  : undefined
+              }
             />
           </div>
         );

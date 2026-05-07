@@ -24,6 +24,7 @@ export const WidgetPackageDetail = ({
   onRevokePackage,
   onToggleTool,
   onToggleAllForServer,
+  onDeletePath,
 }) => {
   const [confirmRevokeAll, setConfirmRevokeAll] = useState(false);
 
@@ -58,6 +59,7 @@ export const WidgetPackageDetail = ({
               backgroundColor="bg-red-700"
               textColor="text-white"
               hoverBackgroundColor="hover:bg-red-600"
+              size="sm"
             />
           )}
         </div>
@@ -75,12 +77,14 @@ export const WidgetPackageDetail = ({
               <Button
                 title="Cancel"
                 onClick={() => setConfirmRevokeAll(false)}
+                size="sm"
               />
               <Button
                 title="Revoke all"
                 backgroundColor="bg-red-700"
                 textColor="text-white"
                 hoverBackgroundColor="hover:bg-red-600"
+                size="sm"
                 onClick={() => {
                   setConfirmRevokeAll(false);
                   onRevokePackage && onRevokePackage(packageGroup);
@@ -106,6 +110,7 @@ export const WidgetPackageDetail = ({
               onGrantManually={() => onGrantManually(row.widgetId)}
               onToggleTool={onToggleTool}
               onToggleAllForServer={onToggleAllForServer}
+              onDeletePath={onDeletePath}
             />
           ))}
         </div>
