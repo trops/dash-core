@@ -3,6 +3,7 @@ import { ComponentManager } from "../ComponentManager";
 import { deepCopy } from "@trops/dash-react";
 import { getNextHighestId, getNextHighestOrder } from "../utils/layout";
 import { pruneDeadListenerReferences } from "../utils/listenerResolution";
+import { mergeGridCellsOp } from "./mergeGridCellsOp";
 /**
  * A Model for a Workspace (Dashboard)
  * The Dashboard in this instance is the entire Layout inclusive of the workspaces and widgets
@@ -1569,7 +1570,7 @@ export class DashboardModel {
    * @param {Array} cellNumbers Array of cell numbers to merge (e.g., ["1.1", "1.2"])
    * @returns {Object} Updated grid layout or null on error
    */
-  mergeGridCells(itemId, cellNumbers) {
+  mergeGridCells(itemId, cellNumbers, keepComponentId) {
     try {
       const gridContainer = this.getComponentById(itemId);
       if (!gridContainer || !gridContainer.grid) {
@@ -1579,69 +1580,23 @@ export class DashboardModel {
         return null;
       }
 
-      // Find bounding box accounting for existing spans
-      let minRow = Infinity,
-        maxRow = -Infinity;
-      let minCol = Infinity,
-        maxCol = -Infinity;
-      cellNumbers.forEach((cn) => {
-        const [r, c] = cn.split(".").map(Number);
-        const cell = gridContainer.grid[cn];
-        const spanRow = cell?.span?.row || 1;
-        const spanCol = cell?.span?.col || 1;
-        minRow = Math.min(minRow, r);
-        maxRow = Math.max(maxRow, r + spanRow - 1);
-        minCol = Math.min(minCol, c);
-        maxCol = Math.max(maxCol, c + spanCol - 1);
-      });
-
-      // Clear old merge state: if any cell in the selection already
-      // has a span, unhide its previously-covered cells and remove span
-      cellNumbers.forEach((cn) => {
-        const cell = gridContainer.grid[cn];
-        if (cell && cell.span) {
-          const [cr, cc] = cn.split(".").map(Number);
-          const sr = cell.span.row || 1;
-          const sc = cell.span.col || 1;
-          for (let r = cr; r < cr + sr; r++) {
-            for (let c = cc; c < cc + sc; c++) {
-              const coveredKey = `${r}.${c}`;
-              if (gridContainer.grid[coveredKey]) {
-                gridContainer.grid[coveredKey].hide = false;
-              }
-            }
-          }
-          delete cell.span;
-        }
-        if (cell) {
-          cell.hide = false;
-        }
-      });
-
-      // Keep the first cell, hide the others
-      const keepCell = cellNumbers[0];
-      const componentsToMove = [];
-
-      cellNumbers.forEach((cellNumber) => {
-        if (cellNumber !== keepCell && gridContainer.grid[cellNumber]) {
-          if (gridContainer.grid[cellNumber].component) {
-            componentsToMove.push(gridContainer.grid[cellNumber].component);
-          }
-          gridContainer.grid[cellNumber].hide = true;
-        }
-      });
-
-      // Add span information to the kept cell
-      gridContainer.grid[keepCell].span = {
-        row: maxRow - minRow + 1,
-        col: maxCol - minCol + 1,
-      };
+      // Slice 9: pure helper handles the per-cell mutation. The fix
+      // is that the kept cell receives the kept component (instead of
+      // leaving the component on the now-hidden absorbed cell, which
+      // made widgets visually disappear when the user selected an
+      // empty cell first then a widget cell).
+      const result = mergeGridCellsOp(
+        gridContainer.grid,
+        cellNumbers,
+        keepComponentId,
+      );
+      gridContainer.grid = result.grid;
 
       this._normalizeGrid(gridContainer.grid);
       this.updateLayoutItem(gridContainer);
       return {
         grid: gridContainer.grid,
-        conflictingComponents: componentsToMove,
+        conflictingComponents: result.conflictingComponents,
       };
     } catch (e) {
       console.error("mergeGridCells error:", e);

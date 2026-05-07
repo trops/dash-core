@@ -970,19 +970,25 @@ export const LayoutBuilder = ({
         keepComponent,
       );
       const dashboard = new DashboardModel(currentWorkspace);
-      const result = dashboard.mergeGridCells(gridContainer.id, cellNumbers);
+      // Slice 9: pass keepComponent into the model so the chosen
+      // component lands on the kept cell. The model returns the
+      // orphaned ones in `conflictingComponents` for layout cleanup.
+      const result = dashboard.mergeGridCells(
+        gridContainer.id,
+        cellNumbers,
+        keepComponent,
+      );
 
       if (result) {
-        // Handle component cleanup if needed
+        // Remove orphaned components from the layout — these are
+        // widgets the user explicitly chose NOT to keep when there
+        // were multiple in the merged region.
         if (
           result.conflictingComponents &&
           result.conflictingComponents.length > 0
         ) {
-          // Remove components that weren't selected to keep
           result.conflictingComponents.forEach((componentId) => {
-            if (componentId !== keepComponent) {
-              dashboard.removeItemFromLayout(componentId);
-            }
+            dashboard.removeItemFromLayout(componentId);
           });
         }
 
