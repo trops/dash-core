@@ -141,6 +141,11 @@ export const WidgetGrantRow = ({
             <div className="flex flex-row items-center justify-between">
               <span className="text-xs uppercase tracking-wider opacity-70">
                 {serverName}
+                {grant?._labels && grant._labels.length > 0 && (
+                  <span className="ml-2 normal-case tracking-normal opacity-60">
+                    ({grant._labels.join(", ")})
+                  </span>
+                )}
                 {!grant && (
                   <span className="ml-2 text-amber-400 normal-case tracking-normal">
                     (declared, not granted)

@@ -12,6 +12,7 @@ import { groupRowsByPackage } from "./groupRowsByPackage";
 import { PrivacySecurityList } from "./PrivacySecurityList";
 import { WidgetPackageDetail } from "../details/WidgetPackageDetail";
 import { WidgetGrantRow, GrantOriginBadge } from "./WidgetGrantRow";
+import { normalizeGrantsByProviderType } from "../../../utils/normalizeGrantsByProviderType";
 
 /**
  * Privacy & Security
@@ -32,6 +33,7 @@ import { WidgetGrantRow, GrantOriginBadge } from "./WidgetGrantRow";
  * exposed by dash-electron's preload.
  */
 export const PrivacySecuritySection = () => {
+  const { providers } = useContext(AppContext);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -100,7 +102,26 @@ export const PrivacySecuritySection = () => {
 
   const revokeServer = async (widgetId, serverName) => {
     try {
-      await window.mainApi?.widgetMcp?.revokeServer?.(widgetId, serverName);
+      // The display key may be a normalized provider TYPE (see
+      // normalizeGrantsByProviderType), but the IPC handler keys grants
+      // by the original instance LABELS. Fan the revoke out across
+      // every label whose provider type matches `serverName`. If the
+      // display key is itself a label that doesn't match any provider
+      // (stale grant case), call directly with that key as a fallback.
+      const row = rows.find((r) => r.widgetId === widgetId);
+      const labels = [];
+      if (row?.granted?.servers && providers) {
+        for (const label of Object.keys(row.granted.servers)) {
+          const type = providers[label]?.type;
+          if (type === serverName || label === serverName) {
+            labels.push(label);
+          }
+        }
+      }
+      const targets = labels.length > 0 ? labels : [serverName];
+      for (const label of targets) {
+        await window.mainApi?.widgetMcp?.revokeServer?.(widgetId, label);
+      }
       reload();
     } catch (e) {
       setError(e?.message || String(e));
@@ -131,7 +152,16 @@ export const PrivacySecuritySection = () => {
     );
   }
 
-  const packageGroups = groupRowsByPackage(rows);
+  // Re-key granted.servers from provider INSTANCE LABELS (e.g.
+  // "Gmail New", "Filesystem") to provider TYPES (e.g. "gmail",
+  // "filesystem") before grouping. The runtime grant store records
+  // labels because authorization is per-instance; the manifest scanner
+  // emits types because static analysis can't know about user
+  // instances. Without this normalization step the WidgetGrantRow
+  // server-name comparison thinks every grant is on a different
+  // server than the manifest declares and paints them all stale.
+  const normalizedRows = normalizeGrantsByProviderType(rows, providers);
+  const packageGroups = groupRowsByPackage(normalizedRows);
   const isSettingsSelected = selectedPackageKey === "__settings__";
   const isHelpSelected = selectedPackageKey === "__help__";
   const selectedGroup =
