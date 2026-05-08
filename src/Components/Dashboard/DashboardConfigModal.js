@@ -5,6 +5,7 @@ import {
   Modal,
   Button2,
   Button3,
+  Card2,
   Tag,
   Switch,
   SearchInput,
@@ -963,7 +964,12 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
   return (
     <div className="flex flex-row gap-3 h-full min-h-0">
       {/* Sidebar: provider types */}
-      <div className="w-56 flex-shrink-0 bg-white/5 border border-white/10 rounded-lg overflow-hidden flex flex-col">
+      <Card2
+        padding=""
+        shadow=""
+        rounded="rounded-lg"
+        className="w-56 flex-shrink-0 overflow-hidden flex flex-col"
+      >
         <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider">
           Provider Types
         </div>
@@ -1006,10 +1012,15 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
             );
           })}
         </div>
-      </div>
+      </Card2>
 
       {/* Detail: bulk assign + per-widget overrides for selected type */}
-      <div className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg overflow-hidden flex flex-col">
+      <Card2
+        padding=""
+        shadow=""
+        rounded="rounded-lg"
+        className="flex-1 min-w-0 overflow-hidden flex flex-col"
+      >
         {selectedType ? (
           <>
             <div className="px-4 py-3 flex-shrink-0">
@@ -1156,7 +1167,7 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
             Pick a provider type to bulk-assign or adjust per widget.
           </div>
         )}
-      </div>
+      </Card2>
     </div>
   );
 }
@@ -1178,7 +1189,7 @@ function ProviderTypeRow({
   const widgetCount = rows.length;
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-3">
+    <Card2 padding="p-3" shadow="" rounded="rounded-lg" className="space-y-3">
       <div className="flex flex-row items-center gap-3">
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold flex items-center gap-2">
@@ -1274,7 +1285,7 @@ function ProviderTypeRow({
           </div>
         </div>
       )}
-    </div>
+    </Card2>
   );
 }
 
@@ -1439,7 +1450,12 @@ function ListenersTab({ emitters, receivers, wiring, onAdd, onRemove }) {
     <div className="flex flex-col gap-3 h-full min-h-0">
       <div className="flex flex-row gap-3 flex-1 min-h-0">
         {/* Sidebar: receivers */}
-        <div className="w-56 flex-shrink-0 bg-white/5 border border-white/10 rounded-lg overflow-hidden flex flex-col">
+        <Card2
+          padding=""
+          shadow=""
+          rounded="rounded-lg"
+          className="w-56 flex-shrink-0 overflow-hidden flex flex-col"
+        >
           <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider">
             Widgets
           </div>
@@ -1472,7 +1488,7 @@ function ListenersTab({ emitters, receivers, wiring, onAdd, onRemove }) {
               );
             })}
           </div>
-        </div>
+        </Card2>
 
         {/* Handlers column (middle) + events column (right), mirroring
           the two-column layout from the per-widget settings panel. */}
@@ -1512,9 +1528,14 @@ function ListenersTab({ emitters, receivers, wiring, onAdd, onRemove }) {
             />
           </>
         ) : (
-          <div className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg flex items-center justify-center text-sm opacity-60">
+          <Card2
+            padding=""
+            shadow=""
+            rounded="rounded-lg"
+            className="flex-1 min-w-0 flex items-center justify-center text-sm opacity-60"
+          >
             Pick a widget on the left to wire its handlers.
-          </div>
+          </Card2>
         )}
       </div>
     </div>
@@ -1615,7 +1636,12 @@ function HandlersColumn({
   }, [myWiring]);
 
   return (
-    <div className="w-56 flex-shrink-0 bg-white/5 border border-white/10 rounded-lg overflow-hidden flex flex-col">
+    <Card2
+      padding=""
+      shadow=""
+      rounded="rounded-lg"
+      className="w-56 flex-shrink-0 overflow-hidden flex flex-col"
+    >
       <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider">
         Event Handlers
       </div>
@@ -1655,7 +1681,7 @@ function HandlersColumn({
           })
         )}
       </div>
-    </div>
+    </Card2>
   );
 }
 
@@ -1704,9 +1730,14 @@ function EventsColumn({
 
   if (!handlerName) {
     return (
-      <div className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg flex items-center justify-center text-sm opacity-60">
+      <Card2
+        padding=""
+        shadow=""
+        rounded="rounded-lg"
+        className="flex-1 min-w-0 flex items-center justify-center text-sm opacity-60"
+      >
         Select a handler to view available events.
-      </div>
+      </Card2>
     );
   }
 
@@ -1740,7 +1771,12 @@ function EventsColumn({
   );
 
   return (
-    <div className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg overflow-hidden flex flex-col">
+    <Card2
+      padding=""
+      shadow=""
+      rounded="rounded-lg"
+      className="flex-1 min-w-0 overflow-hidden flex flex-col"
+    >
       <div className="flex-shrink-0 px-4 py-2 text-xs opacity-60">
         Check an event to fire <code className="text-xs">{handlerName}</code> on{" "}
         <span className="font-medium">{receiver.label}</span>.
@@ -1796,6 +1832,6 @@ function EventsColumn({
           ))
         )}
       </div>
-    </div>
+    </Card2>
   );
 }
