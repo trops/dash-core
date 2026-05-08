@@ -884,11 +884,11 @@ function NotificationsTab({ workspace }) {
               </span>
               <span className="text-[10px] opacity-40">{wi.package}</span>
             </div>
-            <div className="flex flex-col pl-2 border-l border-white/10 divide-y divide-white/5">
+            <div className="flex flex-col pl-2 border-l border-white/10">
               {wi.notifications.map((notif) => (
                 <div
                   key={notif.key}
-                  className="flex flex-row items-center justify-between gap-3 py-2 px-2 -mx-2 rounded hover:bg-white/5 transition-colors"
+                  className="flex flex-row items-center justify-between gap-3 py-2 px-2 -mx-2 rounded hover:bg-gray-800 transition-colors"
                 >
                   <div className="flex flex-col">
                     <span className="text-xs">{notif.displayName}</span>
@@ -1052,7 +1052,7 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
                         className={`flex flex-row items-center gap-3 py-2 px-2 rounded border-l-2 transition-colors ${
                           needsAttention
                             ? "bg-red-900 border-red-500"
-                            : "border-transparent hover:bg-white/5"
+                            : "border-transparent hover:bg-gray-800"
                         }`}
                       >
                         <div className="flex-1 min-w-0">
