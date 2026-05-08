@@ -501,7 +501,7 @@ export const DashboardConfigModal = ({
     <Modal
       isOpen={isOpen}
       setIsOpen={handleCancel}
-      width="w-11/12 xl:w-5/6"
+      width="w-11/12 max-w-5xl"
       height="h-5/6"
     >
       <div
@@ -884,11 +884,11 @@ function NotificationsTab({ workspace }) {
               </span>
               <span className="text-[10px] opacity-40">{wi.package}</span>
             </div>
-            <div className="flex flex-col gap-1.5 pl-2 border-l border-white/10">
+            <div className="flex flex-col pl-2 border-l border-white/10 divide-y divide-white/5">
               {wi.notifications.map((notif) => (
                 <div
                   key={notif.key}
-                  className="flex flex-row items-center justify-between py-0.5"
+                  className="flex flex-row items-center justify-between gap-3 py-2 px-2 -mx-2 rounded hover:bg-white/5 transition-colors"
                 >
                   <div className="flex flex-col">
                     <span className="text-xs">{notif.displayName}</span>
@@ -1049,10 +1049,10 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
                     return (
                       <div
                         key={`${row.widgetId}:${row.providerType}`}
-                        className={`flex flex-row items-center gap-3 py-2 px-2 rounded border-l-2 ${
+                        className={`flex flex-row items-center gap-3 py-2 px-2 rounded border-l-2 transition-colors ${
                           needsAttention
                             ? "bg-red-900 border-red-500"
-                            : "border-transparent"
+                            : "border-transparent hover:bg-white/5"
                         }`}
                       >
                         <div className="flex-1 min-w-0">
