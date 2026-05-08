@@ -121,6 +121,15 @@ node --test electron/mcp/permissionGate.test.js electron/mcp/grantedPermissions.
 step "Validating untracked-sources gate config"
 npm run test:untracked-pin
 
+# 6e. Tailwind safelist linter — fails CI on any NEW class outside
+# dash-electron's safelist (opacity modifiers, arbitrary values,
+# off-list utility colors). Pre-existing violations are grandfathered
+# in scripts/tailwind-safelist-baseline.json — run
+# `npm run lint:safelist:update` after intentional cleanups to refresh.
+step "Linting tailwind safelist compliance"
+npm run lint:safelist
+node --test scripts/lib/findTailwindViolations.test.js
+
 # 7. Verify output
 step "Verifying build output"
 for f in \

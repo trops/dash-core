@@ -1,0 +1,366 @@
+{
+  "src/Components/AiAssistant/components/ChatMessages.js": [
+    "text-[10px]"
+  ],
+  "src/Components/AiAssistant/components/MessageBubble.js": [
+    "max-w-[85%]",
+    "text-[10px]"
+  ],
+  "src/Components/AiAssistant/components/ToolCallBlock.js": [
+    "bg-black/30"
+  ],
+  "src/Components/AiAssistant/components/ToolSelector.js": [
+    "focus:ring-indigo-500",
+    "hover:bg-white/5"
+  ],
+  "src/Components/Dashboard/DashboardConfigModal.js": [
+    "bg-white/10",
+    "bg-white/5",
+    "border-white/10",
+    "hover:bg-white/5",
+    "min-w-[12rem]",
+    "min-w-[14rem]",
+    "text-[10px]"
+  ],
+  "src/Components/Dashboard/DashboardHeader.js": [
+    "border-black/40"
+  ],
+  "src/Components/Dashboard/DashboardMonitor.js": [
+    "text-[10px]",
+    "text-[11px]"
+  ],
+  "src/Components/Dashboard/DashboardStage.js": [
+    "z-[9999]"
+  ],
+  "src/Components/Dashboard/PermissionsTab.js": [
+    "border-white/10"
+  ],
+  "src/Components/Dashboard/PinnedSidebar.js": [
+    "bg-white/10",
+    "text-[10px]"
+  ],
+  "src/Components/Dashboard/WidgetsTab.js": [
+    "border-white/10",
+    "hover:bg-white/5",
+    "text-[10px]",
+    "text-[11px]"
+  ],
+  "src/Components/Layout/Builder/Enhanced/EnhancedWidgetDropdown.js": [
+    "bg-white/10",
+    "bg-white/5",
+    "border-white/10",
+    "hover:bg-white/20",
+    "text-[10px]",
+    "text-white/70"
+  ],
+  "src/Components/Layout/Builder/Enhanced/WidgetCard.js": [
+    "text-[10px]"
+  ],
+  "src/Components/Layout/Builder/Enhanced/WidgetCardHeader.js": [
+    "ring-blue-500",
+    "text-[10px]",
+    "text-white/60"
+  ],
+  "src/Components/Layout/Builder/Enhanced/WidgetCardStatusBar.js": [
+    "text-[10px]"
+  ],
+  "src/Components/Layout/Builder/Enhanced/WidgetDropdown.js": [
+    "text-white/70"
+  ],
+  "src/Components/Layout/Builder/LayoutGridContainer.js": [
+    "bg-white/5",
+    "group-hover:bg-white/10",
+    "min-h-[120px]",
+    "ring-green-500",
+    "text-[10px]",
+    "text-[11px]"
+  ],
+  "src/Components/Layout/Builder/Menu/LayoutQuickAddMenu.js": [
+    "divide-gray-100"
+  ],
+  "src/Components/Layout/Builder/Modal/LayoutBuilderConfigModal.js": [
+    "bg-white/10",
+    "text-[10px]"
+  ],
+  "src/Components/Layout/Builder/Modal/Panel/PanelEditItemHandlers.js": [
+    "bg-white/10",
+    "text-[10px]"
+  ],
+  "src/Components/Layout/Builder/Modal/Panel/PanelEditItemProviders.js": [
+    "text-[11px]"
+  ],
+  "src/Components/Layout/Builder/Modal/Panel/PanelEditItemSchedule.js": [
+    "border-white/10",
+    "border-white/20",
+    "hover:border-white/40",
+    "text-white/60"
+  ],
+  "src/Components/Layout/DashboardWizard/steps/WizardCustomizeStep.js": [
+    "ring-blue-400"
+  ],
+  "src/Components/Layout/LayoutManager/LayoutManagerModal.js": [
+    "hover:ring-gray-600",
+    "ring-blue-400",
+    "ring-blue-500",
+    "themes[selectedThemeKey].primary",
+    "themes[selectedThemeKey].secondary",
+    "themes[selectedThemeKey].tertiary"
+  ],
+  "src/Components/Layout/LayoutManager/Panel/CreationMethodPicker.js": [
+    "hover:ring-gray-600"
+  ],
+  "src/Components/Layout/LayoutManager/Panel/LayoutManagerPicker.js": [
+    "hover:ring-gray-600",
+    "ring-blue-500"
+  ],
+  "src/Components/MarkdownForm/MarkdownFormEditor.js": [
+    "text-[10px]"
+  ],
+  "src/Components/Navigation/DashSidebar.js": [
+    "bg-white/10",
+    "border-white/10",
+    "hover:bg-white/10",
+    "hover:bg-white/5",
+    "text-white/80"
+  ],
+  "src/Components/Navigation/DashTabBar.js": [
+    "bg-white/15",
+    "hover:bg-white/10",
+    "max-w-[140px]"
+  ],
+  "src/Components/Navigation/PageTabBar.js": [
+    "bg-white/15",
+    "hover:bg-white/10",
+    "max-w-[140px]"
+  ],
+  "src/Components/Navigation/WidgetSidebar.js": [
+    "bg-white/10",
+    "bg-white/5",
+    "hover:bg-white/10",
+    "text-[10px]",
+    "text-[11px]"
+  ],
+  "src/Components/Provider/AdvancedMcpConfig.js": [
+    "bg-white/10",
+    "border-white/10",
+    "hover:bg-white/5"
+  ],
+  "src/Components/Provider/McpServerPicker.js": [
+    "bg-white/10",
+    "bg-white/5",
+    "border-white/10",
+    "hover:bg-white/20"
+  ],
+  "src/Components/Provider/ProviderForm.js": [
+    "bg-white/10",
+    "hover:bg-white/10",
+    "hover:bg-white/20"
+  ],
+  "src/Components/Settings/AppSettingsModal.js": [
+    "bg-white/10"
+  ],
+  "src/Components/Settings/details/CustomMcpServerForm.js": [
+    "bg-white/10",
+    "bg-white/5",
+    "border-white/10",
+    "hover:bg-white/20",
+    "hover:text-white/70",
+    "text-white/50"
+  ],
+  "src/Components/Settings/details/DashboardDetail.js": [
+    "bg-white/10",
+    "bg-white/5",
+    "border-white/10"
+  ],
+  "src/Components/Settings/details/DashboardInstallOptionsModal.js": [
+    "border-white/10",
+    "text-[10px]"
+  ],
+  "src/Components/Settings/details/DiscoverDashboardsDetail.js": [
+    "border-white/10",
+    "text-[10px]"
+  ],
+  "src/Components/Settings/details/DiscoverThemesDetail.js": [
+    "border-white/10",
+    "text-[10px]"
+  ],
+  "src/Components/Settings/details/DiscoverWidgetsDetail.js": [
+    "border-white/10",
+    "text-[10px]"
+  ],
+  "src/Components/Settings/details/FolderDetail.js": [
+    "border-white/10"
+  ],
+  "src/Components/Settings/details/InstallProgressModal.js": [
+    "bg-white/5",
+    "border-white/10",
+    "text-[10px]"
+  ],
+  "src/Components/Settings/details/InstallWidgetPicker.js": [
+    "bg-white/5"
+  ],
+  "src/Components/Settings/details/InstalledWidgetDetail.js": [
+    "bg-white/10",
+    "border-white/10",
+    "text-[10px]"
+  ],
+  "src/Components/Settings/details/McpCatalogDetail.js": [
+    "bg-white/10",
+    "bg-white/5",
+    "border-white/10",
+    "hover:bg-white/20"
+  ],
+  "src/Components/Settings/details/NewProviderPicker.js": [
+    "bg-white/5"
+  ],
+  "src/Components/Settings/details/ProviderDetail.js": [
+    "bg-white/10",
+    "bg-white/5",
+    "border-white/10",
+    "hover:bg-white/10",
+    "hover:bg-white/20"
+  ],
+  "src/Components/Settings/details/PublishDashboardModal.js": [
+    "bg-white/15",
+    "bg-white/5",
+    "border-white/10",
+    "border-white/30",
+    "hover:bg-white/10",
+    "hover:border-white/20",
+    "hover:text-white/80",
+    "text-[10px]",
+    "text-[11px]",
+    "text-white/60"
+  ],
+  "src/Components/Settings/details/PublishThemeModal.js": [
+    "bg-white/15",
+    "bg-white/5",
+    "border-white/10",
+    "border-white/20",
+    "border-white/30",
+    "hover:bg-white/10",
+    "hover:border-white/20",
+    "hover:text-white/80",
+    "text-[10px]",
+    "text-white/60"
+  ],
+  "src/Components/Settings/details/PublishWidgetModal.js": [
+    "bg-white/5",
+    "border-white/10",
+    "border-white/30",
+    "divide-white/10",
+    "hover:bg-white/10"
+  ],
+  "src/Components/Settings/details/RegistryDashboardDetail.js": [
+    "border-white/20",
+    "text-[10px]"
+  ],
+  "src/Components/Settings/details/RegistryPackageDetail.js": [
+    "bg-white/5",
+    "text-[10px]"
+  ],
+  "src/Components/Settings/details/RegistryThemeDetail.js": [
+    "border-white/10",
+    "border-white/20",
+    "text-[10px]"
+  ],
+  "src/Components/Settings/details/ThemeDetail.js": [
+    "bg-black/10",
+    "border-white/10",
+    "text-[10px]",
+    "text-[11px]",
+    "text-[8px]"
+  ],
+  "src/Components/Settings/details/ToolSelector.js": [
+    "bg-white/5",
+    "border-white/20",
+    "hover:bg-white/5"
+  ],
+  "src/Components/Settings/details/WebSocketProviderForm.js": [
+    "border-white/10"
+  ],
+  "src/Components/Settings/sections/AccountSection.js": [
+    "bg-white/10",
+    "bg-white/5",
+    "border-white/10",
+    "focus:border-white/30",
+    "hover:bg-white/10",
+    "text-[10px]",
+    "text-[11px]"
+  ],
+  "src/Components/Settings/sections/AiAssistantSection.js": [
+    "bg-white/10",
+    "bg-white/5",
+    "border-white/10",
+    "focus:ring-blue-500"
+  ],
+  "src/Components/Settings/sections/DashboardsSection.js": [
+    "bg-white/10"
+  ],
+  "src/Components/Settings/sections/FoldersSection.js": [
+    "bg-white/10"
+  ],
+  "src/Components/Settings/sections/GeneralSection.js": [
+    "bg-black/20"
+  ],
+  "src/Components/Settings/sections/McpServerSection.js": [
+    "bg-black/20",
+    "bg-white/5",
+    "border-white/10",
+    "focus:ring-white/30"
+  ],
+  "src/Components/Settings/sections/NotificationsSection.js": [
+    "bg-white/10",
+    "border-white/10",
+    "hover:bg-white/10",
+    "text-[10px]"
+  ],
+  "src/Components/Settings/sections/PrivacySecurityList.js": [
+    "bg-white/10"
+  ],
+  "src/Components/Settings/sections/ProvidersSection.js": [
+    "bg-white/10"
+  ],
+  "src/Components/Settings/sections/ThemesSection.js": [
+    "bg-white/10"
+  ],
+  "src/Components/Settings/sections/WidgetsSection.js": [
+    "bg-white/10",
+    "border-white/10",
+    "hover:bg-white/10",
+    "text-[10px]"
+  ],
+  "src/Components/Theme/Panel/Pane/TokenColorPickerPane.js": [
+    "drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
+  ],
+  "src/Components/Theme/Panel/PanelTheme.js": [
+    "hover:ring-gray-600",
+    "max-w-[25%]",
+    "min-w-[25%]",
+    "ring-blue-400"
+  ],
+  "src/Components/Theme/Wizard/ThemeNewChooser.js": [
+    "bg-white/5",
+    "hover:bg-white/10",
+    "hover:ring-white/20"
+  ],
+  "src/Components/Theme/Wizard/ThemeQuickCreate.js": [
+    "bg-white/10",
+    "hover:ring-blue-500",
+    "hover:ring-white/20",
+    "ring-blue-500",
+    "text-[10px]"
+  ],
+  "src/Context/Modal/Panel/PanelEditContext.js": [
+    "text-[10px]",
+    "text-[11px]"
+  ],
+  "src/Widget/MissingWidgetsModal.js": [
+    "bg-white/5",
+    "border-white/10",
+    "text-[10px]"
+  ],
+  "src/Widget/WidgetNotFound.js": [
+    "max-h-[80vh]"
+  ]
+}
