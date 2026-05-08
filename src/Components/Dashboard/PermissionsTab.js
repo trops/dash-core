@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Button, FontAwesomeIcon } from "@trops/dash-react";
+import { Button, FontAwesomeIcon, Divider } from "@trops/dash-react";
 import { AppContext } from "../../Context/App/AppContext";
 import { WidgetGrantRow } from "../Settings/sections/WidgetGrantRow";
 import { normalizeGrantsByProviderType } from "../../utils/normalizeGrantsByProviderType";
@@ -258,7 +258,7 @@ export const PermissionsTab = ({ workspace }) => {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex-shrink-0 flex flex-row items-center justify-between gap-2 pb-3 border-b border-white/10">
+      <div className="flex-shrink-0 flex flex-row items-center justify-between gap-2 pb-3">
         <div className="flex flex-col">
           <span className="text-sm font-medium">
             {filteredRows.length} widget
@@ -285,6 +285,7 @@ export const PermissionsTab = ({ workspace }) => {
           />
         </div>
       </div>
+      <Divider />
       {error && (
         <div className="flex-shrink-0 text-xs text-red-400 bg-red-900/20 border border-red-700 rounded p-2 mt-3">
           {error}
