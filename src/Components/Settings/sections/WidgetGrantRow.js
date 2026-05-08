@@ -189,6 +189,7 @@ export const WidgetGrantRow = ({
   onToggleTool,
   onToggleAllForServer,
   onDeletePath,
+  onDeleteDomainItem,
 }) => {
   const declaredServers = (declared && declared.servers) || {};
   const grantedServers = (granted && granted.servers) || {};
@@ -371,6 +372,11 @@ export const WidgetGrantRow = ({
                   declaredItems={[]}
                   grantedItems={granted.domains.fs.actions}
                   validatesStale={false}
+                  onDeleteItem={
+                    onDeleteDomainItem
+                      ? (a) => onDeleteDomainItem(widgetId, "fs", "actions", a)
+                      : undefined
+                  }
                 />
               )}
             <PermsList
@@ -378,12 +384,22 @@ export const WidgetGrantRow = ({
               declaredItems={[]}
               grantedItems={granted.domains.fs.readPaths || []}
               validatesStale={false}
+              onDeleteItem={
+                onDeleteDomainItem
+                  ? (p) => onDeleteDomainItem(widgetId, "fs", "readPaths", p)
+                  : undefined
+              }
             />
             <PermsList
               label="Write filenames"
               declaredItems={[]}
               grantedItems={granted.domains.fs.writePaths || []}
               validatesStale={false}
+              onDeleteItem={
+                onDeleteDomainItem
+                  ? (p) => onDeleteDomainItem(widgetId, "fs", "writePaths", p)
+                  : undefined
+              }
             />
           </div>
         )}
@@ -402,6 +418,12 @@ export const WidgetGrantRow = ({
                   declaredItems={[]}
                   grantedItems={granted.domains.network.actions}
                   validatesStale={false}
+                  onDeleteItem={
+                    onDeleteDomainItem
+                      ? (a) =>
+                          onDeleteDomainItem(widgetId, "network", "actions", a)
+                      : undefined
+                  }
                 />
               )}
             <PermsList
@@ -409,6 +431,11 @@ export const WidgetGrantRow = ({
               declaredItems={[]}
               grantedItems={granted.domains.network.hosts || []}
               validatesStale={false}
+              onDeleteItem={
+                onDeleteDomainItem
+                  ? (h) => onDeleteDomainItem(widgetId, "network", "hosts", h)
+                  : undefined
+              }
             />
           </div>
         )}

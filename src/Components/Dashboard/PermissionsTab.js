@@ -5,6 +5,7 @@ import { WidgetGrantRow } from "../Settings/sections/WidgetGrantRow";
 import { normalizeGrantsByProviderType } from "../../utils/normalizeGrantsByProviderType";
 import { applyToolToggle } from "../Settings/sections/applyToolToggle";
 import { applyPathRemoval } from "../Settings/sections/applyPathRemoval";
+import { applyDomainItemRemoval } from "../Settings/sections/applyDomainItemRemoval";
 import { forEachWidget } from "../../utils/providerResolution";
 import { pickWidgetRef, isUserWidget } from "../../utils/widgetIdentity";
 
@@ -158,6 +159,18 @@ export const PermissionsTab = ({ workspace }) => {
     }
   };
 
+  const deleteDomainItem = async (widgetId, domain, kind, value) => {
+    try {
+      const row = rows.find((r) => r.widgetId === widgetId);
+      if (!row || !row.granted) return;
+      const next = applyDomainItemRemoval(row.granted, domain, kind, value);
+      await writeGrantOrRevoke(widgetId, next);
+      reload();
+    } catch (e) {
+      setError(e?.message || String(e));
+    }
+  };
+
   const revokeWidget = async (widgetId) => {
     try {
       await window.mainApi?.widgetMcp?.revoke?.(widgetId);
@@ -294,6 +307,7 @@ export const PermissionsTab = ({ workspace }) => {
             onToggleTool={toggleTool}
             onToggleAllForServer={toggleAllForServer}
             onDeletePath={deletePath}
+            onDeleteDomainItem={deleteDomainItem}
           />
         ))}
       </div>
