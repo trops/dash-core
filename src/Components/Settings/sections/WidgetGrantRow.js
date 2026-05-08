@@ -63,7 +63,7 @@ const ToolToggleList = ({
         return (
           <div
             key={tool}
-            className="flex flex-row items-center justify-between gap-2 py-1 px-2 -mx-2 rounded hover:bg-white/5 transition-colors"
+            className="flex flex-row items-center justify-between gap-2 py-1 px-2 -mx-2 rounded hover:bg-gray-800 transition-colors"
           >
             <span
               className={`text-xs font-mono break-all ${
@@ -118,7 +118,7 @@ const PermsList = ({
         return (
           <div
             key={item}
-            className="flex flex-row items-start justify-between gap-2 py-1 px-2 -mx-2 rounded hover:bg-white/5 transition-colors"
+            className="flex flex-row items-start justify-between gap-2 py-1 px-2 -mx-2 rounded hover:bg-gray-800 transition-colors"
           >
             <span
               className={`text-xs font-mono break-all ${
