@@ -15,6 +15,7 @@ import { WidgetGrantRow, GrantOriginBadge } from "./WidgetGrantRow";
 import { normalizeGrantsByProviderType } from "../../../utils/normalizeGrantsByProviderType";
 import { applyToolToggle } from "./applyToolToggle";
 import { applyPathRemoval } from "./applyPathRemoval";
+import { applyDomainItemRemoval } from "./applyDomainItemRemoval";
 
 /**
  * Privacy & Security
@@ -210,6 +211,22 @@ export const PrivacySecuritySection = () => {
     }
   };
 
+  // Remove a single item from a domain-shaped grant block (fs read
+  // filenames, fs write filenames, fs actions, network hosts, network
+  // actions). Sister to deletePath, which targets the MCP-server
+  // shape. No label resolution needed — domains aren't per-instance.
+  const deleteDomainItem = async (widgetId, domain, kind, value) => {
+    try {
+      const row = rows.find((r) => r.widgetId === widgetId);
+      if (!row || !row.granted) return;
+      const next = applyDomainItemRemoval(row.granted, domain, kind, value);
+      await writeGrantOrRevoke(widgetId, next);
+      reload();
+    } catch (e) {
+      setError(e?.message || String(e));
+    }
+  };
+
   // Per-server toggle-all: flip every declared tool on this server to
   // the target state in one shot. Reaches into the row's normalized
   // `declared.servers[serverName].tools` for the canonical tool list
@@ -322,6 +339,7 @@ export const PrivacySecuritySection = () => {
         onToggleTool={toggleTool}
         onToggleAllForServer={toggleAllForServer}
         onDeletePath={deletePath}
+        onDeleteDomainItem={deleteDomainItem}
       />
     );
   }

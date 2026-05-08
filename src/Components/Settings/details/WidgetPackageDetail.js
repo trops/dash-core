@@ -25,6 +25,7 @@ export const WidgetPackageDetail = ({
   onToggleTool,
   onToggleAllForServer,
   onDeletePath,
+  onDeleteDomainItem,
 }) => {
   const [confirmRevokeAll, setConfirmRevokeAll] = useState(false);
 
@@ -111,6 +112,7 @@ export const WidgetPackageDetail = ({
               onToggleTool={onToggleTool}
               onToggleAllForServer={onToggleAllForServer}
               onDeletePath={onDeletePath}
+              onDeleteDomainItem={onDeleteDomainItem}
             />
           ))}
         </div>
