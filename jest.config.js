@@ -1,6 +1,8 @@
 module.exports = {
   testEnvironment: "jsdom",
-  testPathIgnorePatterns: ["/node_modules/", "/electron/"],
+  // The /scripts/ tree uses `node:test`, not jest — exclude so jest
+  // doesn't try to load `require("node:test")` files and choke.
+  testPathIgnorePatterns: ["/node_modules/", "/electron/", "/scripts/"],
   transform: {
     "^.+\\.[jt]sx?$": "babel-jest",
   },
