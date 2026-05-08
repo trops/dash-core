@@ -14,7 +14,6 @@
     "hover:bg-white/5"
   ],
   "src/Components/Dashboard/DashboardConfigModal.js": [
-    "bg-white/10",
     "bg-white/5",
     "border-white/10",
     "hover:bg-white/5",
