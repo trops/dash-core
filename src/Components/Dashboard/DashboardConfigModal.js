@@ -8,6 +8,7 @@ import {
   Tag,
   Switch,
   SearchInput,
+  Divider,
   getStylesForItem,
   themeObjects,
 } from "@trops/dash-react";
@@ -510,7 +511,7 @@ export const DashboardConfigModal = ({
         } ${panelStyles.borderColor || ""} ${panelStyles.textColor || ""}`}
       >
         {/* Header */}
-        <div className="flex-shrink-0 flex flex-row items-center justify-between p-4 border-b border-white/10">
+        <div className="flex-shrink-0 flex flex-row items-center justify-between p-4">
           <div className="flex items-center gap-3">
             <FontAwesomeIcon icon="sliders" className="h-4 w-4 opacity-70" />
             <span className="text-lg font-semibold">Dashboard Config</span>
@@ -529,9 +530,10 @@ export const DashboardConfigModal = ({
             <FontAwesomeIcon icon="xmark" className="h-5 w-5" />
           </button>
         </div>
+        <Divider />
 
         {/* Tabs */}
-        <div className="flex-shrink-0 flex flex-row items-center gap-2 px-4 pt-3 border-b border-white/10">
+        <div className="flex-shrink-0 flex flex-row items-center gap-2 px-4 pt-3">
           <button
             type="button"
             onClick={() => setActiveTab("providers")}
@@ -610,6 +612,7 @@ export const DashboardConfigModal = ({
             )}
           </button>
         </div>
+        <Divider />
 
         {/* Body — flex-1 so it fills the fixed-height modal; min-h-0 so
             inner columns can own their own scroll containers. */}
@@ -653,8 +656,9 @@ export const DashboardConfigModal = ({
           )}
         </div>
 
+        <Divider />
         {/* Footer */}
-        <div className="flex-shrink-0 flex flex-row justify-end gap-2 p-4 border-t border-white/10">
+        <div className="flex-shrink-0 flex flex-row justify-end gap-2 p-4">
           <Button3 title="Cancel" onClick={handleCancel} />
           <Button2
             title={hasStagedChanges ? "Save changes" : "Save"}

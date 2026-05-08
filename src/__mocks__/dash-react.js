@@ -109,6 +109,23 @@ function Button({ title, onClick, disabled }) {
   );
 }
 
+function Divider({ orientation = "horizontal", className = "" }) {
+  return React.createElement("div", {
+    role: "separator",
+    "aria-orientation": orientation,
+    "data-testid": "divider",
+    className: className,
+  });
+}
+
+function Caption({ text, children, className = "" }) {
+  return React.createElement(
+    "div",
+    { "data-testid": "caption", className: className },
+    text !== null && text !== undefined ? text : children,
+  );
+}
+
 function ButtonIcon({ icon, text, title, onClick, disabled }) {
   // Render visible text (from `text`) and a `title` attribute (from
   // `title`) so RTL queries by either work. Either prop is optional.
@@ -242,6 +259,12 @@ module.exports = {
   Button2,
   Button3,
   ButtonIcon,
+  Divider,
+  Divider2: Divider,
+  Divider3: Divider,
+  Caption,
+  Caption2: Caption,
+  Caption3: Caption,
   Card2,
   Card3,
   Tag2,

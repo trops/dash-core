@@ -32,9 +32,6 @@
   "src/Components/Dashboard/DashboardStage.js": [
     "z-[9999]"
   ],
-  "src/Components/Dashboard/PermissionsTab.js": [
-    "border-white/10"
-  ],
   "src/Components/Dashboard/PinnedSidebar.js": [
     "bg-white/10",
     "text-[10px]"
