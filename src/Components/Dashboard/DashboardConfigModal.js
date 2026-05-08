@@ -842,7 +842,7 @@ function NotificationsTab({ workspace }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex flex-col gap-2 px-2 py-2 flex-shrink-0 border-b border-white/10">
+      <div className="flex flex-col gap-2 px-2 py-2 flex-shrink-0">
         <SearchInput
           value={searchQuery}
           onChange={setSearchQuery}
@@ -874,6 +874,7 @@ function NotificationsTab({ workspace }) {
           </div>
         </div>
       </div>
+      <Divider />
       <div className="flex-1 overflow-y-auto px-2 py-2 space-y-3">
         {filtered.map((wi) => (
           <div
@@ -888,30 +889,33 @@ function NotificationsTab({ workspace }) {
               </span>
               <span className="text-[10px] opacity-40">{wi.package}</span>
             </div>
-            <div className="flex flex-col pl-2 border-l border-white/10">
-              {wi.notifications.map((notif) => (
-                <div
-                  key={notif.key}
-                  className="flex flex-row items-center justify-between gap-3 py-2 px-2 -mx-2 rounded hover:bg-gray-800 transition-colors"
-                >
-                  <div className="flex flex-col">
-                    <span className="text-xs">{notif.displayName}</span>
-                    {notif.description && (
-                      <span className="text-[10px] opacity-50">
-                        {notif.description}
-                      </span>
-                    )}
+            <div className="flex flex-row gap-2">
+              <Divider orientation="vertical" />
+              <div className="flex flex-col flex-1">
+                {wi.notifications.map((notif) => (
+                  <div
+                    key={notif.key}
+                    className="flex flex-row items-center justify-between gap-3 py-2 px-2 -mx-2 rounded hover:bg-gray-800 transition-colors"
+                  >
+                    <div className="flex flex-col">
+                      <span className="text-xs">{notif.displayName}</span>
+                      {notif.description && (
+                        <span className="text-[10px] opacity-50">
+                          {notif.description}
+                        </span>
+                      )}
+                    </div>
+                    <Switch
+                      checked={isEnabled(
+                        wi.uuid,
+                        notif.key,
+                        notif.defaultEnabled,
+                      )}
+                      onChange={(value) => setOne(wi.uuid, notif.key, value)}
+                    />
                   </div>
-                  <Switch
-                    checked={isEnabled(
-                      wi.uuid,
-                      notif.key,
-                      notif.defaultEnabled,
-                    )}
-                    onChange={(value) => setOne(wi.uuid, notif.key, value)}
-                  />
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         ))}
@@ -960,9 +964,10 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
     <div className="flex flex-row gap-3 h-full min-h-0">
       {/* Sidebar: provider types */}
       <div className="w-56 flex-shrink-0 bg-white/5 border border-white/10 rounded-lg overflow-hidden flex flex-col">
-        <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider border-b border-white/10">
+        <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider">
           Provider Types
         </div>
+        <Divider />
         <div className="overflow-y-auto flex-1">
           {typeEntries.map(([providerType, rows]) => {
             const isActive = selectedType === providerType;
@@ -1007,7 +1012,7 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
       <div className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg overflow-hidden flex flex-col">
         {selectedType ? (
           <>
-            <div className="px-4 py-3 border-b border-white/10 flex-shrink-0">
+            <div className="px-4 py-3 flex-shrink-0">
               <div className="text-sm font-semibold">
                 {selectedType}{" "}
                 <span className="opacity-60 font-normal">provider</span>
@@ -1017,6 +1022,7 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
                 per-widget below.
               </div>
             </div>
+            <Divider />
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {/* Bulk assign */}
               <div className="flex items-center gap-3">
@@ -1220,50 +1226,53 @@ function ProviderTypeRow({
       </button>
 
       {expanded && (
-        <div className="pl-3 border-l border-white/10 space-y-2">
-          {rows.map((row) => {
-            const hasExplicitOverride =
-              !!row.layoutItem?.selectedProviders?.[providerType];
-            return (
-              <div
-                key={`${row.widgetId}:${row.providerType}`}
-                className="flex flex-row items-center gap-3"
-              >
-                <div className="flex-1 min-w-0 text-xs">
-                  <span className="font-mono opacity-80 truncate">
-                    {row.component || "widget"}
-                  </span>
-                  <span className="opacity-40 mx-1">·</span>
-                  <span className="font-mono opacity-40 truncate">
-                    {(row.widgetId || "").slice(0, 8)}
-                  </span>
-                  {hasExplicitOverride && (
-                    <span className="ml-2 text-[10px] text-indigo-300 uppercase tracking-wide">
-                      widget override
-                    </span>
-                  )}
-                  {!row.resolvedProviderName && row.required && (
-                    <span className="ml-2 text-[10px] text-amber-300 uppercase tracking-wide">
-                      unresolved
-                    </span>
-                  )}
-                </div>
-                <select
-                  value={row.resolvedProviderName || ""}
-                  onChange={(e) => onPerWidget(row.widgetId, e.target.value)}
-                  className="bg-gray-800 border border-white/10 rounded px-2 py-1 text-xs min-w-[12rem]"
+        <div className="flex flex-row gap-3">
+          <Divider orientation="vertical" />
+          <div className="flex-1 space-y-2">
+            {rows.map((row) => {
+              const hasExplicitOverride =
+                !!row.layoutItem?.selectedProviders?.[providerType];
+              return (
+                <div
+                  key={`${row.widgetId}:${row.providerType}`}
+                  className="flex flex-row items-center gap-3"
                 >
-                  <option value="">— none —</option>
-                  {options.map((opt) => (
-                    <option key={opt.name} value={opt.name}>
-                      {opt.name}
-                      {opt.isDefaultForType ? "  (default)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            );
-          })}
+                  <div className="flex-1 min-w-0 text-xs">
+                    <span className="font-mono opacity-80 truncate">
+                      {row.component || "widget"}
+                    </span>
+                    <span className="opacity-40 mx-1">·</span>
+                    <span className="font-mono opacity-40 truncate">
+                      {(row.widgetId || "").slice(0, 8)}
+                    </span>
+                    {hasExplicitOverride && (
+                      <span className="ml-2 text-[10px] text-indigo-300 uppercase tracking-wide">
+                        widget override
+                      </span>
+                    )}
+                    {!row.resolvedProviderName && row.required && (
+                      <span className="ml-2 text-[10px] text-amber-300 uppercase tracking-wide">
+                        unresolved
+                      </span>
+                    )}
+                  </div>
+                  <select
+                    value={row.resolvedProviderName || ""}
+                    onChange={(e) => onPerWidget(row.widgetId, e.target.value)}
+                    className="bg-gray-800 border border-white/10 rounded px-2 py-1 text-xs min-w-[12rem]"
+                  >
+                    <option value="">— none —</option>
+                    {options.map((opt) => (
+                      <option key={opt.name} value={opt.name}>
+                        {opt.name}
+                        {opt.isDefaultForType ? "  (default)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
@@ -1432,9 +1441,10 @@ function ListenersTab({ emitters, receivers, wiring, onAdd, onRemove }) {
       <div className="flex flex-row gap-3 flex-1 min-h-0">
         {/* Sidebar: receivers */}
         <div className="w-56 flex-shrink-0 bg-white/5 border border-white/10 rounded-lg overflow-hidden flex flex-col">
-          <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider border-b border-white/10">
+          <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider">
             Widgets
           </div>
+          <Divider />
           <div className="overflow-y-auto flex-1">
             {receivers.map((r) => {
               const isActive = r.key === selectedReceiverKey;
@@ -1606,9 +1616,10 @@ function HandlersColumn({
 
   return (
     <div className="w-56 flex-shrink-0 bg-white/5 border border-white/10 rounded-lg overflow-hidden flex flex-col">
-      <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider border-b border-white/10">
+      <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider">
         Event Handlers
       </div>
+      <Divider />
       <div className="overflow-y-auto flex-1">
         {receiver.eventHandlers.length === 0 ? (
           <div className="text-xs opacity-50 text-center py-6 px-3">
@@ -1730,10 +1741,11 @@ function EventsColumn({
 
   return (
     <div className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg overflow-hidden flex flex-col">
-      <div className="flex-shrink-0 px-4 py-2 border-b border-white/10 text-xs opacity-60">
+      <div className="flex-shrink-0 px-4 py-2 text-xs opacity-60">
         Check an event to fire <code className="text-xs">{handlerName}</code> on{" "}
         <span className="font-medium">{receiver.label}</span>.
       </div>
+      <Divider />
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
         {emittersForList.length === 0 ? (
           <div className="text-sm opacity-60">
