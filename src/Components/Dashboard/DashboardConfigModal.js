@@ -9,6 +9,10 @@ import {
   Switch,
   SearchInput,
   Divider,
+  Caption,
+  Caption2,
+  Caption3,
+  Code,
   getStylesForItem,
   themeObjects,
 } from "@trops/dash-react";
@@ -603,9 +607,7 @@ export const DashboardConfigModal = ({
           >
             Dependencies
             {dependencyCount > 0 && (
-              <span className="ml-2 text-[10px] opacity-60">
-                ({dependencyCount})
-              </span>
+              <Caption2 className="ml-2">({dependencyCount})</Caption2>
             )}
             {hasUnknownDependency && (
               <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 align-middle" />
@@ -849,7 +851,7 @@ function NotificationsTab({ workspace }) {
           placeholder="Search widgets..."
           inputClassName="py-1.5 text-xs"
         />
-        <div className="flex flex-row items-center justify-between text-[10px]">
+        <div className="flex flex-row items-center justify-between text-xs">
           <span className="opacity-50">
             {filtered.length} of {widgetInstances.length} widget
             {widgetInstances.length === 1 ? "" : "s"}
@@ -883,11 +885,11 @@ function NotificationsTab({ workspace }) {
           >
             <div className="flex flex-col">
               <span className="text-sm font-medium">{wi.title}</span>
-              <span className="text-[10px] opacity-50 font-mono">
+              <Caption className="font-mono">
                 {wi.component}
                 {wi.itemId != null ? ` · #${wi.itemId}` : ""}
-              </span>
-              <span className="text-[10px] opacity-40">{wi.package}</span>
+              </Caption>
+              <Caption3>{wi.package}</Caption3>
             </div>
             <div className="flex flex-row gap-2">
               <Divider orientation="vertical" />
@@ -900,9 +902,7 @@ function NotificationsTab({ workspace }) {
                     <div className="flex flex-col">
                       <span className="text-xs">{notif.displayName}</span>
                       {notif.description && (
-                        <span className="text-[10px] opacity-50">
-                          {notif.description}
-                        </span>
+                        <Caption>{notif.description}</Caption>
                       )}
                     </div>
                     <Switch
@@ -1091,14 +1091,15 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
                             )}
                           </div>
                           {(row.widgetRef || row.component) && (
-                            <div
-                              className="text-[10px] opacity-50 font-mono truncate mt-0.5"
+                            <Caption
+                              block
+                              className="font-mono truncate mt-0.5"
                               title={row.widgetRef || row.component}
                             >
                               {row.widgetRef || row.component}
-                            </div>
+                            </Caption>
                           )}
-                          <div className="flex items-center gap-1.5 mt-1 text-[10px]">
+                          <div className="flex items-center gap-1.5 mt-1 text-xs">
                             <span
                               className={`uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold ${
                                 needsAttention
@@ -1181,9 +1182,7 @@ function ProviderTypeRow({
       <div className="flex flex-row items-center gap-3">
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold flex items-center gap-2">
-            <code className="text-xs bg-white/10 px-1.5 py-0.5 rounded">
-              {providerType}
-            </code>
+            <Code>{providerType}</Code>
             <span className="text-xs opacity-60">
               {widgetCount} widget{widgetCount === 1 ? "" : "s"}
             </span>
@@ -1461,12 +1460,13 @@ function ListenersTab({ emitters, receivers, wiring, onAdd, onRemove }) {
                 >
                   <div className="text-sm font-medium truncate">{r.label}</div>
                   {r.widgetRef && (
-                    <div
-                      className="text-[10px] opacity-50 font-mono truncate mt-0.5"
+                    <Caption
+                      block
+                      className="font-mono truncate mt-0.5"
                       title={r.widgetRef}
                     >
                       {r.widgetRef}
-                    </div>
+                    </Caption>
                   )}
                 </button>
               );
@@ -1760,10 +1760,10 @@ function EventsColumn({
               <div className="flex flex-col gap-0.5 mb-1">
                 <div className="text-sm font-semibold">{e.label}</div>
                 {(e.widgetRef || e.component) && (
-                  <div className="text-[10px] opacity-50 font-mono truncate">
+                  <Caption block className="font-mono truncate">
                     {(e.widgetRef || e.component) +
                       (e.itemId != null ? `[${e.itemId}]` : "")}
-                  </div>
+                  </Caption>
                 )}
               </div>
               {e.events.map((eventName) => {

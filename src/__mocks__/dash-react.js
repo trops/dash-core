@@ -118,11 +118,19 @@ function Divider({ orientation = "horizontal", className = "" }) {
   });
 }
 
-function Caption({ text, children, className = "" }) {
+function Caption({ text, children, className = "", block = false }) {
   return React.createElement(
-    "div",
+    block ? "div" : "span",
     { "data-testid": "caption", className: className },
     text !== null && text !== undefined ? text : children,
+  );
+}
+
+function Code({ children, className = "" }) {
+  return React.createElement(
+    "code",
+    { "data-testid": "code", className: className },
+    children,
   );
 }
 
@@ -265,6 +273,9 @@ module.exports = {
   Caption,
   Caption2: Caption,
   Caption3: Caption,
+  Code,
+  Code2: Code,
+  Code3: Code,
   Card2,
   Card3,
   Tag2,
