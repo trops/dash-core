@@ -36,17 +36,17 @@ export const PermissionsTab = ({ workspace }) => {
   const [busy, setBusy] = useState(false);
 
   // Build the set of widget identifiers in this workspace. Walk every
-  // layout location (main, pages, sidebar) — same coverage as the
-  // publish flow's collectComponentNamesFromWorkspace, but here we
-  // need the dotted scoped id to match the grant store's keying.
+  // layout location (main, pages, sidebar). `pickWidgetRef` returns
+  // the dotted scoped id string (`scope.package.component`) — exactly
+  // what the runtime grant store keys grants under, so we can join
+  // directly against `widgetMcp.listAll` without further translation.
   const dashboardWidgetIds = useMemo(() => {
     const ids = new Set();
     if (!workspace) return ids;
     forEachWidget(workspace, (w) => {
       if (!isUserWidget(w)) return;
-      const ref = pickWidgetRef(w);
-      const dottedId = buildDottedId(ref);
-      if (dottedId) ids.add(dottedId);
+      const dottedId = pickWidgetRef(w);
+      if (typeof dottedId === "string" && dottedId) ids.add(dottedId);
     });
     return ids;
   }, [workspace]);
@@ -300,22 +300,3 @@ export const PermissionsTab = ({ workspace }) => {
     </div>
   );
 };
-
-/**
- * Construct the dotted scoped widget id used by the grant store
- * (`<scope>.<package>.<component>`). Mirrors WidgetsTab's buildScopedId
- * so this tab joins against the same key the runtime gate writes
- * grants under.
- */
-function buildDottedId(ref) {
-  if (!ref?.component) return null;
-  const scope = ref.scope ? String(ref.scope).replace(/^@/, "") : null;
-  const pkg = ref.packageName
-    ? scope
-      ? String(ref.packageName).replace(new RegExp(`^@?${scope}/`), "")
-      : String(ref.packageName).replace(/^@/, "")
-    : null;
-  if (scope && pkg) return `${scope}.${pkg}.${ref.component}`;
-  if (pkg) return `${pkg}.${ref.component}`;
-  return ref.component;
-}
