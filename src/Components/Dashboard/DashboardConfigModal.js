@@ -24,6 +24,7 @@ import {
   formatEventString,
 } from "../../utils/listenerResolution";
 import { WidgetsTab } from "./WidgetsTab";
+import { PermissionsTab } from "./PermissionsTab";
 
 /**
  * DashboardConfigModal
@@ -580,6 +581,17 @@ export const DashboardConfigModal = ({
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab("permissions")}
+            className={`px-3 py-1.5 text-sm font-medium -mb-px border-b-2 ${
+              activeTab === "permissions"
+                ? "border-indigo-400"
+                : "border-transparent opacity-60 hover:opacity-100"
+            }`}
+          >
+            Permissions
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab("dependencies")}
             className={`px-3 py-1.5 text-sm font-medium -mb-px border-b-2 ${
               activeTab === "dependencies"
@@ -632,6 +644,9 @@ export const DashboardConfigModal = ({
               stagePrefField={stagePrefField}
               stagePrefFieldForAll={stagePrefFieldForAll}
             />
+          )}
+          {activeTab === "permissions" && (
+            <PermissionsTab workspace={workspace} />
           )}
           {activeTab === "dependencies" && (
             <DependenciesTab dependencies={dependencies} />
