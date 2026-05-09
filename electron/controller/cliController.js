@@ -224,6 +224,20 @@ function buildClaudeCliArgs({
     // Write — every built-in tool the AI might otherwise invoke from
     // inside the modal where only text + code-block output is wanted.
     args.push("--tools", "");
+
+    // `--tools ""` alone leaks ambient context: in 2.1.138 we saw the
+    // AI mention `mcp__dash__*` tool names by name, and the Skill
+    // tool kept firing despite the empty allowlist. The leak comes
+    // from outside cwd — global ~/.claude/CLAUDE.md, project memory
+    // under ~/.claude/projects/<key>/memory/, and user-installed
+    // skills. `--bare` is documented as "skip hooks, LSP, plugin
+    // sync, attribution, auto-memory, background prefetches, keychain
+    // reads, and CLAUDE.md auto-discovery." Combined with
+    // `--strict-mcp-config` (which suppresses every MCP server we
+    // don't explicitly pass via --mcp-config), the spawned CLI gets
+    // exactly our --system-prompt and nothing else.
+    args.push("--bare");
+    args.push("--strict-mcp-config");
   }
 
   if (model) {
