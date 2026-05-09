@@ -112,6 +112,66 @@ describe("buildClaudeCliArgs — disableTools blocks every built-in tool", () =>
   });
 });
 
+/**
+ * Why this exists: `--tools ""` alone is not enough. In 2.1.138 of the
+ * Claude Code CLI we saw the Skill tool fire despite `--tools ""`, and
+ * the AI mention "your Dash Electron dashboard" + `mcp__dash__*` tool
+ * names by name — context that came from the user's global
+ * ~/.claude/CLAUDE.md and ~/.claude/projects/<project>/memory/, not
+ * from cwd or our system prompt.
+ *
+ * `--bare` is documented as "skip hooks, LSP, plugin sync, attribution,
+ * auto-memory, background prefetches, keychain reads, and CLAUDE.md
+ * auto-discovery." It also disables the auto-load of user-installed
+ * skills. Paired with `--strict-mcp-config` (which suppresses every
+ * MCP server we don't explicitly pass via --mcp-config), this gives
+ * the spawned CLI exactly the context we hand it via --system-prompt
+ * and nothing more. The widget builder modal wants exactly that.
+ *
+ * Defaults must NOT include these flags — the AssistantPanel path
+ * relies on CLAUDE.md / auto-memory / user MCPs being available.
+ */
+describe("buildClaudeCliArgs — disableTools also strips ambient context", () => {
+  it("appends --bare when disableTools: true (kills CLAUDE.md auto-discovery, auto-memory, plugin sync)", () => {
+    const args = buildClaudeCliArgs({
+      systemPrompt: "x",
+      disableTools: true,
+    });
+    assert.ok(
+      args.includes("--bare"),
+      "--bare should be present so global ~/.claude/CLAUDE.md and project memory don't leak in",
+    );
+  });
+
+  it("appends --strict-mcp-config when disableTools: true (kills user MCP auto-discovery)", () => {
+    const args = buildClaudeCliArgs({
+      systemPrompt: "x",
+      disableTools: true,
+    });
+    assert.ok(
+      args.includes("--strict-mcp-config"),
+      "--strict-mcp-config should be present so the AI doesn't see mcp__* tool names from user-level MCPs",
+    );
+  });
+
+  it("does NOT include --bare or --strict-mcp-config when disableTools: false", () => {
+    const args = buildClaudeCliArgs({
+      systemPrompt: "x",
+      disableTools: false,
+    });
+    assert.equal(
+      args.includes("--bare"),
+      false,
+      "AssistantPanel path needs CLAUDE.md + auto-memory + plugins",
+    );
+    assert.equal(
+      args.includes("--strict-mcp-config"),
+      false,
+      "AssistantPanel path uses user-level MCPs",
+    );
+  });
+});
+
 describe("buildClaudeCliArgs — combined widget-builder lockdown", () => {
   it("widget-builder invocation: replace prompt + disable tools together", () => {
     const args = buildClaudeCliArgs({
@@ -128,6 +188,10 @@ describe("buildClaudeCliArgs — combined widget-builder lockdown", () => {
     const toolsIdx = args.indexOf("--tools");
     assert.notEqual(toolsIdx, -1);
     assert.equal(args[toolsIdx + 1], "");
+
+    // Ambient-context suppression
+    assert.ok(args.includes("--bare"));
+    assert.ok(args.includes("--strict-mcp-config"));
 
     // Standard safety flags still in place
     assert.ok(args.includes("--disable-slash-commands"));
