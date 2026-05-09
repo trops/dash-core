@@ -22,7 +22,12 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const os = require("node:os");
 const path = require("node:path");
-const { buildClaudeCliArgs, resolveLockdownCwd } = require("./cliController");
+const {
+  buildClaudeCliArgs,
+  resolveLockdownCwd,
+  resolveLockdownPluginDir,
+  LOCKDOWN_DISALLOWED_TOOLS,
+} = require("./cliController");
 
 describe("buildClaudeCliArgs — defaults preserve AssistantPanel behavior", () => {
   it("uses --append-system-prompt when systemPrompt is provided", () => {
@@ -172,6 +177,125 @@ describe("buildClaudeCliArgs — disableTools also strips ambient context", () =
   });
 });
 
+/**
+ * Why this exists: end-to-end smoke testing the slice 17f flag set
+ * (`--tools "" --bare --strict-mcp-config --disable-slash-commands`)
+ * against a real `claude -p` invocation revealed that user-installed
+ * SKILLS and PLUGINS still load. The init-line of `--output-format
+ * stream-json --verbose` shows tools/mcp/slash_commands all empty,
+ * but `skills:` and `plugins:` remain populated. The Skill TOOL
+ * survives because it's loaded from `~/.claude/plugins/`, not from
+ * the built-in tools list that `--tools ""` controls.
+ *
+ * Two more layers seal this off:
+ *   1. `--disallowed-tools "<comma-separated denylist>"` — explicitly
+ *      deny Skill, Bash, Read, etc. by name. Comma-separated value
+ *      (rather than space-separated) so the single-arg string has no
+ *      whitespace — no Windows shell-quoting risk.
+ *   2. `--plugin-dir <empty scratch dir>` — point at an empty dir
+ *      under os.tmpdir() so plugin discovery finds nothing. The dir
+ *      is a sibling of the scratch cwd from slice 17e.
+ */
+describe("buildClaudeCliArgs — disableTools also denies the Skill tool by name + points plugin discovery at an empty dir", () => {
+  it("appends --disallowed-tools with a comma-separated denylist when disableTools: true", () => {
+    const args = buildClaudeCliArgs({
+      systemPrompt: "x",
+      disableTools: true,
+    });
+    const idx = args.indexOf("--disallowed-tools");
+    assert.notEqual(idx, -1, "--disallowed-tools should be present");
+    const value = args[idx + 1];
+    assert.equal(typeof value, "string");
+    // Comma-separated, NOT space-separated — Windows-safe.
+    assert.ok(
+      !/\s/.test(value),
+      `denylist must contain no whitespace; got "${value}"`,
+    );
+    // Spot-check the must-deny names.
+    for (const name of ["Skill", "Bash", "Read", "Edit", "Write"]) {
+      assert.ok(
+        value.split(",").includes(name),
+        `denylist should include ${name}; got "${value}"`,
+      );
+    }
+  });
+
+  it("appends --plugin-dir pointing at a scratch dir under os.tmpdir() when disableTools: true", () => {
+    const args = buildClaudeCliArgs({
+      systemPrompt: "x",
+      disableTools: true,
+    });
+    const idx = args.indexOf("--plugin-dir");
+    assert.notEqual(idx, -1, "--plugin-dir should be present");
+    const dir = args[idx + 1];
+    const rel = path.relative(os.tmpdir(), dir);
+    assert.ok(
+      !rel.startsWith(".."),
+      `plugin-dir should live under os.tmpdir(); got ${dir}`,
+    );
+  });
+
+  it("does NOT include --disallowed-tools or --plugin-dir when disableTools: false", () => {
+    const args = buildClaudeCliArgs({
+      systemPrompt: "x",
+      disableTools: false,
+    });
+    assert.equal(
+      args.includes("--disallowed-tools"),
+      false,
+      "AssistantPanel needs Skill/Bash/etc — must not deny",
+    );
+    assert.equal(
+      args.includes("--plugin-dir"),
+      false,
+      "AssistantPanel uses user plugins",
+    );
+  });
+
+  it("LOCKDOWN_DISALLOWED_TOOLS exports the canonical denylist (comma-separated)", () => {
+    assert.equal(typeof LOCKDOWN_DISALLOWED_TOOLS, "string");
+    assert.ok(!/\s/.test(LOCKDOWN_DISALLOWED_TOOLS));
+    assert.ok(LOCKDOWN_DISALLOWED_TOOLS.split(",").includes("Skill"));
+  });
+});
+
+describe("resolveLockdownPluginDir — scratch plugin dir for the widget-builder lockdown", () => {
+  it("returns the explicit pluginDir unchanged when caller passes one", () => {
+    const out = resolveLockdownPluginDir({
+      pluginDir: "/explicit/plugins",
+      disableTools: true,
+    });
+    assert.equal(out, "/explicit/plugins");
+  });
+
+  it("falls back to a scratch dir under os.tmpdir() when disableTools: true and pluginDir is absent", () => {
+    const out = resolveLockdownPluginDir({ disableTools: true });
+    assert.ok(typeof out === "string" && out.length > 0);
+    const rel = path.relative(os.tmpdir(), out);
+    assert.ok(
+      !rel.startsWith(".."),
+      `plugin-dir should live under os.tmpdir(); got ${out}`,
+    );
+  });
+
+  it("returns null when not in lockdown and no pluginDir was passed", () => {
+    const out = resolveLockdownPluginDir({});
+    assert.equal(out, null);
+  });
+
+  it("scratch dir is stable across calls", () => {
+    const a = resolveLockdownPluginDir({ disableTools: true });
+    const b = resolveLockdownPluginDir({ disableTools: true });
+    assert.equal(a, b);
+  });
+
+  it("scratch plugin dir is DIFFERENT from scratch cwd (so plugin discovery doesn't sweep cwd)", () => {
+    const cwdDir = resolveLockdownCwd({ disableTools: true });
+    const pluginDir = resolveLockdownPluginDir({ disableTools: true });
+    assert.notEqual(cwdDir, pluginDir);
+  });
+});
+
 describe("buildClaudeCliArgs — combined widget-builder lockdown", () => {
   it("widget-builder invocation: replace prompt + disable tools together", () => {
     const args = buildClaudeCliArgs({
@@ -192,6 +316,8 @@ describe("buildClaudeCliArgs — combined widget-builder lockdown", () => {
     // Ambient-context suppression
     assert.ok(args.includes("--bare"));
     assert.ok(args.includes("--strict-mcp-config"));
+    assert.ok(args.includes("--disallowed-tools"));
+    assert.ok(args.includes("--plugin-dir"));
 
     // Standard safety flags still in place
     assert.ok(args.includes("--disable-slash-commands"));

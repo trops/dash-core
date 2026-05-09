@@ -179,6 +179,62 @@ function resolveLockdownCwd({ cwd, disableTools = false } = {}) {
 }
 
 /**
+ * Resolve the plugin directory the spawned CLI should look in.
+ *
+ * Same shape as resolveLockdownCwd. When in lockdown, point Claude
+ * Code at an empty scratch directory so plugin auto-discovery finds
+ * nothing — sealing the gap left by `--bare` (which strips CLAUDE.md
+ * and auto-memory but NOT user plugins under ~/.claude/plugins/).
+ * The Skill tool gets loaded from those plugins, which is how it
+ * survived the slice 17f flag set.
+ *
+ * Sibling of the scratch cwd dir — DIFFERENT name so plugin discovery
+ * doesn't pick up the cwd itself.
+ *
+ * @param {object}  opts
+ * @param {string=} opts.pluginDir
+ * @param {boolean=} opts.disableTools
+ * @returns {string|null}
+ */
+function resolveLockdownPluginDir({ pluginDir, disableTools = false } = {}) {
+  if (pluginDir) return pluginDir;
+  if (disableTools) {
+    const os = require("os");
+    const path = require("path");
+    return path.join(os.tmpdir(), "dash-widget-builder-cli-plugins");
+  }
+  return null;
+}
+
+/**
+ * Canonical denylist for the lockdown — every built-in tool name we
+ * know about, comma-separated (no whitespace) so the single arg is
+ * Windows-shell-safe. Adding a new built-in upstream means appending
+ * its name here; the flag is belt-and-suspenders alongside `--tools ""`,
+ * but it's the only layer that actually keeps the Skill tool from
+ * being callable when a user has plugins installed in
+ * ~/.claude/plugins/.
+ */
+const LOCKDOWN_DISALLOWED_TOOLS = [
+  "Skill",
+  "Bash",
+  "BashOutput",
+  "Read",
+  "Edit",
+  "Write",
+  "Glob",
+  "Grep",
+  "WebFetch",
+  "WebSearch",
+  "NotebookRead",
+  "NotebookEdit",
+  "Task",
+  "TodoWrite",
+  "KillBash",
+  "SlashCommand",
+].join(",");
+
+/**
  * Build the argv array for spawning the Claude Code CLI.
  *
  * Pure / no I/O — extracted as a top-level helper so it can be unit-
@@ -238,6 +294,17 @@ function buildClaudeCliArgs({
     // exactly our --system-prompt and nothing else.
     args.push("--bare");
     args.push("--strict-mcp-config");
+
+    // `--bare` strips CLAUDE.md and auto-memory but NOT user plugins
+    // (under ~/.claude/plugins/). The Skill TOOL gets loaded from
+    // those plugins, which is why it kept firing despite slices 17e
+    // and 17f. Two layers seal it:
+    //   1. --disallowed-tools denies every known built-in by name
+    //      (comma-separated, no whitespace, Windows-shell-safe).
+    //   2. --plugin-dir points at an empty scratch dir under
+    //      os.tmpdir() so plugin auto-discovery finds nothing.
+    args.push("--disallowed-tools", LOCKDOWN_DISALLOWED_TOOLS);
+    args.push("--plugin-dir", resolveLockdownPluginDir({ disableTools: true }));
   }
 
   if (model) {
@@ -450,6 +517,18 @@ const cliController = {
           fs.mkdirSync(resolvedCwd, { recursive: true });
         }
         spawnOpts.cwd = resolvedCwd;
+      }
+      // The --plugin-dir argv we built above points at a scratch
+      // directory; create it on first run so the CLI doesn't error
+      // out trying to read a missing path.
+      if (disableTools) {
+        const fs = require("fs");
+        const lockdownPluginDir = resolveLockdownPluginDir({
+          disableTools: true,
+        });
+        if (lockdownPluginDir && !fs.existsSync(lockdownPluginDir)) {
+          fs.mkdirSync(lockdownPluginDir, { recursive: true });
+        }
       }
       const spawnCmd = IS_WINDOWS ? windowsQuote(binaryPath) : binaryPath;
       const spawnArgs = IS_WINDOWS ? args.map(windowsQuote) : args;
@@ -772,3 +851,5 @@ const cliController = {
 module.exports = cliController;
 module.exports.buildClaudeCliArgs = buildClaudeCliArgs;
 module.exports.resolveLockdownCwd = resolveLockdownCwd;
+module.exports.resolveLockdownPluginDir = resolveLockdownPluginDir;
+module.exports.LOCKDOWN_DISALLOWED_TOOLS = LOCKDOWN_DISALLOWED_TOOLS;
