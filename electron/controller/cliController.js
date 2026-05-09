@@ -143,6 +143,42 @@ function safeSend(win, channel, data) {
 }
 
 /**
+ * Resolve the working directory the spawned CLI should run in.
+ *
+ * Pure / no I/O — extracted so it can be unit-tested. The actual
+ * mkdir + spawnOpts.cwd assignment happens at the spawn site.
+ *
+ * Why this exists: when the widget-builder modal launches the CLI in
+ * lockdown mode, the spawned process inherits the parent (Electron)
+ * process cwd. In a dev build that's the dash-electron project root,
+ * which contains a CLAUDE.md describing the 4-phase development
+ * workflow. The CLI auto-loads that file and the AI announces "Let me
+ * scan the existing project to understand what's already here." —
+ * exactly what the lockdown was meant to prevent.
+ *
+ * Resolution order:
+ *   1. Caller passed an explicit cwd → use that (caller wins).
+ *   2. disableTools: true and no cwd → scratch dir under os.tmpdir().
+ *   3. Otherwise → null (caller doesn't set spawnOpts.cwd; the child
+ *      inherits the parent's cwd, preserving AssistantPanel behavior
+ *      where project context may be wanted).
+ *
+ * @param {object}  opts
+ * @param {string=} opts.cwd
+ * @param {boolean=} opts.disableTools
+ * @returns {string|null}
+ */
+function resolveLockdownCwd({ cwd, disableTools = false } = {}) {
+  if (cwd) return cwd;
+  if (disableTools) {
+    const os = require("os");
+    const path = require("path");
+    return path.join(os.tmpdir(), "dash-widget-builder-cli");
+  }
+  return null;
+}
+
+/**
  * Build the argv array for spawning the Claude Code CLI.
  *
  * Pure / no I/O — extracted as a top-level helper so it can be unit-
@@ -393,12 +429,13 @@ const cliController = {
         // files directly without a shell — ENOENT otherwise.
         shell: IS_WINDOWS,
       };
-      if (cwd) {
+      const resolvedCwd = resolveLockdownCwd({ cwd, disableTools });
+      if (resolvedCwd) {
         const fs = require("fs");
-        if (!fs.existsSync(cwd)) {
-          fs.mkdirSync(cwd, { recursive: true });
+        if (!fs.existsSync(resolvedCwd)) {
+          fs.mkdirSync(resolvedCwd, { recursive: true });
         }
-        spawnOpts.cwd = cwd;
+        spawnOpts.cwd = resolvedCwd;
       }
       const spawnCmd = IS_WINDOWS ? windowsQuote(binaryPath) : binaryPath;
       const spawnArgs = IS_WINDOWS ? args.map(windowsQuote) : args;
@@ -720,3 +757,4 @@ const cliController = {
 
 module.exports = cliController;
 module.exports.buildClaudeCliArgs = buildClaudeCliArgs;
+module.exports.resolveLockdownCwd = resolveLockdownCwd;

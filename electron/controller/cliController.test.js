@@ -20,7 +20,9 @@
  */
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { buildClaudeCliArgs } = require("./cliController");
+const os = require("node:os");
+const path = require("node:path");
+const { buildClaudeCliArgs, resolveLockdownCwd } = require("./cliController");
 
 describe("buildClaudeCliArgs — defaults preserve AssistantPanel behavior", () => {
   it("uses --append-system-prompt when systemPrompt is provided", () => {
@@ -130,5 +132,56 @@ describe("buildClaudeCliArgs — combined widget-builder lockdown", () => {
     // Standard safety flags still in place
     assert.ok(args.includes("--disable-slash-commands"));
     assert.ok(args.includes("--permission-mode"));
+  });
+});
+
+/**
+ * Why this exists: when the widget-builder modal launches the CLI
+ * with disableTools+replaceSystemPrompt, the spawned process inherits
+ * the parent (Electron) process cwd by default. For a dev build that
+ * means the dash-electron project root, which contains a CLAUDE.md
+ * full of project-development protocol. The CLI auto-loads that file
+ * as project context, and the AI announces "Let me start by scanning
+ * the existing project to understand what's already here." — exactly
+ * the behavior the lockdown was meant to prevent.
+ *
+ * Fix: when the caller is in lockdown mode (`disableTools: true`) and
+ * has not passed an explicit `cwd`, route the child to a scratch
+ * directory under os.tmpdir() that has no CLAUDE.md and no project
+ * files. The AI starts cold — no project to "scan."
+ */
+describe("resolveLockdownCwd — scratch cwd for the widget-builder lockdown", () => {
+  it("returns the explicit cwd unchanged when caller passes one", () => {
+    const out = resolveLockdownCwd({
+      cwd: "/explicit/path",
+      disableTools: true,
+    });
+    assert.equal(out, "/explicit/path");
+  });
+
+  it("falls back to a scratch dir under os.tmpdir() when disableTools: true and cwd is absent", () => {
+    const out = resolveLockdownCwd({ disableTools: true });
+    assert.ok(typeof out === "string" && out.length > 0);
+    const rel = path.relative(os.tmpdir(), out);
+    assert.ok(
+      !rel.startsWith(".."),
+      `cwd should live under os.tmpdir(); got ${out}`,
+    );
+  });
+
+  it("returns null when not in lockdown and no cwd was passed (preserves AssistantPanel behavior — child inherits parent cwd)", () => {
+    const out = resolveLockdownCwd({});
+    assert.equal(out, null);
+  });
+
+  it("explicit cwd wins even outside lockdown", () => {
+    const out = resolveLockdownCwd({ cwd: "/explicit/path" });
+    assert.equal(out, "/explicit/path");
+  });
+
+  it("scratch dir is stable across calls (so we don't churn tmpdir entries)", () => {
+    const a = resolveLockdownCwd({ disableTools: true });
+    const b = resolveLockdownCwd({ disableTools: true });
+    assert.equal(a, b);
   });
 });
