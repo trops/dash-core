@@ -142,6 +142,78 @@ function safeSend(win, channel, data) {
   }
 }
 
+/**
+ * Build the argv array for spawning the Claude Code CLI.
+ *
+ * Pure / no I/O — extracted as a top-level helper so it can be unit-
+ * tested without spawning a child process.
+ *
+ * Defaults preserve AssistantPanel behavior: system prompt is APPENDED
+ * to Claude Code's default (so the AI still sees its tool / MCP /
+ * skill preamble) and built-in tools stay available. The widget
+ * builder modal opts into a stricter mode by passing both
+ * `replaceSystemPrompt: true` (replace the default rather than append
+ * — strips the tool / skill preamble) and `disableTools: true` (deny
+ * all built-in tools so the AI cannot invoke Skill / Bash / Read /
+ * Glob / etc.).
+ *
+ * @param {object}  opts
+ * @param {string=} opts.model
+ * @param {string=} opts.systemPrompt
+ * @param {string=} opts.sessionId
+ * @param {boolean=} opts.replaceSystemPrompt
+ * @param {boolean=} opts.disableTools
+ * @returns {string[]}
+ */
+function buildClaudeCliArgs({
+  model,
+  systemPrompt,
+  sessionId,
+  replaceSystemPrompt = false,
+  disableTools = false,
+} = {}) {
+  const args = [
+    "-p",
+    "--disable-slash-commands",
+    "--permission-mode",
+    "bypassPermissions",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+  ];
+
+  if (disableTools) {
+    // Empty-string value documented in `claude --help` as "disable
+    // all tools". Catches Skill / Bash / Read / Glob / Grep / Edit /
+    // Write — every built-in tool the AI might otherwise invoke from
+    // inside the modal where only text + code-block output is wanted.
+    args.push("--tools", "");
+  }
+
+  if (model) {
+    args.push("--model", model);
+  }
+
+  if (systemPrompt) {
+    // --system-prompt REPLACES the default Claude Code preamble (the
+    // one that introduces tools and auto-loads project skills by
+    // description match). --append-system-prompt KEEPS the default
+    // and adds ours below — fine for the assistant panel where MCP
+    // tools are wanted, wrong for the widget builder modal where
+    // any tool advertisement undermines the no-tools rule.
+    args.push(
+      replaceSystemPrompt ? "--system-prompt" : "--append-system-prompt",
+      systemPrompt,
+    );
+  }
+
+  if (sessionId) {
+    args.push("--resume", sessionId);
+  }
+
+  return args;
+}
+
 const cliController = {
   /**
    * isAvailable
@@ -166,7 +238,15 @@ const cliController = {
    * @param {object} params - { model, messages, systemPrompt, maxToolRounds, widgetUuid }
    */
   sendMessage: async (win, requestId, params) => {
-    const { model, messages, systemPrompt, widgetUuid, cwd } = params;
+    const {
+      model,
+      messages,
+      systemPrompt,
+      widgetUuid,
+      cwd,
+      replaceSystemPrompt = false,
+      disableTools = false,
+    } = params;
 
     const binaryPath = resolveCliBinary();
     if (!binaryPath) {
@@ -179,34 +259,23 @@ const cliController = {
       return;
     }
 
-    // Build CLI args.
+    // Build CLI args via the pure helper (see top of file). Defaults
+    // preserve the AssistantPanel behavior (append-system-prompt,
+    // tools available, MCP wired). The widget builder modal opts
+    // into `replaceSystemPrompt + disableTools` to lock the AI to
+    // text + code-block output with no tool invocations.
     //
-    // --disable-slash-commands: prevent Claude from auto-triggering project
-    // skills by description match. When running in a project with a
-    // `.claude/skills/<name>/SKILL.md`, Claude would otherwise internalize
-    // that skill's content even when the host app's system prompt says not
-    // to — causing long reasoning loops or silent hangs. We pass only the
-    // caller's `systemPrompt` as context.
-    //
-    // --permission-mode bypassPermissions: in an embedded in-app assistant,
-    // the user has already opted into the configured MCP servers (they
-    // ran `claude mcp add` themselves). Prompting for tool-use approval
-    // on every call produces "I need permission to..." replies instead of
-    // actual actions. Bypassing matches the user's intent — if they
-    // didn't want the assistant to use a tool, they wouldn't have
-    // configured it.
-    //
-    // (We intentionally avoid `--bare` — it also disables keychain reads,
-    // which breaks OAuth login for users authenticated via `claude login`.)
-    const args = [
-      "-p",
-      "--disable-slash-commands",
-      "--permission-mode",
-      "bypassPermissions",
-      "--output-format",
-      "stream-json",
-      "--verbose",
-    ];
+    // The model + systemPrompt + sessionId pieces are added inside
+    // buildClaudeCliArgs; below we only add args that depend on
+    // runtime state (MCP config file paths) the helper can't know.
+    const sessionIdForResume = widgetUuid ? sessions.get(widgetUuid) : null;
+    const args = buildClaudeCliArgs({
+      model,
+      systemPrompt,
+      sessionId: sessionIdForResume,
+      replaceSystemPrompt,
+      disableTools,
+    });
 
     // Auto-wire the hosted Dash MCP server so the assistant can use Dash
     // tools (apply_theme, create_dashboard, add_widget, etc.) without
@@ -230,9 +299,15 @@ const cliController = {
     // works for non-Dash queries, and the setup banner remains visible
     // as a manual fallback.
     let mcpConfigFilePath = null;
+    // Skip MCP wiring entirely when the caller has asked for a
+    // tool-free invocation. There's no point loading remote tools
+    // the AI cannot call, and avoiding the temp-file write keeps
+    // the lockdown mode side-effect-free.
     try {
       const mcpDashServerController = require("./mcpDashServerController");
-      const status = mcpDashServerController.getStatus?.(win);
+      const status = disableTools
+        ? null
+        : mcpDashServerController.getStatus?.(win);
       if (status?.running) {
         const token = mcpDashServerController.getOrCreateToken?.(win);
         if (token) {
@@ -286,20 +361,6 @@ const cliController = {
       }
       mcpConfigFilePath = null;
     };
-
-    if (model) {
-      args.push("--model", model);
-    }
-
-    if (systemPrompt) {
-      args.push("--append-system-prompt", systemPrompt);
-    }
-
-    // Resume existing session for conversation continuity
-    const sessionId = widgetUuid ? sessions.get(widgetUuid) : null;
-    if (sessionId) {
-      args.push("--resume", sessionId);
-    }
 
     // Extract the user message (last user message in the array)
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
@@ -530,7 +591,11 @@ const cliController = {
 
         if (code !== 0 && code !== null) {
           // Check if resume failed and retry without it
-          if (sessionId && !retried && stderrBuffer.includes("session")) {
+          if (
+            sessionIdForResume &&
+            !retried &&
+            stderrBuffer.includes("session")
+          ) {
             retried = true;
             if (widgetUuid) sessions.delete(widgetUuid);
             // Retry without --resume
@@ -654,3 +719,4 @@ const cliController = {
 };
 
 module.exports = cliController;
+module.exports.buildClaudeCliArgs = buildClaudeCliArgs;
