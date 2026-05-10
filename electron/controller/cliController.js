@@ -143,145 +143,6 @@ function safeSend(win, channel, data) {
 }
 
 /**
- * Resolve the working directory the spawned CLI should run in.
- *
- * Pure / no I/O — extracted so it can be unit-tested. The actual
- * mkdir + spawnOpts.cwd assignment happens at the spawn site.
- *
- * Why this exists: when the widget-builder modal launches the CLI in
- * lockdown mode, the spawned process inherits the parent (Electron)
- * process cwd. In a dev build that's the dash-electron project root,
- * which contains a CLAUDE.md describing the 4-phase development
- * workflow. The CLI auto-loads that file and the AI announces "Let me
- * scan the existing project to understand what's already here." —
- * exactly what the lockdown was meant to prevent.
- *
- * Resolution order:
- *   1. Caller passed an explicit cwd → use that (caller wins).
- *   2. disableTools: true and no cwd → scratch dir under os.tmpdir().
- *   3. Otherwise → null (caller doesn't set spawnOpts.cwd; the child
- *      inherits the parent's cwd, preserving AssistantPanel behavior
- *      where project context may be wanted).
- *
- * @param {object}  opts
- * @param {string=} opts.cwd
- * @param {boolean=} opts.disableTools
- * @returns {string|null}
- */
-function resolveLockdownCwd({ cwd, disableTools = false } = {}) {
-  if (cwd) return cwd;
-  if (disableTools) {
-    const os = require("os");
-    const path = require("path");
-    return path.join(os.tmpdir(), "dash-widget-builder-cli");
-  }
-  return null;
-}
-
-/**
- * Resolve the plugin directory the spawned CLI should look in.
- *
- * Same shape as resolveLockdownCwd. When in lockdown, point Claude
- * Code at an empty scratch directory so plugin auto-discovery finds
- * nothing — sealing the gap left by `--bare` (which strips CLAUDE.md
- * and auto-memory but NOT user plugins under ~/.claude/plugins/).
- * The Skill tool gets loaded from those plugins, which is how it
- * survived the slice 17f flag set.
- *
- * Sibling of the scratch cwd dir — DIFFERENT name so plugin discovery
- * doesn't pick up the cwd itself.
- *
- * @param {object}  opts
- * @param {string=} opts.pluginDir
- * @param {boolean=} opts.disableTools
- * @returns {string|null}
- */
-function resolveLockdownPluginDir({ pluginDir, disableTools = false } = {}) {
-  if (pluginDir) return pluginDir;
-  if (disableTools) {
-    const os = require("os");
-    const path = require("path");
-    return path.join(os.tmpdir(), "dash-widget-builder-cli-plugins");
-  }
-  return null;
-}
-
-/**
- * Canonical denylist for the lockdown — every built-in tool name we
- * know about, comma-separated (no whitespace) so the single arg is
- * Windows-shell-safe. Adding a new built-in upstream means appending
- * its name here; the flag is belt-and-suspenders alongside `--tools ""`,
- * but it's the only layer that actually keeps the Skill tool from
- * being callable when a user has plugins installed in
- * ~/.claude/plugins/.
- */
-const LOCKDOWN_DISALLOWED_TOOLS = [
-  "Skill",
-  "Bash",
-  "BashOutput",
-  "Read",
-  "Edit",
-  "Write",
-  "Glob",
-  "Grep",
-  "WebFetch",
-  "WebSearch",
-  "NotebookRead",
-  "NotebookEdit",
-  "Task",
-  "TodoWrite",
-  "KillBash",
-  "SlashCommand",
-].join(",");
-
-/**
- * Path to the e2e-only argv capture file. Only written when
- * `process.env.DASH_E2E === "1"` (set by `e2e/helpers/electron-app.js`
- * for Playwright runs). Production launches never set it, so no
- * diagnostic is written on a real user's machine.
- *
- * The capture deterministically pins the chain ChatCore → IPC →
- * cliController. Slice 18a's diagnostic revealed that the chain
- * silently dropped `replaceSystemPrompt` and `disableTools` for
- * months. Without an argv assertion, the next break would be
- * invisible until a user filed a bug. With it, the e2e test
- * `widget-builder-cli-flow.spec.js` reads this file and asserts the
- * full lockdown flag set is present — fails immediately if any flag
- * goes missing.
- */
-const E2E_LAST_SPAWN_LOG_PATH = (() => {
-  const os = require("os");
-  const path = require("path");
-  return path.join(os.tmpdir(), "dash-cli-last-spawn.e2e.json");
-})();
-
-/**
- * Slice 18b — gated argv capture. No-op outside e2e mode.
- *
- * Captures argv only (NOT env values, NOT env keys — production users
- * are protected by the env-var gate; we don't need the keys-only
- * privacy hedge anymore since this never runs for them).
- */
-function captureLastSpawnArgsForE2E({ args, disableTools = false } = {}) {
-  if (process.env.DASH_E2E !== "1") return;
-  try {
-    const fs = require("fs");
-    const payload = {
-      ts: Date.now(),
-      disableTools: disableTools === true,
-      args: Array.isArray(args) ? args.slice() : [],
-    };
-    fs.writeFileSync(
-      E2E_LAST_SPAWN_LOG_PATH,
-      JSON.stringify(payload, null, 2),
-      { encoding: "utf8" },
-    );
-  } catch (_e) {
-    // Capture must NEVER break the spawn.
-  }
-}
-
-/**
  * Build the argv array for spawning the Claude Code CLI.
  *
  * Pure / no I/O — extracted as a top-level helper so it can be unit-
@@ -289,19 +150,28 @@ function captureLastSpawnArgsForE2E({ args, disableTools = false } = {}) {
  *
  * Defaults preserve AssistantPanel behavior: system prompt is APPENDED
  * to Claude Code's default (so the AI still sees its tool / MCP /
- * skill preamble) and built-in tools stay available. The widget
- * builder modal opts into a stricter mode by passing both
- * `replaceSystemPrompt: true` (replace the default rather than append
- * — strips the tool / skill preamble) and `disableTools: true` (deny
- * all built-in tools so the AI cannot invoke Skill / Bash / Read /
- * Glob / etc.).
+ * skill preamble) and built-in tools / plugins / CLAUDE.md / auto-
+ * memory all load normally.
+ *
+ * Callers may opt into `replaceSystemPrompt: true` to swap
+ * `--append-system-prompt` for `--system-prompt`, replacing Claude
+ * Code's default preamble with the caller's. The widget builder
+ * modal does this so its terse "use the dash-widget-builder skill"
+ * prompt isn't drowned out by Claude Code's default tool-advertising
+ * preamble. The skill itself still auto-loads — that's the point.
+ *
+ * The `disableTools` prop survives for backwards compatibility with
+ * existing callers, but no longer adds any CLI flag (slice 19B
+ * dropped the flag-based lockdown after we discovered the project
+ * skill carries the same constraints more reliably). The prop now
+ * only gates the dash MCP auto-wire downstream of this helper.
  *
  * @param {object}  opts
  * @param {string=} opts.model
  * @param {string=} opts.systemPrompt
  * @param {string=} opts.sessionId
  * @param {boolean=} opts.replaceSystemPrompt
- * @param {boolean=} opts.disableTools
+ * @param {boolean=} opts.disableTools  (no-op for argv; gates MCP wiring elsewhere)
  * @returns {string[]}
  */
 function buildClaudeCliArgs({
@@ -309,6 +179,7 @@ function buildClaudeCliArgs({
   systemPrompt,
   sessionId,
   replaceSystemPrompt = false,
+  // eslint-disable-next-line no-unused-vars
   disableTools = false,
 } = {}) {
   const args = [
@@ -320,39 +191,6 @@ function buildClaudeCliArgs({
     "stream-json",
     "--verbose",
   ];
-
-  if (disableTools) {
-    // Empty-string value documented in `claude --help` as "disable
-    // all tools". Catches Skill / Bash / Read / Glob / Grep / Edit /
-    // Write — every built-in tool the AI might otherwise invoke from
-    // inside the modal where only text + code-block output is wanted.
-    args.push("--tools", "");
-
-    // `--tools ""` alone leaks ambient context: in 2.1.138 we saw the
-    // AI mention `mcp__dash__*` tool names by name, and the Skill
-    // tool kept firing despite the empty allowlist. The leak comes
-    // from outside cwd — global ~/.claude/CLAUDE.md, project memory
-    // under ~/.claude/projects/<key>/memory/, and user-installed
-    // skills. `--bare` is documented as "skip hooks, LSP, plugin
-    // sync, attribution, auto-memory, background prefetches, keychain
-    // reads, and CLAUDE.md auto-discovery." Combined with
-    // `--strict-mcp-config` (which suppresses every MCP server we
-    // don't explicitly pass via --mcp-config), the spawned CLI gets
-    // exactly our --system-prompt and nothing else.
-    args.push("--bare");
-    args.push("--strict-mcp-config");
-
-    // `--bare` strips CLAUDE.md and auto-memory but NOT user plugins
-    // (under ~/.claude/plugins/). The Skill TOOL gets loaded from
-    // those plugins, which is why it kept firing despite slices 17e
-    // and 17f. Two layers seal it:
-    //   1. --disallowed-tools denies every known built-in by name
-    //      (comma-separated, no whitespace, Windows-shell-safe).
-    //   2. --plugin-dir points at an empty scratch dir under
-    //      os.tmpdir() so plugin auto-discovery finds nothing.
-    args.push("--disallowed-tools", LOCKDOWN_DISALLOWED_TOOLS);
-    args.push("--plugin-dir", resolveLockdownPluginDir({ disableTools: true }));
-  }
 
   if (model) {
     args.push("--model", model);
@@ -557,30 +395,20 @@ const cliController = {
         // files directly without a shell — ENOENT otherwise.
         shell: IS_WINDOWS,
       };
-      const resolvedCwd = resolveLockdownCwd({ cwd, disableTools });
-      if (resolvedCwd) {
+      // Caller may pass an explicit cwd (e.g., the widget-builder
+      // modal points at the dash-electron project root so its
+      // dash-widget-builder skill auto-loads). When absent, the child
+      // inherits the parent process's cwd — which is what the
+      // AssistantPanel relies on.
+      if (cwd) {
         const fs = require("fs");
-        if (!fs.existsSync(resolvedCwd)) {
-          fs.mkdirSync(resolvedCwd, { recursive: true });
+        if (!fs.existsSync(cwd)) {
+          fs.mkdirSync(cwd, { recursive: true });
         }
-        spawnOpts.cwd = resolvedCwd;
-      }
-      // The --plugin-dir argv we built above points at a scratch
-      // directory; create it on first run so the CLI doesn't error
-      // out trying to read a missing path.
-      if (disableTools) {
-        const fs = require("fs");
-        const lockdownPluginDir = resolveLockdownPluginDir({
-          disableTools: true,
-        });
-        if (lockdownPluginDir && !fs.existsSync(lockdownPluginDir)) {
-          fs.mkdirSync(lockdownPluginDir, { recursive: true });
-        }
+        spawnOpts.cwd = cwd;
       }
       const spawnCmd = IS_WINDOWS ? windowsQuote(binaryPath) : binaryPath;
       const spawnArgs = IS_WINDOWS ? args.map(windowsQuote) : args;
-      // No-op outside e2e mode (gated on process.env.DASH_E2E === "1").
-      captureLastSpawnArgsForE2E({ args, disableTools });
       const child = spawn(spawnCmd, spawnArgs, spawnOpts);
 
       activeProcesses.set(requestId, child);
@@ -899,7 +727,3 @@ const cliController = {
 
 module.exports = cliController;
 module.exports.buildClaudeCliArgs = buildClaudeCliArgs;
-module.exports.resolveLockdownCwd = resolveLockdownCwd;
-module.exports.resolveLockdownPluginDir = resolveLockdownPluginDir;
-module.exports.LOCKDOWN_DISALLOWED_TOOLS = LOCKDOWN_DISALLOWED_TOOLS;
-module.exports.E2E_LAST_SPAWN_LOG_PATH = E2E_LAST_SPAWN_LOG_PATH;
