@@ -456,6 +456,53 @@ export function ChatCore({
     isLoading,
   ]);
 
+  // Slice 19H — external "send this message" hook.
+  //
+  // Some parent components (the widget builder modal's "Send error to AI"
+  // banner, the Console tab's per-error Send-to-AI button) need to push
+  // a user message into THIS chat conversation without rendering the
+  // input themselves. They dispatch a window CustomEvent named
+  // `dash:chat-core-send` with `detail: { persistKey, content, hidden? }`.
+  //
+  // Each ChatCore instance only reacts to events targeting its own
+  // persistKey OR sessionKey OR uuid — so the dashboard's AssistantPanel
+  // and the widget builder's chat don't cross-talk.
+  //
+  // Why a CustomEvent (not localStorage poll, not ref): the prior
+  // approach was for parent code to write to localStorage directly,
+  // hoping ChatCore would notice. ChatCore reads localStorage only at
+  // mount — so externally-written messages were silently dropped.
+  // CustomEvent is one-way + synchronous + zero-cost when nobody fires
+  // it, and stays consistent with the existing
+  // `dash:open-settings-create-provider` / `dash:provider-installed` /
+  // `dash:open-widget-builder` event bus used elsewhere in the app.
+  useEffect(() => {
+    const myKey = persistKey || sessionKey || uuid || null;
+    if (!myKey) return;
+    if (typeof window === "undefined") return;
+    const handler = (event) => {
+      const detail = event && event.detail;
+      if (!detail) return;
+      const targetKey =
+        detail.persistKey || detail.sessionKey || detail.uuid || null;
+      if (targetKey !== myKey) return;
+      const content = detail.content;
+      if (typeof content !== "string" || content.length === 0) return;
+      // hidden defaults to false — the user typically WANTS to see the
+      // error-fix request in the chat history so it's clear what was
+      // sent and what the AI responded to.
+      const hidden = detail.hidden === true;
+      try {
+        handleSend(content, { hidden });
+      } catch (e) {
+        // Sending may fail (no API key, no CLI). Swallow — the parent
+        // can't recover beyond surfacing its own error state.
+      }
+    };
+    window.addEventListener("dash:chat-core-send", handler);
+    return () => window.removeEventListener("dash:chat-core-send", handler);
+  }, [persistKey, sessionKey, uuid, handleSend]);
+
   // New chat
   const handleNewChat = () => {
     if (isLoading) handleStop();
