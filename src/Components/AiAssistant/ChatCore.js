@@ -41,6 +41,20 @@ export function ChatCore({
   // cross-session history isn't desired.
   sessionKey = null,
   backend = "anthropic",
+  // Per-call lockdown flags forwarded to the Claude Code CLI invocation.
+  // Defaults preserve the AssistantPanel behavior (Claude Code's default
+  // system prompt is APPENDED, all built-in tools available, MCP wired).
+  // The widget builder modal opts both true to lock the AI to text +
+  // code-block output with no Skill/Bash/Read/etc. invocations. Both are
+  // ignored on the anthropic backend — the CLI flags they map to
+  // (--system-prompt vs --append-system-prompt, --tools "") only exist
+  // for `claude -p`. This component must FORWARD them to the IPC payload
+  // even though it doesn't act on them itself; cliController is what
+  // turns them into argv. (Slice 18b — fixes a chain break where these
+  // props were silently dropped between WidgetBuilderModal and
+  // cliController.)
+  replaceSystemPrompt = false,
+  disableTools = false,
   onPublishEvent = null,
   hideToolsBanner = false,
   cwd = null,
@@ -358,6 +372,8 @@ export function ChatCore({
         maxToolRounds: parseInt(maxToolRounds, 10) || 10,
         widgetUuid: uuid || persistKey || sessionKey,
         cwd: cwd || undefined,
+        replaceSystemPrompt,
+        disableTools,
       });
     },
     [

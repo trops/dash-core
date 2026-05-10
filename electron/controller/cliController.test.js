@@ -27,6 +27,7 @@ const {
   resolveLockdownCwd,
   resolveLockdownPluginDir,
   LOCKDOWN_DISALLOWED_TOOLS,
+  E2E_LAST_SPAWN_LOG_PATH,
 } = require("./cliController");
 
 describe("buildClaudeCliArgs — defaults preserve AssistantPanel behavior", () => {
@@ -257,6 +258,35 @@ describe("buildClaudeCliArgs — disableTools also denies the Skill tool by name
     assert.ok(!/\s/.test(LOCKDOWN_DISALLOWED_TOOLS));
     assert.ok(LOCKDOWN_DISALLOWED_TOOLS.split(",").includes("Skill"));
   });
+});
+
+/**
+ * Why this exists: the slice 18a diagnostic revealed that the
+ * lockdown chain (ChatCore → IPC → cliController) silently dropped
+ * `disableTools` and `replaceSystemPrompt` for months. Without an
+ * argv assertion in the e2e test, the next break would be invisible
+ * until a user filed a bug. The e2e-gated capture (only writes when
+ * DASH_E2E=1) makes the e2e test a deterministic regression catch
+ * for the chain.
+ *
+ * Production: env var is never set; capture is a no-op.
+ * E2E: helper sets DASH_E2E=1; capture writes; test reads + asserts.
+ */
+describe("E2E_LAST_SPAWN_LOG_PATH — e2e-gated argv capture", () => {
+  it("path is under os.tmpdir() and named dash-cli-last-spawn.e2e.json", () => {
+    const rel = path.relative(os.tmpdir(), E2E_LAST_SPAWN_LOG_PATH);
+    assert.ok(
+      !rel.startsWith(".."),
+      `must live under os.tmpdir(); got ${E2E_LAST_SPAWN_LOG_PATH}`,
+    );
+    assert.ok(E2E_LAST_SPAWN_LOG_PATH.endsWith("dash-cli-last-spawn.e2e.json"));
+  });
+
+  // The capture function is internal (gated on process.env.DASH_E2E)
+  // and not exported. Behavioral tests for its production-no-op
+  // contract belong in the e2e suite where the env var is set;
+  // unit-testing the no-op is straightforward — we just confirm the
+  // file path constant and rely on the e2e to verify the write.
 });
 
 describe("resolveLockdownPluginDir — scratch plugin dir for the widget-builder lockdown", () => {

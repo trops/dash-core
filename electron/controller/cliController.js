@@ -235,6 +235,53 @@ const LOCKDOWN_DISALLOWED_TOOLS = [
 ].join(",");
 
 /**
+ * Path to the e2e-only argv capture file. Only written when
+ * `process.env.DASH_E2E === "1"` (set by `e2e/helpers/electron-app.js`
+ * for Playwright runs). Production launches never set it, so no
+ * diagnostic is written on a real user's machine.
+ *
+ * The capture deterministically pins the chain ChatCore → IPC →
+ * cliController. Slice 18a's diagnostic revealed that the chain
+ * silently dropped `replaceSystemPrompt` and `disableTools` for
+ * months. Without an argv assertion, the next break would be
+ * invisible until a user filed a bug. With it, the e2e test
+ * `widget-builder-cli-flow.spec.js` reads this file and asserts the
+ * full lockdown flag set is present — fails immediately if any flag
+ * goes missing.
+ */
+const E2E_LAST_SPAWN_LOG_PATH = (() => {
+  const os = require("os");
+  const path = require("path");
+  return path.join(os.tmpdir(), "dash-cli-last-spawn.e2e.json");
+})();
+
+/**
+ * Slice 18b — gated argv capture. No-op outside e2e mode.
+ *
+ * Captures argv only (NOT env values, NOT env keys — production users
+ * are protected by the env-var gate; we don't need the keys-only
+ * privacy hedge anymore since this never runs for them).
+ */
+function captureLastSpawnArgsForE2E({ args, disableTools = false } = {}) {
+  if (process.env.DASH_E2E !== "1") return;
+  try {
+    const fs = require("fs");
+    const payload = {
+      ts: Date.now(),
+      disableTools: disableTools === true,
+      args: Array.isArray(args) ? args.slice() : [],
+    };
+    fs.writeFileSync(
+      E2E_LAST_SPAWN_LOG_PATH,
+      JSON.stringify(payload, null, 2),
+      { encoding: "utf8" },
+    );
+  } catch (_e) {
+    // Capture must NEVER break the spawn.
+  }
+}
+
+/**
  * Build the argv array for spawning the Claude Code CLI.
  *
  * Pure / no I/O — extracted as a top-level helper so it can be unit-
@@ -532,6 +579,8 @@ const cliController = {
       }
       const spawnCmd = IS_WINDOWS ? windowsQuote(binaryPath) : binaryPath;
       const spawnArgs = IS_WINDOWS ? args.map(windowsQuote) : args;
+      // No-op outside e2e mode (gated on process.env.DASH_E2E === "1").
+      captureLastSpawnArgsForE2E({ args, disableTools });
       const child = spawn(spawnCmd, spawnArgs, spawnOpts);
 
       activeProcesses.set(requestId, child);
@@ -853,3 +902,4 @@ module.exports.buildClaudeCliArgs = buildClaudeCliArgs;
 module.exports.resolveLockdownCwd = resolveLockdownCwd;
 module.exports.resolveLockdownPluginDir = resolveLockdownPluginDir;
 module.exports.LOCKDOWN_DISALLOWED_TOOLS = LOCKDOWN_DISALLOWED_TOOLS;
+module.exports.E2E_LAST_SPAWN_LOG_PATH = E2E_LAST_SPAWN_LOG_PATH;
