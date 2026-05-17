@@ -14,7 +14,12 @@ export const WidgetConfigPanel = ({
   const [itemSelected, setItemSelected] = useState(item);
 
   useEffect(() => {
-    if (item !== itemSelected) {
+    // Only sync from the parent when the data actually differs.
+    // Identity-only comparison fired on every parent re-render
+    // (each edit round-trips through onChange → parent setState →
+    // new item reference) and reset the input mid-keystroke,
+    // making the userConfig inputs effectively untypeable.
+    if (JSON.stringify(item) !== JSON.stringify(itemSelected)) {
       setItemSelected(() => item);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -87,7 +92,13 @@ export const WidgetConfigPanel = ({
       newItem["userPrefs"] = {};
     }
     newItem["userPrefs"][key] = value;
-    //setItemSelected(() => newItem);
+    // Update local state immediately so the input reflects each
+    // keystroke without waiting for the parent round-trip to come
+    // back through props. Without this the InputText's `value` prop
+    // stays at the pre-keystroke value, the typed char visibly
+    // snaps away, and typing more than ~1 char per second is
+    // effectively impossible.
+    setItemSelected(() => newItem);
     onChange(null, newItem);
   }
 
