@@ -1,5 +1,17 @@
 import React, { useState } from "react";
-import { Modal, Button, FontAwesomeIcon } from "@trops/dash-react";
+import { Modal, FontAwesomeIcon } from "@trops/dash-react";
+
+/**
+ * Footer buttons are rendered with raw <button> + explicit Tailwind
+ * because dash-react's `Button` uses theme tokens that don't have
+ * sufficient contrast on this dark modal (visible as black text on a
+ * dark-gray fill). The same pattern WidgetsSection uses for its
+ * prominent "Updates Available" trigger.
+ */
+const secondaryBtnClass =
+  "px-3 py-2 text-sm font-medium rounded bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed text-gray-100";
+const primaryBtnClass =
+  "px-3 py-2 text-sm font-medium rounded bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-white";
 
 /**
  * AppUpdatesModal — top-level "updates available" prompt the app shell
@@ -166,26 +178,40 @@ export const AppUpdatesModal = ({
   const renderFooter = () => {
     if (isChecking && totalUpdates === 0) {
       return (
-        <Button
-          title="Cancel"
+        <button
+          type="button"
           onClick={() => setIsOpen(false)}
           disabled={isUpdatingWidgets}
-        />
+          className={secondaryBtnClass}
+        >
+          Cancel
+        </button>
       );
     }
     if (hasChecked && totalUpdates === 0) {
-      return <Button title="Close" onClick={() => setIsOpen(false)} />;
+      return (
+        <button
+          type="button"
+          onClick={() => setIsOpen(false)}
+          className={primaryBtnClass}
+        >
+          Close
+        </button>
+      );
     }
     return (
       <div className="flex items-center gap-2">
-        <Button
-          title="Remind me later"
+        <button
+          type="button"
           onClick={handleRemindLater}
           disabled={isUpdatingWidgets}
-        />
+          className={secondaryBtnClass}
+        >
+          Remind me later
+        </button>
         {dashboardUpdates.length > 0 && (
-          <Button
-            title="View dashboards"
+          <button
+            type="button"
             onClick={() => {
               setIsOpen(false);
               if (typeof onOpenDashboardSettings === "function") {
@@ -193,18 +219,22 @@ export const AppUpdatesModal = ({
               }
             }}
             disabled={isUpdatingWidgets}
-          />
+            className={secondaryBtnClass}
+          >
+            View dashboards
+          </button>
         )}
         {widgetUpdates.length > 0 && (
-          <Button
-            title={
-              isUpdatingWidgets
-                ? "Updating…"
-                : `Update ${widgetUpdates.length} widget${widgetUpdates.length === 1 ? "" : "s"}`
-            }
+          <button
+            type="button"
             onClick={handleUpdateWidgets}
             disabled={isUpdatingWidgets}
-          />
+            className={primaryBtnClass}
+          >
+            {isUpdatingWidgets
+              ? "Updating…"
+              : `Update ${widgetUpdates.length} widget${widgetUpdates.length === 1 ? "" : "s"}`}
+          </button>
         )}
       </div>
     );
