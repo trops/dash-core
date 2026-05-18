@@ -221,6 +221,60 @@ describe("useWidgetUpdates — updatePackages batch orchestration", () => {
     expect(result.current.batchStatus.get("@trops/gmail")?.status).toBe("done");
   });
 
+  test("post-batch authoritative clear drops every succeeded package by id (resilient to mid-loop setState merges)", async () => {
+    // Even if per-package setUpdates merges go sideways during a
+    // sequential batch, the post-loop authoritative pass operates on
+    // the final committed state and clears succeeded entries by id
+    // (no closure-staleness, no reliance on val.name matching info.name
+    // across many fires). This test confirms the Map is empty after
+    // a fully-successful batch.
+    installMainApi({
+      checkUpdates: jest.fn().mockResolvedValue(sampleUpdates),
+      install: jest.fn().mockResolvedValue({ ok: true }),
+    });
+    const { result } = renderHook(() =>
+      useWidgetUpdates(sampleInstalled, jest.fn()),
+    );
+    await waitFor(() => {
+      expect(result.current.packagesWithUpdates.length).toBe(2);
+    });
+    await act(async () => {
+      await result.current.updatePackages(["@trops/slack", "@trops/gmail"]);
+    });
+    expect(result.current.updates.size).toBe(0);
+    expect(result.current.packagesWithUpdates).toEqual([]);
+  });
+
+  test("failed packages stay in the Map (so the user can retry just those)", async () => {
+    // Mid-batch failure: install rejects for @trops/slack but
+    // succeeds for @trops/gmail. The authoritative clear pass only
+    // touches succeeded ids — slack stays in the Map so its
+    // "Update" badge + the trigger button remain visible.
+    let callCount = 0;
+    const install = jest.fn().mockImplementation(() => {
+      callCount += 1;
+      if (callCount === 1) return Promise.reject(new Error("network blip"));
+      return Promise.resolve({ ok: true });
+    });
+    installMainApi({
+      checkUpdates: jest.fn().mockResolvedValue(sampleUpdates),
+      install,
+    });
+    const { result } = renderHook(() =>
+      useWidgetUpdates(sampleInstalled, jest.fn()),
+    );
+    await waitFor(() => {
+      expect(result.current.packagesWithUpdates.length).toBe(2);
+    });
+    await act(async () => {
+      await result.current.updatePackages(["@trops/slack", "@trops/gmail"]);
+    });
+    // gmail succeeded → cleared. slack failed → still in Map.
+    expect(
+      result.current.packagesWithUpdates.map((p) => p.name).sort(),
+    ).toEqual(["@trops/slack"]);
+  });
+
   test("per-package setUpdates clears each entry as its install succeeds (no post-batch re-check needed)", async () => {
     // After a fully-successful batch, the updates Map should be
     // empty — driven by each updateWidget's setUpdates cleanup

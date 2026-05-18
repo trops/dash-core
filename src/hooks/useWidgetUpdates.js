@@ -310,22 +310,32 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
       } finally {
         setIsBatchUpdating(false);
       }
-      // NOTE — we do NOT call runUpdateCheck here. The earlier
-      // attempt to "belt-and-suspenders" with a post-batch re-check
-      // backfired: this useCallback closes over `installedWidgets`,
-      // which still carries the PRE-install versions at the time the
-      // batch was kicked off (refresh() updates the prop async, but
-      // the closure is captured synchronously). Running the check
-      // against pre-install versions makes the registry correctly
-      // report "needs update" for every package we just updated,
-      // re-populating the Map and reviving the "Updates Available"
-      // CTA the user wanted to disappear.
+      // Post-batch authoritative clear: remove every succeeded
+      // package's entries from the Map by package id. The per-
+      // package setUpdates inside updateWidget already does this,
+      // but the user has reported the Map staying populated after a
+      // batch — likely because functional-setState merges across
+      // 20+ sequential calls can interact unexpectedly with the
+      // surrounding closure / iteration order. This belt-and-
+      // suspenders pass operates on the final committed state, uses
+      // a single setState, and is keyed by the package ids we just
+      // KNOW we updated — no closure-staleness, no reliance on
+      // val.name matching info.name across many fired updates.
       //
-      // Per-package setUpdates inside updateWidget already removes
-      // each package from the Map as its install succeeds, so by the
-      // end of the loop the Map naturally reflects the post-batch
-      // state. The empty-results branch of runUpdateCheck (initial
-      // mount only) handles the "registry returned []" case.
+      // Failed packages stay in the Map so the per-widget "Update"
+      // badges + the trigger button remain visible for retry.
+      if (succeeded.length > 0) {
+        const succeededSet = new Set(succeeded);
+        setUpdates((prev) => {
+          const next = new Map(prev);
+          for (const [key, val] of next) {
+            if (val && succeededSet.has(val.name)) {
+              next.delete(key);
+            }
+          }
+          return next;
+        });
+      }
       return { succeeded, failed };
     },
     [updateWidget],

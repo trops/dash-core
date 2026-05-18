@@ -487,6 +487,23 @@ export const WidgetsSection = ({
 
   const listContent = (
     <div className="flex flex-col h-full">
+      {/* Checking-for-updates indicator — shown while the initial
+          registry check is in flight (a few seconds after the panel
+          mounts). Without this the user sees the panel "stable" and
+          then a button suddenly appears, which feels jumpy. */}
+      {isChecking && packagesWithUpdates.length === 0 && (
+        <div
+          className="flex-shrink-0 px-3 py-2 border-b border-white/10 bg-gray-800/60 flex items-center gap-2 text-xs text-gray-400"
+          data-testid="widgets-section-checking-updates"
+        >
+          <FontAwesomeIcon
+            icon="spinner"
+            className="text-blue-400 animate-spin"
+          />
+          <span>Checking for widget updates…</span>
+        </div>
+      )}
+
       {/* Update-available banner — sits at the top of the left column
           so the user sees it the moment they open the Widgets tab.
           Styled as a filled blue button (not a dim footer line) since
