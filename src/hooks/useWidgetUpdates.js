@@ -35,18 +35,27 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
   const [isBatchUpdating, setIsBatchUpdating] = useState(false);
   const checkedRef = useRef(false);
 
-  // Check for updates once when installed widgets are available
-  useEffect(() => {
-    if (checkedRef.current) return;
-    const installed = installedWidgets.filter(
+  // Core check-for-updates pass. Extracted so the post-batch
+  // re-check (after updatePackages finishes) can reuse the same
+  // logic without duplicating the payload + Map-keying code.
+  //
+  // ALWAYS calls setUpdates (with an empty Map when nothing's
+  // available) — previously, an empty result didn't fire setUpdates,
+  // leaving stale entries from a prior check visible after the
+  // batch cleared them locally. This was the bug behind "Updates
+  // Available button stays visible after running the batch".
+  const runUpdateCheck = useCallback((installedList) => {
+    const installed = (installedList || []).filter(
       (w) => w.source === "installed" && w.version,
     );
-    if (installed.length === 0) return;
-
-    checkedRef.current = true;
+    if (installed.length === 0) {
+      setUpdates(new Map());
+      return Promise.resolve();
+    }
     setIsChecking(true);
 
-    // Deduplicate by package — multiple widgets in the same package share one version
+    // Deduplicate by package — multiple widgets in the same package
+    // share one version.
     const pkgMap = new Map();
     installed.forEach((w) => {
       const pkgId = w.packageId || w.name;
@@ -56,35 +65,59 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
     });
     const payload = Array.from(pkgMap.values());
 
-    window.mainApi?.registry
-      ?.checkUpdates(payload)
-      .then((results) => {
-        if (Array.isArray(results) && results.length > 0) {
-          const map = new Map();
-          results.forEach((r) => {
-            // Key by package ID (from result)
-            map.set(r.name, r);
-            // Also key by each widget's CM key so UI can look up by widget name
-            installed.forEach((w) => {
-              const pkgId = w.packageId || w.name;
-              if (pkgId === r.name) {
-                map.set(w.name, r);
-              }
+    return (
+      window.mainApi?.registry
+        ?.checkUpdates(payload)
+        .then((results) => {
+          if (Array.isArray(results) && results.length > 0) {
+            const map = new Map();
+            results.forEach((r) => {
+              // Key by package ID (from result).
+              map.set(r.name, r);
+              // Also key by each widget's CM key so UI can look up
+              // by widget name.
+              installed.forEach((w) => {
+                const pkgId = w.packageId || w.name;
+                if (pkgId === r.name) {
+                  map.set(w.name, r);
+                }
+              });
             });
-          });
-          setUpdates(map);
-          console.log(
-            `[useWidgetUpdates] Found ${results.length} package update(s)`,
-          );
-        }
-      })
-      .catch((err) => {
-        console.warn("[useWidgetUpdates] Check failed:", err.message);
-      })
-      .finally(() => {
-        setIsChecking(false);
-      });
-  }, [installedWidgets]);
+            setUpdates(map);
+            console.log(
+              `[useWidgetUpdates] Found ${results.length} package update(s)`,
+            );
+          } else {
+            // No updates available — explicitly clear the Map so the
+            // UI reflects the actual registry state. Without this,
+            // a successful batch update would leave the "Updates
+            // Available" CTA visible.
+            setUpdates(new Map());
+            console.log("[useWidgetUpdates] No package updates available");
+          }
+        })
+        .catch((err) => {
+          console.warn("[useWidgetUpdates] Check failed:", err.message);
+        })
+        .finally(() => {
+          setIsChecking(false);
+        }) || Promise.resolve()
+    );
+  }, []);
+
+  // Initial check, runs once per mount when installedWidgets first
+  // arrives. Gated by checkedRef so re-renders don't refire it —
+  // post-batch re-checks happen explicitly via runUpdateCheck from
+  // updatePackages.
+  useEffect(() => {
+    if (checkedRef.current) return;
+    const hasInstalled = installedWidgets.some(
+      (w) => w.source === "installed" && w.version,
+    );
+    if (!hasInstalled) return;
+    checkedRef.current = true;
+    runUpdateCheck(installedWidgets);
+  }, [installedWidgets, runUpdateCheck]);
 
   // Update a single widget by downloading the latest version.
   //
@@ -277,9 +310,18 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
       } finally {
         setIsBatchUpdating(false);
       }
+      // Re-run the registry check from scratch so the post-batch UI
+      // reflects what the registry says is the latest version vs
+      // what's now installed. Belt-and-suspenders against any stale
+      // closure / state-merge issue in the per-package setUpdates
+      // path; if every install succeeded the re-check returns an
+      // empty list and the "Updates Available" CTA cleanly hides.
+      // We pass the latest installedWidgets so the payload reflects
+      // the just-installed versions.
+      await runUpdateCheck(installedWidgets);
       return { succeeded, failed };
     },
-    [updateWidget],
+    [updateWidget, runUpdateCheck, installedWidgets],
   );
 
   return {
