@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Modal, Button } from "@trops/dash-react";
 
 /**
@@ -44,16 +44,43 @@ export const UpdateAllWidgetsModal = ({
   const [selected, setSelected] = useState(() => new Set());
   const [hasRun, setHasRun] = useState(false);
 
+  // Snapshot the packages list at open-time. Rationale: the live
+  // `packages` prop shrinks during the batch run (each successful
+  // install removes its entry from the updates Map → packagesWithUpdates
+  // derives to a shorter list). Without the snapshot the UI would
+  // (a) reset hasRun whenever the prop changes (re-firing the
+  // useEffect below), causing the "Update N packages" button to come
+  // back AFTER the batch finished, and (b) yank package rows out
+  // mid-run so the user can't see what just succeeded. The snapshot
+  // freezes the display until the modal is closed and re-opened.
+  const [snapshotPackages, setSnapshotPackages] = useState([]);
+
+  // Track open transitions explicitly so the seed effect only fires
+  // when the modal goes from closed → open. Using `isOpen` directly in
+  // a useEffect dep doesn't distinguish that transition from
+  // mid-render `isOpen=true` re-runs caused by other state changes
+  // (e.g. parent re-render).
+  const prevIsOpenRef = useRef(false);
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !prevIsOpenRef.current) {
+      // Just opened — seed snapshot + selection + run state.
+      setSnapshotPackages(packages);
       setSelected(new Set(packages.map((p) => p.name)));
       setHasRun(false);
     }
-  }, [isOpen, packages]);
+    prevIsOpenRef.current = isOpen;
+    // packages is read here but intentionally NOT in the dep list —
+    // we only re-seed on open transitions, never when packages
+    // changes underneath us.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
+  // Everything from here on reads `snapshotPackages` (not `packages`)
+  // so the UI is frozen for the duration of the modal session.
   const allSelected = useMemo(
-    () => packages.length > 0 && selected.size === packages.length,
-    [packages, selected],
+    () =>
+      snapshotPackages.length > 0 && selected.size === snapshotPackages.length,
+    [snapshotPackages, selected],
   );
   const noneSelected = selected.size === 0;
 
@@ -66,7 +93,8 @@ export const UpdateAllWidgetsModal = ({
     });
   };
 
-  const selectAll = () => setSelected(new Set(packages.map((p) => p.name)));
+  const selectAll = () =>
+    setSelected(new Set(snapshotPackages.map((p) => p.name)));
   const deselectAll = () => setSelected(new Set());
 
   const handleConfirm = async () => {
@@ -157,10 +185,10 @@ export const UpdateAllWidgetsModal = ({
             Update widget packages
           </div>
           <div className="text-xs text-gray-400 mt-1">
-            {packages.length} package
-            {packages.length === 1 ? "" : "s"} have updates available. Deselect
-            anything you want to skip. Updates run sequentially — you can keep
-            using other parts of the app.
+            {snapshotPackages.length} package
+            {snapshotPackages.length === 1 ? "" : "s"} have updates available.
+            Deselect anything you want to skip. Updates run sequentially — you
+            can keep using other parts of the app.
           </div>
         </div>
 
@@ -168,7 +196,7 @@ export const UpdateAllWidgetsModal = ({
             user reads "Selected 14 of 14 · [Select all] [Deselect all]". */}
         <div className="flex items-center justify-between px-5 py-2 border-b border-gray-700/60 text-xs text-gray-400">
           <span data-testid="update-all-selected-count">
-            Selected {selected.size} of {packages.length}
+            Selected {selected.size} of {snapshotPackages.length}
           </span>
           <div className="flex gap-3">
             <button
@@ -196,12 +224,12 @@ export const UpdateAllWidgetsModal = ({
           className="flex flex-col max-h-96 overflow-y-auto"
           data-testid="update-all-package-list"
         >
-          {packages.length === 0 ? (
+          {snapshotPackages.length === 0 ? (
             <div className="px-5 py-6 text-xs text-gray-500 italic text-center">
               No package updates available.
             </div>
           ) : (
-            packages.map((pkg) => {
+            snapshotPackages.map((pkg) => {
               const isChecked = selected.has(pkg.name);
               return (
                 <label
