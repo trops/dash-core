@@ -487,6 +487,28 @@ export const WidgetsSection = ({
 
   const listContent = (
     <div className="flex flex-col h-full">
+      {/* Update-available banner — sits at the top of the left column
+          so the user sees it the moment they open the Widgets tab.
+          Styled as a filled blue button (not a dim footer line) since
+          per-widget updates is a load-bearing action and the prior
+          footer-text version was easy to miss. */}
+      {packagesWithUpdates.length > 0 && (
+        <div className="flex-shrink-0 px-3 py-2 border-b border-blue-500/50 bg-blue-900/30">
+          <button
+            type="button"
+            onClick={() => setUpdateAllOpen(true)}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded bg-blue-600 hover:bg-blue-500 text-white"
+            data-testid="widgets-section-update-all-trigger"
+          >
+            <FontAwesomeIcon icon="arrow-up" className="text-xs" />
+            <span>
+              {packagesWithUpdates.length} Update
+              {packagesWithUpdates.length !== 1 ? "s" : ""} Available
+            </span>
+          </button>
+        </div>
+      )}
+
       {/* Filter bar */}
       {!isLoading && !error && widgets.length > 0 && (
         <div className="flex flex-col gap-2 px-3 py-2 flex-shrink-0 border-b border-white/10">
@@ -584,21 +606,10 @@ export const WidgetsSection = ({
             if (installedCount > 0) parts.push(`${installedCount} installed`);
             return parts.join(", ");
           })()}
-          {packagesWithUpdates.length > 0 && (
-            <>
-              {" \u00B7 "}
-              <button
-                type="button"
-                onClick={() => setUpdateAllOpen(true)}
-                className="text-blue-400 hover:text-blue-300 underline-offset-2 hover:underline"
-                data-testid="widgets-section-update-all-trigger"
-              >
-                {packagesWithUpdates.length} package
-                {packagesWithUpdates.length !== 1 ? "s" : ""} can be updated
-                \u2014 Update all\u2026
-              </button>
-            </>
-          )}
+          {/* The "Updates available" CTA moved to the top of the left
+              column above the filter bar \u2014 see the prominent banner
+              there. The dim footer-text version was easy to miss for a
+              load-bearing action. */}
         </div>
       )}
     </div>
