@@ -144,8 +144,12 @@ export const UpdateAllWidgetsModal = ({
 
   return (
     <Modal isOpen={isOpen} setIsOpen={setIsOpen}>
+      {/* dash-react's Modal claims ~83% of the viewport for its
+          wrapper; add mx-auto so this narrower dialog centers
+          horizontally inside that wider container instead of hugging
+          the left edge. max-w-xl keeps the dialog dialog-sized. */}
       <div
-        className="flex flex-col w-full max-w-xl border border-gray-700 rounded bg-gray-900"
+        className="flex flex-col w-full max-w-xl mx-auto border border-gray-700 rounded bg-gray-900"
         data-testid="update-all-widgets-modal"
       >
         <div className="px-5 py-4 border-b border-gray-700">
