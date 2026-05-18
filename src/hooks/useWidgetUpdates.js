@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 
 /**
  * useWidgetUpdates — checks the registry for newer versions of installed widgets
@@ -6,7 +6,19 @@ import { useState, useEffect, useCallback, useRef } from "react";
  *
  * @param {Array} installedWidgets - Widgets from useInstalledWidgets()
  * @param {Function} onUpdated - Callback after a successful update (e.g. refresh)
- * @returns {{ updates: Map, isChecking: boolean, updateWidget: Function, isUpdating: string|null, needsAuth: boolean, clearNeedsAuth: Function, updateError: string|null }}
+ * @returns {{
+ *   updates: Map,
+ *   packagesWithUpdates: Array<{name, installedVersion, latestVersion, downloadUrl, widgetNames}>,
+ *   isChecking: boolean,
+ *   updateWidget: Function,
+ *   updatePackages: Function,
+ *   isUpdating: string|null,
+ *   batchStatus: Map<string, {status: "pending"|"in-progress"|"done"|"failed", error?: string}>,
+ *   isBatchUpdating: boolean,
+ *   needsAuth: boolean,
+ *   clearNeedsAuth: Function,
+ *   updateError: string|null
+ * }}
  */
 export function useWidgetUpdates(installedWidgets = [], onUpdated) {
   const [updates, setUpdates] = useState(new Map());
@@ -14,6 +26,13 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
   const [isUpdating, setIsUpdating] = useState(null);
   const [needsAuth, setNeedsAuth] = useState(false);
   const [updateError, setUpdateError] = useState(null);
+  // batchStatus tracks the per-package progress during an updatePackages
+  // run so the "Update all" modal can show pending/in-progress/done/failed
+  // pips next to each row. Cleared (Map -> empty) when isBatchUpdating
+  // flips back to false; consumers that want to keep showing a per-package
+  // result after the batch finished should snapshot it themselves.
+  const [batchStatus, setBatchStatus] = useState(new Map());
+  const [isBatchUpdating, setIsBatchUpdating] = useState(false);
   const checkedRef = useRef(false);
 
   // Check for updates once when installed widgets are available
@@ -67,9 +86,16 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
       });
   }, [installedWidgets]);
 
-  // Update a single widget by downloading the latest version
+  // Update a single widget by downloading the latest version.
+  //
+  // `options.throwOnError` (default false) re-throws after setting
+  // updateError state. Off by default so the single-update callers
+  // (detail-view Update button) keep their fire-and-forget shape;
+  // the batch updatePackages path passes `true` so it can per-row
+  // report success/fail in batchStatus.
   const updateWidget = useCallback(
-    async (name) => {
+    async (name, options = {}) => {
+      const throwOnError = options && options.throwOnError === true;
       const info = updates.get(name);
       if (!info) {
         console.error(
@@ -133,6 +159,12 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
       } catch (err) {
         console.error("[useWidgetUpdates] Update failed:", err);
         setUpdateError(err.message || "Update failed");
+        if (throwOnError) {
+          // Re-throw so the batch caller can mark this row failed.
+          // Single-update callers leave throwOnError as false and
+          // keep the existing fire-and-forget behavior.
+          throw err;
+        }
       } finally {
         setIsUpdating(null);
       }
@@ -142,11 +174,123 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
 
   const clearNeedsAuth = useCallback(() => setNeedsAuth(false), []);
 
+  // Derived list of packages with updates available, deduped by
+  // package id. `updates` carries each entry under TWO keys (the
+  // package id AND each widget's CM key — see the .set() loop above);
+  // the modal needs the one-row-per-package shape and the list of
+  // widget names that ride along so users see what a single package
+  // update will actually bring with it.
+  const packagesWithUpdates = useMemo(() => {
+    if (!updates || updates.size === 0) return [];
+    const byPackage = new Map();
+    for (const [, info] of updates) {
+      if (!info || !info.name) continue;
+      if (!byPackage.has(info.name)) {
+        byPackage.set(info.name, {
+          name: info.name,
+          // registryController returns { currentVersion, latestVersion, ... } —
+          // see electron/controller/registryController.js checkUpdates().
+          currentVersion: info.currentVersion || "",
+          latestVersion: info.latestVersion || "",
+          downloadUrl: info.downloadUrl || null,
+          widgetNames: [],
+        });
+      }
+    }
+    // Walk installed widgets so each package row carries the list of
+    // widget display names the user will see updated. Useful in the
+    // modal for "Slack — updates SlackListChannels, SlackChannelMessages,
+    // SlackWidget" disclosure.
+    for (const w of installedWidgets) {
+      if (!w || w.source !== "installed") continue;
+      const pkgId = w.packageId || w.name;
+      const entry = byPackage.get(pkgId);
+      if (entry && !entry.widgetNames.includes(w.name)) {
+        entry.widgetNames.push(w.name);
+      }
+    }
+    return Array.from(byPackage.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  }, [updates, installedWidgets]);
+
+  // Sequentially update each package in `packageNames`. Sequential
+  // (not parallel) on purpose: the install IPC hits a single registry
+  // endpoint per package and parallel runs would trip auth + create
+  // confusing partial-failure states. Per-package status flows into
+  // batchStatus so the UI can render pending/in-progress/done/failed
+  // pips in real time.
+  //
+  // Resolves to a summary `{succeeded: string[], failed: string[]}`.
+  const updatePackages = useCallback(
+    async (packageNames) => {
+      if (!Array.isArray(packageNames) || packageNames.length === 0) {
+        return { succeeded: [], failed: [] };
+      }
+      // Seed every selected package as pending so the modal renders
+      // the full per-row state from the first paint.
+      const initial = new Map();
+      for (const name of packageNames) {
+        initial.set(name, { status: "pending" });
+      }
+      setBatchStatus(initial);
+      setIsBatchUpdating(true);
+      setUpdateError(null);
+      const succeeded = [];
+      const failed = [];
+      try {
+        for (const pkgName of packageNames) {
+          // Mark in-progress BEFORE the await so the spinner appears
+          // immediately, not after the install finishes.
+          setBatchStatus((prev) => {
+            const next = new Map(prev);
+            next.set(pkgName, { status: "in-progress" });
+            return next;
+          });
+          try {
+            // Reuse the existing single-update path so any future
+            // behavior (auth flow, error normalization, refresh
+            // callback) stays in one place. updateWidget keys on
+            // either a package id or a widget CM key — the
+            // packagesWithUpdates entries use `name = info.name`,
+            // which IS the package id, so this works.
+            await updateWidget(pkgName, { throwOnError: true });
+            setBatchStatus((prev) => {
+              const next = new Map(prev);
+              next.set(pkgName, { status: "done" });
+              return next;
+            });
+            succeeded.push(pkgName);
+          } catch (err) {
+            const msg = (err && err.message) || "Update failed";
+            setBatchStatus((prev) => {
+              const next = new Map(prev);
+              next.set(pkgName, { status: "failed", error: msg });
+              return next;
+            });
+            failed.push(pkgName);
+            // Continue to the next package — one failure shouldn't
+            // abort the whole run. The modal surfaces each per-row
+            // failure individually so the user can retry just those.
+          }
+        }
+      } finally {
+        setIsBatchUpdating(false);
+      }
+      return { succeeded, failed };
+    },
+    [updateWidget],
+  );
+
   return {
     updates,
+    packagesWithUpdates,
     isChecking,
     updateWidget,
+    updatePackages,
     isUpdating,
+    batchStatus,
+    isBatchUpdating,
     needsAuth,
     clearNeedsAuth,
     updateError,

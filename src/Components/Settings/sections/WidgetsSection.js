@@ -17,6 +17,7 @@ import { InstallWidgetPicker } from "../details/InstallWidgetPicker";
 import { DiscoverWidgetsDetail } from "../details/DiscoverWidgetsDetail";
 import { InstallProgressModal } from "../details/InstallProgressModal";
 import { RegistryAuthModal } from "../../Registry/RegistryAuthModal";
+import { UpdateAllWidgetsModal } from "./UpdateAllWidgetsModal";
 import {
   useInstalledWidgets,
   findWidgetUsage,
@@ -48,13 +49,22 @@ export const WidgetsSection = ({
     useInstalledWidgets();
   const {
     updates,
+    packagesWithUpdates,
     isChecking,
     updateWidget,
+    updatePackages,
+    batchStatus,
+    isBatchUpdating,
     isUpdating,
     needsAuth,
     clearNeedsAuth,
     updateError,
   } = useWidgetUpdates(widgets, refresh);
+
+  // "Update all" modal visibility — opened from the footer when there
+  // are package-level updates available; closed by the user (or by
+  // them clicking Cancel/Close inside the modal).
+  const [updateAllOpen, setUpdateAllOpen] = useState(false);
 
   const [selectedWidgetName, setSelectedWidgetName] = useState(null);
   // null | "picker" | "discover" | "zip-result" | "folder-result"
@@ -574,11 +584,20 @@ export const WidgetsSection = ({
             if (installedCount > 0) parts.push(`${installedCount} installed`);
             return parts.join(", ");
           })()}
-          {updates.size > 0 && (
-            <span className="text-blue-400 ml-1">
+          {packagesWithUpdates.length > 0 && (
+            <>
               {" \u00B7 "}
-              {updates.size} update{updates.size !== 1 ? "s" : ""} available
-            </span>
+              <button
+                type="button"
+                onClick={() => setUpdateAllOpen(true)}
+                className="text-blue-400 hover:text-blue-300 underline-offset-2 hover:underline"
+                data-testid="widgets-section-update-all-trigger"
+              >
+                {packagesWithUpdates.length} package
+                {packagesWithUpdates.length !== 1 ? "s" : ""} can be updated
+                \u2014 Update all\u2026
+              </button>
+            </>
           )}
         </div>
       )}
@@ -774,6 +793,14 @@ export const WidgetsSection = ({
           clearNeedsAuth();
           if (selectedWidget?.name) updateWidget(selectedWidget.name);
         }}
+      />
+      <UpdateAllWidgetsModal
+        isOpen={updateAllOpen}
+        setIsOpen={setUpdateAllOpen}
+        packages={packagesWithUpdates}
+        batchStatus={batchStatus}
+        isBatchUpdating={isBatchUpdating}
+        onConfirm={updatePackages}
       />
     </>
   );
