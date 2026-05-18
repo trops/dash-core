@@ -310,18 +310,25 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
       } finally {
         setIsBatchUpdating(false);
       }
-      // Re-run the registry check from scratch so the post-batch UI
-      // reflects what the registry says is the latest version vs
-      // what's now installed. Belt-and-suspenders against any stale
-      // closure / state-merge issue in the per-package setUpdates
-      // path; if every install succeeded the re-check returns an
-      // empty list and the "Updates Available" CTA cleanly hides.
-      // We pass the latest installedWidgets so the payload reflects
-      // the just-installed versions.
-      await runUpdateCheck(installedWidgets);
+      // NOTE — we do NOT call runUpdateCheck here. The earlier
+      // attempt to "belt-and-suspenders" with a post-batch re-check
+      // backfired: this useCallback closes over `installedWidgets`,
+      // which still carries the PRE-install versions at the time the
+      // batch was kicked off (refresh() updates the prop async, but
+      // the closure is captured synchronously). Running the check
+      // against pre-install versions makes the registry correctly
+      // report "needs update" for every package we just updated,
+      // re-populating the Map and reviving the "Updates Available"
+      // CTA the user wanted to disappear.
+      //
+      // Per-package setUpdates inside updateWidget already removes
+      // each package from the Map as its install succeeds, so by the
+      // end of the loop the Map naturally reflects the post-batch
+      // state. The empty-results branch of runUpdateCheck (initial
+      // mount only) handles the "registry returned []" case.
       return { succeeded, failed };
     },
-    [updateWidget, runUpdateCheck, installedWidgets],
+    [updateWidget],
   );
 
   return {

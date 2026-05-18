@@ -221,22 +221,15 @@ describe("useWidgetUpdates — updatePackages batch orchestration", () => {
     expect(result.current.batchStatus.get("@trops/gmail")?.status).toBe("done");
   });
 
-  test("post-batch re-check clears the updates Map when registry confirms everything's up to date", async () => {
-    // After the batch installs, the registry should report no
-    // outstanding updates — the re-check then clears `updates` so
-    // the "Updates Available" CTA hides. Previously we relied on
-    // per-package setUpdates merges (which were brittle); now we
-    // belt-and-suspenders the post-batch run with a fresh check.
-    //
-    // Stage the checkUpdates mock to return the updates the FIRST
-    // time (initial check) and an empty array the SECOND time
-    // (post-batch re-check).
-    let checkCallCount = 0;
-    const checkUpdates = jest.fn().mockImplementation(() => {
-      checkCallCount += 1;
-      if (checkCallCount === 1) return Promise.resolve(sampleUpdates);
-      return Promise.resolve([]);
-    });
+  test("per-package setUpdates clears each entry as its install succeeds (no post-batch re-check needed)", async () => {
+    // After a fully-successful batch, the updates Map should be
+    // empty — driven by each updateWidget's setUpdates cleanup
+    // (one per package). We do NOT post-batch re-check via the
+    // registry because closure-captured installedWidgets still
+    // carries pre-install versions (refresh() updates the prop
+    // asynchronously); a re-check would re-detect the same
+    // packages and revive the "Updates Available" CTA.
+    const checkUpdates = jest.fn().mockResolvedValue(sampleUpdates);
     installMainApi({
       checkUpdates,
       install: jest.fn().mockResolvedValue({ ok: true }),
@@ -252,45 +245,11 @@ describe("useWidgetUpdates — updatePackages batch orchestration", () => {
       await result.current.updatePackages(["@trops/slack", "@trops/gmail"]);
     });
 
-    // The re-check fires after the batch; updates should be empty
-    // and the derived packagesWithUpdates list should reflect that.
-    await waitFor(() => {
-      expect(result.current.packagesWithUpdates).toEqual([]);
-    });
-    expect(checkUpdates).toHaveBeenCalledTimes(2);
-  });
-
-  test("post-batch re-check ALSO clears stale entries when a previous check returned 0 updates", async () => {
-    // Edge case: if a prior check populated `updates` with N
-    // entries and the user re-installed everything externally, a
-    // subsequent re-check that returns [] must reset the Map
-    // (not leave the stale N entries). Without the explicit
-    // `setUpdates(new Map())` in the empty-results branch, the CTA
-    // would persist.
-    let checkCallCount = 0;
-    const checkUpdates = jest.fn().mockImplementation(() => {
-      checkCallCount += 1;
-      if (checkCallCount === 1) return Promise.resolve(sampleUpdates);
-      return Promise.resolve([]);
-    });
-    installMainApi({
-      checkUpdates,
-      install: jest.fn().mockResolvedValue({ ok: true }),
-    });
-    const { result } = renderHook(() =>
-      useWidgetUpdates(sampleInstalled, jest.fn()),
-    );
-    await waitFor(() => {
-      expect(result.current.packagesWithUpdates.length).toBe(2);
-    });
-
-    await act(async () => {
-      await result.current.updatePackages(["@trops/slack", "@trops/gmail"]);
-    });
-
+    // Map drained via per-package setUpdates inside updateWidget.
     expect(result.current.packagesWithUpdates).toEqual([]);
-    // Per-widget badges would also disappear since the Map is empty.
     expect(result.current.updates.size).toBe(0);
+    // checkUpdates is called ONCE at mount, NOT again post-batch.
+    expect(checkUpdates).toHaveBeenCalledTimes(1);
   });
 
   test("called with [] or non-array returns immediately with empty summary", async () => {
