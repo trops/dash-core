@@ -17,6 +17,7 @@ import { InstallWidgetPicker } from "../details/InstallWidgetPicker";
 import { DiscoverWidgetsDetail } from "../details/DiscoverWidgetsDetail";
 import { InstallProgressModal } from "../details/InstallProgressModal";
 import { RegistryAuthModal } from "../../Registry/RegistryAuthModal";
+import { UpdateAllWidgetsModal } from "./UpdateAllWidgetsModal";
 import {
   useInstalledWidgets,
   findWidgetUsage,
@@ -48,13 +49,22 @@ export const WidgetsSection = ({
     useInstalledWidgets();
   const {
     updates,
+    packagesWithUpdates,
     isChecking,
     updateWidget,
+    updatePackages,
+    batchStatus,
+    isBatchUpdating,
     isUpdating,
     needsAuth,
     clearNeedsAuth,
     updateError,
   } = useWidgetUpdates(widgets, refresh);
+
+  // "Update all" modal visibility — opened from the footer when there
+  // are package-level updates available; closed by the user (or by
+  // them clicking Cancel/Close inside the modal).
+  const [updateAllOpen, setUpdateAllOpen] = useState(false);
 
   const [selectedWidgetName, setSelectedWidgetName] = useState(null);
   // null | "picker" | "discover" | "zip-result" | "folder-result"
@@ -477,6 +487,45 @@ export const WidgetsSection = ({
 
   const listContent = (
     <div className="flex flex-col h-full">
+      {/* Checking-for-updates indicator — shown while the initial
+          registry check is in flight (a few seconds after the panel
+          mounts). Without this the user sees the panel "stable" and
+          then a button suddenly appears, which feels jumpy. */}
+      {isChecking && packagesWithUpdates.length === 0 && (
+        <div
+          className="flex-shrink-0 px-3 py-2 border-b border-white/10 bg-gray-800/60 flex items-center gap-2 text-xs text-gray-400"
+          data-testid="widgets-section-checking-updates"
+        >
+          <FontAwesomeIcon
+            icon="spinner"
+            className="text-blue-400 animate-spin"
+          />
+          <span>Checking for widget updates…</span>
+        </div>
+      )}
+
+      {/* Update-available banner — sits at the top of the left column
+          so the user sees it the moment they open the Widgets tab.
+          Styled as a filled blue button (not a dim footer line) since
+          per-widget updates is a load-bearing action and the prior
+          footer-text version was easy to miss. */}
+      {packagesWithUpdates.length > 0 && (
+        <div className="flex-shrink-0 px-3 py-2 border-b border-blue-500/50 bg-blue-900/30">
+          <button
+            type="button"
+            onClick={() => setUpdateAllOpen(true)}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded bg-blue-600 hover:bg-blue-500 text-white"
+            data-testid="widgets-section-update-all-trigger"
+          >
+            <FontAwesomeIcon icon="arrow-up" className="text-xs" />
+            <span>
+              {packagesWithUpdates.length} Update
+              {packagesWithUpdates.length !== 1 ? "s" : ""} Available
+            </span>
+          </button>
+        </div>
+      )}
+
       {/* Filter bar */}
       {!isLoading && !error && widgets.length > 0 && (
         <div className="flex flex-col gap-2 px-3 py-2 flex-shrink-0 border-b border-white/10">
@@ -574,12 +623,10 @@ export const WidgetsSection = ({
             if (installedCount > 0) parts.push(`${installedCount} installed`);
             return parts.join(", ");
           })()}
-          {updates.size > 0 && (
-            <span className="text-blue-400 ml-1">
-              {" \u00B7 "}
-              {updates.size} update{updates.size !== 1 ? "s" : ""} available
-            </span>
-          )}
+          {/* The "Updates available" CTA moved to the top of the left
+              column above the filter bar \u2014 see the prominent banner
+              there. The dim footer-text version was easy to miss for a
+              load-bearing action. */}
         </div>
       )}
     </div>
@@ -774,6 +821,14 @@ export const WidgetsSection = ({
           clearNeedsAuth();
           if (selectedWidget?.name) updateWidget(selectedWidget.name);
         }}
+      />
+      <UpdateAllWidgetsModal
+        isOpen={updateAllOpen}
+        setIsOpen={setUpdateAllOpen}
+        packages={packagesWithUpdates}
+        batchStatus={batchStatus}
+        isBatchUpdating={isBatchUpdating}
+        onConfirm={updatePackages}
       />
     </>
   );

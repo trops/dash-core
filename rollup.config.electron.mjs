@@ -56,6 +56,16 @@ const EXTERNAL = [
     "xml2js",
     "xtreamer",
     "zod",
+    // zod-to-json-schema has internal circular deps (parseDef →
+    // selectParser → parsers/* → parseDef). Rollup's CommonJS wrapper
+    // handles them with lazy require* shims that sometimes evaluate
+    // out of order — when that happens the bundle dies on
+    // `Object.defineProperty(map, …)` because `var map` is still
+    // undefined at the call site. Externalizing punts the load to
+    // Node's native CJS resolver, which handles the cycle correctly,
+    // and dash-electron / any other consumer already has the package
+    // in its node_modules transitively via @modelcontextprotocol/sdk.
+    "zod-to-json-schema",
 ];
 
 const config = {
