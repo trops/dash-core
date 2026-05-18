@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useContext, useState, useEffect } from "react";
 import {
   SubHeading3,
   Button,
   FontAwesomeIcon,
   DataList,
 } from "@trops/dash-react";
+import { AppContext } from "../../../Context/App/AppContext";
 
 export const AccountSection = ({
   authStatus,
@@ -13,16 +14,47 @@ export const AccountSection = ({
   onSignOut,
   onProfileUpdated,
 }) => {
-  if (authStatus !== "authenticated" || !authProfile) {
-    return <UnauthenticatedView onSignIn={onSignIn} />;
-  }
-
   return (
-    <AuthenticatedView
-      profile={authProfile}
-      onSignOut={onSignOut}
-      onProfileUpdated={onProfileUpdated}
-    />
+    <div className="flex flex-col space-y-6">
+      {authStatus !== "authenticated" || !authProfile ? (
+        <UnauthenticatedView onSignIn={onSignIn} />
+      ) : (
+        <AuthenticatedView
+          profile={authProfile}
+          onSignOut={onSignOut}
+          onProfileUpdated={onProfileUpdated}
+        />
+      )}
+      {/* "Check for updates" lives at the section bottom so it's
+          available regardless of auth state — the user can trigger
+          a manual app-updates check (widgets + dashboards) without
+          needing to be signed in to the registry. */}
+      <AppUpdatesTrigger />
+    </div>
+  );
+};
+
+const AppUpdatesTrigger = () => {
+  const appContext = useContext(AppContext);
+  const triggerAppUpdatesCheck = appContext?.triggerAppUpdatesCheck;
+  if (typeof triggerAppUpdatesCheck !== "function") return null;
+  return (
+    <div className="flex flex-col space-y-3">
+      <SubHeading3 title="App updates" padding={false} />
+      <div className="flex flex-row items-center justify-between py-3">
+        <div className="flex flex-col">
+          <span className="text-sm font-medium">Check for updates</span>
+          <span className="text-xs opacity-50">
+            Look up newer versions of installed widget packages and dashboards
+            on the registry. Opens the updates dialog with the result.
+          </span>
+        </div>
+        <Button
+          title="Check for updates"
+          onClick={() => triggerAppUpdatesCheck()}
+        />
+      </div>
+    </div>
   );
 };
 

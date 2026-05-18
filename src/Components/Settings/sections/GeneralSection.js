@@ -34,6 +34,21 @@ export const GeneralSection = () => {
     }
   }
 
+  // Settings → "Check for updates on launch" toggle. Reads from
+  // appContext.settings.checkForUpdatesOnLaunch (defaulted to true
+  // by SettingsModel) and writes back via changeSettings so the
+  // value persists across launches. The launch-check effect in
+  // AppWrapper honors this flag.
+  const checkForUpdatesOnLaunch =
+    appContext?.settings?.checkForUpdatesOnLaunch !== false;
+  function handleToggleCheckForUpdates(value) {
+    if (!appContext?.changeSettings || !appContext?.settings) return;
+    appContext.changeSettings({
+      ...appContext.settings,
+      checkForUpdatesOnLaunch: Boolean(value),
+    });
+  }
+
   return (
     <div className="flex flex-col space-y-6">
       <div className="flex flex-col space-y-3">
@@ -46,6 +61,26 @@ export const GeneralSection = () => {
             </span>
           </div>
           <Switch checked={debugMode} onChange={handleToggleDebug} />
+        </div>
+        <div
+          className="flex flex-row items-center justify-between py-3"
+          data-testid="general-section-check-for-updates-row"
+        >
+          <div className="flex flex-col">
+            <span className="text-sm font-medium">
+              Check for updates on launch
+            </span>
+            <span className="text-xs opacity-50">
+              When enabled, the app checks the registry for widget package and
+              dashboard updates on launch and surfaces a one-click upgrade
+              prompt. You can always trigger a manual check from Account → Check
+              for updates.
+            </span>
+          </div>
+          <Switch
+            checked={checkForUpdatesOnLaunch}
+            onChange={handleToggleCheckForUpdates}
+          />
         </div>
       </div>
 

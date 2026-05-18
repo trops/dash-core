@@ -2,6 +2,9 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { AppContext } from "./AppContext";
 import { SettingsModel } from "../../Models";
 import { deepCopy } from "@trops/dash-react";
+import { useInstalledWidgets } from "../../hooks/useInstalledWidgets";
+import { useAppUpdates } from "../../hooks/useAppUpdates";
+import { AppUpdatesModal } from "../../Components/AppUpdatesModal";
 
 /**
  * Broadcasts the AppContext (providers, settings) so components rendered
@@ -47,6 +50,59 @@ export const AppWrapper = ({ children, credentials = null, dashApi }) => {
 
   const [providers, setProviders] = useState({});
   const [isLoadingProviders, setIsLoadingProviders] = useState(false);
+
+  // ── App-launch updates check ───────────────────────────────────
+  // Aggregator over widget + dashboard registry checks. Powers the
+  // AppUpdatesModal that auto-pops once per session when updates
+  // are available AND the user has opted in via settings (default
+  // on). Manual triggers (Account section's "Check for updates")
+  // route through `triggerAppUpdatesCheck` exposed on AppContext.
+  const { widgets: installedWidgets, refresh: refreshInstalledWidgets } =
+    useInstalledWidgets();
+  const appUpdates = useAppUpdates({
+    appId: creds?.appId,
+    installedWidgets,
+    onWidgetUpdated: refreshInstalledWidgets,
+  });
+  const [appUpdatesModalOpen, setAppUpdatesModalOpen] = useState(false);
+  // Session-scoped dismissal: once the user clicks "Remind me later"
+  // (or closes the modal), don't auto-pop again this app launch. A
+  // fresh launch resets the flag and re-checks per settings.
+  const [appUpdatesSessionDismissed, setAppUpdatesSessionDismissed] =
+    useState(false);
+  // Auto-pop on launch — fires once both checks have settled AND the
+  // user opted in. Gated on `appUpdatesAutoPopped` so a state change
+  // mid-session (e.g. the modal auto-closes after Update all) doesn't
+  // immediately re-pop.
+  const [appUpdatesAutoPopped, setAppUpdatesAutoPopped] = useState(false);
+  useEffect(() => {
+    if (appUpdatesAutoPopped) return;
+    if (appUpdatesSessionDismissed) return;
+    if (!appUpdates.hasChecked) return;
+    if (appUpdates.totalUpdates === 0) return;
+    if (!settings) return;
+    if (settings.checkForUpdatesOnLaunch === false) return;
+    setAppUpdatesModalOpen(true);
+    setAppUpdatesAutoPopped(true);
+  }, [
+    appUpdatesAutoPopped,
+    appUpdatesSessionDismissed,
+    appUpdates.hasChecked,
+    appUpdates.totalUpdates,
+    settings,
+  ]);
+
+  // Manual-trigger entry point — exposed on AppContext so any
+  // settings surface (Account "Check for updates" item, etc.) can
+  // request a fresh check + force-open the modal regardless of the
+  // launch-toggle setting. recheck() re-runs the dashboard check;
+  // widgets re-check on next mount (the useWidgetUpdates effect is
+  // one-shot per mount).
+  const triggerAppUpdatesCheck = useCallback(async () => {
+    setAppUpdatesModalOpen(true);
+    setAppUpdatesSessionDismissed(false);
+    await appUpdates.recheck();
+  }, [appUpdates]);
 
   useEffect(() => {
     console.log("App Wrapper ", settings, isLoadingSettings);
@@ -268,6 +324,10 @@ export const AppWrapper = ({ children, credentials = null, dashApi }) => {
         changeSettings,
         changeApplicationTheme,
         openDataDirectory,
+        // Manual app-updates trigger for AccountSection's "Check for
+        // updates" item and any future surface that wants to force
+        // the modal open (e.g. menu bar entry).
+        triggerAppUpdatesCheck,
       };
     } catch (e) {
       console.log(e);
@@ -289,12 +349,31 @@ export const AppWrapper = ({ children, credentials = null, dashApi }) => {
     changeSettings,
     changeApplicationTheme,
     openDataDirectory,
+    triggerAppUpdatesCheck,
   ]);
 
   return (
     <AppContext.Provider value={contextValue}>
       <AppContextBroadcast ctx={contextValue} />
       {children}
+      {/* App-level updates modal — mounted here so it floats above
+          everything (Modal portals to document.body). Visibility is
+          driven by the auto-pop effect above and/or manual triggers
+          via context.triggerAppUpdatesCheck. */}
+      <AppUpdatesModal
+        isOpen={appUpdatesModalOpen}
+        setIsOpen={setAppUpdatesModalOpen}
+        widgetUpdates={appUpdates.widgetUpdates}
+        dashboardUpdates={appUpdates.dashboardUpdates}
+        isChecking={appUpdates.isChecking}
+        hasChecked={appUpdates.hasChecked}
+        onUpdateWidgets={async () => {
+          await appUpdates.updateWidgetPackages(
+            appUpdates.widgetUpdates.map((p) => p.name),
+          );
+        }}
+        onRemindLater={() => setAppUpdatesSessionDismissed(true)}
+      />
     </AppContext.Provider>
   );
 };
