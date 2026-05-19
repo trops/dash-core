@@ -414,44 +414,67 @@ async function checkUpdates(installedWidgets = []) {
 
   const updates = [];
 
-  // --- Path A: check-versions endpoint (covers scoped refs, anon-friendly) ---
+  // --- Path A: /api/packages/resolve (covers scoped refs, anon-friendly) ---
+  // The resolve endpoint returns latestVersion per ref for both public
+  // packages AND private packages where the registry's entitlement
+  // check says the caller is allowed (which today includes anonymous
+  // callers for packages with permissive read policies — verified via
+  // curl on 2026-05-19). This means installed-but-private widgets show
+  // up in the update check even at app launch before the user has
+  // signed in, which was the original gap.
+  //
+  // We try check-versions first (a dash-registry PR adds a tighter
+  // endpoint that returns ONLY latestVersion without entitlement
+  // gating); if it's not deployed yet, fall back to /resolve. Both
+  // produce the same shape for our purposes; resolve carries more
+  // metadata but we only read latestVersion.
   if (scopedRefs.length > 0) {
     const registryBase =
       process.env.DASH_REGISTRY_API_URL || DEFAULT_REGISTRY_API_URL;
-    const endpoint = `${registryBase}/api/packages/check-versions`;
+    const refsBody = JSON.stringify({
+      refs: scopedRefs.map((r) => ({ scope: r.scope, name: r.name })),
+    });
     let endpointAvailable = true;
     let results = null;
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          // Auth is optional for this endpoint — send it when we have
-          // it so future server-side telemetry can correlate, but
-          // the response shape doesn't depend on identity.
-          ...buildAuthHeaders(),
-        },
-        body: JSON.stringify({
-          refs: scopedRefs.map((r) => ({ scope: r.scope, name: r.name })),
-        }),
-      });
-      if (response.status === 404) {
-        // Registry-side endpoint not deployed yet — degrade to index
-        // scan so the app keeps working through the rollout window.
-        endpointAvailable = false;
-      } else if (!response.ok) {
-        throw new Error(
-          `check-versions ${response.status} ${response.statusText}`,
-        );
-      } else {
+    // Try check-versions first (returns less data, no entitlement
+    // dependency); fall back to /resolve if it 404s (registry without
+    // the new endpoint deployed).
+    for (const endpointPath of [
+      "/api/packages/check-versions",
+      "/api/packages/resolve",
+    ]) {
+      const url = `${registryBase}${endpointPath}`;
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            // Auth is optional but widens what /resolve returns for
+            // private packages where ownership matters.
+            ...buildAuthHeaders(),
+          },
+          body: refsBody,
+        });
+        if (response.status === 404) {
+          // Endpoint not deployed — try the next one.
+          continue;
+        }
+        if (!response.ok) {
+          throw new Error(
+            `${endpointPath} ${response.status} ${response.statusText}`,
+          );
+        }
         results = await response.json();
+        endpointAvailable = true;
+        break;
+      } catch (error) {
+        console.warn(
+          `[RegistryController] ${endpointPath} failed:`,
+          error.message,
+        );
+        endpointAvailable = false;
+        // Try next endpoint
       }
-    } catch (error) {
-      console.warn(
-        "[RegistryController] check-versions failed, falling back to index scan:",
-        error.message,
-      );
-      endpointAvailable = false;
     }
 
     if (endpointAvailable && Array.isArray(results)) {
