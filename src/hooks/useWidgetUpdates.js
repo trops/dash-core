@@ -35,6 +35,21 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
   const [isBatchUpdating, setIsBatchUpdating] = useState(false);
   const checkedRef = useRef(false);
 
+  // Diagnostic breadcrumbs pushed onto window.__DASH_DEBUG. We can't
+  // use console.* here — dash-core's rollup build runs
+  // @rollup/plugin-strip which removes every console call from dist,
+  // so any console output we add is silent in the linked production
+  // build the user actually runs. Dump in DevTools with
+  // `copy(window.__DASH_DEBUG)` after a failed batch.
+  const pushDiag = (event, data) => {
+    (window.__DASH_DEBUG ||= []).push({
+      t: Date.now(),
+      src: "useWidgetUpdates",
+      event,
+      ...data,
+    });
+  };
+
   // Core check-for-updates pass. Extracted so the post-batch
   // re-check (after updatePackages finishes) can reuse the same
   // logic without duplicating the payload + Map-keying code.
@@ -53,6 +68,7 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
       return Promise.resolve();
     }
     setIsChecking(true);
+    pushDiag("runUpdateCheck:start", { installedCount: installed.length });
 
     // Deduplicate by package — multiple widgets in the same package
     // share one version.
@@ -84,20 +100,21 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
               });
             });
             setUpdates(map);
-            console.log(
-              `[useWidgetUpdates] Found ${results.length} package update(s)`,
-            );
+            pushDiag("runUpdateCheck:results", {
+              count: results.length,
+              packages: results.map((r) => r.name),
+            });
           } else {
             // No updates available — explicitly clear the Map so the
             // UI reflects the actual registry state. Without this,
             // a successful batch update would leave the "Updates
             // Available" CTA visible.
             setUpdates(new Map());
-            console.log("[useWidgetUpdates] No package updates available");
+            pushDiag("runUpdateCheck:results", { count: 0 });
           }
         })
         .catch((err) => {
-          console.warn("[useWidgetUpdates] Check failed:", err.message);
+          pushDiag("runUpdateCheck:error", { message: err.message });
         })
         .finally(() => {
           setIsChecking(false);
@@ -129,36 +146,18 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
   const updateWidget = useCallback(
     async (name, options = {}) => {
       const throwOnError = options && options.throwOnError === true;
-      // Diagnostic dump: tagged so the user can grep `[update-diag]`
-      // in the renderer console to trace what actually happened
-      // during a batch — caught us out when "✓ done" reports were
-      // silent no-ops. Each call logs entry, every guard, the IPC
-      // call, and the result. Costs ~6 console lines per update;
-      // not worth gating on a debug flag while the install flow is
-      // still being stabilized.
-      console.log(`[update-diag] updateWidget("${name}") start`);
+      pushDiag("updateWidget:start", { name });
       const info = updates.get(name);
       if (!info) {
-        console.error(
-          `[useWidgetUpdates] No update info found for "${name}". Available keys:`,
-          Array.from(updates.keys()),
-        );
-        console.log(
-          `[update-diag] BAIL: info lookup miss for "${name}" — Map keys:`,
-          Array.from(updates.keys()),
-        );
+        pushDiag("updateWidget:bail-no-info", {
+          name,
+          availableKeys: Array.from(updates.keys()),
+        });
         setUpdateError(`No update info found for "${name}".`);
         return;
       }
       if (!info.downloadUrl) {
-        console.error(
-          `[useWidgetUpdates] Update info for "${name}" has no downloadUrl:`,
-          info,
-        );
-        console.log(
-          `[update-diag] BAIL: no downloadUrl on info for "${name}":`,
-          info,
-        );
+        pushDiag("updateWidget:bail-no-download-url", { name, info });
         setUpdateError(
           `Update for "${name}" has no download URL. The registry entry may be incomplete.`,
         );
@@ -168,24 +167,26 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
       // Use packageId for install — name may be a CM key (widget-level)
       const widget = installedWidgets.find((w) => w.name === name);
       const packageId = widget?.packageId || info.name || name;
-      console.log(
-        `[update-diag] resolved info for "${name}": packageId=${packageId}, currentVersion=${info.currentVersion}, latestVersion=${info.latestVersion}, downloadUrl=${info.downloadUrl}`,
-      );
+      pushDiag("updateWidget:resolved", {
+        name,
+        packageId,
+        currentVersion: info.currentVersion,
+        latestVersion: info.latestVersion,
+        downloadUrl: info.downloadUrl,
+      });
 
       setIsUpdating(name);
       setUpdateError(null);
       try {
         // Validate token against registry (not just check if it exists locally)
-        console.log(`[update-diag] calling registryAuth.getProfile()`);
+        pushDiag("updateWidget:getProfile-call", { name });
         const profile = await window.mainApi?.registryAuth?.getProfile();
-        console.log(
-          `[update-diag] getProfile returned:`,
-          profile ? `id=${profile.id}` : "null/undefined",
-        );
+        pushDiag("updateWidget:getProfile-result", {
+          name,
+          profileId: profile ? profile.id : null,
+        });
         if (!profile) {
-          console.log(
-            "[useWidgetUpdates] Token invalid or expired, requesting auth",
-          );
+          pushDiag("updateWidget:stale-auth", { name });
           setNeedsAuth(true);
           // Batch callers (updatePackages with throwOnError=true) need
           // this to surface as a failure so they don't mark the row
@@ -207,23 +208,14 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
           .replace(/\{version\}/g, info.latestVersion)
           .replace(/\{name\}/g, packageId);
 
-        console.log(
-          `[useWidgetUpdates] Installing ${packageId} from ${resolvedUrl}`,
-        );
-        console.log(
-          `[update-diag] calling widgets.install("${packageId}", "${resolvedUrl}")`,
-        );
+        pushDiag("updateWidget:install-call", { packageId, resolvedUrl });
 
         const installResult = await window.mainApi.widgets.install(
           packageId,
           resolvedUrl,
         );
 
-        console.log(`[useWidgetUpdates] ✓ Updated ${packageId} successfully`);
-        console.log(
-          `[update-diag] install resolved for "${packageId}". result:`,
-          installResult,
-        );
+        pushDiag("updateWidget:install-result", { packageId, installResult });
 
         // Remove ALL widgets in this package from updates map
         // (install replaces the entire package, not just one widget)
@@ -237,11 +229,10 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
 
         if (onUpdated) onUpdated();
       } catch (err) {
-        console.error("[useWidgetUpdates] Update failed:", err);
-        console.log(
-          `[update-diag] FAIL for "${name}":`,
-          err?.message || String(err),
-        );
+        pushDiag("updateWidget:fail", {
+          name,
+          message: err?.message || String(err),
+        });
         setUpdateError(err.message || "Update failed");
         if (throwOnError) {
           // Re-throw so the batch caller can mark this row failed.
