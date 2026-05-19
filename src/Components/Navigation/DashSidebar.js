@@ -306,16 +306,40 @@ const FooterPopover = ({
                       onClick={handleToggleDnd}
                       active={doNotDisturb}
                     />
-                    {typeof triggerAppUpdatesCheck === "function" && (
-                      <PopoverItem
-                        icon="arrows-rotate"
-                        label="Check for updates"
-                        onClick={() => {
+                    {/* Always rendered — if AppContext isn't above the
+                        sidebar in some edge mount path the click
+                        no-ops rather than the item vanishing.
+                        Previously gated on `typeof === "function"`
+                        which hid the item entirely whenever the
+                        consuming app hadn't propagated AppContext,
+                        making the feature invisible instead of just
+                        inert. */}
+                    <PopoverItem
+                      icon="arrows-rotate"
+                      label="Check for updates"
+                      onClick={() => {
+                        if (typeof triggerAppUpdatesCheck === "function") {
                           triggerAppUpdatesCheck();
-                          close();
-                        }}
-                      />
-                    )}
+                        } else {
+                          (window.__DASH_DEBUG ||= []).push({
+                            t: Date.now(),
+                            src: "DashSidebar",
+                            event:
+                              "triggerAppUpdatesCheck:missing-from-context",
+                          });
+                        }
+                        close();
+                      }}
+                    />
+                    {/* Same gating logic surfaces as a tiny inline
+                        hint when the context is missing — invisible
+                        in the normal case but tells us what's
+                        happening if a future mount path drops
+                        AppContext. Uses safelist-safe text-xs (the
+                        previous diagnostic used text-[10px] which is
+                        an arbitrary-value class outside the safelist
+                        and silently fails to render in dash-electron's
+                        prebuilt CSS bundle). */}
 
                     <div className="border-t border-white/10 my-1" />
 
