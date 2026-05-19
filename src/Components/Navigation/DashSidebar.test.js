@@ -37,8 +37,7 @@ jest.mock(
     Popover.Panel = ({ children, ...rest }) => <div {...rest}>{children}</div>;
     return {
       Popover,
-      Transition: ({ show, children }) =>
-        show !== false ? children : null,
+      Transition: ({ show, children }) => (show !== false ? children : null),
     };
   },
   { virtual: true },
@@ -131,7 +130,9 @@ describe("DashSidebar — FooterPopover Check-for-updates item", () => {
     // and silently disappeared when the context didn't have it. Now
     // it renders unconditionally; the click no-ops + writes a debug
     // breadcrumb instead.
-    renderWithContext({ /* no triggerAppUpdatesCheck */ });
+    renderWithContext({
+      /* no triggerAppUpdatesCheck */
+    });
     expect(screen.getByText("Check for updates")).toBeInTheDocument();
   });
 
