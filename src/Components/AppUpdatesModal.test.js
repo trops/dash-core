@@ -28,11 +28,23 @@ jest.mock(
   },
   { virtual: false },
 );
-jest.mock(
-  "./Registry/RegistryAuthPrompt",
-  () => ({ RegistryAuthPrompt: () => null }),
-  { virtual: true },
-);
+// AppUpdatesModal now uses useRegistryAuth (no RegistryAuthPrompt
+// import any more). Stub window.mainApi just enough for the hook to
+// mount without throwing — these unit tests don't trigger the auth
+// path so the stubs never get called.
+beforeEach(() => {
+  window.mainApi = {
+    registryAuth: {
+      getStatus: jest.fn().mockResolvedValue({ authenticated: true }),
+      initiateLogin: jest.fn(),
+      pollToken: jest.fn(),
+    },
+    shell: { openExternal: jest.fn() },
+  };
+});
+afterEach(() => {
+  delete window.mainApi;
+});
 
 import React from "react";
 import { render, fireEvent, screen } from "@testing-library/react";

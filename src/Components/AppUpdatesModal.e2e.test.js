@@ -44,24 +44,11 @@ jest.mock(
   { virtual: false },
 );
 
-// RegistryAuthPrompt under RegistryAuthModal pulls in a lot of
-// runtime — mock just enough to verify the modal opens.
-jest.mock(
-  "./Registry/RegistryAuthPrompt",
-  () => ({
-    RegistryAuthPrompt: ({ onAuthenticated, onCancel }) => (
-      <div data-testid="mock-registry-auth-prompt">
-        <button type="button" onClick={onAuthenticated}>
-          Pretend sign-in succeeded
-        </button>
-        <button type="button" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
-    ),
-  }),
-  { virtual: true },
-);
+// The modal now calls useRegistryAuth().initiateAuth() directly,
+// which hits window.mainApi.registryAuth.initiateLogin + opens the
+// system browser via window.mainApi.shell.openExternal — no
+// intermediate RegistryAuthPrompt mount any more. The IPC mock
+// below covers both.
 
 import React from "react";
 import {
@@ -138,16 +125,39 @@ const sampleWidgetUpdates = [
 ];
 
 function setupMainApi({
+  authenticated = true,
   profile = { id: "user-1" },
   installResult = { ok: true },
   installThrows = false,
 } = {}) {
+  // useRegistryAuth.initiateAuth fires initiateLogin + opens the
+  // verification URL via shell.openExternal, then polls pollToken on
+  // an interval. The poll mock below resolves to "authorized" on the
+  // first call so the post-auth test can drive the success path by
+  // advancing the timer.
+  //
+  // The modal now proactively calls registryAuth.getStatus on open;
+  // tests pass `authenticated: false` to land on the "Sign in to
+  // Registry" footer without needing to click Update first.
   window.mainApi = {
     registry: {
       checkUpdates: jest.fn().mockResolvedValue(sampleWidgetUpdates),
     },
     registryAuth: {
+      getStatus: jest.fn().mockResolvedValue({ authenticated }),
       getProfile: jest.fn().mockResolvedValue(profile),
+      initiateLogin: jest.fn().mockResolvedValue({
+        deviceCode: "DEVICE-CODE",
+        userCode: "ABCD-1234",
+        verificationUrl: "https://reg.example/device",
+        verificationUrlComplete:
+          "https://reg.example/device?user_code=ABCD-1234",
+        interval: 5,
+      }),
+      pollToken: jest.fn().mockResolvedValue({ status: "authorized" }),
+    },
+    shell: {
+      openExternal: jest.fn(),
     },
     widgets: {
       install: installThrows
@@ -213,45 +223,54 @@ describe("AppUpdatesModal — end-to-end happy path", () => {
   });
 });
 
-describe("AppUpdatesModal — end-to-end stale-auth path", () => {
-  test("getProfile returns null → all installs fail → red banner with Sign in to Registry button", async () => {
-    setupMainApi({ profile: null });
+describe("AppUpdatesModal — proactive sign-in gate", () => {
+  test("unauthenticated → footer shows 'Sign in to Registry' from the start, no Update button", async () => {
+    setupMainApi({ authenticated: false });
     render(<Harness installedWidgets={installed} />);
+
     await waitFor(() => {
       expect(screen.getByText(/2 updates available/)).toBeInTheDocument();
     });
-
-    const updateBtn = screen.getByRole("button", {
-      name: /Update 2 widgets/,
+    // Subtitle copy explains why we're asking to sign in.
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Sign in to the registry to install 2 widget/),
+      ).toBeInTheDocument();
     });
-    await act(async () => {
-      fireEvent.click(updateBtn);
+    // Sign-in button is in the footer instead of "Update N widgets".
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("app-updates-modal-sign-in-registry"),
+      ).toBeInTheDocument();
     });
-
-    // No install IPCs fired — getProfile gated them.
+    expect(
+      screen.queryByRole("button", { name: /Update 2 widgets/ }),
+    ).not.toBeInTheDocument();
+    // Install was never called — proactive gate, no wasted click.
     expect(window.mainApi.widgets.install).not.toHaveBeenCalled();
 
-    // Red banner appeared with the auth CTA.
-    await waitFor(() => {
-      const banner = screen.getByTestId("app-updates-modal-run-result");
-      expect(banner).toHaveTextContent(/Updated 0 of 2; 2 failed/);
-    });
-    expect(
-      screen.getByTestId("app-updates-modal-sign-in-registry"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Your registry session expired/),
-    ).toBeInTheDocument();
-
-    // Clicking the auth CTA opens the registry auth prompt.
+    // ONE click fires the device-code flow directly — no intermediate
+    // modal. initiateLogin runs, browser opens via shell.openExternal,
+    // and the button flips to a "Cancel sign-in" affordance.
     await act(async () => {
       fireEvent.click(screen.getByTestId("app-updates-modal-sign-in-registry"));
     });
-    expect(screen.getByTestId("mock-registry-auth-prompt")).toBeInTheDocument();
+    expect(window.mainApi.registryAuth.initiateLogin).toHaveBeenCalledTimes(1);
+    expect(window.mainApi.shell.openExternal).toHaveBeenCalledWith(
+      "https://reg.example/device?user_code=ABCD-1234",
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("app-updates-modal-cancel-sign-in"),
+      ).toBeInTheDocument();
+    });
+    // User code is surfaced in case the browser didn't auto-open.
+    expect(screen.getByText(/ABCD-1234/)).toBeInTheDocument();
   });
 
-  test("after successful auth, banner clears and onAuthenticated fires (so caller can clear needsAuth)", async () => {
-    setupMainApi({ profile: null });
+  test("after successful poll, footer flips to 'Update N widgets' and onAuthenticated fires", async () => {
+    jest.useFakeTimers();
+    setupMainApi({ authenticated: false });
     const onAuthClearedSpy = jest.fn();
     render(
       <Harness
@@ -260,33 +279,38 @@ describe("AppUpdatesModal — end-to-end stale-auth path", () => {
       />,
     );
     await waitFor(() => {
-      expect(screen.getByText(/2 updates available/)).toBeInTheDocument();
-    });
-
-    // Force the failed-batch state.
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /Update 2 widgets/ }));
-    });
-    await waitFor(() => {
       expect(
         screen.getByTestId("app-updates-modal-sign-in-registry"),
       ).toBeInTheDocument();
     });
 
-    // Open auth prompt + pretend sign-in succeeded.
+    // Kick off the device-code flow.
     await act(async () => {
       fireEvent.click(screen.getByTestId("app-updates-modal-sign-in-registry"));
     });
+
+    // Advance the poll interval so the mock pollToken (which resolves
+    // to "authorized") fires. useRegistryAuth uses
+    // (flow.interval || 5) * 1000 — our mock returns interval=5.
     await act(async () => {
-      fireEvent.click(screen.getByText("Pretend sign-in succeeded"));
+      jest.advanceTimersByTime(5000);
+      // Let the pending promise from pollToken resolve.
+      await Promise.resolve();
+      await Promise.resolve();
     });
 
     // Caller's hook is told to clear needsAuth.
     expect(onAuthClearedSpy).toHaveBeenCalled();
-    // The result banner is gone.
+    // Footer flipped to the install button.
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Update 2 widgets/ }),
+      ).toBeInTheDocument();
+    });
     expect(
-      screen.queryByTestId("app-updates-modal-run-result"),
+      screen.queryByTestId("app-updates-modal-sign-in-registry"),
     ).not.toBeInTheDocument();
+    jest.useRealTimers();
   });
 });
 

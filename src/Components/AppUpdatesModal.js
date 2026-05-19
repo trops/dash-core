@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Modal, FontAwesomeIcon } from "@trops/dash-react";
-import { RegistryAuthModal } from "./Registry/RegistryAuthModal";
+import { useRegistryAuth } from "../hooks/useRegistryAuth";
 
 /**
  * Footer buttons are rendered with raw <button> + explicit Tailwind
@@ -67,13 +67,54 @@ export const AppUpdatesModal = ({
   // this surface, a stale-auth user clicks Update, sees the button
   // bounce for 500ms, and has no idea why nothing happened.
   const [lastRunResult, setLastRunResult] = useState(null);
-  // Local mirror of needsAuth so the user can open RegistryAuthModal
-  // by clicking the banner's "Sign in to Registry" button. Same
-  // RegistryAuthModal pattern RegistryPackageDetail / WidgetsSection
-  // already use elsewhere — keeps the auth UX consistent across the
-  // app.
-  const [showAuth, setShowAuth] = useState(false);
+  // Direct device-code OAuth flow — clicking the footer "Sign in"
+  // button opens the system browser straight to the verification URL.
+  // Auth status is checked PROACTIVELY when the modal opens so the
+  // footer button reads "Sign in to Registry" (not "Update N widgets")
+  // before the user clicks anything when they're signed out. Saves a
+  // round-trip vs. the previous "click Update → fail → click Sign in"
+  // dance.
+  const {
+    isAuthenticated,
+    isAuthenticating,
+    authFlow,
+    authError,
+    checkAuth,
+    initiateAuth,
+    cancelAuth,
+  } = useRegistryAuth();
+  // hasCheckedAuth gates the "Sign in to Registry" CTA so we don't
+  // flash it for a single frame while the initial getStatus is still
+  // in flight (isAuthenticated starts as false). The button only
+  // shows once we've actually heard back.
+  const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    checkAuth().finally(() => {
+      if (!cancelled) setHasCheckedAuth(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, checkAuth]);
+
   const totalUpdates = widgetUpdates.length + dashboardUpdates.length;
+  // Single source of truth for "user needs to sign in before we can
+  // run the batch": either the proactive check found no session, or
+  // the parent hook flipped needsAuth (rare — only happens if auth
+  // expired between mount and the user clicking Update).
+  const needsSignIn = hasCheckedAuth && (!isAuthenticated || needsAuth);
+
+  const handleSignIn = () => {
+    initiateAuth(() => {
+      // Successful auth: clear the failure banner and tell the parent
+      // hook to drop its needsAuth flag so the user can immediately
+      // retry the Update button.
+      setLastRunResult(null);
+      if (typeof onAuthenticated === "function") onAuthenticated();
+    });
+  };
 
   const handleUpdateWidgets = async () => {
     if (typeof onUpdateWidgets !== "function") return;
@@ -134,32 +175,45 @@ export const AppUpdatesModal = ({
         {lastRunResult.runError && (
           <div className="opacity-80 mt-1">{lastRunResult.runError}</div>
         )}
-        {!lastRunResult.runError &&
-          lastRunResult.failed.length > 0 &&
-          needsAuth && (
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <span className="opacity-80">
-                Your registry session expired. Sign back in to retry the
-                install.
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowAuth(true)}
-                className="shrink-0 px-3 py-1 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white"
-                data-testid="app-updates-modal-sign-in-registry"
-              >
-                Sign in to Registry
-              </button>
-            </div>
-          )}
-        {!lastRunResult.runError &&
-          lastRunResult.failed.length > 0 &&
-          !needsAuth && (
-            <div className="opacity-80 mt-1">
-              Some installs failed. Check the per-row status in Settings →
-              Widgets and retry the affected packages.
-            </div>
-          )}
+        {!lastRunResult.runError && lastRunResult.failed.length > 0 && (
+          <div className="opacity-80 mt-1">
+            Some installs failed. Check the per-row status in Settings → Widgets
+            and retry the affected packages.
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // While the device-code flow is in progress, render an inline
+  // status banner so the user knows we're waiting on the browser tab
+  // (and has a manual code fallback if the auto-open didn't fire).
+  const renderAuthInProgress = () => {
+    if (!isAuthenticating) return null;
+    return (
+      <div
+        className="px-3 py-2 rounded border border-blue-700 bg-blue-900/30 text-xs text-blue-200 flex flex-col gap-1"
+        data-testid="app-updates-modal-auth-in-progress"
+      >
+        <div className="flex items-center gap-2 font-medium">
+          <FontAwesomeIcon
+            icon="spinner"
+            className="text-blue-300 animate-spin"
+          />
+          <span>Waiting for browser sign-in…</span>
+        </div>
+        {authFlow?.userCode && (
+          <div className="opacity-80">
+            If a browser tab didn't open, visit{" "}
+            <span className="font-mono">
+              {authFlow.verificationUrl || "the registry sign-in page"}
+            </span>{" "}
+            and enter code{" "}
+            <span className="font-mono font-semibold">{authFlow.userCode}</span>
+            .
+          </div>
+        )}
+        {authError && <div className="text-red-300">{authError}</div>}
       </div>
     );
   };
@@ -211,6 +265,7 @@ export const AppUpdatesModal = ({
     return (
       <div className="flex flex-col gap-4">
         {renderResultBanner()}
+        {renderAuthInProgress()}
         {widgetUpdates.length > 0 && (
           <div data-testid="app-updates-modal-widgets-section">
             <div className="flex items-center gap-2 px-1 mb-2 text-xs uppercase tracking-wide text-gray-400">
@@ -316,18 +371,39 @@ export const AppUpdatesModal = ({
             View dashboards
           </button>
         )}
-        {widgetUpdates.length > 0 && (
-          <button
-            type="button"
-            onClick={handleUpdateWidgets}
-            disabled={isUpdatingWidgets}
-            className={primaryBtnClass}
-          >
-            {isUpdatingWidgets
-              ? "Updating…"
-              : `Update ${widgetUpdates.length} widget${widgetUpdates.length === 1 ? "" : "s"}`}
-          </button>
-        )}
+        {widgetUpdates.length > 0 &&
+          (needsSignIn ? (
+            isAuthenticating ? (
+              <button
+                type="button"
+                onClick={cancelAuth}
+                className={secondaryBtnClass}
+                data-testid="app-updates-modal-cancel-sign-in"
+              >
+                Cancel sign-in
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSignIn}
+                className={primaryBtnClass}
+                data-testid="app-updates-modal-sign-in-registry"
+              >
+                Sign in to Registry
+              </button>
+            )
+          ) : (
+            <button
+              type="button"
+              onClick={handleUpdateWidgets}
+              disabled={isUpdatingWidgets}
+              className={primaryBtnClass}
+            >
+              {isUpdatingWidgets
+                ? "Updating…"
+                : `Update ${widgetUpdates.length} widget${widgetUpdates.length === 1 ? "" : "s"}`}
+            </button>
+          ))}
       </div>
     );
   };
@@ -369,11 +445,13 @@ export const AppUpdatesModal = ({
           </div>
           {totalUpdates > 0 && (
             <div className="text-xs text-gray-400 mt-1">
-              {widgetUpdates.length > 0 && dashboardUpdates.length > 0
-                ? `${widgetUpdates.length} widget package${widgetUpdates.length === 1 ? "" : "s"} and ${dashboardUpdates.length} dashboard${dashboardUpdates.length === 1 ? "" : "s"} have newer versions on the registry.`
-                : widgetUpdates.length > 0
-                  ? `${widgetUpdates.length} widget package${widgetUpdates.length === 1 ? "" : "s"} have newer versions on the registry.`
-                  : `${dashboardUpdates.length} dashboard${dashboardUpdates.length === 1 ? "" : "s"} have newer versions on the registry.`}
+              {needsSignIn && widgetUpdates.length > 0
+                ? `Sign in to the registry to install ${widgetUpdates.length} widget package update${widgetUpdates.length === 1 ? "" : "s"}.`
+                : widgetUpdates.length > 0 && dashboardUpdates.length > 0
+                  ? `${widgetUpdates.length} widget package${widgetUpdates.length === 1 ? "" : "s"} and ${dashboardUpdates.length} dashboard${dashboardUpdates.length === 1 ? "" : "s"} have newer versions on the registry.`
+                  : widgetUpdates.length > 0
+                    ? `${widgetUpdates.length} widget package${widgetUpdates.length === 1 ? "" : "s"} have newer versions on the registry.`
+                    : `${dashboardUpdates.length} dashboard${dashboardUpdates.length === 1 ? "" : "s"} have newer versions on the registry.`}
             </div>
           )}
         </div>
@@ -384,21 +462,6 @@ export const AppUpdatesModal = ({
           {renderFooter()}
         </div>
       </div>
-      {/* Standard registry-auth flow — same RegistryAuthModal pattern
-          RegistryPackageDetail / DiscoverDashboardsDetail / etc. use,
-          so the sign-in UX is consistent across the app. After
-          successful auth we clear the failure banner so the user can
-          retry the Update button without confusion. */}
-      <RegistryAuthModal
-        isOpen={showAuth}
-        setIsOpen={setShowAuth}
-        onAuthenticated={() => {
-          setShowAuth(false);
-          setLastRunResult(null);
-          if (typeof onAuthenticated === "function") onAuthenticated();
-        }}
-        message="The Dash Registry requires authentication to install widget updates."
-      />
     </Modal>
   );
 };
