@@ -1,5 +1,77 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 
+// --- Preflight helpers ---
+//
+// Pure utilities for computing the "what's newly required" diff used
+// to gate a batch update on user consent BEFORE any install actually
+// runs. Same shape conventions as
+// src/utils/computeDashboardPreflight.js (which solves the
+// related "dashboard load" problem); keeping these inline here so
+// the update hook is self-contained, doesn't take a dependency on
+// PreflightConsentModal's internals, and stays testable.
+
+function _diffArray(declared, granted) {
+  const grantedSet = new Set(granted || []);
+  return (declared || []).filter((x) => !grantedSet.has(x));
+}
+
+/**
+ * Diff a package-level declared MCP block against a single widget's
+ * granted MCP block. Returns a `{servers: {...}}` shape of just the
+ * NEW perms (declared but not yet granted).
+ */
+export function diffMcpServers(declaredServers, grantedServers) {
+  const out = {};
+  if (!declaredServers || typeof declaredServers !== "object") return out;
+  for (const [name, decl] of Object.entries(declaredServers)) {
+    const grant = grantedServers && grantedServers[name];
+    const tools = _diffArray(decl.tools, grant?.tools);
+    const readPaths = _diffArray(decl.readPaths, grant?.readPaths);
+    const writePaths = _diffArray(decl.writePaths, grant?.writePaths);
+    if (
+      tools.length === 0 &&
+      readPaths.length === 0 &&
+      writePaths.length === 0
+    ) {
+      continue;
+    }
+    out[name] = { tools, readPaths, writePaths };
+  }
+  return out;
+}
+
+/**
+ * Merge an addition (user-accepted lines from the preflight modal)
+ * into the existing grant blob. Additive only — never drops
+ * previously-granted items, never replaces with an empty subset.
+ * Mirrors the merge in PreflightConsentModal but server-only (fs /
+ * network domains land here when their preflight surfaces in a
+ * later iteration).
+ */
+export function mergeMcpGrants(existing, addition) {
+  const out = {
+    grantOrigin: addition?.grantOrigin || existing?.grantOrigin || "declared",
+    servers: { ...(existing?.servers || {}) },
+  };
+  for (const [name, perms] of Object.entries(addition?.servers || {})) {
+    const prev = out.servers[name] || {
+      tools: [],
+      readPaths: [],
+      writePaths: [],
+    };
+    out.servers[name] = {
+      tools: [...new Set([...(prev.tools || []), ...(perms.tools || [])])],
+      readPaths: [
+        ...new Set([...(prev.readPaths || []), ...(perms.readPaths || [])]),
+      ],
+      writePaths: [
+        ...new Set([...(prev.writePaths || []), ...(perms.writePaths || [])]),
+      ],
+    };
+  }
+  return out;
+}
+
 /**
  * useWidgetUpdates — checks the registry for newer versions of installed widgets
  * and provides a one-click update function.
@@ -34,6 +106,15 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
   const [batchStatus, setBatchStatus] = useState(new Map());
   const [isBatchUpdating, setIsBatchUpdating] = useState(false);
   const checkedRef = useRef(false);
+  // Pre-install preflight state. When the batch update needs the user
+  // to approve new MCP grants BEFORE we download anything, the hook
+  // populates pendingPreflight and suspends on preflightResolverRef.
+  // The UI reads pendingPreflight to render the consent panel and
+  // calls resolvePreflight(decision) to unblock the batch:
+  //   - decision === null         → user cancelled; entire batch aborted
+  //   - decision === { ... }      → user approved; grants written, installs run
+  const [pendingPreflight, setPendingPreflight] = useState(null);
+  const preflightResolverRef = useRef(null);
 
   // Diagnostic breadcrumbs pushed onto window.__DASH_DEBUG. We can't
   // use console.* here — dash-core's rollup build runs
@@ -297,6 +378,113 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
   // pips in real time.
   //
   // Resolves to a summary `{succeeded: string[], failed: string[]}`.
+  // Resolve the suspended preflight from the UI side. The modal's
+  // Approve button calls resolvePreflight({acceptedByWidgetId}); the
+  // Cancel button calls resolvePreflight(null).
+  const resolvePreflight = useCallback((decision) => {
+    pushDiag("preflight:resolved", {
+      cancelled: decision === null,
+      approvedWidgets:
+        decision && decision.acceptedByWidgetId
+          ? Object.keys(decision.acceptedByWidgetId).length
+          : 0,
+    });
+    const resolver = preflightResolverRef.current;
+    preflightResolverRef.current = null;
+    setPendingPreflight(null);
+    if (resolver) resolver(decision);
+  }, []);
+
+  // Scan the pending batch's new manifests against the user's
+  // existing grants; return the per-widget delta (or null if no new
+  // grants are needed and the batch can run silently).
+  const computeBatchPreflight = useCallback(
+    async (packageNames) => {
+      if (!window.mainApi?.registry?.fetchPackageManifest) {
+        // Older dash-electron preload — no manifest IPC. Fall
+        // through; the post-install consent path still fires.
+        pushDiag("preflight:no-manifest-ipc");
+        return null;
+      }
+
+      // Fetch new manifests in parallel. Soft-fail per package — a
+      // network hiccup on one shouldn't abort the whole preflight;
+      // the post-install consent path picks up anything we missed.
+      const manifests = await Promise.all(
+        packageNames.map(async (n) => {
+          try {
+            const m = await window.mainApi.registry.fetchPackageManifest(n);
+            return { name: n, manifest: m };
+          } catch (e) {
+            pushDiag("preflight:manifest-fetch-failed", {
+              name: n,
+              error: e?.message,
+            });
+            return { name: n, manifest: null };
+          }
+        }),
+      );
+
+      // Existing grants (one row per installed widgetId).
+      let allRows = [];
+      try {
+        allRows = (await window.mainApi.widgetMcp?.listAll?.()) || [];
+      } catch (e) {
+        pushDiag("preflight:listAll-failed", { error: e?.message });
+      }
+
+      const rowByWidgetId = new Map(allRows.map((r) => [r.widgetId, r]));
+      // For mapping installedWidgets (which carry componentName +
+      // packageId) → grant rows (which are keyed by widgetId like
+      // `trops.slack.SlackChannels`).
+      const rowByComponentName = new Map();
+      for (const r of allRows) {
+        const bare = r.widgetId.split(".").pop();
+        if (bare) rowByComponentName.set(bare, r);
+      }
+
+      const widgetsWithMissing = [];
+      for (const { name: packageId, manifest } of manifests) {
+        const declaredMcp = manifest?.permissions?.mcp;
+        if (!declaredMcp || Object.keys(declaredMcp).length === 0) continue;
+
+        // Find installed widgets that belong to this package. The
+        // new version may add widgets not yet installed — those fall
+        // through to the post-install consent path since we don't
+        // have a widgetId to attach a grant to until they're on disk.
+        const pkgWidgets = installedWidgets.filter(
+          (w) => (w.packageId || w.name) === packageId,
+        );
+        for (const w of pkgWidgets) {
+          const matchingRow =
+            rowByComponentName.get(w.name) ||
+            rowByWidgetId.get(`${packageId}.${w.name}`);
+          const widgetId = matchingRow?.widgetId || `${packageId}.${w.name}`;
+          const grantedMcp = matchingRow?.granted?.servers || {};
+          const missingServers = diffMcpServers(declaredMcp, grantedMcp);
+          if (Object.keys(missingServers).length === 0) continue;
+          widgetsWithMissing.push({
+            widgetId,
+            displayName: w.name,
+            packageId,
+            packageNewVersion: manifest?.version || null,
+            missing: { servers: missingServers },
+            granted: matchingRow?.granted || null,
+          });
+        }
+      }
+
+      pushDiag("preflight:computed", {
+        packageCount: packageNames.length,
+        widgetsNeedingApproval: widgetsWithMissing.length,
+      });
+      return widgetsWithMissing.length === 0
+        ? null
+        : { widgets: widgetsWithMissing };
+    },
+    [installedWidgets],
+  );
+
   const updatePackages = useCallback(
     async (packageNames) => {
       if (!Array.isArray(packageNames) || packageNames.length === 0) {
@@ -311,6 +499,60 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
       setBatchStatus(initial);
       setIsBatchUpdating(true);
       setUpdateError(null);
+
+      // --- Pre-install preflight ---
+      // Ask the registry what each new version requires, diff
+      // against the user's current grants, and bail out to the UI
+      // for approval before downloading anything. If approved, the
+      // accepted grants are persisted FIRST; then the install loop
+      // runs knowing every widget will have the perms it needs the
+      // moment it lands on disk.
+      try {
+        const preflight = await computeBatchPreflight(packageNames);
+        if (preflight) {
+          setPendingPreflight(preflight);
+          const decision = await new Promise((resolve) => {
+            preflightResolverRef.current = resolve;
+          });
+          if (!decision) {
+            // User cancelled the entire batch from the preflight.
+            // No installs run, no grants written — leave state as
+            // if they never clicked Update.
+            setBatchStatus(new Map());
+            setIsBatchUpdating(false);
+            return { succeeded: [], failed: [], cancelled: true };
+          }
+          // Persist accepted grants per widget BEFORE the install
+          // loop so the freshly-installed code can immediately use
+          // what was approved (and is gated from what wasn't).
+          const accepted = decision.acceptedByWidgetId || {};
+          for (const w of preflight.widgets) {
+            const acceptedAddition = accepted[w.widgetId];
+            if (!acceptedAddition) continue;
+            const merged = mergeMcpGrants(w.granted, acceptedAddition);
+            try {
+              await window.mainApi?.widgetMcp?.setGrant?.(w.widgetId, merged);
+              pushDiag("preflight:grant-written", {
+                widgetId: w.widgetId,
+                serverCount: Object.keys(merged.servers || {}).length,
+              });
+            } catch (e) {
+              pushDiag("preflight:grant-write-failed", {
+                widgetId: w.widgetId,
+                error: e?.message,
+              });
+              // Don't bail the batch on a single grant-write error;
+              // the install still proceeds and the post-install
+              // consent flow will re-prompt if the gate denies.
+            }
+          }
+        }
+      } catch (e) {
+        // Preflight pipeline itself failed (not the user cancelling).
+        // Don't block installs — fall through to the legacy flow.
+        pushDiag("preflight:pipeline-error", { error: e?.message });
+      }
+
       const succeeded = [];
       const failed = [];
       try {
@@ -395,5 +637,7 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
     needsAuth,
     clearNeedsAuth,
     updateError,
+    pendingPreflight,
+    resolvePreflight,
   };
 }

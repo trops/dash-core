@@ -10,7 +10,11 @@
 
 import { renderHook, act, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import { useWidgetUpdates } from "./useWidgetUpdates";
+import {
+  useWidgetUpdates,
+  diffMcpServers,
+  mergeMcpGrants,
+} from "./useWidgetUpdates";
 
 function installMainApi({ checkUpdates, install, getProfile } = {}) {
   window.mainApi = {
@@ -411,5 +415,309 @@ describe("useWidgetUpdates — updatePackages batch orchestration", () => {
       resolvers[1]({ ok: true });
       await updatePromise;
     });
+  });
+});
+
+describe("preflight helpers — diffMcpServers + mergeMcpGrants", () => {
+  test("diffMcpServers: empty out when granted covers everything declared", () => {
+    const declared = {
+      slack: { tools: ["list_channels"], readPaths: [], writePaths: [] },
+    };
+    const granted = {
+      slack: { tools: ["list_channels"], readPaths: [], writePaths: [] },
+    };
+    expect(diffMcpServers(declared, granted)).toEqual({});
+  });
+
+  test("diffMcpServers: surfaces only the NEW lines, not previously-granted ones", () => {
+    const declared = {
+      slack: {
+        tools: ["list_channels", "send_message"],
+        readPaths: ["/inbox"],
+        writePaths: [],
+      },
+    };
+    const granted = {
+      slack: { tools: ["list_channels"], readPaths: [], writePaths: [] },
+    };
+    expect(diffMcpServers(declared, granted)).toEqual({
+      slack: {
+        tools: ["send_message"],
+        readPaths: ["/inbox"],
+        writePaths: [],
+      },
+    });
+  });
+
+  test("diffMcpServers: a newly-introduced server shows up as fully missing", () => {
+    const declared = {
+      slack: { tools: ["x"] },
+      gmail: { tools: ["send"], readPaths: ["/inbox"] },
+    };
+    const granted = { slack: { tools: ["x"] } };
+    const out = diffMcpServers(declared, granted);
+    expect(out.slack).toBeUndefined();
+    expect(out.gmail).toEqual({
+      tools: ["send"],
+      readPaths: ["/inbox"],
+      writePaths: [],
+    });
+  });
+
+  test("mergeMcpGrants: addition unions in, existing items preserved", () => {
+    const existing = {
+      grantOrigin: "declared",
+      servers: {
+        slack: { tools: ["list_channels"], readPaths: [], writePaths: [] },
+      },
+    };
+    const addition = {
+      servers: {
+        slack: { tools: ["send_message"], readPaths: [], writePaths: [] },
+        gmail: { tools: ["search"], readPaths: ["/inbox"], writePaths: [] },
+      },
+    };
+    const merged = mergeMcpGrants(existing, addition);
+    expect(merged.servers.slack.tools.sort()).toEqual([
+      "list_channels",
+      "send_message",
+    ]);
+    expect(merged.servers.gmail).toEqual({
+      tools: ["search"],
+      readPaths: ["/inbox"],
+      writePaths: [],
+    });
+  });
+
+  test("mergeMcpGrants: addition with no existing produces a clean grant", () => {
+    const merged = mergeMcpGrants(null, {
+      servers: { slack: { tools: ["x"] } },
+    });
+    expect(merged.servers.slack.tools).toEqual(["x"]);
+    expect(merged.grantOrigin).toBe("declared");
+  });
+});
+
+describe("updatePackages — pre-install MCP preflight", () => {
+  function installMainApiForPreflight({
+    manifest,
+    listAll,
+    install,
+    setGrant,
+  } = {}) {
+    window.mainApi = {
+      registry: {
+        checkUpdates: jest.fn().mockResolvedValue([
+          {
+            name: "@trops/slack",
+            currentVersion: "0.0.700",
+            latestVersion: "0.0.735",
+            downloadUrl: "https://reg.example/{name}-{version}.zip",
+          },
+        ]),
+        fetchPackageManifest:
+          manifest ||
+          jest.fn().mockResolvedValue({
+            packageId: "@trops/slack",
+            version: "0.0.735",
+            permissions: {
+              mcp: {
+                slack: {
+                  tools: ["list_channels", "send_message"],
+                  readPaths: [],
+                  writePaths: [],
+                },
+              },
+            },
+          }),
+      },
+      registryAuth: {
+        getProfile: jest.fn().mockResolvedValue({ id: "user-1" }),
+      },
+      widgets: {
+        install: install || jest.fn().mockResolvedValue({ ok: true }),
+      },
+      widgetMcp: {
+        listAll:
+          listAll ||
+          jest.fn().mockResolvedValue([
+            {
+              widgetId: "trops.slack.SlackListChannels",
+              declared: {
+                servers: {
+                  slack: {
+                    tools: ["list_channels"],
+                    readPaths: [],
+                    writePaths: [],
+                  },
+                },
+              },
+              granted: {
+                servers: {
+                  slack: {
+                    tools: ["list_channels"],
+                    readPaths: [],
+                    writePaths: [],
+                  },
+                },
+              },
+            },
+          ]),
+        setGrant: setGrant || jest.fn().mockResolvedValue(true),
+      },
+    };
+  }
+
+  const installedWithGrants = [
+    {
+      name: "SlackListChannels",
+      packageId: "@trops/slack",
+      source: "installed",
+      version: "0.0.700",
+    },
+  ];
+
+  test("suspends the batch via pendingPreflight when new perms are declared", async () => {
+    installMainApiForPreflight();
+    const { result } = renderHook(() =>
+      useWidgetUpdates(installedWithGrants, jest.fn()),
+    );
+    await waitFor(() => {
+      expect(result.current.packagesWithUpdates.length).toBe(1);
+    });
+
+    let batchPromise;
+    act(() => {
+      batchPromise = result.current.updatePackages(["@trops/slack"]);
+    });
+
+    await waitFor(() => {
+      expect(result.current.pendingPreflight).not.toBeNull();
+    });
+    expect(result.current.pendingPreflight.widgets).toHaveLength(1);
+    expect(
+      result.current.pendingPreflight.widgets[0].missing.servers.slack,
+    ).toEqual({
+      tools: ["send_message"],
+      readPaths: [],
+      writePaths: [],
+    });
+    // Install has NOT fired yet — the batch is suspended on the
+    // preflight resolver.
+    expect(window.mainApi.widgets.install).not.toHaveBeenCalled();
+
+    // Cancel — the batch returns with cancelled:true, no installs,
+    // no grant writes.
+    act(() => {
+      result.current.resolvePreflight(null);
+    });
+    const summary = await batchPromise;
+    expect(summary).toEqual({
+      succeeded: [],
+      failed: [],
+      cancelled: true,
+    });
+    expect(window.mainApi.widgets.install).not.toHaveBeenCalled();
+    expect(window.mainApi.widgetMcp.setGrant).not.toHaveBeenCalled();
+  });
+
+  test("approval writes accepted grants BEFORE installs run, then runs the batch", async () => {
+    installMainApiForPreflight();
+    const { result } = renderHook(() =>
+      useWidgetUpdates(installedWithGrants, jest.fn()),
+    );
+    await waitFor(() => {
+      expect(result.current.packagesWithUpdates.length).toBe(1);
+    });
+
+    let batchPromise;
+    act(() => {
+      batchPromise = result.current.updatePackages(["@trops/slack"]);
+    });
+    await waitFor(() => {
+      expect(result.current.pendingPreflight).not.toBeNull();
+    });
+
+    // Approve with the single new tool checked.
+    const widgetId = result.current.pendingPreflight.widgets[0].widgetId;
+    act(() => {
+      result.current.resolvePreflight({
+        acceptedByWidgetId: {
+          [widgetId]: {
+            servers: {
+              slack: {
+                tools: ["send_message"],
+                readPaths: [],
+                writePaths: [],
+              },
+            },
+          },
+        },
+      });
+    });
+    const summary = await batchPromise;
+
+    // Grant was written WITH the existing tool unioned in.
+    expect(window.mainApi.widgetMcp.setGrant).toHaveBeenCalledWith(
+      widgetId,
+      expect.objectContaining({
+        servers: expect.objectContaining({
+          slack: expect.objectContaining({
+            tools: expect.arrayContaining(["list_channels", "send_message"]),
+          }),
+        }),
+      }),
+    );
+    // Then install fired.
+    expect(window.mainApi.widgets.install).toHaveBeenCalledTimes(1);
+    expect(summary.succeeded).toEqual(["@trops/slack"]);
+    expect(summary.failed).toEqual([]);
+  });
+
+  test("no preflight when nothing is missing — install runs silently", async () => {
+    // listAll returns a grant covering EVERYTHING the new manifest
+    // declares, so the diff comes back empty and the batch proceeds
+    // straight to install.
+    installMainApiForPreflight({
+      listAll: jest.fn().mockResolvedValue([
+        {
+          widgetId: "trops.slack.SlackListChannels",
+          declared: {
+            servers: {
+              slack: {
+                tools: ["list_channels", "send_message"],
+                readPaths: [],
+                writePaths: [],
+              },
+            },
+          },
+          granted: {
+            servers: {
+              slack: {
+                tools: ["list_channels", "send_message"],
+                readPaths: [],
+                writePaths: [],
+              },
+            },
+          },
+        },
+      ]),
+    });
+    const { result } = renderHook(() =>
+      useWidgetUpdates(installedWithGrants, jest.fn()),
+    );
+    await waitFor(() => {
+      expect(result.current.packagesWithUpdates.length).toBe(1);
+    });
+
+    let summary;
+    await act(async () => {
+      summary = await result.current.updatePackages(["@trops/slack"]);
+    });
+
+    expect(result.current.pendingPreflight).toBeNull();
+    expect(window.mainApi.widgets.install).toHaveBeenCalledTimes(1);
+    expect(window.mainApi.widgetMcp.setGrant).not.toHaveBeenCalled();
+    expect(summary.succeeded).toEqual(["@trops/slack"]);
   });
 });

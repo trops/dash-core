@@ -13,6 +13,7 @@ const REGISTRY_PUBLISH_WIDGET = "registry:publish-widget";
 const REGISTRY_INSPECT_WIDGET_PACKAGE = "registry:inspect-widget-package";
 const REGISTRY_SCAN_WIDGET_DEFAULTS = "registry:scan-widget-defaults";
 const REGISTRY_PREVIEW_FETCH = "registry:preview-fetch";
+const REGISTRY_FETCH_PACKAGE_MANIFEST = "registry:fetch-package-manifest";
 
 module.exports = {
   REGISTRY_FETCH_INDEX,
@@ -25,4 +26,5 @@ module.exports = {
   REGISTRY_INSPECT_WIDGET_PACKAGE,
   REGISTRY_SCAN_WIDGET_DEFAULTS,
   REGISTRY_PREVIEW_FETCH,
+  REGISTRY_FETCH_PACKAGE_MANIFEST,
 };

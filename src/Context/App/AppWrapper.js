@@ -368,6 +368,8 @@ export const AppWrapper = ({ children, credentials = null, dashApi }) => {
         isChecking={appUpdates.isChecking}
         hasChecked={appUpdates.hasChecked}
         needsAuth={appUpdates.needsAuth}
+        pendingPreflight={appUpdates.pendingPreflight}
+        resolvePreflight={appUpdates.resolvePreflight}
         onUpdateWidgets={async () => {
           // Return the summary so the modal can render
           // "X succeeded, Y failed" instead of silently bouncing

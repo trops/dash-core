@@ -603,6 +603,146 @@ async function fetchPackageSource(packageName, componentName = null) {
   }
 }
 
+/**
+ * Fetch the `dash.permissions` block from a registry package WITHOUT
+ * installing it. Powers the pre-install preflight: the update flow
+ * uses this to learn which MCP/fs/network grants a new package
+ * version requires before downloading the install. The user then
+ * approves the delta (declared - already-granted) and the install
+ * proceeds knowing nothing will surprise them after the fact.
+ *
+ * Returns `{ packageId, version, permissions }` where `permissions`
+ * is the `dash.permissions` blob from package.json (or null if the
+ * package declares none). Throws on network / unzip / parse errors —
+ * callers should treat a throw as "couldn't preflight; prompt anyway
+ * post-install via the existing flow" rather than blocking the
+ * update on a transient registry hiccup.
+ *
+ * @param {string} packageName
+ * @returns {Promise<{packageId: string, version: string|null, permissions: object|null}>}
+ */
+async function fetchPackageManifest(packageName) {
+  if (!packageName) {
+    throw new Error("fetchPackageManifest: packageName is required");
+  }
+
+  const AdmZip = require("adm-zip");
+  const { validateZipEntries } = require("../widgetRegistry");
+
+  const pkg = await getPackage(packageName);
+  if (!pkg) {
+    throw new Error(`Package "${packageName}" not found in the registry`);
+  }
+  if (!pkg.downloadUrl) {
+    throw new Error(`Package "${packageName}" has no downloadUrl`);
+  }
+
+  const parsedUrl = new URL(pkg.downloadUrl);
+  if (parsedUrl.protocol !== "https:") {
+    throw new Error(
+      `Registry downloads must use HTTPS. Refusing to fetch: ${pkg.downloadUrl}`,
+    );
+  }
+
+  const fetchOpts = {};
+  const registryBase =
+    process.env.DASH_REGISTRY_API_URL ||
+    "https://main.d919rwhuzp7rj.amplifyapp.com";
+  if (
+    pkg.downloadUrl.includes(registryBase) ||
+    pkg.downloadUrl.includes("/api/packages/")
+  ) {
+    const auth = getStoredToken();
+    if (auth?.token) {
+      fetchOpts.headers = { Authorization: `Bearer ${auth.token}` };
+    }
+  }
+
+  const response = await fetch(pkg.downloadUrl, fetchOpts);
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error("Authentication required to fetch this package manifest");
+    }
+    throw new Error(`Failed to fetch package manifest: ${response.statusText}`);
+  }
+  const contentType = response.headers.get("content-type") || "";
+  let buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length === 0) {
+    throw new Error("Manifest fetch failed: registry returned an empty body");
+  }
+  if (contentType.includes("application/json")) {
+    const jsonData = JSON.parse(buffer.toString("utf-8"));
+    if (jsonData.error) {
+      throw new Error(`Manifest fetch failed: ${jsonData.error}`);
+    }
+    if (jsonData.downloadUrl) {
+      const zipResponse = await fetch(jsonData.downloadUrl);
+      if (!zipResponse.ok) {
+        throw new Error(
+          `Manifest fetch failed: storage returned ${zipResponse.status} ${zipResponse.statusText}`,
+        );
+      }
+      buffer = Buffer.from(await zipResponse.arrayBuffer());
+    }
+  }
+
+  const zip = new AdmZip(buffer);
+  const safeName = (pkg.name || "pkg").replace(/[^a-zA-Z0-9-_]/g, "_");
+  const tempDir = path.join(
+    os.tmpdir(),
+    `dash-registry-manifest-${safeName}-${Date.now()}`,
+  );
+
+  try {
+    validateZipEntries(zip, tempDir);
+    // Only need package.json — extract that single entry instead of
+    // the whole zip to keep this cheap (the full extract in
+    // fetchPackageSource is the right call for previews, but
+    // pre-install preflight is hot path during a 22-widget batch
+    // update so trimming N×(unzip-everything) helps).
+    const pkgJsonEntry = zip.getEntries().find((e) => {
+      const name = e.entryName.replace(/\\/g, "/");
+      return name === "package.json" || name.endsWith("/package.json");
+    });
+    if (!pkgJsonEntry) {
+      // No package.json in the zip — treat as "no declared
+      // permissions" rather than throwing. Callers fall through to
+      // the post-install consent path.
+      return {
+        packageId: toPackageId(pkg.scope, pkg.name),
+        version: pkg.version || null,
+        permissions: null,
+      };
+    }
+    const pkgJsonText = zip.readAsText(pkgJsonEntry);
+    let parsed;
+    try {
+      parsed = JSON.parse(pkgJsonText);
+    } catch (e) {
+      throw new Error(
+        `Manifest fetch failed: invalid package.json (${e.message})`,
+      );
+    }
+    return {
+      packageId: toPackageId(pkg.scope, pkg.name),
+      version: pkg.version || parsed.version || null,
+      permissions: parsed.dash?.permissions || null,
+    };
+  } finally {
+    // tempDir was never actually created (we read in-memory via
+    // zip.readAsText), but validateZipEntries computes paths against
+    // it. Keep the symmetric cleanup defensively in case future
+    // edits switch back to extractAllTo.
+    try {
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    } catch (_) {
+      // non-fatal
+    }
+  }
+}
+
 module.exports = {
   fetchRegistryIndex,
   searchRegistry,
@@ -611,4 +751,5 @@ module.exports = {
   getPackage,
   checkUpdates,
   fetchPackageSource,
+  fetchPackageManifest,
 };

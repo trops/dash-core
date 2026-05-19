@@ -15,6 +15,69 @@ const primaryBtnClass =
   "px-3 py-2 text-sm font-medium rounded bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-white";
 
 /**
+ * Flatten a single widget's `missing` blob (output of useWidgetUpdates'
+ * preflight computation) into an array of keyed lines the modal can
+ * render as toggleable checkboxes.
+ *
+ * Each line carries `apply(acc)` that mutates an accumulator into the
+ * grant-blob shape the main process accepts. Mirrors the shape
+ * PreflightConsentModal uses for the dashboard-load case so the modal
+ * UX stays consistent (server / tool / readPath / writePath rows).
+ */
+function flattenPreflightLines(missing) {
+  const lines = [];
+  if (!missing || !missing.servers) return lines;
+  for (const [serverName, perms] of Object.entries(missing.servers)) {
+    for (const tool of perms.tools || []) {
+      lines.push({
+        key: `mcp:${serverName}:tool:${tool}`,
+        label: `Call ${tool} on ${serverName}`,
+        apply: (acc) => {
+          acc.servers = acc.servers || {};
+          acc.servers[serverName] = acc.servers[serverName] || {
+            tools: [],
+            readPaths: [],
+            writePaths: [],
+          };
+          acc.servers[serverName].tools.push(tool);
+        },
+      });
+    }
+    for (const p of perms.readPaths || []) {
+      lines.push({
+        key: `mcp:${serverName}:readPath:${p}`,
+        label: `Read files at ${p} (${serverName})`,
+        apply: (acc) => {
+          acc.servers = acc.servers || {};
+          acc.servers[serverName] = acc.servers[serverName] || {
+            tools: [],
+            readPaths: [],
+            writePaths: [],
+          };
+          acc.servers[serverName].readPaths.push(p);
+        },
+      });
+    }
+    for (const p of perms.writePaths || []) {
+      lines.push({
+        key: `mcp:${serverName}:writePath:${p}`,
+        label: `Write files at ${p} (${serverName})`,
+        apply: (acc) => {
+          acc.servers = acc.servers || {};
+          acc.servers[serverName] = acc.servers[serverName] || {
+            tools: [],
+            readPaths: [],
+            writePaths: [],
+          };
+          acc.servers[serverName].writePaths.push(p);
+        },
+      });
+    }
+  }
+  return lines;
+}
+
+/**
  * AppUpdatesModal — top-level "updates available" prompt the app shell
  * pops on launch (and optionally from a manual "Check for updates"
  * trigger) when widgets or dashboards have outstanding updates.
@@ -56,6 +119,8 @@ export const AppUpdatesModal = ({
   isChecking = false,
   hasChecked = false,
   needsAuth = false,
+  pendingPreflight = null,
+  resolvePreflight,
   onUpdateWidgets,
   onOpenDashboardSettings,
   onRemindLater,
@@ -98,6 +163,27 @@ export const AppUpdatesModal = ({
       cancelled = true;
     };
   }, [isOpen, checkAuth]);
+
+  // Preflight checkbox state — `{ [widgetId]: { [lineKey]: bool } }`.
+  // Initialized to "everything checked" on each new pendingPreflight
+  // so the default action approves the full ask; the user opts OUT of
+  // individual lines by unchecking. Mirror of how
+  // PreflightConsentModal seeds its checks.
+  const [preflightChecked, setPreflightChecked] = useState({});
+  const [selectedPreflightWidgetId, setSelectedPreflightWidgetId] =
+    useState(null);
+  useEffect(() => {
+    if (!pendingPreflight || !pendingPreflight.widgets?.length) return;
+    const initial = {};
+    for (const w of pendingPreflight.widgets) {
+      initial[w.widgetId] = {};
+      for (const ln of flattenPreflightLines(w.missing)) {
+        initial[w.widgetId][ln.key] = true;
+      }
+    }
+    setPreflightChecked(initial);
+    setSelectedPreflightWidgetId(pendingPreflight.widgets[0].widgetId);
+  }, [pendingPreflight]);
 
   const totalUpdates = widgetUpdates.length + dashboardUpdates.length;
   // Single source of truth for "user needs to sign in before we can
@@ -148,6 +234,44 @@ export const AppUpdatesModal = ({
   const handleRemindLater = () => {
     if (typeof onRemindLater === "function") onRemindLater();
     setIsOpen(false);
+  };
+
+  // --- Preflight handlers ---
+  const togglePreflightLine = (widgetId, lineKey) => {
+    setPreflightChecked((prev) => ({
+      ...prev,
+      [widgetId]: {
+        ...(prev[widgetId] || {}),
+        [lineKey]: !(prev[widgetId] && prev[widgetId][lineKey]),
+      },
+    }));
+  };
+
+  const handlePreflightApprove = () => {
+    if (typeof resolvePreflight !== "function" || !pendingPreflight) return;
+    // Build the per-widget addition blob from checked lines. Skip
+    // widgets where the user unchecked everything (mergeMcpGrants
+    // would no-op them anyway, but explicit is cheaper than
+    // mysterious).
+    const acceptedByWidgetId = {};
+    for (const w of pendingPreflight.widgets) {
+      const lines = flattenPreflightLines(w.missing);
+      const acc = {};
+      let any = false;
+      for (const ln of lines) {
+        if (preflightChecked[w.widgetId]?.[ln.key]) {
+          ln.apply(acc);
+          any = true;
+        }
+      }
+      if (any) acceptedByWidgetId[w.widgetId] = acc;
+    }
+    resolvePreflight({ acceptedByWidgetId });
+  };
+
+  const handlePreflightCancel = () => {
+    if (typeof resolvePreflight !== "function") return;
+    resolvePreflight(null);
   };
 
   // The three render modes: checking, up-to-date, or updates-available.
@@ -218,7 +342,90 @@ export const AppUpdatesModal = ({
     );
   };
 
+  const renderPreflightBody = () => {
+    if (!pendingPreflight) return null;
+    const widgets = pendingPreflight.widgets || [];
+    const selected =
+      widgets.find((w) => w.widgetId === selectedPreflightWidgetId) ||
+      widgets[0];
+    if (!selected) return null;
+    const lines = flattenPreflightLines(selected.missing);
+    return (
+      <div
+        className="flex flex-col gap-4"
+        data-testid="app-updates-modal-preflight"
+      >
+        <div className="px-3 py-2 rounded border border-amber-700 bg-amber-900/30 text-xs text-amber-200">
+          These widgets need new permissions to function after the update.
+          Review and approve before installing — anything you leave unchecked
+          will be denied at runtime and can be granted later in Settings →
+          Privacy &amp; Security.
+        </div>
+        <div className="flex border border-gray-700 rounded overflow-hidden">
+          {/* Sidebar: widget list */}
+          <div className="flex flex-col w-44 border-r border-gray-700 bg-gray-900/40 max-h-64 overflow-y-auto">
+            {widgets.map((w) => {
+              const lineCount = flattenPreflightLines(w.missing).length;
+              const isActive = w.widgetId === selected.widgetId;
+              return (
+                <button
+                  key={w.widgetId}
+                  type="button"
+                  onClick={() => setSelectedPreflightWidgetId(w.widgetId)}
+                  className={`flex items-center justify-between gap-2 px-3 py-2 text-left text-xs border-b border-gray-800 transition-colors ${
+                    isActive
+                      ? "bg-blue-900/30 text-gray-100"
+                      : "text-gray-300 hover:bg-gray-800/40"
+                  }`}
+                  data-testid={`app-updates-modal-preflight-widget-${w.widgetId}`}
+                >
+                  <span className="truncate">{w.displayName}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-300 shrink-0">
+                    {lineCount}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {/* Detail: per-line checkboxes */}
+          <div className="flex flex-col flex-1 min-w-0 p-3 gap-2 max-h-64 overflow-y-auto">
+            <div className="text-xs text-gray-400 mb-1">
+              <span className="font-semibold text-gray-200">
+                {selected.displayName}
+              </span>{" "}
+              <span className="opacity-60 font-mono">{selected.packageId}</span>
+            </div>
+            {lines.length === 0 && (
+              <div className="text-xs text-gray-500">
+                No new permissions for this widget.
+              </div>
+            )}
+            {lines.map((ln) => {
+              const isChecked = !!preflightChecked[selected.widgetId]?.[ln.key];
+              return (
+                <label
+                  key={ln.key}
+                  className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer px-2 py-1 rounded hover:bg-gray-800/40"
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() =>
+                      togglePreflightLine(selected.widgetId, ln.key)
+                    }
+                  />
+                  <span>{ln.label}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderBody = () => {
+    if (pendingPreflight) return renderPreflightBody();
     if (isChecking && totalUpdates === 0) {
       return (
         <div className="flex flex-col gap-4">
@@ -320,9 +527,33 @@ export const AppUpdatesModal = ({
   };
 
   // Footer adapts to state: checking → only "Cancel"; up-to-date →
-  // "Close"; updates-found → "Remind me later" + per-category action
-  // buttons.
+  // "Close"; preflight → "Cancel update" + "Approve and install";
+  // updates-found → "Remind me later" + per-category action buttons.
   const renderFooter = () => {
+    if (pendingPreflight) {
+      const widgetCount = pendingPreflight.widgets?.length || 0;
+      return (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handlePreflightCancel}
+            className={secondaryBtnClass}
+            data-testid="app-updates-modal-preflight-cancel"
+          >
+            Cancel update
+          </button>
+          <button
+            type="button"
+            onClick={handlePreflightApprove}
+            className={primaryBtnClass}
+            data-testid="app-updates-modal-preflight-approve"
+          >
+            Approve and install
+            {widgetCount > 0 ? ` (${widgetCount})` : ""}
+          </button>
+        </div>
+      );
+    }
     if (isChecking && totalUpdates === 0) {
       return (
         <button
@@ -421,38 +652,52 @@ export const AppUpdatesModal = ({
           <div className="flex items-center gap-2 text-base font-semibold text-gray-100">
             <FontAwesomeIcon
               icon={
-                isChecking && totalUpdates === 0
-                  ? "spinner"
-                  : hasChecked && totalUpdates === 0
-                    ? "circle-check"
-                    : "arrow-up"
+                pendingPreflight
+                  ? "shield-halved"
+                  : isChecking && totalUpdates === 0
+                    ? "spinner"
+                    : hasChecked && totalUpdates === 0
+                      ? "circle-check"
+                      : "arrow-up"
               }
               className={
-                isChecking && totalUpdates === 0
-                  ? "text-blue-400 animate-spin"
-                  : hasChecked && totalUpdates === 0
-                    ? "text-emerald-400"
-                    : "text-blue-400"
+                pendingPreflight
+                  ? "text-amber-400"
+                  : isChecking && totalUpdates === 0
+                    ? "text-blue-400 animate-spin"
+                    : hasChecked && totalUpdates === 0
+                      ? "text-emerald-400"
+                      : "text-blue-400"
               }
             />
             <span>
-              {isChecking && totalUpdates === 0
-                ? "Checking for updates"
-                : hasChecked && totalUpdates === 0
-                  ? "Up to date"
-                  : `${totalUpdates} update${totalUpdates === 1 ? "" : "s"} available`}
+              {pendingPreflight
+                ? `Review ${pendingPreflight.widgets?.length || 0} widget${(pendingPreflight.widgets?.length || 0) === 1 ? "" : "s"} before installing`
+                : isChecking && totalUpdates === 0
+                  ? "Checking for updates"
+                  : hasChecked && totalUpdates === 0
+                    ? "Up to date"
+                    : `${totalUpdates} update${totalUpdates === 1 ? "" : "s"} available`}
             </span>
           </div>
-          {totalUpdates > 0 && (
+          {pendingPreflight ? (
             <div className="text-xs text-gray-400 mt-1">
-              {needsSignIn && widgetUpdates.length > 0
-                ? `Sign in to the registry to install ${widgetUpdates.length} widget package update${widgetUpdates.length === 1 ? "" : "s"}.`
-                : widgetUpdates.length > 0 && dashboardUpdates.length > 0
-                  ? `${widgetUpdates.length} widget package${widgetUpdates.length === 1 ? "" : "s"} and ${dashboardUpdates.length} dashboard${dashboardUpdates.length === 1 ? "" : "s"} have newer versions on the registry.`
-                  : widgetUpdates.length > 0
-                    ? `${widgetUpdates.length} widget package${widgetUpdates.length === 1 ? "" : "s"} have newer versions on the registry.`
-                    : `${dashboardUpdates.length} dashboard${dashboardUpdates.length === 1 ? "" : "s"} have newer versions on the registry.`}
+              New versions request permissions you haven't granted yet. Approve
+              what you're comfortable with — the rest stays denied and the
+              install still goes through.
             </div>
+          ) : (
+            totalUpdates > 0 && (
+              <div className="text-xs text-gray-400 mt-1">
+                {needsSignIn && widgetUpdates.length > 0
+                  ? `Sign in to the registry to install ${widgetUpdates.length} widget package update${widgetUpdates.length === 1 ? "" : "s"}.`
+                  : widgetUpdates.length > 0 && dashboardUpdates.length > 0
+                    ? `${widgetUpdates.length} widget package${widgetUpdates.length === 1 ? "" : "s"} and ${dashboardUpdates.length} dashboard${dashboardUpdates.length === 1 ? "" : "s"} have newer versions on the registry.`
+                    : widgetUpdates.length > 0
+                      ? `${widgetUpdates.length} widget package${widgetUpdates.length === 1 ? "" : "s"} have newer versions on the registry.`
+                      : `${dashboardUpdates.length} dashboard${dashboardUpdates.length === 1 ? "" : "s"} have newer versions on the registry.`}
+              </div>
+            )
           )}
         </div>
 

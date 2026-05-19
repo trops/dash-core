@@ -120,5 +120,11 @@ export function useAppUpdates({
     isWidgetBatchUpdating: widget.isBatchUpdating,
     needsAuth: widget.needsAuth,
     clearNeedsAuth: widget.clearNeedsAuth,
+    // Pre-install MCP preflight. Non-null when the batch is suspended
+    // waiting on the user to review newly-required grants; the UI
+    // calls resolvePreflight({acceptedByWidgetId}) to approve or
+    // resolvePreflight(null) to cancel the entire batch.
+    pendingPreflight: widget.pendingPreflight,
+    resolvePreflight: widget.resolvePreflight,
   };
 }
