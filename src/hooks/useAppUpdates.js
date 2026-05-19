@@ -88,15 +88,18 @@ export function useAppUpdates({
   // than during an in-flight check.
   const hasChecked = !widget.isChecking && hasCheckedDashboards;
 
-  // Manual re-check trigger — fires the dashboard check directly;
-  // the widget hook doesn't currently expose a `recheck()` (its
-  // useEffect is one-shot per mount), so for now manual re-checks
-  // pick up new dashboard updates but leave widget updates as
-  // whatever the on-mount check found. A future improvement is to
-  // expose recheck from useWidgetUpdates and wire it here.
+  // Manual re-check trigger — re-runs BOTH the widget registry
+  // check (force-refreshing the cache) AND the dashboard check.
+  // Previously only the dashboard check ran on manual recheck, so a
+  // user who wasn't signed in at app mount (when the widget hook's
+  // one-shot useEffect fired) had no way to surface private-package
+  // updates — they were stuck with whatever the anon mount-time
+  // fetch returned. Routing both checks through here also keeps
+  // popover-driven and modal-triggered rechecks symmetrical with
+  // the auto-pop check.
   const recheck = useCallback(async () => {
-    await checkDashboardUpdates();
-  }, [checkDashboardUpdates]);
+    await Promise.all([widget.recheck(), checkDashboardUpdates()]);
+  }, [widget, checkDashboardUpdates]);
 
   // Kick off the initial dashboard check once appId is available.
   // One-shot — same gating pattern useWidgetUpdates uses.

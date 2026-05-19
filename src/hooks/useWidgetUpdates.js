@@ -130,7 +130,7 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
   const pushDiag = (event, data) => {
     if (!window.__DASH_DEBUG) {
       window.__DASH_DEBUG = [];
-      window.__DASH_DEBUG_BUILD = "preflight+verify+failedDetails";
+      window.__DASH_DEBUG_BUILD = "preflight+verify+failedDetails+recheck";
       window.__DASH_DEBUG.push({
         t: Date.now(),
         src: "useWidgetUpdates",
@@ -231,6 +231,54 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
     checkedRef.current = true;
     runUpdateCheck(installedWidgets);
   }, [installedWidgets, runUpdateCheck]);
+
+  // Manual recheck — useAppUpdates wires this to the popover
+  // "Check for updates" trigger so the user can force a fresh
+  // registry hit. Without this exposed, the auto-check at mount
+  // was the only widget check that ever ran, and a stale cache
+  // (e.g. user wasn't signed in at mount but is now) made private
+  // packages invisible forever — even though they're checkable
+  // anonymously now via the check-versions endpoint, the in-process
+  // registry index cache might still hold the old anon snapshot for
+  // unrelated calls.
+  //
+  // Force-refreshes the main-process registry-index cache first via
+  // `registry.fetchIndex(true)`. checkUpdates itself routes through
+  // the new check-versions endpoint (which doesn't read the index
+  // cache at all), so the force-refresh primarily benefits any
+  // index-fallback paths and other consumers (search, getPackage).
+  const recheck = useCallback(async () => {
+    pushDiag("recheck:invoked", {
+      installedCount: installedWidgets.length,
+    });
+    try {
+      await window.mainApi?.registry?.fetchIndex?.(true);
+      pushDiag("recheck:cache-invalidated");
+    } catch (e) {
+      pushDiag("recheck:cache-invalidate-failed", { error: e?.message });
+    }
+    return runUpdateCheck(installedWidgets);
+  }, [installedWidgets, runUpdateCheck]);
+
+  // Re-run the check when the user's registry auth state changes
+  // (sign-in / sign-out / token refresh). Dispatched by
+  // useRegistryAuth on transitions. Most modern packages can be
+  // version-checked anonymously via the new check-versions endpoint,
+  // so this listener is now a "belt and suspenders" — useful for
+  // index-fallback paths (bare-name widgets, registries without the
+  // new endpoint) where auth still matters.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onAuthChanged = () => {
+      pushDiag("auth-changed:rechecking");
+      checkedRef.current = false;
+      recheck();
+    };
+    window.addEventListener("dash:registry-auth-changed", onAuthChanged);
+    return () =>
+      window.removeEventListener("dash:registry-auth-changed", onAuthChanged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recheck]);
 
   // Update a single widget by downloading the latest version.
   //
@@ -748,6 +796,7 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
     isChecking,
     updateWidget,
     updatePackages,
+    recheck,
     isUpdating,
     batchStatus,
     isBatchUpdating,

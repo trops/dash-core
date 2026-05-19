@@ -348,33 +348,176 @@ async function getPackage(packageName) {
 }
 
 /**
- * Check for updates to installed widgets
+ * Parse an installed widget's id (`@scope/name` or `scope/name` or
+ * `name`) into a `{scope, name}` ref the check-versions endpoint
+ * accepts. Returns null when no scope is present — the new endpoint
+ * needs both fields.
+ */
+function _parseScopedRef(installedId) {
+  if (!installedId || typeof installedId !== "string") return null;
+  if (!installedId.includes("/")) return null;
+  const stripped = installedId.replace(/^@/, "");
+  const parts = stripped.split("/");
+  if (parts.length < 2) return null;
+  const scope = parts[0];
+  const name = parts.slice(1).join("/");
+  if (!scope || !name) return null;
+  return { scope, name };
+}
+
+/**
+ * Check for updates to installed widgets.
+ *
+ * Uses the registry's POST /api/packages/check-versions endpoint, which
+ * returns latest-version-by-id regardless of auth/visibility. Critically,
+ * this means **private packages the user has installed are checked even
+ * when the app launches anonymously** (before sign-in completes / for
+ * users who haven't signed in this session). The previous implementation
+ * fetched the entire registry index, which is visibility-filtered
+ * server-side and so silently hid private packages from anonymous
+ * callers — the user's installed-but-private widgets reported "no
+ * update available" forever until they manually re-checked after
+ * signing in.
+ *
+ * Bare-name (unscoped) installed widgets can't be queried via the new
+ * endpoint (it needs scope+name). For those we fall back to the legacy
+ * index-scan. Same fallback covers the transition period while the
+ * registry-side endpoint is still being deployed — if the endpoint
+ * isn't there yet, we silently degrade to the old behavior.
  *
  * @param {Array<Object>} installedWidgets - Array of { name, version } objects
  * @returns {Promise<Array<Object>>} Widgets with available updates
  */
 async function checkUpdates(installedWidgets = []) {
-  const index = await fetchRegistryIndex();
-  const updates = [];
+  if (!Array.isArray(installedWidgets) || installedWidgets.length === 0) {
+    return [];
+  }
 
+  // Bucket installed widgets by whether they have a scope (and so can
+  // use the new endpoint) or not (fall back to index scan).
+  const scopedRefs = []; // { scope, name, installed }
+  const bareInstalled = []; // { name, version }
   for (const installed of installedWidgets) {
     const installedId = installed.packageId || installed.name;
-    const pkg = (index.packages || []).find((p) => {
-      // Match by scoped ID (e.g. "@trops/slack" === "@trops/slack")
-      const registryId = toPackageId(p.scope, p.name);
-      if (registryId === installedId) return true;
-      // Fallback: bare-name match for pre-migration entries
-      if (p.name === installedId) return true;
-      return false;
-    });
-    if (pkg && pkg.version !== installed.version) {
-      updates.push({
-        name: installed.name,
-        currentVersion: installed.version,
-        latestVersion: pkg.version,
-        downloadUrl: pkg.downloadUrl,
-        changelog: pkg.changelog || null,
+    const ref = _parseScopedRef(installedId);
+    if (ref) {
+      scopedRefs.push({
+        scope: ref.scope,
+        name: ref.name,
+        installed,
+        installedId,
       });
+    } else {
+      bareInstalled.push(installed);
+    }
+  }
+
+  const updates = [];
+
+  // --- Path A: check-versions endpoint (covers scoped refs, anon-friendly) ---
+  if (scopedRefs.length > 0) {
+    const registryBase =
+      process.env.DASH_REGISTRY_API_URL || DEFAULT_REGISTRY_API_URL;
+    const endpoint = `${registryBase}/api/packages/check-versions`;
+    let endpointAvailable = true;
+    let results = null;
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          // Auth is optional for this endpoint — send it when we have
+          // it so future server-side telemetry can correlate, but
+          // the response shape doesn't depend on identity.
+          ...buildAuthHeaders(),
+        },
+        body: JSON.stringify({
+          refs: scopedRefs.map((r) => ({ scope: r.scope, name: r.name })),
+        }),
+      });
+      if (response.status === 404) {
+        // Registry-side endpoint not deployed yet — degrade to index
+        // scan so the app keeps working through the rollout window.
+        endpointAvailable = false;
+      } else if (!response.ok) {
+        throw new Error(
+          `check-versions ${response.status} ${response.statusText}`,
+        );
+      } else {
+        results = await response.json();
+      }
+    } catch (error) {
+      console.warn(
+        "[RegistryController] check-versions failed, falling back to index scan:",
+        error.message,
+      );
+      endpointAvailable = false;
+    }
+
+    if (endpointAvailable && Array.isArray(results)) {
+      // Index results by `scope/name` so we can join back to our
+      // scopedRefs list without depending on Promise.all ordering.
+      const byKey = new Map();
+      for (const r of results) {
+        if (r && r.scope && r.name) {
+          byKey.set(`${r.scope}/${r.name}`, r);
+        }
+      }
+      for (const ref of scopedRefs) {
+        const result = byKey.get(`${ref.scope}/${ref.name}`);
+        if (!result || !result.exists) continue;
+        if (
+          result.latestVersion &&
+          result.latestVersion !== ref.installed.version
+        ) {
+          // Build the download URL deterministically — same shape the
+          // existing index serves (`/api/packages/<scope>/<name>/download?version=<v>`).
+          // Constructed client-side because check-versions intentionally
+          // doesn't return downloadUrl (less to leak; download still
+          // gated by visibility/entitlements at /download).
+          const downloadUrl = `${registryBase}/api/packages/${encodeURIComponent(
+            ref.scope,
+          )}/${encodeURIComponent(ref.name)}/download?version=${encodeURIComponent(
+            result.latestVersion,
+          )}`;
+          updates.push({
+            name: ref.installed.name,
+            currentVersion: ref.installed.version,
+            latestVersion: result.latestVersion,
+            downloadUrl,
+            changelog: null,
+          });
+        }
+      }
+    } else {
+      // Endpoint unavailable — treat scoped refs as bare for the
+      // fallback path so they at least get a public-only check.
+      for (const ref of scopedRefs) {
+        bareInstalled.push(ref.installed);
+      }
+    }
+  }
+
+  // --- Path B: index scan (bare-name widgets + endpoint fallback) ---
+  if (bareInstalled.length > 0) {
+    const index = await fetchRegistryIndex();
+    for (const installed of bareInstalled) {
+      const installedId = installed.packageId || installed.name;
+      const pkg = (index.packages || []).find((p) => {
+        const registryId = toPackageId(p.scope, p.name);
+        if (registryId === installedId) return true;
+        if (p.name === installedId) return true;
+        return false;
+      });
+      if (pkg && pkg.version !== installed.version) {
+        updates.push({
+          name: installed.name,
+          currentVersion: installed.version,
+          latestVersion: pkg.version,
+          downloadUrl: pkg.downloadUrl,
+          changelog: pkg.changelog || null,
+        });
+      }
     }
   }
 
