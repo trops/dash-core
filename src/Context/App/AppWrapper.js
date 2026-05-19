@@ -368,7 +368,11 @@ export const AppWrapper = ({ children, credentials = null, dashApi }) => {
         isChecking={appUpdates.isChecking}
         hasChecked={appUpdates.hasChecked}
         onUpdateWidgets={async () => {
-          await appUpdates.updateWidgetPackages(
+          // Return the summary so the modal can render
+          // "X succeeded, Y failed" instead of silently bouncing
+          // the button. updateWidgetPackages resolves with
+          // { succeeded: string[], failed: string[] }.
+          return appUpdates.updateWidgetPackages(
             appUpdates.widgetUpdates.map((p) => p.name),
           );
         }}

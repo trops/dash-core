@@ -59,13 +59,37 @@ export const AppUpdatesModal = ({
   onRemindLater,
 }) => {
   const [isUpdatingWidgets, setIsUpdatingWidgets] = useState(false);
+  // Last run result so the modal can show "X succeeded, Y failed"
+  // after a batch instead of silently resetting the button. Without
+  // this surface, a stale-auth user clicks Update, sees the button
+  // bounce for 500ms, and has no idea why nothing happened.
+  const [lastRunResult, setLastRunResult] = useState(null);
   const totalUpdates = widgetUpdates.length + dashboardUpdates.length;
 
   const handleUpdateWidgets = async () => {
     if (typeof onUpdateWidgets !== "function") return;
     setIsUpdatingWidgets(true);
+    setLastRunResult(null);
     try {
-      await onUpdateWidgets();
+      // onUpdateWidgets returns { succeeded: string[], failed: string[],
+      // failedDetails?: Array<{name, error}> } from updateWidgetPackages.
+      // Older callers that returned void are tolerated — lastRunResult
+      // stays null and we fall back to the legacy "nothing happened
+      // visibly" state.
+      const result = await onUpdateWidgets();
+      if (result && typeof result === "object") {
+        setLastRunResult(result);
+      }
+    } catch (err) {
+      // updateWidgetPackages catches per-row failures internally and
+      // resolves with a summary; a thrown error here means something
+      // catastrophic outside the per-row loop. Surface it as a single
+      // "run failed" line.
+      setLastRunResult({
+        succeeded: [],
+        failed: widgetUpdates.map((p) => p.name),
+        runError: err?.message || String(err),
+      });
     } finally {
       setIsUpdatingWidgets(false);
     }
@@ -119,6 +143,31 @@ export const AppUpdatesModal = ({
 
     return (
       <div className="flex flex-col gap-4">
+        {lastRunResult && (
+          <div
+            className={
+              lastRunResult.failed.length === 0
+                ? "px-3 py-2 rounded border border-emerald-700 bg-emerald-900/30 text-xs text-emerald-200"
+                : "px-3 py-2 rounded border border-red-700 bg-red-900/30 text-xs text-red-200"
+            }
+            data-testid="app-updates-modal-run-result"
+          >
+            <div className="font-medium">
+              {lastRunResult.failed.length === 0
+                ? `Updated ${lastRunResult.succeeded.length} package${lastRunResult.succeeded.length === 1 ? "" : "s"}.`
+                : `Updated ${lastRunResult.succeeded.length} of ${lastRunResult.succeeded.length + lastRunResult.failed.length}; ${lastRunResult.failed.length} failed.`}
+            </div>
+            {lastRunResult.runError && (
+              <div className="opacity-80 mt-1">{lastRunResult.runError}</div>
+            )}
+            {!lastRunResult.runError && lastRunResult.failed.length > 0 && (
+              <div className="opacity-80 mt-1">
+                Most common cause: registry token expired. Open Settings →
+                Account to sign back in, then retry.
+              </div>
+            )}
+          </div>
+        )}
         {widgetUpdates.length > 0 && (
           <div data-testid="app-updates-modal-widgets-section">
             <div className="flex items-center gap-2 px-1 mb-2 text-xs uppercase tracking-wide text-gray-400">
