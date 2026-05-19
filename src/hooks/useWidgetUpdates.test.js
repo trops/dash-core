@@ -674,6 +674,142 @@ describe("updatePackages — pre-install MCP preflight", () => {
     expect(summary.failed).toEqual([]);
   });
 
+  test("install reports success but on-disk version did NOT change → batch row is marked failed (no more '✓ done' lie)", async () => {
+    // The original-original bug: registry serves a stale zip OR
+    // package wasn't actually republished. Install IPC returns ok,
+    // setRegistry is happy, the row was being marked "done", user
+    // reloaded and saw the same updates pending. With the
+    // post-install verify step, the row throws and the modal
+    // surfaces the mismatch.
+    const install = jest.fn().mockResolvedValue({ ok: true });
+    const get = jest.fn().mockResolvedValue({
+      // Disk still has the OLD version after the install supposedly
+      // succeeded.
+      name: "@trops/slack",
+      packageId: "@trops/slack",
+      version: "0.0.700",
+    });
+    window.mainApi = {
+      registry: {
+        checkUpdates: jest.fn().mockResolvedValue([
+          {
+            name: "@trops/slack",
+            currentVersion: "0.0.700",
+            latestVersion: "0.0.735",
+            downloadUrl: "https://reg.example/{name}-{version}.zip",
+          },
+        ]),
+        fetchPackageManifest: jest.fn().mockResolvedValue({
+          packageId: "@trops/slack",
+          version: "0.0.735",
+          permissions: null,
+        }),
+      },
+      registryAuth: {
+        getProfile: jest.fn().mockResolvedValue({ id: "user-1" }),
+      },
+      widgets: {
+        install,
+        get,
+      },
+      widgetMcp: {
+        listAll: jest.fn().mockResolvedValue([]),
+        setGrant: jest.fn(),
+      },
+    };
+    const { result } = renderHook(() =>
+      useWidgetUpdates(
+        [
+          {
+            name: "SlackListChannels",
+            packageId: "@trops/slack",
+            source: "installed",
+            version: "0.0.700",
+          },
+        ],
+        jest.fn(),
+      ),
+    );
+    await waitFor(() => {
+      expect(result.current.packagesWithUpdates.length).toBe(1);
+    });
+
+    let summary;
+    await act(async () => {
+      summary = await result.current.updatePackages(["@trops/slack"]);
+    });
+
+    expect(install).toHaveBeenCalledTimes(1);
+    expect(get).toHaveBeenCalledWith("@trops/slack");
+    // The batch summary marks this as FAILED with the verify error,
+    // NOT silently "done".
+    expect(summary.succeeded).toEqual([]);
+    expect(summary.failed).toEqual(["@trops/slack"]);
+    expect(result.current.batchStatus.get("@trops/slack")).toMatchObject({
+      status: "failed",
+      error: expect.stringMatching(
+        /on-disk version is 0\.0\.700 \(expected 0\.0\.735\)/,
+      ),
+    });
+  });
+
+  test("install verify passes when on-disk version matches latestVersion → row done", async () => {
+    const install = jest.fn().mockResolvedValue({ ok: true });
+    const get = jest.fn().mockResolvedValue({
+      name: "@trops/slack",
+      packageId: "@trops/slack",
+      version: "0.0.735",
+    });
+    window.mainApi = {
+      registry: {
+        checkUpdates: jest.fn().mockResolvedValue([
+          {
+            name: "@trops/slack",
+            currentVersion: "0.0.700",
+            latestVersion: "0.0.735",
+            downloadUrl: "https://reg.example/{name}-{version}.zip",
+          },
+        ]),
+        fetchPackageManifest: jest.fn().mockResolvedValue({
+          packageId: "@trops/slack",
+          version: "0.0.735",
+          permissions: null,
+        }),
+      },
+      registryAuth: {
+        getProfile: jest.fn().mockResolvedValue({ id: "user-1" }),
+      },
+      widgets: { install, get },
+      widgetMcp: {
+        listAll: jest.fn().mockResolvedValue([]),
+        setGrant: jest.fn(),
+      },
+    };
+    const { result } = renderHook(() =>
+      useWidgetUpdates(
+        [
+          {
+            name: "SlackListChannels",
+            packageId: "@trops/slack",
+            source: "installed",
+            version: "0.0.700",
+          },
+        ],
+        jest.fn(),
+      ),
+    );
+    await waitFor(() => {
+      expect(result.current.packagesWithUpdates.length).toBe(1);
+    });
+
+    let summary;
+    await act(async () => {
+      summary = await result.current.updatePackages(["@trops/slack"]);
+    });
+    expect(summary.succeeded).toEqual(["@trops/slack"]);
+    expect(summary.failed).toEqual([]);
+  });
+
   test("no preflight when nothing is missing — install runs silently", async () => {
     // listAll returns a grant covering EVERYTHING the new manifest
     // declares, so the diff comes back empty and the batch proceeds

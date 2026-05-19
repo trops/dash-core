@@ -298,6 +298,64 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
 
         pushDiag("updateWidget:install-result", { packageId, installResult });
 
+        // Post-install version verification.
+        //
+        // The install IPC has historically returned `ok: true` even when
+        // the on-disk version didn't actually advance — registry served
+        // a stale zip, registry's downloadUrl pointed at the wrong
+        // version, the extraction wrote into a different path than the
+        // registry reads back from, etc. Without a check here, the row
+        // is marked "✓ done", the user reloads, and the same widgets
+        // show up as needing updates AGAIN with the same old version
+        // numbers in Settings.
+        //
+        // Fix: after install resolves, ask the registry IPC what
+        // version is now on disk for this packageId. If it doesn't
+        // match `info.latestVersion`, throw so the batch row surfaces
+        // the failure with the actual numbers — no more silent "done"
+        // lies.
+        try {
+          const onDisk =
+            (await window.mainApi.widgets.get?.(packageId)) || null;
+          const installedVersion = onDisk?.version || null;
+          pushDiag("updateWidget:verify", {
+            packageId,
+            installedVersion,
+            expected: info.latestVersion,
+          });
+          if (
+            installedVersion &&
+            info.latestVersion &&
+            installedVersion !== info.latestVersion
+          ) {
+            const msg = `Install reported success but on-disk version is ${installedVersion} (expected ${info.latestVersion}). The registry may be serving a stale zip — verify the package was actually republished.`;
+            pushDiag("updateWidget:verify-mismatch", {
+              packageId,
+              installedVersion,
+              expected: info.latestVersion,
+            });
+            throw new Error(msg);
+          }
+        } catch (verifyErr) {
+          // Re-throw only when verification was the failure. If
+          // mainApi.widgets.get is unavailable (older preload) we
+          // can't verify — log and fall through; status quo
+          // behavior. Wrapping in a try/catch separately from the
+          // outer one so a network blip on widgets.get doesn't get
+          // confused with an actual install failure.
+          if (
+            verifyErr?.message?.startsWith(
+              "Install reported success but on-disk version is",
+            )
+          ) {
+            throw verifyErr;
+          }
+          pushDiag("updateWidget:verify-skipped", {
+            packageId,
+            reason: verifyErr?.message || String(verifyErr),
+          });
+        }
+
         // Remove ALL widgets in this package from updates map
         // (install replaces the entire package, not just one widget)
         setUpdates((prev) => {
