@@ -111,7 +111,7 @@ export function useAppUpdates({
     checkDashboardUpdates();
   }, [appId, checkDashboardUpdates]);
 
-  return {
+  const baseReturn = {
     widgetUpdates: widget.packagesWithUpdates,
     dashboardUpdates,
     totalUpdates,
@@ -130,4 +130,21 @@ export function useAppUpdates({
     pendingPreflight: widget.pendingPreflight,
     resolvePreflight: widget.resolvePreflight,
   };
+
+  // Test-only override hook for e2e specs. Set
+  // `window.__DASH_APP_UPDATES_OVERRIDE` to an object whose keys
+  // shadow any of the hook's return values — useful for driving the
+  // AppUpdatesModal through its auto-pop / populated-updates /
+  // failed-batch paths without having to seed real installed widgets
+  // or stub multiple IPCs (contextBridge freezes window.mainApi so
+  // direct bridge stubbing isn't possible from the page side).
+  // Same pattern llmOneShot uses for its CLI-bypass override.
+  if (
+    typeof window !== "undefined" &&
+    window.__DASH_APP_UPDATES_OVERRIDE &&
+    typeof window.__DASH_APP_UPDATES_OVERRIDE === "object"
+  ) {
+    return { ...baseReturn, ...window.__DASH_APP_UPDATES_OVERRIDE };
+  }
+  return baseReturn;
 }
