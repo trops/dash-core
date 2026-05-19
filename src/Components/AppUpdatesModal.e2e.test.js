@@ -338,8 +338,17 @@ describe("AppUpdatesModal — end-to-end install-failure path", () => {
     expect(
       screen.queryByTestId("app-updates-modal-sign-in-registry"),
     ).not.toBeInTheDocument();
+    // Per-row failure detail now renders the actual error message
+    // inline (was previously a generic "Some installs failed; check
+    // Settings → Widgets" line that didn't help the user).
     expect(
-      screen.getByText(/Some installs failed.*Settings.*Widgets/),
+      screen.getByTestId("app-updates-modal-run-result-details"),
+    ).toHaveTextContent(/network down/);
+    expect(
+      screen.getByTestId("app-updates-modal-run-result-failed-@trops/slack"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("app-updates-modal-run-result-failed-@trops/gmail"),
     ).toBeInTheDocument();
   });
 });

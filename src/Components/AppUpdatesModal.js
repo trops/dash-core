@@ -310,12 +310,37 @@ export const AppUpdatesModal = ({
         {lastRunResult.runError && (
           <div className="opacity-80 mt-1">{lastRunResult.runError}</div>
         )}
-        {!lastRunResult.runError && lastRunResult.failed.length > 0 && (
-          <div className="opacity-80 mt-1">
-            Some installs failed. Check the per-row status in Settings → Widgets
-            and retry the affected packages.
-          </div>
-        )}
+        {/* Per-package failure detail. Without this the user sees
+            "X failed" with no clue what went wrong (verify mismatch,
+            stale auth, network error all look identical from this
+            distance). Each failure renders its own line with the
+            actual error message returned by updateWidget. */}
+        {Array.isArray(lastRunResult.failedDetails) &&
+          lastRunResult.failedDetails.length > 0 && (
+            <ul
+              className="mt-2 space-y-1 list-disc list-inside"
+              data-testid="app-updates-modal-run-result-details"
+            >
+              {lastRunResult.failedDetails.map((d) => (
+                <li
+                  key={d.name}
+                  className="opacity-90"
+                  data-testid={`app-updates-modal-run-result-failed-${d.name}`}
+                >
+                  <span className="font-mono">{d.name}</span>: {d.error}
+                </li>
+              ))}
+            </ul>
+          )}
+        {!lastRunResult.runError &&
+          lastRunResult.failed.length > 0 &&
+          (!Array.isArray(lastRunResult.failedDetails) ||
+            lastRunResult.failedDetails.length === 0) && (
+            <div className="opacity-80 mt-1">
+              Some installs failed. Check the per-row status in Settings →
+              Widgets and retry the affected packages.
+            </div>
+          )}
       </div>
     );
   };

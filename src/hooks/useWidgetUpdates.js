@@ -578,7 +578,12 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
             // if they never clicked Update.
             setBatchStatus(new Map());
             setIsBatchUpdating(false);
-            return { succeeded: [], failed: [], cancelled: true };
+            return {
+              succeeded: [],
+              failed: [],
+              failedDetails: [],
+              cancelled: true,
+            };
           }
           // Persist accepted grants per widget BEFORE the install
           // loop so the freshly-installed code can immediately use
@@ -589,7 +594,26 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
             if (!acceptedAddition) continue;
             const merged = mergeMcpGrants(w.granted, acceptedAddition);
             try {
-              await window.mainApi?.widgetMcp?.setGrant?.(w.widgetId, merged);
+              // Race against a 10s timeout so a hung IPC handler
+              // (e.g. main-process error swallowed in setGrant,
+              // disk lock, etc.) can't block the install loop
+              // forever. A timeout still falls through to install —
+              // the post-install consent path will re-prompt if the
+              // gate ends up denying.
+              await Promise.race([
+                window.mainApi?.widgetMcp?.setGrant?.(w.widgetId, merged),
+                new Promise((_, reject) =>
+                  setTimeout(
+                    () =>
+                      reject(
+                        new Error(
+                          "setGrant timeout (10s) — proceeding without preflight grant",
+                        ),
+                      ),
+                    10000,
+                  ),
+                ),
+              ]);
               pushDiag("preflight:grant-written", {
                 widgetId: w.widgetId,
                 serverCount: Object.keys(merged.servers || {}).length,
@@ -611,8 +635,23 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
         pushDiag("preflight:pipeline-error", { error: e?.message });
       }
 
+      // Breadcrumb at install-loop entry so we know preflight handed
+      // off control — if the user reports "nothing happened after I
+      // clicked Accept", the absence of this breadcrumb means we
+      // never reached the install loop (preflight grant write
+      // hung, exception in cleanup, etc.) and its presence narrows
+      // the bug to the install IPC.
+      pushDiag("updatePackages:install-loop-start", {
+        packageCount: packageNames.length,
+        packageNames,
+      });
       const succeeded = [];
       const failed = [];
+      // Per-package error detail so the modal banner can render
+      // WHY each row failed (was previously just "X failed" with no
+      // text — completely unhelpful when the actual problem was
+      // e.g. a stale registry zip or a verify mismatch).
+      const failedDetails = [];
       try {
         for (const pkgName of packageNames) {
           // Mark in-progress BEFORE the await so the spinner appears
@@ -644,6 +683,7 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
               return next;
             });
             failed.push(pkgName);
+            failedDetails.push({ name: pkgName, error: msg });
             // Continue to the next package — one failure shouldn't
             // abort the whole run. The modal surfaces each per-row
             // failure individually so the user can retry just those.
@@ -652,6 +692,10 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
       } finally {
         setIsBatchUpdating(false);
       }
+      pushDiag("updatePackages:install-loop-end", {
+        succeededCount: succeeded.length,
+        failedCount: failed.length,
+      });
       // Post-batch authoritative clear: remove every succeeded
       // package's entries from the Map by package id. The per-
       // package setUpdates inside updateWidget already does this,
@@ -678,9 +722,9 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
           return next;
         });
       }
-      return { succeeded, failed };
+      return { succeeded, failed, failedDetails };
     },
-    [updateWidget],
+    [updateWidget, computeBatchPreflight],
   );
 
   return {

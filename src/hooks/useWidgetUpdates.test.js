@@ -615,6 +615,7 @@ describe("updatePackages — pre-install MCP preflight", () => {
     expect(summary).toEqual({
       succeeded: [],
       failed: [],
+      failedDetails: [],
       cancelled: true,
     });
     expect(window.mainApi.widgets.install).not.toHaveBeenCalled();
