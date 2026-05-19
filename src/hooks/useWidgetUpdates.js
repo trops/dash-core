@@ -121,9 +121,24 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
   // @rollup/plugin-strip which removes every console call from dist,
   // so any console output we add is silent in the linked production
   // build the user actually runs. Dump in DevTools with
-  // `copy(window.__DASH_DEBUG)` after a failed batch.
+  // `copy(JSON.stringify(window.__DASH_DEBUG))` after a failed batch.
+  //
+  // Build marker on first push lets the user verify which dash-core
+  // bundle is actually loaded — if the marker doesn't match what we
+  // just shipped, webpack-dev-server is serving a stale cache and a
+  // full `npm run dev` restart (not just Cmd-R) is needed.
   const pushDiag = (event, data) => {
-    (window.__DASH_DEBUG ||= []).push({
+    if (!window.__DASH_DEBUG) {
+      window.__DASH_DEBUG = [];
+      window.__DASH_DEBUG_BUILD = "preflight+verify+failedDetails";
+      window.__DASH_DEBUG.push({
+        t: Date.now(),
+        src: "useWidgetUpdates",
+        event: "build-marker",
+        build: window.__DASH_DEBUG_BUILD,
+      });
+    }
+    window.__DASH_DEBUG.push({
       t: Date.now(),
       src: "useWidgetUpdates",
       event,
