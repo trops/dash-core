@@ -129,10 +129,22 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
   const updateWidget = useCallback(
     async (name, options = {}) => {
       const throwOnError = options && options.throwOnError === true;
+      // Diagnostic dump: tagged so the user can grep `[update-diag]`
+      // in the renderer console to trace what actually happened
+      // during a batch — caught us out when "✓ done" reports were
+      // silent no-ops. Each call logs entry, every guard, the IPC
+      // call, and the result. Costs ~6 console lines per update;
+      // not worth gating on a debug flag while the install flow is
+      // still being stabilized.
+      console.log(`[update-diag] updateWidget("${name}") start`);
       const info = updates.get(name);
       if (!info) {
         console.error(
           `[useWidgetUpdates] No update info found for "${name}". Available keys:`,
+          Array.from(updates.keys()),
+        );
+        console.log(
+          `[update-diag] BAIL: info lookup miss for "${name}" — Map keys:`,
           Array.from(updates.keys()),
         );
         setUpdateError(`No update info found for "${name}".`);
@@ -141,6 +153,10 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
       if (!info.downloadUrl) {
         console.error(
           `[useWidgetUpdates] Update info for "${name}" has no downloadUrl:`,
+          info,
+        );
+        console.log(
+          `[update-diag] BAIL: no downloadUrl on info for "${name}":`,
           info,
         );
         setUpdateError(
@@ -152,12 +168,20 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
       // Use packageId for install — name may be a CM key (widget-level)
       const widget = installedWidgets.find((w) => w.name === name);
       const packageId = widget?.packageId || info.name || name;
+      console.log(
+        `[update-diag] resolved info for "${name}": packageId=${packageId}, currentVersion=${info.currentVersion}, latestVersion=${info.latestVersion}, downloadUrl=${info.downloadUrl}`,
+      );
 
       setIsUpdating(name);
       setUpdateError(null);
       try {
         // Validate token against registry (not just check if it exists locally)
+        console.log(`[update-diag] calling registryAuth.getProfile()`);
         const profile = await window.mainApi?.registryAuth?.getProfile();
+        console.log(
+          `[update-diag] getProfile returned:`,
+          profile ? `id=${profile.id}` : "null/undefined",
+        );
         if (!profile) {
           console.log(
             "[useWidgetUpdates] Token invalid or expired, requesting auth",
@@ -186,10 +210,20 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
         console.log(
           `[useWidgetUpdates] Installing ${packageId} from ${resolvedUrl}`,
         );
+        console.log(
+          `[update-diag] calling widgets.install("${packageId}", "${resolvedUrl}")`,
+        );
 
-        await window.mainApi.widgets.install(packageId, resolvedUrl);
+        const installResult = await window.mainApi.widgets.install(
+          packageId,
+          resolvedUrl,
+        );
 
         console.log(`[useWidgetUpdates] ✓ Updated ${packageId} successfully`);
+        console.log(
+          `[update-diag] install resolved for "${packageId}". result:`,
+          installResult,
+        );
 
         // Remove ALL widgets in this package from updates map
         // (install replaces the entire package, not just one widget)
@@ -204,6 +238,10 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
         if (onUpdated) onUpdated();
       } catch (err) {
         console.error("[useWidgetUpdates] Update failed:", err);
+        console.log(
+          `[update-diag] FAIL for "${name}":`,
+          err?.message || String(err),
+        );
         setUpdateError(err.message || "Update failed");
         if (throwOnError) {
           // Re-throw so the batch caller can mark this row failed.

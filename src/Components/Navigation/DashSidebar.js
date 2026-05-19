@@ -12,6 +12,7 @@ const CollapsibleContent = ({ children }) => {
   return collapsed ? null : children;
 };
 import { Popover, Transition } from "@headlessui/react";
+import { AppContext } from "../../Context/App/AppContext";
 
 export const DashSidebar = ({
   collapsed,
@@ -190,6 +191,8 @@ const FooterPopover = ({
   const buttonRef = useRef(null);
   const [doNotDisturb, setDoNotDisturb] = useState(false);
   const { currentTheme } = useContext(ThemeContext) || {};
+  const appContext = useContext(AppContext) || {};
+  const triggerAppUpdatesCheck = appContext.triggerAppUpdatesCheck;
 
   const displayName =
     authStatus === "authenticated" && authProfile
@@ -303,6 +306,16 @@ const FooterPopover = ({
                       onClick={handleToggleDnd}
                       active={doNotDisturb}
                     />
+                    {typeof triggerAppUpdatesCheck === "function" && (
+                      <PopoverItem
+                        icon="arrows-rotate"
+                        label="Check for updates"
+                        onClick={() => {
+                          triggerAppUpdatesCheck();
+                          close();
+                        }}
+                      />
+                    )}
 
                     <div className="border-t border-white/10 my-1" />
 

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Modal, FontAwesomeIcon } from "@trops/dash-react";
+import { RegistryAuthModal } from "./Registry/RegistryAuthModal";
 
 /**
  * Footer buttons are rendered with raw <button> + explicit Tailwind
@@ -54,9 +55,11 @@ export const AppUpdatesModal = ({
   dashboardUpdates = [],
   isChecking = false,
   hasChecked = false,
+  needsAuth = false,
   onUpdateWidgets,
   onOpenDashboardSettings,
   onRemindLater,
+  onAuthenticated,
 }) => {
   const [isUpdatingWidgets, setIsUpdatingWidgets] = useState(false);
   // Last run result so the modal can show "X succeeded, Y failed"
@@ -64,6 +67,12 @@ export const AppUpdatesModal = ({
   // this surface, a stale-auth user clicks Update, sees the button
   // bounce for 500ms, and has no idea why nothing happened.
   const [lastRunResult, setLastRunResult] = useState(null);
+  // Local mirror of needsAuth so the user can open RegistryAuthModal
+  // by clicking the banner's "Sign in to Registry" button. Same
+  // RegistryAuthModal pattern RegistryPackageDetail / WidgetsSection
+  // already use elsewhere — keeps the auth UX consistent across the
+  // app.
+  const [showAuth, setShowAuth] = useState(false);
   const totalUpdates = widgetUpdates.length + dashboardUpdates.length;
 
   const handleUpdateWidgets = async () => {
@@ -102,21 +111,76 @@ export const AppUpdatesModal = ({
 
   // The three render modes: checking, up-to-date, or updates-available.
   // Each gets its own clear visual identity so the user reads the
-  // current state in one glance.
+  // current state in one glance. The result banner (set after a
+  // batch run) renders ABOVE whichever state the modal is in — a
+  // successful run naturally transitions to up-to-date, and we want
+  // the user to see "Updated N packages" + the up-to-date message.
+  const renderResultBanner = () => {
+    if (!lastRunResult) return null;
+    return (
+      <div
+        className={
+          lastRunResult.failed.length === 0
+            ? "px-3 py-2 rounded border border-emerald-700 bg-emerald-900/30 text-xs text-emerald-200"
+            : "px-3 py-2 rounded border border-red-700 bg-red-900/30 text-xs text-red-200"
+        }
+        data-testid="app-updates-modal-run-result"
+      >
+        <div className="font-medium">
+          {lastRunResult.failed.length === 0
+            ? `Updated ${lastRunResult.succeeded.length} package${lastRunResult.succeeded.length === 1 ? "" : "s"}.`
+            : `Updated ${lastRunResult.succeeded.length} of ${lastRunResult.succeeded.length + lastRunResult.failed.length}; ${lastRunResult.failed.length} failed.`}
+        </div>
+        {lastRunResult.runError && (
+          <div className="opacity-80 mt-1">{lastRunResult.runError}</div>
+        )}
+        {!lastRunResult.runError &&
+          lastRunResult.failed.length > 0 &&
+          needsAuth && (
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <span className="opacity-80">
+                Your registry session expired. Sign back in to retry the
+                install.
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowAuth(true)}
+                className="shrink-0 px-3 py-1 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white"
+                data-testid="app-updates-modal-sign-in-registry"
+              >
+                Sign in to Registry
+              </button>
+            </div>
+          )}
+        {!lastRunResult.runError &&
+          lastRunResult.failed.length > 0 &&
+          !needsAuth && (
+            <div className="opacity-80 mt-1">
+              Some installs failed. Check the per-row status in Settings →
+              Widgets and retry the affected packages.
+            </div>
+          )}
+      </div>
+    );
+  };
+
   const renderBody = () => {
     if (isChecking && totalUpdates === 0) {
       return (
-        <div
-          className="flex flex-col items-center justify-center py-10 gap-3 text-gray-300"
-          data-testid="app-updates-modal-checking"
-        >
-          <FontAwesomeIcon
-            icon="spinner"
-            className="text-blue-400 animate-spin h-6 w-6"
-          />
-          <div className="text-sm">Checking for updates…</div>
-          <div className="text-xs text-gray-500">
-            Looking up widget packages and dashboards in the registry.
+        <div className="flex flex-col gap-4">
+          {renderResultBanner()}
+          <div
+            className="flex flex-col items-center justify-center py-10 gap-3 text-gray-300"
+            data-testid="app-updates-modal-checking"
+          >
+            <FontAwesomeIcon
+              icon="spinner"
+              className="text-blue-400 animate-spin h-6 w-6"
+            />
+            <div className="text-sm">Checking for updates…</div>
+            <div className="text-xs text-gray-500">
+              Looking up widget packages and dashboards in the registry.
+            </div>
           </div>
         </div>
       );
@@ -124,18 +188,21 @@ export const AppUpdatesModal = ({
 
     if (hasChecked && totalUpdates === 0) {
       return (
-        <div
-          className="flex flex-col items-center justify-center py-10 gap-3 text-gray-300"
-          data-testid="app-updates-modal-uptodate"
-        >
-          <FontAwesomeIcon
-            icon="circle-check"
-            className="text-emerald-400 h-8 w-8"
-          />
-          <div className="text-sm font-medium">You're all up to date.</div>
-          <div className="text-xs text-gray-500">
-            Every installed widget package and dashboard is on the latest
-            registry version.
+        <div className="flex flex-col gap-4">
+          {renderResultBanner()}
+          <div
+            className="flex flex-col items-center justify-center py-10 gap-3 text-gray-300"
+            data-testid="app-updates-modal-uptodate"
+          >
+            <FontAwesomeIcon
+              icon="circle-check"
+              className="text-emerald-400 h-8 w-8"
+            />
+            <div className="text-sm font-medium">You're all up to date.</div>
+            <div className="text-xs text-gray-500">
+              Every installed widget package and dashboard is on the latest
+              registry version.
+            </div>
           </div>
         </div>
       );
@@ -143,31 +210,7 @@ export const AppUpdatesModal = ({
 
     return (
       <div className="flex flex-col gap-4">
-        {lastRunResult && (
-          <div
-            className={
-              lastRunResult.failed.length === 0
-                ? "px-3 py-2 rounded border border-emerald-700 bg-emerald-900/30 text-xs text-emerald-200"
-                : "px-3 py-2 rounded border border-red-700 bg-red-900/30 text-xs text-red-200"
-            }
-            data-testid="app-updates-modal-run-result"
-          >
-            <div className="font-medium">
-              {lastRunResult.failed.length === 0
-                ? `Updated ${lastRunResult.succeeded.length} package${lastRunResult.succeeded.length === 1 ? "" : "s"}.`
-                : `Updated ${lastRunResult.succeeded.length} of ${lastRunResult.succeeded.length + lastRunResult.failed.length}; ${lastRunResult.failed.length} failed.`}
-            </div>
-            {lastRunResult.runError && (
-              <div className="opacity-80 mt-1">{lastRunResult.runError}</div>
-            )}
-            {!lastRunResult.runError && lastRunResult.failed.length > 0 && (
-              <div className="opacity-80 mt-1">
-                Most common cause: registry token expired. Open Settings →
-                Account to sign back in, then retry.
-              </div>
-            )}
-          </div>
-        )}
+        {renderResultBanner()}
         {widgetUpdates.length > 0 && (
           <div data-testid="app-updates-modal-widgets-section">
             <div className="flex items-center gap-2 px-1 mb-2 text-xs uppercase tracking-wide text-gray-400">
@@ -341,6 +384,21 @@ export const AppUpdatesModal = ({
           {renderFooter()}
         </div>
       </div>
+      {/* Standard registry-auth flow — same RegistryAuthModal pattern
+          RegistryPackageDetail / DiscoverDashboardsDetail / etc. use,
+          so the sign-in UX is consistent across the app. After
+          successful auth we clear the failure banner so the user can
+          retry the Update button without confusion. */}
+      <RegistryAuthModal
+        isOpen={showAuth}
+        setIsOpen={setShowAuth}
+        onAuthenticated={() => {
+          setShowAuth(false);
+          setLastRunResult(null);
+          if (typeof onAuthenticated === "function") onAuthenticated();
+        }}
+        message="The Dash Registry requires authentication to install widget updates."
+      />
     </Modal>
   );
 };

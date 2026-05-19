@@ -367,6 +367,7 @@ export const AppWrapper = ({ children, credentials = null, dashApi }) => {
         dashboardUpdates={appUpdates.dashboardUpdates}
         isChecking={appUpdates.isChecking}
         hasChecked={appUpdates.hasChecked}
+        needsAuth={appUpdates.needsAuth}
         onUpdateWidgets={async () => {
           // Return the summary so the modal can render
           // "X succeeded, Y failed" instead of silently bouncing
@@ -375,6 +376,13 @@ export const AppWrapper = ({ children, credentials = null, dashApi }) => {
           return appUpdates.updateWidgetPackages(
             appUpdates.widgetUpdates.map((p) => p.name),
           );
+        }}
+        onAuthenticated={() => {
+          // After successful re-auth, clear the needsAuth flag so the
+          // banner stops nudging — the user can retry by clicking
+          // Update again, and the modal's clear-result-on-auth makes
+          // the next run state fresh.
+          appUpdates.clearNeedsAuth();
         }}
         onRemindLater={() => setAppUpdatesSessionDismissed(true)}
       />

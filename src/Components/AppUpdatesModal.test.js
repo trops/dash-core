@@ -8,16 +8,30 @@
 
 jest.mock(
   "@trops/dash-react",
-  () => ({
-    Modal: ({ isOpen, children }) => (isOpen ? <div>{children}</div> : null),
-    Button: ({ title, onClick, disabled }) => (
-      <button type="button" onClick={onClick} disabled={disabled}>
-        {title}
-      </button>
-    ),
-    FontAwesomeIcon: ({ icon }) => <span data-icon={icon} />,
-  }),
+  () => {
+    const React = require("react");
+    return {
+      Modal: ({ isOpen, children }) => (isOpen ? <div>{children}</div> : null),
+      Button: ({ title, onClick, disabled }) => (
+        <button type="button" onClick={onClick} disabled={disabled}>
+          {title}
+        </button>
+      ),
+      FontAwesomeIcon: ({ icon }) => <span data-icon={icon} />,
+      // Stubs for RegistryAuthModal (mounted inside AppUpdatesModal
+      // for the auth-failure flow). Real values aren't needed for
+      // these unit tests since we never trigger the auth path here.
+      ThemeContext: React.createContext({ currentTheme: {} }),
+      getStylesForItem: () => ({}),
+      themeObjects: { PANEL: "PANEL", BUTTON: "BUTTON" },
+    };
+  },
   { virtual: false },
+);
+jest.mock(
+  "./Registry/RegistryAuthPrompt",
+  () => ({ RegistryAuthPrompt: () => null }),
+  { virtual: true },
 );
 
 import React from "react";
