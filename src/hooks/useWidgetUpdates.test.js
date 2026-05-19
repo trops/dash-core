@@ -221,6 +221,44 @@ describe("useWidgetUpdates — updatePackages batch orchestration", () => {
     expect(result.current.batchStatus.get("@trops/gmail")?.status).toBe("done");
   });
 
+  test("batch path surfaces stale-auth as a failed row (instead of silently marking 'done')", async () => {
+    // Reproduces the bug where a user with an expired registry token
+    // clicks Update all, sees every package report '✓ done', reloads
+    // the app, and finds nothing was actually installed. Root cause:
+    // updateWidget returned without throwing when getProfile() came
+    // back null. With throwOnError=true the batch caller now sees an
+    // exception and marks the row failed, surfacing the auth
+    // requirement instead of swallowing it.
+    installMainApi({
+      checkUpdates: jest.fn().mockResolvedValue(sampleUpdates),
+      getProfile: jest.fn().mockResolvedValue(null),
+    });
+    const { result } = renderHook(() =>
+      useWidgetUpdates(sampleInstalled, jest.fn()),
+    );
+    await waitFor(() => {
+      expect(result.current.packagesWithUpdates.length).toBe(2);
+    });
+    let summary;
+    await act(async () => {
+      summary = await result.current.updatePackages([
+        "@trops/slack",
+        "@trops/gmail",
+      ]);
+    });
+    expect(summary.succeeded).toEqual([]);
+    expect(summary.failed).toEqual(["@trops/slack", "@trops/gmail"]);
+    expect(result.current.batchStatus.get("@trops/slack")).toMatchObject({
+      status: "failed",
+      error: expect.stringMatching(/Authentication/i),
+    });
+    // The Map stays populated because nothing was actually installed
+    // — user retries after signing back in.
+    expect(result.current.packagesWithUpdates.length).toBe(2);
+    // needsAuth flips true so RegistryAuthModal can pop where wired.
+    expect(result.current.needsAuth).toBe(true);
+  });
+
   test("post-batch authoritative clear drops every succeeded package by id (resilient to mid-loop setState merges)", async () => {
     // Even if per-package setUpdates merges go sideways during a
     // sequential batch, the post-loop authoritative pass operates on

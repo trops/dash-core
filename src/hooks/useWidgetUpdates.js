@@ -163,6 +163,19 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
             "[useWidgetUpdates] Token invalid or expired, requesting auth",
           );
           setNeedsAuth(true);
+          // Batch callers (updatePackages with throwOnError=true) need
+          // this to surface as a failure so they don't mark the row
+          // "done" — otherwise a stale-auth user clicks Update all,
+          // sees every package report "✓ done", reloads, and finds
+          // nothing actually installed because each call returned
+          // silently here. Single-update detail-view callers keep the
+          // fire-and-forget shape (needsAuth still flips, triggering
+          // the existing RegistryAuthModal).
+          if (throwOnError) {
+            throw new Error(
+              "Authentication required — sign in to the registry to install updates.",
+            );
+          }
           return;
         }
 
