@@ -262,3 +262,42 @@ describe("AppUpdatesModal — checking vs hasChecked transitions", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe("AppUpdatesModal — close clears transient run-result state", () => {
+  test("previous run's 'Updated N packages' banner does NOT survive close→reopen", async () => {
+    const onUpdateWidgets = jest
+      .fn()
+      .mockResolvedValue({ succeeded: ["@trops/slack"], failed: [] });
+    // Mount in updates-available state and run the batch.
+    const { rerender, props } = renderModal({
+      hasChecked: true,
+      widgetUpdates,
+      onUpdateWidgets,
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Update 2 widgets/ }));
+    await screen.findByTestId("app-updates-modal-run-result");
+    expect(
+      screen.getByTestId("app-updates-modal-run-result"),
+    ).toHaveTextContent("Updated 1 package");
+
+    // Close the modal — banner must be cleared.
+    rerender(<AppUpdatesModal {...props} isOpen={false} />);
+    // Re-open (manual "Check for updates" path) — modal returns to
+    // a fresh state, not the stale "Updated 1 package" view from
+    // the previous session.
+    rerender(
+      <AppUpdatesModal
+        {...props}
+        isOpen={true}
+        hasChecked={true}
+        widgetUpdates={[]}
+      />,
+    );
+    expect(
+      screen.queryByTestId("app-updates-modal-run-result"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("app-updates-modal-uptodate"),
+    ).toBeInTheDocument();
+  });
+});

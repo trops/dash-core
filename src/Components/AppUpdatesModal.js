@@ -164,6 +164,17 @@ export const AppUpdatesModal = ({
     };
   }, [isOpen, checkAuth]);
 
+  // Reset transient per-session UI state when the modal closes so a
+  // re-open starts fresh: the previous run's "Updated N packages"
+  // banner shouldn't carry over to a manual re-check.
+  useEffect(() => {
+    if (isOpen) return;
+    setLastRunResult(null);
+    setIsUpdatingWidgets(false);
+    setPreflightChecked({});
+    setSelectedPreflightWidgetId(null);
+  }, [isOpen]);
+
   // Preflight checkbox state — `{ [widgetId]: { [lineKey]: bool } }`.
   // Initialized to "everything checked" on each new pendingPreflight
   // so the default action approves the full ask; the user opts OUT of
