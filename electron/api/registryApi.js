@@ -204,6 +204,31 @@ const registryApi = {
       throw error;
     }
   },
+
+  /**
+   * Fetch a registry package's `dash.permissions` block WITHOUT
+   * installing it. Powers the pre-install preflight in the update
+   * flow — the renderer learns what MCP/fs/network grants a new
+   * version would need, diffs against what's already granted, and
+   * asks the user for approval BEFORE downloading the install.
+   *
+   * @param {string} packageName
+   * @returns {Promise<{packageId: string, version: string|null, permissions: object|null}>}
+   */
+  fetchPackageManifest: async (packageName) => {
+    try {
+      return await ipcRenderer.invoke(
+        "registry:fetch-package-manifest",
+        packageName,
+      );
+    } catch (error) {
+      console.error(
+        `[RegistryApi] Error fetching package manifest for ${packageName}:`,
+        error,
+      );
+      throw error;
+    }
+  },
 };
 
 module.exports = registryApi;

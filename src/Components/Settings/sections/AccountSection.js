@@ -6,6 +6,12 @@ import {
   DataList,
 } from "@trops/dash-react";
 
+// "Check for updates" lives in the sidebar account popover
+// (DashSidebar's FooterPopover) — keeping it next to Settings /
+// Light Mode / Do Not Disturb / Sign In keeps the global-action
+// surface in one place. Removed the dedicated bottom-of-section
+// entry that used to live here.
+
 export const AccountSection = ({
   authStatus,
   authProfile,

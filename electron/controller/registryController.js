@@ -348,33 +348,199 @@ async function getPackage(packageName) {
 }
 
 /**
- * Check for updates to installed widgets
+ * Parse an installed widget's id (`@scope/name` or `scope/name` or
+ * `name`) into a `{scope, name}` ref the check-versions endpoint
+ * accepts. Returns null when no scope is present — the new endpoint
+ * needs both fields.
+ */
+function _parseScopedRef(installedId) {
+  if (!installedId || typeof installedId !== "string") return null;
+  if (!installedId.includes("/")) return null;
+  const stripped = installedId.replace(/^@/, "");
+  const parts = stripped.split("/");
+  if (parts.length < 2) return null;
+  const scope = parts[0];
+  const name = parts.slice(1).join("/");
+  if (!scope || !name) return null;
+  return { scope, name };
+}
+
+/**
+ * Check for updates to installed widgets.
+ *
+ * Uses the registry's POST /api/packages/check-versions endpoint, which
+ * returns latest-version-by-id regardless of auth/visibility. Critically,
+ * this means **private packages the user has installed are checked even
+ * when the app launches anonymously** (before sign-in completes / for
+ * users who haven't signed in this session). The previous implementation
+ * fetched the entire registry index, which is visibility-filtered
+ * server-side and so silently hid private packages from anonymous
+ * callers — the user's installed-but-private widgets reported "no
+ * update available" forever until they manually re-checked after
+ * signing in.
+ *
+ * Bare-name (unscoped) installed widgets can't be queried via the new
+ * endpoint (it needs scope+name). For those we fall back to the legacy
+ * index-scan. Same fallback covers the transition period while the
+ * registry-side endpoint is still being deployed — if the endpoint
+ * isn't there yet, we silently degrade to the old behavior.
  *
  * @param {Array<Object>} installedWidgets - Array of { name, version } objects
  * @returns {Promise<Array<Object>>} Widgets with available updates
  */
 async function checkUpdates(installedWidgets = []) {
-  const index = await fetchRegistryIndex();
-  const updates = [];
+  if (!Array.isArray(installedWidgets) || installedWidgets.length === 0) {
+    return [];
+  }
 
+  // Bucket installed widgets by whether they have a scope (and so can
+  // use the new endpoint) or not (fall back to index scan).
+  const scopedRefs = []; // { scope, name, installed }
+  const bareInstalled = []; // { name, version }
   for (const installed of installedWidgets) {
     const installedId = installed.packageId || installed.name;
-    const pkg = (index.packages || []).find((p) => {
-      // Match by scoped ID (e.g. "@trops/slack" === "@trops/slack")
-      const registryId = toPackageId(p.scope, p.name);
-      if (registryId === installedId) return true;
-      // Fallback: bare-name match for pre-migration entries
-      if (p.name === installedId) return true;
-      return false;
-    });
-    if (pkg && pkg.version !== installed.version) {
-      updates.push({
-        name: installed.name,
-        currentVersion: installed.version,
-        latestVersion: pkg.version,
-        downloadUrl: pkg.downloadUrl,
-        changelog: pkg.changelog || null,
+    const ref = _parseScopedRef(installedId);
+    if (ref) {
+      scopedRefs.push({
+        scope: ref.scope,
+        name: ref.name,
+        installed,
+        installedId,
       });
+    } else {
+      bareInstalled.push(installed);
+    }
+  }
+
+  const updates = [];
+
+  // --- Path A: /api/packages/resolve (covers scoped refs, anon-friendly) ---
+  // The resolve endpoint returns latestVersion per ref for both public
+  // packages AND private packages where the registry's entitlement
+  // check says the caller is allowed (which today includes anonymous
+  // callers for packages with permissive read policies — verified via
+  // curl on 2026-05-19). This means installed-but-private widgets show
+  // up in the update check even at app launch before the user has
+  // signed in, which was the original gap.
+  //
+  // We try check-versions first (a dash-registry PR adds a tighter
+  // endpoint that returns ONLY latestVersion without entitlement
+  // gating); if it's not deployed yet, fall back to /resolve. Both
+  // produce the same shape for our purposes; resolve carries more
+  // metadata but we only read latestVersion.
+  if (scopedRefs.length > 0) {
+    const registryBase =
+      process.env.DASH_REGISTRY_API_URL || DEFAULT_REGISTRY_API_URL;
+    const refsBody = JSON.stringify({
+      refs: scopedRefs.map((r) => ({ scope: r.scope, name: r.name })),
+    });
+    let endpointAvailable = true;
+    let results = null;
+    // Try check-versions first (returns less data, no entitlement
+    // dependency); fall back to /resolve if it 404s (registry without
+    // the new endpoint deployed).
+    for (const endpointPath of [
+      "/api/packages/check-versions",
+      "/api/packages/resolve",
+    ]) {
+      const url = `${registryBase}${endpointPath}`;
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            // Auth is optional but widens what /resolve returns for
+            // private packages where ownership matters.
+            ...buildAuthHeaders(),
+          },
+          body: refsBody,
+        });
+        if (response.status === 404) {
+          // Endpoint not deployed — try the next one.
+          continue;
+        }
+        if (!response.ok) {
+          throw new Error(
+            `${endpointPath} ${response.status} ${response.statusText}`,
+          );
+        }
+        results = await response.json();
+        endpointAvailable = true;
+        break;
+      } catch (error) {
+        console.warn(
+          `[RegistryController] ${endpointPath} failed:`,
+          error.message,
+        );
+        endpointAvailable = false;
+        // Try next endpoint
+      }
+    }
+
+    if (endpointAvailable && Array.isArray(results)) {
+      // Index results by `scope/name` so we can join back to our
+      // scopedRefs list without depending on Promise.all ordering.
+      const byKey = new Map();
+      for (const r of results) {
+        if (r && r.scope && r.name) {
+          byKey.set(`${r.scope}/${r.name}`, r);
+        }
+      }
+      for (const ref of scopedRefs) {
+        const result = byKey.get(`${ref.scope}/${ref.name}`);
+        if (!result || !result.exists) continue;
+        if (
+          result.latestVersion &&
+          result.latestVersion !== ref.installed.version
+        ) {
+          // Build the download URL deterministically — same shape the
+          // existing index serves (`/api/packages/<scope>/<name>/download?version=<v>`).
+          // Constructed client-side because check-versions intentionally
+          // doesn't return downloadUrl (less to leak; download still
+          // gated by visibility/entitlements at /download).
+          const downloadUrl = `${registryBase}/api/packages/${encodeURIComponent(
+            ref.scope,
+          )}/${encodeURIComponent(ref.name)}/download?version=${encodeURIComponent(
+            result.latestVersion,
+          )}`;
+          updates.push({
+            name: ref.installed.name,
+            currentVersion: ref.installed.version,
+            latestVersion: result.latestVersion,
+            downloadUrl,
+            changelog: null,
+          });
+        }
+      }
+    } else {
+      // Endpoint unavailable — treat scoped refs as bare for the
+      // fallback path so they at least get a public-only check.
+      for (const ref of scopedRefs) {
+        bareInstalled.push(ref.installed);
+      }
+    }
+  }
+
+  // --- Path B: index scan (bare-name widgets + endpoint fallback) ---
+  if (bareInstalled.length > 0) {
+    const index = await fetchRegistryIndex();
+    for (const installed of bareInstalled) {
+      const installedId = installed.packageId || installed.name;
+      const pkg = (index.packages || []).find((p) => {
+        const registryId = toPackageId(p.scope, p.name);
+        if (registryId === installedId) return true;
+        if (p.name === installedId) return true;
+        return false;
+      });
+      if (pkg && pkg.version !== installed.version) {
+        updates.push({
+          name: installed.name,
+          currentVersion: installed.version,
+          latestVersion: pkg.version,
+          downloadUrl: pkg.downloadUrl,
+          changelog: pkg.changelog || null,
+        });
+      }
     }
   }
 
@@ -603,6 +769,146 @@ async function fetchPackageSource(packageName, componentName = null) {
   }
 }
 
+/**
+ * Fetch the `dash.permissions` block from a registry package WITHOUT
+ * installing it. Powers the pre-install preflight: the update flow
+ * uses this to learn which MCP/fs/network grants a new package
+ * version requires before downloading the install. The user then
+ * approves the delta (declared - already-granted) and the install
+ * proceeds knowing nothing will surprise them after the fact.
+ *
+ * Returns `{ packageId, version, permissions }` where `permissions`
+ * is the `dash.permissions` blob from package.json (or null if the
+ * package declares none). Throws on network / unzip / parse errors —
+ * callers should treat a throw as "couldn't preflight; prompt anyway
+ * post-install via the existing flow" rather than blocking the
+ * update on a transient registry hiccup.
+ *
+ * @param {string} packageName
+ * @returns {Promise<{packageId: string, version: string|null, permissions: object|null}>}
+ */
+async function fetchPackageManifest(packageName) {
+  if (!packageName) {
+    throw new Error("fetchPackageManifest: packageName is required");
+  }
+
+  const AdmZip = require("adm-zip");
+  const { validateZipEntries } = require("../widgetRegistry");
+
+  const pkg = await getPackage(packageName);
+  if (!pkg) {
+    throw new Error(`Package "${packageName}" not found in the registry`);
+  }
+  if (!pkg.downloadUrl) {
+    throw new Error(`Package "${packageName}" has no downloadUrl`);
+  }
+
+  const parsedUrl = new URL(pkg.downloadUrl);
+  if (parsedUrl.protocol !== "https:") {
+    throw new Error(
+      `Registry downloads must use HTTPS. Refusing to fetch: ${pkg.downloadUrl}`,
+    );
+  }
+
+  const fetchOpts = {};
+  const registryBase =
+    process.env.DASH_REGISTRY_API_URL ||
+    "https://main.d919rwhuzp7rj.amplifyapp.com";
+  if (
+    pkg.downloadUrl.includes(registryBase) ||
+    pkg.downloadUrl.includes("/api/packages/")
+  ) {
+    const auth = getStoredToken();
+    if (auth?.token) {
+      fetchOpts.headers = { Authorization: `Bearer ${auth.token}` };
+    }
+  }
+
+  const response = await fetch(pkg.downloadUrl, fetchOpts);
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error("Authentication required to fetch this package manifest");
+    }
+    throw new Error(`Failed to fetch package manifest: ${response.statusText}`);
+  }
+  const contentType = response.headers.get("content-type") || "";
+  let buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length === 0) {
+    throw new Error("Manifest fetch failed: registry returned an empty body");
+  }
+  if (contentType.includes("application/json")) {
+    const jsonData = JSON.parse(buffer.toString("utf-8"));
+    if (jsonData.error) {
+      throw new Error(`Manifest fetch failed: ${jsonData.error}`);
+    }
+    if (jsonData.downloadUrl) {
+      const zipResponse = await fetch(jsonData.downloadUrl);
+      if (!zipResponse.ok) {
+        throw new Error(
+          `Manifest fetch failed: storage returned ${zipResponse.status} ${zipResponse.statusText}`,
+        );
+      }
+      buffer = Buffer.from(await zipResponse.arrayBuffer());
+    }
+  }
+
+  const zip = new AdmZip(buffer);
+  const safeName = (pkg.name || "pkg").replace(/[^a-zA-Z0-9-_]/g, "_");
+  const tempDir = path.join(
+    os.tmpdir(),
+    `dash-registry-manifest-${safeName}-${Date.now()}`,
+  );
+
+  try {
+    validateZipEntries(zip, tempDir);
+    // Only need package.json — extract that single entry instead of
+    // the whole zip to keep this cheap (the full extract in
+    // fetchPackageSource is the right call for previews, but
+    // pre-install preflight is hot path during a 22-widget batch
+    // update so trimming N×(unzip-everything) helps).
+    const pkgJsonEntry = zip.getEntries().find((e) => {
+      const name = e.entryName.replace(/\\/g, "/");
+      return name === "package.json" || name.endsWith("/package.json");
+    });
+    if (!pkgJsonEntry) {
+      // No package.json in the zip — treat as "no declared
+      // permissions" rather than throwing. Callers fall through to
+      // the post-install consent path.
+      return {
+        packageId: toPackageId(pkg.scope, pkg.name),
+        version: pkg.version || null,
+        permissions: null,
+      };
+    }
+    const pkgJsonText = zip.readAsText(pkgJsonEntry);
+    let parsed;
+    try {
+      parsed = JSON.parse(pkgJsonText);
+    } catch (e) {
+      throw new Error(
+        `Manifest fetch failed: invalid package.json (${e.message})`,
+      );
+    }
+    return {
+      packageId: toPackageId(pkg.scope, pkg.name),
+      version: pkg.version || parsed.version || null,
+      permissions: parsed.dash?.permissions || null,
+    };
+  } finally {
+    // tempDir was never actually created (we read in-memory via
+    // zip.readAsText), but validateZipEntries computes paths against
+    // it. Keep the symmetric cleanup defensively in case future
+    // edits switch back to extractAllTo.
+    try {
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    } catch (_) {
+      // non-fatal
+    }
+  }
+}
+
 module.exports = {
   fetchRegistryIndex,
   searchRegistry,
@@ -611,4 +917,5 @@ module.exports = {
   getPackage,
   checkUpdates,
   fetchPackageSource,
+  fetchPackageManifest,
 };
