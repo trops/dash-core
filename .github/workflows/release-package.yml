@@ -31,12 +31,17 @@ jobs:
             # wipes the injected placeholder and publishes the literal
             # "__GDRIVE_CLIENT_SECRET__" string instead of the secret.
             #
-            # Auth uses npm Trusted Publishers (OIDC) — wired via
-            # `permissions: id-token: write` above. Do NOT add
-            # NODE_AUTH_TOKEN here: when the npm CLI sees that env
-            # var it uses token auth and ignores the OIDC handshake,
-            # which produces a 404 if the legacy token has been
-            # demoted after trusted publishing was configured.
+            # Auth: a Trusted Publisher (OIDC) is configured for this
+            # package on npm AND a legacy `NPM_TOKEN` is wired in env.
+            # The npm CLI in Node 22.22.1 (npm 10.9.4) doesn't know how
+            # to use OIDC for the PUT itself — it only signs provenance
+            # via OIDC and then uses NODE_AUTH_TOKEN for the publish
+            # auth. So the token path is what's load-bearing here until
+            # we can move to Node ≥24 / npm ≥11.5.1, at which point the
+            # token line can come out. Removing the token now (with
+            # npm 10.x) produces an E404 on PUT — see commit history
+            # for the prior CLI-upgrade attempt that broke other things.
             - run: npm publish --provenance --access public
               env:
+                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
                   GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
