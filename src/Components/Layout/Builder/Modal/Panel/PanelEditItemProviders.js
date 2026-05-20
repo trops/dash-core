@@ -130,7 +130,37 @@ export const PanelEditItemProviders = ({
             .filter(([, p]) => p && p.type === type)
             .map(([name, p]) => ({ name, ...p }));
           const isConfigured = !!current;
-          const isMissing = req.required && !isConfigured;
+          // Detect the global default for this type. If one exists,
+          // the runtime resolution chain (widget → workspace → app
+          // default → null, see useMcpProvider.js + providerResolution.js)
+          // will use it even when no per-instance override is set —
+          // so the user isn't actually missing anything.
+          //
+          // Without this fallback awareness the UI flagged every
+          // widget with no per-instance pick as "REQUIRED" in red,
+          // even though the widget worked fine at runtime via the
+          // default. Three states now drive the styling instead of
+          // two:
+          //   - overridden: user explicitly picked a per-instance
+          //     provider → neutral panel + "override" tag
+          //   - using-default: per-instance empty but a global
+          //     default exists → neutral panel + "using default
+          //     <name>" hint
+          //   - missing: per-instance empty AND no global default
+          //     for this type → red panel + "REQUIRED" tag
+          const defaultOption = options.find((o) => o.isDefaultForType);
+          const isUsingDefault = !isConfigured && !!defaultOption;
+          const isMissing = req.required && !isConfigured && !defaultOption;
+          // resolvedName is what runtime will actually use — either
+          // the per-instance override, or the global default if one
+          // exists. Surfaced in the "using default" hint so the user
+          // can see which provider is actually wired in without
+          // opening Settings → Providers.
+          const resolvedName = isConfigured
+            ? current
+            : isUsingDefault
+              ? defaultOption.name
+              : null;
 
           return (
             <div
@@ -160,9 +190,32 @@ export const PanelEditItemProviders = ({
                 >
                   {req.required ? "required" : "optional"}
                 </span>
+                {isUsingDefault && (
+                  <span
+                    className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold bg-emerald-800 text-emerald-100"
+                    title={`No per-widget override set — runtime resolves to the global default "${resolvedName}" (Settings → Providers).`}
+                  >
+                    using default
+                  </span>
+                )}
+                {isConfigured && (
+                  <span
+                    className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold bg-indigo-900 text-indigo-200"
+                    title="A per-widget provider is set; overrides the global default."
+                  >
+                    override
+                  </span>
+                )}
               </div>
               {req.description && (
                 <div className="text-xs opacity-60 mt-1">{req.description}</div>
+              )}
+              {isUsingDefault && (
+                <div className="mt-1 text-[11px] text-emerald-300">
+                  Using global default:{" "}
+                  <span className="font-mono">{resolvedName}</span>. Pick a
+                  specific provider below to override.
+                </div>
               )}
               <div className="mt-2">
                 <select
@@ -173,11 +226,16 @@ export const PanelEditItemProviders = ({
                   }`}
                 >
                   <option value="">
-                    {req.required ? "— select a provider —" : "— none —"}
+                    {isUsingDefault
+                      ? `— use default (${resolvedName}) —`
+                      : req.required
+                        ? "— select a provider —"
+                        : "— none —"}
                   </option>
                   {options.map((opt) => (
                     <option key={opt.name} value={opt.name}>
                       {opt.name}
+                      {opt.isDefaultForType ? "  (default)" : ""}
                     </option>
                   ))}
                 </select>
