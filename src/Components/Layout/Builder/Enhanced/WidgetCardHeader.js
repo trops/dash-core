@@ -9,7 +9,7 @@
  * - More menu (three-dot)
  */
 
-import React, { useState } from "react";
+import React, { useContext, useState } from "react";
 import {
   ButtonIcon2,
   DropdownPanel,
@@ -20,6 +20,7 @@ import { WidgetIcon } from "./WidgetIcon";
 import { ComponentManager } from "../../../../ComponentManager";
 import { getUserConfigurableProviders } from "../../../../utils/providerUtils";
 import { pickWidgetDisplayName } from "../../../../utils/widgetIdentity";
+import { AppContext } from "../../../../Context";
 
 export const WidgetCardHeader = ({
   item, // Widget/component item
@@ -99,18 +100,41 @@ export const WidgetCardHeader = ({
 
   const providerRequirements = getProviderRequirements();
 
-  // Check if provider is configured — used only for the amber-dot
-  // indicator now. Actual provider editing lives in the config
-  // modal's Providers section (opened via the "Providers" menu item).
-  const isProviderConfigured = (providerType) => {
-    return selectedProviders[providerType] != null;
+  // App providers — needed to detect when a global default
+  // (`isDefaultForType: true`) exists for a required provider type.
+  // The runtime resolution chain in useMcpProvider / useWebSocketProvider
+  // falls through to the default when no per-instance pick is set, so
+  // the amber-dot indicator should respect that fallback: a widget
+  // whose required type has a default ISN'T actually unresolved.
+  // Without this, the dot fires on every widget the user hasn't
+  // explicitly bound, even though the runtime is happy.
+  const appCtx = useContext(AppContext);
+  const appProviders = appCtx?.providers || {};
+
+  // Check if a required provider has a resolved provider for it —
+  // either a per-instance pick OR a global `isDefaultForType: true`
+  // provider of the matching type. Mirrors the resolution chain in
+  // `utils/providerResolution.js` so the indicator agrees with what
+  // the runtime hook actually does.
+  const isProviderResolved = (providerType) => {
+    if (selectedProviders[providerType] != null) return true;
+    // Walk appProviders looking for a default of this type.
+    const entries =
+      appProviders && typeof appProviders === "object"
+        ? Object.values(appProviders)
+        : [];
+    return entries.some(
+      (p) => p && p.type === providerType && p.isDefaultForType === true,
+    );
   };
 
-  // True when any required provider lacks a selection — drives the
-  // amber dot on the overflow button so the user can see unresolved
-  // state at a glance without opening the menu.
+  // True when any required provider has neither a per-instance pick
+  // nor a global default — drives the amber dot on the overflow
+  // button + the "!" badge on the Providers menu item so the user
+  // can see truly-unresolved state at a glance. Widgets relying on
+  // a global default no longer trip this.
   const hasUnresolvedRequiredProvider = providerRequirements.some(
-    (req) => req.required && !isProviderConfigured(req.type),
+    (req) => req.required && !isProviderResolved(req.type),
   );
 
   // Build overflow actions list — single source of truth for the
