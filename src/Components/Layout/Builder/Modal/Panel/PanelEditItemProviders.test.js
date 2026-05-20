@@ -51,3 +51,53 @@ describe("PanelEditItemProviders.handleProviderChange — both-layer write-throu
     );
   });
 });
+
+describe("PanelEditItemProviders — default-provider fallback awareness", () => {
+  // The widget-instance provider panel used to mark any required
+  // provider with no per-instance pick as "REQUIRED" in red, even
+  // when a global default (provider.isDefaultForType === true) would
+  // be used at runtime. The runtime resolution chain (see
+  // resolveProviderName in utils/providerResolution.js) already
+  // falls through to the default, so the UI flagging "missing" was
+  // a divergence between displayed and actual state — the user
+  // would see red on a widget that was actually working. These
+  // tests pin the three-state rendering: overridden /
+  // using-default / missing.
+  const panelPath = path.join(__dirname, "PanelEditItemProviders.js");
+  const source = fs.readFileSync(panelPath, "utf8");
+
+  test("detects the global default via options.find with isDefaultForType predicate", () => {
+    expect(source).toMatch(/options\.find\([\s\S]{0,60}isDefaultForType/);
+  });
+
+  test("derives isUsingDefault from 'per-instance empty AND default exists'", () => {
+    expect(source).toMatch(
+      /isUsingDefault\s*=\s*!isConfigured\s*&&\s*!!defaultOption/,
+    );
+  });
+
+  test("isMissing now requires NO default to exist (not just NO per-instance pick)", () => {
+    // The bug fix: missing must be `required && !configured && !defaultOption`.
+    // The old form `required && !configured` would trigger red even
+    // when a default existed.
+    expect(source).toMatch(
+      /isMissing\s*=\s*req\.required\s*&&\s*!isConfigured\s*&&\s*!defaultOption/,
+    );
+  });
+
+  test("renders a 'using default' badge when isUsingDefault is true", () => {
+    expect(source).toMatch(/isUsingDefault\s*&&[\s\S]+?using default/i);
+  });
+
+  test("surfaces the resolved default name to the user so they know what's wired", () => {
+    expect(source).toMatch(/Using global default/);
+  });
+
+  test("the select 'no selection' option shows the default name when applicable", () => {
+    expect(source).toMatch(/use default \(\$\{resolvedName\}\)/);
+  });
+
+  test("options dropdown annotates the default entry with (default)", () => {
+    expect(source).toMatch(/isDefaultForType\s*\?\s*["'`].*default/);
+  });
+});

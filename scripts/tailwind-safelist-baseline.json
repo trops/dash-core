@@ -83,6 +83,7 @@
     "text-[10px]"
   ],
   "src/Components/Layout/Builder/Modal/Panel/PanelEditItemProviders.js": [
+    "text-[10px]",
     "text-[11px]"
   ],
   "src/Components/Layout/Builder/Modal/Panel/PanelEditItemSchedule.js": [
