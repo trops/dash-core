@@ -30,7 +30,13 @@ jobs:
             # has to be available here too — otherwise the rebuild
             # wipes the injected placeholder and publishes the literal
             # "__GDRIVE_CLIENT_SECRET__" string instead of the secret.
+            #
+            # Auth uses npm Trusted Publishers (OIDC) — wired via
+            # `permissions: id-token: write` above. Do NOT add
+            # NODE_AUTH_TOKEN here: when the npm CLI sees that env
+            # var it uses token auth and ignores the OIDC handshake,
+            # which produces a 404 if the legacy token has been
+            # demoted after trusted publishing was configured.
             - run: npm publish --provenance --access public
               env:
-                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
                   GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
