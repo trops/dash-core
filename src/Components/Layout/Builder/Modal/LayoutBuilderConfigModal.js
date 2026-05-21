@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Button,
   FontAwesomeIcon,
@@ -72,6 +72,11 @@ export const LayoutBuilderConfigModal = ({
   const [, updateState] = useState();
   const forceUpdate = useCallback(() => updateState({}), []);
 
+  // PanelEditItem defers per-keystroke propagation to keep typing
+  // snappy. This ref lets us trigger one final flush right before
+  // Save so the saved workspace includes any in-flight edits.
+  const panelEditFlushRef = useRef(null);
+
   useEffect(() => {
     if (item !== itemSelected) {
       setItemSelected(() => item);
@@ -100,7 +105,17 @@ export const LayoutBuilderConfigModal = ({
   }
 
   function handleSaveConfig() {
-    onSaveWorkspace(workspaceSelected);
+    // Pull any pending edits out of PanelEditItem before saving.
+    // The panel propagates back via onUpdate (which sets our
+    // workspaceSelected state) but setState is async — so we read
+    // the flushed workspace directly from the return value to avoid
+    // saving a stale snapshot on the very first Save after typing.
+    let workspaceToSave = workspaceSelected;
+    if (typeof panelEditFlushRef.current === "function") {
+      const flushed = panelEditFlushRef.current();
+      if (flushed && flushed.workspace) workspaceToSave = flushed.workspace;
+    }
+    onSaveWorkspace(workspaceToSave);
   }
 
   const sections = itemSelected ? getSections(itemSelected) : [];
@@ -177,6 +192,7 @@ export const LayoutBuilderConfigModal = ({
               item={itemSelected}
               onUpdate={handleEditChange}
               workspace={workspaceSelected}
+              flushRef={panelEditFlushRef}
             />
           )}
 
