@@ -152,3 +152,96 @@ test("widget name is extracted as the last dot-segment", () => {
   const out = resolveSiblings("ai-built.pipeline.PipelineKanban", reg);
   assert.strictEqual(out.packageId, "@ai-built/pipeline");
 });
+
+// ─── bare-name collision: scoped resolution must NOT cross packages ───
+
+test("scoped widgetId never matches another package with the same bare name", () => {
+  // Regression guard for the JIT-consent bug where two packages
+  // shipped a `GoogleDriveRecentFiles` widget (the published
+  // @trops/google-drive package + an @ai-built/prompt-validation
+  // test fixture). The pre-fix resolver did a bare-name scan and
+  // returned the FIRST match — which meant a consent prompt for the
+  // ai-built widget would offer to "apply to all 4 widgets in
+  // @trops/google-drive", and approving would persist the grant
+  // against widgets the user didn't even have on the dashboard.
+  //
+  // The scoped-first lookup pins the package from the widgetId's own
+  // first two dot-segments, so a collision between two packages on
+  // a bare component name can no longer steer the sibling set.
+  const COLLIDING_PUBLISHED = [
+    "@trops/google-drive",
+    {
+      packageId: "@trops/google-drive",
+      componentNames: [
+        "GoogleDriveWidget",
+        "GDriveFileList",
+        "GoogleDriveRecentFiles",
+      ],
+    },
+  ];
+  const COLLIDING_FIXTURE = [
+    "@ai-built/prompt-validation",
+    {
+      packageId: "@ai-built/prompt-validation",
+      componentNames: ["GoogleDriveRecentFiles", "Counter", "Notepad"],
+    },
+  ];
+  // Order matters for the regression — the OLD code returned the
+  // first-iterated match. Put the published package first so the
+  // bare-name fallback would have grabbed it.
+  const reg = makeRegistry([COLLIDING_PUBLISHED, COLLIDING_FIXTURE]);
+
+  const out = resolveSiblings(
+    "ai-built.prompt-validation.GoogleDriveRecentFiles",
+    reg,
+  );
+  assert.strictEqual(out.packageId, "@ai-built/prompt-validation");
+  assert.deepStrictEqual(out.siblingWidgetIds, [
+    "ai-built.prompt-validation.GoogleDriveRecentFiles",
+    "ai-built.prompt-validation.Counter",
+    "ai-built.prompt-validation.Notepad",
+  ]);
+
+  // The mirror check — looking up the published-package widget id
+  // still resolves to the published package's sibling set, not the
+  // fixture package.
+  const outOther = resolveSiblings(
+    "trops.google-drive.GoogleDriveRecentFiles",
+    reg,
+  );
+  assert.strictEqual(outOther.packageId, "@trops/google-drive");
+  assert.deepStrictEqual(outOther.siblingWidgetIds, [
+    "trops.google-drive.GoogleDriveWidget",
+    "trops.google-drive.GDriveFileList",
+    "trops.google-drive.GoogleDriveRecentFiles",
+  ]);
+});
+
+test("scoped widgetId for an UNINSTALLED package returns self-only (no bare-name fallback)", () => {
+  // If the scoped widgetId names a package the registry doesn't know
+  // about, we MUST return self-only — not fall through to bare-name
+  // search and accidentally hit another package's widget with the
+  // same trailing name. Without this guard the original bug returns
+  // the moment a user uninstalls the fixture package while a grant
+  // request is in flight.
+  const reg = makeRegistry([FIXTURE_TROPS_GDRIVE]);
+  const out = resolveSiblings(
+    "ai-built.prompt-validation.GoogleDriveRecentFiles",
+    reg,
+  );
+  assert.strictEqual(out.packageId, null);
+  assert.deepStrictEqual(out.siblingWidgetIds, [
+    "ai-built.prompt-validation.GoogleDriveRecentFiles",
+  ]);
+});
+
+test("legacy bare-name widgetId still uses fallback path (no scope present)", () => {
+  // Confirms backwards-compat: a widgetId that doesn't carry scope
+  // still hits the bare-name search loop. The fixture exposes a
+  // single matching package so the result is unambiguous.
+  const reg = makeRegistry([FIXTURE_TROPS_GDRIVE]);
+  const out = resolveSiblings("GDriveFileList", reg);
+  assert.strictEqual(out.packageId, "@trops/google-drive");
+  // Sibling list comes from the matched package's componentNames.
+  assert.strictEqual(out.siblingWidgetIds.length, 4);
+});

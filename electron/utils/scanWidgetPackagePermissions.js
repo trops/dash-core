@@ -96,14 +96,84 @@ function _walkSourceFiles(dir) {
 }
 
 /**
+ * Locate the package's `widgets/` directory and enumerate every
+ * `<Name>.js` paired with a `<Name>.dash.js` config. That pair is the
+ * canonical widget shape across the repo (see
+ * `widgetCompiler.findWidgetsDir`). Returns
+ *   [{componentName, componentFilePath}].
+ *
+ * Files without a sibling `.dash.js` (utils, helpers, contexts) are
+ * skipped — they're not widgets, so attributing their MCP usage to a
+ * specific component is ambiguous.
+ */
+function _findComponentFiles(packageDir) {
+  const candidates = [
+    path.join(packageDir, "widgets"),
+    path.join(packageDir, "src", "widgets"),
+  ];
+  const out = [];
+  for (const widgetsDir of candidates) {
+    if (!fs.existsSync(widgetsDir)) continue;
+    let entries;
+    try {
+      entries = fs.readdirSync(widgetsDir, { withFileTypes: true });
+    } catch (_) {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const m = entry.name.match(/^(.+)\.dash\.(?:js|jsx|ts|tsx)$/);
+      if (!m) continue;
+      const componentName = m[1];
+      // Prefer .js, then .jsx, .ts, .tsx — first-match wins.
+      for (const ext of [".js", ".jsx", ".ts", ".tsx"]) {
+        const componentFilePath = path.join(
+          widgetsDir,
+          `${componentName}${ext}`,
+        );
+        if (fs.existsSync(componentFilePath)) {
+          out.push({ componentName, componentFilePath });
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/**
  * Walk packageDir, scan every source file, return the canonical
  * `dash.permissions.mcp` block. Returns `{}` when no MCP usage found.
+ *
+ * Per-file pairing — providers and tools are paired at the source-file
+ * level, not unioned across the whole package. The vast majority of
+ * widget source files use a single `useMcpProvider("type")` hook and
+ * call its tools in the same file; pairing per file produces the
+ * correct provider→tools mapping for that case.
+ *
+ * Multi-widget packages (one package shipping N widgets, each with a
+ * different provider) used to be miscompiled by the old whole-package
+ * union: every provider in the package got credit for every tool any
+ * sibling widget called. The result was a manifest where, e.g., the
+ * `slack` server claimed `list_pull_requests` and `list_directory`
+ * tools simply because the same package also shipped a GitHub widget
+ * and a Filesystem widget. Per-file pairing eliminates that
+ * cross-pollination because each file's tools attach only to that
+ * file's providers.
+ *
+ * Files containing multiple providers (a widget that orchestrates two
+ * MCP servers in the same component) attribute their tools to each
+ * provider in that file — an acceptable over-grant within the single
+ * widget's own scope, and a rare-enough case that we don't try to
+ * parse expression scoping. Tools called in files with NO provider
+ * hook (e.g. a helper module called from a parent widget) are ignored
+ * — a runtime hint without static evidence of which provider it
+ * targets falls through to the gate's JIT consent.
  */
 function scanWidgetPackagePermissions(packageDir) {
   if (typeof packageDir !== "string" || !fs.existsSync(packageDir)) return {};
 
-  const allProviders = new Set();
-  const allTools = new Set();
+  const providerToTools = new Map();
   for (const filePath of _walkSourceFiles(packageDir)) {
     let code;
     try {
@@ -112,15 +182,81 @@ function scanWidgetPackagePermissions(packageDir) {
       continue;
     }
     const { providers, tools } = scanFileForMcpUsage(code);
-    for (const p of providers) allProviders.add(p);
-    for (const t of tools) allTools.add(t);
+    // No provider in this file → tools have no statically-known
+    // server to attach to. Skip rather than cross-pollinate.
+    if (providers.length === 0) continue;
+    // No tools in this file → still register the provider with an
+    // empty set so the manifest knows the widget declares this
+    // server. (Edge case: helper file that mounts useMcpProvider but
+    // calls callTool via an indirection we can't statically read.)
+    for (const p of providers) {
+      if (!providerToTools.has(p)) providerToTools.set(p, new Set());
+      const bucket = providerToTools.get(p);
+      for (const t of tools) bucket.add(t);
+    }
   }
 
-  if (allProviders.size === 0 || allTools.size === 0) return {};
-
+  // Drop providers that ended up with no tools across the whole
+  // package — declaring a server with an empty tool list is
+  // misleading downstream (the Permissions panel renders an empty
+  // section, the gate treats it as "all tools require JIT"). The
+  // runtime gate is the safety net for tools we couldn't statically
+  // pair.
   const out = {};
-  for (const provider of allProviders) {
-    out[provider] = { tools: Array.from(allTools).sort() };
+  for (const [provider, toolSet] of providerToTools.entries()) {
+    if (toolSet.size === 0) continue;
+    out[provider] = { tools: Array.from(toolSet).sort() };
+  }
+  return out;
+}
+
+/**
+ * Per-component scanner. Walks each `widgets/<Name>.js` paired with
+ * `widgets/<Name>.dash.js` and produces a map
+ *   { [componentName]: { [server]: { tools: [...] } } }
+ *
+ * Each component's entry contains ONLY the providers + tools its own
+ * file uses. Sibling widgets in the same package don't bleed into
+ * each other — the bug the package-level `mcp` block carries by
+ * design (one shared block for the whole package) is closed here at
+ * the widget granularity.
+ *
+ * Used by `widgetPermissions.getWidgetMcpPermissions(scopedWidgetId)`
+ * to answer "what does THIS specific widget declare" instead of
+ * "what does the WHOLE package declare", which is what fixes:
+ *   - Permissions panel showing every sibling's declarations under
+ *     every widget
+ *   - JIT consent's sibling-fanout writing grants to widgets that
+ *     don't actually use the granted tool
+ *
+ * Returns `{}` when no component file declares any MCP usage.
+ */
+function scanWidgetPackagePermissionsByComponent(packageDir) {
+  if (typeof packageDir !== "string" || !fs.existsSync(packageDir)) return {};
+  const out = {};
+  for (const { componentName, componentFilePath } of _findComponentFiles(
+    packageDir,
+  )) {
+    let code;
+    try {
+      code = fs.readFileSync(componentFilePath, "utf8");
+    } catch (_) {
+      continue;
+    }
+    const { providers, tools } = scanFileForMcpUsage(code);
+    if (providers.length === 0) continue;
+    // Pair this file's providers with this file's tools — same
+    // per-file logic as `scanWidgetPackagePermissions`, scoped to
+    // a single widget's component file.
+    const servers = {};
+    for (const provider of providers) {
+      const sorted = Array.from(new Set(tools)).sort();
+      if (sorted.length === 0) continue;
+      servers[provider] = { tools: sorted };
+    }
+    if (Object.keys(servers).length > 0) {
+      out[componentName] = { servers };
+    }
   }
   return out;
 }
@@ -157,8 +293,21 @@ function mergePermissions(human, scanned) {
 
 /**
  * Apply the scanner's findings to `package.json` in `packageDir` —
- * read, merge with any existing `dash.permissions.mcp` block, write
- * back. Returns the resulting block (or null if no package.json).
+ * read, merge with any existing manifest, write back. Returns the
+ * resulting package-level `mcp` block (or null if no package.json AND
+ * no usage to write).
+ *
+ * Writes BOTH blocks:
+ *   - `dash.permissions.mcp` — package-level union (back-compat with
+ *     the gate's pre-per-component lookup path)
+ *   - `dash.permissions.mcpByComponent` — per-widget breakdown so the
+ *     Permissions panel and JIT-consent sibling fanout can answer
+ *     "which specific widgets declare this tool" without cross-
+ *     contaminating siblings
+ *
+ * The per-component block is fully scanner-derived (no hand-merge) —
+ * editing it by hand is unsupported. Package-level `mcp` continues
+ * to honor hand-authored entries.
  */
 function applyScanToPackageJson(packageDir) {
   const pkgPath = path.join(packageDir, "package.json");
@@ -173,18 +322,42 @@ function applyScanToPackageJson(packageDir) {
   const scanned = scanWidgetPackagePermissions(packageDir);
   const human = existing.dash?.permissions?.mcp || null;
   const merged = mergePermissions(human, scanned);
-  if (Object.keys(merged).length === 0) {
+  const byComponent = scanWidgetPackagePermissionsByComponent(packageDir);
+  // Existing stale `mcpByComponent` from a prior scan must be dropped
+  // when this run finds no qualifying components — otherwise leftover
+  // entries for deleted widgets keep applying permissions the user
+  // didn't actually re-approve. Treat "has existing block but new
+  // scan empty" as a write trigger (with the side effect of removing
+  // the block via the delete below).
+  const hadByComponent =
+    !!existing.dash?.permissions?.mcpByComponent &&
+    typeof existing.dash.permissions.mcpByComponent === "object" &&
+    Object.keys(existing.dash.permissions.mcpByComponent).length > 0;
+  if (
+    Object.keys(merged).length === 0 &&
+    Object.keys(byComponent).length === 0 &&
+    !hadByComponent
+  ) {
     // Nothing to write. Don't churn the file.
     return null;
+  }
+  const nextPermissions = {
+    ...((existing.dash || {}).permissions || {}),
+  };
+  if (Object.keys(merged).length > 0) nextPermissions.mcp = merged;
+  if (Object.keys(byComponent).length > 0) {
+    nextPermissions.mcpByComponent = byComponent;
+  } else {
+    // Drop a stale `mcpByComponent` block when re-scanning finds no
+    // qualifying component files. Prevents leftover entries from a
+    // prior install lingering after the user deletes a widget.
+    delete nextPermissions.mcpByComponent;
   }
   const next = {
     ...existing,
     dash: {
       ...(existing.dash || {}),
-      permissions: {
-        ...((existing.dash || {}).permissions || {}),
-        mcp: merged,
-      },
+      permissions: nextPermissions,
     },
   };
   fs.writeFileSync(pkgPath, JSON.stringify(next, null, 2), "utf8");
@@ -221,6 +394,7 @@ function backfillPackagePermissions(packagePaths) {
 module.exports = {
   scanFileForMcpUsage,
   scanWidgetPackagePermissions,
+  scanWidgetPackagePermissionsByComponent,
   mergePermissions,
   applyScanToPackageJson,
   backfillPackagePermissions,

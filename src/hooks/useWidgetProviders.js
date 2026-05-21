@@ -12,6 +12,12 @@ import { WidgetContext } from "../Context/WidgetContext";
  * Matches the provider resolution pattern used by useMcpProvider:
  * 1. Widget-level: widgetData.selectedProviders[providerType] (set by handleSelectProvider on the layout item)
  * 2. Workspace-level fallback: workspace.workspaceData.selectedProviders[widgetId][providerType]
+ * 3. App-default fallback: any provider of matching type flagged `isDefaultForType` in AppContext.providers
+ *    (managed via Settings → Providers "Use as default…" toggle)
+ * 4. null — widget surfaces its own "no provider" empty state
+ *
+ * Existing widgets/workspaces retain their explicit bindings; the default layer only
+ * activates for widgets with no explicit binding (mirrors useMcpProvider exactly).
  *
  * Reads provider data from AppContext.providers (not DashboardContext.providers, which has a
  * structural issue where providers don't flow through from AppWrapper).
@@ -54,9 +60,10 @@ export const useWidgetProviders = () => {
   // Get all provider type declarations from the widget config
   const providerDeclarations = widgetData?.providers || [];
 
-  // Resolve each declared provider using the same two-layer lookup as useMcpProvider:
+  // Resolve each declared provider using the same three-layer lookup as useMcpProvider:
   // 1. Widget-level: stored directly on the layout item by handleSelectProvider
   // 2. Workspace-level: stored as workspace.selectedProviders[widgetId][providerType]
+  // 3. App-default:    any provider in AppContext.providers flagged isDefaultForType
   const providers = {};
   for (const decl of providerDeclarations) {
     const providerType = decl.type;
@@ -70,6 +77,20 @@ export const useWidgetProviders = () => {
         workspace?.workspaceData?.selectedProviders?.[widgetId]?.[
           providerType
         ] || null;
+    }
+
+    // 3. App-default fallback — only kicks in for widgets with no explicit
+    //    per-widget or per-workspace binding. Walking the map is O(N)
+    //    in the provider count, which is small (typically <20 even for
+    //    heavy users); the cost is bounded and the lookup runs once per
+    //    declared provider type per render.
+    if (!providerName && app?.providers && typeof app.providers === "object") {
+      for (const [name, data] of Object.entries(app.providers)) {
+        if (data?.type === providerType && data?.isDefaultForType === true) {
+          providerName = name;
+          break;
+        }
+      }
     }
 
     // Look up from AppContext.providers (not DashboardContext)

@@ -760,3 +760,168 @@ test("applyToSiblings: true with deny → no grants written anywhere", async () 
   assert.strictEqual(getGrant("trops.sibtest.WidgetB"), null);
   assert.strictEqual(getGrant("trops.sibtest.WidgetC"), null);
 });
+
+// ─── per-component sibling filter: grants only land on widgets that
+//     actually declare the granted tool ──
+
+/**
+ * Install a multi-widget package shipping a `mcpByComponent` block.
+ * The package's three widgets each declare a different server, so
+ * the sibling filter can distinguish them at gate time.
+ */
+function installSibtestPackageWithPerComponentManifest() {
+  const dir = path.join(tmpRoot, "userData", "widgets", "@trops", "sibtest");
+  fs.mkdirSync(dir, { recursive: true });
+  const pkgJson = {
+    name: "@trops/sibtest",
+    version: "1.0.0",
+    dash: {
+      permissions: {
+        // Package-level union — back-compat path the gate doesn't
+        // need to consult once mcpByComponent is present.
+        mcp: {
+          srv: { tools: ["t"] },
+          other: { tools: ["other-tool"] },
+        },
+        mcpByComponent: {
+          WidgetA: { servers: { srv: { tools: ["t"] } } },
+          WidgetB: { servers: { other: { tools: ["other-tool"] } } },
+          // WidgetC declares NOTHING — pure UI widget in the same
+          // package. Sibling filter must skip it for srv/t grants.
+        },
+      },
+    },
+  };
+  fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify(pkgJson));
+  clearCache();
+  clearGrantCache();
+  for (const sib of ["WidgetA", "WidgetB", "WidgetC"]) {
+    revokeGrant("trops.sibtest." + sib);
+  }
+}
+
+test("applyToSiblings: per-component filter — grants ONLY fan out to siblings whose manifest declares the tool", () => {
+  // The regression we just shipped: previously the gate wrote the
+  // grant to every sibling in the package regardless of whether
+  // that sibling's component declared the tool. A Counter widget
+  // sitting next to a GoogleDrive widget would inherit the GDrive
+  // grant because they share a package. With per-component
+  // declarations, the grant lands only on siblings that actually
+  // use the tool — plus the originating widget always (its runtime
+  // call IS proof of use even if the manifest hasn't been
+  // re-scanned).
+  installSibtestPackageWithPerComponentManifest();
+  __mockApproval = async () => ({
+    approve: true,
+    applyToSiblings: true,
+    granted: {
+      grantOrigin: "live",
+      servers: { srv: { tools: ["t"], readPaths: [], writePaths: [] } },
+    },
+  });
+  return gateToolCallWithJit(
+    {
+      widgetId: "trops.sibtest.WidgetA",
+      serverName: "srv",
+      toolName: "t",
+      args: {},
+    },
+    { enableJit: true, getRegistrySnapshot: () => SIBLINGS_REGISTRY },
+  ).then((r) => {
+    assert.strictEqual(r.allow, true);
+    // WidgetA: originating widget → always gets the grant.
+    assert.ok(
+      getGrant("trops.sibtest.WidgetA"),
+      "WidgetA (originator) must always have the grant",
+    );
+    // WidgetB: declares 'other' server, NOT 'srv'/'t' → must be
+    // skipped by the filter.
+    assert.strictEqual(
+      getGrant("trops.sibtest.WidgetB"),
+      null,
+      "WidgetB declares a different server — must NOT get an srv/t grant",
+    );
+    // WidgetC: declares nothing at all → must be skipped.
+    assert.strictEqual(
+      getGrant("trops.sibtest.WidgetC"),
+      null,
+      "WidgetC declares nothing — must NOT get an srv/t grant",
+    );
+  });
+});
+
+test("applyToSiblings: per-component filter — modal sees the FILTERED sibling list, not the full package", async () => {
+  // The "Apply to all N widgets" checkbox count must reflect the
+  // applicable subset, not the package total. Otherwise the user
+  // is offered "Apply to all 10" when only 3 would actually
+  // receive the grant.
+  installSibtestPackageWithPerComponentManifest();
+  let received = null;
+  __mockApproval = async (req) => {
+    received = req;
+    return { approve: false };
+  };
+  await gateToolCallWithJit(
+    {
+      widgetId: "trops.sibtest.WidgetA",
+      serverName: "srv",
+      toolName: "t",
+      args: {},
+    },
+    { enableJit: true, getRegistrySnapshot: () => SIBLINGS_REGISTRY },
+  );
+  // Modal received only WidgetA (the only sibling whose
+  // mcpByComponent declares srv/t).
+  assert.deepStrictEqual(received.siblingWidgetIds, ["trops.sibtest.WidgetA"]);
+});
+
+test("applyToSiblings: back-compat — package without mcpByComponent falls back to full sibling list", () => {
+  // A widget package that hasn't been re-scanned with the new
+  // per-component scanner. The filter must fall through to the
+  // unfiltered sibling list to preserve the pre-existing UX —
+  // otherwise users upgrading dash-core would suddenly lose
+  // "Apply to all in package" for every existing package.
+  //
+  // The previous sibling-filter test wrote an @trops/sibtest
+  // package.json with mcpByComponent. We're testing the
+  // no-mcpByComponent path here, so we explicitly clear that file
+  // before running. Cache clear ensures `getWidgetMcpPermissions`
+  // re-reads the now-absent file.
+  const stalePkgDir = path.join(
+    tmpRoot,
+    "userData",
+    "widgets",
+    "@trops",
+    "sibtest",
+  );
+  if (fs.existsSync(stalePkgDir)) {
+    fs.rmSync(stalePkgDir, { recursive: true, force: true });
+  }
+  clearCache();
+  for (const sib of ["WidgetA", "WidgetB", "WidgetC"]) {
+    setupSibTestWidget(sib);
+  }
+  __mockApproval = async () => ({
+    approve: true,
+    applyToSiblings: true,
+    granted: {
+      grantOrigin: "live",
+      servers: { srv: { tools: ["t"], readPaths: [], writePaths: [] } },
+    },
+  });
+  return gateToolCallWithJit(
+    {
+      widgetId: "trops.sibtest.WidgetA",
+      serverName: "srv",
+      toolName: "t",
+      args: {},
+    },
+    { enableJit: true, getRegistrySnapshot: () => SIBLINGS_REGISTRY },
+  ).then(() => {
+    // No per-component data → all 3 siblings get the grant
+    // (preserves the previous behavior).
+    assert.ok(getGrant("trops.sibtest.WidgetA"));
+    assert.ok(getGrant("trops.sibtest.WidgetB"));
+    assert.ok(getGrant("trops.sibtest.WidgetC"));
+  });
+});

@@ -17,9 +17,27 @@
  * Conversion: registry keys are scoped (`@trops/google-drive`); grant
  * keys are dotted (`trops.google-drive.GDriveFileList`). The mapping
  * for each entry is `@<scope>/<name>` + `<componentName>` →
- * `<scope>.<name>.<componentName>`. Bare-name lookup uses the LAST
- * dot-segment of the input widgetId so 3-part scope.pkg.component ids
- * resolve correctly.
+ * `<scope>.<name>.<componentName>`.
+ *
+ * Resolution strategy:
+ *
+ *   1. SCOPED PATH (preferred): a 3-part widgetId carries the package
+ *      identity in its first two segments. We rebuild `@scope/pkg` from
+ *      those segments and look the package up directly in the registry.
+ *      That keeps two packages exporting the same bare component name
+ *      from cross-contaminating each other's grant scope.
+ *
+ *   2. LEGACY BARE-NAME FALLBACK: for legacy widget ids that don't
+ *      carry scope (1- or 2-segment ids), walk the registry and match
+ *      on the last dot-segment. Honours `entry.packageId` when present
+ *      so the returned sibling set is correctly mapped.
+ *
+ * The scoped-first strategy was added after a bare-name collision
+ * caused JIT consent for a widget in `@ai-built/prompt-validation` to
+ * resolve siblings under `@trops/google-drive` (both packages
+ * happened to ship a `GoogleDriveRecentFiles` component). The grant
+ * subsequently landed on the wrong package's widgets entirely. Don't
+ * regress this — the test file pins the collision case explicitly.
  */
 "use strict";
 
@@ -31,6 +49,18 @@ const FALLBACK = (widgetId) => ({
 function _bareNameFromWidgetId(widgetId) {
   const idx = widgetId.lastIndexOf(".");
   return idx >= 0 ? widgetId.slice(idx + 1) : widgetId;
+}
+
+/**
+ * Pull `@scope/pkg` out of a 3-part dotted widgetId. Returns null for
+ * any input that isn't exactly 3 dot-segments — 1- and 2-segment ids
+ * fall through to the legacy bare-name path.
+ */
+function _packageIdFromScopedWidgetId(widgetId) {
+  const parts = widgetId.split(".");
+  if (parts.length !== 3) return null;
+  if (!parts[0] || !parts[1] || !parts[2]) return null;
+  return `@${parts[0]}/${parts[1]}`;
 }
 
 function _toGrantId(packageId, componentName) {
@@ -54,6 +84,26 @@ function _entries(snapshot) {
 }
 
 /**
+ * Look up an exact registry entry by packageId (either the registry
+ * key OR the entry's own `packageId` field). Returns the entry or
+ * null. We accept both shapes because some registry persistence
+ * paths historically keyed by `name` instead of `packageId`.
+ */
+function _findEntryByPackageId(packageId, registrySnapshot) {
+  for (const [key, entry] of _entries(registrySnapshot)) {
+    if (key === packageId) return entry;
+    if (
+      entry &&
+      typeof entry.packageId === "string" &&
+      entry.packageId === packageId
+    ) {
+      return entry;
+    }
+  }
+  return null;
+}
+
+/**
  * @param {string} widgetId — grant-keyed widget id
  * @param {Map<string, object>|object} registrySnapshot — getWidgetRegistry().widgets
  * @returns {{ packageId: string|null, siblingWidgetIds: string[] }}
@@ -61,6 +111,30 @@ function _entries(snapshot) {
 function resolveSiblings(widgetId, registrySnapshot) {
   if (typeof widgetId !== "string" || !widgetId) return FALLBACK(widgetId);
 
+  // SCOPED PATH — the widgetId is already scoped, so we know its
+  // package directly. No cross-package matching, no collision risk.
+  const derivedPackageId = _packageIdFromScopedWidgetId(widgetId);
+  if (derivedPackageId) {
+    const entry = _findEntryByPackageId(derivedPackageId, registrySnapshot);
+    const names = Array.isArray(entry?.componentNames)
+      ? entry.componentNames
+      : null;
+    if (entry && names && names.length > 0) {
+      return {
+        packageId: derivedPackageId,
+        siblingWidgetIds: names.map((n) => _toGrantId(derivedPackageId, n)),
+      };
+    }
+    // Package is known by id but the registry entry is missing or
+    // empty (race: package just installed, registry write hasn't
+    // landed). Don't fall through to bare-name search — that would
+    // cross-contaminate by matching another package whose component
+    // happens to share the bare name. Return the single widget.
+    return FALLBACK(widgetId);
+  }
+
+  // LEGACY BARE-NAME FALLBACK — only for widget ids that don't carry
+  // scope (1- or 2-segment ids).
   const bareName = _bareNameFromWidgetId(widgetId);
   if (!bareName) return FALLBACK(widgetId);
 
