@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   SelectMenu,
   InputText,
@@ -6,15 +6,37 @@ import {
   FormLabel,
 } from "@trops/dash-react";
 import { replaceItemInLayout } from "../../../../../utils/layout";
-import { LayoutModel, WorkspaceModel } from "../../../../../Models";
+import { WorkspaceModel } from "../../../../../Models";
 import deepEqual from "deep-equal";
 import { ComponentManager } from "../../../../../ComponentManager";
 
-export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
+export const PanelEditItem = ({
+  workspace,
+  onUpdate,
+  item = null,
+  flushRef = null,
+}) => {
   const [itemSelected, setItemSelected] = useState(item);
   const [workspaceSelected, setWorkspaceSelected] = useState(workspace);
   const [, updateState] = useState();
   const forceUpdate = useCallback(() => updateState({}), []);
+
+  // Refs that mirror the latest local state. Used by the unmount
+  // cleanup and the flush handler — both run outside the normal
+  // render cycle and can't rely on the closed-over state, since
+  // closures capture state at the moment the function was created.
+  const itemSelectedRef = useRef(itemSelected);
+  const workspaceSelectedRef = useRef(workspaceSelected);
+  const onUpdateRef = useRef(onUpdate);
+  itemSelectedRef.current = itemSelected;
+  workspaceSelectedRef.current = workspaceSelected;
+  onUpdateRef.current = onUpdate;
+
+  // True when local edits have not yet been propagated to the parent.
+  // Set by handleTextChangeCustom, cleared by flushPending. The
+  // unmount cleanup (below) consults this so a tab switch or modal
+  // close doesn't drop the user's last few keystrokes.
+  const dirtyRef = useRef(false);
 
   useEffect(() => {
     if (deepEqual(item, itemSelected) === false) {
@@ -29,17 +51,55 @@ export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace, item]);
 
-  function handleUpdate(e, data) {
-    const workspaceTemp = WorkspaceModel(workspaceSelected);
+  // Build the fresh workspace from the latest local item + propagate
+  // to the parent. Returns `{item, workspace}` so callers (the
+  // modal's Save handler) can read the new workspace synchronously,
+  // sidestepping React's async setState — the parent's
+  // workspaceSelected state won't reflect this call until the next
+  // render, but the caller already has the new value in hand.
+  //
+  // Returns null when there's nothing to flush.
+  function flushPending() {
+    if (!dirtyRef.current) return null;
+    const latestItem = itemSelectedRef.current;
+    const latestWorkspace = workspaceSelectedRef.current;
+    if (!latestItem || !latestWorkspace) return null;
+    const workspaceTemp = WorkspaceModel(latestWorkspace);
     const newLayout = replaceItemInLayout(
       workspaceTemp.layout,
-      data["id"],
-      data,
+      latestItem["id"],
+      latestItem,
     );
     workspaceTemp.layout = newLayout;
-    onUpdate(data, workspaceTemp);
-    forceUpdate();
+    dirtyRef.current = false;
+    onUpdateRef.current(latestItem, workspaceTemp);
+    return { item: latestItem, workspace: workspaceTemp };
   }
+
+  // Expose flushPending via the ref the modal passes in. This is how
+  // the modal's Save handler triggers one final propagation before
+  // calling onSaveWorkspace — without it, the modal would save the
+  // workspace as it stood before the user's last typing burst.
+  useEffect(() => {
+    if (!flushRef) return undefined;
+    flushRef.current = flushPending;
+    return () => {
+      if (flushRef.current === flushPending) flushRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flushRef]);
+
+  // Final flush on unmount. Triggers when the user switches sidebar
+  // tabs (the modal conditionally renders only the active section,
+  // so switching unmounts PanelEditItem) or closes the modal without
+  // saving. The parent modal is still mounted at this point, so
+  // calling onUpdate from cleanup is safe.
+  useEffect(() => {
+    return () => {
+      if (dirtyRef.current) flushPending();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function renderCustomSettings() {
     if (itemSelected) {
@@ -51,8 +111,18 @@ export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
       }
       if ("userConfig" in componentConfig) {
         const userConfig = componentConfig["userConfig"];
-        const layoutItem = LayoutModel(itemSelected, workspaceSelected);
-        const userPrefs = layoutItem.userPrefs;
+        // Read userPrefs straight off the locally-tracked itemSelected.
+        // LayoutModel() resets `userPrefs` to widgetConfig template
+        // defaults and only merges back `obj.userConfigValues` (the
+        // EnhancedWidgetDropdown add-time field), silently dropping
+        // `obj.userPrefs`. Piping through it on every render strips
+        // the in-flight typed value and snaps the controlled InputText
+        // back to "", which is what made these inputs untypeable —
+        // user typing "airports" was seeing only the last char land.
+        const userPrefs =
+          itemSelected.userPrefs && typeof itemSelected.userPrefs === "object"
+            ? itemSelected.userPrefs
+            : {};
 
         return Object.keys(userConfig).map((key) => {
           if (key in userPrefs) {
@@ -82,7 +152,16 @@ export const PanelEditItem = ({ workspace, onUpdate, item = null }) => {
       newItem["userPrefs"] = {};
     }
     newItem["userPrefs"][key] = value;
-    handleUpdate(null, newItem);
+    // Update LOCAL state synchronously so the controlled InputText
+    // reflects the typed character on the very next render. The
+    // expensive workspace clone + parent-tree re-render is DEFERRED
+    // until Save (via flushRef) or unmount (tab switch). Pre-defer
+    // behavior: every keystroke deep-cloned the workspace and
+    // re-rendered the whole modal subtree (sidebar + body + footer),
+    // which made even short strings feel sluggish — characters
+    // landed but the input lagged.
+    setItemSelected(() => newItem);
+    dirtyRef.current = true;
   }
 
   function renderFormItem(
