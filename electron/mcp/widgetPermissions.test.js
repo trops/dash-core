@@ -123,3 +123,120 @@ test("parseManifestPermissions: missing dash.permissions.mcp returns null", () =
   assert.strictEqual(parseManifestPermissions(null), null);
   assert.strictEqual(parseManifestPermissions("not-an-object"), null);
 });
+
+// ─── per-component manifest: each widget in a multi-widget package
+//     resolves to its OWN declared servers, not the package union ──
+
+test("parseManifestPermissions: prefers mcpByComponent[componentName] when present", () => {
+  // A package shipping two widgets, each with its own provider. The
+  // per-component breakdown lets each widget see ONLY its own
+  // servers — the union-style `mcp` block is for back-compat with
+  // call sites that don't pass componentName.
+  const pkg = {
+    name: "@ai-built/prompt-validation",
+    dash: {
+      permissions: {
+        mcp: {
+          // Package-level union — every server any widget uses.
+          slack: { tools: ["slack_search_channels"] },
+          github: { tools: ["list_pull_requests"] },
+        },
+        mcpByComponent: {
+          SlackChannelBrowser: {
+            servers: { slack: { tools: ["slack_search_channels"] } },
+          },
+          GitHubOpenPRs: {
+            servers: { github: { tools: ["list_pull_requests"] } },
+          },
+        },
+      },
+    },
+  };
+  const slackOnly = parseManifestPermissions(pkg, "SlackChannelBrowser");
+  assert.deepStrictEqual(slackOnly, {
+    servers: {
+      slack: {
+        tools: ["slack_search_channels"],
+        readPaths: [],
+        writePaths: [],
+      },
+    },
+  });
+  assert.ok(
+    !slackOnly.servers.github,
+    "Slack widget must not see github in its per-component view",
+  );
+
+  const githubOnly = parseManifestPermissions(pkg, "GitHubOpenPRs");
+  assert.deepStrictEqual(githubOnly, {
+    servers: {
+      github: {
+        tools: ["list_pull_requests"],
+        readPaths: [],
+        writePaths: [],
+      },
+    },
+  });
+});
+
+test("parseManifestPermissions: falls back to package-level mcp when mcpByComponent is absent (back-compat)", () => {
+  // Older packages that haven't been re-scanned with the new
+  // per-component scanner. The lookup must still return the
+  // package-level union so the gate and panel keep working.
+  const pkg = {
+    name: "@trops/legacy",
+    dash: {
+      permissions: {
+        mcp: { gmail: { tools: ["read_email"] } },
+      },
+    },
+  };
+  const out = parseManifestPermissions(pkg, "GmailWidget");
+  assert.deepStrictEqual(out.servers.gmail.tools, ["read_email"]);
+});
+
+test("parseManifestPermissions: widget NOT listed in mcpByComponent declares nothing — no fallback to package union", () => {
+  // When mcpByComponent exists, it's authoritative for every
+  // widget the caller asks about. A widget that isn't listed there
+  // is a widget the scanner found NO MCP usage in — it declares
+  // nothing. Falling back to the package-level union would defeat
+  // the whole point of per-widget isolation: every sibling's tools
+  // would get re-merged into widgets that don't actually use them
+  // (the exact bug the per-component breakdown was added to fix).
+  const pkg = {
+    name: "@ai-built/pkg",
+    dash: {
+      permissions: {
+        mcp: { slack: { tools: ["send_message"] } },
+        mcpByComponent: {
+          KnownWidget: {
+            servers: { slack: { tools: ["send_message"] } },
+          },
+        },
+      },
+    },
+  };
+  assert.strictEqual(
+    parseManifestPermissions(pkg, "UnknownWidget"),
+    null,
+    "Unknown widget under per-component manifest must declare nothing",
+  );
+});
+
+test("parseManifestPermissions: omitted componentName works the same as before (no per-component lookup)", () => {
+  // Existing callers that don't pass componentName must keep
+  // getting the package-level view — that's the existing contract.
+  const pkg = {
+    name: "@ai-built/pkg",
+    dash: {
+      permissions: {
+        mcp: { slack: { tools: ["send_message"] } },
+        mcpByComponent: {
+          WidgetA: { servers: { slack: { tools: ["send_message"] } } },
+        },
+      },
+    },
+  };
+  const out = parseManifestPermissions(pkg);
+  assert.deepStrictEqual(out.servers.slack.tools, ["send_message"]);
+});

@@ -43,6 +43,7 @@ const { safePath } = require("../utils/safePath");
 const { requestApproval } = require("./jitConsent");
 const { lookup: lookupMountToken } = require("../security/mountTokenRegistry");
 const { resolveSiblings } = require("../security/resolveSiblings");
+const { getWidgetMcpPermissions } = require("./widgetPermissions");
 
 // Lazy default for the registry snapshot — `widgetRegistry.js` pulls
 // in a lot, so we don't want to require it at module-load time. The
@@ -194,6 +195,66 @@ function gateToolCall({ widgetId, token, serverName, toolName, args }) {
 }
 
 /**
+ * Filter a sibling-widget list down to widgets whose static manifest
+ * declares the given `serverName + toolName`. The originating widget
+ * (`originatingWidgetId`) is always retained — the call IS proof of
+ * use even if the manifest hasn't been re-scanned to declare the tool
+ * (e.g., variable-indirect `callTool(name, …)` calls that the scanner
+ * intentionally skips).
+ *
+ * Back-compat: if no sibling has any per-widget declaration at all
+ * (package never re-scanned with the per-component scanner), the
+ * filter returns the unmodified list — the user's pre-per-component
+ * "Apply to all in package" behavior is preserved for those packages.
+ *
+ * Used by the JIT consent path to:
+ *   - Set the modal's "Apply to all N widgets" count to the actually-
+ *     applicable subset
+ *   - Limit the grant fanout on approval to the same subset
+ *
+ * Pure helper modulo `getWidgetMcpPermissions` (which is cached + fs
+ * memo-ish per process).
+ */
+function _filterSiblingsByDeclaration(
+  siblingWidgetIds,
+  originatingWidgetId,
+  serverName,
+  toolName,
+) {
+  if (!Array.isArray(siblingWidgetIds) || siblingWidgetIds.length === 0) {
+    return [originatingWidgetId];
+  }
+  // Look up each sibling's per-widget manifest. We need to know
+  // whether ANY sibling has the per-component breakdown — if not,
+  // we're in back-compat territory and should not filter.
+  const lookups = siblingWidgetIds.map((sibId) => ({
+    sibId,
+    perms: getWidgetMcpPermissions(sibId),
+  }));
+  const anyManifested = lookups.some(
+    (l) =>
+      l.perms && l.perms.servers && Object.keys(l.perms.servers).length > 0,
+  );
+  if (!anyManifested) return siblingWidgetIds;
+
+  const out = [];
+  for (const { sibId, perms } of lookups) {
+    if (sibId === originatingWidgetId) {
+      out.push(sibId);
+      continue;
+    }
+    const tools = perms?.servers?.[serverName]?.tools;
+    if (Array.isArray(tools) && tools.includes(toolName)) {
+      out.push(sibId);
+    }
+  }
+  // Defensive: if filtering somehow eliminated everything (shouldn't
+  // happen since the originating widget is always retained), fall
+  // back to the single originating widget.
+  return out.length > 0 ? out : [originatingWidgetId];
+}
+
+/**
  * Merge `addition` (a grant blob) into the widget's existing grant. Used
  * by the JIT path to extend an existing grant with a new tool/path
  * without clobbering grants for other servers.
@@ -284,6 +345,25 @@ async function gateToolCallWithJit(req, opts = {}) {
     opts.getRegistrySnapshot || _defaultRegistrySnapshot;
   const siblingInfo = resolveSiblings(verifiedWidgetId, getRegistrySnapshot());
 
+  // Filter siblings to those whose per-component manifest actually
+  // declares the requested `serverName + toolName`. Without this
+  // filter, "Apply to all in package" writes the grant to every
+  // sibling regardless of whether that sibling uses the tool — a
+  // Counter widget ends up with Google Drive grants it doesn't
+  // need. The originating widget is always included (its runtime
+  // call IS proof) even if its manifest hasn't been re-scanned to
+  // declare the tool.
+  //
+  // Falls back to the unfiltered sibling list when no per-component
+  // data exists on ANY sibling (back-compat for older packages that
+  // haven't been re-scanned with the new scanner).
+  const applicableSiblingIds = _filterSiblingsByDeclaration(
+    siblingInfo.siblingWidgetIds,
+    verifiedWidgetId,
+    req.serverName,
+    req.toolName,
+  );
+
   let decision;
   try {
     decision = await requestApproval(
@@ -297,7 +377,7 @@ async function gateToolCallWithJit(req, opts = {}) {
           args: req.args || {},
         },
         packageId: siblingInfo.packageId,
-        siblingWidgetIds: siblingInfo.siblingWidgetIds,
+        siblingWidgetIds: applicableSiblingIds,
       },
       { timeoutMs: opts.timeoutMs },
     );
@@ -348,11 +428,17 @@ async function gateToolCallWithJit(req, opts = {}) {
   // its prior grants on other servers/tools. When the option is off
   // (or no siblings were resolved), behave as before: single-widget
   // write to the requesting widget only.
+  //
+  // Use the FILTERED sibling list (`applicableSiblingIds`) here — the
+  // grant only fans out to widgets whose manifest actually declares
+  // the server+tool. The modal showed the same filtered count, so
+  // the user's "Apply to all N widgets" decision was already made
+  // against the correct set.
   const targetWidgetIds =
     decision.applyToSiblings === true &&
-    Array.isArray(siblingInfo.siblingWidgetIds) &&
-    siblingInfo.siblingWidgetIds.length > 1
-      ? siblingInfo.siblingWidgetIds
+    Array.isArray(applicableSiblingIds) &&
+    applicableSiblingIds.length > 1
+      ? applicableSiblingIds
       : [verifiedWidgetId];
 
   try {
