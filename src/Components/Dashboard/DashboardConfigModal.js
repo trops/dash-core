@@ -1451,13 +1451,10 @@ function ListenersTab({ emitters, receivers, wiring, onAdd, onRemove }) {
   return (
     <div className="flex flex-col gap-3 h-full min-h-0">
       <div className="flex flex-row gap-3 flex-1 min-h-0">
-        {/* Sidebar: receivers */}
-        <Card2
-          padding=""
-          shadow=""
-          rounded="rounded-lg"
-          className="w-56 flex-shrink-0 overflow-hidden flex flex-col"
-        >
+        {/* Sidebar: receivers. Plain <div> wrapper — Card2's
+            washed-out fill clashes with the modal's dark chrome.
+            Same fix as ProvidersTab + WidgetsTab. */}
+        <div className="w-56 flex-shrink-0 overflow-hidden flex flex-col">
           <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider">
             Widgets
           </div>
@@ -1490,7 +1487,7 @@ function ListenersTab({ emitters, receivers, wiring, onAdd, onRemove }) {
               );
             })}
           </div>
-        </Card2>
+        </div>
 
         {/* Handlers column (middle) + events column (right), mirroring
           the two-column layout from the per-widget settings panel. */}
@@ -1530,14 +1527,9 @@ function ListenersTab({ emitters, receivers, wiring, onAdd, onRemove }) {
             />
           </>
         ) : (
-          <Card2
-            padding=""
-            shadow=""
-            rounded="rounded-lg"
-            className="flex-1 min-w-0 flex items-center justify-center text-sm opacity-60"
-          >
+          <div className="flex-1 min-w-0 flex items-center justify-center text-sm opacity-60">
             Pick a widget on the left to wire its handlers.
-          </Card2>
+          </div>
         )}
       </div>
     </div>
@@ -1638,12 +1630,9 @@ function HandlersColumn({
   }, [myWiring]);
 
   return (
-    <Card2
-      padding=""
-      shadow=""
-      rounded="rounded-lg"
-      className="w-56 flex-shrink-0 overflow-hidden flex flex-col"
-    >
+    // Plain <div> wrapper — Card2 reads as washed-out against the
+    // modal's dark chrome. See ListenersTab + ProvidersTab fix.
+    <div className="w-56 flex-shrink-0 overflow-hidden flex flex-col">
       <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider">
         Event Handlers
       </div>
@@ -1683,7 +1672,7 @@ function HandlersColumn({
           })
         )}
       </div>
-    </Card2>
+    </div>
   );
 }
 
@@ -1732,14 +1721,9 @@ function EventsColumn({
 
   if (!handlerName) {
     return (
-      <Card2
-        padding=""
-        shadow=""
-        rounded="rounded-lg"
-        className="flex-1 min-w-0 flex items-center justify-center text-sm opacity-60"
-      >
+      <div className="flex-1 min-w-0 flex items-center justify-center text-sm opacity-60">
         Select a handler to view available events.
-      </Card2>
+      </div>
     );
   }
 
@@ -1773,12 +1757,8 @@ function EventsColumn({
   );
 
   return (
-    <Card2
-      padding=""
-      shadow=""
-      rounded="rounded-lg"
-      className="flex-1 min-w-0 overflow-hidden flex flex-col"
-    >
+    // Plain <div> — Card2's washed-out fill clashes with the modal chrome.
+    <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
       <div className="flex-shrink-0 px-4 py-2 text-xs opacity-60">
         Check an event to fire <code className="text-xs">{handlerName}</code> on{" "}
         <span className="font-medium">{receiver.label}</span>.
@@ -1834,6 +1814,6 @@ function EventsColumn({
           ))
         )}
       </div>
-    </Card2>
+    </div>
   );
 }

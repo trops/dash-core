@@ -88,3 +88,73 @@ describe("DashboardConfigModal — ProvidersTab theming", () => {
     expect(SOURCE).toMatch(/function ProviderTypeRow\(/);
   });
 });
+
+/**
+ * Listeners-tab theming pin — ListenersTab + its HandlersColumn /
+ * EventsColumn sub-components must NOT wrap their panes in <Card2>.
+ *
+ * Same reasoning as ProvidersTab above: Card2's `bg-secondary-very-light`
+ * reads as a washed-out fill against the modal's dark chrome. Plain
+ * <div> wrappers inherit the chrome correctly.
+ *
+ * Previously ListenersTab's sidebar (Widgets), its empty-state
+ * placeholder ("Pick a widget on the left..."), HandlersColumn's
+ * sidebar (Event Handlers), EventsColumn's empty state ("Select a
+ * handler..."), and EventsColumn's main pane all wrapped in Card2.
+ * The visual jolt when switching to Listeners read as "different
+ * modal," not "different tab."
+ */
+function extractFunctionBody(source, name) {
+  const startIdx = source.indexOf(`function ${name}(`);
+  if (startIdx === -1) throw new Error(`function ${name} not found`);
+  // End the slice at the next top-level function declaration so we
+  // only test the body of THIS function, not anything below it.
+  const remainder = source.slice(startIdx);
+  const nextFn = remainder.search(/\n\nfunction [A-Z][a-zA-Z]+\(/);
+  return nextFn !== -1 ? remainder.slice(0, nextFn) : remainder;
+}
+
+describe("DashboardConfigModal — ListenersTab theming", () => {
+  const listenersTabBody = extractFunctionBody(SOURCE, "ListenersTab");
+  const handlersColumnBody = extractFunctionBody(SOURCE, "HandlersColumn");
+  const eventsColumnBody = extractFunctionBody(SOURCE, "EventsColumn");
+  const orphanBannerBody = extractFunctionBody(SOURCE, "OrphanBanner");
+
+  test("ListenersTab body does NOT wrap any pane in <Card2>", () => {
+    expect(listenersTabBody).not.toMatch(/<Card2\b/);
+  });
+
+  test("HandlersColumn does NOT wrap its sidebar in <Card2>", () => {
+    expect(handlersColumnBody).not.toMatch(/<Card2\b/);
+  });
+
+  test("EventsColumn does NOT wrap its empty-state or main pane in <Card2>", () => {
+    expect(eventsColumnBody).not.toMatch(/<Card2\b/);
+  });
+
+  test("OrphanBanner does NOT wrap its banner in <Card2>", () => {
+    // Belt-and-suspenders — OrphanBanner sits inside ListenersTab
+    // and would propagate the washed-out fill if it picked up
+    // Card2 in the future.
+    expect(orphanBannerBody).not.toMatch(/<Card2\b/);
+  });
+
+  test("ListenersTab sidebar uses plain <div> with the established w-56 column width", () => {
+    // Same structural pattern as ProvidersTab + WidgetsTab.
+    expect(listenersTabBody).toMatch(
+      /<div className="w-56 flex-shrink-0 overflow-hidden flex flex-col"/,
+    );
+  });
+
+  test("HandlersColumn sidebar uses plain <div> with the established w-56 column width", () => {
+    expect(handlersColumnBody).toMatch(
+      /<div className="w-56 flex-shrink-0 overflow-hidden flex flex-col"/,
+    );
+  });
+
+  test("EventsColumn main pane uses plain <div> with flex-1 to fill remaining space", () => {
+    expect(eventsColumnBody).toMatch(
+      /<div className="flex-1 min-w-0 overflow-hidden flex flex-col"/,
+    );
+  });
+});
