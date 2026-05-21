@@ -76,6 +76,42 @@ describe("mcpServerCatalog structural validation", () => {
     }
   });
 
+  it("no entries reference the deprecated @modelcontextprotocol/server-slack", () => {
+    // The reference Slack server was archived along with most of the
+    // modelcontextprotocol/servers repo. Catalog now points at the
+    // actively-maintained `slack-mcp-server` (korotovsky) which supports
+    // bot/user/browser-session auth and a much wider tool surface.
+    for (const server of catalog.servers) {
+      const args = server.mcpConfig.args || [];
+      const hasDeprecated = args.some((a) =>
+        String(a).includes("@modelcontextprotocol/server-slack"),
+      );
+      assert.ok(
+        !hasDeprecated,
+        `Server "${server.id}" still references deprecated @modelcontextprotocol/server-slack`,
+      );
+    }
+  });
+
+  it("slack entry uses slack-mcp-server with the expected env vocabulary", () => {
+    const slack = catalog.servers.find((s) => s.id === "slack");
+    assert.ok(slack, "slack catalog entry missing");
+    assert.deepEqual(slack.mcpConfig.args, ["-y", "slack-mcp-server"]);
+    // Env vars must use the SLACK_MCP_* names the new server reads, not
+    // the SLACK_BOT_TOKEN/SLACK_TEAM_ID names from the deprecated server.
+    const envKeys = Object.keys(slack.mcpConfig.envMapping || {});
+    for (const key of envKeys) {
+      assert.ok(
+        key.startsWith("SLACK_MCP_"),
+        `slack envMapping key "${key}" should be a SLACK_MCP_* var (new server vocabulary)`,
+      );
+    }
+    assert.ok(
+      slack.mcpConfig.staticEnv?.SLACK_MCP_ADD_MESSAGE_TOOL === "true",
+      "slack entry should enable the add_message tool via staticEnv (off by default in the server)",
+    );
+  });
+
   it("every server has required fields", () => {
     for (const server of catalog.servers) {
       assert.ok(server.id, "Server missing id");

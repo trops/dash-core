@@ -160,7 +160,7 @@ A curated list of well-known MCP servers with pre-filled configs:
 | Service      | Package                                   | Transport | Auth Required         |
 | ------------ | ----------------------------------------- | --------- | --------------------- |
 | GitHub       | `@modelcontextprotocol/server-github`     | stdio     | Personal Access Token |
-| Slack        | `@modelcontextprotocol/server-slack`      | stdio     | Bot Token + Team ID   |
+| Slack        | `slack-mcp-server` (korotovsky)           | stdio     | Bot / User OAuth / Browser session pair |
 | Notion       | `@notionhq/notion-mcp-server`             | stdio     | API Key               |
 | Google Drive | `@anthropic/gdrive-mcp-server`            | stdio     | OAuth credentials     |
 | Brave Search | `@anthropic/brave-search-mcp-server`      | stdio     | API Key               |
@@ -256,9 +256,9 @@ const { callTool, tools, isConnected } = useMcpProvider("slack");
 // Only tools declared in allowedTools are available
 // callTool rejects anything not in the widget's allowedTools list
 // NOTE: Tool names are server-specific — use the tools list to discover names
-const result = await callTool("slack_post_message", {
+const result = await callTool("conversations_add_message", {
     channel_id: "C08HVFXHBR3",
-    text: "Hello from Dash!",
+    payload: "Hello from Dash!",
 });
 ```
 
@@ -350,7 +350,7 @@ Works alongside existing `useWidgetProviders()` -- a widget can use both credent
 
 -   McpTest widget connects to Slack MCP server
 -   Tool list populates with 8 Slack tools
--   `slack_post_message` sends messages successfully
+-   `conversations_add_message` sends messages successfully
 -   `allowedTools` scoping filters tools at hook level and rejects unauthorized calls
 -   30-second timeout prevents indefinite hangs
 
@@ -432,26 +432,36 @@ Notes captured during Phase 1-3 implementation and end-to-end testing with the S
 
 ### Tool Names Are Server-Specific
 
-MCP tool names are defined by each server implementation. They are **not standardized** across servers of the same type. For example, the `@modelcontextprotocol/server-slack` server uses:
+MCP tool names are defined by each server implementation. They are **not standardized** across servers of the same type. For example, the `slack-mcp-server` (korotovsky) server uses:
 
-| Tool Name                   | Purpose                                        |
-| --------------------------- | ---------------------------------------------- |
-| `slack_list_channels`       | List channels                                  |
-| `slack_post_message`        | Post a message (requires `channel_id`, `text`) |
-| `slack_reply_to_thread`     | Reply to a thread                              |
-| `slack_add_reaction`        | Add emoji reaction                             |
-| `slack_get_channel_history` | Get channel messages                           |
-| `slack_get_thread_replies`  | Get thread replies                             |
-| `slack_get_users`           | List workspace users                           |
-| `slack_get_user_profile`    | Get user profile                               |
+| Tool Name                       | Purpose                                                |
+| ------------------------------- | ------------------------------------------------------ |
+| `channels_list`                 | List channels                                          |
+| `conversations_add_message`     | Post a message (channel_id, payload, optional thread_ts) |
+| `conversations_history`         | Read channel messages                                  |
+| `conversations_replies`         | Read thread replies                                    |
+| `conversations_search_messages` | Search messages workspace-wide                         |
+| `users_search`                  | Find users by name / email                             |
+| `reactions_add` / `reactions_remove` | Manage emoji reactions                            |
+| `conversations_unreads`         | List unread messages                                   |
 
 **Best practice:** Always use the `tools` list returned by `useMcpProvider` to discover actual tool names and their `inputSchema`, rather than hardcoding names.
 
+### Slack Auth Modes (3 options, pick one)
+
+| Mode             | Env Var                                  | Notes                                                       |
+| ---------------- | ---------------------------------------- | ----------------------------------------------------------- |
+| Bot              | `SLACK_MCP_XOXB_TOKEN` (xoxb-)           | Same as old setup. Bot only sees channels it's invited to; no search. |
+| User OAuth       | `SLACK_MCP_XOXP_TOKEN` (xoxp-)           | Sees everything the user can see, limited search.           |
+| Browser session  | `SLACK_MCP_XOXC_TOKEN` + `SLACK_MCP_XOXD_TOKEN` | Full visibility + full search. No admin approval needed.    |
+
+Posting (`conversations_add_message`) is gated by `SLACK_MCP_ADD_MESSAGE_TOOL=true` — the catalog sets this via `staticEnv` so widgets that depend on posting work out of the box.
+
 ### Slack Bot Channel Membership
 
-Slack bots must be **invited to a channel** before they can post. Without membership, `slack_post_message` returns `{"ok":false,"error":"not_in_channel"}`.
+Slack bots must be **invited to a channel** before they can post or read. Without membership, `conversations_add_message` returns `{"ok":false,"error":"not_in_channel"}`. This affects xoxb mode only; user-OAuth and browser-session modes see every channel the corresponding user/account sees.
 
-**Fix:** In Slack, type `/invite @BotName` in the target channel, or use the channel's **Integrations** tab to add the app.
+**Fix:** In Slack, type `/invite @BotName` in the target channel, or use the channel's **Integrations** tab to add the app. Or switch to user-OAuth / browser-session mode.
 
 ### Tool Call Timeouts
 
