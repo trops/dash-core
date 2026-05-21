@@ -385,27 +385,24 @@ export const DashboardConfigModal = ({
     });
   }
 
-  // Bulk-apply: write this provider as the binding for every widget of
-  // this type that doesn't already have an explicit widget-level override.
+  // Bulk-apply: retarget every widget of this provider type to the
+  // newly-chosen provider name. The header text above the dropdown
+  // says "Apply one provider to every widget of this type, or adjust
+  // per-widget below" — bulk is the retarget-everything action;
+  // per-row overrides happen AFTER bulk if the user wants exceptions.
   //
-  // Override-detection consults the staged state first so a freshly
-  // staged unset is recognised as "no override" and gets bulked. A
-  // non-empty staged value is treated as an explicit pick and is
-  // preserved (bulk skips). Without this, the user could stage an
-  // unset and then click Bulk and the widget they just unset would
-  // be skipped because the *original* layer-1 value still lived on
-  // `b.layoutItem.selectedProviders`.
+  // Previous behavior skipped rows that already had an explicit pick,
+  // which meant the dropdown was a no-op when every row already had a
+  // value (the common case: every Slack widget on a dashboard inherits
+  // the same Slack provider). The user changing bulk from "Slack" to
+  // "Slack Dash Comms" would see zero rows update and Save stay
+  // disabled. The fill-blanks-only semantics fought the UI text and
+  // the user's mental model — every spreadsheet-style bulk operation
+  // overrides everything, with per-row tweaks happening afterward.
   function stageBulk(providerType, providerName) {
-    const affected = effectiveBindings.filter((b) => {
-      if (b.providerType !== providerType) return false;
-      const stagedValue = staged[b.widgetId]?.[providerType];
-      if (stagedValue !== undefined) {
-        // Empty/null staged value → user staged an unset → include
-        // in bulk. Non-empty → explicit pick, preserve it.
-        return !stagedValue;
-      }
-      return !b.layoutItem?.selectedProviders?.[providerType];
-    });
+    const affected = effectiveBindings.filter(
+      (b) => b.providerType === providerType,
+    );
     setStaged((prev) => {
       const next = { ...prev };
       for (const b of affected) {
