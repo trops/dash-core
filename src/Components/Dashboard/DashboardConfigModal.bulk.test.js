@@ -1,30 +1,31 @@
 /**
- * Bulk-apply override-protection check: must consult staged state.
+ * Bulk-apply retargets every widget of the matching provider type.
  *
- * Bug repro: in the dashboard config modal's Providers tab, the user
- * could
- *   1) toggle a widget's per-widget override OFF (staged unset)
- *   2) click the Bulk action to apply a provider to every widget
- *      that lacks an override
- * and the widget they just unset wouldn't be bulked. Reason:
- * stageBulk filtered by `b.layoutItem.selectedProviders[type]`
- * — the *original* layer-1 — ignoring the staged unset.
+ * Bug repro (the one this file currently pins): in the dashboard
+ * config modal's Providers tab, the user opens a dashboard whose
+ * widgets all share one provider (e.g. all 8 Slack widgets bound to
+ * "Slack"), changes the "Bulk assign" dropdown to a different provider
+ * ("Slack Dash Comms"), and expects every per-widget row to retarget.
  *
- * The fix consults the staged state first: if the user staged any
- * value for this widget+type, that's the source of truth. An empty
- * staged value ("I unset it") counts as "no override" so the bulk
- * picks the widget up; a non-empty staged value ("I picked something
- * explicit") is preserved.
+ * Previously stageBulk filtered to "rows that don't already have a
+ * provider" — so every row got skipped (they all had "Slack") and the
+ * dropdown silently no-op'd; Save stayed disabled. The header text
+ * above the dropdown reads "Apply one provider to every widget of
+ * this type, or adjust per-widget below," so the fill-blanks
+ * semantics fought both the UI and user expectation.
+ *
+ * The fix: bulk retargets ALL rows of the matching provider type.
+ * Per-row overrides happen AFTER bulk if the user wants exceptions —
+ * matches spreadsheet-style bulk-edit conventions.
  *
  * Static source-presence test mirroring the NewProviderPicker
- * pattern. The `stageBulk` function is internal to the modal —
- * extracting it for unit testing would be more churn than the
- * fix itself.
+ * pattern. `stageBulk` is internal to the modal — extracting it for
+ * unit testing would be more churn than the fix itself.
  */
 const fs = require("fs");
 const path = require("path");
 
-describe("DashboardConfigModal — stageBulk consults staged state", () => {
+describe("DashboardConfigModal — stageBulk retargets all rows of the provider type", () => {
   const modalPath = path.join(__dirname, "DashboardConfigModal.js");
   const source = fs.readFileSync(modalPath, "utf8");
 
@@ -38,25 +39,39 @@ describe("DashboardConfigModal — stageBulk consults staged state", () => {
     expect(stageBulkMatch).not.toBeNull();
   });
 
-  test("stageBulk reads staged[widgetId]?.[providerType] inside its filter", () => {
+  test("stageBulk filters by providerType ONLY — no row exclusion based on prior value", () => {
+    // The fix: every row whose providerType matches gets retargeted,
+    // regardless of whether it already had an explicit pick. The
+    // filter must NOT reference staged[...] or layoutItem.selectedProviders
+    // inside its decision — those were the gates that caused the
+    // no-op.
     const body = stageBulkMatch[1];
-    // Must reference the staged state map, indexed by the widget's id.
-    expect(body).toMatch(/staged\[/);
+    // Must filter by providerType
+    expect(body).toMatch(/b\.providerType\s*===\s*providerType/);
+    // The filter must not gate on a stagedValue truthiness short-
+    // circuit (the old fill-blanks pattern).
+    expect(body).not.toMatch(/!\s*stagedValue/);
+    // The filter must not gate on layoutItem.selectedProviders — that
+    // was the original layer-1 gate that caused rows with inherited
+    // defaults to be skipped.
+    expect(body).not.toMatch(/!\s*b\.layoutItem\?\.selectedProviders/);
   });
 
-  test("stageBulk preserves explicit staged overrides (non-empty staged value skips the bulk)", () => {
+  test("stageBulk writes to setStaged for every matching widget", () => {
     const body = stageBulkMatch[1];
-    // Non-empty staged value → `!stagedValue` must be falsy. Easiest
-    // way to express in code is a `return !stagedValue;` short-circuit
-    // (or equivalent). We assert the bare-truthy short-circuit pattern.
-    expect(body).toMatch(/!\s*stagedValue|stagedValue\s*&&/);
+    // The setter must run; iteration over affected rows must call
+    // through to next[widgetId] = { ..., [providerType]: providerName }.
+    expect(body).toMatch(/setStaged\(/);
+    expect(body).toMatch(/\[providerType\]:\s*providerName/);
   });
 
-  test("stageBulk has a fallback path that checks layoutItem.selectedProviders", () => {
-    // If no staged value exists for this widget+type, fall back to
-    // the original layer-1 check that's already in the codebase.
+  test("stageBulk normalizes a missing providerName to empty string", () => {
+    // The "unset bulk" case (user picks blank) writes "" not undefined
+    // so the staged overlay distinguishes "explicitly unset" from
+    // "no staged entry" — the rest of the modal relies on this
+    // (effectiveBindings overlay logic).
     const body = stageBulkMatch[1];
-    expect(body).toMatch(/layoutItem[\s\S]{0,80}selectedProviders/);
+    expect(body).toMatch(/providerName\s*\|\|\s*["']\s*["']/);
   });
 });
 
