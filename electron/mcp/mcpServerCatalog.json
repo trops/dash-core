@@ -28,32 +28,51 @@
     {
       "id": "slack",
       "name": "Slack",
-      "description": "Send messages, read channels, and manage Slack workspaces.",
+      "description": "Read, search, and send messages across your Slack workspace. Provide ONE of: a bot token (xoxb-), a user OAuth token (xoxp-), or a browser-session pair (xoxc- + xoxd-). The browser-session pair works without workspace admin approval and gives full visibility.",
       "icon": "slack",
       "tags": ["communication", "messaging", "team"],
       "mcpConfig": {
         "transport": "stdio",
         "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-slack"],
+        "args": ["-y", "slack-mcp-server"],
         "envMapping": {
-          "SLACK_BOT_TOKEN": "botToken",
-          "SLACK_TEAM_ID": "teamId"
+          "SLACK_MCP_XOXB_TOKEN": "xoxbToken",
+          "SLACK_MCP_XOXP_TOKEN": "xoxpToken",
+          "SLACK_MCP_XOXC_TOKEN": "xoxcToken",
+          "SLACK_MCP_XOXD_TOKEN": "xoxdToken"
+        },
+        "staticEnv": {
+          "SLACK_MCP_ADD_MESSAGE_TOOL": "true"
         }
       },
       "credentialSchema": {
-        "botToken": {
+        "xoxbToken": {
           "type": "text",
-          "displayName": "Bot Token",
+          "displayName": "Bot Token (xoxb-)",
           "required": false,
           "secret": true,
-          "instructions": "Create a Slack app and install it to your workspace to get a Bot Token (xoxb-...)."
+          "instructions": "Optional. Create a Slack app at api.slack.com/apps and install it to your workspace. Bots only see channels they're invited to and can't use search."
         },
-        "teamId": {
+        "xoxpToken": {
           "type": "text",
-          "displayName": "Team ID",
+          "displayName": "User OAuth Token (xoxp-)",
           "required": false,
-          "secret": false,
-          "instructions": "Find your Team ID in Slack workspace settings."
+          "secret": true,
+          "instructions": "Optional. User token from a Slack app — sees everything your user can see, limited search."
+        },
+        "xoxcToken": {
+          "type": "text",
+          "displayName": "Browser Session Token (xoxc-)",
+          "required": false,
+          "secret": true,
+          "instructions": "Optional. From your logged-in Slack browser session (DevTools → Application → Local Storage → localConfig_v2 → teams.<id>.token). Pair with the xoxd cookie below."
+        },
+        "xoxdToken": {
+          "type": "text",
+          "displayName": "Browser Session Cookie (xoxd-)",
+          "required": false,
+          "secret": true,
+          "instructions": "Optional. From your Slack browser cookies (DevTools → Application → Cookies → `d` value). Used together with the xoxc token above."
         }
       }
     },

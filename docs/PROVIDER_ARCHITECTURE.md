@@ -234,9 +234,9 @@ Tool scoping is enforced at **both** levels to prevent widgets from calling tool
     "slack": {
         "transport": "stdio",
         "command": "npx",
-        "args": ["-y", "@anthropic/mcp-slack-server"],
+        "args": ["-y", "slack-mcp-server"],
         "env": {
-            "SLACK_BOT_TOKEN": "{{credentials.token}}"
+            "SLACK_MCP_XOXB_TOKEN": "{{credentials.xoxbToken}}"
         }
     }
 }
