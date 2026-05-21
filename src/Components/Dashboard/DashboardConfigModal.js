@@ -963,13 +963,20 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
 
   return (
     <div className="flex flex-row gap-3 h-full min-h-0">
-      {/* Sidebar: provider types */}
-      <Card2
-        padding=""
-        shadow=""
-        rounded="rounded-lg"
-        className="w-56 flex-shrink-0 overflow-hidden flex flex-col"
-      >
+      {/* Sidebar: provider types.
+       *
+       * Plain div wrapper to inherit the modal's bg-primary-medium —
+       * the Card2 primitive resolves to bg-secondary-very-light (a
+       * contrasting card surface, see dash-react Utils/colors.js:161),
+       * which reads as a washed-out fill inside a modal that's
+       * already dark. Mirrors the pattern used by WidgetsTab.js plus
+       * every other tab in this modal. The `border-r border-white/10`
+       * divider follows the chrome's convention even though opacity-
+       * modifier borders don't render in dash-electron's prebuilt
+       * CSS bundle today — keeps this in sync with WidgetsTab so a
+       * future safelist fix lights both up uniformly.
+       */}
+      <div className="w-56 flex-shrink-0 overflow-hidden flex flex-col border-r border-white/10">
         <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider">
           Provider Types
         </div>
@@ -1012,15 +1019,13 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
             );
           })}
         </div>
-      </Card2>
+      </div>
 
-      {/* Detail: bulk assign + per-widget overrides for selected type */}
-      <Card2
-        padding=""
-        shadow=""
-        rounded="rounded-lg"
-        className="flex-1 min-w-0 overflow-hidden flex flex-col"
-      >
+      {/* Detail: bulk assign + per-widget overrides for selected type.
+       * Plain <div> for the same theming reason — see the sidebar
+       * comment above. No right-border (this pane is the last column).
+       */}
+      <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
         {selectedType ? (
           <>
             <div className="px-4 py-3 flex-shrink-0">
@@ -1167,7 +1172,7 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
             Pick a provider type to bulk-assign or adjust per widget.
           </div>
         )}
-      </Card2>
+      </div>
     </div>
   );
 }
