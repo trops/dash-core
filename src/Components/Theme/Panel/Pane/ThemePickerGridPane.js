@@ -7,30 +7,49 @@ const ThemePickerGridPane = ({ themeKey, onChooseTheme }) => {
 
   function renderMenuItem(tk) {
     const displayTheme = themes[tk][themeVariant];
-    const colors = [
+    // Read inline CSS color values from `cssValue` (v0.1.569+) so
+    // preview swatches render correctly for BOTH named-color and
+    // hex (brand-preset) themes. For hex themes, the className path
+    // resolves to `bg-[var(--secondary-700)]` which depends on the
+    // active theme's CSS variables — those aren't injected for
+    // OTHER themes shown in the picker grid. Inline cssValue
+    // sidesteps that limitation.
+    const cssValue = displayTheme.cssValue || {};
+    const swatches = [
       {
-        colorName: displayTheme["secondary"],
         type: "secondary",
-        color: displayTheme["bg-secondary-medium"],
+        value: cssValue["bg-secondary-medium"],
+        className: displayTheme["bg-secondary-medium"],
       },
       {
-        colorName: displayTheme["tertiary"],
         type: "tertiary",
-        color: displayTheme["bg-tertiary-medium"],
+        value: cssValue["bg-tertiary-medium"],
+        className: displayTheme["bg-tertiary-medium"],
       },
       {
-        colorName: displayTheme["neutral"],
         type: "neutral",
-        color: displayTheme["bg-neutral-light"],
+        value: cssValue["bg-neutral-light"],
+        className: displayTheme["bg-neutral-light"],
       },
     ];
 
-    return colors.map((color) => {
+    return swatches.map((swatch) => {
+      // Prefer cssValue (works for any theme). Fall back to className
+      // for pre-v0.1.569 themes without a cssValue map.
+      if (swatch.value) {
+        return (
+          <div
+            key={`theme-grid-${swatch.type}`}
+            className="rounded h-20 w-full"
+            style={{ backgroundColor: swatch.value }}
+          />
+        );
+      }
       return (
         <div
-          key={`theme-grid-${color.type}`}
-          className={`rounded ${color["color"]} h-20 w-full`}
-        ></div>
+          key={`theme-grid-${swatch.type}`}
+          className={`rounded ${swatch.className} h-20 w-full`}
+        />
       );
     });
   }

@@ -5,6 +5,7 @@ import ColorTile from "../../../../Components/Theme/Panel/MenuItem/ColorTile";
 import { ColorModel } from "../../../../Models";
 import { Button, DashPanel } from "@trops/dash-react";
 import { capitalizeFirstLetter } from "../../../../utils";
+import CustomHexColorPane from "./CustomHexColorPane";
 
 const AvailableColorsGridPane = ({
   currentColor = null,
@@ -79,6 +80,24 @@ const AvailableColorsGridPane = ({
       <DashPanel.Header title="AvailableColors" />
       <DashPanel.Body scrollable={true} space={true}>
         <div className="flex flex-col space-y-1">{renderAvailableColors()}</div>
+        {/* Hex input only when in MAIN mode (channel-level pick).
+            Sub-token overrides go through getClassName which would
+            produce an invalid `bg-#xxx-shade` string — out of scope
+            for the v1 hex picker. shade !== null means main mode
+            (callers pass shade=500 there, null for sub). */}
+        {shade !== null && (
+          <CustomHexColorPane
+            onApply={(hex) =>
+              handleChooseColor({
+                colorName: hex,
+                colorType,
+                shade: shade || 500,
+                panelType: "main",
+              })
+            }
+            label={`Custom hex for ${colorType || "channel"}`}
+          />
+        )}
       </DashPanel.Body>
       {onCancel && (
         <DashPanel.Footer>
