@@ -129,3 +129,59 @@ describe("ThemeModel — hex colors", () => {
     );
   });
 });
+
+describe("ThemeModel — cssValue accessor", () => {
+  test("named theme emits hex CSS values per token", () => {
+    const theme = ThemeModel({ primary: "blue" });
+    // bg-primary-medium → bg-blue-700 → #1d4ed8
+    expect(theme.dark.cssValue["bg-primary-medium"]).toBe("#1d4ed8");
+    // text-primary-medium → text-blue-200 (invert(700) = 200)
+    expect(theme.dark.cssValue["text-primary-medium"]).toBe("#bfdbfe");
+    // border-primary-medium → border-blue-700
+    expect(theme.dark.cssValue["border-primary-medium"]).toBe("#1d4ed8");
+    // light variant uses different shade (300 for bg-medium)
+    expect(theme.light.cssValue["bg-primary-medium"]).toBe("#93c5fd");
+  });
+
+  test("hex theme emits var(...) CSS values per token", () => {
+    const theme = ThemeModel({ primary: "#4a154b" });
+    expect(theme.dark.cssValue["bg-primary-medium"]).toBe("var(--primary-700)");
+    expect(theme.dark.cssValue["text-primary-medium"]).toBe(
+      "var(--primary-200)",
+    );
+    expect(theme.dark.cssValue["border-primary-medium"]).toBe(
+      "var(--primary-700)",
+    );
+    expect(theme.light.cssValue["bg-primary-medium"]).toBe(
+      "var(--primary-300)",
+    );
+  });
+
+  test("hover variants resolve to the next shade in cssValue too", () => {
+    const theme = ThemeModel({ primary: "blue" });
+    // hover-bg-primary-medium → hover:bg-blue-800 → #1e40af
+    expect(theme.dark.cssValue["hover-bg-primary-medium"]).toBe("#1e40af");
+  });
+
+  test("darkest token has cssValue too", () => {
+    const theme = ThemeModel({ primary: "blue" });
+    expect(theme.dark.cssValue["bg-primary-darkest"]).toBe("#172554");
+    expect(theme.light.cssValue["bg-primary-darkest"]).toBe("#eff6ff");
+  });
+
+  test("transparent tokens resolve to 'transparent'", () => {
+    const theme = ThemeModel({ primary: "blue" });
+    expect(theme.dark.cssValue["bg-none"]).toBe("transparent");
+    expect(theme.dark.cssValue["border-none"]).toBe("transparent");
+    expect(theme.dark.cssValue["hover-bg-none"]).toBe("transparent");
+  });
+
+  test("mixed theme: cssValue per channel routes through its own path", () => {
+    const theme = ThemeModel({
+      primary: "#4a154b", // hex
+      secondary: "indigo", // named
+    });
+    expect(theme.dark.cssValue["bg-primary-medium"]).toBe("var(--primary-700)");
+    expect(theme.dark.cssValue["bg-secondary-medium"]).toBe("#4338ca");
+  });
+});

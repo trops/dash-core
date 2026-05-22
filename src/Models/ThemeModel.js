@@ -22,6 +22,7 @@ import {
   colorTypes,
   isHexColor,
   deriveShades,
+  TAILWIND_PALETTE,
 } from "@trops/dash-react";
 
 /**
@@ -55,6 +56,29 @@ function classFor(prefix, type, shade, channelValue, hover = false) {
     return `${h}${prefix}-[var(--${type}-${shade})]`;
   }
   return `${h}${prefix}-${channelValue}-${shade}`;
+}
+
+/**
+ * CSS color value (hex literal or `var(...)` reference) for the same
+ * (type, shade, channelValue) tuple `classFor` resolves to a Tailwind
+ * className. Inline-style consumers read these via
+ * `currentTheme.cssValue[tokenName]` — see PRD US-007.
+ *
+ * Named channels look up the hex from TAILWIND_PALETTE. Hex channels
+ * produce a `var(--{type}-{shade})` reference that resolves against
+ * the CSS custom properties ThemePreviewProvider writes to :root.
+ *
+ * Returns null for unknown named-color families or shades — caller
+ * falls back to className-only reactivity for that token.
+ */
+function cssValueFor(type, shade, channelValue) {
+  if (isHexColor(channelValue)) {
+    return `var(--${type}-${shade})`;
+  }
+  const family = TAILWIND_PALETTE && TAILWIND_PALETTE[channelValue];
+  if (!family) return null;
+  const hex = family[shade] || family[String(shade)];
+  return hex || null;
 }
 
 function gradientFor(
@@ -131,12 +155,20 @@ export const ThemeModel = (themeItem = {}) => {
         if (variant in theme === false) {
           theme[variant] = {};
         }
+        if (!theme[variant].cssValue) {
+          theme[variant].cssValue = {};
+        }
         Object.keys(variants[variant]).forEach((shade) => {
           const numShade = variants[variant][shade];
           const hoverShade = getNextLevel(numShade);
           const textShade = invert(numShade);
           theme[variant][`bg-${type}-${shade}`] = classFor(
             "bg",
+            type,
+            numShade,
+            channelValue,
+          );
+          theme[variant].cssValue[`bg-${type}-${shade}`] = cssValueFor(
             type,
             numShade,
             channelValue,
@@ -148,6 +180,11 @@ export const ThemeModel = (themeItem = {}) => {
             channelValue,
             true,
           );
+          theme[variant].cssValue[`hover-bg-${type}-${shade}`] = cssValueFor(
+            type,
+            hoverShade,
+            channelValue,
+          );
           theme[variant][`hover-border-${type}-${shade}`] = classFor(
             "border",
             type,
@@ -155,8 +192,15 @@ export const ThemeModel = (themeItem = {}) => {
             channelValue,
             true,
           );
+          theme[variant].cssValue[`hover-border-${type}-${shade}`] =
+            cssValueFor(type, hoverShade, channelValue);
           theme[variant][`border-${type}-${shade}`] = classFor(
             "border",
+            type,
+            numShade,
+            channelValue,
+          );
+          theme[variant].cssValue[`border-${type}-${shade}`] = cssValueFor(
             type,
             numShade,
             channelValue,
@@ -168,12 +212,22 @@ export const ThemeModel = (themeItem = {}) => {
             textShade,
             channelValue,
           );
+          theme[variant].cssValue[`text-${type}-${shade}`] = cssValueFor(
+            type,
+            textShade,
+            channelValue,
+          );
           theme[variant][`hover-text-${type}-${shade}`] = classFor(
             "text",
             type,
             textShade,
             channelValue,
             true,
+          );
+          theme[variant].cssValue[`hover-text-${type}-${shade}`] = cssValueFor(
+            type,
+            textShade,
+            channelValue,
           );
         });
       });
@@ -254,8 +308,18 @@ export const ThemeModel = (themeItem = {}) => {
         950,
         channelValue,
       );
+      theme["dark"].cssValue[`bg-${type}-darkest`] = cssValueFor(
+        type,
+        950,
+        channelValue,
+      );
       theme["light"][`bg-${type}-darkest`] = classFor(
         "bg",
+        type,
+        50,
+        channelValue,
+      );
+      theme["light"].cssValue[`bg-${type}-darkest`] = cssValueFor(
         type,
         50,
         channelValue,
@@ -299,6 +363,17 @@ export const ThemeModel = (themeItem = {}) => {
     theme["light"]["hover-border-none"] = "hover:border-transparent";
     theme["light"]["hover-bg-none"] = "hover:bg-transparent";
     theme["light"]["hover-text-none"] = "hover:text-transparent";
+
+    // Mirror the transparent tokens into cssValue so inline-style
+    // consumers can read borderless/transparent surfaces from the
+    // same map as colored ones.
+    ["dark", "light"].forEach((variant) => {
+      theme[variant].cssValue["bg-none"] = "transparent";
+      theme[variant].cssValue["border-none"] = "transparent";
+      theme[variant].cssValue["hover-bg-none"] = "transparent";
+      theme[variant].cssValue["hover-border-none"] = "transparent";
+      theme[variant].cssValue["hover-text-none"] = "transparent";
+    });
 
     return theme;
   } catch (e) {
