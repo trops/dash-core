@@ -6,6 +6,7 @@ import { ColorModel } from "../../../../Models";
 import { Button, DashPanel } from "@trops/dash-react";
 import { capitalizeFirstLetter } from "../../../../utils";
 import CustomHexColorPane from "./CustomHexColorPane";
+import CategorizedColorGrid from "./CategorizedColorGrid";
 
 const AvailableColorsGridPane = ({
   currentColor = null,
@@ -79,24 +80,40 @@ const AvailableColorsGridPane = ({
     <DashPanel height="h-full" scrollable={true}>
       <DashPanel.Header title="AvailableColors" />
       <DashPanel.Body scrollable={true} space={true}>
-        <div className="flex flex-col space-y-1">{renderAvailableColors()}</div>
-        {/* Hex input only when in MAIN mode (channel-level pick).
-            Sub-token overrides go through getClassName which would
-            produce an invalid `bg-#xxx-shade` string — out of scope
-            for the v1 hex picker. shade !== null means main mode
-            (callers pass shade=500 there, null for sub). */}
-        {shade !== null && (
-          <CustomHexColorPane
-            onApply={(hex) =>
-              handleChooseColor({
-                colorName: hex,
-                colorType,
-                shade: shade || 500,
-                panelType: "main",
-              })
-            }
-            label={`Custom hex for ${colorType || "channel"}`}
-          />
+        {/* MAIN mode: show the discoverable categorized grid +
+            hex input + brand presets. The legacy 22-color × 1-shade
+            list is sunset in main mode — superseded by the
+            categorized grid (PRD Phase 3.5).
+            SUB mode: keep the legacy per-shade grid (power-user
+            surface for per-component overrides). */}
+        {shade !== null ? (
+          <>
+            <CategorizedColorGrid
+              onSelect={(hex) =>
+                handleChooseColor({
+                  colorName: hex,
+                  colorType,
+                  shade: shade || 500,
+                  panelType: "main",
+                })
+              }
+            />
+            <CustomHexColorPane
+              onApply={(hex) =>
+                handleChooseColor({
+                  colorName: hex,
+                  colorType,
+                  shade: shade || 500,
+                  panelType: "main",
+                })
+              }
+              label={`Custom hex for ${colorType || "channel"}`}
+            />
+          </>
+        ) : (
+          <div className="flex flex-col space-y-1">
+            {renderAvailableColors()}
+          </div>
         )}
       </DashPanel.Body>
       {onCancel && (
