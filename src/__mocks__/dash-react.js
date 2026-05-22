@@ -257,7 +257,31 @@ function Tag3({ text, onClick, className }) {
   );
 }
 
+// colorMath stubs — mirror the real exports from
+// `dash-react/src/Utils/colorMath.js`. Minimal-but-correct
+// implementations so ThemeModel tests can verify the hex-color
+// branch without pulling the full dash-react package into dash-core's
+// peerDep-only node_modules tree.
+const HEX_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+function isHexColor(value) {
+  return typeof value === "string" && HEX_RE.test(value.trim());
+}
+function deriveShades(hex) {
+  if (!isHexColor(hex)) return null;
+  // Mock: return placeholder hex per shade. ThemeModel tests don't
+  // inspect the derived hex values themselves — they only verify the
+  // cssVars map has the expected keys and shape. The real algorithm
+  // is exercised by dash-react's colorMath.test.js.
+  const shades = {};
+  for (const s of [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]) {
+    shades[s] = "#000000";
+  }
+  return shades;
+}
+
 module.exports = {
+  isHexColor,
+  deriveShades,
   ThemeContext,
   Modal,
   Stepper,
