@@ -1,8 +1,8 @@
 import React from "react";
 import ThemePane from "./ThemePane";
-import { colorNames } from "@trops/dash-react";
-import { Button } from "@trops/dash-react";
+import { Button, isHexColor } from "@trops/dash-react";
 import CustomHexColorPane from "./CustomHexColorPane";
+import CategorizedColorGrid from "./CategorizedColorGrid";
 
 const AvailableMainColorsPane = ({
   theme,
@@ -10,42 +10,30 @@ const AvailableMainColorsPane = ({
   mainColor,
   onChooseColor,
 }) => {
-  function handleSelectMainColor(colorName) {
-    onChooseColor(mainColor, colorName);
+  function handleSelectColor(colorValue) {
+    // Pass any color (named string or hex) through the same callback.
+    // ThemeModel detects hex strings via isHexColor and routes the
+    // channel through the arbitrary-color-themes pipeline; named
+    // strings stay on the legacy path. PRD: arbitrary-color-themes.md.
+    onChooseColor(mainColor, colorValue);
   }
 
-  function handleApplyHex(hex) {
-    // Pass the hex value through the same callback as named colors.
-    // ThemeModel (v0.1.568+) detects hex strings and routes the
-    // channel through its arbitrary-color-themes pipeline.
-    onChooseColor(mainColor, hex);
-  }
-
-  function renderAvailableColors() {
-    const tempTheme = theme[themeVariant];
-    return colorNames.sort().map((colorName) => {
-      const stringColor = `bg-${colorName}-${"500"}`;
-      const selected = colorName === tempTheme[mainColor];
-      return (
-        <div
-          className={`flex w-full h-full m-2 ${stringColor} ${
-            selected === true ? "opacity-100" : "opacity-100"
-          } rounded`}
-          onClick={() => handleSelectMainColor(colorName)}
-        >
-          {/* {selected === true ? (<span className="font-bold text-5xl">1</span>) : null} */}
-        </div>
-      );
-    });
-  }
+  // The current channel value — used to highlight which swatch is
+  // currently active (when it's a hex). Named-color themes show no
+  // swatch highlight in the curated grid; that's the expected
+  // behavior since the curated grid doesn't claim parity with the
+  // sunset named grid.
+  const currentValue = theme?.[themeVariant]?.[mainColor];
+  const currentHex = isHexColor(currentValue) ? currentValue : null;
 
   return (
     <ThemePane>
-      <div className="flex grid grid-cols-3 w-full overflow-y-scroll">
-        {renderAvailableColors()}
-      </div>
+      <CategorizedColorGrid
+        onSelect={handleSelectColor}
+        selectedHex={currentHex}
+      />
       <CustomHexColorPane
-        onApply={handleApplyHex}
+        onApply={handleSelectColor}
         label={`Custom hex for ${mainColor || "channel"}`}
       />
       <Button title="Cancel" />
