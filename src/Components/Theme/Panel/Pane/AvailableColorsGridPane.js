@@ -3,7 +3,7 @@ import { colorNames, shades } from "@trops/dash-react";
 
 import ColorTile from "../../../../Components/Theme/Panel/MenuItem/ColorTile";
 import { ColorModel } from "../../../../Models";
-import { Button, DashPanel } from "@trops/dash-react";
+import { Button, DashPanel, Modal } from "@trops/dash-react";
 import { capitalizeFirstLetter } from "../../../../utils";
 import CustomHexColorPane from "./CustomHexColorPane";
 import CategorizedColorGrid from "./CategorizedColorGrid";
@@ -70,59 +70,68 @@ const AvailableColorsGridPane = ({
     });
   }
 
+  // The picker renders inside a modal so it has room for the full
+  // categorized grid without the user having to scroll within a
+  // cramped left-column. Mount/unmount of this component is driven
+  // by the parent (ThemeMenuPane) based on `selectedColor` state —
+  // so `isOpen` is effectively always `true` while mounted, and
+  // closing the modal triggers `onCancel` to unmount.
+  const isMain = shade !== null;
+  const title = isMain
+    ? `Pick ${capitalizeFirstLetter(colorType || "color")} color`
+    : "Available Colors";
+
   return (
-    // <LayoutContainer
-    //     direction="col"
-    //     scrollable={false}
-    //     className="space-y-1"
-    //     height={"h-full"}
-    // >
-    <DashPanel height="h-full" scrollable={true}>
-      <DashPanel.Header title="AvailableColors" />
-      <DashPanel.Body scrollable={true} space={true}>
-        {/* MAIN mode: show the discoverable categorized grid +
-            hex input + brand presets. The legacy 22-color × 1-shade
-            list is sunset in main mode — superseded by the
-            categorized grid (PRD Phase 3.5).
-            SUB mode: keep the legacy per-shade grid (power-user
-            surface for per-component overrides). */}
-        {shade !== null ? (
-          <>
-            <CategorizedColorGrid
-              onSelect={(hex) =>
-                handleChooseColor({
-                  colorName: hex,
-                  colorType,
-                  shade: shade || 500,
-                  panelType: "main",
-                })
-              }
-            />
-            <CustomHexColorPane
-              onApply={(hex) =>
-                handleChooseColor({
-                  colorName: hex,
-                  colorType,
-                  shade: shade || 500,
-                  panelType: "main",
-                })
-              }
-              label={`Custom hex for ${colorType || "channel"}`}
-            />
-          </>
-        ) : (
-          <div className="flex flex-col space-y-1">
-            {renderAvailableColors()}
-          </div>
+    <Modal
+      isOpen={true}
+      setIsOpen={() => handleCancel()}
+      width="w-3/4"
+      height="h-3/4"
+    >
+      <DashPanel height="h-full" scrollable={true}>
+        <DashPanel.Header title={title} />
+        <DashPanel.Body scrollable={true} space={true}>
+          {/* MAIN mode: discoverable categorized grid + hex input.
+              SUB mode: legacy per-shade grid (power-user surface
+              for per-component overrides). */}
+          {isMain ? (
+            <>
+              <CategorizedColorGrid
+                cols={12}
+                onSelect={(hex) =>
+                  handleChooseColor({
+                    colorName: hex,
+                    colorType,
+                    shade: shade || 500,
+                    panelType: "main",
+                  })
+                }
+              />
+              <CustomHexColorPane
+                onApply={(hex) =>
+                  handleChooseColor({
+                    colorName: hex,
+                    colorType,
+                    shade: shade || 500,
+                    panelType: "main",
+                  })
+                }
+                label={`Custom hex for ${colorType || "channel"}`}
+              />
+            </>
+          ) : (
+            <div className="flex flex-col space-y-1">
+              {renderAvailableColors()}
+            </div>
+          )}
+        </DashPanel.Body>
+        {onCancel && (
+          <DashPanel.Footer>
+            <Button title="Cancel" block={true} onClick={handleCancel} />
+          </DashPanel.Footer>
         )}
-      </DashPanel.Body>
-      {onCancel && (
-        <DashPanel.Footer>
-          <Button title="Cancel" block={true} onClick={handleCancel} />
-        </DashPanel.Footer>
-      )}
-    </DashPanel>
-    // </LayoutContainer>
+      </DashPanel>
+    </Modal>
   );
 };
 
