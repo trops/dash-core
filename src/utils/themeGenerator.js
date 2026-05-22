@@ -156,6 +156,29 @@ export function getThemePresets() {
   ];
 }
 
+/**
+ * Brand presets — curated hex palettes mirroring well-known
+ * products. Surfaced in the theme picker so users can pick
+ * familiar brand identities in one click. Hex values flow
+ * through the arbitrary-color-themes pipeline (PRD US-006).
+ *
+ * Each preset spans all four channels (primary, secondary,
+ * tertiary, neutral). When applied, every theme token resolves
+ * to a brand-equivalent shade via the cssVars map.
+ */
+export function getBrandPresets() {
+  return [
+    buildRawTheme("Slack Brand", "#4A154B", "#36C5F0", "#ECB22E", "#BCBEC0"),
+    buildRawTheme("Notion Brand", "#2F3437", "#9B6A8C", "#D4845A", "#C1B5A7"),
+    buildRawTheme("GitHub Brand", "#0D1117", "#58A6FF", "#F0883E", "#21262D"),
+    buildRawTheme("Stripe Brand", "#635BFF", "#00D4FF", "#FFD600", "#525F7F"),
+    buildRawTheme("Linear Brand", "#5E6AD2", "#B07FD0", "#E2A8F5", "#1F2026"),
+    buildRawTheme("Discord Brand", "#5865F2", "#57F287", "#FEE75C", "#36393F"),
+    buildRawTheme("Vercel Brand", "#000000", "#0070F3", "#FF0080", "#888888"),
+    buildRawTheme("Figma Brand", "#F24E1E", "#A259FF", "#1ABCFE", "#2C2C2C"),
+  ];
+}
+
 // ─── Random Generation ───────────────────────────────────────────────────
 
 export function generateRandomTheme() {

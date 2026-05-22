@@ -8,12 +8,14 @@ import {
 } from "@trops/dash-react";
 import {
   getThemePresets,
+  getBrandPresets,
   generateRandomTheme,
   generateHarmonyTheme,
   generateCustomTheme,
   AVAILABLE_COLORS,
   HARMONY_STRATEGIES,
 } from "../../../utils/themeGenerator";
+import { isHexColor, normalizeHex } from "@trops/dash-react";
 
 // ─── Generate Mode Enum ──────────────────────────────────────────────────
 
@@ -28,9 +30,24 @@ export const GENERATE_MODES = {
 
 // ─── Preset Gallery ──────────────────────────────────────────────────────
 
+// Render a swatch for a preset's channel value. Handles both Tailwind
+// named colors (`"blue"` → `bg-blue-500`) and arbitrary-color-themes
+// hex values (`"#4A154B"` → inline style). Used by brand presets which
+// carry hex palettes.
+const PresetSwatch = ({ color }) => {
+  if (isHexColor(color)) {
+    return (
+      <div
+        className="h-6 flex-1 rounded"
+        style={{ backgroundColor: normalizeHex(color) || color }}
+      />
+    );
+  }
+  return <div className={`h-6 flex-1 rounded bg-${color}-500`} />;
+};
+
 const PresetCard = ({ preset, onSelect, selected = false }) => {
   const colors = [preset.primary, preset.secondary, preset.tertiary];
-  const swatchClasses = colors.map((c) => `bg-${c}-500`);
 
   return (
     <div
@@ -40,8 +57,8 @@ const PresetCard = ({ preset, onSelect, selected = false }) => {
       onClick={() => onSelect(preset)}
     >
       <div className="flex flex-row gap-1">
-        {swatchClasses.map((cls, i) => (
-          <div key={i} className={`h-6 flex-1 rounded ${cls}`} />
+        {colors.map((c, i) => (
+          <PresetSwatch key={i} color={c} />
         ))}
       </div>
       <span className="text-xs font-medium opacity-70 truncate">
@@ -57,6 +74,7 @@ export const PresetGallery = ({
   inline = false,
 }) => {
   const presets = getThemePresets();
+  const brandPresets = getBrandPresets();
 
   return (
     <div
@@ -71,6 +89,21 @@ export const PresetGallery = ({
         {presets.map((preset, i) => (
           <PresetCard
             key={i}
+            preset={preset}
+            onSelect={onSelect}
+            selected={
+              selectedPresetId != null && preset.name === selectedPresetId
+            }
+          />
+        ))}
+      </div>
+      <span className="text-sm font-semibold opacity-50 mt-4">
+        Brand Presets
+      </span>
+      <div className="grid grid-cols-3 gap-3">
+        {brandPresets.map((preset, i) => (
+          <PresetCard
+            key={`brand-${i}`}
             preset={preset}
             onSelect={onSelect}
             selected={
