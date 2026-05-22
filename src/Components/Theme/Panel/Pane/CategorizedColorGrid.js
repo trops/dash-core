@@ -16,10 +16,22 @@
 import React, { useState } from "react";
 import { getColorFamilies, getCuratedColorGrid } from "@trops/dash-react";
 
-const CategorizedColorGrid = ({ onSelect, selectedHex = null }) => {
+const CategorizedColorGrid = ({ onSelect, selectedHex = null, cols = 6 }) => {
   const families = getColorFamilies();
   const [activeFamily, setActiveFamily] = useState(families[0]);
   const colors = getCuratedColorGrid(activeFamily);
+
+  // Map the `cols` prop to a Tailwind class. The pattern set is in
+  // the dash-electron safelist already (grid-cols-1..12).
+  const gridColsClass =
+    {
+      4: "grid-cols-4",
+      6: "grid-cols-6",
+      8: "grid-cols-8",
+      9: "grid-cols-9",
+      10: "grid-cols-10",
+      12: "grid-cols-12",
+    }[cols] || "grid-cols-6";
 
   return (
     <div className="flex flex-col gap-3 p-3">
@@ -45,7 +57,7 @@ const CategorizedColorGrid = ({ onSelect, selectedHex = null }) => {
       </div>
 
       {/* Swatch grid */}
-      <div className="grid grid-cols-6 gap-1">
+      <div className={`grid ${gridColsClass} gap-1`}>
         {colors.map((hex) => {
           const isSelected =
             selectedHex && hex.toLowerCase() === selectedHex.toLowerCase();
