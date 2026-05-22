@@ -1,8 +1,28 @@
 /**
  * ThemeModel
  *
+ * Expands a saved theme (`{ primary: "blue", secondary: "indigo", … }`)
+ * into a per-variant token map (`{ dark: {...}, light: {...} }`) of
+ * Tailwind class strings.
+ *
+ * Each color channel can be either:
+ *   - A Tailwind color family name (e.g. `"blue"`) — emits class
+ *     strings like `bg-blue-700`. The Tailwind safelist already
+ *     covers these.
+ *   - A hex color (e.g. `"#4A154B"`) — emits arbitrary-value class
+ *     strings like `bg-[var(--primary-700)]` and accumulates the
+ *     derived `--{channel}-{50..950}` CSS variables on the variant's
+ *     `cssVars` sub-object. `ThemePreviewProvider` writes these to
+ *     `document.documentElement.style` on theme activation.
+ *
+ * PRD: `arbitrary-color-themes.md` FR-002.
  */
-import { deepCopy, colorTypes } from "@trops/dash-react";
+import {
+  deepCopy,
+  colorTypes,
+  isHexColor,
+  deriveShades,
+} from "@trops/dash-react";
 
 /**
  * getNextLevel
@@ -16,6 +36,39 @@ function getNextLevel(currentLevel) {
 
 function invert(shade) {
   return 900 - parseInt(shade, 10);
+}
+
+/**
+ * Build a tailwind class string for the given prefix + type + numeric
+ * shade. Routes to the arbitrary-value syntax (`bg-[var(--type-shade)]`)
+ * when the channel's value is a hex.
+ *
+ * @param {"bg"|"text"|"border"} prefix
+ * @param {string} type             channel name (primary | secondary | …)
+ * @param {number} shade            tailwind shade (100..950)
+ * @param {string} channelValue     either a tailwind color name or a hex
+ * @param {boolean} hover           emit a `hover:` variant
+ */
+function classFor(prefix, type, shade, channelValue, hover = false) {
+  const h = hover ? "hover:" : "";
+  if (isHexColor(channelValue)) {
+    return `${h}${prefix}-[var(--${type}-${shade})]`;
+  }
+  return `${h}${prefix}-${channelValue}-${shade}`;
+}
+
+function gradientFor(
+  direction,
+  type,
+  fromShade,
+  viaShade,
+  toShade,
+  channelValue,
+) {
+  if (isHexColor(channelValue)) {
+    return `bg-gradient-to-${direction} from-[var(--${type}-${fromShade})] via-[var(--${type}-${viaShade})] to-[var(--${type}-${toShade})]`;
+  }
+  return `bg-gradient-to-${direction} from-${channelValue}-${fromShade} via-${channelValue}-${viaShade} to-${channelValue}-${toShade}`;
 }
 
 export const ThemeModel = (themeItem = {}) => {
@@ -73,141 +126,90 @@ export const ThemeModel = (themeItem = {}) => {
     // iterate over each color type "primary, secondary, tertiary ..."
     // and generate the colors necessary (shades) based on tailwind
     colorTypes.forEach((type) => {
+      const channelValue = theme[type];
       Object.keys(variants).forEach((variant) => {
         if (variant in theme === false) {
           theme[variant] = {};
         }
         Object.keys(variants[variant]).forEach((shade) => {
-          theme[variant][`bg-${type}-${shade}`] =
-            `bg-${theme[type]}-${variants[variant][shade]}`;
-          theme[variant][`hover-bg-${type}-${shade}`] = `hover:bg-${
-            theme[type]
-          }-${getNextLevel(variants[variant][shade])}`;
-          theme[variant][`hover-border-${type}-${shade}`] =
-            `hover:border-${theme[type]}-${getNextLevel(
-              variants[variant][shade],
-            )}`;
-          theme[variant][`border-${type}-${shade}`] =
-            `border-${theme[type]}-${variants[variant][shade]}`;
+          const numShade = variants[variant][shade];
+          const hoverShade = getNextLevel(numShade);
+          const textShade = invert(numShade);
+          theme[variant][`bg-${type}-${shade}`] = classFor(
+            "bg",
+            type,
+            numShade,
+            channelValue,
+          );
+          theme[variant][`hover-bg-${type}-${shade}`] = classFor(
+            "bg",
+            type,
+            hoverShade,
+            channelValue,
+            true,
+          );
+          theme[variant][`hover-border-${type}-${shade}`] = classFor(
+            "border",
+            type,
+            hoverShade,
+            channelValue,
+            true,
+          );
+          theme[variant][`border-${type}-${shade}`] = classFor(
+            "border",
+            type,
+            numShade,
+            channelValue,
+          );
           // we should be "flipping" these so dark text on light and light on dark...
-          theme[variant][`text-${type}-${shade}`] = `text-${
-            theme[type]
-          }-${invert(variants[variant][shade])}`;
-          theme[variant][`hover-text-${type}-${shade}`] =
-            `hover:text-${theme[type]}-${invert(variants[variant][shade])}`;
+          theme[variant][`text-${type}-${shade}`] = classFor(
+            "text",
+            type,
+            textShade,
+            channelValue,
+          );
+          theme[variant][`hover-text-${type}-${shade}`] = classFor(
+            "text",
+            type,
+            textShade,
+            channelValue,
+            true,
+          );
         });
       });
     });
 
-    // lets try gradients
-
-    // Primary
-
-    theme["dark"]["bg-primary-gradient-right"] =
-      `bg-gradient-to-r from-${theme.primary}-${variants["dark"]["medium"]} via-${theme.primary}-${variants["dark"]["medium"]} to-${theme.primary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-primary-gradient-bottom"] =
-      `bg-gradient-to-b from-${theme.primary}-${variants["dark"]["medium"]} via-${theme.primary}-${variants["dark"]["medium"]} to-${theme.primary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-primary-gradient-bottom-right"] =
-      `bg-gradient-to-br from-${theme.primary}-${variants["dark"]["medium"]} via-${theme.primary}-${variants["dark"]["medium"]} to-${theme.primary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-primary-gradient-bottom-left"] =
-      `bg-gradient-to-bl from-${theme.primary}-${variants["dark"]["medium"]} via-${theme.primary}-${variants["dark"]["medium"]} to-${theme.primary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-primary-gradient-left"] =
-      `bg-gradient-to-l from-${theme.primary}-${variants["dark"]["medium"]} via-${theme.primary}-${variants["dark"]["medium"]} to-${theme.primary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-primary-gradient-top"] =
-      `bg-gradient-to-t from-${theme.primary}-${variants["dark"]["medium"]} via-${theme.primary}-${variants["dark"]["medium"]} to-${theme.primary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-primary-gradient-top-right"] =
-      `bg-gradient-to-tr from-${theme.primary}-${variants["dark"]["medium"]} via-${theme.primary}-${variants["dark"]["medium"]} to-${theme.primary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-primary-gradient-top-left"] =
-      `bg-gradient-to-tl from-${theme.primary}-${variants["dark"]["medium"]} via-${theme.primary}-${variants["dark"]["medium"]} to-${theme.primary}-${variants["dark"]["dark"]}`;
-
-    theme["light"]["bg-primary-gradient-right"] =
-      `bg-gradient-to-r from-${theme.primary}-${variants["light"]["medium"]} via-${theme.primary}-${variants["light"]["medium"]} to-${theme.primary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-primary-gradient-bottom"] =
-      `bg-gradient-to-b from-${theme.primary}-${variants["light"]["medium"]} via-${theme.primary}-${variants["light"]["medium"]} to-${theme.primary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-primary-gradient-left"] =
-      `bg-gradient-to-l from-${theme.primary}-${variants["light"]["medium"]} via-${theme.primary}-${variants["light"]["medium"]} to-${theme.primary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-primary-gradient-top"] =
-      `bg-gradient-to-t from-${theme.primary}-${variants["light"]["medium"]} via-${theme.primary}-${variants["light"]["medium"]} to-${theme.primary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-primary-gradient-top-right"] =
-      `bg-gradient-to-tr from-${theme.primary}-${variants["light"]["medium"]} via-${theme.primary}-${variants["light"]["medium"]} to-${theme.primary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-primary-gradient-bottom-right"] =
-      `bg-gradient-to-br from-${theme.primary}-${variants["light"]["medium"]} via-${theme.primary}-${variants["light"]["medium"]} to-${theme.primary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-primary-gradient-top-left"] =
-      `bg-gradient-to-tl from-${theme.primary}-${variants["light"]["medium"]} via-${theme.primary}-${variants["light"]["medium"]} to-${theme.primary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-primary-gradient-bottom-left"] =
-      `bg-gradient-to-bl from-${theme.primary}-${variants["light"]["medium"]} via-${theme.primary}-${variants["light"]["medium"]} to-${theme.primary}-${variants["light"]["dark"]}`;
-
-    // Secondary
-
-    theme["dark"]["bg-secondary-gradient-right"] =
-      `bg-gradient-to-r from-${theme.secondary}-${variants["dark"]["medium"]} via-${theme.secondary}-${variants["dark"]["medium"]} to-${theme.secondary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-secondary-gradient-bottom"] =
-      `bg-gradient-to-b from-${theme.secondary}-${variants["dark"]["medium"]} via-${theme.secondary}-${variants["dark"]["medium"]} to-${theme.secondary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-secondary-gradient-bottom-right"] =
-      `bg-gradient-to-br from-${theme.secondary}-${variants["dark"]["medium"]} via-${theme.secondary}-${variants["dark"]["medium"]} to-${theme.secondary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-secondary-gradient-bottom-left"] =
-      `bg-gradient-to-bl from-${theme.secondary}-${variants["dark"]["medium"]} via-${theme.secondary}-${variants["dark"]["medium"]} to-${theme.secondary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-secondary-gradient-left"] =
-      `bg-gradient-to-l from-${theme.secondary}-${variants["dark"]["medium"]} via-${theme.secondary}-${variants["dark"]["medium"]} to-${theme.secondary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-secondary-gradient-top"] =
-      `bg-gradient-to-t from-${theme.secondary}-${variants["dark"]["medium"]} via-${theme.secondary}-${variants["dark"]["medium"]} to-${theme.secondary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-secondary-gradient-top-right"] =
-      `bg-gradient-to-tr from-${theme.secondary}-${variants["dark"]["medium"]} via-${theme.secondary}-${variants["dark"]["medium"]} to-${theme.secondary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-secondary-gradient-top-left"] =
-      `bg-gradient-to-tl from-${theme.secondary}-${variants["dark"]["medium"]} via-${theme.secondary}-${variants["dark"]["medium"]} to-${theme.secondary}-${variants["dark"]["dark"]}`;
-
-    theme["light"]["bg-secondary-gradient-right"] =
-      `bg-gradient-to-r from-${theme.secondary}-${variants["light"]["medium"]} via-${theme.secondary}-${variants["light"]["medium"]} to-${theme.secondary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-secondary-gradient-bottom"] =
-      `bg-gradient-to-b from-${theme.secondary}-${variants["light"]["medium"]}  via-${theme.secondary}-${variants["light"]["medium"]} to-${theme.secondary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-secondary-gradient-left"] =
-      `bg-gradient-to-l from-${theme.secondary}-${variants["light"]["medium"]} via-${theme.secondary}-${variants["light"]["medium"]} to-${theme.secondary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-secondary-gradient-top"] =
-      `bg-gradient-to-t from-${theme.secondary}-${variants["light"]["medium"]} via-${theme.secondary}-${variants["light"]["medium"]} to-${theme.secondary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-secondary-gradient-top-right"] =
-      `bg-gradient-to-tr from-${theme.secondary}-${variants["light"]["medium"]} via-${theme.secondary}-${variants["light"]["medium"]} to-${theme.secondary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-secondary-gradient-bottom-right"] =
-      `bg-gradient-to-br from-${theme.secondary}-${variants["light"]["medium"]} via-${theme.secondary}-${variants["light"]["medium"]} to-${theme.secondary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-secondary-gradient-top-left"] =
-      `bg-gradient-to-tl from-${theme.secondary}-${variants["light"]["medium"]} via-${theme.secondary}-${variants["light"]["medium"]} to-${theme.secondary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-secondary-gradient-bottom-left"] =
-      `bg-gradient-to-bl from-${theme.secondary}-${variants["light"]["medium"]} via-${theme.secondary}-${variants["light"]["medium"]} to-${theme.secondary}-${variants["light"]["dark"]}`;
-
-    // Tertiary
-
-    theme["dark"]["bg-tertiary-gradient-right"] =
-      `bg-gradient-to-r from-${theme.tertiary}-${variants["dark"]["medium"]} via-${theme.tertiary}-${variants["dark"]["medium"]} to-${theme.tertiary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-tertiary-gradient-bottom"] =
-      `bg-gradient-to-b from-${theme.tertiary}-${variants["dark"]["medium"]} via-${theme.tertiary}-${variants["dark"]["medium"]} to-${theme.tertiary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-tertiary-gradient-bottom-right"] =
-      `bg-gradient-to-br from-${theme.tertiary}-${variants["dark"]["medium"]} via-${theme.tertiary}-${variants["dark"]["medium"]} to-${theme.tertiary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-tertiary-gradient-bottom-left"] =
-      `bg-gradient-to-bl from-${theme.tertiary}-${variants["dark"]["medium"]} via-${theme.tertiary}-${variants["dark"]["medium"]} to-${theme.tertiary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-tertiary-gradient-left"] =
-      `bg-gradient-to-l from-${theme.tertiary}-${variants["dark"]["medium"]} via-${theme.tertiary}-${variants["dark"]["medium"]} to-${theme.tertiary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-tertiary-gradient-top"] =
-      `bg-gradient-to-t from-${theme.tertiary}-${variants["dark"]["medium"]} via-${theme.tertiary}-${variants["dark"]["medium"]} to-${theme.tertiary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-tertiary-gradient-top-right"] =
-      `bg-gradient-to-tr from-${theme.tertiary}-${variants["dark"]["medium"]} via-${theme.tertiary}-${variants["dark"]["medium"]} to-${theme.tertiary}-${variants["dark"]["dark"]}`;
-    theme["dark"]["bg-tertiary-gradient-top-left"] =
-      `bg-gradient-to-tl from-${theme.tertiary}-${variants["dark"]["medium"]} via-${theme.tertiary}-${variants["dark"]["medium"]} to-${theme.tertiary}-${variants["dark"]["dark"]}`;
-
-    theme["light"]["bg-tertiary-gradient-right"] =
-      `bg-gradient-to-r from-${theme.tertiary}-${variants["light"]["medium"]} via-${theme.tertiary}-${variants["light"]["medium"]} to-${theme.tertiary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-tertiary-gradient-bottom"] =
-      `bg-gradient-to-b from-${theme.tertiary}-${variants["light"]["medium"]} via-${theme.tertiary}-${variants["light"]["medium"]} to-${theme.tertiary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-tertiary-gradient-left"] =
-      `bg-gradient-to-l from-${theme.tertiary}-${variants["light"]["medium"]} via-${theme.tertiary}-${variants["light"]["medium"]} to-${theme.tertiary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-tertiary-gradient-top"] =
-      `bg-gradient-to-t from-${theme.tertiary}-${variants["light"]["medium"]} via-${theme.tertiary}-${variants["light"]["medium"]} to-${theme.tertiary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-tertiary-gradient-top-right"] =
-      `bg-gradient-to-tr from-${theme.tertiary}-${variants["light"]["medium"]} via-${theme.tertiary}-${variants["light"]["medium"]} to-${theme.tertiary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-tertiary-gradient-bottom-right"] =
-      `bg-gradient-to-br from-${theme.tertiary}-${variants["light"]["medium"]} via-${theme.tertiary}-${variants["light"]["medium"]} to-${theme.tertiary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-tertiary-gradient-top-left"] =
-      `bg-gradient-to-tl from-${theme.tertiary}-${variants["light"]["medium"]} via-${theme.tertiary}-${variants["light"]["medium"]} to-${theme.tertiary}-${variants["light"]["dark"]}`;
-    theme["light"]["bg-tertiary-gradient-bottom-left"] =
-      `bg-gradient-to-bl from-${theme.tertiary}-${variants["light"]["medium"]} via-${theme.tertiary}-${variants["light"]["medium"]} to-${theme.tertiary}-${variants["light"]["dark"]}`;
+    // Gradients — primary/secondary/tertiary, 8 directions × 2 variants.
+    // Each gradient goes from the variant's medium shade via medium to dark.
+    // For hex channels, the gradient stops use `from-[var(--type-shade)]` etc.
+    const gradientDirs = {
+      right: "r",
+      bottom: "b",
+      "bottom-right": "br",
+      "bottom-left": "bl",
+      left: "l",
+      top: "t",
+      "top-right": "tr",
+      "top-left": "tl",
+    };
+    ["primary", "secondary", "tertiary"].forEach((type) => {
+      const channelValue = theme[type];
+      Object.keys(variants).forEach((variant) => {
+        const fromShade = variants[variant]["medium"];
+        const viaShade = variants[variant]["medium"];
+        const toShade = variants[variant]["dark"];
+        Object.entries(gradientDirs).forEach(([suffix, dirCode]) => {
+          theme[variant][`bg-${type}-gradient-${suffix}`] = gradientFor(
+            dirCode,
+            type,
+            fromShade,
+            viaShade,
+            toShade,
+            channelValue,
+          );
+        });
+      });
+    });
 
     // now for the overrides!
     if (overrideDark !== null) {
@@ -245,9 +247,45 @@ export const ThemeModel = (themeItem = {}) => {
     // Added outside the variant loop to avoid generating invalid text/border
     // classes (invert(950) would be negative).
     colorTypes.forEach((type) => {
-      theme["dark"][`bg-${type}-darkest`] = `bg-${theme[type]}-950`;
-      theme["light"][`bg-${type}-darkest`] = `bg-${theme[type]}-50`;
+      const channelValue = theme[type];
+      theme["dark"][`bg-${type}-darkest`] = classFor(
+        "bg",
+        type,
+        950,
+        channelValue,
+      );
+      theme["light"][`bg-${type}-darkest`] = classFor(
+        "bg",
+        type,
+        50,
+        channelValue,
+      );
     });
+
+    // Accumulate CSS custom properties for any hex-color channels.
+    // ThemePreviewProvider reads `currentTheme.cssVars` and writes
+    // these to `document.documentElement.style` on theme activation
+    // (PRD `arbitrary-color-themes.md` FR-003).
+    const cssVarsAll = {};
+    let hasAnyHex = false;
+    colorTypes.forEach((type) => {
+      const channelValue = theme[type];
+      if (isHexColor(channelValue)) {
+        hasAnyHex = true;
+        const shades = deriveShades(channelValue);
+        if (shades) {
+          for (const [shade, hex] of Object.entries(shades)) {
+            cssVarsAll[`--${type}-${shade}`] = hex;
+          }
+        }
+      }
+    });
+    if (hasAnyHex) {
+      // Attach to both variants so whichever is active on theme switch
+      // delivers the same CSS variable set to :root.
+      theme["dark"].cssVars = cssVarsAll;
+      theme["light"].cssVars = cssVarsAll;
+    }
 
     // transparent colors
     theme["dark"]["bg-none"] = "bg-transparent";
