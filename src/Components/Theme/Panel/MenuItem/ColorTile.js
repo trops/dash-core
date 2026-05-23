@@ -1,5 +1,6 @@
 import React from "react";
 import { ColorModel } from "../../../../Models";
+import { isHexColor } from "@trops/dash-react";
 
 const ColorTile = ({
   colorFromTheme = null,
@@ -26,34 +27,28 @@ const ColorTile = ({
     ...rest,
   });
 
-  // console.log("Color Model Tile ", c);
-
-  // const stringColor = colorFromTheme === null ? `bg-${colorName}${shade !== null ? `-${shade}` : ''}` : colorFromTheme;
-  // const parts = colorFromTheme !== null ? colorFromTheme.split('-') : null;
-
-  // const derivedShade = parts !== null ? parts[parts.length -1] : null;
-  // const derivedColorName = parts !== null ? parts[parts.length - 2] : null;
-
-  // const stringThemeColorName = '';
-  // const objToSend = {
-  //     colorName: colorName !== null ? colorName : colorFromTheme !== null && derivedColorName,
-  //     shade: shade !== null ? shade : colorFromTheme !== null && derivedShade,
-  //     stringColor,
-  //     ...rest
-  // };
+  // If the channel value is a hex (custom-color theme — PRD
+  // arbitrary-color-themes.md), `c.class` becomes `bg-#xxx-500`
+  // which isn't a valid Tailwind class and renders as nothing
+  // (the dark page background bleeds through, looking black).
+  // Use inline style for hex backgrounds; named colors continue
+  // through the className path so existing themes are unchanged.
+  const colorIsHex = isHexColor(colorName);
+  const inlineStyle = colorIsHex ? { backgroundColor: colorName } : undefined;
+  const bgClass = colorIsHex ? "" : c.class;
 
   return (
     <div
       className={`flex flex-col rounded-lg cursor-pointer items-center justify-center border-2 text-xs ${
         selected === true ? "border-yellow-500" : "border-gray-800"
-      } hover:border-yellow-500 border-gray-800 ${c.class} ${width} ${height}`}
+      } hover:border-yellow-500 border-gray-800 ${bgClass} ${width} ${height}`}
+      style={inlineStyle}
       onClick={() => (onClick !== null ? onClick({ ...c, ...rest }) : null)}
       onMouseOver={() =>
         onMouseOver !== null ? onMouseOver({ ...c, ...rest }) : null
       }
     >
       &nbsp;
-      {/*{c.hex[shade]}*/}
     </div>
   );
 };
