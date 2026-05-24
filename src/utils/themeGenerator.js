@@ -332,6 +332,28 @@ export function generateRandomTheme() {
   return buildRawTheme(name, primary, secondary, tertiary, neutral);
 }
 
+/**
+ * Generate a random theme with all-hex channels. Picks a random hue
+ * + harmony, runs it through the hex-mode generator, applies the
+ * optional HSL nudge uniformly. Same shape as `generateRandomTheme`
+ * but every channel is a hex string (suitable for the hex-aware
+ * editor + slider nudges).
+ */
+export function generateRandomHexTheme(hslNudge = null) {
+  const h = Math.floor(Math.random() * 360);
+  const baseHex = rgbToHex(hslToRgb({ h, s: 0.65, l: 0.5 }));
+  const strategies = [
+    "complementary",
+    "analogous",
+    "triadic",
+    "split-complementary",
+    "tetradic",
+    "monochromatic",
+  ];
+  const strategy = pick(strategies);
+  return generateHexHarmonyTheme(baseHex, strategy, hslNudge);
+}
+
 // ─── Color Harmony Generation ────────────────────────────────────────────
 
 /**

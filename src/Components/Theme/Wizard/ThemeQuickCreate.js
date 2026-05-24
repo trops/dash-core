@@ -11,7 +11,7 @@ import {
 import {
   getThemePresets,
   getBrandPresets,
-  generateRandomTheme,
+  generateRandomHexTheme,
   generateHarmonyTheme,
   HARMONY_STRATEGIES,
 } from "../../../utils/themeGenerator";
@@ -218,6 +218,60 @@ const HslSlider = ({ label, value, min, max, step, onChange, unit = "" }) => (
   </div>
 );
 
+/**
+ * HSL nudge panel — three sliders (H/S/L) with a Reset button.
+ * `dH` is degrees; `dS`/`dL` are fractions in [-1..1].
+ */
+const HslNudgePanel = ({ dH, dS, dL, onChange }) => {
+  const isDirty = dH !== 0 || dS !== 0 || dL !== 0;
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-row items-center justify-between">
+        <span className="text-xs opacity-50">Fine-tune (HSL nudge)</span>
+        <button
+          type="button"
+          onClick={() => onChange({ dH: 0, dS: 0, dL: 0 })}
+          disabled={!isDirty}
+          className={`text-xs px-2 py-0.5 rounded ${
+            isDirty
+              ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
+              : "bg-gray-800 text-gray-600 cursor-not-allowed"
+          }`}
+        >
+          Reset
+        </button>
+      </div>
+      <HslSlider
+        label="Hue"
+        value={dH}
+        min={-180}
+        max={180}
+        step={1}
+        unit="°"
+        onChange={(v) => onChange({ dH: v, dS, dL })}
+      />
+      <HslSlider
+        label="Saturation"
+        value={Math.round(dS * 100)}
+        min={-100}
+        max={100}
+        step={1}
+        unit="%"
+        onChange={(v) => onChange({ dH, dS: v / 100, dL })}
+      />
+      <HslSlider
+        label="Lightness"
+        value={Math.round(dL * 100)}
+        min={-100}
+        max={100}
+        step={1}
+        unit="%"
+        onChange={(v) => onChange({ dH, dS, dL: v / 100 })}
+      />
+    </div>
+  );
+};
+
 export const ColorHarmonyPicker = ({ onGenerate, inline = false }) => {
   // Default to a brand-blue hex so the wizard opens in hex mode.
   const [selectedColor, setSelectedColor] = useState("#3b82f6");
@@ -291,36 +345,16 @@ export const ColorHarmonyPicker = ({ onGenerate, inline = false }) => {
       </div>
 
       {/* HSL nudge sliders */}
-      <div className="flex flex-col gap-3">
-        <span className="text-xs opacity-50">Fine-tune (HSL nudge)</span>
-        <HslSlider
-          label="Hue"
-          value={dH}
-          min={-180}
-          max={180}
-          step={1}
-          unit="°"
-          onChange={setDH}
-        />
-        <HslSlider
-          label="Saturation"
-          value={Math.round(dS * 100)}
-          min={-100}
-          max={100}
-          step={1}
-          unit="%"
-          onChange={(v) => setDS(v / 100)}
-        />
-        <HslSlider
-          label="Lightness"
-          value={Math.round(dL * 100)}
-          min={-100}
-          max={100}
-          step={1}
-          unit="%"
-          onChange={(v) => setDL(v / 100)}
-        />
-      </div>
+      <HslNudgePanel
+        dH={dH}
+        dS={dS}
+        dL={dL}
+        onChange={({ dH: h, dS: s, dL: l }) => {
+          setDH(h);
+          setDS(s);
+          setDL(l);
+        }}
+      />
 
       {/* Generated palette preview */}
       <div className="flex flex-col gap-2">
@@ -364,23 +398,137 @@ const MethodCard = ({ icon, title, subtitle, selected, onClick }) => {
   );
 };
 
-const RandomPreview = ({ theme, onRegenerate }) => {
-  const colors = theme ? [theme.primary, theme.secondary, theme.tertiary] : [];
+/**
+ * Random preview — picks a random hex base + harmony on mount/click,
+ * applies an HSL nudge uniformly, and shows the resulting 4-channel
+ * palette. The "seed" theme (base + harmony) reroll only when the
+ * user clicks Regenerate; HSL changes don't reroll so the user can
+ * sweep through a single random palette's lightness/saturation
+ * variations without losing the shape.
+ *
+ * Props mirror the previous RandomPreview signature for back-compat:
+ *   - `theme`: optional initial named-color theme passed in by the
+ *     wizard parent; ignored here in favour of an internally-managed
+ *     hex random theme. The parent's `onRegenerate` is wired to a
+ *     same-named outer button so users still see the rerolling
+ *     behaviour, but the actual roll happens inside this component.
+ */
+const RandomPreview = ({ onCommit }) => {
+  const [dH, setDH] = useState(0);
+  const [dS, setDS] = useState(0);
+  const [dL, setDL] = useState(0);
+  // `seed` is the un-nudged random theme — we reroll it on Regenerate
+  // and apply the live HSL nudge on top for display + commit.
+  const [seed, setSeed] = useState(() => generateRandomHexTheme());
+
+  function buildTheme() {
+    // Re-derive from the same seed channels, applying current nudge.
+    // We call generateRandomHexTheme via the seed's `primary` so the
+    // structure stays consistent under nudges. The seed is the
+    // identity: setting the seed's primary as base + complementary
+    // harmony would re-roll secondary/tertiary, so instead we directly
+    // nudge each channel.
+    if (!seed) return null;
+    // Inline nudge: convert each seed channel hex → HSL → apply
+    // delta → back to hex. seed is always hex (from
+    // generateRandomHexTheme).
+    function nudge(hex) {
+      if (typeof hex !== "string") return hex;
+      // Tiny local impl to avoid pulling extra deps. Mirrors
+      // adjustHsl in themeGenerator (which itself is pure-JS now).
+      const m = hex.match(/^#([0-9a-f]{6})$/i);
+      if (!m) return hex;
+      const n = parseInt(m[1], 16);
+      const r = (n >> 16) & 0xff,
+        g = (n >> 8) & 0xff,
+        b = n & 0xff;
+      const R = r / 255,
+        G = g / 255,
+        B = b / 255;
+      const max = Math.max(R, G, B),
+        min = Math.min(R, G, B);
+      let h = 0,
+        s = 0;
+      const l = (max + min) / 2;
+      if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === R) h = (G - B) / d + (G < B ? 6 : 0);
+        else if (max === G) h = (B - R) / d + 2;
+        else h = (R - G) / d + 4;
+        h *= 60;
+      }
+      const newH = (((h + dH) % 360) + 360) % 360;
+      const newS = Math.max(0, Math.min(1, s + dS));
+      const newL = Math.max(0, Math.min(1, l + dL));
+      // HSL → RGB
+      if (newS === 0) {
+        const v = Math.round(newL * 255);
+        return `#${v.toString(16).padStart(2, "0").repeat(3)}`;
+      }
+      const c = (1 - Math.abs(2 * newL - 1)) * newS;
+      const x = c * (1 - Math.abs(((newH / 60) % 2) - 1));
+      const mm = newL - c / 2;
+      let rp, gp, bp;
+      if (newH < 60) [rp, gp, bp] = [c, x, 0];
+      else if (newH < 120) [rp, gp, bp] = [x, c, 0];
+      else if (newH < 180) [rp, gp, bp] = [0, c, x];
+      else if (newH < 240) [rp, gp, bp] = [0, x, c];
+      else if (newH < 300) [rp, gp, bp] = [x, 0, c];
+      else [rp, gp, bp] = [c, 0, x];
+      const toByte = (v) =>
+        Math.max(0, Math.min(255, Math.round((v + mm) * 255)));
+      const toH = (v) => toByte(v).toString(16).padStart(2, "0");
+      return `#${toH(rp)}${toH(gp)}${toH(bp)}`;
+    }
+    return {
+      ...seed,
+      primary: nudge(seed.primary),
+      secondary: nudge(seed.secondary),
+      tertiary: nudge(seed.tertiary),
+      neutral: nudge(seed.neutral),
+    };
+  }
+
+  const previewTheme = buildTheme();
+
+  useEffect(() => {
+    if (onCommit && previewTheme) onCommit(previewTheme);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seed, dH, dS, dL]);
+
+  function handleRegenerate() {
+    setSeed(generateRandomHexTheme());
+  }
 
   return (
     <div className="flex flex-col gap-4">
-      <span className="text-sm font-semibold opacity-50">Preview</span>
-      {theme && (
-        <div className="flex flex-row gap-2">
-          {colors.map((c, i) => (
-            <div key={i} className="flex flex-col items-center gap-1 flex-1">
-              <div className={`h-10 w-full rounded bg-${c}-500`} />
-              <span className="text-[10px] opacity-40">{c}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      <Button title="Regenerate" onClick={onRegenerate} size="sm" />
+      <span className="text-sm font-semibold opacity-50">Random Theme</span>
+
+      <HslNudgePanel
+        dH={dH}
+        dS={dS}
+        dL={dL}
+        onChange={({ dH: h, dS: s, dL: l }) => {
+          setDH(h);
+          setDS(s);
+          setDL(l);
+        }}
+      />
+
+      <div className="flex flex-col gap-2">
+        <span className="text-xs opacity-50">Generated Palette</span>
+        {previewTheme && (
+          <div className="flex flex-row gap-2">
+            <PaletteSwatch value={previewTheme.primary} label="Primary" />
+            <PaletteSwatch value={previewTheme.secondary} label="Secondary" />
+            <PaletteSwatch value={previewTheme.tertiary} label="Tertiary" />
+            <PaletteSwatch value={previewTheme.neutral} label="Neutral" />
+          </div>
+        )}
+      </div>
+
+      <Button title="Regenerate" onClick={handleRegenerate} size="sm" />
     </div>
   );
 };
@@ -403,10 +551,9 @@ export const ThemeQuickCreate = ({
   useEffect(() => {
     if (initialMethod && wizardMethod !== initialMethod) {
       setWizardMethod(initialMethod);
+      // RandomPreview manages its own seed + commits via onCommit, so
+      // we just clear here and let it populate wizardTheme on mount.
       setWizardTheme(null);
-      if (initialMethod === "random") {
-        setWizardTheme(generateRandomTheme());
-      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialMethod]);
@@ -414,9 +561,6 @@ export const ThemeQuickCreate = ({
   function handleMethodSelect(method) {
     setWizardMethod(method);
     setWizardTheme(null);
-    if (method === "random") {
-      setWizardTheme(generateRandomTheme());
-    }
   }
 
   return (
@@ -483,10 +627,7 @@ export const ThemeQuickCreate = ({
         />
       )}
       {wizardMethod === "random" && (
-        <RandomPreview
-          theme={wizardTheme}
-          onRegenerate={() => setWizardTheme(generateRandomTheme())}
-        />
+        <RandomPreview onCommit={(theme) => setWizardTheme(theme)} />
       )}
       {wizardMethod === "color" && (
         <ColorHarmonyPicker
