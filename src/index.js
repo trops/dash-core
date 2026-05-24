@@ -40,6 +40,14 @@ export * from "./Components/MarkdownForm";
 // --- Utils ---
 export * from "./utils";
 
+// --- Re-exports from @trops/dash-react ---
+// `export * from "@trops/dash-react"` works in the rollup-built dist,
+// but with peer-dep wildcards + symlinked local builds webpack's
+// static analyzer sometimes can't enumerate the re-exported names.
+// List the few that downstream apps (dash-electron) import directly
+// from `@trops/dash-core` as a backstop.
+export { FontAwesomeIcon } from "@trops/dash-react";
+
 // --- Auto-register container types ---
 // When dash-core is imported, register Layout components with ComponentManager
 // so consumers don't need to wire this themselves.
