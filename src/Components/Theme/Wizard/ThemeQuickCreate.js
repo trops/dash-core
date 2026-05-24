@@ -314,7 +314,7 @@ export const ColorHarmonyPicker = ({ onGenerate, inline = false }) => {
         Generate from Color
       </span>
 
-      {/* Harmony strategy */}
+      {/* Harmony chips — full width above the two columns */}
       <div className="flex flex-col gap-2">
         <span className="text-xs opacity-50">Harmony</span>
         <div className="flex flex-row gap-2 flex-wrap">
@@ -335,35 +335,38 @@ export const ColorHarmonyPicker = ({ onGenerate, inline = false }) => {
         </div>
       </div>
 
-      {/* Base color hex picker */}
-      <div className="flex flex-col gap-2">
-        <span className="text-xs opacity-50">Base Color</span>
-        <InlineHexPicker
-          selectedHex={isHexColor(selectedColor) ? selectedColor : null}
-          onPick={(hex) => setSelectedColor(hex)}
-        />
-      </div>
+      {/* Two-column body: base picker on the left, sliders +
+          palette on the right. Stacks on narrow viewports. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="flex flex-col gap-2">
+          <span className="text-xs opacity-50">Base Color</span>
+          <InlineHexPicker
+            selectedHex={isHexColor(selectedColor) ? selectedColor : null}
+            onPick={(hex) => setSelectedColor(hex)}
+          />
+        </div>
 
-      {/* HSL nudge sliders */}
-      <HslNudgePanel
-        dH={dH}
-        dS={dS}
-        dL={dL}
-        onChange={({ dH: h, dS: s, dL: l }) => {
-          setDH(h);
-          setDS(s);
-          setDL(l);
-        }}
-      />
+        <div className="flex flex-col gap-4">
+          <HslNudgePanel
+            dH={dH}
+            dS={dS}
+            dL={dL}
+            onChange={({ dH: h, dS: s, dL: l }) => {
+              setDH(h);
+              setDS(s);
+              setDL(l);
+            }}
+          />
 
-      {/* Generated palette preview */}
-      <div className="flex flex-col gap-2">
-        <span className="text-xs opacity-50">Generated Palette</span>
-        <div className="flex flex-row gap-2">
-          <PaletteSwatch value={previewTheme.primary} label="Primary" />
-          <PaletteSwatch value={previewTheme.secondary} label="Secondary" />
-          <PaletteSwatch value={previewTheme.tertiary} label="Tertiary" />
-          <PaletteSwatch value={previewTheme.neutral} label="Neutral" />
+          <div className="flex flex-col gap-2">
+            <span className="text-xs opacity-50">Generated Palette</span>
+            <div className="flex flex-row gap-2">
+              <PaletteSwatch value={previewTheme.primary} label="Primary" />
+              <PaletteSwatch value={previewTheme.secondary} label="Secondary" />
+              <PaletteSwatch value={previewTheme.tertiary} label="Tertiary" />
+              <PaletteSwatch value={previewTheme.neutral} label="Neutral" />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -505,27 +508,31 @@ const RandomPreview = ({ onCommit }) => {
     <div className="flex flex-col gap-4">
       <span className="text-sm font-semibold opacity-50">Random Theme</span>
 
-      <HslNudgePanel
-        dH={dH}
-        dS={dS}
-        dL={dL}
-        onChange={({ dH: h, dS: s, dL: l }) => {
-          setDH(h);
-          setDS(s);
-          setDL(l);
-        }}
-      />
+      {/* Two-column body: sliders on the left, palette on the right.
+          Stacks on narrow viewports. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <HslNudgePanel
+          dH={dH}
+          dS={dS}
+          dL={dL}
+          onChange={({ dH: h, dS: s, dL: l }) => {
+            setDH(h);
+            setDS(s);
+            setDL(l);
+          }}
+        />
 
-      <div className="flex flex-col gap-2">
-        <span className="text-xs opacity-50">Generated Palette</span>
-        {previewTheme && (
-          <div className="flex flex-row gap-2">
-            <PaletteSwatch value={previewTheme.primary} label="Primary" />
-            <PaletteSwatch value={previewTheme.secondary} label="Secondary" />
-            <PaletteSwatch value={previewTheme.tertiary} label="Tertiary" />
-            <PaletteSwatch value={previewTheme.neutral} label="Neutral" />
-          </div>
-        )}
+        <div className="flex flex-col gap-2">
+          <span className="text-xs opacity-50">Generated Palette</span>
+          {previewTheme && (
+            <div className="flex flex-row gap-2">
+              <PaletteSwatch value={previewTheme.primary} label="Primary" />
+              <PaletteSwatch value={previewTheme.secondary} label="Secondary" />
+              <PaletteSwatch value={previewTheme.tertiary} label="Tertiary" />
+              <PaletteSwatch value={previewTheme.neutral} label="Neutral" />
+            </div>
+          )}
+        </div>
       </div>
 
       <Button title="Regenerate" onClick={handleRegenerate} size="sm" />
