@@ -507,24 +507,33 @@ const RandomPreview = ({ onCommit }) => {
 
   return (
     <div className="flex flex-col gap-4 flex-1 min-h-0">
-      {/* HSL sliders fill the available space; palette anchored at
-          the bottom as the "final" result, above the regenerate
-          action — same shape as the From Colors layout. */}
-      <div className="flex-1 min-h-0">
-        <HslNudgePanel
-          dH={dH}
-          dS={dS}
-          dL={dL}
-          onChange={({ dH: h, dS: s, dL: l }) => {
-            setDH(h);
-            setDS(s);
-            setDL(l);
-          }}
-        />
-      </div>
+      {/* Sliders sit at their natural size; an empty flex-1 spacer
+          below pushes the palette down so it always anchors near
+          the action button instead of leaving a big mid-panel gap. */}
+      <HslNudgePanel
+        dH={dH}
+        dS={dS}
+        dL={dL}
+        onChange={({ dH: h, dS: s, dL: l }) => {
+          setDH(h);
+          setDS(s);
+          setDL(l);
+        }}
+      />
+
+      <div className="flex-1 min-h-0" aria-hidden="true" />
 
       <div className="flex flex-col gap-2 shrink-0">
-        <span className="text-xs opacity-50">Generated Palette</span>
+        <div className="flex flex-row items-center justify-between">
+          <span className="text-xs opacity-50">Generated Palette</span>
+          <button
+            type="button"
+            onClick={handleRegenerate}
+            className="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
+          >
+            ↻ Regenerate
+          </button>
+        </div>
         {previewTheme && (
           <div className="flex flex-row gap-2 h-20">
             <PaletteSwatch value={previewTheme.primary} label="Primary" />
@@ -534,8 +543,6 @@ const RandomPreview = ({ onCommit }) => {
           </div>
         )}
       </div>
-
-      <Button title="Regenerate" onClick={handleRegenerate} size="sm" />
     </div>
   );
 };
