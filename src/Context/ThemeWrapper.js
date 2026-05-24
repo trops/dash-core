@@ -18,9 +18,7 @@ const themes = {
     shadeBackgroundFrom: 600,
     shadeBorderFrom: 600,
     shadeTextFrom: 100,
-    dark: {
-      "bg-primary-very-dark": "bg-black", // override test
-    },
+    dark: {},
     light: {},
   },
   "theme-2": {
@@ -31,9 +29,7 @@ const themes = {
     shadeBackgroundFrom: 200,
     shadeBorderFrom: 300,
     shadeTextFrom: 700,
-    dark: {
-      "bg-primary-very-dark": "bg-black", // override test
-    },
+    dark: {},
     light: {},
   },
 };
@@ -354,6 +350,29 @@ export const ThemeWrapper = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chosenTheme, themeVariant, themeName, themesForApplication, rawThemes]);
+
+  // Write the active theme's CSS custom properties to :root so any
+  // hex-channel tokens (`bg-[var(--primary-700)]` etc. emitted by
+  // ThemeModel) resolve app-wide. Without this, saving a hex theme
+  // would leave every theme class unresolved and the app would
+  // render unthemed.
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const root = document.documentElement;
+    const cssVars = chosenTheme?.[themeVariant]?.cssVars;
+    const written = [];
+    if (cssVars && typeof cssVars === "object") {
+      for (const [name, value] of Object.entries(cssVars)) {
+        root.style.setProperty(name, value);
+        written.push(name);
+      }
+    }
+    return () => {
+      for (const name of written) {
+        root.style.removeProperty(name);
+      }
+    };
+  }, [chosenTheme, themeVariant]);
 
   // Don't render children until theme is loaded AND splash screen minimum time has passed
   if (!chosenTheme || !splashDone) {

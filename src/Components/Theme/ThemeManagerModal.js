@@ -11,8 +11,8 @@ import { AppContext } from "../../Context/App/AppContext";
 import { ThemeModel } from "../../Models/ThemeModel";
 import { deepCopy } from "@trops/dash-react";
 
-import { PanelTheme } from "./Panel/PanelTheme";
 import PanelThemePicker from "./Panel/PanelThemePicker";
+import PanelThemeStudio from "./Studio/PanelThemeStudio";
 import { ThemeQuickCreate, ThemeNewChooser } from "./Wizard";
 import { DiscoverThemesDetail } from "../Settings/details/DiscoverThemesDetail";
 
@@ -312,11 +312,10 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
                 />
               )}
               {!isCreating && themeSelected && isEditing === true && (
-                <PanelTheme
+                <PanelThemeStudio
                   theme={themeSelected}
                   themeKey={themeKeySelected}
                   onUpdate={handleThemeSelected}
-                  onCreateNew={handleStartCreateTheme}
                   rawTheme={rawThemeSelected}
                 />
               )}
