@@ -5,17 +5,18 @@ import {
   FontAwesomeIcon,
   InputText,
   ThemeFromUrlPane,
+  getColorFamilies,
+  getCuratedColorGrid,
 } from "@trops/dash-react";
 import {
   getThemePresets,
   getBrandPresets,
   generateRandomTheme,
   generateHarmonyTheme,
-  generateCustomTheme,
-  AVAILABLE_COLORS,
   HARMONY_STRATEGIES,
 } from "../../../utils/themeGenerator";
 import { isHexColor, normalizeHex } from "@trops/dash-react";
+import CustomHexColorPane from "../Panel/Pane/CustomHexColorPane";
 
 // ─── Generate Mode Enum ──────────────────────────────────────────────────
 
@@ -118,75 +119,134 @@ export const PresetGallery = ({
 
 // ─── Color Harmony Picker ────────────────────────────────────────────────
 
-const ColorSwatchGrid = ({ value, onChange, label }) => (
-  <div className="flex flex-col gap-2">
-    <span className="text-xs opacity-50">{label}</span>
-    <div className="grid grid-cols-6 gap-2">
-      {AVAILABLE_COLORS.map((color) => (
-        <div
-          key={color}
-          className={`h-8 rounded cursor-pointer transition-all bg-${color}-500 ${
-            value === color
-              ? "ring-2 ring-white scale-110"
-              : "opacity-70 hover:opacity-100"
-          }`}
-          title={color}
-          onClick={() => onChange(color)}
-        />
-      ))}
-    </div>
-  </div>
-);
-
-const PreviewSwatch = ({ color, strategy, customColors }) => {
-  let colors;
-  if (strategy === "custom" && customColors) {
-    colors = [
-      customColors.primary,
-      customColors.secondary,
-      customColors.tertiary,
-    ];
-  } else {
-    const theme = generateHarmonyTheme(color, strategy);
-    colors = [theme.primary, theme.secondary, theme.tertiary];
-  }
-
+/**
+ * Render a swatch for a generated palette channel. Hex values render
+ * inline; named Tailwind families fall back to `bg-{name}-500` which
+ * is in the safelist.
+ */
+const PaletteSwatch = ({ value, label }) => {
+  const isHex = isHexColor(value);
   return (
-    <div className="flex flex-row gap-2">
-      {colors.map((c, i) => (
-        <div key={i} className="flex flex-col items-center gap-1 flex-1">
-          <div className={`h-10 w-full rounded bg-${c}-500`} />
-          <span className="text-[10px] opacity-40">{c}</span>
-        </div>
-      ))}
+    <div className="flex flex-col items-center gap-1 flex-1">
+      <div
+        className={`h-10 w-full rounded ${isHex ? "" : `bg-${value}-500`}`}
+        style={isHex ? { backgroundColor: value } : undefined}
+      />
+      <span className="text-xs opacity-60 truncate w-full text-center">
+        {label}
+      </span>
     </div>
   );
 };
 
+/**
+ * Compact hex picker reused inline by the wizard. Category chips +
+ * a curated grid of swatches + a custom-hex input below. Same
+ * primitives as ChannelEditorModal but laid out for a narrower
+ * column.
+ */
+const InlineHexPicker = ({ selectedHex, onPick }) => {
+  const families = getColorFamilies();
+  const [activeFamily, setActiveFamily] = useState(families[0]);
+  const swatches = getCuratedColorGrid(activeFamily);
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-row gap-2 flex-wrap">
+        {families.map((family) => {
+          const isActive = activeFamily === family;
+          return (
+            <button
+              key={family}
+              type="button"
+              onClick={() => setActiveFamily(family)}
+              className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                isActive
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+              }`}
+            >
+              {family}
+            </button>
+          );
+        })}
+      </div>
+      <div className="grid grid-cols-12 gap-1">
+        {swatches.map((hex) => {
+          const isSelected =
+            selectedHex && hex.toLowerCase() === selectedHex.toLowerCase();
+          return (
+            <button
+              key={hex}
+              type="button"
+              onClick={() => onPick(hex)}
+              style={{ backgroundColor: hex }}
+              className={`h-6 rounded transition-transform hover:scale-110 ${
+                isSelected ? "border-2 border-yellow-400 scale-110" : ""
+              }`}
+              aria-label={`Pick ${hex}`}
+              title={hex}
+            />
+          );
+        })}
+      </div>
+      <CustomHexColorPane onApply={onPick} label="Or paste a hex value" />
+    </div>
+  );
+};
+
+/**
+ * HSL nudge slider — single-axis. Display label + numeric value.
+ */
+const HslSlider = ({ label, value, min, max, step, onChange, unit = "" }) => (
+  <div className="flex flex-col gap-1">
+    <div className="flex flex-row items-center justify-between">
+      <span className="text-xs opacity-60">{label}</span>
+      <span className="text-xs opacity-50 font-mono">
+        {value > 0 ? `+${value}` : value}
+        {unit}
+      </span>
+    </div>
+    <input
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      onChange={(e) => onChange(parseFloat(e.target.value))}
+      className="w-full accent-blue-500"
+    />
+  </div>
+);
+
 export const ColorHarmonyPicker = ({ onGenerate, inline = false }) => {
-  const [selectedColor, setSelectedColor] = useState("blue");
-  const [secondaryColor, setSecondaryColor] = useState("rose");
-  const [tertiaryColor, setTertiaryColor] = useState("amber");
+  // Default to a brand-blue hex so the wizard opens in hex mode.
+  const [selectedColor, setSelectedColor] = useState("#3b82f6");
   const [strategy, setStrategy] = useState("complementary");
+  // HSL nudge — applied to every generated channel after harmony math.
+  const [dH, setDH] = useState(0);
+  const [dS, setDS] = useState(0);
+  const [dL, setDL] = useState(0);
 
   const isCustom = strategy === "custom";
 
+  // Generate the current theme from inputs. Memoized through useEffect
+  // for the inline-preview path; explicit handler for the button path.
+  function buildTheme() {
+    return generateHarmonyTheme(selectedColor, strategy, { dH, dS, dL });
+  }
+
   useEffect(() => {
     if (inline) {
-      const theme = isCustom
-        ? generateCustomTheme(selectedColor, secondaryColor, tertiaryColor)
-        : generateHarmonyTheme(selectedColor, strategy);
-      onGenerate(theme);
+      onGenerate(buildTheme());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedColor, secondaryColor, tertiaryColor, strategy, inline]);
+  }, [selectedColor, strategy, dH, dS, dL, inline]);
 
   function handleGenerate() {
-    const theme = isCustom
-      ? generateCustomTheme(selectedColor, secondaryColor, tertiaryColor)
-      : generateHarmonyTheme(selectedColor, strategy);
-    onGenerate(theme);
+    onGenerate(buildTheme());
   }
+
+  const previewTheme = buildTheme();
 
   return (
     <div
@@ -200,11 +260,11 @@ export const ColorHarmonyPicker = ({ onGenerate, inline = false }) => {
         Generate from Color
       </span>
 
-      {/* Strategy selection first — determines how many grids appear */}
+      {/* Harmony strategy */}
       <div className="flex flex-col gap-2">
         <span className="text-xs opacity-50">Harmony</span>
         <div className="flex flex-row gap-2 flex-wrap">
-          {HARMONY_STRATEGIES.map((s) => (
+          {HARMONY_STRATEGIES.filter((s) => s.value !== "custom").map((s) => (
             <button
               key={s.value}
               type="button"
@@ -221,49 +281,56 @@ export const ColorHarmonyPicker = ({ onGenerate, inline = false }) => {
         </div>
       </div>
 
-      {/* Color grid(s) */}
-      {isCustom ? (
-        <>
-          <ColorSwatchGrid
-            value={selectedColor}
-            onChange={setSelectedColor}
-            label="Primary"
-          />
-          <ColorSwatchGrid
-            value={secondaryColor}
-            onChange={setSecondaryColor}
-            label="Secondary"
-          />
-          <ColorSwatchGrid
-            value={tertiaryColor}
-            onChange={setTertiaryColor}
-            label="Tertiary"
-          />
-        </>
-      ) : (
-        <ColorSwatchGrid
-          value={selectedColor}
-          onChange={setSelectedColor}
-          label="Base Color"
-        />
-      )}
-
-      {/* Preview */}
+      {/* Base color hex picker */}
       <div className="flex flex-col gap-2">
-        <span className="text-xs opacity-50">Preview</span>
-        <PreviewSwatch
-          color={selectedColor}
-          strategy={strategy}
-          customColors={
-            isCustom
-              ? {
-                  primary: selectedColor,
-                  secondary: secondaryColor,
-                  tertiary: tertiaryColor,
-                }
-              : null
-          }
+        <span className="text-xs opacity-50">Base Color</span>
+        <InlineHexPicker
+          selectedHex={isHexColor(selectedColor) ? selectedColor : null}
+          onPick={(hex) => setSelectedColor(hex)}
         />
+      </div>
+
+      {/* HSL nudge sliders */}
+      <div className="flex flex-col gap-3">
+        <span className="text-xs opacity-50">Fine-tune (HSL nudge)</span>
+        <HslSlider
+          label="Hue"
+          value={dH}
+          min={-180}
+          max={180}
+          step={1}
+          unit="°"
+          onChange={setDH}
+        />
+        <HslSlider
+          label="Saturation"
+          value={Math.round(dS * 100)}
+          min={-100}
+          max={100}
+          step={1}
+          unit="%"
+          onChange={(v) => setDS(v / 100)}
+        />
+        <HslSlider
+          label="Lightness"
+          value={Math.round(dL * 100)}
+          min={-100}
+          max={100}
+          step={1}
+          unit="%"
+          onChange={(v) => setDL(v / 100)}
+        />
+      </div>
+
+      {/* Generated palette preview */}
+      <div className="flex flex-col gap-2">
+        <span className="text-xs opacity-50">Generated Palette</span>
+        <div className="flex flex-row gap-2">
+          <PaletteSwatch value={previewTheme.primary} label="Primary" />
+          <PaletteSwatch value={previewTheme.secondary} label="Secondary" />
+          <PaletteSwatch value={previewTheme.tertiary} label="Tertiary" />
+          <PaletteSwatch value={previewTheme.neutral} label="Neutral" />
+        </div>
       </div>
 
       {!inline && (

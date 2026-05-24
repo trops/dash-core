@@ -4,6 +4,73 @@
  * Utility for generating themes via presets, random generation,
  * and color-harmony-based generation from a user-selected base color.
  */
+import {
+  isHexColor,
+  normalizeHex,
+  hexToRgb,
+  rgbToHex,
+  rgbToHsl,
+  hslToRgb,
+} from "@trops/dash-react";
+
+// Color harmony helpers — inlined so dash-core can ship the new
+// "From Colors" generator without first publishing matching
+// exports from @trops/dash-react. Same math as the planned dash-react
+// counterparts; can be replaced with a re-export once both ship in
+// the same cycle.
+function rotateHex(hex, deltaH) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return null;
+  const { h, s, l } = rgbToHsl(rgb);
+  const newH = (((h + deltaH) % 360) + 360) % 360;
+  return rgbToHex(hslToRgb({ h: newH, s, l }));
+}
+function complementHex(hex) {
+  return rotateHex(hex, 180);
+}
+function analogousHexes(hex) {
+  const a = rotateHex(hex, -30);
+  const b = rotateHex(hex, 30);
+  return a && b ? [a, b] : null;
+}
+function triadicHexes(hex) {
+  const a = rotateHex(hex, 120);
+  const b = rotateHex(hex, 240);
+  return a && b ? [a, b] : null;
+}
+function splitComplementaryHexes(hex) {
+  const a = rotateHex(hex, 150);
+  const b = rotateHex(hex, 210);
+  return a && b ? [a, b] : null;
+}
+function tetradicHexes(hex) {
+  const a = rotateHex(hex, 90);
+  const b = rotateHex(hex, 180);
+  const c = rotateHex(hex, 270);
+  return a && b && c ? [a, b, c] : null;
+}
+function monochromaticHexes(hex, count = 3) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return null;
+  const { h, s } = rgbToHsl(rgb);
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const t = count === 1 ? 0.5 : i / (count - 1);
+    const l = 0.15 + t * 0.7;
+    const sAdj = s * (1 - 0.3 * Math.abs(t - 0.5) * 2);
+    out.push(rgbToHex(hslToRgb({ h, s: sAdj, l })));
+  }
+  return out;
+}
+function adjustHsl(hex, dH = 0, dS = 0, dL = 0) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return null;
+  const hsl = rgbToHsl(rgb);
+  const h = (((hsl.h + dH) % 360) + 360) % 360;
+  const s = Math.max(0, Math.min(1, hsl.s + dS));
+  const l = Math.max(0, Math.min(1, hsl.l + dL));
+  return rgbToHex(hslToRgb({ h, s, l }));
+}
 
 // Color wheel mapping for Tailwind palettes (approximate hue angles)
 const COLOR_WHEEL = {
@@ -204,10 +271,25 @@ export function generateRandomTheme() {
 
 /**
  * Generate a theme using color harmony rules from a base color.
- * @param {string} baseColor - A Tailwind color name (e.g. "blue")
- * @param {"complementary"|"analogous"|"triadic"|"split-complementary"} strategy
+ * Accepts either a Tailwind color name OR a hex string. Hex bases
+ * run through dash-react's harmony math and emit hex channels for
+ * every output; named bases use the legacy COLOR_WHEEL mapping.
+ *
+ * @param {string} baseColor - Tailwind color name (e.g. "blue") OR hex
+ * @param {"complementary"|"analogous"|"triadic"|"split-complementary"|"tetradic"|"monochromatic"} strategy
+ * @param {{ dH?: number, dS?: number, dL?: number }} [hslNudge] - optional
+ *   HSL offsets applied to every generated channel after the harmony
+ *   math. dH in degrees; dS/dL as fractions in [-1..1].
  */
-export function generateHarmonyTheme(baseColor, strategy = "complementary") {
+export function generateHarmonyTheme(
+  baseColor,
+  strategy = "complementary",
+  hslNudge = null,
+) {
+  if (typeof baseColor === "string" && isHexColor(baseColor)) {
+    return generateHexHarmonyTheme(baseColor, strategy, hslNudge);
+  }
+
   const baseHue = COLOR_WHEEL[baseColor];
   if (baseHue === undefined) {
     return generateRandomTheme();
@@ -247,15 +329,107 @@ export function generateHarmonyTheme(baseColor, strategy = "complementary") {
 }
 
 /**
- * Generate a theme from three independently chosen colors.
- * @param {string} primary - A Tailwind color name
- * @param {string} secondary - A Tailwind color name
- * @param {string} tertiary - A Tailwind color name
+ * Hex-mode harmony generation. Always emits hex channels; supports
+ * all the named harmony strategies plus Monochromatic and Tetradic.
+ * The neutral channel is derived from the base by desaturating
+ * almost fully, keeping the same hue family for a cohesive feel.
  */
-export function generateCustomTheme(primary, secondary, tertiary) {
-  const neutral = pick(NEUTRAL_COLORS);
+function generateHexHarmonyTheme(baseHex, strategy, hslNudge) {
+  const base = normalizeHex(baseHex);
+  if (!base) return generateRandomTheme();
+
+  let primary = base;
+  let secondary;
+  let tertiary;
+  let neutral;
+
+  switch (strategy) {
+    case "complementary": {
+      secondary = complementHex(base);
+      const ana = analogousHexes(base);
+      tertiary = ana ? ana[1] : base;
+      break;
+    }
+    case "analogous": {
+      const ana = analogousHexes(base);
+      if (ana) {
+        secondary = ana[0];
+        tertiary = ana[1];
+      }
+      break;
+    }
+    case "triadic": {
+      const tri = triadicHexes(base);
+      if (tri) {
+        secondary = tri[0];
+        tertiary = tri[1];
+      }
+      break;
+    }
+    case "split-complementary": {
+      const split = splitComplementaryHexes(base);
+      if (split) {
+        secondary = split[0];
+        tertiary = split[1];
+      }
+      break;
+    }
+    case "tetradic": {
+      const tet = tetradicHexes(base);
+      if (tet) {
+        secondary = tet[0];
+        tertiary = tet[1];
+        neutral = tet[2];
+      }
+      break;
+    }
+    case "monochromatic": {
+      const mono = monochromaticHexes(base, 3);
+      if (mono) {
+        primary = mono[1];
+        secondary = mono[0];
+        tertiary = mono[2];
+      }
+      break;
+    }
+    default: {
+      secondary = complementHex(base);
+      const ana = analogousHexes(base);
+      tertiary = ana ? ana[1] : base;
+    }
+  }
+
+  // Neutral defaults to a near-grey of the same hue (desaturated).
+  if (!neutral) {
+    neutral = adjustHsl(base, 0, -0.85, 0);
+  }
+
+  // Apply optional HSL nudge uniformly to all channels.
+  if (hslNudge) {
+    const { dH = 0, dS = 0, dL = 0 } = hslNudge;
+    primary = adjustHsl(primary, dH, dS, dL) || primary;
+    secondary = adjustHsl(secondary, dH, dS, dL) || secondary;
+    tertiary = adjustHsl(tertiary, dH, dS, dL) || tertiary;
+    neutral = adjustHsl(neutral, dH, dS, dL) || neutral;
+  }
+
   const name = generateThemeName(primary, secondary);
   return buildRawTheme(name, primary, secondary, tertiary, neutral);
+}
+
+/**
+ * Generate a theme from four independently chosen channel values.
+ * Each channel may be a Tailwind name or a hex string.
+ */
+export function generateCustomTheme(
+  primary,
+  secondary,
+  tertiary,
+  neutral = null,
+) {
+  const resolvedNeutral = neutral || pick(NEUTRAL_COLORS);
+  const name = generateThemeName(primary, secondary);
+  return buildRawTheme(name, primary, secondary, tertiary, resolvedNeutral);
 }
 
 /**
@@ -271,5 +445,7 @@ export const HARMONY_STRATEGIES = [
   { value: "analogous", label: "Analogous" },
   { value: "triadic", label: "Triadic" },
   { value: "split-complementary", label: "Split Complementary" },
+  { value: "tetradic", label: "Tetradic" },
+  { value: "monochromatic", label: "Monochromatic" },
   { value: "custom", label: "Custom" },
 ];
