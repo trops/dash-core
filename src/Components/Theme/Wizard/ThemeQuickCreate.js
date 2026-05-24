@@ -507,9 +507,7 @@ const RandomPreview = ({ onCommit }) => {
 
   return (
     <div className="flex flex-col gap-4 flex-1 min-h-0">
-      {/* Sliders sit at their natural size; an empty flex-1 spacer
-          below pushes the palette down so it always anchors near
-          the action button instead of leaving a big mid-panel gap. */}
+      {/* Sliders at natural size up top */}
       <HslNudgePanel
         dH={dH}
         dS={dS}
@@ -521,10 +519,11 @@ const RandomPreview = ({ onCommit }) => {
         }}
       />
 
-      <div className="flex-1 min-h-0" aria-hidden="true" />
-
-      <div className="flex flex-col gap-2 shrink-0">
-        <div className="flex flex-row items-center justify-between">
+      {/* Generated palette fills the rest of the panel — the colors
+          ARE the result, so they should dominate the surface instead
+          of being a thin strip at the bottom with empty space above. */}
+      <div className="flex flex-col gap-2 flex-1 min-h-0">
+        <div className="flex flex-row items-center justify-between shrink-0">
           <span className="text-xs opacity-50">Generated Palette</span>
           <button
             type="button"
@@ -535,7 +534,7 @@ const RandomPreview = ({ onCommit }) => {
           </button>
         </div>
         {previewTheme && (
-          <div className="flex flex-row gap-2 h-20">
+          <div className="flex flex-row gap-2 flex-1 min-h-0">
             <PaletteSwatch value={previewTheme.primary} label="Primary" />
             <PaletteSwatch value={previewTheme.secondary} label="Secondary" />
             <PaletteSwatch value={previewTheme.tertiary} label="Tertiary" />
