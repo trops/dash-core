@@ -122,14 +122,15 @@ export const PresetGallery = ({
 /**
  * Render a swatch for a generated palette channel. Hex values render
  * inline; named Tailwind families fall back to `bg-{name}-500` which
- * is in the safelist.
+ * is in the safelist. Height is set by the parent flex/grid so the
+ * generated-palette row can grow to fill available space.
  */
 const PaletteSwatch = ({ value, label }) => {
   const isHex = isHexColor(value);
   return (
-    <div className="flex flex-col items-center gap-1 flex-1">
+    <div className="flex flex-col items-center gap-1 flex-1 min-h-0">
       <div
-        className={`h-10 w-full rounded ${isHex ? "" : `bg-${value}-500`}`}
+        className={`flex-1 min-h-0 w-full rounded ${isHex ? "" : `bg-${value}-500`}`}
         style={isHex ? { backgroundColor: value } : undefined}
       />
       <span className="text-xs opacity-60 truncate w-full text-center">
@@ -150,8 +151,8 @@ const InlineHexPicker = ({ selectedHex, onPick }) => {
   const [activeFamily, setActiveFamily] = useState(families[0]);
   const swatches = getCuratedColorGrid(activeFamily);
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-row gap-2 flex-wrap">
+    <div className="flex flex-col gap-2 flex-1 min-h-0">
+      <div className="flex flex-row gap-2 flex-wrap shrink-0">
         {families.map((family) => {
           const isActive = activeFamily === family;
           return (
@@ -170,7 +171,10 @@ const InlineHexPicker = ({ selectedHex, onPick }) => {
           );
         })}
       </div>
-      <div className="grid grid-cols-12 gap-1">
+      <div
+        className="grid grid-cols-12 gap-1 flex-1 min-h-0"
+        style={{ gridAutoRows: "1fr" }}
+      >
         {swatches.map((hex) => {
           const isSelected =
             selectedHex && hex.toLowerCase() === selectedHex.toLowerCase();
@@ -180,7 +184,7 @@ const InlineHexPicker = ({ selectedHex, onPick }) => {
               type="button"
               onClick={() => onPick(hex)}
               style={{ backgroundColor: hex }}
-              className={`h-6 rounded transition-transform hover:scale-110 ${
+              className={`w-full h-full rounded transition-transform hover:scale-110 ${
                 isSelected ? "border-2 border-yellow-400 scale-110" : ""
               }`}
               aria-label={`Pick ${hex}`}
@@ -189,7 +193,9 @@ const InlineHexPicker = ({ selectedHex, onPick }) => {
           );
         })}
       </div>
-      <CustomHexColorPane onApply={onPick} label="Or paste a hex value" />
+      <div className="shrink-0">
+        <CustomHexColorPane onApply={onPick} label="Or paste a hex value" />
+      </div>
     </div>
   );
 };
@@ -306,16 +312,12 @@ export const ColorHarmonyPicker = ({ onGenerate, inline = false }) => {
     <div
       className={
         inline
-          ? "flex flex-col gap-4"
-          : "flex flex-col gap-4 p-6 overflow-y-auto flex-1 min-h-0"
+          ? "flex flex-col gap-4 flex-1 min-h-0"
+          : "flex flex-col gap-4 p-6 flex-1 min-h-0"
       }
     >
-      <span className="text-sm font-semibold opacity-50">
-        Generate from Color
-      </span>
-
-      {/* Harmony chips — full width above the two columns */}
-      <div className="flex flex-col gap-2">
+      {/* Harmony chips */}
+      <div className="flex flex-col gap-2 shrink-0">
         <span className="text-xs opacity-50">Harmony</span>
         <div className="flex flex-row gap-2 flex-wrap">
           {HARMONY_STRATEGIES.filter((s) => s.value !== "custom").map((s) => (
@@ -335,38 +337,37 @@ export const ColorHarmonyPicker = ({ onGenerate, inline = false }) => {
         </div>
       </div>
 
-      {/* Two-column body: base picker on the left, sliders +
-          palette on the right. Stacks on narrow viewports. */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="flex flex-col gap-2">
-          <span className="text-xs opacity-50">Base Color</span>
+      {/* Two-column body: base picker on the left, sliders on the
+          right. Fills available vertical space. Stacks on <lg. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0">
+        <div className="flex flex-col gap-2 min-h-0">
+          <span className="text-xs opacity-50 shrink-0">Base Color</span>
           <InlineHexPicker
             selectedHex={isHexColor(selectedColor) ? selectedColor : null}
             onPick={(hex) => setSelectedColor(hex)}
           />
         </div>
 
-        <div className="flex flex-col gap-4">
-          <HslNudgePanel
-            dH={dH}
-            dS={dS}
-            dL={dL}
-            onChange={({ dH: h, dS: s, dL: l }) => {
-              setDH(h);
-              setDS(s);
-              setDL(l);
-            }}
-          />
+        <HslNudgePanel
+          dH={dH}
+          dS={dS}
+          dL={dL}
+          onChange={({ dH: h, dS: s, dL: l }) => {
+            setDH(h);
+            setDS(s);
+            setDL(l);
+          }}
+        />
+      </div>
 
-          <div className="flex flex-col gap-2">
-            <span className="text-xs opacity-50">Generated Palette</span>
-            <div className="flex flex-row gap-2">
-              <PaletteSwatch value={previewTheme.primary} label="Primary" />
-              <PaletteSwatch value={previewTheme.secondary} label="Secondary" />
-              <PaletteSwatch value={previewTheme.tertiary} label="Tertiary" />
-              <PaletteSwatch value={previewTheme.neutral} label="Neutral" />
-            </div>
-          </div>
+      {/* Generated palette — full-width bottom row above the action. */}
+      <div className="flex flex-col gap-2 shrink-0">
+        <span className="text-xs opacity-50">Generated Palette</span>
+        <div className="flex flex-row gap-2 h-20">
+          <PaletteSwatch value={previewTheme.primary} label="Primary" />
+          <PaletteSwatch value={previewTheme.secondary} label="Secondary" />
+          <PaletteSwatch value={previewTheme.tertiary} label="Tertiary" />
+          <PaletteSwatch value={previewTheme.neutral} label="Neutral" />
         </div>
       </div>
 
@@ -505,12 +506,11 @@ const RandomPreview = ({ onCommit }) => {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <span className="text-sm font-semibold opacity-50">Random Theme</span>
-
-      {/* Two-column body: sliders on the left, palette on the right.
-          Stacks on narrow viewports. */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="flex flex-col gap-4 flex-1 min-h-0">
+      {/* HSL sliders fill the available space; palette anchored at
+          the bottom as the "final" result, above the regenerate
+          action — same shape as the From Colors layout. */}
+      <div className="flex-1 min-h-0">
         <HslNudgePanel
           dH={dH}
           dS={dS}
@@ -521,18 +521,18 @@ const RandomPreview = ({ onCommit }) => {
             setDL(l);
           }}
         />
+      </div>
 
-        <div className="flex flex-col gap-2">
-          <span className="text-xs opacity-50">Generated Palette</span>
-          {previewTheme && (
-            <div className="flex flex-row gap-2">
-              <PaletteSwatch value={previewTheme.primary} label="Primary" />
-              <PaletteSwatch value={previewTheme.secondary} label="Secondary" />
-              <PaletteSwatch value={previewTheme.tertiary} label="Tertiary" />
-              <PaletteSwatch value={previewTheme.neutral} label="Neutral" />
-            </div>
-          )}
-        </div>
+      <div className="flex flex-col gap-2 shrink-0">
+        <span className="text-xs opacity-50">Generated Palette</span>
+        {previewTheme && (
+          <div className="flex flex-row gap-2 h-20">
+            <PaletteSwatch value={previewTheme.primary} label="Primary" />
+            <PaletteSwatch value={previewTheme.secondary} label="Secondary" />
+            <PaletteSwatch value={previewTheme.tertiary} label="Tertiary" />
+            <PaletteSwatch value={previewTheme.neutral} label="Neutral" />
+          </div>
+        )}
       </div>
 
       <Button title="Regenerate" onClick={handleRegenerate} size="sm" />
@@ -571,18 +571,13 @@ export const ThemeQuickCreate = ({
   }
 
   return (
-    <div className="flex flex-col gap-6 p-6 overflow-y-auto flex-1 min-h-0">
-      {/* Name */}
-      <div className="flex flex-col gap-2">
-        <span className="text-sm font-semibold opacity-50">
-          Name Your Theme
-        </span>
-        <InputText
-          value={wizardName}
-          onChange={(val) => setWizardName(val)}
-          placeholder="Theme name..."
-        />
-      </div>
+    <div className="flex flex-col gap-4 p-6 flex-1 min-h-0 overflow-hidden">
+      {/* Name (label removed — input self-explanatory) */}
+      <InputText
+        value={wizardName}
+        onChange={(val) => setWizardName(val)}
+        placeholder="Theme name..."
+      />
 
       {/* Method Selection — hidden when initialMethod is pre-set */}
       {showMethodPicker && (
