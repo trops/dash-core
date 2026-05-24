@@ -65,6 +65,12 @@ const ThemePickerGridPane = ({ themeKey, onChooseTheme }) => {
       // is this selected
       const selected = tk === themeKey;
       const current = themes[tk][themeVariant];
+      // Prefer the inline hex literal from `cssValue` so hex-channel
+      // themes render their tile bg correctly (non-active themes
+      // don't get their cssVars on :root). Fall back to the class
+      // for named-color themes that may not have cssValue populated.
+      const tileBgValue = current?.cssValue?.["bg-primary-dark"];
+      const tileBgClass = !tileBgValue ? current["bg-primary-dark"] : "";
       return (
         <div
           key={`icon-${tk}`}
@@ -72,9 +78,8 @@ const ThemePickerGridPane = ({ themeKey, onChooseTheme }) => {
             selected === true
               ? "border-yellow-600 hover:border-yellow-600"
               : "hover:border-yellow-600 border-gray-800"
-          } cursor-pointer text-gray-200 ${
-            themes[tk][themeVariant]["bg-primary-dark"]
-          }`}
+          } cursor-pointer text-gray-200 ${tileBgClass}`}
+          style={tileBgValue ? { backgroundColor: tileBgValue } : undefined}
           onClick={() => onChooseTheme(tk)}
         >
           <div className="flex flex-col w-full">

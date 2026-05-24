@@ -268,13 +268,16 @@ function isHexColor(value) {
 }
 function deriveShades(hex) {
   if (!isHexColor(hex)) return null;
-  // Mock: return placeholder hex per shade. ThemeModel tests don't
-  // inspect the derived hex values themselves — they only verify the
-  // cssVars map has the expected keys and shape. The real algorithm
-  // is exercised by dash-react's colorMath.test.js.
+  // Mock: return a unique sentinel hex per shade so ThemeModel tests
+  // can distinguish which shade was looked up. The real algorithm is
+  // exercised by dash-react's colorMath.test.js — these tests only
+  // need to verify that cssValueFor routes hex channels through
+  // deriveShades at the correct shade level.
   const shades = {};
   for (const s of [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]) {
-    shades[s] = "#000000";
+    // Shade `s` (decimal, e.g. 700) → hex "#000s" (e.g. "#000700").
+    // Encodes the shade number as readable trailing digits.
+    shades[s] = `#${s.toString().padStart(6, "0")}`;
   }
   return shades;
 }

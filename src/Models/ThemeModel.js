@@ -73,7 +73,16 @@ function classFor(prefix, type, shade, channelValue, hover = false) {
  */
 function cssValueFor(type, shade, channelValue) {
   if (isHexColor(channelValue)) {
-    return `var(--${type}-${shade})`;
+    // Resolve to a real hex so non-active themes (e.g. tiles in the
+    // theme picker) can render inline without depending on :root
+    // cssVars, which are only written for the currently-active
+    // theme. PRD: arbitrary-color-themes.md US-007.
+    const shades = deriveShades(channelValue);
+    if (shades) {
+      const hex = shades[shade] || shades[String(shade)];
+      if (hex) return hex;
+    }
+    return null;
   }
   const family = TAILWIND_PALETTE && TAILWIND_PALETTE[channelValue];
   if (!family) return null;
@@ -265,10 +274,64 @@ export const ThemeModel = (themeItem = {}) => {
       });
     });
 
+    // Build the set of channel names that switched to hex — overrides
+    // targeting these (e.g. "bg-primary-very-dark": "bg-black" left
+    // over from a named-color edit) would slam the generated hex
+    // class back to a named/literal one and break the cssVars path.
+    // PRD: arbitrary-color-themes.md.
+    const hexChannels = new Set();
+    colorTypes.forEach((type) => {
+      if (isHexColor(theme[type])) hexChannels.add(type);
+    });
+    const overrideTargetsHexChannel = (key) => {
+      const m = key.match(
+        /^(?:hover-)?(?:bg|text|border|from|via|to)-([a-z]+)-/,
+      );
+      return m && hexChannels.has(m[1]);
+    };
+
+    // Per-token hex overrides — when a user picks an arbitrary hex
+    // for a specific shade (e.g. "primary dark"), the Studio stores
+    // the raw hex at the token slot. We derive that hex at the slot's
+    // shade level and emit a `bg-[var(--ovr-bg-{channel}-{level})]`
+    // class + matching cssVar — same plumbing as base hex channels.
+    // Token pattern recognized: (bg|text|border)-{channel}-{level}.
+    const OVR_TOKEN_RE =
+      /^(bg|text|border)-(primary|secondary|tertiary|neutral)-(very-light|light|medium|dark|very-dark)$/;
+    const ovrVarsByVariant = { dark: {}, light: {} };
+
+    function applyOverride(variantKey, key, value) {
+      const m = key.match(OVR_TOKEN_RE);
+      if (m && typeof value === "string" && isHexColor(value)) {
+        const prefix = m[1];
+        const overrideChannel = m[2];
+        const level = m[3];
+        const shadeNum = variants[variantKey] && variants[variantKey][level];
+        if (shadeNum) {
+          const shades = deriveShades(value);
+          const derivedHex = shades ? shades[shadeNum] : null;
+          if (derivedHex) {
+            const varName = `--ovr-${prefix}-${overrideChannel}-${level}`;
+            ovrVarsByVariant[variantKey][varName] = derivedHex;
+            theme[variantKey][key] = `${prefix}-[var(${varName})]`;
+            theme[variantKey].cssValue[key] = derivedHex;
+            return;
+          }
+        }
+      }
+      // Non-hex override (a literal class string like "bg-red-700" or
+      // legacy "bg-black"). Skip if the target channel switched to
+      // hex — applying a named class would clobber the hex emission
+      // and revert that token to the named color. PRD:
+      // arbitrary-color-themes.md.
+      if (overrideTargetsHexChannel(key)) return;
+      theme[variantKey][key] = value;
+    }
+
     // now for the overrides!
     if (overrideDark !== null) {
       Object.keys(overrideDark).forEach((key) => {
-        theme["dark"][key] = overrideDark[key];
+        applyOverride("dark", key, overrideDark[key]);
       });
     }
 
@@ -278,9 +341,8 @@ export const ThemeModel = (themeItem = {}) => {
       // conflict with the corrected light variant (100-300 range).
       const staleKeys = ["bg-primary-very-light", "bg-primary-very-dark"];
       Object.keys(overrideLight).forEach((key) => {
-        if (!staleKeys.includes(key)) {
-          theme["light"][key] = overrideLight[key];
-        }
+        if (staleKeys.includes(key)) return;
+        applyOverride("light", key, overrideLight[key]);
       });
     }
 
@@ -331,11 +393,9 @@ export const ThemeModel = (themeItem = {}) => {
     // these to `document.documentElement.style` on theme activation
     // (PRD `arbitrary-color-themes.md` FR-003).
     const cssVarsAll = {};
-    let hasAnyHex = false;
     colorTypes.forEach((type) => {
       const channelValue = theme[type];
       if (isHexColor(channelValue)) {
-        hasAnyHex = true;
         const shades = deriveShades(channelValue);
         if (shades) {
           for (const [shade, hex] of Object.entries(shades)) {
@@ -344,11 +404,16 @@ export const ThemeModel = (themeItem = {}) => {
         }
       }
     });
-    if (hasAnyHex) {
-      // Attach to both variants so whichever is active on theme switch
-      // delivers the same CSS variable set to :root.
-      theme["dark"].cssVars = cssVarsAll;
-      theme["light"].cssVars = cssVarsAll;
+    // Merge base channel vars with per-token override vars (collected
+    // by applyOverride above). Each variant gets its own merged map
+    // because dark and light variants may carry different overrides.
+    const darkVars = { ...cssVarsAll, ...ovrVarsByVariant.dark };
+    const lightVars = { ...cssVarsAll, ...ovrVarsByVariant.light };
+    if (Object.keys(darkVars).length > 0) {
+      theme["dark"].cssVars = darkVars;
+    }
+    if (Object.keys(lightVars).length > 0) {
+      theme["light"].cssVars = lightVars;
     }
 
     // transparent colors

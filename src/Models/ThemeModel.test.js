@@ -143,18 +143,16 @@ describe("ThemeModel — cssValue accessor", () => {
     expect(theme.light.cssValue["bg-primary-medium"]).toBe("#93c5fd");
   });
 
-  test("hex theme emits var(...) CSS values per token", () => {
+  test("hex theme emits derived-hex CSS values per token", () => {
+    // For hex channels, cssValueFor returns the shade-derived hex
+    // (via deriveShades) so non-active themes — e.g. tile previews
+    // in the theme picker — can render the right color inline without
+    // depending on :root cssVars. PRD: arbitrary-color-themes.md US-007.
     const theme = ThemeModel({ primary: "#4a154b" });
-    expect(theme.dark.cssValue["bg-primary-medium"]).toBe("var(--primary-700)");
-    expect(theme.dark.cssValue["text-primary-medium"]).toBe(
-      "var(--primary-200)",
-    );
-    expect(theme.dark.cssValue["border-primary-medium"]).toBe(
-      "var(--primary-700)",
-    );
-    expect(theme.light.cssValue["bg-primary-medium"]).toBe(
-      "var(--primary-300)",
-    );
+    expect(theme.dark.cssValue["bg-primary-medium"]).toBe("#000700");
+    expect(theme.dark.cssValue["text-primary-medium"]).toBe("#000200");
+    expect(theme.dark.cssValue["border-primary-medium"]).toBe("#000700");
+    expect(theme.light.cssValue["bg-primary-medium"]).toBe("#000300");
   });
 
   test("hover variants resolve to the next shade in cssValue too", () => {
@@ -181,7 +179,7 @@ describe("ThemeModel — cssValue accessor", () => {
       primary: "#4a154b", // hex
       secondary: "indigo", // named
     });
-    expect(theme.dark.cssValue["bg-primary-medium"]).toBe("var(--primary-700)");
+    expect(theme.dark.cssValue["bg-primary-medium"]).toBe("#000700");
     expect(theme.dark.cssValue["bg-secondary-medium"]).toBe("#4338ca");
   });
 });
