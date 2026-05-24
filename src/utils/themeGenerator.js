@@ -4,20 +4,85 @@
  * Utility for generating themes via presets, random generation,
  * and color-harmony-based generation from a user-selected base color.
  */
-import {
-  isHexColor,
-  normalizeHex,
-  hexToRgb,
-  rgbToHex,
-  rgbToHsl,
-  hslToRgb,
-} from "@trops/dash-react";
+// All color math is inlined here (no @trops/dash-react import). This
+// file is reachable from Electron's main process via
+// `electron/controller/paletteToThemeMapper.js`. Importing dash-react
+// from a main-process reachable file pulls dash-react's renderer
+// bundle into the main bundle — that bundle has top-level browser
+// API access (`window.ResizeObserver` in CodeEditorVS) which throws
+// when required under Node. Keeping this module pure-JS / no-deps
+// breaks the chain.
 
-// Color harmony helpers — inlined so dash-core can ship the new
-// "From Colors" generator without first publishing matching
-// exports from @trops/dash-react. Same math as the planned dash-react
-// counterparts; can be replaced with a re-export once both ship in
-// the same cycle.
+const HEX_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+function isHexColor(value) {
+  return typeof value === "string" && HEX_RE.test(value.trim());
+}
+function normalizeHex(input) {
+  if (typeof input !== "string") return null;
+  let s = input.trim().toLowerCase();
+  if (!s.startsWith("#")) s = `#${s}`;
+  if (!HEX_RE.test(s)) return null;
+  if (s.length === 4) s = `#${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}`;
+  else if (s.length === 5) s = `#${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}`;
+  else if (s.length === 9) s = s.slice(0, 7);
+  return s;
+}
+function hexToRgb(hex) {
+  const n = normalizeHex(hex);
+  if (!n) return null;
+  const v = parseInt(n.slice(1), 16);
+  return { r: (v >> 16) & 0xff, g: (v >> 8) & 0xff, b: v & 0xff };
+}
+function rgbToHex({ r, g, b }) {
+  const c = (x) => Math.max(0, Math.min(255, Math.round(x)));
+  const h = (x) => c(x).toString(16).padStart(2, "0");
+  return `#${h(r)}${h(g)}${h(b)}`;
+}
+function rgbToHsl({ r, g, b }) {
+  const R = r / 255,
+    G = g / 255,
+    B = b / 255;
+  const max = Math.max(R, G, B),
+    min = Math.min(R, G, B);
+  const l = (max + min) / 2;
+  let h = 0,
+    s = 0;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case R:
+        h = (G - B) / d + (G < B ? 6 : 0);
+        break;
+      case G:
+        h = (B - R) / d + 2;
+        break;
+      default:
+        h = (R - G) / d + 4;
+    }
+    h *= 60;
+  }
+  return { h, s, l };
+}
+function hslToRgb({ h, s, l }) {
+  if (s === 0) {
+    const v = l * 255;
+    return { r: v, g: v, b: v };
+  }
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let rp, gp, bp;
+  if (h < 60) [rp, gp, bp] = [c, x, 0];
+  else if (h < 120) [rp, gp, bp] = [x, c, 0];
+  else if (h < 180) [rp, gp, bp] = [0, c, x];
+  else if (h < 240) [rp, gp, bp] = [0, x, c];
+  else if (h < 300) [rp, gp, bp] = [x, 0, c];
+  else [rp, gp, bp] = [c, 0, x];
+  return { r: (rp + m) * 255, g: (gp + m) * 255, b: (bp + m) * 255 };
+}
+
+// Color harmony helpers — pure JS, no DOM/window access.
 function rotateHex(hex, deltaH) {
   const rgb = hexToRgb(hex);
   if (!rgb) return null;
