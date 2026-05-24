@@ -67,7 +67,7 @@ const CustomHexColorPane = ({ onApply, label = "Custom hex color" }) => {
   }
 
   return (
-    <div className="flex flex-col gap-2 p-3 border-t border-gray-700">
+    <div className="flex flex-col gap-2 py-3 border-t border-gray-700">
       <span className="text-xs uppercase font-bold tracking-wider text-gray-400">
         {label}
       </span>
