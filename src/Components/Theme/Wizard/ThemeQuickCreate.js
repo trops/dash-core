@@ -519,20 +519,16 @@ const RandomPreview = ({ onCommit }) => {
         }}
       />
 
-      {/* Generated palette fills the rest of the panel — the colors
-          ARE the result, so they should dominate the surface instead
-          of being a thin strip at the bottom with empty space above. */}
+      {/* Full-width Regenerate CTA so the primary action on this
+          screen is unambiguous, followed by the palette result. */}
+      <Button
+        title="↻ Regenerate Colors"
+        onClick={handleRegenerate}
+        block={true}
+      />
+
       <div className="flex flex-col gap-2 flex-1 min-h-0">
-        <div className="flex flex-row items-center justify-between shrink-0">
-          <span className="text-xs opacity-50">Generated Palette</span>
-          <button
-            type="button"
-            onClick={handleRegenerate}
-            className="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
-          >
-            ↻ Regenerate
-          </button>
-        </div>
+        <span className="text-xs opacity-50 shrink-0">Generated Palette</span>
         {previewTheme && (
           <div className="flex flex-row gap-2 flex-1 min-h-0">
             <PaletteSwatch value={previewTheme.primary} label="Primary" />
