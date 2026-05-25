@@ -126,14 +126,18 @@ const ChannelEditorModal = ({
   // The "currently selected" hex for the active (channel, slot).
   // Drives both the swatch highlight and the family chip
   // auto-switch.
-  //   - base slot, hex theme  → channel's hex base directly
+  //   - base slot, hex picked via this modal → rawTheme[channel]
+  //     (handleChooseColor writes here, top-level on raw)
+  //   - base slot, hex theme legacy storage  → themeData[channel]
   //   - base slot, named theme → cssValue of the medium shade
-  //   - shade slot with override → override hex
+  //   - shade slot with override → override hex from rawTheme[variant][token]
   //   - shade slot without override → resolved cssValue for the
   //     token (works for both hex and named themes since
   //     ThemeModel populates cssValue for every shade)
   const selectedHex = useMemo(() => {
     if (activeSlot === "base") {
+      const rawBase = rawTheme?.[activeChannel];
+      if (isHexColor(rawBase)) return rawBase;
       if (baseHex) return baseHex;
       const css = themeData?.cssValue?.[`bg-${activeChannel}-medium`];
       return isHexColor(css) ? css : null;
