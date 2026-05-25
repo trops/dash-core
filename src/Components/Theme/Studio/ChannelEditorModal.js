@@ -1,13 +1,34 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Modal,
   DashPanel,
   Button,
+  FontAwesomeIcon,
   isHexColor,
   getColorFamilies,
   getCuratedColorGrid,
 } from "@trops/dash-react";
 import CustomHexColorPane from "../Panel/Pane/CustomHexColorPane";
+
+// Parse "bg-<family>-<shade>" → "<family>". Returns null for hex
+// classes or anything that doesn't match the named-Tailwind shape.
+function familyFromClassName(className) {
+  if (typeof className !== "string") return null;
+  const m = className.match(/^bg-([a-z]+)-(?:50|[1-9]00|950)$/);
+  return m ? m[1] : null;
+}
+
+// Find the curated-grid family that contains `hex`. Returns null
+// for custom hexes that aren't in any curated palette.
+function familyContainingHex(hex, families) {
+  if (!hex || typeof hex !== "string") return null;
+  const target = hex.toLowerCase();
+  for (const family of families) {
+    const grid = getCuratedColorGrid(family) || [];
+    if (grid.some((h) => h.toLowerCase() === target)) return family;
+  }
+  return null;
+}
 
 /**
  * ChannelEditorModal — editing surface for all 4 channels in one
@@ -87,6 +108,47 @@ const ChannelEditorModal = ({
   const themeData = theme?.[themeVariant];
   const baseValue = themeData?.[activeChannel];
   const baseHex = isHexColor(baseValue) ? baseValue : null;
+
+  // The "currently selected" hex for the active (channel, slot) —
+  // used both to drive the highlight ring on the swatch grid and
+  // to auto-switch the family chip. For a base slot we use the
+  // channel's hex base; for a shade slot we use the override hex
+  // (if any) or fall back to parsing the resolved className.
+  const selectedHex = useMemo(() => {
+    if (activeSlot === "base") return baseHex;
+    const tokenKey = `bg-${activeChannel}-${activeSlot}`;
+    const rawValue = rawTheme?.[themeVariant]?.[tokenKey];
+    if (isHexColor(rawValue)) return rawValue;
+    const css = themeData?.cssValue?.[tokenKey];
+    if (isHexColor(css)) return css;
+    return null;
+  }, [activeChannel, activeSlot, baseHex, rawTheme, themeData, themeVariant]);
+
+  // Auto-switch the family chip to the one containing the
+  // selected color. If the selected color is a custom hex (not
+  // in any curated grid), try the className shape as a fallback.
+  // No-op if we can't resolve a family — leaves the user's
+  // current chip selection alone.
+  useEffect(() => {
+    if (!isOpen) return;
+    const fromHex = selectedHex
+      ? familyContainingHex(selectedHex, families)
+      : null;
+    if (fromHex) {
+      setActiveFamily(fromHex);
+      return;
+    }
+    const tokenKey =
+      activeSlot === "base"
+        ? `bg-${activeChannel}-medium`
+        : `bg-${activeChannel}-${activeSlot}`;
+    const className = themeData?.[tokenKey];
+    const fromClass = familyFromClassName(className);
+    if (fromClass && families.includes(fromClass)) {
+      setActiveFamily(fromClass);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, activeChannel, activeSlot, selectedHex]);
 
   function expandChannel(channelKey) {
     setActiveChannel(channelKey);
@@ -252,23 +314,34 @@ const ChannelEditorModal = ({
                 >
                   {swatches.map((hex) => {
                     const isSelected =
-                      activeSlot === "base" &&
-                      baseHex &&
-                      hex.toLowerCase() === baseHex.toLowerCase();
+                      selectedHex &&
+                      hex.toLowerCase() === selectedHex.toLowerCase();
                     return (
                       <button
                         key={hex}
                         type="button"
                         onClick={() => handlePickColor(hex)}
                         style={{ backgroundColor: hex }}
-                        className={`w-full h-full rounded transition-transform hover:scale-110 ${
+                        className={`relative w-full h-full rounded transition-transform hover:scale-110 ${
                           isSelected
-                            ? "border-2 border-yellow-400 scale-110"
+                            ? "border-4 border-yellow-400 scale-110 z-10 shadow-lg"
                             : ""
                         }`}
-                        aria-label={`Pick ${hex}`}
+                        aria-label={`Pick ${hex}${isSelected ? " (selected)" : ""}`}
+                        aria-pressed={isSelected ? true : undefined}
                         title={hex}
-                      />
+                      >
+                        {isSelected && (
+                          <FontAwesomeIcon
+                            icon="check"
+                            className="absolute inset-0 m-auto h-3 w-3 text-white"
+                            style={{
+                              filter:
+                                "drop-shadow(0 0 2px rgba(0,0,0,0.85)) drop-shadow(0 0 4px rgba(0,0,0,0.5))",
+                            }}
+                          />
+                        )}
+                      </button>
                     );
                   })}
                 </div>
