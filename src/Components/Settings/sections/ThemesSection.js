@@ -206,13 +206,6 @@ export const ThemesSection = ({
     });
   }
 
-  function handleUrlThemeGenerated(theme) {
-    if (!dashApi || !appId) return;
-    const key = theme.id || `theme-${Date.now()}`;
-    const finalTheme = { ...theme, id: key };
-    saveAndSelectTheme(key, finalTheme);
-  }
-
   const listContent = (
     <div className="flex flex-col h-full">
       {/* Variant toggle */}
@@ -354,7 +347,7 @@ export const ThemesSection = ({
         <ThemeFromUrlPane
           onExtract={handleUrlExtract}
           onMapToTheme={handleUrlMapToTheme}
-          onGenerate={handleUrlThemeGenerated}
+          onGenerate={setWizardTheme}
         />
       </BackToChooser>
     );
