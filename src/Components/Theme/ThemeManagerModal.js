@@ -16,7 +16,11 @@ import PanelThemeStudio from "./Studio/PanelThemeStudio";
 import { ThemeQuickCreate, ThemeNewChooser } from "./Wizard";
 import { DiscoverThemesDetail } from "../Settings/details/DiscoverThemesDetail";
 
-export const ThemeManagerModal = ({ open, setIsOpen }) => {
+export const ThemeManagerModal = ({
+  open,
+  setIsOpen,
+  startInCreate = false,
+}) => {
   const {
     changeThemesForApplication,
     rawThemes,
@@ -71,8 +75,16 @@ export const ThemeManagerModal = ({ open, setIsOpen }) => {
         setThemeSelected(() => themeModel);
         setRawThemeSelected(() => rawThemes[themeKeyTemp]);
       }
+      if (startInCreate && !isChoosingMode && !isCreating) {
+        setIsChoosingMode(true);
+        setIsCreating(false);
+        setIsSearching(false);
+        setIsEditing(false);
+        setSelectedMethod(null);
+      }
     }
-  }, [open, themes, rawThemes, settings, themeKeySelected]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, themes, rawThemes, settings, themeKeySelected, startInCreate]);
 
   function handleThemeSelected(themeUpdated, themeKey) {
     let newRawThemeSelected = deepCopy(rawThemeSelected);
