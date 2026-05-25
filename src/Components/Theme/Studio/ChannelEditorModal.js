@@ -5,29 +5,43 @@ import {
   Button,
   FontAwesomeIcon,
   isHexColor,
+  hexToRgb,
   getColorFamilies,
   getCuratedColorGrid,
 } from "@trops/dash-react";
 import CustomHexColorPane from "../Panel/Pane/CustomHexColorPane";
 
-// Parse "bg-<family>-<shade>" → "<family>". Returns null for hex
-// classes or anything that doesn't match the named-Tailwind shape.
-function familyFromClassName(className) {
-  if (typeof className !== "string") return null;
-  const m = className.match(/^bg-([a-z]+)-(?:50|[1-9]00|950)$/);
-  return m ? m[1] : null;
+// Squared RGB distance — fine for nearest-neighbor since we don't
+// need the sqrt for ordering.
+function rgbDistSq(a, b) {
+  const dr = a.r - b.r;
+  const dg = a.g - b.g;
+  const db = a.b - b.b;
+  return dr * dr + dg * dg + db * db;
 }
 
-// Find the curated-grid family that contains `hex`. Returns null
-// for custom hexes that aren't in any curated palette.
-function familyContainingHex(hex, families) {
+// Find the curated-grid swatch nearest to `hex` across all families.
+// Curated grids are HSL-generated (see dash-react/Utils/colorMath),
+// so exact-hex matches against Tailwind defaults are rare — nearest
+// neighbor by RGB distance gives the user a useful "you picked
+// roughly THIS swatch" highlight + tab.
+function nearestSwatch(hex, families) {
   if (!hex || typeof hex !== "string") return null;
-  const target = hex.toLowerCase();
+  const target = hexToRgb(hex);
+  if (!target) return null;
+  let best = null;
   for (const family of families) {
     const grid = getCuratedColorGrid(family) || [];
-    if (grid.some((h) => h.toLowerCase() === target)) return family;
+    for (const swatchHex of grid) {
+      const rgb = hexToRgb(swatchHex);
+      if (!rgb) continue;
+      const d = rgbDistSq(rgb, target);
+      if (best === null || d < best.distance) {
+        best = { family, swatchHex, distance: d };
+      }
+    }
   }
-  return null;
+  return best;
 }
 
 /**
@@ -109,46 +123,43 @@ const ChannelEditorModal = ({
   const baseValue = themeData?.[activeChannel];
   const baseHex = isHexColor(baseValue) ? baseValue : null;
 
-  // The "currently selected" hex for the active (channel, slot) —
-  // used both to drive the highlight ring on the swatch grid and
-  // to auto-switch the family chip. For a base slot we use the
-  // channel's hex base; for a shade slot we use the override hex
-  // (if any) or fall back to parsing the resolved className.
+  // The "currently selected" hex for the active (channel, slot).
+  // Drives both the swatch highlight and the family chip
+  // auto-switch.
+  //   - base slot, hex theme  → channel's hex base directly
+  //   - base slot, named theme → cssValue of the medium shade
+  //   - shade slot with override → override hex
+  //   - shade slot without override → resolved cssValue for the
+  //     token (works for both hex and named themes since
+  //     ThemeModel populates cssValue for every shade)
   const selectedHex = useMemo(() => {
-    if (activeSlot === "base") return baseHex;
+    if (activeSlot === "base") {
+      if (baseHex) return baseHex;
+      const css = themeData?.cssValue?.[`bg-${activeChannel}-medium`];
+      return isHexColor(css) ? css : null;
+    }
     const tokenKey = `bg-${activeChannel}-${activeSlot}`;
     const rawValue = rawTheme?.[themeVariant]?.[tokenKey];
     if (isHexColor(rawValue)) return rawValue;
     const css = themeData?.cssValue?.[tokenKey];
-    if (isHexColor(css)) return css;
-    return null;
+    return isHexColor(css) ? css : null;
   }, [activeChannel, activeSlot, baseHex, rawTheme, themeData, themeVariant]);
 
-  // Auto-switch the family chip to the one containing the
-  // selected color. If the selected color is a custom hex (not
-  // in any curated grid), try the className shape as a fallback.
-  // No-op if we can't resolve a family — leaves the user's
-  // current chip selection alone.
+  // Nearest curated swatch to selectedHex across all families.
+  // Drives both the family-tab auto-switch and the in-grid
+  // highlight. Curated grids are HSL-generated, so exact matches
+  // are rare — nearest neighbor gives a "roughly THIS swatch"
+  // pointer that's still useful.
+  const nearest = useMemo(
+    () => nearestSwatch(selectedHex, families),
+    [selectedHex, families],
+  );
+
   useEffect(() => {
     if (!isOpen) return;
-    const fromHex = selectedHex
-      ? familyContainingHex(selectedHex, families)
-      : null;
-    if (fromHex) {
-      setActiveFamily(fromHex);
-      return;
-    }
-    const tokenKey =
-      activeSlot === "base"
-        ? `bg-${activeChannel}-medium`
-        : `bg-${activeChannel}-${activeSlot}`;
-    const className = themeData?.[tokenKey];
-    const fromClass = familyFromClassName(className);
-    if (fromClass && families.includes(fromClass)) {
-      setActiveFamily(fromClass);
-    }
+    if (nearest) setActiveFamily(nearest.family);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, activeChannel, activeSlot, selectedHex]);
+  }, [isOpen, nearest]);
 
   function expandChannel(channelKey) {
     setActiveChannel(channelKey);
@@ -313,9 +324,14 @@ const ChannelEditorModal = ({
                   style={{ gridAutoRows: "1fr" }}
                 >
                   {swatches.map((hex) => {
+                    // Highlight the nearest curated swatch — but only
+                    // when the active family chip matches the nearest
+                    // family. (User can scrub through other families
+                    // without seeing a stale highlight.)
                     const isSelected =
-                      selectedHex &&
-                      hex.toLowerCase() === selectedHex.toLowerCase();
+                      nearest &&
+                      nearest.family === activeFamily &&
+                      hex.toLowerCase() === nearest.swatchHex.toLowerCase();
                     return (
                       <button
                         key={hex}
