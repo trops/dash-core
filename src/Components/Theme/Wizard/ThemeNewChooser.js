@@ -16,7 +16,6 @@ const ChooserCard = ({ icon, title, subtitle, onClick }) => (
 
 export const ThemeNewChooser = ({ onSearchThemes, onSelectMethod }) => (
   <div className="flex flex-col gap-6 p-6 overflow-y-auto flex-1 min-h-0">
-    <span className="text-sm font-semibold opacity-50">Add a Theme</span>
     <div className="grid grid-cols-2 gap-3">
       <ChooserCard
         icon="magnifying-glass"
