@@ -10,71 +10,55 @@ import {
 } from "@trops/dash-react";
 import { PublishThemeModal } from "./PublishThemeModal";
 
-const TOKEN_TYPES = ["bg", "text", "border"];
-
 // --- Color Swatch Grid ---
+// Compact preview: one row per channel × 5 shade swatches.
+// The bg shade IS the canonical color; text/border tokens are
+// deterministic restyles and don't add new information here.
+// Full per-token editing remains in the Studio (Edit button).
 
-const SwatchCell = ({ tokenKey, resolvedClass, type }) => {
-  const tooltip = `${tokenKey} → ${resolvedClass || "(none)"}`;
-
-  if (type === "bg") {
+const ShadeSwatch = ({ tokenKey, resolvedClass, cssValue }) => {
+  const tooltip = `${tokenKey} → ${cssValue || resolvedClass || "(none)"}`;
+  // Prefer inline cssValue (works for any theme — hex channels
+  // don't get their cssVars on :root for non-active themes).
+  if (cssValue) {
     return (
       <div
-        className={`h-8 flex-1 rounded ${resolvedClass || ""}`}
+        className="h-10 flex-1 rounded"
+        style={{ backgroundColor: cssValue }}
         title={tooltip}
       />
     );
   }
-
-  if (type === "text") {
-    return (
-      <div
-        className="h-8 flex-1 rounded flex items-center justify-center bg-black/10"
-        title={tooltip}
-      >
-        <span className={`text-xs font-bold ${resolvedClass || ""}`}>Aa</span>
-      </div>
-    );
-  }
-
-  // border
   return (
     <div
-      className={`h-8 flex-1 rounded border-2 ${resolvedClass || ""}`}
+      className={`h-10 flex-1 rounded ${resolvedClass || ""}`}
       title={tooltip}
     />
   );
 };
 
 const ColorSwatchGrid = ({ displayTheme }) => {
+  const cssValueMap = displayTheme.cssValue || {};
   return (
-    <div className="flex flex-col space-y-5">
+    <div className="flex flex-col space-y-4">
       {colorTypes.map((family) => (
         <div key={family} className="flex flex-col space-y-2">
           <span className="text-xs font-semibold opacity-50 capitalize">
             {family}
           </span>
-          {TOKEN_TYPES.map((type) => (
-            <div key={type} className="flex flex-row items-center gap-2">
-              <span className="text-[10px] opacity-40 w-10 text-right shrink-0">
-                {type}
-              </span>
-              <div className="flex flex-row gap-1.5 flex-1">
-                {themeVariants.map((shade) => {
-                  const tokenKey = `${type}-${family}-${shade}`;
-                  const resolvedClass = displayTheme[tokenKey] || "";
-                  return (
-                    <SwatchCell
-                      key={shade}
-                      tokenKey={tokenKey}
-                      resolvedClass={resolvedClass}
-                      type={type}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+          <div className="flex flex-row gap-1.5">
+            {themeVariants.map((shade) => {
+              const tokenKey = `bg-${family}-${shade}`;
+              return (
+                <ShadeSwatch
+                  key={shade}
+                  tokenKey={tokenKey}
+                  resolvedClass={displayTheme[tokenKey] || ""}
+                  cssValue={cssValueMap[tokenKey]}
+                />
+              );
+            })}
+          </div>
         </div>
       ))}
     </div>
