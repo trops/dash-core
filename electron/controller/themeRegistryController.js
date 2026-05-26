@@ -416,6 +416,7 @@ async function installThemeFromRegistry(win, appId, packageName) {
 
     // Stage 4: Extract theme data (JSON or ZIP)
     let themeData;
+    let signingMeta = null;
 
     if (contentType.includes("application/json")) {
       // Registry returns JSON with a downloadUrl pointing to the actual ZIP
@@ -469,6 +470,15 @@ async function installThemeFromRegistry(win, appId, packageName) {
             error: "Download failed: storage returned an empty ZIP file.",
           };
         }
+        // Phase 1C signing metadata accompanies the downloadUrl
+        // since dash-registry v1.5.27. Captured here and verified
+        // below, before the ZIP is extracted.
+        signingMeta = {
+          zipSignature: jsonData.zipSignature || null,
+          publisherCert: jsonData.publisherCert || null,
+          publisherKeyId: jsonData.publisherKeyId || null,
+          publisherFingerprint: jsonData.publisherFingerprint || null,
+        };
       } else {
         // No downloadUrl — treat as direct theme data
         console.log(
@@ -479,6 +489,38 @@ async function installThemeFromRegistry(win, appId, packageName) {
     }
 
     if (!themeData) {
+      // Phase 1C: verify signature + cert + revocation before
+      // touching the ZIP. In `off` mode this is a no-op; in `warn`
+      // (default during rollout) failures log + proceed; in `strict`
+      // failures throw and we return an error response.
+      try {
+        const {
+          verifyDownloadedPackage,
+        } = require("../security/verifyRegistryInstall");
+        const verifyResult = await verifyDownloadedPackage({
+          zipBuffer,
+          zipSignature: signingMeta ? signingMeta.zipSignature : null,
+          publisherCert: signingMeta ? signingMeta.publisherCert : null,
+          publisherKeyId: signingMeta ? signingMeta.publisherKeyId : null,
+          publisherFingerprint: signingMeta
+            ? signingMeta.publisherFingerprint
+            : null,
+        });
+        if (!verifyResult.verified && verifyResult.mode === "warn") {
+          console.warn(
+            `${TAG} [Verify] Installing unverified theme "${packageName}" — ` +
+              `reason: ${verifyResult.reason}. Set ` +
+              `DASH_REGISTRY_VERIFY_SIGNED_INSTALL=strict to refuse.`,
+          );
+        }
+      } catch (verifyErr) {
+        console.log(`${TAG} [Verify] FAIL — ${verifyErr.message || verifyErr}`);
+        return {
+          success: false,
+          error: `Install verification failed: ${verifyErr.message || verifyErr}`,
+        };
+      }
+
       // ZIP response — extract .theme.json from archive
       let zip;
       try {
