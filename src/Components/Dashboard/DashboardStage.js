@@ -310,21 +310,34 @@ const DashboardStageInner = ({
 
   // ─── Unsaved-changes guard (Phase 2B) ────────────────────────────
   // Single source of truth for "is the user mid-edit with un-saved
-  // work?". Edit mode (`previewMode === false`) is necessary; a
-  // populated `currentWorkspaceRef` is sufficient — the layout
-  // builder mutates that ref on every drag/drop/widget change.
+  // work?". A state variable — NOT a derived ref check — because the
+  // useEffect that mirrors this to `globalThis.__dashboardIsDirty`
+  // must re-run when the value changes, and `useRef` mutations don't
+  // trigger re-renders.
   //
-  // The flag is mirrored to `globalThis.__dashboardIsDirty` so the
-  // Electron main process can poll it synchronously during window
-  // close + app-quit handlers without an IPC round-trip.
+  // Mutations that flip it true:
+  //   - LayoutBuilder.onWorkspaceChange (widget drag/drop/swap/delete)
+  //     via `handleWorkspaceChange`
+  //   - Header title rename via `handleWorkspaceNameChange`
+  //   - Folder / theme changes via `handleWorkspaceFolderChange`,
+  //     `handleWorkspaceThemeChange`
+  //
+  // Mutations that reset to false:
+  //   - Successful save (`handleSaveWorkspaceComplete`)
+  //   - Cancel/discard (`performCancelEdit` + the discard modal path)
+  //   - Re-entering edit mode (`handleToggleEditMode` enter branch)
+  //
+  // Mirrored to `globalThis.__dashboardIsDirty` so the Electron main
+  // process can poll synchronously during window close + app-quit
+  // handlers without an IPC round-trip.
   //
   // A `pendingNavigation` object captures a navigation request that
   // arrived while dirty so the user can choose to discard or keep
   // editing. Shapes:
   //   { kind: "open-workspace", workspace }       — sidebar switch
   //   { kind: "cancel-edit" }                     — Cancel button
+  const [isDirty, setIsDirty] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState(null);
-  const isDirty = previewMode === false && currentWorkspaceRef.current !== null;
   useEffect(() => {
     if (typeof globalThis !== "undefined") {
       globalThis.__dashboardIsDirty = isDirty;
@@ -836,6 +849,9 @@ const DashboardStageInner = ({
     if (ws) {
       const wsModel = WorkspaceModel(ws);
       setPreviewMode(() => false);
+      // LayoutBuilder fired a mutation (widget drag/drop/swap/delete).
+      // Mark the workspace dirty so the navigation + close guards fire.
+      setIsDirty(true);
 
       // Update the tab's workspace reference
       if (activeTabId) {
@@ -1488,13 +1504,16 @@ const DashboardStageInner = ({
     }
     currentWorkspaceRef.current = null;
     originalWorkspaceRef.current = null;
+    setIsDirty(false);
     setPreviewMode(true);
   }
 
   function handleToggleEditMode() {
     if (previewMode) {
-      // Entering edit mode — snapshot the current workspace
+      // Entering edit mode — snapshot the current workspace and
+      // reset the dirty flag so we start from a clean slate.
       originalWorkspaceRef.current = deepCopy(workspaceSelected);
+      setIsDirty(false);
       setPreviewMode(false);
       return;
     }
@@ -1518,6 +1537,9 @@ const DashboardStageInner = ({
 
     // Update the tab name and workspace reference
     updateTabWorkspace(tempWorkspace);
+    // Header rename counts as a workspace mutation; mark dirty so
+    // navigation + close guards fire.
+    setIsDirty(true);
   }
 
   function handleWorkspaceFolderChange(menuId) {
@@ -1696,6 +1718,7 @@ const DashboardStageInner = ({
     // Clear edit-mode refs — edits are now persisted
     currentWorkspaceRef.current = null;
     originalWorkspaceRef.current = null;
+    setIsDirty(false);
 
     setPreviewMode(() => true);
   }
@@ -2213,10 +2236,11 @@ const DashboardStageInner = ({
           if (pending.kind === "cancel-edit") {
             performCancelEdit();
           } else if (pending.kind === "open-workspace") {
-            // Clear edit refs before navigating so the new workspace
-            // mount doesn't inherit dirty state.
+            // Clear edit refs + dirty flag before navigating so the
+            // new workspace mount doesn't inherit dirty state.
             currentWorkspaceRef.current = null;
             originalWorkspaceRef.current = null;
+            setIsDirty(false);
             setPreviewMode(true);
             handleOpenTab(pending.workspace);
           }
