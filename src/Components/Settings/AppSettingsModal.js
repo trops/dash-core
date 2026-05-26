@@ -132,13 +132,13 @@ export const AppSettingsModal = ({
             icon="plus"
             text={
               activeSection === "dashboards"
-                ? "Marketplace"
+                ? "New Dashboard"
                 : activeSection === "folders"
                   ? "New Folder"
                   : activeSection === "providers"
                     ? "New Provider"
                     : activeSection === "widgets"
-                      ? "Install Widgets"
+                      ? "New Widget"
                       : "New Theme"
             }
             onClick={() => setCreateRequested(true)}

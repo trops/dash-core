@@ -28,17 +28,24 @@ const OptionCard = ({ icon, title, description, onClick, currentTheme }) => (
 );
 
 /**
- * InstallWidgetPicker — the consolidated chooser shown when the
- * "New Widget" header button is clicked (audit #19).
+ * NewDashboardChooser — consolidated entry point for the
+ * "New Dashboard" header button in Settings → Dashboards.
+ *
+ * Audit #19 fix: the prior header button was labeled "Marketplace"
+ * which was ambiguous (it set installMode=marketplace, duplicating
+ * the Marketplace tab in the list). Renamed to "New Dashboard"; the
+ * chooser presents the actual creation paths as labeled cards,
+ * matching the ThemeNewChooser pattern.
  *
  * Options:
- * 1. Use Widget Builder (Phase 19 — folds the inline "+ New Widget"
- *    button's function into the chooser so there's one entry point)
- * 2. Search for Widgets (registry browser)
- * 3. Install from File (.zip)
- * 4. Load from Folder
+ *   - "marketplace" → registry browser (existing DiscoverDashboardsDetail)
+ *   - "wizard"      → existing dashboard creation wizard
+ *
+ * The Marketplace TAB in the list view stays — it's the in-place
+ * browse affordance, distinct from this "I want to create a new
+ * dashboard" entry.
  */
-export const InstallWidgetPicker = ({ onSelect }) => {
+export const NewDashboardChooser = ({ onSelect }) => {
   const { currentTheme } = useContext(ThemeContext);
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,
@@ -52,34 +59,20 @@ export const InstallWidgetPicker = ({ onSelect }) => {
         }`}
       >
         <span className="text-xs font-semibold opacity-50 block mb-4">
-          CREATE A WIDGET
+          CREATE A DASHBOARD
         </span>
         <OptionCard
-          icon="wand-magic-sparkles"
-          title="Use Widget Builder"
-          description="Open the AI Widget Builder to create a new widget from scratch"
-          onClick={() => onSelect("builder")}
-          currentTheme={currentTheme}
-        />
-        <OptionCard
           icon="compass"
-          title="Search for Widgets"
-          description="Browse and install widgets from the online registry"
-          onClick={() => onSelect("discover")}
+          title="Search Marketplace"
+          description="Browse and install community dashboards from the online registry"
+          onClick={() => onSelect("marketplace")}
           currentTheme={currentTheme}
         />
         <OptionCard
-          icon="file-zipper"
-          title="Install from File"
-          description="Install a widget package from a .zip file on your computer"
-          onClick={() => onSelect("zip")}
-          currentTheme={currentTheme}
-        />
-        <OptionCard
-          icon="folder-open"
-          title="Load from Folder"
-          description="Load all widgets from a local folder — great for restoring a backup"
-          onClick={() => onSelect("folder")}
+          icon="wand-magic-sparkles"
+          title="From Wizard"
+          description="Build a new dashboard from a layout + theme + widgets"
+          onClick={() => onSelect("wizard")}
           currentTheme={currentTheme}
         />
       </div>
