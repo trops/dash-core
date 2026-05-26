@@ -23,5 +23,6 @@ module.exports = {
   menuItemsApi: require("./menuItemsApi"),
   llmApi: require("./llmApi"),
   registryAuthApi: require("./registryAuthApi"),
+  publisherKeyApi: require("./publisherKeyApi"),
   webSocketApi: require("./webSocketApi"),
 };

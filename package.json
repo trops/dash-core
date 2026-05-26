@@ -60,6 +60,8 @@
     "@fortawesome/free-solid-svg-icons": "^6.1.1",
     "@fortawesome/react-fontawesome": "^0.1.18",
     "@modelcontextprotocol/sdk": "^1.26.0",
+    "@noble/ed25519": "^3.1.0",
+    "@noble/hashes": "^2.2.0",
     "adm-zip": "^0.5.16",
     "algoliasearch": "^4.13.0",
     "clsx": "^2.1.1",
