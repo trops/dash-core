@@ -21,6 +21,7 @@ import {
   EmptyState,
   ButtonIcon,
   Toast,
+  ConfirmationModal,
 } from "@trops/dash-react";
 import { LayoutModel, DashboardModel } from "../../Models";
 import { ThemeManagerModal } from "../../Components/Theme";
@@ -306,6 +307,34 @@ const DashboardStageInner = ({
 
   // Snapshot of the workspace before editing — used to restore on Cancel
   const originalWorkspaceRef = useRef(null);
+
+  // ─── Unsaved-changes guard (Phase 2B) ────────────────────────────
+  // Single source of truth for "is the user mid-edit with un-saved
+  // work?". Edit mode (`previewMode === false`) is necessary; a
+  // populated `currentWorkspaceRef` is sufficient — the layout
+  // builder mutates that ref on every drag/drop/widget change.
+  //
+  // The flag is mirrored to `globalThis.__dashboardIsDirty` so the
+  // Electron main process can poll it synchronously during window
+  // close + app-quit handlers without an IPC round-trip.
+  //
+  // A `pendingNavigation` object captures a navigation request that
+  // arrived while dirty so the user can choose to discard or keep
+  // editing. Shapes:
+  //   { kind: "open-workspace", workspace }       — sidebar switch
+  //   { kind: "cancel-edit" }                     — Cancel button
+  const [pendingNavigation, setPendingNavigation] = useState(null);
+  const isDirty = previewMode === false && currentWorkspaceRef.current !== null;
+  useEffect(() => {
+    if (typeof globalThis !== "undefined") {
+      globalThis.__dashboardIsDirty = isDirty;
+    }
+    return () => {
+      if (typeof globalThis !== "undefined") {
+        globalThis.__dashboardIsDirty = false;
+      }
+    };
+  }, [isDirty]);
 
   useEffect(() => {
     console.log(
@@ -629,6 +658,29 @@ const DashboardStageInner = ({
           if (updated) setRecentDashboards(updated);
         });
     }
+  }
+
+  // Guarded variant of handleOpenTab for user-driven entry points
+  // (sidebar dashboard list, recents). If the user is mid-edit with
+  // unsaved changes AND the request would navigate to a DIFFERENT
+  // workspace than the currently active tab, surface the discard
+  // confirmation modal instead of switching immediately.
+  //
+  // Programmatic callers (post-create auto-open, popout init, the
+  // wizard's create-then-open flow) keep calling `handleOpenTab`
+  // directly — they only fire after an explicit save and have no
+  // dirty state to lose.
+  function handleOpenTabGuarded(workspaceItem) {
+    if (!workspaceItem) return;
+    const switchingAway = activeTabId && activeTabId !== workspaceItem.id;
+    if (isDirty && switchingAway) {
+      setPendingNavigation({
+        kind: "open-workspace",
+        workspace: workspaceItem,
+      });
+      return;
+    }
+    handleOpenTab(workspaceItem);
   }
 
   function handleCloseTab(tabId) {
@@ -1427,20 +1479,33 @@ const DashboardStageInner = ({
     console.log(e, message);
   }
 
+  // Internal: the unguarded cancel-edit operation. Called both from
+  // the direct Cancel button (when nothing is dirty) and from the
+  // confirmation modal's Discard action.
+  function performCancelEdit() {
+    if (originalWorkspaceRef.current) {
+      updateTabWorkspace(originalWorkspaceRef.current);
+    }
+    currentWorkspaceRef.current = null;
+    originalWorkspaceRef.current = null;
+    setPreviewMode(true);
+  }
+
   function handleToggleEditMode() {
     if (previewMode) {
       // Entering edit mode — snapshot the current workspace
       originalWorkspaceRef.current = deepCopy(workspaceSelected);
       setPreviewMode(false);
-    } else {
-      // Canceling edit mode — restore original workspace
-      if (originalWorkspaceRef.current) {
-        updateTabWorkspace(originalWorkspaceRef.current);
-      }
-      currentWorkspaceRef.current = null;
-      originalWorkspaceRef.current = null;
-      setPreviewMode(true);
+      return;
     }
+    // Cancel path: prompt only if there are unsaved edits. The
+    // `isDirty` value flips true the moment LayoutBuilder writes
+    // anything into `currentWorkspaceRef`.
+    if (isDirty) {
+      setPendingNavigation({ kind: "cancel-edit" });
+      return;
+    }
+    performCancelEdit();
   }
 
   function handleWorkspaceNameChange(name) {
@@ -1757,7 +1822,7 @@ const DashboardStageInner = ({
               recentDashboards={recentDashboards}
               authStatus={authStatus}
               authProfile={authProfile}
-              onOpenWorkspace={handleOpenTab}
+              onOpenWorkspace={handleOpenTabGuarded}
               onNewDashboard={() => setIsLayoutPickerOpen(true)}
               onOpenSettings={() => openAppSettings("general")}
               onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
@@ -1997,7 +2062,7 @@ const DashboardStageInner = ({
               onReloadWorkspaces={loadWorkspaces}
               onReloadMenuItems={loadMenuItems}
               onOpenWorkspace={(ws) => {
-                handleOpenTab(ws);
+                handleOpenTabGuarded(ws);
                 setIsAppSettingsOpen(false);
               }}
               onOpenThemeEditor={() => {
@@ -2037,7 +2102,7 @@ const DashboardStageInner = ({
               onSaveMenuItem={handleSaveNewMenuItem}
               appId={credentials?.appId}
               onReloadWorkspaces={loadWorkspaces}
-              onOpenWorkspace={handleOpenTab}
+              onOpenWorkspace={handleOpenTabGuarded}
               onOpenWizard={() => setIsWizardOpen(true)}
             />
 
@@ -2118,6 +2183,46 @@ const DashboardStageInner = ({
           onOpenWizard={() => setIsWizardOpen(true)}
         />
       )}
+
+      {/* Phase 2B unsaved-changes guard. Rendered at the root so it
+          sits above every other surface (sidebar, modals, popouts).
+          Triggered by `pendingNavigation` — set by handleToggleEditMode
+          and handleOpenTabGuarded when they intercept a destructive
+          action mid-edit. Discard commits the pending navigation;
+          Cancel keeps the user in edit mode with their changes. */}
+      <ConfirmationModal
+        isOpen={Boolean(pendingNavigation)}
+        setIsOpen={(open) => {
+          if (!open) setPendingNavigation(null);
+        }}
+        title="Discard unsaved changes?"
+        message={
+          pendingNavigation?.kind === "cancel-edit"
+            ? "You have edits that haven't been saved. Discard them and exit edit mode?"
+            : "You have edits that haven't been saved. Discard them and switch dashboards?"
+        }
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        variant="danger"
+        onConfirm={() => {
+          const pending = pendingNavigation;
+          // Clear the prompt first so the modal teardown doesn't race
+          // a re-trigger from the same dirty-state read.
+          setPendingNavigation(null);
+          if (!pending) return;
+          if (pending.kind === "cancel-edit") {
+            performCancelEdit();
+          } else if (pending.kind === "open-workspace") {
+            // Clear edit refs before navigating so the new workspace
+            // mount doesn't inherit dirty state.
+            currentWorkspaceRef.current = null;
+            originalWorkspaceRef.current = null;
+            setPreviewMode(true);
+            handleOpenTab(pending.workspace);
+          }
+        }}
+        onCancel={() => setPendingNavigation(null)}
+      />
     </LayoutContainer>
   );
 };
