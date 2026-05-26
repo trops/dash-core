@@ -12,55 +12,8 @@
 
 const fs = require("fs");
 const path = require("path");
-const vm = require("vm");
 const { findWidgetsDir } = require("./widgetCompiler");
-
-// Scan an ES-module source and return an object stubbing every imported
-// name (named, default, namespace) to `undefined`. Used to keep `vm.runInContext`
-// from throwing ReferenceError on identifiers referenced inside the
-// config literal whose real imports we don't (and can't) resolve from
-// here — we only need the config metadata, not the imported values.
-function collectImportedNames(source) {
-  const stubs = {};
-  if (typeof source !== "string") return stubs;
-
-  // import { a, b as c } from "..."
-  const namedRe =
-    /import\s+(?:[A-Za-z_$][\w$]*\s*,\s*)?\{\s*([^}]+)\s*\}\s*from\s*["'][^"']+["']/g;
-  let m;
-  while ((m = namedRe.exec(source))) {
-    for (const part of m[1].split(",")) {
-      const name = part
-        .trim()
-        .split(/\s+as\s+/)
-        .pop()
-        .trim();
-      if (name) stubs[name] = undefined;
-    }
-  }
-
-  // import foo from "..."
-  const defaultRe = /import\s+([A-Za-z_$][\w$]*)\s+from\s*["'][^"']+["']/g;
-  while ((m = defaultRe.exec(source))) {
-    stubs[m[1]] = undefined;
-  }
-
-  // import foo, { a, b } from "..." — capture the default name too
-  const defaultWithNamedRe =
-    /import\s+([A-Za-z_$][\w$]*)\s*,\s*\{[^}]*\}\s*from\s*["'][^"']+["']/g;
-  while ((m = defaultWithNamedRe.exec(source))) {
-    stubs[m[1]] = undefined;
-  }
-
-  // import * as foo from "..."
-  const namespaceRe =
-    /import\s+\*\s+as\s+([A-Za-z_$][\w$]*)\s+from\s*["'][^"']+["']/g;
-  while ((m = namespaceRe.exec(source))) {
-    stubs[m[1]] = undefined;
-  }
-
-  return stubs;
-}
+const { parseDashConfig } = require("./utils/dashConfigParser");
 
 class DynamicWidgetLoader {
   constructor(componentManager = null) {
@@ -159,54 +112,17 @@ class DynamicWidgetLoader {
     try {
       const source = fs.readFileSync(configPath, "utf8");
 
-      let exportMatch = source.match(/export\s+default\s+({[\s\S]*});?\s*$/);
-
-      // Handle variable export pattern: const x = {...}; export default x;
-      if (!exportMatch) {
-        const varExportMatch = source.match(
-          /export\s+default\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*;?\s*$/,
-        );
-        if (varExportMatch) {
-          const varName = varExportMatch[1];
-          const varDeclMatch = source.match(
-            new RegExp(
-              `(?:const|let|var)\\s+${varName}\\s*=\\s*({[\\s\\S]*?});\\s*(?:export\\s+default)`,
-            ),
-          );
-          if (varDeclMatch) {
-            exportMatch = varDeclMatch;
-          }
-        }
+      // Phase 5B (P1 #10): AST-allowlist parse. Rejects any node type
+      // that could execute (CallExpression, MemberExpression,
+      // FunctionExpression, etc.). Unresolved identifiers from imports
+      // become `null` — downstream code that iterates arrays
+      // (`providers`, …) already filters nullish entries from the
+      // vm.runInContext era.
+      const result = parseDashConfig(source);
+      if (!result.ok) {
+        throw new Error(`config rejected by AST parser: ${result.error}`);
       }
-
-      if (!exportMatch) {
-        throw new Error("Could not find default export in config file");
-      }
-
-      // Sanitize component references so vm.runInContext doesn't fail
-      // on unresolvable imports — replace component: SomeName with component: "SomeName"
-      const exportedObjectStr = exportMatch[1].replace(
-        /component\s*:\s*([A-Z][a-zA-Z0-9_$]*)/g,
-        'component: "$1"',
-      );
-
-      // Stub every named import in the source so references like
-      // `providers: [algoliaProvider]` inside the literal don't throw
-      // a ReferenceError when we eval it in a bare VM context. We
-      // can't follow the real `./foo` imports from here — we only
-      // care about the config metadata (events, eventHandlers,
-      // userConfig, etc.). Imported values show up as `undefined` in
-      // the parsed config; callers that iterate arrays (providers,
-      // …) are expected to filter out nullish entries.
-      const importStubs = collectImportedNames(source);
-
-      const context = vm.createContext({
-        module: { exports: {} },
-        ...importStubs,
-      });
-      vm.runInContext(`module.exports = ${exportedObjectStr}`, context);
-
-      return context.module.exports;
+      return result.config;
     } catch (error) {
       console.error(`[DynamicWidgetLoader] Error loading config:`, error);
       throw error;
