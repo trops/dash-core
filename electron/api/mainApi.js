@@ -36,6 +36,7 @@ const themeFromUrlApi = require("./themeFromUrlApi");
 const webSocketApi = require("./webSocketApi");
 const mcpDashServerApi = require("./mcpDashServerApi");
 const publisherKeyApi = require("./publisherKeyApi");
+const onboardingApi = require("./onboardingApi");
 
 // Events constants
 const events = require("../events");
@@ -109,6 +110,7 @@ function createMainApi(extensions = {}) {
     dashboardRatings: dashboardRatingsApi,
     registryAuth: registryAuthApi,
     publisherKey: publisherKeyApi,
+    onboarding: onboardingApi,
     session: sessionApi,
     notifications: notificationApi,
     scheduler: schedulerApi,
