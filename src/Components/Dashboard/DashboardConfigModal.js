@@ -81,6 +81,7 @@ export const DashboardConfigModal = ({
   onSaveBindings,
   onSaveListeners,
   onSaveUserPrefs = null,
+  onSkip = null,
   initialTab = "providers",
 }) => {
   const { currentTheme } = useContext(ThemeContext);
@@ -498,6 +499,20 @@ export const DashboardConfigModal = ({
     setIsOpen(false);
   }
 
+  // "Skip for now" — closes the modal AND tells the parent to suppress
+  // the unresolved-providers banner for the current session. Cancel
+  // just closes; Skip means "I'm intentionally not dealing with this
+  // right now." Without this affordance, new users who hit the
+  // post-install state can feel cornered by the banner reappearing
+  // every time they close the modal without resolving every provider.
+  function handleSkip() {
+    setStaged({});
+    setStagedListeners({ adds: [], removes: [] });
+    setStagedPrefs({});
+    if (typeof onSkip === "function") onSkip();
+    setIsOpen(false);
+  }
+
   if (!isOpen) return null;
 
   return (
@@ -659,6 +674,9 @@ export const DashboardConfigModal = ({
         <Divider />
         {/* Footer */}
         <div className="flex-shrink-0 flex flex-row justify-end gap-2 p-4">
+          {typeof onSkip === "function" && (
+            <Button3 title="Skip for now" onClick={handleSkip} />
+          )}
           <Button3 title="Cancel" onClick={handleCancel} />
           <Button2
             title={hasStagedChanges ? "Save changes" : "Save"}

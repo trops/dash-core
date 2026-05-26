@@ -487,6 +487,27 @@ export const WidgetsSection = ({
 
   const listContent = (
     <div className="flex flex-col h-full">
+      {/* New Widget — first-class entry point to the Widget Builder
+          (Phase 3B). Before this, the builder was only reachable via
+          the AI assistant's `[OPEN_WIDGET_BUILDER]` marker, which
+          users had no way to discover. The `dash:open-widget-builder`
+          window event is the same one dash-electron's `Dash.js` host
+          already listens for, so this is a one-line dispatch with no
+          new IPC plumbing. */}
+      <div className="flex-shrink-0 px-3 pt-2 pb-1">
+        <button
+          type="button"
+          onClick={() =>
+            window.dispatchEvent(new Event("dash:open-widget-builder"))
+          }
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded bg-indigo-600 hover:bg-indigo-500 text-white"
+          data-testid="widgets-section-new-widget-button"
+        >
+          <FontAwesomeIcon icon="plus" className="text-xs" />
+          <span>New Widget</span>
+        </button>
+      </div>
+
       {/* Checking-for-updates indicator — shown while the initial
           registry check is in flight (a few seconds after the panel
           mounts). Without this the user sees the panel "stable" and
