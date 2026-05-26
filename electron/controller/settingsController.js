@@ -7,6 +7,7 @@ const path = require("path");
 const fs = require("fs");
 const events = require("../events");
 const { getFileContents, writeToFile } = require("../utils/file");
+const { migrateSettings, CURRENT_SCHEMA_VERSION } = require("../migrations");
 
 const configFilename = "settings.json";
 const appName = "Dashboard";
@@ -53,12 +54,20 @@ const settingsController = {
           appName,
           configFilename,
         );
-        writeToFile(filename, JSON.stringify(data, null, 2));
+        // Always stamp the current schema version on every save so the
+        // file on disk advances forward with the framework. Without this
+        // a save right after a migration would overwrite the version
+        // stamp and re-trigger the migration on the next load.
+        const stamped = {
+          ...data,
+          schemaVersion: CURRENT_SCHEMA_VERSION,
+        };
+        writeToFile(filename, JSON.stringify(stamped, null, 2));
         console.log("[settingsController] Settings saved successfully");
         // Return the data for ipcMain.handle() - modern promise-based approach
         return {
           success: true,
-          settings: data,
+          settings: stamped,
         };
       } else {
         return {
@@ -91,11 +100,28 @@ const settingsController = {
       );
       // make sure the file exists...
       const fileContents = getFileContents(filename, {});
+      // Run the migration chain. Legacy files (no schemaVersion) are
+      // detected as v0 and stamped forward. If a migration ran, persist
+      // the new shape back to disk so subsequent loads start at the
+      // current version. Persistence failure is logged but non-fatal —
+      // the in-memory shape is still correct for the caller.
+      const { data: migrated, migrated: didMigrate } =
+        migrateSettings(fileContents);
+      if (didMigrate) {
+        try {
+          writeToFile(filename, JSON.stringify(migrated, null, 2));
+        } catch (writeErr) {
+          console.warn(
+            "[settingsController] Migrated settings could not be persisted:",
+            writeErr && writeErr.message,
+          );
+        }
+      }
       console.log("[settingsController] Settings loaded successfully");
       // Return the data for ipcMain.handle() - modern promise-based approach
       return {
         success: true,
-        settings: fileContents,
+        settings: migrated,
       };
     } catch (e) {
       console.error("[settingsController] Error loading settings:", e);
