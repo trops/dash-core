@@ -8,6 +8,44 @@ export const GeneralSection = () => {
   const credentials = appContext?.credentials || {};
   const [dataDirectory, setDataDirectory] = useState(null);
 
+  // Export Everything (Phase 4A) — kind: "success" | "error"
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportFeedback, setExportFeedback] = useState(null);
+
+  async function handleExportEverything() {
+    if (!credentials?.appId) {
+      setExportFeedback({ kind: "error", message: "No application context." });
+      return;
+    }
+    setIsExporting(true);
+    setExportFeedback(null);
+    try {
+      const result = await window.mainApi?.export?.exportEverything?.(
+        credentials.appId,
+      );
+      if (result?.success) {
+        setExportFeedback({
+          kind: "success",
+          message: `Saved to ${result.filePath}`,
+        });
+      } else if (result?.canceled) {
+        // User dismissed the dialog — no feedback row.
+      } else {
+        setExportFeedback({
+          kind: "error",
+          message: result?.error || "Export failed.",
+        });
+      }
+    } catch (err) {
+      setExportFeedback({
+        kind: "error",
+        message: err?.message || "Export failed.",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   useEffect(() => {
     const dashApi = appContext?.dashApi;
     if (dashApi) {
@@ -99,6 +137,42 @@ export const GeneralSection = () => {
             )}
           </div>
           <Button title="Open Folder" onClick={handleOpenDataDirectory} />
+        </div>
+      </div>
+
+      {/* Backup — Phase 4A. Bundles workspaces + themes + folders +
+          providers (sans credentials) into a single ZIP. The
+          credential strip is enforced server-side via the
+          exportController allowlist; this button just routes the
+          user through the save dialog. */}
+      <div className="flex flex-col space-y-3">
+        <SubHeading3 title="Backup" padding={false} />
+        <div className="flex flex-row items-center justify-between py-3">
+          <div className="flex flex-col">
+            <span className="text-sm font-medium">Export Everything</span>
+            <span className="text-xs opacity-50">
+              Save a ZIP of your workspaces, themes, folders, and provider
+              settings. Credentials are not included.
+            </span>
+            {exportFeedback && (
+              <span
+                className={`text-xs mt-1 ${
+                  exportFeedback.kind === "success"
+                    ? "text-green-400"
+                    : "text-red-400"
+                }`}
+                data-testid="export-feedback"
+              >
+                {exportFeedback.message}
+              </span>
+            )}
+          </div>
+          <Button
+            title={isExporting ? "Exporting…" : "Export Everything"}
+            onClick={handleExportEverything}
+            disabled={isExporting}
+            data-testid="export-everything-button"
+          />
         </div>
       </div>
 

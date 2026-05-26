@@ -28,6 +28,7 @@ const webSocketEvents = require("./webSocketEvents");
 const mcpDashServerEvents = require("./mcpDashServerEvents");
 const publisherKeyEvents = require("./publisherKeyEvents");
 const onboardingEvents = require("./onboardingEvents");
+const exportEvents = require("./exportEvents");
 
 const publicEvents = {
   ...dataEvents,
@@ -53,6 +54,7 @@ const API_GROUPS = {
   providers: Object.values(providerEvents),
   "publisher-key": Object.values(publisherKeyEvents),
   onboarding: Object.values(onboardingEvents),
+  export: Object.values(exportEvents),
   registry: Object.values(registryEvents),
   "registry-auth": Object.values(registryAuthEvents),
   scheduler: Object.values(schedulerEvents),
@@ -93,4 +95,5 @@ module.exports = {
   ...mcpDashServerEvents,
   ...publisherKeyEvents,
   ...onboardingEvents,
+  ...exportEvents,
 };

@@ -439,12 +439,18 @@ export const WidgetsSection = ({
             }}
             className={isSelected ? "bg-white/10 opacity-100" : ""}
           >
-            <span className="flex flex-col">
+            <span
+              className="flex flex-col"
+              data-testid={`widget-row-${widget.name}`}
+            >
               <span className="flex items-center gap-2">
                 {widget.displayName || widget.name}
                 {widget.source === "builtin" && <Tag3 text="Built-in" />}
                 {updates.has(widget.name) && (
-                  <span className="text-[10px] text-blue-400 font-medium">
+                  <span
+                    className="text-[10px] text-blue-400 font-medium"
+                    data-testid={`widget-update-badge-${widget.name}`}
+                  >
                     Update
                   </span>
                 )}

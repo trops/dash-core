@@ -90,6 +90,7 @@ const {
   getOnboardingStatus,
   markOnboardingCompleted,
 } = require("./onboardingController");
+const { exportEverythingForApplication } = require("./exportController");
 const {
   getRecentDashboards,
   addRecentDashboard,
@@ -197,6 +198,7 @@ module.exports = {
   describeLocalKey,
   getOnboardingStatus,
   markOnboardingCompleted,
+  exportEverythingForApplication,
   getRecentDashboards,
   addRecentDashboard,
   clearRecentDashboards,
