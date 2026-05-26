@@ -106,6 +106,10 @@ node --test electron/utils/safeJsExecutor.test.js
 step "Running safePath containment tests"
 node --test electron/utils/safePath.test.js
 
+# 6c2b. Phase 5D — install-time manifest-signature verifier
+step "Running install-time manifest-signature verifier tests (Phase 5D)"
+node --test electron/security/verifyDownloadManifest.test.js
+
 # 6c3. Run MCP allowlist + ancillary security pins:
 #   - permissionGate (Slice 1+2): grant-based runtime gate
 #   - grantedPermissions (Slice 2): user-grant store + grantOrigin
