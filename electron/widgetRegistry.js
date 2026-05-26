@@ -831,6 +831,27 @@ class WidgetRegistry {
         if (jsonData.error) {
           throw new Error(`Download failed: ${jsonData.error}`);
         }
+
+        // Phase 5D (P1 #24): verify the manifest signature BEFORE
+        // trusting any field in this response. A MITM that swapped
+        // downloadUrl or any signing-metadata field gets caught here
+        // because the signature won't verify against the bundled
+        // registry root key. Mode is shared with the existing
+        // zip+cert verifier — DASH_REGISTRY_VERIFY_SIGNED_INSTALL.
+        const {
+          verifyDownloadManifest,
+        } = require("./security/verifyRegistryInstall");
+        const manifestVerify = await verifyDownloadManifest({
+          responseBody: jsonData,
+        });
+        if (!manifestVerify.verified && manifestVerify.mode === "warn") {
+          console.warn(
+            `[widgetRegistry] Installing with unverified download manifest ` +
+              `for "${widgetName}" — reason: ${manifestVerify.reason}. Set ` +
+              `DASH_REGISTRY_VERIFY_SIGNED_INSTALL=strict to refuse.`,
+          );
+        }
+
         if (jsonData.downloadUrl) {
           const zipResponse = await fetch(jsonData.downloadUrl);
           if (!zipResponse.ok) {

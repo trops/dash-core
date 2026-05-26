@@ -138,6 +138,51 @@ async function verifyBufferSignature({ bytes, signature, publicKey }) {
   return ed.verifyAsync(sigBytes, digest, pubBytes);
 }
 
+// --- Manifest body signature (Phase 5D, audit P1 #24) ---
+//
+// Mirror of dash-registry/src/lib/crypto.ts#signManifestBody /
+// verifyManifestSignature. The registry's `/download` response carries
+// `{manifest_signature, manifest_signature_keyid}` over the rest of
+// the body. The installer verifies before consuming `downloadUrl` so
+// a MITM that swaps any field is caught client-side.
+//
+// Both sides must canonicalize identically: strip the two signature
+// fields, sort remaining keys recursively, no whitespace.
+
+const CURRENT_MANIFEST_SIGNATURE_KEYID = "v1";
+
+function canonicalizeManifestBody(body) {
+  if (!body || typeof body !== "object") {
+    throw new Error("manifest body must be an object");
+  }
+  const stripped = { ...body };
+  delete stripped.manifest_signature;
+  delete stripped.manifest_signature_keyid;
+  return canonicalJsonStringify(stripped);
+}
+
+/**
+ * Verify a manifest signature against the registry root public key.
+ * Returns true/false; never throws on a bad signature — caller
+ * decides what to do based on mode (off/warn/strict).
+ *
+ * @param {object} args
+ * @param {object} args.body — full response body INCLUDING signature fields (ignored on canonicalize)
+ * @param {string} args.signature — base64 Ed25519 signature
+ * @param {string} args.registryRootPublicKey — base64
+ * @returns {Promise<boolean>}
+ */
+async function verifyManifestSignature({
+  body,
+  signature,
+  registryRootPublicKey,
+}) {
+  const message = new TextEncoder().encode(canonicalizeManifestBody(body));
+  const sigBytes = base64ToBytes(signature);
+  const rootPubBytes = base64ToBytes(registryRootPublicKey);
+  return ed.verifyAsync(sigBytes, message, rootPubBytes);
+}
+
 module.exports = {
   canonicalJsonStringify,
   computeFingerprint,
@@ -145,6 +190,14 @@ module.exports = {
   verifyPublisherCert,
   signBuffer,
   verifyBufferSignature,
+  verifyManifestSignature,
+  CURRENT_MANIFEST_SIGNATURE_KEYID,
   // internal helpers — exported for tests
-  _internal: { bytesToBase64, base64ToBytes, bytesToHex, sha256 },
+  _internal: {
+    bytesToBase64,
+    base64ToBytes,
+    bytesToHex,
+    sha256,
+    canonicalizeManifestBody,
+  },
 };

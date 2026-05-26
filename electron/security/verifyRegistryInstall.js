@@ -35,6 +35,8 @@
 const {
   verifyPublisherCert,
   verifyBufferSignature,
+  verifyManifestSignature,
+  CURRENT_MANIFEST_SIGNATURE_KEYID,
 } = require("./publisherCrypto");
 const { getRegistryRootPublicKey } = require("./registryRootPublicKey");
 
@@ -201,7 +203,82 @@ async function verifyDownloadedPackage(args, opts = {}) {
   return { verified: true, reason: null, mode, warnings };
 }
 
+/**
+ * Phase 5D (audit P1 #24): verify the signature on the /download
+ * response BODY before the caller consumes downloadUrl / zipSignature /
+ * publisherCert from it. Closes the MITM vector where a swapped
+ * response could redirect the installer to a different ZIP signed by
+ * an attacker-controlled (but still legitimate) publisher cert.
+ *
+ * Same off/warn/strict modes as the zip+cert verifier above — the
+ * env var `DASH_REGISTRY_VERIFY_SIGNED_INSTALL` controls both.
+ *
+ * The signature is computed server-side over the canonical JSON of
+ * the body minus the two signature fields themselves. Verification
+ * here re-canonicalizes the same way and checks against the bundled
+ * registry root public key.
+ *
+ * @param {object} args
+ * @param {object} args.responseBody — the full parsed JSON body from /download
+ * @returns {Promise<{verified, reason, mode, warnings}>}
+ */
+async function verifyDownloadManifest({ responseBody }) {
+  const mode = readMode();
+  const warnings = [];
+
+  if (mode === "off") {
+    return { verified: true, reason: null, mode, warnings };
+  }
+
+  if (!responseBody || typeof responseBody !== "object") {
+    return applyMode(mode, "MANIFEST_BODY_MISSING", warnings);
+  }
+
+  const signature = responseBody.manifest_signature;
+  const keyid = responseBody.manifest_signature_keyid;
+
+  // Unsigned case: legacy registry deployments that haven't been
+  // upgraded yet won't include these fields. In `warn` mode we log
+  // + proceed so the rollout doesn't break existing installs; in
+  // `strict` mode we refuse.
+  if (!signature || !keyid) {
+    return applyMode(mode, "UNSIGNED_MANIFEST", warnings);
+  }
+
+  // Today only one root key is bundled. When rotation lands, this
+  // becomes a lookup over an array of trusted public keys keyed by
+  // keyid; unknown keyid → fail closed.
+  if (keyid !== CURRENT_MANIFEST_SIGNATURE_KEYID) {
+    return applyMode(
+      mode,
+      `MANIFEST_SIGNATURE_UNKNOWN_KEYID: ${keyid}`,
+      warnings,
+    );
+  }
+
+  let ok = false;
+  try {
+    ok = await verifyManifestSignature({
+      body: responseBody,
+      signature,
+      registryRootPublicKey: getRegistryRootPublicKey(),
+    });
+  } catch (err) {
+    return applyMode(
+      mode,
+      `MANIFEST_SIGNATURE_ERROR: ${err.message || err}`,
+      warnings,
+    );
+  }
+  if (!ok) {
+    return applyMode(mode, "MANIFEST_SIGNATURE_INVALID", warnings);
+  }
+
+  return { verified: true, reason: null, mode, warnings };
+}
+
 module.exports = {
   verifyDownloadedPackage,
+  verifyDownloadManifest,
   _readMode: readMode,
 };
