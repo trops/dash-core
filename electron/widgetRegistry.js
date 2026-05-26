@@ -794,7 +794,10 @@ class WidgetRegistry {
         );
       }
 
-      // Registry download endpoints return JSON with a pre-signed S3 URL
+      // Registry download endpoints return JSON with a pre-signed
+      // S3 URL plus, since Phase 1A, signing metadata: zipSignature,
+      // publisherCert, publisherKeyId, publisherFingerprint.
+      let signingMeta = null;
       if (contentType.includes("application/json")) {
         let jsonData;
         try {
@@ -821,6 +824,36 @@ class WidgetRegistry {
             );
           }
         }
+        signingMeta = {
+          zipSignature: jsonData.zipSignature || null,
+          publisherCert: jsonData.publisherCert || null,
+          publisherKeyId: jsonData.publisherKeyId || null,
+          publisherFingerprint: jsonData.publisherFingerprint || null,
+        };
+      }
+
+      // Phase 1C: verify signature + cert + revocation before
+      // touching the ZIP. In `off` mode this is a no-op; in `warn`
+      // (default during rollout) failures log + proceed; in `strict`
+      // failures throw and the package never reaches AdmZip.
+      const {
+        verifyDownloadedPackage,
+      } = require("./security/verifyRegistryInstall");
+      const verifyResult = await verifyDownloadedPackage({
+        zipBuffer: buffer,
+        zipSignature: signingMeta ? signingMeta.zipSignature : null,
+        publisherCert: signingMeta ? signingMeta.publisherCert : null,
+        publisherKeyId: signingMeta ? signingMeta.publisherKeyId : null,
+        publisherFingerprint: signingMeta
+          ? signingMeta.publisherFingerprint
+          : null,
+      });
+      if (!verifyResult.verified && verifyResult.mode === "warn") {
+        console.warn(
+          `[widgetRegistry] Installing unverified package "${widgetName}" — ` +
+            `reason: ${verifyResult.reason}. Set ` +
+            `DASH_REGISTRY_VERIFY_SIGNED_INSTALL=strict to refuse.`,
+        );
       }
 
       const zip = new AdmZip(buffer);
