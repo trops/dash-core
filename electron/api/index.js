@@ -24,5 +24,6 @@ module.exports = {
   llmApi: require("./llmApi"),
   registryAuthApi: require("./registryAuthApi"),
   publisherKeyApi: require("./publisherKeyApi"),
+  onboardingApi: require("./onboardingApi"),
   webSocketApi: require("./webSocketApi"),
 };

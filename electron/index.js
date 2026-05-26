@@ -24,6 +24,7 @@ const dashboardConfigController = require("./controller/dashboardConfigControlle
 const registryAuthController = require("./controller/registryAuthController");
 const registryApiController = require("./controller/registryApiController");
 const publisherKeyController = require("./controller/publisherKeyController");
+const onboardingController = require("./controller/onboardingController");
 const notificationController = require("./controller/notificationController");
 const schedulerController = require("./controller/schedulerController");
 const themeRegistryController = require("./controller/themeRegistryController");
@@ -66,6 +67,7 @@ const llmApi = require("./api/llmApi");
 const dashboardConfigApi = require("./api/dashboardConfigApi");
 const registryAuthApi = require("./api/registryAuthApi");
 const publisherKeyApi = require("./api/publisherKeyApi");
+const onboardingApi = require("./api/onboardingApi");
 const notificationApi = require("./api/notificationApi");
 const schedulerApi = require("./api/schedulerApi");
 const themeFromUrlApi = require("./api/themeFromUrlApi");
@@ -130,6 +132,7 @@ module.exports = {
   registryAuthController,
   registryApiController,
   publisherKeyController,
+  onboardingController,
   notificationController,
   schedulerController,
   themeRegistryController,
@@ -164,6 +167,7 @@ module.exports = {
   dashboardConfigApi,
   registryAuthApi,
   publisherKeyApi,
+  onboardingApi,
   notificationApi,
   schedulerApi,
   themeFromUrlApi,

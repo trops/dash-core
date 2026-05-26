@@ -35,6 +35,7 @@ import { WorkspaceModel, MenuItemModel } from "../../Models";
 import { DashboardLoaderModal } from "./Modal/DashboardLoaderModal";
 import { LayoutManagerModal } from "../Layout/LayoutManager";
 import { DashboardWizardModal } from "../Layout/DashboardWizard";
+import { OnboardingModal } from "./OnboardingModal";
 
 import { DashCommandPalette } from "../Navigation/DashCommandPalette";
 import { DashTabBar } from "../Navigation/DashTabBar";
@@ -242,6 +243,14 @@ const DashboardStageInner = ({
   const [isLayoutPickerOpen, setIsLayoutPickerOpen] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
 
+  // First-run onboarding (Phase 3A). Tri-state:
+  //   null   — status not yet loaded from main; do not render anything
+  //   true   — show the OnboardingModal
+  //   false  — onboarding already completed (or app is not first-run)
+  // The status read happens once per mount; subsequent dismiss/complete
+  // flips this to false without re-fetching.
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(null);
+
   // Missing widgets detection
   const { missingComponents, hasMissing } =
     useMissingWidgets(workspaceSelected);
@@ -348,6 +357,53 @@ const DashboardStageInner = ({
       }
     };
   }, [isDirty]);
+
+  // ─── First-run onboarding gate (Phase 3A) ────────────────────────
+  // Decision fires exactly once per mount after the first workspaces
+  // load completes. We need to wait for `isLoadingWorkspaces` to flip
+  // true→false at least once; otherwise the gate reads workspaceConfig
+  // at its initial empty value and would flash the modal on every
+  // launch.
+  //
+  // Popout windows never show the modal — they're a slave to the
+  // main window's onboarding decision and don't need their own gate.
+  const onboardingCheckedRef = useRef(false);
+  useEffect(() => {
+    if (popout) {
+      setIsOnboardingOpen(false);
+      return;
+    }
+    if (onboardingCheckedRef.current) return;
+    if (isLoadingWorkspaces) return;
+    onboardingCheckedRef.current = true;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const status = await window.mainApi?.onboarding?.getStatus?.();
+        if (cancelled) return;
+        if (
+          status &&
+          status.completed === false &&
+          workspaceConfig.length === 0
+        ) {
+          setIsOnboardingOpen(true);
+        } else {
+          setIsOnboardingOpen(false);
+        }
+      } catch (err) {
+        // If the IPC is missing (older host) or fails, never show the
+        // modal — silent absence is the right default for any host
+        // that hasn't wired the onboarding controller yet.
+        console.warn("[DashboardStage] onboarding gate skipped:", err);
+        if (!cancelled) setIsOnboardingOpen(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [popout, isLoadingWorkspaces, workspaceConfig.length]);
 
   useEffect(() => {
     console.log(
@@ -2170,6 +2226,25 @@ const DashboardStageInner = ({
               onSaveListeners={handleBulkListenerBindings}
               onSaveUserPrefs={handleBulkUserPrefs}
               initialTab="providers"
+            />
+
+            {/* Phase 3A first-run onboarding. Gated on
+                `isOnboardingOpen === true` so the modal stays hidden
+                during the pre-decision tri-state window and never
+                flashes on returning-user launches. */}
+            <OnboardingModal
+              open={isOnboardingOpen === true}
+              appId={credentials?.appId}
+              onDismiss={() => setIsOnboardingOpen(false)}
+              onComplete={() => setIsOnboardingOpen(false)}
+              onOpenDashboard={(ws) => {
+                setIsOnboardingOpen(false);
+                // Refresh workspaces before opening so the just-
+                // installed Kitchen Sink shows up in the sidebar list
+                // alongside the open tab.
+                loadWorkspaces();
+                handleOpenTab(ws);
+              }}
             />
           </>
         )}

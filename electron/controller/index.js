@@ -87,6 +87,10 @@ const {
   describeLocalKey,
 } = require("./publisherKeyController");
 const {
+  getOnboardingStatus,
+  markOnboardingCompleted,
+} = require("./onboardingController");
+const {
   getRecentDashboards,
   addRecentDashboard,
   clearRecentDashboards,
@@ -191,6 +195,8 @@ module.exports = {
   signZipBuffer,
   revokeLocalKey,
   describeLocalKey,
+  getOnboardingStatus,
+  markOnboardingCompleted,
   getRecentDashboards,
   addRecentDashboard,
   clearRecentDashboards,
