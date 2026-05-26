@@ -35,6 +35,7 @@ const schedulerApi = require("./schedulerApi");
 const themeFromUrlApi = require("./themeFromUrlApi");
 const webSocketApi = require("./webSocketApi");
 const mcpDashServerApi = require("./mcpDashServerApi");
+const publisherKeyApi = require("./publisherKeyApi");
 
 // Events constants
 const events = require("../events");
@@ -107,6 +108,7 @@ function createMainApi(extensions = {}) {
     dashboardConfig: dashboardConfigApi,
     dashboardRatings: dashboardRatingsApi,
     registryAuth: registryAuthApi,
+    publisherKey: publisherKeyApi,
     session: sessionApi,
     notifications: notificationApi,
     scheduler: schedulerApi,

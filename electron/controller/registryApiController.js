@@ -7,6 +7,7 @@
 const fs = require("fs");
 const path = require("path");
 const { getStoredToken } = require("./registryAuthController");
+const { signZipBuffer } = require("./publisherKeyController");
 
 const REGISTRY_BASE_URL =
   process.env.DASH_REGISTRY_API_URL ||
@@ -14,6 +15,10 @@ const REGISTRY_BASE_URL =
 
 /**
  * Publish a package to the registry.
+ *
+ * Signs the ZIP with the local publisher key (auto-generating + registering
+ * one on first use) and attaches `signature` + `publisherCert` + `publisherKeyId`
+ * to the multipart form so the registry can verify provenance.
  *
  * @param {string} zipPath - Path to the ZIP file
  * @param {Object} manifest - Package manifest JSON
@@ -33,7 +38,31 @@ async function publishToRegistry(zipPath, manifest) {
     // Read the ZIP file
     const zipBuffer = fs.readFileSync(zipPath);
 
-    // Create FormData with the ZIP and manifest
+    // Sign the ZIP with the local publisher key. First-call generates
+    // the keypair locally, registers the public half with the registry,
+    // and caches the resulting cert; subsequent calls reuse it. The
+    // private key never leaves the main process.
+    let signing;
+    try {
+      signing = await signZipBuffer(new Uint8Array(zipBuffer));
+    } catch (signErr) {
+      // Auth-required during keygen surfaces the same flag the publish
+      // handler already understands; other errors halt the publish so
+      // we never ship an unsigned ZIP from this path.
+      if (signErr && signErr.authRequired) {
+        return {
+          success: false,
+          error: signErr.message || "Not authenticated with registry",
+          authRequired: true,
+        };
+      }
+      return {
+        success: false,
+        error: `Could not sign package: ${signErr && signErr.message ? signErr.message : signErr}`,
+      };
+    }
+
+    // Create FormData with the ZIP, manifest, and signing fields.
     const formData = new FormData();
     formData.append(
       "file",
@@ -41,6 +70,9 @@ async function publishToRegistry(zipPath, manifest) {
       path.basename(zipPath),
     );
     formData.append("manifest", JSON.stringify(manifest));
+    formData.append("signature", signing.signature);
+    formData.append("publisherCert", JSON.stringify(signing.publisherCert));
+    formData.append("publisherKeyId", signing.publisherKeyId);
 
     // POST to registry
     const response = await fetch(`${REGISTRY_BASE_URL}/api/publish`, {

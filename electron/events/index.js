@@ -26,6 +26,7 @@ const schedulerEvents = require("./schedulerEvents");
 const themeFromUrlEvents = require("./themeFromUrlEvents");
 const webSocketEvents = require("./webSocketEvents");
 const mcpDashServerEvents = require("./mcpDashServerEvents");
+const publisherKeyEvents = require("./publisherKeyEvents");
 
 const publicEvents = {
   ...dataEvents,
@@ -49,6 +50,7 @@ const API_GROUPS = {
   notifications: Object.values(notificationEvents),
   openai: Object.values(openaiEvents),
   providers: Object.values(providerEvents),
+  "publisher-key": Object.values(publisherKeyEvents),
   registry: Object.values(registryEvents),
   "registry-auth": Object.values(registryAuthEvents),
   scheduler: Object.values(schedulerEvents),
@@ -87,4 +89,5 @@ module.exports = {
   ...themeFromUrlEvents,
   ...webSocketEvents,
   ...mcpDashServerEvents,
+  ...publisherKeyEvents,
 };

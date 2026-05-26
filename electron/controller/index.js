@@ -81,6 +81,12 @@ const {
   getRegistryUrl,
 } = require("./registryApiController");
 const {
+  getOrCreateLocalKey,
+  signZipBuffer,
+  revokeLocalKey,
+  describeLocalKey,
+} = require("./publisherKeyController");
+const {
   getRecentDashboards,
   addRecentDashboard,
   clearRecentDashboards,
@@ -181,6 +187,10 @@ module.exports = {
   clearRegistryToken,
   publishToRegistry,
   getRegistryUrl,
+  getOrCreateLocalKey,
+  signZipBuffer,
+  revokeLocalKey,
+  describeLocalKey,
   getRecentDashboards,
   addRecentDashboard,
   clearRecentDashboards,
