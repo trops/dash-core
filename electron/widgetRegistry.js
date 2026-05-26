@@ -27,6 +27,10 @@ const {
   clearCache: clearWidgetPermsCache,
 } = require("./mcp/widgetPermissions");
 const { scanForMcpUsage } = require("./utils/manifestScanner");
+const {
+  loadWidgetManifest,
+  walkSourceContainment,
+} = require("./utils/widgetManifest");
 
 let WIDGETS_CACHE_DIR = null;
 let REGISTRY_CONFIG_FILE = null;
@@ -553,6 +557,23 @@ class WidgetRegistry {
 
       const isDirectory = fs.statSync(resolvedPath).isDirectory();
       if (isDirectory) {
+        // Phase 5B (P1 #11): require a structured manifest + reject
+        // symlink-escape sources. The ZIP path is already covered by
+        // validateZipEntries below. The lax env switch is for devs
+        // pointing at half-built widget folders during local testing.
+        const lax = process.env.DASH_LOCAL_INSTALL_LAX === "true";
+        if (!lax) {
+          walkSourceContainment(resolvedPath);
+          const m = loadWidgetManifest(resolvedPath);
+          if (!m.ok) {
+            throw new Error(
+              `Widget folder rejected: ${m.error}. Set DASH_LOCAL_INSTALL_LAX=true to bypass for local dev (not for production).`,
+            );
+          }
+          for (const w of m.warnings) {
+            console.warn(w);
+          }
+        }
         fs.cpSync(resolvedPath, widgetPath, { recursive: true });
       } else if (resolvedPath.endsWith(".zip")) {
         const zip = new AdmZip(resolvedPath);
