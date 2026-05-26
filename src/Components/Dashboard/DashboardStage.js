@@ -382,10 +382,23 @@ const DashboardStageInner = ({
       try {
         const status = await window.mainApi?.onboarding?.getStatus?.();
         if (cancelled) return;
+        // Defense-in-depth: even if `workspaceConfig.length === 0`
+        // briefly reads true during a race between `isLoadingWorkspaces`
+        // and the workspace array populating, don't show the modal
+        // if the user already has a Kitchen Sink dashboard installed
+        // from the registry. Same dedupe rule the modal's install
+        // path applies.
+        const alreadyHasKitchenSink = workspaceConfig.some((ws) => {
+          const pkg = ws?._dashboardConfig?.registryPackage;
+          if (typeof pkg !== "string") return false;
+          const trailing = pkg.includes("/") ? pkg.split("/").pop() : pkg;
+          return trailing === "kitchen-sink";
+        });
         if (
           status &&
           status.completed === false &&
-          workspaceConfig.length === 0
+          workspaceConfig.length === 0 &&
+          !alreadyHasKitchenSink
         ) {
           setIsOnboardingOpen(true);
         } else {
@@ -2247,6 +2260,7 @@ const DashboardStageInner = ({
             <OnboardingModal
               open={isOnboardingOpen === true}
               appId={credentials?.appId}
+              workspaces={workspaceConfig}
               onDismiss={() => setIsOnboardingOpen(false)}
               onComplete={() => setIsOnboardingOpen(false)}
               onOpenDashboard={(ws) => {
