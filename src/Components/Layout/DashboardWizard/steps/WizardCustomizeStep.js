@@ -20,6 +20,7 @@ import {
 } from "../../LayoutManager/layoutTemplates";
 import { FOLDER_ICONS } from "../../../Settings/details/FolderDetail";
 import { resolveIcon } from "../../../../utils/resolveIcon";
+import { WizardThemePreview } from "./WizardThemePreview";
 
 /**
  * WizardCustomizeStep
@@ -682,6 +683,21 @@ export const WizardCustomizeStep = ({
                     );
                   })}
             </div>
+
+            {/* Live theme-against-layout preview (Phase 3B). Renders a
+                small grid mirroring the chosen layout template's
+                shape, with cells colored by the selected theme's
+                primary/secondary/tertiary tokens. Static — not a real
+                LayoutBuilder mount — so it stays cheap and never
+                interferes with the wizard's own state. The audit
+                called out that step 3 doesn't preview against the
+                chosen layout; this is the lightest answer to that. */}
+            {state.customization.theme && (
+              <WizardThemePreview
+                theme={themes?.[state.customization.theme]}
+                templateKey={state.layout?.templateKey}
+              />
+            )}
           </div>
         )}
 

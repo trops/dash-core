@@ -2225,6 +2225,18 @@ const DashboardStageInner = ({
               onSaveBindings={handleBulkProviderBindings}
               onSaveListeners={handleBulkListenerBindings}
               onSaveUserPrefs={handleBulkUserPrefs}
+              onSkip={() => {
+                // Suppress the unresolved-providers banner for this
+                // workspace (session-scoped). Matches the banner's own
+                // X-dismiss behavior so the user has parity between
+                // "dismiss from the banner" and "dismiss from the
+                // modal footer."
+                if (workspaceSelected?.id != null) {
+                  setDismissedUnresolvedForWorkspace(
+                    (prev) => new Set([...prev, workspaceSelected.id]),
+                  );
+                }
+              }}
               initialTab="providers"
             />
 
