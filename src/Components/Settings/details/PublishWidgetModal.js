@@ -65,6 +65,16 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
   // findings and surface a confirm-or-cancel panel; "Publish anyway"
   // retries with `confirmPersonalPaths: true`.
   const [personalPathFindings, setPersonalPathFindings] = useState(null);
+  // Publisher signing key state. `null` while we're loading the
+  // describe() response; the result object once known. When the
+  // user has no key yet (no row in electron-store), we render a
+  // one-time disclosure pane explaining what we're about to do
+  // before kicking off `getOrCreate()`. Once a key exists, we show
+  // a "Signing as <fp-short>" line in the publish form.
+  const [publisherKey, setPublisherKey] = useState(null);
+  const [publisherKeyLoading, setPublisherKeyLoading] = useState(true);
+  const [keygenError, setKeygenError] = useState(null);
+  const [isGeneratingKey, setIsGeneratingKey] = useState(false);
 
   // Reset modal state on open
   useEffect(() => {
@@ -76,6 +86,10 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
     setResult(null);
     setPackageInfo(null);
     setPersonalPathFindings(null);
+    setPublisherKey(null);
+    setPublisherKeyLoading(true);
+    setKeygenError(null);
+    setIsGeneratingKey(false);
   }, [isOpen]);
 
   // Inspect the package to get its metadata + component list
@@ -124,6 +138,46 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
       cancelled = true;
     };
   }, [isOpen]);
+
+  // Once we're authenticated, ask the main process whether a publisher
+  // signing key already lives on this machine. If not, the disclosure
+  // pane renders before the publish form.
+  useEffect(() => {
+    if (!isOpen) return;
+    if (authStatus !== "authenticated") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const view = await window.mainApi.publisherKey?.describe?.();
+        if (cancelled) return;
+        setPublisherKey(view || null);
+      } catch {
+        if (!cancelled) setPublisherKey(null);
+      } finally {
+        if (!cancelled) setPublisherKeyLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, authStatus]);
+
+  async function handleGenerateKey() {
+    setKeygenError(null);
+    setIsGeneratingKey(true);
+    try {
+      const view = await window.mainApi.publisherKey.getOrCreate();
+      setPublisherKey(view);
+    } catch (err) {
+      setKeygenError(
+        err && err.message
+          ? err.message
+          : "Could not generate signing key. Check your network and try again.",
+      );
+    } finally {
+      setIsGeneratingKey(false);
+    }
+  }
 
   function handleClose() {
     setIsOpen(false);
@@ -212,7 +266,10 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
   const currentVersion = widget.version || "1.0.0";
   const newVersion = bumpPreview(currentVersion, bump);
   const canPublish =
-    authStatus === "authenticated" && !isPublishing && !result?.success;
+    authStatus === "authenticated" &&
+    !isPublishing &&
+    !result?.success &&
+    Boolean(publisherKey);
 
   return (
     <Modal isOpen={isOpen} setIsOpen={handleClose} width="w-full max-w-lg">
@@ -309,9 +366,68 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
               </div>
             )}
 
+          {/* Brief loading indicator while the main process tells us
+              whether a publisher key exists on this machine. */}
           {authStatus === "authenticated" &&
             !result &&
-            !personalPathFindings && (
+            !personalPathFindings &&
+            publisherKeyLoading && (
+              <div className="text-sm opacity-60 text-center py-4">
+                Checking signing key…
+              </div>
+            )}
+
+          {/* First-time signing-key disclosure. Renders before the
+              publish form when this machine has never registered a
+              publisher key. After the user clicks "Generate Key" the
+              main process generates an Ed25519 keypair, encrypts it
+              via safeStorage, registers the public half with the
+              registry, and persists the issued cert locally. The
+              private key never leaves the OS keychain. */}
+          {authStatus === "authenticated" &&
+            !result &&
+            !personalPathFindings &&
+            !publisherKeyLoading &&
+            !publisherKey && (
+              <div
+                className="space-y-3"
+                data-testid="publish-keygen-disclosure"
+              >
+                <div className="p-3 bg-indigo-900/20 border border-indigo-700/40 rounded text-sm">
+                  <div className="font-semibold flex items-center gap-2 mb-1">
+                    <FontAwesomeIcon icon="key" className="h-4 w-4" />
+                    Set up your publisher signing key
+                  </div>
+                  <div className="text-xs opacity-90 leading-relaxed">
+                    Each widget you publish is signed with an Ed25519 keypair
+                    that lives only on this machine. Dash will generate one for
+                    you now, encrypt the private half in your OS keychain
+                    (Keychain on macOS, DPAPI on Windows), and register the
+                    public half with the registry. Other users will see your
+                    publishes as verified by you; you'll never need to manage
+                    this key directly.
+                  </div>
+                </div>
+                {keygenError && (
+                  <div className="p-3 bg-red-900/20 border border-red-700/40 rounded text-xs text-red-200">
+                    {keygenError}
+                  </div>
+                )}
+                <div className="flex flex-row gap-2 justify-end">
+                  <Button3 title="Cancel" onClick={handleClose} />
+                  <Button2
+                    title={isGeneratingKey ? "Generating key…" : "Generate Key"}
+                    onClick={handleGenerateKey}
+                    disabled={isGeneratingKey}
+                  />
+                </div>
+              </div>
+            )}
+
+          {authStatus === "authenticated" &&
+            !result &&
+            !personalPathFindings &&
+            publisherKey && (
               <>
                 {/* Package summary */}
                 <div className="bg-white/5 border border-white/10 rounded-lg p-3 text-sm">
@@ -340,6 +456,22 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
                     </span>
                     <span>v{currentVersion}</span>
                   </div>
+                  {publisherKey?.fingerprint && (
+                    <div
+                      className="flex gap-2 mt-1"
+                      data-testid="publish-signing-as"
+                    >
+                      <span className="opacity-50 w-28 flex-shrink-0">
+                        Signing as
+                      </span>
+                      <span
+                        className="font-mono text-xs opacity-80"
+                        title={publisherKey.fingerprint}
+                      >
+                        {publisherKey.fingerprint.slice(0, 12)}…
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Components bundled inside this package */}
