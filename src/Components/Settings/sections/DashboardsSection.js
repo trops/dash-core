@@ -13,6 +13,7 @@ import {
 import { SectionLayout } from "../SectionLayout";
 import { DashboardDetail } from "../details/DashboardDetail";
 import { DiscoverDashboardsDetail } from "../details/DiscoverDashboardsDetail";
+import { NewDashboardChooser } from "../details/NewDashboardChooser";
 
 export const DashboardsSection = ({
   workspaces = [],
@@ -31,7 +32,9 @@ export const DashboardsSection = ({
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState("grouped");
-  // null | "marketplace"
+  // null | "picker" | "marketplace"
+  //   picker      — NewDashboardChooser (Phase 19 / audit #19)
+  //   marketplace — DiscoverDashboardsDetail (registry browser)
   const [installMode, setInstallMode] = useState(null);
 
   const appId = credentials?.appId;
@@ -129,12 +132,16 @@ export const DashboardsSection = ({
     );
   }
 
-  // Respond to external create trigger from header button (marketplace)
+  // Respond to external create trigger from the "New Dashboard"
+  // header button. Audit #19: this now opens the consolidated
+  // NewDashboardChooser (Marketplace + Wizard cards), matching the
+  // ThemeNewChooser pattern. Pre-fix this went straight to
+  // installMode="marketplace" which made the button ambiguous.
   const prevCreateRequested = useRef(false);
   useEffect(() => {
     if (createRequested && !prevCreateRequested.current) {
       setSelectedId(null);
-      setInstallMode("marketplace");
+      setInstallMode("picker");
     }
     prevCreateRequested.current = createRequested;
     if (createRequested && onCreateAcknowledged) {
@@ -142,6 +149,17 @@ export const DashboardsSection = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createRequested]);
+
+  function handleChooserSelect(option) {
+    if (option === "marketplace") {
+      setInstallMode("marketplace");
+    } else if (option === "wizard") {
+      // onOpenWizard closes the Settings modal and opens the
+      // dashboard wizard. Provided by AppSettingsModal.
+      setInstallMode(null);
+      if (typeof onOpenWizard === "function") onOpenWizard();
+    }
+  }
 
   const selectedWorkspace = workspaces.find((ws) => ws.id === selectedId);
 
@@ -264,7 +282,9 @@ export const DashboardsSection = ({
 
   let detailContent = null;
 
-  if (installMode === "marketplace") {
+  if (installMode === "picker") {
+    detailContent = <NewDashboardChooser onSelect={handleChooserSelect} />;
+  } else if (installMode === "marketplace") {
     detailContent = (
       <DiscoverDashboardsDetail
         onBack={() => {

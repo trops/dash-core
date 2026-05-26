@@ -372,7 +372,14 @@ export const WidgetsSection = ({
   }
 
   function handlePickerSelect(option) {
-    if (option === "discover") {
+    if (option === "builder") {
+      // Audit #19: the inline "+ New Widget" button was removed in
+      // favor of this card so there's a single entry point for new-
+      // widget creation. Closes the picker and fires the same event
+      // the inline button used to dispatch.
+      setInstallMode(null);
+      window.dispatchEvent(new Event("dash:open-widget-builder"));
+    } else if (option === "discover") {
       setInstallMode("discover");
     } else if (option === "zip") {
       handleInstallFromZip();
@@ -493,26 +500,14 @@ export const WidgetsSection = ({
 
   const listContent = (
     <div className="flex flex-col h-full">
-      {/* New Widget — first-class entry point to the Widget Builder
-          (Phase 3B). Before this, the builder was only reachable via
-          the AI assistant's `[OPEN_WIDGET_BUILDER]` marker, which
-          users had no way to discover. The `dash:open-widget-builder`
-          window event is the same one dash-electron's `Dash.js` host
-          already listens for, so this is a one-line dispatch with no
-          new IPC plumbing. */}
-      <div className="flex-shrink-0 px-3 pt-2 pb-1">
-        <button
-          type="button"
-          onClick={() =>
-            window.dispatchEvent(new Event("dash:open-widget-builder"))
-          }
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded bg-indigo-600 hover:bg-indigo-500 text-white"
-          data-testid="widgets-section-new-widget-button"
-        >
-          <FontAwesomeIcon icon="plus" className="text-xs" />
-          <span>New Widget</span>
-        </button>
-      </div>
+      {/* Audit #19: the inline "+ New Widget" button (Phase 3B) was
+          folded into the "New Widget" chooser in the section header.
+          The header's button → InstallWidgetPicker → "Use Widget
+          Builder" card is now the single entry point for widget
+          creation. The dash:open-widget-builder window event still
+          fires the same way; the inline shortcut is gone so there's
+          one obvious path that matches the Themes / Dashboards
+          consolidated-chooser pattern. */}
 
       {/* Checking-for-updates indicator — shown while the initial
           registry check is in flight (a few seconds after the panel
