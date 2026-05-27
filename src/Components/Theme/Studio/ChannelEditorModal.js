@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal,
   DashPanel,
@@ -159,11 +159,24 @@ const ChannelEditorModal = ({
     [selectedHex, families],
   );
 
+  // Auto-switch the family tab when the underlying selected color
+  // changes (user picked a different channel/shade or the theme
+  // mutated). Track the last hex we synced for so we don't fight
+  // the user's manual tab clicks — without this guard, every
+  // re-render rebuilds `nearest` as a new object reference and the
+  // effect snaps activeFamily back to the family containing the
+  // current color, making it impossible to browse other families.
+  const lastSyncedHexRef = useRef(null);
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      lastSyncedHexRef.current = null;
+      return;
+    }
+    if (lastSyncedHexRef.current === selectedHex) return;
+    lastSyncedHexRef.current = selectedHex;
     if (nearest) setActiveFamily(nearest.family);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, nearest]);
+  }, [isOpen, selectedHex, nearest]);
 
   function expandChannel(channelKey) {
     setActiveChannel(channelKey);

@@ -16,6 +16,42 @@ function ThemeBroadcast({ ctx }) {
 }
 
 /**
+ * Writes the dashboard theme's cssVars to `:root` while mounted, and
+ * restores the previous values on unmount / theme switch.
+ *
+ * ThemeWrapper writes the APP theme's cssVars at the top of the tree.
+ * Without this helper, a dashboard that overrides the app theme with a
+ * hex-channel theme (like "Slack Generic") would carry the right class
+ * names (`bg-[var(--primary-900)]`) but the `--primary-900` variable
+ * on :root would still be the APP theme's value — or undefined if the
+ * app theme is named-family. Hex-themed surfaces then render with no
+ * background. This effect closes that gap by promoting the dashboard
+ * theme's cssVars to :root for the duration of its mount.
+ */
+function DashboardCssVarsBridge({ cssVars }) {
+  useEffect(() => {
+    if (!cssVars || typeof document === "undefined") return undefined;
+    const root = document.documentElement;
+    const previous = {};
+    const keys = Object.keys(cssVars);
+    for (const key of keys) {
+      previous[key] = root.style.getPropertyValue(key);
+      root.style.setProperty(key, cssVars[key]);
+    }
+    return () => {
+      for (const key of keys) {
+        if (previous[key]) {
+          root.style.setProperty(key, previous[key]);
+        } else {
+          root.style.removeProperty(key);
+        }
+      }
+    };
+  }, [cssVars]);
+  return null;
+}
+
+/**
  * DashboardThemeProvider
  *
  * Wraps dashboard content with a nested ThemeContext.Provider when a
@@ -65,6 +101,7 @@ export const DashboardThemeProvider = ({ themeKey, children }) => {
   return (
     <ThemeContext.Provider value={contextValue}>
       <ThemeBroadcast ctx={contextValue} />
+      <DashboardCssVarsBridge cssVars={contextValue?.currentTheme?.cssVars} />
       {children}
     </ThemeContext.Provider>
   );

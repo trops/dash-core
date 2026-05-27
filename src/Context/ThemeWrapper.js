@@ -351,6 +351,27 @@ export const ThemeWrapper = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chosenTheme, themeVariant, themeName, themesForApplication, rawThemes]);
 
+  // Broadcast the app-level theme to a SEPARATE global so
+  // components rendered OUTSIDE the React theme tree
+  // (WidgetBuilderModal, AppUpdatesModal — they live as siblings
+  // of DashboardStage in dash-electron's Dash.js render) can fall
+  // back to it when no dashboard-specific override is in play.
+  //
+  // We can't share the same global with DashboardThemeProvider's
+  // per-workspace broadcast because React commits child effects
+  // BEFORE parent effects — ThemeWrapper would always run last
+  // and silently overwrite the workspace theme. Two separate
+  // globals avoid the race: consumers read
+  // `__dashThemeContext` (workspace) first, fall back to
+  // `__dashAppThemeContext` (app-level) when no workspace is open.
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    if (contextValue?.currentTheme) {
+      window.__dashAppThemeContext = contextValue;
+      window.dispatchEvent(new Event("dash:theme-changed"));
+    }
+  }, [contextValue]);
+
   // Write the active theme's CSS custom properties to :root so any
   // hex-channel tokens (`bg-[var(--primary-700)]` etc. emitted by
   // ThemeModel) resolve app-wide. Without this, saving a hex theme
