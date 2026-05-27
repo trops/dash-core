@@ -165,8 +165,33 @@ export const InstalledWidgetDetail = ({
         </div>
       )}
 
-      {/* Footer — only show for installed (non-builtin) widgets */}
-      {widget.source !== "builtin" && (
+      {/* Footer — only show for installed (non-builtin) widgets.
+          Drafts get a reduced action set: Resume (reopens the
+          Widget Builder loaded with this draft) + Delete. No
+          Publish/Update affordances since drafts have no registry
+          origin and aren't finished products. */}
+      {widget.source !== "builtin" && widget.kind === "draft" && (
+        <div
+          className={`flex-shrink-0 flex flex-row justify-end gap-2 px-6 py-4 border-t ${
+            currentTheme["border-primary-medium"] || "border-white/10"
+          }`}
+        >
+          <Button
+            title="Resume"
+            onClick={() => {
+              window.dispatchEvent(
+                new CustomEvent("dash:open-widget-builder", {
+                  detail: { resumeDraftId: widget.draftId || null },
+                }),
+              );
+            }}
+            disabled={!widget.draftId}
+            size="sm"
+          />
+          <Button title="Delete" onClick={() => onDelete(widget)} size="sm" />
+        </div>
+      )}
+      {widget.source !== "builtin" && widget.kind !== "draft" && (
         <div
           className={`flex-shrink-0 flex flex-row justify-end gap-2 px-6 py-4 border-t ${
             currentTheme["border-primary-medium"] || "border-white/10"
