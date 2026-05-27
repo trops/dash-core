@@ -453,7 +453,16 @@ export const WidgetsSection = ({
               <span className="flex items-center gap-2">
                 {widget.displayName || widget.name}
                 {widget.source === "builtin" && <Tag3 text="Built-in" />}
-                {updates.has(widget.name) && (
+                {widget.kind === "draft" && (
+                  <span
+                    className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-900/40 text-amber-200 border border-amber-700/30"
+                    data-testid={`widget-draft-chip-${widget.name}`}
+                    title="In-progress widget — open to Resume or Delete from the action menu"
+                  >
+                    Draft
+                  </span>
+                )}
+                {widget.kind !== "draft" && updates.has(widget.name) && (
                   <span
                     className="text-[10px] text-blue-400 font-medium"
                     data-testid={`widget-update-badge-${widget.name}`}

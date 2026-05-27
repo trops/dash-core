@@ -315,6 +315,12 @@ export const EnhancedWidgetDropdown = ({
   // Filter widgets based on search, author, and provider
   const getFilteredWidgets = () => {
     const filtered = widgets.filter((widget) => {
+      // Drafts are in-progress widgets — they appear in
+      // Settings → Widgets (as a Draft chip with Resume/Delete
+      // affordances) but never in the dashboard placement picker
+      // since they're not finished products.
+      if (widget.kind === "draft") return false;
+
       // Search filter
       const searchLower = searchQuery.toLowerCase();
       const matchesSearch =

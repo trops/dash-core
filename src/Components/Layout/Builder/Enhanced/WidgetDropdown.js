@@ -57,6 +57,17 @@ export const WidgetDropdown = ({
           return false;
         }
 
+        // Drafts are in-progress widgets — they live under
+        // `@ai-built/<name>-draft-<shortId>/` and shouldn't appear
+        // in placement pickers. Resume happens via Settings →
+        // Widgets. (Mirrors the kind="draft" filter in the
+        // EnhancedWidgetDropdown but checked at the CM source-
+        // package level since this picker reads from CM directly.)
+        const sourcePackage = widget._sourcePackage || "";
+        if (/-draft-[A-Za-z0-9]+$/.test(sourcePackage)) {
+          return false;
+        }
+
         // Note: We intentionally don't filter by workspace type
         // This allows widgets to be added directly to containers
         // without requiring an intermediate workspace

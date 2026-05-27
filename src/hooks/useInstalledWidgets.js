@@ -110,12 +110,63 @@ export const useInstalledWidgets = () => {
             version: null,
             path: null,
             source: "builtin",
+            kind: "installed",
+            draftId: null,
             providers: config.providers || [],
             workspace: config.workspace || null,
             componentNames: [key],
             scopedId: key,
           };
         });
+
+      // ── Drafts (in-progress widgets from the AI Builder) ─────
+      // Drafts on disk look like installed packages — their dirs
+      // sit under @ai-built/<name>-draft-<shortId>/ alongside real
+      // installs. We surface them as `kind: "draft"` so consumers
+      // (dashboard picker, Settings → Widgets) can render them
+      // distinctly (Resume/Delete affordances) or filter them out.
+      // The match is `packageDir`-based when available (canonical)
+      // and falls back to a `-draft-` name-pattern check so legacy
+      // drafts without the on-disk metadata still get classified.
+      let draftsByPackageDir = new Map();
+      let draftShortIdToId = new Map();
+      if (window.mainApi?.drafts?.list) {
+        try {
+          const allDrafts = (await window.mainApi.drafts.list()) || [];
+          for (const d of allDrafts) {
+            if (d?.packageDir) draftsByPackageDir.set(d.packageDir, d);
+            if (d?.id) {
+              const shortId = String(d.id)
+                .replace(/^draft-/, "")
+                .slice(0, 8);
+              if (shortId) draftShortIdToId.set(shortId, d.id);
+            }
+          }
+        } catch (draftErr) {
+          // Best-effort — if drafts list fails, all widgets render
+          // as kind="installed" and the user just loses the draft
+          // distinction for this load. Not a hard failure.
+          console.warn("[useInstalledWidgets] drafts.list failed:", draftErr);
+        }
+      }
+
+      function classifyWidget(reg, fallbackName) {
+        const name = reg?.name || fallbackName || "";
+        const path = reg?.path || "";
+        // 1. Match against drafts metadata by packageDir (canonical).
+        if (path && draftsByPackageDir.has(path)) {
+          return { kind: "draft", draftId: draftsByPackageDir.get(path).id };
+        }
+        // 2. Fallback: the dir name follows `<base>-draft-<shortId>`;
+        //    pluck the shortId and look it up in the drafts list.
+        const m = String(name).match(/-draft-([A-Za-z0-9]+)$/);
+        if (m) {
+          const shortId = m[1].slice(0, 8);
+          const draftId = draftShortIdToId.get(shortId) || null;
+          return { kind: "draft", draftId };
+        }
+        return { kind: "installed", draftId: null };
+      }
 
       // ── Installed widgets from ComponentManager + Registry ───
       // CM entries with _sourcePackage are registry-installed widgets.
@@ -136,6 +187,7 @@ export const useInstalledWidgets = () => {
         .map((key) => {
           const config = cMap[key];
           const reg = registryByName[config._sourcePackage] || {};
+          const classification = classifyWidget(reg, config._sourcePackage);
           return {
             name: key,
             displayName: config.name || key,
@@ -146,6 +198,8 @@ export const useInstalledWidgets = () => {
             version: reg.version || null,
             path: reg.path || null,
             source: "installed",
+            kind: classification.kind,
+            draftId: classification.draftId,
             providers: config.providers || [],
             workspace: config.workspace || null,
             componentNames: [key],
@@ -163,22 +217,27 @@ export const useInstalledWidgets = () => {
       );
       const fallbackInstalled = Object.values(registryByName)
         .filter((w) => !cmSourcePackages.has(w.name))
-        .map((w) => ({
-          name: w.name,
-          displayName: w.displayName || w.name,
-          author: w.author || null,
-          package: w.package || null,
-          description: w.description || null,
-          icon: w.icon || null,
-          version: w.version || null,
-          path: w.path || null,
-          source: "installed",
-          providers: w.providers || [],
-          workspace: w.workspace || null,
-          componentNames: w.componentNames || [],
-          packageId: w.packageId || w.name,
-          scopedId: w.name,
-        }));
+        .map((w) => {
+          const classification = classifyWidget(w, w.name);
+          return {
+            name: w.name,
+            displayName: w.displayName || w.name,
+            author: w.author || null,
+            package: w.package || null,
+            description: w.description || null,
+            icon: w.icon || null,
+            version: w.version || null,
+            path: w.path || null,
+            source: "installed",
+            kind: classification.kind,
+            draftId: classification.draftId,
+            providers: w.providers || [],
+            workspace: w.workspace || null,
+            componentNames: w.componentNames || [],
+            packageId: w.packageId || w.name,
+            scopedId: w.name,
+          };
+        });
 
       setWidgets([...builtinWidgets, ...installedFromCM, ...fallbackInstalled]);
     } catch (err) {
