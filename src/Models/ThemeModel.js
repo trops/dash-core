@@ -26,6 +26,41 @@ import {
 } from "@trops/dash-react";
 
 /**
+ * Last-resort family for ANY channel whose value can't be resolved
+ * (unknown name, missing palette entry, missing shade, …). Picked
+ * because it's universally safelist-covered, has every shade from
+ * 50..950, and is visually neutral — so a misconfigured theme
+ * renders "muted" rather than blank/transparent.
+ *
+ * Slack Generic etc. exposed this: when a channel value was missing
+ * or unrecognized, ThemeModel silently emitted `bg-undefined-700`
+ * (not in any safelist) → Tailwind dropped the class → the
+ * dropdown popover rendered transparent. Falling back here means
+ * no token can be "missing" by the time `getStylesForItem` reads it.
+ */
+const FALLBACK_FAMILY = "gray";
+
+/**
+ * Resolve a channel value to a safelist-covered Tailwind family
+ * name. Returns the original value when it's a hex (the caller
+ * handles those via CSS variables) or a recognized palette family;
+ * otherwise returns FALLBACK_FAMILY so the resulting class always
+ * renders.
+ */
+function resolveChannelFamily(channelValue) {
+  if (isHexColor(channelValue)) return channelValue;
+  if (
+    typeof channelValue === "string" &&
+    channelValue.length > 0 &&
+    TAILWIND_PALETTE &&
+    TAILWIND_PALETTE[channelValue]
+  ) {
+    return channelValue;
+  }
+  return FALLBACK_FAMILY;
+}
+
+/**
  * getNextLevel
  * Need to generate the levels for tailwind
  * @param {int} currentLevel
@@ -44,6 +79,11 @@ function invert(shade) {
  * shade. Routes to the arbitrary-value syntax (`bg-[var(--type-shade)]`)
  * when the channel's value is a hex.
  *
+ * Layer 1 fallback (audit follow-up to the Slack Generic bug): if
+ * `channelValue` isn't a hex AND isn't a recognized Tailwind palette
+ * family, fall back to FALLBACK_FAMILY so the emitted class is
+ * always safelist-covered and never resolves to `bg-undefined-700`.
+ *
  * @param {"bg"|"text"|"border"} prefix
  * @param {string} type             channel name (primary | secondary | …)
  * @param {number} shade            tailwind shade (100..950)
@@ -52,10 +92,11 @@ function invert(shade) {
  */
 function classFor(prefix, type, shade, channelValue, hover = false) {
   const h = hover ? "hover:" : "";
-  if (isHexColor(channelValue)) {
+  const resolved = resolveChannelFamily(channelValue);
+  if (isHexColor(resolved)) {
     return `${h}${prefix}-[var(--${type}-${shade})]`;
   }
-  return `${h}${prefix}-${channelValue}-${shade}`;
+  return `${h}${prefix}-${resolved}-${shade}`;
 }
 
 /**
@@ -68,8 +109,10 @@ function classFor(prefix, type, shade, channelValue, hover = false) {
  * produce a `var(--{type}-{shade})` reference that resolves against
  * the CSS custom properties ThemePreviewProvider writes to :root.
  *
- * Returns null for unknown named-color families or shades — caller
- * falls back to className-only reactivity for that token.
+ * Layer 1 fallback: when the channel value or shade can't be
+ * resolved, fall back to FALLBACK_FAMILY's shade so cssValue is
+ * never null. Pairs with classFor's same fallback to guarantee
+ * every (type, shade) tuple yields a renderable token.
  */
 function cssValueFor(type, shade, channelValue) {
   if (isHexColor(channelValue)) {
@@ -82,12 +125,18 @@ function cssValueFor(type, shade, channelValue) {
       const hex = shades[shade] || shades[String(shade)];
       if (hex) return hex;
     }
-    return null;
+    return fallbackCssValue(shade);
   }
   const family = TAILWIND_PALETTE && TAILWIND_PALETTE[channelValue];
-  if (!family) return null;
+  if (!family) return fallbackCssValue(shade);
   const hex = family[shade] || family[String(shade)];
-  return hex || null;
+  return hex || fallbackCssValue(shade);
+}
+
+function fallbackCssValue(shade) {
+  const fallback = TAILWIND_PALETTE && TAILWIND_PALETTE[FALLBACK_FAMILY];
+  if (!fallback) return null;
+  return fallback[shade] || fallback[String(shade)] || null;
 }
 
 function gradientFor(
