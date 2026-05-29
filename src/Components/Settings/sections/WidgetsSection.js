@@ -204,17 +204,29 @@ export const WidgetsSection = ({
   async function handleConfirmBulkDraftCleanup() {
     if (!bulkDraftsTarget || bulkDraftsTarget.length === 0) return;
     try {
-      // Run deletes sequentially so a transient FS error on one draft
-      // doesn't poison the rest. drafts:delete is idempotent so a
-      // re-run of cleanup after a partial failure is safe.
+      // Two classes of "draft" sit in the list:
+      //   1. Canonical drafts: row in widget-drafts.json + on-disk
+      //      package dir under @ai-built/*-draft-*. drafts:delete
+      //      removes both halves in one IPC.
+      //   2. Orphan drafts: package dir exists and matches the
+      //      `-draft-` naming, but no metadata row exists — leftovers
+      //      from sessions before the drafts API, or partial deletes.
+      //      classifyWidget() returns draftId=null for these, so the
+      //      drafts:delete path is unavailable. Fall back to the
+      //      regular widget uninstall path, which removes the dir
+      //      by packageId.
+      // Deletes run sequentially; both IPCs are idempotent.
       for (const draft of bulkDraftsTarget) {
-        if (!draft.draftId) continue;
         try {
-          await window.mainApi?.drafts?.delete(draft.draftId);
+          if (draft.draftId && window.mainApi?.drafts?.delete) {
+            await window.mainApi.drafts.delete(draft.draftId);
+          } else {
+            await uninstallWidget(draft.name);
+          }
         } catch (err) {
           console.error(
             "[WidgetsSection] Bulk cleanup: failed to delete draft",
-            draft.draftId,
+            draft,
             err,
           );
         }
