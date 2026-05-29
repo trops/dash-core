@@ -315,11 +315,21 @@ export const EnhancedWidgetDropdown = ({
   // Filter widgets based on search, author, and provider
   const getFilteredWidgets = () => {
     const filtered = widgets.filter((widget) => {
-      // Drafts are in-progress widgets — they appear in
-      // Settings → Widgets (as a Draft chip with Resume/Delete
-      // affordances) but never in the dashboard placement picker
-      // since they're not finished products.
-      if (widget.kind === "draft") return false;
+      // Drafts are in-progress widgets — they live under
+      // `@ai-built/<name>-draft-<shortId>/` on disk and shouldn't
+      // appear in the placement picker. EnhancedWidgetDropdown
+      // reads from ComponentManager directly, so we detect drafts
+      // via the `_sourcePackage` name pattern (mirrors the
+      // matching backstop in useInstalledWidgets#classifyWidget).
+      // useInstalledWidgets sets `widget.kind` for consumers that
+      // go through that hook; check it too for forward-compat.
+      const sourcePackage = widget._sourcePackage || "";
+      if (
+        widget.kind === "draft" ||
+        /-draft-[A-Za-z0-9]+$/.test(sourcePackage)
+      ) {
+        return false;
+      }
 
       // Search filter
       const searchLower = searchQuery.toLowerCase();

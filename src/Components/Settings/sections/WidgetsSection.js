@@ -447,24 +447,33 @@ export const WidgetsSection = ({
             className={isSelected ? "bg-white/10 opacity-100" : ""}
           >
             <span
-              className="flex flex-col"
+              className="flex flex-col min-w-0"
               data-testid={`widget-row-${widget.name}`}
             >
-              <span className="flex items-center gap-2">
-                {widget.displayName || widget.name}
-                {widget.source === "builtin" && <Tag3 text="Built-in" />}
+              <span className="flex items-center gap-2 min-w-0">
+                {/* Status chips render BEFORE the name so they
+                    stay visible when the name is long and would
+                    otherwise push them out of the panel. */}
                 {widget.kind === "draft" && (
                   <span
-                    className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-900/40 text-amber-200 border border-amber-700/30"
+                    className="flex-shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-900 text-amber-200 border border-amber-700"
                     data-testid={`widget-draft-chip-${widget.name}`}
                     title="In-progress widget — open to Resume or Delete from the action menu"
                   >
                     Draft
                   </span>
                 )}
+                {widget.source === "builtin" && (
+                  <span className="flex-shrink-0">
+                    <Tag3 text="Built-in" />
+                  </span>
+                )}
+                <span className="truncate min-w-0">
+                  {widget.displayName || widget.name}
+                </span>
                 {widget.kind !== "draft" && updates.has(widget.name) && (
                   <span
-                    className="text-[10px] text-blue-400 font-medium"
+                    className="flex-shrink-0 text-[10px] text-blue-400 font-medium"
                     data-testid={`widget-update-badge-${widget.name}`}
                   >
                     Update
