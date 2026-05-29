@@ -77,6 +77,12 @@ export const WidgetsSection = ({
   // confirm modal renders a stable list even if `widgets` re-renders
   // while open.
   const [bulkDraftsTarget, setBulkDraftsTarget] = useState(null);
+  // Flips true between the moment Confirm is clicked and the moment
+  // all deletes settle. Drives the in-modal spinner so the user
+  // doesn't stare at a frozen "Delete N Drafts" button while the
+  // sequential IPCs run, and guards the handler against re-entry if
+  // the user clicks Confirm a second time.
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   // Install progress modal state
   const [showProgressModal, setShowProgressModal] = useState(false);
@@ -202,7 +208,12 @@ export const WidgetsSection = ({
   );
 
   async function handleConfirmBulkDraftCleanup() {
+    // Re-entry guard: ConfirmationModal doesn't disable its confirm
+    // button while a slow handler runs, so a second click would
+    // spawn a parallel run and double-trigger refresh().
+    if (isBulkDeleting) return;
     if (!bulkDraftsTarget || bulkDraftsTarget.length === 0) return;
+    setIsBulkDeleting(true);
     try {
       // Two classes of "draft" sit in the list:
       //   1. Canonical drafts: row in widget-drafts.json + on-disk
@@ -215,28 +226,25 @@ export const WidgetsSection = ({
       //      drafts:delete path is unavailable. Fall back to the
       //      regular widget uninstall path, which removes the dir
       //      by packageId.
-      // Deletes run sequentially; both IPCs are idempotent.
-      for (const draft of bulkDraftsTarget) {
-        try {
+      // Deletes fan out in parallel via allSettled — both IPCs are
+      // idempotent and FS-bound, so concurrency is safe and ~Nx
+      // faster than the sequential await-loop the user was waiting
+      // on with no feedback.
+      await Promise.allSettled(
+        bulkDraftsTarget.map((draft) => {
           if (draft.draftId && window.mainApi?.drafts?.delete) {
-            await window.mainApi.drafts.delete(draft.draftId);
-          } else {
-            await uninstallWidget(draft.name);
+            return window.mainApi.drafts.delete(draft.draftId);
           }
-        } catch (err) {
-          console.error(
-            "[WidgetsSection] Bulk cleanup: failed to delete draft",
-            draft,
-            err,
-          );
-        }
-      }
+          return uninstallWidget(draft.name);
+        }),
+      );
       await refresh();
       const deletedNames = new Set(bulkDraftsTarget.map((d) => d.name));
       if (deletedNames.has(selectedWidgetName)) {
         setSelectedWidgetName(null);
       }
     } finally {
+      setIsBulkDeleting(false);
       setBulkDraftsTarget(null);
     }
   }
@@ -939,37 +947,65 @@ export const WidgetsSection = ({
       <ConfirmationModal
         isOpen={!!bulkDraftsTarget}
         setIsOpen={(open) => {
+          // While the IPCs are running, suppress the X / backdrop /
+          // ESC close. Otherwise React tears down the modal mid-
+          // operation, the user thinks it succeeded, and a partial
+          // delete leaves the list in a confusing state.
+          if (isBulkDeleting) return;
           if (!open) setBulkDraftsTarget(null);
         }}
         title="Clean Up Drafts"
         confirmLabel={
-          bulkDraftsTarget && bulkDraftsTarget.length > 0
-            ? `Delete ${bulkDraftsTarget.length} Draft${bulkDraftsTarget.length !== 1 ? "s" : ""}`
-            : "Delete"
+          isBulkDeleting
+            ? "Deleting…"
+            : bulkDraftsTarget && bulkDraftsTarget.length > 0
+              ? `Delete ${bulkDraftsTarget.length} Draft${bulkDraftsTarget.length !== 1 ? "s" : ""}`
+              : "Delete"
         }
         variant="danger"
         onConfirm={handleConfirmBulkDraftCleanup}
-        onCancel={() => setBulkDraftsTarget(null)}
+        onCancel={() => {
+          if (isBulkDeleting) return;
+          setBulkDraftsTarget(null);
+        }}
       >
         {bulkDraftsTarget && bulkDraftsTarget.length > 0 && (
           <div className={paragraphStyles.textColor || ""}>
-            <p className="text-sm leading-relaxed">
-              This will permanently delete the following in-progress widget
-              {bulkDraftsTarget.length !== 1 ? "s" : ""} and their files on
-              disk. This cannot be undone.
-            </p>
-            <div className="mt-2 mb-2 space-y-1 max-h-64 overflow-y-auto">
-              {bulkDraftsTarget.map((w) => (
-                <div
-                  key={w.name}
-                  className="text-xs opacity-60 flex items-center gap-1.5 pl-2"
-                  data-testid={`bulk-draft-row-${w.name}`}
-                >
-                  <FontAwesomeIcon icon="puzzle-piece" className="h-3 w-3" />
-                  {w.displayName || w.name}
+            {isBulkDeleting ? (
+              <div className="flex items-center gap-3 py-4">
+                <FontAwesomeIcon
+                  icon="spinner"
+                  className="text-blue-400 animate-spin"
+                />
+                <span className="text-sm">
+                  Deleting {bulkDraftsTarget.length} draft
+                  {bulkDraftsTarget.length !== 1 ? "s" : ""}…
+                </span>
+              </div>
+            ) : (
+              <>
+                <p className="text-sm leading-relaxed">
+                  This will permanently delete the following in-progress widget
+                  {bulkDraftsTarget.length !== 1 ? "s" : ""} and their files on
+                  disk. This cannot be undone.
+                </p>
+                <div className="mt-2 mb-2 space-y-1 max-h-64 overflow-y-auto">
+                  {bulkDraftsTarget.map((w) => (
+                    <div
+                      key={w.name}
+                      className="text-xs opacity-60 flex items-center gap-1.5 pl-2"
+                      data-testid={`bulk-draft-row-${w.name}`}
+                    >
+                      <FontAwesomeIcon
+                        icon="puzzle-piece"
+                        className="h-3 w-3"
+                      />
+                      {w.displayName || w.name}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            )}
           </div>
         )}
       </ConfirmationModal>
