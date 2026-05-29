@@ -72,6 +72,11 @@ export const WidgetsSection = ({
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteUsage, setDeleteUsage] = useState([]);
   const [installResult, setInstallResult] = useState(null);
+  // Bulk draft-cleanup confirmation. Set to the array of draft widgets
+  // (kind === "draft") at the moment the banner is clicked so the
+  // confirm modal renders a stable list even if `widgets` re-renders
+  // while open.
+  const [bulkDraftsTarget, setBulkDraftsTarget] = useState(null);
 
   // Install progress modal state
   const [showProgressModal, setShowProgressModal] = useState(false);
@@ -191,6 +196,39 @@ export const WidgetsSection = ({
     ? widgets.find((w) => w.name === selectedWidgetName)
     : null;
 
+  const draftWidgets = useMemo(
+    () => widgets.filter((w) => w.kind === "draft"),
+    [widgets],
+  );
+
+  async function handleConfirmBulkDraftCleanup() {
+    if (!bulkDraftsTarget || bulkDraftsTarget.length === 0) return;
+    try {
+      // Run deletes sequentially so a transient FS error on one draft
+      // doesn't poison the rest. drafts:delete is idempotent so a
+      // re-run of cleanup after a partial failure is safe.
+      for (const draft of bulkDraftsTarget) {
+        if (!draft.draftId) continue;
+        try {
+          await window.mainApi?.drafts?.delete(draft.draftId);
+        } catch (err) {
+          console.error(
+            "[WidgetsSection] Bulk cleanup: failed to delete draft",
+            draft.draftId,
+            err,
+          );
+        }
+      }
+      await refresh();
+      const deletedNames = new Set(bulkDraftsTarget.map((d) => d.name));
+      if (deletedNames.has(selectedWidgetName)) {
+        setSelectedWidgetName(null);
+      }
+    } finally {
+      setBulkDraftsTarget(null);
+    }
+  }
+
   // ── Uninstall with usage check ──────────────────────────────────────
 
   function handleDeleteRequest(widget) {
@@ -213,7 +251,18 @@ export const WidgetsSection = ({
   async function handleConfirmDelete() {
     if (!deleteTarget) return;
     try {
-      await uninstallWidget(deleteTarget.name);
+      // Drafts live in widget-drafts.json + a per-draft package dir.
+      // The registry uninstall path (uninstallWidget) only knows about
+      // installed packages, so calling it for a draft would orphan the
+      // metadata row even though the on-disk dir matches the
+      // `-draft-` naming pattern. Route drafts through the dedicated
+      // drafts:delete IPC, which cleans up both halves.
+      if (deleteTarget.kind === "draft" && deleteTarget.draftId) {
+        await window.mainApi?.drafts?.delete(deleteTarget.draftId);
+        await refresh();
+      } else {
+        await uninstallWidget(deleteTarget.name);
+      }
       // Clear selection if it was the target or any sibling
       const allNames = [
         deleteTarget.name,
@@ -566,6 +615,29 @@ export const WidgetsSection = ({
         </div>
       )}
 
+      {/* Bulk draft cleanup — sits below the updates banner so the
+          higher-priority "updates available" CTA wins the top slot.
+          Amber matches the per-row "Draft" chip palette. Uses full-
+          opacity classes (no `/30` modifier) because dash-electron's
+          prebuilt CSS only ships the literal class names present in
+          its own source — opacity variants silently no-op here. */}
+      {draftWidgets.length > 0 && (
+        <div className="flex-shrink-0 px-3 py-2 border-b border-amber-700 bg-amber-900">
+          <button
+            type="button"
+            onClick={() => setBulkDraftsTarget(draftWidgets)}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded bg-amber-700 hover:bg-amber-600 text-white"
+            data-testid="widgets-section-cleanup-drafts-trigger"
+          >
+            <FontAwesomeIcon icon="trash" className="text-xs" />
+            <span>
+              Clean up {draftWidgets.length} Draft
+              {draftWidgets.length !== 1 ? "s" : ""}
+            </span>
+          </button>
+        </div>
+      )}
+
       {/* Filter bar */}
       {!isLoading && !error && widgets.length > 0 && (
         <div className="flex flex-col gap-2 px-3 py-2 flex-shrink-0 border-b border-white/10">
@@ -849,6 +921,43 @@ export const WidgetsSection = ({
                 </div>
               </>
             )}
+          </div>
+        )}
+      </ConfirmationModal>
+      <ConfirmationModal
+        isOpen={!!bulkDraftsTarget}
+        setIsOpen={(open) => {
+          if (!open) setBulkDraftsTarget(null);
+        }}
+        title="Clean Up Drafts"
+        confirmLabel={
+          bulkDraftsTarget && bulkDraftsTarget.length > 0
+            ? `Delete ${bulkDraftsTarget.length} Draft${bulkDraftsTarget.length !== 1 ? "s" : ""}`
+            : "Delete"
+        }
+        variant="danger"
+        onConfirm={handleConfirmBulkDraftCleanup}
+        onCancel={() => setBulkDraftsTarget(null)}
+      >
+        {bulkDraftsTarget && bulkDraftsTarget.length > 0 && (
+          <div className={paragraphStyles.textColor || ""}>
+            <p className="text-sm leading-relaxed">
+              This will permanently delete the following in-progress widget
+              {bulkDraftsTarget.length !== 1 ? "s" : ""} and their files on
+              disk. This cannot be undone.
+            </p>
+            <div className="mt-2 mb-2 space-y-1 max-h-64 overflow-y-auto">
+              {bulkDraftsTarget.map((w) => (
+                <div
+                  key={w.name}
+                  className="text-xs opacity-60 flex items-center gap-1.5 pl-2"
+                  data-testid={`bulk-draft-row-${w.name}`}
+                >
+                  <FontAwesomeIcon icon="puzzle-piece" className="h-3 w-3" />
+                  {w.displayName || w.name}
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </ConfirmationModal>
