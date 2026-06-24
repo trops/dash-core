@@ -45,6 +45,10 @@ const MCP_RUN_AUTH = "mcp-run-auth";
 const MCP_RUN_AUTH_COMPLETE = "mcp-run-auth-complete";
 const MCP_RUN_AUTH_ERROR = "mcp-run-auth-error";
 
+const MCP_AUTHORIZE = "mcp-authorize";
+const MCP_AUTHORIZE_COMPLETE = "mcp-authorize-complete";
+const MCP_AUTHORIZE_ERROR = "mcp-authorize-error";
+
 module.exports = {
   MCP_START_SERVER,
   MCP_START_SERVER_COMPLETE,
@@ -76,4 +80,7 @@ module.exports = {
   MCP_RUN_AUTH,
   MCP_RUN_AUTH_COMPLETE,
   MCP_RUN_AUTH_ERROR,
+  MCP_AUTHORIZE,
+  MCP_AUTHORIZE_COMPLETE,
+  MCP_AUTHORIZE_ERROR,
 };

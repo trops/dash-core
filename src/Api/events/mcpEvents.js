@@ -29,3 +29,6 @@ export const MCP_GET_CATALOG_ERROR = "mcp:get-catalog:error";
 
 export const MCP_RUN_AUTH_COMPLETE = "mcp:run-auth:complete";
 export const MCP_RUN_AUTH_ERROR = "mcp:run-auth:error";
+
+export const MCP_AUTHORIZE_COMPLETE = "mcp:authorize:complete";
+export const MCP_AUTHORIZE_ERROR = "mcp:authorize:error";

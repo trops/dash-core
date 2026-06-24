@@ -398,6 +398,7 @@ export const useMcpProvider = (providerType, options = {}) => {
         },
         workspaceId,
         pathScope,
+        app?.appId,
       );
     });
 

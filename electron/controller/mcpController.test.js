@@ -140,3 +140,140 @@ describe("refreshGoogleOAuthToken", () => {
     assert.equal(result.access_token, "valid-token");
   });
 });
+
+// ---------------------------------------------------------------------------
+// connectStreamableHttpWithOAuth — connect → authorize → reconnect dance.
+// Extracted and re-evaluated (like refreshGoogleOAuthToken above) so we can
+// inject mock Client / transport classes without the real SDK or electron.
+// ---------------------------------------------------------------------------
+describe("connectStreamableHttpWithOAuth", () => {
+  class MockUnauthorizedError extends Error {}
+
+  const oauthFnStart = mcpControllerSource.indexOf(
+    "async function connectStreamableHttpWithOAuth(",
+  );
+  const oauthFnEnd = mcpControllerSource.indexOf(
+    "\n\nconst mcpController",
+    oauthFnStart,
+  );
+  const oauthFnSource = mcpControllerSource.substring(oauthFnStart, oauthFnEnd);
+
+  let finishAuthCalls;
+
+  class MockTransport {
+    constructor(url, opts) {
+      this.url = url;
+      this.opts = opts;
+    }
+    async finishAuth(code) {
+      finishAuthCalls.push(code);
+    }
+  }
+
+  // `behaviors[i]` controls the i-th constructed client's connect():
+  // "ok" resolves, "unauth" throws MockUnauthorizedError.
+  function makeClientClass(behaviors) {
+    let idx = 0;
+    class MockClient {
+      constructor() {
+        this.idx = idx++;
+      }
+      async connect(transport) {
+        this._transport = transport;
+        if (behaviors[this.idx] === "unauth") {
+          throw new MockUnauthorizedError("needs auth");
+        }
+      }
+    }
+    return MockClient;
+  }
+
+  function loadFn(MockClient) {
+    return new Function(
+      "Client",
+      "StreamableHTTPClientTransport",
+      "require",
+      "console",
+      `${oauthFnSource}\nreturn connectStreamableHttpWithOAuth;`,
+    )(
+      MockClient,
+      MockTransport,
+      (m) => {
+        if (m === "@modelcontextprotocol/sdk/client/auth.js") {
+          return { UnauthorizedError: MockUnauthorizedError };
+        }
+        return require(m);
+      },
+      console,
+    );
+  }
+
+  function makeProvider() {
+    return {
+      started: false,
+      stopped: false,
+      waited: false,
+      async _startLoopback() {
+        this.started = true;
+      },
+      _stopLoopback() {
+        this.stopped = true;
+      },
+      async _waitForCode() {
+        this.waited = true;
+        return "auth-code";
+      },
+    };
+  }
+
+  beforeEach(() => {
+    finishAuthCalls = [];
+  });
+
+  it("fast path: valid tokens connect without a browser flow", async () => {
+    const fn = loadFn(makeClientClass(["ok"]));
+    const provider = makeProvider();
+
+    const res = await fn(new URL("https://mcp.example.com"), provider);
+
+    assert.ok(res.client);
+    assert.ok(res.transport);
+    assert.equal(provider.started, true);
+    assert.equal(provider.stopped, true); // loopback always torn down
+    assert.equal(provider.waited, false); // no browser wait
+    assert.equal(finishAuthCalls.length, 0);
+  });
+
+  it("auth path: UnauthorizedError → finishAuth(code) → reconnect with fresh client", async () => {
+    // First client throws UnauthorizedError, second (post-auth) connects.
+    const fn = loadFn(makeClientClass(["unauth", "ok"]));
+    const provider = makeProvider();
+
+    const res = await fn(new URL("https://mcp.example.com"), provider);
+
+    assert.equal(provider.waited, true);
+    assert.deepEqual(finishAuthCalls, ["auth-code"]);
+    assert.equal(res.client.idx, 1); // the second, authorized client
+    assert.equal(provider.stopped, true);
+  });
+
+  it("non-auth errors propagate and still tear down the loopback", async () => {
+    const fnSource = loadFn(
+      (() => {
+        class Boom {
+          async connect() {
+            throw new Error("network down");
+          }
+        }
+        return Boom;
+      })(),
+    );
+    const provider = makeProvider();
+
+    await assert.rejects(
+      () => fnSource(new URL("https://mcp.example.com"), provider),
+      /network down/,
+    );
+    assert.equal(provider.stopped, true);
+  });
+});

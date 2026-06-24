@@ -18,6 +18,7 @@ const {
   MCP_INSTALL_KNOWN_EXTERNAL_CONFIRM,
   MCP_INSTALL_KNOWN_EXTERNAL_RESULT,
   MCP_RUN_AUTH,
+  MCP_AUTHORIZE,
 } = require("../events");
 
 const mcpApi = {
@@ -42,6 +43,7 @@ const mcpApi = {
     credentials,
     workspaceId = null,
     pathScope = null,
+    appId = null,
   ) =>
     ipcRenderer.invoke(MCP_START_SERVER, {
       serverName,
@@ -49,6 +51,7 @@ const mcpApi = {
       credentials,
       workspaceId,
       pathScope,
+      appId,
     }),
 
   /**
@@ -202,6 +205,27 @@ const mcpApi = {
    */
   runAuth: (mcpConfig, credentials, authCommand) =>
     ipcRenderer.invoke(MCP_RUN_AUTH, { mcpConfig, credentials, authCommand }),
+
+  /**
+   * authorize
+   * Run the interactive OAuth 2.0 authorization flow for a custom
+   * streamable_http MCP server (opens the system browser). Tokens are
+   * persisted encrypted in the main process; a later startServer reuses
+   * them with no browser.
+   *
+   * @param {string} serverName the provider/server name (token storage key)
+   * @param {object} mcpConfig { transport: "streamable_http", auth: "oauth", url, oauth }
+   * @param {object} credentials decrypted credentials (URL interpolation)
+   * @param {string} appId application id (token storage namespace)
+   * @returns {Promise<{ success, serverName, tools } | { error, message }>}
+   */
+  authorize: (serverName, mcpConfig, credentials, appId = null) =>
+    ipcRenderer.invoke(MCP_AUTHORIZE, {
+      serverName,
+      mcpConfig,
+      credentials,
+      appId,
+    }),
 };
 
 module.exports = mcpApi;

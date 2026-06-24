@@ -583,6 +583,7 @@ class ElectronDashboardApi implements IDashboardApi {
     onError,
     workspaceId = null,
     pathScope = null,
+    appId = null,
   ): Boolean {
     if (this.api !== null) {
       try {
@@ -593,6 +594,7 @@ class ElectronDashboardApi implements IDashboardApi {
             credentials,
             workspaceId,
             pathScope,
+            appId ?? this.appId,
           )
           .then((result) => {
             onSuccess(this.events.MCP_START_SERVER_COMPLETE, result);
@@ -852,6 +854,35 @@ class ElectronDashboardApi implements IDashboardApi {
       }
     } else {
       onError(this.events.MCP_RUN_AUTH_ERROR, new Error("No Api found"));
+      return false;
+    }
+  }
+
+  mcpAuthorize(
+    serverName,
+    mcpConfig,
+    credentials,
+    onSuccess,
+    onError,
+    appId = null,
+  ): Boolean {
+    if (this.api !== null) {
+      try {
+        this.api.mcp
+          .authorize(serverName, mcpConfig, credentials, appId ?? this.appId)
+          .then((result) => {
+            onSuccess(this.events.MCP_AUTHORIZE_COMPLETE, result);
+          })
+          .catch((error) => {
+            onError(this.events.MCP_AUTHORIZE_ERROR, error);
+          });
+        return true;
+      } catch (e) {
+        onError(this.events.MCP_AUTHORIZE_ERROR, e);
+        return false;
+      }
+    } else {
+      onError(this.events.MCP_AUTHORIZE_ERROR, new Error("No Api found"));
       return false;
     }
   }

@@ -103,6 +103,14 @@ const providerController = {
         providerEntry.isDefaultForType = true;
       }
 
+      // Preserve any OAuth state (tokens / DCR client info / PKCE verifier)
+      // written out-of-band by saveOAuthState. A fresh providerEntry would
+      // otherwise drop it, wiping tokens whenever the user edits/re-saves an
+      // OAuth MCP provider.
+      if (prev.oauth) {
+        providerEntry.oauth = prev.oauth;
+      }
+
       // Single-winner invariant: when flipping this provider's flag to
       // true, clear it on every other provider with the same type. Run
       // this BEFORE we set `providers[providerName] = providerEntry` so
@@ -378,6 +386,86 @@ const providerController = {
         error: true,
         message: error.message,
       };
+    }
+  },
+
+  /**
+   * saveOAuthState
+   * Persist an MCP OAuth session blob (tokens, DCR client info, PKCE
+   * verifier) encrypted alongside the provider entry. Used by the SDK
+   * OAuthClientProvider (mcpOAuthProvider.js). Creates a minimal MCP
+   * provider entry if one doesn't exist yet, so "Authorize" can run
+   * before the provider is formally saved (the later saveProvider
+   * preserves this blob).
+   *
+   * @param {BrowserWindow} win the main window (unused; signature parity)
+   * @param {string} appId the application id
+   * @param {string} providerName the provider/server name
+   * @param {object} oauthState { tokens?, clientInformation?, codeVerifier? }
+   */
+  saveOAuthState: (win, appId, providerName, oauthState) => {
+    try {
+      const filename = path.join(
+        app.getPath("userData"),
+        appName,
+        appId,
+        configFilename,
+      );
+      ensureDirectoryExistence(filename);
+
+      const providers = getFileContents(filename, {});
+      const encrypted = safeStorage
+        .encryptString(JSON.stringify(oauthState || {}))
+        .toString("base64");
+
+      const prev = providers[providerName] || {};
+      providers[providerName] = {
+        ...prev,
+        providerClass: prev.providerClass || "mcp",
+        oauth: encrypted,
+        dateCreated: prev.dateCreated || new Date().toISOString(),
+        dateUpdated: new Date().toISOString(),
+      };
+
+      writeFileSync(filename, JSON.stringify(providers, null, 2), {
+        mode: 0o600,
+      });
+
+      return { success: true };
+    } catch (error) {
+      console.error("[providerController] Error saving OAuth state:", error);
+      return { error: true, message: error.message };
+    }
+  },
+
+  /**
+   * getOAuthState
+   * Read and decrypt the OAuth session blob for a provider, or `{}` if
+   * none exists. Main-process only — never surfaced to the renderer.
+   *
+   * @param {BrowserWindow} win the main window (unused; signature parity)
+   * @param {string} appId the application id
+   * @param {string} providerName the provider/server name
+   * @returns {{ oauth?: object }}
+   */
+  getOAuthState: (win, appId, providerName) => {
+    try {
+      const filename = path.join(
+        app.getPath("userData"),
+        appName,
+        appId,
+        configFilename,
+      );
+      const providers = getFileContents(filename, {});
+      const entry = providers[providerName];
+      if (!entry || !entry.oauth) return {};
+
+      const buffer = Buffer.from(entry.oauth, "base64");
+      const decrypted = safeStorage.decryptString(buffer);
+      return { oauth: JSON.parse(decrypted) };
+    } catch (error) {
+      console.error("[providerController] Error reading OAuth state:", error);
+      return {};
     }
   },
 };

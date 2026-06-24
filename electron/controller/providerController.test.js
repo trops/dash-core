@@ -391,4 +391,74 @@ describe("providerController", () => {
       assert.equal(result.provider.wsConfig, undefined);
     });
   });
+
+  // ===================================================================
+  // saveOAuthState / getOAuthState — MCP OAuth token storage
+  // ===================================================================
+  describe("OAuth state", () => {
+    it("round-trips an encrypted OAuth blob", () => {
+      const oauthState = {
+        tokens: { access_token: "at", refresh_token: "rt" },
+        clientInformation: { client_id: "dcr-id" },
+        codeVerifier: "verifier-123",
+      };
+
+      const saveRes = controller.saveOAuthState(
+        null,
+        "test-app",
+        "Granola",
+        oauthState,
+      );
+      assert.equal(saveRes.success, true);
+
+      const got = controller.getOAuthState(null, "test-app", "Granola");
+      assert.deepEqual(got.oauth, oauthState);
+    });
+
+    it("returns {} when no OAuth state exists", () => {
+      const got = controller.getOAuthState(null, "test-app", "Nope");
+      assert.deepEqual(got, {});
+    });
+
+    it("does not leak the encrypted oauth blob through getProvider", () => {
+      // Authorize (writes oauth), then save the provider so it's readable.
+      controller.saveOAuthState(null, "test-app", "Granola", {
+        tokens: { access_token: "at" },
+      });
+      controller.saveProvider(
+        null,
+        "test-app",
+        "Granola",
+        "custom",
+        { someCred: "v" },
+        "mcp",
+        { transport: "streamable_http", url: "https://x", auth: "oauth" },
+      );
+
+      const result = controller.getProvider(null, "test-app", "Granola");
+      assert.equal(result.provider.providerClass, "mcp");
+      // The encrypted oauth blob must never reach the renderer payload.
+      assert.equal(result.provider.oauth, undefined);
+    });
+
+    it("preserves the OAuth blob across a provider re-save", () => {
+      // Authorize first (writes oauth), then save the provider config.
+      controller.saveOAuthState(null, "test-app", "Granola", {
+        tokens: { access_token: "keep-me" },
+      });
+      controller.saveProvider(
+        null,
+        "test-app",
+        "Granola",
+        "custom",
+        { someCred: "v" },
+        "mcp",
+        { transport: "streamable_http", url: "https://x", auth: "oauth" },
+      );
+
+      // Tokens must survive the re-save.
+      const got = controller.getOAuthState(null, "test-app", "Granola");
+      assert.deepEqual(got.oauth, { tokens: { access_token: "keep-me" } });
+    });
+  });
 });

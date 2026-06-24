@@ -92,7 +92,7 @@ npx jest --watchAll=false
 
 # 6. Run MCP tests
 step "Running MCP tests"
-node --test electron/controller/mcpController.test.js electron/mcp/mcpServerCatalog.test.js electron/mcp/installExternalMcpTool.test.js
+node --test electron/controller/mcpController.test.js electron/mcp/mcpServerCatalog.test.js electron/mcp/installExternalMcpTool.test.js electron/mcp/mcpOAuthProvider.test.js electron/controller/providerController.test.js
 
 # 6b. Run controller auth tests
 step "Running controller auth tests"
