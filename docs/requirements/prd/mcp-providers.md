@@ -4,11 +4,11 @@
 
 | Field              | Value                                                      |
 | ------------------ | ---------------------------------------------------------- |
-| **Status**         | Phase 1-3: Complete, Phase 4: In Progress, Phase 5: Future |
-| **Version**        | 1.2.0                                                      |
+| **Status**         | Phase 1-3: Complete, Phase 4: In Progress, Phase 5: Future, Phase 6 (OAuth): Implemented |
+| **Version**        | 1.3.0                                                      |
 | **Author**         | Product Team                                               |
 | **Created**        | 2026-02-17                                                 |
-| **Last Updated**   | 2026-02-19                                                 |
+| **Last Updated**   | 2026-06-24                                                 |
 | **Target Release** | Phase 1-2: Q2 2026, Phase 3-4: Q3 2026                     |
 | **Priority**       | P1 - High                                                  |
 | **Component**      | MCP Provider System                                        |
@@ -395,6 +395,73 @@ Works alongside existing `useWidgetProviders()` -- a widget can use both credent
 
 ---
 
+### Phase 6: Interactive OAuth 2.0 for Custom MCP Servers — IMPLEMENTED (2026-06-24)
+
+**Goal:** Let a user add a custom remote (`streamable_http`) MCP server that
+authenticates with standard OAuth 2.0 (e.g. Granola, Linear), click
+"Authorize", complete a system-browser consent flow, and have the connection
+work with automatic token refresh. Resolves the long-standing open question
+("OAuth flow support for MCP servers"). Distinct from the bundled Google
+servers, which use a catalog-only subprocess auth model (`runAuth` +
+`authCommand`) not available to custom servers.
+
+**Approach:** Wire the MCP SDK's native `OAuthClientProvider`
+(`@modelcontextprotocol/sdk` ≥ 1.26) into the `streamable_http` transport.
+The SDK handles PKCE, Dynamic Client Registration (DCR), metadata discovery,
+and token refresh; Dash supplies the browser + loopback-redirect + encrypted
+token storage.
+
+**Config shape** (on the provider's `mcpConfig`):
+
+```json
+{
+  "transport": "streamable_http",
+  "url": "https://mcp.example.com",
+  "auth": "oauth",
+  "oauth": { "scopes": "read write", "clientId": "optional", "clientSecret": "optional" }
+}
+```
+
+`clientId`/`clientSecret` are only needed for servers without DCR.
+
+**Files:**
+
+-   New `electron/mcp/mcpOAuthProvider.js` — `OAuthClientProvider`
+    implementation: loopback HTTP server on `127.0.0.1:<ephemeral>/callback`,
+    `shell.openExternal` browser launch, PKCE/DCR/token persistence.
+-   Modify `electron/controller/mcpController.js` — `connectStreamableHttpWithOAuth`
+    (connect → `UnauthorizedError` → `finishAuth` → reconnect with a fresh
+    transport), OAuth branch in `startServer`, new `authorizeServer` method,
+    `appId` threaded into `startServer`.
+-   Modify `electron/controller/providerController.js` — `saveOAuthState` /
+    `getOAuthState` (encrypted, in the same `providers.json`, never returned to
+    the renderer); `saveProvider` preserves the `oauth` blob across edits.
+-   Modify `electron/events/mcpEvents.js`, `electron/api/mcpApi.js` —
+    `MCP_AUTHORIZE` channel + `authorize` bridge.
+-   Modify `src/Api/ElectronDashboardApi.ts` (+ `IDashboardApi.ts`,
+    `WebDashboardApi.ts`) — `mcpAuthorize`, `appId` on `mcpStartServer`.
+-   Modify `src/Components/Settings/details/CustomMcpServerForm.js` — auth-type
+    selector (None / API key / OAuth 2.0), scopes + advanced client fields,
+    Authorize wizard step.
+-   Modify `src/hooks/useMcpProvider.js` — pass `appId` so the widget start
+    path reuses stored tokens.
+-   dash-electron: `public/electron.js` `MCP_AUTHORIZE` handler + `appId`;
+    `McpReauthBanner` generalized to re-authorize OAuth servers.
+
+**Notes & decisions:**
+
+-   The authorized reconnect uses a **fresh transport** — the first transport
+    already called `start()` and cannot be restarted; `finishAuth` runs on the
+    original transport to reuse its discovery state.
+-   Tokens auto-refresh via the SDK (`saveTokens`); a hard refresh failure
+    surfaces `UnauthorizedError`, caught by the generalized re-auth banner.
+-   Loopback binds to `127.0.0.1` only; 120s authorization timeout.
+-   **Verification:** 12 new unit tests (`mcpOAuthProvider.test.js`) + OAuth
+    state round-trip tests in `providerController.test.js` +
+    `connectStreamableHttpWithOAuth` dance tests in `mcpController.test.js`.
+
+---
+
 ## Implementation Notes & Lessons Learned
 
 Notes captured during Phase 1-3 implementation and end-to-end testing with the Slack MCP server.
@@ -549,7 +616,10 @@ This widget declares no `allowedTools`, giving it access to all tools on the ser
 | Question                                                 | Impact                                               | Decision Needed By |
 | -------------------------------------------------------- | ---------------------------------------------------- | ------------------ |
 | Should the catalog be updatable without app updates?     | Low - could fetch catalog from remote periodically   | Phase 4 planning   |
-| OAuth flow support for MCP servers (e.g., Google Drive)? | High - some servers need OAuth, not just static keys | Phase 2 planning   |
+
+**Resolved:** _OAuth flow support for MCP servers_ — see Phase 6 below.
+Resolved 2026-06-24: custom remote (streamable_http) servers now support
+interactive OAuth 2.0 via the SDK's native `OAuthClientProvider`.
 
 ---
 
@@ -570,6 +640,7 @@ This widget declares no `allowedTools`, giving it access to all tools on the ser
 | 1.0.0   | 2026-02-17 | Product Team | Initial PRD creation (Phases 1-5)                                                                                                                                                                                         |
 | 1.1.0   | 2026-02-19 | Product Team | Phase 1-3 complete; added Implementation Notes & Lessons Learned section; resolved open questions (server start strategy, tool scoping layers); corrected Slack package name; updated architecture diagram re: AppContext |
 | 1.2.0   | 2026-02-19 | Product Team | Added multi-widget server deduplication & reference counting (mcpController pendingStarts + useMcpProvider module-level state); fixes restart loop when multiple widgets share an MCP server                              |
+| 1.3.0   | 2026-06-24 | Product Team | Phase 6: interactive OAuth 2.0 for custom streamable_http MCP servers via the SDK-native OAuthClientProvider (browser + loopback + DCR + encrypted token storage + auto-refresh). Resolves the OAuth open question.       |
 
 ---
 

@@ -242,6 +242,9 @@ interface IDashboardApi {
     credentials: any,
     onSuccess: Function,
     onError: Function,
+    workspaceId?: string | null,
+    pathScope?: any,
+    appId?: string | null,
   ) => Boolean;
 
   mcpStopServer: (
@@ -297,6 +300,15 @@ interface IDashboardApi {
     authCommand: any,
     onSuccess: Function,
     onError: Function,
+  ) => Boolean;
+
+  mcpAuthorize: (
+    serverName: string,
+    mcpConfig: any,
+    credentials: any,
+    onSuccess: Function,
+    onError: Function,
+    appId?: string | null,
   ) => Boolean;
 }
 

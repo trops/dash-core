@@ -120,6 +120,9 @@ class WebDashboardApi implements IDashboardApi {
     credentials,
     onSuccess,
     onError,
+    workspaceId = null,
+    pathScope = null,
+    appId = null,
   ): Boolean {
     onError?.(
       "mcp:start-server:error",
@@ -185,6 +188,20 @@ class WebDashboardApi implements IDashboardApi {
   }
   mcpRunAuth(mcpConfig, credentials, authCommand, onSuccess, onError): Boolean {
     onError?.("mcp:run-auth:error", new Error("MCP not available in web mode"));
+    return false;
+  }
+  mcpAuthorize(
+    serverName,
+    mcpConfig,
+    credentials,
+    onSuccess,
+    onError,
+    appId = null,
+  ): Boolean {
+    onError?.(
+      "mcp:authorize:error",
+      new Error("MCP not available in web mode"),
+    );
     return false;
   }
 }

@@ -424,6 +424,57 @@ async function refreshGoogleOAuthToken(tokenRefresh) {
   console.log("[mcpController] Google OAuth token refreshed successfully");
 }
 
+/**
+ * Connect a streamable_http MCP server that authenticates via OAuth 2.0,
+ * using the SDK's native OAuthClientProvider.
+ *
+ * Drives the connect → UnauthorizedError → finishAuth → reconnect dance:
+ *   - With valid (or refreshable) tokens, the first connect succeeds and no
+ *     browser opens (fast path).
+ *   - Otherwise the SDK opens the system browser via
+ *     `redirectToAuthorization`, throws UnauthorizedError, and we wait for
+ *     the loopback callback, exchange the code, then reconnect.
+ *
+ * The authorized reconnect uses a FRESH transport because the first
+ * transport already called `start()` and cannot be restarted. `finishAuth`
+ * runs on the original transport so it reuses that attempt's discovery state.
+ *
+ * @returns {Promise<{ client, transport }>} a connected client + transport
+ */
+async function connectStreamableHttpWithOAuth(urlObj, oauthProvider) {
+  const {
+    UnauthorizedError,
+  } = require("@modelcontextprotocol/sdk/client/auth.js");
+
+  await oauthProvider._startLoopback();
+  try {
+    const client = new Client({ name: "dash", version: "1.0.0" });
+    const transport = new StreamableHTTPClientTransport(urlObj, {
+      authProvider: oauthProvider,
+    });
+    try {
+      await client.connect(transport);
+      return { client, transport };
+    } catch (err) {
+      if (!(err instanceof UnauthorizedError)) throw err;
+      console.log(
+        "[mcpController] OAuth required — waiting for browser authorization...",
+      );
+      const code = await oauthProvider._waitForCode();
+      await transport.finishAuth(code);
+
+      const client2 = new Client({ name: "dash", version: "1.0.0" });
+      const transport2 = new StreamableHTTPClientTransport(urlObj, {
+        authProvider: oauthProvider,
+      });
+      await client2.connect(transport2);
+      return { client: client2, transport: transport2 };
+    }
+  } finally {
+    oauthProvider._stopLoopback();
+  }
+}
+
 const mcpController = {
   /**
    * startServer
@@ -456,6 +507,7 @@ const mcpController = {
     credentials,
     workspaceId,
     pathScope = null,
+    appId = null,
   ) => {
     const key = serverKey(workspaceId, serverName);
     // Slice 3b: when the gate is enforced, override credentials with
@@ -530,6 +582,11 @@ const mcpController = {
 
         // Create transport based on type
         let transport;
+        // OAuth state, populated below for OAuth streamable_http servers.
+        // When set, the connect step runs the interactive OAuth dance
+        // (which builds its own transport) instead of the generic connect.
+        let oauthProvider = null;
+        let oauthUrl = null;
         if (mcpConfig.transport === "streamable_http") {
           // Remote HTTP transport - connect to a hosted MCP server
           const url = interpolate(mcpConfig.url, credentials);
@@ -537,21 +594,37 @@ const mcpController = {
             throw new Error("Streamable HTTP transport requires a URL");
           }
 
-          // Build request headers from headerTemplate
-          const headers = {};
-          if (mcpConfig.headerTemplate && credentials) {
-            Object.entries(mcpConfig.headerTemplate).forEach(
-              ([headerName, template]) => {
-                headers[headerName] = interpolate(template, credentials);
-              },
-            );
-          }
+          if (mcpConfig.auth === "oauth" || mcpConfig.oauth) {
+            // OAuth 2.0 server (e.g. Granola, Linear): authenticate via the
+            // SDK's native OAuthClientProvider + browser flow + token
+            // refresh. Transport is created during the connect dance below.
+            const {
+              createMcpOAuthProvider,
+            } = require("../mcp/mcpOAuthProvider");
+            oauthProvider = createMcpOAuthProvider({
+              win,
+              appId,
+              serverName,
+              mcpConfig,
+            });
+            oauthUrl = new URL(url);
+          } else {
+            // Build request headers from headerTemplate
+            const headers = {};
+            if (mcpConfig.headerTemplate && credentials) {
+              Object.entries(mcpConfig.headerTemplate).forEach(
+                ([headerName, template]) => {
+                  headers[headerName] = interpolate(template, credentials);
+                },
+              );
+            }
 
-          transport = new StreamableHTTPClientTransport(new URL(url), {
-            requestInit: {
-              headers,
-            },
-          });
+            transport = new StreamableHTTPClientTransport(new URL(url), {
+              requestInit: {
+                headers,
+              },
+            });
+          }
         } else {
           // stdio transport (default) - spawn a local child process
           const env = cleanEnvForChildProcess();
@@ -636,14 +709,26 @@ const mcpController = {
           serverName,
         });
 
-        // Create MCP client
-        const client = new Client({
-          name: "dash",
-          version: "1.0.0",
-        });
-
-        // Connect to the server
-        await client.connect(transport);
+        // Create / connect MCP client. OAuth servers run the interactive
+        // connect → authorize → reconnect dance, which yields its own
+        // client + transport (a fresh transport is required for the
+        // authorized reconnect).
+        let client;
+        if (oauthProvider) {
+          const oauthResult = await connectStreamableHttpWithOAuth(
+            oauthUrl,
+            oauthProvider,
+          );
+          client = oauthResult.client;
+          transport = oauthResult.transport;
+        } else {
+          client = new Client({
+            name: "dash",
+            version: "1.0.0",
+          });
+          // Connect to the server
+          await client.connect(transport);
+        }
 
         // List available tools
         let tools = [];
@@ -727,6 +812,83 @@ const mcpController = {
 
     pendingStarts.set(key, startPromise);
     return startPromise;
+  },
+
+  /**
+   * authorizeServer
+   * Run the interactive OAuth 2.0 authorization flow on demand for a
+   * custom streamable_http MCP server (the Settings "Authorize" button
+   * and the re-auth banner). Opens the system browser, completes the
+   * flow, and persists tokens encrypted. A subsequent startServer hits
+   * the valid-token fast path with no browser.
+   *
+   * @param {BrowserWindow} win the main window
+   * @param {string} serverName the provider/server name
+   * @param {object} mcpConfig must be streamable_http with auth: "oauth"
+   * @param {object} credentials decrypted credentials (for URL interpolation)
+   * @param {string} appId application id (token storage namespace)
+   * @returns {Promise<{ success, serverName, tools } | { error, message }>}
+   */
+  authorizeServer: async (win, serverName, mcpConfig, credentials, appId) => {
+    try {
+      if (
+        !mcpConfig ||
+        mcpConfig.transport !== "streamable_http" ||
+        !(mcpConfig.auth === "oauth" || mcpConfig.oauth)
+      ) {
+        return {
+          error: true,
+          message: "Server is not configured for OAuth authorization",
+        };
+      }
+
+      const url = interpolate(mcpConfig.url, credentials);
+      if (!url) {
+        return {
+          error: true,
+          message: "Streamable HTTP transport requires a URL",
+        };
+      }
+
+      const { createMcpOAuthProvider } = require("../mcp/mcpOAuthProvider");
+      const oauthProvider = createMcpOAuthProvider({
+        win,
+        appId,
+        serverName,
+        mcpConfig,
+      });
+
+      const { client } = await connectStreamableHttpWithOAuth(
+        new URL(url),
+        oauthProvider,
+      );
+
+      // Verify the connection by listing tools, then close — startServer
+      // will reconnect later using the freshly stored tokens.
+      let tools = [];
+      try {
+        const toolsResult = await client.listTools();
+        tools = toolsResult.tools || [];
+      } catch (_e) {
+        // Tools optional for the auth check
+      }
+      try {
+        await client.close();
+      } catch (_e) {
+        /* ignore close errors */
+      }
+
+      console.log(
+        `[mcpController] OAuth authorization succeeded for ${serverName} (${tools.length} tools)`,
+      );
+      return { success: true, serverName, tools };
+    } catch (error) {
+      console.error(
+        `[mcpController] OAuth authorization failed for ${serverName}:`,
+        error,
+      );
+      return { error: true, message: error.message };
+    }
   },
 
   /**

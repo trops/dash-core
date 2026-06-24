@@ -6,6 +6,7 @@ import {
   Icon2,
   InputText,
   FormLabel,
+  RadioGroup,
   Tag,
   SubHeading3,
   CodeEditorInline,
@@ -127,10 +128,23 @@ const nextRowId = () => `row_${++rowIdCounter}`;
  */
 function buildMcpConfig(
   transport,
-  { command, args, envMappingRows, url, headerRows },
+  {
+    command,
+    args,
+    envMappingRows,
+    url,
+    headerRows,
+    authType = "apiKey",
+    oauthScopes = "",
+    oauthClientId = "",
+    oauthClientSecret = "",
+  },
   baseConfig = {},
 ) {
   // Everything on baseConfig that the form doesn't own gets preserved.
+  // `auth`/`oauth` are owned by the form's auth-type selector, so they're
+  // excluded here and re-emitted below based on the current selection
+  // (this is how toggling away from OAuth clears them).
   const {
     transport: _baseTransport,
     command: _baseCommand,
@@ -139,6 +153,8 @@ function buildMcpConfig(
     url: _baseUrl,
     headerTemplate: _baseHeaderTemplate,
     headers: _baseHeaders,
+    auth: _baseAuth,
+    oauth: _baseOauth,
     ...passThrough
   } = baseConfig;
 
@@ -161,6 +177,25 @@ function buildMcpConfig(
   }
 
   // streamable_http
+  const config = {
+    ...passThrough,
+    transport: "streamable_http",
+    url: url.trim(),
+  };
+
+  if (authType === "oauth") {
+    // Interactive OAuth 2.0 (SDK-native). Scopes optional; clientId/secret
+    // only for servers without Dynamic Client Registration.
+    config.auth = "oauth";
+    const oauth = {};
+    if (oauthScopes.trim()) oauth.scopes = oauthScopes.trim();
+    if (oauthClientId.trim()) oauth.clientId = oauthClientId.trim();
+    if (oauthClientSecret.trim()) oauth.clientSecret = oauthClientSecret.trim();
+    config.oauth = oauth;
+    return config;
+  }
+
+  // apiKey (header template) — also the path for "none" (no headers added)
   const headerTemplate = {};
   headerRows.forEach((row) => {
     const name = row.headerName.trim();
@@ -169,12 +204,7 @@ function buildMcpConfig(
       headerTemplate[name] = value;
     }
   });
-  const config = {
-    ...passThrough,
-    transport: "streamable_http",
-    url: url.trim(),
-  };
-  if (Object.keys(headerTemplate).length > 0) {
+  if (authType === "apiKey" && Object.keys(headerTemplate).length > 0) {
     config.headerTemplate = headerTemplate;
   }
   return config;
@@ -242,6 +272,27 @@ export const CustomMcpServerForm = ({
   const [url, setUrl] = useState(initialUrl);
   const [headerRows, setHeaderRows] = useState(initialHeaderRows);
 
+  // HTTP auth type: "none" | "apiKey" | "oauth"
+  const [authType, setAuthType] = useState(() => {
+    const cfg = initialMcpConfig || {};
+    if (cfg.auth === "oauth" || cfg.oauth) return "oauth";
+    return "apiKey";
+  });
+  const [oauthScopes, setOauthScopes] = useState(
+    initialMcpConfig?.oauth?.scopes || "",
+  );
+  const [oauthClientId, setOauthClientId] = useState(
+    initialMcpConfig?.oauth?.clientId || "",
+  );
+  const [oauthClientSecret, setOauthClientSecret] = useState(
+    initialMcpConfig?.oauth?.clientSecret || "",
+  );
+  const [showOauthAdvanced, setShowOauthAdvanced] = useState(
+    !!(
+      initialMcpConfig?.oauth?.clientId || initialMcpConfig?.oauth?.clientSecret
+    ),
+  );
+
   // Tool selection state
   const [selectedTools, setSelectedTools] = useState(initialAllowedTools);
 
@@ -267,8 +318,11 @@ export const CustomMcpServerForm = ({
     }
   }, [transport, isEditMode]);
 
-  // Dynamic wizard steps based on whether auth is needed
-  const hasAuth = !!initialAuthCommand;
+  // Dynamic wizard steps based on whether auth is needed. Either a
+  // catalog-provided subprocess authCommand (legacy) or an OAuth 2.0
+  // custom server adds an "Authorize" step before Test & Tools.
+  const isOAuth = transport === "streamable_http" && authType === "oauth";
+  const hasAuth = !!initialAuthCommand || isOAuth;
   const wizardSteps = hasAuth
     ? ["configure", "authorize", "testTools"]
     : ["configure", "testTools"];
@@ -303,6 +357,10 @@ export const CustomMcpServerForm = ({
           envMappingRows,
           url,
           headerRows,
+          authType,
+          oauthScopes,
+          oauthClientId,
+          oauthClientSecret,
         },
         initialMcpConfig || {},
       ),
@@ -313,6 +371,10 @@ export const CustomMcpServerForm = ({
       envMappingRows,
       url,
       headerRows,
+      authType,
+      oauthScopes,
+      oauthClientId,
+      oauthClientSecret,
       initialMcpConfig,
     ],
   );
@@ -513,30 +575,48 @@ export const CustomMcpServerForm = ({
 
   // --- authorize (OAuth browser flow) ---
   const handleAuthorize = () => {
-    if (!dashApi || !initialAuthCommand) return;
+    if (!dashApi) return;
 
     setIsAuthorizing(true);
     setAuthResult(null);
 
+    const onComplete = (event, result) => {
+      if (result.error) {
+        setAuthResult({ success: false, message: result.message });
+      } else {
+        setAuthResult({ success: true, message: "Authorized!" });
+      }
+      setIsAuthorizing(false);
+    };
+    const onFail = (event, err) => {
+      setAuthResult({
+        success: false,
+        message: err?.message || "Authorization failed",
+      });
+      setIsAuthorizing(false);
+    };
+
+    if (isOAuth) {
+      // SDK-native OAuth 2.0: opens the system browser, persists tokens.
+      dashApi.mcpAuthorize(
+        providerName.trim() || "__test__custom",
+        mcpConfig,
+        credentialData,
+        onComplete,
+        onFail,
+        appContext?.appId,
+      );
+      return;
+    }
+
+    if (!initialAuthCommand) return;
+    // Legacy catalog subprocess auth (e.g. bundled Google servers).
     dashApi.mcpRunAuth(
       mcpConfig,
       credentialData,
       initialAuthCommand,
-      (event, result) => {
-        if (result.error) {
-          setAuthResult({ success: false, message: result.message });
-        } else {
-          setAuthResult({ success: true, message: "Authorized!" });
-        }
-        setIsAuthorizing(false);
-      },
-      (event, err) => {
-        setAuthResult({
-          success: false,
-          message: err?.message || "Authorization failed",
-        });
-        setIsAuthorizing(false);
-      },
+      onComplete,
+      onFail,
     );
   };
 
@@ -894,62 +974,153 @@ export const CustomMcpServerForm = ({
                         )}
                       </div>
 
-                      {/* Headers */}
-                      <div className="space-y-3">
-                        <div>
-                          <FormLabel label="Request Headers" />
-                          <p className="text-sm opacity-50 mt-1">
-                            Use{" "}
-                            <code className="text-xs bg-white/10 px-1 py-0.5 rounded">
-                              {"{{fieldName}}"}
-                            </code>{" "}
-                            in values for credential placeholders
-                          </p>
-                        </div>
-
-                        {headerRows.map((row) => (
-                          <div key={row.id} className="flex items-center gap-2">
-                            <div className="flex-1">
-                              <InputText
-                                value={row.headerName}
-                                onChange={(value) =>
-                                  updateHeaderRow(row.id, "headerName", value)
-                                }
-                                placeholder="Header-Name"
-                              />
-                            </div>
-                            <span className="opacity-30 text-sm shrink-0">
-                              :
-                            </span>
-                            <div className="flex-1">
-                              <InputText
-                                value={row.headerValue}
-                                onChange={(value) =>
-                                  updateHeaderRow(row.id, "headerValue", value)
-                                }
-                                placeholder="Bearer {{apiKey}}"
-                              />
-                            </div>
-                            <button
-                              onClick={() => removeHeaderRow(row.id)}
-                              className="text-gray-500 hover:text-red-400 transition-colors shrink-0"
-                            >
-                              <FontAwesomeIcon
-                                icon="times"
-                                className="text-sm"
-                              />
-                            </button>
-                          </div>
-                        ))}
-
-                        <button
-                          onClick={addHeaderRow}
-                          className="text-sm text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
-                        >
-                          <FontAwesomeIcon icon="plus" className="text-xs" />
-                          <span>Add Header</span>
-                        </button>
+                      {/* Authentication type */}
+                      <div className="flex flex-col gap-2">
+                        <RadioGroup
+                          label="Authentication"
+                          name="mcp-http-auth-type"
+                          value={authType}
+                          onChange={(value) => {
+                            setAuthType(value);
+                            setAuthResult(null);
+                          }}
+                          options={[
+                            { value: "none", label: "None" },
+                            { value: "apiKey", label: "API key (headers)" },
+                            {
+                              value: "oauth",
+                              label: "OAuth 2.0 (browser sign-in)",
+                            },
+                          ]}
+                        />
                       </div>
+
+                      {/* OAuth 2.0 */}
+                      {authType === "oauth" && (
+                        <div className="space-y-3">
+                          <div className="flex flex-col gap-2">
+                            <FormLabel label="Scopes" />
+                            <p className="text-sm opacity-50">
+                              Space-separated OAuth scopes (optional — many
+                              servers grant defaults).
+                            </p>
+                            <InputText
+                              value={oauthScopes}
+                              onChange={setOauthScopes}
+                              placeholder="e.g., read write offline_access"
+                            />
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setShowOauthAdvanced((v) => !v)}
+                            className="text-sm text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1 self-start"
+                          >
+                            <FontAwesomeIcon
+                              icon={
+                                showOauthAdvanced
+                                  ? "chevron-down"
+                                  : "chevron-right"
+                              }
+                              className="text-xs"
+                            />
+                            <span>Advanced: pre-registered client</span>
+                          </button>
+
+                          {showOauthAdvanced && (
+                            <div className="space-y-3 pl-1">
+                              <p className="text-sm opacity-50">
+                                Only needed for servers that don&apos;t support
+                                Dynamic Client Registration. Leave blank
+                                otherwise.
+                              </p>
+                              <div className="flex flex-col gap-2">
+                                <FormLabel label="Client ID" />
+                                <InputText
+                                  value={oauthClientId}
+                                  onChange={setOauthClientId}
+                                  placeholder="Client ID"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-2">
+                                <FormLabel label="Client secret" />
+                                <InputText
+                                  type="password"
+                                  value={oauthClientSecret}
+                                  onChange={setOauthClientSecret}
+                                  placeholder="Client secret (if required)"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Headers (API key) */}
+                      {authType === "apiKey" && (
+                        <div className="space-y-3">
+                          <div>
+                            <FormLabel label="Request Headers" />
+                            <p className="text-sm opacity-50 mt-1">
+                              Use{" "}
+                              <code className="text-xs bg-white/10 px-1 py-0.5 rounded">
+                                {"{{fieldName}}"}
+                              </code>{" "}
+                              in values for credential placeholders
+                            </p>
+                          </div>
+
+                          {headerRows.map((row) => (
+                            <div
+                              key={row.id}
+                              className="flex items-center gap-2"
+                            >
+                              <div className="flex-1">
+                                <InputText
+                                  value={row.headerName}
+                                  onChange={(value) =>
+                                    updateHeaderRow(row.id, "headerName", value)
+                                  }
+                                  placeholder="Header-Name"
+                                />
+                              </div>
+                              <span className="opacity-30 text-sm shrink-0">
+                                :
+                              </span>
+                              <div className="flex-1">
+                                <InputText
+                                  value={row.headerValue}
+                                  onChange={(value) =>
+                                    updateHeaderRow(
+                                      row.id,
+                                      "headerValue",
+                                      value,
+                                    )
+                                  }
+                                  placeholder="Bearer {{apiKey}}"
+                                />
+                              </div>
+                              <button
+                                onClick={() => removeHeaderRow(row.id)}
+                                className="text-gray-500 hover:text-red-400 transition-colors shrink-0"
+                              >
+                                <FontAwesomeIcon
+                                  icon="times"
+                                  className="text-sm"
+                                />
+                              </button>
+                            </div>
+                          ))}
+
+                          <button
+                            onClick={addHeaderRow}
+                            className="text-sm text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
+                          >
+                            <FontAwesomeIcon icon="plus" className="text-xs" />
+                            <span>Add Header</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1049,9 +1220,9 @@ export const CustomMcpServerForm = ({
               <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
                 <div className="flex flex-col items-center justify-center py-8 space-y-4">
                   <p className="text-sm opacity-60 text-center max-w-md">
-                    This server requires OAuth authorization. Click the button
-                    below to open a browser window and complete the
-                    authentication flow.
+                    {isOAuth
+                      ? "This server uses OAuth 2.0. Click below to open your browser, sign in, and approve access. Dash stores the resulting tokens securely and refreshes them automatically."
+                      : "This server requires OAuth authorization. Click the button below to open a browser window and complete the authentication flow."}
                   </p>
                   <Button
                     title={isAuthorizing ? "Authorizing..." : "Authorize"}
@@ -1084,16 +1255,40 @@ export const CustomMcpServerForm = ({
                     <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
                       Troubleshooting
                     </p>
-                    <ul className="text-sm opacity-60 space-y-1 list-disc list-inside">
-                      <li>Ensure Node.js and npx are available in your PATH</li>
-                      <li>
-                        Try running the auth command manually in your terminal
-                      </li>
-                      <li>Check that your OAuth credentials file is valid</li>
-                      <li>
-                        If using nvm, ensure the correct Node version is active
-                      </li>
-                    </ul>
+                    {isOAuth ? (
+                      <ul className="text-sm opacity-60 space-y-1 list-disc list-inside">
+                        <li>
+                          Make sure a browser window opened — check for a
+                          blocked pop-up or default-browser prompt
+                        </li>
+                        <li>
+                          Allow Dash to accept the local sign-in redirect if
+                          your firewall prompts
+                        </li>
+                        <li>
+                          Verify the server URL is correct and the scopes are
+                          valid for this server
+                        </li>
+                        <li>
+                          For servers without dynamic registration, set a Client
+                          ID under &quot;Advanced&quot;
+                        </li>
+                      </ul>
+                    ) : (
+                      <ul className="text-sm opacity-60 space-y-1 list-disc list-inside">
+                        <li>
+                          Ensure Node.js and npx are available in your PATH
+                        </li>
+                        <li>
+                          Try running the auth command manually in your terminal
+                        </li>
+                        <li>Check that your OAuth credentials file is valid</li>
+                        <li>
+                          If using nvm, ensure the correct Node version is
+                          active
+                        </li>
+                      </ul>
+                    )}
                   </div>
                 )}
               </div>
