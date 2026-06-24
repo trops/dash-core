@@ -13,6 +13,7 @@ const LLM_CHECK_CLI_AVAILABLE = "llm-check-cli-available";
 const LLM_CLEAR_CLI_SESSION = "llm-clear-cli-session";
 const LLM_CLI_SESSION_STATUS = "llm-cli-session-status";
 const LLM_CLI_END_SESSION = "llm-cli-end-session";
+const LLM_LIST_MODELS = "llm-list-models";
 
 // --- Main → Renderer (send) ---
 const LLM_STREAM_DELTA = "llm-stream-delta";
@@ -34,4 +35,5 @@ module.exports = {
   LLM_STREAM_ERROR,
   LLM_CLI_SESSION_STATUS,
   LLM_CLI_END_SESSION,
+  LLM_LIST_MODELS,
 };

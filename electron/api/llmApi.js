@@ -14,6 +14,7 @@ const {
   LLM_CLEAR_CLI_SESSION,
   LLM_CLI_SESSION_STATUS,
   LLM_CLI_END_SESSION,
+  LLM_LIST_MODELS,
   LLM_STREAM_DELTA,
   LLM_STREAM_TOOL_CALL,
   LLM_STREAM_TOOL_RESULT,
@@ -69,6 +70,19 @@ const llmApi = {
    * @returns {Promise<{ available: boolean, path?: string }>}
    */
   checkCliAvailable: () => ipcRenderer.invoke(LLM_CHECK_CLI_AVAILABLE),
+
+  /**
+   * listModels
+   * Discover selectable models for a provider. With an apiKey, the main
+   * process attempts a live fetch (e.g. Anthropic Models API); otherwise it
+   * returns the provider's curated fallback list.
+   *
+   * @param {string} providerId - vendor id, e.g. "anthropic"
+   * @param {string|null} apiKey - decrypted key for the live fetch (optional)
+   * @returns {Promise<{ models, source }>}
+   */
+  listModels: (providerId, apiKey = null) =>
+    ipcRenderer.invoke(LLM_LIST_MODELS, { providerId, apiKey }),
 
   /**
    * clearCliSession

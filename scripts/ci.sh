@@ -94,6 +94,10 @@ npx jest --watchAll=false
 step "Running MCP tests"
 node --test electron/controller/mcpController.test.js electron/mcp/mcpServerCatalog.test.js electron/mcp/installExternalMcpTool.test.js electron/mcp/mcpOAuthProvider.test.js electron/controller/providerController.test.js
 
+# 6a-llm. Run LLM model-provider tests
+step "Running LLM model-provider tests"
+node --test electron/llm/modelProviders.test.js
+
 # 6b. Run controller auth tests
 step "Running controller auth tests"
 node --test electron/controller/installDashboardAuth.test.js

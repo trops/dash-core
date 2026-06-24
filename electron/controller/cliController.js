@@ -16,6 +16,7 @@ const {
   LLM_STREAM_COMPLETE,
   LLM_STREAM_ERROR,
 } = require("../events/llmEvents");
+const { migrateModelId } = require("../llm/modelProviders");
 
 const IS_WINDOWS = process.platform === "win32";
 
@@ -271,8 +272,11 @@ const cliController = {
     // buildClaudeCliArgs; below we only add args that depend on
     // runtime state (MCP config file paths) the helper can't know.
     const sessionIdForResume = widgetUuid ? sessions.get(widgetUuid) : null;
+    // Heal a retired/stale saved model id before passing --model. Leave an
+    // unset model alone so the CLI keeps its own default when none was chosen.
+    const resolvedModel = model ? migrateModelId("anthropic", model) : model;
     const args = buildClaudeCliArgs({
-      model,
+      model: resolvedModel,
       systemPrompt,
       sessionId: sessionIdForResume,
       replaceSystemPrompt,
