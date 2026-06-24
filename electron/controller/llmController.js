@@ -11,6 +11,10 @@
 const Anthropic = require("@anthropic-ai/sdk");
 const mcpController = require("./mcpController");
 const cliController = require("./cliController");
+const {
+  listModels: listProviderModels,
+  migrateModelId,
+} = require("../llm/modelProviders");
 const toolDefinitions = require("../mcp/toolDefinitions");
 const toolHandlers = require("../mcp/toolHandlers");
 const {
@@ -151,13 +155,16 @@ const llmController = {
 
     const {
       apiKey,
-      model = "claude-sonnet-4-20250514",
       messages,
       tools = [],
       toolServerMap = {},
       systemPrompt,
       maxToolRounds = DEFAULT_MAX_TOOL_ROUNDS,
     } = params;
+
+    // Heal a retired/stale saved model id (and fill the provider default when
+    // none was supplied) so a stored selection can't 404 the request.
+    const model = migrateModelId("anthropic", params.model);
 
     // Set up abort controller
     const abortController = new AbortController();
@@ -407,6 +414,22 @@ const llmController = {
     }
     // Fallback to CLI controller
     return cliController.abortRequest(requestId);
+  },
+
+  /**
+   * listModels
+   * Discover selectable models for a provider. Attempts a live fetch via the
+   * provider's API (e.g. Anthropic Models API) when an apiKey is supplied;
+   * otherwise returns the provider's curated fallback list. Provider-pluggable
+   * — adding OpenAI/Google later is a new entry in modelProviders.js.
+   *
+   * @param {BrowserWindow} win - unused (API consistency)
+   * @param {string} providerId - vendor id, e.g. "anthropic"
+   * @param {string|null} apiKey - decrypted key for the live fetch (optional)
+   * @returns {Promise<{ models, source }>}
+   */
+  listModels: async (win, providerId, apiKey) => {
+    return listProviderModels(providerId || "anthropic", { apiKey });
   },
 };
 
