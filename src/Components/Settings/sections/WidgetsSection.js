@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useContext } from "react";
 import {
   ConfirmationModal,
   FontAwesomeIcon,
+  Modal,
   SearchInput,
   Sidebar,
   Paragraph,
@@ -12,6 +13,7 @@ import {
   themeObjects,
 } from "@trops/dash-react";
 import { SectionLayout } from "../SectionLayout";
+import { WidgetPreflightReview } from "../../WidgetPreflightReview";
 import { InstalledWidgetDetail } from "../details/InstalledWidgetDetail";
 import { InstallWidgetPicker } from "../details/InstallWidgetPicker";
 import { DiscoverWidgetsDetail } from "../details/DiscoverWidgetsDetail";
@@ -59,6 +61,8 @@ export const WidgetsSection = ({
     needsAuth,
     clearNeedsAuth,
     updateError,
+    pendingPreflight,
+    resolvePreflight,
   } = useWidgetUpdates(widgets, refresh);
 
   // "Update all" modal visibility — opened from the footer when there
@@ -1027,6 +1031,26 @@ export const WidgetsSection = ({
         isBatchUpdating={isBatchUpdating}
         onConfirm={updatePackages}
       />
+      {/* Permission-consent gate for the batch update. When updatePackages
+          detects a new version requesting ungranted permissions it sets
+          pendingPreflight and suspends until the user decides. Without
+          this modal the Settings → Widgets batch hung forever (the
+          on-launch AppUpdatesModal had its own copy; this is the shared
+          component). Cancelling (or dismissing) resolves the preflight
+          as null so the batch unwinds cleanly. */}
+      <Modal
+        isOpen={!!pendingPreflight}
+        setIsOpen={(open) => {
+          if (!open && typeof resolvePreflight === "function") {
+            resolvePreflight(null);
+          }
+        }}
+      >
+        <WidgetPreflightReview
+          pendingPreflight={pendingPreflight}
+          resolvePreflight={resolvePreflight}
+        />
+      </Modal>
     </>
   );
 };

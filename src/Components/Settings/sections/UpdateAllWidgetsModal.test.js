@@ -17,6 +17,9 @@ jest.mock(
         {title}
       </button>
     ),
+    FontAwesomeIcon: ({ icon, className }) => (
+      <span data-icon={icon} className={className} aria-hidden="true" />
+    ),
   }),
   { virtual: false },
 );
