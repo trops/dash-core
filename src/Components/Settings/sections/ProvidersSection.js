@@ -14,6 +14,7 @@ import { McpCatalogDetail } from "../details/McpCatalogDetail";
 import { CustomMcpServerForm } from "../details/CustomMcpServerForm";
 import { WebSocketProviderForm } from "../details/WebSocketProviderForm";
 import { NewProviderPicker } from "../details/NewProviderPicker";
+import { uniqueProviderType } from "../../../utils/providerType";
 import {
   envMappingToRows,
   headerTemplateToRows,
@@ -219,11 +220,22 @@ export const ProvidersSection = ({
     allowedTools = null,
   ) {
     if (!dashApi || !appId) return;
+    // Forward-only unique types: a hand-rolled custom MCP server arrives with
+    // the generic default type "custom", which conflates multiple customs at
+    // widget-binding/runtime time. Give each NEW one a unique slug so it has a
+    // distinct identity like catalog providers. Catalog installs pass a real
+    // id (not "custom") and are untouched; the edit path preserves type, so no
+    // existing provider is ever renamed.
+    let resolvedType = providerType;
+    if (resolvedType === "custom") {
+      const existingTypes = Object.values(providers || {}).map((p) => p.type);
+      resolvedType = uniqueProviderType(providerName, existingTypes);
+    }
     dashApi.saveProvider(
       appId,
       providerName,
       {
-        providerType,
+        providerType: resolvedType,
         credentials: mcpCredentials,
         providerClass: "mcp",
         mcpConfig,
