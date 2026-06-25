@@ -454,6 +454,43 @@ function addDirToZip(zip, absDir, relDir = "") {
   }
 }
 
+/**
+ * Persist a version string to a widget package's metadata files.
+ *
+ * Writes the version to BOTH package.json and dash.json when each is present —
+ * never one or the other. They must stay in sync: the registry manifest version
+ * is generated from package.json, while the installed/on-disk version is read
+ * back from dash.json (widgetRegistry.js `enrichEntryFromDisk`). Bumping only
+ * package.json left dash.json stale, so the installed version never advanced —
+ * the registry update check prompted forever and the post-install verify failed
+ * with "on-disk version is X (expected Y)". Each file is best-effort: a
+ * malformed dash.json is skipped (it surfaces later during manifest generation).
+ *
+ * @param {string} pkgJsonPath - Absolute path to the package's package.json
+ * @param {string} dashJsonPath - Absolute path to the package's dash.json
+ * @param {string} version - Version string to write to both files
+ */
+function writeWidgetMetadataVersion(pkgJsonPath, dashJsonPath, version) {
+  if (fs.existsSync(pkgJsonPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
+      pkg.version = version;
+      fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2) + "\n");
+    } catch {
+      /* best-effort */
+    }
+  }
+  if (fs.existsSync(dashJsonPath)) {
+    try {
+      const dash = JSON.parse(fs.readFileSync(dashJsonPath, "utf8"));
+      dash.version = version;
+      fs.writeFileSync(dashJsonPath, JSON.stringify(dash, null, 2) + "\n");
+    } catch {
+      /* best-effort */
+    }
+  }
+}
+
 // ─── Orchestration ───────────────────────────────────────────────────────────
 
 /**
@@ -580,17 +617,14 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
     const newVersion = resolveNextVersion(previousVersion, options);
     if (newVersion !== previousVersion) {
       pkgJson.version = newVersion;
-      // Persist to whichever metadata file exists
-      if (fs.existsSync(pkgJsonPath)) {
-        fs.writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + "\n");
-      } else if (fs.existsSync(dashJsonPath)) {
-        const dashJson = JSON.parse(fs.readFileSync(dashJsonPath, "utf8"));
-        dashJson.version = newVersion;
-        fs.writeFileSync(
-          dashJsonPath,
-          JSON.stringify(dashJson, null, 2) + "\n",
-        );
-      }
+      // Persist the bump to BOTH metadata files when present — NOT one or the
+      // other. The registry manifest version is read from package.json while
+      // the installed/on-disk version is read back from dash.json
+      // (widgetRegistry.js enrichEntryFromDisk). Bumping only package.json
+      // left dash.json stale, so the installed version never advanced: the
+      // registry update check prompted forever and the post-install verify
+      // failed with "on-disk version is X (expected Y)".
+      writeWidgetMetadataVersion(pkgJsonPath, dashJsonPath, newVersion);
     }
 
     // 5. Normalize dash.json's author field. The AI Widget Builder
@@ -721,18 +755,15 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
         manifest,
       );
 
-      // 9. On failure: revert package.json (if we bumped) and surface details
+      // 9. On failure: revert package.json + dash.json (if we bumped) and surface details
       if (!registryResult.success) {
         if (newVersion !== previousVersion) {
-          try {
-            pkgJson.version = previousVersion;
-            fs.writeFileSync(
-              pkgJsonPath,
-              JSON.stringify(pkgJson, null, 2) + "\n",
-            );
-          } catch {
-            /* best effort */
-          }
+          pkgJson.version = previousVersion;
+          writeWidgetMetadataVersion(
+            pkgJsonPath,
+            dashJsonPath,
+            previousVersion,
+          );
         }
         return {
           success: false,
@@ -833,4 +864,5 @@ module.exports = {
   prepareWidgetForPublish,
   inspectWidgetPackage,
   scanWidgetDefaults,
+  writeWidgetMetadataVersion,
 };
