@@ -10,6 +10,7 @@ import {
   getStylesForItem,
   themeObjects,
 } from "@trops/dash-react";
+import { useRegistryAuthGate } from "../../../hooks/useRegistryAuthGate";
 
 const THEME_TAGS = [
   "dark",
@@ -45,6 +46,8 @@ export const PublishThemeModal = ({
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,
   });
+  // Re-validate auth right before publishing (see PublishWidgetModal note).
+  const { ensureAuthed, authGate } = useRegistryAuthGate();
 
   // Stepper state
   const [step, setStep] = useState(0);
@@ -156,6 +159,12 @@ export const PublishThemeModal = ({
 
   async function handlePublish() {
     if (!appId || !themeKey) return;
+    if (
+      !(await ensureAuthed({
+        message: "Sign in to the registry to publish this theme.",
+      }))
+    )
+      return;
     setIsPublishing(true);
     setResult(null);
     try {
@@ -256,421 +265,426 @@ export const PublishThemeModal = ({
   ].filter((c) => c.value);
 
   return (
-    <Modal
-      isOpen={isOpen}
-      setIsOpen={handleClose}
-      width="w-full max-w-2xl"
-      height="h-[70vh]"
-    >
-      <div
-        className={`flex flex-col h-full rounded-lg overflow-clip border ${panelStyles.backgroundColor || ""} ${panelStyles.borderColor || ""} ${panelStyles.textColor || ""}`}
+    <>
+      <Modal
+        isOpen={isOpen}
+        setIsOpen={handleClose}
+        width="w-full max-w-2xl"
+        height="h-[70vh]"
       >
-        {/* Header */}
-        <div className="flex-shrink-0 flex flex-row items-center justify-between p-4 border-b border-white/10">
-          <span className="text-lg font-semibold">
-            Publish "{themeName || themeKey || "Theme"}"
-          </span>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="opacity-50 hover:opacity-100 transition-opacity cursor-pointer"
-          >
-            <FontAwesomeIcon icon="xmark" className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* Body — Stepper */}
-        <Stepper
-          activeStep={step}
-          onStepChange={handleStepChange}
-          showNavigation={false}
-          className="flex-1 min-h-0 flex flex-col px-6 pt-2"
+        <div
+          className={`flex flex-col h-full rounded-lg overflow-clip border ${panelStyles.backgroundColor || ""} ${panelStyles.borderColor || ""} ${panelStyles.textColor || ""}`}
         >
-          {/* Step 0: Account */}
-          <Stepper.Step label="Account">
-            <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
-              {authStatus === "loading" && (
-                <div className="flex items-center justify-center py-12">
-                  <div className="flex items-center gap-3 text-sm opacity-60">
-                    <FontAwesomeIcon
-                      icon="spinner"
-                      className="h-4 w-4 animate-spin"
-                    />
-                    <span>Checking account status...</span>
-                  </div>
-                </div>
-              )}
-              {authStatus === "authenticated" && profile && (
-                <div className="space-y-4">
-                  <p className="text-sm opacity-70">
-                    You're signed in and ready to publish.
-                  </p>
-                  <div className="bg-white/5 border border-white/10 rounded-lg p-4 flex items-center gap-4">
-                    <div className="flex items-center justify-center h-10 w-10 rounded-full bg-green-500/20 border border-green-500/30">
-                      <FontAwesomeIcon
-                        icon="circle-check"
-                        className="h-5 w-5 text-green-400"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">
-                        {profile.displayName || profile.username}
-                      </div>
-                      <div className="text-xs opacity-50 truncate">
-                        @{profile.username}
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSignOut}
-                    className="text-xs opacity-40 hover:opacity-70 transition-opacity cursor-pointer"
-                  >
-                    Sign out
-                  </button>
-                </div>
-              )}
-              {authStatus === "unauthenticated" && (
-                <div className="space-y-4">
-                  <p className="text-sm opacity-70">
-                    Sign in to the Dash Registry to publish your theme.
-                  </p>
-                  {!authFlow && !isPolling && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={handleSignIn}
-                        className="px-4 py-2 rounded-lg text-sm bg-blue-500/20 border border-blue-500/30 text-blue-300 hover:bg-blue-500/30 transition-colors cursor-pointer"
-                      >
-                        Sign in to Registry
-                      </button>
-                      {authError && (
-                        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-                          <div className="flex items-start gap-2">
-                            <FontAwesomeIcon
-                              icon="circle-xmark"
-                              className="h-3.5 w-3.5 text-red-400 mt-0.5 flex-shrink-0"
-                            />
-                            <span className="text-xs text-red-300/90">
-                              {authError}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-                  {authFlow && isPolling && (
-                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 space-y-3">
-                      <p className="text-xs text-blue-300/90">
-                        Enter this code in your browser:
-                      </p>
-                      <div className="text-center">
-                        <span className="text-2xl font-mono font-bold tracking-widest text-white">
-                          {authFlow.userCode}
-                        </span>
-                      </div>
-                      <p className="text-xs text-blue-300/70 text-center">
-                        Waiting for authorization...
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </Stepper.Step>
+          {/* Header */}
+          <div className="flex-shrink-0 flex flex-row items-center justify-between p-4 border-b border-white/10">
+            <span className="text-lg font-semibold">
+              Publish "{themeName || themeKey || "Theme"}"
+            </span>
+            <button
+              type="button"
+              onClick={handleClose}
+              className="opacity-50 hover:opacity-100 transition-opacity cursor-pointer"
+            >
+              <FontAwesomeIcon icon="xmark" className="h-5 w-5" />
+            </button>
+          </div>
 
-          {/* Step 1: Details */}
-          <Stepper.Step label="Details">
-            <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
-              <p className="text-sm opacity-70">
-                Provide details about your theme for the registry listing.
-              </p>
-              <div>
-                <label className="block text-sm font-medium opacity-70 mb-1">
-                  Author Name
-                </label>
-                <div className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm opacity-80">
-                  {authorName || "\u2014"}
-                </div>
+          {/* Body — Stepper */}
+          <Stepper
+            activeStep={step}
+            onStepChange={handleStepChange}
+            showNavigation={false}
+            className="flex-1 min-h-0 flex flex-col px-6 pt-2"
+          >
+            {/* Step 0: Account */}
+            <Stepper.Step label="Account">
+              <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
+                {authStatus === "loading" && (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="flex items-center gap-3 text-sm opacity-60">
+                      <FontAwesomeIcon
+                        icon="spinner"
+                        className="h-4 w-4 animate-spin"
+                      />
+                      <span>Checking account status...</span>
+                    </div>
+                  </div>
+                )}
+                {authStatus === "authenticated" && profile && (
+                  <div className="space-y-4">
+                    <p className="text-sm opacity-70">
+                      You're signed in and ready to publish.
+                    </p>
+                    <div className="bg-white/5 border border-white/10 rounded-lg p-4 flex items-center gap-4">
+                      <div className="flex items-center justify-center h-10 w-10 rounded-full bg-green-500/20 border border-green-500/30">
+                        <FontAwesomeIcon
+                          icon="circle-check"
+                          className="h-5 w-5 text-green-400"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">
+                          {profile.displayName || profile.username}
+                        </div>
+                        <div className="text-xs opacity-50 truncate">
+                          @{profile.username}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      className="text-xs opacity-40 hover:opacity-70 transition-opacity cursor-pointer"
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                )}
+                {authStatus === "unauthenticated" && (
+                  <div className="space-y-4">
+                    <p className="text-sm opacity-70">
+                      Sign in to the Dash Registry to publish your theme.
+                    </p>
+                    {!authFlow && !isPolling && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleSignIn}
+                          className="px-4 py-2 rounded-lg text-sm bg-blue-500/20 border border-blue-500/30 text-blue-300 hover:bg-blue-500/30 transition-colors cursor-pointer"
+                        >
+                          Sign in to Registry
+                        </button>
+                        {authError && (
+                          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                            <div className="flex items-start gap-2">
+                              <FontAwesomeIcon
+                                icon="circle-xmark"
+                                className="h-3.5 w-3.5 text-red-400 mt-0.5 flex-shrink-0"
+                              />
+                              <span className="text-xs text-red-300/90">
+                                {authError}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {authFlow && isPolling && (
+                      <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 space-y-3">
+                        <p className="text-xs text-blue-300/90">
+                          Enter this code in your browser:
+                        </p>
+                        <div className="text-center">
+                          <span className="text-2xl font-mono font-bold tracking-widest text-white">
+                            {authFlow.userCode}
+                          </span>
+                        </div>
+                        <p className="text-xs text-blue-300/70 text-center">
+                          Waiting for authorization...
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              {colorEntries.length > 0 && (
+            </Stepper.Step>
+
+            {/* Step 1: Details */}
+            <Stepper.Step label="Details">
+              <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
+                <p className="text-sm opacity-70">
+                  Provide details about your theme for the registry listing.
+                </p>
+                <div>
+                  <label className="block text-sm font-medium opacity-70 mb-1">
+                    Author Name
+                  </label>
+                  <div className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm opacity-80">
+                    {authorName || "\u2014"}
+                  </div>
+                </div>
+                {colorEntries.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium opacity-70 mb-2">
+                      Theme Colors
+                    </label>
+                    <div className="flex flex-row gap-3">
+                      {colorEntries.map(({ label, value }) => (
+                        <div
+                          key={label}
+                          className="flex flex-col items-center gap-1"
+                        >
+                          <div
+                            className="h-8 w-8 rounded-full border-2 border-white/20"
+                            style={{ backgroundColor: value }}
+                          />
+                          <span className="text-[10px] opacity-50">
+                            {label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <TextArea
+                  label="Description"
+                  value={description}
+                  onChange={setDescription}
+                  placeholder="A brief description of this theme..."
+                  rows={3}
+                />
                 <div>
                   <label className="block text-sm font-medium opacity-70 mb-2">
-                    Theme Colors
+                    Visibility
                   </label>
-                  <div className="flex flex-row gap-3">
-                    {colorEntries.map(({ label, value }) => (
-                      <div
-                        key={label}
-                        className="flex flex-col items-center gap-1"
-                      >
-                        <div
-                          className="h-8 w-8 rounded-full border-2 border-white/20"
-                          style={{ backgroundColor: value }}
-                        />
-                        <span className="text-[10px] opacity-50">{label}</span>
-                      </div>
-                    ))}
+                  <div className="space-y-2">
+                    {[
+                      {
+                        value: "public",
+                        label: "Public",
+                        desc: "Anyone can find and install this theme.",
+                      },
+                      {
+                        value: "private",
+                        label: "Private",
+                        desc: "Only you and users you grant access to can install. The theme is hidden from search and listings.",
+                      },
+                    ].map((opt) => {
+                      const active = visibility === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setVisibility(opt.value)}
+                          className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors ${
+                            active
+                              ? "bg-indigo-900/20 border-indigo-500/60"
+                              : "bg-white/5 border-white/10 hover:bg-white/10"
+                          }`}
+                        >
+                          <div className="flex items-start gap-2.5">
+                            <div
+                              className={`mt-0.5 h-4 w-4 rounded-full border flex-shrink-0 ${
+                                active
+                                  ? "border-indigo-400 bg-indigo-500"
+                                  : "border-white/30"
+                              }`}
+                            >
+                              {active && (
+                                <div className="h-full w-full rounded-full border-2 border-gray-900" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium">
+                                {opt.label}
+                              </div>
+                              <div className="text-xs opacity-60 mt-0.5">
+                                {opt.desc}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-              )}
-              <TextArea
-                label="Description"
-                value={description}
-                onChange={setDescription}
-                placeholder="A brief description of this theme..."
-                rows={3}
-              />
-              <div>
-                <label className="block text-sm font-medium opacity-70 mb-2">
-                  Visibility
-                </label>
-                <div className="space-y-2">
-                  {[
-                    {
-                      value: "public",
-                      label: "Public",
-                      desc: "Anyone can find and install this theme.",
-                    },
-                    {
-                      value: "private",
-                      label: "Private",
-                      desc: "Only you and users you grant access to can install. The theme is hidden from search and listings.",
-                    },
-                  ].map((opt) => {
-                    const active = visibility === opt.value;
+              </div>
+            </Stepper.Step>
+
+            {/* Step 2: Tags */}
+            <Stepper.Step label="Tags">
+              <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
+                <p className="text-sm opacity-70">
+                  Select at least one tag to categorize your theme.
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {THEME_TAGS.map((tag) => {
+                    const isSelected = selectedTags.includes(tag);
                     return (
                       <button
-                        key={opt.value}
+                        key={tag}
                         type="button"
-                        onClick={() => setVisibility(opt.value)}
-                        className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors ${
-                          active
-                            ? "bg-indigo-900/20 border-indigo-500/60"
-                            : "bg-white/5 border-white/10 hover:bg-white/10"
+                        onClick={() => toggleTag(tag)}
+                        className={`px-3 py-1.5 rounded-full text-sm border transition-colors cursor-pointer ${
+                          isSelected
+                            ? "bg-white/15 border-white/30 text-white"
+                            : "bg-transparent border-white/10 text-white/60 hover:border-white/20 hover:text-white/80"
                         }`}
                       >
-                        <div className="flex items-start gap-2.5">
-                          <div
-                            className={`mt-0.5 h-4 w-4 rounded-full border flex-shrink-0 ${
-                              active
-                                ? "border-indigo-400 bg-indigo-500"
-                                : "border-white/30"
-                            }`}
-                          >
-                            {active && (
-                              <div className="h-full w-full rounded-full border-2 border-gray-900" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium">
-                              {opt.label}
-                            </div>
-                            <div className="text-xs opacity-60 mt-0.5">
-                              {opt.desc}
-                            </div>
-                          </div>
-                        </div>
+                        {tag}
                       </button>
                     );
                   })}
                 </div>
               </div>
-            </div>
-          </Stepper.Step>
+            </Stepper.Step>
 
-          {/* Step 2: Tags */}
-          <Stepper.Step label="Tags">
-            <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
-              <p className="text-sm opacity-70">
-                Select at least one tag to categorize your theme.
-              </p>
-              <div className="grid grid-cols-3 gap-2">
-                {THEME_TAGS.map((tag) => {
-                  const isSelected = selectedTags.includes(tag);
-                  return (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => toggleTag(tag)}
-                      className={`px-3 py-1.5 rounded-full text-sm border transition-colors cursor-pointer ${
-                        isSelected
-                          ? "bg-white/15 border-white/30 text-white"
-                          : "bg-transparent border-white/10 text-white/60 hover:border-white/20 hover:text-white/80"
-                      }`}
-                    >
-                      {tag}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </Stepper.Step>
-
-          {/* Step 3: Publish */}
-          <Stepper.Step label="Publish">
-            <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-4">
-              {!result ? (
-                <>
-                  <p className="text-sm opacity-70">
-                    Review your theme details before publishing.
-                  </p>
-                  <div className="bg-white/5 border border-white/10 rounded-lg p-4 space-y-2 text-sm">
-                    <div className="flex gap-2">
-                      <span className="opacity-50 w-20 flex-shrink-0">
-                        Author
-                      </span>
-                      <span>{authorName}</span>
-                    </div>
-                    {description.trim() && (
+            {/* Step 3: Publish */}
+            <Stepper.Step label="Publish">
+              <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-4">
+                {!result ? (
+                  <>
+                    <p className="text-sm opacity-70">
+                      Review your theme details before publishing.
+                    </p>
+                    <div className="bg-white/5 border border-white/10 rounded-lg p-4 space-y-2 text-sm">
                       <div className="flex gap-2">
                         <span className="opacity-50 w-20 flex-shrink-0">
-                          Description
+                          Author
                         </span>
-                        <span>{description}</span>
+                        <span>{authorName}</span>
+                      </div>
+                      {description.trim() && (
+                        <div className="flex gap-2">
+                          <span className="opacity-50 w-20 flex-shrink-0">
+                            Description
+                          </span>
+                          <span>{description}</span>
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <span className="opacity-50 w-20 flex-shrink-0">
+                          Tags
+                        </span>
+                        <span>
+                          {selectedTags.length > 0
+                            ? selectedTags.join(", ")
+                            : "None"}
+                        </span>
+                      </div>
+                      {colorEntries.length > 0 && (
+                        <div className="flex gap-2 items-center">
+                          <span className="opacity-50 w-20 flex-shrink-0">
+                            Colors
+                          </span>
+                          <div className="flex gap-1.5">
+                            {colorEntries.map(({ label, value }) => (
+                              <div
+                                key={label}
+                                className="h-5 w-5 rounded-full border border-white/20"
+                                style={{ backgroundColor: value }}
+                                title={`${label}: ${value}`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : result.success ? (
+                  <div className="space-y-3">
+                    {result.registryResult?.success ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <FontAwesomeIcon
+                            icon="circle-check"
+                            className="h-4 w-4 text-green-400"
+                          />
+                          <span className="text-sm">
+                            Published to Dash Registry
+                          </span>
+                        </div>
+                        {result.registryResult.registryUrl && (
+                          <div className="bg-white/5 border border-white/10 rounded-lg p-3">
+                            <div className="text-xs opacity-50 mb-1">
+                              Shareable Link
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                window.mainApi.shell.openExternal(
+                                  result.registryResult.registryUrl,
+                                )
+                              }
+                              className="text-sm text-blue-400 hover:underline cursor-pointer break-all text-left"
+                            >
+                              {result.registryResult.registryUrl}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <FontAwesomeIcon
+                            icon="circle-check"
+                            className="h-4 w-4 text-green-400"
+                          />
+                          <span className="text-sm">
+                            Theme prepared for publishing.
+                          </span>
+                        </div>
+                        {result.registryResult?.error && (
+                          <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+                            <div className="flex items-start gap-2">
+                              <FontAwesomeIcon
+                                icon="triangle-exclamation"
+                                className="h-3.5 w-3.5 text-amber-400 mt-0.5 flex-shrink-0"
+                              />
+                              <span className="text-xs text-amber-300/90">
+                                Registry upload failed:{" "}
+                                {result.registryResult.error}. Your theme was
+                                saved locally.
+                              </span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
-                    <div className="flex gap-2">
-                      <span className="opacity-50 w-20 flex-shrink-0">
-                        Tags
-                      </span>
-                      <span>
-                        {selectedTags.length > 0
-                          ? selectedTags.join(", ")
-                          : "None"}
-                      </span>
-                    </div>
-                    {colorEntries.length > 0 && (
-                      <div className="flex gap-2 items-center">
-                        <span className="opacity-50 w-20 flex-shrink-0">
-                          Colors
-                        </span>
-                        <div className="flex gap-1.5">
-                          {colorEntries.map(({ label, value }) => (
-                            <div
-                              key={label}
-                              className="h-5 w-5 rounded-full border border-white/20"
-                              style={{ backgroundColor: value }}
-                              title={`${label}: ${value}`}
-                            />
-                          ))}
-                        </div>
+                    {result.filePath && (
+                      <div className="text-xs opacity-50 break-all">
+                        Saved to: {result.filePath}
                       </div>
                     )}
                   </div>
-                </>
-              ) : result.success ? (
-                <div className="space-y-3">
-                  {result.registryResult?.success ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <FontAwesomeIcon
-                          icon="circle-check"
-                          className="h-4 w-4 text-green-400"
-                        />
-                        <span className="text-sm">
-                          Published to Dash Registry
-                        </span>
-                      </div>
-                      {result.registryResult.registryUrl && (
-                        <div className="bg-white/5 border border-white/10 rounded-lg p-3">
-                          <div className="text-xs opacity-50 mb-1">
-                            Shareable Link
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              window.mainApi.shell.openExternal(
-                                result.registryResult.registryUrl,
-                              )
-                            }
-                            className="text-sm text-blue-400 hover:underline cursor-pointer break-all text-left"
-                          >
-                            {result.registryResult.registryUrl}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <FontAwesomeIcon
-                          icon="circle-check"
-                          className="h-4 w-4 text-green-400"
-                        />
-                        <span className="text-sm">
-                          Theme prepared for publishing.
-                        </span>
-                      </div>
-                      {result.registryResult?.error && (
-                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
-                          <div className="flex items-start gap-2">
-                            <FontAwesomeIcon
-                              icon="triangle-exclamation"
-                              className="h-3.5 w-3.5 text-amber-400 mt-0.5 flex-shrink-0"
-                            />
-                            <span className="text-xs text-amber-300/90">
-                              Registry upload failed:{" "}
-                              {result.registryResult.error}. Your theme was
-                              saved locally.
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {result.filePath && (
-                    <div className="text-xs opacity-50 break-all">
-                      Saved to: {result.filePath}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <FontAwesomeIcon
-                    icon="circle-xmark"
-                    className="h-4 w-4 text-red-400"
-                  />
-                  <span className="text-sm text-red-400">
-                    {result.error || "Publish preparation failed."}
-                  </span>
-                </div>
-              )}
-            </div>
-          </Stepper.Step>
-        </Stepper>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <FontAwesomeIcon
+                      icon="circle-xmark"
+                      className="h-4 w-4 text-red-400"
+                    />
+                    <span className="text-sm text-red-400">
+                      {result.error || "Publish preparation failed."}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </Stepper.Step>
+          </Stepper>
 
-        {/* Footer */}
-        <div className="flex-shrink-0 flex flex-row items-center px-6 py-4 border-t border-white/10">
-          <div className="flex flex-row gap-2">
-            <Button3
-              title={step === 0 ? "Cancel" : "Back"}
-              onClick={step === 0 ? handleClose : () => setStep(step - 1)}
-              disabled={isPublishing}
-            />
-          </div>
-          <div className="flex-1 text-center">
-            <span className="text-xs opacity-40">Step {step + 1} of 4</span>
-          </div>
-          <div className="flex flex-row gap-2">
-            {result?.success ? (
-              <Button2 title="Done" onClick={handleClose} />
-            ) : isLastStep ? (
-              <Button2
-                title={isPublishing ? "Publishing..." : "Publish"}
-                onClick={handlePublish}
+          {/* Footer */}
+          <div className="flex-shrink-0 flex flex-row items-center px-6 py-4 border-t border-white/10">
+            <div className="flex flex-row gap-2">
+              <Button3
+                title={step === 0 ? "Cancel" : "Back"}
+                onClick={step === 0 ? handleClose : () => setStep(step - 1)}
                 disabled={isPublishing}
               />
-            ) : (
-              <Button2
-                title="Next"
-                onClick={() => handleStepChange(step + 1)}
-                disabled={!canAdvance}
-              />
-            )}
+            </div>
+            <div className="flex-1 text-center">
+              <span className="text-xs opacity-40">Step {step + 1} of 4</span>
+            </div>
+            <div className="flex flex-row gap-2">
+              {result?.success ? (
+                <Button2 title="Done" onClick={handleClose} />
+              ) : isLastStep ? (
+                <Button2
+                  title={isPublishing ? "Publishing..." : "Publish"}
+                  onClick={handlePublish}
+                  disabled={isPublishing}
+                />
+              ) : (
+                <Button2
+                  title="Next"
+                  onClick={() => handleStepChange(step + 1)}
+                  disabled={!canAdvance}
+                />
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </Modal>
+      </Modal>
+      {authGate}
+    </>
   );
 };
