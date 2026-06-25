@@ -18,7 +18,7 @@ import { InstalledWidgetDetail } from "../details/InstalledWidgetDetail";
 import { InstallWidgetPicker } from "../details/InstallWidgetPicker";
 import { DiscoverWidgetsDetail } from "../details/DiscoverWidgetsDetail";
 import { InstallProgressModal } from "../details/InstallProgressModal";
-import { RegistryAuthModal } from "../../Registry/RegistryAuthModal";
+import { useRegistryAuthGate } from "../../../hooks/useRegistryAuthGate";
 import { UpdateAllWidgetsModal } from "./UpdateAllWidgetsModal";
 import {
   useInstalledWidgets,
@@ -58,12 +58,17 @@ export const WidgetsSection = ({
     batchStatus,
     isBatchUpdating,
     isUpdating,
-    needsAuth,
-    clearNeedsAuth,
     updateError,
     pendingPreflight,
     resolvePreflight,
   } = useWidgetUpdates(widgets, refresh);
+
+  // Shared sign-in gate. Any registry action that needs auth calls
+  // ensureAuthed() first; if the session is missing/expired the gate pops a
+  // "Sign in" modal (rendered last, so it stacks above the update modal — the
+  // old needsAuth modal used to render behind it and was never seen) and the
+  // action proceeds once the user signs in.
+  const { ensureAuthed, authGate } = useRegistryAuthGate();
 
   // "Update all" modal visibility — opened from the footer when there
   // are package-level updates available; closed by the user (or by
@@ -831,7 +836,15 @@ export const WidgetsSection = ({
         appId={credentials?.appId}
         onDelete={(w) => handleDeleteRequest(w)}
         updateInfo={updates.get(selectedWidget?.name) || null}
-        onUpdate={updateWidget}
+        onUpdate={async (name) => {
+          if (
+            !(await ensureAuthed({
+              message: "Sign in to the registry to install this widget update.",
+            }))
+          )
+            return;
+          return updateWidget(name);
+        }}
         isUpdating={isUpdating === selectedWidget?.name}
         updateError={updateError}
       />
@@ -1013,23 +1026,24 @@ export const WidgetsSection = ({
           </div>
         )}
       </ConfirmationModal>
-      <RegistryAuthModal
-        isOpen={needsAuth}
-        setIsOpen={(open) => {
-          if (!open) clearNeedsAuth();
-        }}
-        onAuthenticated={() => {
-          clearNeedsAuth();
-          if (selectedWidget?.name) updateWidget(selectedWidget.name);
-        }}
-      />
       <UpdateAllWidgetsModal
         isOpen={updateAllOpen}
         setIsOpen={setUpdateAllOpen}
         packages={packagesWithUpdates}
         batchStatus={batchStatus}
         isBatchUpdating={isBatchUpdating}
-        onConfirm={updatePackages}
+        onConfirm={async (names) => {
+          // Validate the session BEFORE the batch so an expired token pops the
+          // sign-in gate (over this modal) and the batch runs once signed in —
+          // instead of failing every row with a hidden auth error.
+          if (
+            !(await ensureAuthed({
+              message: "Sign in to the registry to install widget updates.",
+            }))
+          )
+            return { succeeded: [], failed: [], cancelled: true };
+          return updatePackages(names);
+        }}
       />
       {/* Permission-consent gate for the batch update. When updatePackages
           detects a new version requesting ungranted permissions it sets
@@ -1051,6 +1065,8 @@ export const WidgetsSection = ({
           resolvePreflight={resolvePreflight}
         />
       </Modal>
+      {/* Rendered last so the sign-in modal stacks above the update modal. */}
+      {authGate}
     </>
   );
 };

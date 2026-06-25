@@ -12,6 +12,7 @@ import {
   themeObjects,
 } from "@trops/dash-react";
 import { ComponentManager } from "../../../ComponentManager";
+import { useRegistryAuthGate } from "../../../hooks/useRegistryAuthGate";
 import { IconPicker } from "./IconPicker";
 
 const DASHBOARD_TAGS = [
@@ -146,6 +147,10 @@ export const PublishDashboardModal = ({
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,
   });
+  // Validate auth before the (multi-step) publish batch so an expired token
+  // pops the sign-in gate up front rather than aborting mid-batch with a
+  // generic error after some widgets already published.
+  const { ensureAuthed, authGate } = useRegistryAuthGate();
   // Stepper state
   const [step, setStep] = useState(0);
 
@@ -397,6 +402,12 @@ export const PublishDashboardModal = ({
 
   async function handlePublish() {
     if (!appId || !workspaceId) return;
+    if (
+      !(await ensureAuthed({
+        message: "Sign in to the registry to publish this dashboard.",
+      }))
+    )
+      return;
     setIsPublishing(true);
     setResult(null);
 
@@ -645,574 +656,577 @@ export const PublishDashboardModal = ({
               : true;
 
   return (
-    <Modal
-      isOpen={isOpen}
-      setIsOpen={handleClose}
-      width="w-full max-w-2xl"
-      height="h-[70vh]"
-    >
-      <div
-        className={`flex flex-col h-full rounded-lg overflow-clip border ${panelStyles.backgroundColor || ""} ${panelStyles.borderColor || ""} ${panelStyles.textColor || ""}`}
+    <>
+      <Modal
+        isOpen={isOpen}
+        setIsOpen={handleClose}
+        width="w-full max-w-2xl"
+        height="h-[70vh]"
       >
-        {/* Header */}
-        <div className="flex-shrink-0 flex flex-row items-center justify-between p-4 border-b border-white/10">
-          <span className="text-lg font-semibold">
-            Publish "{workspaceName || "Dashboard"}"
-          </span>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="opacity-50 hover:opacity-100 transition-opacity cursor-pointer"
-          >
-            <FontAwesomeIcon icon="xmark" className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* Body — Stepper */}
-        <Stepper
-          activeStep={step}
-          onStepChange={handleStepChange}
-          showNavigation={false}
-          className="flex-1 min-h-0 flex flex-col px-6 pt-2"
+        <div
+          className={`flex flex-col h-full rounded-lg overflow-clip border ${panelStyles.backgroundColor || ""} ${panelStyles.borderColor || ""} ${panelStyles.textColor || ""}`}
         >
-          {/* Step 0: Account */}
-          <Stepper.Step label="Account">
-            <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
-              {authStatus === "loading" && (
-                <div className="flex items-center justify-center py-12">
-                  <div className="flex items-center gap-3 text-sm opacity-60">
-                    <FontAwesomeIcon
-                      icon="spinner"
-                      className="h-4 w-4 animate-spin"
-                    />
-                    <span>Checking account status...</span>
-                  </div>
-                </div>
-              )}
-              {authStatus === "authenticated" && profile && (
-                <div className="space-y-4">
-                  <p className="text-sm opacity-70">
-                    You're signed in and ready to publish.
-                  </p>
-                  <div className="bg-white/5 border border-white/10 rounded-lg p-4 flex items-center gap-4">
-                    <div className="flex items-center justify-center h-10 w-10 rounded-full bg-green-500/20 border border-green-500/30">
-                      <FontAwesomeIcon
-                        icon="circle-check"
-                        className="h-5 w-5 text-green-400"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">
-                        {profile.displayName || profile.username}
-                      </div>
-                      <div className="text-xs opacity-50 truncate">
-                        @{profile.username}
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSignOut}
-                    className="text-xs opacity-40 hover:opacity-70 transition-opacity cursor-pointer"
-                  >
-                    Sign out
-                  </button>
-                </div>
-              )}
-              {authStatus === "unauthenticated" && (
-                <div className="space-y-4">
-                  <p className="text-sm opacity-70">
-                    Sign in to the Dash Registry to publish your dashboard.
-                  </p>
-                  {!authFlow && !isPolling && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={handleSignIn}
-                        className="px-4 py-2 rounded-lg text-sm bg-blue-500/20 border border-blue-500/30 text-blue-300 hover:bg-blue-500/30 transition-colors cursor-pointer"
-                      >
-                        Sign in to Registry
-                      </button>
-                      {authError && (
-                        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-                          <div className="flex items-start gap-2">
-                            <FontAwesomeIcon
-                              icon="circle-xmark"
-                              className="h-3.5 w-3.5 text-red-400 mt-0.5 flex-shrink-0"
-                            />
-                            <span className="text-xs text-red-300/90">
-                              {authError}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-                  {authFlow && isPolling && (
-                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 space-y-3">
-                      <p className="text-xs text-blue-300/90">
-                        Enter this code in your browser:
-                      </p>
-                      <div className="text-center">
-                        <span className="text-2xl font-mono font-bold tracking-widest text-white">
-                          {authFlow.userCode}
-                        </span>
-                      </div>
-                      <p className="text-xs text-blue-300/70 text-center">
-                        Waiting for authorization...
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </Stepper.Step>
+          {/* Header */}
+          <div className="flex-shrink-0 flex flex-row items-center justify-between p-4 border-b border-white/10">
+            <span className="text-lg font-semibold">
+              Publish "{workspaceName || "Dashboard"}"
+            </span>
+            <button
+              type="button"
+              onClick={handleClose}
+              className="opacity-50 hover:opacity-100 transition-opacity cursor-pointer"
+            >
+              <FontAwesomeIcon icon="xmark" className="h-5 w-5" />
+            </button>
+          </div>
 
-          {/* Step 1: Details */}
-          <Stepper.Step label="Details">
-            <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
-              <p className="text-sm opacity-70">
-                Provide details about your dashboard for the registry listing.
-              </p>
-              <div>
-                <label className="block text-sm font-medium opacity-70 mb-1">
-                  Author Name
-                </label>
-                <div className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm opacity-80">
-                  {authorName || "—"}
-                </div>
-              </div>
-              {preview &&
-                preview.componentNames &&
-                preview.componentNames.length > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium opacity-70 mb-2">
-                      Widgets Included
-                    </label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {preview.componentNames.map((name) => (
-                        <Tag3 key={name} text={name} />
-                      ))}
+          {/* Body — Stepper */}
+          <Stepper
+            activeStep={step}
+            onStepChange={handleStepChange}
+            showNavigation={false}
+            className="flex-1 min-h-0 flex flex-col px-6 pt-2"
+          >
+            {/* Step 0: Account */}
+            <Stepper.Step label="Account">
+              <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
+                {authStatus === "loading" && (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="flex items-center gap-3 text-sm opacity-60">
+                      <FontAwesomeIcon
+                        icon="spinner"
+                        className="h-4 w-4 animate-spin"
+                      />
+                      <span>Checking account status...</span>
                     </div>
                   </div>
                 )}
-              <TextArea
-                label="Description"
-                value={description}
-                onChange={setDescription}
-                placeholder="A brief description of this dashboard..."
-                rows={3}
-              />
-              {/* Version bump — controls what version the registry
+                {authStatus === "authenticated" && profile && (
+                  <div className="space-y-4">
+                    <p className="text-sm opacity-70">
+                      You're signed in and ready to publish.
+                    </p>
+                    <div className="bg-white/5 border border-white/10 rounded-lg p-4 flex items-center gap-4">
+                      <div className="flex items-center justify-center h-10 w-10 rounded-full bg-green-500/20 border border-green-500/30">
+                        <FontAwesomeIcon
+                          icon="circle-check"
+                          className="h-5 w-5 text-green-400"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">
+                          {profile.displayName || profile.username}
+                        </div>
+                        <div className="text-xs opacity-50 truncate">
+                          @{profile.username}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      className="text-xs opacity-40 hover:opacity-70 transition-opacity cursor-pointer"
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                )}
+                {authStatus === "unauthenticated" && (
+                  <div className="space-y-4">
+                    <p className="text-sm opacity-70">
+                      Sign in to the Dash Registry to publish your dashboard.
+                    </p>
+                    {!authFlow && !isPolling && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleSignIn}
+                          className="px-4 py-2 rounded-lg text-sm bg-blue-500/20 border border-blue-500/30 text-blue-300 hover:bg-blue-500/30 transition-colors cursor-pointer"
+                        >
+                          Sign in to Registry
+                        </button>
+                        {authError && (
+                          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                            <div className="flex items-start gap-2">
+                              <FontAwesomeIcon
+                                icon="circle-xmark"
+                                className="h-3.5 w-3.5 text-red-400 mt-0.5 flex-shrink-0"
+                              />
+                              <span className="text-xs text-red-300/90">
+                                {authError}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {authFlow && isPolling && (
+                      <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 space-y-3">
+                        <p className="text-xs text-blue-300/90">
+                          Enter this code in your browser:
+                        </p>
+                        <div className="text-center">
+                          <span className="text-2xl font-mono font-bold tracking-widest text-white">
+                            {authFlow.userCode}
+                          </span>
+                        </div>
+                        <p className="text-xs text-blue-300/70 text-center">
+                          Waiting for authorization...
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Stepper.Step>
+
+            {/* Step 1: Details */}
+            <Stepper.Step label="Details">
+              <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
+                <p className="text-sm opacity-70">
+                  Provide details about your dashboard for the registry listing.
+                </p>
+                <div>
+                  <label className="block text-sm font-medium opacity-70 mb-1">
+                    Author Name
+                  </label>
+                  <div className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm opacity-80">
+                    {authorName || "—"}
+                  </div>
+                </div>
+                {preview &&
+                  preview.componentNames &&
+                  preview.componentNames.length > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium opacity-70 mb-2">
+                        Widgets Included
+                      </label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {preview.componentNames.map((name) => (
+                          <Tag3 key={name} text={name} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                <TextArea
+                  label="Description"
+                  value={description}
+                  onChange={setDescription}
+                  placeholder="A brief description of this dashboard..."
+                  rows={3}
+                />
+                {/* Version bump — controls what version the registry
                   publishes under. "Patch" is the default so a
                   republish bumps latestVersion and triggers update
                   notifications on installers. "Keep current version"
                   is an escape hatch for typo-fix republishes. */}
-              <div>
-                <label className="block text-sm font-medium opacity-70 mb-2">
-                  Version Bump
-                </label>
-                <select
-                  value={dashboardBump}
-                  onChange={(e) => setDashboardBump(e.target.value)}
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm"
-                >
-                  {BUMP_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                <div>
+                  <label className="block text-sm font-medium opacity-70 mb-2">
+                    Version Bump
+                  </label>
+                  <select
+                    value={dashboardBump}
+                    onChange={(e) => setDashboardBump(e.target.value)}
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm"
+                  >
+                    {BUMP_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium opacity-70 mb-2">
+                    Visibility
+                  </label>
+                  <div className="space-y-2">
+                    {[
+                      {
+                        value: "public",
+                        label: "Public",
+                        desc: "Anyone can find and install this dashboard.",
+                      },
+                      {
+                        value: "private",
+                        label: "Private",
+                        desc: "Only you and users you grant access to can install. The package is hidden from search and listings.",
+                      },
+                    ].map((opt) => {
+                      const active = visibility === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setVisibility(opt.value)}
+                          className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors ${
+                            active
+                              ? "bg-indigo-900/20 border-indigo-500/60"
+                              : "bg-white/5 border-white/10 hover:bg-white/10"
+                          }`}
+                        >
+                          <div className="flex items-start gap-2.5">
+                            <div
+                              className={`mt-0.5 h-4 w-4 rounded-full border flex-shrink-0 ${
+                                active
+                                  ? "border-indigo-400 bg-indigo-500"
+                                  : "border-white/30"
+                              }`}
+                            >
+                              {active && (
+                                <div className="h-full w-full rounded-full border-2 border-gray-900" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium">
+                                {opt.label}
+                              </div>
+                              <div className="text-xs opacity-60 mt-0.5">
+                                {opt.desc}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium opacity-70 mb-2">
-                  Visibility
-                </label>
-                <div className="space-y-2">
-                  {[
-                    {
-                      value: "public",
-                      label: "Public",
-                      desc: "Anyone can find and install this dashboard.",
-                    },
-                    {
-                      value: "private",
-                      label: "Private",
-                      desc: "Only you and users you grant access to can install. The package is hidden from search and listings.",
-                    },
-                  ].map((opt) => {
-                    const active = visibility === opt.value;
+            </Stepper.Step>
+
+            {/* Step 2: Tags */}
+            <Stepper.Step label="Tags">
+              <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
+                <p className="text-sm opacity-70">
+                  Select at least one tag to categorize your dashboard.
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {DASHBOARD_TAGS.map((tag) => {
+                    const isSelected = selectedTags.includes(tag);
                     return (
                       <button
-                        key={opt.value}
+                        key={tag}
                         type="button"
-                        onClick={() => setVisibility(opt.value)}
-                        className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors ${
-                          active
-                            ? "bg-indigo-900/20 border-indigo-500/60"
-                            : "bg-white/5 border-white/10 hover:bg-white/10"
+                        onClick={() => toggleTag(tag)}
+                        className={`px-3 py-1.5 rounded-full text-sm border transition-colors cursor-pointer ${
+                          isSelected
+                            ? "bg-white/15 border-white/30 text-white"
+                            : "bg-transparent border-white/10 text-white/60 hover:border-white/20 hover:text-white/80"
                         }`}
                       >
-                        <div className="flex items-start gap-2.5">
-                          <div
-                            className={`mt-0.5 h-4 w-4 rounded-full border flex-shrink-0 ${
-                              active
-                                ? "border-indigo-400 bg-indigo-500"
-                                : "border-white/30"
-                            }`}
-                          >
-                            {active && (
-                              <div className="h-full w-full rounded-full border-2 border-gray-900" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium">
-                              {opt.label}
-                            </div>
-                            <div className="text-xs opacity-60 mt-0.5">
-                              {opt.desc}
-                            </div>
-                          </div>
-                        </div>
+                        {tag}
                       </button>
                     );
                   })}
                 </div>
               </div>
-            </div>
-          </Stepper.Step>
+            </Stepper.Step>
 
-          {/* Step 2: Tags */}
-          <Stepper.Step label="Tags">
-            <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
-              <p className="text-sm opacity-70">
-                Select at least one tag to categorize your dashboard.
-              </p>
-              <div className="grid grid-cols-3 gap-2">
-                {DASHBOARD_TAGS.map((tag) => {
-                  const isSelected = selectedTags.includes(tag);
-                  return (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => toggleTag(tag)}
-                      className={`px-3 py-1.5 rounded-full text-sm border transition-colors cursor-pointer ${
-                        isSelected
-                          ? "bg-white/15 border-white/30 text-white"
-                          : "bg-transparent border-white/10 text-white/60 hover:border-white/20 hover:text-white/80"
-                      }`}
-                    >
-                      {tag}
-                    </button>
-                  );
-                })}
+            {/* Step 3: Icon */}
+            <Stepper.Step label="Icon">
+              <div className="flex-1 min-h-0 flex flex-col pb-4">
+                <IconPicker selectedIcon={icon} onSelectIcon={setIcon} />
               </div>
-            </div>
-          </Stepper.Step>
+            </Stepper.Step>
 
-          {/* Step 3: Icon */}
-          <Stepper.Step label="Icon">
-            <div className="flex-1 min-h-0 flex flex-col pb-4">
-              <IconPicker selectedIcon={icon} onSelectIcon={setIcon} />
-            </div>
-          </Stepper.Step>
+            {/* Step 4: Dependencies */}
+            <Stepper.Step label="Dependencies">
+              <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-4">
+                <p className="text-sm opacity-70">
+                  Choose which owned widgets + theme to publish alongside this
+                  dashboard. Third-party dependencies are referenced only —
+                  users install them separately.
+                </p>
 
-          {/* Step 4: Dependencies */}
-          <Stepper.Step label="Dependencies">
-            <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-4">
-              <p className="text-sm opacity-70">
-                Choose which owned widgets + theme to publish alongside this
-                dashboard. Third-party dependencies are referenced only — users
-                install them separately.
-              </p>
+                {planLoading && (
+                  <div className="text-sm opacity-60 py-6 text-center">
+                    Resolving dependencies…
+                  </div>
+                )}
 
-              {planLoading && (
-                <div className="text-sm opacity-60 py-6 text-center">
-                  Resolving dependencies…
-                </div>
-              )}
+                {planError && (
+                  <div className="p-3 bg-red-900/20 border border-red-700/40 rounded text-sm text-red-200">
+                    {planError}
+                  </div>
+                )}
 
-              {planError && (
-                <div className="p-3 bg-red-900/20 border border-red-700/40 rounded text-sm text-red-200">
-                  {planError}
-                </div>
-              )}
+                {plan?.registryError && (
+                  <div className="p-2 bg-amber-900/20 border border-amber-700/40 rounded text-xs text-amber-200">
+                    Registry lookup failed: {plan.registryError}. Dependencies
+                    shown are local-only.
+                  </div>
+                )}
 
-              {plan?.registryError && (
-                <div className="p-2 bg-amber-900/20 border border-amber-700/40 rounded text-xs text-amber-200">
-                  Registry lookup failed: {plan.registryError}. Dependencies
-                  shown are local-only.
-                </div>
-              )}
+                {plan && !planLoading && (
+                  <DependencyTable
+                    plan={plan}
+                    selections={depSelections}
+                    onChange={updateDepSelection}
+                  />
+                )}
+              </div>
+            </Stepper.Step>
 
-              {plan && !planLoading && (
-                <DependencyTable
-                  plan={plan}
-                  selections={depSelections}
-                  onChange={updateDepSelection}
-                />
-              )}
-            </div>
-          </Stepper.Step>
-
-          {/* Step 5: Defaults — verify per-field defaultValue entries
+            {/* Step 5: Defaults — verify per-field defaultValue entries
               across every owned widget package about to be republished.
               Edits here stage into a temp copy at publish time; the
               publisher's source files stay untouched. */}
-          <Stepper.Step label="Defaults">
-            <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-4">
-              <p className="text-sm opacity-70">
-                Review <code>userConfig</code> default values the widget's
-                dev-time dash.js ships. Anything you leave as-is gets published
-                as the current default. Values you blank or edit here get
-                rewritten in a staged copy before the ZIP is built — your local
-                source files are untouched.
-              </p>
-              {defaultsLoading && (
-                <div className="text-sm opacity-60 py-6 text-center">
-                  Scanning widget configs for default values…
-                </div>
-              )}
-              {!defaultsLoading && (
-                <DefaultsReviewList
-                  plan={plan}
-                  depSelections={depSelections}
-                  defaultsByPackage={defaultsByPackage}
-                  overrides={defaultsOverrides}
-                  onChange={setDefaultOverride}
-                />
-              )}
-            </div>
-          </Stepper.Step>
+            <Stepper.Step label="Defaults">
+              <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-4">
+                <p className="text-sm opacity-70">
+                  Review <code>userConfig</code> default values the widget's
+                  dev-time dash.js ships. Anything you leave as-is gets
+                  published as the current default. Values you blank or edit
+                  here get rewritten in a staged copy before the ZIP is built —
+                  your local source files are untouched.
+                </p>
+                {defaultsLoading && (
+                  <div className="text-sm opacity-60 py-6 text-center">
+                    Scanning widget configs for default values…
+                  </div>
+                )}
+                {!defaultsLoading && (
+                  <DefaultsReviewList
+                    plan={plan}
+                    depSelections={depSelections}
+                    defaultsByPackage={defaultsByPackage}
+                    overrides={defaultsOverrides}
+                    onChange={setDefaultOverride}
+                  />
+                )}
+              </div>
+            </Stepper.Step>
 
-          {/* Step 6: Publish */}
-          <Stepper.Step label="Publish">
-            <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-4">
-              {/* Show live per-step progress during batch publish */}
-              {(isPublishing || publishSteps.length > 0) && (
-                <PublishProgressList steps={publishSteps} />
-              )}
-              {!result && !isPublishing && publishSteps.length === 0 ? (
-                <>
-                  <p className="text-sm opacity-70">
-                    Review your dashboard details before publishing.
-                  </p>
-                  <div className="bg-white/5 border border-white/10 rounded-lg p-4 space-y-2 text-sm">
-                    <div className="flex gap-2">
-                      <span className="opacity-50 w-20 flex-shrink-0">
-                        Author
-                      </span>
-                      <span>{authorName}</span>
-                    </div>
-                    {description.trim() && (
+            {/* Step 6: Publish */}
+            <Stepper.Step label="Publish">
+              <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-4">
+                {/* Show live per-step progress during batch publish */}
+                {(isPublishing || publishSteps.length > 0) && (
+                  <PublishProgressList steps={publishSteps} />
+                )}
+                {!result && !isPublishing && publishSteps.length === 0 ? (
+                  <>
+                    <p className="text-sm opacity-70">
+                      Review your dashboard details before publishing.
+                    </p>
+                    <div className="bg-white/5 border border-white/10 rounded-lg p-4 space-y-2 text-sm">
                       <div className="flex gap-2">
                         <span className="opacity-50 w-20 flex-shrink-0">
-                          Description
+                          Author
                         </span>
-                        <span>{description}</span>
+                        <span>{authorName}</span>
                       </div>
-                    )}
-                    <div className="flex gap-2">
-                      <span className="opacity-50 w-20 flex-shrink-0">
-                        Tags
-                      </span>
-                      <span>
-                        {selectedTags.length > 0
-                          ? selectedTags.join(", ")
-                          : "None"}
-                      </span>
-                    </div>
-                    <div className="flex gap-2 items-center">
-                      <span className="opacity-50 w-20 flex-shrink-0">
-                        Icon
-                      </span>
-                      <FontAwesomeIcon
-                        icon={icon || "grip"}
-                        className="h-4 w-4"
-                      />
-                      <span className="opacity-70">{icon || "grip"}</span>
-                    </div>
-                    {preview &&
-                      preview.componentNames &&
-                      preview.componentNames.length > 0 && (
+                      {description.trim() && (
                         <div className="flex gap-2">
                           <span className="opacity-50 w-20 flex-shrink-0">
-                            Widgets
+                            Description
                           </span>
-                          <div className="flex flex-wrap gap-1">
-                            {preview.componentNames.map((name) => (
-                              <Tag3 key={name} text={name} />
-                            ))}
-                          </div>
+                          <span>{description}</span>
                         </div>
                       )}
-                  </div>
-                </>
-              ) : result?.success ? (
-                <div className="space-y-3">
-                  {/* Registry publish result */}
-                  {result.registrySubmission?.success ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <FontAwesomeIcon
-                          icon="circle-check"
-                          className="h-4 w-4 text-green-400"
-                        />
-                        <span className="text-sm">
-                          Published to Dash Registry
+                      <div className="flex gap-2">
+                        <span className="opacity-50 w-20 flex-shrink-0">
+                          Tags
+                        </span>
+                        <span>
+                          {selectedTags.length > 0
+                            ? selectedTags.join(", ")
+                            : "None"}
                         </span>
                       </div>
-                      {result.registrySubmission.registryUrl && (
-                        <div className="bg-white/5 border border-white/10 rounded-lg p-3">
-                          <div className="text-xs opacity-50 mb-1">
-                            Shareable Link
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              window.mainApi.shell.openExternal(
-                                result.registrySubmission.registryUrl,
-                              )
-                            }
-                            className="text-sm text-blue-400 hover:underline cursor-pointer break-all text-left"
-                          >
-                            {result.registrySubmission.registryUrl}
-                          </button>
-                        </div>
-                      )}
-                      {result.registrySubmission.version && (
-                        <div className="text-xs opacity-50">
-                          Version: v{result.registrySubmission.version}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <FontAwesomeIcon
-                          icon="circle-check"
-                          className="h-4 w-4 text-green-400"
-                        />
-                        <span className="text-sm">
-                          Dashboard prepared for publishing.
+                      <div className="flex gap-2 items-center">
+                        <span className="opacity-50 w-20 flex-shrink-0">
+                          Icon
                         </span>
+                        <FontAwesomeIcon
+                          icon={icon || "grip"}
+                          className="h-4 w-4"
+                        />
+                        <span className="opacity-70">{icon || "grip"}</span>
                       </div>
-                      {result.registrySubmission?.error && (
-                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
-                          <div className="flex items-start gap-2">
-                            <FontAwesomeIcon
-                              icon="triangle-exclamation"
-                              className="h-3.5 w-3.5 text-amber-400 mt-0.5 flex-shrink-0"
-                            />
-                            <span className="text-xs text-amber-300/90">
-                              Registry upload failed:{" "}
-                              {result.registrySubmission.error}. Your dashboard
-                              was saved locally.
+                      {preview &&
+                        preview.componentNames &&
+                        preview.componentNames.length > 0 && (
+                          <div className="flex gap-2">
+                            <span className="opacity-50 w-20 flex-shrink-0">
+                              Widgets
                             </span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {result.filePath && (
-                    <div className="text-xs opacity-50 break-all">
-                      Saved to: {result.filePath}
-                    </div>
-                  )}
-                  {result.warnings && result.warnings.length > 0 && (
-                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 space-y-2">
-                      <div className="flex items-start gap-2">
-                        <FontAwesomeIcon
-                          icon="triangle-exclamation"
-                          className="h-3.5 w-3.5 text-amber-400 mt-0.5 flex-shrink-0"
-                        />
-                        <span className="text-xs text-amber-300/90">
-                          The following widgets are not currently on the
-                          registry. This may be intentional if they are private.
-                          Dashboards referencing these widgets can only be
-                          installed by users who already have them.
-                        </span>
-                      </div>
-                      <div className="space-y-2 mt-1">
-                        {result.warnings.map((w) => (
-                          <div key={w.package}>
-                            <div className="text-xs font-semibold opacity-60">
-                              {w.package}
-                            </div>
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {w.widgets.map((name) => (
+                            <div className="flex flex-wrap gap-1">
+                              {preview.componentNames.map((name) => (
                                 <Tag3 key={name} text={name} />
                               ))}
                             </div>
                           </div>
-                        ))}
-                      </div>
+                        )}
                     </div>
-                  )}
-                  {result.registryCheckFailed && (
-                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
-                      <div className="flex items-start gap-2">
-                        <FontAwesomeIcon
-                          icon="triangle-exclamation"
-                          className="h-3.5 w-3.5 text-amber-400 mt-0.5 flex-shrink-0"
-                        />
-                        <span className="text-xs text-amber-300/90">
-                          Unable to reach the registry to verify widget
-                          availability. Your dashboard was still prepared
-                          successfully.
-                        </span>
+                  </>
+                ) : result?.success ? (
+                  <div className="space-y-3">
+                    {/* Registry publish result */}
+                    {result.registrySubmission?.success ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <FontAwesomeIcon
+                            icon="circle-check"
+                            className="h-4 w-4 text-green-400"
+                          />
+                          <span className="text-sm">
+                            Published to Dash Registry
+                          </span>
+                        </div>
+                        {result.registrySubmission.registryUrl && (
+                          <div className="bg-white/5 border border-white/10 rounded-lg p-3">
+                            <div className="text-xs opacity-50 mb-1">
+                              Shareable Link
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                window.mainApi.shell.openExternal(
+                                  result.registrySubmission.registryUrl,
+                                )
+                              }
+                              className="text-sm text-blue-400 hover:underline cursor-pointer break-all text-left"
+                            >
+                              {result.registrySubmission.registryUrl}
+                            </button>
+                          </div>
+                        )}
+                        {result.registrySubmission.version && (
+                          <div className="text-xs opacity-50">
+                            Version: v{result.registrySubmission.version}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  )}
-                </div>
-              ) : result ? (
-                <div className="flex items-center gap-2">
-                  <FontAwesomeIcon
-                    icon="circle-xmark"
-                    className="h-4 w-4 text-red-400"
-                  />
-                  <span className="text-sm text-red-400">
-                    {result.error || "Publish preparation failed."}
-                  </span>
-                </div>
-              ) : null}
-            </div>
-          </Stepper.Step>
-        </Stepper>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <FontAwesomeIcon
+                            icon="circle-check"
+                            className="h-4 w-4 text-green-400"
+                          />
+                          <span className="text-sm">
+                            Dashboard prepared for publishing.
+                          </span>
+                        </div>
+                        {result.registrySubmission?.error && (
+                          <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+                            <div className="flex items-start gap-2">
+                              <FontAwesomeIcon
+                                icon="triangle-exclamation"
+                                className="h-3.5 w-3.5 text-amber-400 mt-0.5 flex-shrink-0"
+                              />
+                              <span className="text-xs text-amber-300/90">
+                                Registry upload failed:{" "}
+                                {result.registrySubmission.error}. Your
+                                dashboard was saved locally.
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
-        {/* Footer */}
-        <div className="flex-shrink-0 flex flex-row items-center px-6 py-4 border-t border-white/10">
-          <div className="flex flex-row gap-2">
-            <Button3
-              title={step === 0 ? "Cancel" : "Back"}
-              onClick={step === 0 ? handleClose : () => setStep(step - 1)}
-              disabled={isPublishing}
-            />
-          </div>
-          <div className="flex-1 text-center">
-            <span className="text-xs opacity-40">Step {step + 1} of 7</span>
-          </div>
-          <div className="flex flex-row gap-2">
-            {result?.success ? (
-              <Button2 title="Done" onClick={handleClose} />
-            ) : isLastStep ? (
-              <Button2
-                title={isPublishing ? "Publishing..." : "Publish"}
-                onClick={handlePublish}
+                    {result.filePath && (
+                      <div className="text-xs opacity-50 break-all">
+                        Saved to: {result.filePath}
+                      </div>
+                    )}
+                    {result.warnings && result.warnings.length > 0 && (
+                      <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 space-y-2">
+                        <div className="flex items-start gap-2">
+                          <FontAwesomeIcon
+                            icon="triangle-exclamation"
+                            className="h-3.5 w-3.5 text-amber-400 mt-0.5 flex-shrink-0"
+                          />
+                          <span className="text-xs text-amber-300/90">
+                            The following widgets are not currently on the
+                            registry. This may be intentional if they are
+                            private. Dashboards referencing these widgets can
+                            only be installed by users who already have them.
+                          </span>
+                        </div>
+                        <div className="space-y-2 mt-1">
+                          {result.warnings.map((w) => (
+                            <div key={w.package}>
+                              <div className="text-xs font-semibold opacity-60">
+                                {w.package}
+                              </div>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {w.widgets.map((name) => (
+                                  <Tag3 key={name} text={name} />
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {result.registryCheckFailed && (
+                      <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+                        <div className="flex items-start gap-2">
+                          <FontAwesomeIcon
+                            icon="triangle-exclamation"
+                            className="h-3.5 w-3.5 text-amber-400 mt-0.5 flex-shrink-0"
+                          />
+                          <span className="text-xs text-amber-300/90">
+                            Unable to reach the registry to verify widget
+                            availability. Your dashboard was still prepared
+                            successfully.
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : result ? (
+                  <div className="flex items-center gap-2">
+                    <FontAwesomeIcon
+                      icon="circle-xmark"
+                      className="h-4 w-4 text-red-400"
+                    />
+                    <span className="text-sm text-red-400">
+                      {result.error || "Publish preparation failed."}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            </Stepper.Step>
+          </Stepper>
+
+          {/* Footer */}
+          <div className="flex-shrink-0 flex flex-row items-center px-6 py-4 border-t border-white/10">
+            <div className="flex flex-row gap-2">
+              <Button3
+                title={step === 0 ? "Cancel" : "Back"}
+                onClick={step === 0 ? handleClose : () => setStep(step - 1)}
                 disabled={isPublishing}
               />
-            ) : (
-              <Button2
-                title="Next"
-                onClick={() => handleStepChange(step + 1)}
-                disabled={!canAdvance}
-              />
-            )}
+            </div>
+            <div className="flex-1 text-center">
+              <span className="text-xs opacity-40">Step {step + 1} of 7</span>
+            </div>
+            <div className="flex flex-row gap-2">
+              {result?.success ? (
+                <Button2 title="Done" onClick={handleClose} />
+              ) : isLastStep ? (
+                <Button2
+                  title={isPublishing ? "Publishing..." : "Publish"}
+                  onClick={handlePublish}
+                  disabled={isPublishing}
+                />
+              ) : (
+                <Button2
+                  title="Next"
+                  onClick={() => handleStepChange(step + 1)}
+                  disabled={!canAdvance}
+                />
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </Modal>
+      </Modal>
+      {authGate}
+    </>
   );
 };
 

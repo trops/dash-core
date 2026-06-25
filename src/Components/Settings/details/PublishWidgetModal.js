@@ -8,6 +8,7 @@ import {
   getStylesForItem,
   themeObjects,
 } from "@trops/dash-react";
+import { useRegistryAuthGate } from "../../../hooks/useRegistryAuthGate";
 
 const BUMP_OPTIONS = [
   { value: "none", label: "Keep current version" },
@@ -50,6 +51,11 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,
   });
+  // Re-validate auth right before publishing — the on-open status check can
+  // pass with a token that's since expired (getStatus only checks existence),
+  // which would 401 the publish with a generic error. ensureAuthed pops the
+  // sign-in gate if the session is actually dead.
+  const { ensureAuthed, authGate } = useRegistryAuthGate();
 
   const [authStatus, setAuthStatus] = useState("loading");
   const [authError, setAuthError] = useState(null);
@@ -220,6 +226,12 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
 
   async function handlePublish({ confirmPersonalPaths = false } = {}) {
     if (!widget) return;
+    if (
+      !(await ensureAuthed({
+        message: "Sign in to the registry to publish this widget.",
+      }))
+    )
+      return;
     setIsPublishing(true);
     setResult(null);
     if (!confirmPersonalPaths) setPersonalPathFindings(null);
@@ -272,397 +284,405 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
     Boolean(publisherKey);
 
   return (
-    <Modal isOpen={isOpen} setIsOpen={handleClose} width="w-full max-w-lg">
-      <div
-        className={`flex flex-col rounded-lg overflow-clip border ${
-          panelStyles.backgroundColor || ""
-        } ${panelStyles.borderColor || ""} ${panelStyles.textColor || ""}`}
-      >
-        {/* Header */}
-        <div className="flex-shrink-0 flex flex-row items-center justify-between p-4 border-b border-white/10">
-          <span className="text-lg font-semibold truncate">
-            Publish{" "}
-            <span className="font-mono text-base">
-              {packageInfo?.localScope
-                ? `@${packageInfo.localScope}/${packageInfo.name}`
-                : widget.packageId || widget.name}
+    <>
+      <Modal isOpen={isOpen} setIsOpen={handleClose} width="w-full max-w-lg">
+        <div
+          className={`flex flex-col rounded-lg overflow-clip border ${
+            panelStyles.backgroundColor || ""
+          } ${panelStyles.borderColor || ""} ${panelStyles.textColor || ""}`}
+        >
+          {/* Header */}
+          <div className="flex-shrink-0 flex flex-row items-center justify-between p-4 border-b border-white/10">
+            <span className="text-lg font-semibold truncate">
+              Publish{" "}
+              <span className="font-mono text-base">
+                {packageInfo?.localScope
+                  ? `@${packageInfo.localScope}/${packageInfo.name}`
+                  : widget.packageId || widget.name}
+              </span>
             </span>
-          </span>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="opacity-50 hover:opacity-100 transition-opacity cursor-pointer"
-          >
-            <FontAwesomeIcon icon="xmark" className="h-5 w-5" />
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={handleClose}
+              className="opacity-50 hover:opacity-100 transition-opacity cursor-pointer"
+            >
+              <FontAwesomeIcon icon="xmark" className="h-5 w-5" />
+            </button>
+          </div>
 
-        {/* Body */}
-        <div className="p-5 space-y-4 overflow-y-auto">
-          {authStatus === "loading" && (
-            <div className="text-sm opacity-60 text-center py-4">
-              Checking registry connection…
-            </div>
-          )}
-
-          {authStatus === "unauthenticated" && (
-            <div className="space-y-3">
-              <div className="p-3 bg-amber-900/20 border border-amber-700/40 rounded text-sm text-amber-200">
-                You need to sign in to the Dash Registry to publish.
+          {/* Body */}
+          <div className="p-5 space-y-4 overflow-y-auto">
+            {authStatus === "loading" && (
+              <div className="text-sm opacity-60 text-center py-4">
+                Checking registry connection…
               </div>
-              <Button2 title="Sign in to Registry" onClick={handleSignIn} />
-              {authError && (
-                <div className="text-xs text-red-300">{authError}</div>
-              )}
-            </div>
-          )}
+            )}
 
-          {/* Privacy warning: personal filesystem paths detected in source */}
-          {authStatus === "authenticated" &&
-            personalPathFindings &&
-            !result && (
+            {authStatus === "unauthenticated" && (
               <div className="space-y-3">
                 <div className="p-3 bg-amber-900/20 border border-amber-700/40 rounded text-sm text-amber-200">
-                  <div className="font-semibold flex items-center gap-2 mb-1">
-                    <FontAwesomeIcon
-                      icon="triangle-exclamation"
-                      className="h-4 w-4"
-                    />
-                    Personal paths detected in this package
-                  </div>
-                  <div className="text-xs opacity-90">
-                    The following lines look like absolute paths on your
-                    machine. Publishing will include them. If any of these are
-                    your local filesystem, replace them with a tilde (e.g.
-                    <code className="px-1 opacity-90">~/pipeline</code>) or a
-                    schema <code className="px-1 opacity-90">defaultValue</code>{" "}
-                    before publishing.
-                  </div>
+                  You need to sign in to the Dash Registry to publish.
                 </div>
-                <div className="bg-white/5 border border-white/10 rounded-lg divide-y divide-white/10 max-h-60 overflow-y-auto">
-                  {personalPathFindings.map((f, idx) => (
-                    <div
-                      key={`${f.file}:${f.line}:${idx}`}
-                      className="px-3 py-2 text-xs"
-                    >
-                      <div className="font-mono text-amber-200 truncate">
-                        {f.file}:{f.line}
-                      </div>
-                      <div className="font-mono opacity-80 mt-0.5 break-all">
-                        {f.match}
-                      </div>
-                      {f.context && f.context !== f.match && (
-                        <div className="font-mono opacity-50 mt-0.5 truncate">
-                          {f.context}
-                        </div>
-                      )}
+                <Button2 title="Sign in to Registry" onClick={handleSignIn} />
+                {authError && (
+                  <div className="text-xs text-red-300">{authError}</div>
+                )}
+              </div>
+            )}
+
+            {/* Privacy warning: personal filesystem paths detected in source */}
+            {authStatus === "authenticated" &&
+              personalPathFindings &&
+              !result && (
+                <div className="space-y-3">
+                  <div className="p-3 bg-amber-900/20 border border-amber-700/40 rounded text-sm text-amber-200">
+                    <div className="font-semibold flex items-center gap-2 mb-1">
+                      <FontAwesomeIcon
+                        icon="triangle-exclamation"
+                        className="h-4 w-4"
+                      />
+                      Personal paths detected in this package
                     </div>
-                  ))}
+                    <div className="text-xs opacity-90">
+                      The following lines look like absolute paths on your
+                      machine. Publishing will include them. If any of these are
+                      your local filesystem, replace them with a tilde (e.g.
+                      <code className="px-1 opacity-90">~/pipeline</code>) or a
+                      schema{" "}
+                      <code className="px-1 opacity-90">defaultValue</code>{" "}
+                      before publishing.
+                    </div>
+                  </div>
+                  <div className="bg-white/5 border border-white/10 rounded-lg divide-y divide-white/10 max-h-60 overflow-y-auto">
+                    {personalPathFindings.map((f, idx) => (
+                      <div
+                        key={`${f.file}:${f.line}:${idx}`}
+                        className="px-3 py-2 text-xs"
+                      >
+                        <div className="font-mono text-amber-200 truncate">
+                          {f.file}:{f.line}
+                        </div>
+                        <div className="font-mono opacity-80 mt-0.5 break-all">
+                          {f.match}
+                        </div>
+                        {f.context && f.context !== f.match && (
+                          <div className="font-mono opacity-50 mt-0.5 truncate">
+                            {f.context}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="text-xs opacity-60">
+                    Total findings: {personalPathFindings.length}
+                    {personalPathFindings.length >= 50 && " (capped)"}
+                  </div>
                 </div>
-                <div className="text-xs opacity-60">
-                  Total findings: {personalPathFindings.length}
-                  {personalPathFindings.length >= 50 && " (capped)"}
-                </div>
-              </div>
-            )}
+              )}
 
-          {/* Brief loading indicator while the main process tells us
+            {/* Brief loading indicator while the main process tells us
               whether a publisher key exists on this machine. */}
-          {authStatus === "authenticated" &&
-            !result &&
-            !personalPathFindings &&
-            publisherKeyLoading && (
-              <div className="text-sm opacity-60 text-center py-4">
-                Checking signing key…
-              </div>
-            )}
+            {authStatus === "authenticated" &&
+              !result &&
+              !personalPathFindings &&
+              publisherKeyLoading && (
+                <div className="text-sm opacity-60 text-center py-4">
+                  Checking signing key…
+                </div>
+              )}
 
-          {/* First-time signing-key disclosure. Renders before the
+            {/* First-time signing-key disclosure. Renders before the
               publish form when this machine has never registered a
               publisher key. After the user clicks "Generate Key" the
               main process generates an Ed25519 keypair, encrypts it
               via safeStorage, registers the public half with the
               registry, and persists the issued cert locally. The
               private key never leaves the OS keychain. */}
-          {authStatus === "authenticated" &&
-            !result &&
-            !personalPathFindings &&
-            !publisherKeyLoading &&
-            !publisherKey && (
-              <div
-                className="space-y-3"
-                data-testid="publish-keygen-disclosure"
-              >
-                <div className="p-3 bg-indigo-900/20 border border-indigo-700/40 rounded text-sm">
-                  <div className="font-semibold flex items-center gap-2 mb-1">
-                    <FontAwesomeIcon icon="key" className="h-4 w-4" />
-                    Set up your publisher signing key
+            {authStatus === "authenticated" &&
+              !result &&
+              !personalPathFindings &&
+              !publisherKeyLoading &&
+              !publisherKey && (
+                <div
+                  className="space-y-3"
+                  data-testid="publish-keygen-disclosure"
+                >
+                  <div className="p-3 bg-indigo-900/20 border border-indigo-700/40 rounded text-sm">
+                    <div className="font-semibold flex items-center gap-2 mb-1">
+                      <FontAwesomeIcon icon="key" className="h-4 w-4" />
+                      Set up your publisher signing key
+                    </div>
+                    <div className="text-xs opacity-90 leading-relaxed">
+                      Each widget you publish is signed with an Ed25519 keypair
+                      that lives only on this machine. Dash will generate one
+                      for you now, encrypt the private half in your OS keychain
+                      (Keychain on macOS, DPAPI on Windows), and register the
+                      public half with the registry. Other users will see your
+                      publishes as verified by you; you'll never need to manage
+                      this key directly.
+                    </div>
                   </div>
-                  <div className="text-xs opacity-90 leading-relaxed">
-                    Each widget you publish is signed with an Ed25519 keypair
-                    that lives only on this machine. Dash will generate one for
-                    you now, encrypt the private half in your OS keychain
-                    (Keychain on macOS, DPAPI on Windows), and register the
-                    public half with the registry. Other users will see your
-                    publishes as verified by you; you'll never need to manage
-                    this key directly.
+                  {keygenError && (
+                    <div className="p-3 bg-red-900/20 border border-red-700/40 rounded text-xs text-red-200">
+                      {keygenError}
+                    </div>
+                  )}
+                  <div className="flex flex-row gap-2 justify-end">
+                    <Button3 title="Cancel" onClick={handleClose} />
+                    <Button2
+                      title={
+                        isGeneratingKey ? "Generating key…" : "Generate Key"
+                      }
+                      onClick={handleGenerateKey}
+                      disabled={isGeneratingKey}
+                    />
                   </div>
                 </div>
-                {keygenError && (
-                  <div className="p-3 bg-red-900/20 border border-red-700/40 rounded text-xs text-red-200">
-                    {keygenError}
+              )}
+
+            {authStatus === "authenticated" &&
+              !result &&
+              !personalPathFindings &&
+              publisherKey && (
+                <>
+                  {/* Package summary */}
+                  <div className="bg-white/5 border border-white/10 rounded-lg p-3 text-sm">
+                    <div className="flex gap-2">
+                      <span className="opacity-50 w-28 flex-shrink-0">
+                        Local
+                      </span>
+                      <span className="font-mono text-xs opacity-80">
+                        {packageInfo?.localScope
+                          ? `@${packageInfo.localScope}/${packageInfo.name}`
+                          : widget.packageId || widget.name}
+                      </span>
+                    </div>
+                    <div className="flex gap-2 mt-1">
+                      <span className="opacity-50 w-28 flex-shrink-0">
+                        Publishing as
+                      </span>
+                      <span className="font-mono text-xs text-indigo-300">
+                        {username ? `@${username}/` : ""}
+                        {packageInfo?.name ||
+                          (widget.name || "").replace(/^@[^/]+\//, "")}
+                        <span className="text-gray-400"> v{newVersion}</span>
+                      </span>
+                    </div>
+                    <div className="flex gap-2 mt-1">
+                      <span className="opacity-50 w-28 flex-shrink-0">
+                        Current
+                      </span>
+                      <span>v{currentVersion}</span>
+                    </div>
+                    {publisherKey?.fingerprint && (
+                      <div
+                        className="flex gap-2 mt-1"
+                        data-testid="publish-signing-as"
+                      >
+                        <span className="opacity-50 w-28 flex-shrink-0">
+                          Signing as
+                        </span>
+                        <span
+                          className="font-mono text-xs opacity-80"
+                          title={publisherKey.fingerprint}
+                        >
+                          {publisherKey.fingerprint.slice(0, 12)}…
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Components bundled inside this package */}
+                  {packageInfo?.components &&
+                    packageInfo.components.length > 0 && (
+                      <div>
+                        <label className="block text-sm font-medium opacity-70 mb-2">
+                          Widgets in this package (
+                          {packageInfo.components.length})
+                        </label>
+                        <div className="bg-white/5 border border-white/10 rounded-lg divide-y divide-white/10 max-h-48 overflow-y-auto">
+                          {packageInfo.components.map((c) => (
+                            <div
+                              key={c.name}
+                              className="flex items-center gap-2 px-3 py-2 text-sm"
+                            >
+                              <FontAwesomeIcon
+                                icon={c.icon || "square"}
+                                className="h-3.5 w-3.5 opacity-60 flex-shrink-0"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium truncate">
+                                  {c.displayName || c.name}
+                                </div>
+                                {c.description && (
+                                  <div className="text-xs opacity-60 truncate">
+                                    {c.description}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                  {/* Version bump */}
+                  <div>
+                    <label className="block text-sm font-medium opacity-70 mb-2">
+                      Version Bump
+                    </label>
+                    <select
+                      value={bump}
+                      onChange={(e) => setBump(e.target.value)}
+                      className="w-full bg-gray-800 border border-white/10 rounded px-3 py-2 text-sm"
+                    >
+                      {BUMP_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Visibility */}
+                  <div>
+                    <label className="block text-sm font-medium opacity-70 mb-2">
+                      Visibility
+                    </label>
+                    <div className="space-y-2">
+                      {[
+                        {
+                          value: "public",
+                          label: "Public",
+                          desc: "Anyone can find and install this widget.",
+                        },
+                        {
+                          value: "private",
+                          label: "Private",
+                          desc: "Only you and users you grant access to can install.",
+                        },
+                      ].map((opt) => {
+                        const active = visibility === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => setVisibility(opt.value)}
+                            className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
+                              active
+                                ? "bg-indigo-900/20 border-indigo-500/60"
+                                : "bg-white/5 border-white/10 hover:bg-white/10"
+                            }`}
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <div
+                                className={`mt-0.5 h-4 w-4 rounded-full border flex-shrink-0 ${
+                                  active
+                                    ? "border-indigo-400 bg-indigo-500"
+                                    : "border-white/30"
+                                }`}
+                              >
+                                {active && (
+                                  <div className="h-full w-full rounded-full border-2 border-gray-900" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium">
+                                  {opt.label}
+                                </div>
+                                <div className="text-xs opacity-60 mt-0.5">
+                                  {opt.desc}
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+
+            {result?.success && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <FontAwesomeIcon
+                    icon="circle-check"
+                    className="h-4 w-4 text-green-400"
+                  />
+                  <span className="text-sm">
+                    Published v{result.newVersion || result.manifest?.version}
+                  </span>
+                </div>
+                {result.registryResult?.registryUrl && (
+                  <div className="bg-white/5 border border-white/10 rounded-lg p-3">
+                    <div className="text-xs opacity-50 mb-1">
+                      Registry Package
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        window.mainApi.shell.openExternal(
+                          result.registryResult.registryUrl,
+                        )
+                      }
+                      className="text-sm text-indigo-300 hover:underline truncate block w-full text-left"
+                    >
+                      {result.registryResult.registryUrl}
+                    </button>
                   </div>
                 )}
-                <div className="flex flex-row gap-2 justify-end">
-                  <Button3 title="Cancel" onClick={handleClose} />
-                  <Button2
-                    title={isGeneratingKey ? "Generating key…" : "Generate Key"}
-                    onClick={handleGenerateKey}
-                    disabled={isGeneratingKey}
-                  />
-                </div>
               </div>
             )}
 
-          {authStatus === "authenticated" &&
-            !result &&
-            !personalPathFindings &&
-            publisherKey && (
-              <>
-                {/* Package summary */}
-                <div className="bg-white/5 border border-white/10 rounded-lg p-3 text-sm">
-                  <div className="flex gap-2">
-                    <span className="opacity-50 w-28 flex-shrink-0">Local</span>
-                    <span className="font-mono text-xs opacity-80">
-                      {packageInfo?.localScope
-                        ? `@${packageInfo.localScope}/${packageInfo.name}`
-                        : widget.packageId || widget.name}
-                    </span>
-                  </div>
-                  <div className="flex gap-2 mt-1">
-                    <span className="opacity-50 w-28 flex-shrink-0">
-                      Publishing as
-                    </span>
-                    <span className="font-mono text-xs text-indigo-300">
-                      {username ? `@${username}/` : ""}
-                      {packageInfo?.name ||
-                        (widget.name || "").replace(/^@[^/]+\//, "")}
-                      <span className="text-gray-400"> v{newVersion}</span>
-                    </span>
-                  </div>
-                  <div className="flex gap-2 mt-1">
-                    <span className="opacity-50 w-28 flex-shrink-0">
-                      Current
-                    </span>
-                    <span>v{currentVersion}</span>
-                  </div>
-                  {publisherKey?.fingerprint && (
-                    <div
-                      className="flex gap-2 mt-1"
-                      data-testid="publish-signing-as"
-                    >
-                      <span className="opacity-50 w-28 flex-shrink-0">
-                        Signing as
-                      </span>
-                      <span
-                        className="font-mono text-xs opacity-80"
-                        title={publisherKey.fingerprint}
-                      >
-                        {publisherKey.fingerprint.slice(0, 12)}…
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Components bundled inside this package */}
-                {packageInfo?.components &&
-                  packageInfo.components.length > 0 && (
-                    <div>
-                      <label className="block text-sm font-medium opacity-70 mb-2">
-                        Widgets in this package ({packageInfo.components.length}
-                        )
-                      </label>
-                      <div className="bg-white/5 border border-white/10 rounded-lg divide-y divide-white/10 max-h-48 overflow-y-auto">
-                        {packageInfo.components.map((c) => (
-                          <div
-                            key={c.name}
-                            className="flex items-center gap-2 px-3 py-2 text-sm"
-                          >
-                            <FontAwesomeIcon
-                              icon={c.icon || "square"}
-                              className="h-3.5 w-3.5 opacity-60 flex-shrink-0"
-                            />
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium truncate">
-                                {c.displayName || c.name}
-                              </div>
-                              {c.description && (
-                                <div className="text-xs opacity-60 truncate">
-                                  {c.description}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                {/* Version bump */}
-                <div>
-                  <label className="block text-sm font-medium opacity-70 mb-2">
-                    Version Bump
-                  </label>
-                  <select
-                    value={bump}
-                    onChange={(e) => setBump(e.target.value)}
-                    className="w-full bg-gray-800 border border-white/10 rounded px-3 py-2 text-sm"
-                  >
-                    {BUMP_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
+            {result && !result.success && (
+              <div className="p-3 bg-red-900/20 border border-red-700/40 rounded text-sm text-red-200">
+                <div className="font-semibold mb-1">Publish failed</div>
+                <div className="text-xs opacity-80">{result.error}</div>
+                {Array.isArray(result.details) && result.details.length > 0 && (
+                  <ul className="text-xs opacity-70 mt-2 list-disc list-inside space-y-0.5">
+                    {result.details.map((d, i) => (
+                      <li key={i}>{d}</li>
                     ))}
-                  </select>
-                </div>
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
 
-                {/* Visibility */}
-                <div>
-                  <label className="block text-sm font-medium opacity-70 mb-2">
-                    Visibility
-                  </label>
-                  <div className="space-y-2">
-                    {[
-                      {
-                        value: "public",
-                        label: "Public",
-                        desc: "Anyone can find and install this widget.",
-                      },
-                      {
-                        value: "private",
-                        label: "Private",
-                        desc: "Only you and users you grant access to can install.",
-                      },
-                    ].map((opt) => {
-                      const active = visibility === opt.value;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => setVisibility(opt.value)}
-                          className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
-                            active
-                              ? "bg-indigo-900/20 border-indigo-500/60"
-                              : "bg-white/5 border-white/10 hover:bg-white/10"
-                          }`}
-                        >
-                          <div className="flex items-start gap-2.5">
-                            <div
-                              className={`mt-0.5 h-4 w-4 rounded-full border flex-shrink-0 ${
-                                active
-                                  ? "border-indigo-400 bg-indigo-500"
-                                  : "border-white/30"
-                              }`}
-                            >
-                              {active && (
-                                <div className="h-full w-full rounded-full border-2 border-gray-900" />
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-medium">
-                                {opt.label}
-                              </div>
-                              <div className="text-xs opacity-60 mt-0.5">
-                                {opt.desc}
-                              </div>
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+          {/* Footer */}
+          <div className="flex-shrink-0 flex flex-row justify-end gap-2 p-4 border-t border-white/10">
+            {personalPathFindings ? (
+              <>
+                <Button3
+                  title="Go back"
+                  onClick={handleCancelPersonalPathsConfirm}
+                />
+                <Button2
+                  title={isPublishing ? "Publishing…" : "Publish anyway"}
+                  onClick={handleConfirmPersonalPathsAndPublish}
+                  disabled={isPublishing}
+                />
+              </>
+            ) : (
+              <>
+                <Button3
+                  title={result?.success ? "Close" : "Cancel"}
+                  onClick={handleClose}
+                />
+                {!result?.success && (
+                  <Button2
+                    title={isPublishing ? "Publishing…" : "Publish"}
+                    onClick={() => handlePublish()}
+                    disabled={!canPublish}
+                  />
+                )}
               </>
             )}
-
-          {result?.success && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <FontAwesomeIcon
-                  icon="circle-check"
-                  className="h-4 w-4 text-green-400"
-                />
-                <span className="text-sm">
-                  Published v{result.newVersion || result.manifest?.version}
-                </span>
-              </div>
-              {result.registryResult?.registryUrl && (
-                <div className="bg-white/5 border border-white/10 rounded-lg p-3">
-                  <div className="text-xs opacity-50 mb-1">
-                    Registry Package
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      window.mainApi.shell.openExternal(
-                        result.registryResult.registryUrl,
-                      )
-                    }
-                    className="text-sm text-indigo-300 hover:underline truncate block w-full text-left"
-                  >
-                    {result.registryResult.registryUrl}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {result && !result.success && (
-            <div className="p-3 bg-red-900/20 border border-red-700/40 rounded text-sm text-red-200">
-              <div className="font-semibold mb-1">Publish failed</div>
-              <div className="text-xs opacity-80">{result.error}</div>
-              {Array.isArray(result.details) && result.details.length > 0 && (
-                <ul className="text-xs opacity-70 mt-2 list-disc list-inside space-y-0.5">
-                  {result.details.map((d, i) => (
-                    <li key={i}>{d}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
+          </div>
         </div>
-
-        {/* Footer */}
-        <div className="flex-shrink-0 flex flex-row justify-end gap-2 p-4 border-t border-white/10">
-          {personalPathFindings ? (
-            <>
-              <Button3
-                title="Go back"
-                onClick={handleCancelPersonalPathsConfirm}
-              />
-              <Button2
-                title={isPublishing ? "Publishing…" : "Publish anyway"}
-                onClick={handleConfirmPersonalPathsAndPublish}
-                disabled={isPublishing}
-              />
-            </>
-          ) : (
-            <>
-              <Button3
-                title={result?.success ? "Close" : "Cancel"}
-                onClick={handleClose}
-              />
-              {!result?.success && (
-                <Button2
-                  title={isPublishing ? "Publishing…" : "Publish"}
-                  onClick={() => handlePublish()}
-                  disabled={!canPublish}
-                />
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    </Modal>
+      </Modal>
+      {authGate}
+    </>
   );
 };
