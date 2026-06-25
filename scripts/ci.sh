@@ -129,6 +129,10 @@ node --test electron/mcp/permissionGate.test.js electron/mcp/grantedPermissions.
 step "Running widget-publish version-sync tests"
 node --test electron/controller/widgetRegistryController.test.js
 
+# 6c5. Registry token auto-refresh regression-pin
+step "Running registry auth token-refresh tests"
+node --test electron/controller/registryAuthController.test.js
+
 # 6d. Untracked-sources gate regression-pin
 step "Validating untracked-sources gate config"
 npm run test:untracked-pin

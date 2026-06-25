@@ -14,18 +14,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { toPackageId } = require("../utils/packageId");
-const { getStoredToken } = require("./registryAuthController");
-
-/**
- * Build request headers for the registry. When the user is signed in, we
- * include the Bearer token so the server returns private packages that
- * the user owns or has been granted entitlements for. Anonymous fetches
- * still work and simply return only public packages.
- */
-function buildAuthHeaders() {
-  const stored = getStoredToken();
-  return stored?.token ? { Authorization: `Bearer ${stored.token}` } : {};
-}
+const { getStoredToken, authedFetch } = require("./registryAuthController");
 
 // Default registry API base URL
 const DEFAULT_REGISTRY_API_URL = "https://main.d919rwhuzp7rj.amplifyapp.com";
@@ -103,9 +92,7 @@ async function fetchRegistryIndex(forceRefresh = false) {
           "[RegistryController] Fetching registry from:",
           registryUrl,
         );
-        const response = await fetch(registryUrl, {
-          headers: buildAuthHeaders(),
-        });
+        const response = await authedFetch(registryUrl);
         if (!response.ok) {
           throw new Error(
             `Failed to fetch registry: ${response.status} ${response.statusText}`,
@@ -120,9 +107,7 @@ async function fetchRegistryIndex(forceRefresh = false) {
         `${process.env.DASH_REGISTRY_API_URL || DEFAULT_REGISTRY_API_URL}/api/packages`;
       console.log("[RegistryController] Fetching registry from:", registryUrl);
 
-      const response = await fetch(registryUrl, {
-        headers: buildAuthHeaders(),
-      });
+      const response = await authedFetch(registryUrl);
       if (!response.ok) {
         throw new Error(
           `Failed to fetch registry: ${response.status} ${response.statusText}`,
@@ -445,13 +430,13 @@ async function checkUpdates(installedWidgets = []) {
     ]) {
       const url = `${registryBase}${endpointPath}`;
       try {
-        const response = await fetch(url, {
+        // authedFetch injects the Bearer token and transparently refreshes it
+        // on expiry. Auth is optional here but widens what /resolve returns
+        // for private packages where ownership matters.
+        const response = await authedFetch(url, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            // Auth is optional but widens what /resolve returns for
-            // private packages where ownership matters.
-            ...buildAuthHeaders(),
           },
           body: refsBody,
         });
@@ -621,21 +606,17 @@ async function fetchPackageSource(packageName, componentName = null) {
     );
   }
 
-  const fetchOpts = {};
   const registryBase =
     process.env.DASH_REGISTRY_API_URL ||
     "https://main.d919rwhuzp7rj.amplifyapp.com";
-  if (
+  // Use authedFetch (Bearer + auto-refresh) only for registry-hosted URLs;
+  // external download URLs (e.g. GitHub releases) must NOT receive our token.
+  const isRegistryUrl =
     pkg.downloadUrl.includes(registryBase) ||
-    pkg.downloadUrl.includes("/api/packages/")
-  ) {
-    const auth = getStoredToken();
-    if (auth?.token) {
-      fetchOpts.headers = { Authorization: `Bearer ${auth.token}` };
-    }
-  }
-
-  const response = await fetch(pkg.downloadUrl, fetchOpts);
+    pkg.downloadUrl.includes("/api/packages/");
+  const response = isRegistryUrl
+    ? await authedFetch(pkg.downloadUrl)
+    : await fetch(pkg.downloadUrl);
   if (!response.ok) {
     if (response.status === 401) {
       throw new Error("Authentication required to preview this package");
@@ -810,21 +791,17 @@ async function fetchPackageManifest(packageName) {
     );
   }
 
-  const fetchOpts = {};
   const registryBase =
     process.env.DASH_REGISTRY_API_URL ||
     "https://main.d919rwhuzp7rj.amplifyapp.com";
-  if (
+  // Use authedFetch (Bearer + auto-refresh) only for registry-hosted URLs;
+  // external download URLs (e.g. GitHub releases) must NOT receive our token.
+  const isRegistryUrl =
     pkg.downloadUrl.includes(registryBase) ||
-    pkg.downloadUrl.includes("/api/packages/")
-  ) {
-    const auth = getStoredToken();
-    if (auth?.token) {
-      fetchOpts.headers = { Authorization: `Bearer ${auth.token}` };
-    }
-  }
-
-  const response = await fetch(pkg.downloadUrl, fetchOpts);
+    pkg.downloadUrl.includes("/api/packages/");
+  const response = isRegistryUrl
+    ? await authedFetch(pkg.downloadUrl)
+    : await fetch(pkg.downloadUrl);
   if (!response.ok) {
     if (response.status === 401) {
       throw new Error("Authentication required to fetch this package manifest");

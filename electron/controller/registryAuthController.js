@@ -91,6 +91,17 @@ async function pollForToken(deviceCode) {
     s.set("tokenType", data.token_type);
     s.set("authenticatedAt", new Date().toISOString());
 
+    // Persist the Cognito refresh token (+ the client id / region needed to
+    // use it) when the registry forwarded it. This is what lets the app mint
+    // fresh access tokens directly against Cognito on expiry instead of
+    // silently 401-ing every registry call after ~1h. Older registries (or a
+    // browser whose Amplify storage didn't surface the refresh token) omit
+    // these — the app then falls back to re-authenticating on expiry.
+    if (data.refresh_token) s.set("refreshToken", data.refresh_token);
+    if (data.cognito_client_id)
+      s.set("cognitoClientId", data.cognito_client_id);
+    if (data.cognito_region) s.set("cognitoRegion", data.cognito_region);
+
     return {
       status: "authorized",
       token: data.access_token,
@@ -99,6 +110,106 @@ async function pollForToken(deviceCode) {
   }
 
   throw new Error(`Unexpected response: ${response.status}`);
+}
+
+/**
+ * Decode a JWT's `exp` claim (no signature verification — we only use it to
+ * decide whether to pre-emptively refresh) and report whether it's expired,
+ * with a 30s skew so we refresh slightly early rather than racing expiry.
+ * Returns false on any parse failure so a malformed token falls through to
+ * the normal request (and the reactive 401 path) rather than forcing churn.
+ */
+function isAccessTokenExpired(token) {
+  try {
+    const seg = token.split(".")[1];
+    const payload = JSON.parse(Buffer.from(seg, "base64").toString("utf8"));
+    if (!payload.exp) return false;
+    return Date.now() >= payload.exp * 1000 - 30000;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Mint a fresh access token from the stored Cognito refresh token via
+ * Cognito's `InitiateAuth` (REFRESH_TOKEN_AUTH). The user-pool client is
+ * public (no secret), so no SECRET_HASH is required. Returns true and updates
+ * the stored access token on success; false if there's no refresh token or
+ * Cognito rejects it (expired/revoked — caller decides whether to sign out).
+ */
+async function refreshAccessToken() {
+  const s = getStore();
+  const refreshToken = s.get("refreshToken");
+  const clientId = s.get("cognitoClientId");
+  const region = s.get("cognitoRegion") || "us-east-1";
+  if (!refreshToken || !clientId) return false;
+
+  try {
+    const response = await fetch(
+      `https://cognito-idp.${region}.amazonaws.com/`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-amz-json-1.1",
+          "X-Amz-Target": "AWSCognitoIdentityProviderService.InitiateAuth",
+        },
+        body: JSON.stringify({
+          AuthFlow: "REFRESH_TOKEN_AUTH",
+          ClientId: clientId,
+          AuthParameters: { REFRESH_TOKEN: refreshToken },
+        }),
+      },
+    );
+    if (!response.ok) return false;
+
+    const data = await response.json();
+    const result = data.AuthenticationResult;
+    if (!result || !result.AccessToken) return false;
+
+    s.set("accessToken", result.AccessToken);
+    s.set("authenticatedAt", new Date().toISOString());
+    // REFRESH_TOKEN_AUTH normally does NOT return a new refresh token, but
+    // honor one if rotation is ever enabled.
+    if (result.RefreshToken) s.set("refreshToken", result.RefreshToken);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Authenticated fetch with transparent token refresh.
+ *
+ * - Injects the stored access token as a Bearer header (when present).
+ * - Pre-emptively refreshes when the access token is already expired.
+ * - On a 401, attempts one refresh + retry before giving up.
+ *
+ * Returns a real `Response`. Callers that need to react to a still-401
+ * (refresh failed → truly signed out) check `response.status` and decide
+ * whether to clear credentials. Anonymous callers (no token) just get an
+ * unauthenticated request.
+ */
+async function authedFetch(url, options = {}) {
+  let stored = getStoredToken();
+
+  if (stored && isAccessTokenExpired(stored.token)) {
+    if (await refreshAccessToken()) stored = getStoredToken();
+  }
+
+  const withAuth = (tok) => {
+    const headers = { ...(options.headers || {}) };
+    if (tok) headers.Authorization = `Bearer ${tok}`;
+    return fetch(url, { ...options, headers });
+  };
+
+  let response = await withAuth(stored && stored.token);
+  if (response.status === 401 && stored) {
+    if (await refreshAccessToken()) {
+      const fresh = getStoredToken();
+      response = await withAuth(fresh && fresh.token);
+    }
+  }
+  return response;
 }
 
 /**
@@ -150,14 +261,11 @@ async function getRegistryProfile() {
   if (!stored) return null;
 
   try {
-    const response = await fetch(`${REGISTRY_BASE_URL}/api/auth/me`, {
-      headers: {
-        Authorization: `Bearer ${stored.token}`,
-      },
-    });
+    const response = await authedFetch(`${REGISTRY_BASE_URL}/api/auth/me`);
 
     if (response.status === 401) {
-      // Token expired or invalid — clear stored credentials
+      // Still 401 after authedFetch tried to refresh — the refresh token is
+      // gone/expired too, so the session is genuinely over. Clear it.
       clearToken();
       return null;
     }
@@ -194,10 +302,9 @@ async function updateRegistryProfile(updates) {
   if (!stored) return null;
 
   try {
-    const response = await fetch(`${REGISTRY_BASE_URL}/api/auth/me`, {
+    const response = await authedFetch(`${REGISTRY_BASE_URL}/api/auth/me`, {
       method: "PATCH",
       headers: {
-        Authorization: `Bearer ${stored.token}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(updates),
@@ -226,11 +333,9 @@ async function getRegistryPackages() {
   if (!stored) return null;
 
   try {
-    const response = await fetch(`${REGISTRY_BASE_URL}/api/auth/me/packages`, {
-      headers: {
-        Authorization: `Bearer ${stored.token}`,
-      },
-    });
+    const response = await authedFetch(
+      `${REGISTRY_BASE_URL}/api/auth/me/packages`,
+    );
 
     if (response.status === 401) {
       clearToken();
@@ -257,12 +362,11 @@ async function updateRegistryPackage(scope, name, updates) {
   if (!stored) return null;
 
   try {
-    const response = await fetch(
+    const response = await authedFetch(
       `${REGISTRY_BASE_URL}/api/packages/${encodeURIComponent(scope)}/${encodeURIComponent(name)}`,
       {
         method: "PATCH",
         headers: {
-          Authorization: `Bearer ${stored.token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(updates),
@@ -299,13 +403,10 @@ async function deleteRegistryPackage(scope, name) {
   }
 
   try {
-    const response = await fetch(
+    const response = await authedFetch(
       `${REGISTRY_BASE_URL}/api/packages/${encodeURIComponent(scope)}/${encodeURIComponent(name)}`,
       {
         method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${stored.token}`,
-        },
       },
     );
 
@@ -368,4 +469,7 @@ module.exports = {
   updateRegistryPackage,
   deleteRegistryPackage,
   clearToken,
+  refreshAccessToken,
+  authedFetch,
+  isAccessTokenExpired,
 };
