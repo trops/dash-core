@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { Modal, Button } from "@trops/dash-react";
+import { Modal, Button, FontAwesomeIcon } from "@trops/dash-react";
 
 /**
  * UpdateAllWidgetsModal
@@ -271,10 +271,18 @@ export const UpdateAllWidgetsModal = ({
         </div>
 
         <div className="flex items-center justify-between px-5 py-3 border-t border-gray-700">
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-gray-500 flex items-center gap-2">
             {runSummary &&
               `Run complete: ${runSummary.done} succeeded, ${runSummary.failed} failed.`}
-            {isBatchUpdating && "Updating selected packages…"}
+            {isBatchUpdating && (
+              <span
+                className="flex items-center gap-2 text-blue-300"
+                data-testid="update-all-batch-spinner"
+              >
+                <FontAwesomeIcon icon="spinner" className="animate-spin" />
+                Updating selected packages…
+              </span>
+            )}
           </div>
           <div className="flex gap-2">
             <Button
