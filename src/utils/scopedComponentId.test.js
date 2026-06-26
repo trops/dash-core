@@ -12,6 +12,8 @@ import {
   makeScopedComponentId,
   parseScopedComponentId,
   bareComponentName,
+  isScopedComponentId,
+  resolveGateWidgetId,
 } from "./scopedComponentId";
 
 describe("makeScopedComponentId", () => {
@@ -78,5 +80,39 @@ describe("bareComponentName", () => {
   test("handles empty input", () => {
     expect(bareComponentName("")).toBe("");
     expect(bareComponentName(null)).toBe("");
+  });
+});
+
+describe("isScopedComponentId", () => {
+  test("true only for 3-part dotted ids without slashes", () => {
+    expect(isScopedComponentId("trops.pipeline.AutomationHub")).toBe(true);
+    expect(isScopedComponentId("AutomationHub")).toBe(false);
+    expect(isScopedComponentId("@trops/pipeline")).toBe(false);
+    expect(isScopedComponentId("trops.pipeline")).toBe(false);
+    expect(isScopedComponentId("a.b.c.d")).toBe(false);
+    expect(isScopedComponentId(null)).toBe(false);
+  });
+});
+
+describe("resolveGateWidgetId", () => {
+  test("prefers a scoped component over a bare params.name (the bug fix)", () => {
+    // The render path passes the scoped id as `component` but a bare
+    // `params.name` used to shadow it, making the gate miss the grant.
+    expect(
+      resolveGateWidgetId("trops.pipeline.AutomationHub", "AutomationHub"),
+    ).toBe("trops.pipeline.AutomationHub");
+  });
+
+  test("uses a scoped params.name when component is bare", () => {
+    expect(
+      resolveGateWidgetId("AutomationHub", "trops.pipeline.AutomationHub"),
+    ).toBe("trops.pipeline.AutomationHub");
+  });
+
+  test("falls back to legacy behavior when nothing is scoped", () => {
+    // Built-in/bare widgets keep today's behavior — no regression.
+    expect(resolveGateWidgetId("Clock", "Clock")).toBe("Clock");
+    expect(resolveGateWidgetId("Clock", undefined)).toBe("Clock");
+    expect(resolveGateWidgetId("Clock", "MyClock")).toBe("MyClock");
   });
 });
