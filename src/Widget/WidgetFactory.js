@@ -8,6 +8,7 @@ import { DashboardActionsApi } from "../Api/DashboardActionsApi";
 import { getUUID } from "@trops/dash-react";
 import { WidgetCardStatusBar } from "../Components/Layout/Builder/Enhanced/WidgetCardStatusBar";
 import { WidgetNotFound } from "./WidgetNotFound";
+import { resolveGateWidgetId } from "../utils/scopedComponentId";
 import { MountTokenWrapper } from "./MountTokenWrapper";
 import { buildWidgetData } from "./buildWidgetData";
 
@@ -268,10 +269,13 @@ const WidgetRenderer = ({
       // MountTokenWrapper owns the per-widget mount-token IPC
       // (register at mount, unregister at unmount) and provides the
       // WidgetContext value (widgetData + bound api) to descendants.
-      // The widgetId used for registration is the package name —
-      // that's what grants are keyed by, so the gate's
-      // token → widgetId resolution finds the right grant.
-      const widgetIdForGate = params?.name || component;
+      // The widgetId must match the canonical SCOPED id grants are keyed
+      // by (scope.package.Component) — the same id the preflight consent,
+      // Settings → grants, and expandToComponentRows write under. A bare
+      // `params.name` used to shadow the scoped `component` here, so the
+      // gate looked up a bare key, missed the approved grant, and
+      // re-prompted per call (the ~20 popups after a package update).
+      const widgetIdForGate = resolveGateWidgetId(component, params?.name);
       return (
         <MountTokenWrapper widgetId={widgetIdForGate} widgetData={widgetData}>
           <WidgetErrorBoundary widgetName={component}>

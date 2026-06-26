@@ -49,6 +49,36 @@ export function parseScopedComponentId(scopedId) {
 }
 
 /**
+ * True when `s` is a canonical 3-part scoped id (`scope.package.Component`)
+ * rather than a bare component name or an `@scope/pkg` form.
+ */
+export function isScopedComponentId(s) {
+  return typeof s === "string" && s.split(".").length === 3 && !s.includes("/");
+}
+
+/**
+ * Resolve the widgetId the permission gate should key grants by.
+ *
+ * Grants are written (preflight consent, Settings → grants,
+ * `expandToComponentRows`) under the canonical SCOPED id
+ * (`scope.package.Component`). At render time the layout item passes that
+ * scoped id as the component, but a bare `params.name` (the component's
+ * short name) used to shadow it — so the gate looked up a bare key, missed
+ * the grant, and re-prompted per call. Prefer a scoped id among the
+ * candidates so the gate's lookup hits the grant the user already approved;
+ * fall back to the legacy behavior for built-in/bare widgets.
+ *
+ * @param {string} component the component id from the layout item
+ * @param {string} [paramsName] params.name on the layout item
+ * @returns {string}
+ */
+export function resolveGateWidgetId(component, paramsName) {
+  if (isScopedComponentId(component)) return component;
+  if (isScopedComponentId(paramsName)) return paramsName;
+  return paramsName || component;
+}
+
+/**
  * Pull the bare component name from a scoped or unscoped id.
  *
  * @param {string} idOrName
