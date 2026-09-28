@@ -60,6 +60,7 @@ require.cache[jitConsentPath] = {
 
 const {
   gateToolCall,
+  gateBotToolCall,
   gateToolCallWithJit,
   isWriteTool,
 } = require("./permissionGate");
@@ -122,6 +123,120 @@ test("allow: tool in allowlist, no path arg", () => {
     args: { query: "rust" },
   });
   assert.deepStrictEqual(r, { allow: true });
+});
+
+// ---------------------------------------------------------------
+// gateBotToolCall — the bot principal shares the same grant core.
+//
+// Bots are keyed by botId in the same grant store; the gate enforces
+// grant → server → tool allowlist → path containment identically to
+// widgets, with "bot"-labeled denial wording. These pin that the
+// shared core behaves the same for bots and that bot messages say
+// "bot", not "widget".
+// ---------------------------------------------------------------
+
+const BOT_ID = "bot_test_gate_1";
+
+test("bot allow: tool in the bot's grant", () => {
+  clearGrantCache();
+  setGrant(BOT_ID, {
+    grantOrigin: "live",
+    servers: {
+      github: { tools: ["list_pull_requests"], readPaths: [], writePaths: [] },
+    },
+  });
+  const r = gateBotToolCall({
+    botId: BOT_ID,
+    serverName: "github",
+    toolName: "list_pull_requests",
+    args: {},
+  });
+  assert.deepStrictEqual(r, { allow: true });
+});
+
+test("bot deny: no grant — message says 'bot', not 'widget'", () => {
+  clearGrantCache();
+  revokeGrant("bot_no_grant");
+  const r = gateBotToolCall({
+    botId: "bot_no_grant",
+    serverName: "github",
+    toolName: "list_pull_requests",
+    args: {},
+  });
+  assert.strictEqual(r.allow, false);
+  assert.match(r.reason, /no MCP permissions granted/i);
+  assert.match(r.reason, /^bot /);
+  assert.doesNotMatch(r.reason, /widget/);
+});
+
+test("bot deny: missing botId", () => {
+  const r = gateBotToolCall({
+    botId: "",
+    serverName: "github",
+    toolName: "x",
+    args: {},
+  });
+  assert.strictEqual(r.allow, false);
+  assert.match(r.reason, /botId/i);
+});
+
+test("bot deny: server not in grant", () => {
+  clearGrantCache();
+  setGrant(BOT_ID, {
+    grantOrigin: "live",
+    servers: {
+      github: { tools: ["list_pull_requests"], readPaths: [], writePaths: [] },
+    },
+  });
+  const r = gateBotToolCall({
+    botId: BOT_ID,
+    serverName: "slack",
+    toolName: "post_message",
+    args: {},
+  });
+  assert.strictEqual(r.allow, false);
+  assert.match(r.reason, /not authorized to call/i);
+});
+
+test("bot deny: tool not in the server's allowlist", () => {
+  clearGrantCache();
+  setGrant(BOT_ID, {
+    grantOrigin: "live",
+    servers: {
+      github: { tools: ["list_pull_requests"], readPaths: [], writePaths: [] },
+    },
+  });
+  const r = gateBotToolCall({
+    botId: BOT_ID,
+    serverName: "github",
+    toolName: "delete_repo",
+    args: {},
+  });
+  assert.strictEqual(r.allow, false);
+  assert.match(r.reason, /not in the allowlist/i);
+  assert.match(r.reason, /for bot /);
+});
+
+test("bot deny: path argument outside granted readPaths", () => {
+  clearGrantCache();
+  setGrant(BOT_ID, {
+    grantOrigin: "live",
+    servers: {
+      filesystem: {
+        tools: ["read_file"],
+        readPaths: [path.join(tmpRoot, "userData", "data")],
+        writePaths: [],
+      },
+    },
+  });
+  const r = gateBotToolCall({
+    botId: BOT_ID,
+    serverName: "filesystem",
+    toolName: "read_file",
+    args: { path: "/etc/passwd" },
+  });
+  assert.strictEqual(r.allow, false);
+  assert.match(r.reason, /path argument.*rejected/i);
 });
 
 test("deny: widget has no grant", () => {
