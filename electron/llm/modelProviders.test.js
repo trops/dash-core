@@ -156,4 +156,48 @@ describe("modelProviders", () => {
       assert.ok(res.models.some((m) => m.value === "claude-opus-4-8"));
     });
   });
+
+  describe("Bot Factory engine + advisor metadata", () => {
+    it("anthropic routes through the tool-loop engine + anthropic adapter", () => {
+      const mp = loadModule(NOOP_SDK);
+      const p = mp.getProvider("anthropic");
+      assert.equal(p.engine, "tool-loop");
+      assert.equal(p.adapter, "anthropic");
+    });
+
+    it("every anthropic curated model carries a valid tier and pricing", () => {
+      const mp = loadModule(NOOP_SDK);
+      const tiers = new Set(["fast", "balanced", "deep"]);
+      for (const m of mp.getCuratedModels("anthropic")) {
+        assert.ok(tiers.has(m.tier), `bad tier for ${m.value}: ${m.tier}`);
+        assert.equal(typeof m.pricing.input, "number");
+        assert.equal(typeof m.pricing.output, "number");
+      }
+    });
+
+    it("tier assignments match the model hierarchy", () => {
+      const mp = loadModule(NOOP_SDK);
+      const byId = Object.fromEntries(
+        mp.getCuratedModels("anthropic").map((m) => [m.value, m]),
+      );
+      assert.equal(byId["claude-opus-4-8"].tier, "deep");
+      assert.equal(byId["claude-sonnet-4-6"].tier, "balanced");
+      assert.equal(byId["claude-haiku-4-5"].tier, "fast");
+    });
+
+    it("openai provider uses the openai-compatible adapter", () => {
+      const mp = loadModule(NOOP_SDK);
+      const p = mp.getProvider("openai");
+      assert.equal(p.id, "openai");
+      assert.equal(p.engine, "tool-loop");
+      assert.equal(p.adapter, "openai-compatible");
+    });
+
+    it("xai provider is openai-compatible with the x.ai base URL", () => {
+      const mp = loadModule(NOOP_SDK);
+      const p = mp.getProvider("xai");
+      assert.equal(p.adapter, "openai-compatible");
+      assert.equal(p.baseURL, "https://api.x.ai/v1");
+    });
+  });
 });

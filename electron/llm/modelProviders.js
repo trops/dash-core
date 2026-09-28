@@ -18,20 +18,68 @@
  */
 const Anthropic = require("@anthropic-ai/sdk");
 
+// Advisor metadata (Bot Factory). `tier` maps a model to a provider-neutral
+// capability class (fast | balanced | deep) so the model advisor can recommend
+// by tier across providers. `reasoning` describes the normalized reasoning
+// control an engine translates into the provider's native setting (Anthropic:
+// output_config.effort; levels normalized to low/medium/high). `pricing` is USD
+// per million tokens, used for per-run cost estimates. Values verified against
+// the Claude API model reference.
+const EFFORT_REASONING = {
+  control: "effort",
+  levels: ["low", "medium", "high"],
+};
+
 const PROVIDERS = {
   anthropic: {
     id: "anthropic",
     label: "Anthropic",
+    // Bot Factory engine routing: the tool-loop engine drives this provider
+    // through the "anthropic" adapter (Anthropic SDK streaming + tool use).
+    engine: "tool-loop",
+    adapter: "anthropic",
     defaultModel: "claude-opus-4-8",
     // Curated fallback — current, non-deprecated IDs. Used for the Claude
     // Code CLI backend (which has no Models API) and whenever a live fetch
-    // can't run (no API key, offline, error).
+    // can't run (no API key, offline, error). Each entry also carries advisor
+    // metadata (tier/reasoning/pricing).
     curatedModels: [
-      { value: "claude-opus-4-8", label: "Claude Opus 4.8" },
-      { value: "claude-opus-4-7", label: "Claude Opus 4.7" },
-      { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
-      { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
-      { value: "claude-fable-5", label: "Claude Fable 5" },
+      {
+        value: "claude-opus-4-8",
+        label: "Claude Opus 4.8",
+        tier: "deep",
+        reasoning: EFFORT_REASONING,
+        pricing: { input: 5, output: 25 },
+      },
+      {
+        value: "claude-opus-4-7",
+        label: "Claude Opus 4.7",
+        tier: "deep",
+        reasoning: EFFORT_REASONING,
+        pricing: { input: 5, output: 25 },
+      },
+      {
+        value: "claude-sonnet-4-6",
+        label: "Claude Sonnet 4.6",
+        tier: "balanced",
+        reasoning: EFFORT_REASONING,
+        pricing: { input: 3, output: 15 },
+      },
+      {
+        value: "claude-haiku-4-5",
+        label: "Claude Haiku 4.5",
+        tier: "fast",
+        // Haiku does not accept the effort parameter.
+        reasoning: null,
+        pricing: { input: 1, output: 5 },
+      },
+      {
+        value: "claude-fable-5",
+        label: "Claude Fable 5",
+        tier: "deep",
+        reasoning: EFFORT_REASONING,
+        pricing: { input: 10, output: 50 },
+      },
     ],
     // Retired/deprecated IDs → current replacement. Lets a stale saved
     // selection self-heal instead of 404-ing at call time.
@@ -52,6 +100,44 @@ const PROVIDERS = {
         value: m.id,
         label: m.display_name || m.id,
       }));
+    },
+  },
+
+  // OpenAI and xAI both speak the OpenAI-compatible API, so one adapter serves
+  // both — xAI only differs by baseURL. Concrete model IDs move quickly and are
+  // not hardcoded here: the live Models API is the source of truth (populated
+  // once provider credentials exist), and the curated fallback is intentionally
+  // empty until a verified default is chosen in the provider-config UI slice.
+  openai: {
+    id: "openai",
+    label: "OpenAI",
+    engine: "tool-loop",
+    adapter: "openai-compatible",
+    defaultModel: null,
+    curatedModels: [],
+    retiredMap: {},
+    async listModels({ apiKey } = {}) {
+      const OpenAI = require("openai");
+      const client = new OpenAI({ apiKey, baseURL: this.baseURL });
+      const res = await client.models.list();
+      return (res.data || []).map((m) => ({ value: m.id, label: m.id }));
+    },
+  },
+
+  xai: {
+    id: "xai",
+    label: "xAI (Grok)",
+    engine: "tool-loop",
+    adapter: "openai-compatible",
+    baseURL: "https://api.x.ai/v1",
+    defaultModel: null,
+    curatedModels: [],
+    retiredMap: {},
+    async listModels({ apiKey } = {}) {
+      const OpenAI = require("openai");
+      const client = new OpenAI({ apiKey, baseURL: this.baseURL });
+      const res = await client.models.list();
+      return (res.data || []).map((m) => ({ value: m.id, label: m.id }));
     },
   },
 };
