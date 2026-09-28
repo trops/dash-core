@@ -1,0 +1,198 @@
+/**
+ * BotStore.js
+ *
+ * CRUD for bot definitions, per-bot run history, and engine session state
+ * (PRD FR-001). Portable by design (NFR-006): no Electron, no electron-store.
+ * Persistence, the bots root directory, and the clock are injected, so the
+ * store loads and runs in plain Node (the runner package can move to a headless
+ * process later). Only Node built-ins (fs, path) are used directly.
+ *
+ * Construction:
+ *   new BotStore({ persistence, paths, clock })
+ *     persistence: { read(): object, write(obj): void }   // durable blob
+ *     paths:       { botsRoot: string }                    // e.g. userData/bots
+ *     clock:       { now(): string }                       // ISO timestamps
+ *
+ * Persisted blob shape:
+ *   { bots: { [id]: BotDefinition }, runs: { [id]: Run[] } }
+ *
+ * Each bot gets a private working directory at <botsRoot>/<id>/files, created
+ * on create() and removed on delete().
+ */
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+const {
+  newBotId,
+  isValidBotId,
+  withDefaults,
+  validateBotDefinition,
+} = require("./botSchema");
+
+// Keep only the most recent N runs per bot so the blob doesn't grow without
+// bound (full history migrates to SQLite in a later phase).
+const MAX_RUNS_PER_BOT = 100;
+
+class BotStore {
+  /**
+   * @param {{ persistence: {read: () => object, write: (o: object) => void},
+   *           paths: { botsRoot: string },
+   *           clock?: { now: () => string } }} deps
+   */
+  constructor({ persistence, paths, clock } = {}) {
+    if (
+      !persistence ||
+      typeof persistence.read !== "function" ||
+      typeof persistence.write !== "function"
+    ) {
+      throw new Error("BotStore: persistence with read()/write() is required");
+    }
+    if (!paths || typeof paths.botsRoot !== "string" || !paths.botsRoot) {
+      throw new Error("BotStore: paths.botsRoot is required");
+    }
+    this._persistence = persistence;
+    this._botsRoot = paths.botsRoot;
+    this._now = (clock && clock.now) || (() => new Date().toISOString());
+  }
+
+  _load() {
+    const data = this._persistence.read() || {};
+    if (!data.bots) data.bots = {};
+    if (!data.runs) data.runs = {};
+    return data;
+  }
+
+  _save(data) {
+    this._persistence.write(data);
+  }
+
+  /** Absolute path to a bot's private working directory. */
+  workingDir(id) {
+    if (!isValidBotId(id)) {
+      throw new Error(`BotStore: invalid bot id "${id}"`);
+    }
+    return path.join(this._botsRoot, id, "files");
+  }
+
+  /** @returns {object[]} all bot definitions */
+  list() {
+    const { bots } = this._load();
+    return Object.values(bots);
+  }
+
+  /** @returns {object|null} */
+  get(id) {
+    const { bots } = this._load();
+    return bots[id] || null;
+  }
+
+  /**
+   * Create a bot from a partial definition. Fills defaults, validates, stamps
+   * id + timestamps, persists, and creates the working directory.
+   * @returns {object} the stored definition
+   * @throws if validation fails
+   */
+  create(def) {
+    const filled = withDefaults(def);
+    const { valid, errors } = validateBotDefinition(filled);
+    if (!valid) {
+      throw new Error(`BotStore.create: invalid bot — ${errors.join("; ")}`);
+    }
+    const id = newBotId();
+    const ts = this._now();
+    const bot = { ...filled, id, createdAt: ts, updatedAt: ts };
+
+    const data = this._load();
+    data.bots[id] = bot;
+    this._save(data);
+
+    fs.mkdirSync(this.workingDir(id), { recursive: true });
+    return bot;
+  }
+
+  /**
+   * Update a bot's definition without discarding its session or run history.
+   * `id`, `createdAt`, and `session` are protected from the patch (session has
+   * its own methods).
+   * @returns {object} the updated definition
+   */
+  update(id, patch) {
+    const data = this._load();
+    const existing = data.bots[id];
+    if (!existing) throw new Error(`BotStore.update: no bot "${id}"`);
+
+    const { id: _i, createdAt: _c, session: _s, ...safePatch } = patch || {};
+    const merged = { ...existing, ...safePatch, updatedAt: this._now() };
+
+    const { valid, errors } = validateBotDefinition(merged);
+    if (!valid) {
+      throw new Error(`BotStore.update: invalid bot — ${errors.join("; ")}`);
+    }
+    data.bots[id] = merged;
+    this._save(data);
+    return merged;
+  }
+
+  /** Delete a bot, its runs, and its working directory. */
+  delete(id) {
+    const data = this._load();
+    if (!data.bots[id]) return false;
+    delete data.bots[id];
+    delete data.runs[id];
+    this._save(data);
+
+    if (isValidBotId(id)) {
+      fs.rmSync(path.join(this._botsRoot, id), {
+        recursive: true,
+        force: true,
+      });
+    }
+    return true;
+  }
+
+  /**
+   * Persist the engine's resume state on the bot record (US-005). Stored as
+   * { engine, state } so a provider/engine change can detect a mismatch.
+   */
+  saveSession(id, engineId, state) {
+    const data = this._load();
+    const bot = data.bots[id];
+    if (!bot) throw new Error(`BotStore.saveSession: no bot "${id}"`);
+    bot.session = { engine: engineId, state };
+    bot.updatedAt = this._now();
+    this._save(data);
+    return bot.session;
+  }
+
+  /** Clear stored session state (US-005 "Reset memory"). */
+  resetSession(id) {
+    const data = this._load();
+    const bot = data.bots[id];
+    if (!bot) throw new Error(`BotStore.resetSession: no bot "${id}"`);
+    bot.session = null;
+    bot.updatedAt = this._now();
+    this._save(data);
+  }
+
+  /** Append a run record to a bot's activity log (capped, newest kept). */
+  appendRun(id, run) {
+    const data = this._load();
+    if (!data.bots[id]) throw new Error(`BotStore.appendRun: no bot "${id}"`);
+    const entry = { ...run, at: (run && run.at) || this._now() };
+    const runs = data.runs[id] || [];
+    runs.push(entry);
+    data.runs[id] = runs.slice(-MAX_RUNS_PER_BOT);
+    this._save(data);
+    return entry;
+  }
+
+  /** @returns {object[]} run records for a bot, oldest first */
+  getRuns(id) {
+    const { runs } = this._load();
+    return runs[id] || [];
+  }
+}
+
+module.exports = BotStore;
+module.exports.MAX_RUNS_PER_BOT = MAX_RUNS_PER_BOT;
