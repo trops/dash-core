@@ -29,6 +29,7 @@ const mcpDashServerEvents = require("./mcpDashServerEvents");
 const publisherKeyEvents = require("./publisherKeyEvents");
 const onboardingEvents = require("./onboardingEvents");
 const exportEvents = require("./exportEvents");
+const botEvents = require("./botEvents");
 
 const publicEvents = {
   ...dataEvents,
@@ -41,6 +42,7 @@ const publicEvents = {
  */
 const API_GROUPS = {
   algolia: Object.values(algoliaEvents),
+  bots: Object.values(botEvents),
   "dashboard-config": Object.values(dashboardConfigEvents),
   "dashboard-ratings": Object.values(dashboardRatingsEvents),
   data: Object.values(dataEvents),
@@ -96,4 +98,5 @@ module.exports = {
   ...publisherKeyEvents,
   ...onboardingEvents,
   ...exportEvents,
+  ...botEvents,
 };
