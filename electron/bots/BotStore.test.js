@@ -1,0 +1,168 @@
+/**
+ * BotStore.test.js
+ *
+ * CRUD, session round-trip, run-log capping, working-directory creation, and
+ * durability across a simulated restart — all with an injected in-memory
+ * persistence and a temp bots root (no Electron, no electron-store).
+ */
+"use strict";
+
+const { describe, it, after } = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const BotStore = require("./BotStore");
+
+// In-memory persistence that deep-clones on write, mimicking a disk round-trip
+// (so a "restart" — a fresh BotStore over the same persistence — sees a clean
+// copy, not shared references).
+function memPersistence(initial) {
+  let blob = initial
+    ? JSON.parse(JSON.stringify(initial))
+    : { bots: {}, runs: {} };
+  return {
+    read: () => blob,
+    write: (o) => {
+      blob = JSON.parse(JSON.stringify(o));
+    },
+    _blob: () => blob,
+  };
+}
+
+const tmpRoots = [];
+function freshStore() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "botstore-test-"));
+  tmpRoots.push(root);
+  const persistence = memPersistence();
+  const clock = { now: () => "2026-09-28T00:00:00.000Z" };
+  const store = new BotStore({ persistence, paths: { botsRoot: root }, clock });
+  return { store, persistence, root };
+}
+
+const validDef = { name: "PR Digest", instructions: "Summarize open PRs." };
+
+after(() => {
+  for (const r of tmpRoots) fs.rmSync(r, { recursive: true, force: true });
+});
+
+describe("BotStore construction", () => {
+  it("requires persistence and a bots root", () => {
+    assert.throws(() => new BotStore({}), /persistence/);
+    assert.throws(
+      () => new BotStore({ persistence: memPersistence() }),
+      /botsRoot/,
+    );
+  });
+});
+
+describe("BotStore CRUD", () => {
+  it("create stamps id + timestamps, persists, and makes the working dir", () => {
+    const { store, root } = freshStore();
+    const bot = store.create(validDef);
+    assert.ok(bot.id.startsWith("bot_"));
+    assert.equal(bot.createdAt, "2026-09-28T00:00:00.000Z");
+    assert.equal(bot.updatedAt, bot.createdAt);
+    assert.equal(store.get(bot.id).name, "PR Digest");
+    assert.ok(fs.existsSync(path.join(root, bot.id, "files")));
+  });
+
+  it("create rejects an invalid definition and persists nothing", () => {
+    const { store } = freshStore();
+    assert.throws(() => store.create({ name: "" }), /invalid bot/);
+    assert.equal(store.list().length, 0);
+  });
+
+  it("list returns all bots; duplicate names are allowed (id-keyed)", () => {
+    const { store } = freshStore();
+    const a = store.create(validDef);
+    const b = store.create(validDef); // same name, different bot
+    assert.notEqual(a.id, b.id);
+    assert.equal(store.list().length, 2);
+  });
+
+  it("update merges a patch and bumps updatedAt without touching createdAt", () => {
+    const { store } = freshStore();
+    const bot = store.create(validDef);
+    const clock = { now: () => "2026-10-01T12:00:00.000Z" };
+    store._now = clock.now; // advance the clock
+    const updated = store.update(bot.id, { name: "Renamed" });
+    assert.equal(updated.name, "Renamed");
+    assert.equal(updated.createdAt, "2026-09-28T00:00:00.000Z");
+    assert.equal(updated.updatedAt, "2026-10-01T12:00:00.000Z");
+  });
+
+  it("update cannot clobber id/createdAt/session via the patch", () => {
+    const { store } = freshStore();
+    const bot = store.create(validDef);
+    store.saveSession(bot.id, "tool-loop", { messages: [1] });
+    const updated = store.update(bot.id, {
+      id: "bot_hacked",
+      createdAt: "1999-01-01",
+      session: null,
+    });
+    assert.equal(updated.id, bot.id);
+    assert.equal(updated.createdAt, bot.createdAt);
+    assert.deepEqual(updated.session, {
+      engine: "tool-loop",
+      state: { messages: [1] },
+    });
+  });
+
+  it("delete removes the bot, its runs, and its working directory", () => {
+    const { store, root } = freshStore();
+    const bot = store.create(validDef);
+    store.appendRun(bot.id, { status: "completed" });
+    assert.equal(store.delete(bot.id), true);
+    assert.equal(store.get(bot.id), null);
+    assert.equal(store.getRuns(bot.id).length, 0);
+    assert.equal(fs.existsSync(path.join(root, bot.id)), false);
+    assert.equal(store.delete(bot.id), false); // idempotent
+  });
+});
+
+describe("BotStore session state (US-005)", () => {
+  it("saves and resets engine session state", () => {
+    const { store } = freshStore();
+    const bot = store.create(validDef);
+    store.saveSession(bot.id, "tool-loop", { messages: [{ role: "user" }] });
+    assert.deepEqual(store.get(bot.id).session, {
+      engine: "tool-loop",
+      state: { messages: [{ role: "user" }] },
+    });
+    store.resetSession(bot.id);
+    assert.equal(store.get(bot.id).session, null);
+  });
+});
+
+describe("BotStore run log", () => {
+  it("appends runs and caps at MAX_RUNS_PER_BOT (newest kept)", () => {
+    const { store } = freshStore();
+    const bot = store.create(validDef);
+    for (let i = 0; i < BotStore.MAX_RUNS_PER_BOT + 5; i++) {
+      store.appendRun(bot.id, { seq: i });
+    }
+    const runs = store.getRuns(bot.id);
+    assert.equal(runs.length, BotStore.MAX_RUNS_PER_BOT);
+    assert.equal(runs[runs.length - 1].seq, BotStore.MAX_RUNS_PER_BOT + 4);
+    assert.equal(runs[0].seq, 5); // oldest 5 dropped
+  });
+});
+
+describe("BotStore durability across a restart", () => {
+  it("a fresh store over the same persistence sees prior bots + sessions", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "botstore-test-"));
+    tmpRoots.push(root);
+    const persistence = memPersistence();
+
+    const store1 = new BotStore({ persistence, paths: { botsRoot: root } });
+    const bot = store1.create(validDef);
+    store1.saveSession(bot.id, "tool-loop", { messages: ["hi"] });
+
+    // "Restart": brand-new store instance, same durable persistence.
+    const store2 = new BotStore({ persistence, paths: { botsRoot: root } });
+    const restored = store2.get(bot.id);
+    assert.equal(restored.name, "PR Digest");
+    assert.deepEqual(restored.session.state, { messages: ["hi"] });
+  });
+});

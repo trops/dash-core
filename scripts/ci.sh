@@ -98,10 +98,11 @@ node --test electron/controller/mcpController.test.js electron/mcp/mcpServerCata
 step "Running LLM model-provider tests"
 node --test electron/llm/modelProviders.test.js
 
-# 6a-bots. Run Bot Factory engine tests (Slice 1: engine interface, tool-loop
-# engine, provider adapters, event stream)
-step "Running Bot Factory engine tests"
-node --test electron/bots/engines/eventStream.test.js electron/bots/engines/toolLoopEngine.test.js electron/bots/engines/adapters/anthropicAdapter.test.js electron/bots/engines/adapters/openAICompatibleAdapter.test.js
+# 6a-bots. Run Bot Factory tests
+#   Slice 1: engine interface, tool-loop engine, provider adapters, event stream
+#   Slice 2: bot schema, bot store, core portability guard (NFR-006)
+step "Running Bot Factory tests"
+node --test electron/bots/engines/eventStream.test.js electron/bots/engines/toolLoopEngine.test.js electron/bots/engines/adapters/anthropicAdapter.test.js electron/bots/engines/adapters/openAICompatibleAdapter.test.js electron/bots/botSchema.test.js electron/bots/BotStore.test.js electron/bots/portability.test.js
 
 # 6b. Run controller auth tests
 step "Running controller auth tests"
