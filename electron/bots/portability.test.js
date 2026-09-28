@@ -22,6 +22,12 @@ const path = require("path");
 const CORE_MODULES = [
   "./botSchema",
   "./BotStore",
+  "./approvals",
+  // PermissionGate is portable: it takes all Electron-coupled collaborators
+  // (grant gate, approvals, audit) via injection. Its convenience default for
+  // `gate` requires the Electron-wired permissionGate lazily, at call time —
+  // never at module load — so the module loads clean in plain Node.
+  "./PermissionGate",
   "./engines/BotEngine",
   "./engines/eventStream",
   "./engines/toolLoopEngine",

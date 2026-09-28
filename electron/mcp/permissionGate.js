@@ -89,33 +89,40 @@ function isWriteTool(toolName) {
   return WRITE_TOOL_PATTERN.test(toolName);
 }
 
+// Trailing guidance appended to a widget's "no grant" denial — points the
+// user at the widget consent surfaces. Bots surface approvals in the Bot
+// Activity Manager instead, so they use their own (empty) guidance.
+const WIDGET_NO_GRANT_GUIDANCE =
+  "; user must approve at install time or in Settings → Privacy & Security";
+
 /**
+ * Principal-agnostic grant evaluation: grant lookup → server authorization →
+ * tool allowlist → path-argument containment. Shared by the widget gate
+ * (`gateToolCall`) and the bot gate (`gateBotToolCall`); `label` +
+ * `noGrantGuidance` reproduce each principal's denial wording. Widget wording
+ * is preserved character-for-character (label "widget" + the Settings
+ * guidance) so the existing widget gate tests stay green.
+ *
  * @returns {{ allow: true } | { allow: false, reason: string }}
  */
-function gateToolCall({ widgetId, token, serverName, toolName, args }) {
-  const resolved = _resolveIdentity({ token, widgetId });
-  if (resolved.source === "token-unknown") {
-    return {
-      allow: false,
-      reason: "MCP gate: unknown mount token; widget identity not verifiable",
-    };
-  }
-  widgetId = resolved.widgetId;
-  if (!widgetId) {
-    return {
-      allow: false,
-      reason: "no widgetId supplied; cannot determine permissions",
-    };
-  }
-
-  const perms = getGrant(widgetId);
+function _evaluateGrant({
+  principalId,
+  label,
+  noGrantGuidance,
+  serverName,
+  toolName,
+  args,
+}) {
+  const perms = getGrant(principalId);
   if (!perms) {
     return {
       allow: false,
       reason:
-        "widget '" +
-        widgetId +
-        "' has no MCP permissions granted; user must approve at install time or in Settings → Privacy & Security",
+        label +
+        " '" +
+        principalId +
+        "' has no MCP permissions granted" +
+        (noGrantGuidance || ""),
     };
   }
 
@@ -124,8 +131,9 @@ function gateToolCall({ widgetId, token, serverName, toolName, args }) {
     return {
       allow: false,
       reason:
-        "widget '" +
-        widgetId +
+        label +
+        " '" +
+        principalId +
         "' is not authorized to call '" +
         serverName +
         "'",
@@ -138,8 +146,10 @@ function gateToolCall({ widgetId, token, serverName, toolName, args }) {
       reason:
         "tool '" +
         toolName +
-        "' is not in the allowlist for widget '" +
-        widgetId +
+        "' is not in the allowlist for " +
+        label +
+        " '" +
+        principalId +
         "' on server '" +
         serverName +
         "'",
@@ -167,8 +177,10 @@ function gateToolCall({ widgetId, token, serverName, toolName, args }) {
             toolName +
             "' uses path argument '" +
             key +
-            "' but widget '" +
-            widgetId +
+            "' but " +
+            label +
+            " '" +
+            principalId +
             "' has no " +
             (isWrite ? "writePaths" : "readPaths or writePaths") +
             " declared for server '" +
@@ -192,6 +204,63 @@ function gateToolCall({ widgetId, token, serverName, toolName, args }) {
   }
 
   return { allow: true };
+}
+
+/**
+ * @returns {{ allow: true } | { allow: false, reason: string }}
+ */
+function gateToolCall({ widgetId, token, serverName, toolName, args }) {
+  const resolved = _resolveIdentity({ token, widgetId });
+  if (resolved.source === "token-unknown") {
+    return {
+      allow: false,
+      reason: "MCP gate: unknown mount token; widget identity not verifiable",
+    };
+  }
+  widgetId = resolved.widgetId;
+  if (!widgetId) {
+    return {
+      allow: false,
+      reason: "no widgetId supplied; cannot determine permissions",
+    };
+  }
+
+  return _evaluateGrant({
+    principalId: widgetId,
+    label: "widget",
+    noGrantGuidance: WIDGET_NO_GRANT_GUIDANCE,
+    serverName,
+    toolName,
+    args,
+  });
+}
+
+/**
+ * Bot-principal gate. Bots are a new principal in the same grant system — their
+ * grants are stored by `botId` in grantedPermissions, and this evaluates them
+ * through the identical grant → server → tool → path-containment core the
+ * widget gate uses. Called in-process by the bot runner with a trusted `botId`
+ * (bots run in the main process, so there is no renderer token to resolve — the
+ * mount-token model is a widget-only concern). Runtime approvals for grant gaps
+ * are layered on top by electron/bots/PermissionGate.js.
+ *
+ * @returns {{ allow: true } | { allow: false, reason: string }}
+ */
+function gateBotToolCall({ botId, serverName, toolName, args }) {
+  if (typeof botId !== "string" || !botId) {
+    return {
+      allow: false,
+      reason: "no botId supplied; cannot determine permissions",
+    };
+  }
+  return _evaluateGrant({
+    principalId: botId,
+    label: "bot",
+    noGrantGuidance: "",
+    serverName,
+    toolName,
+    args,
+  });
 }
 
 /**
@@ -464,6 +533,7 @@ async function gateToolCallWithJit(req, opts = {}) {
 
 module.exports = {
   gateToolCall,
+  gateBotToolCall,
   gateToolCallWithJit,
   isWriteTool,
   PATH_ARG_KEYS,
