@@ -102,8 +102,9 @@ node --test electron/llm/modelProviders.test.js
 #   Slice 1: engine interface, tool-loop engine, provider adapters, event stream
 #   Slice 2: bot schema, bot store, core portability guard (NFR-006)
 #   Slice 3: bot approvals registry, bot PermissionGate wrapper
+#   Slice 4a: BotRunner, BotScheduler, MCP-result normalizer
 step "Running Bot Factory tests"
-node --test electron/bots/engines/eventStream.test.js electron/bots/engines/toolLoopEngine.test.js electron/bots/engines/adapters/anthropicAdapter.test.js electron/bots/engines/adapters/openAICompatibleAdapter.test.js electron/bots/botSchema.test.js electron/bots/BotStore.test.js electron/bots/portability.test.js electron/bots/approvals.test.js electron/bots/PermissionGate.test.js
+node --test electron/bots/engines/eventStream.test.js electron/bots/engines/toolLoopEngine.test.js electron/bots/engines/adapters/anthropicAdapter.test.js electron/bots/engines/adapters/openAICompatibleAdapter.test.js electron/bots/botSchema.test.js electron/bots/BotStore.test.js electron/bots/portability.test.js electron/bots/approvals.test.js electron/bots/PermissionGate.test.js electron/bots/mcpResult.test.js electron/bots/BotScheduler.test.js electron/bots/BotRunner.test.js
 
 # 6b. Run controller auth tests
 step "Running controller auth tests"

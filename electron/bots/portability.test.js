@@ -23,11 +23,15 @@ const CORE_MODULES = [
   "./botSchema",
   "./BotStore",
   "./approvals",
-  // PermissionGate is portable: it takes all Electron-coupled collaborators
-  // (grant gate, approvals, audit) via injection. Its convenience default for
-  // `gate` requires the Electron-wired permissionGate lazily, at call time —
-  // never at module load — so the module loads clean in plain Node.
+  "./mcpResult",
+  "./BotScheduler",
+  // PermissionGate + BotRunner are portable: they take all Electron-coupled
+  // collaborators (grant gate, MCP execution, provider resolution, approvals)
+  // via injection. PermissionGate's convenience default for `gate` requires the
+  // Electron-wired permissionGate lazily, at call time — never at module load —
+  // so both load clean in plain Node.
   "./PermissionGate",
+  "./BotRunner",
   "./engines/BotEngine",
   "./engines/eventStream",
   "./engines/toolLoopEngine",

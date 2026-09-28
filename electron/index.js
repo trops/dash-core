@@ -36,6 +36,7 @@ const extractionCacheController = require("./controller/extractionCacheControlle
 const mcpDashServerController = require("./controller/mcpDashServerController");
 const widgetMcpGrantsController = require("./controller/widgetMcpGrantsController");
 const widgetMountTokenController = require("./controller/widgetMountTokenController");
+const botController = require("./controller/botController");
 const jitConsent = require("./mcp/jitConsent");
 
 // --- Errors ---
@@ -75,6 +76,7 @@ const schedulerApi = require("./api/schedulerApi");
 const themeFromUrlApi = require("./api/themeFromUrlApi");
 const webSocketApi = require("./api/webSocketApi");
 const mcpDashServerApi = require("./api/mcpDashServerApi");
+const botApi = require("./api/botApi");
 
 // --- Events ---
 const events = require("./events");
@@ -146,6 +148,7 @@ module.exports = {
   mcpDashServerController,
   widgetMcpGrantsController,
   widgetMountTokenController,
+  botController,
   jitConsent,
 
   // Controller functions (flat) — spread for convenient destructuring
@@ -177,6 +180,7 @@ module.exports = {
   themeFromUrlApi,
   webSocketApi,
   mcpDashServerApi,
+  botApi,
 
   // Events
   events,
