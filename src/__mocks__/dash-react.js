@@ -257,6 +257,67 @@ function Tag3({ text, onClick, className }) {
   );
 }
 
+function Tag({ text, onClick, className }) {
+  return React.createElement(
+    "span",
+    { "data-testid": "tag", onClick: onClick, className: className },
+    text,
+  );
+}
+
+function SelectInput({ label, value, onChange, options = [], placeholder }) {
+  return React.createElement(
+    "label",
+    null,
+    label,
+    React.createElement(
+      "select",
+      {
+        value: value,
+        onChange: (e) => onChange(e.target.value),
+        "aria-label": label || placeholder,
+      },
+      options.map((o) =>
+        React.createElement(
+          "option",
+          { key: o.value, value: o.value },
+          o.label,
+        ),
+      ),
+    ),
+  );
+}
+
+function EmptyState({ icon, title, description }) {
+  return React.createElement(
+    "div",
+    { "data-testid": "empty-state", "data-icon": icon },
+    React.createElement("span", null, title),
+    description ? React.createElement("span", null, description) : null,
+  );
+}
+
+function ConfirmationModal({
+  title,
+  message,
+  confirmText,
+  onConfirm,
+  onCancel,
+}) {
+  return React.createElement(
+    "div",
+    { "data-testid": "confirmation-modal" },
+    React.createElement("span", null, title),
+    message ? React.createElement("span", null, message) : null,
+    React.createElement(
+      "button",
+      { onClick: onConfirm },
+      confirmText || "Confirm",
+    ),
+    React.createElement("button", { onClick: onCancel }, "Cancel"),
+  );
+}
+
 // colorMath stubs — mirror the real exports from
 // `dash-react/src/Utils/colorMath.js`. Minimal-but-correct
 // implementations so ThemeModel tests can verify the hex-color
@@ -365,8 +426,12 @@ module.exports = {
   Code3: Code,
   Card2,
   Card3,
+  Tag,
   Tag2,
   Tag3,
+  SelectInput,
+  EmptyState,
+  ConfirmationModal,
   SelectableCard,
   FontAwesomeIcon,
   Tabs3,
