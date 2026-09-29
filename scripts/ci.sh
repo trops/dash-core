@@ -107,8 +107,9 @@ node --test electron/llm/modelProviders.test.js
 #   Slice 6a: PauseController (global + per-bot pause)
 #   P1:       BotMemory + memoryTools (scoped durable memory)
 #   P1:       eventMatcher + EventDispatcher (event-bus bridge)
+#   P1:       claudeAgentEngine (Claude Agent SDK engine)
 step "Running Bot Factory tests"
-node --test electron/bots/engines/eventStream.test.js electron/bots/engines/toolLoopEngine.test.js electron/bots/engines/adapters/anthropicAdapter.test.js electron/bots/engines/adapters/openAICompatibleAdapter.test.js electron/bots/botSchema.test.js electron/bots/BotStore.test.js electron/bots/portability.test.js electron/bots/approvals.test.js electron/bots/PermissionGate.test.js electron/bots/mcpResult.test.js electron/bots/BotScheduler.test.js electron/bots/BotRunner.test.js electron/bots/BudgetController.test.js electron/bots/PauseController.test.js electron/bots/BotMemory.test.js electron/bots/memoryTools.test.js electron/bots/eventMatcher.test.js electron/bots/EventDispatcher.test.js
+node --test electron/bots/engines/eventStream.test.js electron/bots/engines/toolLoopEngine.test.js electron/bots/engines/claudeAgentEngine.test.js electron/bots/engines/adapters/anthropicAdapter.test.js electron/bots/engines/adapters/openAICompatibleAdapter.test.js electron/bots/botSchema.test.js electron/bots/BotStore.test.js electron/bots/portability.test.js electron/bots/approvals.test.js electron/bots/PermissionGate.test.js electron/bots/mcpResult.test.js electron/bots/BotScheduler.test.js electron/bots/BotRunner.test.js electron/bots/BudgetController.test.js electron/bots/PauseController.test.js electron/bots/BotMemory.test.js electron/bots/memoryTools.test.js electron/bots/eventMatcher.test.js electron/bots/EventDispatcher.test.js
 
 # 6b. Run controller auth tests
 step "Running controller auth tests"
