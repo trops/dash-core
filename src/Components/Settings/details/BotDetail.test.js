@@ -24,7 +24,7 @@ describe("BotDetail (create)", () => {
     expect(screen.getByText("Create")).not.toBeDisabled();
   });
 
-  it("builds a definition (incl. schedule) and calls onSave", () => {
+  it("builds a definition with a schedule from the friendly dropdowns", () => {
     const onSave = jest.fn().mockResolvedValue({ id: "bot_x" });
     render(
       <BotDetail
@@ -40,22 +40,16 @@ describe("BotDetail (create)", () => {
     fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
       target: { value: "Summarize PRs" },
     });
-    fireEvent.change(
-      screen.getByPlaceholderText(
-        "Comma-separated server names, e.g. github, slack",
-      ),
-      {
-        target: { value: "github, slack" },
-      },
-    );
-    fireEvent.change(screen.getByPlaceholderText("Cron, e.g. 0 7 * * 1-5"), {
-      target: { value: "0 7 * * 1-5" },
+    // Schedule: Every weekday at 07:00 → "0 7 * * 1-5"
+    fireEvent.change(screen.getByLabelText("Runs"), {
+      target: { value: "weekday" },
+    });
+    fireEvent.change(screen.getByLabelText("Time"), {
+      target: { value: "07:00" },
     });
     fireEvent.change(
       screen.getByPlaceholderText("Task prompt for the scheduled run"),
-      {
-        target: { value: "prepare digest" },
-      },
+      { target: { value: "prepare digest" } },
     );
     fireEvent.click(screen.getByText("Create"));
 
@@ -64,10 +58,24 @@ describe("BotDetail (create)", () => {
       name: "PR Digest",
       instructions: "Summarize PRs",
       provider: null,
+      model: null,
       approvalPolicy: "ask",
-      mcpServers: ["github", "slack"],
+      mcpServers: [],
       schedules: [{ cron: "0 7 * * 1-5", prompt: "prepare digest" }],
     });
+  });
+
+  it("no schedule when frequency is Off", () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(<BotDetail isCreating providers={{}} onSave={onSave} />);
+    fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
+      target: { value: "X" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "Y" },
+    });
+    fireEvent.click(screen.getByText("Create"));
+    expect(onSave.mock.calls[0][0].schedules).toEqual([]);
   });
 });
 
@@ -82,7 +90,7 @@ describe("BotDetail (edit)", () => {
     schedules: [],
   };
 
-  it("shows Save + Delete and preserves the id on save", () => {
+  it("shows Save + Delete and preserves id + attached servers", () => {
     const onSave = jest.fn().mockResolvedValue({});
     render(
       <BotDetail
@@ -94,10 +102,48 @@ describe("BotDetail (edit)", () => {
     );
     expect(screen.getByText("Save")).toBeInTheDocument();
     expect(screen.getByText("Delete")).toBeInTheDocument();
+    // An attached-but-not-connected server still renders, checked, and is kept.
+    expect(screen.getByLabelText("GitHub")).toBeChecked();
     fireEvent.click(screen.getByText("Save"));
     const def = onSave.mock.calls[0][0];
     expect(def.id).toBe("bot_1");
     expect(def.mcpServers).toEqual(["github"]);
+  });
+
+  it("pre-populates the schedule dropdowns from an existing cron", () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail
+        bot={{
+          ...bot,
+          schedules: [{ cron: "0 9 * * 1-5", prompt: "hi" }],
+        }}
+        providers={{}}
+        onSave={onSave}
+        onDelete={jest.fn()}
+      />,
+    );
+    expect(screen.getByLabelText("Runs")).toHaveValue("weekday");
+    expect(screen.getByLabelText("Time")).toHaveValue("09:00");
+  });
+
+  it("shows Advanced cron for a hand-written expression and round-trips it", () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail
+        bot={{ ...bot, schedules: [{ cron: "*/5 * * * *", prompt: "" }] }}
+        providers={{}}
+        onSave={onSave}
+        onDelete={jest.fn()}
+      />,
+    );
+    expect(screen.getByPlaceholderText("Cron, e.g. 0 7 * * 1-5")).toHaveValue(
+      "*/5 * * * *",
+    );
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave.mock.calls[0][0].schedules).toEqual([
+      { cron: "*/5 * * * *", prompt: "" },
+    ]);
   });
 
   it("Delete triggers onDelete", () => {

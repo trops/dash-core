@@ -54,6 +54,20 @@ function TextArea({ label, value, onChange, placeholder, rows }) {
   );
 }
 
+function Checkbox({ label, checked, onChange }) {
+  return React.createElement(
+    "label",
+    null,
+    label,
+    React.createElement("input", {
+      type: "checkbox",
+      checked: !!checked,
+      onChange: (e) => onChange(e.target.checked),
+      "aria-label": label,
+    }),
+  );
+}
+
 function Button2({ title, onClick, disabled }) {
   return React.createElement(
     "button",
@@ -411,6 +425,7 @@ module.exports = {
   Stepper,
   InputText,
   TextArea,
+  Checkbox,
   Button,
   Button2,
   Button3,
