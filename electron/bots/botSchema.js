@@ -100,9 +100,23 @@ function validateBotDefinition(def) {
   if (!WHILE_PAUSED.has(def.whilePaused)) {
     errors.push(`whilePaused must be one of ${[...WHILE_PAUSED].join(", ")}`);
   }
-  for (const field of ["mcpServers", "allowedTools", "schedules"]) {
-    if (!Array.isArray(def[field])) {
+  for (const field of [
+    "mcpServers",
+    "allowedTools",
+    "schedules",
+    "subscriptions",
+  ]) {
+    if (def[field] !== undefined && !Array.isArray(def[field])) {
       errors.push(`${field} must be an array`);
+    }
+  }
+  // Each subscription must name an eventType (PRD FR-009).
+  if (Array.isArray(def.subscriptions)) {
+    for (const sub of def.subscriptions) {
+      if (!sub || typeof sub.eventType !== "string" || !sub.eventType.trim()) {
+        errors.push("each subscription must have a non-empty eventType");
+        break;
+      }
     }
   }
   return { valid: errors.length === 0, errors };
