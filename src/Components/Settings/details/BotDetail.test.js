@@ -78,6 +78,35 @@ describe("BotDetail (create)", () => {
     expect(onSave.mock.calls[0][0].schedules).toEqual([]);
   });
 
+  it("saves the selected engine (Claude Agent)", () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(<BotDetail isCreating providers={{}} onSave={onSave} />);
+    fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
+      target: { value: "X" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "Y" },
+    });
+    fireEvent.change(screen.getByLabelText("Engine"), {
+      target: { value: "claude-agent" },
+    });
+    fireEvent.click(screen.getByText("Create"));
+    expect(onSave.mock.calls[0][0].engine).toBe("claude-agent");
+  });
+
+  it("defaults engine to null (Standard)", () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(<BotDetail isCreating providers={{}} onSave={onSave} />);
+    fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
+      target: { value: "X" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "Y" },
+    });
+    fireEvent.click(screen.getByText("Create"));
+    expect(onSave.mock.calls[0][0].engine).toBeNull();
+  });
+
   it("adds an event subscription and saves it", () => {
     const onSave = jest.fn().mockResolvedValue({});
     render(<BotDetail isCreating providers={{}} onSave={onSave} />);
