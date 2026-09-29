@@ -50,6 +50,9 @@ class BotRunner {
     this._makeRequestPermission =
       deps.makeRequestPermission || createRequestPermission;
     this._gate = deps.gate; // forwarded to PermissionGate ctx (optional)
+    // Virtual servers whose tools are auto-allowed (e.g. "bot-memory") — the
+    // bot's own sandbox, not external actions. Forwarded to the gate ctx.
+    this._internalServers = deps.internalServers || [];
     this._isPaused = deps.isPaused || (() => false);
     // Called after each run with the run's token usage so budgets (Slice 5)
     // can accrue cost. Optional — default no-op keeps the runner portable.
@@ -121,6 +124,7 @@ class BotRunner {
         workspaceId: bot.workspaceId,
         allowedTools: bot.allowedTools || [],
         mcpServers: bot.mcpServers || [],
+        internalServers: this._internalServers,
         resolveServer,
         createApproval: (request) => this._approvals.create(request),
         audit: this._audit,

@@ -25,6 +25,7 @@
  *   botId: string,
  *   allowedTools?: string[],
  *   mcpServers?: string[],
+ *   internalServers?: string[],
  *   approvalPolicy?: "ask" | "allow",
  *   resolveServer: (toolName: string) => (string | null),
  *   createApproval: (request: object) => { id: string, promise: Promise<any> },
@@ -40,6 +41,7 @@ function createRequestPermission(ctx) {
     botId,
     allowedTools = [],
     mcpServers = [],
+    internalServers = [],
     resolveServer,
     createApproval,
     audit = () => {},
@@ -87,6 +89,16 @@ function createRequestPermission(ctx) {
     }
 
     const serverName = resolveServer(toolName);
+
+    // 1b. Internal Bot Factory tools (e.g. bot-memory) are the bot's own
+    //     sandbox — auto-allowed, never a consent prompt or external action.
+    if (serverName && internalServers.includes(serverName)) {
+      return record(
+        toolName,
+        { allow: true },
+        { outcome: "internal", serverName },
+      );
+    }
 
     // 2. A tool whose server the bot was never configured with is denied
     //    without prompting — it's not a consent gap, it's out of scope.
