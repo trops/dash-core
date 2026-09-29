@@ -19,6 +19,7 @@ const engines = require("../bots/engines");
 const BotRunner = require("../bots/BotRunner");
 const BotScheduler = require("../bots/BotScheduler");
 const BudgetController = require("../bots/BudgetController");
+const PauseController = require("../bots/PauseController");
 const { normalizeMcpResult } = require("../bots/mcpResult");
 const {
   getProvider,
@@ -31,6 +32,7 @@ const {
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
+  BOT_RUN_ACTIVE,
 } = require("../events/botEvents");
 
 /** Pricing lookup for BudgetController: curated-model pricing by provider. */
@@ -85,6 +87,9 @@ const botController = {
       },
     };
 
+    // Pause state (global kill switch + per-bot), enforced at the gate.
+    this._pause = new PauseController();
+
     // Budgets: accrue per-run cost, auto-pause bots over their monthly cap.
     this._budgets = new BudgetController({
       persistence: host.budgetPersistence,
@@ -99,8 +104,10 @@ const botController = {
       resolveTools: (bot) => this._resolveTools(bot),
       callTool: (serverName, toolName, args, o) =>
         this._callTool(serverName, toolName, args, o),
-      // A bot over any applicable budget is paused at the permission gate.
+      // Paused at the permission gate when: globally/individually paused, or
+      // over any applicable budget.
       isPaused: (botId) =>
+        this._pause.isPaused(botId) ||
         this._budgets.isOverBudget(
           botId,
           (this._store.get(botId) || {}).workspaceId,
@@ -204,14 +211,63 @@ const botController = {
     return this._budgets.resumeOverBudget(botId);
   },
 
+  // ---- background / pause (US-014, US-018) ---------------------------------
+
+  /** @returns {Array<{id: string, name: string}>} bots with an in-flight run */
+  listRunning() {
+    return this._runner.listActive().map((id) => ({
+      id,
+      name: (this._store.get(id) || {}).name || id,
+    }));
+  },
+
+  pauseAll() {
+    this._pause.pauseAll();
+    return this._pause.list();
+  },
+
+  resumeAll() {
+    this._pause.resumeAll();
+    return this._pause.list();
+  },
+
+  pauseBot(botId) {
+    this._pause.pauseBot(botId);
+    return this._pause.list();
+  },
+
+  resumeBot(botId) {
+    this._pause.resumeBot(botId);
+    return this._pause.list();
+  },
+
+  isGloballyPaused() {
+    return this._pause.isGloballyPaused();
+  },
+
+  getPauseState() {
+    return this._pause.list();
+  },
+
   // ---- internals ----------------------------------------------------------
 
   _run(botId, opts) {
-    return this._runner.run(botId, {
+    const p = this._runner.run(botId, {
       prompt: opts.prompt,
       trigger: opts.trigger,
       emit: (event) => this._broadcast(BOT_STREAM, { botId, event }),
     });
+    // The runner marks the bot active synchronously, so the active count is
+    // already updated here. Broadcast on start and again on completion so the
+    // tray/powerSaveBlocker can react (US-018).
+    this._broadcastRunActive();
+    Promise.resolve(p).finally(() => this._broadcastRunActive());
+    return p;
+  },
+
+  _broadcastRunActive() {
+    const running = this._runner.listActive();
+    this._broadcast(BOT_RUN_ACTIVE, { count: running.length, running });
   },
 
   _broadcast(channel, payload) {

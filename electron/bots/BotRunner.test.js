@@ -211,6 +211,21 @@ describe("BotRunner.run — one run per bot", () => {
     release();
     await p1;
   });
+
+  it("listActive reports the running bot id, empty otherwise", async () => {
+    let release;
+    const gate = new Promise((r) => {
+      release = r;
+    });
+    const engine = mockEngine([{ type: "done" }], gate);
+    const { runner } = makeRunner(engine);
+    assert.deepEqual(runner.listActive(), []);
+    const p1 = runner.run("bot_1", {});
+    assert.deepEqual(runner.listActive(), ["bot_1"]);
+    release();
+    await p1;
+    assert.deepEqual(runner.listActive(), []);
+  });
 });
 
 describe("BotRunner — usage hook (budgets)", () => {

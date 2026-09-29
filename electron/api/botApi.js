@@ -19,9 +19,16 @@ const {
   BOTS_SET_BUDGET,
   BOTS_GET_SPEND,
   BOTS_RESUME_BUDGET,
+  BOTS_LIST_RUNNING,
+  BOTS_PAUSE_ALL,
+  BOTS_RESUME_ALL,
+  BOTS_PAUSE_BOT,
+  BOTS_RESUME_BOT,
+  BOTS_GET_PAUSE_STATE,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
+  BOT_RUN_ACTIVE,
 } = require("../events/botEvents");
 
 let _nextListenerId = 0;
@@ -58,12 +65,22 @@ const botApi = {
   getSpend: (month) => ipcRenderer.invoke(BOTS_GET_SPEND, { month }),
   resumeBudget: (botId) => ipcRenderer.invoke(BOTS_RESUME_BUDGET, { botId }),
 
+  // --- Background / pause (US-014, US-018) ---
+  listRunning: () => ipcRenderer.invoke(BOTS_LIST_RUNNING),
+  pauseAll: () => ipcRenderer.invoke(BOTS_PAUSE_ALL),
+  resumeAll: () => ipcRenderer.invoke(BOTS_RESUME_ALL),
+  pauseBot: (botId) => ipcRenderer.invoke(BOTS_PAUSE_BOT, { botId }),
+  resumeBot: (botId) => ipcRenderer.invoke(BOTS_RESUME_BOT, { botId }),
+  getPauseState: () => ipcRenderer.invoke(BOTS_GET_PAUSE_STATE),
+
   /** Subscribe to streamed run events: { botId, event }. */
   onStream: (callback) => _addListener(BOT_STREAM, callback),
   /** Subscribe to new pending approvals: { id, request }. */
   onApprovalPending: (callback) => _addListener(BOT_APPROVAL_PENDING, callback),
   /** Subscribe to budget warn/exceeded alerts. */
   onBudgetAlert: (callback) => _addListener(BOT_BUDGET_ALERT, callback),
+  /** Subscribe to active-run count changes: { count, running }. */
+  onRunActive: (callback) => _addListener(BOT_RUN_ACTIVE, callback),
 
   removeListener: (id) => {
     const entry = _listenerMap.get(id);

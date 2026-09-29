@@ -18,11 +18,18 @@ const BOTS_GET_BUDGETS = "bots-get-budgets";
 const BOTS_SET_BUDGET = "bots-set-budget";
 const BOTS_GET_SPEND = "bots-get-spend";
 const BOTS_RESUME_BUDGET = "bots-resume-budget";
+const BOTS_LIST_RUNNING = "bots-list-running";
+const BOTS_PAUSE_ALL = "bots-pause-all";
+const BOTS_RESUME_ALL = "bots-resume-all";
+const BOTS_PAUSE_BOT = "bots-pause-bot";
+const BOTS_RESUME_BOT = "bots-resume-bot";
+const BOTS_GET_PAUSE_STATE = "bots-get-pause-state";
 
 // --- Main → Renderer (send) ---
 const BOT_STREAM = "bot-stream"; // { botId, event: BotEvent }
 const BOT_APPROVAL_PENDING = "bot-approval-pending"; // { id, request }
 const BOT_BUDGET_ALERT = "bot-budget-alert"; // { botId, cost, estimated, status }
+const BOT_RUN_ACTIVE = "bot-run-active"; // { count, running: string[] }
 
 module.exports = {
   BOTS_LIST,
@@ -37,7 +44,14 @@ module.exports = {
   BOTS_SET_BUDGET,
   BOTS_GET_SPEND,
   BOTS_RESUME_BUDGET,
+  BOTS_LIST_RUNNING,
+  BOTS_PAUSE_ALL,
+  BOTS_RESUME_ALL,
+  BOTS_PAUSE_BOT,
+  BOTS_RESUME_BOT,
+  BOTS_GET_PAUSE_STATE,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
+  BOT_RUN_ACTIVE,
 };
