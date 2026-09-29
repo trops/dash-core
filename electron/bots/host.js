@@ -30,6 +30,7 @@ const Store = require("electron-store");
  */
 function createElectronHost() {
   const store = new Store({ name: "dash-bots" });
+  const budgetStore = new Store({ name: "dash-bot-budgets" });
   const botsRoot = path.join(app.getPath("userData"), "bots");
 
   return {
@@ -40,6 +41,12 @@ function createElectronHost() {
       // and writes one object, independent of electron-store's key API.
       read: () => store.get("store", { bots: {}, runs: {} }),
       write: (obj) => store.set("store", obj),
+    },
+    // Separate blob for budgets + monthly spend (Slice 5).
+    budgetPersistence: {
+      read: () =>
+        budgetStore.get("store", { budgets: {}, spend: {}, overrides: {} }),
+      write: (obj) => budgetStore.set("store", obj),
     },
   };
 }

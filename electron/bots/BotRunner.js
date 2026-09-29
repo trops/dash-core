@@ -51,6 +51,9 @@ class BotRunner {
       deps.makeRequestPermission || createRequestPermission;
     this._gate = deps.gate; // forwarded to PermissionGate ctx (optional)
     this._isPaused = deps.isPaused || (() => false);
+    // Called after each run with the run's token usage so budgets (Slice 5)
+    // can accrue cost. Optional — default no-op keeps the runner portable.
+    this._onUsage = deps.onUsage || null;
     /** @type {Map<string, AbortController>} */
     this._active = new Map();
   }
@@ -101,9 +104,11 @@ class BotRunner {
     let status = "completed";
     let usage = null;
     let errorMessage = null;
+    let runProfile = null;
 
     try {
       const profile = await this._resolveRunProfile(bot);
+      runProfile = profile;
       const engine = this._engines.getEngine(profile.engineId);
       if (!engine) {
         throw new Error(`no engine registered for "${profile.engineId}"`);
@@ -190,6 +195,19 @@ class BotRunner {
       error: errorMessage,
     };
     this._store.appendRun(botId, runRecord);
+
+    // Feed usage to budgets (Slice 5). Optional hook; only when we captured
+    // usage and know which provider/model produced it.
+    if (usage && runProfile && this._onUsage) {
+      this._onUsage({
+        botId,
+        workspaceId: bot.workspaceId,
+        providerId: runProfile.providerId,
+        model: runProfile.model,
+        usage,
+      });
+    }
+
     return runRecord;
   }
 }

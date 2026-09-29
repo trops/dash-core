@@ -15,8 +15,13 @@ const {
   BOTS_STOP,
   BOTS_APPROVE,
   BOTS_LIST_APPROVALS,
+  BOTS_GET_BUDGETS,
+  BOTS_SET_BUDGET,
+  BOTS_GET_SPEND,
+  BOTS_RESUME_BUDGET,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
+  BOT_BUDGET_ALERT,
 } = require("../events/botEvents");
 
 let _nextListenerId = 0;
@@ -45,10 +50,20 @@ const botApi = {
     ipcRenderer.invoke(BOTS_APPROVE, { approvalId, decision }),
   listApprovals: () => ipcRenderer.invoke(BOTS_LIST_APPROVALS),
 
+  // --- Budgets (US-019) ---
+  getBudgets: () => ipcRenderer.invoke(BOTS_GET_BUDGETS),
+  /** scope: "bot"|"workspace"|"global" */
+  setBudget: (scope, id, monthlyUsd) =>
+    ipcRenderer.invoke(BOTS_SET_BUDGET, { scope, id, monthlyUsd }),
+  getSpend: (month) => ipcRenderer.invoke(BOTS_GET_SPEND, { month }),
+  resumeBudget: (botId) => ipcRenderer.invoke(BOTS_RESUME_BUDGET, { botId }),
+
   /** Subscribe to streamed run events: { botId, event }. */
   onStream: (callback) => _addListener(BOT_STREAM, callback),
   /** Subscribe to new pending approvals: { id, request }. */
   onApprovalPending: (callback) => _addListener(BOT_APPROVAL_PENDING, callback),
+  /** Subscribe to budget warn/exceeded alerts. */
+  onBudgetAlert: (callback) => _addListener(BOT_BUDGET_ALERT, callback),
 
   removeListener: (id) => {
     const entry = _listenerMap.get(id);

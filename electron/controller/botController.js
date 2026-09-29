@@ -18,14 +18,26 @@ const ApprovalRegistry = require("../bots/approvals");
 const engines = require("../bots/engines");
 const BotRunner = require("../bots/BotRunner");
 const BotScheduler = require("../bots/BotScheduler");
+const BudgetController = require("../bots/BudgetController");
 const { normalizeMcpResult } = require("../bots/mcpResult");
 const {
   getProvider,
   getDefaultModel,
+  getCuratedModels,
   migrateModelId,
   DEFAULT_PROVIDER,
 } = require("../llm/modelProviders");
-const { BOT_STREAM, BOT_APPROVAL_PENDING } = require("../events/botEvents");
+const {
+  BOT_STREAM,
+  BOT_APPROVAL_PENDING,
+  BOT_BUDGET_ALERT,
+} = require("../events/botEvents");
+
+/** Pricing lookup for BudgetController: curated-model pricing by provider. */
+function pricingFor(providerId, model) {
+  const m = getCuratedModels(providerId).find((c) => c.value === model);
+  return (m && m.pricing) || null;
+}
 
 const botController = {
   _ready: false,
@@ -73,6 +85,12 @@ const botController = {
       },
     };
 
+    // Budgets: accrue per-run cost, auto-pause bots over their monthly cap.
+    this._budgets = new BudgetController({
+      persistence: host.budgetPersistence,
+      getPricing: pricingFor,
+    });
+
     this._runner = new BotRunner({
       engines,
       store: this._store,
@@ -81,6 +99,24 @@ const botController = {
       resolveTools: (bot) => this._resolveTools(bot),
       callTool: (serverName, toolName, args, o) =>
         this._callTool(serverName, toolName, args, o),
+      // A bot over any applicable budget is paused at the permission gate.
+      isPaused: (botId) =>
+        this._budgets.isOverBudget(
+          botId,
+          (this._store.get(botId) || {}).workspaceId,
+        ),
+      // After each run, accrue cost and alert on warn/exceeded.
+      onUsage: (u) => {
+        const r = this._budgets.recordUsage(u);
+        if (r.status.overall !== "ok") {
+          this._broadcast(BOT_BUDGET_ALERT, {
+            botId: u.botId,
+            cost: r.cost,
+            estimated: r.estimated,
+            status: r.status,
+          });
+        }
+      },
     });
 
     this._scheduler = new BotScheduler({
@@ -146,6 +182,26 @@ const botController = {
 
   listApprovals() {
     return this._approvals.list();
+  },
+
+  // ---- budgets (US-019) ---------------------------------------------------
+
+  getBudgets() {
+    return this._budgets.getBudgets();
+  },
+
+  setBudget(scope, id, monthlyUsd) {
+    return this._budgets.setBudget(scope, id, monthlyUsd);
+  },
+
+  /** Current-month (or given month) spend buckets by scope. */
+  getSpend(month) {
+    return this._budgets.getSpend(month);
+  },
+
+  /** Explicit, audited override to keep a budget-exceeded bot running. */
+  resumeBudget(botId) {
+    return this._budgets.resumeOverBudget(botId);
   },
 
   // ---- internals ----------------------------------------------------------

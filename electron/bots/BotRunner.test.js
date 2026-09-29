@@ -213,6 +213,39 @@ describe("BotRunner.run — one run per bot", () => {
   });
 });
 
+describe("BotRunner — usage hook (budgets)", () => {
+  it("calls onUsage with provider/model/usage after a run that reported usage", async () => {
+    const engine = mockEngine([
+      {
+        type: "done",
+        stopReason: "end_turn",
+        usage: { inputTokens: 10, outputTokens: 4 },
+      },
+    ]);
+    const seen = [];
+    const { runner } = makeRunner(engine, {
+      deps: { onUsage: (u) => seen.push(u) },
+    });
+    await runner.run("bot_1", {});
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].botId, "bot_1");
+    assert.equal(seen[0].workspaceId, "ws_1");
+    assert.equal(seen[0].providerId, "anthropic");
+    assert.equal(seen[0].model, "claude-opus-4-8");
+    assert.deepEqual(seen[0].usage, { inputTokens: 10, outputTokens: 4 });
+  });
+
+  it("does not call onUsage when a run reports no usage", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const seen = [];
+    const { runner } = makeRunner(engine, {
+      deps: { onUsage: (u) => seen.push(u) },
+    });
+    await runner.run("bot_1", {});
+    assert.equal(seen.length, 0);
+  });
+});
+
 describe("BotRunner construction", () => {
   it("requires its core collaborators", () => {
     assert.throws(() => new BotRunner({}), /missing dependency/);
