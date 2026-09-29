@@ -48,6 +48,13 @@ const APPROVAL_OPTIONS = [
   { value: "allow", label: "Allow without prompting" },
 ];
 
+// "" → derive the engine from the provider (tool-loop). The Claude Agent engine
+// gives the bot native file/shell/code tools.
+const ENGINE_OPTIONS = [
+  { value: "", label: "Standard (default)" },
+  { value: "claude-agent", label: "Claude Agent (native tools)" },
+];
+
 // Server ids are lower-case; show a friendlier label without changing the value
 // the runner resolves against.
 const SERVER_LABELS = {
@@ -84,6 +91,7 @@ export const BotDetail = ({
   const [instructions, setInstructions] = useState(bot?.instructions || "");
   const [provider, setProvider] = useState(bot?.provider || "");
   const [model, setModel] = useState(bot?.model || "");
+  const [engine, setEngine] = useState(bot?.engine || "");
   const [approvalPolicy, setApprovalPolicy] = useState(
     bot?.approvalPolicy || "ask",
   );
@@ -232,6 +240,7 @@ export const BotDetail = ({
       instructions: instructions.trim(),
       provider: provider || null,
       model: model.trim() || null,
+      engine: engine || null,
       approvalPolicy,
       mcpServers: selectedServers,
       schedules,
@@ -285,6 +294,14 @@ export const BotDetail = ({
           onChange={setModel}
           options={modelSelectOptions}
           placeholder="Recommended (default)"
+        />
+
+        <SelectInput
+          label="Engine"
+          value={engine}
+          onChange={setEngine}
+          options={ENGINE_OPTIONS}
+          placeholder="Standard (default)"
         />
 
         <SelectInput
