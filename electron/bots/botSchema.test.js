@@ -104,4 +104,27 @@ describe("botSchema.validateBotDefinition", () => {
     assert.equal(validateBotDefinition(null).valid, false);
     assert.equal(validateBotDefinition(42).valid, false);
   });
+
+  it("accepts well-formed subscriptions", () => {
+    const r = validateBotDefinition({
+      ...good(),
+      subscriptions: [{ eventType: "pr.opened" }],
+    });
+    assert.equal(r.valid, true);
+  });
+
+  it("rejects subscriptions without an eventType", () => {
+    const r = validateBotDefinition({
+      ...good(),
+      subscriptions: [{ channel: "x" }],
+    });
+    assert.equal(r.valid, false);
+    assert.ok(r.errors.some((e) => /eventType/.test(e)));
+  });
+
+  it("rejects a non-array subscriptions field", () => {
+    const r = validateBotDefinition({ ...good(), subscriptions: "nope" });
+    assert.equal(r.valid, false);
+    assert.ok(r.errors.some((e) => /subscriptions must be an array/.test(e)));
+  });
 });

@@ -26,6 +26,8 @@ const {
   MEMORY_TOOLS,
   handleMemoryTool,
 } = require("../bots/memoryTools");
+const { matchSubscribedBots } = require("../bots/eventMatcher");
+const { EventDispatcher } = require("../bots/EventDispatcher");
 const { normalizeMcpResult } = require("../bots/mcpResult");
 const {
   getProvider,
@@ -45,6 +47,25 @@ const {
 function pricingFor(providerId, model) {
   const m = getCuratedModels(providerId).find((c) => c.value === model);
   return (m && m.pricing) || null;
+}
+
+/** Build the run prompt for an event-triggered bot (P1: FR-009). */
+function composeEventPrompt(event) {
+  let payload;
+  try {
+    payload =
+      event.content === undefined
+        ? "(no payload)"
+        : JSON.stringify(event.content);
+  } catch (_e) {
+    payload = "(unserializable payload)";
+  }
+  return (
+    `An event you subscribe to just fired.\n\n` +
+    `Event: ${event.eventType}\n` +
+    `Payload: ${payload}\n\n` +
+    `Follow your instructions to handle it.`
+  );
 }
 
 const botController = {
@@ -106,6 +127,10 @@ const botController = {
     // tools that every bot can use without a consent prompt.
     this._memory = new BotMemory({ persistence: host.memoryPersistence });
 
+    // Event-bus bridge (P1: FR-009): per-bot cooldown so a chatty event can't
+    // flood the runner with event-triggered runs.
+    this._dispatcher = new EventDispatcher();
+
     this._runner = new BotRunner({
       engines,
       store: this._store,
@@ -158,6 +183,30 @@ const botController = {
     if (!this._ready) return;
     for (const bot of this._store.list()) {
       this._scheduler.catchUp(bot, this._lastRunAt(bot.id));
+    }
+  },
+
+  /**
+   * Dispatch a fired event to every subscribed bot (P1: FR-009 / US-010).
+   * Called by dash-electron's widget-event relay tap. Guards: never re-trigger
+   * the origin bot (loop safety), skip paused bots and bots in cooldown; a bot
+   * already running is skipped by the runner itself.
+   * @param {{ eventType: string, content?: any, workspaceId?: string,
+   *           originBotId?: string }} event
+   */
+  handleEvent(event) {
+    if (!this._ready || !event || !event.eventType) return;
+    const bots = matchSubscribedBots(this._store.list(), event, {
+      excludeBotId: event.originBotId,
+    });
+    for (const bot of bots) {
+      if (this._pause.isPaused(bot.id)) continue;
+      if (!this._dispatcher.shouldDispatch(bot.id)) continue;
+      this._dispatcher.note(bot.id);
+      this._run(bot.id, {
+        prompt: composeEventPrompt(event, bot),
+        trigger: "event",
+      });
     }
   },
 
