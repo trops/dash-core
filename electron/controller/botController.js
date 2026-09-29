@@ -11,6 +11,7 @@
  */
 "use strict";
 
+const path = require("path");
 const { Cron } = require("croner");
 const { createElectronHost } = require("../bots/host");
 const BotStore = require("../bots/BotStore");
@@ -96,6 +97,7 @@ const botController = {
     this._appId = appId;
 
     const host = createElectronHost();
+    this._botsRoot = host.paths && host.paths.botsRoot;
     this._store = new BotStore({
       persistence: host.persistence,
       paths: host.paths,
@@ -368,11 +370,17 @@ const botController = {
 
     return {
       providerId,
-      engineId: provider.engine,
+      // A bot may pin an engine (e.g. "claude-agent"); otherwise derive it from
+      // the provider (tool-loop for anthropic/openai/xai).
+      engineId: bot.engine || provider.engine,
       adapterId: provider.adapter,
       baseURL: provider.baseURL,
       model,
       credentials,
+      // Sandbox dir for engines with native file/shell tools (claude-agent).
+      workingDir: this._botsRoot
+        ? path.join(this._botsRoot, bot.id, "files")
+        : undefined,
     };
   },
 

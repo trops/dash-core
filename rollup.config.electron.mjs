@@ -31,6 +31,7 @@ const EXTERNAL = [
     // Mirror dash-core's package.json `dependencies` block: each
     // declared runtime dep is externalized so the consumer's
     // node_modules provides it at require() time.
+    "@anthropic-ai/claude-agent-sdk",
     "@anthropic-ai/sdk",
     "@modelcontextprotocol/sdk/client/index.js",
     "@modelcontextprotocol/sdk/client/stdio.js",

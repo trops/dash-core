@@ -31,6 +31,11 @@
  *           Gate every tool call routes through before executing.
  * @property {(toolName: string, input: any) => Promise<{text: string, isError?: boolean}>} executeTool
  *           Execute an approved tool call (wraps mcpController in production).
+ * @property {string}   [botId]          The running bot's id.
+ * @property {string}   [workingDir]     Sandbox dir for engines with native file/shell tools.
+ * @property {string}   [approvalPolicy] "ask" | "allow" — for engines that run their own tool loop.
+ * @property {(request: object) => {id: string, promise: Promise<any>}} [createApproval]
+ *           Create a pending approval + await the decision (for engine-native tools).
  *
  * BotEvent — the normalized stream every engine yields:
  *   { type: "text", text }

@@ -152,6 +152,7 @@ class BotRunner {
           : null;
 
       const ctx = {
+        botId,
         prompt: opts.prompt,
         model: profile.model,
         credentials: profile.credentials,
@@ -165,6 +166,11 @@ class BotRunner {
         requestPermission,
         executeTool,
         workspaceId: bot.workspaceId,
+        // For engines with their own agent loop + native tools (claude-agent):
+        // a sandbox dir, the approval policy, and a direct approval channel.
+        workingDir: profile.workingDir,
+        approvalPolicy: bot.approvalPolicy,
+        createApproval: (request) => this._approvals.create(request),
       };
 
       for await (const event of engine.run(ctx)) {

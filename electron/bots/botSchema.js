@@ -55,6 +55,9 @@ function withDefaults(def = {}) {
     provider: null,
     model: null,
     modelSelection: { mode: "recommended" },
+    // null → derive the engine from the provider (tool-loop). A bot may pin a
+    // specific engine id here (e.g. "claude-agent").
+    engine: null,
     mcpServers: [],
     allowedTools: [],
     approvalPolicy: "ask",
@@ -90,6 +93,13 @@ function validateBotDefinition(def) {
   if (def.provider !== null && def.provider !== undefined) {
     if (typeof def.provider !== "string" || !def.provider) {
       errors.push("provider must be null or a non-empty string");
+    }
+  }
+  // engine may be null (derive from provider) or a non-empty string (an engine
+  // id). The runner surfaces an unknown id at run time.
+  if (def.engine !== null && def.engine !== undefined) {
+    if (typeof def.engine !== "string" || !def.engine) {
+      errors.push("engine must be null or a non-empty string");
     }
   }
   if (!APPROVAL_POLICIES.has(def.approvalPolicy)) {
