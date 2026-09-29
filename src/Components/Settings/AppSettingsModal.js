@@ -14,6 +14,7 @@ import {
 import { DashboardsSection } from "./sections/DashboardsSection";
 import { FoldersSection } from "./sections/FoldersSection";
 import { ProvidersSection } from "./sections/ProvidersSection";
+import { BotsSection } from "./sections/BotsSection";
 import { ThemesSection } from "./sections/ThemesSection";
 import { GeneralSection } from "./sections/GeneralSection";
 import { WidgetsSection } from "./sections/WidgetsSection";
@@ -28,6 +29,7 @@ const SECTIONS = [
   { key: "account", label: "Account", icon: "circle-user" },
   { key: "dashboards", label: "Dashboards", icon: "clone" },
   { key: "providers", label: "Providers", icon: "plug" },
+  { key: "bots", label: "Bots", icon: "robot" },
   { key: "widgets", label: "Widgets", icon: "puzzle-piece" },
   { key: "folders", label: "Folders", icon: "folder" },
   { key: "themes", label: "Themes", icon: "palette" },
@@ -126,6 +128,7 @@ export const AppSettingsModal = ({
         {(activeSection === "dashboards" ||
           activeSection === "folders" ||
           activeSection === "providers" ||
+          activeSection === "bots" ||
           activeSection === "themes" ||
           activeSection === "widgets") && (
           <ButtonIcon3
@@ -137,9 +140,11 @@ export const AppSettingsModal = ({
                   ? "New Folder"
                   : activeSection === "providers"
                     ? "New Provider"
-                    : activeSection === "widgets"
-                      ? "New Widget"
-                      : "New Theme"
+                    : activeSection === "bots"
+                      ? "New Bot"
+                      : activeSection === "widgets"
+                        ? "New Widget"
+                        : "New Theme"
             }
             onClick={() => setCreateRequested(true)}
             spacing="px-3 py-1.5"
@@ -195,6 +200,14 @@ export const AppSettingsModal = ({
             initialCreateRequested={initialCreateProvider}
             initialProviderType={initialProviderType}
             initialProviderClass={initialProviderClass}
+          />
+        )}
+        {activeSection === "bots" && (
+          <BotsSection
+            dashApi={dashApi}
+            credentials={credentials}
+            createRequested={createRequested}
+            onCreateAcknowledged={() => setCreateRequested(false)}
           />
         )}
         {activeSection === "themes" && (
