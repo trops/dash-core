@@ -31,6 +31,7 @@ const Store = require("electron-store");
 function createElectronHost() {
   const store = new Store({ name: "dash-bots" });
   const budgetStore = new Store({ name: "dash-bot-budgets" });
+  const memoryStore = new Store({ name: "dash-bot-memory" });
   const botsRoot = path.join(app.getPath("userData"), "bots");
 
   return {
@@ -47,6 +48,11 @@ function createElectronHost() {
       read: () =>
         budgetStore.get("store", { budgets: {}, spend: {}, overrides: {} }),
       write: (obj) => budgetStore.set("store", obj),
+    },
+    // Separate blob for scoped bot memory (P1: FR-010).
+    memoryPersistence: {
+      read: () => memoryStore.get("store", { scopes: {} }),
+      write: (obj) => memoryStore.set("store", obj),
     },
   };
 }

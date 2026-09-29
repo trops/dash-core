@@ -20,6 +20,12 @@ const BotRunner = require("../bots/BotRunner");
 const BotScheduler = require("../bots/BotScheduler");
 const BudgetController = require("../bots/BudgetController");
 const PauseController = require("../bots/PauseController");
+const { BotMemory } = require("../bots/BotMemory");
+const {
+  MEMORY_SERVER,
+  MEMORY_TOOLS,
+  handleMemoryTool,
+} = require("../bots/memoryTools");
 const { normalizeMcpResult } = require("../bots/mcpResult");
 const {
   getProvider,
@@ -96,10 +102,16 @@ const botController = {
       getPricing: pricingFor,
     });
 
+    // Scoped, durable bot memory (P1: FR-010), served as in-process memory_*
+    // tools that every bot can use without a consent prompt.
+    this._memory = new BotMemory({ persistence: host.memoryPersistence });
+
     this._runner = new BotRunner({
       engines,
       store: this._store,
       approvals: approvalsForRunner,
+      // Memory tools are the bot's own sandbox — auto-allowed at the gate.
+      internalServers: [MEMORY_SERVER],
       resolveRunProfile: (bot) => this._resolveRunProfile(bot),
       resolveTools: (bot) => this._resolveTools(bot),
       callTool: (serverName, toolName, args, o) =>
@@ -332,10 +344,24 @@ const botController = {
         toolServer[tool.name] = server.serverName;
       }
     }
+    // Always-available in-process memory tools (P1: FR-010).
+    for (const tool of MEMORY_TOOLS) {
+      tools.push(tool);
+      toolServer[tool.name] = MEMORY_SERVER;
+    }
     return { tools, resolveServer: (toolName) => toolServer[toolName] || null };
   },
 
   async _callTool(serverName, toolName, args, opts = {}) {
+    // In-process memory tools bypass MCP; scoped to the calling bot's workspace.
+    if (serverName === MEMORY_SERVER) {
+      return handleMemoryTool(
+        this._memory,
+        { workspaceId: opts.workspaceId },
+        toolName,
+        args,
+      );
+    }
     const win = this._getMainWindow();
     // widgetId + token are null → the widget permission gate is bypassed; bot
     // tool calls are gated upstream by the bot PermissionGate.

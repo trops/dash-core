@@ -105,8 +105,9 @@ node --test electron/llm/modelProviders.test.js
 #   Slice 4a: BotRunner, BotScheduler, MCP-result normalizer
 #   Slice 5:  BudgetController (per-run cost + monthly caps)
 #   Slice 6a: PauseController (global + per-bot pause)
+#   P1:       BotMemory + memoryTools (scoped durable memory)
 step "Running Bot Factory tests"
-node --test electron/bots/engines/eventStream.test.js electron/bots/engines/toolLoopEngine.test.js electron/bots/engines/adapters/anthropicAdapter.test.js electron/bots/engines/adapters/openAICompatibleAdapter.test.js electron/bots/botSchema.test.js electron/bots/BotStore.test.js electron/bots/portability.test.js electron/bots/approvals.test.js electron/bots/PermissionGate.test.js electron/bots/mcpResult.test.js electron/bots/BotScheduler.test.js electron/bots/BotRunner.test.js electron/bots/BudgetController.test.js electron/bots/PauseController.test.js
+node --test electron/bots/engines/eventStream.test.js electron/bots/engines/toolLoopEngine.test.js electron/bots/engines/adapters/anthropicAdapter.test.js electron/bots/engines/adapters/openAICompatibleAdapter.test.js electron/bots/botSchema.test.js electron/bots/BotStore.test.js electron/bots/portability.test.js electron/bots/approvals.test.js electron/bots/PermissionGate.test.js electron/bots/mcpResult.test.js electron/bots/BotScheduler.test.js electron/bots/BotRunner.test.js electron/bots/BudgetController.test.js electron/bots/PauseController.test.js electron/bots/BotMemory.test.js electron/bots/memoryTools.test.js
 
 # 6b. Run controller auth tests
 step "Running controller auth tests"

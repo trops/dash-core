@@ -109,6 +109,24 @@ describe("createRequestPermission — decision ladder", () => {
     assert.equal(audit[0].outcome, "auto-allowed");
   });
 
+  it("internal server (e.g. bot-memory) → auto-allow, no gate, no prompt", async () => {
+    let gateCalled = false;
+    const { requestPermission, approvals, audit } = setup({
+      mcpServers: [], // NOT a configured server — must still be allowed
+      internalServers: ["bot-memory"],
+      resolveServer: (t) => (t.startsWith("memory_") ? "bot-memory" : null),
+      gate: () => {
+        gateCalled = true;
+        return { allow: false };
+      },
+    });
+    const d = await requestPermission("memory_get", { key: "x" });
+    assert.equal(d.allow, true);
+    assert.equal(gateCalled, false);
+    assert.equal(approvals.length, 0);
+    assert.equal(audit[0].outcome, "internal");
+  });
+
   it("grant covers the tool → allow without prompting", async () => {
     const { requestPermission, approvals, audit } = setup({
       gate: () => ({ allow: true }),
