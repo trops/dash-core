@@ -114,8 +114,30 @@ export const BotDetail = ({
     bot?.schedules?.[0]?.prompt || "",
   );
 
+  // --- Run-on-events (subscriptions) ---
+  const [subscriptions, setSubscriptions] = useState(
+    (bot?.subscriptions || []).map((s) => s && s.eventType).filter(Boolean),
+  );
+  const [newEvent, setNewEvent] = useState("");
+  const [knownEvents, setKnownEvents] = useState([]);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  // Discover recently-seen widget event types to suggest as subscriptions.
+  useEffect(() => {
+    let alive = true;
+    const api = getMainApi();
+    if (!api?.widgetEvent?.getLastEvents) return undefined;
+    Promise.resolve(api.widgetEvent.getLastEvents())
+      .then((events) => {
+        if (alive && events) setKnownEvents(Object.keys(events).sort());
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // Discover the user's connected integrations for the picker.
   useEffect(() => {
@@ -180,6 +202,22 @@ export const BotDetail = ({
     );
   };
 
+  const addSubscription = (eventType) => {
+    const ev = (eventType || "").trim();
+    if (!ev) return;
+    setSubscriptions((prev) => (prev.includes(ev) ? prev : [...prev, ev]));
+    setNewEvent("");
+  };
+
+  const removeSubscription = (eventType) => {
+    setSubscriptions((prev) => prev.filter((e) => e !== eventType));
+  };
+
+  // Recently-seen events not already subscribed — offered as one-click adds.
+  const eventSuggestions = knownEvents.filter(
+    (ev) => !subscriptions.includes(ev),
+  );
+
   const canSave = name.trim() && instructions.trim() && !saving;
 
   const handleSave = async () => {
@@ -197,6 +235,7 @@ export const BotDetail = ({
       approvalPolicy,
       mcpServers: selectedServers,
       schedules,
+      subscriptions: subscriptions.map((eventType) => ({ eventType })),
     };
     setSaving(true);
     try {
@@ -339,6 +378,65 @@ export const BotDetail = ({
           >
             {advanced ? "Use simple schedule" : "Advanced (cron)"}
           </button>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-medium">Run on events</span>
+          {subscriptions.length ? (
+            <div className="flex flex-row flex-wrap gap-2">
+              {subscriptions.map((ev) => (
+                <span
+                  key={ev}
+                  className="flex flex-row items-center gap-1 text-xs px-2 py-1 rounded bg-gray-700"
+                >
+                  {ev}
+                  <button
+                    type="button"
+                    onClick={() => removeSubscription(ev)}
+                    className="opacity-60 hover:opacity-100"
+                    aria-label={`Remove ${ev}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="text-xs opacity-50">
+              This bot doesn&apos;t run on any events yet.
+            </span>
+          )}
+          <div className="flex flex-row gap-2">
+            <InputText
+              value={newEvent}
+              onChange={setNewEvent}
+              placeholder="Event name, e.g. pr.opened"
+            />
+            <Button
+              title="Add"
+              onClick={() => addSubscription(newEvent)}
+              size="sm"
+              disabled={!newEvent.trim()}
+            />
+          </div>
+          {eventSuggestions.length ? (
+            <div className="flex flex-row flex-wrap gap-1 items-center text-xs opacity-60">
+              <span>Recently seen:</span>
+              {eventSuggestions.slice(0, 8).map((ev) => (
+                <button
+                  key={ev}
+                  type="button"
+                  onClick={() => addSubscription(ev)}
+                  className="underline hover:opacity-100"
+                >
+                  {ev}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <span className="text-xs opacity-50">
+            The bot runs automatically when one of these events fires.
+          </span>
         </div>
 
         {error ? <span className="text-sm text-red-400">{error}</span> : null}

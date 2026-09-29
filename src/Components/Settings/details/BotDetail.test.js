@@ -77,6 +77,26 @@ describe("BotDetail (create)", () => {
     fireEvent.click(screen.getByText("Create"));
     expect(onSave.mock.calls[0][0].schedules).toEqual([]);
   });
+
+  it("adds an event subscription and saves it", () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(<BotDetail isCreating providers={{}} onSave={onSave} />);
+    fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
+      target: { value: "X" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "Y" },
+    });
+    fireEvent.change(
+      screen.getByPlaceholderText("Event name, e.g. pr.opened"),
+      { target: { value: "pr.opened" } },
+    );
+    fireEvent.click(screen.getByText("Add"));
+    fireEvent.click(screen.getByText("Create"));
+    expect(onSave.mock.calls[0][0].subscriptions).toEqual([
+      { eventType: "pr.opened" },
+    ]);
+  });
 });
 
 describe("BotDetail (edit)", () => {
@@ -144,6 +164,22 @@ describe("BotDetail (edit)", () => {
     expect(onSave.mock.calls[0][0].schedules).toEqual([
       { cron: "*/5 * * * *", prompt: "" },
     ]);
+  });
+
+  it("renders existing subscriptions and removes one", () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail
+        bot={{ ...bot, subscriptions: [{ eventType: "pr.opened" }] }}
+        providers={{}}
+        onSave={onSave}
+        onDelete={jest.fn()}
+      />,
+    );
+    expect(screen.getByText("pr.opened")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Remove pr.opened"));
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave.mock.calls[0][0].subscriptions).toEqual([]);
   });
 
   it("Delete triggers onDelete", () => {
