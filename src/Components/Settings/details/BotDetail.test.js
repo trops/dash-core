@@ -24,12 +24,42 @@ describe("BotDetail (create)", () => {
     expect(screen.getByText("Create")).not.toBeDisabled();
   });
 
+  it("auto-selects the user's default AI provider for a new bot", () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail
+        isCreating
+        providers={{
+          p1: { type: "anthropic", isDefaultForType: true },
+          p2: { type: "openai" },
+        }}
+        onSave={onSave}
+      />,
+    );
+    // Shows the actual provider name, pre-selected — not a vague "default".
+    expect(screen.getByLabelText("Provider")).toHaveValue("anthropic");
+    fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
+      target: { value: "X" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "Y" },
+    });
+    fireEvent.click(screen.getByText("Create"));
+    expect(onSave.mock.calls[0][0].provider).toBe("anthropic");
+  });
+
+  it("offers Claude Code (CLI) as a provider option", () => {
+    render(<BotDetail isCreating providers={{}} onSave={jest.fn()} />);
+    // With no API-key provider configured, CLI is the pre-selected fallback.
+    expect(screen.getByLabelText("Provider")).toHaveValue("claude-code");
+  });
+
   it("builds a definition with a schedule from the friendly dropdowns", () => {
     const onSave = jest.fn().mockResolvedValue({ id: "bot_x" });
     render(
       <BotDetail
         isCreating
-        providers={{}}
+        providers={{ p1: { type: "anthropic", isDefaultForType: true } }}
         onSave={onSave}
         onCancel={jest.fn()}
       />,
@@ -57,7 +87,7 @@ describe("BotDetail (create)", () => {
     expect(onSave.mock.calls[0][0]).toMatchObject({
       name: "PR Digest",
       instructions: "Summarize PRs",
-      provider: null,
+      provider: "anthropic",
       model: null,
       approvalPolicy: "ask",
       mcpServers: [],

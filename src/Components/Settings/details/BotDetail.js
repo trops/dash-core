@@ -32,15 +32,40 @@ const PROVIDER_LABELS = {
 };
 const AI_PROVIDER_TYPES = Object.keys(PROVIDER_LABELS);
 
-function providerOptionsFrom(providers) {
-  const present = new Set();
+function presentProviderTypes(providers) {
+  const present = [];
   for (const p of Object.values(providers || {})) {
-    if (p && AI_PROVIDER_TYPES.includes(p.type)) present.add(p.type);
+    if (p && AI_PROVIDER_TYPES.includes(p.type) && !present.includes(p.type)) {
+      present.push(p.type);
+    }
   }
+  return present;
+}
+
+function providerOptionsFrom(providers) {
   return [
-    { value: "", label: "Default provider" },
-    ...[...present].map((t) => ({ value: t, label: PROVIDER_LABELS[t] || t })),
+    ...presentProviderTypes(providers).map((t) => ({
+      value: t,
+      label: PROVIDER_LABELS[t] || t,
+    })),
+    // Auth via the logged-in Claude Code CLI — no API key needed. Runs on the
+    // Claude Agent engine (native tools).
+    { value: "claude-code", label: "Claude Code (CLI) — no API key" },
   ];
+}
+
+/**
+ * The provider to pre-select for a new bot: the user's configured default AI
+ * (its `isDefaultForType`, else the first configured). If none is configured,
+ * fall back to the always-available Claude Code (CLI) — it's the only option in
+ * that case and needs no API key.
+ */
+function defaultProviderId(providers) {
+  const list = Object.values(providers || {}).filter(
+    (p) => p && AI_PROVIDER_TYPES.includes(p.type),
+  );
+  const def = list.find((p) => p.isDefaultForType) || list[0];
+  return def ? def.type : "claude-code";
 }
 
 const APPROVAL_OPTIONS = [
@@ -89,7 +114,9 @@ export const BotDetail = ({
 }) => {
   const [name, setName] = useState(bot?.name || "");
   const [instructions, setInstructions] = useState(bot?.instructions || "");
-  const [provider, setProvider] = useState(bot?.provider || "");
+  const [provider, setProvider] = useState(
+    bot?.provider || defaultProviderId(providers),
+  );
   const [model, setModel] = useState(bot?.model || "");
   const [engine, setEngine] = useState(bot?.engine || "");
   const [approvalPolicy, setApprovalPolicy] = useState(
@@ -280,13 +307,18 @@ export const BotDetail = ({
           />
         </div>
 
-        <SelectInput
-          label="Provider"
-          value={provider}
-          onChange={setProvider}
-          options={providerOptionsFrom(providers)}
-          placeholder="Default provider"
-        />
+        <div className="flex flex-col gap-1">
+          <SelectInput
+            label="Provider"
+            value={provider}
+            onChange={setProvider}
+            options={providerOptionsFrom(providers)}
+          />
+          <span className="text-xs opacity-50">
+            The AI that runs this bot. &quot;Claude Code (CLI)&quot; uses your
+            Claude login — no API key needed.
+          </span>
+        </div>
 
         <SelectInput
           label="Model"
