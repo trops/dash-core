@@ -388,9 +388,20 @@ export const ThemeWrapper = ({
         written.push(name);
       }
     }
+    // Expose the active light/dark variant as a data attribute so the
+    // design system (dash-electron's design.css `[data-mode="light"]`
+    // block) can flip its surface/text tokens to match. Nothing else
+    // keys off this today, so it's purely additive.
+    const prevMode = root.getAttribute("data-mode");
+    root.setAttribute("data-mode", themeVariant);
     return () => {
       for (const name of written) {
         root.style.removeProperty(name);
+      }
+      if (prevMode === null) {
+        root.removeAttribute("data-mode");
+      } else {
+        root.setAttribute("data-mode", prevMode);
       }
     };
   }, [chosenTheme, themeVariant]);
