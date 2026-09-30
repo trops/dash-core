@@ -1,6 +1,6 @@
 {
   "name": "@trops/dash-core",
-  "version": "0.1.631",
+  "version": "0.1.632",
   "description": "Core framework for Dash dashboard applications",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
@@ -85,7 +85,7 @@
     "ws": "^8.19.0",
     "xml2js": "^0.6.2",
     "xtreamer": "^1.1.2",
-    "zod": "^3.23.8"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@babel/cli": "^7.22.0",

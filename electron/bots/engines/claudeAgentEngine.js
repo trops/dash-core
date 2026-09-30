@@ -20,6 +20,7 @@
 "use strict";
 
 const { createEventStream } = require("./eventStream");
+const { BOT_MCP_SERVER, buildBotMcpServer } = require("./agentToolBridge");
 
 // Test seam: injected fake `query` implementation (see __setQueryForTest).
 let _queryImpl = null;
@@ -120,6 +121,27 @@ async function _runAgent(ctx, stream) {
   if (ctx.maxTurns) options.maxTurns = ctx.maxTurns;
   if (ctx.workingDir) options.cwd = ctx.workingDir;
   if (ctx.session && ctx.session.id) options.resume = ctx.session.id;
+
+  // Bridge the bot's configured MCP tools into the SDK as an in-process MCP
+  // server (proxying to ctx.executeTool). Best-effort — on failure the bot
+  // still gets the SDK's built-in tools. canUseTool gates these too.
+  if (ctx.tools && ctx.tools.length) {
+    try {
+      const [sdkMod, zodMod] = await Promise.all([
+        import("@anthropic-ai/claude-agent-sdk"),
+        import("zod"),
+      ]);
+      const z = zodMod.z || zodMod.default || zodMod;
+      const server = buildBotMcpServer(
+        ctx,
+        { createSdkMcpServer: sdkMod.createSdkMcpServer, tool: sdkMod.tool },
+        z,
+      );
+      if (server) options.mcpServers = { [BOT_MCP_SERVER]: server };
+    } catch (_e) {
+      // Fall back to built-in tools only.
+    }
+  }
 
   const q = query({ prompt: ctx.prompt || "", options });
 

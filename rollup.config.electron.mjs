@@ -57,6 +57,7 @@ const EXTERNAL = [
     "xml2js",
     "xtreamer",
     "zod",
+    "zod",
     // zod-to-json-schema has internal circular deps (parseDef →
     // selectParser → parsers/* → parseDef). Rollup's CommonJS wrapper
     // handles them with lazy require* shims that sometimes evaluate

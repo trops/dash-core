@@ -42,6 +42,7 @@ const CORE_MODULES = [
   "./engines/eventStream",
   "./engines/toolLoopEngine",
   "./engines/claudeAgentEngine",
+  "./engines/agentToolBridge",
   "./engines/index",
   "./engines/adapters/anthropicAdapter",
   "./engines/adapters/openAICompatibleAdapter",
