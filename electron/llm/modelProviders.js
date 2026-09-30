@@ -142,6 +142,21 @@ const PROVIDERS = {
   },
 };
 
+// Claude Code (CLI): authenticate via the user's logged-in Claude Code CLI
+// session — no API key. Routed to the claude-agent engine, which the SDK runs
+// through the CLI. Same Claude models as Anthropic; the CLI has no Models API,
+// so the curated list is the source (listModels omitted → dispatcher falls back
+// to curated). Defined after the literal so it can reuse Anthropic's models.
+PROVIDERS["claude-code"] = {
+  id: "claude-code",
+  label: "Claude Code (CLI)",
+  engine: "claude-agent",
+  adapter: null,
+  defaultModel: PROVIDERS.anthropic.defaultModel,
+  curatedModels: PROVIDERS.anthropic.curatedModels,
+  retiredMap: PROVIDERS.anthropic.retiredMap,
+};
+
 const DEFAULT_PROVIDER = "anthropic";
 
 function getProvider(providerId) {
