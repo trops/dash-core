@@ -27,6 +27,15 @@ class ElectronDashboardApi implements IDashboardApi {
     }
   }
 
+  /**
+   * The Bot Factory IPC namespace (window.mainApi.bots), consumed by
+   * Settings → Bots (BotsSection). Exposed as a pass-through so the settings UI
+   * can reach `dashApi.bots.*` the same way it reaches other domains.
+   */
+  get bots(): any {
+    return this.api ? this.api.bots : undefined;
+  }
+
   chooseFile(allowFile = true, extensions = ["*"], onSuccess): Boolean {
     console.log("choose file electron api");
     try {
