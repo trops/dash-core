@@ -23,10 +23,22 @@ describe("ThemeModel — named colors (backwards compat)", () => {
     expect(theme.light["bg-primary-darkest"]).toBe("bg-blue-50");
   });
 
-  test("named-color themes emit no cssVars (fast path)", () => {
-    const theme = ThemeModel({ primary: "blue" });
-    expect(theme.dark.cssVars).toBeUndefined();
-    expect(theme.light.cssVars).toBeUndefined();
+  test("named-color themes emit only the shade-500 accent in cssVars", () => {
+    // Named themes still render via Tailwind class strings, but ThemeModel
+    // now also emits the shade-500 (brand) hex per channel so the design
+    // system's accent tokens — var(--primary-500)/var(--secondary-500) —
+    // bind under named themes too (previously they got no cssVars and the
+    // Aurora accent fell back to a hardcoded default).
+    const theme = ThemeModel({ primary: "blue", secondary: "indigo" });
+    // Tailwind blue-500 / indigo-500.
+    expect(theme.dark.cssVars["--primary-500"]).toBe("#3b82f6");
+    expect(theme.dark.cssVars["--secondary-500"]).toBe("#6366f1");
+    // ...but NOT the full shade ramp — only the accent shade is emitted.
+    expect(theme.dark.cssVars["--primary-700"]).toBeUndefined();
+    // Brand color is constant across variants (only surfaces flip).
+    expect(theme.dark.cssVars["--primary-500"]).toBe(
+      theme.light.cssVars["--primary-500"],
+    );
   });
 
   test("hover variants resolve to the next shade level", () => {
@@ -87,7 +99,7 @@ describe("ThemeModel — hex colors", () => {
     expect(theme.dark.cssVars).toEqual(theme.light.cssVars);
   });
 
-  test("non-hex channels in a mixed theme stay on the named path", () => {
+  test("mixed theme: hex channel gets full ramp, named channel gets accent-500", () => {
     const theme = ThemeModel({
       primary: "#4a154b", // hex
       secondary: "indigo", // named
@@ -96,10 +108,12 @@ describe("ThemeModel — hex colors", () => {
     expect(theme.dark["bg-primary-medium"]).toBe("bg-[var(--primary-700)]");
     // Named secondary
     expect(theme.dark["bg-secondary-medium"]).toBe("bg-indigo-700");
-    // cssVars only includes primary
     const cssVarKeys = Object.keys(theme.dark.cssVars);
-    expect(cssVarKeys.some((k) => k.startsWith("--primary-"))).toBe(true);
-    expect(cssVarKeys.some((k) => k.startsWith("--secondary-"))).toBe(false);
+    // Hex primary → full shade ramp present.
+    expect(cssVarKeys.includes("--primary-700")).toBe(true);
+    // Named secondary → only the shade-500 accent, not the full ramp.
+    expect(theme.dark.cssVars["--secondary-500"]).toBe("#6366f1");
+    expect(cssVarKeys.includes("--secondary-700")).toBe(false);
   });
 
   test("hex hover variants emit hover:bg-[var(...)] form", () => {

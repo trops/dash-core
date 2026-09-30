@@ -451,6 +451,21 @@ export const ThemeModel = (themeItem = {}) => {
             cssVarsAll[`--${type}-${shade}`] = hex;
           }
         }
+      } else {
+        // Named channel (e.g. "blue"): emit the shade-500 (brand) hex so
+        // the design system's accent tokens — `var(--primary-500)` /
+        // `var(--secondary-500)` in dash-electron's design.css — bind to
+        // named themes too. Previously only hex themes produced cssVars,
+        // so the Aurora accent fell back to a hardcoded default under any
+        // named theme. cssValueFor resolves named colors via
+        // TAILWIND_PALETTE and is variant-independent, so the accent stays
+        // the same brand color in both light and dark (only surfaces flip).
+        // Components still render via Tailwind class strings (bg-blue-700),
+        // so this is purely additive — no named-theme rendering changes.
+        const hex500 = cssValueFor(type, 500, channelValue);
+        if (hex500) {
+          cssVarsAll[`--${type}-500`] = hex500;
+        }
       }
     });
     // Merge base channel vars with per-token override vars (collected
