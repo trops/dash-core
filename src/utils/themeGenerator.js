@@ -270,6 +270,16 @@ function buildRawTheme(name, primary, secondary, tertiary, neutral) {
 
 export function getThemePresets() {
   return [
+    // UI Refresh (Phase 1) — light-first, clean, one confident violet accent on
+    // a cool-gray neutral. See docs/design/DESIGN.md. Palette preview only; the
+    // full refresh (radii/glass/spacing) is component-level (Phase 2).
+    buildRawTheme(
+      "Refresh — Light",
+      "#5B4FE0",
+      "#0EA5E9",
+      "#8B5CF6",
+      "#64748B",
+    ),
     buildRawTheme("Ocean Depth", "blue", "cyan", "teal", "slate"),
     buildRawTheme("Sunset Ember", "orange", "rose", "amber", "stone"),
     buildRawTheme("Forest Canopy", "green", "emerald", "lime", "gray"),

@@ -44,7 +44,7 @@ export const DashboardHeader = ({
 
   return (
     <div
-      className={`flex flex-row p-1 justify-between shrink items-center px-4 ${currentTheme["bg-primary-dark"]} py-2`}
+      className={`flex flex-row p-1 justify-between shrink items-center px-4 ${currentTheme["bg-neutral-very-light"]} border-b ${currentTheme["border-neutral-light"]} py-2`}
     >
       {preview === true ? (
         <>
@@ -85,8 +85,8 @@ export const DashboardHeader = ({
               onChange={onNameChange}
               textSize={"text-lg"}
               placeholder="My Workspace"
-              bgColor={currentTheme["bg-primary-very-dark"]}
-              textColor={currentTheme["text-primary-medium"]}
+              bgColor={"bg-transparent"}
+              textColor={currentTheme["text-neutral-dark"]}
               hasBorder={false}
               autoFocus
             />
