@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect } from "react";
+import React, { useState, useContext, useEffect, useRef } from "react";
 import {
   Button,
   Panel,
@@ -37,6 +37,10 @@ export const ThemeManagerModal = ({
   const [isEditing, setIsEditing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isChoosingMode, setIsChoosingMode] = useState(false);
+  // `startInCreate` should auto-open the chooser ONCE per modal open. Without
+  // this guard the effect re-fires after a theme is created (themes change →
+  // isCreating flips false) and bounces the user back to the chooser.
+  const startInCreateHandledRef = useRef(false);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedMethod, setSelectedMethod] = useState(null);
   const [wizardName, setWizardName] = useState("");
@@ -60,6 +64,7 @@ export const ThemeManagerModal = ({
       setIsChoosingMode(false);
       setIsSearching(false);
       setSelectedMethod(null);
+      startInCreateHandledRef.current = false;
     } else {
       if (themeKeySelected === null && themes) {
         const themeKeyTemp =
@@ -75,7 +80,13 @@ export const ThemeManagerModal = ({
         setThemeSelected(() => themeModel);
         setRawThemeSelected(() => rawThemes[themeKeyTemp]);
       }
-      if (startInCreate && !isChoosingMode && !isCreating) {
+      if (
+        startInCreate &&
+        !startInCreateHandledRef.current &&
+        !isChoosingMode &&
+        !isCreating
+      ) {
+        startInCreateHandledRef.current = true;
         setIsChoosingMode(true);
         setIsCreating(false);
         setIsSearching(false);

@@ -575,15 +575,17 @@ export const ThemeQuickCreate = ({
   return (
     <div className="flex flex-col gap-4 p-6 flex-1 min-h-0 overflow-hidden">
       {/* Name (label removed — input self-explanatory) */}
-      <InputText
-        value={wizardName}
-        onChange={(val) => setWizardName(val)}
-        placeholder="Theme name..."
-      />
+      <div className="shrink-0">
+        <InputText
+          value={wizardName}
+          onChange={(val) => setWizardName(val)}
+          placeholder="Theme name..."
+        />
+      </div>
 
       {/* Method Selection — hidden when initialMethod is pre-set */}
       {showMethodPicker && (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 shrink-0">
           <span className="text-sm font-semibold opacity-50">
             Generation Method
           </span>
@@ -622,39 +624,44 @@ export const ThemeQuickCreate = ({
         </div>
       )}
 
-      {/* Conditional Options */}
-      {wizardMethod === "presets" && (
-        <PresetGallery
-          onSelect={(preset) => setWizardTheme(preset)}
-          selectedPresetId={wizardTheme?.name}
-          inline={true}
-        />
-      )}
-      {wizardMethod === "random" && (
-        <RandomPreview onCommit={(theme) => setWizardTheme(theme)} />
-      )}
-      {wizardMethod === "color" && (
-        <ColorHarmonyPicker
-          onGenerate={(theme) => setWizardTheme(theme)}
-          inline={true}
-        />
-      )}
-      {wizardMethod === "from-url" && onExtract && (
-        <ThemeFromUrlPane
-          onExtract={onExtract}
-          onMapToTheme={onMapToTheme}
-          onGenerate={(theme) => setWizardTheme(theme)}
-          inline={true}
-        />
-      )}
+      {/* Conditional Options — scrollable so the Create button below stays
+          reachable no matter how tall the gallery/picker gets. */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {wizardMethod === "presets" && (
+          <PresetGallery
+            onSelect={(preset) => setWizardTheme(preset)}
+            selectedPresetId={wizardTheme?.name}
+            inline={true}
+          />
+        )}
+        {wizardMethod === "random" && (
+          <RandomPreview onCommit={(theme) => setWizardTheme(theme)} />
+        )}
+        {wizardMethod === "color" && (
+          <ColorHarmonyPicker
+            onGenerate={(theme) => setWizardTheme(theme)}
+            inline={true}
+          />
+        )}
+        {wizardMethod === "from-url" && onExtract && (
+          <ThemeFromUrlPane
+            onExtract={onExtract}
+            onMapToTheme={onMapToTheme}
+            onGenerate={(theme) => setWizardTheme(theme)}
+            inline={true}
+          />
+        )}
+      </div>
 
-      {/* Create Button */}
-      <Button2
-        title="Create Theme"
-        onClick={onComplete}
-        disabled={!canCreate}
-        block={true}
-      />
+      {/* Create Button — pinned; always visible above the modal footer. */}
+      <div className="shrink-0">
+        <Button2
+          title="Create Theme"
+          onClick={onComplete}
+          disabled={!canCreate}
+          block={true}
+        />
+      </div>
     </div>
   );
 };
