@@ -37,6 +37,13 @@ const {
   checkToolCall,
 } = require("../bots/toolSources");
 const {
+  rememberToolGrant,
+  forgetToolGrant,
+  summarizeGrants,
+} = require("../bots/rememberGrant");
+const grantStore = require("../mcp/grantedPermissions");
+const { isWriteTool, PATH_ARG_KEYS } = require("../mcp/permissionGate");
+const {
   getProvider,
   getDefaultModel,
   getCuratedModels,
@@ -263,6 +270,8 @@ const botController = {
 
   delete(botId) {
     this._scheduler.unregister(botId);
+    // A deleted bot's remembered approvals go with it.
+    grantStore.revokeGrant(botId);
     return this._store.delete(botId);
   },
 
@@ -274,10 +283,50 @@ const botController = {
     return { stopped: this._runner.abort(botId) };
   },
 
+  /**
+   * Resolve a pending approval. `decision.remember` ("Always allow") also
+   * saves a durable grant for this bot + provider + tool (+ the folder of a
+   * path argument), so later runs use that tool without asking. Only provider
+   * tool approvals can be remembered — built-in agent tools have no provider
+   * and always ask.
+   */
   approve(approvalId, decision = {}) {
-    return decision.allow
-      ? { ok: this._approvals.resolve(approvalId, decision) }
-      : { ok: this._approvals.deny(approvalId, decision.reason) };
+    if (!decision.allow) {
+      return { ok: this._approvals.deny(approvalId, decision.reason) };
+    }
+    let remembered = false;
+    if (decision.remember) {
+      const pending = this._approvals.get(approvalId);
+      const req = pending && pending.request;
+      if (req && req.botId && req.serverName && req.toolName) {
+        const next = rememberToolGrant(
+          grantStore.getGrant(req.botId),
+          {
+            serverName: req.serverName,
+            toolName: req.toolName,
+            args: req.input,
+          },
+          { isWriteTool, pathArgKeys: PATH_ARG_KEYS, dirname: path.dirname },
+        );
+        remembered = grantStore.setGrant(req.botId, next) === true;
+      }
+    }
+    return { ok: this._approvals.resolve(approvalId, decision), remembered };
+  },
+
+  /** Remembered approvals for a bot: { [provider]: { tools, folders } }. */
+  getGrants(botId) {
+    return summarizeGrants(grantStore.getGrant(botId));
+  },
+
+  /** Revoke one remembered tool approval; returns the updated summary. */
+  revokeGrant(botId, serverName, toolName) {
+    const current = grantStore.getGrant(botId);
+    if (current) {
+      const next = forgetToolGrant(current, serverName, toolName);
+      if (next !== current) grantStore.setGrant(botId, next);
+    }
+    return this.getGrants(botId);
   },
 
   listApprovals() {

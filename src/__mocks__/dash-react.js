@@ -76,10 +76,16 @@ function Button2({ title, onClick, disabled }) {
   );
 }
 
-function Button3({ title, onClick, disabled }) {
+function Button3({ title, onClick, disabled, ariaLabel, tooltip }) {
+  // Mirrors dash-react ≥1.0.58: ariaLabel → aria-label, tooltip → title attr.
   return React.createElement(
     "button",
-    { onClick: onClick, disabled: disabled },
+    {
+      onClick: onClick,
+      disabled: disabled,
+      "aria-label": ariaLabel,
+      title: tooltip,
+    },
     title,
   );
 }

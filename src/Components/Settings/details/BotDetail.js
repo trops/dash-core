@@ -144,6 +144,37 @@ export const BotDetail = ({
   );
   const [toolSources, setToolSources] = useState([]);
   const [sourcesLoaded, setSourcesLoaded] = useState(false);
+  // Remembered approvals ("Always allow") for a saved bot:
+  // { [provider]: { tools: string[], folders: string[] } }.
+  const [grants, setGrants] = useState({});
+
+  useEffect(() => {
+    let alive = true;
+    const api = getMainApi();
+    if (!bot?.id || !api?.bots?.getGrants) return undefined;
+    Promise.resolve(api.bots.getGrants(bot.id))
+      .then((g) => {
+        if (alive && g && typeof g === "object") setGrants(g);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [bot?.id]);
+
+  const isRemembered = (serverName, tool) =>
+    !!(grants[serverName] && (grants[serverName].tools || []).includes(tool));
+
+  const revokeRemembered = async (serverName, tool) => {
+    const api = getMainApi();
+    if (!bot?.id || !api?.bots?.revokeGrant) return;
+    try {
+      const next = await api.bots.revokeGrant(bot.id, serverName, tool);
+      setGrants(next && typeof next === "object" ? next : {});
+    } catch (_e) {
+      // Leave the badge as-is; the revoke can be retried.
+    }
+  };
 
   // --- Model options (fetched per provider) ---
   const [modelOptions, setModelOptions] = useState([]);
@@ -426,16 +457,43 @@ export const BotDetail = ({
                             </div>
                             <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                               {s.tools.map((tool) => (
-                                <Checkbox
+                                <div
                                   key={tool}
-                                  label={prettyTool(tool)}
-                                  checked={isToolOn(s.serverName, tool)}
-                                  onChange={() =>
-                                    toggleTool(s.serverName, s.tools, tool)
-                                  }
-                                />
+                                  className="flex flex-row items-center gap-2"
+                                >
+                                  <Checkbox
+                                    label={prettyTool(tool)}
+                                    checked={isToolOn(s.serverName, tool)}
+                                    onChange={() =>
+                                      toggleTool(s.serverName, s.tools, tool)
+                                    }
+                                  />
+                                  {isRemembered(s.serverName, tool) ? (
+                                    <>
+                                      <span className="text-xs opacity-60">
+                                        Always allowed
+                                      </span>
+                                      <Button3
+                                        title="Revoke"
+                                        size="xs"
+                                        ariaLabel={`Revoke always-allow for ${prettyTool(tool)}`}
+                                        tooltip="Ask again before this tool runs"
+                                        onClick={() =>
+                                          revokeRemembered(s.serverName, tool)
+                                        }
+                                      />
+                                    </>
+                                  ) : null}
+                                </div>
                               ))}
                             </div>
+                            {grants[s.serverName] &&
+                            (grants[s.serverName].folders || []).length ? (
+                              <span className="text-xs opacity-50">
+                                Always-allowed folders:{" "}
+                                {grants[s.serverName].folders.join(", ")}
+                              </span>
+                            ) : null}
                           </>
                         ) : (
                           <span className="text-xs opacity-50">

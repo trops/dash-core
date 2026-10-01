@@ -166,6 +166,84 @@ describe("claudeAgentEngine", () => {
     );
   });
 
+  // Bridged Dash provider tools (mcp__bot-mcp__*) must go through the SAME
+  // Dash permission gate as the tool-loop engine (ctx.requestPermission), so
+  // remembered approvals ("Always allow") and grants apply. Regression: the
+  // engine's hook bypassed the gate and asked every time.
+  it("routes bridged provider tools through ctx.requestPermission", async () => {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    const seen = [];
+    let approvals = 0;
+    await collect(
+      claudeAgentEngine.run(
+        ctx({
+          approvalPolicy: "ask",
+          requestPermission: async (name, input) => {
+            seen.push({ name, input });
+            return { allow: true };
+          },
+          createApproval: () => {
+            approvals++;
+            return { promise: Promise.resolve({ allow: false }) };
+          },
+        }),
+      ),
+    );
+    const res = await captured.options.canUseTool(
+      "mcp__bot-mcp__search_emails",
+      { q: "is:unread" },
+    );
+    assert.equal(res.behavior, "allow");
+    assert.deepEqual(seen, [
+      { name: "search_emails", input: { q: "is:unread" } },
+    ]);
+    assert.equal(approvals, 0); // the gate decided — no extra prompt
+  });
+
+  it("denies a bridged tool when the Dash gate denies it", async () => {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(
+      claudeAgentEngine.run(
+        ctx({
+          approvalPolicy: "ask",
+          requestPermission: async () => ({ allow: false, reason: "no grant" }),
+        }),
+      ),
+    );
+    const res = await captured.options.canUseTool(
+      "mcp__bot-mcp__send_email",
+      {},
+    );
+    assert.equal(res.behavior, "deny");
+    assert.match(res.message, /no grant/);
+  });
+
+  it("built-in tools (e.g. Bash) still ask via the approval queue every time", async () => {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    let gateCalls = 0;
+    const created = [];
+    await collect(
+      claudeAgentEngine.run(
+        ctx({
+          approvalPolicy: "ask",
+          requestPermission: async () => {
+            gateCalls++;
+            return { allow: true };
+          },
+          createApproval: (req) => {
+            created.push(req);
+            return { promise: Promise.resolve({ allow: true }) };
+          },
+        }),
+      ),
+    );
+    const res = await captured.options.canUseTool("Bash", { command: "ls" });
+    assert.equal(res.behavior, "allow");
+    assert.equal(gateCalls, 0);
+    assert.equal(created.length, 1);
+    assert.equal(created[0].toolName, "Bash");
+  });
+
   it("canUseTool auto-allows when approvalPolicy is allow", async () => {
     stubQuery([{ type: "result", subtype: "success", usage: {} }]);
     await collect(claudeAgentEngine.run(ctx({ approvalPolicy: "allow" })));
