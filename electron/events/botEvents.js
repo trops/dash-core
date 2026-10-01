@@ -24,6 +24,7 @@ const BOTS_RESUME_ALL = "bots-resume-all";
 const BOTS_PAUSE_BOT = "bots-pause-bot";
 const BOTS_RESUME_BOT = "bots-resume-bot";
 const BOTS_GET_PAUSE_STATE = "bots-get-pause-state";
+const BOTS_LIST_TOOL_SOURCES = "bots-list-tool-sources";
 
 // --- Main → Renderer (send) ---
 const BOT_STREAM = "bot-stream"; // { botId, event: BotEvent }
@@ -50,6 +51,7 @@ module.exports = {
   BOTS_PAUSE_BOT,
   BOTS_RESUME_BOT,
   BOTS_GET_PAUSE_STATE,
+  BOTS_LIST_TOOL_SOURCES,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,

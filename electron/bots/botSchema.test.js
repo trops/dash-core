@@ -127,4 +127,32 @@ describe("botSchema.validateBotDefinition", () => {
     assert.equal(r.valid, false);
     assert.ok(r.errors.some((e) => /subscriptions must be an array/.test(e)));
   });
+
+  // Per-bot tool narrowing within each provider's declared tools.
+  it("accepts toolSelections mapping provider → tool names", () => {
+    const r = validateBotDefinition({
+      ...good(),
+      toolSelections: { "Gmail 3": ["search_emails", "read_email"] },
+    });
+    assert.deepEqual(r, { valid: true, errors: [] });
+  });
+
+  it("rejects toolSelections that aren't provider → string[]", () => {
+    for (const bad of [
+      "nope",
+      ["x"],
+      { gmail: "search_emails" },
+      { gmail: [1, 2] },
+    ]) {
+      const r = validateBotDefinition({ ...good(), toolSelections: bad });
+      assert.equal(r.valid, false, JSON.stringify(bad));
+      assert.ok(r.errors.some((e) => /toolSelections/.test(e)));
+    }
+  });
+});
+
+describe("botSchema.withDefaults — toolSelections", () => {
+  it("defaults toolSelections to {} (all tools each provider allows)", () => {
+    assert.deepEqual(withDefaults({ name: "a" }).toolSelections, {});
+  });
 });

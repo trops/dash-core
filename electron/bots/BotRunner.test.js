@@ -103,6 +103,28 @@ describe("BotRunner.run — happy path", () => {
     assert.equal(runs[0].run.trigger, "manual");
   });
 
+  it("passes the bot id (and workspace) to callTool so per-bot tool limits can be enforced", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const seen = [];
+    const { runner } = makeRunner(engine, {
+      deps: {
+        callTool: async (serverName, toolName, args, opts) => {
+          seen.push({ serverName, toolName, opts });
+          return { text: "ok" };
+        },
+      },
+    });
+    await runner.run("bot_1", { prompt: "go" });
+    await engine.lastCtx.executeTool("search_repositories", { q: "x" });
+    assert.deepEqual(seen, [
+      {
+        serverName: "github",
+        toolName: "search_repositories",
+        opts: { workspaceId: "ws_1", botId: "bot_1" },
+      },
+    ]);
+  });
+
   it("passes the run prompt, model, and instructions into the engine ctx", async () => {
     const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
     const { runner } = makeRunner(engine);
@@ -156,21 +178,35 @@ describe("BotRunner.run — failures", () => {
 });
 
 describe("BotRunner.run — session resume gating", () => {
-  it("passes stored session state when the engine matches", async () => {
+  // A run (manual / scheduled / event) does the bot's job against current
+  // data, so it starts a FRESH conversation. Regression: runs resumed the last
+  // conversation and a scheduled email check answered "I've already finished"
+  // without checking again. Continuing a conversation is opt-in
+  // (continueSession) — the reply-to-continue path.
+  it("starts fresh by default, even with a stored session for this engine", async () => {
     const engine = mockEngine([{ type: "done" }]);
     const { runner } = makeRunner(engine, {
       bot: { session: { engine: "tool-loop", state: { messages: ["prev"] } } },
     });
     await runner.run("bot_1", {});
+    assert.equal(engine.lastCtx.session, null);
+  });
+
+  it("resumes the stored session when continueSession is set and the engine matches", async () => {
+    const engine = mockEngine([{ type: "done" }]);
+    const { runner } = makeRunner(engine, {
+      bot: { session: { engine: "tool-loop", state: { messages: ["prev"] } } },
+    });
+    await runner.run("bot_1", { continueSession: true });
     assert.deepEqual(engine.lastCtx.session, { messages: ["prev"] });
   });
 
-  it("ignores stored session from a different engine", async () => {
+  it("ignores stored session from a different engine (even when continuing)", async () => {
     const engine = mockEngine([{ type: "done" }]);
     const { runner } = makeRunner(engine, {
       bot: { session: { engine: "claude-agent", state: { foo: 1 } } },
     });
-    await runner.run("bot_1", {});
+    await runner.run("bot_1", { continueSession: true });
     assert.equal(engine.lastCtx.session, null);
   });
 });

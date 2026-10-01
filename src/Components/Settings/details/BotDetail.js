@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   Button,
+  Button3,
   InputText,
   TextArea,
   SelectInput,
@@ -19,8 +20,10 @@ import {
 /**
  * BotDetail — create/edit form for a Bot Factory bot (Settings → Bots).
  *
- * Built for a non-technical user: Provider/Model/Tools/Schedule are all
- * pick-from-a-list, never free text. The raw cron lives behind an "Advanced"
+ * Built for a non-technical user: Providers (the user's Dash MCP providers —
+ * what the bot can use), the AI model, and the schedule are all
+ * pick-from-a-list, never free text. "Provider" always means a Dash provider;
+ * the LLM choice is labelled "Model source". The raw cron lives behind an "Advanced"
  * toggle for power users. All inputs are @trops/dash-react primitives.
  */
 
@@ -100,6 +103,15 @@ function prettyServer(name) {
     .join(" ");
 }
 
+// "search_emails" / "list-calendars" → "Search emails" / "List calendars".
+function prettyTool(name) {
+  const words = String(name || "")
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .join(" ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 function getMainApi() {
   return typeof window !== "undefined" ? window.mainApi : null;
 }
@@ -123,9 +135,15 @@ export const BotDetail = ({
     bot?.approvalPolicy || "ask",
   );
 
-  // --- Tools & integrations (MCP servers) ---
+  // --- Providers: the user's Dash MCP providers (Settings → Providers) ---
   const [selectedServers, setSelectedServers] = useState(bot?.mcpServers || []);
-  const [connectedServers, setConnectedServers] = useState([]);
+  // Per-provider narrowing within the provider's declared tools:
+  // { [providerName]: string[] }. No entry → every tool the provider allows.
+  const [toolSelections, setToolSelections] = useState(
+    bot?.toolSelections || {},
+  );
+  const [toolSources, setToolSources] = useState([]);
+  const [sourcesLoaded, setSourcesLoaded] = useState(false);
 
   // --- Model options (fetched per provider) ---
   const [modelOptions, setModelOptions] = useState([]);
@@ -174,22 +192,27 @@ export const BotDetail = ({
     };
   }, []);
 
-  // Discover the user's connected integrations for the picker.
+  // Discover the user's configured MCP providers — running or not. The bot
+  // starts any that aren't running when it runs.
   useEffect(() => {
     let alive = true;
     const api = getMainApi();
-    if (!api?.llm?.listConnectedTools) return undefined;
-    api.llm
-      .listConnectedTools()
-      .then((servers) => {
-        if (!alive || !Array.isArray(servers)) return;
-        setConnectedServers(servers.map((s) => s.serverName).filter(Boolean));
+    if (!api?.bots?.listToolSources) {
+      setSourcesLoaded(true);
+      return undefined;
+    }
+    Promise.resolve(api.bots.listToolSources(bot?.workspaceId || null))
+      .then((sources) => {
+        if (alive && Array.isArray(sources)) setToolSources(sources);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setSourcesLoaded(true);
+      });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [bot?.workspaceId]);
 
   // Fetch the model list for the chosen provider.
   useEffect(() => {
@@ -212,13 +235,29 @@ export const BotDetail = ({
     };
   }, [provider]);
 
-  // Union of connected servers + any the bot already has (so an attached server
-  // that isn't currently connected still shows, checked, and isn't dropped).
+  // Configured providers + any the bot already has (so a provider that was
+  // since removed still shows, checked, and isn't silently dropped on save).
   const availableServers = [
-    ...new Set([...(selectedServers || []), ...connectedServers]),
-  ].map((serverName) => ({
-    serverName,
-    label: prettyServer(serverName),
+    ...toolSources.map((s) => ({ ...s, missing: false })),
+    ...(selectedServers || [])
+      .filter((name) => !toolSources.some((s) => s.name === name))
+      .map((name) => ({
+        name,
+        running: false,
+        toolCount: null,
+        missing: true,
+      })),
+  ].map((s) => ({
+    serverName: s.name,
+    label: prettyServer(s.name),
+    // The provider's declared tools (or live tools if undeclared + running);
+    // null → every tool, list not known yet.
+    tools: Array.isArray(s.tools) ? s.tools : null,
+    status: s.missing
+      ? "No longer set up under Settings → Providers"
+      : s.running
+        ? `Running · ${s.toolCount ?? 0} tools`
+        : "Starts when the bot runs",
   }));
 
   const modelSelectOptions = [
@@ -235,6 +274,38 @@ export const BotDetail = ({
         ? prev.filter((s) => s !== serverName)
         : [...prev, serverName],
     );
+  };
+
+  // Is `tool` allowed for this bot on `serverName`? No stored selection → yes.
+  const isToolOn = (serverName, tool) => {
+    const sel = toolSelections[serverName];
+    return Array.isArray(sel) ? sel.includes(tool) : true;
+  };
+
+  // Toggle one tool. Selecting every tool again clears the entry (= all), so
+  // a later provider-side addition is picked up automatically.
+  const toggleTool = (serverName, allTools, tool) => {
+    setToolSelections((prev) => {
+      const current = Array.isArray(prev[serverName])
+        ? prev[serverName]
+        : [...allTools];
+      const next = current.includes(tool)
+        ? current.filter((t) => t !== tool)
+        : allTools.filter((t) => t === tool || current.includes(t));
+      const copy = { ...prev };
+      if (next.length === allTools.length) delete copy[serverName];
+      else copy[serverName] = next;
+      return copy;
+    });
+  };
+
+  const setAllTools = (serverName, on) => {
+    setToolSelections((prev) => {
+      const copy = { ...prev };
+      if (on) delete copy[serverName];
+      else copy[serverName] = [];
+      return copy;
+    });
   };
 
   const addSubscription = (eventType) => {
@@ -270,6 +341,12 @@ export const BotDetail = ({
       engine: engine || null,
       approvalPolicy,
       mcpServers: selectedServers,
+      // Only keep narrowing for providers the bot still uses.
+      toolSelections: Object.fromEntries(
+        Object.entries(toolSelections).filter(([server]) =>
+          selectedServers.includes(server),
+        ),
+      ),
       schedules,
       subscriptions: subscriptions.map((eventType) => ({ eventType })),
     };
@@ -307,34 +384,114 @@ export const BotDetail = ({
           />
         </div>
 
-        <div className="flex flex-col gap-1">
-          <SelectInput
-            label="Provider"
-            value={provider}
-            onChange={setProvider}
-            options={providerOptionsFrom(providers)}
-          />
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-medium">Providers</span>
           <span className="text-xs opacity-50">
-            The AI that runs this bot. &quot;Claude Code (CLI)&quot; uses your
-            Claude login — no API key needed.
+            What this bot can use — your MCP providers from Settings →
+            Providers. The bot starts any that aren&apos;t running when it runs.
+          </span>
+          {availableServers.length ? (
+            <div className="flex flex-col gap-1">
+              {availableServers.map((s) => {
+                const on = selectedServers.includes(s.serverName);
+                return (
+                  <div key={s.serverName} className="flex flex-col gap-1">
+                    <div className="flex flex-row items-center justify-between gap-3">
+                      <Checkbox
+                        label={s.label}
+                        checked={on}
+                        onChange={() => toggleServer(s.serverName)}
+                      />
+                      <span className="text-xs opacity-50">{s.status}</span>
+                    </div>
+                    {on ? (
+                      <div className="flex flex-col gap-1 pl-7 pb-2">
+                        {s.tools && s.tools.length ? (
+                          <>
+                            <div className="flex flex-row items-center gap-2">
+                              <span className="text-xs opacity-50">
+                                Tools this bot may use (from the provider&apos;s
+                                allowed tools):
+                              </span>
+                              <Button3
+                                title="All"
+                                size="xs"
+                                onClick={() => setAllTools(s.serverName, true)}
+                              />
+                              <Button3
+                                title="None"
+                                size="xs"
+                                onClick={() => setAllTools(s.serverName, false)}
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                              {s.tools.map((tool) => (
+                                <Checkbox
+                                  key={tool}
+                                  label={prettyTool(tool)}
+                                  checked={isToolOn(s.serverName, tool)}
+                                  onChange={() =>
+                                    toggleTool(s.serverName, s.tools, tool)
+                                  }
+                                />
+                              ))}
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-xs opacity-50">
+                            All tools this provider offers — it has no tool
+                            limit set in Settings → Providers.
+                          </span>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : sourcesLoaded ? (
+            <span className="text-xs opacity-50">
+              You haven&apos;t set up any MCP providers yet. Add one under
+              Settings → Providers, then it will appear here.
+            </span>
+          ) : null}
+          <span className="text-xs opacity-50">
+            Each tool call follows the approval policy below.
           </span>
         </div>
 
-        <SelectInput
-          label="Model"
-          value={model}
-          onChange={setModel}
-          options={modelSelectOptions}
-          placeholder="Recommended (default)"
-        />
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-medium">AI model</span>
+          <div className="flex flex-col gap-1">
+            <SelectInput
+              label="Model source"
+              value={provider}
+              onChange={setProvider}
+              options={providerOptionsFrom(providers)}
+            />
+            <span className="text-xs opacity-50">
+              Which AI powers the bot — an API key from your Anthropic, OpenAI
+              or xAI providers, or &quot;Claude Code (CLI)&quot;, which uses
+              your Claude login with no API key.
+            </span>
+          </div>
 
-        <SelectInput
-          label="Engine"
-          value={engine}
-          onChange={setEngine}
-          options={ENGINE_OPTIONS}
-          placeholder="Standard (default)"
-        />
+          <SelectInput
+            label="Model"
+            value={model}
+            onChange={setModel}
+            options={modelSelectOptions}
+            placeholder="Recommended (default)"
+          />
+
+          <SelectInput
+            label="Engine"
+            value={engine}
+            onChange={setEngine}
+            options={ENGINE_OPTIONS}
+            placeholder="Standard (default)"
+          />
+        </div>
 
         <SelectInput
           label="Approval policy"
@@ -342,30 +499,6 @@ export const BotDetail = ({
           onChange={setApprovalPolicy}
           options={APPROVAL_OPTIONS}
         />
-
-        <div className="flex flex-col gap-2">
-          <span className="text-sm font-medium">Tools &amp; integrations</span>
-          {availableServers.length ? (
-            <div className="flex flex-col gap-1">
-              {availableServers.map((s) => (
-                <Checkbox
-                  key={s.serverName}
-                  label={s.label}
-                  checked={selectedServers.includes(s.serverName)}
-                  onChange={() => toggleServer(s.serverName)}
-                />
-              ))}
-            </div>
-          ) : (
-            <span className="text-xs opacity-50">
-              No connected integrations yet. Add one under Settings → MCP
-              Server, then it will appear here.
-            </span>
-          )}
-          <span className="text-xs opacity-50">
-            Tools on these integrations route through the approval policy above.
-          </span>
-        </div>
 
         <div className="flex flex-col gap-2">
           <span className="text-sm font-medium">Schedule</span>

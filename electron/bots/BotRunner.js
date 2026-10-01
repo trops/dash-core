@@ -142,12 +142,17 @@ class BotRunner {
         }
         return this._callTool(serverName, toolName, input, {
           workspaceId: bot.workspaceId,
+          // Lets the caller apply this bot's per-provider tool limits.
+          botId,
         });
       };
 
-      // Resume only when the stored session was produced by this engine.
+      // A run does the bot's job against current data → fresh conversation.
+      // Resume only when explicitly continuing (reply-to-continue) AND the
+      // stored session was produced by this engine. Anything a bot should
+      // carry between runs belongs in its memory tools.
       const session =
-        bot.session && bot.session.engine === engine.id
+        opts.continueSession && bot.session && bot.session.engine === engine.id
           ? bot.session.state
           : null;
 

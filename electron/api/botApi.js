@@ -25,6 +25,7 @@ const {
   BOTS_PAUSE_BOT,
   BOTS_RESUME_BOT,
   BOTS_GET_PAUSE_STATE,
+  BOTS_LIST_TOOL_SOURCES,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
@@ -72,6 +73,10 @@ const botApi = {
   pauseBot: (botId) => ipcRenderer.invoke(BOTS_PAUSE_BOT, { botId }),
   resumeBot: (botId) => ipcRenderer.invoke(BOTS_RESUME_BOT, { botId }),
   getPauseState: () => ipcRenderer.invoke(BOTS_GET_PAUSE_STATE),
+
+  /** The user's Dash MCP providers a bot can use: [{ name, type, running, toolCount }]. */
+  listToolSources: (workspaceId = null) =>
+    ipcRenderer.invoke(BOTS_LIST_TOOL_SOURCES, { workspaceId }),
 
   /** Subscribe to streamed run events: { botId, event }. */
   onStream: (callback) => _addListener(BOT_STREAM, callback),

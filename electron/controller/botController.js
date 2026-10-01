@@ -31,6 +31,12 @@ const { matchSubscribedBots } = require("../bots/eventMatcher");
 const { EventDispatcher } = require("../bots/EventDispatcher");
 const { normalizeMcpResult } = require("../bots/mcpResult");
 const {
+  listToolSources,
+  ensureBotServers,
+  resolveBotTools,
+  checkToolCall,
+} = require("../bots/toolSources");
+const {
   getProvider,
   getDefaultModel,
   getCuratedModels,
@@ -133,6 +139,10 @@ const botController = {
     // flood the runner with event-triggered runs.
     this._dispatcher = new EventDispatcher();
 
+    // botId → { [providerName]: allowed tool names | null }, set on each run's
+    // tool resolution and enforced in _callTool.
+    this._allowedByBot = new Map();
+
     this._runner = new BotRunner({
       engines,
       store: this._store,
@@ -216,6 +226,26 @@ const botController = {
 
   list() {
     return this._store.list();
+  },
+
+  /**
+   * The user's Dash MCP providers a bot can use (Settings → Providers), with
+   * running status + tool count. Names/types only — never credentials.
+   */
+  listToolSources(workspaceId = null) {
+    let providers = [];
+    try {
+      const win = this._getMainWindow();
+      ({ providers = [] } =
+        this._providers.listProviders(win, this._appId) || {});
+    } catch (_e) {
+      providers = [];
+    }
+    return listToolSources({
+      providers,
+      connected: this._connectedServers(),
+      workspaceId,
+    });
   },
 
   get(botId) {
@@ -384,23 +414,58 @@ const botController = {
     };
   },
 
-  /** Build the bot's tool set + tool→server resolver from connected servers. */
-  _resolveTools(bot) {
-    const connected = this._mcp.listConnectedServers
+  /** Connected MCP servers with real server names + workspace buckets. */
+  _connectedServers() {
+    return this._mcp && this._mcp.listConnectedServers
       ? this._mcp.listConnectedServers()
       : [];
-    const wanted = Array.isArray(bot.mcpServers)
-      ? new Set(bot.mcpServers)
-      : null;
-    const tools = [];
-    const toolServer = Object.create(null);
-    for (const server of connected) {
-      if (wanted && !wanted.has(server.serverName)) continue;
-      for (const tool of server.tools || []) {
-        tools.push(tool);
-        toolServer[tool.name] = server.serverName;
+  },
+
+  /**
+   * Build the bot's tool set + tool→server resolver. First starts any of the
+   * bot's selected providers that aren't running in its bucket — through the
+   * same deduping startServer factory the dashboards use — so a scheduled or
+   * event-triggered bot doesn't silently run without its tools. Start
+   * failures are surfaced in the run feed as warnings.
+   */
+  async _resolveTools(bot) {
+    if (this._mcp && this._mcp.startServer && this._providers) {
+      const win = this._getMainWindow();
+      const { failed } = await ensureBotServers({
+        bot,
+        connected: this._connectedServers(),
+        getProvider: async (name) =>
+          this._providers.getProvider(win, this._appId, name),
+        startServer: (name, mcpConfig, credentials, workspaceId) =>
+          this._mcp.startServer(
+            win,
+            name,
+            mcpConfig,
+            credentials,
+            workspaceId,
+            null,
+            this._appId,
+          ),
+      });
+      for (const f of failed) {
+        this._broadcast(BOT_STREAM, {
+          botId: bot.id,
+          event: {
+            type: "warning",
+            message: `${f.serverName} couldn't start, so its tools aren't available this run: ${f.message}`,
+          },
+        });
       }
     }
+    // Each provider's declared tools (Settings → Providers) are the ceiling;
+    // the bot's toolSelections narrow within them.
+    const { tools, toolServer, allowedFor } = resolveBotTools({
+      bot,
+      connected: this._connectedServers(),
+      providerLimits: this._providerToolLimits(),
+    });
+    // Remembered per bot so _callTool can hard-enforce the same whitelist.
+    this._allowedByBot.set(bot.id, allowedFor);
     // Always-available in-process memory tools (P1: FR-010).
     for (const tool of MEMORY_TOOLS) {
       tools.push(tool);
@@ -420,19 +485,53 @@ const botController = {
       );
     }
     const win = this._getMainWindow();
+    // The bot's per-provider whitelist (provider limit ∩ bot selection), from
+    // the last _resolveTools for this bot. A tool outside it is rejected —
+    // mirroring the allowedTools enforcement widgets get. If no entry exists
+    // for this provider, the bot never had it resolved → deny.
+    const check = checkToolCall(
+      this._allowedByBot.get(opts.botId),
+      serverName,
+      toolName,
+    );
+    if (!check.ok) return { text: check.message, isError: true };
+    const { allowed } = check;
     // widgetId + token are null → the widget permission gate is bypassed; bot
-    // tool calls are gated upstream by the bot PermissionGate.
+    // tool calls are gated upstream by the bot PermissionGate. `allowed` is
+    // also passed as callTool's whitelist (defense in depth).
     const result = await this._mcp.callTool(
       win,
       serverName,
       toolName,
       args,
-      null,
+      allowed || null,
       null,
       opts.workspaceId || null,
       null,
     );
     return normalizeMcpResult(result);
+  },
+
+  /** { [providerName]: allowedTools | null } for the user's MCP providers. */
+  _providerToolLimits() {
+    const limits = Object.create(null);
+    try {
+      const win = this._getMainWindow();
+      const { providers = [] } =
+        this._providers.listProviders(win, this._appId) || {};
+      for (const p of providers) {
+        if (p && p.providerClass === "mcp" && p.name) {
+          limits[p.name] = Array.isArray(p.allowedTools)
+            ? p.allowedTools
+            : null;
+        }
+      }
+    } catch (_e) {
+      // Provider info unreadable → empty map. resolveBotTools treats a
+      // provider with no entry as not configured, so the bot gets NO tools
+      // from it (fails closed) rather than every tool the server exposes.
+    }
+    return limits;
   },
 };
 
