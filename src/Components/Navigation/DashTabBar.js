@@ -13,7 +13,7 @@ export const DashTabBar = ({
 
   return (
     <div
-      className={`flex flex-row items-center shrink-0 overflow-x-auto gap-1 px-2 py-2.5 border-t ${
+      className={`dr-tabstrip flex flex-row items-center shrink-0 overflow-x-auto gap-1 px-2 py-2.5 border-t ${
         currentTheme["border-primary-dark"] || "border-gray-700"
       } ${currentTheme["bg-primary-dark"] || "bg-gray-900"} scrollbar-none`}
     >
@@ -24,7 +24,7 @@ export const DashTabBar = ({
             key={tab.id}
             type="button"
             onClick={() => onSwitchTab && onSwitchTab(tab.id)}
-            className={`group flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md whitespace-nowrap transition-all duration-100 cursor-pointer ${
+            className={`dr-pill ${isActive ? "dr-pill-active" : ""} group flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md whitespace-nowrap transition-all duration-100 cursor-pointer ${
               isActive
                 ? "bg-white/15 text-white"
                 : "text-gray-400 hover:bg-white/10 hover:text-gray-200"

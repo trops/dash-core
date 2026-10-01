@@ -89,9 +89,9 @@ export const PageTabBar = ({
 
   return (
     <div
-      className={`flex flex-row items-center shrink-0 overflow-x-auto gap-1 px-2 py-1.5 border-b ${
-        currentTheme["border-primary-dark"] || "border-gray-700"
-      } ${currentTheme["bg-primary-medium"] || "bg-gray-800/50"} scrollbar-none`}
+      className={`dr-tabs flex flex-row items-center shrink-0 overflow-x-auto gap-1 px-2 py-1.5 border-b ${
+        currentTheme["border-neutral-dark"] || "border-neutral-800"
+      } ${currentTheme["bg-none"] || "bg-transparent"} scrollbar-none`}
     >
       {/* Only show page tabs when there are 2+ pages.
           With a lone page, the tab is hidden but the page still
@@ -112,7 +112,7 @@ export const PageTabBar = ({
               onDragOver={(e) => handleDragOver(e, page.id)}
               onDrop={(e) => handleDrop(e, page.id)}
               onDragEnd={handleDragEnd}
-              className={`group flex items-center gap-1.5 px-3 py-1 text-xs rounded-md whitespace-nowrap transition-all duration-100 cursor-pointer ${
+              className={`dr-tab ${isActive ? "dr-tab-active" : ""} group flex items-center gap-1.5 px-3 py-1 text-xs rounded-md whitespace-nowrap transition-all duration-100 cursor-pointer ${
                 isActive
                   ? "bg-white/15 text-white"
                   : "text-gray-400 hover:bg-white/10 hover:text-gray-200"
@@ -171,7 +171,7 @@ export const PageTabBar = ({
         <button
           type="button"
           onClick={onAddPage}
-          className="flex items-center gap-1 px-2 py-1 text-xs rounded-md text-gray-500 hover:bg-white/10 hover:text-gray-300 transition-colors"
+          className="dr-tab flex items-center gap-1 px-2 py-1 text-xs rounded-md text-gray-500 hover:bg-white/10 hover:text-gray-300 transition-colors"
         >
           <FontAwesomeIcon icon="plus" className="h-2.5 w-2.5" />
           <span>Add Page</span>

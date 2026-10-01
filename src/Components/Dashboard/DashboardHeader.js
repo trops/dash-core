@@ -44,7 +44,7 @@ export const DashboardHeader = ({
 
   return (
     <div
-      className={`flex flex-row p-1 justify-between shrink items-center px-4 ${currentTheme["bg-primary-dark"]} py-2`}
+      className={`dr-header flex flex-row p-1 justify-between shrink items-center px-4 ${currentTheme["bg-none"]} py-2`}
     >
       {preview === true ? (
         <>
@@ -64,14 +64,14 @@ export const DashboardHeader = ({
               <ButtonIcon
                 icon="arrow-up-right-from-square"
                 onClick={onPopout}
-                hoverBackgroundColor={"hover:bg-indigo-700"}
+                hoverBackgroundColor={"hover:bg-neutral-700"}
               />
             )}
             {onClickEdit !== null && (
               <ButtonIcon
                 icon="pencil"
                 onClick={onClickEdit}
-                hoverBackgroundColor={"hover:bg-indigo-700"}
+                hoverBackgroundColor={"hover:bg-neutral-700"}
               />
             )}
           </div>
@@ -85,7 +85,7 @@ export const DashboardHeader = ({
               onChange={onNameChange}
               textSize={"text-lg"}
               placeholder="My Workspace"
-              bgColor={currentTheme["bg-primary-very-dark"]}
+              bgColor={currentTheme["bg-neutral-very-dark"]}
               textColor={currentTheme["text-primary-medium"]}
               hasBorder={false}
               autoFocus
@@ -108,7 +108,7 @@ export const DashboardHeader = ({
                   onFolderChange(menuId);
                 }}
                 placeholder="Folder"
-                backgroundColor={currentTheme["bg-primary-very-dark"]}
+                backgroundColor={currentTheme["bg-neutral-very-dark"]}
                 textColor={currentTheme["text-primary-medium"]}
                 borderColor={currentTheme["border-primary-dark"]}
                 inputClassName="py-1 text-sm"
@@ -136,7 +136,7 @@ export const DashboardHeader = ({
                   onThemeChange(themeKey);
                 }}
                 placeholder="Select a theme"
-                backgroundColor={currentTheme["bg-primary-very-dark"]}
+                backgroundColor={currentTheme["bg-neutral-very-dark"]}
                 textColor={currentTheme["text-primary-medium"]}
                 borderColor={currentTheme["border-primary-dark"]}
                 inputClassName="py-1 text-sm"
@@ -170,7 +170,7 @@ export const DashboardHeader = ({
                 icon="xmark"
                 text="Cancel"
                 onClick={onClickEdit}
-                hoverBackgroundColor={"hover:bg-indigo-700"}
+                hoverBackgroundColor={"hover:bg-neutral-700"}
               />
             )}
             {onSaveChanges !== null && (
@@ -201,7 +201,7 @@ function DashboardConfigButton({ onClick, unresolvedCount = 0 }) {
       <ButtonIcon
         icon="sliders"
         onClick={onClick}
-        hoverBackgroundColor={"hover:bg-indigo-700"}
+        hoverBackgroundColor={"hover:bg-neutral-700"}
       />
       {unresolvedCount > 0 && (
         <span
