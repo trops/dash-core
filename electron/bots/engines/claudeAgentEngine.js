@@ -22,6 +22,9 @@
 const { createEventStream } = require("./eventStream");
 const { BOT_MCP_SERVER, buildBotMcpServer } = require("./agentToolBridge");
 
+// The SDK names bridged tools "mcp__<server>__<tool>".
+const BRIDGED_PREFIX = `mcp__${BOT_MCP_SERVER}__`;
+
 // Test seam: injected fake `query` implementation (see __setQueryForTest).
 let _queryImpl = null;
 
@@ -81,7 +84,27 @@ function _makeCanUseTool(ctx) {
     if (ctx.approvalPolicy === "allow") {
       return { behavior: "allow", updatedInput: input };
     }
-    // Otherwise gate through the approval queue (shown in the Activity panel).
+    // Bridged Dash provider tools go through the SAME Dash permission gate as
+    // the tool-loop engine — grants, remembered approvals ("Always allow"),
+    // and the approval queue all apply, keyed by the real provider.
+    if (
+      typeof toolName === "string" &&
+      toolName.startsWith(BRIDGED_PREFIX) &&
+      typeof ctx.requestPermission === "function"
+    ) {
+      const decision = await ctx.requestPermission(
+        toolName.slice(BRIDGED_PREFIX.length),
+        input,
+      );
+      return decision && decision.allow
+        ? { behavior: "allow", updatedInput: input }
+        : {
+            behavior: "deny",
+            message: (decision && decision.reason) || "not permitted",
+          };
+    }
+    // Built-in tools (Bash, Write, …) ask every time via the approval queue
+    // (shown in the Activity panel) — they're never remembered.
     if (typeof ctx.createApproval !== "function") {
       return { behavior: "deny", message: "no approval channel available" };
     }

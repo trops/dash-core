@@ -25,6 +25,8 @@ const BOTS_PAUSE_BOT = "bots-pause-bot";
 const BOTS_RESUME_BOT = "bots-resume-bot";
 const BOTS_GET_PAUSE_STATE = "bots-get-pause-state";
 const BOTS_LIST_TOOL_SOURCES = "bots-list-tool-sources";
+const BOTS_GET_GRANTS = "bots-get-grants";
+const BOTS_REVOKE_GRANT = "bots-revoke-grant";
 
 // --- Main → Renderer (send) ---
 const BOT_STREAM = "bot-stream"; // { botId, event: BotEvent }
@@ -52,6 +54,8 @@ module.exports = {
   BOTS_RESUME_BOT,
   BOTS_GET_PAUSE_STATE,
   BOTS_LIST_TOOL_SOURCES,
+  BOTS_GET_GRANTS,
+  BOTS_REVOKE_GRANT,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,

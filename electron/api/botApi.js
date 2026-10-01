@@ -26,6 +26,8 @@ const {
   BOTS_RESUME_BOT,
   BOTS_GET_PAUSE_STATE,
   BOTS_LIST_TOOL_SOURCES,
+  BOTS_GET_GRANTS,
+  BOTS_REVOKE_GRANT,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
@@ -77,6 +79,12 @@ const botApi = {
   /** The user's Dash MCP providers a bot can use: [{ name, type, running, toolCount }]. */
   listToolSources: (workspaceId = null) =>
     ipcRenderer.invoke(BOTS_LIST_TOOL_SOURCES, { workspaceId }),
+
+  /** Remembered approvals ("Always allow"): { [provider]: { tools, folders } }. */
+  getGrants: (botId) => ipcRenderer.invoke(BOTS_GET_GRANTS, { botId }),
+  /** Revoke one remembered tool approval; resolves to the updated summary. */
+  revokeGrant: (botId, serverName, toolName) =>
+    ipcRenderer.invoke(BOTS_REVOKE_GRANT, { botId, serverName, toolName }),
 
   /** Subscribe to streamed run events: { botId, event }. */
   onStream: (callback) => _addListener(BOT_STREAM, callback),

@@ -1040,3 +1040,114 @@ test("applyToSiblings: back-compat — package without mcpByComponent falls back
     assert.ok(getGrant("trops.sibtest.WidgetC"));
   });
 });
+
+// ---------------------------------------------------------------
+// Remembered bot approvals ("Always allow") against the REAL gate.
+// rememberToolGrant (electron/bots/rememberGrant.js) builds the grant;
+// gateBotToolCall must then allow the same call without asking, keep
+// asking for anything outside its scope, and ask again once forgotten.
+// ---------------------------------------------------------------
+const { rememberToolGrant, forgetToolGrant } = require("../bots/rememberGrant");
+const { PATH_ARG_KEYS } = require("./permissionGate");
+
+const REMEMBER_BOT = "bot_remembered_1";
+const rememberHelpers = {
+  isWriteTool,
+  pathArgKeys: PATH_ARG_KEYS,
+  dirname: path.dirname,
+};
+
+test("remembered approval: same provider tool is allowed next time", () => {
+  clearGrantCache();
+  revokeGrant(REMEMBER_BOT);
+  setGrant(
+    REMEMBER_BOT,
+    rememberToolGrant(
+      getGrant(REMEMBER_BOT),
+      { serverName: "Gmail New", toolName: "search_emails", args: { q: "a" } },
+      rememberHelpers,
+    ),
+  );
+  assert.deepStrictEqual(
+    gateBotToolCall({
+      botId: REMEMBER_BOT,
+      serverName: "Gmail New",
+      toolName: "search_emails",
+      args: { q: "different query" },
+    }),
+    { allow: true },
+  );
+  // A different tool on the same provider still asks (not remembered).
+  assert.strictEqual(
+    gateBotToolCall({
+      botId: REMEMBER_BOT,
+      serverName: "Gmail New",
+      toolName: "send_email",
+      args: {},
+    }).allow,
+    false,
+  );
+});
+
+test("remembered approval: path tool is scoped to the approved folder", () => {
+  clearGrantCache();
+  revokeGrant(REMEMBER_BOT);
+  const folder = path.join(tmpRoot, "userData", "data", "notes");
+  fs.mkdirSync(folder, { recursive: true });
+  setGrant(
+    REMEMBER_BOT,
+    rememberToolGrant(
+      null,
+      {
+        serverName: "Filesystem",
+        toolName: "read_text_file",
+        args: { path: path.join(folder, "a.txt") },
+      },
+      rememberHelpers,
+    ),
+  );
+  // Another file in the same folder → allowed.
+  assert.deepStrictEqual(
+    gateBotToolCall({
+      botId: REMEMBER_BOT,
+      serverName: "Filesystem",
+      toolName: "read_text_file",
+      args: { path: path.join(folder, "b.txt") },
+    }),
+    { allow: true },
+  );
+  // Outside the folder → still asks.
+  assert.strictEqual(
+    gateBotToolCall({
+      botId: REMEMBER_BOT,
+      serverName: "Filesystem",
+      toolName: "read_text_file",
+      args: { path: path.join(tmpRoot, "userData", "elsewhere.txt") },
+    }).allow,
+    false,
+  );
+});
+
+test("remembered approval: forgetting it brings the prompt back", () => {
+  clearGrantCache();
+  revokeGrant(REMEMBER_BOT);
+  const remembered = rememberToolGrant(
+    null,
+    { serverName: "Gmail New", toolName: "search_emails", args: {} },
+    rememberHelpers,
+  );
+  setGrant(REMEMBER_BOT, remembered);
+  setGrant(
+    REMEMBER_BOT,
+    forgetToolGrant(remembered, "Gmail New", "search_emails"),
+  );
+  assert.strictEqual(
+    gateBotToolCall({
+      botId: REMEMBER_BOT,
+      serverName: "Gmail New",
+      toolName: "search_emails",
+      args: {},
+    }).allow,
+    false,
+  );
+});
