@@ -10,6 +10,13 @@ import {
 import { BotsSection } from "./BotsSection";
 import { AppContext } from "../../../Context/App/AppContext";
 
+// Mock ComponentManager to avoid transitive @headlessui/react import
+jest.mock("../../../ComponentManager", () => ({
+  ComponentManager: {
+    config: jest.fn().mockReturnValue(null),
+  },
+}));
+
 function makeBotsApi(overrides = {}) {
   return {
     list: jest.fn().mockResolvedValue([]),

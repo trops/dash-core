@@ -358,6 +358,25 @@ describe("DashboardPublisher — IPC bridge", () => {
       id: "1",
     });
   });
+
+  test("pub forwards the publishing dashboard (workspaceId) over IPC", () => {
+    const publishSpy = jest.fn();
+    window.mainApi = { widgetEvent: { publish: publishSpy } };
+
+    DashboardPublisher.pub(
+      "TestWidget[1].testEvent",
+      { id: "1" },
+      {
+        workspaceId: 7,
+      },
+    );
+
+    expect(publishSpy).toHaveBeenCalledWith(
+      "TestWidget[1].testEvent",
+      { id: "1" },
+      { workspaceId: "7" },
+    );
+  });
 });
 
 describe("DashboardPublisher — monitor callbacks", () => {

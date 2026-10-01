@@ -121,8 +121,15 @@ function createMainApi(extensions = {}) {
     mcpDashServer: mcpDashServerApi,
 
     widgetEvent: {
-      publish: (eventType, content) => {
-        ipcRenderer.send("widget-event:publish", { eventType, content });
+      // meta.workspaceId = the publishing dashboard (bot subscriptions use it).
+      publish: (eventType, content, meta) => {
+        const workspaceId = meta && meta.workspaceId;
+        ipcRenderer.send(
+          "widget-event:publish",
+          workspaceId
+            ? { eventType, content, workspaceId }
+            : { eventType, content },
+        );
       },
       getLastEvents: () => ipcRenderer.invoke("widget-event:get-last-events"),
     },

@@ -15,6 +15,19 @@
 "use strict";
 
 /**
+ * Copied dashboards reuse widget ids, so one eventType can come from several
+ * dashboards. A subscription picked in the bot form records its dashboard
+ * (`source.workspaceId`); it then only matches events published from that
+ * dashboard. Unstamped events and dashboard-less subscriptions still match.
+ */
+function sameDashboard(sub, event) {
+  const want = sub.source && sub.source.workspaceId;
+  const got = event.workspaceId;
+  if (want == null || want === "" || got == null || got === "") return true;
+  return String(want) === String(got);
+}
+
+/**
  * @param {Array<object>} bots  bot definitions (each may have `subscriptions`)
  * @param {{ eventType: string, workspaceId?: string }} event
  * @param {{ excludeBotId?: string }} [opts]  loop guard — never match this bot
@@ -28,7 +41,9 @@ function matchSubscribedBots(bots, event, opts = {}) {
   return bots.filter((bot) => {
     if (!bot || bot.id === excludeBotId) return false;
     const subs = Array.isArray(bot.subscriptions) ? bot.subscriptions : [];
-    const subscribed = subs.some((s) => s && s.eventType === event.eventType);
+    const subscribed = subs.some(
+      (s) => s && s.eventType === event.eventType && sameDashboard(s, event),
+    );
     if (!subscribed) return false;
 
     // Workspace scoping (forward-compatible): only enforced once events carry a

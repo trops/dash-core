@@ -72,12 +72,13 @@ export const WidgetApi = {
    * @param {string} name the name of the widget (TODO - uuid + handler)
    * @param {object} events the payload for the event published
    */
-  publishEvent: function (name = null, events, uuid = null) {
+  publishEvent: function (name = null, events, uuid = null, meta = null) {
     try {
       console.log("trying to publish event ", name, uuid);
       if (this.pub() !== null && name !== null && events !== null) {
         if ("pub" in this.pub()) {
-          this.pub().pub(name, events);
+          // meta.workspaceId = the publishing widget's dashboard.
+          this.pub().pub(name, events, meta);
         }
       }
     } catch (e) {

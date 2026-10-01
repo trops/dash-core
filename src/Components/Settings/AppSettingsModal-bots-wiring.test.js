@@ -27,4 +27,25 @@ describe("AppSettingsModal — Bots section wiring", () => {
     expect(src).toMatch(/"New Bot"/);
     expect(src).toMatch(/<BotsSection/);
   });
+
+  it("passes the dashboards to BotsSection (for the event picker)", () => {
+    expect(src).toMatch(/<BotsSection[^>]*workspaces=\{workspaces\}/);
+  });
+});
+
+describe("BotsSection — event picker wiring", () => {
+  const sectionSrc = fs.readFileSync(
+    path.join(__dirname, "sections", "BotsSection.js"),
+    "utf8",
+  );
+
+  it("hands BotDetail the dashboards and the widget-config lookup", () => {
+    const details = sectionSrc.match(/<BotDetail[\s\S]*?\/>/g) || [];
+    expect(details.length).toBe(2); // create + edit
+    for (const d of details) {
+      expect(d).toMatch(/workspaces=\{workspaces\}/);
+      expect(d).toMatch(/getWidgetConfig=\{getWidgetConfig\}/);
+    }
+    expect(sectionSrc).toMatch(/ComponentManager\.config\(/);
+  });
 });

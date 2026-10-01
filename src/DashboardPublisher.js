@@ -119,7 +119,9 @@ export const DashboardPublisher = {
       }, 0);
     }
   },
-  pub: (eventType, content) => {
+  // meta.workspaceId — the publishing widget's dashboard. Forwarded over IPC
+  // so bots subscribed to one dashboard's widget ignore copies of it.
+  pub: (eventType, content, meta = null) => {
     lastEventCache.set(eventType, { content, timestamp: Date.now() });
     event.emit(eventType, content);
 
@@ -143,7 +145,14 @@ export const DashboardPublisher = {
 
     // Forward to other windows via IPC bridge
     if (window.mainApi?.widgetEvent) {
-      window.mainApi.widgetEvent.publish(eventType, content);
+      const workspaceId = meta && meta.workspaceId;
+      if (workspaceId != null && workspaceId !== "") {
+        window.mainApi.widgetEvent.publish(eventType, content, {
+          workspaceId: String(workspaceId),
+        });
+      } else {
+        window.mainApi.widgetEvent.publish(eventType, content);
+      }
     }
   },
 

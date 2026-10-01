@@ -594,8 +594,8 @@ This keeps the runner in the Electron main process. It does not run bots when Da
 **Acceptance Criteria:**
 
 -   [ ] AC1: Every bot has a built-in `publish_event` tool on every engine (served from Bot Factory's in-process MCP server).
--   [ ] AC2: Events are namespaced `bot:<BotName>[<botId>].<eventName>`, matching the widget convention, and delivered through the existing `widget-event:broadcast` relay.
--   [ ] AC3: Every event (bot- or widget-originated) is automatically stamped with `workspaceId`; widgets need no code changes because `DashboardPublisher` adds it from the widget's context.
+-   [ ] AC2: Events are namespaced `bot:<ref>[<botId>].<eventName>`, matching the widget convention (`Component[itemId].event`), and delivered through the existing `widget-event:broadcast` relay. `ref` is the bot's **stable identity**, never its display name: the template's registry id when installed from a template (e.g. `@trops/inbox-tools/InboxTriage`), otherwise `local/<slug>` fixed at creation, so renames and multiple installs of one template don't break subscriptions. Tool-call events use portable names, `tool.<catalogType>.<toolName>` (e.g. `tool.gmail.search_emails`), never the user's provider name; run events are `completed` / `failed`.
+-   [x] AC3: Every widget event is automatically stamped with `workspaceId`; widgets need no code changes because the publish helpers add it from the widget's context. (Bot-originated events: with US-010's emit work.)
 -   [ ] AC4: A bot publishes to its own workspace by default. It may publish to a project channel (`channel: "project:<id>"`) only for projects it has write membership in, and to `global` only if granted.
 -   [ ] AC5: A bot may only publish event names declared in its `publishes` list; payloads are validated against the declared schema.
 -   [ ] AC6: Every event carries metadata: `source`, `runId`, `workspaceId`, `channel`, `chain` (causation IDs), and `depth`.
@@ -645,7 +645,13 @@ Manager tagged "Work".
 -   [ ] AC6: Loop prevention across workspaces: runs are refused when `depth` exceeds the max chain depth (default 5) or when the bot already appears in the event's `chain`.
 -   [ ] AC7: Per-subscription debounce (default 2s, coalescing to the latest payload) and a per-bot rate limit (default 20 event-triggered runs/hour).
 -   [ ] AC8: Events for a paused bot follow its `whilePaused` policy: `"queue"` (default, delivered on resume, coalesced per subscription) or `"drop"` (logged as skipped).
--   [ ] AC9: The bot form lists subscribable events for the chosen scope, built from widgets' declared `events` and other bots' `publishes`.
+-   [ ] AC9: The bot form lists subscribable events for the chosen scope, built from widgets' declared `events` and other bots' `publishes`. _(Widget half implemented — see notes below; bot events follow with US-010.)_
+
+**Implementation notes — event picker, widget events (2026-10-01):**
+
+-   "Run on events" is a pick-only cascade, **Dashboard › Widget › Event**, built from each dashboard's widgets and their `.dash.js` `events` (`src/Components/Settings/details/eventCatalog.js`, same source as Dashboard Config → Listeners). Free-text event names are gone; dashboards sharing a name are numbered.
+-   A subscription stores the runtime `eventType` (`Component[itemId].event`) plus a structured `source: { kind, ref, instanceId, event, workspaceId }` and a `label`. Template export (US-026) keeps `ref` + `event` and drops local ids; install re-resolves them (or `ref[*]`). Saved subscriptions whose widget is gone show "widget missing".
+-   **Dashboard scoping:** copied dashboards reuse widget ids, so identical `eventType`s came from several dashboards. Widget events are now stamped with their dashboard (`DashboardPublisher.pub` meta → IPC → relay → `botController.handleEvent`), and a subscription with `source.workspaceId` only matches events from that dashboard (`eventMatcher.sameDashboard`). Unstamped events and dashboard-less subscriptions still match (back-compat).
 
 **Edge Cases:**
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Button,
   Button3,
@@ -16,6 +16,11 @@ import {
   buildCron,
   parseCron,
 } from "./cronBuilder";
+import {
+  buildWidgetEventCatalog,
+  widgetSubscription,
+  describeSubscription,
+} from "./eventCatalog";
 
 /**
  * BotDetail — create/edit form for a Bot Factory bot (Settings → Bots).
@@ -112,6 +117,9 @@ function prettyTool(name) {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+// Stable default so the event-catalog memo doesn't recompute every render.
+const EMPTY_LIST = [];
+
 function getMainApi() {
   return typeof window !== "undefined" ? window.mainApi : null;
 }
@@ -120,6 +128,9 @@ export const BotDetail = ({
   bot = null,
   isCreating = false,
   providers = {},
+  // Dashboards + widget-config lookup → the "Run on events" picker.
+  workspaces = EMPTY_LIST,
+  getWidgetConfig = null,
   onSave,
   onCancel,
   onDelete,
@@ -199,29 +210,22 @@ export const BotDetail = ({
   );
 
   // --- Run-on-events (subscriptions) ---
+  // Picked, never typed: Dashboard › Widget › Event from the widgets' declared
+  // events. Each saved subscription keeps its runtime eventType plus a
+  // structured source (see eventCatalog.js).
   const [subscriptions, setSubscriptions] = useState(
-    (bot?.subscriptions || []).map((s) => s && s.eventType).filter(Boolean),
+    (bot?.subscriptions || []).filter((s) => s && s.eventType),
   );
-  const [newEvent, setNewEvent] = useState("");
-  const [knownEvents, setKnownEvents] = useState([]);
+  const eventCatalog = useMemo(
+    () => buildWidgetEventCatalog(workspaces, getWidgetConfig),
+    [workspaces, getWidgetConfig],
+  );
+  const [pickWorkspace, setPickWorkspace] = useState("");
+  const [pickWidget, setPickWidget] = useState("");
+  const [pickEvent, setPickEvent] = useState("");
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-
-  // Discover recently-seen widget event types to suggest as subscriptions.
-  useEffect(() => {
-    let alive = true;
-    const api = getMainApi();
-    if (!api?.widgetEvent?.getLastEvents) return undefined;
-    Promise.resolve(api.widgetEvent.getLastEvents())
-      .then((events) => {
-        if (alive && events) setKnownEvents(Object.keys(events).sort());
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   // Discover the user's configured MCP providers — running or not. The bot
   // starts any that aren't running when it runs.
@@ -339,21 +343,24 @@ export const BotDetail = ({
     });
   };
 
-  const addSubscription = (eventType) => {
-    const ev = (eventType || "").trim();
-    if (!ev) return;
-    setSubscriptions((prev) => (prev.includes(ev) ? prev : [...prev, ev]));
-    setNewEvent("");
+  // Cascading picker options. A widget's option value is "ref|instanceId".
+  const pickedWs = eventCatalog.find((w) => w.workspaceId === pickWorkspace);
+  const pickedWidget = pickedWs
+    ? pickedWs.widgets.find((w) => `${w.ref}|${w.instanceId}` === pickWidget)
+    : null;
+
+  const addSubscription = () => {
+    if (!pickedWs || !pickedWidget || !pickEvent) return;
+    const sub = widgetSubscription(pickedWs, pickedWidget, pickEvent);
+    setSubscriptions((prev) =>
+      prev.some((s) => s.eventType === sub.eventType) ? prev : [...prev, sub],
+    );
+    setPickEvent("");
   };
 
   const removeSubscription = (eventType) => {
-    setSubscriptions((prev) => prev.filter((e) => e !== eventType));
+    setSubscriptions((prev) => prev.filter((s) => s.eventType !== eventType));
   };
-
-  // Recently-seen events not already subscribed — offered as one-click adds.
-  const eventSuggestions = knownEvents.filter(
-    (ev) => !subscriptions.includes(ev),
-  );
 
   const canSave = name.trim() && instructions.trim() && !saving;
 
@@ -379,7 +386,7 @@ export const BotDetail = ({
         ),
       ),
       schedules,
-      subscriptions: subscriptions.map((eventType) => ({ eventType })),
+      subscriptions,
     };
     setSaving(true);
     try {
@@ -623,57 +630,92 @@ export const BotDetail = ({
         <div className="flex flex-col gap-2">
           <span className="text-sm font-medium">Run on events</span>
           {subscriptions.length ? (
-            <div className="flex flex-row flex-wrap gap-2">
-              {subscriptions.map((ev) => (
-                <span
-                  key={ev}
-                  className="flex flex-row items-center gap-1 text-xs px-2 py-1 rounded bg-gray-700"
-                >
-                  {ev}
-                  <button
-                    type="button"
-                    onClick={() => removeSubscription(ev)}
-                    className="opacity-60 hover:opacity-100"
-                    aria-label={`Remove ${ev}`}
+            <div className="flex flex-col gap-1">
+              {subscriptions.map((sub) => {
+                const { label, missing } = describeSubscription(
+                  sub,
+                  eventCatalog,
+                );
+                return (
+                  <div
+                    key={sub.eventType}
+                    className="flex flex-row items-center justify-between gap-2"
                   >
-                    ×
-                  </button>
-                </span>
-              ))}
+                    <span className="text-sm">
+                      {label}
+                      {missing ? (
+                        <span className="text-xs opacity-60">
+                          {" "}
+                          (widget missing)
+                        </span>
+                      ) : null}
+                    </span>
+                    <Button3
+                      title="Remove"
+                      size="xs"
+                      ariaLabel={`Remove ${label}`}
+                      onClick={() => removeSubscription(sub.eventType)}
+                    />
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <span className="text-xs opacity-50">
               This bot doesn&apos;t run on any events yet.
             </span>
           )}
-          <div className="flex flex-row gap-2">
-            <InputText
-              value={newEvent}
-              onChange={setNewEvent}
-              placeholder="Event name, e.g. pr.opened"
-            />
-            <Button
-              title="Add"
-              onClick={() => addSubscription(newEvent)}
-              size="sm"
-              disabled={!newEvent.trim()}
-            />
-          </div>
-          {eventSuggestions.length ? (
-            <div className="flex flex-row flex-wrap gap-1 items-center text-xs opacity-60">
-              <span>Recently seen:</span>
-              {eventSuggestions.slice(0, 8).map((ev) => (
-                <button
-                  key={ev}
-                  type="button"
-                  onClick={() => addSubscription(ev)}
-                  className="underline hover:opacity-100"
-                >
-                  {ev}
-                </button>
-              ))}
+          {eventCatalog.length ? (
+            <div className="flex flex-col gap-2">
+              <SelectInput
+                label="Dashboard"
+                value={pickWorkspace}
+                onChange={(v) => {
+                  setPickWorkspace(v);
+                  setPickWidget("");
+                  setPickEvent("");
+                }}
+                placeholder="Choose a dashboard…"
+                options={eventCatalog.map((w) => ({
+                  value: w.workspaceId,
+                  label: w.name,
+                }))}
+              />
+              <SelectInput
+                label="Widget"
+                value={pickWidget}
+                onChange={(v) => {
+                  setPickWidget(v);
+                  setPickEvent("");
+                }}
+                placeholder="Choose a widget…"
+                options={(pickedWs ? pickedWs.widgets : []).map((w) => ({
+                  value: `${w.ref}|${w.instanceId}`,
+                  label: w.label,
+                }))}
+              />
+              <SelectInput
+                label="Event"
+                value={pickEvent}
+                onChange={setPickEvent}
+                placeholder="Choose an event…"
+                options={(pickedWidget ? pickedWidget.events : []).map(
+                  (ev) => ({ value: ev, label: ev }),
+                )}
+              />
+              <Button
+                title="Add event"
+                onClick={addSubscription}
+                size="sm"
+                disabled={!pickedWidget || !pickEvent}
+              />
             </div>
-          ) : null}
+          ) : (
+            <span className="text-xs opacity-50">
+              No widgets on your dashboards publish events yet. Add a widget
+              that publishes events to a dashboard to trigger this bot from it.
+            </span>
+          )}
           <span className="text-xs opacity-50">
             The bot runs automatically when one of these events fires.
           </span>
