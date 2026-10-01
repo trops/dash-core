@@ -5,17 +5,37 @@
  */
 import { useState, useRef, useEffect } from "react";
 
+// When the panel mounts while hidden/collapsed, scrollHeight is 0 — pinning
+// that as an inline height collapses the input to a sliver, so leave the
+// natural (rows=1) height until it can actually be measured.
+const autoResize = (el) => {
+  if (!el) return;
+  el.style.height = "auto";
+  if (el.scrollHeight === 0) {
+    el.style.height = "";
+    return;
+  }
+  el.style.height = Math.min(el.scrollHeight, 120) + "px";
+};
+
 export const ChatInput = ({ onSend, onStop, isLoading, disabled }) => {
   const [input, setInput] = useState("");
   const textareaRef = useRef(null);
 
+  // Auto-resize; re-measure once the input's container actually gets laid
+  // out (e.g. the panel is expanded).
+  useEffect(() => {
+    autoResize(textareaRef.current);
+  }, [input]);
+
   useEffect(() => {
     const el = textareaRef.current;
-    if (el) {
-      el.style.height = "auto";
-      el.style.height = Math.min(el.scrollHeight, 120) + "px";
-    }
-  }, [input]);
+    const parent = el?.parentElement;
+    if (!parent || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => autoResize(el));
+    observer.observe(parent);
+    return () => observer.disconnect();
+  }, []);
 
   const handleSend = () => {
     const trimmed = input.trim();

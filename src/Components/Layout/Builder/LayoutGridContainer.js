@@ -1704,7 +1704,7 @@ export const LayoutGridContainer = memo(
       scrollable ? (
         <div
           id={`grid-container-${id}`}
-          className={`grid w-full min-h-24 p-3 ${item.grid.gap || "gap-2"}`}
+          className={`dr-grid ${!item.grid.gap || item.grid.gap === "gap-2" ? "dr-grid-gap" : ""} grid w-full min-h-24 p-3 ${item.grid.gap || "gap-2"}`}
           style={{
             gridTemplateRows: getRowTemplate(item.grid),
             gridTemplateColumns: hasExplicitColModes()
@@ -1719,7 +1719,7 @@ export const LayoutGridContainer = memo(
         <div className={`relative w-full ${height} min-h-24`}>
           <div
             id={`grid-container-${id}`}
-            className={`absolute inset-0 grid p-3 ${item.grid.gap || "gap-2"}`}
+            className={`dr-grid ${!item.grid.gap || item.grid.gap === "gap-2" ? "dr-grid-gap" : ""} absolute inset-0 grid p-3 ${item.grid.gap || "gap-2"}`}
             style={{
               gridTemplateRows: hasExplicitRowModes()
                 ? getRowTemplate(item.grid)
