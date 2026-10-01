@@ -59,6 +59,10 @@ function withDefaults(def = {}) {
     // specific engine id here (e.g. "claude-agent").
     engine: null,
     mcpServers: [],
+    // Per-provider narrowing within each provider's declared tools:
+    // { [providerName]: string[] }. No entry → every tool the provider allows.
+    toolSelections: {},
+    // Tools that skip the approval prompt (NOT the tools the bot may use).
     allowedTools: [],
     approvalPolicy: "ask",
     schedules: [],
@@ -118,6 +122,22 @@ function validateBotDefinition(def) {
   ]) {
     if (def[field] !== undefined && !Array.isArray(def[field])) {
       errors.push(`${field} must be an array`);
+    }
+  }
+  // toolSelections: { [providerName]: string[] } — per-bot tool narrowing.
+  if (def.toolSelections !== undefined) {
+    const ts = def.toolSelections;
+    const ok =
+      ts &&
+      typeof ts === "object" &&
+      !Array.isArray(ts) &&
+      Object.values(ts).every(
+        (v) => Array.isArray(v) && v.every((t) => typeof t === "string"),
+      );
+    if (!ok) {
+      errors.push(
+        "toolSelections must map provider names to arrays of tool names",
+      );
     }
   }
   // Each subscription must name an eventType (PRD FR-009).

@@ -37,7 +37,7 @@ describe("BotDetail (create)", () => {
       />,
     );
     // Shows the actual provider name, pre-selected — not a vague "default".
-    expect(screen.getByLabelText("Provider")).toHaveValue("anthropic");
+    expect(screen.getByLabelText("Model source")).toHaveValue("anthropic");
     fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
       target: { value: "X" },
     });
@@ -51,7 +51,13 @@ describe("BotDetail (create)", () => {
   it("offers Claude Code (CLI) as a provider option", () => {
     render(<BotDetail isCreating providers={{}} onSave={jest.fn()} />);
     // With no API-key provider configured, CLI is the pre-selected fallback.
-    expect(screen.getByLabelText("Provider")).toHaveValue("claude-code");
+    expect(screen.getByLabelText("Model source")).toHaveValue("claude-code");
+  });
+
+  it("does not label the AI dropdown 'Provider' (that word means Dash MCP providers)", () => {
+    render(<BotDetail isCreating providers={{}} onSave={jest.fn()} />);
+    expect(screen.queryByLabelText("Provider")).toBeNull();
+    expect(screen.getByText("AI model")).toBeInTheDocument();
   });
 
   it("builds a definition with a schedule from the friendly dropdowns", () => {
@@ -155,6 +161,143 @@ describe("BotDetail (create)", () => {
     expect(onSave.mock.calls[0][0].subscriptions).toEqual([
       { eventType: "pr.opened" },
     ]);
+  });
+});
+
+describe("BotDetail — Providers (the user's Dash MCP providers)", () => {
+  const sources = [
+    {
+      name: "gmail",
+      type: "gmail",
+      running: true,
+      toolCount: 17,
+      declared: true,
+      tools: ["search_emails", "read_email", "send_email"],
+    },
+    {
+      name: "notion",
+      type: "notion",
+      running: false,
+      toolCount: null,
+      declared: false,
+      tools: null,
+    },
+  ];
+  let listToolSources;
+
+  beforeEach(() => {
+    listToolSources = jest.fn().mockResolvedValue(sources);
+    window.mainApi = { bots: { listToolSources } };
+  });
+  afterEach(() => {
+    delete window.mainApi;
+  });
+
+  const fillRequired = () => {
+    fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
+      target: { value: "Inbox triage" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "Summarize unread mail" },
+    });
+  };
+
+  it("lists every configured MCP provider — including ones not running", async () => {
+    render(<BotDetail isCreating providers={{}} onSave={jest.fn()} />);
+    expect(await screen.findByLabelText("Gmail")).toBeInTheDocument();
+    // Not running, but configured → still offered.
+    expect(screen.getByLabelText("Notion")).toBeInTheDocument();
+    expect(listToolSources).toHaveBeenCalled();
+  });
+
+  it("shows running status / tool count for each provider", async () => {
+    render(<BotDetail isCreating providers={{}} onSave={jest.fn()} />);
+    await screen.findByLabelText("Gmail");
+    expect(screen.getByText(/17 tools/)).toBeInTheDocument();
+    expect(screen.getByText(/starts when the bot runs/i)).toBeInTheDocument();
+  });
+
+  it("saves the selected providers as mcpServers", async () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(<BotDetail isCreating providers={{}} onSave={onSave} />);
+    fillRequired();
+    fireEvent.click(await screen.findByLabelText("Notion"));
+    fireEvent.click(screen.getByText("Create"));
+    expect(onSave.mock.calls[0][0].mcpServers).toEqual(["notion"]);
+  });
+
+  it("puts Providers before the AI model settings", async () => {
+    render(<BotDetail isCreating providers={{}} onSave={jest.fn()} />);
+    await screen.findByLabelText("Gmail");
+    const providersHeading = screen.getByText("Providers");
+    const aiHeading = screen.getByText("AI model");
+    expect(
+      providersHeading.compareDocumentPosition(aiHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("checking a provider expands its declared tools, all allowed by default", async () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(<BotDetail isCreating providers={{}} onSave={onSave} />);
+    fillRequired();
+    // Tools stay hidden until the provider is selected.
+    expect(screen.queryByLabelText("Search emails")).toBeNull();
+    fireEvent.click(await screen.findByLabelText("Gmail"));
+    expect(screen.getByLabelText("Search emails")).toBeChecked();
+    expect(screen.getByLabelText("Read email")).toBeChecked();
+    expect(screen.getByLabelText("Send email")).toBeChecked();
+    fireEvent.click(screen.getByText("Create"));
+    const def = onSave.mock.calls[0][0];
+    expect(def.mcpServers).toEqual(["gmail"]);
+    // Untouched → no narrowing stored (every tool the provider allows).
+    expect(def.toolSelections).toEqual({});
+  });
+
+  it("unchecking a tool saves the narrowed selection for that provider", async () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(<BotDetail isCreating providers={{}} onSave={onSave} />);
+    fillRequired();
+    fireEvent.click(await screen.findByLabelText("Gmail"));
+    fireEvent.click(screen.getByLabelText("Send email"));
+    fireEvent.click(screen.getByText("Create"));
+    expect(onSave.mock.calls[0][0].toolSelections).toEqual({
+      gmail: ["search_emails", "read_email"],
+    });
+  });
+
+  it("a provider with no declared tool limit says it allows every tool", async () => {
+    render(<BotDetail isCreating providers={{}} onSave={jest.fn()} />);
+    fireEvent.click(await screen.findByLabelText("Notion"));
+    expect(
+      screen.getByText(/All tools this provider offers/i),
+    ).toBeInTheDocument();
+  });
+
+  it("restores an existing bot's narrowed selection", async () => {
+    render(
+      <BotDetail
+        bot={{
+          id: "bot_9",
+          name: "x",
+          instructions: "y",
+          mcpServers: ["gmail"],
+          toolSelections: { gmail: ["read_email"] },
+          schedules: [],
+        }}
+        providers={{}}
+        onSave={jest.fn()}
+      />,
+    );
+    expect(await screen.findByLabelText("Read email")).toBeChecked();
+    expect(screen.getByLabelText("Search emails")).not.toBeChecked();
+  });
+
+  it("empty state points to Settings → Providers (not MCP Server)", async () => {
+    listToolSources.mockResolvedValue([]);
+    render(<BotDetail isCreating providers={{}} onSave={jest.fn()} />);
+    expect(await screen.findByText(/Settings → Providers/)).toBeInTheDocument();
+    expect(screen.queryByText(/Settings → MCP Server/)).toBeNull();
   });
 });
 

@@ -105,18 +105,29 @@ function _makeCanUseTool(ctx) {
 async function _runAgent(ctx, stream) {
   const query = await _loadQuery();
 
-  // Auth: prefer the Claude Code CLI session (zero-config); fall back to the
-  // bot's Anthropic API key. NOTE: this sets a process-global env var — fine for
-  // the common single-key case; per-run isolation is a follow-up.
+  // Per-run environment for the agent process. Auth: the Claude Code login by
+  // default; a bot's Anthropic API key, when set, goes in THIS run's env only —
+  // never process.env, which would leak it to the rest of the main process and
+  // to other bots.
+  const env = { ...process.env };
   if (ctx.credentials && ctx.credentials.apiKey) {
-    process.env.ANTHROPIC_API_KEY = ctx.credentials.apiKey;
+    env.ANTHROPIC_API_KEY = ctx.credentials.apiKey;
   }
+  // No claude.ai connectors from the user's Claude login.
+  env.ENABLE_CLAUDEAI_MCP_SERVERS = "false";
 
   const options = {
     model: ctx.model,
     systemPrompt: ctx.systemPrompt || { type: "preset", preset: "claude_code" },
     permissionMode: "default",
     canUseTool: _makeCanUseTool(ctx),
+    // Isolation: a bot sees only the SDK's built-in tools + the Dash providers
+    // it was granted (bridged below as "bot-mcp"). Don't load the user's
+    // ~/.claude settings/plugins/skills/hooks, and ignore every MCP config
+    // other than the servers passed in `mcpServers`.
+    settingSources: [],
+    strictMcpConfig: true,
+    env,
   };
   if (ctx.maxTurns) options.maxTurns = ctx.maxTurns;
   if (ctx.workingDir) options.cwd = ctx.workingDir;

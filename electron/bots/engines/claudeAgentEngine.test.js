@@ -125,6 +125,47 @@ describe("claudeAgentEngine", () => {
     assert.equal(typeof captured.options.canUseTool, "function");
   });
 
+  // Isolation: a bot must only see its built-in tools + the Dash providers it
+  // was granted — never the user's personal Claude Code settings, plugins,
+  // skills, MCP servers, or claude.ai connectors (seen live: a bot told the
+  // user to "authorize the Gmail connector in your claude.ai settings").
+  it("isolates the run from the user's Claude Code settings + MCP config", async () => {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(claudeAgentEngine.run(ctx()));
+    assert.deepEqual(captured.options.settingSources, []);
+    assert.equal(captured.options.strictMcpConfig, true);
+    assert.equal(
+      captured.options.env && captured.options.env.ENABLE_CLAUDEAI_MCP_SERVERS,
+      "false",
+    );
+  });
+
+  it("passes the bot's API key per run — never via process-global env", async () => {
+    const before = process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    try {
+      stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+      await collect(
+        claudeAgentEngine.run(ctx({ credentials: { apiKey: "sk-bot-1" } })),
+      );
+      assert.equal(captured.options.env.ANTHROPIC_API_KEY, "sk-bot-1");
+      assert.equal(process.env.ANTHROPIC_API_KEY, undefined);
+    } finally {
+      if (before === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = before;
+    }
+  });
+
+  it("without a bot API key, does not inject one (Claude Code login is used)", async () => {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(claudeAgentEngine.run(ctx()));
+    // Inherits whatever the environment had; the engine adds none.
+    assert.equal(
+      captured.options.env.ANTHROPIC_API_KEY,
+      process.env.ANTHROPIC_API_KEY,
+    );
+  });
+
   it("canUseTool auto-allows when approvalPolicy is allow", async () => {
     stubQuery([{ type: "result", subtype: "success", usage: {} }]);
     await collect(claudeAgentEngine.run(ctx({ approvalPolicy: "allow" })));

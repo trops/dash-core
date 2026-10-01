@@ -23,6 +23,7 @@ const os = require("os");
 const responseCache = require("../utils/responseCache");
 const { gateToolCall, gateToolCallWithJit } = require("../mcp/permissionGate");
 const { serverKey, parseServerKey } = require("../utils/mcpServerKey");
+const { connectedServersFromMap } = require("../bots/toolSources");
 const { applyPathScopeToCredentials } = require("../utils/mcpScopeResolver");
 const { readEnforceFlag, readJitFlag } = require("../utils/securityFlags");
 const { app } = require("electron");
@@ -1300,24 +1301,16 @@ const mcpController = {
   /**
    * listConnectedServers
    * Returns all connected servers with their cached tool lists.
-   * Used by llmController to discover available MCP tools.
+   * Used by bots + the LLM tool picker to discover available MCP tools.
    *
-   * @returns {Array<{ serverName, tools, resources, status }>}
+   * `serverName` is the real server name and `workspaceId` its bucket
+   * (null = no workspace) — activeServers is keyed "<workspace>::<server>",
+   * and returning that compound key as `serverName` broke name matching.
+   *
+   * @returns {Array<{ serverName, workspaceId, tools, resources, status }>}
    */
-  listConnectedServers: () => {
-    const servers = [];
-    for (const [serverName, server] of activeServers) {
-      if (server.status === STATUS.CONNECTED) {
-        servers.push({
-          serverName,
-          tools: server.tools || [],
-          resources: server.resources || [],
-          status: server.status,
-        });
-      }
-    }
-    return servers;
-  },
+  listConnectedServers: () =>
+    connectedServersFromMap(activeServers, STATUS.CONNECTED),
 
   /**
    * runAuth
