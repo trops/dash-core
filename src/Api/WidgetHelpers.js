@@ -37,6 +37,9 @@ export class WidgetHelpers {
       this.api.publishEvent(
         `${this.params.component}[${this.params.id}].${eventName}`,
         payload,
+        null,
+        // The widget's dashboard, so bots can tell copies of it apart.
+        { workspaceId: this.params.dashboardId },
       );
     }
   }

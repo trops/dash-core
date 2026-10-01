@@ -3,6 +3,12 @@ import { EmptyState, ConfirmationModal, Tag } from "@trops/dash-react";
 import { SectionLayout } from "../SectionLayout";
 import { BotDetail } from "../details/BotDetail";
 import { AppContext } from "../../../Context/App/AppContext";
+import { ComponentManager } from "../../../ComponentManager";
+
+// Widget config (declared `events`) by component name — feeds the bot form's
+// "Run on events" picker.
+const getWidgetConfig = (name) =>
+  (name && ComponentManager.config(name)) || null;
 
 /**
  * BotsSection — Settings → Bots. List-and-detail management for Bot Factory
@@ -14,6 +20,7 @@ import { AppContext } from "../../../Context/App/AppContext";
  * surface is create / configure / delete.
  */
 export const BotsSection = ({
+  workspaces = [],
   dashApi = null,
   createRequested = false,
   onCreateAcknowledged,
@@ -116,6 +123,8 @@ export const BotsSection = ({
         key="new"
         isCreating
         providers={providers}
+        workspaces={workspaces}
+        getWidgetConfig={getWidgetConfig}
         onSave={handleSave}
         onCancel={() => setIsCreating(false)}
       />
@@ -126,6 +135,8 @@ export const BotsSection = ({
         key={selected.id}
         bot={selected}
         providers={providers}
+        workspaces={workspaces}
+        getWidgetConfig={getWidgetConfig}
         onSave={handleSave}
         onDelete={() => setDeleteTarget(selected.id)}
       />

@@ -32,6 +32,7 @@ export const useWidgetEvents = () => {
     uuid,
     events,
     listeners: listenerConfig,
+    dashboardId,
   } = widgetContext.widgetData || {};
 
   const publishEvent = useCallback(
@@ -46,10 +47,11 @@ export const useWidgetEvents = () => {
       if (publisher && componentName && id != null) {
         const formattedName = `${componentName}[${id}].${eventName}`;
         console.log("publishing event", { formattedName, payload });
-        publisher.pub(formattedName, payload);
+        // Stamp the dashboard so bots can tell copies of a dashboard apart.
+        publisher.pub(formattedName, payload, { workspaceId: dashboardId });
       }
     },
-    [publisher, componentName, id],
+    [publisher, componentName, id, dashboardId],
   );
 
   const listen = useCallback(

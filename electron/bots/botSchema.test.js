@@ -113,6 +113,26 @@ describe("botSchema.validateBotDefinition", () => {
     assert.equal(r.valid, true);
   });
 
+  it("accepts picker subscriptions (eventType + structured source + label)", () => {
+    const r = validateBotDefinition({
+      ...good(),
+      subscriptions: [
+        {
+          eventType: "trops.samples.EventSender[3].buttonClicked",
+          label: "Kitchen Sink › Event Sender › buttonClicked",
+          source: {
+            kind: "widget",
+            ref: "trops.samples.EventSender",
+            instanceId: "3",
+            event: "buttonClicked",
+            workspaceId: "7",
+          },
+        },
+      ],
+    });
+    assert.equal(r.valid, true);
+  });
+
   it("rejects subscriptions without an eventType", () => {
     const r = validateBotDefinition({
       ...good(),

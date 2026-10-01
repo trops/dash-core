@@ -61,6 +61,48 @@ describe("matchSubscribedBots", () => {
     assert.deepEqual(ids, ["a", "b"]);
   });
 
+  // Copied dashboards reuse widget ids, so the same eventType can come from
+  // several dashboards. A picked subscription records its dashboard
+  // (source.workspaceId) and only matches events from that dashboard.
+  describe("per-subscription dashboard", () => {
+    const sub = (ws) => ({
+      eventType: "EventSender[11].buttonClicked",
+      source: { kind: "widget", workspaceId: ws },
+    });
+
+    it("matches only events from the subscription's dashboard", () => {
+      const bots = [bot("a", [sub("7")]), bot("b", [sub("9")])];
+      const ids = matchSubscribedBots(bots, {
+        eventType: "EventSender[11].buttonClicked",
+        workspaceId: "7",
+      }).map((b) => b.id);
+      assert.deepEqual(ids, ["a"]);
+    });
+
+    it("compares dashboard ids as strings (numeric ids from layouts)", () => {
+      const ids = matchSubscribedBots([bot("a", [sub("7")])], {
+        eventType: "EventSender[11].buttonClicked",
+        workspaceId: 7,
+      }).map((b) => b.id);
+      assert.deepEqual(ids, ["a"]);
+    });
+
+    it("an unstamped event still matches (older publishers)", () => {
+      const ids = matchSubscribedBots([bot("a", [sub("7")])], {
+        eventType: "EventSender[11].buttonClicked",
+      }).map((b) => b.id);
+      assert.deepEqual(ids, ["a"]);
+    });
+
+    it("a subscription without a dashboard matches every dashboard", () => {
+      const ids = matchSubscribedBots(
+        [bot("a", [{ eventType: "EventSender[11].buttonClicked" }])],
+        { eventType: "EventSender[11].buttonClicked", workspaceId: "9" },
+      ).map((b) => b.id);
+      assert.deepEqual(ids, ["a"]);
+    });
+  });
+
   it("returns [] for bad input or no subscribers", () => {
     assert.deepEqual(matchSubscribedBots(null, { eventType: "e" }), []);
     assert.deepEqual(matchSubscribedBots([], { eventType: "e" }), []);

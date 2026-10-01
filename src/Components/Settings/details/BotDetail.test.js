@@ -142,25 +142,164 @@ describe("BotDetail (create)", () => {
     fireEvent.click(screen.getByText("Create"));
     expect(onSave.mock.calls[0][0].engine).toBeNull();
   });
+});
 
-  it("adds an event subscription and saves it", () => {
-    const onSave = jest.fn().mockResolvedValue({});
-    render(<BotDetail isCreating providers={{}} onSave={onSave} />);
+// "Run on events" — pick Dashboard › Widget › Event; never typed (US-011 AC9).
+describe("BotDetail — event picker", () => {
+  const workspaces = [
+    {
+      id: 7,
+      name: "Kitchen Sink",
+      layout: [
+        {
+          component: "trops.samples.EventSender",
+          id: 3,
+          dashboardId: 7,
+        },
+      ],
+    },
+  ];
+  const getWidgetConfig = (name) =>
+    name === "trops.samples.EventSender"
+      ? { name: "Event Sender", events: ["buttonClicked", "messageSent"] }
+      : null;
+
+  const fillRequired = () => {
     fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
       target: { value: "X" },
     });
     fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
       target: { value: "Y" },
     });
-    fireEvent.change(
-      screen.getByPlaceholderText("Event name, e.g. pr.opened"),
-      { target: { value: "pr.opened" } },
+  };
+
+  it("has no free-text event input", () => {
+    render(
+      <BotDetail
+        isCreating
+        providers={{}}
+        workspaces={workspaces}
+        getWidgetConfig={getWidgetConfig}
+        onSave={jest.fn()}
+      />,
     );
-    fireEvent.click(screen.getByText("Add"));
+    expect(screen.queryByPlaceholderText(/Event name/)).toBeNull();
+  });
+
+  it("picks Dashboard › Widget › Event and saves eventType + source", () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail
+        isCreating
+        providers={{}}
+        workspaces={workspaces}
+        getWidgetConfig={getWidgetConfig}
+        onSave={onSave}
+      />,
+    );
+    fillRequired();
+    fireEvent.change(screen.getByLabelText("Dashboard"), {
+      target: { value: "7" },
+    });
+    fireEvent.change(screen.getByLabelText("Widget"), {
+      target: { value: "trops.samples.EventSender|3" },
+    });
+    fireEvent.change(screen.getByLabelText("Event"), {
+      target: { value: "buttonClicked" },
+    });
+    fireEvent.click(screen.getByText("Add event"));
+    // Chip shows the friendly path, not the raw bus string.
+    expect(screen.getByText(/Kitchen Sink › .* › buttonClicked/)).toBeTruthy();
     fireEvent.click(screen.getByText("Create"));
+    const [sub] = onSave.mock.calls[0][0].subscriptions;
+    expect(sub.eventType).toBe("trops.samples.EventSender[3].buttonClicked");
+    expect(sub.source).toEqual({
+      kind: "widget",
+      ref: "trops.samples.EventSender",
+      instanceId: "3",
+      event: "buttonClicked",
+      workspaceId: "7",
+    });
+    expect(sub.label).toMatch(/Kitchen Sink › .* › buttonClicked/);
+  });
+
+  it("Add event stays disabled until an event is chosen", () => {
+    render(
+      <BotDetail
+        isCreating
+        providers={{}}
+        workspaces={workspaces}
+        getWidgetConfig={getWidgetConfig}
+        onSave={jest.fn()}
+      />,
+    );
+    expect(screen.getByText("Add event")).toBeDisabled();
+  });
+
+  it("flags a subscription whose widget is gone, and it can be removed", () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail
+        bot={{
+          id: "bot_1",
+          name: "X",
+          instructions: "Y",
+          schedules: [],
+          subscriptions: [
+            {
+              eventType: "trops.samples.Gone[9].x",
+              label: "Kitchen Sink › Gone › x",
+              source: {
+                kind: "widget",
+                ref: "trops.samples.Gone",
+                instanceId: "9",
+                event: "x",
+                workspaceId: "7",
+              },
+            },
+          ],
+        }}
+        providers={{}}
+        workspaces={workspaces}
+        getWidgetConfig={getWidgetConfig}
+        onSave={onSave}
+      />,
+    );
+    expect(screen.getByText(/widget missing/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Remove Kitchen Sink › Gone › x"));
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave.mock.calls[0][0].subscriptions).toEqual([]);
+  });
+
+  it("keeps an older typed subscription (shown as-is) when saving", () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail
+        bot={{
+          id: "bot_1",
+          name: "X",
+          instructions: "Y",
+          schedules: [],
+          subscriptions: [{ eventType: "pr.opened" }],
+        }}
+        providers={{}}
+        workspaces={workspaces}
+        getWidgetConfig={getWidgetConfig}
+        onSave={onSave}
+      />,
+    );
+    expect(screen.getByText("pr.opened")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Save"));
     expect(onSave.mock.calls[0][0].subscriptions).toEqual([
       { eventType: "pr.opened" },
     ]);
+  });
+
+  it("explains when no dashboard widget publishes events", () => {
+    render(<BotDetail isCreating providers={{}} onSave={jest.fn()} />);
+    expect(
+      screen.getByText(/No widgets on your dashboards publish events/),
+    ).toBeInTheDocument();
   });
 });
 

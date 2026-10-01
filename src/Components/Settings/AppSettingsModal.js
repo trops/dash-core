@@ -204,6 +204,7 @@ export const AppSettingsModal = ({
         )}
         {activeSection === "bots" && (
           <BotsSection
+            workspaces={workspaces}
             dashApi={dashApi}
             credentials={credentials}
             createRequested={createRequested}
