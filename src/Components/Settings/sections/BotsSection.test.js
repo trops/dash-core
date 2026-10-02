@@ -129,4 +129,19 @@ describe("BotsSection", () => {
     // Empty teams are omitted.
     expect(headings).toEqual(["Sales", "Unassigned"]);
   });
+
+  // Global switch for team leads (bot-teams TEAM-002).
+  it("shows and saves 'Create team leads automatically'", async () => {
+    const bots = makeBotsApi({
+      getSettings: jest.fn().mockResolvedValue({ autoLeads: true }),
+      setSettings: jest.fn().mockResolvedValue({ autoLeads: false }),
+    });
+    renderSection({ botsApi: bots });
+    const box = await screen.findByLabelText("Create team leads automatically");
+    await waitFor(() => expect(box).toBeChecked());
+    fireEvent.click(box);
+    await waitFor(() =>
+      expect(bots.setSettings).toHaveBeenCalledWith({ autoLeads: false }),
+    );
+  });
 });

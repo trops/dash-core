@@ -103,6 +103,45 @@ describe("BotRunner.run — happy path", () => {
     assert.equal(runs[0].run.trigger, "manual");
   });
 
+  it("keeps the run's answer (its text) on the run record", async () => {
+    const engine = mockEngine([
+      { type: "text", text: "Found " },
+      { type: "tool_call", name: "x" },
+      { type: "text", text: "3 important emails." },
+      { type: "done", stopReason: "end_turn" },
+    ]);
+    const { runner, runs } = makeRunner(engine);
+    const record = await runner.run("bot_1", { prompt: "go" });
+    assert.equal(record.output, "Found 3 important emails.");
+    assert.equal(runs[0].run.output, "Found 3 important emails.");
+  });
+
+  it("caps a long answer to its last 8 KB", async () => {
+    const long = "a".repeat(9000) + "END";
+    const engine = mockEngine([
+      { type: "text", text: long },
+      { type: "done", stopReason: "end_turn" },
+    ]);
+    const { runner } = makeRunner(engine);
+    const record = await runner.run("bot_1", { prompt: "go" });
+    assert.ok(record.output.length < 8300);
+    assert.ok(record.output.endsWith("END"));
+  });
+
+  it("a team lead runs with no built-in engine tools", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const { runner } = makeRunner(engine, { bot: { role: "lead" } });
+    await runner.run("bot_1", { prompt: "what happened?" });
+    assert.equal(engine.lastCtx.builtinTools, "none");
+  });
+
+  it("ordinary bots keep the engine's built-in tools", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const { runner } = makeRunner(engine);
+    await runner.run("bot_1", { prompt: "go" });
+    assert.equal(engine.lastCtx.builtinTools, undefined);
+  });
+
   it("passes the bot id (and workspace) to callTool so per-bot tool limits can be enforced", async () => {
     const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
     const seen = [];

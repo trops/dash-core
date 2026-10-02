@@ -41,7 +41,7 @@ class BotStore {
    *           paths: { botsRoot: string },
    *           clock?: { now: () => string } }} deps
    */
-  constructor({ persistence, paths, clock } = {}) {
+  constructor({ persistence, paths, clock, secretBox = null } = {}) {
     if (
       !persistence ||
       typeof persistence.read !== "function" ||
@@ -55,6 +55,9 @@ class BotStore {
     this._persistence = persistence;
     this._botsRoot = paths.botsRoot;
     this._now = (clock && clock.now) || (() => new Date().toISOString());
+    // Seals sensitive run fields at rest (run answers). Optional: without one
+    // (plain-Node host) they're stored as-is.
+    this._box = secretBox;
   }
 
   _load() {
@@ -206,17 +209,65 @@ class BotStore {
     const data = this._load();
     if (!data.bots[id]) throw new Error(`BotStore.appendRun: no bot "${id}"`);
     const entry = { ...run, at: (run && run.at) || this._now() };
+    // The run's answer can hold sensitive text (emails…) — sealed at rest.
+    const stored =
+      this._box && typeof entry.output === "string"
+        ? { ...entry, output: this._box.seal(entry.output) }
+        : entry;
     const runs = data.runs[id] || [];
-    runs.push(entry);
+    runs.push(stored);
     data.runs[id] = runs.slice(-MAX_RUNS_PER_BOT);
     this._save(data);
     return entry;
   }
 
-  /** @returns {object[]} run records for a bot, oldest first */
+  /**
+   * @returns {object[]} run records for a bot, oldest first. Answers that
+   * can't be decrypted (keychain reset, another app identity) come back as
+   * `output: null, outputUnavailable: true`.
+   */
   getRuns(id) {
     const { runs } = this._load();
-    return runs[id] || [];
+    const list = runs[id] || [];
+    if (!this._box) return list;
+    return list.map((r) => {
+      if (!r || typeof r.output !== "string") return r;
+      const output = this._box.open(r.output);
+      return output === null
+        ? { ...r, output: null, outputUnavailable: true }
+        : { ...r, output };
+    });
+  }
+
+  // ---- Team settings (bot-teams TEAM-002) --------------------------------
+
+  /** Per-dashboard team settings; defaults { leadEnabled: true }. */
+  getTeamSettings(workspaceId) {
+    const { teams } = this._load();
+    const key = String(workspaceId);
+    return { leadEnabled: true, ...((teams && teams[key]) || {}) };
+  }
+
+  setTeamSettings(workspaceId, patch) {
+    const data = this._load();
+    const key = String(workspaceId);
+    data.teams = data.teams || {};
+    data.teams[key] = { ...this.getTeamSettings(key), ...(patch || {}) };
+    this._save(data);
+    return data.teams[key];
+  }
+
+  /** Global bot settings; defaults { autoLeads: true }. */
+  getSettings() {
+    const { settings } = this._load();
+    return { autoLeads: true, ...(settings || {}) };
+  }
+
+  setSettings(patch) {
+    const data = this._load();
+    data.settings = { ...this.getSettings(), ...(patch || {}) };
+    this._save(data);
+    return data.settings;
   }
 }
 

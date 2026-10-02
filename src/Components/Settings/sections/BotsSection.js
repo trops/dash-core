@@ -1,9 +1,11 @@
 import React, { useContext, useEffect, useState, useCallback } from "react";
 import {
   EmptyState,
+  FontAwesomeIcon,
   ConfirmationModal,
   Tag,
   SectionLabel,
+  Checkbox,
 } from "@trops/dash-react";
 import { groupBotsByTeam } from "../../Bots/teamUtils";
 import { SectionLayout } from "../SectionLayout";
@@ -39,6 +41,30 @@ export const BotsSection = ({
   const [selectedId, setSelectedId] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  // Global switch: give every dashboard an idle team lead (TEAM-002).
+  const [autoLeads, setAutoLeads] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    if (!botsApi || typeof botsApi.getSettings !== "function") return undefined;
+    Promise.resolve(botsApi.getSettings())
+      .then((s) => {
+        if (alive) setAutoLeads(!(s && s.autoLeads === false));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [botsApi]);
+
+  const toggleAutoLeads = async (next) => {
+    setAutoLeads(next);
+    try {
+      await botsApi.setSettings({ autoLeads: next });
+    } catch (_e) {
+      setAutoLeads(!next);
+    }
+  };
 
   const refresh = useCallback(async () => {
     if (!botsApi) return;
@@ -85,10 +111,24 @@ export const BotsSection = ({
 
   const listContent = (
     <div className="flex flex-col">
+      {autoLeads !== null ? (
+        <div className="px-4 pt-4 pb-2 border-b">
+          <Checkbox
+            label="Create team leads automatically"
+            checked={autoLeads}
+            onChange={toggleAutoLeads}
+          />
+          <span className="text-xs opacity-50">
+            Every dashboard gets an idle lead you can ask about its bots.
+          </span>
+        </div>
+      ) : null}
       {bots.length === 0 ? (
         <div className="p-6">
           <EmptyState
-            icon="robot"
+            icon={
+              <FontAwesomeIcon icon="robot" className="h-8 w-8 opacity-50" />
+            }
             title="No bots yet"
             description="Create a bot to delegate recurring work."
           />

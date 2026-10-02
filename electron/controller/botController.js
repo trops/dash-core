@@ -32,6 +32,12 @@ const { EventDispatcher } = require("../bots/EventDispatcher");
 const { normalizeMcpResult } = require("../bots/mcpResult");
 const BotEventPublisher = require("../bots/BotEventPublisher");
 const { unassignTeam } = require("../bots/teams");
+const {
+  TEAM_SERVER,
+  TEAM_TOOLS,
+  handleTeamTool,
+} = require("../bots/teamTools");
+const { isLead, leadOf, planEnsureLead } = require("../bots/teamLeads");
 const { onWorkspaceDeleted } = require("../utils/workspaceEvents");
 const {
   checkChain,
@@ -104,6 +110,7 @@ const botController = {
       persistence: host.persistence,
       paths: host.paths,
       clock: host.clock,
+      secretBox: host.secretBox,
     });
 
     // Wrap the approval registry so a newly-created approval is broadcast to
@@ -151,7 +158,8 @@ const botController = {
       store: this._store,
       approvals: approvalsForRunner,
       // Memory tools are the bot's own sandbox — auto-allowed at the gate.
-      internalServers: [MEMORY_SERVER],
+      // Team tools are a lead's read-only view of its own team.
+      internalServers: [MEMORY_SERVER, TEAM_SERVER],
       resolveRunProfile: (bot) => this._resolveRunProfile(bot),
       resolveTools: (bot) => this._resolveTools(bot),
       callTool: (serverName, toolName, args, o) =>
@@ -286,14 +294,107 @@ const botController = {
   },
 
   delete(botId) {
+    const bot = this._store.get(botId);
     this._scheduler.unregister(botId);
     // A deleted bot's remembered approvals go with it.
     grantStore.revokeGrant(botId);
+    // Deleting a lead counts as turning it off for that dashboard, so it isn't
+    // silently re-created the next time the dashboard opens (TEAM-002).
+    if (isLead(bot) && bot.workspaceId) {
+      this._store.setTeamSettings(bot.workspaceId, { leadEnabled: false });
+    }
     return this._store.delete(botId);
   },
 
   run(botId, prompt) {
     return this._run(botId, { prompt, trigger: "manual" });
+  },
+
+  // ---- Team leads (bot-teams TEAM-002 / TEAM-003) --------------------------
+
+  /**
+   * Make sure a dashboard has its (idle) lead. Idempotent; respects a lead
+   * turned off for that dashboard and the global auto-create switch unless
+   * `force` (the user turning the lead on).
+   * @returns {{ lead: object|null, created: boolean, reason?: string }}
+   */
+  ensureLead({ workspaceId, dashboardName, force = false } = {}) {
+    let providers = [];
+    try {
+      const win = this._getMainWindow();
+      providers =
+        (this._providers.listProviders(win, this._appId) || {}).providers || [];
+    } catch (_e) {
+      // No providers → the lead uses Claude Code.
+    }
+    const plan = planEnsureLead({
+      bots: this._store.list(),
+      workspaceId,
+      dashboardName,
+      teamSettings: this._store.getTeamSettings(workspaceId),
+      settings: this._store.getSettings(),
+      providers,
+      force,
+    });
+    if (plan.action !== "create") {
+      return { lead: plan.lead || null, created: false, reason: plan.reason };
+    }
+    const lead = this._store.create(plan.definition);
+    return { lead, created: true };
+  },
+
+  /** Turn a dashboard's lead off (removes it) or back on (re-creates it). */
+  setLeadEnabled({ workspaceId, enabled, dashboardName } = {}) {
+    this._store.setTeamSettings(workspaceId, { leadEnabled: !!enabled });
+    if (enabled) {
+      return this.ensureLead({ workspaceId, dashboardName, force: true });
+    }
+    const lead = leadOf(this._store.list(), workspaceId);
+    if (lead) {
+      this._scheduler.unregister(lead.id);
+      grantStore.revokeGrant(lead.id);
+      this._store.delete(lead.id);
+    }
+    return { lead: null, created: false, reason: "turned-off" };
+  },
+
+  getTeamSettings(workspaceId) {
+    return this._store.getTeamSettings(workspaceId);
+  },
+
+  /** Hide the lead's one-time introduction card on that dashboard. */
+  dismissLeadIntro(workspaceId) {
+    return this._store.setTeamSettings(workspaceId, { introDismissed: true });
+  },
+
+  /** Global bot settings: { autoLeads }. */
+  getBotSettings() {
+    return this._store.getSettings();
+  },
+
+  setBotSettings(patch) {
+    const { autoLeads } = patch || {};
+    return this._store.setSettings(
+      autoLeads === undefined ? {} : { autoLeads: !!autoLeads },
+    );
+  },
+
+  /**
+   * Ask a team lead a question. `continueConversation` resumes the lead's
+   * session (follow-ups); otherwise a new conversation starts. Logged as a
+   * lead run with trigger "ask". Resolves to the run record (answer in
+   * `output`).
+   */
+  askLead(botId, question, { continueConversation = false } = {}) {
+    const bot = this._store.get(botId);
+    if (!isLead(bot)) {
+      return Promise.resolve({ error: "Not a team lead.", status: "failed" });
+    }
+    return this._run(botId, {
+      prompt: question,
+      trigger: "ask",
+      continueSession: !!continueConversation,
+    });
   },
 
   stop(botId) {
@@ -413,11 +514,18 @@ const botController = {
   _run(botId, opts) {
     // Track the run for bot events — unless one is already in progress (the
     // runner will skip this one, and the active run keeps its own cause).
-    const alreadyRunning = this._runner.listActive().includes(botId);
+    // A team lead's answers are a conversation with the user, not team work —
+    // they don't go on the event bus (so they can't trigger bots).
+    const publishes =
+      !this._runner.listActive().includes(botId) &&
+      !isLead(this._store.get(botId));
+    const alreadyRunning = !publishes;
     if (!alreadyRunning) this._events.startRun(botId, opts.cause);
     const p = this._runner.run(botId, {
       prompt: opts.prompt,
       trigger: opts.trigger,
+      // Follow-ups (Ask the lead) resume the session; runs start fresh.
+      continueSession: !!opts.continueSession,
       emit: (event) => {
         if (!alreadyRunning) this._events.onRunEvent(botId, event);
         this._broadcast(BOT_STREAM, { botId, event });
@@ -545,6 +653,17 @@ const botController = {
    * failures are surfaced in the run feed as warnings.
    */
   async _resolveTools(bot) {
+    // A team lead gets ONLY its read-only team tools — no providers, no memory
+    // writes (bot-teams TEAM-002 AC4). The runner also strips engine built-ins.
+    if (isLead(bot)) {
+      const toolServer = {};
+      for (const tool of TEAM_TOOLS) toolServer[tool.name] = TEAM_SERVER;
+      this._allowedByBot.set(bot.id, {});
+      return {
+        tools: [...TEAM_TOOLS],
+        resolveServer: (toolName) => toolServer[toolName] || null,
+      };
+    }
     if (this._mcp && this._mcp.startServer && this._providers) {
       const win = this._getMainWindow();
       const { failed } = await ensureBotServers({
@@ -596,6 +715,24 @@ const botController = {
       return handleMemoryTool(
         this._memory,
         { workspaceId: opts.workspaceId },
+        toolName,
+        args,
+      );
+    }
+    // A lead's read-only team tools, scoped to the lead's own dashboard.
+    if (serverName === TEAM_SERVER) {
+      const caller = this._store.get(opts.botId);
+      if (!isLead(caller)) {
+        return { text: "Team tools are only for team leads.", isError: true };
+      }
+      return handleTeamTool(
+        {
+          store: this._store,
+          memory: this._memory,
+          isRunning: (id) => this._runner.listActive().includes(id),
+          isPaused: (id) => this._pause.isPaused(id),
+        },
+        { workspaceId: caller.workspaceId, botId: caller.id },
         toolName,
         args,
       );

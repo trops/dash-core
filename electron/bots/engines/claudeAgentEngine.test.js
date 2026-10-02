@@ -140,6 +140,38 @@ describe("claudeAgentEngine", () => {
     );
   });
 
+  it("builtinTools 'none' disables every SDK built-in (team leads)", async () => {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(claudeAgentEngine.run(ctx({ builtinTools: "none" })));
+    assert.deepEqual(captured.options.tools, []);
+  });
+
+  it("by default the SDK keeps its built-in tool set", async () => {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(claudeAgentEngine.run(ctx()));
+    assert.equal(captured.options.tools, undefined);
+  });
+
+  it("with builtinTools 'none', a built-in that slips through is denied without asking", async () => {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    const created = [];
+    await collect(
+      claudeAgentEngine.run(
+        ctx({
+          builtinTools: "none",
+          approvalPolicy: "allow", // even "allow" mustn't let it through
+          createApproval: (req) => {
+            created.push(req);
+            return { promise: Promise.resolve({ allow: true }) };
+          },
+        }),
+      ),
+    );
+    const res = await captured.options.canUseTool("Bash", { command: "ls" });
+    assert.equal(res.behavior, "deny");
+    assert.equal(created.length, 0);
+  });
+
   it("passes the bot's API key per run — never via process-global env", async () => {
     const before = process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_API_KEY;

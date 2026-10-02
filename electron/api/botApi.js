@@ -28,6 +28,13 @@ const {
   BOTS_LIST_TOOL_SOURCES,
   BOTS_GET_GRANTS,
   BOTS_REVOKE_GRANT,
+  BOTS_ENSURE_LEAD,
+  BOTS_SET_LEAD_ENABLED,
+  BOTS_GET_TEAM_SETTINGS,
+  BOTS_DISMISS_LEAD_INTRO,
+  BOTS_GET_SETTINGS,
+  BOTS_SET_SETTINGS,
+  BOTS_ASK_LEAD,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
@@ -85,6 +92,36 @@ const botApi = {
   /** Revoke one remembered tool approval; resolves to the updated summary. */
   revokeGrant: (botId, serverName, toolName) =>
     ipcRenderer.invoke(BOTS_REVOKE_GRANT, { botId, serverName, toolName }),
+
+  // ---- Team leads (bot-teams TEAM-002 / TEAM-003) ----
+  /** Make sure a dashboard has its idle lead. → { lead, created, reason? } */
+  ensureLead: (workspaceId, dashboardName) =>
+    ipcRenderer.invoke(BOTS_ENSURE_LEAD, { workspaceId, dashboardName }),
+  /** Turn a dashboard's lead off (removes it) or back on. */
+  setLeadEnabled: (workspaceId, enabled, dashboardName) =>
+    ipcRenderer.invoke(BOTS_SET_LEAD_ENABLED, {
+      workspaceId,
+      enabled,
+      dashboardName,
+    }),
+  /** { leadEnabled, introDismissed? } for a dashboard. */
+  getTeamSettings: (workspaceId) =>
+    ipcRenderer.invoke(BOTS_GET_TEAM_SETTINGS, { workspaceId }),
+  dismissLeadIntro: (workspaceId) =>
+    ipcRenderer.invoke(BOTS_DISMISS_LEAD_INTRO, { workspaceId }),
+  /** Global bot settings: { autoLeads }. */
+  getSettings: () => ipcRenderer.invoke(BOTS_GET_SETTINGS),
+  setSettings: (patch) => ipcRenderer.invoke(BOTS_SET_SETTINGS, { patch }),
+  /**
+   * Ask a lead; `continueConversation` resumes its session for follow-ups.
+   * Streams on onStream; resolves to the run record (answer in `output`).
+   */
+  askLead: (botId, question, continueConversation = false) =>
+    ipcRenderer.invoke(BOTS_ASK_LEAD, {
+      botId,
+      question,
+      continueConversation,
+    }),
 
   /** Subscribe to streamed run events: { botId, event }. */
   onStream: (callback) => _addListener(BOT_STREAM, callback),

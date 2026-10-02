@@ -80,6 +80,18 @@ function _makeCanUseTool(ctx) {
     if (ctx.signal && ctx.signal.aborted) {
       return { behavior: "deny", message: "run aborted" };
     }
+    // No built-ins for this run (team leads): `tools: []` removes them; this
+    // is the backstop if one slips through — denied, never asked, even under
+    // an "allow" policy. Bridged Dash tools fall through to the gate below.
+    if (
+      ctx.builtinTools === "none" &&
+      !(typeof toolName === "string" && toolName.startsWith(BRIDGED_PREFIX))
+    ) {
+      return {
+        behavior: "deny",
+        message: "This bot has no built-in tools; use its team tools.",
+      };
+    }
     // Trusted bot → run tools without prompting.
     if (ctx.approvalPolicy === "allow") {
       return { behavior: "allow", updatedInput: input };
@@ -152,6 +164,9 @@ async function _runAgent(ctx, stream) {
     strictMcpConfig: true,
     env,
   };
+  // Read-only bots (team leads) get none of the SDK's built-ins — no shell,
+  // files, or web; only their bridged team tools.
+  if (ctx.builtinTools === "none") options.tools = [];
   if (ctx.maxTurns) options.maxTurns = ctx.maxTurns;
   if (ctx.workingDir) options.cwd = ctx.workingDir;
   if (ctx.session && ctx.session.id) options.resume = ctx.session.id;

@@ -210,3 +210,83 @@ describe("BotStore — ref (stable bot identity)", () => {
     assert.equal(persistence._blob().bots.bot_old.ref, "local/daily-brief");
   });
 });
+
+// Run answers are sensitive (email snippets…) — sealed at rest (secretBox).
+describe("BotStore — encrypted run answers", () => {
+  const { createSecretBox } = require("./secretBox");
+  const crypto = {
+    isEncryptionAvailable: () => true,
+    encryptString: (s) => Buffer.from("X" + s, "utf8"),
+    decryptString: (b) => b.toString("utf8").slice(1),
+  };
+
+  function boxedStore(box = createSecretBox(crypto), persistence) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "botstore-test-"));
+    tmpRoots.push(root);
+    const p = persistence || memPersistence();
+    const store = new BotStore({
+      persistence: p,
+      paths: { botsRoot: root },
+      secretBox: box,
+    });
+    return { store, persistence: p };
+  }
+
+  it("stores a run's output encrypted and returns it decrypted", () => {
+    const { store, persistence } = boxedStore();
+    const bot = store.create(validDef);
+    store.appendRun(bot.id, {
+      status: "completed",
+      output: "3 important emails",
+    });
+    const raw = persistence._blob().runs[bot.id][0].output;
+    assert.ok(raw.startsWith("enc:v1:"));
+    assert.ok(!raw.includes("important"));
+    assert.equal(store.getRuns(bot.id)[0].output, "3 important emails");
+  });
+
+  it("an undecryptable answer reads as null, flagged outputUnavailable", () => {
+    const { store, persistence } = boxedStore();
+    const bot = store.create(validDef);
+    store.appendRun(bot.id, { status: "completed", output: "x" });
+    const noKey = createSecretBox({
+      ...crypto,
+      decryptString: () => {
+        throw new Error("no key");
+      },
+    });
+    const { store: store2 } = boxedStore(noKey, persistence);
+    const [run] = store2.getRuns(bot.id);
+    assert.equal(run.output, null);
+    assert.equal(run.outputUnavailable, true);
+  });
+
+  it("without a secretBox, outputs stay plain (plain-Node host)", () => {
+    const { store, persistence } = freshStore();
+    const bot = store.create(validDef);
+    store.appendRun(bot.id, { status: "completed", output: "hello" });
+    assert.equal(persistence._blob().runs[bot.id][0].output, "hello");
+  });
+});
+
+// Per-dashboard team settings (lead on/off) + the global auto-lead switch.
+describe("BotStore — team settings", () => {
+  it("defaults: leads enabled everywhere, auto-create on", () => {
+    const { store } = freshStore();
+    assert.equal(store.getTeamSettings("7").leadEnabled, true);
+    assert.equal(store.getSettings().autoLeads, true);
+  });
+
+  it("remembers a turned-off lead per dashboard (ids as strings)", () => {
+    const { store } = freshStore();
+    store.setTeamSettings(7, { leadEnabled: false });
+    assert.equal(store.getTeamSettings("7").leadEnabled, false);
+    assert.equal(store.getTeamSettings("9").leadEnabled, true);
+  });
+
+  it("stores the global auto-lead switch", () => {
+    const { store } = freshStore();
+    store.setSettings({ autoLeads: false });
+    assert.equal(store.getSettings().autoLeads, false);
+  });
+});
