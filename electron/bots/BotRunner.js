@@ -112,6 +112,11 @@ class BotRunner {
     // The run's answer (its text), kept on the run record — what a team lead
     // reads back. Capped to the last 8 KB; the store seals it at rest.
     const answer = [];
+    // Tool-call summary for the conversation view: tool, provider, ok —
+    // never arguments or results (they can hold email content).
+    const toolCalls = [];
+    const callIndex = new Map();
+    let providerOf = () => null;
 
     try {
       const profile = await this._resolveRunProfile(bot);
@@ -122,6 +127,13 @@ class BotRunner {
       }
 
       const { tools, resolveServer } = await this._resolveTools(bot);
+      providerOf = (name) => {
+        try {
+          return resolveServer(name) || null;
+        } catch (_e) {
+          return null;
+        }
+      };
 
       const requestPermission = this._makeRequestPermission({
         botId,
@@ -188,6 +200,17 @@ class BotRunner {
       for await (const event of engine.run(ctx)) {
         emit(event);
         if (event.type === "text" && event.text) answer.push(event.text);
+        if (event.type === "tool_call" && event.name) {
+          // Bridged tools arrive as "mcp__bot-mcp__<tool>" on the agent engine.
+          const tool = String(event.name).replace(
+            /^mcp__[^_]+(?:-[^_]+)*__/,
+            "",
+          );
+          callIndex.set(event.id, toolCalls.length);
+          toolCalls.push({ tool, provider: providerOf(tool), ok: null });
+        } else if (event.type === "tool_result" && callIndex.has(event.id)) {
+          toolCalls[callIndex.get(event.id)].ok = !event.isError;
+        }
         if (event.type === "session") {
           this._store.saveSession(botId, engine.id, event.session);
         } else if (event.type === "done") {
@@ -217,6 +240,11 @@ class BotRunner {
       usage,
       error: errorMessage,
       output: truncateText(answer.join("")),
+      // The conversation turn (Bots view, TEAM-011). The store seals the
+      // prompt at rest like the answer.
+      prompt: truncateText(opts.prompt || ""),
+      continued: !!opts.continueSession,
+      toolCalls,
     };
     this._store.appendRun(botId, runRecord);
 

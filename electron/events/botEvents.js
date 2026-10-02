@@ -35,6 +35,8 @@ const BOTS_DISMISS_LEAD_INTRO = "bots-dismiss-lead-intro";
 const BOTS_GET_SETTINGS = "bots-get-settings";
 const BOTS_SET_SETTINGS = "bots-set-settings";
 const BOTS_ASK_LEAD = "bots-ask-lead";
+// Bots view (TEAM-011): a bot run history.
+const BOTS_GET_RUNS = "bots-get-runs";
 
 // --- Main → Renderer (send) ---
 const BOT_STREAM = "bot-stream"; // { botId, event: BotEvent }
@@ -71,6 +73,7 @@ module.exports = {
   BOTS_GET_SETTINGS,
   BOTS_SET_SETTINGS,
   BOTS_ASK_LEAD,
+  BOTS_GET_RUNS,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
