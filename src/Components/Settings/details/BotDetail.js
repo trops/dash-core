@@ -151,6 +151,9 @@ export const BotDetail = ({
   // (dirty: boolean) — unsaved-changes signal for hosts that guard leaving
   // the form (the Bots view's inline Settings tab).
   onDirtyChange = null,
+  // Optional "Discard changes" (the Bots view's inline Settings tab): the
+  // host resets the form; enabled only with unsaved changes.
+  onDiscard = null,
 }) => {
   const [name, setName] = useState(bot?.name || "");
   const [instructions, setInstructions] = useState(bot?.instructions || "");
@@ -885,6 +888,14 @@ export const BotDetail = ({
         <div className="flex flex-row gap-2">
           {isCreating && onCancel ? (
             <Button title="Cancel" onClick={onCancel} size="sm" />
+          ) : null}
+          {onDiscard && !isCreating ? (
+            <Button
+              title="Discard changes"
+              onClick={onDiscard}
+              size="sm"
+              disabled={!dirty || saving}
+            />
           ) : null}
           <Button
             title={isCreating ? "Create" : "Save"}

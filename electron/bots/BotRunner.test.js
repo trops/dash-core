@@ -416,3 +416,75 @@ describe("BotRunner construction", () => {
     assert.throws(() => new BotRunner({}), /missing dependency/);
   });
 });
+
+describe("BotRunner — run record extras (TEAM-011 gaps)", () => {
+  it("records what triggered an event run", async () => {
+    const engine = mockEngine([{ type: "done" }]);
+    const { runner, runs } = makeRunner(engine);
+    const source = {
+      eventType: "Gmail[w1].newEmail",
+      label: "Gmail › new email",
+      originBotId: null,
+      chain: [],
+    };
+    await runner.run("bot_1", { trigger: "event", source });
+    assert.deepEqual(runs[0].run.source, source);
+  });
+
+  it("has no source for other runs", async () => {
+    const engine = mockEngine([{ type: "done" }]);
+    const { runner, runs } = makeRunner(engine);
+    await runner.run("bot_1", {});
+    assert.equal(runs[0].run.source, undefined);
+  });
+
+  it("records each approval decision (engine and permission-gate paths)", async () => {
+    const decisions = [
+      { allow: true },
+      { allow: true, remember: true },
+      { allow: false, reason: "denied by user" },
+    ];
+    let n = 0;
+    const approvals = {
+      create: () => ({ id: "a" + n, promise: Promise.resolve(decisions[n++]) }),
+    };
+    let gateCreate = null;
+    const engine = {
+      id: "tool-loop",
+      run(ctx) {
+        return (async function* () {
+          // Built-in tool via the engine's channel.
+          await ctx.createApproval({ toolName: "Bash" }).promise;
+          // Provider tools via the permission gate's channel.
+          await gateCreate({ serverName: "Slack", toolName: "send_message" })
+            .promise;
+          await gateCreate({ serverName: "Gmail New", toolName: "send_email" })
+            .promise;
+          yield { type: "done" };
+        })();
+      },
+    };
+    const { runner, runs } = makeRunner(engine, {
+      deps: {
+        approvals,
+        makeRequestPermission: (opts) => {
+          gateCreate = opts.createApproval;
+          return async () => ({ allow: true });
+        },
+      },
+    });
+    await runner.run("bot_1", {});
+    assert.deepEqual(runs[0].run.approvals, [
+      { tool: "Bash", provider: null, decision: "allowed" },
+      { tool: "send_message", provider: "Slack", decision: "allowed-always" },
+      { tool: "send_email", provider: "Gmail New", decision: "denied" },
+    ]);
+  });
+
+  it("records no approvals when none were asked", async () => {
+    const engine = mockEngine([{ type: "done" }]);
+    const { runner, runs } = makeRunner(engine);
+    await runner.run("bot_1", {});
+    assert.deepEqual(runs[0].run.approvals, []);
+  });
+});

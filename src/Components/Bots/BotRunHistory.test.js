@@ -1,6 +1,12 @@
 import React from "react";
 import "@testing-library/jest-dom";
-import { render, screen, fireEvent } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  act,
+} from "@testing-library/react";
 import { BotRunHistory } from "./BotRunHistory";
 
 const bot = { id: "b1", name: "Inbox Watch" };
@@ -82,5 +88,81 @@ describe("BotRunHistory", () => {
   it("empty state", async () => {
     setup([]);
     expect(await screen.findByText(/hasn.t run yet/)).toBeInTheDocument();
+  });
+});
+
+describe("BotRunHistory — details, next steps, live (TEAM-011 gaps)", () => {
+  function setupLive(history, props = {}) {
+    const listeners = {};
+    const api = {
+      getRuns: jest.fn().mockResolvedValue(history),
+      run: jest.fn().mockResolvedValue({ status: "completed" }),
+      askLead: jest.fn().mockResolvedValue({ status: "completed" }),
+      onStream: jest.fn((cb) => ((listeners.stream = cb), "s1")),
+      removeListener: jest.fn(),
+    };
+    window.mainApi = { bots: api };
+    const onOpenSettings = jest.fn();
+    const utils = render(
+      <BotRunHistory bot={bot} onOpenSettings={onOpenSettings} {...props} />,
+    );
+    return { api, listeners, onOpenSettings, ...utils };
+  }
+
+  const failed = {
+    trigger: "event",
+    status: "failed",
+    startedAt: "2026-10-02T11:00:00.000Z",
+    error:
+      "Slack couldn't start: Authentication required. Check its settings in Settings › Providers.",
+    prompt: "EVENT PROMPT",
+    source: { eventType: "e", label: "Gmail › new email", chain: [] },
+    approvals: [
+      { tool: "send_message", provider: "Slack", decision: "allowed" },
+      { tool: "send_email", provider: "Gmail New", decision: "allowed-always" },
+      { tool: "Bash", provider: null, decision: "denied" },
+    ],
+  };
+
+  it("shows what triggered the run and its approval decisions", async () => {
+    setupLive([failed]);
+    fireEvent.click(await screen.findByTestId("run-row"));
+    expect(
+      screen.getByText("Triggered by Gmail › new email"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("send_message on Slack · you allowed"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("send_email on Gmail New · you always allowed"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Bash (built-in) · you denied"),
+    ).toBeInTheDocument();
+  });
+
+  it("a failed run offers Run again and Open Settings › Providers", async () => {
+    const { api, onOpenSettings } = setupLive([failed]);
+    fireEvent.click(await screen.findByTestId("run-row"));
+    fireEvent.click(screen.getByText("Run again"));
+    await waitFor(() =>
+      expect(api.run).toHaveBeenCalledWith("b1", "EVENT PROMPT", false),
+    );
+    fireEvent.click(screen.getByText("Open Settings › Providers"));
+    expect(onOpenSettings).toHaveBeenCalledWith("providers");
+  });
+
+  it("reloads when this bot's run finishes", async () => {
+    const { api, listeners } = setupLive([]);
+    await screen.findByText(/hasn.t run yet/);
+    api.getRuns.mockResolvedValue([runs[0]]);
+    await act(async () => {
+      listeners.stream({ botId: "other", event: { type: "done" } });
+    });
+    expect(api.getRuns).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      listeners.stream({ botId: "b1", event: { type: "done" } });
+    });
+    expect(await screen.findAllByTestId("run-row")).toHaveLength(1);
   });
 });

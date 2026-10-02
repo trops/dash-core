@@ -205,3 +205,98 @@ describe("BotChat — approvals inline", () => {
     expect(screen.getByText("Allow once")).toBeInTheDocument();
   });
 });
+
+describe("BotChat — triggers and next steps (TEAM-011 gaps)", () => {
+  function setupWith(history, props = {}) {
+    const api = {
+      getRuns: jest.fn().mockResolvedValue(history),
+      run: jest.fn().mockResolvedValue({ status: "completed" }),
+      askLead: jest.fn().mockResolvedValue({ status: "completed" }),
+      onStream: jest.fn(() => "s1"),
+      removeListener: jest.fn(),
+    };
+    window.mainApi = { bots: api };
+    const onOpenSettings = jest.fn();
+    render(
+      <BotChat
+        bot={bot}
+        approvals={[]}
+        onOpenSettings={onOpenSettings}
+        nameOf={(id) => ({ b0: "Lead Scout", b9: "Inbox Watch" })[id] || id}
+        {...props}
+      />,
+    );
+    return { api, onOpenSettings };
+  }
+
+  it("shows what triggered an event run, with bot names in the chain", async () => {
+    setupWith([
+      {
+        trigger: "event",
+        status: "completed",
+        output: "done",
+        source: {
+          eventType: "bot:local/inbox[b9].completed",
+          label: "Inbox Watch › completed",
+          chain: ["b0", "b9"],
+        },
+      },
+    ]);
+    expect(
+      await screen.findByText(
+        "Triggered by Inbox Watch › completed · Lead Scout → Inbox Watch",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("a failed run offers Run again (same prompt, fresh run)", async () => {
+    const { api } = setupWith([
+      {
+        trigger: "manual",
+        status: "failed",
+        error: "Something odd",
+        prompt: "Check inbox",
+      },
+    ]);
+    fireEvent.click(await screen.findByText("Run again"));
+    await waitFor(() =>
+      expect(api.run).toHaveBeenCalledWith("b1", "Check inbox", false),
+    );
+    expect(screen.queryByText("Open Settings › Providers")).toBeNull();
+  });
+
+  it("a provider problem also offers Open Settings › Providers", async () => {
+    const { onOpenSettings } = setupWith([
+      {
+        trigger: "manual",
+        status: "failed",
+        error: "Your credit balance is too low to access the Anthropic API.",
+        prompt: "x",
+      },
+    ]);
+    fireEvent.click(await screen.findByText("Open Settings › Providers"));
+    expect(onOpenSettings).toHaveBeenCalledWith("providers");
+  });
+
+  it("a lead's failed answer offers Ask again", async () => {
+    const { api } = setupWith(
+      [
+        {
+          trigger: "ask",
+          status: "failed",
+          error: "oops",
+          prompt: "Anything urgent?",
+        },
+      ],
+      { bot: lead, isLead: true },
+    );
+    fireEvent.click(await screen.findByText("Ask again"));
+    await waitFor(() =>
+      expect(api.askLead).toHaveBeenCalledWith(
+        "lead_7",
+        "Anything urgent?",
+        false,
+      ),
+    );
+  });
+});

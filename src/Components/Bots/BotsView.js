@@ -4,6 +4,7 @@ import React, {
   useEffect,
   useRef,
   useState,
+  useMemo,
 } from "react";
 import {
   Button,
@@ -34,6 +35,9 @@ import { triggerSummary } from "./teamUtils";
  * @param {object[]} workspaces all dashboards (bot form's Team field)
  * @param {object} team        useTeamBots(workspace.id)
  * @param {boolean} [narrow]   force the narrow layout (else measured)
+ * @param {(dirty: boolean) => void} [onDirtyChange]  unsaved Settings edits
+ *   (the stage guards leaving the Bots view with them)
+ * @param {(section: string) => void} [onOpenSettings]  error next steps
  * @param {{ botId: string, tab?: string, seq: number }} [focus]  open on a
  *   bot + tab (the Bot monitor's "Open in Bots view"); a new `seq` re-applies
  *   it, through the unsaved-changes guard.
@@ -80,6 +84,8 @@ export const BotsView = ({
   team,
   narrow,
   focus = null,
+  onDirtyChange = null,
+  onOpenSettings = null,
 }) => {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
   const appContext = useContext(AppContext);
@@ -114,7 +120,22 @@ export const BotsView = ({
   );
   const [menuOpen, setMenuOpen] = useState(false);
   const [allBots, setAllBots] = useState([]);
+  const nameOf = useMemo(() => {
+    const names = new Map(allBots.map((b) => [b.id, b.name]));
+    return (id) => names.get(id) || id;
+  }, [allBots]);
   const dirtyRef = useRef(false);
+  // Unsaved Settings edits: kept in a ref for the guard, and reported to the
+  // host (the stage guards the header's Dashboard switch with it).
+  const onDirtyRef = useRef(onDirtyChange);
+  onDirtyRef.current = onDirtyChange;
+  const setDirty = useCallback((d) => {
+    if (dirtyRef.current === d) return;
+    dirtyRef.current = d;
+    if (onDirtyRef.current) onDirtyRef.current(d);
+  }, []);
+  // Bumped by "Discard changes" to remount the form from the saved bot.
+  const [formKey, setFormKey] = useState(0);
   const [pendingNav, setPendingNav] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -150,7 +171,7 @@ export const BotsView = ({
 
   const select = (id) =>
     guarded(() => {
-      dirtyRef.current = false;
+      setDirty(false);
       setSelectedId(id);
       setTab(id === NEW_BOT ? "settings" : "conversation");
       setMenuOpen(false);
@@ -158,7 +179,7 @@ export const BotsView = ({
 
   const switchTab = (next) =>
     guarded(() => {
-      dirtyRef.current = false;
+      setDirty(false);
       setTab(next);
     });
 
@@ -171,7 +192,7 @@ export const BotsView = ({
     if (!all.some((b) => b.id === focus.botId)) return;
     appliedSeq.current = focus.seq;
     guarded(() => {
-      dirtyRef.current = false;
+      setDirty(false);
       setSelectedId(focus.botId);
       setTab(TABS.includes(focus.tab) ? focus.tab : "conversation");
       setMenuOpen(false);
@@ -200,7 +221,7 @@ export const BotsView = ({
   const saveBot = async (definition) => {
     const bots = api();
     const saved = await bots.save(definition);
-    dirtyRef.current = false;
+    setDirty(false);
     afterChange();
     if (selectedId === NEW_BOT && saved && saved.id) {
       setSelectedId(saved.id);
@@ -446,15 +467,22 @@ export const BotsView = ({
               isLead={isLead}
               approvals={team ? team.approvalsFor(selected.id) : []}
               onApprove={team ? team.approve : null}
+              nameOf={nameOf}
+              onOpenSettings={onOpenSettings}
             />
           ) : null}
           {tab === "activity" && selected ? (
-            <BotRunHistory bot={selected} />
+            <BotRunHistory
+              bot={selected}
+              isLead={isLead}
+              nameOf={nameOf}
+              onOpenSettings={onOpenSettings}
+            />
           ) : null}
           {tab === "settings" ? (
             <div className="flex-1 min-h-0 flex flex-col">
               <BotDetail
-                key={selected ? selected.id : NEW_BOT}
+                key={`${selected ? selected.id : NEW_BOT}-${formKey}`}
                 bot={selected}
                 isCreating={!selected}
                 defaultWorkspaceId={workspace ? workspace.id : null}
@@ -463,8 +491,10 @@ export const BotsView = ({
                 getWidgetConfig={getWidgetConfig}
                 bots={allBots}
                 onSave={saveBot}
-                onDirtyChange={(d) => {
-                  dirtyRef.current = d;
+                onDirtyChange={setDirty}
+                onDiscard={() => {
+                  setDirty(false);
+                  setFormKey((k) => k + 1);
                 }}
               />
             </div>
@@ -483,7 +513,7 @@ export const BotsView = ({
         onConfirm={() => {
           const nav = pendingNav;
           setPendingNav(null);
-          dirtyRef.current = false;
+          setDirty(false);
           if (nav) nav();
         }}
         onCancel={() => setPendingNav(null)}

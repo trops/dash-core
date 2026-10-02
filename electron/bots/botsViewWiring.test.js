@@ -53,6 +53,16 @@ describe("botController — Bots view backend", () => {
   });
 });
 
+describe("botController — run sources (TEAM-011 gaps)", () => {
+  it("event runs pass what triggered them through to the runner", () => {
+    assert.match(ctrl, /source: sourceFromEvent\(bot, event\)/);
+    assert.match(
+      ctrl,
+      /this\._runner\.run\(botId, \{[\s\S]{0,200}source: opts\.source \|\| null,/,
+    );
+  });
+});
+
 describe("botApi / events — Bots view IPC", () => {
   it("defines the run-history channel", () => {
     assert.equal(events.BOTS_GET_RUNS, "bots-get-runs");

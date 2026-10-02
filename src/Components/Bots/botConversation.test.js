@@ -2,6 +2,8 @@ import {
   buildConversation,
   botStatus,
   attentionCount,
+  triggerLabel,
+  errorNextSteps,
 } from "./botConversation";
 
 const run = (over) => ({
@@ -150,5 +152,115 @@ describe("attentionCount — the Bots switch badge", () => {
     expect(
       attentionCount({ botIds: [], approvals: [], lastRunByBot: {} }),
     ).toBe(0);
+  });
+});
+
+describe("triggerLabel (TEAM-011 gaps)", () => {
+  const names = { b0: "Lead Scout", b1: "Inbox Watch" };
+  const nameOf = (id) => names[id] || id;
+
+  it("names the event a run was triggered by", () => {
+    expect(
+      triggerLabel(
+        {
+          trigger: "event",
+          source: {
+            eventType: "Gmail[w1].newEmail",
+            label: "Gmail › new email",
+            chain: [],
+          },
+        },
+        nameOf,
+      ),
+    ).toBe("Triggered by Gmail › new email");
+  });
+
+  it("falls back to the event type, then to the old text", () => {
+    expect(
+      triggerLabel({
+        trigger: "event",
+        source: { eventType: "X[1].ping", label: null },
+      }),
+    ).toBe("Triggered by X[1].ping");
+    expect(triggerLabel({ trigger: "event" })).toBe("Triggered by an event");
+  });
+
+  it("shows the bot chain with names", () => {
+    expect(
+      triggerLabel(
+        {
+          trigger: "event",
+          source: {
+            eventType: "bot:local/inbox-watch[b1].completed",
+            label: "Inbox Watch › completed",
+            originBotId: "b1",
+            chain: ["b0", "b1"],
+          },
+        },
+        nameOf,
+      ),
+    ).toBe("Triggered by Inbox Watch › completed · Lead Scout → Inbox Watch");
+  });
+
+  it("schedules and typed runs are unchanged", () => {
+    expect(triggerLabel({ trigger: "schedule" })).toBe("Scheduled run");
+    expect(triggerLabel({ trigger: "manual" })).toBe(null);
+  });
+
+  it("buildConversation uses it, and error turns carry the prompt to run again", () => {
+    const turns = buildConversation(
+      [
+        {
+          trigger: "event",
+          source: { eventType: "e", label: "Gmail › new email", chain: [] },
+          status: "failed",
+          error: "boom",
+          prompt: "EVENT PROMPT",
+        },
+      ],
+      { nameOf },
+    );
+    expect(turns[0]).toMatchObject({
+      kind: "system",
+      text: "Triggered by Gmail › new email",
+    });
+    expect(turns[1]).toMatchObject({
+      kind: "error",
+      text: "boom",
+      prompt: "EVENT PROMPT",
+    });
+  });
+});
+
+describe("errorNextSteps (TEAM-011 gaps)", () => {
+  const actions = (text, opts) =>
+    errorNextSteps(text, opts).map((s) => s.action);
+
+  it("always offers Run again (Ask again for a lead)", () => {
+    expect(errorNextSteps("Something odd happened")).toEqual([
+      { action: "run-again", label: "Run again" },
+    ]);
+    expect(errorNextSteps("x", { isLead: true })[0].label).toBe("Ask again");
+  });
+
+  it("points provider problems at Settings › Providers", () => {
+    for (const text of [
+      "Slack couldn't start: Authentication required: …. Check its settings in Settings › Providers.",
+      "Your credit balance is too low to access the Anthropic API.",
+      "401 invalid x-api-key",
+      "Invalid API key provided",
+      "Token expired",
+    ]) {
+      expect(actions(text)).toEqual(["run-again", "open-settings"]);
+    }
+    expect(errorNextSteps("Token expired")[1]).toEqual({
+      action: "open-settings",
+      section: "providers",
+      label: "Open Settings › Providers",
+    });
+  });
+
+  it("nothing for an empty error", () => {
+    expect(errorNextSteps("")).toEqual([]);
   });
 });

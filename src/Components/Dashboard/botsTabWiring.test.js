@@ -38,7 +38,7 @@ describe("DashboardStage — Bots view wiring (TEAM-011)", () => {
 
   it("offers the Bots view in preview and in popouts (B3), never in edit mode", () => {
     expect(stageSrc).toMatch(
-      /onStageModeChange=\{\s*popout \|\| previewMode \? setStageMode : null\s*\}/,
+      /onStageModeChange=\{\s*popout \|\| previewMode\s*\?[\s\S]{0,200}setStageMode\(mode\)[\s\S]{0,120}:\s*null\s*\}/,
     );
     expect(stageSrc).toMatch(
       /\(popout \|\| previewMode\) && workspaceSelected/,
@@ -113,5 +113,28 @@ describe("DashboardStage — Bot monitor hand-off (TEAM-011 B3)", () => {
 
   it("Open in Settings goes to Settings › Bots", () => {
     expect(stageSrc).toMatch(/openAppSettings\("bots"\)/);
+  });
+});
+
+describe("DashboardStage — leaving the Bots view with unsaved edits (TEAM-011 gaps)", () => {
+  it("tracks the Bots view's unsaved edits and hands it Settings", () => {
+    expect(stageSrc).toMatch(/const botsDirtyRef = useRef\(false\)/);
+    expect(stageSrc).toMatch(
+      /onDirtyChange=\{\(d\) => \{\s*botsDirtyRef\.current = d;\s*\}\}/,
+    );
+    expect(stageSrc).toMatch(
+      /onOpenSettings=\{\(section\) => openAppSettings\(section\)\}/,
+    );
+  });
+
+  it("the header's Dashboard switch and edit button ask first", () => {
+    expect(stageSrc).toMatch(
+      /const leaveBotsGuarded = \(action\) => \{\s*if \(stageMode === "bots" && botsDirtyRef\.current\) \{\s*setPendingLeaveBots\(\(\) => action\);/,
+    );
+    expect(stageSrc).toMatch(
+      /onStageModeChange=\{\s*popout \|\| previewMode\s*\?\s*\(mode\) =>\s*mode === "bots"\s*\?\s*setStageMode\(mode\)\s*:\s*leaveBotsGuarded\(\(\) => setStageMode\(mode\)\)/,
+    );
+    expect(stageSrc).toMatch(/leaveBotsGuarded\(handleToggleEditMode\)/);
+    expect(stageSrc).toMatch(/title="Discard unsaved changes\?"/);
   });
 });

@@ -7,23 +7,66 @@
  *
  * A run record (BotRunner) carries: trigger, status, startedAt/endedAt,
  * prompt, output (the answer), toolCalls [{ tool, provider, ok }], continued
- * (a reply in the same session), error, outputUnavailable.
+ * (a reply in the same session), error, outputUnavailable, and — for event
+ * runs — source { eventType, label, originBotId, chain }.
  *
  * Turn kinds: "user" (what was asked), "system" (what started a run that
  * nobody typed), "tools" (tool-call rows), "bot" (the answer), "error",
  * "divider" (a new conversation started).
  */
 
-function startedBy(r) {
+const sameId = (id) => id;
+
+/**
+ * What started a run nobody typed, or null for typed runs. Event runs name
+ * their event (the bot's subscription label) and, for bot events, the chain
+ * of bots that led here. Runs recorded before `source` existed fall back to
+ * "Triggered by an event".
+ *
+ * @param {object} r a run record
+ * @param {(botId: string) => string} [nameOf] bot id → name
+ */
+export function triggerLabel(r, nameOf = sameId) {
+  if (!r) return null;
   if (r.trigger === "schedule") return "Scheduled run";
-  if (r.trigger === "event") return "Triggered by an event";
-  return null;
+  if (r.trigger !== "event") return null;
+  const src = r.source;
+  if (!src || !(src.label || src.eventType)) return "Triggered by an event";
+  let text = `Triggered by ${src.label || src.eventType}`;
+  const chain = Array.isArray(src.chain) ? src.chain : [];
+  if (chain.length > 1) text += ` · ${chain.map(nameOf).join(" → ")}`;
+  return text;
 }
 
-function turnsForRun(r, { pending = false } = {}) {
+const PROVIDER_PROBLEM =
+  /couldn't start|settings › providers|credit balance|api[ -]?key|x-api-key|\b401\b|unauthori[sz]ed|authentication|token (has )?expired|expired token|invalid token|forbidden|\b403\b/i;
+
+/**
+ * Next steps for a failed run: always run it again (ask again, for a lead);
+ * and when the error points at a provider (a server that couldn't start, an
+ * AI provider's key or credit), a way to its settings.
+ *
+ * @returns {{ action: "run-again" | "open-settings", label: string, section?: string }[]}
+ */
+export function errorNextSteps(text, { isLead = false } = {}) {
+  if (!text) return [];
+  const steps = [
+    { action: "run-again", label: isLead ? "Ask again" : "Run again" },
+  ];
+  if (PROVIDER_PROBLEM.test(String(text))) {
+    steps.push({
+      action: "open-settings",
+      section: "providers",
+      label: "Open Settings › Providers",
+    });
+  }
+  return steps;
+}
+
+function turnsForRun(r, { pending = false, nameOf = sameId } = {}) {
   const turns = [];
   const at = r.startedAt || r.at || null;
-  const label = startedBy(r);
+  const label = triggerLabel(r, nameOf);
   if (label) {
     // Event prompts are machine-written (and fence untrusted payloads) — show
     // what started the run, not the raw prompt.
@@ -36,7 +79,13 @@ function turnsForRun(r, { pending = false } = {}) {
     turns.push({ kind: "tools", calls: r.toolCalls, at });
   }
   if (r.status === "failed" && r.error) {
-    turns.push({ kind: "error", text: r.error, at: r.endedAt || at });
+    // The prompt rides along so "Run again" can repeat the run.
+    turns.push({
+      kind: "error",
+      text: r.error,
+      prompt: r.prompt || "",
+      at: r.endedAt || at,
+    });
   }
   if (r.outputUnavailable) {
     turns.push({
@@ -58,11 +107,11 @@ function turnsForRun(r, { pending = false } = {}) {
 
 /**
  * @param {object[]} runs  oldest first
- * @param {{ live?: { prompt?, text?, toolCalls?, continued? } }} [opts]
- *        the run in progress, if any
+ * @param {{ live?: { prompt?, text?, toolCalls?, continued? }, nameOf?: Function }} [opts]
+ *        the run in progress, if any; bot id → name for trigger chains
  * @returns {object[]} turns
  */
-export function buildConversation(runs, { live = null } = {}) {
+export function buildConversation(runs, { live = null, nameOf = sameId } = {}) {
   const list = Array.isArray(runs) ? runs.filter(Boolean) : [];
   const turns = [];
   list.forEach((r, i) => {
@@ -73,7 +122,7 @@ export function buildConversation(runs, { live = null } = {}) {
         at: r.startedAt || r.at || null,
       });
     }
-    turns.push(...turnsForRun(r));
+    turns.push(...turnsForRun(r, { nameOf }));
   });
   if (live) {
     if (list.length && !live.continued) {

@@ -109,6 +109,27 @@ class BotRunner {
 
     const trigger = opts.trigger || "manual";
     const startedAt = this._now();
+    // Approval decisions made during this run, for the run record (Bots view
+    // › Activity). Names only — never the tool's input.
+    const approvalLog = [];
+    const createApproval = (request) => {
+      const pending = this._approvals.create(request);
+      Promise.resolve(pending && pending.promise)
+        .then((decision) => {
+          approvalLog.push({
+            tool: (request && request.toolName) || "tool",
+            provider: (request && request.serverName) || null,
+            decision:
+              decision && decision.allow
+                ? decision.remember
+                  ? "allowed-always"
+                  : "allowed"
+                : "denied",
+          });
+        })
+        .catch(() => {});
+      return pending;
+    };
     const controller = new AbortController();
     this._active.set(botId, controller);
     this._startedAt.set(botId, startedAt);
@@ -150,7 +171,7 @@ class BotRunner {
         mcpServers: bot.mcpServers || [],
         internalServers: this._internalServers,
         resolveServer,
-        createApproval: (request) => this._approvals.create(request),
+        createApproval,
         audit: this._audit,
         isPaused: () => this._isPaused(botId),
         gate: this._gate,
@@ -199,7 +220,7 @@ class BotRunner {
         // a sandbox dir, the approval policy, and a direct approval channel.
         workingDir: profile.workingDir,
         approvalPolicy: bot.approvalPolicy,
-        createApproval: (request) => this._approvals.create(request),
+        createApproval,
       };
       // A team lead is read-only: only its team tools, never the engine's
       // built-ins (shell, files, web…) — bot-teams TEAM-002 AC4.
@@ -254,7 +275,10 @@ class BotRunner {
       prompt: truncateText(opts.prompt || ""),
       continued: !!opts.continueSession,
       toolCalls,
+      approvals: approvalLog,
     };
+    // What triggered an event run (event label, publishing bot, chain).
+    if (opts.source) runRecord.source = opts.source;
     this._store.appendRun(botId, runRecord);
 
     // Feed usage to budgets (Slice 5). Optional hook; only when we captured
