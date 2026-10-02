@@ -36,6 +36,7 @@ const {
   BOTS_SET_SETTINGS,
   BOTS_ASK_LEAD,
   BOTS_GET_RUNS,
+  BOTS_LIST_RECENT_RUNS,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
@@ -67,6 +68,9 @@ const botApi = {
   getRuns: (botId, limit) =>
     ipcRenderer.invoke(BOTS_GET_RUNS, { botId, limit }),
   stop: (botId) => ipcRenderer.invoke(BOTS_STOP, { botId }),
+  /** The latest runs across every bot, newest first (the Bot monitor). */
+  listRecentRuns: (limit) =>
+    ipcRenderer.invoke(BOTS_LIST_RECENT_RUNS, { limit }),
 
   /** Resolve a pending approval. decision: { allow, reason? } */
   approve: (approvalId, decision) =>

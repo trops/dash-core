@@ -38,6 +38,7 @@ const {
   handleTeamTool,
 } = require("../bots/teamTools");
 const { isLead, leadOf, planEnsureLead } = require("../bots/teamLeads");
+const { recentRuns } = require("../bots/recentRuns");
 const { onWorkspaceDeleted } = require("../utils/workspaceEvents");
 const {
   checkChain,
@@ -329,6 +330,18 @@ const botController = {
     return runs.slice(-n);
   },
 
+  /**
+   * The latest runs across every bot, newest first, tagged with bot name and
+   * dashboard — the Bot monitor's "Recent" (TEAM-011 B3).
+   */
+  listRecentRuns({ limit = 10 } = {}) {
+    return recentRuns({
+      bots: this._store.list(),
+      getRuns: (id) => this._store.getRuns(id),
+      limit,
+    });
+  },
+
   // ---- Team leads (bot-teams TEAM-002 / TEAM-003) --------------------------
 
   /**
@@ -500,10 +513,18 @@ const botController = {
 
   /** @returns {Array<{id: string, name: string}>} bots with an in-flight run */
   listRunning() {
-    return this._runner.listActive().map((id) => ({
-      id,
-      name: (this._store.get(id) || {}).name || id,
-    }));
+    return this._runner.listActive().map((id) => {
+      const bot = this._store.get(id) || {};
+      return {
+        id,
+        name: bot.name || id,
+        workspaceId:
+          bot.workspaceId === null || bot.workspaceId === undefined
+            ? null
+            : String(bot.workspaceId),
+        startedAt: this._runner.startedAt(id),
+      };
+    });
   },
 
   pauseAll() {

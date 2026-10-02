@@ -423,7 +423,7 @@ answers from today's runs.
 > so that working with bots has room to breathe instead of being squeezed into a modal tab or a side panel.
 
 **Priority:** P1 (next after slice 2a; supersedes the slice 1–2a Bots tab and the side panel's chat)
-**Status:** In Progress (B1 + B2 shipped; B3 side-panel monitor next)
+**Status:** In Progress (B1, B2, B3 shipped; remaining gaps listed in the notes)
 **Design:** clickable mockup — https://claude.ai/artifact/DmugteBVtFYEUBrAuo5KCE (Aurora look from `docs/design/dark-shell.html`)
 
 **Acceptance Criteria:**
@@ -436,7 +436,7 @@ answers from today's runs.
 - [ ] AC6: **Activity tab.** The bot's runs, newest first: when, trigger, status, and the answer's first line; opening a run shows the full answer, its tool calls, approvals, and any error. Answers stored with a key this app can't read show as unavailable.
 - [ ] AC7: **Settings tab.** The full bot form (the existing `BotDetail`) inline, with Save / Discard. Switching bots or views with unsaved changes asks first.
 - [ ] AC8: **Live.** Statuses, the conversation, and the Activity tab update as runs stream and approvals arrive — no manual refresh.
-- [ ] AC9: **Bot Activity side panel → global monitor.** The panel keeps: **Needs you** (approvals across all dashboards, each labelled with its dashboard), **Running now**, and **Recent** results, with **Open in Bots view** (switches that dashboard to Bots with the bot selected). The lead chat and the "Run a bot" form move out of the panel into the Bots view.
+- [x] AC9: **Bot Activity side panel → global monitor.** The panel keeps: **Needs you** (approvals across all dashboards, each labelled with its dashboard), **Running now**, and **Recent** results, with **Open in Bots view** (switches that dashboard to Bots with the bot selected). The lead chat and the "Run a bot" form move out of the panel into the Bots view.
 - [x] AC10: **Dashboard Config › Bots** becomes a short summary of the team with **Open in Bots view**.
 - [x] AC11: **Narrow windows.** Below ~900 px the team list collapses into a bot picker above the selected bot.
 
@@ -462,6 +462,14 @@ answers from today's runs.
 - `BotDetail` gained `onDirtyChange` for the Settings tab's unsaved-changes guard.
 - Existing leads' generated instructions are upgraded in place (to point at the Bots view) by `ensureLead`; instructions the user edited are left alone.
 - **Not yet:** AC4's error next steps ("Reconnect …", "Run again") and the "triggered by …" chain in the conversation; AC6's approvals in the run detail; AC7's Discard button, and the unsaved-changes guard when leaving through the header's Dashboard switch (switching bots and tabs is guarded); AC8's Activity tab reloads on open rather than streaming; AC9 is B3.
+
+**Implementation notes (B3, Bot monitor, 2026-10-02):**
+
+- The Bot Activity panel is now a frame around dash-core's `BotMonitor` + `useBotMonitor`: **Needs you** (approvals on every dashboard, labelled "Bot · Dashboard"), **Running now** (with how long, and Stop), **Recent** (the last 10 runs across all bots, from the new `bots.listRecentRuns` IPC). The "Run a bot" form, live feed and lead chat were removed from the panel.
+- **Open in Bots view** switches in place when it's the dashboard you're viewing; otherwise it opens that dashboard as a **popout** in the Bots view on the bot (Recent → Activity tab; Needs you / Running → Conversation). An already-open popout is focused and re-targeted. So the dashboard you're on — and any unsaved edits — is never touched. Bots on no dashboard offer **Open in Settings** instead.
+- Popouts now offer the Dashboard | Bots switch and load team data; the lead is still only ensured in the main window. Popout options are validated in the main process (view, bot id, tab) before reaching the window URL.
+- `BotsView` takes a `focus` request (`{ botId, tab, seq }`), applied once the team loads and through the unsaved-changes guard.
+- Seen while testing (pre-existing, not B3): closing any dashboard popout drops MCP connections the main window's widgets share ("Connection closed").
 
 **Definition of Done:**
 

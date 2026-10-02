@@ -211,3 +211,95 @@ describe("BotsView — approvals", () => {
     expect(await screen.findByText(/Needs your approval/)).toBeInTheDocument();
   });
 });
+
+describe("BotsView — focus requests (B3 monitor)", () => {
+  function renderWithFocus(focus) {
+    setup();
+    // setup() rendered once without focus; render a fresh tree with it.
+    document.body.innerHTML = "";
+    const team = makeTeam();
+    const ui = (f) => (
+      <AppContext.Provider value={{ providers: {} }}>
+        <BotsView
+          workspace={workspace}
+          workspaces={[workspace]}
+          team={team}
+          narrow={false}
+          focus={f}
+        />
+      </AppContext.Provider>
+    );
+    const utils = render(ui(focus));
+    return { ...utils, rerender: (f) => utils.rerender(ui(f)) };
+  }
+
+  it("opens on the requested bot and tab", async () => {
+    renderWithFocus({ botId: "b1", tab: "activity", seq: 1 });
+    expect(
+      screen.getByRole("heading", { name: "Inbox Watch" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Activity" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("a later request re-selects", () => {
+    const { rerender } = renderWithFocus({
+      botId: "b1",
+      tab: "conversation",
+      seq: 1,
+    });
+    rerender({ botId: "b2", tab: "conversation", seq: 2 });
+    expect(
+      screen.getByRole("heading", { name: "CRM Sync" }),
+    ).toBeInTheDocument();
+  });
+
+  it("asks first when Settings has unsaved changes", () => {
+    const { rerender } = renderWithFocus({
+      botId: "b1",
+      tab: "settings",
+      seq: 1,
+    });
+    fireEvent.change(screen.getByDisplayValue("Inbox Watch"), {
+      target: { value: "Edited" },
+    });
+    rerender({ botId: "b2", tab: "conversation", seq: 2 });
+    expect(screen.getByText("Discard unsaved changes?")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Discard"));
+    expect(
+      screen.getByRole("heading", { name: "CRM Sync" }),
+    ).toBeInTheDocument();
+  });
+
+  it("applies once the team loads (team arrives after mount)", () => {
+    setup();
+    document.body.innerHTML = "";
+    const empty = makeTeam({ lead: null, members: [], bots: [] });
+    const full = makeTeam();
+    const ui = (team) => (
+      <AppContext.Provider value={{ providers: {} }}>
+        <BotsView
+          workspace={workspace}
+          workspaces={[workspace]}
+          team={team}
+          narrow={false}
+          focus={{ botId: "b2", tab: "activity", seq: 1 }}
+        />
+      </AppContext.Provider>
+    );
+    const { rerender } = render(ui(empty));
+    rerender(ui(full));
+    expect(
+      screen.getByRole("heading", { name: "CRM Sync" }),
+    ).toBeInTheDocument();
+  });
+
+  it("an unknown bot is ignored", () => {
+    renderWithFocus({ botId: "nope", tab: "activity", seq: 1 });
+    expect(
+      screen.getByRole("heading", { name: "Kitchen Lead" }),
+    ).toBeInTheDocument();
+  });
+});

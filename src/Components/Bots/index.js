@@ -7,6 +7,8 @@ export { BotsView } from "./BotsView";
 export { BotChat } from "./BotChat";
 export { BotRunHistory } from "./BotRunHistory";
 export { useTeamBots } from "./useTeamBots";
+export { BotMonitor, relativeTime } from "./BotMonitor";
+export { useBotMonitor } from "./useBotMonitor";
 export {
   buildConversation,
   botStatus,

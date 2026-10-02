@@ -37,11 +37,33 @@ describe("botController — Bots view backend", () => {
     assert.match(ctrl, /getRuns\(botId, \{ limit = 50 \} = \{\}\)/);
     assert.match(ctrl, /this\._store\.getRuns\(botId\)/);
   });
+
+  it("listRecentRuns() merges every bot's runs via the decrypting store (B3)", () => {
+    assert.match(ctrl, /require\("\.\.\/bots\/recentRuns"\)/);
+    assert.match(ctrl, /listRecentRuns\(\{ limit = 10 \} = \{\}\)/);
+    assert.match(
+      ctrl,
+      /recentRuns\(\{\s*bots: this\._store\.list\(\),\s*getRuns: \(id\) => this\._store\.getRuns\(id\),/,
+    );
+  });
+
+  it("listRunning() reports each run's start and dashboard (B3)", () => {
+    assert.match(ctrl, /startedAt: this\._runner\.startedAt\(id\)/);
+    assert.match(ctrl, /workspaceId:/);
+  });
 });
 
 describe("botApi / events — Bots view IPC", () => {
   it("defines the run-history channel", () => {
     assert.equal(events.BOTS_GET_RUNS, "bots-get-runs");
+  });
+
+  it("defines and exposes the recent-runs channel (B3 monitor)", () => {
+    assert.equal(events.BOTS_LIST_RECENT_RUNS, "bots-list-recent-runs");
+    assert.match(
+      api,
+      /listRecentRuns: \(limit\) =>\s*ipcRenderer\.invoke\(BOTS_LIST_RECENT_RUNS, \{ limit \}\)/,
+    );
   });
 
   it("exposes getRuns and run(…, { continueConversation })", () => {
