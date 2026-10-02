@@ -45,6 +45,8 @@ describe("BotsSection — event picker wiring", () => {
     for (const d of details) {
       expect(d).toMatch(/workspaces=\{workspaces\}/);
       expect(d).toMatch(/getWidgetConfig=\{getWidgetConfig\}/);
+      // Other bots' events (From: Another bot).
+      expect(d).toMatch(/bots=\{bots\}/);
     }
     expect(sectionSrc).toMatch(/ComponentManager\.config\(/);
   });

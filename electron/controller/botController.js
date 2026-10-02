@@ -30,6 +30,12 @@ const {
 const { matchSubscribedBots } = require("../bots/eventMatcher");
 const { EventDispatcher } = require("../bots/EventDispatcher");
 const { normalizeMcpResult } = require("../bots/mcpResult");
+const BotEventPublisher = require("../bots/BotEventPublisher");
+const {
+  checkChain,
+  causeFromEvent,
+  composeEventPrompt,
+} = require("../bots/botEvents");
 const {
   listToolSources,
   ensureBotServers,
@@ -61,25 +67,6 @@ const {
 function pricingFor(providerId, model) {
   const m = getCuratedModels(providerId).find((c) => c.value === model);
   return (m && m.pricing) || null;
-}
-
-/** Build the run prompt for an event-triggered bot (P1: FR-009). */
-function composeEventPrompt(event) {
-  let payload;
-  try {
-    payload =
-      event.content === undefined
-        ? "(no payload)"
-        : JSON.stringify(event.content);
-  } catch (_e) {
-    payload = "(unserializable payload)";
-  }
-  return (
-    `An event you subscribe to just fired.\n\n` +
-    `Event: ${event.eventType}\n` +
-    `Payload: ${payload}\n\n` +
-    `Follow your instructions to handle it.`
-  );
 }
 
 const botController = {
@@ -150,6 +137,13 @@ const botController = {
     // tool resolution and enforced in _callTool.
     this._allowedByBot = new Map();
 
+    // Bots publish onto the dashboard bus (US-010): completed / failed /
+    // tool.<providerType>.<tool>, each carrying the run's loop chain.
+    this._events = new BotEventPublisher({
+      publish: (msg) => this._publishBotEvent(msg),
+      providerType: (name) => this._providerType(name),
+    });
+
     this._runner = new BotRunner({
       engines,
       store: this._store,
@@ -207,11 +201,12 @@ const botController = {
 
   /**
    * Dispatch a fired event to every subscribed bot (P1: FR-009 / US-010).
-   * Called by dash-electron's widget-event relay tap. Guards: never re-trigger
-   * the origin bot (loop safety), skip paused bots and bots in cooldown; a bot
-   * already running is skipped by the runner itself.
+   * Called by dash-electron's widget-event relay tap and for bots' own events.
+   * Guards: never re-trigger the origin bot, refuse bot→bot loops and deep
+   * chains (US-011 AC6), skip paused bots and bots in cooldown; a bot already
+   * running is skipped by the runner itself.
    * @param {{ eventType: string, content?: any, workspaceId?: string,
-   *           originBotId?: string }} event
+   *           originBotId?: string, chain?: string[], depth?: number }} event
    */
   handleEvent(event) {
     if (!this._ready || !event || !event.eventType) return;
@@ -220,11 +215,24 @@ const botController = {
     });
     for (const bot of bots) {
       if (this._pause.isPaused(bot.id)) continue;
+      const loop = checkChain(event, bot.id);
+      if (!loop.ok) {
+        // Visible in the Activity feed rather than silently dropped.
+        this._broadcast(BOT_STREAM, {
+          botId: bot.id,
+          event: {
+            type: "warning",
+            message: `Not triggered by ${event.eventType}: ${loop.reason}.`,
+          },
+        });
+        continue;
+      }
       if (!this._dispatcher.shouldDispatch(bot.id)) continue;
       this._dispatcher.note(bot.id);
       this._run(bot.id, {
-        prompt: composeEventPrompt(event, bot),
+        prompt: composeEventPrompt(event),
         trigger: "event",
+        cause: causeFromEvent(event),
       });
     }
   },
@@ -394,17 +402,67 @@ const botController = {
   // ---- internals ----------------------------------------------------------
 
   _run(botId, opts) {
+    // Track the run for bot events — unless one is already in progress (the
+    // runner will skip this one, and the active run keeps its own cause).
+    const alreadyRunning = this._runner.listActive().includes(botId);
+    if (!alreadyRunning) this._events.startRun(botId, opts.cause);
     const p = this._runner.run(botId, {
       prompt: opts.prompt,
       trigger: opts.trigger,
-      emit: (event) => this._broadcast(BOT_STREAM, { botId, event }),
+      emit: (event) => {
+        if (!alreadyRunning) this._events.onRunEvent(botId, event);
+        this._broadcast(BOT_STREAM, { botId, event });
+      },
     });
     // The runner marks the bot active synchronously, so the active count is
     // already updated here. Broadcast on start and again on completion so the
     // tray/powerSaveBlocker can react (US-018).
     this._broadcastRunActive();
-    Promise.resolve(p).finally(() => this._broadcastRunActive());
+    Promise.resolve(p)
+      .then((record) => {
+        // completed / failed → the bus (skipped runs publish nothing).
+        if (!alreadyRunning) {
+          this._events.endRun(this._store.get(botId), record);
+        }
+      })
+      .catch(() => {})
+      .finally(() => this._broadcastRunActive());
     return p;
+  },
+
+  /**
+   * Put a bot's event on the dashboard bus: every window's widgets (via the
+   * same broadcast channel widget events use) and subscribed bots. Bot
+   * dispatch is deferred a tick so bot→bot chains never recurse on the stack.
+   */
+  _publishBotEvent(msg) {
+    const { eventType, content, workspaceId } = msg;
+    this._broadcast(
+      "widget-event:broadcast",
+      workspaceId
+        ? { eventType, content, workspaceId }
+        : { eventType, content },
+    );
+    setImmediate(() => {
+      try {
+        this.handleEvent(msg);
+      } catch (_e) {
+        // A dispatch failure must never surface into the publishing bot's run.
+      }
+    });
+  },
+
+  /** A Dash provider's type (e.g. "gmail") by its user-given name. */
+  _providerType(providerName) {
+    try {
+      const win = this._getMainWindow();
+      const { providers = [] } =
+        this._providers.listProviders(win, this._appId) || {};
+      const p = providers.find((x) => x && x.name === providerName);
+      return (p && p.type) || null;
+    } catch (_e) {
+      return null;
+    }
   },
 
   _broadcastRunActive() {
@@ -558,7 +616,17 @@ const botController = {
       opts.workspaceId || null,
       null,
     );
-    return normalizeMcpResult(result);
+    const normalized = normalizeMcpResult(result);
+    // tool.<providerType>.<tool> → the bus (successful provider calls only).
+    if (opts.botId) {
+      this._events.toolCalled(this._store.get(opts.botId), {
+        serverName,
+        toolName,
+        args,
+        result: normalized,
+      });
+    }
+    return normalized;
   },
 
   /** { [providerName]: allowedTools | null } for the user's MCP providers. */

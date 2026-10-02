@@ -596,3 +596,113 @@ describe("BotDetail (edit)", () => {
     expect(onDelete).toHaveBeenCalled();
   });
 });
+
+// "Run on events" → From: Another bot → Bot › Event (PRD US-010 / US-011 AC9).
+describe("BotDetail — bot events in the picker", () => {
+  const gmailBot = {
+    id: "bot_9",
+    name: "Gmail Email Check",
+    ref: "local/gmail-email-check",
+    instructions: "check mail",
+    mcpServers: ["Gmail New"],
+    toolSelections: { "Gmail New": ["search_emails"] },
+    schedules: [],
+  };
+  const sources = [
+    { name: "Gmail New", type: "gmail", tools: ["search_emails"] },
+  ];
+
+  beforeEach(() => {
+    window.mainApi = {
+      bots: { listToolSources: jest.fn().mockResolvedValue(sources) },
+    };
+  });
+
+  const fillRequired = () => {
+    fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
+      target: { value: "Notifier" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "Notify me" },
+    });
+  };
+
+  it("picks Another bot › Bot › Event and saves the bot event", async () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail isCreating providers={{}} bots={[gmailBot]} onSave={onSave} />,
+    );
+    fillRequired();
+    fireEvent.change(screen.getByLabelText("From"), {
+      target: { value: "bot" },
+    });
+    fireEvent.change(screen.getByLabelText("Bot"), {
+      target: { value: "bot_9" },
+    });
+    // Tool events appear once the provider list has loaded.
+    await screen.findByText("Gmail New › search_emails");
+    fireEvent.change(screen.getByLabelText("Event"), {
+      target: { value: "tool.gmail.search_emails" },
+    });
+    fireEvent.click(screen.getByText("Add event"));
+    expect(
+      screen.getByText("Gmail Email Check › Gmail New › search_emails"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Create"));
+    const [sub] = onSave.mock.calls[0][0].subscriptions;
+    expect(sub.eventType).toBe(
+      "bot:local/gmail-email-check[bot_9].tool.gmail.search_emails",
+    );
+    expect(sub.source).toEqual({
+      kind: "bot",
+      ref: "local/gmail-email-check",
+      instanceId: "bot_9",
+      event: "tool.gmail.search_emails",
+    });
+  });
+
+  it("doesn't offer the bot being edited as a source", () => {
+    render(
+      <BotDetail
+        bot={gmailBot}
+        providers={{}}
+        bots={[gmailBot]}
+        onSave={jest.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("From"), {
+      target: { value: "bot" },
+    });
+    expect(screen.queryByLabelText("Bot")).toBeNull();
+    expect(screen.getByText(/No other bots yet/)).toBeInTheDocument();
+  });
+
+  it("flags a subscription whose source bot was deleted", () => {
+    render(
+      <BotDetail
+        bot={{
+          id: "bot_2",
+          name: "Notifier",
+          instructions: "x",
+          schedules: [],
+          subscriptions: [
+            {
+              eventType: "bot:local/old[bot_gone].completed",
+              label: "Old Bot › Completed",
+              source: {
+                kind: "bot",
+                ref: "local/old",
+                instanceId: "bot_gone",
+                event: "completed",
+              },
+            },
+          ],
+        }}
+        providers={{}}
+        bots={[]}
+        onSave={jest.fn()}
+      />,
+    );
+    expect(screen.getByText(/bot missing/i)).toBeInTheDocument();
+  });
+});

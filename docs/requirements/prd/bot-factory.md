@@ -640,18 +640,28 @@ Manager tagged "Work".
 -   [ ] AC1: A bot definition can list `subscriptions`, each an event name (widget or bot), a task prompt, and a `scope`; matching events start a run with trigger "event."
 -   [ ] AC2: `scope` defaults to `"workspace"` (the bot's own workspace). `"project:<id>"` matches that project's channel and requires project membership. `"workspaces:[ids]"` or `"global"` match events from other workspaces and require an explicit cross-workspace grant.
 -   [ ] AC3: The main process subscribes on the bots' behalf by tapping the existing `widget-event` relay, so bots hear events whether or not their dashboard is open.
--   [ ] AC4: The event payload is passed to the model as clearly labeled, untrusted data, never merged into the bot's instructions.
+-   [x] AC4: The event payload is passed to the model as clearly labeled, untrusted data, never merged into the bot's instructions.
 -   [ ] AC5: Cached/replayed events never trigger runs; only live events do.
--   [ ] AC6: Loop prevention across workspaces: runs are refused when `depth` exceeds the max chain depth (default 5) or when the bot already appears in the event's `chain`.
+-   [x] AC6: Loop prevention across workspaces: runs are refused when `depth` exceeds the max chain depth (default 5) or when the bot already appears in the event's `chain`.
 -   [ ] AC7: Per-subscription debounce (default 2s, coalescing to the latest payload) and a per-bot rate limit (default 20 event-triggered runs/hour).
 -   [ ] AC8: Events for a paused bot follow its `whilePaused` policy: `"queue"` (default, delivered on resume, coalesced per subscription) or `"drop"` (logged as skipped).
--   [ ] AC9: The bot form lists subscribable events for the chosen scope, built from widgets' declared `events` and other bots' `publishes`. _(Widget half implemented — see notes below; bot events follow with US-010.)_
+-   [x] AC9: The bot form lists subscribable events for the chosen scope, built from widgets' declared `events` and other bots' `publishes`. _(Bots' events are derived from their providers + tools rather than a hand-declared `publishes` list — see notes below.)_
 
 **Implementation notes — event picker, widget events (2026-10-01):**
 
 -   "Run on events" is a pick-only cascade, **Dashboard › Widget › Event**, built from each dashboard's widgets and their `.dash.js` `events` (`src/Components/Settings/details/eventCatalog.js`, same source as Dashboard Config → Listeners). Free-text event names are gone; dashboards sharing a name are numbered.
 -   A subscription stores the runtime `eventType` (`Component[itemId].event`) plus a structured `source: { kind, ref, instanceId, event, workspaceId }` and a `label`. Template export (US-026) keeps `ref` + `event` and drops local ids; install re-resolves them (or `ref[*]`). Saved subscriptions whose widget is gone show "widget missing".
 -   **Dashboard scoping:** copied dashboards reuse widget ids, so identical `eventType`s came from several dashboards. Widget events are now stamped with their dashboard (`DashboardPublisher.pub` meta → IPC → relay → `botController.handleEvent`), and a subscription with `source.workspaceId` only matches events from that dashboard (`eventMatcher.sameDashboard`). Unstamped events and dashboard-less subscriptions still match (back-compat).
+
+**Implementation notes — bot events (2026-10-01):**
+
+-   **Identity:** every bot has an immutable `ref` (`BotStore`): `local/<slug of name at creation>` or a template's registry id; older bots get one on load. Events are `bot:<ref>[<botId>].<event>` (`electron/bots/botEvents.js`).
+-   **What bots publish** (`BotEventPublisher`, wired in `botController`): `completed` (final text, last 8 KB), `failed` (error), and `tool.<providerType>.<tool>` per successful provider tool call (args + result, last 8 KB). Built-in agent tools and memory tools publish nothing. Payloads are keyed by `botId`, with `ref` and `botName` as labels. Events go to every window on `widget-event:broadcast` (widgets can listen) and to the bot dispatcher.
+-   **Derived, not declared:** instead of a hand-written `publishes` list, a bot's events follow from its settings — Completed, Failed, and one per tool it may use (provider limit ∩ selection), named by provider TYPE so they're portable to templates.
+-   **Loop guard (AC6):** every bot event carries `chain` (bot ids) and `depth`; `checkChain` refuses a bot already in the chain or at depth 5, and the refusal shows as a warning in the Activity feed. Bot→bot dispatch is deferred a tick so chains never recurse on the stack.
+-   **Untrusted payloads (AC4):** the event-run prompt fences the payload in `<event_payload>` (a payload can't close the fence) and tells the bot to treat it as data, not instructions — for widget and bot events alike.
+-   **Picker:** "Run on events" → **From: A dashboard widget / Another bot**; Another bot → **Bot › Event** (the bot being edited is excluded). A subscription to a deleted bot shows "bot missing".
+-   **Not yet:** popout windows don't replay the last bot event (the replay cache lives in dash-electron's relay); `publish_event` (AC1, custom events) remains future work.
 
 **Edge Cases:**
 

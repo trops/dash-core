@@ -29,6 +29,7 @@ const {
   withDefaults,
   validateBotDefinition,
 } = require("./botSchema");
+const { botRef } = require("./botEvents");
 
 // Keep only the most recent N runs per bot so the blob doesn't grow without
 // bound (full history migrates to SQLite in a later phase).
@@ -60,6 +61,16 @@ class BotStore {
     const data = this._persistence.read() || {};
     if (!data.bots) data.bots = {};
     if (!data.runs) data.runs = {};
+    // Bots saved before `ref` existed get their stable identity once, and it's
+    // persisted so a later rename can't change it.
+    let backfilled = false;
+    for (const bot of Object.values(data.bots)) {
+      if (bot && !bot.ref) {
+        bot.ref = botRef(bot);
+        backfilled = true;
+      }
+    }
+    if (backfilled) this._save(data);
     return data;
   }
 
@@ -101,7 +112,15 @@ class BotStore {
     }
     const id = newBotId();
     const ts = this._now();
-    const bot = { ...filled, id, createdAt: ts, updatedAt: ts };
+    // Stable identity for bot events (bot:<ref>[<id>].<event>): a template's
+    // registry id when supplied, else local/<slug of name>. Never changes.
+    const bot = {
+      ...filled,
+      ref: botRef(filled),
+      id,
+      createdAt: ts,
+      updatedAt: ts,
+    };
 
     const data = this._load();
     data.bots[id] = bot;
@@ -122,7 +141,14 @@ class BotStore {
     const existing = data.bots[id];
     if (!existing) throw new Error(`BotStore.update: no bot "${id}"`);
 
-    const { id: _i, createdAt: _c, session: _s, ...safePatch } = patch || {};
+    // `ref` is the bot's stable identity — protected like `id`.
+    const {
+      id: _i,
+      createdAt: _c,
+      session: _s,
+      ref: _r,
+      ...safePatch
+    } = patch || {};
     const merged = { ...existing, ...safePatch, updatedAt: this._now() };
 
     const { valid, errors } = validateBotDefinition(merged);

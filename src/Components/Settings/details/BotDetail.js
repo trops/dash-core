@@ -20,7 +20,15 @@ import {
   buildWidgetEventCatalog,
   widgetSubscription,
   describeSubscription,
+  buildBotEventCatalog,
+  botSubscription,
 } from "./eventCatalog";
+
+// "Run on events" sources: a dashboard widget, or another bot.
+const EVENT_FROM_OPTIONS = [
+  { value: "widget", label: "A dashboard widget" },
+  { value: "bot", label: "Another bot" },
+];
 
 /**
  * BotDetail — create/edit form for a Bot Factory bot (Settings → Bots).
@@ -131,6 +139,8 @@ export const BotDetail = ({
   // Dashboards + widget-config lookup → the "Run on events" picker.
   workspaces = EMPTY_LIST,
   getWidgetConfig = null,
+  // All bots → "Another bot" events (completed / failed / tool.*).
+  bots = EMPTY_LIST,
   onSave,
   onCancel,
   onDelete,
@@ -220,8 +230,10 @@ export const BotDetail = ({
     () => buildWidgetEventCatalog(workspaces, getWidgetConfig),
     [workspaces, getWidgetConfig],
   );
+  const [pickFrom, setPickFrom] = useState("widget");
   const [pickWorkspace, setPickWorkspace] = useState("");
   const [pickWidget, setPickWidget] = useState("");
+  const [pickBot, setPickBot] = useState("");
   const [pickEvent, setPickEvent] = useState("");
 
   const [saving, setSaving] = useState(false);
@@ -349,9 +361,25 @@ export const BotDetail = ({
     ? pickedWs.widgets.find((w) => `${w.ref}|${w.instanceId}` === pickWidget)
     : null;
 
+  // Other bots' events, derived from their providers + tools (this bot
+  // excluded — it can't trigger itself).
+  const botCatalog = useMemo(
+    () => buildBotEventCatalog(bots, toolSources, bot?.id || null),
+    [bots, toolSources, bot?.id],
+  );
+  const pickedBot = botCatalog.find((b) => b.botId === pickBot) || null;
+  const pickedBotEvent = pickedBot
+    ? pickedBot.events.find((e) => e.event === pickEvent) || null
+    : null;
+  const canAddEvent =
+    pickFrom === "bot" ? !!pickedBotEvent : !!(pickedWidget && pickEvent);
+
   const addSubscription = () => {
-    if (!pickedWs || !pickedWidget || !pickEvent) return;
-    const sub = widgetSubscription(pickedWs, pickedWidget, pickEvent);
+    if (!canAddEvent) return;
+    const sub =
+      pickFrom === "bot"
+        ? botSubscription(pickedBot, pickedBotEvent)
+        : widgetSubscription(pickedWs, pickedWidget, pickEvent);
     setSubscriptions((prev) =>
       prev.some((s) => s.eventType === sub.eventType) ? prev : [...prev, sub],
     );
@@ -632,9 +660,10 @@ export const BotDetail = ({
           {subscriptions.length ? (
             <div className="flex flex-col gap-1">
               {subscriptions.map((sub) => {
-                const { label, missing } = describeSubscription(
+                const { label, missing, kind } = describeSubscription(
                   sub,
                   eventCatalog,
+                  botCatalog,
                 );
                 return (
                   <div
@@ -646,7 +675,7 @@ export const BotDetail = ({
                       {missing ? (
                         <span className="text-xs opacity-60">
                           {" "}
-                          (widget missing)
+                          ({kind === "bot" ? "bot" : "widget"} missing)
                         </span>
                       ) : null}
                     </span>
@@ -665,7 +694,55 @@ export const BotDetail = ({
               This bot doesn&apos;t run on any events yet.
             </span>
           )}
-          {eventCatalog.length ? (
+          <SelectInput
+            label="From"
+            value={pickFrom}
+            onChange={(v) => {
+              setPickFrom(v);
+              setPickEvent("");
+            }}
+            options={EVENT_FROM_OPTIONS}
+          />
+          {pickFrom === "bot" ? (
+            botCatalog.length ? (
+              <div className="flex flex-col gap-2">
+                <SelectInput
+                  label="Bot"
+                  value={pickBot}
+                  onChange={(v) => {
+                    setPickBot(v);
+                    setPickEvent("");
+                  }}
+                  placeholder="Choose a bot…"
+                  options={botCatalog.map((b) => ({
+                    value: b.botId,
+                    label: b.name,
+                  }))}
+                />
+                <SelectInput
+                  label="Event"
+                  value={pickEvent}
+                  onChange={setPickEvent}
+                  placeholder="Choose an event…"
+                  options={(pickedBot ? pickedBot.events : []).map((e) => ({
+                    value: e.event,
+                    label: e.label,
+                  }))}
+                />
+                <Button
+                  title="Add event"
+                  onClick={addSubscription}
+                  size="sm"
+                  disabled={!canAddEvent}
+                />
+              </div>
+            ) : (
+              <span className="text-xs opacity-50">
+                No other bots yet. Create another bot to trigger this one when
+                it finishes or uses a tool.
+              </span>
+            )
+          ) : eventCatalog.length ? (
             <div className="flex flex-col gap-2">
               <SelectInput
                 label="Dashboard"
