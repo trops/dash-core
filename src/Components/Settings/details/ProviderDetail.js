@@ -128,12 +128,53 @@ export const ProviderDetail = ({
     setFormCredentials((prev) => ({ ...prev, [key]: value }));
   };
 
+  // Pre-select: intersect with existing allowedTools, or select all
+  const preselectTools = (tools) => {
+    const allToolNames = (tools || []).map((t) => t.name);
+    if (provider?.allowedTools) {
+      setSelectedTools(
+        allToolNames.filter((t) => provider.allowedTools.includes(t)),
+      );
+    } else {
+      setSelectedTools(allToolNames);
+    }
+  };
+
+  // Test Connection never stops a server your dashboards are using: if the
+  // provider is already connected, report it as is (saving a provider
+  // restarts it, so it runs with the saved credentials). Only a server the
+  // test itself started is stopped afterwards.
   const handleTestConnection = () => {
     if (!dashApi || !provider?.mcpConfig || !providerName) return;
 
     setIsTesting(true);
     setTestResult(null);
 
+    if (typeof dashApi.mcpGetServerStatus !== "function") {
+      startTestServer();
+      return;
+    }
+    dashApi.mcpGetServerStatus(
+      providerName,
+      (event, status) => {
+        if (status && status.status === "connected") {
+          const tools = status.tools || [];
+          setTestResult({
+            success: true,
+            tools,
+            message: `Connected and in use. Found ${tools.length} tools.`,
+          });
+          preselectTools(tools);
+          setIsTesting(false);
+          return;
+        }
+        startTestServer();
+      },
+      () => startTestServer(),
+    );
+  };
+
+  const startTestServer = () => {
     dashApi.mcpStartServer(
       providerName,
       provider.mcpConfig,
@@ -151,17 +192,9 @@ export const ProviderDetail = ({
           message: `Connected! Found ${(result.tools || []).length} tools.`,
         });
 
-        // Pre-select: intersect with existing allowedTools, or select all
-        const allToolNames = (result.tools || []).map((t) => t.name);
-        if (provider?.allowedTools) {
-          setSelectedTools(
-            allToolNames.filter((t) => provider.allowedTools.includes(t)),
-          );
-        } else {
-          setSelectedTools(allToolNames);
-        }
+        preselectTools(result.tools);
 
-        // Stop after test
+        // Only the test was using it — stop it again.
         dashApi.mcpStopServer(
           providerName,
           () => {},
