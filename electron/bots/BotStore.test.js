@@ -166,3 +166,47 @@ describe("BotStore durability across a restart", () => {
     assert.deepEqual(restored.session.state, { messages: ["hi"] });
   });
 });
+
+// Stable identity for event naming (bot:<ref>[<botId>].<event>) — survives
+// renames; set once.
+describe("BotStore — ref (stable bot identity)", () => {
+  it("create sets ref = local/<slug of name>", () => {
+    const { store } = freshStore();
+    const bot = store.create({ ...validDef, name: "Gmail Email Check" });
+    assert.equal(bot.ref, "local/gmail-email-check");
+  });
+
+  it("create keeps a ref supplied by a template install", () => {
+    const { store } = freshStore();
+    const bot = store.create({
+      ...validDef,
+      ref: "@trops/inbox-tools/InboxTriage",
+    });
+    assert.equal(bot.ref, "@trops/inbox-tools/InboxTriage");
+  });
+
+  it("renaming doesn't change ref, and a patch can't overwrite it", () => {
+    const { store } = freshStore();
+    const bot = store.create({ ...validDef, name: "Gmail Email Check" });
+    const renamed = store.update(bot.id, {
+      name: "Inbox Watch",
+      ref: "local/hijack",
+    });
+    assert.equal(renamed.name, "Inbox Watch");
+    assert.equal(renamed.ref, "local/gmail-email-check");
+  });
+
+  it("bots saved before refs existed get one on load, persisted", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "botstore-test-"));
+    tmpRoots.push(root);
+    const persistence = memPersistence({
+      bots: {
+        bot_old: { id: "bot_old", name: "Daily Brief", instructions: "x" },
+      },
+      runs: {},
+    });
+    const store = new BotStore({ persistence, paths: { botsRoot: root } });
+    assert.equal(store.get("bot_old").ref, "local/daily-brief");
+    assert.equal(persistence._blob().bots.bot_old.ref, "local/daily-brief");
+  });
+});

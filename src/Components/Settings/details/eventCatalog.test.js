@@ -2,7 +2,97 @@ import {
   buildWidgetEventCatalog,
   widgetSubscription,
   describeSubscription,
+  buildBotEventCatalog,
+  botSubscription,
 } from "./eventCatalog";
+
+// Bot events — derived from each bot's providers (by TYPE) + selected tools.
+describe("buildBotEventCatalog", () => {
+  const gmailBot = {
+    id: "bot_9",
+    name: "Gmail Email Check",
+    ref: "local/gmail-email-check",
+    mcpServers: ["Gmail New"],
+    toolSelections: { "Gmail New": ["search_emails"] },
+  };
+  const sources = [
+    {
+      name: "Gmail New",
+      type: "gmail",
+      tools: ["read_email", "search_emails"],
+    },
+  ];
+
+  it("lists Completed, Failed and one event per allowed provider tool", () => {
+    const [entry] = buildBotEventCatalog([gmailBot], sources);
+    expect(entry).toMatchObject({
+      botId: "bot_9",
+      ref: "local/gmail-email-check",
+      name: "Gmail Email Check",
+    });
+    expect(entry.events).toEqual([
+      { event: "completed", label: "Completed" },
+      { event: "failed", label: "Failed" },
+      // Narrowed by the bot's selection; named by provider TYPE.
+      { event: "tool.gmail.search_emails", label: "Gmail New › search_emails" },
+    ]);
+  });
+
+  it("uses all of the provider's tools when the bot has no selection", () => {
+    const [entry] = buildBotEventCatalog(
+      [{ ...gmailBot, toolSelections: {} }],
+      sources,
+    );
+    expect(entry.events.map((e) => e.event)).toEqual([
+      "completed",
+      "failed",
+      "tool.gmail.read_email",
+      "tool.gmail.search_emails",
+    ]);
+  });
+
+  it("excludes the bot being edited (it can't trigger itself)", () => {
+    expect(buildBotEventCatalog([gmailBot], sources, "bot_9")).toEqual([]);
+  });
+
+  it("skips tool events for providers with unknown type or tools", () => {
+    const [entry] = buildBotEventCatalog(
+      [{ ...gmailBot, mcpServers: ["Gone"] }],
+      sources,
+    );
+    expect(entry.events.map((e) => e.event)).toEqual(["completed", "failed"]);
+  });
+
+  it("botSubscription builds bot:<ref>[<botId>].<event> + source + label", () => {
+    const [entry] = buildBotEventCatalog([gmailBot], sources);
+    const sub = botSubscription(entry, entry.events[2]);
+    expect(sub).toEqual({
+      eventType: "bot:local/gmail-email-check[bot_9].tool.gmail.search_emails",
+      source: {
+        kind: "bot",
+        ref: "local/gmail-email-check",
+        instanceId: "bot_9",
+        event: "tool.gmail.search_emails",
+      },
+      label: "Gmail Email Check › Gmail New › search_emails",
+    });
+  });
+
+  it("describeSubscription labels a bot subscription and flags a deleted bot", () => {
+    const cat = buildBotEventCatalog([gmailBot], sources);
+    const sub = botSubscription(cat[0], cat[0].events[0]);
+    expect(describeSubscription(sub, [], cat)).toEqual({
+      label: "Gmail Email Check › Completed",
+      missing: false,
+      kind: "bot",
+    });
+    expect(describeSubscription(sub, [], [])).toEqual({
+      label: "Gmail Email Check › Completed",
+      missing: true,
+      kind: "bot",
+    });
+  });
+});
 
 const cfg = (map) => (name) => map[name] || null;
 

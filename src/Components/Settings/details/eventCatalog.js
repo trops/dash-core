@@ -80,8 +80,21 @@ export function widgetSubscription(workspace, widget, event) {
  * the picker (bare eventType) get a friendly label when they still resolve;
  * otherwise they show as typed.
  */
-export function describeSubscription(sub, catalog) {
+export function describeSubscription(sub, catalog, botCatalog = []) {
   const eventType = sub && sub.eventType;
+  // Bot subscriptions resolve against the bot catalog; `kind` lets the form
+  // say "bot missing" instead of "widget missing".
+  if (sub && sub.source && sub.source.kind === "bot") {
+    for (const b of botCatalog || []) {
+      for (const ev of b.events) {
+        const s = botSubscription(b, ev);
+        if (s.eventType === eventType) {
+          return { label: s.label, missing: false, kind: "bot" };
+        }
+      }
+    }
+    return { label: sub.label || eventType, missing: true, kind: "bot" };
+  }
   for (const ws of catalog || []) {
     for (const w of ws.widgets) {
       for (const ev of w.events) {
@@ -98,4 +111,58 @@ export function describeSubscription(sub, catalog) {
     return { label: sub.label || eventType, missing: true };
   }
   return { label: eventType || "", missing: false };
+}
+
+/**
+ * Events other bots publish (bot:<ref>[<botId>].<event>, PRD US-010), for the
+ * "Another bot" side of the picker. Derived from each bot's settings — never
+ * hand-declared: Completed, Failed, and one `tool.<providerType>.<tool>` per
+ * tool the bot may use (the provider's tools, narrowed by the bot's
+ * selection). Providers with no known type or tool list are skipped.
+ *
+ * @param {Array<object>} bots
+ * @param {Array<{name, type, tools}>} toolSources  bots.listToolSources()
+ * @param {string} [excludeBotId]  the bot being edited — can't trigger itself
+ */
+export function buildBotEventCatalog(bots, toolSources, excludeBotId = null) {
+  if (!Array.isArray(bots)) return [];
+  const sources = Array.isArray(toolSources) ? toolSources : [];
+  const out = [];
+  for (const bot of bots) {
+    if (!bot || !bot.id || !bot.ref || bot.id === excludeBotId) continue;
+    const events = [
+      { event: "completed", label: "Completed" },
+      { event: "failed", label: "Failed" },
+    ];
+    for (const provider of bot.mcpServers || []) {
+      const src = sources.find((s) => s && s.name === provider);
+      if (!src || !src.type || !Array.isArray(src.tools)) continue;
+      const sel = bot.toolSelections && bot.toolSelections[provider];
+      const tools = Array.isArray(sel)
+        ? src.tools.filter((t) => sel.includes(t))
+        : src.tools;
+      for (const tool of tools) {
+        events.push({
+          event: `tool.${src.type}.${tool}`,
+          label: `${provider} › ${tool}`,
+        });
+      }
+    }
+    out.push({ botId: bot.id, ref: bot.ref, name: bot.name || bot.id, events });
+  }
+  return out;
+}
+
+/** A subscription to one bot event, picked from the bot catalog. */
+export function botSubscription(botEntry, ev) {
+  return {
+    eventType: `bot:${botEntry.ref}[${botEntry.botId}].${ev.event}`,
+    source: {
+      kind: "bot",
+      ref: botEntry.ref,
+      instanceId: botEntry.botId,
+      event: ev.event,
+    },
+    label: `${botEntry.name} › ${ev.label}`,
+  };
 }

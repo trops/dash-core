@@ -125,6 +125,7 @@ export const BotsSection = ({
         providers={providers}
         workspaces={workspaces}
         getWidgetConfig={getWidgetConfig}
+        bots={bots}
         onSave={handleSave}
         onCancel={() => setIsCreating(false)}
       />
@@ -137,6 +138,7 @@ export const BotsSection = ({
         providers={providers}
         workspaces={workspaces}
         getWidgetConfig={getWidgetConfig}
+        bots={bots}
         onSave={handleSave}
         onDelete={() => setDeleteTarget(selected.id)}
       />
