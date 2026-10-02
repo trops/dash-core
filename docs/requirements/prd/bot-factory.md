@@ -4,7 +4,7 @@
 **Last Updated:** 2026-09-27
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; Bots UI consumed by dash-electron)
-**Related PRDs:** [mcp-providers.md](./mcp-providers.md), [dashboard-marketplace.md](./dashboard-marketplace.md), [bot-factory-use-cases.md](./bot-factory-use-cases.md), dash-electron `docs/requirements/prd/ai-assistant.md`
+**Related PRDs:** [mcp-providers.md](./mcp-providers.md), [dashboard-marketplace.md](./dashboard-marketplace.md), [bot-factory-use-cases.md](./bot-factory-use-cases.md), [bot-teams.md](./bot-teams.md) (dashboard teams, team leads, installable teams), dash-electron `docs/requirements/prd/ai-assistant.md`
 
 ---
 
