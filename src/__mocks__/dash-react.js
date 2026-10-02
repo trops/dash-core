@@ -40,17 +40,49 @@ function InputText({ label, value, onChange, placeholder }) {
   );
 }
 
-function TextArea({ label, value, onChange, placeholder, rows }) {
+function TextArea({ label, value, onChange, placeholder, rows, ...htmlProps }) {
+  // dash-react spreads extra props (onKeyDown, aria-label…) onto <textarea>.
+  const {
+    className: _c,
+    inputClassName: _i,
+    padding: _p,
+    backgroundColor: _b,
+    textColor: _t,
+    borderColor: _bc,
+    ...rest
+  } = htmlProps;
   return React.createElement(
     "label",
     null,
     label,
     React.createElement("textarea", {
+      ...rest,
       value: value,
       onChange: (e) => onChange(e.target.value),
       placeholder: placeholder,
       rows: rows,
     }),
+  );
+}
+
+// dash-react ≥1.0.58 SegmentedControl: a radiogroup of option buttons.
+function SegmentedControl({ options = [], value, onChange, ariaLabel }) {
+  return React.createElement(
+    "div",
+    { role: "radiogroup", "aria-label": ariaLabel },
+    options.map((o) =>
+      React.createElement(
+        "button",
+        {
+          key: String(o.value),
+          type: "button",
+          role: "radio",
+          "aria-checked": o.value === value,
+          onClick: () => o.value !== value && onChange && onChange(o.value),
+        },
+        o.label,
+      ),
+    ),
   );
 }
 
@@ -320,12 +352,18 @@ function EmptyState({ icon, title, description }) {
 }
 
 function ConfirmationModal({
+  isOpen,
   title,
   message,
+  confirmLabel,
+  cancelLabel,
   confirmText,
   onConfirm,
   onCancel,
 }) {
+  // dash-react's real props are isOpen / confirmLabel / cancelLabel;
+  // confirmText is kept for older callers. isOpen === false hides it.
+  if (isOpen === false) return null;
   return React.createElement(
     "div",
     { "data-testid": "confirmation-modal" },
@@ -334,9 +372,13 @@ function ConfirmationModal({
     React.createElement(
       "button",
       { onClick: onConfirm },
-      confirmText || "Confirm",
+      confirmLabel || confirmText || "Confirm",
     ),
-    React.createElement("button", { onClick: onCancel }, "Cancel"),
+    React.createElement(
+      "button",
+      { onClick: onCancel },
+      cancelLabel || "Cancel",
+    ),
   );
 }
 
@@ -433,8 +475,28 @@ function SectionLabel({ text = null, className = "", children }) {
   );
 }
 
+function SubHeading3({ title }) {
+  return React.createElement("h3", null, title);
+}
+
+function Toggle({ text, enabled, setEnabled }) {
+  return React.createElement(
+    "label",
+    null,
+    React.createElement("input", {
+      type: "checkbox",
+      checked: !!enabled,
+      onChange: (e) => setEnabled && setEnabled(e.target.checked),
+    }),
+    text,
+  );
+}
+
 module.exports = {
   SectionLabel,
+  SubHeading3,
+  Toggle,
+  ButtonIcon2: ButtonIcon,
   isHexColor,
   deriveShades,
   TAILWIND_PALETTE,
@@ -443,6 +505,7 @@ module.exports = {
   Stepper,
   InputText,
   TextArea,
+  SegmentedControl,
   Checkbox,
   Button,
   Button2,

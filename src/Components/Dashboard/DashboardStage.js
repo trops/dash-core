@@ -49,6 +49,8 @@ import { WorkspaceContext } from "../../Context/WorkspaceContext";
 import { useMissingWidgets } from "../../hooks/useMissingWidgets";
 import { MissingWidgetsModal } from "../../Widget/MissingWidgetsModal";
 import { DashboardConfigModal } from "./DashboardConfigModal";
+import { useTeamBots } from "../Bots/useTeamBots";
+import { BotsView } from "../Bots/BotsView";
 import {
   forEachWidget,
   getUnresolvedProviders,
@@ -246,6 +248,30 @@ const DashboardStageInner = ({
     [workspaceSelected, workspaceConfig],
   );
 
+  // This dashboard's team, live — the Bots switch's attention badge and the
+  // Bots view (bot-teams TEAM-011). Not in popouts.
+  const team = useTeamBots(popout ? null : (workspaceSelected?.id ?? null));
+  const teamRefreshRef = useRef(team.refresh);
+  teamRefreshRef.current = team.refresh;
+
+  // Dashboard | Bots, per dashboard. The Bots view is a viewing mode: it
+  // shows only in preview (not edit mode, not popouts).
+  const [stageModeByWorkspace, setStageModeByWorkspace] = useState({});
+  const stageMode =
+    !popout && previewMode && workspaceSelected
+      ? stageModeByWorkspace[workspaceSelected.id] || "dashboard"
+      : "dashboard";
+  const setStageMode = useCallback(
+    (mode) => {
+      if (!workspaceSelected) return;
+      setStageModeByWorkspace((prev) => ({
+        ...prev,
+        [workspaceSelected.id]: mode,
+      }));
+    },
+    [workspaceSelected],
+  );
+
   // Every dashboard gets an idle team lead the first time it's opened
   // (bot-teams TEAM-002). Idempotent; respects a lead turned off for this
   // dashboard and the global "Create team leads automatically" switch.
@@ -255,7 +281,9 @@ const DashboardStageInner = ({
     if (!bots || typeof bots.ensureLead !== "function") return;
     Promise.resolve(
       bots.ensureLead(workspaceSelected.id, workspaceSelected.name),
-    ).catch(() => {});
+    )
+      .then(() => teamRefreshRef.current && teamRefreshRef.current())
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [popout, workspaceSelected?.id]);
 
@@ -1606,6 +1634,7 @@ const DashboardStageInner = ({
       originalWorkspaceRef.current = deepCopy(workspaceSelected);
       setIsDirty(false);
       setPreviewMode(false);
+      setStageMode("dashboard");
       return;
     }
     // Cancel path: prompt only if there are unsaved edits. The
@@ -1974,6 +2003,11 @@ const DashboardStageInner = ({
                       : () => setIsConfigModalOpen(true)
                   }
                   configUnresolvedCount={unresolvedCount}
+                  stageMode={stageMode}
+                  onStageModeChange={
+                    popout || !previewMode ? null : setStageMode
+                  }
+                  botsAttention={team.attention}
                 />
                 <DashboardThemeProvider themeKey={workspaceSelected?.themeKey}>
                   {/* Missing widgets banner */}
@@ -2055,45 +2089,58 @@ const DashboardStageInner = ({
                         </button>
                       </div>
                     )}
-                  <PageTabBar
-                    pages={workspacePages}
-                    activePageId={currentActivePageId}
-                    onSwitchPage={handleSwitchPage}
-                    onAddPage={handleAddPage}
-                    onRenamePage={handleRenamePage}
-                    onDeletePage={handleDeletePage}
-                    onReorderPages={handleReorderPages}
-                    editMode={!previewMode}
-                    scrollableEnabled={getRootScrollable()}
-                    onScrollableChange={popout ? null : handleScrollableChange}
-                  />
-                  <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
-                    {sidebarEnabled && !popout && (
-                      <PinnedSidebar
+                  {stageMode === "bots" ? (
+                    <BotsView
+                      key={workspaceSelected.id}
+                      workspace={workspaceSelected}
+                      workspaces={workspaceConfig}
+                      team={team}
+                    />
+                  ) : (
+                    <>
+                      <PageTabBar
                         pages={workspacePages}
                         activePageId={currentActivePageId}
-                        onSwitchPage={stableSwitchPage}
-                        sidebarLayout={sidebarLayout}
-                        workspace={workspaceSelected}
-                        width={sidebarWidth}
+                        onSwitchPage={handleSwitchPage}
+                        onAddPage={handleAddPage}
+                        onRenamePage={handleRenamePage}
+                        onDeletePage={handleDeletePage}
+                        onReorderPages={handleReorderPages}
                         editMode={!previewMode}
-                        onWorkspaceChange={stableWorkspaceChange}
-                        onProviderSelect={stableProviderSelect}
-                        onTogglePreview={stableTogglePreview}
-                        onWidgetPopout={stableWidgetPopout}
-                        sidebarRef={sidebarWorkspaceRef}
+                        scrollableEnabled={getRootScrollable()}
+                        onScrollableChange={
+                          popout ? null : handleScrollableChange
+                        }
                       />
-                    )}
-                    <div
-                      className={`flex flex-col w-full flex-1 ${
-                        popout || previewMode === true
-                          ? "overflow-y-auto"
-                          : "overflow-clip"
-                      }`}
-                    >
-                      {renderComponent(workspaceSelected)}
-                    </div>
-                  </div>
+                      <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
+                        {sidebarEnabled && !popout && (
+                          <PinnedSidebar
+                            pages={workspacePages}
+                            activePageId={currentActivePageId}
+                            onSwitchPage={stableSwitchPage}
+                            sidebarLayout={sidebarLayout}
+                            workspace={workspaceSelected}
+                            width={sidebarWidth}
+                            editMode={!previewMode}
+                            onWorkspaceChange={stableWorkspaceChange}
+                            onProviderSelect={stableProviderSelect}
+                            onTogglePreview={stableTogglePreview}
+                            onWidgetPopout={stableWidgetPopout}
+                            sidebarRef={sidebarWorkspaceRef}
+                          />
+                        )}
+                        <div
+                          className={`flex flex-col w-full flex-1 ${
+                            popout || previewMode === true
+                              ? "overflow-y-auto"
+                              : "overflow-clip"
+                          }`}
+                        >
+                          {renderComponent(workspaceSelected)}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </DashboardThemeProvider>
                 {!popout && (
                   <DashTabBar
@@ -2263,6 +2310,18 @@ const DashboardStageInner = ({
                 (name && ComponentManager.config(name)) || null
               }
               onSaveBindings={handleBulkProviderBindings}
+              onOpenBotsView={() => {
+                // Bots view is a viewing mode: close the modal and leave
+                // edit mode (which asks first if there are unsaved edits).
+                setIsConfigModalOpen(false);
+                if (workspaceSelected) {
+                  setStageModeByWorkspace((prev) => ({
+                    ...prev,
+                    [workspaceSelected.id]: "bots",
+                  }));
+                }
+                handleToggleEditMode();
+              }}
               onSaveListeners={handleBulkListenerBindings}
               onSaveUserPrefs={handleBulkUserPrefs}
               onSkip={() => {

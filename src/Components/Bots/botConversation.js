@@ -113,6 +113,18 @@ export function botStatus({ botId, running, paused, approvals, lastRun }) {
 }
 
 /**
+ * Bot answers are shown as plain text — never rendered as HTML, because they
+ * can quote email or web content. Strip leftover Markdown markers.
+ */
+export function toPlainText(text) {
+  return String(text || "")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1");
+}
+
+/**
  * The Bots switch badge: the team's pending approvals plus bots whose last
  * run failed.
  */

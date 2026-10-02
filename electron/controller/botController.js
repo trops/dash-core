@@ -355,6 +355,12 @@ const botController = {
       providers,
       force,
     });
+    if (plan.action === "upgrade") {
+      const lead = this._store.update(plan.lead.id, {
+        instructions: plan.instructions,
+      });
+      return { lead, created: false, reason: "upgraded" };
+    }
     if (plan.action !== "create") {
       return { lead: plan.lead || null, created: false, reason: plan.reason };
     }

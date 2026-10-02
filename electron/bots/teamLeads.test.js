@@ -12,7 +12,9 @@ const {
   leadOf,
   defaultLeadProvider,
   leadDefinition,
+  leadInstructions,
   planEnsureLead,
+  PREVIOUS_LEAD_GUIDANCE,
 } = require("./teamLeads");
 
 const bots = [
@@ -135,6 +137,50 @@ describe("planEnsureLead", () => {
       }).action,
       "create",
     );
+  });
+
+  it("upgrades a lead still on the previous generated instructions", () => {
+    const old = leadInstructions("Kitchen Sink").replace(
+      /point them to \+ Add bot[^\n]*/,
+      PREVIOUS_LEAD_GUIDANCE,
+    );
+    const stale = { ...bots[0], instructions: old };
+    const plan = planEnsureLead({
+      ...base,
+      bots: [stale, ...bots.slice(1)],
+      workspaceId: "7",
+      dashboardName: "Kitchen Sink",
+    });
+    assert.equal(plan.action, "upgrade");
+    assert.equal(plan.lead.id, "lead_7");
+    assert.match(plan.instructions, /Bots view/);
+    assert.doesNotMatch(plan.instructions, /Dashboard Config/);
+  });
+
+  it("also upgrades the older version without the plain-text rule", () => {
+    const older = leadInstructions("Kitchen Sink")
+      .replace(/point them to \+ Add bot[^\n]*/, PREVIOUS_LEAD_GUIDANCE)
+      .replace(" Answer in plain text — no Markdown formatting.", "");
+    const plan = planEnsureLead({
+      ...base,
+      bots: [{ ...bots[0], instructions: older }, ...bots.slice(1)],
+      workspaceId: "7",
+      dashboardName: "Kitchen Sink",
+    });
+    assert.equal(plan.action, "upgrade");
+    assert.match(plan.instructions, /plain text/);
+  });
+
+  it("leaves instructions the user edited alone", () => {
+    const edited = { ...bots[0], instructions: "My own lead instructions." };
+    const plan = planEnsureLead({
+      ...base,
+      bots: [edited, ...bots.slice(1)],
+      workspaceId: "7",
+      dashboardName: "Kitchen Sink",
+    });
+    assert.equal(plan.action, "none");
+    assert.equal(plan.reason, "exists");
   });
 
   it("never creates a lead without a dashboard", () => {

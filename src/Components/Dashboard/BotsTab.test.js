@@ -1,16 +1,17 @@
 import React from "react";
 import "@testing-library/jest-dom";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { BotsTab } from "./BotsTab";
-import { AppContext } from "../../Context/App/AppContext";
-
-jest.mock("../../ComponentManager", () => ({
-  ComponentManager: { config: jest.fn().mockReturnValue(null) },
-}));
 
 const workspace = { id: 7, name: "Kitchen Sink", layout: [] };
 const workspaces = [workspace, { id: 9, name: "Sales", layout: [] }];
 
+const lead = {
+  id: "lead_7",
+  name: "Kitchen Sink Lead",
+  role: "lead",
+  workspaceId: "7",
+};
 const allBots = [
   {
     id: "b1",
@@ -25,59 +26,40 @@ const allBots = [
   { id: "b4", name: "Loose", instructions: "x", workspaceId: null },
 ];
 
-function setup({ bots = allBots, running = [], paused = [] } = {}) {
+function setup({
+  bots = allBots,
+  running = [],
+  paused = [],
+  approvals = [],
+  onOpenBotsView = jest.fn(),
+} = {}) {
   const api = {
     list: jest.fn().mockResolvedValue(bots),
     listRunning: jest.fn().mockResolvedValue(running),
     getPauseState: jest.fn().mockResolvedValue({ global: false, bots: paused }),
-    save: jest.fn().mockResolvedValue({}),
-    listToolSources: jest.fn().mockResolvedValue([]),
-    getTeamSettings: jest
-      .fn()
-      .mockResolvedValue({ leadEnabled: true, introDismissed: true }),
+    listApprovals: jest.fn().mockResolvedValue(approvals),
+    getRuns: jest.fn().mockResolvedValue([]),
+    onRunActive: jest.fn(() => "l1"),
+    onApprovalPending: jest.fn(() => "l2"),
+    onStream: jest.fn(() => "l3"),
+    removeListener: jest.fn(),
   };
   window.mainApi = { bots: api };
   render(
-    <AppContext.Provider value={{ providers: {} }}>
-      <BotsTab workspace={workspace} workspaces={workspaces} />
-    </AppContext.Provider>,
+    <BotsTab
+      workspace={workspace}
+      workspaces={workspaces}
+      onOpenBotsView={onOpenBotsView}
+    />,
   );
-  return api;
+  return { api, onOpenBotsView };
 }
 
 afterEach(() => {
   delete window.mainApi;
 });
 
-describe("BotsTab — team lead (TEAM-002)", () => {
-  const lead = {
-    id: "lead_7",
-    name: "Kitchen Sink Lead",
-    role: "lead",
-    workspaceId: "7",
-  };
-
-  it("pins the lead at the top, separate from the members list", async () => {
-    setup({ bots: [...allBots, lead] });
-    expect(await screen.findByText("Kitchen Sink Lead")).toBeInTheDocument();
-    expect(screen.getByText("Ask the lead")).toBeInTheDocument();
-    // The lead isn't a member row (no Edit / Remove from team for it).
-    expect(screen.queryByLabelText("Edit Kitchen Sink Lead")).toBeNull();
-    expect(
-      screen.queryByLabelText("Remove Kitchen Sink Lead from team"),
-    ).toBeNull();
-  });
-
-  it("an empty team still shows its lead", async () => {
-    setup({ bots: [lead] });
-    expect(await screen.findByText("Kitchen Sink Lead")).toBeInTheDocument();
-    expect(
-      screen.getByText(/No bots on this dashboard yet/),
-    ).toBeInTheDocument();
-  });
-});
-
-describe("BotsTab — this dashboard's team", () => {
+describe("BotsTab — summary (TEAM-011)", () => {
   it("lists only this dashboard's bots (ids compared as strings)", async () => {
     setup();
     expect(await screen.findByText("Inbox Watch")).toBeInTheDocument();
@@ -94,38 +76,38 @@ describe("BotsTab — this dashboard's team", () => {
     expect(screen.getByText("Runs manually")).toBeInTheDocument();
   });
 
-  it("says that changes here save immediately", async () => {
-    setup();
-    expect(await screen.findByText(/save immediately/i)).toBeInTheDocument();
+  it("names the lead and counts the team", async () => {
+    setup({ bots: [...allBots, lead] });
+    expect(await screen.findByText("Kitchen Sink Lead")).toBeInTheDocument();
+    expect(screen.getByText(/2 bots/)).toBeInTheDocument();
   });
 
-  it("+ Add bot opens the editor preset to this dashboard", async () => {
-    setup();
-    fireEvent.click(await screen.findByText("Add bot"));
-    expect(screen.getByLabelText("Team")).toHaveValue("7");
-  });
-
-  it("Edit opens the editor for that bot", async () => {
-    setup();
-    fireEvent.click(await screen.findByLabelText("Edit Inbox Watch"));
-    expect(screen.getByDisplayValue("Inbox Watch")).toBeInTheDocument();
-  });
-
-  it("Remove from team unassigns the bot (never deletes it)", async () => {
-    const api = setup();
-    fireEvent.click(await screen.findByLabelText("Remove Notifier from team"));
-    await waitFor(() => expect(api.save).toHaveBeenCalled());
-    expect(api.save.mock.calls[0][0]).toMatchObject({
-      id: "b2",
-      workspaceId: null,
+  it("says what needs attention", async () => {
+    setup({
+      approvals: [{ id: "a1", request: { botId: "b1" } }],
     });
-    expect(api.delete).toBeUndefined();
+    expect(await screen.findByText(/1 needs? attention/)).toBeInTheDocument();
   });
 
-  it("empty team explains how to add or move bots here", async () => {
+  it("Open in Bots view hands off to the Bots view", async () => {
+    const { onOpenBotsView } = setup();
+    await screen.findByText("Inbox Watch");
+    fireEvent.click(screen.getByText("Open in Bots view"));
+    expect(onOpenBotsView).toHaveBeenCalled();
+  });
+
+  it("is read-only — no per-bot editing here", async () => {
+    setup();
+    await screen.findByText("Inbox Watch");
+    expect(screen.queryByLabelText("Edit Inbox Watch")).toBeNull();
+    expect(screen.queryByLabelText("Remove Notifier from team")).toBeNull();
+  });
+
+  it("empty team points to the Bots view", async () => {
     setup({ bots: [] });
     expect(
       await screen.findByText(/No bots on this dashboard yet/),
     ).toBeInTheDocument();
+    expect(screen.getByText("Open in Bots view")).toBeInTheDocument();
   });
 });

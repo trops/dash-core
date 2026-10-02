@@ -3,6 +3,7 @@ import {
   ButtonIcon,
   ButtonIcon2,
   InputText,
+  SegmentedControl,
   SelectInput,
   SubHeading3,
   Toggle,
@@ -30,6 +31,12 @@ export const DashboardHeader = ({
   // the header. `configUnresolvedCount` drives an amber dot indicator.
   onOpenConfig = null,
   configUnresolvedCount = 0,
+  // Dashboard | Bots switch (bot-teams PRD TEAM-011). Present = render the
+  // switch next to the title in preview mode. `botsAttention` is the team's
+  // pending approvals + failed bots, shown as a count on "Bots".
+  stageMode = "dashboard",
+  onStageModeChange = null,
+  botsAttention = 0,
 }) => {
   const [workspaceSelected, setWorkspaceSelected] = useState(workspace);
   const { currentTheme, themes: contextThemes } = useContext(ThemeContext);
@@ -48,21 +55,51 @@ export const DashboardHeader = ({
     >
       {preview === true ? (
         <>
-          <SubHeading3
-            title={(workspaceSelected.name || "Untitled").replace(/^./, (c) =>
-              c.toUpperCase(),
+          <div className="flex flex-row items-center gap-4 min-w-0">
+            <SubHeading3
+              title={(workspaceSelected.name || "Untitled").replace(/^./, (c) =>
+                c.toUpperCase(),
+              )}
+              padding={false}
+              className="font-bold text-base"
+            />
+            {onStageModeChange !== null && (
+              <SegmentedControl
+                ariaLabel="View"
+                size="sm"
+                value={stageMode}
+                onChange={onStageModeChange}
+                options={[
+                  { value: "dashboard", label: "Dashboard" },
+                  {
+                    value: "bots",
+                    label: (
+                      <span className="inline-flex items-center gap-1.5">
+                        Bots
+                        {botsAttention > 0 && (
+                          <span
+                            aria-label={`${botsAttention} need attention`}
+                            className="inline-flex items-center justify-center rounded-full bg-amber-500 text-gray-900 text-xs font-semibold px-1.5 h-5"
+                          >
+                            {botsAttention}
+                          </span>
+                        )}
+                      </span>
+                    ),
+                  },
+                ]}
+              />
             )}
-            padding={false}
-            className="font-bold text-base"
-          />
+          </div>
           <div className="flex flex-row items-center gap-1">
             {/* Dashboard Config gear is intentionally NOT rendered in
                 preview mode — wiring is a configuration concern, not a
                 viewer concern. The button only appears in edit mode
                 below. */}
-            {onPopout !== null && (
+            {onPopout !== null && stageMode !== "bots" && (
               <ButtonIcon
                 icon="arrow-up-right-from-square"
+                ariaLabel="Pop out"
                 onClick={onPopout}
                 hoverBackgroundColor={"hover:bg-neutral-700"}
               />
@@ -70,6 +107,7 @@ export const DashboardHeader = ({
             {onClickEdit !== null && (
               <ButtonIcon
                 icon="pencil"
+                ariaLabel="Edit dashboard"
                 onClick={onClickEdit}
                 hoverBackgroundColor={"hover:bg-neutral-700"}
               />
