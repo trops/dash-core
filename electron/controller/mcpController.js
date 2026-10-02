@@ -23,6 +23,7 @@ const os = require("os");
 const responseCache = require("../utils/responseCache");
 const { gateToolCall, gateToolCallWithJit } = require("../mcp/permissionGate");
 const { serverKey, parseServerKey } = require("../utils/mcpServerKey");
+const { describeStartFailure, StderrTail } = require("../utils/mcpStartError");
 const { connectedServersFromMap } = require("../bots/toolSources");
 const { applyPathScopeToCredentials } = require("../utils/mcpScopeResolver");
 const { readEnforceFlag, readJitFlag } = require("../utils/securityFlags");
@@ -545,6 +546,9 @@ const mcpController = {
 
     // 3. Fresh start — wrap in a promise and track it
     const startPromise = (async () => {
+      // A stdio server's recent stderr — the real reason when it exits
+      // during startup (e.g. a missing token).
+      let stderrTail = null;
       try {
         // Stop if in stale/error state
         if (activeServers.has(key)) {
@@ -696,7 +700,15 @@ const mcpController = {
             command: resolved.command,
             args,
             env: resolved.env,
+            stderr: "pipe",
           });
+          stderrTail = new StderrTail();
+          if (transport.stderr) {
+            transport.stderr.on("data", (chunk) => {
+              stderrTail.push(chunk);
+              process.stderr.write(chunk);
+            });
+          }
         }
 
         // Update status to connecting
@@ -786,6 +798,13 @@ const mcpController = {
           errorMessage =
             "This MCP server is incompatible with your system Node.js version. " +
             "Install Node.js v22 (LTS) using nvm and restart the app.";
+        } else {
+          // "Connection closed" says nothing; use the server's own reason.
+          errorMessage = describeStartFailure({
+            serverName,
+            message: error.message,
+            stderr: stderrTail ? stderrTail.text() : "",
+          });
         }
 
         // Mark as error state
