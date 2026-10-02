@@ -30,17 +30,25 @@ describe("Dashboard Config — Bots tab", () => {
 describe("DashboardStage — Bots view wiring (TEAM-011)", () => {
   it("loads the team once and feeds the header badge and the Bots view", () => {
     expect(stageSrc).toMatch(
-      /useTeamBots\(\s*popout \? null : \(?workspaceSelected\?\.id \?\? null\)?\s*\)/,
+      /useTeamBots\(workspaceSelected\?\.id \?\? null\)/,
     );
     expect(stageSrc).toMatch(/botsAttention=\{team\.attention\}/);
     expect(stageSrc).toMatch(/stageMode === "bots" \? \(\s*<BotsView/);
   });
 
-  it("only offers the Bots view in preview, never in popouts", () => {
+  it("offers the Bots view in preview and in popouts (B3), never in edit mode", () => {
     expect(stageSrc).toMatch(
-      /onStageModeChange=\{\s*popout \|\| !previewMode \? null : setStageMode\s*\}/,
+      /onStageModeChange=\{\s*popout \|\| previewMode \? setStageMode : null\s*\}/,
     );
-    expect(stageSrc).toMatch(/!popout && previewMode && workspaceSelected/);
+    expect(stageSrc).toMatch(
+      /\(popout \|\| previewMode\) && workspaceSelected/,
+    );
+    // Team data loads in popouts too; the lead is still only ensured in the
+    // main window.
+    expect(stageSrc).toMatch(
+      /useTeamBots\(workspaceSelected\?\.id \?\? null\)/,
+    );
+    expect(stageSrc).toMatch(/if \(popout \|\| !workspaceSelected\) return/);
   });
 
   it("entering edit mode returns to the dashboard", () => {
@@ -77,5 +85,33 @@ describe("DashboardStage — bot teams wiring", () => {
     );
     expect(stageSrc).toMatch(/workspaceData: workspaceSelected/);
     expect(stageSrc).toMatch(/workspaces: workspaceConfig/);
+  });
+});
+
+describe("DashboardStage — Bot monitor hand-off (TEAM-011 B3)", () => {
+  it("gives the dock openBotsView and openBotSettings", () => {
+    expect(stageSrc).toMatch(
+      /workspaceData: workspaceSelected,\s*workspaces: workspaceConfig,\s*openBotsView,\s*openBotSettings,/,
+    );
+  });
+
+  it("switches in place for the dashboard you're viewing, else pops it out", () => {
+    expect(stageSrc).toMatch(
+      /String\(workspaceId\) === String\(workspaceSelected\.id\) &&\s*previewMode/,
+    );
+    expect(stageSrc).toMatch(
+      /window\.mainApi\.popout\.open\(workspaceId, \{\s*view: "bots",\s*botId,\s*tab,\s*\}\)/,
+    );
+  });
+
+  it("a popout can start in Bots mode on a bot, and be re-focused", () => {
+    expect(stageSrc).toMatch(/popoutView = null,/);
+    expect(stageSrc).toMatch(/popoutBotId = null,/);
+    expect(stageSrc).toMatch(/popout\.onShowBots\(/);
+    expect(stageSrc).toMatch(/focus=\{botsFocus\}/);
+  });
+
+  it("Open in Settings goes to Settings › Bots", () => {
+    expect(stageSrc).toMatch(/openAppSettings\("bots"\)/);
   });
 });

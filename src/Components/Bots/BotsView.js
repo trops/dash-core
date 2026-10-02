@@ -34,6 +34,9 @@ import { triggerSummary } from "./teamUtils";
  * @param {object[]} workspaces all dashboards (bot form's Team field)
  * @param {object} team        useTeamBots(workspace.id)
  * @param {boolean} [narrow]   force the narrow layout (else measured)
+ * @param {{ botId: string, tab?: string, seq: number }} [focus]  open on a
+ *   bot + tab (the Bot monitor's "Open in Bots view"); a new `seq` re-applies
+ *   it, through the unsaved-changes guard.
  */
 const NEW_BOT = "__new__";
 const NARROW_PX = 900;
@@ -69,7 +72,15 @@ function useNarrow(ref, forced) {
   return typeof forced === "boolean" ? forced : narrow;
 }
 
-export const BotsView = ({ workspace, workspaces = [], team, narrow }) => {
+const TABS = ["conversation", "activity", "settings"];
+
+export const BotsView = ({
+  workspace,
+  workspaces = [],
+  team,
+  narrow,
+  focus = null,
+}) => {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
   const appContext = useContext(AppContext);
   const providers = appContext?.providers || {};
@@ -87,11 +98,19 @@ export const BotsView = ({ workspace, workspaces = [], team, narrow }) => {
   const members = team ? team.members : [];
   const all = [lead, ...members].filter(Boolean);
 
+  const focusTarget =
+    focus && all.some((b) => b.id === focus.botId) ? focus : null;
   const [selectedId, setSelectedId] = useState(
-    () => (lead && lead.id) || (members[0] && members[0].id) || null,
+    () =>
+      (focusTarget && focusTarget.botId) ||
+      (lead && lead.id) ||
+      (members[0] && members[0].id) ||
+      null,
   );
-  const [tab, setTab] = useState(
-    selectedId === NEW_BOT ? "settings" : "conversation",
+  const [tab, setTab] = useState(() =>
+    focusTarget && TABS.includes(focusTarget.tab)
+      ? focusTarget.tab
+      : "conversation",
   );
   const [menuOpen, setMenuOpen] = useState(false);
   const [allBots, setAllBots] = useState([]);
@@ -142,6 +161,23 @@ export const BotsView = ({ workspace, workspaces = [], team, narrow }) => {
       dirtyRef.current = false;
       setTab(next);
     });
+
+  // A new focus request (seq) from the Bot monitor re-selects its bot.
+  // Only a request that found its bot at mount counts as applied; otherwise
+  // it applies once the team loads.
+  const appliedSeq = useRef(focusTarget ? focus.seq : null);
+  useEffect(() => {
+    if (!focus || focus.seq === appliedSeq.current) return;
+    if (!all.some((b) => b.id === focus.botId)) return;
+    appliedSeq.current = focus.seq;
+    guarded(() => {
+      dirtyRef.current = false;
+      setSelectedId(focus.botId);
+      setTab(TABS.includes(focus.tab) ? focus.tab : "conversation");
+      setMenuOpen(false);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus && focus.seq, focus && focus.botId, team && team.bots]);
 
   const afterChange = () => team && team.refresh && team.refresh();
 

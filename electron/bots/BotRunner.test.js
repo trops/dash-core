@@ -360,6 +360,22 @@ describe("BotRunner.run — one run per bot", () => {
     await p1;
     assert.deepEqual(runner.listActive(), []);
   });
+
+  it("startedAt reports when the running bot's run began (Bot monitor)", async () => {
+    let release;
+    const gate = new Promise((r) => {
+      release = r;
+    });
+    const engine = mockEngine([{ type: "done" }], gate);
+    const { runner } = makeRunner(engine);
+    assert.equal(runner.startedAt("bot_1"), null);
+    const p1 = runner.run("bot_1", {});
+    assert.equal(typeof runner.startedAt("bot_1"), "string");
+    assert.ok(!Number.isNaN(Date.parse(runner.startedAt("bot_1"))));
+    release();
+    await p1;
+    assert.equal(runner.startedAt("bot_1"), null);
+  });
 });
 
 describe("BotRunner — usage hook (budgets)", () => {

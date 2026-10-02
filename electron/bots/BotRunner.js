@@ -60,6 +60,8 @@ class BotRunner {
     this._onUsage = deps.onUsage || null;
     /** @type {Map<string, AbortController>} */
     this._active = new Map();
+    /** @type {Map<string, string>} botId → ISO start of its in-flight run */
+    this._startedAt = new Map();
   }
 
   isRunning(botId) {
@@ -68,6 +70,11 @@ class BotRunner {
 
   listActive() {
     return [...this._active.keys()];
+  }
+
+  /** When the bot's in-flight run started (ISO), or null when idle. */
+  startedAt(botId) {
+    return this._startedAt.get(botId) || null;
   }
 
   /** Abort an in-flight run. @returns {boolean} whether a run was aborted */
@@ -104,6 +111,7 @@ class BotRunner {
     const startedAt = this._now();
     const controller = new AbortController();
     this._active.set(botId, controller);
+    this._startedAt.set(botId, startedAt);
 
     let status = "completed";
     let usage = null;
@@ -230,6 +238,7 @@ class BotRunner {
       });
     } finally {
       this._active.delete(botId);
+      this._startedAt.delete(botId);
     }
 
     const runRecord = {

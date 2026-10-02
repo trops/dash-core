@@ -37,6 +37,8 @@ const BOTS_SET_SETTINGS = "bots-set-settings";
 const BOTS_ASK_LEAD = "bots-ask-lead";
 // Bots view (TEAM-011): a bot run history.
 const BOTS_GET_RUNS = "bots-get-runs";
+// Bot monitor (TEAM-011 B3): the latest runs across every bot.
+const BOTS_LIST_RECENT_RUNS = "bots-list-recent-runs";
 
 // --- Main → Renderer (send) ---
 const BOT_STREAM = "bot-stream"; // { botId, event: BotEvent }
@@ -74,6 +76,7 @@ module.exports = {
   BOTS_SET_SETTINGS,
   BOTS_ASK_LEAD,
   BOTS_GET_RUNS,
+  BOTS_LIST_RECENT_RUNS,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,

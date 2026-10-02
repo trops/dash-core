@@ -84,6 +84,10 @@ export const DashboardStage = ({
   backgroundColor = null,
   popout = false,
   popoutWorkspaceId = null,
+  // Popout opened from the Bot monitor: start in the Bots view on this bot.
+  popoutView = null,
+  popoutBotId = null,
+  popoutBotTab = null,
   showWelcomePrompt = false,
   onAcceptWelcome = null,
   onDismissWelcome = null,
@@ -104,6 +108,9 @@ export const DashboardStage = ({
           backgroundColor={backgroundColor}
           popout={popout}
           popoutWorkspaceId={popoutWorkspaceId}
+          popoutView={popoutView}
+          popoutBotId={popoutBotId}
+          popoutBotTab={popoutBotTab}
           renderAiAssistant={renderAiAssistant}
         />
       </DashboardWrapper>
@@ -166,6 +173,9 @@ const DashboardStageInner = ({
   backgroundColor = null,
   popout = false,
   popoutWorkspaceId = null,
+  popoutView = null,
+  popoutBotId = null,
+  popoutBotTab = null,
   renderAiAssistant = null,
 }) => {
   const { pub } = useContext(DashboardContext);
@@ -240,27 +250,44 @@ const DashboardStageInner = ({
   const [menuItems, setMenuItems] = useState([]);
   const [workspaceConfig, setWorkspaceConfig] = useState([]);
 
-  // The assistant dock (AI Assistant + Bot Activity) renders outside any
-  // Workspace, so hand it the current dashboard and the full list — the Bot
-  // Activity panel creates bots on the dashboard you're on (bot-teams TEAM-001).
-  const dockWorkspaceContext = useMemo(
-    () => ({ workspaceData: workspaceSelected, workspaces: workspaceConfig }),
-    [workspaceSelected, workspaceConfig],
-  );
-
   // This dashboard's team, live — the Bots switch's attention badge and the
-  // Bots view (bot-teams TEAM-011). Not in popouts.
-  const team = useTeamBots(popout ? null : (workspaceSelected?.id ?? null));
+  // Bots view (bot-teams TEAM-011). Popouts too (B3).
+  const team = useTeamBots(workspaceSelected?.id ?? null);
   const teamRefreshRef = useRef(team.refresh);
   teamRefreshRef.current = team.refresh;
 
   // Dashboard | Bots, per dashboard. The Bots view is a viewing mode: it
-  // shows only in preview (not edit mode, not popouts).
-  const [stageModeByWorkspace, setStageModeByWorkspace] = useState({});
+  // shows in preview and in popouts, never in edit mode. A popout opened from
+  // the Bot monitor starts in it.
+  const [stageModeByWorkspace, setStageModeByWorkspace] = useState(() =>
+    popout && popoutView === "bots" && popoutWorkspaceId !== null
+      ? { [popoutWorkspaceId]: "bots" }
+      : {},
+  );
   const stageMode =
-    !popout && previewMode && workspaceSelected
+    (popout || previewMode) && workspaceSelected
       ? stageModeByWorkspace[workspaceSelected.id] || "dashboard"
       : "dashboard";
+  // Which bot the Bots view should open on ({ workspaceId, botId, tab, seq }).
+  const [botsFocus, setBotsFocus] = useState(() =>
+    popout && popoutView === "bots" && popoutBotId
+      ? {
+          workspaceId: String(popoutWorkspaceId),
+          botId: popoutBotId,
+          tab: popoutBotTab || "conversation",
+          seq: 1,
+        }
+      : null,
+  );
+  const focusBot = useCallback((workspaceId, botId, tab) => {
+    setStageModeByWorkspace((prev) => ({ ...prev, [workspaceId]: "bots" }));
+    setBotsFocus((prev) => ({
+      workspaceId: String(workspaceId),
+      botId,
+      tab: tab || "conversation",
+      seq: ((prev && prev.seq) || 0) + 1,
+    }));
+  }, []);
   const setStageMode = useCallback(
     (mode) => {
       if (!workspaceSelected) return;
@@ -271,6 +298,58 @@ const DashboardStageInner = ({
     },
     [workspaceSelected],
   );
+
+  // The Bot monitor's "Open in Bots view": switch in place when it's the
+  // dashboard you're viewing; otherwise open that dashboard as a popout in
+  // the Bots view, so the dashboard you're on (and any edits) is untouched.
+  const openBotsView = useCallback(
+    (workspaceId, botId, tab = "conversation") => {
+      if (workspaceId === null || workspaceId === undefined) return;
+      if (
+        workspaceSelected &&
+        String(workspaceId) === String(workspaceSelected.id) &&
+        previewMode
+      ) {
+        focusBot(workspaceSelected.id, botId, tab);
+        return;
+      }
+      if (window.mainApi?.popout?.open) {
+        window.mainApi.popout.open(workspaceId, {
+          view: "bots",
+          botId,
+          tab,
+        });
+      }
+    },
+    [workspaceSelected, previewMode, focusBot],
+  );
+  const openBotSettings = useCallback(() => {
+    openAppSettings("bots");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The assistant dock (AI Assistant + Bot Activity) renders outside any
+  // Workspace, so hand it the current dashboard, the full list, and the
+  // Bot monitor's hand-off actions (bot-teams TEAM-001 / TEAM-011 B3).
+  const dockWorkspaceContext = useMemo(
+    () => ({
+      workspaceData: workspaceSelected,
+      workspaces: workspaceConfig,
+      openBotsView,
+      openBotSettings,
+    }),
+    [workspaceSelected, workspaceConfig, openBotsView, openBotSettings],
+  );
+
+  // An already-open popout asked to show a bot (the Bot monitor again).
+  useEffect(() => {
+    if (!popout || !window.mainApi?.popout?.onShowBots) return undefined;
+    const off = window.mainApi.popout.onShowBots(({ botId, tab } = {}) => {
+      if (popoutWorkspaceId === null || !botId) return;
+      focusBot(popoutWorkspaceId, botId, tab);
+    });
+    return typeof off === "function" ? off : undefined;
+  }, [popout, popoutWorkspaceId, focusBot]);
 
   // Every dashboard gets an idle team lead the first time it's opened
   // (bot-teams TEAM-002). Idempotent; respects a lead turned off for this
@@ -2005,7 +2084,7 @@ const DashboardStageInner = ({
                   configUnresolvedCount={unresolvedCount}
                   stageMode={stageMode}
                   onStageModeChange={
-                    popout || !previewMode ? null : setStageMode
+                    popout || previewMode ? setStageMode : null
                   }
                   botsAttention={team.attention}
                 />
@@ -2095,6 +2174,7 @@ const DashboardStageInner = ({
                       workspace={workspaceSelected}
                       workspaces={workspaceConfig}
                       team={team}
+                      focus={botsFocus}
                     />
                   ) : (
                     <>
