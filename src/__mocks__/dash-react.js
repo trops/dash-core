@@ -154,15 +154,17 @@ function Code({ children, className = "" }) {
   );
 }
 
-function ButtonIcon({ icon, text, title, onClick, disabled }) {
+function ButtonIcon({ icon, text, title, onClick, disabled, ariaLabel }) {
   // Render visible text (from `text`) and a `title` attribute (from
   // `title`) so RTL queries by either work. Either prop is optional.
+  // `ariaLabel` → aria-label, as in dash-react.
   return React.createElement(
     "button",
     {
       onClick: onClick,
       disabled: disabled,
       title: title || undefined,
+      "aria-label": ariaLabel || undefined,
       "data-icon": icon,
     },
     text || null,

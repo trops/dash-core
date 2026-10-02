@@ -17,8 +17,9 @@
 "use strict";
 
 const path = require("path");
-const { app } = require("electron");
+const { app, safeStorage } = require("electron");
 const Store = require("electron-store");
+const { createSecretBox } = require("./secretBox");
 
 /**
  * Build the Electron host.
@@ -37,6 +38,9 @@ function createElectronHost() {
   return {
     paths: { botsRoot },
     clock: { now: () => new Date().toISOString() },
+    // Seals sensitive bot data at rest (run answers) with the OS keychain.
+    // Falls back to plain text where the keychain isn't available.
+    secretBox: createSecretBox(safeStorage),
     persistence: {
       // The whole bot blob lives under a single "store" key so the core reads
       // and writes one object, independent of electron-store's key API.

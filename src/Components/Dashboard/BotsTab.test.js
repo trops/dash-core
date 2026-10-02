@@ -32,6 +32,9 @@ function setup({ bots = allBots, running = [], paused = [] } = {}) {
     getPauseState: jest.fn().mockResolvedValue({ global: false, bots: paused }),
     save: jest.fn().mockResolvedValue({}),
     listToolSources: jest.fn().mockResolvedValue([]),
+    getTeamSettings: jest
+      .fn()
+      .mockResolvedValue({ leadEnabled: true, introDismissed: true }),
   };
   window.mainApi = { bots: api };
   render(
@@ -44,6 +47,34 @@ function setup({ bots = allBots, running = [], paused = [] } = {}) {
 
 afterEach(() => {
   delete window.mainApi;
+});
+
+describe("BotsTab — team lead (TEAM-002)", () => {
+  const lead = {
+    id: "lead_7",
+    name: "Kitchen Sink Lead",
+    role: "lead",
+    workspaceId: "7",
+  };
+
+  it("pins the lead at the top, separate from the members list", async () => {
+    setup({ bots: [...allBots, lead] });
+    expect(await screen.findByText("Kitchen Sink Lead")).toBeInTheDocument();
+    expect(screen.getByText("Ask the lead")).toBeInTheDocument();
+    // The lead isn't a member row (no Edit / Remove from team for it).
+    expect(screen.queryByLabelText("Edit Kitchen Sink Lead")).toBeNull();
+    expect(
+      screen.queryByLabelText("Remove Kitchen Sink Lead from team"),
+    ).toBeNull();
+  });
+
+  it("an empty team still shows its lead", async () => {
+    setup({ bots: [lead] });
+    expect(await screen.findByText("Kitchen Sink Lead")).toBeInTheDocument();
+    expect(
+      screen.getByText(/No bots on this dashboard yet/),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("BotsTab — this dashboard's team", () => {

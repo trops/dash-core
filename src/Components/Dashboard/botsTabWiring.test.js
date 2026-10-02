@@ -34,6 +34,14 @@ describe("DashboardStage — bot teams wiring", () => {
     );
   });
 
+  it("makes sure an opened dashboard has its idle team lead (TEAM-002)", () => {
+    expect(stageSrc).toMatch(
+      /bots\.ensureLead\(\s*workspaceSelected\.id,\s*workspaceSelected\.name/,
+    );
+    // Never from a popped-out widget window.
+    expect(stageSrc).toMatch(/if \(popout \|\| !workspaceSelected\) return/);
+  });
+
   it("wraps the assistant dock in WorkspaceContext (current dashboard + list)", () => {
     expect(stageSrc).toMatch(
       /<WorkspaceContext\.Provider\s+value=\{dockWorkspaceContext\}\s*>\s*\{renderAiAssistant\}/,

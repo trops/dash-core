@@ -246,6 +246,19 @@ const DashboardStageInner = ({
     [workspaceSelected, workspaceConfig],
   );
 
+  // Every dashboard gets an idle team lead the first time it's opened
+  // (bot-teams TEAM-002). Idempotent; respects a lead turned off for this
+  // dashboard and the global "Create team leads automatically" switch.
+  useEffect(() => {
+    if (popout || !workspaceSelected) return;
+    const bots = typeof window !== "undefined" && window.mainApi?.bots;
+    if (!bots || typeof bots.ensureLead !== "function") return;
+    Promise.resolve(
+      bots.ensureLead(workspaceSelected.id, workspaceSelected.name),
+    ).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [popout, workspaceSelected?.id]);
+
   // Modal state
   const [isThemeManagerOpen, setIsThemeManagerOpen] = useState(false);
   const [isDashboardLoaderOpen, setIsDashboardLoaderOpen] = useState(false);

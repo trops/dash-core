@@ -179,16 +179,16 @@ Bots stay a power-user feature. Multi-bot workflows remain hand-assembled and un
 > so that I always have someone to ask and a natural place to start building a team.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** Implemented (slice 2a) — `propose_bot` follows with TEAM-005
 
 **Acceptance Criteria:**
 
-- [ ] AC1: When a dashboard is created (or first opened, for existing dashboards), Dash creates its **lead**: a bot with `role: "lead"`, named "<Dashboard> Lead", in that dashboard's team.
-- [ ] AC2: The lead is **idle by default**: no schedule, no subscriptions, and no model calls until the user (or the Assistant) asks it something. An untouched lead costs $0.
-- [ ] AC3: The lead introduces itself once, non-blockingly, in the Bots tab and the Activity panel: what it is, what it can do ("Ask me what the team is doing, or ask me to add a bot"), and how to turn it off.
-- [ ] AC4: The lead's tools are **read-only team tools** served in-process (like `memory_*`): `team_list_bots`, `team_get_bot`, `team_recent_runs` (summaries, statuses, errors), `team_memory_read`, plus `propose_bot` (TEAM-005). It has no provider (MCP) tools unless the user explicitly adds them.
-- [ ] AC5: The user can rename the lead, change its model, or **turn it off**. Turning it off removes the lead from that dashboard and stops auto-creating it there; it can be turned back on from the Bots tab.
-- [ ] AC6: A dashboard has at most one lead.
+- [x] AC1: When a dashboard is created (or first opened, for existing dashboards), Dash creates its **lead**: a bot with `role: "lead"`, named "<Dashboard> Lead", in that dashboard's team.
+- [x] AC2: The lead is **idle by default**: no schedule, no subscriptions, and no model calls until the user (or the Assistant) asks it something. An untouched lead costs $0.
+- [x] AC3: The lead introduces itself once, non-blockingly, in the Bots tab and the Activity panel: what it is, what it can do ("Ask me what the team is doing, or ask me to add a bot"), and how to turn it off. _(The "add a bot" line arrives with TEAM-005.)_
+- [x] AC4: The lead's tools are **read-only team tools** served in-process (like `memory_*`): `team_list_bots`, `team_get_bot`, `team_recent_runs` (summaries, statuses, errors), `team_memory_read`, plus `propose_bot` (TEAM-005). It has no provider (MCP) tools unless the user explicitly adds them. _(v1: a lead gets only its team tools — providers on a lead are ignored — and no engine built-ins.)_
+- [x] AC5: The user can rename the lead, change its model, or **turn it off**. Turning it off removes the lead from that dashboard and stops auto-creating it there; it can be turned back on from the Bots tab.
+- [x] AC6: A dashboard has at most one lead.
 
 **Edge Cases:**
 
@@ -213,14 +213,22 @@ Bots stay a power-user feature. Multi-bot workflows remain hand-assembled and un
 > so that I can find out what the team did and why without digging through runs.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** Implemented (slice 2a)
 
 **Acceptance Criteria:**
 
-- [ ] AC1: The Bots tab and the Activity panel offer **Ask the lead**: a chat with the lead that continues across messages (the lead's engine session is resumed for follow-ups and reset on "New conversation").
-- [ ] AC2: Answers are grounded in team data from the team tools (runs, outputs, memory). The lead cites what it used ("From Inbox Watch's 9:02 run…") and says so when it doesn't know.
-- [ ] AC3: Data the lead reads from runs and memory is presented to its model as **untrusted data**, using the same fencing as event payloads (bot-factory US-011 AC4), because it can contain email or web text.
-- [ ] AC4: Every question and answer is logged in the Activity feed as a lead run (trigger "ask").
+- [x] AC1: The Bots tab and the Activity panel offer **Ask the lead**: a chat with the lead that continues across messages (the lead's engine session is resumed for follow-ups and reset on "New conversation").
+- [x] AC2: Answers are grounded in team data from the team tools (runs, outputs, memory). The lead cites what it used ("From Inbox Watch's 9:02 run…") and says so when it doesn't know.
+- [x] AC3: Data the lead reads from runs and memory is presented to its model as **untrusted data**, using the same fencing as event payloads (bot-factory US-011 AC4), because it can contain email or web text.
+- [x] AC4: Every question and answer is logged in the Activity feed as a lead run (trigger "ask").
+
+**Implementation notes (slice 2a, TEAM-002 + TEAM-003, 2026-10-02):**
+
+- **Lead creation:** `DashboardStage` calls `bots.ensureLead(id, name)` when a dashboard opens; `electron/bots/teamLeads.js` decides (`planEnsureLead`: one per dashboard, never when turned off or auto-create is off unless forced). Leads default to the user's default AI provider, else Claude Code. Deleting a lead in Settings counts as turning it off.
+- **Read-only by construction:** `botController._resolveTools` gives a lead only `TEAM_TOOLS` (`electron/bots/teamTools.js`, served under the internal `bot-team` server, scoped to the lead's dashboard, results fenced in `<team_data>`); the runner sets `builtinTools: "none"`, which the Claude Agent engine maps to the SDK's `tools: []` with a deny backstop in `canUseTool`. Lead answers don't go on the event bus.
+- **Run answers:** `BotRunner` keeps each run's final text (last 8 KB) on the run record — what `team_recent_runs` reads — and `BotStore` **seals it at rest** with the OS keychain (`secretBox.js` over Electron `safeStorage`, injected by `host.js`; plain-text fallback where unavailable; undecryptable answers read as unavailable).
+- **UI:** `AskLead` (chat; follow-ups resume the session) and `TeamLeadSection` (lead, one-time intro, Turn off/on) in Dashboard Config › Bots and the Bot Activity panel; **Create team leads automatically** in Settings › Bots.
+- **Edge-case deviation:** with no AI provider configured, the lead uses Claude Code (no API key needed) rather than showing "Add a model source".
 
 **Example Scenario:**
 

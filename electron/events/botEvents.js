@@ -27,6 +27,14 @@ const BOTS_GET_PAUSE_STATE = "bots-get-pause-state";
 const BOTS_LIST_TOOL_SOURCES = "bots-list-tool-sources";
 const BOTS_GET_GRANTS = "bots-get-grants";
 const BOTS_REVOKE_GRANT = "bots-revoke-grant";
+// Team leads (bot-teams TEAM-002 / TEAM-003).
+const BOTS_ENSURE_LEAD = "bots-ensure-lead";
+const BOTS_SET_LEAD_ENABLED = "bots-set-lead-enabled";
+const BOTS_GET_TEAM_SETTINGS = "bots-get-team-settings";
+const BOTS_DISMISS_LEAD_INTRO = "bots-dismiss-lead-intro";
+const BOTS_GET_SETTINGS = "bots-get-settings";
+const BOTS_SET_SETTINGS = "bots-set-settings";
+const BOTS_ASK_LEAD = "bots-ask-lead";
 
 // --- Main → Renderer (send) ---
 const BOT_STREAM = "bot-stream"; // { botId, event: BotEvent }
@@ -56,6 +64,13 @@ module.exports = {
   BOTS_LIST_TOOL_SOURCES,
   BOTS_GET_GRANTS,
   BOTS_REVOKE_GRANT,
+  BOTS_ENSURE_LEAD,
+  BOTS_SET_LEAD_ENABLED,
+  BOTS_GET_TEAM_SETTINGS,
+  BOTS_DISMISS_LEAD_INTRO,
+  BOTS_GET_SETTINGS,
+  BOTS_SET_SETTINGS,
+  BOTS_ASK_LEAD,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,

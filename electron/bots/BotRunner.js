@@ -26,6 +26,7 @@
 "use strict";
 
 const { createRequestPermission } = require("./PermissionGate");
+const { truncateText } = require("./botEvents");
 
 class BotRunner {
   constructor(deps = {}) {
@@ -108,6 +109,9 @@ class BotRunner {
     let usage = null;
     let errorMessage = null;
     let runProfile = null;
+    // The run's answer (its text), kept on the run record — what a team lead
+    // reads back. Capped to the last 8 KB; the store seals it at rest.
+    const answer = [];
 
     try {
       const profile = await this._resolveRunProfile(bot);
@@ -177,9 +181,13 @@ class BotRunner {
         approvalPolicy: bot.approvalPolicy,
         createApproval: (request) => this._approvals.create(request),
       };
+      // A team lead is read-only: only its team tools, never the engine's
+      // built-ins (shell, files, web…) — bot-teams TEAM-002 AC4.
+      if (bot.role === "lead") ctx.builtinTools = "none";
 
       for await (const event of engine.run(ctx)) {
         emit(event);
+        if (event.type === "text" && event.text) answer.push(event.text);
         if (event.type === "session") {
           this._store.saveSession(botId, engine.id, event.session);
         } else if (event.type === "done") {
@@ -208,6 +216,7 @@ class BotRunner {
       endedAt: this._now(),
       usage,
       error: errorMessage,
+      output: truncateText(answer.join("")),
     };
     this._store.appendRun(botId, runRecord);
 

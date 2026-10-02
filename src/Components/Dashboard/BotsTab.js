@@ -5,8 +5,10 @@ import {
   Tag,
   SectionLabel,
   EmptyState,
+  FontAwesomeIcon,
 } from "@trops/dash-react";
 import { BotEditorModal } from "../Bots/BotEditorModal";
+import { TeamLeadSection } from "../Bots/TeamLeadSection";
 import { sameWorkspace, triggerSummary } from "../Bots/teamUtils";
 
 /**
@@ -64,7 +66,10 @@ export const BotsTab = ({ workspace, workspaces = EMPTY }) => {
     refresh();
   }, [refresh]);
 
-  const team = bots.filter((b) => sameWorkspace(b.workspaceId, workspace?.id));
+  // Members — the lead is shown separately, pinned above them.
+  const team = bots.filter(
+    (b) => b.role !== "lead" && sameWorkspace(b.workspaceId, workspace?.id),
+  );
 
   const removeFromTeam = async (bot) => {
     // Unassign only — the bot keeps running from Settings › Bots.
@@ -74,6 +79,8 @@ export const BotsTab = ({ workspace, workspaces = EMPTY }) => {
 
   return (
     <div className="flex flex-col gap-4 h-full min-h-0">
+      {/* The dashboard's team lead (TEAM-002/003), pinned first. */}
+      <TeamLeadSection workspace={workspace} />
       <div className="flex flex-row items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
           <SectionLabel text="This dashboard's team" />
@@ -91,7 +98,7 @@ export const BotsTab = ({ workspace, workspaces = EMPTY }) => {
 
       {loaded && !team.length ? (
         <EmptyState
-          icon="robot"
+          icon={<FontAwesomeIcon icon="robot" className="h-8 w-8 opacity-50" />}
           title="No bots on this dashboard yet"
           description="Add a bot here, or move an existing bot to this dashboard from its Team setting in Settings › Bots."
         />
