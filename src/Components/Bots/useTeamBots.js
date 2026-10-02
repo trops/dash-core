@@ -106,10 +106,14 @@ export function useTeamBots(workspaceId) {
         }),
       );
     }
+    // A bot was created, edited or deleted anywhere — reload the team.
+    if (bots_.onListChanged) {
+      ids.push(bots_.onListChanged(() => refresh()));
+    }
     return () => {
       for (const id of ids) if (bots_.removeListener) bots_.removeListener(id);
     };
-  }, [active, loadLastRun]);
+  }, [active, loadLastRun, refresh]);
 
   const approve = useCallback(async (approvalId, decision) => {
     const bots_ = api();

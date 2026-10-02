@@ -39,6 +39,7 @@ const {
 } = require("../bots/teamTools");
 const { isLead, leadOf, planEnsureLead } = require("../bots/teamLeads");
 const { recentRuns } = require("../bots/recentRuns");
+const { coalesce } = require("../bots/coalesce");
 const { onWorkspaceDeleted } = require("../utils/workspaceEvents");
 const {
   checkChain,
@@ -71,6 +72,7 @@ const {
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
   BOT_RUN_ACTIVE,
+  BOT_LIST_CHANGED,
 } = require("../events/botEvents");
 
 /** Pricing lookup for BudgetController: curated-model pricing by provider. */
@@ -206,6 +208,17 @@ const botController = {
     this._offWorkspaceDeleted = onWorkspaceDeleted((workspaceId) => {
       unassignTeam({ store: this._store, pause: this._pause }, workspaceId);
     });
+
+    // Bot definitions changed (here, from Settings, the Assistant, a lead
+    // being created…) → tell every window so open team lists refresh. One
+    // broadcast per burst (bulk unassign touches many bots).
+    this._notifyListChanged = coalesce(() =>
+      this._broadcast(BOT_LIST_CHANGED, {}),
+    );
+    if (this._offStoreChange) this._offStoreChange();
+    this._offStoreChange = this._store.onChange(() =>
+      this._notifyListChanged(),
+    );
 
     this._ready = true;
   },

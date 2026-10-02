@@ -41,6 +41,7 @@ const {
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
   BOT_RUN_ACTIVE,
+  BOT_LIST_CHANGED,
 } = require("../events/botEvents");
 
 let _nextListenerId = 0;
@@ -141,6 +142,8 @@ const botApi = {
   onBudgetAlert: (callback) => _addListener(BOT_BUDGET_ALERT, callback),
   /** Subscribe to active-run count changes: { count, running }. */
   onRunActive: (callback) => _addListener(BOT_RUN_ACTIVE, callback),
+  /** A bot was created, edited or deleted anywhere — refresh lists. */
+  onListChanged: (callback) => _addListener(BOT_LIST_CHANGED, callback),
 
   removeListener: (id) => {
     const entry = _listenerMap.get(id);

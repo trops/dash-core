@@ -308,3 +308,53 @@ describe("BotStore — team settings", () => {
     assert.equal(store.getSettings().autoLeads, false);
   });
 });
+
+describe("BotStore.onChange — bot definitions changed (TEAM-011 refresh)", () => {
+  it("fires on create, update and delete with what changed", () => {
+    const { store } = freshStore();
+    const seen = [];
+    store.onChange((change) => seen.push(change));
+    const bot = store.create(validDef);
+    store.update(bot.id, { name: "Renamed" });
+    store.delete(bot.id);
+    assert.deepEqual(seen, [
+      { type: "created", id: bot.id },
+      { type: "updated", id: bot.id },
+      { type: "deleted", id: bot.id },
+    ]);
+  });
+
+  it("does not fire for runs, sessions or settings", () => {
+    const { store } = freshStore();
+    const bot = store.create(validDef);
+    const seen = [];
+    store.onChange((change) => seen.push(change));
+    store.appendRun(bot.id, { status: "completed", output: "x" });
+    store.saveSession(bot.id, "tool-loop", { id: "s" });
+    store.setSettings({ autoLeads: false });
+    store.setTeamSettings("7", { leadEnabled: false });
+    assert.deepEqual(seen, []);
+  });
+
+  it("deleting a missing bot doesn't fire", () => {
+    const { store } = freshStore();
+    const seen = [];
+    store.onChange((c) => seen.push(c));
+    store.delete("bot_missing");
+    assert.deepEqual(seen, []);
+  });
+
+  it("unsubscribes, and a throwing listener can't break a save", () => {
+    const { store } = freshStore();
+    const seen = [];
+    store.onChange(() => {
+      throw new Error("listener bug");
+    });
+    const off = store.onChange((c) => seen.push(c.type));
+    const bot = store.create(validDef);
+    off();
+    store.update(bot.id, { name: "x" });
+    assert.deepEqual(seen, ["created"]);
+    assert.equal(store.get(bot.id).name, "x");
+  });
+});

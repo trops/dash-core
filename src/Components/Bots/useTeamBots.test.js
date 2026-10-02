@@ -22,6 +22,7 @@ function setup(over = {}) {
     onRunActive: jest.fn((cb) => ((listeners.active = cb), "l1")),
     onApprovalPending: jest.fn((cb) => ((listeners.approval = cb), "l2")),
     onStream: jest.fn((cb) => ((listeners.stream = cb), "l3")),
+    onListChanged: jest.fn((cb) => ((listeners.listChanged = cb), "l4")),
     removeListener: jest.fn(),
     ...over,
   };
@@ -109,5 +110,29 @@ describe("useTeamBots", () => {
     const { result } = renderHook(() => useTeamBots(null));
     expect(result.current.members).toEqual([]);
     expect(api.list).not.toHaveBeenCalled();
+  });
+});
+
+describe("useTeamBots — bots changed elsewhere (TEAM-011 refresh)", () => {
+  it("re-loads the team when bots change, and stops listening on unmount", async () => {
+    const { api, listeners } = setup();
+    const { result, unmount } = renderHook(() => useTeamBots("7"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    api.list.mockResolvedValue([
+      ...bots,
+      { id: "b3", name: "New One", workspaceId: "7" },
+    ]);
+    await act(async () => {
+      listeners.listChanged({});
+    });
+    await waitFor(() =>
+      expect(result.current.members.map((b) => b.id)).toEqual([
+        "b1",
+        "b2",
+        "b3",
+      ]),
+    );
+    unmount();
+    expect(api.removeListener).toHaveBeenCalledWith("l4");
   });
 });
