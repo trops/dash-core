@@ -138,21 +138,29 @@ Bots stay a power-user feature. Multi-bot workflows remain hand-assembled and un
 > so that I can see and change the automation for a dashboard where I'm working.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** In Progress (slice 1 — everything except the lead, which is TEAM-002)
 
 **Acceptance Criteria:**
 
-- [ ] AC1: A dashboard's team is the set of bots whose `workspaceId` is that dashboard. Bots with no `workspaceId` stay **unassigned** (global) and keep working as today.
-- [ ] AC2: Dashboard Config gains a **Bots** tab listing the team: the lead pinned first, then members with status (idle, running, needs setup, paused), last run, and trigger summary.
-- [ ] AC3: **+ Add bot** in the Bots tab opens the existing bot form with `workspaceId` preset; the event picker opens on this dashboard's widgets.
-- [ ] AC4: An unassigned bot can be **moved into** a team (sets `workspaceId`), and a member can be moved out. Moving warns that event subscriptions scoped to another dashboard won't fire from this one.
-- [ ] AC5: The Bot Activity panel gains **+ New bot** (scoped to the current dashboard) and can filter/group its feed by team.
-- [ ] AC6: Settings › Bots stays the all-bots view, grouped by team (dashboard) with an Unassigned group.
+- [x] AC1: A dashboard's team is the set of bots whose `workspaceId` is that dashboard. Bots with no `workspaceId` stay **unassigned** (global) and keep working as today.
+- [x] AC2: Dashboard Config gains a **Bots** tab listing the team: the lead pinned first, then members with status (idle, running, needs setup, paused), last run, and trigger summary. _(Slice 1: members with status and trigger summary. The pinned lead arrives with TEAM-002; "last run" waits for a run-history API.)_
+- [x] AC3: **+ Add bot** in the Bots tab opens the existing bot form with `workspaceId` preset; the event picker opens on this dashboard's widgets.
+- [x] AC4: An unassigned bot can be **moved into** a team (sets `workspaceId`), and a member can be moved out. Moving warns that event subscriptions scoped to another dashboard won't fire from this one.
+- [x] AC5: The Bot Activity panel gains **+ New bot** (scoped to the current dashboard) and can filter/group its feed by team.
+- [x] AC6: Settings › Bots stays the all-bots view, grouped by team (dashboard) with an Unassigned group.
 
 **Edge Cases:**
 
 - Dashboard deleted → its team's bots become unassigned and paused (never deleted silently); the lead is deleted.
 - Dashboard duplicated → bots are not duplicated; the copy gets its own (idle) lead and an empty team.
+
+**Implementation notes (slice 1, 2026-10-01):**
+
+- **Membership:** `bot.workspaceId` (ids compared as strings) — `electron/bots/teams.js` (main) and `src/Components/Bots/teamUtils.js` (renderer). The event matcher already scoped a team bot to its own dashboard's events; it now compares ids as strings.
+- **One bot editor everywhere:** `BotEditorModal` (exported from dash-core) wraps `BotDetail`; used by Dashboard Config › Bots and dash-electron's Bot Activity panel. Settings › Bots keeps its inline form. `BotDetail` gained a **Team** field (Unassigned + dashboards, same-named ones numbered), `defaultWorkspaceId`, the picker preselect, and the off-team warning.
+- **Bots tab** (`src/Components/Dashboard/BotsTab.js`): saves immediately (unlike the other staged tabs) and says so; **Remove from team** only unassigns.
+- **Current dashboard for the dock:** `DashboardStage` wraps the assistant dock in `WorkspaceContext` (`workspaceData` = current dashboard, `workspaces` = all).
+- **Dashboard delete:** `workspaceController.deleteWorkspaceForApplication` emits `workspaceEvents.emitWorkspaceDeleted` (covers the app and the MCP `delete_dashboard` tool); `botController` unassigns + pauses that team (`teams.unassignTeam`).
 
 **Definition of Done:**
 

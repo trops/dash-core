@@ -35,6 +35,7 @@ const CORE_MODULES = [
   "./rememberGrant",
   "./botEvents",
   "./BotEventPublisher",
+  "./teams",
   // PermissionGate + BotRunner are portable: they take all Electron-coupled
   // collaborators (grant gate, MCP execution, provider resolution, approvals)
   // via injection. PermissionGate's convenience default for `gate` requires the

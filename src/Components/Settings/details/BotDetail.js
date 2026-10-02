@@ -23,6 +23,7 @@ import {
   buildBotEventCatalog,
   botSubscription,
 } from "./eventCatalog";
+import { dashboardOptions, offTeamSubscriptions } from "../../Bots/teamUtils";
 
 // "Run on events" sources: a dashboard widget, or another bot.
 const EVENT_FROM_OPTIONS = [
@@ -141,6 +142,8 @@ export const BotDetail = ({
   getWidgetConfig = null,
   // All bots → "Another bot" events (completed / failed / tool.*).
   bots = EMPTY_LIST,
+  // A new bot created from a dashboard joins that dashboard's team.
+  defaultWorkspaceId = null,
   onSave,
   onCancel,
   onDelete,
@@ -231,7 +234,19 @@ export const BotDetail = ({
     [workspaces, getWidgetConfig],
   );
   const [pickFrom, setPickFrom] = useState("widget");
-  const [pickWorkspace, setPickWorkspace] = useState("");
+  // Team = the dashboard this bot belongs to ("" = Unassigned). A bot on a
+  // team only hears its own dashboard's events (bot-teams TEAM-001).
+  const [team, setTeam] = useState(() => {
+    const id = bot ? bot.workspaceId : defaultWorkspaceId;
+    return id === undefined || id === null || id === "" ? "" : String(id);
+  });
+  const teamOptions = useMemo(
+    () => [{ value: "", label: "Unassigned" }, ...dashboardOptions(workspaces)],
+    [workspaces],
+  );
+  const offTeam = offTeamSubscriptions(subscriptions, team);
+  // The event picker opens on the bot's own dashboard.
+  const [pickWorkspace, setPickWorkspace] = useState(team);
   const [pickWidget, setPickWidget] = useState("");
   const [pickBot, setPickBot] = useState("");
   const [pickEvent, setPickEvent] = useState("");
@@ -406,6 +421,7 @@ export const BotDetail = ({
       model: model.trim() || null,
       engine: engine || null,
       approvalPolicy,
+      workspaceId: team || null,
       mcpServers: selectedServers,
       // Only keep narrowing for providers the bot still uses.
       toolSelections: Object.fromEntries(
@@ -448,6 +464,28 @@ export const BotDetail = ({
             placeholder="What should this bot do?"
             rows={5}
           />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <SelectInput
+            label="Team"
+            value={team}
+            onChange={setTeam}
+            options={teamOptions}
+          />
+          <span className="text-xs opacity-50">
+            The dashboard this bot works for. A bot on a team only runs on its
+            own dashboard&apos;s events; Unassigned bots hear every dashboard.
+          </span>
+          {offTeam.length ? (
+            <span className="text-xs opacity-70">
+              {offTeam.length === 1
+                ? "1 event this bot runs on comes"
+                : `${offTeam.length} events this bot runs on come`}{" "}
+              from another dashboard and won&apos;t fire while it&apos;s on this
+              team.
+            </span>
+          ) : null}
         </div>
 
         <div className="flex flex-col gap-2">

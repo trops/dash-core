@@ -1,5 +1,11 @@
 import React, { useContext, useEffect, useState, useCallback } from "react";
-import { EmptyState, ConfirmationModal, Tag } from "@trops/dash-react";
+import {
+  EmptyState,
+  ConfirmationModal,
+  Tag,
+  SectionLabel,
+} from "@trops/dash-react";
+import { groupBotsByTeam } from "../../Bots/teamUtils";
 import { SectionLayout } from "../SectionLayout";
 import { BotDetail } from "../details/BotDetail";
 import { AppContext } from "../../../Context/App/AppContext";
@@ -88,30 +94,40 @@ export const BotsSection = ({
           />
         </div>
       ) : (
-        bots.map((bot) => {
-          const isActive = !isCreating && bot.id === selectedId;
-          return (
-            <button
-              key={bot.id}
-              type="button"
-              onClick={() => {
-                setIsCreating(false);
-                setSelectedId(bot.id);
-              }}
-              className={`w-full flex flex-col items-start gap-1 p-4 text-left border-b ${
-                isActive ? "bg-gray-700" : ""
-              }`}
-            >
-              <span className="text-sm font-medium truncate">{bot.name}</span>
-              <div className="flex flex-row items-center gap-2">
-                <Tag text={bot.provider || "default"} />
-                {bot.schedules && bot.schedules.length > 0 ? (
-                  <span className="text-xs opacity-50">scheduled</span>
-                ) : null}
-              </div>
-            </button>
-          );
-        })
+        // Grouped by team (the dashboard each bot works for), Unassigned last.
+        groupBotsByTeam(bots, workspaces).map((group) => (
+          <div key={group.workspaceId || "unassigned"}>
+            <div className="px-4 pt-4 pb-1" data-testid="bot-team-heading">
+              <SectionLabel text={group.label} />
+            </div>
+            {group.bots.map((bot) => {
+              const isActive = !isCreating && bot.id === selectedId;
+              return (
+                <button
+                  key={bot.id}
+                  type="button"
+                  onClick={() => {
+                    setIsCreating(false);
+                    setSelectedId(bot.id);
+                  }}
+                  className={`w-full flex flex-col items-start gap-1 p-4 text-left border-b ${
+                    isActive ? "bg-gray-700" : ""
+                  }`}
+                >
+                  <span className="text-sm font-medium truncate">
+                    {bot.name}
+                  </span>
+                  <div className="flex flex-row items-center gap-2">
+                    <Tag text={bot.provider || "default"} />
+                    {bot.schedules && bot.schedules.length > 0 ? (
+                      <span className="text-xs opacity-50">scheduled</span>
+                    ) : null}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ))
       )}
     </div>
   );

@@ -422,7 +422,17 @@ const TAILWIND_PALETTE = {
   },
 };
 
+// dash-react ≥1.0.58 SectionLabel: uppercase section heading (text or children).
+function SectionLabel({ text = null, className = "", children }) {
+  return React.createElement(
+    "span",
+    { className },
+    text != null ? text : children,
+  );
+}
+
 module.exports = {
+  SectionLabel,
   isHexColor,
   deriveShades,
   TAILWIND_PALETTE,

@@ -31,6 +31,8 @@ const { matchSubscribedBots } = require("../bots/eventMatcher");
 const { EventDispatcher } = require("../bots/EventDispatcher");
 const { normalizeMcpResult } = require("../bots/mcpResult");
 const BotEventPublisher = require("../bots/BotEventPublisher");
+const { unassignTeam } = require("../bots/teams");
+const { onWorkspaceDeleted } = require("../utils/workspaceEvents");
 const {
   checkChain,
   causeFromEvent,
@@ -187,6 +189,13 @@ const botController = {
     this._scheduler.registerAll(bots);
     for (const bot of bots)
       this._scheduler.catchUp(bot, this._lastRunAt(bot.id));
+
+    // A deleted dashboard's team becomes unassigned + paused — never deleted,
+    // never left running somewhere unexpected (bot-teams TEAM-001).
+    if (this._offWorkspaceDeleted) this._offWorkspaceDeleted();
+    this._offWorkspaceDeleted = onWorkspaceDeleted((workspaceId) => {
+      unassignTeam({ store: this._store, pause: this._pause }, workspaceId);
+    });
 
     this._ready = true;
   },

@@ -46,10 +46,11 @@ function matchSubscribedBots(bots, event, opts = {}) {
     );
     if (!subscribed) return false;
 
-    // Workspace scoping (forward-compatible): only enforced once events carry a
-    // workspaceId. An unscoped bot (no workspaceId) listens everywhere.
+    // Team scoping: a bot on a dashboard's team only hears events stamped with
+    // that dashboard. An unassigned bot (no workspaceId) listens everywhere.
+    // Ids compare as strings (older saves may hold numeric ids).
     if (eventWorkspace && bot.workspaceId) {
-      return bot.workspaceId === eventWorkspace;
+      return String(bot.workspaceId) === String(eventWorkspace);
     }
     return true;
   });

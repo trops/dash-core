@@ -31,6 +31,7 @@ import {
 } from "../../utils/listenerResolution";
 import { WidgetsTab } from "./WidgetsTab";
 import { PermissionsTab } from "./PermissionsTab";
+import { BotsTab } from "./BotsTab";
 
 /**
  * DashboardConfigModal
@@ -75,6 +76,8 @@ export const DashboardConfigModal = ({
   isOpen,
   setIsOpen,
   workspace,
+  // All dashboards — the Bots tab's bot form (Team field, event picker).
+  workspaces = [],
   appProviders,
   getWidgetRequirements,
   getWidgetConfig = null,
@@ -611,6 +614,17 @@ export const DashboardConfigModal = ({
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab("bots")}
+            className={`px-3 py-1.5 text-sm font-medium -mb-px border-b-2 ${
+              activeTab === "bots"
+                ? "border-indigo-400"
+                : "border-transparent opacity-60 hover:opacity-100"
+            }`}
+          >
+            Bots
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab("dependencies")}
             className={`px-3 py-1.5 text-sm font-medium -mb-px border-b-2 ${
               activeTab === "dependencies"
@@ -665,6 +679,10 @@ export const DashboardConfigModal = ({
           )}
           {activeTab === "permissions" && (
             <PermissionsTab workspace={workspace} />
+          )}
+          {/* This dashboard's team — saves immediately, not on Save below. */}
+          {activeTab === "bots" && (
+            <BotsTab workspace={workspace} workspaces={workspaces} />
           )}
           {activeTab === "dependencies" && (
             <DependenciesTab dependencies={dependencies} />

@@ -706,3 +706,127 @@ describe("BotDetail — bot events in the picker", () => {
     expect(screen.getByText(/bot missing/i)).toBeInTheDocument();
   });
 });
+
+// Team = the dashboard this bot belongs to (bot-teams TEAM-001).
+describe("BotDetail — Team", () => {
+  const workspaces = [
+    {
+      id: 7,
+      name: "Kitchen Sink",
+      layout: [
+        { component: "trops.samples.EventSender", id: 3, dashboardId: 7 },
+      ],
+    },
+    { id: 9, name: "Sales", layout: [] },
+  ];
+  const getWidgetConfig = (name) =>
+    name === "trops.samples.EventSender"
+      ? { name: "Event Sender", events: ["buttonClicked"] }
+      : null;
+  const fill = () => {
+    fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
+      target: { value: "X" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "Y" },
+    });
+  };
+
+  it("offers Unassigned + every dashboard; a new bot defaults to Unassigned", () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail
+        isCreating
+        providers={{}}
+        workspaces={workspaces}
+        getWidgetConfig={getWidgetConfig}
+        onSave={onSave}
+      />,
+    );
+    const team = screen.getByLabelText("Team");
+    expect(Array.from(team.options).map((o) => o.textContent)).toEqual([
+      "Unassigned",
+      "Kitchen Sink",
+      "Sales",
+    ]);
+    fill();
+    fireEvent.click(screen.getByText("Create"));
+    expect(onSave.mock.calls[0][0].workspaceId).toBeNull();
+  });
+
+  it("a bot created from a dashboard is preset to that team", () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail
+        isCreating
+        defaultWorkspaceId={7}
+        providers={{}}
+        workspaces={workspaces}
+        getWidgetConfig={getWidgetConfig}
+        onSave={onSave}
+      />,
+    );
+    expect(screen.getByLabelText("Team")).toHaveValue("7");
+    // The event picker opens on this dashboard.
+    expect(screen.getByLabelText("Dashboard")).toHaveValue("7");
+    fill();
+    fireEvent.click(screen.getByText("Create"));
+    expect(onSave.mock.calls[0][0].workspaceId).toBe("7");
+  });
+
+  it("moving a bot out of its team saves workspaceId null", () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail
+        bot={{
+          id: "bot_1",
+          name: "X",
+          instructions: "Y",
+          schedules: [],
+          workspaceId: "9",
+        }}
+        providers={{}}
+        workspaces={workspaces}
+        onSave={onSave}
+      />,
+    );
+    expect(screen.getByLabelText("Team")).toHaveValue("9");
+    fireEvent.change(screen.getByLabelText("Team"), { target: { value: "" } });
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave.mock.calls[0][0].workspaceId).toBeNull();
+  });
+
+  it("warns when the bot listens to another dashboard's widgets", () => {
+    render(
+      <BotDetail
+        bot={{
+          id: "bot_1",
+          name: "X",
+          instructions: "Y",
+          schedules: [],
+          workspaceId: null,
+          subscriptions: [
+            {
+              eventType: "trops.samples.EventSender[3].buttonClicked",
+              label: "Kitchen Sink › Event Sender › buttonClicked",
+              source: {
+                kind: "widget",
+                ref: "trops.samples.EventSender",
+                instanceId: "3",
+                event: "buttonClicked",
+                workspaceId: "7",
+              },
+            },
+          ],
+        }}
+        providers={{}}
+        workspaces={workspaces}
+        getWidgetConfig={getWidgetConfig}
+        onSave={jest.fn()}
+      />,
+    );
+    expect(screen.queryByText(/won.t fire/i)).toBeNull();
+    fireEvent.change(screen.getByLabelText("Team"), { target: { value: "9" } });
+    expect(screen.getByText(/won.t fire/i)).toBeInTheDocument();
+  });
+});
