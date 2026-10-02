@@ -45,6 +45,8 @@ const BOT_STREAM = "bot-stream"; // { botId, event: BotEvent }
 const BOT_APPROVAL_PENDING = "bot-approval-pending"; // { id, request }
 const BOT_BUDGET_ALERT = "bot-budget-alert"; // { botId, cost, estimated, status }
 const BOT_RUN_ACTIVE = "bot-run-active"; // { count, running: string[] }
+// A bot was created, edited or deleted (anywhere) — refresh team lists.
+const BOT_LIST_CHANGED = "bot-list-changed"; // {}
 
 module.exports = {
   BOTS_LIST,
@@ -81,4 +83,5 @@ module.exports = {
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
   BOT_RUN_ACTIVE,
+  BOT_LIST_CHANGED,
 };

@@ -84,3 +84,25 @@ describe("botApi / events — Bots view IPC", () => {
     );
   });
 });
+
+describe("Bots changed broadcast (TEAM-011 refresh)", () => {
+  it("defines the event and exposes onListChanged", () => {
+    assert.equal(events.BOT_LIST_CHANGED, "bot-list-changed");
+    assert.match(
+      api,
+      /onListChanged: \(callback\) => _addListener\(BOT_LIST_CHANGED, callback\)/,
+    );
+  });
+
+  it("the controller broadcasts (coalesced) when bot definitions change", () => {
+    assert.match(ctrl, /require\("\.\.\/bots\/coalesce"\)/);
+    assert.match(
+      ctrl,
+      /this\._notifyListChanged = coalesce\(\(\) =>\s*this\._broadcast\(BOT_LIST_CHANGED, \{\}\),?\s*\)/,
+    );
+    assert.match(
+      ctrl,
+      /this\._offStoreChange = this\._store\.onChange\(\(\) =>\s*this\._notifyListChanged\(\),?\s*\)/,
+    );
+  });
+});

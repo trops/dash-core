@@ -6,6 +6,7 @@ import {
   fireEvent,
   waitFor,
   within,
+  act,
 } from "@testing-library/react";
 import { BotsView } from "./BotsView";
 import { AppContext } from "../../Context/App/AppContext";
@@ -354,5 +355,31 @@ describe("BotsView — discard, dirty state, settings hand-off (TEAM-011 gaps)",
     fireEvent.click(within(teamList()).getByText("Inbox Watch"));
     fireEvent.click(await screen.findByText("Open Settings › Providers"));
     expect(onOpenSettings).toHaveBeenCalledWith("providers");
+  });
+});
+
+describe("BotsView — bots changed elsewhere (TEAM-011 refresh)", () => {
+  it("re-loads its all-bots list (names, event sources)", async () => {
+    let changed = null;
+    setup();
+    window.mainApi.bots.onListChanged = jest.fn((cb) => ((changed = cb), "lc"));
+    document.body.innerHTML = "";
+    const { unmount } = render(
+      <AppContext.Provider value={{ providers: {} }}>
+        <BotsView
+          workspace={workspace}
+          workspaces={[workspace]}
+          team={makeTeam()}
+          narrow={false}
+        />
+      </AppContext.Provider>,
+    );
+    const calls = window.mainApi.bots.list.mock.calls.length;
+    await act(async () => {
+      changed({});
+    });
+    expect(window.mainApi.bots.list.mock.calls.length).toBe(calls + 1);
+    unmount();
+    expect(window.mainApi.bots.removeListener).toHaveBeenCalledWith("lc");
   });
 });

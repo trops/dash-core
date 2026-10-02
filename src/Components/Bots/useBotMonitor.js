@@ -96,10 +96,14 @@ export function useBotMonitor() {
         }),
       );
     }
+    // A bot was created, edited or deleted anywhere — reload names.
+    if (b.onListChanged) {
+      ids.push(b.onListChanged(() => refresh()));
+    }
     return () => {
       for (const id of ids) if (b.removeListener) b.removeListener(id);
     };
-  }, [loadRunning, loadRecent]);
+  }, [loadRunning, loadRecent, refresh]);
 
   const approve = useCallback(async (approvalId, decision) => {
     const b = api();

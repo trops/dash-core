@@ -139,14 +139,21 @@ export const BotsView = ({
   const [pendingNav, setPendingNav] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // All bots (any dashboard) — the form's "Another bot" event source.
+  // All bots (any dashboard) — the form's "Another bot" event source and
+  // names for trigger chains. Reloaded when bots change anywhere.
   useEffect(() => {
     const bots = api();
-    if (!bots || !bots.list) return;
-    Promise.resolve(bots.list())
-      .then((l) => setAllBots(Array.isArray(l) ? l : []))
-      .catch(() => {});
-  }, [team && team.bots]);
+    if (!bots || !bots.list) return undefined;
+    const load = () =>
+      Promise.resolve(bots.list())
+        .then((l) => setAllBots(Array.isArray(l) ? l : []))
+        .catch(() => {});
+    load();
+    const id = bots.onListChanged ? bots.onListChanged(load) : null;
+    return () => {
+      if (id !== null && bots.removeListener) bots.removeListener(id);
+    };
+  }, []);
 
   // Fall back to the lead when the selection disappears (deleted elsewhere).
   useEffect(() => {

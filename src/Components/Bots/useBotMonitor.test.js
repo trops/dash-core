@@ -27,6 +27,7 @@ function setup(over = {}) {
     onApprovalPending: jest.fn((cb) => ((listeners.approval = cb), "l1")),
     onRunActive: jest.fn((cb) => ((listeners.active = cb), "l2")),
     onStream: jest.fn((cb) => ((listeners.stream = cb), "l3")),
+    onListChanged: jest.fn((cb) => ((listeners.listChanged = cb), "l4")),
     removeListener: jest.fn(),
     ...over,
   };
@@ -109,5 +110,22 @@ describe("useBotMonitor", () => {
     expect(api.removeListener).toHaveBeenCalledWith("l1");
     expect(api.removeListener).toHaveBeenCalledWith("l2");
     expect(api.removeListener).toHaveBeenCalledWith("l3");
+  });
+});
+
+describe("useBotMonitor — bots changed elsewhere (TEAM-011 refresh)", () => {
+  it("re-loads bot names when bots change", async () => {
+    const { api, listeners } = setup();
+    const { result } = renderHook(() => useBotMonitor());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    api.list.mockResolvedValue([
+      { id: "b1", name: "Renamed", workspaceId: "7" },
+    ]);
+    await act(async () => {
+      listeners.listChanged({});
+    });
+    await waitFor(() =>
+      expect(result.current.botById("b1").name).toBe("Renamed"),
+    );
   });
 });

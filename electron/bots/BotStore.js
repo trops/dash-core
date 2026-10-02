@@ -61,6 +61,30 @@ class BotStore {
     // Seals sensitive run fields at rest (run answers). Optional: without one
     // (plain-Node host) they're stored as-is.
     this._box = secretBox;
+    /** Listeners for bot definition changes (create / update / delete). */
+    this._listeners = new Set();
+  }
+
+  /**
+   * Be told when a bot definition is created, updated or deleted — not runs,
+   * sessions or settings. The Bots view uses it (via the controller's
+   * broadcast) to refresh team lists.
+   * @param {(change: { type: "created"|"updated"|"deleted", id: string }) => void} listener
+   * @returns {() => void} unsubscribe
+   */
+  onChange(listener) {
+    this._listeners.add(listener);
+    return () => this._listeners.delete(listener);
+  }
+
+  _changed(type, id) {
+    for (const listener of this._listeners) {
+      try {
+        listener({ type, id });
+      } catch (_e) {
+        // A listener's bug must never break a save.
+      }
+    }
   }
 
   _load() {
@@ -133,6 +157,7 @@ class BotStore {
     this._save(data);
 
     fs.mkdirSync(this.workingDir(id), { recursive: true });
+    this._changed("created", id);
     return bot;
   }
 
@@ -163,6 +188,7 @@ class BotStore {
     }
     data.bots[id] = merged;
     this._save(data);
+    this._changed("updated", id);
     return merged;
   }
 
@@ -180,6 +206,7 @@ class BotStore {
         force: true,
       });
     }
+    this._changed("deleted", id);
     return true;
   }
 
