@@ -6,7 +6,9 @@ module.exports = {
   transform: {
     "^.+\\.[jt]sx?$": "babel-jest",
   },
-  transformIgnorePatterns: ["/node_modules/"],
+  // `marked` ships ES modules only — transform it so the Markdown sanitizer
+  // (src/utils/safeMarkdown.js) can be tested.
+  transformIgnorePatterns: ["/node_modules/(?!marked/)"],
   moduleNameMapper: {
     "\\.(css|less|scss)$": "<rootDir>/src/__mocks__/styleMock.js",
     "^@trops/dash-react$": "<rootDir>/src/__mocks__/dash-react.js",

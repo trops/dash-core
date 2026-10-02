@@ -8,12 +8,14 @@ import { useContext } from "react";
 import { ThemeContext } from "@trops/dash-react";
 import { StreamingText } from "./StreamingText";
 import { ToolCallBlock } from "./ToolCallBlock";
-import { marked } from "marked";
+import { renderSafeMarkdown } from "../../../utils/safeMarkdown";
 
 function AssistantTextContent({ text }) {
   if (!text) return null;
 
-  const html = marked(text, { breaks: true });
+  // Sanitized: replies can quote untrusted content (emails, web pages), and
+  // this HTML is inserted into the app window.
+  const html = renderSafeMarkdown(text);
 
   return (
     <div
