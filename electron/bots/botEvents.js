@@ -90,6 +90,24 @@ function causeFromEvent(event) {
 }
 
 /**
+ * What triggered an event run, for the run record (Bots view, TEAM-011):
+ * the event type, the bot's own label for it (from its subscription), and —
+ * for bot events — the publishing bot and the chain that led here.
+ */
+function sourceFromEvent(bot, event) {
+  if (!event || !event.eventType) return null;
+  const sub = ((bot && bot.subscriptions) || []).find(
+    (s) => s && s.eventType === event.eventType,
+  );
+  return {
+    eventType: event.eventType,
+    label: (sub && sub.label) || null,
+    originBotId: event.originBotId || null,
+    chain: Array.isArray(event.chain) ? [...event.chain] : [],
+  };
+}
+
+/**
  * The bus message for one bot event. The publishing bot joins the chain, so
  * downstream bots can refuse loops (checkChain).
  */
@@ -171,6 +189,7 @@ module.exports = {
   toolPayload,
   rootCause,
   causeFromEvent,
+  sourceFromEvent,
   buildBotEventMessage,
   checkChain,
   composeEventPrompt,

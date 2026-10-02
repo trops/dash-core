@@ -19,6 +19,7 @@ const {
   buildBotEventMessage,
   rootCause,
   causeFromEvent,
+  sourceFromEvent,
   checkChain,
   composeEventPrompt,
 } = require("./botEvents");
@@ -208,5 +209,56 @@ describe("composeEventPrompt — payload is untrusted data (US-011 AC4)", () => 
       composeEventPrompt({ eventType: "e", content: circ }),
       /unserializable/,
     );
+  });
+});
+
+describe("sourceFromEvent — what triggered an event run (TEAM-011)", () => {
+  const bot = {
+    id: "b2",
+    subscriptions: [
+      { eventType: "Gmail[w1].newEmail", label: "Gmail › new email" },
+      {
+        eventType: "bot:local/inbox-watch[b1].completed",
+        label: "Inbox Watch › completed",
+      },
+    ],
+  };
+
+  it("names a widget event by the bot's subscription label", () => {
+    assert.deepEqual(
+      sourceFromEvent(bot, {
+        eventType: "Gmail[w1].newEmail",
+        workspaceId: "7",
+      }),
+      {
+        eventType: "Gmail[w1].newEmail",
+        label: "Gmail › new email",
+        originBotId: null,
+        chain: [],
+      },
+    );
+  });
+
+  it("records the publishing bot and chain for a bot event", () => {
+    const src = sourceFromEvent(bot, {
+      eventType: "bot:local/inbox-watch[b1].completed",
+      originBotId: "b1",
+      chain: ["b0", "b1"],
+      depth: 2,
+    });
+    assert.equal(src.label, "Inbox Watch › completed");
+    assert.equal(src.originBotId, "b1");
+    assert.deepEqual(src.chain, ["b0", "b1"]);
+  });
+
+  it("falls back to the event type when nothing matches", () => {
+    const src = sourceFromEvent(bot, { eventType: "Other[x].ping" });
+    assert.equal(src.label, null);
+    assert.equal(src.eventType, "Other[x].ping");
+  });
+
+  it("tolerates missing input", () => {
+    assert.equal(sourceFromEvent(bot, null), null);
+    assert.equal(sourceFromEvent(null, { eventType: "a" }).label, null);
   });
 });

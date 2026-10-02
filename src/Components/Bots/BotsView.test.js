@@ -303,3 +303,56 @@ describe("BotsView — focus requests (B3 monitor)", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("BotsView — discard, dirty state, settings hand-off (TEAM-011 gaps)", () => {
+  function renderView(props = {}, runsFor = () => []) {
+    setup();
+    document.body.innerHTML = "";
+    window.mainApi.bots.getRuns = jest.fn(async (id) => runsFor(id));
+    return render(
+      <AppContext.Provider value={{ providers: {} }}>
+        <BotsView
+          workspace={workspace}
+          workspaces={[workspace]}
+          team={makeTeam()}
+          narrow={false}
+          {...props}
+        />
+      </AppContext.Provider>,
+    );
+  }
+
+  it("Discard changes resets the form and reports clean", () => {
+    const onDirtyChange = jest.fn();
+    renderView({ onDirtyChange });
+    fireEvent.click(within(teamList()).getByText("Inbox Watch"));
+    fireEvent.click(screen.getByRole("tab", { name: "Settings" }));
+    expect(screen.getByText("Discard changes")).toBeDisabled();
+    fireEvent.change(screen.getByDisplayValue("Inbox Watch"), {
+      target: { value: "Edited" },
+    });
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByText("Discard changes"));
+    expect(screen.getByDisplayValue("Inbox Watch")).toBeInTheDocument();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("a provider error in the conversation opens Settings › Providers", async () => {
+    const onOpenSettings = jest.fn();
+    renderView({ onOpenSettings }, (id) =>
+      id === "b1"
+        ? [
+            {
+              trigger: "manual",
+              status: "failed",
+              error: "Token expired",
+              prompt: "x",
+            },
+          ]
+        : [],
+    );
+    fireEvent.click(within(teamList()).getByText("Inbox Watch"));
+    fireEvent.click(await screen.findByText("Open Settings › Providers"));
+    expect(onOpenSettings).toHaveBeenCalledWith("providers");
+  });
+});

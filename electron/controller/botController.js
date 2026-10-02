@@ -43,6 +43,7 @@ const { onWorkspaceDeleted } = require("../utils/workspaceEvents");
 const {
   checkChain,
   causeFromEvent,
+  sourceFromEvent,
   composeEventPrompt,
 } = require("../bots/botEvents");
 const {
@@ -251,6 +252,7 @@ const botController = {
         prompt: composeEventPrompt(event),
         trigger: "event",
         cause: causeFromEvent(event),
+        source: sourceFromEvent(bot, event),
       });
     }
   },
@@ -570,6 +572,8 @@ const botController = {
     const p = this._runner.run(botId, {
       prompt: opts.prompt,
       trigger: opts.trigger,
+      // What triggered an event run, for the run record (Bots view).
+      source: opts.source || null,
       // Follow-ups (Ask the lead) resume the session; runs start fresh.
       continueSession: !!opts.continueSession,
       emit: (event) => {

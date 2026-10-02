@@ -14,7 +14,11 @@ import {
   TextArea,
   ThemeContext,
 } from "@trops/dash-react";
-import { buildConversation, toPlainText } from "./botConversation";
+import {
+  buildConversation,
+  errorNextSteps,
+  toPlainText,
+} from "./botConversation";
 
 /**
  * BotChat — a bot's conversation in the Bots view (bot-teams PRD TEAM-011).
@@ -33,6 +37,8 @@ import { buildConversation, toPlainText } from "./botConversation";
  * @param {boolean} [isLead]
  * @param {object[]} [approvals]  this bot's pending approvals
  * @param {(id: string, decision: object) => void} [onApprove]
+ * @param {(botId: string) => string} [nameOf]  bot names for trigger chains
+ * @param {(section: string) => void} [onOpenSettings]  error next steps
  */
 const EMPTY = [];
 const NEAR_BOTTOM_PX = 32;
@@ -48,6 +54,8 @@ export const BotChat = ({
   isLead = false,
   approvals = EMPTY,
   onApprove = null,
+  nameOf = undefined,
+  onOpenSettings = null,
 }) => {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
   const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
@@ -142,8 +150,8 @@ export const BotChat = ({
   }, [bot, loadRuns]);
 
   const turns = useMemo(
-    () => buildConversation(runs || EMPTY, { live }),
-    [runs, live],
+    () => buildConversation(runs || EMPTY, { live, nameOf }),
+    [runs, live, nameOf],
   );
 
   // Follow new messages when at the bottom; otherwise offer the pill.
@@ -175,13 +183,20 @@ export const BotChat = ({
     setUnseen(false);
   };
 
-  const send = async () => {
+  const send = () => {
     const text = draft.trim();
-    const bots = api();
-    if (!text || !bots || !bot || liveRef.current) return;
+    // Keep the draft while a run is in progress (Enter mid-run).
+    if (!text || liveRef.current) return;
     const continueConversation = !freshNext && (runs || EMPTY).length > 0;
     setDraft("");
     setFreshNext(false);
+    startRun(text, continueConversation);
+  };
+
+  // A run (or a question to the lead), streamed into the thread.
+  const startRun = async (text, continueConversation) => {
+    const bots = api();
+    if (!bots || !bot || liveRef.current) return;
     setAtBottom(true);
     const pending = {
       trigger: isLead ? "ask" : "manual",
@@ -264,15 +279,36 @@ export const BotChat = ({
             ))}
           </div>
         );
-      case "error":
+      case "error": {
+        const steps = errorNextSteps(t.text, { isLead });
         return (
           <div
             key={i}
-            className="rounded-md border border-red-800 px-3 py-2 text-sm text-red-300"
+            className="rounded-md border border-red-800 px-3 py-2 text-sm text-red-300 flex flex-col gap-2"
           >
-            {t.text}
+            <span>{t.text}</span>
+            <div className="flex flex-row flex-wrap gap-2">
+              {steps.map((step) =>
+                step.action === "run-again" ? (
+                  <Button3
+                    key={step.action}
+                    title={step.label}
+                    size="xs"
+                    onClick={() => startRun(t.prompt || "", false)}
+                  />
+                ) : onOpenSettings ? (
+                  <Button3
+                    key={step.action}
+                    title={step.label}
+                    size="xs"
+                    onClick={() => onOpenSettings(step.section)}
+                  />
+                ) : null,
+              )}
+            </div>
           </div>
         );
+      }
       case "bot":
         return (
           <div key={i} className="flex flex-col gap-1 max-w-2xl">

@@ -1,13 +1,28 @@
-import React, { useContext, useEffect, useState } from "react";
-import { ThemeContext } from "@trops/dash-react";
-import { toPlainText } from "./botConversation";
+import React, { useCallback, useContext, useEffect, useState } from "react";
+import { Button3, ThemeContext } from "@trops/dash-react";
+import { errorNextSteps, toPlainText, triggerLabel } from "./botConversation";
 
 /**
  * BotRunHistory — a bot's runs, newest first (Bots view › Activity,
  * bot-teams PRD TEAM-011). Each row: when, what started it, status, and the
  * answer's first line; opening a row shows the full answer, the prompt, the
  * tool calls and any error. Answers are plain text, never HTML.
+ *
+ * Details also show what triggered the run, its approval decisions, and next
+ * steps for a failed run (Run again; Open Settings › Providers for provider
+ * problems). Reloads when the bot's run finishes.
  */
+const DECISION_TEXT = {
+  allowed: "you allowed",
+  "allowed-always": "you always allowed",
+  denied: "you denied",
+};
+
+function api() {
+  return typeof window !== "undefined" && window.mainApi
+    ? window.mainApi.bots
+    : null;
+}
 const STATUS_DOT = {
   completed: "bg-green-400",
   failed: "bg-red-400",
@@ -52,7 +67,12 @@ function firstLine(run) {
   return toPlainText(run.output || "").split("\n")[0];
 }
 
-export const BotRunHistory = ({ bot }) => {
+export const BotRunHistory = ({
+  bot,
+  isLead = false,
+  nameOf = undefined,
+  onOpenSettings = null,
+}) => {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
   const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
   const strong = currentTheme["text-neutral-light"] || "text-gray-200";
@@ -60,20 +80,43 @@ export const BotRunHistory = ({ bot }) => {
   const [runs, setRuns] = useState(null);
   const [open, setOpen] = useState(null);
 
-  useEffect(() => {
-    let alive = true;
-    const bots = typeof window !== "undefined" && window.mainApi?.bots;
-    if (!bots || !bots.getRuns || !bot) return undefined;
-    Promise.resolve(bots.getRuns(bot.id, 50))
-      .then((list) => {
-        if (alive) setRuns(Array.isArray(list) ? [...list].reverse() : []);
-      })
-      .catch(() => alive && setRuns([]));
-    setOpen(null);
-    return () => {
-      alive = false;
-    };
+  const loadRuns = useCallback(async () => {
+    const bots = api();
+    if (!bots || !bots.getRuns || !bot) return;
+    try {
+      const list = await bots.getRuns(bot.id, 50);
+      setRuns(Array.isArray(list) ? [...list].reverse() : []);
+    } catch (_e) {
+      setRuns((prev) => prev || []);
+    }
   }, [bot]);
+
+  useEffect(() => {
+    setRuns(null);
+    setOpen(null);
+    loadRuns();
+  }, [loadRuns]);
+
+  // Live: reload when this bot's run finishes.
+  useEffect(() => {
+    const bots = api();
+    if (!bots || !bots.onStream || !bot) return undefined;
+    const id = bots.onStream(({ botId, event }) => {
+      const t = event && event.type;
+      if (botId !== bot.id) return;
+      if (t === "done" || t === "error" || t === "skipped") loadRuns();
+    });
+    return () => {
+      if (bots.removeListener) bots.removeListener(id);
+    };
+  }, [bot, loadRuns]);
+
+  const runAgain = (prompt) => {
+    const bots = api();
+    if (!bots || !bot) return;
+    if (isLead) bots.askLead(bot.id, prompt || "", false);
+    else bots.run(bot.id, prompt || "", false);
+  };
 
   if (runs === null) return null;
   if (!runs.length) {
@@ -107,6 +150,11 @@ export const BotRunHistory = ({ bot }) => {
           </button>
           {open === i ? (
             <div className="flex flex-col gap-2 pb-3 text-sm">
+              {triggerLabel(r, nameOf) ? (
+                <div className={`text-xs ${muted}`}>
+                  {triggerLabel(r, nameOf)}
+                </div>
+              ) : null}
               {r.prompt ? (
                 <div>
                   <div className={`text-xs ${muted}`}>Asked</div>
@@ -128,7 +176,38 @@ export const BotRunHistory = ({ bot }) => {
                   ))}
                 </div>
               ) : null}
+              {Array.isArray(r.approvals) && r.approvals.length ? (
+                <div className={`text-xs ${muted} flex flex-col gap-0.5`}>
+                  {r.approvals.map((a, j) => (
+                    <span key={j}>
+                      {`${a.tool}${a.provider ? ` on ${a.provider}` : " (built-in)"} · ${DECISION_TEXT[a.decision] || a.decision}`}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               {r.error ? <div className="text-red-300">{r.error}</div> : null}
+              {r.status === "failed" ? (
+                <div className="flex flex-row flex-wrap gap-2">
+                  {errorNextSteps(r.error || "failed", { isLead }).map(
+                    (step) =>
+                      step.action === "run-again" ? (
+                        <Button3
+                          key={step.action}
+                          title={step.label}
+                          size="xs"
+                          onClick={() => runAgain(r.prompt)}
+                        />
+                      ) : onOpenSettings ? (
+                        <Button3
+                          key={step.action}
+                          title={step.label}
+                          size="xs"
+                          onClick={() => onOpenSettings(step.section)}
+                        />
+                      ) : null,
+                  )}
+                </div>
+              ) : null}
               {r.outputUnavailable ? (
                 <div className={muted}>
                   Answer unavailable — it was stored encrypted with a key this

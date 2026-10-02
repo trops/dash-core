@@ -299,6 +299,18 @@ const DashboardStageInner = ({
     [workspaceSelected],
   );
 
+  // Unsaved bot edits in the Bots view's Settings tab. Leaving the Bots view
+  // (the header's Dashboard switch, or the edit button) asks first.
+  const botsDirtyRef = useRef(false);
+  const [pendingLeaveBots, setPendingLeaveBots] = useState(null);
+  const leaveBotsGuarded = (action) => {
+    if (stageMode === "bots" && botsDirtyRef.current) {
+      setPendingLeaveBots(() => action);
+      return;
+    }
+    action();
+  };
+
   // The Bot monitor's "Open in Bots view": switch in place when it's the
   // dashboard you're viewing; otherwise open that dashboard as a popout in
   // the Bots view, so the dashboard you're on (and any edits) is untouched.
@@ -2059,7 +2071,9 @@ const DashboardStageInner = ({
                   workspace={workspaceSelected}
                   preview={popout ? true : previewMode}
                   onNameChange={handleWorkspaceNameChange}
-                  onClickEdit={popout ? null : handleToggleEditMode}
+                  onClickEdit={
+                    popout ? null : () => leaveBotsGuarded(handleToggleEditMode)
+                  }
                   onPopout={popout ? null : handlePopout}
                   onSaveChanges={popout ? null : handleClickSaveWorkspace}
                   menuItems={menuItems}
@@ -2084,7 +2098,12 @@ const DashboardStageInner = ({
                   configUnresolvedCount={unresolvedCount}
                   stageMode={stageMode}
                   onStageModeChange={
-                    popout || previewMode ? setStageMode : null
+                    popout || previewMode
+                      ? (mode) =>
+                          mode === "bots"
+                            ? setStageMode(mode)
+                            : leaveBotsGuarded(() => setStageMode(mode))
+                      : null
                   }
                   botsAttention={team.attention}
                 />
@@ -2175,6 +2194,10 @@ const DashboardStageInner = ({
                       workspaces={workspaceConfig}
                       team={team}
                       focus={botsFocus}
+                      onDirtyChange={(d) => {
+                        botsDirtyRef.current = d;
+                      }}
+                      onOpenSettings={(section) => openAppSettings(section)}
                     />
                   ) : (
                     <>
@@ -2480,6 +2503,25 @@ const DashboardStageInner = ({
           and handleOpenTabGuarded when they intercept a destructive
           action mid-edit. Discard commits the pending navigation;
           Cancel keeps the user in edit mode with their changes. */}
+      {/* Leaving the Bots view with unsaved bot settings. */}
+      <ConfirmationModal
+        isOpen={Boolean(pendingLeaveBots)}
+        setIsOpen={(open) => {
+          if (!open) setPendingLeaveBots(null);
+        }}
+        title="Discard unsaved changes?"
+        message="This bot's settings have changes that haven't been saved. Discard them and leave the Bots view?"
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        variant="danger"
+        onConfirm={() => {
+          const action = pendingLeaveBots;
+          setPendingLeaveBots(null);
+          botsDirtyRef.current = false;
+          if (action) action();
+        }}
+        onCancel={() => setPendingLeaveBots(null)}
+      />
       <ConfirmationModal
         isOpen={Boolean(pendingNavigation)}
         setIsOpen={(open) => {
