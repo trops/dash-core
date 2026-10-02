@@ -103,6 +103,14 @@ describe("matchSubscribedBots", () => {
     });
   });
 
+  it("a bot on a team matches its dashboard's events even with a numeric id", () => {
+    const ids = matchSubscribedBots(
+      [bot("a", [{ eventType: "e" }], { workspaceId: 7 })],
+      { eventType: "e", workspaceId: "7" },
+    ).map((b) => b.id);
+    assert.deepEqual(ids, ["a"]);
+  });
+
   it("returns [] for bad input or no subscribers", () => {
     assert.deepEqual(matchSubscribedBots(null, { eventType: "e" }), []);
     assert.deepEqual(matchSubscribedBots([], { eventType: "e" }), []);

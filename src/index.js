@@ -36,6 +36,7 @@ export * from "./Components/Menu";
 export * from "./Components/Workspace";
 export * from "./Components/AiAssistant";
 export * from "./Components/MarkdownForm";
+export * from "./Components/Bots";
 
 // --- Utils ---
 export * from "./utils";

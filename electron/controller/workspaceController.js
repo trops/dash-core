@@ -3,6 +3,7 @@ const path = require("path");
 const { writeFileSync } = require("fs");
 const events = require("../events");
 const { getFileContents } = require("../utils/file");
+const { emitWorkspaceDeleted } = require("../utils/workspaceEvents");
 
 const configFilename = "workspaces.json";
 const appName = "Dashboard";
@@ -158,6 +159,11 @@ const workspaceController = {
       );
 
       writeFileSync(filename, JSON.stringify(filtered, null, 2));
+
+      // Let the Bot Factory unassign + pause the deleted dashboard's team.
+      if (filtered.length < workspacesArray.length) {
+        emitWorkspaceDeleted(workspaceId);
+      }
 
       console.log(
         `[workspaceController] Workspace ${workspaceId} deleted successfully`,

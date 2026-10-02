@@ -31,11 +31,13 @@ function renderSection({
   createRequested = false,
   onCreateAcknowledged = () => {},
   providers = {},
+  workspaces = [],
 } = {}) {
   const bots = botsApi || makeBotsApi();
   render(
     <AppContext.Provider value={{ providers }}>
       <BotsSection
+        workspaces={workspaces}
         dashApi={{ bots }}
         createRequested={createRequested}
         onCreateAcknowledged={onCreateAcknowledged}
@@ -103,5 +105,28 @@ describe("BotsSection", () => {
     const modal = await screen.findByTestId("confirmation-modal");
     fireEvent.click(within(modal).getByText("Delete"));
     await waitFor(() => expect(bots.delete).toHaveBeenCalledWith("b1"));
+  });
+
+  it("groups bots by team (dashboard), with Unassigned last", async () => {
+    const bots = makeBotsApi({
+      list: jest.fn().mockResolvedValue([
+        { id: "b1", name: "Inbox Watch", workspaceId: "9", schedules: [] },
+        { id: "b2", name: "Loose Bot", workspaceId: null, schedules: [] },
+        { id: "b3", name: "Notifier", workspaceId: "9", schedules: [] },
+      ]),
+    });
+    renderSection({
+      botsApi: bots,
+      workspaces: [
+        { id: 7, name: "Kitchen Sink" },
+        { id: 9, name: "Sales" },
+      ],
+    });
+    expect(await screen.findByText("Inbox Watch")).toBeInTheDocument();
+    const headings = screen
+      .getAllByTestId("bot-team-heading")
+      .map((h) => h.textContent);
+    // Empty teams are omitted.
+    expect(headings).toEqual(["Sales", "Unassigned"]);
   });
 });

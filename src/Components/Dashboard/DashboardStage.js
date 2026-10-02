@@ -45,6 +45,7 @@ import { DashSidebar } from "../Navigation/DashSidebar";
 import { WidgetSidebar } from "../Navigation/WidgetSidebar";
 
 import { AppContext } from "../../Context/App/AppContext";
+import { WorkspaceContext } from "../../Context/WorkspaceContext";
 import { useMissingWidgets } from "../../hooks/useMissingWidgets";
 import { MissingWidgetsModal } from "../../Widget/MissingWidgetsModal";
 import { DashboardConfigModal } from "./DashboardConfigModal";
@@ -236,6 +237,14 @@ const DashboardStageInner = ({
   const [isLoadingMenuItems, setIsLoadingMenuItems] = useState(false);
   const [menuItems, setMenuItems] = useState([]);
   const [workspaceConfig, setWorkspaceConfig] = useState([]);
+
+  // The assistant dock (AI Assistant + Bot Activity) renders outside any
+  // Workspace, so hand it the current dashboard and the full list — the Bot
+  // Activity panel creates bots on the dashboard you're on (bot-teams TEAM-001).
+  const dockWorkspaceContext = useMemo(
+    () => ({ workspaceData: workspaceSelected, workspaces: workspaceConfig }),
+    [workspaceSelected, workspaceConfig],
+  );
 
   // Modal state
   const [isThemeManagerOpen, setIsThemeManagerOpen] = useState(false);
@@ -2125,7 +2134,11 @@ const DashboardStageInner = ({
               onCollapsedChange={setWidgetSidebarCollapsed}
             />
           )}
-          {!popout && renderAiAssistant}
+          {!popout && (
+            <WorkspaceContext.Provider value={dockWorkspaceContext}>
+              {renderAiAssistant}
+            </WorkspaceContext.Provider>
+          )}
         </div>
 
         {/* ─── Modals (hidden in popout mode) ────────── */}
@@ -2223,6 +2236,7 @@ const DashboardStageInner = ({
             <DashboardConfigModal
               isOpen={isConfigModalOpen}
               setIsOpen={setIsConfigModalOpen}
+              workspaces={workspaceConfig}
               workspace={workspaceSelected}
               appProviders={appContext?.providers || {}}
               // Use ComponentManager.config so legacy bare component
