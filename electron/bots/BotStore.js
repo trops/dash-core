@@ -35,6 +35,9 @@ const { botRef } = require("./botEvents");
 // bound (full history migrates to SQLite in a later phase).
 const MAX_RUNS_PER_BOT = 100;
 
+// Run fields that can hold sensitive text — sealed at rest via secretBox.
+const SEALED_RUN_FIELDS = ["output", "prompt"];
+
 class BotStore {
   /**
    * @param {{ persistence: {read: () => object, write: (o: object) => void},
@@ -209,11 +212,16 @@ class BotStore {
     const data = this._load();
     if (!data.bots[id]) throw new Error(`BotStore.appendRun: no bot "${id}"`);
     const entry = { ...run, at: (run && run.at) || this._now() };
-    // The run's answer can hold sensitive text (emails…) — sealed at rest.
-    const stored =
-      this._box && typeof entry.output === "string"
-        ? { ...entry, output: this._box.seal(entry.output) }
-        : entry;
+    // The run's answer and prompt can hold sensitive text (emails, what the
+    // user asked) — sealed at rest. Tool summaries (names only) stay plain.
+    const stored = { ...entry };
+    if (this._box) {
+      for (const field of SEALED_RUN_FIELDS) {
+        if (typeof stored[field] === "string") {
+          stored[field] = this._box.seal(stored[field]);
+        }
+      }
+    }
     const runs = data.runs[id] || [];
     runs.push(stored);
     data.runs[id] = runs.slice(-MAX_RUNS_PER_BOT);
@@ -222,20 +230,25 @@ class BotStore {
   }
 
   /**
-   * @returns {object[]} run records for a bot, oldest first. Answers that
-   * can't be decrypted (keychain reset, another app identity) come back as
-   * `output: null, outputUnavailable: true`.
+   * @returns {object[]} run records for a bot, oldest first. Sealed fields
+   * that can't be decrypted (keychain reset, another app identity) come back
+   * as null, with `outputUnavailable: true` when the answer is affected.
    */
   getRuns(id) {
     const { runs } = this._load();
     const list = runs[id] || [];
     if (!this._box) return list;
     return list.map((r) => {
-      if (!r || typeof r.output !== "string") return r;
-      const output = this._box.open(r.output);
-      return output === null
-        ? { ...r, output: null, outputUnavailable: true }
-        : { ...r, output };
+      if (!r) return r;
+      const out = { ...r };
+      for (const field of SEALED_RUN_FIELDS) {
+        if (typeof out[field] !== "string") continue;
+        out[field] = this._box.open(out[field]);
+        if (out[field] === null && field === "output") {
+          out.outputUnavailable = true;
+        }
+      }
+      return out;
     });
   }
 

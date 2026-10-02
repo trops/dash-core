@@ -306,8 +306,27 @@ const botController = {
     return this._store.delete(botId);
   },
 
-  run(botId, prompt) {
-    return this._run(botId, { prompt, trigger: "manual" });
+  /**
+   * Run a bot. `continueConversation` resumes its last session — a reply in
+   * the Bots view (TEAM-011) — logged with trigger "reply".
+   */
+  run(botId, prompt, { continueConversation = false } = {}) {
+    return this._run(botId, {
+      prompt,
+      trigger: continueConversation ? "reply" : "manual",
+      continueSession: !!continueConversation,
+    });
+  },
+
+  /**
+   * A bot's latest runs, oldest first — prompt, answer (decrypted by the
+   * store), tool-call summary, status. Feeds the Bots view's conversation
+   * and Activity tab.
+   */
+  getRuns(botId, { limit = 50 } = {}) {
+    const runs = this._store.getRuns(botId) || [];
+    const n = Math.max(1, Math.min(100, Number(limit) || 50));
+    return runs.slice(-n);
   },
 
   // ---- Team leads (bot-teams TEAM-002 / TEAM-003) --------------------------

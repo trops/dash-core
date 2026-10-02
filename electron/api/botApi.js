@@ -35,6 +35,7 @@ const {
   BOTS_GET_SETTINGS,
   BOTS_SET_SETTINGS,
   BOTS_ASK_LEAD,
+  BOTS_GET_RUNS,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
@@ -59,7 +60,12 @@ const botApi = {
   delete: (botId) => ipcRenderer.invoke(BOTS_DELETE, { botId }),
 
   /** Start a run. Stream events arrive via onStream(). */
-  run: (botId, prompt) => ipcRenderer.invoke(BOTS_RUN, { botId, prompt }),
+  /** Start a run; `continueConversation` replies within its last session. */
+  run: (botId, prompt, continueConversation = false) =>
+    ipcRenderer.invoke(BOTS_RUN, { botId, prompt, continueConversation }),
+  /** The bot's latest runs (oldest first), answers decrypted. */
+  getRuns: (botId, limit) =>
+    ipcRenderer.invoke(BOTS_GET_RUNS, { botId, limit }),
   stop: (botId) => ipcRenderer.invoke(BOTS_STOP, { botId }),
 
   /** Resolve a pending approval. decision: { allow, reason? } */

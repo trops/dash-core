@@ -103,6 +103,65 @@ describe("BotRunner.run — happy path", () => {
     assert.equal(runs[0].run.trigger, "manual");
   });
 
+  // Bots view (TEAM-011): a run is a conversation turn — its prompt, which
+  // tools it used (never their arguments or results), and whether it
+  // continued the previous conversation.
+  it("records the prompt and whether the run continued a conversation", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const { runner } = makeRunner(engine);
+    const fresh = await runner.run("bot_1", { prompt: "Check my inbox" });
+    assert.equal(fresh.prompt, "Check my inbox");
+    assert.equal(fresh.continued, false);
+    const reply = await runner.run("bot_1", {
+      prompt: "And yesterday?",
+      continueSession: true,
+    });
+    assert.equal(reply.continued, true);
+  });
+
+  it("records a tool-call summary — tool, provider, ok — never args or results", async () => {
+    const engine = mockEngine([
+      {
+        type: "tool_call",
+        id: "t1",
+        name: "search_emails",
+        input: { q: "SECRET QUERY" },
+      },
+      {
+        type: "tool_result",
+        id: "t1",
+        output: "SECRET RESULT",
+        isError: false,
+      },
+      {
+        type: "tool_call",
+        id: "t2",
+        name: "mcp__bot-mcp__read_email",
+        input: {},
+      },
+      { type: "tool_result", id: "t2", output: "nope", isError: true },
+      { type: "tool_call", id: "t3", name: "Bash", input: { command: "ls" } },
+      { type: "done", stopReason: "end_turn" },
+    ]);
+    const { runner } = makeRunner(engine, {
+      deps: {
+        resolveTools: async () => ({
+          tools: [],
+          resolveServer: (n) =>
+            ["search_emails", "read_email"].includes(n) ? "Gmail New" : null,
+        }),
+      },
+    });
+    const record = await runner.run("bot_1", { prompt: "go" });
+    assert.deepEqual(record.toolCalls, [
+      { tool: "search_emails", provider: "Gmail New", ok: true },
+      { tool: "read_email", provider: "Gmail New", ok: false },
+      // A built-in with no result yet → not known to have succeeded.
+      { tool: "Bash", provider: null, ok: null },
+    ]);
+    assert.doesNotMatch(JSON.stringify(record.toolCalls), /SECRET/);
+  });
+
   it("keeps the run's answer (its text) on the run record", async () => {
     const engine = mockEngine([
       { type: "text", text: "Found " },

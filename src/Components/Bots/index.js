@@ -4,6 +4,11 @@ export { BotEditorModal } from "./BotEditorModal";
 export { AskLead } from "./AskLead";
 export { TeamLeadSection } from "./TeamLeadSection";
 export {
+  buildConversation,
+  botStatus,
+  attentionCount,
+} from "./botConversation";
+export {
   sameWorkspace,
   dashboardOptions,
   groupBotsByTeam,

@@ -261,6 +261,24 @@ describe("BotStore — encrypted run answers", () => {
     assert.equal(run.outputUnavailable, true);
   });
 
+  it("seals the run's prompt too; tool summaries stay readable", () => {
+    const { store, persistence } = boxedStore();
+    const bot = store.create(validDef);
+    store.appendRun(bot.id, {
+      status: "completed",
+      prompt: "Find emails from Acme",
+      output: "2 found",
+      toolCalls: [{ tool: "search_emails", provider: "Gmail New", ok: true }],
+    });
+    const raw = persistence._blob().runs[bot.id][0];
+    assert.ok(raw.prompt.startsWith("enc:v1:"));
+    assert.ok(!raw.prompt.includes("Acme"));
+    assert.equal(raw.toolCalls[0].tool, "search_emails");
+    const [run] = store.getRuns(bot.id);
+    assert.equal(run.prompt, "Find emails from Acme");
+    assert.equal(run.output, "2 found");
+  });
+
   it("without a secretBox, outputs stay plain (plain-Node host)", () => {
     const { store, persistence } = freshStore();
     const bot = store.create(validDef);
