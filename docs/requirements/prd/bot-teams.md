@@ -423,22 +423,22 @@ answers from today's runs.
 > so that working with bots has room to breathe instead of being squeezed into a modal tab or a side panel.
 
 **Priority:** P1 (next after slice 2a; supersedes the slice 1–2a Bots tab and the side panel's chat)
-**Status:** Backlog
+**Status:** In Progress (B1 + B2 shipped; B3 side-panel monitor next)
 **Design:** clickable mockup — https://claude.ai/artifact/DmugteBVtFYEUBrAuo5KCE (Aurora look from `docs/design/dark-shell.html`)
 
 **Acceptance Criteria:**
 
-- [ ] AC1: **Switch.** The dashboard header has a **Dashboard | Bots** segmented control next to the title. Bots replaces the whole stage (page tabs and widgets hidden) without leaving the dashboard; Dashboard brings them back. The Bots side shows a count of items that need the user (pending approvals, failed last runs). Not shown in popped-out widget windows.
-- [ ] AC2: **Team list (left).** The lead pinned first (marked "Lead"), then members — each with name, a one-line summary (providers · how it starts), and a status dot with a text label for screen readers (Idle, Running, Paused, Needs approval, Failed). **+ Add bot** opens a new bot in the selected-bot pane's Settings tab (inline, not a modal), already on this dashboard's team. A turned-off lead shows as "Team lead is off · Turn on".
-- [ ] AC3: **Selected bot (right).** A header with name, status chip, and a detail line, plus actions: **Run now** (not for the lead), **Pause / Resume**, and a ⋯ menu (lead: Turn off; members: Remove from team, Delete). Three tabs: **Conversation** (titled **Ask the lead** for the lead), **Activity**, **Settings**.
+- [x] AC1: **Switch.** The dashboard header has a **Dashboard | Bots** segmented control next to the title. Bots replaces the whole stage (page tabs and widgets hidden) without leaving the dashboard; Dashboard brings them back. The Bots side shows a count of items that need the user (pending approvals, failed last runs). Not shown in popped-out widget windows.
+- [x] AC2: **Team list (left).** The lead pinned first (marked "Lead"), then members — each with name, a one-line summary (providers · how it starts), and a status dot with a text label for screen readers (Idle, Running, Paused, Needs approval, Failed). **+ Add bot** opens a new bot in the selected-bot pane's Settings tab (inline, not a modal), already on this dashboard's team. A turned-off lead shows as "Team lead is off · Turn on".
+- [x] AC3: **Selected bot (right).** A header with name, status chip, and a detail line, plus actions: **Run now** (not for the lead), **Pause / Resume**, and a ⋯ menu (lead: Turn off; members: Remove from team, Delete). Three tabs: **Conversation** (titled **Ask the lead** for the lead), **Activity**, **Settings**.
 - [ ] AC4: **Conversation tab.** The lead: Ask the lead (TEAM-003). Other bots: start a run with a prompt, then **reply to continue** it (the run's session is resumed — the reply-to-continue capability). Messages show compact tool-call rows (tool · provider · ok/failed), errors with a next step ("Reconnect Salesforce", "Run again"), the "triggered by …" chain, and **approvals inline** (Allow once · Always allow · Deny). Answers are plain text, never rendered as HTML.
-- [ ] AC5: **Composer and scrolling.** The input is pinned to the bottom of the pane; the conversation scrolls above it, newest at the bottom. It jumps to the newest message on send and on a new reply, unless the user has scrolled up — then a **"↓ New messages"** pill appears. Enter sends; Shift+Enter adds a line.
+- [x] AC5: **Composer and scrolling.** The input is pinned to the bottom of the pane; the conversation scrolls above it, newest at the bottom. It jumps to the newest message on send and on a new reply, unless the user has scrolled up — then a **"↓ New messages"** pill appears. Enter sends; Shift+Enter adds a line.
 - [ ] AC6: **Activity tab.** The bot's runs, newest first: when, trigger, status, and the answer's first line; opening a run shows the full answer, its tool calls, approvals, and any error. Answers stored with a key this app can't read show as unavailable.
 - [ ] AC7: **Settings tab.** The full bot form (the existing `BotDetail`) inline, with Save / Discard. Switching bots or views with unsaved changes asks first.
 - [ ] AC8: **Live.** Statuses, the conversation, and the Activity tab update as runs stream and approvals arrive — no manual refresh.
 - [ ] AC9: **Bot Activity side panel → global monitor.** The panel keeps: **Needs you** (approvals across all dashboards, each labelled with its dashboard), **Running now**, and **Recent** results, with **Open in Bots view** (switches that dashboard to Bots with the bot selected). The lead chat and the "Run a bot" form move out of the panel into the Bots view.
-- [ ] AC10: **Dashboard Config › Bots** becomes a short summary of the team with **Open in Bots view**.
-- [ ] AC11: **Narrow windows.** Below ~900 px the team list collapses into a bot picker above the selected bot.
+- [x] AC10: **Dashboard Config › Bots** becomes a short summary of the team with **Open in Bots view**.
+- [x] AC11: **Narrow windows.** Below ~900 px the team list collapses into a bot picker above the selected bot.
 
 **Edge Cases:**
 
@@ -454,10 +454,19 @@ answers from today's runs.
 - **Conversations for non-lead bots** need more than the answer on each run record: the run's prompt and a compact tool-call summary (tool, provider, ok/failed — never raw results), both sealed at rest like answers. Reply-to-continue reuses `continueSession`.
 - Design: list-left / detail-right, hairline glass cards, underline tabs, one primary action per view. The same design is planned for Dashboard Config later (out of scope here).
 
+**Implementation notes (B2, Bots view UI, 2026-10-02):**
+
+- `useTeamBots(workspaceId)` loads the team (lead + members), running, pause state, approvals and each bot's last run, and keeps them live from `onRunActive` / `onApprovalPending` / `onStream`. `DashboardStage` calls it once and feeds both the header badge and `BotsView`; `BotsTab` (Dashboard Config) uses it for its summary.
+- Mode is per dashboard and only applies in preview: entering edit mode returns to Dashboard; popouts never offer it. Dashboard Config's **Open in Bots view** closes the modal and leaves edit mode through the existing unsaved-edits guard.
+- Components shipped as `BotsView` (team list + selected bot), `BotChat` (conversation; named to avoid clashing with `botConversation.js` on case-insensitive filesystems) and `BotRunHistory`. The team list is inline in `BotsView` rather than a separate `TeamList`.
+- `BotDetail` gained `onDirtyChange` for the Settings tab's unsaved-changes guard.
+- Existing leads' generated instructions are upgraded in place (to point at the Bots view) by `ensureLead`; instructions the user edited are left alone.
+- **Not yet:** AC4's error next steps ("Reconnect …", "Run again") and the "triggered by …" chain in the conversation; AC6's approvals in the run detail; AC7's Discard button, and the unsaved-changes guard when leaving through the header's Dashboard switch (switching bots and tabs is guarded); AC8's Activity tab reloads on open rather than streaming; AC9 is B3.
+
 **Definition of Done:**
 
 - [ ] Code implemented and reviewed
-- [ ] Unit tests pass
+- [x] Unit tests pass
 - [ ] Integration tests pass
 - [ ] Acceptance criteria verified
 - [ ] Documentation updated
@@ -821,3 +830,4 @@ None open. The six questions raised in the first draft were resolved on 2026-10-
 | 1.0     | 2026-10-01 | John   | Initial draft                                               |
 | 1.1     | 2026-10-01 | John   | Resolved the six open questions (proposed answers accepted) |
 | 1.2     | 2026-10-02 | John   | Added TEAM-011 Bots view (from the approved mockup)         |
+| 1.3     | 2026-10-02 | John   | TEAM-011 B2 (Bots view UI) implementation notes             |

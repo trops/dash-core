@@ -1,0 +1,207 @@
+import React from "react";
+import "@testing-library/jest-dom";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  act,
+} from "@testing-library/react";
+import { BotChat } from "./BotChat";
+
+const bot = { id: "b1", name: "Inbox Watch" };
+const lead = { id: "lead_7", name: "Kitchen Lead", role: "lead" };
+
+const runs = [
+  {
+    trigger: "manual",
+    status: "completed",
+    prompt: "Check my inbox",
+    output: "2 need attention",
+    toolCalls: [{ tool: "search_emails", provider: "Gmail New", ok: true }],
+    continued: false,
+  },
+];
+
+function setup({ history = runs, approvals = [], onApprove = jest.fn() } = {}) {
+  const listeners = {};
+  const api = {
+    getRuns: jest.fn().mockResolvedValue(history),
+    run: jest.fn().mockResolvedValue({ status: "completed", output: "ok" }),
+    askLead: jest.fn().mockResolvedValue({ status: "completed", output: "ok" }),
+    onStream: jest.fn((cb) => ((listeners.stream = cb), "s1")),
+    removeListener: jest.fn(),
+  };
+  window.mainApi = { bots: api };
+  const utils = render(
+    <BotChat bot={bot} approvals={approvals} onApprove={onApprove} />,
+  );
+  return { api, listeners, onApprove, ...utils };
+}
+
+const composer = () => screen.getByLabelText("Message");
+
+afterEach(() => {
+  delete window.mainApi;
+});
+
+describe("BotChat — history", () => {
+  it("shows the conversation from run history", async () => {
+    setup();
+    expect(await screen.findByText("Check my inbox")).toBeInTheDocument();
+    expect(screen.getByText("2 need attention")).toBeInTheDocument();
+    expect(screen.getByText(/search_emails/)).toBeInTheDocument();
+    expect(screen.getByText(/Gmail New/)).toBeInTheDocument();
+  });
+
+  it("shows answers as plain text, never HTML", async () => {
+    const { container } = setup({
+      history: [
+        {
+          ...runs[0],
+          output: 'Look: **bold** <img src="x" onerror="window.__x=1">',
+        },
+      ],
+    });
+    await screen.findByText(/Look: bold/);
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("shows errors and unreadable answers", async () => {
+    setup({
+      history: [
+        { ...runs[0], status: "failed", error: "Token expired", output: "" },
+        { ...runs[0], output: null, outputUnavailable: true, continued: true },
+      ],
+    });
+    expect(await screen.findByText("Token expired")).toBeInTheDocument();
+    expect(screen.getByText(/answer unavailable/i)).toBeInTheDocument();
+  });
+
+  it("empty state invites the first message", async () => {
+    setup({ history: [] });
+    expect(await screen.findByText(/No conversation yet/)).toBeInTheDocument();
+  });
+});
+
+describe("BotChat — sending", () => {
+  it("Enter sends a reply that continues the conversation", async () => {
+    const { api } = setup();
+    await screen.findByText("Check my inbox");
+    fireEvent.change(composer(), { target: { value: "And yesterday?" } });
+    fireEvent.keyDown(composer(), { key: "Enter" });
+    await waitFor(() =>
+      expect(api.run).toHaveBeenCalledWith("b1", "And yesterday?", true),
+    );
+  });
+
+  it("Shift+Enter does not send", async () => {
+    const { api } = setup();
+    await screen.findByText("Check my inbox");
+    fireEvent.change(composer(), { target: { value: "line one" } });
+    fireEvent.keyDown(composer(), { key: "Enter", shiftKey: true });
+    expect(api.run).not.toHaveBeenCalled();
+  });
+
+  it("the first message starts a new conversation", async () => {
+    const { api } = setup({ history: [] });
+    await screen.findByText(/No conversation yet/);
+    fireEvent.change(composer(), { target: { value: "Hi" } });
+    fireEvent.click(screen.getByText("Send"));
+    await waitFor(() =>
+      expect(api.run).toHaveBeenCalledWith("b1", "Hi", false),
+    );
+  });
+
+  it("New conversation makes the next message start fresh", async () => {
+    const { api } = setup();
+    await screen.findByText("Check my inbox");
+    fireEvent.click(screen.getByText("New conversation"));
+    fireEvent.change(composer(), { target: { value: "Fresh" } });
+    fireEvent.click(screen.getByText("Send"));
+    await waitFor(() =>
+      expect(api.run).toHaveBeenCalledWith("b1", "Fresh", false),
+    );
+  });
+
+  it("a team lead is asked (Ask), not run", async () => {
+    const api = {
+      getRuns: jest.fn().mockResolvedValue([]),
+      askLead: jest
+        .fn()
+        .mockResolvedValue({ status: "completed", output: "x" }),
+      run: jest.fn(),
+      onStream: jest.fn(() => "s1"),
+      removeListener: jest.fn(),
+    };
+    window.mainApi = { bots: api };
+    render(<BotChat bot={lead} isLead approvals={[]} />);
+    await screen.findByText(/No conversation yet/);
+    fireEvent.change(composer(), { target: { value: "Anything urgent?" } });
+    fireEvent.click(screen.getByText("Ask"));
+    await waitFor(() =>
+      expect(api.askLead).toHaveBeenCalledWith(
+        "lead_7",
+        "Anything urgent?",
+        false,
+      ),
+    );
+    expect(api.run).not.toHaveBeenCalled();
+  });
+
+  it("streams the answer while the bot works, then reloads history", async () => {
+    let finish;
+    const { api, listeners } = setup();
+    api.run.mockImplementation(
+      () =>
+        new Promise((r) => {
+          finish = r;
+        }),
+    );
+    await screen.findByText("Check my inbox");
+    fireEvent.change(composer(), { target: { value: "More?" } });
+    fireEvent.click(screen.getByText("Send"));
+    act(() => {
+      listeners.stream({ botId: "b1", event: { type: "text", text: "Work" } });
+      listeners.stream({ botId: "x", event: { type: "text", text: "NOPE" } });
+      listeners.stream({ botId: "b1", event: { type: "text", text: "ing" } });
+    });
+    expect(screen.getByText("Working")).toBeInTheDocument();
+    expect(screen.queryByText(/NOPE/)).toBeNull();
+    api.getRuns.mockResolvedValue([
+      ...runs,
+      { ...runs[0], prompt: "More?", output: "Done", continued: true },
+    ]);
+    await act(async () => finish({ status: "completed", output: "Done" }));
+    expect(await screen.findByText("Done")).toBeInTheDocument();
+  });
+});
+
+describe("BotChat — approvals inline", () => {
+  const approval = {
+    id: "a1",
+    request: { botId: "b1", serverName: "Slack", toolName: "send_message" },
+  };
+
+  it("shows the bot's pending approval with Allow once / Always allow / Deny", async () => {
+    const { onApprove } = setup({ approvals: [approval] });
+    expect(await screen.findByText(/Needs your approval/)).toBeInTheDocument();
+    expect(screen.getByText(/send_message/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Always allow"));
+    expect(onApprove).toHaveBeenCalledWith("a1", {
+      allow: true,
+      remember: true,
+    });
+    fireEvent.click(screen.getByText("Deny"));
+    expect(onApprove).toHaveBeenCalledWith("a1", { allow: false });
+  });
+
+  it("built-in tools can't be remembered (no Always allow)", async () => {
+    setup({
+      approvals: [{ id: "a2", request: { botId: "b1", toolName: "Bash" } }],
+    });
+    await screen.findByText(/Needs your approval/);
+    expect(screen.queryByText("Always allow")).toBeNull();
+    expect(screen.getByText("Allow once")).toBeInTheDocument();
+  });
+});

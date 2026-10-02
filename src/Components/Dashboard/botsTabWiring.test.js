@@ -22,7 +22,36 @@ describe("Dashboard Config — Bots tab", () => {
     expect(modalSrc).toMatch(/import \{ BotsTab \} from "\.\/BotsTab"/);
     expect(modalSrc).toMatch(/onClick=\{\(\) => setActiveTab\("bots"\)\}/);
     expect(modalSrc).toMatch(
-      /activeTab === "bots" && \(\s*<BotsTab workspace=\{workspace\} workspaces=\{workspaces\}/,
+      /activeTab === "bots" && \(\s*<BotsTab\s+workspace=\{workspace\}\s+onOpenBotsView=\{onOpenBotsView\}/,
+    );
+  });
+});
+
+describe("DashboardStage — Bots view wiring (TEAM-011)", () => {
+  it("loads the team once and feeds the header badge and the Bots view", () => {
+    expect(stageSrc).toMatch(
+      /useTeamBots\(\s*popout \? null : \(?workspaceSelected\?\.id \?\? null\)?\s*\)/,
+    );
+    expect(stageSrc).toMatch(/botsAttention=\{team\.attention\}/);
+    expect(stageSrc).toMatch(/stageMode === "bots" \? \(\s*<BotsView/);
+  });
+
+  it("only offers the Bots view in preview, never in popouts", () => {
+    expect(stageSrc).toMatch(
+      /onStageModeChange=\{\s*popout \|\| !previewMode \? null : setStageMode\s*\}/,
+    );
+    expect(stageSrc).toMatch(/!popout && previewMode && workspaceSelected/);
+  });
+
+  it("entering edit mode returns to the dashboard", () => {
+    expect(stageSrc).toMatch(
+      /setPreviewMode\(false\);\s*setStageMode\("dashboard"\);/,
+    );
+  });
+
+  it("Dashboard Config's Open in Bots view leaves edit mode through its guard", () => {
+    expect(stageSrc).toMatch(
+      /onOpenBotsView=\{\(\) => \{[\s\S]*?setIsConfigModalOpen\(false\);[\s\S]*?handleToggleEditMode\(\);/,
     );
   });
 });

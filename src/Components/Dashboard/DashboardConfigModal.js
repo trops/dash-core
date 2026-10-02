@@ -86,6 +86,8 @@ export const DashboardConfigModal = ({
   onSaveUserPrefs = null,
   onSkip = null,
   initialTab = "providers",
+  // Bots tab's "Open in Bots view" (bot-teams TEAM-011).
+  onOpenBotsView = null,
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
@@ -682,7 +684,7 @@ export const DashboardConfigModal = ({
           )}
           {/* This dashboard's team — saves immediately, not on Save below. */}
           {activeTab === "bots" && (
-            <BotsTab workspace={workspace} workspaces={workspaces} />
+            <BotsTab workspace={workspace} onOpenBotsView={onOpenBotsView} />
           )}
           {activeTab === "dependencies" && (
             <DependenciesTab dependencies={dependencies} />

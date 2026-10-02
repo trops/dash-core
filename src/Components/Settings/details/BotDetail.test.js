@@ -830,3 +830,50 @@ describe("BotDetail — Team", () => {
     expect(screen.getByText(/won.t fire/i)).toBeInTheDocument();
   });
 });
+
+// Bots view (TEAM-011): the inline Settings tab guards unsaved changes.
+describe("BotDetail — onDirtyChange", () => {
+  const existing = {
+    id: "bot_1",
+    name: "Inbox Watch",
+    instructions: "Watch it",
+    schedules: [],
+  };
+
+  it("reports dirty when a field changes, clean when it's changed back", () => {
+    const onDirtyChange = jest.fn();
+    render(
+      <BotDetail
+        bot={existing}
+        providers={{}}
+        onSave={jest.fn()}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    expect(onDirtyChange).not.toHaveBeenCalledWith(true);
+    const nameInput = screen.getByPlaceholderText("e.g. PR Digest");
+    fireEvent.change(nameInput, { target: { value: "Inbox Watch 2" } });
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    fireEvent.change(nameInput, { target: { value: "Inbox Watch" } });
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("is clean again after a successful save", async () => {
+    const onDirtyChange = jest.fn();
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail
+        bot={existing}
+        providers={{}}
+        onSave={onSave}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
+      target: { value: "Renamed" },
+    });
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+  });
+});

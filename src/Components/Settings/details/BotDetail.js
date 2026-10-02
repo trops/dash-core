@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useContext } from "react";
 import {
   Button,
   Button3,
@@ -6,6 +6,7 @@ import {
   TextArea,
   SelectInput,
   Checkbox,
+  ThemeContext,
 } from "@trops/dash-react";
 import {
   FREQUENCIES,
@@ -147,6 +148,9 @@ export const BotDetail = ({
   onSave,
   onCancel,
   onDelete,
+  // (dirty: boolean) — unsaved-changes signal for hosts that guard leaving
+  // the form (the Bots view's inline Settings tab).
+  onDirtyChange = null,
 }) => {
   const [name, setName] = useState(bot?.name || "");
   const [instructions, setInstructions] = useState(bot?.instructions || "");
@@ -251,8 +255,38 @@ export const BotDetail = ({
   const [pickBot, setPickBot] = useState("");
   const [pickEvent, setPickEvent] = useState("");
 
+  const { currentTheme = {} } = useContext(ThemeContext) || {};
+  const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  // Unsaved changes: the editable fields now vs. when the form opened (or
+  // last saved).
+  const snapshot = JSON.stringify({
+    name,
+    instructions,
+    provider,
+    model,
+    engine,
+    approvalPolicy,
+    selectedServers,
+    toolSelections,
+    frequency,
+    time,
+    dayOfWeek,
+    dayOfMonth,
+    advanced,
+    advancedCron,
+    schedulePrompt,
+    subscriptions,
+    team,
+  });
+  const [baseline, setBaseline] = useState(snapshot);
+  const dirty = snapshot !== baseline;
+  useEffect(() => {
+    if (typeof onDirtyChange === "function") onDirtyChange(dirty);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirty]);
 
   // Discover the user's configured MCP providers — running or not. The bot
   // starts any that aren't running when it runs.
@@ -435,6 +469,7 @@ export const BotDetail = ({
     setSaving(true);
     try {
       await onSave(definition);
+      setBaseline(snapshot);
     } catch (e) {
       setError((e && e.message) || "Failed to save bot");
     } finally {
@@ -839,7 +874,9 @@ export const BotDetail = ({
         {error ? <span className="text-sm text-red-400">{error}</span> : null}
       </div>
 
-      <div className="flex-shrink-0 flex flex-row justify-between gap-2 px-6 py-4 border-t">
+      <div
+        className={`flex-shrink-0 flex flex-row justify-between gap-2 px-6 py-4 border-t ${hairline}`}
+      >
         <div>
           {!isCreating && onDelete ? (
             <Button title="Delete" onClick={onDelete} size="sm" />

@@ -3,10 +3,15 @@
 export { BotEditorModal } from "./BotEditorModal";
 export { AskLead } from "./AskLead";
 export { TeamLeadSection } from "./TeamLeadSection";
+export { BotsView } from "./BotsView";
+export { BotChat } from "./BotChat";
+export { BotRunHistory } from "./BotRunHistory";
+export { useTeamBots } from "./useTeamBots";
 export {
   buildConversation,
   botStatus,
   attentionCount,
+  toPlainText,
 } from "./botConversation";
 export {
   sameWorkspace,
