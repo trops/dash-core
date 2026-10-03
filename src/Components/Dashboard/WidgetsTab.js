@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { FontAwesomeIcon } from "@trops/dash-react";
+import { Button3, FontAwesomeIcon, SectionLabel } from "@trops/dash-react";
 import { forEachWidget } from "../../utils/providerResolution";
 import {
   pickWidgetDisplayName,
@@ -8,6 +8,7 @@ import {
   isUserWidget,
 } from "../../utils/widgetIdentity";
 import { PanelEditForm } from "../../Context/Modal/Panel/PanelEditForm";
+import { ConfigListRow, useConfigTokens } from "./ConfigListRow";
 
 const ALL_WIDGETS_ID = "__ALL__";
 
@@ -62,6 +63,7 @@ export const WidgetsTab = ({
   stagePrefField,
   stagePrefFieldForAll,
 }) => {
+  const { muted, hairline } = useConfigTokens();
   // Flatten every widget on the workspace, preserving which layout
   // section each came from (Main / Page N / Sidebar) so the left
   // column can group them cleanly. forEachWidget already dedupes.
@@ -153,70 +155,57 @@ export const WidgetsTab = ({
 
   return (
     <div className="flex h-full min-h-0">
-      {/* Left column */}
-      <div className="w-64 border-r border-white/10 overflow-y-auto flex-shrink-0">
+      {/* Left column — the Bots view's team-list rows. */}
+      <div
+        className={`w-64 border-r overflow-y-auto flex-shrink-0 p-3 flex flex-col gap-1 ${hairline}`}
+      >
         {sharedFields.length > 0 && (
-          <button
+          <ConfigListRow
+            title={
+              <span className="flex flex-row items-center gap-2">
+                <FontAwesomeIcon icon="layer-group" className="h-3.5 w-3.5" />
+                All Widgets
+              </span>
+            }
+            meta={`${sharedFields.length} shared field${
+              sharedFields.length === 1 ? "" : "s"
+            } · bulk edit`}
+            active={isAllMode}
             onClick={() => setSelectedId(ALL_WIDGETS_ID)}
-            className={`w-full text-left px-4 py-3 border-b border-white/10 transition-colors ${
-              isAllMode
-                ? "bg-indigo-600/20 text-indigo-200"
-                : "hover:bg-white/5 text-gray-300"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <FontAwesomeIcon icon="layer-group" className="h-3.5 w-3.5" />
-              <span className="font-semibold text-sm">All Widgets</span>
-            </div>
-            <div className="text-[11px] text-gray-500 mt-0.5">
-              {sharedFields.length} shared field
-              {sharedFields.length === 1 ? "" : "s"} · bulk edit
-            </div>
-          </button>
+          />
         )}
         {groupedWidgets.map(([section, sectionWidgets]) => (
-          <div key={section}>
-            <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider text-gray-600 font-semibold">
-              {section}
-            </div>
+          <div key={section} className="flex flex-col gap-1">
+            <SectionLabel className="px-3 pt-3 pb-1">{section}</SectionLabel>
             {sectionWidgets.map((w) => {
               const fieldCount = Object.keys(w.userConfig).length;
               const stagedForWidget = stagedPrefs?.[w.id]
                 ? Object.keys(stagedPrefs[w.id]).length
                 : 0;
-              const isSel = selectedId === w.id;
               return (
-                <button
+                <ConfigListRow
                   key={w.id}
-                  onClick={() => setSelectedId(w.id)}
-                  className={`w-full text-left px-4 py-2 transition-colors ${
-                    isSel
-                      ? "bg-indigo-600/20 text-indigo-200"
-                      : "hover:bg-white/5 text-gray-300"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm truncate">{w.displayName}</span>
-                    {stagedForWidget > 0 && (
-                      <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 rounded">
+                  title={w.displayName}
+                  subtitle={w.widgetRef || null}
+                  meta={
+                    fieldCount === 0
+                      ? "No configurable fields"
+                      : `${fieldCount} field${fieldCount === 1 ? "" : "s"}`
+                  }
+                  badge={
+                    stagedForWidget > 0 ? (
+                      <span
+                        className="flex flex-row items-center gap-1.5 text-xs text-amber-400 flex-shrink-0"
+                        title="Unsaved changes"
+                      >
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
                         {stagedForWidget}
                       </span>
-                    )}
-                  </div>
-                  {w.widgetRef && (
-                    <div
-                      className="text-[10px] text-gray-500 font-mono truncate mt-0.5"
-                      title={w.widgetRef}
-                    >
-                      {w.widgetRef}
-                    </div>
-                  )}
-                  <div className="text-[10px] text-gray-600 mt-0.5">
-                    {fieldCount === 0
-                      ? "No configurable fields"
-                      : `${fieldCount} field${fieldCount === 1 ? "" : "s"}`}
-                  </div>
-                </button>
+                    ) : null
+                  }
+                  active={selectedId === w.id}
+                  onClick={() => setSelectedId(w.id)}
+                />
               );
             })}
           </div>
@@ -224,9 +213,9 @@ export const WidgetsTab = ({
       </div>
 
       {/* Right pane */}
-      <div className="flex-1 overflow-y-auto p-4 min-w-0">
+      <div className="flex-1 overflow-y-auto p-5 min-w-0">
         {!selectedId && (
-          <div className="text-sm text-gray-500 italic">
+          <div className={`text-sm italic ${muted}`}>
             Select a widget from the list.
           </div>
         )}
@@ -252,20 +241,21 @@ export const WidgetsTab = ({
 };
 
 function SingleWidgetPane({ widget, effectivePrefs, onFieldChange }) {
+  const { muted, strong } = useConfigTokens();
   const hasFields = Object.keys(widget.userConfig).length > 0;
   return (
     <div>
       <div className="mb-3">
-        <div className="text-gray-200 font-semibold">{widget.displayName}</div>
+        <div className={`font-semibold ${strong}`}>{widget.displayName}</div>
         {widget.widgetRef && (
           <div
-            className="text-xs text-gray-500 font-mono truncate mt-0.5"
+            className={`text-xs font-mono truncate mt-0.5 ${muted}`}
             title={widget.widgetRef}
           >
             {widget.widgetRef}
           </div>
         )}
-        <div className="text-xs text-gray-600 mt-0.5">{widget.section}</div>
+        <div className={`text-xs mt-0.5 ${muted}`}>{widget.section}</div>
       </div>
       {hasFields ? (
         <PanelEditForm
@@ -274,7 +264,7 @@ function SingleWidgetPane({ widget, effectivePrefs, onFieldChange }) {
           onFieldChange={onFieldChange}
         />
       ) : (
-        <div className="text-sm text-gray-500 italic">
+        <div className={`text-sm italic ${muted}`}>
           This widget has no configurable fields. It may be event-driven — pair
           it with a widget that publishes the events it listens for.
         </div>
@@ -284,11 +274,12 @@ function SingleWidgetPane({ widget, effectivePrefs, onFieldChange }) {
 }
 
 function BulkEditPane({ sharedFields, stagedPrefs, onApplyAll }) {
+  const { muted, strong } = useConfigTokens();
   return (
     <div>
       <div className="mb-3">
-        <div className="text-gray-200 font-semibold">All Widgets</div>
-        <div className="text-xs text-gray-500">
+        <div className={`font-semibold ${strong}`}>All Widgets</div>
+        <div className={`text-xs ${muted}`}>
           Fields declared by 2+ widgets on this dashboard. Apply once to update
           every matching widget.
         </div>
@@ -303,7 +294,7 @@ function BulkEditPane({ sharedFields, stagedPrefs, onApplyAll }) {
           />
         ))}
         {sharedFields.length === 0 && (
-          <div className="text-sm text-gray-500 italic">
+          <div className={`text-sm italic ${muted}`}>
             No shared fields across widgets on this dashboard.
           </div>
         )}
@@ -327,32 +318,34 @@ function SharedFieldRow({ field, stagedPrefs, onApplyAll }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allSame, distinctValues[0]]);
 
+  const { muted, strong, hairline, fieldBg } = useConfigTokens();
+  const fieldClass = `w-full px-2 py-1.5 rounded-lg border text-sm ${fieldBg} ${hairline} ${strong}`;
+
   return (
-    <div className="border border-white/10 rounded p-3">
+    <div className={`rounded-lg border p-3 ${hairline}`}>
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="flex-1 min-w-0">
-          <div className="text-sm text-gray-200 font-semibold">
+          <div className={`text-sm font-semibold ${strong}`}>
             {field.schema.displayName || field.key}
           </div>
-          <div className="text-[11px] text-gray-500">
+          <div className={`text-xs ${muted}`}>
             Applies to {field.widgets.length} widgets
             {allSame
               ? ""
               : ` · ${distinctValues.length} distinct values in use`}
           </div>
         </div>
-        <button
+        <Button3
+          title="Apply to all"
+          size="sm"
           onClick={() => onApplyAll(field.widgets, field.key, draft)}
-          className="px-3 py-1 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded transition-colors"
-        >
-          Apply to all
-        </button>
+        />
       </div>
       {field.schema.type === "select" ? (
         <select
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          className="w-full px-2 py-1.5 bg-gray-900 border border-white/10 rounded text-sm text-gray-200"
+          className={fieldClass}
         >
           {(field.schema.options || []).map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -366,7 +359,7 @@ function SharedFieldRow({ field, stagedPrefs, onApplyAll }) {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder={allSame ? "" : "(multiple values — set one for all)"}
-          className="w-full px-2 py-1.5 bg-gray-900 border border-white/10 rounded text-sm text-gray-200"
+          className={fieldClass}
         />
       )}
     </div>

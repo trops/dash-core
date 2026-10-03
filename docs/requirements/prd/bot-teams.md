@@ -503,6 +503,7 @@ answers from today's runs.
 - **Discard + leave guard:** the inline form has **Discard changes**; leaving the Bots view (header Dashboard switch or the edit button) with unsaved bot edits asks first.
 - **Live Activity:** reloads when the bot's run finishes.
 - **Follow-ups:** (1) ~~the team list doesn't refresh when a bot is created/deleted elsewhere~~ — fixed: the store announces definition changes and the main process broadcasts `bot-list-changed` (coalesced), so team lists, the monitor and the Bots view reload; (2) ~~switching/closing dashboard tabs with unsaved bot edits isn't guarded~~ — fixed: switching to another tab, closing the current tab, and opening another dashboard from the sidebar/recents/Settings ask first (the Assistant's open/close commands stay unguarded, like layout edits).
+- **Dashboard Config in the same design (2026-10-03):** slice 1 restyles the modal's frame (title with the dashboard's name under it, amber dot + text for unresolved providers, the Bots view's tab strip with `role="tab"`) and its list tabs — Providers, Listeners, Widgets — with the Bots view's team-list rows (`ConfigListRow` / `useConfigTokens` in `Dashboard/ConfigListRow.js`), dash-react's `SectionLabel` for list headings, and theme tokens instead of bare greys/indigo/red; a missing required provider is a calm row with an amber **Required** label instead of a red block. Behaviour unchanged. Note: the modal renders in the **app** theme (outside `DashboardThemeProvider`, like other modals) while the Bots view renders in the dashboard's theme, so the same token can look different between them on a dashboard with its own theme. Slice 2 (Notifications, Permissions, Dependencies, Bots tab cards and buttons) is next.
 
 **Definition of Done:**
 
@@ -878,3 +879,4 @@ None open. The six questions raised in the first draft were resolved on 2026-10-
 | 1.7     | 2026-10-03 | John   | TEAM-005 5b: Accept suggestions, Review draft link; Implemented  |
 | 1.8     | 2026-10-03 | John   | Answer bubbles; leads see their current drafts                   |
 | 1.9     | 2026-10-03 | John   | Text before/after a tool call no longer runs together            |
+| 1.10    | 2026-10-03 | John   | Dashboard Config restyle slice 1 (frame + list tabs)             |
