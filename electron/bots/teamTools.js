@@ -29,7 +29,7 @@ const TEAM_TOOLS = [
   {
     name: "team_list_bots",
     description:
-      "List the bots on your dashboard's team: name, status (running / paused / idle), how each one starts, and which providers it uses.",
+      "List the bots on your dashboard's team: name, status (running / paused / idle), how each one starts, and which providers it uses — plus any drafts you proposed that are still waiting for the user's review.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -206,10 +206,8 @@ function handleTeamTool(deps, ctx, toolName, args = {}) {
   try {
     switch (toolName) {
       case "team_list_bots": {
-        if (!team.length) return ok("Your team has no bots yet.");
-        return ok(
-          team
-            .map((b) => {
+        const lines = team.length
+          ? team.map((b) => {
               const status = deps.isRunning(b.id)
                 ? "running"
                 : deps.isPaused(b.id)
@@ -218,8 +216,27 @@ function handleTeamTool(deps, ctx, toolName, args = {}) {
               const providers = (b.mcpServers || []).join(", ") || "none";
               return `- ${b.name} — ${status} — starts ${howItStarts(b)} — providers: ${providers}`;
             })
-            .join("\n"),
-        );
+          : ["Your team has no bots yet."];
+        // Drafts still waiting for review (TEAM-005) — earlier ones may have
+        // been saved or discarded since, so this is the source of truth.
+        if (typeof deps.listDrafts === "function") {
+          const drafts = deps.listDrafts(ctx.workspaceId) || [];
+          lines.push(
+            drafts.length
+              ? `Drafts awaiting the user's review: ${drafts
+                  .map(
+                    (d) =>
+                      `${d.definition && d.definition.name} (drafted ${String(
+                        d.createdAt || "",
+                      )
+                        .slice(0, 16)
+                        .replace("T", " ")})`,
+                  )
+                  .join("; ")}`
+              : "No drafts waiting for review.",
+          );
+        }
+        return ok(lines.join("\n"));
       }
       case "team_get_bot": {
         const b = findMember(team, args && args.name);
