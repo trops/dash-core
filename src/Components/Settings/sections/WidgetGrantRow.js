@@ -5,7 +5,8 @@
  * renderer used elsewhere in the section.
  */
 import React, { useState } from "react";
-import { Button, Switch, FontAwesomeIcon } from "@trops/dash-react";
+import { Button, Button3, Switch, FontAwesomeIcon } from "@trops/dash-react";
+import { useConfigTokens } from "../../Dashboard/ConfigListRow";
 import { computeStaleItems, isServerEntirelyStale } from "./grantStaleness";
 import { describeServerGrant, describeWidgetGrant } from "./grantSummary";
 
@@ -45,13 +46,14 @@ const ToolToggleList = ({
   onToggleTool,
   hasAnyGrantOnServer,
 }) => {
+  const { muted } = useConfigTokens();
   if (declaredTools.length === 0 && grantedTools.length === 0) return null;
   const grantedSet = new Set(grantedTools);
   const staleSet = computeStaleItems(declaredTools, grantedTools, true);
   const all = Array.from(new Set([...declaredTools, ...grantedTools]));
   return (
     <div className="flex flex-col space-y-1">
-      <span className="text-xs opacity-50">Tools</span>
+      <span className={`text-xs ${muted}`}>Tools</span>
       {all.map((tool) => {
         const isGranted = grantedSet.has(tool);
         const isStale = staleSet.has(tool);
@@ -63,7 +65,7 @@ const ToolToggleList = ({
         return (
           <div
             key={tool}
-            className="flex flex-row items-center justify-between gap-2 py-1 px-2 -mx-2 rounded hover:bg-gray-800 transition-colors"
+            className="flex flex-row items-center justify-between gap-2 py-1 px-2 -mx-2 rounded-lg"
           >
             <span
               className={`text-xs font-mono break-all ${
@@ -100,6 +102,7 @@ const PermsList = ({
   validatesStale,
   onDeleteItem,
 }) => {
+  const { muted } = useConfigTokens();
   if (declaredItems.length === 0 && grantedItems.length === 0) return null;
   const grantedSet = new Set(grantedItems);
   const staleSet = computeStaleItems(
@@ -110,7 +113,7 @@ const PermsList = ({
   const all = Array.from(new Set([...declaredItems, ...grantedItems]));
   return (
     <div className="flex flex-col space-y-1">
-      <span className="text-xs opacity-50">{label}</span>
+      <span className={`text-xs ${muted}`}>{label}</span>
       {all.map((item) => {
         const isGranted = grantedSet.has(item);
         const isStale = staleSet.has(item);
@@ -118,7 +121,7 @@ const PermsList = ({
         return (
           <div
             key={item}
-            className="flex flex-row items-start justify-between gap-2 py-1 px-2 -mx-2 rounded hover:bg-gray-800 transition-colors"
+            className="flex flex-row items-start justify-between gap-2 py-1 px-2 -mx-2 rounded-lg"
           >
             <span
               className={`text-xs font-mono break-all ${
@@ -160,22 +163,25 @@ const PermsList = ({
  * PrivacySecuritySection so the user sees a consistent "are you
  * sure?" pattern across the panel.
  */
-const RevokeConfirmInline = ({ title, body, onCancel, onConfirm }) => (
-  <div className="flex flex-col gap-2 border border-amber-500 rounded p-2 mt-1">
-    <div className="flex flex-row items-center gap-2">
-      <FontAwesomeIcon
-        icon="triangle-exclamation"
-        className="h-3 w-3 text-amber-500"
-      />
-      <span className="text-xs font-semibold text-gray-100">{title}</span>
+const RevokeConfirmInline = ({ title, body, onCancel, onConfirm }) => {
+  const { muted, strong } = useConfigTokens();
+  return (
+    <div className="flex flex-col gap-2 border border-amber-500 rounded-lg p-2 mt-1">
+      <div className="flex flex-row items-center gap-2">
+        <FontAwesomeIcon
+          icon="triangle-exclamation"
+          className="h-3 w-3 text-amber-500"
+        />
+        <span className={`text-xs font-semibold ${strong}`}>{title}</span>
+      </div>
+      <div className={`text-xs leading-relaxed ${muted}`}>{body}</div>
+      <div className="flex justify-end gap-2">
+        <Button3 title="Cancel" onClick={onCancel} size="sm" />
+        <Button title="Confirm" onClick={onConfirm} size="sm" />
+      </div>
     </div>
-    <div className="text-xs text-gray-300 leading-relaxed">{body}</div>
-    <div className="flex justify-end gap-2">
-      <Button title="Cancel" onClick={onCancel} size="sm" />
-      <Button title="Confirm" onClick={onConfirm} size="sm" />
-    </div>
-  </div>
-);
+  );
+};
 
 export const WidgetGrantRow = ({
   widgetId,
@@ -200,9 +206,13 @@ export const WidgetGrantRow = ({
   const [pendingRevoke, setPendingRevoke] = useState(null);
 
   const widgetSummary = describeWidgetGrant(grantedServers);
+  const { muted, hairline } = useConfigTokens();
 
   return (
-    <div className="flex flex-col space-y-3 border border-gray-700 rounded p-3">
+    <div
+      data-testid="widget-grant-row"
+      className={`flex flex-col space-y-3 rounded-lg border px-3 py-2 ${hairline}`}
+    >
       <div className="flex flex-row items-center justify-between gap-2">
         <div className="flex flex-row items-center gap-2 min-w-0">
           <span className="text-sm font-mono break-all">{widgetId}</span>
@@ -215,14 +225,14 @@ export const WidgetGrantRow = ({
         </div>
         <div className="flex flex-row gap-2">
           {!hasManifest && !granted && (
-            <Button
+            <Button3
               title="Grant manually"
               onClick={onGrantManually}
               size="sm"
             />
           )}
           {Object.keys(grantedServers).length > 0 && (
-            <Button
+            <Button3
               title="Revoke all"
               onClick={() => setPendingRevoke("widget")}
               size="sm"
@@ -244,7 +254,7 @@ export const WidgetGrantRow = ({
       )}
 
       {!declared && !granted && (
-        <span className="text-xs opacity-50">
+        <span className={`text-xs ${muted}`}>
           This widget did not declare MCP permissions and the install-time
           scanner found nothing. Use Grant manually if you trust it.
         </span>
@@ -257,10 +267,11 @@ export const WidgetGrantRow = ({
         return (
           <div
             key={serverName}
-            className="flex flex-col space-y-2 border-t border-gray-800 pt-2"
+            data-testid={`grant-server-${serverName}`}
+            className={`flex flex-col space-y-2 border-t pt-2 ${hairline}`}
           >
             <div className="flex flex-row items-center justify-between gap-2">
-              <span className="text-xs uppercase tracking-wider opacity-70">
+              <span className={`text-xs uppercase tracking-wider ${muted}`}>
                 {serverName}
                 {grant?._labels && grant._labels.length > 0 && (
                   <span className="ml-2 normal-case tracking-normal opacity-60">
@@ -276,7 +287,9 @@ export const WidgetGrantRow = ({
               <div className="flex flex-row items-center gap-2">
                 {(decl.tools || []).length > 0 && onToggleAllForServer && (
                   <div className="flex flex-row items-center gap-2">
-                    <span className="text-xs opacity-60 normal-case tracking-normal">
+                    <span
+                      className={`text-xs normal-case tracking-normal ${muted}`}
+                    >
                       Allow all
                     </span>
                     <Switch
@@ -293,7 +306,7 @@ export const WidgetGrantRow = ({
                   </div>
                 )}
                 {grant && (
-                  <Button
+                  <Button3
                     title="Revoke server"
                     onClick={() =>
                       setPendingRevoke({ type: "server", serverName })
@@ -317,7 +330,7 @@ export const WidgetGrantRow = ({
                 />
               )}
             {allStale && (
-              <div className="text-xs text-amber-400 bg-amber-900 bg-opacity-20 border border-amber-700 rounded px-2 py-1.5">
+              <div className="text-xs text-amber-400 border border-amber-400 rounded-lg px-2 py-1.5">
                 All grants on this server are no longer in the manifest — the
                 widget likely no longer uses this server. Consider revoking.
               </div>
@@ -361,8 +374,8 @@ export const WidgetGrantRow = ({
       {granted?.domains?.fs &&
         ((granted.domains.fs.readPaths || []).length > 0 ||
           (granted.domains.fs.writePaths || []).length > 0) && (
-          <div className="flex flex-col space-y-2 border-t border-gray-800 pt-2">
-            <span className="text-xs uppercase tracking-wider opacity-70">
+          <div className={`flex flex-col space-y-2 border-t pt-2 ${hairline}`}>
+            <span className={`text-xs uppercase tracking-wider ${muted}`}>
               filesystem
             </span>
             {Array.isArray(granted.domains.fs.actions) &&
@@ -407,8 +420,8 @@ export const WidgetGrantRow = ({
       {/* Phase 3 — network domain grants. */}
       {granted?.domains?.network &&
         (granted.domains.network.hosts || []).length > 0 && (
-          <div className="flex flex-col space-y-2 border-t border-gray-800 pt-2">
-            <span className="text-xs uppercase tracking-wider opacity-70">
+          <div className={`flex flex-col space-y-2 border-t pt-2 ${hairline}`}>
+            <span className={`text-xs uppercase tracking-wider ${muted}`}>
               network
             </span>
             {Array.isArray(granted.domains.network.actions) &&

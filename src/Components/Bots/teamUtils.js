@@ -8,6 +8,15 @@
  * Pure: no React, no IPC.
  */
 
+/** Status dot colours shared by the Bots view and Dashboard Config › Bots. */
+export const STATUS_DOT = {
+  Idle: "bg-gray-500",
+  Running: "bg-indigo-400",
+  Paused: "bg-gray-400",
+  "Needs approval": "bg-amber-400",
+  Failed: "bg-red-400",
+};
+
 const norm = (id) =>
   id === undefined || id === null || id === "" ? null : String(id);
 

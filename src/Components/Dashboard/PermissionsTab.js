@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Button, FontAwesomeIcon, Divider } from "@trops/dash-react";
+import { Button, Button3, FontAwesomeIcon } from "@trops/dash-react";
+import { useConfigTokens } from "./ConfigListRow";
 import { AppContext } from "../../Context/App/AppContext";
 import { WidgetGrantRow } from "../Settings/sections/WidgetGrantRow";
 import { normalizeGrantsByProviderType } from "../../utils/normalizeGrantsByProviderType";
@@ -35,6 +36,8 @@ export const PermissionsTab = ({ workspace }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [confirmRevokeAll, setConfirmRevokeAll] = useState(false);
+  const { muted, hairline } = useConfigTokens();
 
   // Build the set of widget identifiers in this workspace. Walk every
   // layout location (main, pages, sidebar). `pickWidgetRef` returns
@@ -239,16 +242,16 @@ export const PermissionsTab = ({ workspace }) => {
   const totalGranted = filteredRows.filter((r) => r.granted).length;
 
   if (loading) {
-    return <div className="text-sm opacity-60 p-4">Loading permissions…</div>;
+    return <div className={`text-sm p-4 ${muted}`}>Loading permissions…</div>;
   }
 
   if (filteredRows.length === 0) {
     return (
       <div className="flex flex-col gap-3 p-4">
-        <div className="text-sm opacity-70">
+        <div className="text-sm">
           No widgets in this dashboard request any MCP permissions.
         </div>
-        <div className="text-xs opacity-50">
+        <div className={`text-xs ${muted}`}>
           Permissions only show up here when a widget's published manifest (or
           local source) declares MCP tool usage.
         </div>
@@ -258,38 +261,72 @@ export const PermissionsTab = ({ workspace }) => {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex-shrink-0 flex flex-row items-center justify-between gap-2 pb-3">
+      <div
+        className={`flex-shrink-0 flex flex-row items-center justify-between gap-2 pb-3 border-b ${hairline}`}
+      >
         <div className="flex flex-col">
           <span className="text-sm font-medium">
             {filteredRows.length} widget
             {filteredRows.length === 1 ? "" : "s"} with permissions in this
             dashboard
           </span>
-          <span className="text-xs opacity-60 mt-0.5">
+          <span className={`text-xs mt-0.5 ${muted}`}>
             {totalGranted} currently granted across {totalDeclared} declared
             server{totalDeclared === 1 ? "" : "s"}
           </span>
         </div>
         <div className="flex flex-row gap-2">
-          <Button
+          <Button3
             title="Allow all declared"
             onClick={approveAllInDashboard}
             disabled={busy}
             size="sm"
           />
-          <Button
-            title="Revoke all"
-            onClick={revokeAllInDashboard}
-            disabled={busy || totalGranted === 0}
-            size="sm"
-          />
+          {/* Destructive — kept last and confirmed first, like the Bots
+              view's Delete. */}
+          <span data-testid="permissions-revoke-all">
+            <Button3
+              title="Revoke all"
+              onClick={() => setConfirmRevokeAll(true)}
+              disabled={busy || totalGranted === 0}
+              size="sm"
+            />
+          </span>
         </div>
       </div>
-      <Divider />
-      {error && (
-        <div className="flex-shrink-0 text-xs text-red-400 bg-red-900/20 border border-red-700 rounded p-2 mt-3">
-          {error}
+      {confirmRevokeAll && (
+        <div
+          data-testid="permissions-revoke-all-confirm"
+          className="flex-shrink-0 flex flex-row items-center justify-between gap-3 rounded-lg border border-amber-400 px-3 py-2 mt-3"
+        >
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <span className="text-sm font-medium">
+              Revoke all permissions for this dashboard?
+            </span>
+            <span className={`text-xs ${muted}`}>
+              Every widget here will ask for consent again the next time it uses
+              a tool.
+            </span>
+          </div>
+          <div className="flex flex-row gap-2 flex-shrink-0">
+            <Button3
+              title="Cancel"
+              size="sm"
+              onClick={() => setConfirmRevokeAll(false)}
+            />
+            <Button
+              title="Revoke"
+              size="sm"
+              onClick={() => {
+                setConfirmRevokeAll(false);
+                revokeAllInDashboard();
+              }}
+            />
+          </div>
         </div>
+      )}
+      {error && (
+        <div className="flex-shrink-0 text-xs text-red-400 mt-3">{error}</div>
       )}
       <div className="flex-1 min-h-0 overflow-y-auto pt-3 space-y-3">
         {filteredRows.map((row) => (

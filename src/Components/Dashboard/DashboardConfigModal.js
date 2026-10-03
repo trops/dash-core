@@ -10,9 +10,7 @@ import {
   Switch,
   SearchInput,
   Divider,
-  Caption,
   Caption2,
-  Caption3,
   Code,
   getStylesForItem,
   themeObjects,
@@ -721,6 +719,7 @@ export const DashboardConfigModal = ({
  * doesn't gate the user behind a Save button for boolean prefs.
  */
 function NotificationsTab({ workspace }) {
+  const { muted, hairline } = useConfigTokens();
   const [searchQuery, setSearchQuery] = useState("");
   // Local mirror of widgetUuid -> { typeKey: bool }. Seeded from the
   // main process on mount; updated optimistically on toggle.
@@ -864,12 +863,12 @@ function NotificationsTab({ workspace }) {
   };
 
   if (!loaded) {
-    return <div className="p-4 text-sm opacity-50">Loading…</div>;
+    return <div className={`p-4 text-sm ${muted}`}>Loading…</div>;
   }
 
   if (widgetInstances.length === 0) {
     return (
-      <div className="p-4 text-sm opacity-50">
+      <div className={`p-4 text-sm ${muted}`}>
         No widgets in this dashboard declare notifications. Add widgets that
         declare notifications to see per-type controls here.
       </div>
@@ -886,70 +885,68 @@ function NotificationsTab({ workspace }) {
           inputClassName="py-1.5 text-xs"
         />
         <div className="flex flex-row items-center justify-between text-xs">
-          <span className="opacity-50">
+          <span className={muted}>
             {filtered.length} of {widgetInstances.length} widget
             {widgetInstances.length === 1 ? "" : "s"}
           </span>
           <div className="flex flex-row items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setAllVisible(true)}
-              className="px-2 py-1 rounded bg-green-700 hover:bg-green-600 text-white text-xs font-medium transition-colors"
-              data-testid="bulk-notifications-enable-all"
-            >
-              Enable all
-            </button>
-            <button
-              type="button"
-              onClick={() => setAllVisible(false)}
-              className="px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs font-medium transition-colors"
-              data-testid="bulk-notifications-disable-all"
-            >
-              Disable all
-            </button>
+            <span data-testid="bulk-notifications-enable-all">
+              <Button3
+                title="Enable all"
+                size="sm"
+                onClick={() => setAllVisible(true)}
+              />
+            </span>
+            <span data-testid="bulk-notifications-disable-all">
+              <Button3
+                title="Disable all"
+                size="sm"
+                onClick={() => setAllVisible(false)}
+              />
+            </span>
           </div>
         </div>
       </div>
-      <Divider />
-      <div className="flex-1 overflow-y-auto px-2 py-2 space-y-3">
+      <div
+        className={`flex-1 overflow-y-auto px-2 py-3 flex flex-col gap-3 border-t ${hairline}`}
+      >
         {filtered.map((wi) => (
           <div
             key={wi.uuid}
-            className="border border-white/10 rounded p-3 space-y-2"
+            className={`rounded-lg border px-3 py-2 flex flex-col gap-2 ${hairline}`}
           >
-            <div className="flex flex-col">
+            <div className="flex flex-col gap-0.5">
               <span className="text-sm font-medium">{wi.title}</span>
-              <Caption className="font-mono">
+              <span className={`text-xs font-mono truncate ${muted}`}>
                 {wi.component}
                 {wi.itemId != null ? ` · #${wi.itemId}` : ""}
-              </Caption>
-              <Caption3>{wi.package}</Caption3>
+              </span>
+              <span className={`text-xs ${muted}`}>{wi.package}</span>
             </div>
-            <div className="flex flex-row gap-2">
-              <Divider orientation="vertical" />
-              <div className="flex flex-col flex-1">
-                {wi.notifications.map((notif) => (
-                  <div
-                    key={notif.key}
-                    className="flex flex-row items-center justify-between gap-3 py-2 px-2 -mx-2 rounded hover:bg-gray-800 transition-colors"
-                  >
-                    <div className="flex flex-col">
-                      <span className="text-xs">{notif.displayName}</span>
-                      {notif.description && (
-                        <Caption>{notif.description}</Caption>
-                      )}
-                    </div>
-                    <Switch
-                      checked={isEnabled(
-                        wi.uuid,
-                        notif.key,
-                        notif.defaultEnabled,
-                      )}
-                      onChange={(value) => setOne(wi.uuid, notif.key, value)}
-                    />
+            <div className={`flex flex-col border-t ${hairline}`}>
+              {wi.notifications.map((notif) => (
+                <div
+                  key={notif.key}
+                  className="flex flex-row items-center justify-between gap-3 py-2"
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-sm">{notif.displayName}</span>
+                    {notif.description && (
+                      <span className={`text-xs ${muted}`}>
+                        {notif.description}
+                      </span>
+                    )}
                   </div>
-                ))}
-              </div>
+                  <Switch
+                    checked={isEnabled(
+                      wi.uuid,
+                      notif.key,
+                      notif.defaultEnabled,
+                    )}
+                    onChange={(value) => setOne(wi.uuid, notif.key, value)}
+                  />
+                </div>
+              ))}
             </div>
           </div>
         ))}
@@ -1295,16 +1292,19 @@ function ProviderTypeRow({
  * Usually this is a stale layout item whose widget got uninstalled.
  */
 function DependenciesTab({ dependencies }) {
+  const { muted, hairline } = useConfigTokens();
   if (!dependencies || dependencies.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-sm opacity-60 text-center">
+      <div
+        className={`flex items-center justify-center h-full text-sm text-center ${muted}`}
+      >
         <div>No widget packages referenced by this dashboard.</div>
       </div>
     );
   }
   return (
     <div className="flex flex-col h-full min-h-0 overflow-y-auto gap-3">
-      <div className="text-xs opacity-60">
+      <div className={`text-xs ${muted}`}>
         Every widget instance in this workspace, grouped by the package it
         belongs to. Locations show where each package is referenced.
       </div>
@@ -1313,40 +1313,33 @@ function DependenciesTab({ dependencies }) {
         return (
           <div
             key={dep.packageLabel}
-            className={`border rounded-lg px-4 py-3 ${
-              isUnknown
-                ? "bg-amber-900/10 border-amber-700/40"
-                : "bg-white/5 border-white/10"
+            className={`border rounded-lg px-3 py-2 ${
+              isUnknown ? "border-amber-400" : hairline
             }`}
           >
             <div className="flex items-center gap-2 flex-wrap">
-              <code
-                className={`text-sm font-semibold ${
-                  isUnknown ? "text-amber-200" : ""
-                }`}
-              >
-                {dep.packageLabel}
-              </code>
-              <span className="text-xs opacity-60">
+              <code className="text-sm font-semibold">{dep.packageLabel}</code>
+              <span className={`text-xs ${muted}`}>
                 {dep.total} instance{dep.total === 1 ? "" : "s"}
               </span>
               {isUnknown && (
-                <span className="text-[10px] text-amber-300 uppercase tracking-wide">
-                  no package mapping
+                <span className="flex flex-row items-center gap-1.5 text-xs text-amber-400 uppercase tracking-wider font-semibold">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
+                  No package mapping
                 </span>
               )}
             </div>
-            <div className="mt-2 text-xs opacity-70">
+            <div className="mt-2 text-xs flex flex-col gap-1">
               <div>
-                <span className="opacity-60 mr-1">Widgets:</span>
+                <span className={`mr-1 ${muted}`}>Widgets:</span>
                 {dep.components
                   .map(
                     (c) => `${c.component}${c.count > 1 ? ` ×${c.count}` : ""}`,
                   )
                   .join(", ")}
               </div>
-              <div className="mt-1">
-                <span className="opacity-60 mr-1">Locations:</span>
+              <div>
+                <span className={`mr-1 ${muted}`}>Locations:</span>
                 {dep.locations.join(", ")}
               </div>
             </div>
