@@ -319,6 +319,9 @@ const botController = {
     if (isLead(bot) && bot.workspaceId) {
       this._store.setTeamSettings(bot.workspaceId, { leadEnabled: false });
     }
+    // Its private memory (bots with no dashboard) goes with it; team and
+    // global memory are shared and stay.
+    this._memory.forgetBot(botId);
     return this._store.delete(botId);
   },
 
@@ -777,7 +780,7 @@ const botController = {
     if (serverName === MEMORY_SERVER) {
       return handleMemoryTool(
         this._memory,
-        { workspaceId: opts.workspaceId },
+        { workspaceId: opts.workspaceId, botId: opts.botId },
         toolName,
         args,
       );

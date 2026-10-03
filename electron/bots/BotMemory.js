@@ -14,11 +14,21 @@
  */
 "use strict";
 
-const VALID_SCOPES = ["workspace", "global"];
+const VALID_SCOPES = ["workspace", "global", "bot"];
 
-/** Bucket key for a (scope, id) pair. Global collapses all ids to one bucket. */
+/**
+ * Bucket key for a (scope, id) pair. Global collapses all ids to one bucket;
+ * "workspace" is a team's shared memory (id = the dashboard); "bot" is one
+ * bot's private memory (id = the bot) — used by bots with no dashboard, so
+ * they don't share one bucket.
+ */
 function bucketKey(scope, id) {
-  return scope === "global" ? "global" : `workspace:${id || "default"}`;
+  if (scope === "global") return "global";
+  if (scope === "bot") {
+    if (!id) throw new Error("BotMemory: the 'bot' scope needs a bot id");
+    return `bot:${id}`;
+  }
+  return `workspace:${id || "default"}`;
 }
 
 class BotMemory {
@@ -79,6 +89,21 @@ class BotMemory {
   }
 
   /** @returns {boolean} true if a value was removed. */
+  /**
+   * A bot was deleted: drop its private memory (the "bot" scope). Team and
+   * global memory are shared, so they're never touched.
+   * @returns {boolean} whether there was anything to remove
+   */
+  forgetBot(botId) {
+    if (!botId) return false;
+    const blob = this._read();
+    const key = bucketKey("bot", botId);
+    if (!blob.scopes[key]) return false;
+    delete blob.scopes[key];
+    this._write(blob);
+    return true;
+  }
+
   delete(scope, id, key) {
     const blob = this._read();
     const bucket = blob.scopes[bucketKey(scope, id)];

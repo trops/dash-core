@@ -97,3 +97,40 @@ describe("memoryTools", () => {
     );
   });
 });
+
+describe("memoryTools — bots with no dashboard get private memory", () => {
+  const set = (m, ctx, key, value, scope) =>
+    handleMemoryTool(m, ctx, "memory_set", {
+      key,
+      value,
+      ...(scope ? { scope } : {}),
+    });
+  const get = (m, ctx, key, scope) =>
+    handleMemoryTool(m, ctx, "memory_get", { key, ...(scope ? { scope } : {}) })
+      .text;
+
+  it("two unassigned bots don't see each other's keys", () => {
+    const m = newMemory();
+    set(m, { botId: "b1" }, "last_checked", "monday");
+    assert.match(get(m, { botId: "b2" }, "last_checked"), /No value stored/);
+    assert.match(get(m, { botId: "b1" }, "last_checked"), /monday/);
+  });
+
+  it("bots on the same dashboard still share team memory", () => {
+    const m = newMemory();
+    set(m, { botId: "b1", workspaceId: "7" }, "k", "shared");
+    assert.match(get(m, { botId: "b2", workspaceId: "7" }, "k"), /shared/);
+  });
+
+  it("global is still shared by everyone", () => {
+    const m = newMemory();
+    set(m, { botId: "b1" }, "k", "g", "global");
+    assert.match(get(m, { botId: "b2", workspaceId: "7" }, "k", "global"), /g/);
+  });
+
+  it("a numeric dashboard id counts as a team", () => {
+    const m = newMemory();
+    set(m, { botId: "b1", workspaceId: 7 }, "k", "team");
+    assert.match(get(m, { botId: "b2", workspaceId: "7" }, "k"), /team/);
+  });
+});

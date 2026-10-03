@@ -18,7 +18,7 @@ const SCOPE_PROP = {
   type: "string",
   enum: ["workspace", "global"],
   description:
-    "Which memory scope to use: 'workspace' (default, isolated to this bot's workspace) or 'global' (shared across your bots).",
+    "Which memory scope to use: 'workspace' (default — your team's shared memory, or private to you if you're not on a dashboard's team) or 'global' (shared across all your bots).",
 };
 
 const MEMORY_TOOLS = [
@@ -88,31 +88,46 @@ function fail(text) {
 /**
  * Execute a memory_* tool call in-process.
  * @param {import("./BotMemory").BotMemory} memory
- * @param {{ workspaceId?: string }} ctx  the calling bot's scope context
+ * @param {{ workspaceId?: string|number, botId?: string }} ctx  the calling bot
  * @param {string} toolName
  * @param {object} args
  * @returns {{ text: string, isError: boolean }}
  */
 function handleMemoryTool(memory, ctx, toolName, args = {}) {
-  const scope = args && args.scope === "global" ? "global" : "workspace";
-  const id = ctx && ctx.workspaceId;
+  // "workspace" is the team's shared memory; a bot with no dashboard gets its
+  // own private bucket instead of sharing one with every other such bot.
+  const ws = ctx && ctx.workspaceId;
+  const onTeam = ws !== null && ws !== undefined && ws !== "";
+  let scope;
+  let id;
+  if (args && args.scope === "global") {
+    scope = "global";
+    id = null;
+  } else if (onTeam) {
+    scope = "workspace";
+    id = String(ws);
+  } else {
+    scope = "bot";
+    id = ctx && ctx.botId;
+  }
+  const label = scope === "bot" ? "private" : scope;
   try {
     switch (toolName) {
       case "memory_set": {
         if (!args || !args.key) return fail("memory_set requires a 'key'.");
         const entry = memory.set(scope, id, args.key, args.value);
-        return ok(`Stored '${args.key}' (${scope}, v${entry.version}).`);
+        return ok(`Stored '${args.key}' (${label}, v${entry.version}).`);
       }
       case "memory_get": {
         if (!args || !args.key) return fail("memory_get requires a 'key'.");
         const value = memory.get(scope, id, args.key);
         if (value === undefined)
-          return ok(`No value stored for '${args.key}' (${scope}).`);
+          return ok(`No value stored for '${args.key}' (${label}).`);
         return ok(typeof value === "string" ? value : JSON.stringify(value));
       }
       case "memory_list": {
         const entries = memory.list(scope, id, args && args.prefix);
-        if (!entries.length) return ok(`No memory keys stored (${scope}).`);
+        if (!entries.length) return ok(`No memory keys stored (${label}).`);
         return ok(entries.map((e) => `${e.key} (v${e.version})`).join("\n"));
       }
       case "memory_delete": {
@@ -120,8 +135,8 @@ function handleMemoryTool(memory, ctx, toolName, args = {}) {
         const removed = memory.delete(scope, id, args.key);
         return ok(
           removed
-            ? `Deleted '${args.key}' (${scope}).`
-            : `No value to delete for '${args.key}' (${scope}).`,
+            ? `Deleted '${args.key}' (${label}).`
+            : `No value to delete for '${args.key}' (${label}).`,
         );
       }
       default:
