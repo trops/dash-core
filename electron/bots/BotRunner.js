@@ -27,6 +27,7 @@
 
 const { createRequestPermission } = require("./PermissionGate");
 const { truncateText } = require("./botEvents");
+const { appendAnswerText } = require("./answerText");
 
 class BotRunner {
   constructor(deps = {}) {
@@ -140,7 +141,8 @@ class BotRunner {
     let runProfile = null;
     // The run's answer (its text), kept on the run record — what a team lead
     // reads back. Capped to the last 8 KB; the store seals it at rest.
-    const answer = [];
+    let answer = "";
+    let afterTool = false;
     // Tool-call summary for the conversation view: tool, provider, ok —
     // never arguments or results (they can hold email content).
     const toolCalls = [];
@@ -228,7 +230,11 @@ class BotRunner {
 
       for await (const event of engine.run(ctx)) {
         emit(event);
-        if (event.type === "text" && event.text) answer.push(event.text);
+        if (event.type === "text" && event.text) {
+          answer = appendAnswerText(answer, event.text, { afterTool });
+          afterTool = false;
+        }
+        if (event.type === "tool_call") afterTool = true;
         if (event.type === "tool_call" && event.name) {
           // Bridged tools arrive as "mcp__bot-mcp__<tool>" on the agent engine.
           const tool = String(event.name).replace(
@@ -269,7 +275,7 @@ class BotRunner {
       endedAt: this._now(),
       usage,
       error: errorMessage,
-      output: truncateText(answer.join("")),
+      output: truncateText(answer),
       // The conversation turn (Bots view, TEAM-011). The store seals the
       // prompt at rest like the answer.
       prompt: truncateText(opts.prompt || ""),

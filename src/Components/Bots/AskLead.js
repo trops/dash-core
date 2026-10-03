@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Button, Button3, InputText } from "@trops/dash-react";
+import { appendAnswerText } from "../../utils/answerText";
 
 /**
  * AskLead — chat with a dashboard's team lead (bot-teams PRD TEAM-003).
@@ -27,14 +28,21 @@ export const AskLead = ({ lead }) => {
   const [pending, setPending] = useState(null); // streaming answer text
   const [asking, setAsking] = useState(false);
   const pendingRef = useRef("");
+  // A tool call since the last text → the next text starts a new paragraph.
+  const afterToolRef = useRef(false);
 
   // Live answer text for this lead only.
   useEffect(() => {
     const api = typeof window !== "undefined" ? window.mainApi : null;
     if (!api?.bots?.onStream || !lead) return undefined;
     const id = api.bots.onStream(({ botId, event }) => {
-      if (botId !== lead.id || !event || event.type !== "text") return;
-      pendingRef.current += event.text || "";
+      if (botId !== lead.id || !event) return;
+      if (event.type === "tool_call") afterToolRef.current = true;
+      if (event.type !== "text") return;
+      pendingRef.current = appendAnswerText(pendingRef.current, event.text, {
+        afterTool: afterToolRef.current,
+      });
+      afterToolRef.current = false;
       setPending(pendingRef.current);
     });
     return () => {
