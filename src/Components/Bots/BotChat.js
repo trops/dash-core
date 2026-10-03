@@ -241,7 +241,7 @@ export const BotChat = ({
         return (
           <div
             key={i}
-            className={`flex flex-row items-center gap-3 text-xs ${muted}`}
+            className={`flex flex-row items-center gap-3 my-3 text-xs ${muted}`}
           >
             <div className={`flex-1 border-t ${hairline}`} />
             {t.text}
@@ -367,7 +367,7 @@ export const BotChat = ({
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          className="h-full overflow-y-auto px-5 py-4 flex flex-col gap-3"
+          className="h-full overflow-y-auto px-5 pt-4 pb-6 flex flex-col gap-3"
           data-testid="bot-chat-thread"
         >
           {runs !== null && !turns.length ? (
