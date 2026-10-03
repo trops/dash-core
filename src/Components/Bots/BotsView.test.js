@@ -383,3 +383,80 @@ describe("BotsView — bots changed elsewhere (TEAM-011 refresh)", () => {
     expect(window.mainApi.bots.removeListener).toHaveBeenCalledWith("lc");
   });
 });
+
+describe("BotsView — lead drafts (TEAM-005)", () => {
+  const draft = {
+    id: "d1",
+    workspaceId: "7",
+    reasoning: "You asked for a digest.",
+    definition: {
+      name: "Morning Digest",
+      instructions: "Summarise urgent mail.",
+      workspaceId: "7",
+      mcpServers: [],
+      toolSelections: {},
+      approvalPolicy: "ask",
+      schedules: [{ cron: "0 8 * * *" }],
+      subscriptions: [],
+    },
+    suggestions: [
+      { provider: "Gmail New", tools: ["search_emails"], toolsChecked: true },
+    ],
+    missing: [],
+    dropped: [],
+    duplicateOf: null,
+  };
+
+  function renderWithDraft() {
+    setup();
+    document.body.innerHTML = "";
+    const team = makeTeam({ drafts: [draft], dismissDraft: jest.fn() });
+    render(
+      <AppContext.Provider value={{ providers: {} }}>
+        <BotsView
+          workspace={workspace}
+          workspaces={[workspace]}
+          team={team}
+          narrow={false}
+        />
+      </AppContext.Provider>,
+    );
+    return team;
+  }
+
+  it("lists drafts in the team list", () => {
+    renderWithDraft();
+    expect(within(teamList()).getByText("Drafts")).toBeInTheDocument();
+    expect(within(teamList()).getByText("Morning Digest")).toBeInTheDocument();
+  });
+
+  it("opens a draft as a prefilled new bot with the lead's notes", () => {
+    renderWithDraft();
+    fireEvent.click(within(teamList()).getByText("Morning Digest"));
+    expect(screen.getByText(/Drafted by your team lead/)).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Morning Digest")).toBeInTheDocument();
+    expect(screen.getByText("Create")).toBeInTheDocument();
+  });
+
+  it("Create saves it as a real bot on this dashboard and removes the draft", async () => {
+    const team = renderWithDraft();
+    fireEvent.click(within(teamList()).getByText("Morning Digest"));
+    fireEvent.click(screen.getByText("Create"));
+    await waitFor(() => expect(window.mainApi.bots.save).toHaveBeenCalled());
+    const saved = window.mainApi.bots.save.mock.calls[0][0];
+    expect(saved.name).toBe("Morning Digest");
+    expect(String(saved.workspaceId)).toBe("7");
+    expect(saved.mcpServers).toEqual([]);
+    await waitFor(() => expect(team.dismissDraft).toHaveBeenCalledWith("d1"));
+  });
+
+  it("Discard draft removes it and returns to the lead", async () => {
+    const team = renderWithDraft();
+    fireEvent.click(within(teamList()).getByText("Morning Digest"));
+    fireEvent.click(screen.getByText("Discard draft"));
+    await waitFor(() => expect(team.dismissDraft).toHaveBeenCalledWith("d1"));
+    expect(
+      screen.getByRole("heading", { name: "Kitchen Lead" }),
+    ).toBeInTheDocument();
+  });
+});

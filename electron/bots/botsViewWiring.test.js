@@ -142,3 +142,44 @@ describe("botController — asking a lead from the Assistant (TEAM-004)", () => 
     );
   });
 });
+
+describe("Lead drafts (TEAM-005)", () => {
+  it("the controller keeps drafts and hands the lead a drafting hook", () => {
+    assert.match(ctrl, /require\("\.\.\/bots\/botDrafts"\)/);
+    assert.match(ctrl, /this\._drafts = new DraftStore\(\)/);
+    assert.match(
+      ctrl,
+      /proposeBot: \(teamCtx, proposal\) =>\s*this\._proposeBot\(teamCtx, proposal\),/,
+    );
+    assert.match(ctrl, /_proposeBot\(\{ workspaceId, botId \}, proposal\) \{/);
+    assert.match(ctrl, /sources: this\.listToolSources\(workspaceId\)/);
+  });
+
+  it("lists and dismisses drafts, and broadcasts changes", () => {
+    assert.match(ctrl, /listDrafts\(workspaceId\) \{/);
+    assert.match(ctrl, /dismissDraft\(draftId\) \{/);
+    assert.match(
+      ctrl,
+      /this\._drafts\.onChange\(\(\) =>\s*this\._notifyDraftsChanged\(\),?\s*\)/,
+    );
+    assert.match(ctrl, /this\._broadcast\(BOT_DRAFTS_CHANGED, \{\}\)/);
+  });
+
+  it("events + api", () => {
+    assert.equal(events.BOTS_LIST_DRAFTS, "bots-list-drafts");
+    assert.equal(events.BOTS_DISMISS_DRAFT, "bots-dismiss-draft");
+    assert.equal(events.BOT_DRAFTS_CHANGED, "bot-drafts-changed");
+    assert.match(
+      api,
+      /listDrafts: \(workspaceId\) =>\s*ipcRenderer\.invoke\(BOTS_LIST_DRAFTS, \{ workspaceId \}\)/,
+    );
+    assert.match(
+      api,
+      /dismissDraft: \(draftId\) =>\s*ipcRenderer\.invoke\(BOTS_DISMISS_DRAFT, \{ draftId \}\)/,
+    );
+    assert.match(
+      api,
+      /onDraftsChanged: \(callback\) => _addListener\(BOT_DRAFTS_CHANGED, callback\)/,
+    );
+  });
+});

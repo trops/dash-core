@@ -195,3 +195,49 @@ describe("registration (static pin)", () => {
     assert.match(src, /\nregisterTeamTools\(\);/);
   });
 });
+
+describe("ask_team_lead — drafts made during the ask (TEAM-005 AC5)", () => {
+  it("tells the Assistant a draft is waiting for review", async () => {
+    let drafts = [];
+    const { handlers } = setup({
+      askLead: async () => {
+        drafts = [
+          {
+            id: "d1",
+            leadId: "lead_ks",
+            createdAt: new Date().toISOString(),
+            definition: { name: "Morning Digest" },
+          },
+        ];
+        return { status: "completed", output: "I've drafted Morning Digest." };
+      },
+      listDrafts: () => drafts,
+    });
+    const r = await handlers.ask_team_lead({
+      dashboard: "Kitchen Sinkq",
+      question: "add a bot that…",
+    });
+    assert.match(
+      r.content[0].text,
+      /Draft "Morning Digest" is waiting for the user's review in Kitchen Sinkq's Bots view/,
+    );
+  });
+
+  it("doesn't mention drafts that existed before the ask", async () => {
+    const { handlers } = setup({
+      listDrafts: () => [
+        {
+          id: "old",
+          leadId: "lead_ks",
+          createdAt: "2020-01-01T00:00:00.000Z",
+          definition: { name: "Old" },
+        },
+      ],
+    });
+    const r = await handlers.ask_team_lead({
+      dashboard: "Kitchen Sinkq",
+      question: "x",
+    });
+    assert.doesNotMatch(r.content[0].text, /Draft "Old"/);
+  });
+});

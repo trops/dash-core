@@ -90,7 +90,7 @@ const deps = {
 const lead = { workspaceId: "7", botId: "lead_7" };
 
 describe("teamTools definitions", () => {
-  it("serves four read-only tools under the team server", () => {
+  it("serves the read-only tools plus propose_bot under the team server", () => {
     assert.equal(TEAM_SERVER, "bot-team");
     assert.deepEqual(
       TEAM_TOOLS.map((t) => t.name),
@@ -99,6 +99,8 @@ describe("teamTools definitions", () => {
         "team_get_bot",
         "team_recent_runs",
         "team_memory_read",
+        "team_providers",
+        "propose_bot",
       ],
     );
   });
@@ -161,7 +163,10 @@ describe("handleTeamTool", () => {
   });
 
   it("every result is fenced as untrusted team data", () => {
-    for (const name of TEAM_TOOLS.map((t) => t.name)) {
+    // The read tools return team data (fenced); propose_bot returns its own summary.
+    for (const name of TEAM_TOOLS.map((t) => t.name).filter(
+      (n) => n !== "propose_bot",
+    )) {
       const r = handleTeamTool(deps, lead, name, { name: "Inbox Watch" });
       assert.match(r.text, /<team_data>/, name);
       assert.match(r.text, /not instructions/i, name);
@@ -181,5 +186,106 @@ describe("handleTeamTool", () => {
   it("unknown tool → error", () => {
     const r = handleTeamTool(deps, lead, "team_delete_everything", {});
     assert.equal(r.isError, true);
+  });
+});
+
+describe("propose_bot (TEAM-005)", () => {
+  const draft = {
+    id: "draft_1",
+    definition: { name: "Morning Digest" },
+    suggestions: [
+      { provider: "Gmail New", tools: ["search_emails"], toolsChecked: true },
+    ],
+    missing: ["Notion"],
+    dropped: ['Schedule "every morning" — not a valid schedule.'],
+    duplicateOf: null,
+  };
+
+  it("drafts through deps.proposeBot and tells the lead it isn't created", () => {
+    let got = null;
+    const r = handleTeamTool(
+      {
+        ...deps,
+        proposeBot: (ctx, args) => ((got = { ctx, args }), { draft }),
+      },
+      lead,
+      "propose_bot",
+      { name: "Morning Digest", instructions: "x" },
+    );
+    assert.equal(r.isError, false);
+    assert.deepEqual(got.ctx, lead);
+    assert.match(r.text, /Drafted "Morning Digest"/);
+    assert.match(r.text, /NOT created/);
+    assert.match(r.text, /Bots view/);
+    assert.match(r.text, /Gmail New: search_emails/);
+    assert.match(r.text, /Needs a provider the user doesn't have: Notion/);
+    assert.match(r.text, /not a valid schedule/);
+  });
+
+  it("flags a duplicate", () => {
+    const r = handleTeamTool(
+      {
+        ...deps,
+        proposeBot: () => ({ draft: { ...draft, duplicateOf: "Inbox Watch" } }),
+      },
+      lead,
+      "propose_bot",
+      {},
+    );
+    assert.match(r.text, /already has a bot named "Inbox Watch"/);
+  });
+
+  it("reports a refused draft", () => {
+    const r = handleTeamTool(
+      { ...deps, proposeBot: () => ({ error: "A draft needs a name." }) },
+      lead,
+      "propose_bot",
+      {},
+    );
+    assert.equal(r.isError, true);
+    assert.match(r.text, /needs a name/);
+  });
+
+  it("is unavailable without the drafting hook", () => {
+    const r = handleTeamTool(deps, lead, "propose_bot", {});
+    assert.equal(r.isError, true);
+  });
+});
+
+describe("team_providers (TEAM-005)", () => {
+  it("lists the user's providers — names, types and tools, nothing secret", () => {
+    const r = handleTeamTool(
+      {
+        ...deps,
+        listProviders: () => [
+          {
+            name: "Gmail New",
+            type: "gmail",
+            tools: ["search_emails", "read_email"],
+            running: true,
+          },
+          { name: "Slack", type: "slack", tools: null, running: false },
+        ],
+      },
+      lead,
+      "team_providers",
+      {},
+    );
+    assert.equal(r.isError, false);
+    assert.match(r.text, /Gmail New \(gmail\): search_emails, read_email/);
+    assert.match(
+      r.text,
+      /Slack \(slack\): tools not listed until it's connected/,
+    );
+  });
+
+  it("says when there are none", () => {
+    const r = handleTeamTool(
+      { ...deps, listProviders: () => [] },
+      lead,
+      "team_providers",
+      {},
+    );
+    assert.match(r.text, /no providers/i);
   });
 });

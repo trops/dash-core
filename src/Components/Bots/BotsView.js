@@ -18,6 +18,7 @@ import {
 import { BotChat } from "./BotChat";
 import { BotRunHistory } from "./BotRunHistory";
 import { BotDetail } from "../Settings/details/BotDetail";
+import { DraftBanner } from "./DraftBanner";
 import { AppContext } from "../../Context/App/AppContext";
 import { ComponentManager } from "../../ComponentManager";
 import { triggerSummary } from "./teamUtils";
@@ -43,6 +44,9 @@ import { triggerSummary } from "./teamUtils";
  *   it, through the unsaved-changes guard.
  */
 const NEW_BOT = "__new__";
+// A lead's drafted bot (TEAM-005) is selected as "draft:<id>".
+const DRAFT_PREFIX = "draft:";
+const isDraftId = (id) => typeof id === "string" && id.startsWith(DRAFT_PREFIX);
 const NARROW_PX = 900;
 const DOT = {
   Idle: "bg-gray-500",
@@ -103,6 +107,7 @@ export const BotsView = ({
   const lead = team ? team.lead : null;
   const members = team ? team.members : [];
   const all = [lead, ...members].filter(Boolean);
+  const drafts = (team && team.drafts) || [];
 
   const focusTarget =
     focus && all.some((b) => b.id === focus.botId) ? focus : null;
@@ -158,14 +163,27 @@ export const BotsView = ({
   // Fall back to the lead when the selection disappears (deleted elsewhere).
   useEffect(() => {
     if (selectedId === NEW_BOT) return;
+    // A draft saved or discarded elsewhere → back to the lead.
+    if (isDraftId(selectedId)) {
+      if (!drafts.some((d) => DRAFT_PREFIX + d.id === selectedId)) {
+        setSelectedId(
+          (lead && lead.id) || (members[0] && members[0].id) || null,
+        );
+        setTab("conversation");
+      }
+      return;
+    }
     if (!all.some((b) => b.id === selectedId)) {
       setSelectedId((lead && lead.id) || (members[0] && members[0].id) || null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [team && team.bots]);
+  }, [team && team.bots, team && team.drafts]);
 
+  const selectedDraft = isDraftId(selectedId)
+    ? drafts.find((d) => DRAFT_PREFIX + d.id === selectedId) || null
+    : null;
   const selected =
-    selectedId === NEW_BOT
+    selectedId === NEW_BOT || isDraftId(selectedId)
       ? null
       : all.find((b) => b.id === selectedId) || null;
   const isLead = !!(selected && selected.role === "lead");
@@ -180,7 +198,7 @@ export const BotsView = ({
     guarded(() => {
       setDirty(false);
       setSelectedId(id);
-      setTab(id === NEW_BOT ? "settings" : "conversation");
+      setTab(id === NEW_BOT || isDraftId(id) ? "settings" : "conversation");
       setMenuOpen(false);
     });
 
@@ -230,11 +248,50 @@ export const BotsView = ({
     const saved = await bots.save(definition);
     setDirty(false);
     afterChange();
-    if (selectedId === NEW_BOT && saved && saved.id) {
+    // Saving a lead's draft makes it a real bot — the draft goes away.
+    if (selectedDraft && team && team.dismissDraft) {
+      await team.dismissDraft(selectedDraft.id);
+    }
+    if (
+      (selectedId === NEW_BOT || isDraftId(selectedId)) &&
+      saved &&
+      saved.id
+    ) {
       setSelectedId(saved.id);
       setTab("conversation");
     }
     return saved;
+  };
+
+  const discardDraft = async () => {
+    if (!selectedDraft || !team || !team.dismissDraft) return;
+    await team.dismissDraft(selectedDraft.id);
+    setDirty(false);
+    setSelectedId((lead && lead.id) || (members[0] && members[0].id) || null);
+    setTab("conversation");
+  };
+
+  const draftRow = (d) => {
+    const id = DRAFT_PREFIX + d.id;
+    const active = id === selectedId;
+    return (
+      <button
+        key={id}
+        type="button"
+        onClick={() => select(id)}
+        aria-current={active ? "true" : undefined}
+        className={`w-full text-left rounded-lg px-3 py-2 flex flex-col border ${
+          active ? `${selectedBg} ${selectedBorder}` : "border-transparent"
+        }`}
+      >
+        <span className="text-sm font-medium truncate">
+          {d.definition && d.definition.name}
+        </span>
+        <span className={`text-xs ${muted}`}>
+          Drafted by the lead · not created yet
+        </span>
+      </button>
+    );
   };
 
   const removeFromTeam = async () => {
@@ -337,6 +394,14 @@ export const BotsView = ({
           No bots on this dashboard yet.
         </div>
       ) : null}
+      {drafts.length ? (
+        <>
+          <div className="px-2 pt-3 pb-1">
+            <SectionLabel text="Drafts" />
+          </div>
+          {drafts.map(draftRow)}
+        </>
+      ) : null}
       <div className="flex-1" />
       <Button title="+ Add bot" size="sm" onClick={() => select(NEW_BOT)} />
     </nav>
@@ -351,6 +416,10 @@ export const BotsView = ({
           onChange={(v) => select(v)}
           options={[
             ...all.map((b) => ({ value: b.id, label: b.name })),
+            ...drafts.map((d) => ({
+              value: DRAFT_PREFIX + d.id,
+              label: `${d.definition && d.definition.name} (draft)`,
+            })),
             { value: NEW_BOT, label: "+ Add bot" },
           ]}
         />
@@ -364,7 +433,9 @@ export const BotsView = ({
         ["activity", "Activity"],
         ["settings", "Settings"],
       ]
-    : [["settings", "New bot"]];
+    : selectedDraft
+      ? [["settings", "Review draft"]]
+      : [["settings", "New bot"]];
 
   return (
     <div
@@ -381,7 +452,11 @@ export const BotsView = ({
           <div className="min-w-0">
             <div className="flex flex-row items-center gap-2">
               <h2 className="text-lg font-semibold truncate">
-                {selected ? selected.name : "New bot"}
+                {selected
+                  ? selected.name
+                  : selectedDraft
+                    ? selectedDraft.definition.name
+                    : "New bot"}
               </h2>
               {selected ? (
                 <span
@@ -488,9 +563,20 @@ export const BotsView = ({
           ) : null}
           {tab === "settings" ? (
             <div className="flex-1 min-h-0 flex flex-col">
+              {selectedDraft ? (
+                <DraftBanner
+                  draft={selectedDraft}
+                  onDiscard={discardDraft}
+                  onOpenSettings={onOpenSettings}
+                />
+              ) : null}
               <BotDetail
-                key={`${selected ? selected.id : NEW_BOT}-${formKey}`}
-                bot={selected}
+                key={`${selected ? selected.id : selectedId || NEW_BOT}-${formKey}`}
+                bot={
+                  selected ||
+                  (selectedDraft && selectedDraft.definition) ||
+                  null
+                }
                 isCreating={!selected}
                 defaultWorkspaceId={workspace ? workspace.id : null}
                 providers={providers}
