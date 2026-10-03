@@ -45,6 +45,9 @@ const renderMock = (name, props) => (
         bot in bots view
       </button>
     ) : null}
+    {props.onOpenPrivacySettings ? (
+      <button onClick={props.onOpenPrivacySettings}>privacy</button>
+    ) : null}
     {props.onOpenDashboardConfig ? (
       <button onClick={() => props.onOpenDashboardConfig({ id: 1 })}>
         dashboard config
@@ -67,8 +70,9 @@ jest.mock("./BotsPage", () => ({
 jest.mock("../Settings/sections/ProvidersSection", () => ({
   ProvidersSection: mockSection("providers"),
 }));
-jest.mock("../Settings/sections/WidgetsSection", () => ({
-  WidgetsSection: mockSection("widgets"),
+// Slice 3b: the Widgets page (org → package → widgets) replaced WidgetsSection.
+jest.mock("./WidgetsPage", () => ({
+  WidgetsPage: mockSection("widgets"),
 }));
 jest.mock("../Settings/sections/ThemesSection", () => ({
   ThemesSection: mockSection("themes"),
@@ -170,6 +174,22 @@ describe("AppPage", () => {
     );
     fireEvent.click(screen.getByText("bot in bots view"));
     expect(onOpenBotInBotsView).toHaveBeenCalledWith({ id: 1 }, "b1");
+  });
+
+  it("Widgets: opens dashboards and Privacy & Security", () => {
+    const onOpenWorkspace = jest.fn();
+    const onOpenPrivacySettings = jest.fn();
+    render(
+      <AppPage
+        pageKey="widgets"
+        onOpenWorkspace={onOpenWorkspace}
+        onOpenPrivacySettings={onOpenPrivacySettings}
+      />,
+    );
+    fireEvent.click(screen.getByText("open ws"));
+    expect(onOpenWorkspace).toHaveBeenCalledWith({ id: 1 });
+    fireEvent.click(screen.getByText("privacy"));
+    expect(onOpenPrivacySettings).toHaveBeenCalled();
   });
 
   it("renders nothing for an unknown page", () => {

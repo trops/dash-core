@@ -81,6 +81,12 @@ describe("DashboardStage — Manage pages", () => {
     );
   });
 
+  it("the Widgets page opens Settings › Privacy & Security", () => {
+    expect(src).toMatch(
+      /<AppPage[\s\S]*?onOpenPrivacySettings=\{\(\) =>\s*openAppSettings\("privacy-security"\)\s*\}/,
+    );
+  });
+
   it("closing by dashboard name never closes a page tab", () => {
     expect(src).toMatch(
       /\(openTabsRef\.current \|\| \[\]\)\.find\(\s*\(t\) =>\s*t\.workspace &&/,
