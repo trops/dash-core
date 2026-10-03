@@ -1,6 +1,6 @@
 # PRD: App Navigation — Manage pages in the left nav
 
-**Status:** In Progress (slice 1 implemented)
+**Status:** In Progress (slices 1–2 implemented)
 **Last Updated:** 2026-10-03
 **Owner:** John
 **Related PRDs:** [bot-teams.md](./bot-teams.md) (Bots view, TEAM-011), [command-palette-navigation.md](./command-palette-navigation.md), [widget-installation-model.md](./widget-installation-model.md), [scoped-widget-ids.md](./scoped-widget-ids.md)
@@ -219,7 +219,16 @@ NAV-001, NAV-002, NAV-003, NAV-004 (AC1–AC2), with Bots / Providers / Widgets 
 
 ### Phase 2 (slice 2): Dashboards page
 
-NAV-005, NAV-004 AC3 (palette).
+NAV-005, NAV-004 AC3 (palette). NAV-010 (`FilterMenu`) moved up into this slice — dash-react first.
+
+**Implementation notes (slice 2, 2026-10-03):**
+
+- **dash-react `FilterMenu`** (NAV-010): searchable multi-select for open-ended lists — button reads "Folder" / "Folder: Work" / "Folder: 3 selected" with a clear button; the menu has its own search, a checkbox per option with its count, "No match", closes on Escape or a click outside; theme tokens + `dr-filter-menu` hooks. Falls back cleanly when the ThemeContext default (`currentTheme: null`) is used.
+- `AppPages/DashboardsPage.js` replaces `DashboardsSection` on the Dashboards page: filter bar (search across dashboard **and widget** names, Folder `FilterMenu`, Grouped / A-Z, Browse marketplace) fixed above a full-height list (grouped by folder; theme colour dots, "N pages · M widgets", amber dot when a required provider is unresolved or a team bot is waiting for approval) and detail (name + "folder · theme", attention line, layout preview per page with page chips, widgets with packages, team bots with status dots + LEAD, providers used + unresolved note, Folder / Theme selects, registry badge + rating). Actions: Open, Bots view, Dashboard Config, and ⋯ → Rename / Duplicate / Export ZIP / Publish / Delete (confirmed). New Dashboard shows the existing chooser; the wizard and marketplace hand off as before.
+- `AppPages/dashboardSummary.js` (pure): pages + grid per page, widgets (name + `@scope/package`), providers used, unresolved required providers — same derivations as Dashboard Config. `AppPages/useApprovalsByDashboard.js` counts waiting approvals per dashboard (re-reads on approval / run / bot-list events).
+- Stage: `handleOpenDashboardBotsView` sets the dashboard's stage mode to Bots and opens its tab; `handleOpenDashboardConfig` opens the tab, then (once it's showing) enters edit mode the usual way (snapshot, so Cancel works) and opens Config.
+- Command palette: a **Go to** group (Dashboards, Bots, Providers, Widgets, Themes) opens the page tab.
+- `DashboardsSection` / `DashboardDetail` are no longer used by any page; kept for now, to be removed in a cleanup.
 
 ### Phase 3 (slices 3–5): Page redesigns
 
@@ -246,3 +255,4 @@ NAV-011, NAV-012 (after the ownership fix), P2 items.
 | ------- | ---------- | ------ | ----------------------------------------------- |
 | 1.0     | 2026-10-03 | John   | Initial PRD from the approved navigation mockup |
 | 1.1     | 2026-10-03 | John   | Slice 1 implemented (Manage nav, page tabs)     |
+| 1.2     | 2026-10-03 | John   | Slice 2: Dashboards page, FilterMenu, Go to     |

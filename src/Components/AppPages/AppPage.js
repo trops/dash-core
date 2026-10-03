@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Button, SectionLabel } from "@trops/dash-react";
 import { getAppPage } from "../Navigation/appPages";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
-import { DashboardsSection } from "../Settings/sections/DashboardsSection";
+import { DashboardsPage } from "./DashboardsPage";
 import { FoldersSection } from "../Settings/sections/FoldersSection";
 import { BotsSection } from "../Settings/sections/BotsSection";
 import { ProvidersSection } from "../Settings/sections/ProvidersSection";
@@ -23,10 +23,9 @@ const CREATE_LABEL = {
  * the left nav (app-navigation PRD NAV-003). Rendered outside
  * DashboardThemeProvider, so it uses the app theme.
  *
- * Slice 1 reuses the Settings section components (they don't depend on the
- * modal) with the props the Settings modal gave them; each page gets the
- * list + detail redesign later. Dashboards shows Dashboards and Folders
- * until its own page lands.
+ * Dashboards is its own list + detail page (slice 2, NAV-005), with Folders
+ * beside it. The other pages still reuse their Settings section components
+ * (they don't depend on the modal) until their redesigns land.
  *
  * @param {string} pageKey            dashboards | bots | providers | widgets | themes
  * @param {string} subsection         Dashboards only: "dashboards" | "folders"
@@ -46,6 +45,9 @@ export const AppPage = ({
   onOpenWorkspace = null,
   onOpenThemeEditor = null,
   onOpenWizard = null,
+  // Dashboards page: open a dashboard's tab in its Bots view / with Config.
+  onOpenBotsView = null,
+  onOpenDashboardConfig = null,
 }) => {
   const page = getAppPage(pageKey);
   const { muted, strong, hairline } = useConfigTokens();
@@ -73,13 +75,15 @@ export const AppPage = ({
   let body = null;
   if (section === "dashboards") {
     body = (
-      <DashboardsSection
+      <DashboardsPage
         workspaces={workspaces}
         menuItems={menuItems}
         dashApi={dashApi}
         credentials={credentials}
         onReloadWorkspaces={onReloadWorkspaces}
         onOpenWorkspace={onOpenWorkspace}
+        onOpenBotsView={onOpenBotsView}
+        onOpenDashboardConfig={onOpenDashboardConfig}
         onOpenWizard={onOpenWizard}
         {...createProps}
       />

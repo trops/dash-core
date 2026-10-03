@@ -86,6 +86,46 @@ function SegmentedControl({ options = [], value, onChange, ariaLabel }) {
   );
 }
 
+// dash-react ≥1.0.60 FilterMenu: rendered open — a labelled group with a
+// checkbox per option, so tests can toggle values directly.
+function FilterMenu({ label, options = [], selected = [], onChange }) {
+  const opts = options.map((o) =>
+    typeof o === "string" ? { value: o, label: o } : o,
+  );
+  return React.createElement(
+    "div",
+    { role: "group", "aria-label": `${label} filter` },
+    opts.map((o) =>
+      React.createElement(
+        "label",
+        { key: String(o.value) },
+        React.createElement("input", {
+          type: "checkbox",
+          checked: selected.includes(o.value),
+          onChange: () =>
+            onChange &&
+            onChange(
+              selected.includes(o.value)
+                ? selected.filter((v) => v !== o.value)
+                : [...selected, o.value],
+            ),
+        }),
+        o.label,
+      ),
+    ),
+  );
+}
+
+function SearchInput({ value, onChange, placeholder }) {
+  return React.createElement("input", {
+    type: "search",
+    value: value || "",
+    placeholder,
+    "aria-label": placeholder,
+    onChange: (e) => onChange && onChange(e.target.value),
+  });
+}
+
 function Checkbox({ label, checked, onChange }) {
   return React.createElement(
     "label",
@@ -516,6 +556,8 @@ module.exports = {
   InputText,
   TextArea,
   SegmentedControl,
+  FilterMenu,
+  SearchInput,
   Checkbox,
   Button,
   Button2,
