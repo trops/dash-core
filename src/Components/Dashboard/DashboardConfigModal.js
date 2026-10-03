@@ -2,11 +2,11 @@ import React, { useState, useMemo, useContext } from "react";
 import {
   ThemeContext,
   FontAwesomeIcon,
+  SectionLabel,
   Modal,
   Button2,
   Button3,
   Card2,
-  Tag,
   Switch,
   SearchInput,
   Divider,
@@ -32,6 +32,25 @@ import {
 import { WidgetsTab } from "./WidgetsTab";
 import { PermissionsTab } from "./PermissionsTab";
 import { BotsTab } from "./BotsTab";
+import { ConfigListRow, useConfigTokens } from "./ConfigListRow";
+
+/** One tab in the modal's tab strip — the Bots view's tab style. */
+const ConfigTab = ({ active, onClick, children }) => {
+  const { muted } = useConfigTokens();
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`py-2.5 text-sm font-medium -mb-px border-b-2 ${
+        active ? "border-indigo-400" : `border-transparent ${muted}`
+      }`}
+    >
+      {children}
+    </button>
+  );
+};
 
 /**
  * DashboardConfigModal
@@ -93,6 +112,7 @@ export const DashboardConfigModal = ({
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,
   });
+  const { muted, hairline } = useConfigTokens();
 
   // Active tab. Defaults to whatever the parent requested via
   // `initialTab`. Resets on each open via the modal's mount cycle.
@@ -532,107 +552,86 @@ export const DashboardConfigModal = ({
           panelStyles.backgroundColor || ""
         } ${panelStyles.borderColor || ""} ${panelStyles.textColor || ""}`}
       >
-        {/* Header */}
-        <div className="flex-shrink-0 flex flex-row items-center justify-between p-4">
-          <div className="flex items-center gap-3">
-            <FontAwesomeIcon icon="sliders" className="h-4 w-4 opacity-70" />
-            <span className="text-lg font-semibold">Dashboard Config</span>
-            {unresolvedCount > 0 && (
-              <Tag
-                text={`${unresolvedCount} unresolved`}
-                className="bg-amber-900/40 text-amber-200"
-              />
-            )}
+        {/* Header — title with the dashboard's name under it, like the
+            Bots view's bot header. */}
+        <div className="flex-shrink-0 flex flex-row items-start justify-between px-5 pt-4">
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <div className="flex flex-row items-center gap-3">
+              <FontAwesomeIcon icon="sliders" className="h-4 w-4 opacity-70" />
+              <span className="text-lg font-semibold">Dashboard Config</span>
+              {unresolvedCount > 0 && (
+                <span
+                  data-testid="config-unresolved"
+                  className="flex flex-row items-center gap-1.5 text-sm text-amber-400"
+                >
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
+                  {unresolvedCount} unresolved
+                </span>
+              )}
+            </div>
+            {workspace?.name ? (
+              <span className={`text-sm truncate ${muted}`}>
+                {workspace.name}
+              </span>
+            ) : null}
           </div>
           <button
             type="button"
             onClick={handleCancel}
+            aria-label="Close"
             className="opacity-50 hover:opacity-100 transition-opacity cursor-pointer"
           >
             <FontAwesomeIcon icon="xmark" className="h-5 w-5" />
           </button>
         </div>
-        <Divider />
 
-        {/* Tabs */}
-        <div className="flex-shrink-0 flex flex-row items-center gap-2 px-4 pt-3">
-          <button
-            type="button"
+        {/* Tabs — the Bots view's tab strip. */}
+        <div
+          role="tablist"
+          className={`flex-shrink-0 flex flex-row gap-6 px-5 mt-3 border-b ${hairline}`}
+        >
+          <ConfigTab
+            active={activeTab === "providers"}
             onClick={() => setActiveTab("providers")}
-            className={`px-3 py-1.5 text-sm font-medium -mb-px border-b-2 ${
-              activeTab === "providers"
-                ? "border-indigo-400"
-                : "border-transparent opacity-60 hover:opacity-100"
-            }`}
           >
             Providers
             {unresolvedCount > 0 && (
               <span className="ml-2 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 align-middle" />
             )}
-          </button>
-          <button
-            type="button"
+          </ConfigTab>
+          <ConfigTab
+            active={activeTab === "listeners"}
             onClick={() => setActiveTab("listeners")}
-            className={`px-3 py-1.5 text-sm font-medium -mb-px border-b-2 ${
-              activeTab === "listeners"
-                ? "border-indigo-400"
-                : "border-transparent opacity-60 hover:opacity-100"
-            }`}
           >
             Listeners
-          </button>
-          <button
-            type="button"
+          </ConfigTab>
+          <ConfigTab
+            active={activeTab === "notifications"}
             onClick={() => setActiveTab("notifications")}
-            className={`px-3 py-1.5 text-sm font-medium -mb-px border-b-2 ${
-              activeTab === "notifications"
-                ? "border-indigo-400"
-                : "border-transparent opacity-60 hover:opacity-100"
-            }`}
           >
             Notifications
-          </button>
-          <button
-            type="button"
+          </ConfigTab>
+          <ConfigTab
+            active={activeTab === "widgets"}
             onClick={() => setActiveTab("widgets")}
-            className={`px-3 py-1.5 text-sm font-medium -mb-px border-b-2 ${
-              activeTab === "widgets"
-                ? "border-indigo-400"
-                : "border-transparent opacity-60 hover:opacity-100"
-            }`}
           >
             Widgets
-          </button>
-          <button
-            type="button"
+          </ConfigTab>
+          <ConfigTab
+            active={activeTab === "permissions"}
             onClick={() => setActiveTab("permissions")}
-            className={`px-3 py-1.5 text-sm font-medium -mb-px border-b-2 ${
-              activeTab === "permissions"
-                ? "border-indigo-400"
-                : "border-transparent opacity-60 hover:opacity-100"
-            }`}
           >
             Permissions
-          </button>
-          <button
-            type="button"
+          </ConfigTab>
+          <ConfigTab
+            active={activeTab === "bots"}
             onClick={() => setActiveTab("bots")}
-            className={`px-3 py-1.5 text-sm font-medium -mb-px border-b-2 ${
-              activeTab === "bots"
-                ? "border-indigo-400"
-                : "border-transparent opacity-60 hover:opacity-100"
-            }`}
           >
             Bots
-          </button>
-          <button
-            type="button"
+          </ConfigTab>
+          <ConfigTab
+            active={activeTab === "dependencies"}
             onClick={() => setActiveTab("dependencies")}
-            className={`px-3 py-1.5 text-sm font-medium -mb-px border-b-2 ${
-              activeTab === "dependencies"
-                ? "border-indigo-400"
-                : "border-transparent opacity-60 hover:opacity-100"
-            }`}
           >
             Dependencies
             {dependencyCount > 0 && (
@@ -641,9 +640,8 @@ export const DashboardConfigModal = ({
             {hasUnknownDependency && (
               <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 align-middle" />
             )}
-          </button>
+          </ConfigTab>
         </div>
-        <Divider />
 
         {/* Body — flex-1 so it fills the fixed-height modal; min-h-0 so
             inner columns can own their own scroll containers. */}
@@ -967,6 +965,7 @@ function NotificationsTab({ workspace }) {
  * shows the selected type's bulk dropdown + per-widget dropdowns.
  */
 function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
+  const { muted, hairline, fieldBg } = useConfigTokens();
   const typeEntries = useMemo(() => Array.from(grouped.entries()), [grouped]);
   const [selectedType, setSelectedType] = useState(typeEntries[0]?.[0] || null);
 
@@ -998,63 +997,40 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
 
   return (
     <div className="flex flex-row gap-3 h-full min-h-0">
-      {/* Sidebar: provider types.
-       *
-       * Plain div wrapper to inherit the modal's bg-primary-medium —
-       * the Card2 primitive resolves to bg-secondary-very-light (a
-       * contrasting card surface, see dash-react Utils/colors.js:161),
-       * which reads as a washed-out fill inside a modal that's
-       * already dark. Mirrors the pattern used by WidgetsTab.js plus
-       * every other tab in this modal. The `border-r border-white/10`
-       * divider follows the chrome's convention even though opacity-
-       * modifier borders don't render in dash-electron's prebuilt
-       * CSS bundle today — keeps this in sync with WidgetsTab so a
-       * future safelist fix lights both up uniformly.
+      {/* Sidebar: provider types — the Bots view's team-list rows.
+       * Plain div wrapper (never Card2) so it inherits the modal's
+       * surface; see DashboardConfigModal.providersTabTheming.test.js.
        */}
-      <div className="w-56 flex-shrink-0 overflow-hidden flex flex-col border-r border-white/10">
-        <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider">
-          Provider Types
-        </div>
-        <Divider />
-        <div className="overflow-y-auto flex-1">
+      <div className="w-56 flex-shrink-0 overflow-hidden flex flex-col">
+        <SectionLabel className="px-3 mb-2">Provider Types</SectionLabel>
+        <div className="overflow-y-auto flex-1 flex flex-col gap-1">
           {typeEntries.map(([providerType, rows]) => {
-            const isActive = selectedType === providerType;
             const unresolvedHere = rows.filter(
               (r) => r.required && !r.resolvedProviderName,
             ).length;
             return (
-              <button
+              <ConfigListRow
                 key={providerType}
-                type="button"
+                title={providerType}
+                active={selectedType === providerType}
                 onClick={() => setSelectedType(providerType)}
-                className={`w-full text-left px-3 py-2 border-l-2 ${
-                  isActive
-                    ? "bg-indigo-900/30 border-indigo-400"
-                    : "border-transparent hover:bg-white/5"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium truncate">
-                    {providerType}
-                  </span>
-                  {unresolvedHere > 0 && (
-                    <span className="text-[10px] text-amber-300 flex items-center gap-1">
-                      <FontAwesomeIcon
-                        icon="triangle-exclamation"
-                        className="h-2.5 w-2.5"
-                      />
+                meta={`${rows.length} widget${rows.length === 1 ? "" : "s"}`}
+                badge={
+                  unresolvedHere > 0 ? (
+                    <span className="flex flex-row items-center gap-1.5 text-xs text-amber-400 flex-shrink-0">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
                       {unresolvedHere}
                     </span>
-                  )}
-                </div>
-                <div className="text-xs opacity-50 mt-0.5">
-                  {rows.length} widget{rows.length === 1 ? "" : "s"}
-                </div>
-              </button>
+                  ) : null
+                }
+              />
             );
           })}
         </div>
       </div>
+
+      {/* Column divider (a theme-token hairline). */}
+      <div aria-hidden className={`flex-shrink-0 border-r ${hairline}`} />
 
       {/* Detail: bulk assign + per-widget overrides for selected type.
        * Plain <div> for the same theming reason — see the sidebar
@@ -1063,27 +1039,26 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
       <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
         {selectedType ? (
           <>
-            <div className="px-4 py-3 flex-shrink-0">
+            <div className={`px-4 pb-3 flex-shrink-0 border-b ${hairline}`}>
               <div className="text-sm font-semibold">
                 {selectedType}{" "}
-                <span className="opacity-60 font-normal">provider</span>
+                <span className={`font-normal ${muted}`}>provider</span>
               </div>
-              <div className="text-xs opacity-60 mt-1">
+              <div className={`text-xs mt-1 ${muted}`}>
                 Apply one provider to every widget of this type, or adjust
                 per-widget below.
               </div>
             </div>
-            <Divider />
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {/* Bulk assign */}
               <div className="flex items-center gap-3">
-                <span className="text-xs opacity-60 flex-shrink-0 w-20">
+                <span className={`text-xs flex-shrink-0 w-20 ${muted}`}>
                   Bulk assign
                 </span>
                 <select
                   value={topValue}
                   onChange={(e) => onBulk(selectedType, e.target.value)}
-                  className="flex-1 bg-gray-800 border border-white/10 rounded px-3 py-1.5 text-sm"
+                  className={`flex-1 rounded-lg border px-3 py-1.5 text-sm ${fieldBg} ${hairline}`}
                 >
                   <option value="">— Select provider —</option>
                   {selectedOptions.map((opt) => (
@@ -1096,11 +1071,9 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
               </div>
 
               {/* Per-widget overrides */}
-              <div>
-                <div className="text-xs font-semibold opacity-50 uppercase tracking-wider mb-2">
-                  Per-widget
-                </div>
-                <div>
+              <div className="flex flex-col gap-2">
+                <SectionLabel>Per-widget</SectionLabel>
+                <div className="flex flex-col gap-2">
                   {selectedRows.map((row) => {
                     const hasExplicitOverride =
                       !!row.layoutItem?.selectedProviders?.[selectedType];
@@ -1110,64 +1083,42 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
                     return (
                       <div
                         key={`${row.widgetId}:${row.providerType}`}
-                        className={`flex flex-row items-center gap-3 py-2 px-2 rounded border-l-2 transition-colors ${
-                          needsAttention
-                            ? "bg-red-900 border-red-500"
-                            : "border-transparent hover:bg-gray-800"
-                        }`}
+                        data-testid="provider-row"
+                        className={`flex flex-row items-center gap-3 rounded-lg border px-3 py-2 ${hairline}`}
                       >
                         <div className="flex-1 min-w-0">
-                          <div
-                            className={`text-sm truncate flex items-center gap-1.5 ${
-                              needsAttention
-                                ? "font-semibold text-red-100"
-                                : "font-medium"
-                            }`}
-                          >
-                            <span className="truncate">
-                              {row.label || row.component || "widget"}
-                            </span>
-                            {isRequired && (
-                              <span
-                                className={
-                                  needsAttention
-                                    ? "text-red-300"
-                                    : "text-indigo-300"
-                                }
-                                title="Required provider"
-                                aria-label="required"
-                              >
-                                *
-                              </span>
-                            )}
+                          <div className="text-sm font-medium truncate">
+                            {row.label || row.component || "widget"}
                           </div>
                           {(row.widgetRef || row.component) && (
-                            <Caption
-                              block
-                              className="font-mono truncate mt-0.5"
+                            <div
+                              className={`text-xs font-mono truncate mt-0.5 ${muted}`}
                               title={row.widgetRef || row.component}
                             >
                               {row.widgetRef || row.component}
-                            </Caption>
+                            </div>
                           )}
-                          <div className="flex items-center gap-1.5 mt-1 text-xs">
+                          <div className="flex flex-row items-center gap-3 mt-1 text-xs">
+                            {/* Missing a required provider: an amber dot +
+                                label, not a red block. */}
                             <span
-                              className={`uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold ${
-                                needsAttention
-                                  ? "bg-red-600 text-white"
-                                  : isRequired
-                                    ? "bg-indigo-800 text-indigo-100"
-                                    : "bg-gray-700 text-gray-300"
+                              className={`flex flex-row items-center gap-1.5 uppercase tracking-wider font-semibold ${
+                                needsAttention ? "text-amber-400" : muted
                               }`}
                             >
-                              {isRequired ? "required" : "optional"}
+                              {needsAttention && (
+                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
+                              )}
+                              {isRequired ? "Required" : "Optional"}
                             </span>
                             {hasExplicitOverride && (
-                              <span className="uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold bg-indigo-900 text-indigo-200">
-                                override
+                              <span
+                                className={`uppercase tracking-wider font-semibold ${muted}`}
+                              >
+                                Override
                               </span>
                             )}
-                            <span className="opacity-40 truncate ml-1">
+                            <span className={`font-mono truncate ${muted}`}>
                               {(row.widgetId || "").slice(0, 8)}
                             </span>
                           </div>
@@ -1181,10 +1132,8 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
                               e.target.value,
                             )
                           }
-                          className={`bg-gray-800 border rounded px-2 py-1 text-xs min-w-[12rem] ${
-                            needsAttention
-                              ? "border-red-400"
-                              : "border-gray-700"
+                          className={`w-48 flex-shrink-0 rounded-lg border px-2 py-1 text-xs ${fieldBg} ${
+                            needsAttention ? "border-amber-400" : hairline
                           }`}
                         >
                           <option value="">— none —</option>
@@ -1203,7 +1152,9 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-sm opacity-60">
+          <div
+            className={`flex-1 flex items-center justify-center text-sm ${muted}`}
+          >
             Pick a provider type to bulk-assign or adjust per widget.
           </div>
         )}
@@ -1443,6 +1394,7 @@ const ORPHAN_REASON_LABEL = {
  * (widget × event) pairs.
  */
 function ListenersTab({ emitters, receivers, wiring, onAdd, onRemove }) {
+  const { muted, hairline } = useConfigTokens();
   const [selectedReceiverKey, setSelectedReceiverKey] = useState(
     receivers[0]?.key || null,
   );
@@ -1489,43 +1441,23 @@ function ListenersTab({ emitters, receivers, wiring, onAdd, onRemove }) {
   return (
     <div className="flex flex-col gap-3 h-full min-h-0">
       <div className="flex flex-row gap-3 flex-1 min-h-0">
-        {/* Sidebar: receivers. Plain <div> wrapper — Card2's
-            washed-out fill clashes with the modal's dark chrome.
-            Same fix as ProvidersTab + WidgetsTab. */}
+        {/* Sidebar: receivers — the Bots view's team-list rows. Plain
+            <div> wrapper (never Card2), same as ProvidersTab. */}
         <div className="w-56 flex-shrink-0 overflow-hidden flex flex-col">
-          <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider">
-            Widgets
-          </div>
-          <Divider />
-          <div className="overflow-y-auto flex-1">
-            {receivers.map((r) => {
-              const isActive = r.key === selectedReceiverKey;
-              return (
-                <button
-                  key={r.key}
-                  type="button"
-                  onClick={() => setSelectedReceiverKey(r.key)}
-                  className={`w-full text-left px-3 py-2 border-l-2 ${
-                    isActive
-                      ? "bg-indigo-900/30 border-indigo-400"
-                      : "border-transparent hover:bg-white/5"
-                  }`}
-                >
-                  <div className="text-sm font-medium truncate">{r.label}</div>
-                  {r.widgetRef && (
-                    <Caption
-                      block
-                      className="font-mono truncate mt-0.5"
-                      title={r.widgetRef}
-                    >
-                      {r.widgetRef}
-                    </Caption>
-                  )}
-                </button>
-              );
-            })}
+          <SectionLabel className="px-3 mb-2">Widgets</SectionLabel>
+          <div className="overflow-y-auto flex-1 flex flex-col gap-1">
+            {receivers.map((r) => (
+              <ConfigListRow
+                key={r.key}
+                title={r.label}
+                subtitle={r.widgetRef || null}
+                active={r.key === selectedReceiverKey}
+                onClick={() => setSelectedReceiverKey(r.key)}
+              />
+            ))}
           </div>
         </div>
+        <div aria-hidden className={`flex-shrink-0 border-r ${hairline}`} />
 
         {/* Handlers column (middle) + events column (right), mirroring
           the two-column layout from the per-widget settings panel. */}
@@ -1565,7 +1497,9 @@ function ListenersTab({ emitters, receivers, wiring, onAdd, onRemove }) {
             />
           </>
         ) : (
-          <div className="flex-1 min-w-0 flex items-center justify-center text-sm opacity-60">
+          <div
+            className={`flex-1 min-w-0 flex items-center justify-center text-sm ${muted}`}
+          >
             Pick a widget on the left to wire its handlers.
           </div>
         )}
@@ -1666,51 +1600,42 @@ function HandlersColumn({
     }
     return m;
   }, [myWiring]);
+  const { muted, hairline } = useConfigTokens();
 
   return (
     // Plain <div> wrapper — Card2 reads as washed-out against the
     // modal's dark chrome. See ListenersTab + ProvidersTab fix.
-    <div className="w-56 flex-shrink-0 overflow-hidden flex flex-col">
-      <div className="px-3 py-2 text-xs font-semibold opacity-50 uppercase tracking-wider">
-        Event Handlers
+    <>
+      <div className="w-56 flex-shrink-0 overflow-hidden flex flex-col">
+        <SectionLabel className="px-3 mb-2">Event Handlers</SectionLabel>
+        <div className="overflow-y-auto flex-1 flex flex-col gap-1">
+          {receiver.eventHandlers.length === 0 ? (
+            <div className={`text-xs text-center py-6 px-3 ${muted}`}>
+              This widget declares no event handlers.
+            </div>
+          ) : (
+            receiver.eventHandlers.map((h) => {
+              const count = countsByHandler.get(h) || 0;
+              return (
+                <ConfigListRow
+                  key={h}
+                  title={h}
+                  mono
+                  active={h === selectedHandler}
+                  onClick={() => onSelectHandler(h)}
+                  badge={
+                    <span className={`text-xs flex-shrink-0 ${muted}`}>
+                      {count}
+                    </span>
+                  }
+                />
+              );
+            })
+          )}
+        </div>
       </div>
-      <Divider />
-      <div className="overflow-y-auto flex-1">
-        {receiver.eventHandlers.length === 0 ? (
-          <div className="text-xs opacity-50 text-center py-6 px-3">
-            This widget declares no event handlers.
-          </div>
-        ) : (
-          receiver.eventHandlers.map((h) => {
-            const isActive = h === selectedHandler;
-            const count = countsByHandler.get(h) || 0;
-            return (
-              <button
-                key={h}
-                type="button"
-                onClick={() => onSelectHandler(h)}
-                className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 border-l-2 ${
-                  isActive
-                    ? "bg-indigo-900/30 border-indigo-400"
-                    : "border-transparent hover:bg-white/5"
-                }`}
-              >
-                <span className="flex items-center gap-2 min-w-0">
-                  <FontAwesomeIcon
-                    icon="bolt"
-                    className="h-3 w-3 opacity-60 flex-shrink-0"
-                  />
-                  <code className="truncate">{h}</code>
-                </span>
-                <span className="text-xs opacity-60 flex-shrink-0">
-                  {count}
-                </span>
-              </button>
-            );
-          })
-        )}
-      </div>
-    </div>
+      <div aria-hidden className={`flex-shrink-0 border-r ${hairline}`} />
+    </>
   );
 }
 
@@ -1728,6 +1653,7 @@ function EventsColumn({
   onAdd,
   onRemove,
 }) {
+  const { muted, hairline } = useConfigTokens();
   // Wired-for-this-handler: dedupe defensively (legacy workspaces
   // occasionally contain duplicate entries under the same handler).
   const wiredHere = useMemo(() => {
@@ -1759,7 +1685,9 @@ function EventsColumn({
 
   if (!handlerName) {
     return (
-      <div className="flex-1 min-w-0 flex items-center justify-center text-sm opacity-60">
+      <div
+        className={`flex-1 min-w-0 flex items-center justify-center text-sm ${muted}`}
+      >
         Select a handler to view available events.
       </div>
     );
@@ -1797,29 +1725,30 @@ function EventsColumn({
   return (
     // Plain <div> — Card2's washed-out fill clashes with the modal chrome.
     <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
-      <div className="flex-shrink-0 px-4 py-2 text-xs opacity-60">
+      <div
+        className={`flex-shrink-0 px-4 pb-3 text-xs border-b ${muted} ${hairline}`}
+      >
         Check an event to fire <code className="text-xs">{handlerName}</code> on{" "}
         <span className="font-medium">{receiver.label}</span>.
       </div>
-      <Divider />
-      <div className="flex-1 overflow-y-auto p-4 space-y-5">
+      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
         {emittersForList.length === 0 ? (
-          <div className="text-sm opacity-60">
+          <div className={`text-sm ${muted}`}>
             No other widgets in this dashboard emit events.
           </div>
         ) : (
           emittersForList.map((e) => (
             <div
               key={e.key || `${e.component}|${e.itemId}`}
-              className="space-y-1"
+              className={`rounded-lg border px-3 py-2 flex flex-col gap-1 ${hairline}`}
             >
               <div className="flex flex-col gap-0.5 mb-1">
                 <div className="text-sm font-semibold">{e.label}</div>
                 {(e.widgetRef || e.component) && (
-                  <Caption block className="font-mono truncate">
+                  <div className={`text-xs font-mono truncate ${muted}`}>
                     {(e.widgetRef || e.component) +
                       (e.itemId != null ? `[${e.itemId}]` : "")}
-                  </Caption>
+                  </div>
                 )}
               </div>
               {e.events.map((eventName) => {
