@@ -106,3 +106,21 @@ describe("Bots changed broadcast (TEAM-011 refresh)", () => {
     );
   });
 });
+
+describe("botController — memory context (private memory)", () => {
+  it("passes the calling bot's id to the memory tools", () => {
+    assert.match(
+      ctrl,
+      /handleMemoryTool\(\s*this\._memory,\s*\{ workspaceId: opts\.workspaceId, botId: opts\.botId \},/,
+    );
+  });
+});
+
+describe("botController — delete clears private memory", () => {
+  it("forgets the deleted bot's private memory", () => {
+    assert.match(
+      ctrl,
+      /delete\(botId\) \{[\s\S]{0,700}this\._memory\.forgetBot\(botId\)[\s\S]{0,200}return this\._store\.delete\(botId\);/,
+    );
+  });
+});

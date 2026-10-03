@@ -84,3 +84,47 @@ describe("BotMemory", () => {
     assert.equal(reopened.get("global", null, "k"), "v");
   });
 });
+
+describe("BotMemory — a bot's private memory (no dashboard)", () => {
+  const mem = () => {
+    let blob = {};
+    return new BotMemory({
+      persistence: { read: () => blob, write: (o) => (blob = o) },
+    });
+  };
+
+  it("keeps each bot's 'bot' scope separate", () => {
+    const m = mem();
+    m.set("bot", "b1", "k", "one");
+    m.set("bot", "b2", "k", "two");
+    assert.equal(m.get("bot", "b1", "k"), "one");
+    assert.equal(m.get("bot", "b2", "k"), "two");
+    assert.equal(m.get("workspace", undefined, "k"), undefined);
+  });
+
+  it("refuses a 'bot' scope without a bot id", () => {
+    const m = mem();
+    assert.throws(() => m.set("bot", undefined, "k", "v"), /bot id/);
+    assert.throws(() => m.get("bot", "", "k"), /bot id/);
+  });
+});
+
+describe("BotMemory.forgetBot — a deleted bot's private memory goes with it", () => {
+  it("removes only that bot's private bucket", () => {
+    let blob = {};
+    const m = new BotMemory({
+      persistence: { read: () => blob, write: (o) => (blob = o) },
+    });
+    m.set("bot", "b1", "k", "mine");
+    m.set("bot", "b2", "k", "theirs");
+    m.set("workspace", "7", "k", "team");
+    m.set("global", null, "k", "everyone");
+    assert.equal(m.forgetBot("b1"), true);
+    assert.equal(m.get("bot", "b1", "k"), undefined);
+    assert.equal(m.get("bot", "b2", "k"), "theirs");
+    assert.equal(m.get("workspace", "7", "k"), "team");
+    assert.equal(m.get("global", null, "k"), "everyone");
+    assert.equal(m.forgetBot("b1"), false);
+    assert.equal(m.forgetBot(""), false);
+  });
+});
