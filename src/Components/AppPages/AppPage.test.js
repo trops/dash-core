@@ -37,11 +37,20 @@ const renderMock = (name, props) => (
     {props.onOpenWorkspace ? (
       <button onClick={() => props.onOpenWorkspace({ id: 1 })}>open ws</button>
     ) : null}
+    {props.onOpenBotsView ? (
+      <button onClick={() => props.onOpenBotsView({ id: 1 })}>bots view</button>
+    ) : null}
+    {props.onOpenDashboardConfig ? (
+      <button onClick={() => props.onOpenDashboardConfig({ id: 1 })}>
+        dashboard config
+      </button>
+    ) : null}
   </div>
 );
 
-jest.mock("../Settings/sections/DashboardsSection", () => ({
-  DashboardsSection: mockSection("dashboards"),
+// Slice 2: the Dashboards page (list + detail) replaced DashboardsSection.
+jest.mock("./DashboardsPage", () => ({
+  DashboardsPage: mockSection("dashboards"),
 }));
 jest.mock("../Settings/sections/FoldersSection", () => ({
   FoldersSection: mockSection("folders"),
@@ -130,9 +139,22 @@ describe("AppPage", () => {
     fireEvent.click(screen.getByText("edit theme"));
     expect(onOpenThemeEditor).toHaveBeenCalled();
     unmount();
-    render(<AppPage pageKey="dashboards" onOpenWorkspace={onOpenWorkspace} />);
+    const onOpenBotsView = jest.fn();
+    const onOpenDashboardConfig = jest.fn();
+    render(
+      <AppPage
+        pageKey="dashboards"
+        onOpenWorkspace={onOpenWorkspace}
+        onOpenBotsView={onOpenBotsView}
+        onOpenDashboardConfig={onOpenDashboardConfig}
+      />,
+    );
     fireEvent.click(screen.getByText("open ws"));
     expect(onOpenWorkspace).toHaveBeenCalledWith({ id: 1 });
+    fireEvent.click(screen.getByText("bots view"));
+    expect(onOpenBotsView).toHaveBeenCalledWith({ id: 1 });
+    fireEvent.click(screen.getByText("dashboard config"));
+    expect(onOpenDashboardConfig).toHaveBeenCalledWith({ id: 1 });
   });
 
   it("renders nothing for an unknown page", () => {

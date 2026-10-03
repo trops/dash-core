@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { CommandPalette, FontAwesomeIcon } from "@trops/dash-react";
+import { APP_PAGES } from "./appPages";
 
 export const DashCommandPalette = ({
   isOpen,
@@ -32,6 +33,8 @@ export const DashCommandPalette = ({
   debugMode = false,
   // Discover
   onOpenDiscover = null,
+  // Manage pages (app-navigation NAV-004 AC3): opens a page's tab.
+  onOpenPage = null,
 }) => {
   const [query, setQuery] = useState("");
 
@@ -50,6 +53,13 @@ export const DashCommandPalette = ({
     },
     [query],
   );
+
+  // "Go to" the Manage pages.
+  const goToItems = onOpenPage
+    ? APP_PAGES.filter(
+        (p) => matchesQuery(p.label) || matchesQuery(`Go to ${p.label}`),
+      )
+    : [];
 
   // Build dashboard items
   const openTabIds = openTabs.map((t) => t.id);
@@ -192,6 +202,21 @@ export const DashCommandPalette = ({
       placeholder="Search commands..."
       onQueryChange={setQuery}
     >
+      {/* Go to — the Manage pages */}
+      {goToItems.length > 0 && (
+        <CommandPalette.Group label="Go to">
+          {goToItems.map((p) => (
+            <CommandPalette.Item
+              key={`goto-${p.key}`}
+              icon={<FontAwesomeIcon icon={p.icon} className="h-3.5 w-3.5" />}
+              onSelect={() => handleSelect(() => onOpenPage(p.key))}
+            >
+              {p.label}
+            </CommandPalette.Item>
+          ))}
+        </CommandPalette.Group>
+      )}
+
       {/* Dashboards Group */}
       {showDashboards && (
         <CommandPalette.Group label="Dashboards">

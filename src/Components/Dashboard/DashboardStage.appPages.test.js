@@ -78,3 +78,34 @@ describe("DashboardStage — Manage pages", () => {
     );
   });
 });
+
+describe("DashboardStage — Dashboards page actions (NAV-005 AC3)", () => {
+  it("Bots view opens the dashboard's tab in its Bots view", () => {
+    expect(src).toMatch(
+      /function handleOpenDashboardBotsView\(ws\) \{[\s\S]{0,300}setStageModeByWorkspace\(\(prev\) => \(\{ \.\.\.prev, \[ws\.id\]: "bots" \}\)\);[\s\S]{0,120}handleOpenTabGuarded\(ws\);/,
+    );
+  });
+
+  it("Dashboard Config opens the dashboard, enters edit mode, then opens Config", () => {
+    expect(src).toMatch(
+      /function handleOpenDashboardConfig\(ws\) \{[\s\S]{0,200}setPendingConfigFor\(ws\.id\);[\s\S]{0,80}handleOpenTabGuarded\(ws\);/,
+    );
+    // Once that dashboard is showing: edit mode (with the usual snapshot,
+    // so Cancel works) and the modal.
+    expect(src).toMatch(
+      /pendingConfigFor[\s\S]{0,200}workspaceSelected\.id\) !== String\(pendingConfigFor\)\) return;[\s\S]{0,200}if \(previewMode\) handleToggleEditMode\(\);[\s\S]{0,80}setIsConfigModalOpen\(true\);/,
+    );
+  });
+
+  it("the page gets both handlers", () => {
+    expect(src).toMatch(
+      /<AppPage[\s\S]*?onOpenBotsView=\{handleOpenDashboardBotsView\}[\s\S]*?onOpenDashboardConfig=\{handleOpenDashboardConfig\}/,
+    );
+  });
+
+  it("the command palette can open pages", () => {
+    expect(src).toMatch(
+      /<DashCommandPalette[\s\S]*?onOpenPage=\{handleOpenPageGuarded\}/,
+    );
+  });
+});

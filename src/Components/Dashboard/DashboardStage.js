@@ -1015,6 +1015,23 @@ const DashboardStageInner = ({
     handleOpenPage(key, opts);
   }
 
+  // ─── Dashboards page actions (app-navigation NAV-005 AC3) ───────
+  // "Bots view": open the dashboard's tab already in its Bots view.
+  function handleOpenDashboardBotsView(ws) {
+    if (!ws) return;
+    setStageModeByWorkspace((prev) => ({ ...prev, [ws.id]: "bots" }));
+    handleOpenTabGuarded(ws);
+  }
+
+  // "Dashboard Config": open the dashboard; once it's showing (the effect
+  // below), enter edit mode the usual way and open Config.
+  const [pendingConfigFor, setPendingConfigFor] = useState(null);
+  function handleOpenDashboardConfig(ws) {
+    if (!ws) return;
+    setPendingConfigFor(ws.id);
+    handleOpenTabGuarded(ws);
+  }
+
   // Update tab workspace reference when workspace changes
   function updateTabWorkspace(ws) {
     if (!ws) return;
@@ -1811,6 +1828,18 @@ const DashboardStageInner = ({
     setPreviewMode(true);
   }
 
+  // The Dashboards page asked for this dashboard's Config: now that it's the
+  // one showing, enter edit mode (snapshot + clean dirty flag, so Cancel
+  // works) and open the modal.
+  useEffect(() => {
+    if (pendingConfigFor == null || !workspaceSelected) return;
+    if (String(workspaceSelected.id) !== String(pendingConfigFor)) return;
+    setPendingConfigFor(null);
+    if (previewMode) handleToggleEditMode();
+    setIsConfigModalOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingConfigFor, workspaceSelected]);
+
   function handleToggleEditMode() {
     if (previewMode) {
       // Entering edit mode — snapshot the current workspace and
@@ -2358,6 +2387,8 @@ const DashboardStageInner = ({
                 onOpenWorkspace={handleOpenTabGuarded}
                 onOpenThemeEditor={() => setIsThemeManagerOpen(true)}
                 onOpenWizard={() => setIsWizardOpen(true)}
+                onOpenBotsView={handleOpenDashboardBotsView}
+                onOpenDashboardConfig={handleOpenDashboardConfig}
               />
             ) : (
               <div className="flex flex-1 items-center justify-center">
@@ -2572,6 +2603,7 @@ const DashboardStageInner = ({
           workspaces={workspaceConfig}
           openTabs={openTabs}
           menuItems={menuItems}
+          onOpenPage={handleOpenPageGuarded}
           onOpenWorkspace={handleOpenTab}
           onCreateNewWorkspace={handleClickNewFromEmpty}
           onCreateNewFolder={() => openAppSettings("folders")}
