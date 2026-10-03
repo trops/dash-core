@@ -903,6 +903,12 @@ const DashboardStageInner = ({
       });
       return;
     }
+    // Unsaved bot edits in the Bots view ask too (never both: the Bots view
+    // only shows outside edit mode).
+    if (switchingAway) {
+      leaveBotsGuarded(() => handleOpenTab(workspaceItem));
+      return;
+    }
     handleOpenTab(workspaceItem);
   }
 
@@ -2249,8 +2255,19 @@ const DashboardStageInner = ({
                   <DashTabBar
                     tabs={openTabs}
                     activeTabId={activeTabId}
-                    onSwitchTab={handleSwitchTab}
-                    onCloseTab={handleCloseTab}
+                    // Leaving this dashboard with unsaved bot edits asks
+                    // first; re-clicking it or closing a background tab
+                    // doesn't.
+                    onSwitchTab={(tabId) =>
+                      tabId === activeTabId
+                        ? handleSwitchTab(tabId)
+                        : leaveBotsGuarded(() => handleSwitchTab(tabId))
+                    }
+                    onCloseTab={(tabId) =>
+                      tabId === activeTabId
+                        ? leaveBotsGuarded(() => handleCloseTab(tabId))
+                        : handleCloseTab(tabId)
+                    }
                   />
                 )}
               </>
@@ -2510,7 +2527,7 @@ const DashboardStageInner = ({
           if (!open) setPendingLeaveBots(null);
         }}
         title="Discard unsaved changes?"
-        message="This bot's settings have changes that haven't been saved. Discard them and leave the Bots view?"
+        message="This bot's settings have changes that haven't been saved. Discard them and continue?"
         confirmLabel="Discard changes"
         cancelLabel="Keep editing"
         variant="danger"

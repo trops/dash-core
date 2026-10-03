@@ -478,7 +478,7 @@ answers from today's runs.
 - **Next steps on failures:** Run again (Ask again for a lead; a fresh run with the same prompt) always; **Open Settings › Providers** when the error points at a provider (an MCP server that couldn't start, an AI provider's key/credit/auth). This generalises AC4's "Reconnect <provider>".
 - **Discard + leave guard:** the inline form has **Discard changes**; leaving the Bots view (header Dashboard switch or the edit button) with unsaved bot edits asks first.
 - **Live Activity:** reloads when the bot's run finishes.
-- **Follow-ups:** (1) ~~the team list doesn't refresh when a bot is created/deleted elsewhere~~ — fixed: the store announces definition changes and the main process broadcasts `bot-list-changed` (coalesced), so team lists, the monitor and the Bots view reload; (2) switching/closing dashboard tabs with unsaved bot edits isn't guarded.
+- **Follow-ups:** (1) ~~the team list doesn't refresh when a bot is created/deleted elsewhere~~ — fixed: the store announces definition changes and the main process broadcasts `bot-list-changed` (coalesced), so team lists, the monitor and the Bots view reload; (2) ~~switching/closing dashboard tabs with unsaved bot edits isn't guarded~~ — fixed: switching to another tab, closing the current tab, and opening another dashboard from the sidebar/recents/Settings ask first (the Assistant's open/close commands stay unguarded, like layout edits).
 
 **Definition of Done:**
 

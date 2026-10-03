@@ -138,3 +138,35 @@ describe("DashboardStage — leaving the Bots view with unsaved edits (TEAM-011 
     expect(stageSrc).toMatch(/title="Discard unsaved changes\?"/);
   });
 });
+
+describe("DashboardStage — dashboard tabs respect unsaved bot edits (TEAM-011)", () => {
+  it("switching to another tab goes through the guard; the current tab doesn't", () => {
+    expect(stageSrc).toMatch(
+      /onSwitchTab=\{\(tabId\) =>\s*tabId === activeTabId\s*\?\s*handleSwitchTab\(tabId\)\s*:\s*leaveBotsGuarded\(\(\) => handleSwitchTab\(tabId\)\)\s*\}/,
+    );
+  });
+
+  it("closing the current tab goes through the guard; background tabs don't", () => {
+    expect(stageSrc).toMatch(
+      /onCloseTab=\{\(tabId\) =>\s*tabId === activeTabId\s*\?\s*leaveBotsGuarded\(\(\) => handleCloseTab\(tabId\)\)\s*:\s*handleCloseTab\(tabId\)\s*\}/,
+    );
+  });
+
+  it("opening another dashboard checks layout edits, then bot edits", () => {
+    expect(stageSrc).toMatch(
+      /function handleOpenTabGuarded\(workspaceItem\) \{[\s\S]{0,500}setPendingNavigation\([\s\S]{0,400}if \(switchingAway\) \{\s*leaveBotsGuarded\(\(\) => handleOpenTab\(workspaceItem\)\);\s*return;\s*\}\s*handleOpenTab\(workspaceItem\);/,
+    );
+  });
+
+  it("the Assistant's open/close commands stay unguarded", () => {
+    expect(stageSrc).toMatch(
+      /if \(ws && handleOpenTabRef\.current\) handleOpenTabRef\.current\(ws\);/,
+    );
+  });
+
+  it("the prompt reads neutrally (tabs too)", () => {
+    expect(stageSrc).toMatch(
+      /This bot's settings have changes that haven't been saved\. Discard them and continue\?/,
+    );
+  });
+});
