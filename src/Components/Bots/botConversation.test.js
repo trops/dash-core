@@ -264,3 +264,30 @@ describe("errorNextSteps (TEAM-011 gaps)", () => {
     expect(errorNextSteps("")).toEqual([]);
   });
 });
+
+describe("via the AI Assistant (TEAM-004)", () => {
+  it("labels a lead question the Assistant asked, then shows the question", () => {
+    const turns = buildConversation([
+      {
+        trigger: "ask",
+        via: "assistant",
+        status: "completed",
+        prompt: "Anything urgent?",
+        output: "No.",
+      },
+    ]);
+    expect(turns[0]).toMatchObject({
+      kind: "system",
+      text: "Asked via the AI Assistant",
+    });
+    expect(turns[1]).toMatchObject({ kind: "user", text: "Anything urgent?" });
+    expect(turns[2]).toMatchObject({ kind: "bot", text: "No." });
+  });
+
+  it("a question the user typed has no label", () => {
+    const turns = buildConversation([
+      { trigger: "ask", status: "completed", prompt: "Hi", output: "Hello" },
+    ]);
+    expect(turns[0]).toMatchObject({ kind: "user", text: "Hi" });
+  });
+});

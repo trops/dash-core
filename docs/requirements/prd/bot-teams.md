@@ -256,26 +256,33 @@ Want me to draft a bot that follows up on renewals?"
 > so that I have one place to ask questions instead of opening each dashboard.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** Implemented (slice 2b)
 
 **Acceptance Criteria:**
 
-- [ ] AC1: The Dash MCP server gains team tools (new `electron/mcp/teamTools.js`): `list_teams` (dashboards with a lead or members: name, member count, last activity) and `ask_team_lead(dashboard, question)`, which runs that dashboard's lead with the question and returns its answer.
-- [ ] AC2: The Assistant relays the lead's answer and names which team it came from. Questions spanning teams ("what did all my teams do today?") fan out to each lead, with a cap on how many are asked per question (default 5).
-- [ ] AC3: `ask_team_lead` obeys the lead's approval policy and budget like any run; a paused or over-budget lead returns that status instead of an answer.
-- [ ] AC4: Assistant-originated lead runs are labelled "via Assistant" in the Activity feed.
+- [x] AC1: The Dash MCP server gains team tools (new `electron/mcp/teamTools.js`): `list_teams` (dashboards with a lead or members: name, member count, last activity) and `ask_team_lead(dashboard, question)`, which runs that dashboard's lead with the question and returns its answer.
+- [x] AC2: The Assistant relays the lead's answer and names which team it came from. Questions spanning teams ("what did all my teams do today?") fan out to each lead, with a cap on how many are asked per question (default 5).
+- [x] AC3: `ask_team_lead` obeys the lead's approval policy and budget like any run; a paused or over-budget lead returns that status instead of an answer.
+- [x] AC4: Assistant-originated lead runs are labelled "via Assistant" in the Activity feed.
 
 **Edge Cases:**
 
 - Dashboard has no lead (turned off) → `ask_team_lead` returns "This dashboard has no team lead" with how to turn it on.
 - Ambiguous dashboard name (duplicates) → the Assistant asks which one, listing the disambiguated names (as in the event picker).
 
+**Implementation notes (slice 2b, 2026-10-02):**
+
+- `electron/mcp/teamTools.js` registers `list_teams` and `ask_team_lead` on the Dash MCP server (the in-app Assistant reaches them as `mcp__dash__…`). Pure helpers in `electron/bots/teamDirectory.js`: `summarizeTeams`, `resolveDashboard` (id → exact name → unique partial; duplicates are returned so the Assistant asks which), `AskCap` (5 leads per 2 minutes).
+- `ask_team_lead` checks `botController.leadAvailability` first — pause and budgets only block tool calls, so a paused/over-budget lead would otherwise "answer" with its tools refused — then runs `askLead(…, { via: "assistant" })`. Answers come back as "Team: <name> (lead: <lead>)\n\n<answer>"; failures and a busy lead are relayed as text.
+- Runs record `via: "assistant"`; the Bots view shows "Asked via the AI Assistant" above the question.
+- The fan-out cap is enforced by the tool (rolling window), and the tool description tells the Assistant to ask each relevant lead once.
+
 **Definition of Done:**
 
-- [ ] Code implemented and reviewed
-- [ ] Unit tests pass
+- [x] Code implemented and reviewed
+- [x] Unit tests pass
 - [ ] Integration tests pass
-- [ ] Acceptance criteria verified
+- [x] Acceptance criteria verified
 - [ ] Documentation updated
 
 ---
@@ -849,3 +856,4 @@ None open. The six questions raised in the first draft were resolved on 2026-10-
 | 1.2     | 2026-10-02 | John   | Added TEAM-011 Bots view (from the approved mockup)           |
 | 1.3     | 2026-10-02 | John   | TEAM-011 B2 (Bots view UI) implementation notes               |
 | 1.4     | 2026-10-02 | John   | TEAM-011 gaps closed (triggers, approvals, next steps, guard) |
+| 1.5     | 2026-10-02 | John   | TEAM-004 implemented (slice 2b: Assistant ↔ team leads)       |

@@ -124,3 +124,21 @@ describe("botController — delete clears private memory", () => {
     );
   });
 });
+
+describe("botController — asking a lead from the Assistant (TEAM-004)", () => {
+  it("askLead takes `via` and _run forwards it to the runner", () => {
+    assert.match(
+      ctrl,
+      /askLead\(botId, question, \{ continueConversation = false, via = null \} = \{\}\)/,
+    );
+    assert.match(ctrl, /continueSession: !!continueConversation,\s*via,/);
+    assert.match(ctrl, /via: opts\.via \|\| null,/);
+  });
+
+  it("leadAvailability reports paused and over budget", () => {
+    assert.match(
+      ctrl,
+      /leadAvailability\(botId\) \{[\s\S]{0,300}paused: this\._pause\.isPaused\(botId\)[\s\S]{0,200}overBudget: this\._budgets\.isOverBudget\(/,
+    );
+  });
+});

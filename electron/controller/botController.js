@@ -441,7 +441,7 @@ const botController = {
    * lead run with trigger "ask". Resolves to the run record (answer in
    * `output`).
    */
-  askLead(botId, question, { continueConversation = false } = {}) {
+  askLead(botId, question, { continueConversation = false, via = null } = {}) {
     const bot = this._store.get(botId);
     if (!isLead(bot)) {
       return Promise.resolve({ error: "Not a team lead.", status: "failed" });
@@ -450,7 +450,21 @@ const botController = {
       prompt: question,
       trigger: "ask",
       continueSession: !!continueConversation,
+      via,
     });
+  },
+
+  /**
+   * Can this lead answer right now? Pause and budgets only block tool calls,
+   * so a paused lead would "answer" with its team tools refused — callers
+   * (the Assistant's ask_team_lead) report the status instead (TEAM-004).
+   */
+  leadAvailability(botId) {
+    const bot = this._store.get(botId);
+    return {
+      paused: this._pause.isPaused(botId),
+      overBudget: this._budgets.isOverBudget(botId, (bot || {}).workspaceId),
+    };
   },
 
   stop(botId) {
@@ -590,6 +604,8 @@ const botController = {
       trigger: opts.trigger,
       // What triggered an event run, for the run record (Bots view).
       source: opts.source || null,
+      // Who asked, when not the user directly (the AI Assistant, TEAM-004).
+      via: opts.via || null,
       // Follow-ups (Ask the lead) resume the session; runs start fresh.
       continueSession: !!opts.continueSession,
       emit: (event) => {

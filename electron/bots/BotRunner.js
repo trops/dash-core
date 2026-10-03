@@ -279,6 +279,8 @@ class BotRunner {
     };
     // What triggered an event run (event label, publishing bot, chain).
     if (opts.source) runRecord.source = opts.source;
+    // Who asked, when not the user directly (e.g. "assistant" — TEAM-004).
+    if (opts.via) runRecord.via = opts.via;
     this._store.appendRun(botId, runRecord);
 
     // Feed usage to budgets (Slice 5). Optional hook; only when we captured
