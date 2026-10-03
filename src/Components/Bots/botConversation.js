@@ -72,6 +72,11 @@ function turnsForRun(r, { pending = false, nameOf = sameId } = {}) {
     // what started the run, not the raw prompt.
     turns.push({ kind: "system", text: label, at });
   } else if (r.prompt) {
+    // Asked on the user's behalf by the AI Assistant (TEAM-004) — say so,
+    // then show the question.
+    if (r.via === "assistant") {
+      turns.push({ kind: "system", text: "Asked via the AI Assistant", at });
+    }
     // Typed by the user: a manual run, a reply, or a question to the lead.
     turns.push({ kind: "user", text: r.prompt, at });
   }

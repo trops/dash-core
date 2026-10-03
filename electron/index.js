@@ -90,6 +90,7 @@ const dynamicWidgetLoader = require("./dynamicWidgetLoader");
 const { registerDashboardTools } = require("./mcp/dashboardTools");
 const { registerWidgetTools } = require("./mcp/widgetTools");
 const { registerThemeTools } = require("./mcp/themeTools");
+const { registerTeamTools } = require("./mcp/teamTools");
 const { registerProviderTools } = require("./mcp/providerTools");
 const { registerGuideTools } = require("./mcp/guideTools");
 const { registerLayoutTools } = require("./mcp/layoutTools");
@@ -101,6 +102,8 @@ const { registerPrompts } = require("./mcp/promptRegistration");
 registerDashboardTools();
 registerWidgetTools();
 registerThemeTools();
+// The AI Assistant talks to team leads (bot-teams TEAM-004).
+registerTeamTools();
 registerProviderTools();
 registerGuideTools();
 registerLayoutTools();

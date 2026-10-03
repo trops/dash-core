@@ -488,3 +488,17 @@ describe("BotRunner — run record extras (TEAM-011 gaps)", () => {
     assert.deepEqual(runs[0].run.approvals, []);
   });
 });
+
+describe("BotRunner — via (TEAM-004)", () => {
+  it("records who asked when given (the AI Assistant)", async () => {
+    const { runner, runs } = makeRunner(mockEngine([{ type: "done" }]));
+    await runner.run("bot_1", { trigger: "ask", via: "assistant" });
+    assert.equal(runs[0].run.via, "assistant");
+  });
+
+  it("has no via otherwise", async () => {
+    const { runner, runs } = makeRunner(mockEngine([{ type: "done" }]));
+    await runner.run("bot_1", { trigger: "ask" });
+    assert.equal(runs[0].run.via, undefined);
+  });
+});
