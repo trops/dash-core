@@ -141,8 +141,9 @@ describe("DashboardStage — leaving the Bots view with unsaved edits (TEAM-011 
 
 describe("DashboardStage — dashboard tabs respect unsaved bot edits (TEAM-011)", () => {
   it("switching to another tab goes through the guard; the current tab doesn't", () => {
+    // Bot edits first, then unsaved layout edits (app-navigation NAV-002 AC6).
     expect(stageSrc).toMatch(
-      /onSwitchTab=\{\(tabId\) =>\s*tabId === activeTabId\s*\?\s*handleSwitchTab\(tabId\)\s*:\s*leaveBotsGuarded\(\(\) => handleSwitchTab\(tabId\)\)\s*\}/,
+      /onSwitchTab=\{\(tabId\) =>\s*tabId === activeTabId\s*\?\s*handleSwitchTab\(tabId\)\s*:\s*leaveBotsGuarded\(\(\) => handleSwitchTabGuarded\(tabId\)\)\s*\}/,
     );
   });
 

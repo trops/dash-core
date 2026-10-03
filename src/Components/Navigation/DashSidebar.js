@@ -13,6 +13,23 @@ const CollapsibleContent = ({ children }) => {
 };
 import { Popover, Transition } from "@headlessui/react";
 import { AppContext } from "../../Context/App/AppContext";
+import { APP_PAGES } from "./appPages";
+
+/**
+ * A Manage page's icon. With something waiting (e.g. bot approvals) it gets
+ * an amber dot — on the icon, so it shows when the sidebar is collapsed too.
+ */
+const PageIcon = ({ icon, attention }) => (
+  <span className="relative inline-flex">
+    <FontAwesomeIcon icon={icon} className="h-3.5 w-3.5" />
+    {attention > 0 ? (
+      <span
+        data-testid="nav-attention-dot"
+        className="absolute top-0 right-0 h-1.5 w-1.5 rounded-full bg-amber-400"
+      />
+    ) : null}
+  </span>
+);
 
 export const DashSidebar = ({
   collapsed,
@@ -29,6 +46,11 @@ export const DashSidebar = ({
   onOpenCommandPalette,
   onSignIn,
   onSignOut,
+  // Manage pages (app-navigation NAV-001): the open page, how to open one,
+  // and per-page attention counts ({ bots: pendingApprovals }).
+  activePageKey = null,
+  onOpenPage = null,
+  pageAttention = {},
 }) => {
   const { themeVariant, changeThemeVariant, currentTheme } =
     useContext(ThemeContext);
@@ -112,6 +134,29 @@ export const DashSidebar = ({
             </Sidebar.Group>
           )}
         </CollapsibleContent>
+
+        {/* Manage pages — always visible (icons when collapsed); each opens
+            full-screen as a tab (app-navigation NAV-001). */}
+        <Sidebar.Group label="Manage">
+          {APP_PAGES.map((page) => {
+            const attention = pageAttention[page.key] || 0;
+            return (
+              <Sidebar.Item
+                key={page.key}
+                icon={<PageIcon icon={page.icon} attention={attention} />}
+                active={page.key === activePageKey}
+                onClick={() => onOpenPage && onOpenPage(page.key)}
+                badge={
+                  attention > 0 ? (
+                    <span className="text-amber-400">{attention}</span>
+                  ) : null
+                }
+              >
+                {page.label}
+              </Sidebar.Item>
+            );
+          })}
+        </Sidebar.Group>
 
         {/* Dashboard folders (only when expanded) */}
         <CollapsibleContent>

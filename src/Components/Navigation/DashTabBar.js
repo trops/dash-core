@@ -1,5 +1,11 @@
 import React, { useContext } from "react";
-import { ThemeContext } from "@trops/dash-react";
+import { FontAwesomeIcon, ThemeContext } from "@trops/dash-react";
+import { getAppPage } from "./appPages";
+
+/**
+ * DashTabBar — open dashboards and Manage pages (app-navigation NAV-002).
+ * A page tab (`kind: "page"`) shows its page's icon.
+ */
 
 export const DashTabBar = ({
   tabs = [],
@@ -19,10 +25,15 @@ export const DashTabBar = ({
     >
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId;
+        const page = tab.kind === "page" ? getAppPage(tab.pageKey) : null;
+        const label = (tab.name || "Untitled").replace(/^./, (c) =>
+          c.toUpperCase(),
+        );
         return (
           <button
             key={tab.id}
             type="button"
+            aria-current={isActive ? "true" : undefined}
             onClick={() => onSwitchTab && onSwitchTab(tab.id)}
             className={`dr-pill ${isActive ? "dr-pill-active" : ""} group flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md whitespace-nowrap transition-all duration-100 cursor-pointer ${
               isActive
@@ -30,10 +41,13 @@ export const DashTabBar = ({
                 : "text-gray-400 hover:bg-white/10 hover:text-gray-200"
             }`}
           >
-            <span className="truncate max-w-[140px]">
-              {(tab.name || "Untitled").replace(/^./, (c) => c.toUpperCase())}
-            </span>
+            {page ? (
+              <FontAwesomeIcon icon={page.icon} className="h-3 w-3" />
+            ) : null}
+            <span className="truncate max-w-[140px]">{label}</span>
             <span
+              role="button"
+              aria-label={`Close ${label}`}
               onClick={(e) => {
                 e.stopPropagation();
                 onCloseTab && onCloseTab(tab.id);

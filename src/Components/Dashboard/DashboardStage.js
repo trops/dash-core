@@ -51,6 +51,14 @@ import { MissingWidgetsModal } from "../../Widget/MissingWidgetsModal";
 import { DashboardConfigModal } from "./DashboardConfigModal";
 import { useTeamBots } from "../Bots/useTeamBots";
 import { BotsView } from "../Bots/BotsView";
+import { usePendingApprovalCount } from "../Bots/usePendingApprovalCount";
+import { AppPage } from "../AppPages/AppPage";
+import {
+  pageForSettingsSection,
+  pageKeyOf,
+  pageTabId,
+} from "../Navigation/appPages";
+import { closeTab, openPageTab, restoreTabs } from "../Navigation/tabModel";
 import {
   forEachWidget,
   getUnresolvedProviders,
@@ -229,10 +237,19 @@ const DashboardStageInner = ({
   const [authStatus, setAuthStatus] = useState("loading");
   const [authProfile, setAuthProfile] = useState(null);
 
-  // Derive workspaceSelected from active tab
+  // Derive workspaceSelected from active tab. A Manage page tab
+  // (`page:<key>`, app-navigation NAV-002) has no workspace, so everything
+  // dashboard-only switches off while one is active.
   const workspaceSelected = activeTabId
     ? (openTabs.find((tab) => tab.id === activeTabId)?.workspace ?? null)
     : null;
+  const activePageKey = pageKeyOf(activeTabId);
+  // Settings deep links carried into a page: Dashboards' Folders view, and a
+  // provider to select / create (a new nonce re-applies it).
+  const [pageSubsection, setPageSubsection] = useState(null);
+  const [providerLink, setProviderLink] = useState(null);
+  // Bot approvals waiting anywhere — the sidebar's Bots dot (NAV-001 AC3).
+  const pendingApprovals = usePendingApprovalCount();
 
   /**
    * @param {Boolean} previewMode this is a toggle telling the dash we are editing
@@ -412,22 +429,14 @@ const DashboardStageInner = ({
   // Unified App Settings Modal
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [appSettingsInitialSection, setAppSettingsInitialSection] =
-    useState("dashboards");
-  const [appSettingsInitialProvider, setAppSettingsInitialProvider] =
-    useState(null);
-  const [appSettingsCreateProvider, setAppSettingsCreateProvider] =
-    useState(false);
-  // Optional pre-fills used by the cross-modal "Add new <type>"
-  // flow dispatched from dash-electron's WidgetBuilderModal.
-  // initialProviderType is the type id (e.g. "filesystem", "slack").
-  // initialProviderClass routes the create flow: "mcp" opens the
-  // catalog detail with that type pre-selected; otherwise opens
-  // the credential create form with formType pre-filled.
-  const [appSettingsInitialProviderType, setAppSettingsInitialProviderType] =
-    useState(null);
-  const [appSettingsInitialProviderClass, setAppSettingsInitialProviderClass] =
-    useState(null);
+    useState("general");
 
+  // Opens Settings at a section — or, for the sections that became Manage
+  // pages (Dashboards, Folders, Providers, Bots, Widgets, Themes), that
+  // page's tab (app-navigation NAV-004 AC2). Provider deep links ride along:
+  // providerType is the type id (e.g. "filesystem", "slack"); providerClass
+  // routes the create flow ("mcp" opens the catalog detail with that type
+  // pre-selected; otherwise the credential create form with formType filled).
   function openAppSettings(
     section = "general",
     providerName = null,
@@ -435,11 +444,26 @@ const DashboardStageInner = ({
     providerType = null,
     providerClass = null,
   ) {
+    const page = pageForSettingsSection(section);
+    if (page) {
+      handleOpenPageGuarded(page.key, {
+        subsection:
+          section === "folders" || section === "dashboards" ? section : null,
+        providerLink:
+          section === "providers" &&
+          (providerName || createProvider || providerType)
+            ? {
+                name: providerName,
+                create: !!createProvider,
+                type: providerType,
+                providerClass,
+                nonce: Date.now(),
+              }
+            : null,
+      });
+      return;
+    }
     setAppSettingsInitialSection(section);
-    setAppSettingsInitialProvider(providerName);
-    setAppSettingsCreateProvider(createProvider);
-    setAppSettingsInitialProviderType(providerType);
-    setAppSettingsInitialProviderClass(providerClass);
     setIsAppSettingsOpen(true);
   }
 
@@ -630,11 +654,21 @@ const DashboardStageInner = ({
   // chosen type exist yet. Detail: { type, providerClass }. The
   // Widget Builder's own listener (in dash-electron/Dash.js) handles
   // closing the builder modal — this listener only opens Settings.
+  // Through a ref: this listener is registered once, but openAppSettings now
+  // reads the current tab and unsaved-edit state (it opens the Providers page).
+  const openAppSettingsRef = useRef(openAppSettings);
+  openAppSettingsRef.current = openAppSettings;
   useEffect(() => {
     const handler = (e) => {
       const { type, providerClass } = e?.detail || {};
       if (!type) return;
-      openAppSettings("providers", null, true, type, providerClass || null);
+      openAppSettingsRef.current(
+        "providers",
+        null,
+        true,
+        type,
+        providerClass || null,
+      );
     };
     window.addEventListener("dash:open-settings-create-provider", handler);
     return () =>
@@ -683,11 +717,15 @@ const DashboardStageInner = ({
   }, [popout]);
 
   // ─── Session save (continuous) ──────────────────────────────────
+  // Only once the saved session has been read: saving the first render's
+  // empty tabs used to overwrite it before restore ran (after dashboards
+  // load), so nothing ever came back. `sessionReady` re-runs this then.
+  const [sessionReady, setSessionReady] = useState(false);
   useEffect(() => {
-    if (popout) return;
+    if (popout || !sessionRestored.current) return;
     const tabIds = openTabs.map((t) => t.id);
     window.mainApi?.session?.saveState(tabIds, activeTabId);
-  }, [openTabs, activeTabId, popout]);
+  }, [openTabs, activeTabId, popout, sessionReady]);
 
   // ─── Session restore on launch ─────────────────────────────────
   useEffect(() => {
@@ -695,15 +733,32 @@ const DashboardStageInner = ({
       return;
     sessionRestored.current = true;
 
-    window.mainApi?.session?.getState().then((state) => {
-      if (!state?.openTabIds?.length) return;
-      state.openTabIds.forEach((wsId) => {
-        const ws = workspaceConfig.find((w) => w.id === wsId);
-        if (ws) handleOpenTab(ws);
-      });
-      if (state.activeTabId) setActiveTabId(state.activeTabId);
+    const done = () => setSessionReady(true);
+    const session = window.mainApi?.session;
+    if (!session?.getState) {
+      done();
+      return;
+    }
+    session.getState().then((state) => {
+      if (!state?.openTabIds?.length) {
+        done();
+        return;
+      }
+      // Dashboards and Manage pages, in saved order; ones that no longer
+      // exist are dropped (app-navigation NAV-002 AC3).
+      const tabs = restoreTabs(state.openTabIds, workspaceConfig);
+      if (tabs.length) {
+        setOpenTabs(tabs);
+        const active = tabs.some((t) => t.id === state.activeTabId)
+          ? state.activeTabId
+          : tabs[tabs.length - 1].id;
+        setActiveTabId(active);
+        setPreviewMode(true);
+        if (tabs.some((t) => t.workspace)) setSidebarCollapsed(true);
+      }
       window.mainApi?.session?.clearState();
-    });
+      done();
+    }, done);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceConfig, popout]);
 
@@ -914,20 +969,50 @@ const DashboardStageInner = ({
 
   function handleCloseTab(tabId) {
     setOpenTabs((prev) => {
-      const remaining = prev.filter((tab) => tab.id !== tabId);
-      if (activeTabId === tabId) {
-        // Switch to last remaining tab, or null
-        const newActive =
-          remaining.length > 0 ? remaining[remaining.length - 1].id : null;
-        setActiveTabId(newActive);
-      }
-      return remaining;
+      // Closing the active tab switches to the last remaining one, or none.
+      const next = closeTab(prev, tabId, activeTabId);
+      if (next.activeTabId !== activeTabId) setActiveTabId(next.activeTabId);
+      return next.tabs;
     });
   }
 
   function handleSwitchTab(tabId) {
     setActiveTabId(tabId);
     setPreviewMode(true);
+  }
+
+  // The tab bar's switch: leaving a dashboard with unsaved edits asks first
+  // (app-navigation NAV-002 AC6 — this used to switch without asking).
+  function handleSwitchTabGuarded(tabId) {
+    if (isDirty && tabId !== activeTabId) {
+      setPendingNavigation({ kind: "switch-tab", tabId });
+      return;
+    }
+    handleSwitchTab(tabId);
+  }
+
+  // ─── Manage pages (app-navigation NAV-002) ──────────────────────
+  // A page opens as a tab beside the dashboards — one tab per page; opening
+  // an open page just switches to it. `opts` carries Settings deep links.
+  function handleOpenPage(key, opts = {}) {
+    setOpenTabs((prev) => openPageTab(prev, key).tabs);
+    setActiveTabId(pageTabId(key));
+    setPreviewMode(true);
+    setPageSubsection(opts.subsection || null);
+    if (opts.providerLink) setProviderLink(opts.providerLink);
+  }
+
+  function handleOpenPageGuarded(key, opts = {}) {
+    const switchingAway = activeTabId !== pageTabId(key);
+    if (isDirty && switchingAway) {
+      setPendingNavigation({ kind: "open-page", key, opts });
+      return;
+    }
+    if (switchingAway) {
+      leaveBotsGuarded(() => handleOpenPage(key, opts));
+      return;
+    }
+    handleOpenPage(key, opts);
   }
 
   // Update tab workspace reference when workspace changes
@@ -1446,8 +1531,10 @@ const DashboardStageInner = ({
     function onClose(e) {
       const name = e.detail?.name;
       if (name) {
+        // Dashboards only — a page tab named "Bots" isn't a dashboard.
         const tab = (openTabsRef.current || []).find(
-          (t) => (t.name || "").toLowerCase() === name.toLowerCase(),
+          (t) =>
+            t.workspace && (t.name || "").toLowerCase() === name.toLowerCase(),
         );
         if (tab && handleCloseTabRef.current) handleCloseTabRef.current(tab.id);
       } else if (activeTabIdRef.current && handleCloseTabRef.current) {
@@ -2068,6 +2155,9 @@ const DashboardStageInner = ({
               onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
               onSignIn={handleSidebarSignIn}
               onSignOut={handleSidebarSignOut}
+              activePageKey={activePageKey}
+              onOpenPage={handleOpenPageGuarded}
+              pageAttention={{ bots: pendingApprovals }}
             />
           )}
           <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
@@ -2251,26 +2341,24 @@ const DashboardStageInner = ({
                     </>
                   )}
                 </DashboardThemeProvider>
-                {!popout && (
-                  <DashTabBar
-                    tabs={openTabs}
-                    activeTabId={activeTabId}
-                    // Leaving this dashboard with unsaved bot edits asks
-                    // first; re-clicking it or closing a background tab
-                    // doesn't.
-                    onSwitchTab={(tabId) =>
-                      tabId === activeTabId
-                        ? handleSwitchTab(tabId)
-                        : leaveBotsGuarded(() => handleSwitchTab(tabId))
-                    }
-                    onCloseTab={(tabId) =>
-                      tabId === activeTabId
-                        ? leaveBotsGuarded(() => handleCloseTab(tabId))
-                        : handleCloseTab(tabId)
-                    }
-                  />
-                )}
               </>
+            ) : activePageKey ? (
+              // A Manage page, full-screen, in the app theme (outside the
+              // dashboard's theme) — app-navigation NAV-003.
+              <AppPage
+                pageKey={activePageKey}
+                subsection={pageSubsection}
+                providerLink={providerLink}
+                workspaces={workspaceConfig}
+                menuItems={menuItems}
+                dashApi={dashApi}
+                credentials={credentials}
+                onReloadWorkspaces={loadWorkspaces}
+                onReloadMenuItems={loadMenuItems}
+                onOpenWorkspace={handleOpenTabGuarded}
+                onOpenThemeEditor={() => setIsThemeManagerOpen(true)}
+                onOpenWizard={() => setIsWizardOpen(true)}
+              />
             ) : (
               <div className="flex flex-1 items-center justify-center">
                 <EmptyState
@@ -2307,6 +2395,26 @@ const DashboardStageInner = ({
                 </EmptyState>
               </div>
             )}
+            {/* Open dashboards and Manage pages (app-navigation NAV-002).
+                Leaving a dashboard with unsaved edits — layout or bot —
+                asks first; re-clicking it or closing a background tab
+                doesn't. */}
+            {!popout && openTabs.length > 0 && (
+              <DashTabBar
+                tabs={openTabs}
+                activeTabId={activeTabId}
+                onSwitchTab={(tabId) =>
+                  tabId === activeTabId
+                    ? handleSwitchTab(tabId)
+                    : leaveBotsGuarded(() => handleSwitchTabGuarded(tabId))
+                }
+                onCloseTab={(tabId) =>
+                  tabId === activeTabId
+                    ? leaveBotsGuarded(() => handleCloseTab(tabId))
+                    : handleCloseTab(tabId)
+                }
+              />
+            )}
           </div>
           {!popout && !previewMode && workspaceSelected && (
             <WidgetSidebar
@@ -2326,40 +2434,14 @@ const DashboardStageInner = ({
           <>
             <AppSettingsModal
               isOpen={isAppSettingsOpen}
-              setIsOpen={(open) => {
-                setIsAppSettingsOpen(open);
-                if (!open) {
-                  setAppSettingsInitialProvider(null);
-                  setAppSettingsCreateProvider(false);
-                  setAppSettingsInitialProviderType(null);
-                  setAppSettingsInitialProviderClass(null);
-                }
-              }}
+              setIsOpen={setIsAppSettingsOpen}
               initialSection={appSettingsInitialSection}
-              initialProviderName={appSettingsInitialProvider}
-              initialCreateProvider={appSettingsCreateProvider}
-              initialProviderType={appSettingsInitialProviderType}
-              initialProviderClass={appSettingsInitialProviderClass}
               workspaces={workspaceConfig}
-              menuItems={menuItems}
-              dashApi={dashApi}
-              credentials={credentials}
-              onReloadWorkspaces={loadWorkspaces}
-              onReloadMenuItems={loadMenuItems}
-              onOpenWorkspace={(ws) => {
-                handleOpenTabGuarded(ws);
-                setIsAppSettingsOpen(false);
-              }}
-              onOpenThemeEditor={() => {
-                setIsAppSettingsOpen(false);
-                setIsThemeManagerOpen(true);
-              }}
               authStatus={authStatus}
               authProfile={authProfile}
               onSignIn={handleSidebarSignIn}
               onSignOut={handleSidebarSignOut}
               onProfileUpdated={handleProfileUpdated}
-              onOpenWizard={() => setIsWizardOpen(true)}
             />
 
             <ThemeManagerModal
@@ -2548,7 +2630,7 @@ const DashboardStageInner = ({
         message={
           pendingNavigation?.kind === "cancel-edit"
             ? "You have edits that haven't been saved. Discard them and exit edit mode?"
-            : "You have edits that haven't been saved. Discard them and switch dashboards?"
+            : "You have edits that haven't been saved. Discard them and leave this dashboard?"
         }
         confirmLabel="Discard changes"
         cancelLabel="Keep editing"
@@ -2561,14 +2643,20 @@ const DashboardStageInner = ({
           if (!pending) return;
           if (pending.kind === "cancel-edit") {
             performCancelEdit();
-          } else if (pending.kind === "open-workspace") {
+          } else {
             // Clear edit refs + dirty flag before navigating so the
-            // new workspace mount doesn't inherit dirty state.
+            // next view doesn't inherit dirty state.
             currentWorkspaceRef.current = null;
             originalWorkspaceRef.current = null;
             setIsDirty(false);
             setPreviewMode(true);
-            handleOpenTab(pending.workspace);
+            if (pending.kind === "open-workspace") {
+              handleOpenTab(pending.workspace);
+            } else if (pending.kind === "switch-tab") {
+              handleSwitchTab(pending.tabId);
+            } else if (pending.kind === "open-page") {
+              handleOpenPage(pending.key, pending.opts);
+            }
           }
         }}
         onCancel={() => setPendingNavigation(null)}

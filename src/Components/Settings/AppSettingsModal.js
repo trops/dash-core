@@ -1,7 +1,6 @@
 import React, { useState, useContext } from "react";
 import {
   Button,
-  ButtonIcon3,
   Sidebar,
   SettingsModal,
   SubHeading,
@@ -11,28 +10,19 @@ import {
   themeObjects,
   FontAwesomeIcon,
 } from "@trops/dash-react";
-import { DashboardsSection } from "./sections/DashboardsSection";
-import { FoldersSection } from "./sections/FoldersSection";
-import { ProvidersSection } from "./sections/ProvidersSection";
-import { BotsSection } from "./sections/BotsSection";
-import { ThemesSection } from "./sections/ThemesSection";
 import { GeneralSection } from "./sections/GeneralSection";
-import { WidgetsSection } from "./sections/WidgetsSection";
 import { AccountSection } from "./sections/AccountSection";
 import { NotificationsSection } from "./sections/NotificationsSection";
 import { McpServerSection } from "./sections/McpServerSection";
 import { AiAssistantSection } from "./sections/AiAssistantSection";
 import { PrivacySecuritySection } from "./sections/PrivacySecuritySection";
 
+// True settings only. Dashboards, Folders, Providers, Bots, Widgets and
+// Themes are Manage pages in the left nav (app-navigation PRD NAV-004);
+// `openAppSettings` in DashboardStage sends those sections to their page.
 const SECTIONS = [
   { key: "general", label: "General", icon: "cog" },
   { key: "account", label: "Account", icon: "circle-user" },
-  { key: "dashboards", label: "Dashboards", icon: "clone" },
-  { key: "providers", label: "Providers", icon: "plug" },
-  { key: "bots", label: "Bots", icon: "robot" },
-  { key: "widgets", label: "Widgets", icon: "puzzle-piece" },
-  { key: "folders", label: "Folders", icon: "folder" },
-  { key: "themes", label: "Themes", icon: "palette" },
   { key: "notifications", label: "Notifications", icon: "bell" },
   { key: "mcp-server", label: "MCP Server", icon: "server" },
   { key: "ai-assistant", label: "AI Assistant", icon: "wand-magic-sparkles" },
@@ -47,32 +37,14 @@ export const AppSettingsModal = ({
   isOpen,
   setIsOpen,
   initialSection = "general",
-  initialProviderName = null,
-  initialCreateProvider = false,
-  // Optional: when initialCreateProvider is true, pre-select the
-  // provider type (and route the create flow by class). Used by the
-  // cross-modal "Add new <type>" CTA from the Widget Builder so the
-  // user lands on the right form/catalog detail with the type
-  // already filled in.
-  initialProviderType = null,
-  initialProviderClass = null,
   workspaces = [],
-  menuItems = [],
-  dashApi = null,
-  credentials = null,
-  onReloadWorkspaces = null,
-  onReloadMenuItems = null,
-  onOpenWorkspace = null,
-  onOpenThemeEditor = null,
   authStatus = "loading",
   authProfile = null,
   onSignIn = null,
   onSignOut = null,
   onProfileUpdated = null,
-  onOpenWizard = null,
 }) => {
   const [activeSection, setActiveSection] = useState(initialSection);
-  const [createRequested, setCreateRequested] = useState(false);
   const { currentTheme } = useContext(ThemeContext);
 
   // Sync initialSection when modal opens with a different section
@@ -81,11 +53,6 @@ export const AppSettingsModal = ({
       setActiveSection(initialSection);
     }
   }, [isOpen, initialSection]);
-
-  // Reset create request when section changes
-  React.useEffect(() => {
-    setCreateRequested(false);
-  }, [activeSection]);
 
   const activeDef =
     SECTIONS.find((s) => s.key === activeSection) || SECTIONS[0];
@@ -102,7 +69,7 @@ export const AppSettingsModal = ({
       <SettingsModal.Sidebar>
         <Sidebar.Content>
           {SECTIONS.map((section) => {
-            const isActive = activeSection === section.key;
+            const isActive = activeDef.key === section.key;
             return (
               <Sidebar.Item
                 key={section.key}
@@ -125,33 +92,6 @@ export const AppSettingsModal = ({
 
       <SettingsModal.Header border={true} padding="px-4 py-3">
         <SubHeading2 title={activeDef.label} padding={false} />
-        {(activeSection === "dashboards" ||
-          activeSection === "folders" ||
-          activeSection === "providers" ||
-          activeSection === "bots" ||
-          activeSection === "themes" ||
-          activeSection === "widgets") && (
-          <ButtonIcon3
-            icon="plus"
-            text={
-              activeSection === "dashboards"
-                ? "New Dashboard"
-                : activeSection === "folders"
-                  ? "New Folder"
-                  : activeSection === "providers"
-                    ? "New Provider"
-                    : activeSection === "bots"
-                      ? "New Bot"
-                      : activeSection === "widgets"
-                        ? "New Widget"
-                        : "New Theme"
-            }
-            onClick={() => setCreateRequested(true)}
-            spacing="px-3 py-1.5"
-            iconSize="h-3.5 w-3.5"
-            className="text-sm"
-          />
-        )}
       </SettingsModal.Header>
 
       <SettingsModal.Body
@@ -159,76 +99,7 @@ export const AppSettingsModal = ({
         padding="p-0"
         className="flex flex-col min-h-0"
       >
-        {activeSection === "dashboards" && (
-          <DashboardsSection
-            workspaces={workspaces}
-            menuItems={menuItems}
-            dashApi={dashApi}
-            credentials={credentials}
-            onReloadWorkspaces={onReloadWorkspaces}
-            createRequested={createRequested}
-            onCreateAcknowledged={() => setCreateRequested(false)}
-            onOpenWorkspace={onOpenWorkspace}
-            onOpenWizard={
-              onOpenWizard
-                ? () => {
-                    setIsOpen(false);
-                    onOpenWizard();
-                  }
-                : null
-            }
-          />
-        )}
-        {activeSection === "folders" && (
-          <FoldersSection
-            menuItems={menuItems}
-            workspaces={workspaces}
-            dashApi={dashApi}
-            credentials={credentials}
-            onReloadMenuItems={onReloadMenuItems}
-            createRequested={createRequested}
-            onCreateAcknowledged={() => setCreateRequested(false)}
-          />
-        )}
-        {activeSection === "providers" && (
-          <ProvidersSection
-            dashApi={dashApi}
-            credentials={credentials}
-            createRequested={createRequested}
-            onCreateAcknowledged={() => setCreateRequested(false)}
-            initialProviderName={initialProviderName}
-            initialCreateRequested={initialCreateProvider}
-            initialProviderType={initialProviderType}
-            initialProviderClass={initialProviderClass}
-          />
-        )}
-        {activeSection === "bots" && (
-          <BotsSection
-            workspaces={workspaces}
-            dashApi={dashApi}
-            credentials={credentials}
-            createRequested={createRequested}
-            onCreateAcknowledged={() => setCreateRequested(false)}
-          />
-        )}
-        {activeSection === "themes" && (
-          <ThemesSection
-            onOpenThemeEditor={onOpenThemeEditor}
-            dashApi={dashApi}
-            credentials={credentials}
-            createRequested={createRequested}
-            onCreateAcknowledged={() => setCreateRequested(false)}
-          />
-        )}
-        {activeSection === "widgets" && (
-          <WidgetsSection
-            workspaces={workspaces}
-            credentials={credentials}
-            createRequested={createRequested}
-            onCreateAcknowledged={() => setCreateRequested(false)}
-          />
-        )}
-        {activeSection === "account" && (
+        {activeDef.key === "account" && (
           <div
             className={`flex-1 overflow-y-auto p-6 ${
               panelStyles.textColor || "text-gray-200"
@@ -243,7 +114,7 @@ export const AppSettingsModal = ({
             />
           </div>
         )}
-        {activeSection === "general" && (
+        {activeDef.key === "general" && (
           <div
             className={`flex-1 overflow-y-auto p-6 ${
               panelStyles.textColor || "text-gray-200"
@@ -252,10 +123,10 @@ export const AppSettingsModal = ({
             <GeneralSection />
           </div>
         )}
-        {activeSection === "notifications" && (
+        {activeDef.key === "notifications" && (
           <NotificationsSection workspaces={workspaces} />
         )}
-        {activeSection === "mcp-server" && (
+        {activeDef.key === "mcp-server" && (
           <div
             className={`flex-1 overflow-y-auto p-6 ${
               panelStyles.textColor || "text-gray-200"
@@ -264,7 +135,7 @@ export const AppSettingsModal = ({
             <McpServerSection />
           </div>
         )}
-        {activeSection === "ai-assistant" && (
+        {activeDef.key === "ai-assistant" && (
           <div
             className={`flex-1 overflow-y-auto p-6 ${
               panelStyles.textColor || "text-gray-200"
@@ -273,7 +144,7 @@ export const AppSettingsModal = ({
             <AiAssistantSection />
           </div>
         )}
-        {activeSection === "privacy-security" && (
+        {activeDef.key === "privacy-security" && (
           <div
             className={`flex-1 flex flex-col min-h-0 ${
               panelStyles.textColor || "text-gray-200"
