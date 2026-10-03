@@ -1,30 +1,26 @@
 /**
- * Static wiring pin: the Bots section is registered in AppSettingsModal
- * (sidebar entry, "New Bot" header button, and body render). Mirrors the
- * source-presence style used by AppSettingsModal-create-with-type.test.js.
+ * Static wiring pin: the Bots section is the Bots Manage page (it moved out
+ * of AppSettingsModal — app-navigation NAV-004): AppPage renders it with a
+ * "New Bot" action. Mirrors the source-presence style used by
+ * AppSettingsModal-create-with-type.test.js.
  */
 const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(
-  path.join(__dirname, "AppSettingsModal.js"),
+  path.join(__dirname, "..", "AppPages", "AppPage.js"),
   "utf8",
 );
 
-describe("AppSettingsModal — Bots section wiring", () => {
+describe("Bots page — Bots section wiring", () => {
   it("imports BotsSection", () => {
     expect(src).toMatch(
-      /import \{ BotsSection \} from "\.\/sections\/BotsSection"/,
+      /import \{ BotsSection \} from "\.\.\/Settings\/sections\/BotsSection"/,
     );
   });
 
-  it("registers a bots sidebar entry", () => {
-    expect(src).toMatch(/key: "bots"/);
-  });
-
-  it('includes bots in the "+ New" header button and renders BotsSection', () => {
-    expect(src).toMatch(/activeSection === "bots"/);
-    expect(src).toMatch(/"New Bot"/);
+  it('has a "New Bot" action and renders BotsSection', () => {
+    expect(src).toMatch(/bots: "New Bot"/);
     expect(src).toMatch(/<BotsSection/);
   });
 

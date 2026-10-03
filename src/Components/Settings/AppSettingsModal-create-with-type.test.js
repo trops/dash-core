@@ -22,23 +22,16 @@ function readSrc(rel) {
   return fs.readFileSync(path.join(SETTINGS_DIR, rel), "utf8");
 }
 
-describe("AppSettingsModal — create-provider-with-type wiring", () => {
-  test("AppSettingsModal accepts initialProviderType + initialProviderClass", () => {
-    const source = readSrc("AppSettingsModal.js");
-    expect(source).toMatch(/initialProviderType/);
-    expect(source).toMatch(/initialProviderClass/);
-  });
-
-  test("AppSettingsModal threads new props to ProvidersSection", () => {
-    const source = readSrc("AppSettingsModal.js");
-    // Both prop names should appear at least twice — once in the
-    // function signature and once in the JSX prop pass-through.
-    const providerTypeCount = (source.match(/initialProviderType/g) || [])
-      .length;
-    const providerClassCount = (source.match(/initialProviderClass/g) || [])
-      .length;
-    expect(providerTypeCount).toBeGreaterThanOrEqual(2);
-    expect(providerClassCount).toBeGreaterThanOrEqual(2);
+describe("Providers page — create-provider-with-type wiring", () => {
+  // Providers moved from the Settings modal to its Manage page
+  // (app-navigation NAV-004): the deep link now rides AppPage's
+  // `providerLink` into ProvidersSection.
+  test("AppPage threads the provider deep link to ProvidersSection", () => {
+    const source = readSrc("../AppPages/AppPage.js");
+    expect(source).toMatch(/initialProviderName=\{link\.name/);
+    expect(source).toMatch(/initialCreateRequested=\{!!link\.create\}/);
+    expect(source).toMatch(/initialProviderType=\{link\.type/);
+    expect(source).toMatch(/initialProviderClass=\{link\.providerClass/);
   });
 
   test("ProvidersSection accepts initialProviderType + initialProviderClass", () => {

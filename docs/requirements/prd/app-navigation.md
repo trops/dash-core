@@ -1,6 +1,6 @@
 # PRD: App Navigation — Manage pages in the left nav
 
-**Status:** Draft
+**Status:** In Progress (slice 1 implemented)
 **Last Updated:** 2026-10-03
 **Owner:** John
 **Related PRDs:** [bot-teams.md](./bot-teams.md) (Bots view, TEAM-011), [command-palette-navigation.md](./command-palette-navigation.md), [widget-installation-model.md](./widget-installation-model.md), [scoped-widget-ids.md](./scoped-widget-ids.md)
@@ -205,6 +205,18 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 
 NAV-001, NAV-002, NAV-003, NAV-004 (AC1–AC2), with Bots / Providers / Widgets / Themes rendering today's Settings sections full-screen; Dashboards page shows today's Dashboards + Folders sections until slice 2.
 
+**Implementation notes (slice 1, 2026-10-03):**
+
+- `Navigation/appPages.js` is the one list of Manage pages (key, label, icon, description, which Settings sections moved there); `Navigation/tabModel.js` has the pure open / close / restore helpers.
+- Page tabs live in `openTabs` beside dashboards as `{ id: "page:<key>", kind: "page", pageKey, name }` with **no `workspace`**, so `workspaceSelected` is null while a page is active and everything dashboard-only (header, page tabs, dashboard theme, Bots view, team lead, banners, widget sidebar) switches off without per-site checks. Name-based closes (`dash:close-dashboard`) only match dashboard tabs; workspace reloads match tabs by numeric id, which page ids never hit.
+- `AppPages/AppPage.js` hosts a page outside `DashboardThemeProvider` (app theme): Manage label, title, description, primary action (New Bot / Provider / Widget / Theme / Dashboard / Folder), then the existing Settings section full-height. Dashboards has a Dashboards / Folders switch until slice 2.
+- `DashSidebar` gets the **Manage** group after Recents (before folder groups, so it stays near the top). The attention dot sits on the icon so it shows collapsed; the count shows as the badge when expanded. Bots' count comes from `Bots/usePendingApprovalCount` (re-reads `listApprovals` on approval / run / bot-list / stream-end events). Providers' dot needs a provider-status source — deferred to the Providers redesign.
+- `DashTabBar` renders whenever any tab is open (moved out of the dashboard branch); page tabs show their icon.
+- Session save keeps page ids; restore uses `restoreTabs` (drops missing dashboards and unknown pages). Fixed a pre-existing bug found in the live check: the save effect ran on first render with no tabs and overwrote the saved session before restore read it (restore waits for dashboards to load), so tabs never came back after a restart. Saving now waits until restore has run (`sessionReady`).
+- `openAppSettings` sends `dashboards` / `folders` / `providers` / `bots` / `widgets` / `themes` to the page tab (provider name / create / type / class ride along as a `providerLink` with a nonce that remounts ProvidersSection). The `dash:open-settings-create-provider` listener calls it through a ref so it sees the current tab and unsaved-edit state.
+- `AppSettingsModal` now lists General, Account, Notifications, MCP Server, AI Assistant, Privacy & Security; the props only the moved sections used were removed.
+- Unsaved-edit guard: switching tabs and opening a page now ask first when a dashboard has unsaved layout edits (`switch-tab` / `open-page` pending kinds), after the existing bot-edit guard.
+
 ### Phase 2 (slice 2): Dashboards page
 
 NAV-005, NAV-004 AC3 (palette).
@@ -233,3 +245,4 @@ NAV-011, NAV-012 (after the ownership fix), P2 items.
 | Version | Date       | Author | Changes                                         |
 | ------- | ---------- | ------ | ----------------------------------------------- |
 | 1.0     | 2026-10-03 | John   | Initial PRD from the approved navigation mockup |
+| 1.1     | 2026-10-03 | John   | Slice 1 implemented (Manage nav, page tabs)     |
