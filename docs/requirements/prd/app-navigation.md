@@ -117,9 +117,9 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 **NAV-006: Bots page**
 **Acceptance Criteria:**
 
-- [ ] AC1: List grouped by team (dashboard), each bot with an avatar (generic for now), name, trigger summary and status dot; search; **Team** filter (NAV-010); status chips (Needs approval, Running, Paused).
-- [ ] AC2: Detail: avatar, name, widget-style name (`local/<slug>` now; `@org/<slug>` once publishing exists), team, schedule/events, providers + tools, last run, pending approval inline.
-- [ ] AC3: Actions: Open in the team's Bots view, Run now (not for leads), Edit; New bot.
+- [x] AC1: List grouped by team (dashboard), each bot with an avatar (generic for now), name, trigger summary and status dot; search; **Team** filter (NAV-010); status chips (Needs approval, Running, Paused).
+- [x] AC2: Detail: avatar, name, widget-style name (`local/<slug>` now; `@org/<slug>` once publishing exists), team, schedule/events, providers + tools, last run, pending approval inline.
+- [x] AC3: Actions: Open in the team's Bots view, Run now (not for leads), Edit; New bot.
 
 **NAV-007: Providers page**
 **Acceptance Criteria:**
@@ -234,6 +234,15 @@ NAV-005, NAV-004 AC3 (palette). NAV-010 (`FilterMenu`) moved up into this slice 
 
 NAV-010 (dash-react first), then NAV-006, NAV-008, NAV-009 in the list + detail design; NAV-007 restyle.
 
+**Implementation notes (slice 3a — Bots, 2026-10-03):**
+
+- `AppPages/BotsPage.js` replaces `BotsSection` on the Bots page. Filter bar: search (name, `local/<slug>` handle, trigger summary), **Team** `FilterMenu` with counts (Unassigned included), status chips All / Needs approval / Running / Paused, and the "Create team leads automatically" switch (moved from the list header). List grouped by team, Unassigned last; each row has a generic robot avatar on a stable per-bot colour, name, LEAD label, trigger summary and status dot.
+- Detail (view mode): big avatar, name, handle, status; **Open in <team>'s Bots view** (not for Unassigned), **Run now** (not for leads), **Edit**; waiting approvals inline with **Allow / Deny** (`bots.approve(id, { allow })`); Team, Runs (trigger summary), Providers + chosen tools ("Team tools only" for leads, "All tools" when none were picked), Last run (status, time and the answer or error as plain text, from `getRuns(id, 1)`).
+- **Edit / New Bot** show the existing `BotDetail` editor in the detail panel (edit adds **Back to details**, since BotDetail only shows Cancel when creating); delete is confirmed. (The old section passed no `isOpen` to `ConfirmationModal`; the page does.)
+- `AppPages/useAllBots.js` loads every bot with running / pause / approvals and each bot's last run from one `listRecentRuns(50)` call (`lastRunsByBot`), live on run / approval / stream-end / bot-list events. `AppPages/botSummary.js` (pure): `botHandle`, `avatarColor`, `lastRunsByBot`, `botProviders`, `approvalText`.
+- Stage: `handleOpenBotInBotsView(ws, botId)` focuses the bot (`focusBot`, which also sets the stage mode to Bots) and opens the team's tab.
+- `BotsSection` is no longer used by any page; kept for the cleanup with `DashboardsSection`.
+
 ### Phase 4: Previews and authoring
 
 NAV-011, NAV-012 (after the ownership fix), P2 items.
@@ -256,3 +265,4 @@ NAV-011, NAV-012 (after the ownership fix), P2 items.
 | 1.0     | 2026-10-03 | John   | Initial PRD from the approved navigation mockup |
 | 1.1     | 2026-10-03 | John   | Slice 1 implemented (Manage nav, page tabs)     |
 | 1.2     | 2026-10-03 | John   | Slice 2: Dashboards page, FilterMenu, Go to     |
+| 1.3     | 2026-10-03 | John   | Slice 3a: Bots page (list + detail)             |

@@ -3,8 +3,8 @@ import { Button, SectionLabel } from "@trops/dash-react";
 import { getAppPage } from "../Navigation/appPages";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { DashboardsPage } from "./DashboardsPage";
+import { BotsPage } from "./BotsPage";
 import { FoldersSection } from "../Settings/sections/FoldersSection";
-import { BotsSection } from "../Settings/sections/BotsSection";
 import { ProvidersSection } from "../Settings/sections/ProvidersSection";
 import { WidgetsSection } from "../Settings/sections/WidgetsSection";
 import { ThemesSection } from "../Settings/sections/ThemesSection";
@@ -23,8 +23,8 @@ const CREATE_LABEL = {
  * the left nav (app-navigation PRD NAV-003). Rendered outside
  * DashboardThemeProvider, so it uses the app theme.
  *
- * Dashboards is its own list + detail page (slice 2, NAV-005), with Folders
- * beside it. The other pages still reuse their Settings section components
+ * Dashboards (slice 2, NAV-005, with Folders beside it) and Bots (slice 3a,
+ * NAV-006) are their own list + detail pages. The other pages still reuse their Settings section components
  * (they don't depend on the modal) until their redesigns land.
  *
  * @param {string} pageKey            dashboards | bots | providers | widgets | themes
@@ -48,6 +48,8 @@ export const AppPage = ({
   // Dashboards page: open a dashboard's tab in its Bots view / with Config.
   onOpenBotsView = null,
   onOpenDashboardConfig = null,
+  // Bots page: open a bot in its team's Bots view (workspace, botId).
+  onOpenBotInBotsView = null,
 }) => {
   const page = getAppPage(pageKey);
   const { muted, strong, hairline } = useConfigTokens();
@@ -101,10 +103,10 @@ export const AppPage = ({
     );
   } else if (section === "bots") {
     body = (
-      <BotsSection
+      <BotsPage
         workspaces={workspaces}
         dashApi={dashApi}
-        credentials={credentials}
+        onOpenBotInBotsView={onOpenBotInBotsView}
         {...createProps}
       />
     );

@@ -1023,6 +1023,13 @@ const DashboardStageInner = ({
     handleOpenTabGuarded(ws);
   }
 
+  // Bots page (NAV-006): open the bot's team in its Bots view, on that bot.
+  function handleOpenBotInBotsView(ws, botId) {
+    if (!ws) return;
+    focusBot(ws.id, botId);
+    handleOpenTabGuarded(ws);
+  }
+
   // "Dashboard Config": open the dashboard; once it's showing (the effect
   // below), enter edit mode the usual way and open Config.
   const [pendingConfigFor, setPendingConfigFor] = useState(null);
@@ -2389,6 +2396,7 @@ const DashboardStageInner = ({
                 onOpenWizard={() => setIsWizardOpen(true)}
                 onOpenBotsView={handleOpenDashboardBotsView}
                 onOpenDashboardConfig={handleOpenDashboardConfig}
+                onOpenBotInBotsView={handleOpenBotInBotsView}
               />
             ) : (
               <div className="flex flex-1 items-center justify-center">
