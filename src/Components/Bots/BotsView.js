@@ -21,7 +21,7 @@ import { BotDetail } from "../Settings/details/BotDetail";
 import { DraftBanner } from "./DraftBanner";
 import { AppContext } from "../../Context/App/AppContext";
 import { ComponentManager } from "../../ComponentManager";
-import { triggerSummary } from "./teamUtils";
+import { STATUS_DOT, triggerSummary } from "./teamUtils";
 
 /**
  * BotsView — a dashboard's team, full stage (bot-teams PRD TEAM-011).
@@ -48,13 +48,7 @@ const NEW_BOT = "__new__";
 const DRAFT_PREFIX = "draft:";
 const isDraftId = (id) => typeof id === "string" && id.startsWith(DRAFT_PREFIX);
 const NARROW_PX = 900;
-const DOT = {
-  Idle: "bg-gray-500",
-  Running: "bg-indigo-400",
-  Paused: "bg-gray-400",
-  "Needs approval": "bg-amber-400",
-  Failed: "bg-red-400",
-};
+const DOT = STATUS_DOT;
 
 const getWidgetConfig = (name) =>
   (name && ComponentManager.config(name)) || null;

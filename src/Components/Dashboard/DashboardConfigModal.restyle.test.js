@@ -187,3 +187,54 @@ describe("Dashboard Config — slice 1 uses theme tokens", () => {
     });
   }
 });
+
+describe("Dashboard Config — slice 2 uses theme tokens", () => {
+  const read = (rel) => fs.readFileSync(path.join(__dirname, rel), "utf8");
+  const modalSrc = read("DashboardConfigModal.js");
+  const between = (src, start, end) => {
+    const a = src.indexOf(start);
+    const b = src.indexOf(end, a);
+    expect(a).toBeGreaterThan(-1);
+    expect(b).toBeGreaterThan(a);
+    return src.slice(a, b);
+  };
+  const regions = {
+    NotificationsTab: between(
+      modalSrc,
+      "function NotificationsTab",
+      "function ProvidersTab",
+    ),
+    DependenciesTab: between(
+      modalSrc,
+      "function DependenciesTab",
+      "function sameWiringEntry",
+    ),
+    PermissionsTab: read("PermissionsTab.js"),
+    BotsTab: read("BotsTab.js"),
+    WidgetGrantRow: read("../Settings/sections/WidgetGrantRow.js"),
+  };
+  // Greys / indigo, solid green or red fills, white tints, opacity-modifier
+  // colours (`amber-900/10`), `bg-opacity-*` and arbitrary values. Semantic
+  // text colours (amber warnings, red errors, origin badges) stay.
+  const BANNED =
+    /(?:bg|text|border)-gray-\d+|(?:bg|text)-indigo-\d+|bg-(?:green|red)-\d+|(?:bg|border|text)-[a-z]+-\d+\/\d+|(?:bg|border)-white\/\d+|bg-opacity-\d+|(?:text|min-w|w)-\[[^\]]+\]/;
+
+  for (const [name, src] of Object.entries(regions)) {
+    it(`${name}: no bare theme-blind colours outside fallbacks`, () => {
+      const offenders = src
+        .split("\n")
+        .filter((line) => BANNED.test(line) && !/\|\|\s*"/.test(line))
+        .map((line) => line.trim());
+      expect(offenders).toEqual([]);
+    });
+  }
+
+  it("Notifications keeps its bulk buttons' test ids", () => {
+    expect(regions.NotificationsTab).toMatch(
+      /data-testid="bulk-notifications-enable-all"/,
+    );
+    expect(regions.NotificationsTab).toMatch(
+      /data-testid="bulk-notifications-disable-all"/,
+    );
+  });
+});

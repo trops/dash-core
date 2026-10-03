@@ -2,6 +2,7 @@ import React from "react";
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { BotsTab } from "./BotsTab";
+import { STATUS_DOT } from "../Bots/teamUtils";
 
 const workspace = { id: 7, name: "Kitchen Sink", layout: [] };
 const workspaces = [workspace, { id: 9, name: "Sales", layout: [] }];
@@ -101,6 +102,23 @@ describe("BotsTab — summary (TEAM-011)", () => {
     await screen.findByText("Inbox Watch");
     expect(screen.queryByLabelText("Edit Inbox Watch")).toBeNull();
     expect(screen.queryByLabelText("Remove Notifier from team")).toBeNull();
+  });
+
+  it("shows status as a Bots-view dot + text, not a grey tag", async () => {
+    setup({ running: [{ id: "b1", name: "Inbox Watch" }], paused: ["b2"] });
+    const running = await screen.findByText("Running");
+    expect(running.closest("[data-testid='bot-status']")).not.toBeNull();
+    const dots = screen.getAllByTestId("bot-status-dot");
+    expect(dots[0]).toHaveClass("rounded-full", STATUS_DOT.Running);
+    expect(dots[1]).toHaveClass(STATUS_DOT.Paused);
+    expect(screen.queryAllByTestId("tag")).toHaveLength(0);
+  });
+
+  it("marks the lead with a LEAD label, like the Bots view", async () => {
+    setup({ bots: [...allBots, lead] });
+    await screen.findByText("Kitchen Sink Lead");
+    expect(screen.getByText("Lead")).toHaveClass("uppercase");
+    expect(screen.queryAllByTestId("tag")).toHaveLength(0);
   });
 
   it("empty team points to the Bots view", async () => {

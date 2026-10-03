@@ -311,6 +311,16 @@ function Tag3({ text, onClick, className }) {
   );
 }
 
+function Switch({ checked, onChange, disabled }) {
+  return React.createElement("input", {
+    type: "checkbox",
+    role: "switch",
+    checked: !!checked,
+    disabled: disabled,
+    onChange: (e) => onChange && onChange(e.target.checked),
+  });
+}
+
 function Tag({ text, onClick, className }) {
   return React.createElement(
     "span",
@@ -523,6 +533,7 @@ module.exports = {
   Card2,
   Card3,
   Tag,
+  Switch,
   Tag2,
   Tag3,
   SelectInput,
