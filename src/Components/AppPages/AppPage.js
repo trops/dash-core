@@ -4,9 +4,9 @@ import { getAppPage } from "../Navigation/appPages";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { DashboardsPage } from "./DashboardsPage";
 import { BotsPage } from "./BotsPage";
+import { WidgetsPage } from "./WidgetsPage";
 import { FoldersSection } from "../Settings/sections/FoldersSection";
 import { ProvidersSection } from "../Settings/sections/ProvidersSection";
-import { WidgetsSection } from "../Settings/sections/WidgetsSection";
 import { ThemesSection } from "../Settings/sections/ThemesSection";
 
 const CREATE_LABEL = {
@@ -23,8 +23,8 @@ const CREATE_LABEL = {
  * the left nav (app-navigation PRD NAV-003). Rendered outside
  * DashboardThemeProvider, so it uses the app theme.
  *
- * Dashboards (slice 2, NAV-005, with Folders beside it) and Bots (slice 3a,
- * NAV-006) are their own list + detail pages. The other pages still reuse their Settings section components
+ * Dashboards (slice 2, NAV-005, with Folders beside it), Bots (slice 3a,
+ * NAV-006) and Widgets (slice 3b, NAV-008) are their own list + detail pages. The other pages still reuse their Settings section components
  * (they don't depend on the modal) until their redesigns land.
  *
  * @param {string} pageKey            dashboards | bots | providers | widgets | themes
@@ -50,6 +50,8 @@ export const AppPage = ({
   onOpenDashboardConfig = null,
   // Bots page: open a bot in its team's Bots view (workspace, botId).
   onOpenBotInBotsView = null,
+  // Widgets page: Settings › Privacy & Security (widget permissions).
+  onOpenPrivacySettings = null,
 }) => {
   const page = getAppPage(pageKey);
   const { muted, strong, hairline } = useConfigTokens();
@@ -127,9 +129,11 @@ export const AppPage = ({
     );
   } else if (section === "widgets") {
     body = (
-      <WidgetsSection
+      <WidgetsPage
         workspaces={workspaces}
         credentials={credentials}
+        onOpenWorkspace={onOpenWorkspace}
+        onOpenPrivacySettings={onOpenPrivacySettings}
         {...createProps}
       />
     );

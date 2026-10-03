@@ -2397,6 +2397,9 @@ const DashboardStageInner = ({
                 onOpenBotsView={handleOpenDashboardBotsView}
                 onOpenDashboardConfig={handleOpenDashboardConfig}
                 onOpenBotInBotsView={handleOpenBotInBotsView}
+                onOpenPrivacySettings={() =>
+                  openAppSettings("privacy-security")
+                }
               />
             ) : (
               <div className="flex flex-1 items-center justify-center">

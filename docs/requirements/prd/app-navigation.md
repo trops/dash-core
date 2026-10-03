@@ -130,10 +130,10 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 **NAV-008: Widgets page**
 **Acceptance Criteria:**
 
-- [ ] AC1: The list mirrors the hierarchy **org → package → widgets**: org headings; package rows (widget count, version, Yours marker, amber dot for update available / unpublished changes) that expand to their widget rows.
-- [ ] AC2: Search matches package and widget names; **Org** filter (NAV-010); chips In use / Not used / Mine.
-- [ ] AC3: Package detail: full name, version and source, description, its widgets (each selectable), used on (dashboards, Open), needs providers, permissions; actions Update to vX (others' packages) and Uninstall.
-- [ ] AC4: Widget detail: link back to its package, used on, needs providers, permissions; Add to dashboard.
+- [x] AC1: The list mirrors the hierarchy **org → package → widgets**: org headings; package rows (widget count, version, Yours marker, amber dot for update available / unpublished changes) that expand to their widget rows.
+- [x] AC2: Search matches package and widget names; **Org** filter (NAV-010); chips In use / Not used / Mine.
+- [x] AC3: Package detail: full name, version and source, description, its widgets (each selectable), used on (dashboards, Open), needs providers, permissions; actions Update to vX (others' packages) and Uninstall.
+- [ ] AC4: Widget detail: link back to its package, used on, needs providers, permissions; Add to dashboard. _(Done except Add to dashboard — deferred to the live-preview slice.)_
 
 **NAV-009: Themes page**
 **Acceptance Criteria:**
@@ -243,6 +243,17 @@ NAV-010 (dash-react first), then NAV-006, NAV-008, NAV-009 in the list + detail 
 - Stage: `handleOpenBotInBotsView(ws, botId)` focuses the bot (`focusBot`, which also sets the stage mode to Bots) and opens the team's tab.
 - `BotsSection` is no longer used by any page; kept for the cleanup with `DashboardsSection`.
 
+**Implementation notes (slice 3b — Widgets, 2026-10-03):**
+
+- `AppPages/WidgetsPage.js` replaces `WidgetsSection` on the Widgets page. Filter bar: search (package id / name, widget names, descriptions), **Org** `FilterMenu` with package counts, chips All / In use / Not used / Mine, then "N updates · Update all" (existing `UpdateAllWidgetsModal` + preflight consent + sign-in gate), "Checking for updates…" and "Clean up N drafts" (confirmed).
+- List: org headings (registry scopes A-Z, then **AI-built** for `@ai-built` packages and drafts, **Local** for unscoped packages, **Built-in** last); package rows (box icon, name without scope — drafts as "<widget> (draft)", "N widgets · vX", amber dot when an update is available) expand to their widgets when selected; a search that matches widgets shows just those under the package.
+- Package detail: name, full id, source (Installed / AI-built / Draft / Built-in) + version, description, its widgets (each selectable, with how many dashboards use it), Used on (Open), Needs providers, Permissions ("Manage permissions" opens Settings › Privacy & Security). Actions: Update to vX (sign-in gate first), Resume (drafts), Publish… (installed packages), Open in Finder, Uninstall / Delete (confirmed, naming the dashboards that use it). Built-ins get no actions.
+- Widget detail: "← <package>" back, icon, name + component id, description, Used on, Needs providers with required tools. **Add to dashboard is deferred** (no flow yet for placing a widget outside edit mode) — with the live preview (NAV-011).
+- `AppPages/widgetSummary.js` (pure): `widgetOrgs` builds org → package → widgets with version, source, update, providers, usage; `filterOrgs` applies search / org / chip. Usage counts every page of a dashboard (`findWidgetUsage` only read `ws.layout`, so multi-page dashboards were missed). "Mine" is AI-built packages and drafts until widget ownership recognises the user's orgs (NAV-012).
+- `AppPages/useWidgetInstall.js`: the ZIP / folder install flow and progress-modal state, moved from `WidgetsSection`; New Widget shows the existing install picker (Widget Builder, Discover, ZIP, folder) in the detail panel, then the result.
+- Stage passes `onOpenPrivacySettings` → `openAppSettings("privacy-security")`.
+- `WidgetsSection` is no longer used by any page; kept for the cleanup.
+
 ### Phase 4: Previews and authoring
 
 NAV-011, NAV-012 (after the ownership fix), P2 items.
@@ -266,3 +277,4 @@ NAV-011, NAV-012 (after the ownership fix), P2 items.
 | 1.1     | 2026-10-03 | John   | Slice 1 implemented (Manage nav, page tabs)     |
 | 1.2     | 2026-10-03 | John   | Slice 2: Dashboards page, FilterMenu, Go to     |
 | 1.3     | 2026-10-03 | John   | Slice 3a: Bots page (list + detail)             |
+| 1.4     | 2026-10-03 | John   | Slice 3b: Widgets page (org → package → widget) |
