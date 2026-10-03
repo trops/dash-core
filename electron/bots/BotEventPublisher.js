@@ -21,6 +21,7 @@ const {
   toolPayload,
   buildBotEventMessage,
 } = require("./botEvents");
+const { appendAnswerText } = require("./answerText");
 
 class BotEventPublisher {
   /**
@@ -30,20 +31,25 @@ class BotEventPublisher {
   constructor({ publish, providerType }) {
     this._publish = publish;
     this._providerType = providerType;
-    /** @type {Map<string, { cause: {chain: string[], depth: number}, text: string[] }>} */
+    /** @type {Map<string, { cause: {chain: string[], depth: number}, text: string, afterTool: boolean }>} */
     this._runs = new Map();
   }
 
   /** A run is starting; `cause` is set when an event triggered it. */
   startRun(botId, cause = rootCause()) {
-    this._runs.set(botId, { cause, text: [] });
+    this._runs.set(botId, { cause, text: "", afterTool: false });
   }
 
   /** Every streamed BotEvent of the run; collects the answer text. */
   onRunEvent(botId, event) {
     const run = this._runs.get(botId);
-    if (run && event && event.type === "text" && event.text) {
-      run.text.push(event.text);
+    if (!run || !event) return;
+    if (event.type === "tool_call") run.afterTool = true;
+    if (event.type === "text" && event.text) {
+      run.text = appendAnswerText(run.text, event.text, {
+        afterTool: run.afterTool,
+      });
+      run.afterTool = false;
     }
   }
 
@@ -66,7 +72,7 @@ class BotEventPublisher {
   endRun(bot, record) {
     if (!bot || !record || record.skipped) return;
     const run = this._runs.get(bot.id);
-    const output = run ? run.text.join("") : "";
+    const output = run ? run.text : "";
     if (record.status === "failed") {
       this._send(
         bot,

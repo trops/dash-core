@@ -175,6 +175,20 @@ describe("BotRunner.run — happy path", () => {
     assert.equal(runs[0].run.output, "Found 3 important emails.");
   });
 
+  it("separates text written before and after a tool call", async () => {
+    const engine = mockEngine([
+      { type: "text", text: "I'll check what you " },
+      { type: "text", text: "prefer." },
+      { type: "tool_call", id: "t1", name: "team_list_bots" },
+      { type: "tool_result", id: "t1", output: "ok" },
+      { type: "text", text: "Done" },
+      { type: "done", stopReason: "end_turn" },
+    ]);
+    const { runner } = makeRunner(engine);
+    const record = await runner.run("bot_1", { prompt: "go" });
+    assert.equal(record.output, "I'll check what you prefer.\n\nDone");
+  });
+
   it("caps a long answer to its last 8 KB", async () => {
     const long = "a".repeat(9000) + "END";
     const engine = mockEngine([

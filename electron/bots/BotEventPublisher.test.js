@@ -43,6 +43,16 @@ describe("BotEventPublisher", () => {
     assert.equal(m.depth, 1);
   });
 
+  it("separates text written before and after a tool call", () => {
+    const { pub, published } = setup();
+    pub.startRun(bot.id);
+    pub.onRunEvent(bot.id, { type: "text", text: "Checking." });
+    pub.onRunEvent(bot.id, { type: "tool_call", name: "x" });
+    pub.onRunEvent(bot.id, { type: "text", text: "Done" });
+    pub.endRun(bot, { trigger: "manual", status: "completed" });
+    assert.equal(published[0].content.output, "Checking.\n\nDone");
+  });
+
   it("publishes failed with the error", () => {
     const { pub, published } = setup();
     pub.startRun(bot.id);

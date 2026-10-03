@@ -100,6 +100,20 @@ describe("AskLead", () => {
     expect(await screen.findByText("Done.")).toBeInTheDocument();
   });
 
+  it("separates streamed text before and after a tool call", () => {
+    const { listeners } = setup(() => new Promise(() => {}));
+    ask("Status?");
+    act(() => {
+      const send = (event) => listeners.stream({ botId: "lead_7", event });
+      send({ type: "text", text: "Checking." });
+      send({ type: "tool_call", id: "t1", name: "team_list_bots" });
+      send({ type: "text", text: "Done" });
+    });
+    expect(
+      screen.getByText((_c, el) => el.textContent === "Checking.\n\nDone"),
+    ).toBeInTheDocument();
+  });
+
   it("shows a failure plainly", async () => {
     setup(async () => ({ status: "failed", error: "No model source" }));
     ask("Hello?");

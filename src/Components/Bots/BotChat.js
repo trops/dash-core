@@ -19,6 +19,7 @@ import {
   errorNextSteps,
   toPlainText,
 } from "./botConversation";
+import { appendAnswerText } from "../../utils/answerText";
 
 /**
  * BotChat — a bot's conversation in the Bots view (bot-teams PRD TEAM-011).
@@ -111,10 +112,18 @@ export const BotChat = ({
       };
       let next = cur;
       if (event.type === "text") {
-        next = { ...cur, text: (cur.text || "") + (event.text || "") };
+        next = {
+          ...cur,
+          text: appendAnswerText(cur.text, event.text, {
+            afterTool: cur.afterTool,
+          }),
+          afterTool: false,
+        };
       } else if (event.type === "tool_call") {
         next = {
           ...cur,
+          // The next text starts a new paragraph.
+          afterTool: true,
           toolCalls: [
             ...cur.toolCalls,
             {

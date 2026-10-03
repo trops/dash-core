@@ -175,6 +175,25 @@ describe("BotChat — sending", () => {
     await act(async () => finish({ status: "completed", output: "Done" }));
     expect(await screen.findByText("Done")).toBeInTheDocument();
   });
+
+  it("separates streamed text before and after a tool call", async () => {
+    const { api, listeners } = setup();
+    api.run.mockImplementation(() => new Promise(() => {}));
+    await screen.findByText("Check my inbox");
+    fireEvent.change(composer(), { target: { value: "More?" } });
+    fireEvent.click(screen.getByText("Send"));
+    act(() => {
+      const send = (event) => listeners.stream({ botId: "b1", event });
+      send({ type: "text", text: "Checking." });
+      send({ type: "tool_call", id: "t1", name: "search_emails" });
+      send({ type: "tool_result", id: "t1" });
+      send({ type: "text", text: "Done" });
+    });
+    const bubbles = screen.getAllByTestId("answer-bubble");
+    expect(bubbles[bubbles.length - 1].textContent).toContain(
+      "Checking.\n\nDone",
+    );
+  });
 });
 
 describe("BotChat — approvals inline", () => {
