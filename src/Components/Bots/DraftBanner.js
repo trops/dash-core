@@ -93,7 +93,7 @@ export const DraftBanner = ({ draft, onDiscard, onOpenSettings = null }) => {
       ) : null}
 
       <span className={`text-xs ${muted}`}>
-        Nothing is turned on until you choose it below and Save. Providers and
+        Nothing is turned on until you accept it below and Save. Providers and
         tools start unselected.
       </span>
     </div>

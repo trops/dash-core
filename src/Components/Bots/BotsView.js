@@ -551,6 +551,8 @@ export const BotsView = ({
               onApprove={team ? team.approve : null}
               nameOf={nameOf}
               onOpenSettings={onOpenSettings}
+              drafts={isLead ? drafts : undefined}
+              onOpenDraft={isLead ? (id) => select(DRAFT_PREFIX + id) : null}
             />
           ) : null}
           {tab === "activity" && selected ? (
@@ -578,6 +580,7 @@ export const BotsView = ({
                   null
                 }
                 isCreating={!selected}
+                suggestions={selectedDraft ? selectedDraft.suggestions : null}
                 defaultWorkspaceId={workspace ? workspace.id : null}
                 providers={providers}
                 workspaces={workspaces}

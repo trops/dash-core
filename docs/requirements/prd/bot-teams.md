@@ -296,13 +296,13 @@ Want me to draft a bot that follows up on renewals?"
 > so that I can grow my team without knowing how bots are configured.
 
 **Priority:** P1
-**Status:** In Progress (5a shipped; 5b — one-click Accept on suggestions — next)
+**Status:** Implemented (5a + 5b)
 
 **Acceptance Criteria:**
 
 - [x] AC1: The lead's `propose_bot` tool produces a **draft**: name, instructions, providers and tools (from the user's existing Dash providers only), schedule, and event subscriptions (from the picker's catalogs, never invented event names).
 - [x] AC2: A draft is never saved or run by the lead. It opens the bot form prefilled (with Bot Builder's Chat pane when available, bot-factory US-017), with the lead's reasoning shown, for the user to edit and **Save**.
-- [ ] AC3: Tools in the draft appear as **pending suggestions** the user accepts individually (bot-factory US-017 AC5). Saving the bot doesn't grant tools beyond what the user accepted; runtime approvals still apply.
+- [x] AC3: Tools in the draft appear as **pending suggestions** the user accepts individually (bot-factory US-017 AC5). Saving the bot doesn't grant tools beyond what the user accepted; runtime approvals still apply.
 - [x] AC4: If the request needs a provider the user doesn't have, the draft says so and links to Settings › Providers (or the capability ladder, bot-factory US-025). It never installs anything.
 - [x] AC5: The AI Assistant can trigger the same flow ("ask the Sales lead to add a bot that…"). The draft still opens for the user's review.
 
@@ -321,12 +321,19 @@ Want me to draft a bot that follows up on renewals?"
 - Widget events can't be validated in the main process (their catalog lives in the renderer), so 5a drafts only trigger on team bots' events; users add widget triggers in the form.
 - Loop edge case: a brand-new bot can't be in a loop yet (nothing subscribes to it), so no check is needed at draft time.
 
+**Implementation notes (5b, 2026-10-03):**
+
+- **Accept in the form:** `BotDetail` takes the draft's `suggestions`. A suggested provider that's still off shows "Suggested by the lead", its tools, and **Accept** (turns the provider on with exactly the suggested tools) — or **Accept (all tools)** when its tools couldn't be checked. **Accept all suggestions** sits at the top of Providers. Nothing changes until the user clicks; Save still only grants what's ticked.
+- **Review draft** under the lead's answer that produced it: answer turns keep their run's start/end, and a draft from that lead created in that window is linked. Saved or discarded drafts no longer show.
+- `needs` cleanup: bracketed text and a trailing "provider(s)" are dropped before the 40-character note cutoff ("Microsoft Teams provider (to post the summary)" → missing "Microsoft Teams").
+- **Follow-ups:** (1) a lead can't see whether its earlier drafts still exist — continuing an old conversation, it may say a draft is waiting when it was already saved/discarded; listing current drafts in `team_list_bots` would fix it. (2) Show the lead's (and bots') answers in a chat bubble like the user's messages, so it's clear who's talking.
+
 **Definition of Done:**
 
-- [ ] Code implemented and reviewed
-- [ ] Unit tests pass
+- [x] Code implemented and reviewed
+- [x] Unit tests pass
 - [ ] Integration tests pass
-- [ ] Acceptance criteria verified
+- [x] Acceptance criteria verified
 - [ ] Documentation updated
 
 ---
@@ -868,3 +875,4 @@ None open. The six questions raised in the first draft were resolved on 2026-10-
 | 1.4     | 2026-10-02 | John   | TEAM-011 gaps closed (triggers, approvals, next steps, guard)    |
 | 1.5     | 2026-10-02 | John   | TEAM-004 implemented (slice 2b: Assistant ↔ team leads)          |
 | 1.6     | 2026-10-02 | John   | TEAM-005 5a: lead drafts bots (propose_bot, Drafts in Bots view) |
+| 1.7     | 2026-10-03 | John   | TEAM-005 5b: Accept suggestions, Review draft link; Implemented  |

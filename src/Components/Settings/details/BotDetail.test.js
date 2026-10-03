@@ -877,3 +877,115 @@ describe("BotDetail — onDirtyChange", () => {
     await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
   });
 });
+
+describe("BotDetail — a lead's suggestions (TEAM-005 5b)", () => {
+  const sources = [
+    {
+      name: "Gmail New",
+      type: "gmail",
+      running: true,
+      toolCount: 3,
+      declared: true,
+      tools: ["search_emails", "read_email", "send_email"],
+    },
+    {
+      name: "Slack",
+      type: "slack",
+      running: false,
+      toolCount: null,
+      declared: false,
+      tools: null,
+    },
+  ];
+  const suggestions = [
+    {
+      provider: "Gmail New",
+      tools: ["search_emails", "read_email"],
+      toolsChecked: true,
+    },
+    { provider: "Slack", tools: ["post_message"], toolsChecked: false },
+  ];
+  const draftBot = {
+    name: "Morning Digest",
+    instructions: "Summarise urgent mail.",
+    mcpServers: [],
+    toolSelections: {},
+    schedules: [],
+    subscriptions: [],
+  };
+
+  beforeEach(() => {
+    window.mainApi = {
+      bots: { listToolSources: jest.fn().mockResolvedValue(sources) },
+    };
+  });
+  afterEach(() => {
+    delete window.mainApi;
+  });
+
+  const renderDraft = (onSave = jest.fn().mockResolvedValue({})) => {
+    render(
+      <BotDetail
+        bot={draftBot}
+        isCreating
+        providers={{}}
+        suggestions={suggestions}
+        onSave={onSave}
+      />,
+    );
+    return onSave;
+  };
+
+  it("marks suggested providers, with nothing selected yet", async () => {
+    renderDraft();
+    expect(await screen.findByLabelText("Gmail New")).not.toBeChecked();
+    expect(screen.getAllByText("Suggested by the lead")).toHaveLength(2);
+  });
+
+  it("Accept turns the provider on with exactly the suggested tools", async () => {
+    const onSave = renderDraft();
+    await screen.findByLabelText("Gmail New");
+    fireEvent.click(screen.getByRole("button", { name: "Accept Gmail New" }));
+    expect(screen.getByLabelText("Gmail New")).toBeChecked();
+    expect(screen.getByLabelText("Search emails")).toBeChecked();
+    expect(screen.getByLabelText("Read email")).toBeChecked();
+    expect(screen.getByLabelText("Send email")).not.toBeChecked();
+    fireEvent.click(screen.getByText("Create"));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    const saved = onSave.mock.calls[0][0];
+    expect(saved.mcpServers).toEqual(["Gmail New"]);
+    expect(saved.toolSelections).toEqual({
+      "Gmail New": ["search_emails", "read_email"],
+    });
+  });
+
+  it("a provider whose tools couldn't be checked says it allows all", async () => {
+    renderDraft();
+    await screen.findByLabelText("Slack");
+    const btn = screen.getByRole("button", { name: "Accept Slack" });
+    expect(btn).toHaveTextContent("Accept (all tools)");
+    fireEvent.click(btn);
+    expect(screen.getByLabelText("Slack")).toBeChecked();
+  });
+
+  it("Accept all suggestions", async () => {
+    const onSave = renderDraft();
+    await screen.findByLabelText("Gmail New");
+    fireEvent.click(screen.getByText("Accept all suggestions"));
+    expect(screen.getByLabelText("Gmail New")).toBeChecked();
+    expect(screen.getByLabelText("Slack")).toBeChecked();
+    expect(screen.queryByText("Accept all suggestions")).toBeNull();
+    fireEvent.click(screen.getByText("Create"));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0].mcpServers).toEqual(["Gmail New", "Slack"]);
+  });
+
+  it("no suggestions → nothing extra", async () => {
+    render(
+      <BotDetail bot={draftBot} isCreating providers={{}} onSave={jest.fn()} />,
+    );
+    await screen.findByLabelText("Gmail New");
+    expect(screen.queryByText("Suggested by the lead")).toBeNull();
+    expect(screen.queryByText("Accept all suggestions")).toBeNull();
+  });
+});

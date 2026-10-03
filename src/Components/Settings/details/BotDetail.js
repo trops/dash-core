@@ -154,6 +154,10 @@ export const BotDetail = ({
   // Optional "Discard changes" (the Bots view's inline Settings tab): the
   // host resets the form; enabled only with unsaved changes.
   onDiscard = null,
+  // A team lead's suggested providers/tools for a drafted bot (TEAM-005):
+  // [{ provider, tools, toolsChecked }]. Nothing is selected until the user
+  // accepts a suggestion (or ticks it themselves).
+  suggestions = null,
 }) => {
   const [name, setName] = useState(bot?.name || "");
   const [instructions, setInstructions] = useState(bot?.instructions || "");
@@ -398,6 +402,35 @@ export const BotDetail = ({
     });
   };
 
+  // Accept a lead's suggestion: turn the provider on with exactly the
+  // suggested tools — or every tool when they couldn't be checked.
+  const acceptSuggestion = (sug) => {
+    if (!sug || !sug.provider) return;
+    setSelectedServers((prev) =>
+      prev.includes(sug.provider) ? prev : [...prev, sug.provider],
+    );
+    const src = availableServers.find((x) => x.serverName === sug.provider);
+    const known = src && Array.isArray(src.tools) ? src.tools : null;
+    const picked =
+      sug.toolsChecked && known && Array.isArray(sug.tools)
+        ? sug.tools.filter((t) => known.includes(t))
+        : null;
+    setToolSelections((prev) => {
+      const copy = { ...prev };
+      if (picked && picked.length && picked.length < known.length) {
+        copy[sug.provider] = picked;
+      } else {
+        delete copy[sug.provider];
+      }
+      return copy;
+    });
+  };
+  const suggestionFor = (serverName) =>
+    (suggestions || []).find((x) => x.provider === serverName) || null;
+  const pendingSuggestions = (suggestions || []).filter(
+    (x) => !selectedServers.includes(x.provider),
+  );
+
   const setAllTools = (serverName, on) => {
     setToolSelections((prev) => {
       const copy = { ...prev };
@@ -532,10 +565,20 @@ export const BotDetail = ({
             What this bot can use — your MCP providers from Settings →
             Providers. The bot starts any that aren&apos;t running when it runs.
           </span>
+          {pendingSuggestions.length ? (
+            <div>
+              <Button3
+                title="Accept all suggestions"
+                size="xs"
+                onClick={() => pendingSuggestions.forEach(acceptSuggestion)}
+              />
+            </div>
+          ) : null}
           {availableServers.length ? (
             <div className="flex flex-col gap-1">
               {availableServers.map((s) => {
                 const on = selectedServers.includes(s.serverName);
+                const sug = on ? null : suggestionFor(s.serverName);
                 return (
                   <div key={s.serverName} className="flex flex-col gap-1">
                     <div className="flex flex-row items-center justify-between gap-3">
@@ -546,6 +589,28 @@ export const BotDetail = ({
                       />
                       <span className="text-xs opacity-50">{s.status}</span>
                     </div>
+                    {sug ? (
+                      <div className="flex flex-row flex-wrap items-center gap-2 pl-7">
+                        <span className="text-xs text-amber-300">
+                          Suggested by the lead
+                        </span>
+                        {sug.tools && sug.tools.length ? (
+                          <span className="text-xs opacity-60 font-mono">
+                            {sug.tools.join(", ")}
+                          </span>
+                        ) : null}
+                        <Button3
+                          title={
+                            sug.toolsChecked && sug.tools && sug.tools.length
+                              ? "Accept"
+                              : "Accept (all tools)"
+                          }
+                          size="xs"
+                          ariaLabel={`Accept ${s.label}`}
+                          onClick={() => acceptSuggestion(sug)}
+                        />
+                      </div>
+                    ) : null}
                     {on ? (
                       <div className="flex flex-col gap-1 pl-7 pb-2">
                         {s.tools && s.tools.length ? (
