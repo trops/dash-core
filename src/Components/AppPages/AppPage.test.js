@@ -40,6 +40,11 @@ const renderMock = (name, props) => (
     {props.onOpenBotsView ? (
       <button onClick={() => props.onOpenBotsView({ id: 1 })}>bots view</button>
     ) : null}
+    {props.onOpenBotInBotsView ? (
+      <button onClick={() => props.onOpenBotInBotsView({ id: 1 }, "b1")}>
+        bot in bots view
+      </button>
+    ) : null}
     {props.onOpenDashboardConfig ? (
       <button onClick={() => props.onOpenDashboardConfig({ id: 1 })}>
         dashboard config
@@ -55,8 +60,9 @@ jest.mock("./DashboardsPage", () => ({
 jest.mock("../Settings/sections/FoldersSection", () => ({
   FoldersSection: mockSection("folders"),
 }));
-jest.mock("../Settings/sections/BotsSection", () => ({
-  BotsSection: mockSection("bots"),
+// Slice 3a: the Bots page (list + detail) replaced BotsSection.
+jest.mock("./BotsPage", () => ({
+  BotsPage: mockSection("bots"),
 }));
 jest.mock("../Settings/sections/ProvidersSection", () => ({
   ProvidersSection: mockSection("providers"),
@@ -155,6 +161,15 @@ describe("AppPage", () => {
     expect(onOpenBotsView).toHaveBeenCalledWith({ id: 1 });
     fireEvent.click(screen.getByText("dashboard config"));
     expect(onOpenDashboardConfig).toHaveBeenCalledWith({ id: 1 });
+  });
+
+  it("Bots: opens a bot in its team's Bots view", () => {
+    const onOpenBotInBotsView = jest.fn();
+    render(
+      <AppPage pageKey="bots" onOpenBotInBotsView={onOpenBotInBotsView} />,
+    );
+    fireEvent.click(screen.getByText("bot in bots view"));
+    expect(onOpenBotInBotsView).toHaveBeenCalledWith({ id: 1 }, "b1");
   });
 
   it("renders nothing for an unknown page", () => {

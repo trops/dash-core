@@ -72,6 +72,15 @@ describe("DashboardStage — Manage pages", () => {
     expect(src).toMatch(/pending\.kind === "switch-tab"/);
   });
 
+  it("the Bots page opens a bot in its team's Bots view", () => {
+    expect(src).toMatch(
+      /function handleOpenBotInBotsView\(ws, botId\) \{[\s\S]*?focusBot\(ws\.id, botId\);[\s\S]*?handleOpenTabGuarded\(ws\);/,
+    );
+    expect(src).toMatch(
+      /<AppPage[\s\S]*?onOpenBotInBotsView=\{handleOpenBotInBotsView\}/,
+    );
+  });
+
   it("closing by dashboard name never closes a page tab", () => {
     expect(src).toMatch(
       /\(openTabsRef\.current \|\| \[\]\)\.find\(\s*\(t\) =>\s*t\.workspace &&/,
