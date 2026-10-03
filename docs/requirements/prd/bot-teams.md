@@ -296,20 +296,30 @@ Want me to draft a bot that follows up on renewals?"
 > so that I can grow my team without knowing how bots are configured.
 
 **Priority:** P1
-**Status:** Backlog
+**Status:** In Progress (5a shipped; 5b — one-click Accept on suggestions — next)
 
 **Acceptance Criteria:**
 
-- [ ] AC1: The lead's `propose_bot` tool produces a **draft**: name, instructions, providers and tools (from the user's existing Dash providers only), schedule, and event subscriptions (from the picker's catalogs, never invented event names).
-- [ ] AC2: A draft is never saved or run by the lead. It opens the bot form prefilled (with Bot Builder's Chat pane when available, bot-factory US-017), with the lead's reasoning shown, for the user to edit and **Save**.
+- [x] AC1: The lead's `propose_bot` tool produces a **draft**: name, instructions, providers and tools (from the user's existing Dash providers only), schedule, and event subscriptions (from the picker's catalogs, never invented event names).
+- [x] AC2: A draft is never saved or run by the lead. It opens the bot form prefilled (with Bot Builder's Chat pane when available, bot-factory US-017), with the lead's reasoning shown, for the user to edit and **Save**.
 - [ ] AC3: Tools in the draft appear as **pending suggestions** the user accepts individually (bot-factory US-017 AC5). Saving the bot doesn't grant tools beyond what the user accepted; runtime approvals still apply.
-- [ ] AC4: If the request needs a provider the user doesn't have, the draft says so and links to Settings › Providers (or the capability ladder, bot-factory US-025). It never installs anything.
-- [ ] AC5: The AI Assistant can trigger the same flow ("ask the Sales lead to add a bot that…"). The draft still opens for the user's review.
+- [x] AC4: If the request needs a provider the user doesn't have, the draft says so and links to Settings › Providers (or the capability ladder, bot-factory US-025). It never installs anything.
+- [x] AC5: The AI Assistant can trigger the same flow ("ask the Sales lead to add a bot that…"). The draft still opens for the user's review.
 
 **Edge Cases:**
 
 - Request duplicates an existing member → the lead points to that bot and offers to adjust it instead.
 - Request would wire bots into a loop → the draft is flagged with the chain the loop guard would refuse.
+
+**Implementation notes (5a, 2026-10-02):**
+
+- The lead gets two tools: **`team_providers`** (the user's providers — name, type, tool names; nothing secret) and **`propose_bot`**. Its instructions say to check providers, draft with propose_bot, and never claim a draft is created; earlier generated instructions upgrade automatically (a history of earlier "action" sentences).
+- **`electron/bots/botDrafts.js`** builds the draft: providers matched by name, else by type ("gmail" → each Gmail provider); tools filtered to what the provider has (or marked "couldn't check"); schedule kept only if croner parses it; event triggers only to this team's bots' completed/failed events; a duplicate name is flagged; short `needs` → missing providers (with the user's available providers listed back to the lead), longer ones → notes. The draft's own providers/tools are **empty** — suggestions only (so AC3's "nothing granted beyond what the user accepts" holds; one-click Accept is 5b).
+- Drafts live in memory (10 per dashboard), broadcast `bot-drafts-changed`, and are listed/dismissed over IPC. Not kept across restarts.
+- Bots view: a **Drafts** section; opening one shows the new-bot form prefilled under a **DraftBanner** (reasoning, suggestions, missing providers → Settings › Providers, notes, left-out items, duplicate warning). Create saves a real bot and removes the draft; Discard draft removes it.
+- AI Assistant: `ask_team_lead` adds "Draft '<name>' is waiting for the user's review…" when the lead drafted during the ask.
+- Widget events can't be validated in the main process (their catalog lives in the renderer), so 5a drafts only trigger on team bots' events; users add widget triggers in the form.
+- Loop edge case: a brand-new bot can't be in a loop yet (nothing subscribes to it), so no check is needed at draft time.
 
 **Definition of Done:**
 
@@ -849,11 +859,12 @@ None open. The six questions raised in the first draft were resolved on 2026-10-
 
 ## Revision History
 
-| Version | Date       | Author | Changes                                                       |
-| ------- | ---------- | ------ | ------------------------------------------------------------- |
-| 1.0     | 2026-10-01 | John   | Initial draft                                                 |
-| 1.1     | 2026-10-01 | John   | Resolved the six open questions (proposed answers accepted)   |
-| 1.2     | 2026-10-02 | John   | Added TEAM-011 Bots view (from the approved mockup)           |
-| 1.3     | 2026-10-02 | John   | TEAM-011 B2 (Bots view UI) implementation notes               |
-| 1.4     | 2026-10-02 | John   | TEAM-011 gaps closed (triggers, approvals, next steps, guard) |
-| 1.5     | 2026-10-02 | John   | TEAM-004 implemented (slice 2b: Assistant ↔ team leads)       |
+| Version | Date       | Author | Changes                                                          |
+| ------- | ---------- | ------ | ---------------------------------------------------------------- |
+| 1.0     | 2026-10-01 | John   | Initial draft                                                    |
+| 1.1     | 2026-10-01 | John   | Resolved the six open questions (proposed answers accepted)      |
+| 1.2     | 2026-10-02 | John   | Added TEAM-011 Bots view (from the approved mockup)              |
+| 1.3     | 2026-10-02 | John   | TEAM-011 B2 (Bots view UI) implementation notes                  |
+| 1.4     | 2026-10-02 | John   | TEAM-011 gaps closed (triggers, approvals, next steps, guard)    |
+| 1.5     | 2026-10-02 | John   | TEAM-004 implemented (slice 2b: Assistant ↔ team leads)          |
+| 1.6     | 2026-10-02 | John   | TEAM-005 5a: lead drafts bots (propose_bot, Drafts in Bots view) |

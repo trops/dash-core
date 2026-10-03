@@ -150,6 +150,8 @@ function makeTeamToolHandlers({
         );
       }
 
+      const askedAt = Date.now();
+
       const result = await bots.askLead(lead.id, question, {
         via: "assistant",
       });
@@ -165,8 +167,24 @@ function makeTeamToolHandlers({
           }`,
         );
       }
+      // A draft the lead made during this ask (propose_bot, TEAM-005).
+      const drafts = (
+        bots.listDrafts ? bots.listDrafts(ws.id) || [] : []
+      ).filter(
+        (d) =>
+          d.leadId === lead.id && Date.parse(d.createdAt) >= askedAt - 1000,
+      );
+      const draftNote = drafts.length
+        ? "\n\n" +
+          drafts
+            .map(
+              (d) =>
+                `Draft "${d.definition.name}" is waiting for the user's review in ${name}'s Bots view (under Drafts) — it is not created until they save it.`,
+            )
+            .join("\n")
+        : "";
       return reply(
-        `Team: ${name} (lead: ${lead.name})\n\n${result.output || "(no answer)"}`,
+        `Team: ${name} (lead: ${lead.name})\n\n${result.output || "(no answer)"}${draftNote}`,
       );
     },
   };
@@ -200,6 +218,7 @@ function registerTeamTools() {
       list: () => botController.list(),
       getRuns: (id, opts) => botController.getRuns(id, opts),
       leadAvailability: (id) => botController.leadAvailability(id),
+      listDrafts: (wsId) => botController.listDrafts(wsId),
       askLead: (id, q, opts) => botController.askLead(id, q, opts),
     },
   });

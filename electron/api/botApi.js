@@ -37,11 +37,14 @@ const {
   BOTS_ASK_LEAD,
   BOTS_GET_RUNS,
   BOTS_LIST_RECENT_RUNS,
+  BOTS_LIST_DRAFTS,
+  BOTS_DISMISS_DRAFT,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
   BOT_RUN_ACTIVE,
   BOT_LIST_CHANGED,
+  BOT_DRAFTS_CHANGED,
 } = require("../events/botEvents");
 
 let _nextListenerId = 0;
@@ -69,6 +72,12 @@ const botApi = {
   getRuns: (botId, limit) =>
     ipcRenderer.invoke(BOTS_GET_RUNS, { botId, limit }),
   stop: (botId) => ipcRenderer.invoke(BOTS_STOP, { botId }),
+  /** Bots a team lead drafted for this dashboard, awaiting review (TEAM-005). */
+  listDrafts: (workspaceId) =>
+    ipcRenderer.invoke(BOTS_LIST_DRAFTS, { workspaceId }),
+  /** Remove a draft (discarded, or saved as a real bot). */
+  dismissDraft: (draftId) =>
+    ipcRenderer.invoke(BOTS_DISMISS_DRAFT, { draftId }),
   /** The latest runs across every bot, newest first (the Bot monitor). */
   listRecentRuns: (limit) =>
     ipcRenderer.invoke(BOTS_LIST_RECENT_RUNS, { limit }),
@@ -144,6 +153,8 @@ const botApi = {
   onRunActive: (callback) => _addListener(BOT_RUN_ACTIVE, callback),
   /** A bot was created, edited or deleted anywhere — refresh lists. */
   onListChanged: (callback) => _addListener(BOT_LIST_CHANGED, callback),
+  /** A lead drafted a bot, or a draft was saved/discarded. */
+  onDraftsChanged: (callback) => _addListener(BOT_DRAFTS_CHANGED, callback),
 
   removeListener: (id) => {
     const entry = _listenerMap.get(id);

@@ -39,6 +39,9 @@ const BOTS_ASK_LEAD = "bots-ask-lead";
 const BOTS_GET_RUNS = "bots-get-runs";
 // Bot monitor (TEAM-011 B3): the latest runs across every bot.
 const BOTS_LIST_RECENT_RUNS = "bots-list-recent-runs";
+// Lead drafts (TEAM-005): bots a team lead proposed, awaiting review.
+const BOTS_LIST_DRAFTS = "bots-list-drafts";
+const BOTS_DISMISS_DRAFT = "bots-dismiss-draft";
 
 // --- Main → Renderer (send) ---
 const BOT_STREAM = "bot-stream"; // { botId, event: BotEvent }
@@ -47,6 +50,8 @@ const BOT_BUDGET_ALERT = "bot-budget-alert"; // { botId, cost, estimated, status
 const BOT_RUN_ACTIVE = "bot-run-active"; // { count, running: string[] }
 // A bot was created, edited or deleted (anywhere) — refresh team lists.
 const BOT_LIST_CHANGED = "bot-list-changed"; // {}
+// A lead drafted a bot, or a draft was saved/discarded.
+const BOT_DRAFTS_CHANGED = "bot-drafts-changed"; // {}
 
 module.exports = {
   BOTS_LIST,
@@ -79,9 +84,12 @@ module.exports = {
   BOTS_ASK_LEAD,
   BOTS_GET_RUNS,
   BOTS_LIST_RECENT_RUNS,
+  BOTS_LIST_DRAFTS,
+  BOTS_DISMISS_DRAFT,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
   BOT_RUN_ACTIVE,
   BOT_LIST_CHANGED,
+  BOT_DRAFTS_CHANGED,
 };

@@ -28,7 +28,20 @@ export function useTeamBots(workspaceId) {
   const [approvals, setApprovals] = useState(EMPTY);
   const [lastRunByBot, setLastRunByBot] = useState({});
   const [loading, setLoading] = useState(true);
+  // Bots this dashboard's lead drafted, awaiting review (TEAM-005).
+  const [drafts, setDrafts] = useState(EMPTY);
   const active = workspaceId !== null && workspaceId !== undefined;
+
+  const loadDrafts = useCallback(async () => {
+    const bots_ = api();
+    if (!active || !bots_ || !bots_.listDrafts) return;
+    try {
+      const list = await bots_.listDrafts(String(workspaceId));
+      setDrafts(Array.isArray(list) ? list : EMPTY);
+    } catch (_e) {
+      // keep the last good list
+    }
+  }, [active, workspaceId]);
 
   const loadLastRun = useCallback(async (botId) => {
     const bots_ = api();
@@ -63,13 +76,13 @@ export function useTeamBots(workspaceId) {
       setRunning((run || []).map((r) => (r && r.id) || r));
       setPaused(pause || NOT_PAUSED);
       setApprovals(pending || EMPTY);
-      await Promise.all(team.map((b) => loadLastRun(b.id)));
+      await Promise.all([...team.map((b) => loadLastRun(b.id)), loadDrafts()]);
     } catch (_e) {
       // keep the last good view on a transient IPC error
     } finally {
       setLoading(false);
     }
-  }, [active, workspaceId, loadLastRun]);
+  }, [active, workspaceId, loadLastRun, loadDrafts]);
 
   useEffect(() => {
     refresh();
@@ -110,15 +123,25 @@ export function useTeamBots(workspaceId) {
     if (bots_.onListChanged) {
       ids.push(bots_.onListChanged(() => refresh()));
     }
+    // A lead drafted a bot, or a draft was saved/discarded.
+    if (bots_.onDraftsChanged) {
+      ids.push(bots_.onDraftsChanged(() => loadDrafts()));
+    }
     return () => {
       for (const id of ids) if (bots_.removeListener) bots_.removeListener(id);
     };
-  }, [active, loadLastRun, refresh]);
+  }, [active, loadLastRun, refresh, loadDrafts]);
 
   const approve = useCallback(async (approvalId, decision) => {
     const bots_ = api();
     if (bots_ && bots_.approve) await bots_.approve(approvalId, decision);
     setApprovals((prev) => prev.filter((a) => a.id !== approvalId));
+  }, []);
+
+  const dismissDraft = useCallback(async (draftId) => {
+    const bots_ = api();
+    if (bots_ && bots_.dismissDraft) await bots_.dismissDraft(draftId);
+    setDrafts((prev) => prev.filter((d) => d.id !== draftId));
   }, []);
 
   return useMemo(() => {
@@ -152,6 +175,8 @@ export function useTeamBots(workspaceId) {
       approve,
       refresh,
       reloadRuns: loadLastRun,
+      drafts,
+      dismissDraft,
     };
   }, [
     bots,
@@ -163,5 +188,7 @@ export function useTeamBots(workspaceId) {
     approve,
     refresh,
     loadLastRun,
+    drafts,
+    dismissDraft,
   ]);
 }

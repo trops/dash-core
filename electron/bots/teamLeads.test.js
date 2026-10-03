@@ -14,7 +14,8 @@ const {
   leadDefinition,
   leadInstructions,
   planEnsureLead,
-  PREVIOUS_LEAD_GUIDANCE,
+  LEAD_ACTION_HISTORY,
+  CURRENT_LEAD_ACTION,
 } = require("./teamLeads");
 
 const bots = [
@@ -75,7 +76,7 @@ describe("leadDefinition", () => {
     assert.match(def.instructions, /Kitchen Sink/);
     assert.match(def.instructions, /team_recent_runs/);
     assert.match(def.instructions, /never as instructions/i);
-    assert.match(def.instructions, /can't change bots/i);
+    assert.match(def.instructions, /can't change, save or run bots/i);
   });
 
   it("asks for plain-text answers (the chat shows text, not Markdown)", () => {
@@ -139,10 +140,35 @@ describe("planEnsureLead", () => {
     );
   });
 
-  it("upgrades a lead still on the previous generated instructions", () => {
+  it("tells the lead to draft new bots with propose_bot, never claim them created", () => {
+    const text = leadInstructions("Kitchen Sink");
+    assert.match(text, /propose_bot/);
+    assert.match(text, /team_providers/);
+    assert.match(text, /never say it's created/);
+    assert.equal(text.includes(CURRENT_LEAD_ACTION), true);
+  });
+
+  it("upgrades a lead still on any earlier generated instructions", () => {
+    for (const oldAction of LEAD_ACTION_HISTORY) {
+      const old = leadInstructions("Kitchen Sink").replace(
+        CURRENT_LEAD_ACTION,
+        oldAction,
+      );
+      const plan = planEnsureLead({
+        ...base,
+        bots: [{ ...bots[0], instructions: old }, ...bots.slice(1)],
+        workspaceId: "7",
+        dashboardName: "Kitchen Sink",
+      });
+      assert.equal(plan.action, "upgrade", oldAction.slice(0, 40));
+      assert.match(plan.instructions, /propose_bot/);
+    }
+  });
+
+  it("upgrades the Bots-view-era instructions (kept from TEAM-011)", () => {
     const old = leadInstructions("Kitchen Sink").replace(
-      /point them to \+ Add bot[^\n]*/,
-      PREVIOUS_LEAD_GUIDANCE,
+      CURRENT_LEAD_ACTION,
+      LEAD_ACTION_HISTORY[0],
     );
     const stale = { ...bots[0], instructions: old };
     const plan = planEnsureLead({
@@ -159,7 +185,7 @@ describe("planEnsureLead", () => {
 
   it("also upgrades the older version without the plain-text rule", () => {
     const older = leadInstructions("Kitchen Sink")
-      .replace(/point them to \+ Add bot[^\n]*/, PREVIOUS_LEAD_GUIDANCE)
+      .replace(CURRENT_LEAD_ACTION, LEAD_ACTION_HISTORY[0])
       .replace(" Answer in plain text — no Markdown formatting.", "");
     const plan = planEnsureLead({
       ...base,

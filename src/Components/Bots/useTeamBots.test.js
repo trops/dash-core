@@ -23,6 +23,9 @@ function setup(over = {}) {
     onApprovalPending: jest.fn((cb) => ((listeners.approval = cb), "l2")),
     onStream: jest.fn((cb) => ((listeners.stream = cb), "l3")),
     onListChanged: jest.fn((cb) => ((listeners.listChanged = cb), "l4")),
+    listDrafts: jest.fn().mockResolvedValue([]),
+    dismissDraft: jest.fn().mockResolvedValue({ dismissed: true }),
+    onDraftsChanged: jest.fn((cb) => ((listeners.draftsChanged = cb), "l5")),
     removeListener: jest.fn(),
     ...over,
   };
@@ -134,5 +137,26 @@ describe("useTeamBots — bots changed elsewhere (TEAM-011 refresh)", () => {
     );
     unmount();
     expect(api.removeListener).toHaveBeenCalledWith("l4");
+  });
+});
+
+describe("useTeamBots — lead drafts (TEAM-005)", () => {
+  it("loads this dashboard's drafts, reloads on change, and dismisses", async () => {
+    const { api, listeners } = setup();
+    api.listDrafts.mockResolvedValue([
+      { id: "d1", definition: { name: "Digest" } },
+    ]);
+    const { result } = renderHook(() => useTeamBots("7"));
+    await waitFor(() => expect(result.current.drafts).toHaveLength(1));
+    expect(api.listDrafts).toHaveBeenCalledWith("7");
+    api.listDrafts.mockResolvedValue([]);
+    await act(async () => {
+      listeners.draftsChanged({});
+    });
+    await waitFor(() => expect(result.current.drafts).toHaveLength(0));
+    await act(async () => {
+      await result.current.dismissDraft("d1");
+    });
+    expect(api.dismissDraft).toHaveBeenCalledWith("d1");
   });
 });

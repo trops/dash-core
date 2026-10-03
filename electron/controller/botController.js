@@ -40,6 +40,7 @@ const {
 const { isLead, leadOf, planEnsureLead } = require("../bots/teamLeads");
 const { recentRuns } = require("../bots/recentRuns");
 const { coalesce } = require("../bots/coalesce");
+const { buildDraft, DraftStore } = require("../bots/botDrafts");
 const { onWorkspaceDeleted } = require("../utils/workspaceEvents");
 const {
   checkChain,
@@ -73,6 +74,7 @@ const {
   BOT_BUDGET_ALERT,
   BOT_RUN_ACTIVE,
   BOT_LIST_CHANGED,
+  BOT_DRAFTS_CHANGED,
 } = require("../events/botEvents");
 
 /** Pricing lookup for BudgetController: curated-model pricing by provider. */
@@ -141,6 +143,9 @@ const botController = {
     // Scoped, durable bot memory (P1: FR-010), served as in-process memory_*
     // tools that every bot can use without a consent prompt.
     this._memory = new BotMemory({ persistence: host.memoryPersistence });
+    // Bots a team lead drafted, awaiting the user's review (TEAM-005). In
+    // memory only — a restart drops them (the lead's answer still says so).
+    this._drafts = new DraftStore();
 
     // Event-bus bridge (P1: FR-009): per-bot cooldown so a chatty event can't
     // flood the runner with event-triggered runs.
@@ -218,6 +223,13 @@ const botController = {
     if (this._offStoreChange) this._offStoreChange();
     this._offStoreChange = this._store.onChange(() =>
       this._notifyListChanged(),
+    );
+    this._notifyDraftsChanged = coalesce(() =>
+      this._broadcast(BOT_DRAFTS_CHANGED, {}),
+    );
+    if (this._offDraftsChange) this._offDraftsChange();
+    this._offDraftsChange = this._drafts.onChange(() =>
+      this._notifyDraftsChanged(),
     );
 
     this._ready = true;
@@ -465,6 +477,43 @@ const botController = {
       paused: this._pause.isPaused(botId),
       overBudget: this._budgets.isOverBudget(botId, (bot || {}).workspaceId),
     };
+  },
+
+  // ---- Lead drafts (TEAM-005) -----------------------------------------------
+
+  /**
+   * A lead's propose_bot: validate the proposal against the user's providers
+   * and this team's bots, and keep it as a draft for review. Never saves,
+   * grants or runs anything.
+   */
+  _proposeBot({ workspaceId, botId }, proposal) {
+    const team = this._store
+      .list()
+      .filter(
+        (b) =>
+          b.workspaceId !== null &&
+          b.workspaceId !== undefined &&
+          String(b.workspaceId) === String(workspaceId),
+      );
+    const res = buildDraft({
+      proposal,
+      sources: this.listToolSources(workspaceId),
+      team,
+      workspaceId,
+      leadId: botId,
+    });
+    if (res.draft) this._drafts.add(res.draft);
+    return res;
+  },
+
+  /** Drafts awaiting review on a dashboard, oldest first. */
+  listDrafts(workspaceId) {
+    return this._drafts ? this._drafts.list(workspaceId) : [];
+  },
+
+  /** Remove a draft (discarded, or saved as a real bot). */
+  dismissDraft(draftId) {
+    return { dismissed: this._drafts ? this._drafts.remove(draftId) : false };
   },
 
   stop(botId) {
@@ -813,6 +862,9 @@ const botController = {
           memory: this._memory,
           isRunning: (id) => this._runner.listActive().includes(id),
           isPaused: (id) => this._pause.isPaused(id),
+          proposeBot: (teamCtx, proposal) =>
+            this._proposeBot(teamCtx, proposal),
+          listProviders: () => this.listToolSources(caller.workspaceId),
         },
         { workspaceId: caller.workspaceId, botId: caller.id },
         toolName,

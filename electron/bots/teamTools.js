@@ -10,8 +10,12 @@
  * credentials or grants. Results are fenced as untrusted data: run answers
  * and memory can contain email or web text (TEAM-003 AC3).
  *
+ * propose_bot (TEAM-005) is the one tool that does anything: it hands a bot
+ * proposal to deps.proposeBot, which validates it and stores a *draft* for
+ * the user to review — never saved or run by the lead.
+ *
  * Portable (NFR-006): no Electron. botController injects the store, memory,
- * and status lookups. Result shape: { text, isError }.
+ * status lookups and the drafting hook. Result shape: { text, isError }.
  */
 "use strict";
 
@@ -71,6 +75,72 @@ const TEAM_TOOLS = [
           description: "Only keys starting with this.",
         },
       },
+    },
+  },
+  {
+    name: "team_providers",
+    description:
+      "List the user's providers (from Settings › Providers): name, type, and the tools each one offers. Use this before propose_bot so a draft suggests providers the user actually has.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "propose_bot",
+    description:
+      "Draft a new bot for this team when the user asks for one. Creates a DRAFT only — the user reviews it in this dashboard's Bots view and saves it themselves; you can't create, save or run bots. Call team_providers first and suggest only those providers (by name or type); put services the user doesn't have in 'needs'. Event triggers can only be other bots on this team finishing ('completed') or failing ('failed'). If a team bot already does this, say so instead of drafting a duplicate.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Short bot name." },
+        instructions: {
+          type: "string",
+          description: "What the bot should do, in plain words.",
+        },
+        reasoning: {
+          type: "string",
+          description: "One or two sentences on why this design, for the user.",
+        },
+        providers: {
+          type: "array",
+          description:
+            "Suggested providers and tools (provider names as in Settings › Providers).",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              tools: { type: "array", items: { type: "string" } },
+            },
+            required: ["name"],
+          },
+        },
+        schedule: {
+          type: "object",
+          description: "Optional schedule as a cron expression.",
+          properties: {
+            cron: { type: "string", description: "e.g. '0 8 * * *'" },
+            prompt: { type: "string" },
+          },
+        },
+        on: {
+          type: "array",
+          description:
+            "Optional: run when another team bot completes or fails.",
+          items: {
+            type: "object",
+            properties: {
+              bot: { type: "string", description: "The team bot's name." },
+              event: { type: "string", enum: ["completed", "failed"] },
+            },
+            required: ["bot", "event"],
+          },
+        },
+        needs: {
+          type: "array",
+          description:
+            "Short names of services the user would need a provider for (e.g. 'Microsoft Teams'). Put anything else in reasoning.",
+          items: { type: "string" },
+        },
+      },
+      required: ["name", "instructions"],
     },
   },
 ];
@@ -227,12 +297,81 @@ function handleTeamTool(deps, ctx, toolName, args = {}) {
             .join("\n"),
         );
       }
+      case "team_providers": {
+        const list =
+          typeof deps.listProviders === "function" ? deps.listProviders() : [];
+        if (!list || !list.length) {
+          return ok(
+            "The user has no providers set up yet (Settings › Providers).",
+          );
+        }
+        return ok(
+          list
+            .map(
+              (p) =>
+                `- ${p.name}${p.type ? ` (${p.type})` : ""}: ${
+                  Array.isArray(p.tools)
+                    ? p.tools.join(", ") || "no tools"
+                    : "tools not listed until it's connected"
+                }`,
+            )
+            .join("\n"),
+        );
+      }
+      case "propose_bot": {
+        if (typeof deps.proposeBot !== "function") {
+          return fail("Drafting bots isn't available here.");
+        }
+        const res = deps.proposeBot(ctx, args || {});
+        if (!res || res.error) {
+          return fail(
+            `Couldn't draft that bot: ${(res && res.error) || "unknown error"}`,
+          );
+        }
+        return ok(describeDraft(res.draft));
+      }
       default:
         return fail(`Unknown team tool "${toolName}".`);
     }
   } catch (err) {
     return fail(`Team tool failed: ${err.message || String(err)}`);
   }
+}
+
+/** What the lead tells the user about a draft (it's never created by the lead). */
+function describeDraft(draft) {
+  const name = draft.definition && draft.definition.name;
+  const lines = [
+    `Drafted "${name}". It is NOT created — tell the user it's waiting for their review in this dashboard's Bots view (under Drafts), where they can edit it and Save, or discard it.`,
+  ];
+  if (draft.duplicateOf) {
+    lines.push(
+      `Note: the team already has a bot named "${draft.duplicateOf}" — suggest adjusting it instead if it does the same job.`,
+    );
+  }
+  if (draft.suggestions && draft.suggestions.length) {
+    lines.push(
+      "Suggested providers (the user turns these on themselves): " +
+        draft.suggestions
+          .map(
+            (s) =>
+              `${s.provider}: ${s.tools.length ? s.tools.join(", ") : "any tools"}`,
+          )
+          .join("; "),
+    );
+  }
+  if (draft.missing && draft.missing.length) {
+    lines.push(
+      `Needs a provider the user doesn't have: ${draft.missing.join(", ")} — they can add it in Settings › Providers.`,
+    );
+    if (draft.available && draft.available.length) {
+      lines.push(`The user's providers: ${draft.available.join(", ")}.`);
+    }
+  }
+  if (draft.dropped && draft.dropped.length) {
+    lines.push(`Left out: ${draft.dropped.join(" ")}`);
+  }
+  return lines.join("\n");
 }
 
 module.exports = { TEAM_SERVER, TEAM_TOOLS, handleTeamTool, fenceTeamData };
