@@ -97,10 +97,15 @@ function buildDraft({
     }
   }
   for (const need of Array.isArray(proposal.needs) ? proposal.needs : []) {
-    const n = str(need, 300);
-    if (!n) continue;
-    if (n.length > 40) {
-      notes.push(n);
+    const raw = str(need, 300);
+    if (!raw) continue;
+    // "Microsoft Teams provider (to post the summary)" → "Microsoft Teams".
+    const n = raw
+      .replace(/\s*\([^)]*\)/g, "")
+      .replace(/\s+providers?$/i, "")
+      .trim();
+    if (!n || n.length > 40) {
+      notes.push(raw);
       continue;
     }
     const have = sources.some(

@@ -246,3 +246,32 @@ describe("buildDraft — needs vs notes", () => {
     ]);
   });
 });
+
+describe("buildDraft — needs cleanup (5b)", () => {
+  const needsOf = (needs) =>
+    buildDraft({
+      proposal: { name: "X", instructions: "y", needs },
+      sources: [],
+      team: [],
+      workspaceId: "7",
+      leadId: "l",
+    }).draft;
+
+  it("drops bracketed text and a trailing 'provider' before deciding", () => {
+    const d = needsOf([
+      "Microsoft Teams provider (to post the summary)",
+      "Notion providers",
+      "Jira (for tickets)",
+    ]);
+    assert.deepEqual(d.missing, ["Microsoft Teams", "Notion", "Jira"]);
+    assert.deepEqual(d.notes, []);
+  });
+
+  it("still treats a real sentence as a note", () => {
+    const d = needsOf([
+      "Ask the user which Slack channel the summary should be posted to",
+    ]);
+    assert.deepEqual(d.missing, []);
+    assert.equal(d.notes.length, 1);
+  });
+});

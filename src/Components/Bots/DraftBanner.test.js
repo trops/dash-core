@@ -41,7 +41,7 @@ describe("DraftBanner (TEAM-005)", () => {
     expect(screen.getByText(draft.reasoning)).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Nothing is turned on until you choose it below and Save/,
+        /Nothing is turned on until you accept it below and Save/,
       ),
     ).toBeInTheDocument();
   });

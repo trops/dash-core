@@ -39,6 +39,8 @@ import {
  * @param {(id: string, decision: object) => void} [onApprove]
  * @param {(botId: string) => string} [nameOf]  bot names for trigger chains
  * @param {(section: string) => void} [onOpenSettings]  error next steps
+ * @param {object[]} [drafts]  a lead's drafts awaiting review (TEAM-005)
+ * @param {(draftId: string) => void} [onOpenDraft]
  */
 const EMPTY = [];
 const NEAR_BOTTOM_PX = 32;
@@ -56,6 +58,8 @@ export const BotChat = ({
   onApprove = null,
   nameOf = undefined,
   onOpenSettings = null,
+  drafts = EMPTY,
+  onOpenDraft = null,
 }) => {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
   const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
@@ -309,7 +313,17 @@ export const BotChat = ({
           </div>
         );
       }
-      case "bot":
+      case "bot": {
+        // Drafts this lead made while writing this answer (TEAM-005 5b).
+        const madeHere =
+          isLead && onOpenDraft && t.startedAt && !t.pending
+            ? drafts.filter((d) => {
+                const c = Date.parse(d.createdAt);
+                const from = Date.parse(t.startedAt) - 1000;
+                const to = t.endedAt ? Date.parse(t.endedAt) + 5000 : Infinity;
+                return d.leadId === bot.id && c >= from && c <= to;
+              })
+            : EMPTY;
         return (
           <div key={i} className="flex flex-col gap-1 max-w-2xl">
             <span className={`text-xs ${muted}`}>{bot.name}</span>
@@ -323,8 +337,18 @@ export const BotChat = ({
                 {t.text ? toPlainText(t.text) : t.pending ? "Working…" : ""}
               </span>
             )}
+            {madeHere.map((d) => (
+              <div key={d.id}>
+                <Button3
+                  title={`Review draft: ${d.definition && d.definition.name}`}
+                  size="xs"
+                  onClick={() => onOpenDraft(d.id)}
+                />
+              </div>
+            ))}
           </div>
         );
+      }
       default:
         return null;
     }

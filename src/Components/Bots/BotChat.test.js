@@ -300,3 +300,63 @@ describe("BotChat — triggers and next steps (TEAM-011 gaps)", () => {
     );
   });
 });
+
+describe("BotChat — Review draft under the lead's answer (5b)", () => {
+  const run = {
+    trigger: "ask",
+    status: "completed",
+    prompt: "Add a Gmail digest bot",
+    output: "I drafted Morning Digest.",
+    startedAt: "2026-10-03T10:00:00.000Z",
+    endedAt: "2026-10-03T10:00:20.000Z",
+    continued: false,
+  };
+  const during = {
+    id: "d1",
+    leadId: "lead_7",
+    createdAt: "2026-10-03T10:00:12.000Z",
+    definition: { name: "Morning Digest" },
+  };
+  const other = {
+    ...during,
+    id: "d2",
+    createdAt: "2026-10-01T09:00:00.000Z",
+    definition: { name: "Old" },
+  };
+
+  function setupLead(drafts) {
+    window.mainApi = {
+      bots: {
+        getRuns: jest.fn().mockResolvedValue([run]),
+        askLead: jest.fn(),
+        onStream: jest.fn(() => "s1"),
+        removeListener: jest.fn(),
+      },
+    };
+    const onOpenDraft = jest.fn();
+    render(
+      <BotChat
+        bot={lead}
+        isLead
+        approvals={[]}
+        drafts={drafts}
+        onOpenDraft={onOpenDraft}
+      />,
+    );
+    return onOpenDraft;
+  }
+
+  it("shows Review draft under the answer that drafted it, and opens it", async () => {
+    const onOpenDraft = setupLead([during, other]);
+    const btn = await screen.findByText("Review draft: Morning Digest");
+    expect(screen.queryByText("Review draft: Old")).toBeNull();
+    fireEvent.click(btn);
+    expect(onOpenDraft).toHaveBeenCalledWith("d1");
+  });
+
+  it("no button once the draft is saved or discarded", async () => {
+    setupLead([]);
+    await screen.findByText("I drafted Morning Digest.");
+    expect(screen.queryByText(/Review draft/)).toBeNull();
+  });
+});

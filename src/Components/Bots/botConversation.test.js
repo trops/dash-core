@@ -291,3 +291,21 @@ describe("via the AI Assistant (TEAM-004)", () => {
     expect(turns[0]).toMatchObject({ kind: "user", text: "Hi" });
   });
 });
+
+describe("answer turns keep their run's times (5b)", () => {
+  it("carries startedAt / endedAt on the bot turn", () => {
+    const turns = buildConversation([
+      {
+        trigger: "ask",
+        status: "completed",
+        prompt: "Add a bot",
+        output: "Drafted it.",
+        startedAt: "2026-10-03T10:00:00.000Z",
+        endedAt: "2026-10-03T10:00:20.000Z",
+      },
+    ]);
+    const answer = turns.find((t) => t.kind === "bot");
+    expect(answer.startedAt).toBe("2026-10-03T10:00:00.000Z");
+    expect(answer.endedAt).toBe("2026-10-03T10:00:20.000Z");
+  });
+});

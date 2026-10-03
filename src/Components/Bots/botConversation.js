@@ -105,6 +105,9 @@ function turnsForRun(r, { pending = false, nameOf = sameId } = {}) {
       text: r.output || r.text || "",
       pending,
       at: r.endedAt || at,
+      // The run's window — a lead's drafts made in it are linked here (5b).
+      startedAt: r.startedAt || null,
+      endedAt: r.endedAt || null,
     });
   }
   return turns;

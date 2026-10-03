@@ -460,3 +460,81 @@ describe("BotsView — lead drafts (TEAM-005)", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("BotsView — 5b: Review draft and accepting suggestions", () => {
+  const draft = {
+    id: "d1",
+    workspaceId: "7",
+    leadId: "lead_7",
+    createdAt: "2026-10-03T10:00:10.000Z",
+    reasoning: "Digest.",
+    definition: {
+      name: "Morning Digest",
+      instructions: "Summarise.",
+      workspaceId: "7",
+      mcpServers: [],
+      toolSelections: {},
+      approvalPolicy: "ask",
+      schedules: [],
+      subscriptions: [],
+    },
+    suggestions: [
+      { provider: "Gmail New", tools: ["search_emails"], toolsChecked: true },
+    ],
+    missing: [],
+    dropped: [],
+    notes: [],
+    duplicateOf: null,
+  };
+
+  function renderIt(runs = []) {
+    setup();
+    document.body.innerHTML = "";
+    window.mainApi.bots.getRuns = jest.fn().mockResolvedValue(runs);
+    window.mainApi.bots.listToolSources = jest.fn().mockResolvedValue([
+      {
+        name: "Gmail New",
+        type: "gmail",
+        running: true,
+        toolCount: 2,
+        declared: true,
+        tools: ["search_emails", "read_email"],
+      },
+    ]);
+    const team = makeTeam({ drafts: [draft], dismissDraft: jest.fn() });
+    render(
+      <AppContext.Provider value={{ providers: {} }}>
+        <BotsView
+          workspace={workspace}
+          workspaces={[workspace]}
+          team={team}
+          narrow={false}
+        />
+      </AppContext.Provider>,
+    );
+    return team;
+  }
+
+  it("the lead's answer links to its draft", async () => {
+    renderIt([
+      {
+        trigger: "ask",
+        status: "completed",
+        prompt: "Add a digest bot",
+        output: "Drafted Morning Digest.",
+        startedAt: "2026-10-03T10:00:00.000Z",
+        endedAt: "2026-10-03T10:00:20.000Z",
+      },
+    ]);
+    fireEvent.click(await screen.findByText("Review draft: Morning Digest"));
+    expect(screen.getByText(/Drafted by your team lead/)).toBeInTheDocument();
+  });
+
+  it("the draft's form offers Accept for the lead's suggestions", async () => {
+    renderIt();
+    fireEvent.click(within(teamList()).getByText("Morning Digest"));
+    expect(
+      await screen.findByRole("button", { name: "Accept Gmail New" }),
+    ).toBeInTheDocument();
+  });
+});
