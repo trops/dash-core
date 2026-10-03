@@ -349,6 +349,7 @@ describe("BotChat — Review draft under the lead's answer (5b)", () => {
   it("shows Review draft under the answer that drafted it, and opens it", async () => {
     const onOpenDraft = setupLead([during, other]);
     const btn = await screen.findByText("Review draft: Morning Digest");
+    expect(btn.closest('[data-testid="answer-bubble"]')).not.toBeNull();
     expect(screen.queryByText("Review draft: Old")).toBeNull();
     fireEvent.click(btn);
     expect(onOpenDraft).toHaveBeenCalledWith("d1");
@@ -358,5 +359,33 @@ describe("BotChat — Review draft under the lead's answer (5b)", () => {
     setupLead([]);
     await screen.findByText("I drafted Morning Digest.");
     expect(screen.queryByText(/Review draft/)).toBeNull();
+  });
+});
+
+describe("BotChat — answers in a chat bubble", () => {
+  const bubbleOf = (text) =>
+    screen.getByText(text).closest('[data-testid="answer-bubble"]');
+
+  it("puts the bot's answer in a bubble with its name above", async () => {
+    setup();
+    await screen.findByText("2 need attention");
+    const b = bubbleOf("2 need attention");
+    expect(b).not.toBeNull();
+    expect(b.parentElement).toHaveTextContent("Inbox Watch");
+  });
+
+  it("your own message is not an answer bubble", async () => {
+    setup();
+    await screen.findByText("Check my inbox");
+    expect(bubbleOf("Check my inbox")).toBeNull();
+  });
+
+  it("'Working…' shows inside the bubble while the bot runs", async () => {
+    const { api } = setup();
+    api.run.mockImplementation(() => new Promise(() => {}));
+    await screen.findByText("Check my inbox");
+    fireEvent.change(composer(), { target: { value: "More?" } });
+    fireEvent.click(screen.getByText("Send"));
+    expect(bubbleOf("Working…")).not.toBeNull();
   });
 });

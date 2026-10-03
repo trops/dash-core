@@ -865,6 +865,7 @@ const botController = {
           proposeBot: (teamCtx, proposal) =>
             this._proposeBot(teamCtx, proposal),
           listProviders: () => this.listToolSources(caller.workspaceId),
+          listDrafts: (ws) => this.listDrafts(ws),
         },
         { workspaceId: caller.workspaceId, botId: caller.id },
         toolName,

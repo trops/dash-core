@@ -144,6 +144,7 @@ describe("planEnsureLead", () => {
     const text = leadInstructions("Kitchen Sink");
     assert.match(text, /propose_bot/);
     assert.match(text, /team_providers/);
+    assert.match(text, /check team_list_bots before saying one is waiting/);
     assert.match(text, /never say it's created/);
     assert.equal(text.includes(CURRENT_LEAD_ACTION), true);
   });

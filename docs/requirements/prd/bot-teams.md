@@ -326,7 +326,7 @@ Want me to draft a bot that follows up on renewals?"
 - **Accept in the form:** `BotDetail` takes the draft's `suggestions`. A suggested provider that's still off shows "Suggested by the lead", its tools, and **Accept** (turns the provider on with exactly the suggested tools) — or **Accept (all tools)** when its tools couldn't be checked. **Accept all suggestions** sits at the top of Providers. Nothing changes until the user clicks; Save still only grants what's ticked.
 - **Review draft** under the lead's answer that produced it: answer turns keep their run's start/end, and a draft from that lead created in that window is linked. Saved or discarded drafts no longer show.
 - `needs` cleanup: bracketed text and a trailing "provider(s)" are dropped before the 40-character note cutoff ("Microsoft Teams provider (to post the summary)" → missing "Microsoft Teams").
-- **Follow-ups:** (1) a lead can't see whether its earlier drafts still exist — continuing an old conversation, it may say a draft is waiting when it was already saved/discarded; listing current drafts in `team_list_bots` would fix it. (2) Show the lead's (and bots') answers in a chat bubble like the user's messages, so it's clear who's talking.
+- **Follow-ups — both done (2026-10-03):** `team_list_bots` now lists drafts awaiting review (and the lead is told to check before saying one is waiting); answers show in a chat bubble. Remaining nit: text a bot writes before and after a tool call is joined without a space ("prefer.Done"). Originally: (1) a lead can't see whether its earlier drafts still exist — continuing an old conversation, it may say a draft is waiting when it was already saved/discarded; listing current drafts in `team_list_bots` would fix it. (2) Show the lead's (and bots') answers in a chat bubble like the user's messages, so it's clear who's talking.
 
 **Definition of Done:**
 
@@ -876,3 +876,4 @@ None open. The six questions raised in the first draft were resolved on 2026-10-
 | 1.5     | 2026-10-02 | John   | TEAM-004 implemented (slice 2b: Assistant ↔ team leads)          |
 | 1.6     | 2026-10-02 | John   | TEAM-005 5a: lead drafts bots (propose_bot, Drafts in Bots view) |
 | 1.7     | 2026-10-03 | John   | TEAM-005 5b: Accept suggestions, Review draft link; Implemented  |
+| 1.8     | 2026-10-03 | John   | Answer bubbles; leads see their current drafts                   |

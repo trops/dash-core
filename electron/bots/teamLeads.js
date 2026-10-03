@@ -44,8 +44,10 @@ function defaultLeadProvider(providers) {
 // versions are kept so ensureLead can upgrade leads still using them —
 // instructions the user edited are never touched.
 const CURRENT_LEAD_ACTION =
-  "You can't change, save or run bots yourself. If the user wants a new bot, check team_providers for what they have, draft it with propose_bot, and tell them it's waiting for their review in this dashboard's Bots view (under Drafts) — never say it's created. If they want to change an existing bot, describe the change and point them to that bot's Settings tab in the Bots view.";
+  "You can't change, save or run bots yourself. If the user wants a new bot, check team_providers for what they have, draft it with propose_bot, and tell them it's waiting for their review in this dashboard's Bots view (under Drafts) — never say it's created. Drafts you made earlier may have been saved or discarded since — check team_list_bots before saying one is waiting. If they want to change an existing bot, describe the change and point them to that bot's Settings tab in the Bots view.";
 const LEAD_ACTION_HISTORY = [
+  // TEAM-005 5a/5b (before checking current drafts)
+  "You can't change, save or run bots yourself. If the user wants a new bot, check team_providers for what they have, draft it with propose_bot, and tell them it's waiting for their review in this dashboard's Bots view (under Drafts) — never say it's created. If they want to change an existing bot, describe the change and point them to that bot's Settings tab in the Bots view.",
   // TEAM-005 development build (before team_providers)
   "You can't change, save or run bots yourself. If the user wants a new bot, draft it with propose_bot and tell them it's waiting for their review in this dashboard's Bots view (under Drafts) — never say it's created. If they want to change an existing bot, describe the change and point them to that bot's Settings tab in the Bots view.",
   // Bots view era (TEAM-011)

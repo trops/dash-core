@@ -67,6 +67,8 @@ export const BotChat = ({
   const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
   const bubble = currentTheme["bg-primary-very-dark"] || "bg-gray-800";
   const bubbleBorder = currentTheme["border-primary-dark"] || "border-gray-600";
+  // The bot's (or lead's) answers: a quieter, left-aligned bubble.
+  const answerBg = currentTheme["bg-neutral-very-dark"] || "bg-gray-900";
 
   const [runs, setRuns] = useState(null);
   const [live, setLive] = useState(null);
@@ -239,7 +241,7 @@ export const BotChat = ({
         return (
           <div
             key={i}
-            className={`flex flex-row items-center gap-3 text-xs ${muted}`}
+            className={`flex flex-row items-center gap-3 my-3 text-xs ${muted}`}
           >
             <div className={`flex-1 border-t ${hairline}`} />
             {t.text}
@@ -325,27 +327,32 @@ export const BotChat = ({
               })
             : EMPTY;
         return (
-          <div key={i} className="flex flex-col gap-1 max-w-2xl">
+          <div key={i} className="flex flex-col gap-1 items-start">
             <span className={`text-xs ${muted}`}>{bot.name}</span>
-            {t.unavailable ? (
-              <span className={`text-sm ${muted}`}>
-                Answer unavailable — it was stored encrypted with a key this app
-                can&apos;t read.
-              </span>
-            ) : (
-              <span className="text-sm whitespace-pre-wrap leading-relaxed">
-                {t.text ? toPlainText(t.text) : t.pending ? "Working…" : ""}
-              </span>
-            )}
-            {madeHere.map((d) => (
-              <div key={d.id}>
-                <Button3
-                  title={`Review draft: ${d.definition && d.definition.name}`}
-                  size="xs"
-                  onClick={() => onOpenDraft(d.id)}
-                />
-              </div>
-            ))}
+            <div
+              data-testid="answer-bubble"
+              className={`max-w-2xl rounded-xl border px-3 py-2 flex flex-col gap-2 ${answerBg} ${hairline}`}
+            >
+              {t.unavailable ? (
+                <span className={`text-sm ${muted}`}>
+                  Answer unavailable — it was stored encrypted with a key this
+                  app can&apos;t read.
+                </span>
+              ) : (
+                <span className="text-sm whitespace-pre-wrap leading-relaxed">
+                  {t.text ? toPlainText(t.text) : t.pending ? "Working…" : ""}
+                </span>
+              )}
+              {madeHere.map((d) => (
+                <div key={d.id}>
+                  <Button3
+                    title={`Review draft: ${d.definition && d.definition.name}`}
+                    size="xs"
+                    onClick={() => onOpenDraft(d.id)}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         );
       }
@@ -360,7 +367,7 @@ export const BotChat = ({
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          className="h-full overflow-y-auto px-5 py-4 flex flex-col gap-3"
+          className="h-full overflow-y-auto px-5 pt-4 pb-6 flex flex-col gap-3"
           data-testid="bot-chat-thread"
         >
           {runs !== null && !turns.length ? (

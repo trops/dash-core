@@ -289,3 +289,54 @@ describe("team_providers (TEAM-005)", () => {
     assert.match(r.text, /no providers/i);
   });
 });
+
+describe("team_list_bots — drafts awaiting review", () => {
+  const drafts = [
+    {
+      id: "d1",
+      createdAt: "2026-10-03T10:12:00.000Z",
+      definition: { name: "Morning Digest" },
+    },
+  ];
+
+  it("lists the dashboard's drafts after its bots", () => {
+    let askedFor = null;
+    const r = handleTeamTool(
+      { ...deps, listDrafts: (ws) => ((askedFor = ws), drafts) },
+      lead,
+      "team_list_bots",
+      {},
+    );
+    assert.equal(askedFor, lead.workspaceId);
+    assert.match(
+      r.text,
+      /Drafts awaiting the user's review: Morning Digest \(drafted /,
+    );
+  });
+
+  it("says when no drafts are waiting", () => {
+    const r = handleTeamTool(
+      { ...deps, listDrafts: () => [] },
+      lead,
+      "team_list_bots",
+      {},
+    );
+    assert.match(r.text, /No drafts waiting for review/);
+  });
+
+  it("still reports drafts on a team with no bots yet", () => {
+    const r = handleTeamTool(
+      { ...deps, store: { list: () => [] }, listDrafts: () => drafts },
+      lead,
+      "team_list_bots",
+      {},
+    );
+    assert.match(r.text, /no bots yet/);
+    assert.match(r.text, /Morning Digest/);
+  });
+
+  it("its description says it includes drafts", () => {
+    const def = TEAM_TOOLS.find((t) => t.name === "team_list_bots");
+    assert.match(def.description, /drafts/i);
+  });
+});

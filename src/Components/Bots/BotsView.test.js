@@ -455,8 +455,9 @@ describe("BotsView — lead drafts (TEAM-005)", () => {
     fireEvent.click(within(teamList()).getByText("Morning Digest"));
     fireEvent.click(screen.getByText("Discard draft"));
     await waitFor(() => expect(team.dismissDraft).toHaveBeenCalledWith("d1"));
+    // Back to the lead once the dismiss resolves.
     expect(
-      screen.getByRole("heading", { name: "Kitchen Lead" }),
+      await screen.findByRole("heading", { name: "Kitchen Lead" }),
     ).toBeInTheDocument();
   });
 });
