@@ -5,9 +5,9 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { DashboardsPage } from "./DashboardsPage";
 import { BotsPage } from "./BotsPage";
 import { WidgetsPage } from "./WidgetsPage";
+import { ThemesPage } from "./ThemesPage";
 import { FoldersSection } from "../Settings/sections/FoldersSection";
 import { ProvidersSection } from "../Settings/sections/ProvidersSection";
-import { ThemesSection } from "../Settings/sections/ThemesSection";
 
 const CREATE_LABEL = {
   dashboards: "New Dashboard",
@@ -24,7 +24,8 @@ const CREATE_LABEL = {
  * DashboardThemeProvider, so it uses the app theme.
  *
  * Dashboards (slice 2, NAV-005, with Folders beside it), Bots (slice 3a,
- * NAV-006) and Widgets (slice 3b, NAV-008) are their own list + detail pages. The other pages still reuse their Settings section components
+ * NAV-006), Widgets (slice 3b, NAV-008) and Themes (slice 3c, NAV-009) are
+ * their own list + detail pages. The other pages still reuse their Settings section components
  * (they don't depend on the modal) until their redesigns land.
  *
  * @param {string} pageKey            dashboards | bots | providers | widgets | themes
@@ -139,10 +140,12 @@ export const AppPage = ({
     );
   } else if (section === "themes") {
     body = (
-      <ThemesSection
-        onOpenThemeEditor={onOpenThemeEditor}
+      <ThemesPage
+        workspaces={workspaces}
         dashApi={dashApi}
         credentials={credentials}
+        onOpenWorkspace={onOpenWorkspace}
+        onOpenThemeEditor={onOpenThemeEditor}
         {...createProps}
       />
     );

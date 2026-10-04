@@ -32,7 +32,9 @@ const renderMock = (name, props) => (
       <span data-testid="provider-type">{props.initialProviderType}</span>
     ) : null}
     {props.onOpenThemeEditor ? (
-      <button onClick={props.onOpenThemeEditor}>edit theme</button>
+      <button onClick={() => props.onOpenThemeEditor("theme-b")}>
+        edit theme
+      </button>
     ) : null}
     {props.onOpenWorkspace ? (
       <button onClick={() => props.onOpenWorkspace({ id: 1 })}>open ws</button>
@@ -74,8 +76,9 @@ jest.mock("../Settings/sections/ProvidersSection", () => ({
 jest.mock("./WidgetsPage", () => ({
   WidgetsPage: mockSection("widgets"),
 }));
-jest.mock("../Settings/sections/ThemesSection", () => ({
-  ThemesSection: mockSection("themes"),
+// Slice 3c: the Themes page (list + preview) replaced ThemesSection.
+jest.mock("./ThemesPage", () => ({
+  ThemesPage: mockSection("themes"),
 }));
 
 import { AppPage } from "./AppPage";
@@ -147,7 +150,8 @@ describe("AppPage", () => {
       <AppPage pageKey="themes" onOpenThemeEditor={onOpenThemeEditor} />,
     );
     fireEvent.click(screen.getByText("edit theme"));
-    expect(onOpenThemeEditor).toHaveBeenCalled();
+    // The Themes page opens the editor on the selected theme.
+    expect(onOpenThemeEditor).toHaveBeenCalledWith("theme-b");
     unmount();
     const onOpenBotsView = jest.fn();
     const onOpenDashboardConfig = jest.fn();
@@ -190,6 +194,13 @@ describe("AppPage", () => {
     expect(onOpenWorkspace).toHaveBeenCalledWith({ id: 1 });
     fireEvent.click(screen.getByText("privacy"));
     expect(onOpenPrivacySettings).toHaveBeenCalled();
+  });
+
+  it("Themes: opens the dashboards using a theme", () => {
+    const onOpenWorkspace = jest.fn();
+    render(<AppPage pageKey="themes" onOpenWorkspace={onOpenWorkspace} />);
+    fireEvent.click(screen.getByText("open ws"));
+    expect(onOpenWorkspace).toHaveBeenCalledWith({ id: 1 });
   });
 
   it("renders nothing for an unknown page", () => {

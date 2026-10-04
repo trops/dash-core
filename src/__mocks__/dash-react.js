@@ -600,4 +600,5 @@ module.exports = {
           ? "border"
           : type,
   colorTypes: ["primary", "secondary", "tertiary", "neutral"],
+  themeVariants: ["very-light", "light", "medium", "dark", "very-dark"],
 };

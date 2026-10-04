@@ -397,6 +397,9 @@ const DashboardStageInner = ({
 
   // Modal state
   const [isThemeManagerOpen, setIsThemeManagerOpen] = useState(false);
+  // The theme the editor opens on (Themes page › Edit theme); null = the
+  // app theme.
+  const [themeEditorKey, setThemeEditorKey] = useState(null);
   const [isDashboardLoaderOpen, setIsDashboardLoaderOpen] = useState(false);
   const [isLayoutPickerOpen, setIsLayoutPickerOpen] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -2067,7 +2070,9 @@ const DashboardStageInner = ({
     console.log(e, message);
   }
 
-  function handleOpenThemeManager() {
+  function handleOpenThemeManager(themeKey = null) {
+    // Also used as a click handler, so ignore anything but a key.
+    setThemeEditorKey(typeof themeKey === "string" ? themeKey : null);
     setIsThemeManagerOpen(true);
   }
 
@@ -2392,7 +2397,7 @@ const DashboardStageInner = ({
                 onReloadWorkspaces={loadWorkspaces}
                 onReloadMenuItems={loadMenuItems}
                 onOpenWorkspace={handleOpenTabGuarded}
-                onOpenThemeEditor={() => setIsThemeManagerOpen(true)}
+                onOpenThemeEditor={handleOpenThemeManager}
                 onOpenWizard={() => setIsWizardOpen(true)}
                 onOpenBotsView={handleOpenDashboardBotsView}
                 onOpenDashboardConfig={handleOpenDashboardConfig}
@@ -2488,6 +2493,7 @@ const DashboardStageInner = ({
 
             <ThemeManagerModal
               open={isThemeManagerOpen}
+              initialThemeKey={themeEditorKey}
               setIsOpen={() => setIsThemeManagerOpen(!isThemeManagerOpen)}
               onSave={(themeKey) => {
                 changeCurrentTheme(themeKey);
