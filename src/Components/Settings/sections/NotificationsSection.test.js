@@ -8,7 +8,7 @@
  * package (e.g. three Slack widgets). With many providers the list
  * was unscannable.
  *
- * Fix mirrors the WidgetsSection master-detail pattern:
+ * Fix uses the Settings master-detail pattern:
  *   - Left list: alphabetical, searchable; one row per widget
  *     instance plus a pinned "Global" entry with the master + DND
  *     toggles.
@@ -32,7 +32,7 @@ describe("NotificationsSection — master-detail layout", () => {
   });
 
   test("imports SearchInput + Sidebar from @trops/dash-react", () => {
-    // Same imports WidgetsSection uses for the searchable list.
+    // The searchable-list imports the other Settings lists use.
     expect(source).toMatch(
       /import\s*\{[^}]*SearchInput[^}]*\}\s*from\s*["']@trops\/dash-react["']/,
     );
@@ -97,7 +97,7 @@ describe("NotificationsSection — master-detail layout", () => {
   });
 
   test("renders a Clear link when filters are active", () => {
-    // Mirror WidgetsSection: when any filter is set away from
+    // When any filter is set away from
     // "all", a Clear link resets all of them.
     expect(source).toMatch(/Clear/);
     expect(source).toMatch(/hasActiveFilters|hasFilters/);

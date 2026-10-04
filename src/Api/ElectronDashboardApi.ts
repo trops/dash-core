@@ -29,7 +29,7 @@ class ElectronDashboardApi implements IDashboardApi {
 
   /**
    * The Bot Factory IPC namespace (window.mainApi.bots), consumed by
-   * Settings → Bots (BotsSection). Exposed as a pass-through so the settings UI
+   * the Bots page (AppPages/BotsPage). Exposed as a pass-through so the UI
    * can reach `dashApi.bots.*` the same way it reaches other domains.
    */
   get bots(): any {

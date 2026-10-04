@@ -7,8 +7,8 @@
  * slots (occasionally seen after a widget install where the registry
  * ships a sparse `providers` array), those entries are dropped instead
  * of crashing the whole renderer. Without the null-guard, any caller
- * inside a React `useMemo` (e.g. WidgetsSection's `uniqueProviders`)
- * throws at mount and takes the Settings → Widgets pane down with it.
+ * inside a React `useMemo` (e.g. the Widgets page's provider lists)
+ * throws at mount and takes the Widgets page down with it.
  */
 export const getUserConfigurableProviders = (providers) => {
   if (!Array.isArray(providers)) return [];

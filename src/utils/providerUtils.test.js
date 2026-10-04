@@ -2,7 +2,7 @@
  * providerUtils.test.js
  *
  * Regression coverage for getUserConfigurableProviders. This function
- * is called from tight spots like WidgetsSection's `uniqueProviders`
+ * is called from tight spots like WidgetsPage's provider lists
  * useMemo — a single undefined entry in a widget's `providers` array
  * used to throw `Cannot read properties of undefined (reading
  * 'providerClass')` and take the entire Settings → Widgets pane down

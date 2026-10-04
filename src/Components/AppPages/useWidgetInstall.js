@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 /**
  * useWidgetInstall — install a widget from a ZIP or load a folder of widgets,
  * with the progress modal's state and the result to show (app-navigation PRD
- * NAV-008). Moved from WidgetsSection so the Widgets page can use it.
+ * NAV-008). Moved from the old Settings › Widgets section.
  *
  * @param {Function} refresh  re-reads the installed widgets afterwards
  */

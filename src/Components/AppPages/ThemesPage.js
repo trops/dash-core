@@ -15,7 +15,7 @@ import { ThemeColorDots } from "../Theme/ThemeColorDots";
 import { ThemeManagerModal } from "../Theme/ThemeManagerModal";
 import { DiscoverThemesDetail } from "../Settings/details/DiscoverThemesDetail";
 import { PublishThemeModal } from "../Settings/details/PublishThemeModal";
-import { ColorSwatchGrid } from "../Settings/details/ThemeDetail";
+import { ColorSwatchGrid } from "../Theme/ColorSwatchGrid";
 import { ThemePreview } from "./ThemePreview";
 import { duplicateTheme, filterThemes, themeRows } from "./themeSummary";
 
