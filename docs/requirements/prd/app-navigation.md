@@ -146,7 +146,7 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 
 **NAV-010: Filter menu primitive (dash-react)** — open-ended filters (Org, Team, Folder) are one dropdown button with a searchable, multi-select menu with counts; the button reads "Org: @acme" / "Org: 3 selected" with a clear button. Small fixed sets stay as chips. Added to dash-react first, then used by dash-core.
 
-**NAV-011: Live widget preview** — the widget detail renders the selected widget live in an isolated frame (the AI Widget Builder's `evaluateBundle` path with error isolation), using the user's providers; a widget whose provider isn't set up shows "Needs a <type> provider to show live data".
+**NAV-011: Live widget preview** _(slice A implemented 2026-10-04; Add to dashboard is slice B)_ — the widget detail renders the selected widget live in an isolated frame (the AI Widget Builder's `evaluateBundle` path with error isolation), using the user's providers; a widget whose provider isn't set up shows "Needs a <type> provider to show live data".
 
 **NAV-012: Authoring actions** — for packages the user authored: AI-built drafts get **Publish…** and **Edit in Widget Builder**; published packages get **Publish vX.Y.Z** when changed since the last publish (else **Publish new version…**) and **Edit in Widget Builder**; the widget detail gets **Edit in Widget Builder**. Requires `deriveWidgetOwnership` to recognise packages owned by an org the user belongs to (known gap).
 
@@ -276,6 +276,13 @@ NAV-010 (dash-react first), then NAV-006, NAV-008, NAV-009 in the list + detail 
 - **Fix:** the MCP catalog's pre-select (`initialSelectedId`, used by "add a <type> provider" links incl. the Widget Builder) set the server without opening its configuration, so links landed on the full grid; it now runs the same `handleSelectServer` as clicking the card.
 - **Fix:** the command palette's provider results had no select handler (`onOpenProviderDetail` was passed but unused); choosing one now opens it on the Providers page.
 
+**Implementation notes (live widget preview — NAV-011 slice A, 2026-10-04):**
+
+- The Widgets page widget detail has a **Preview** section (and each widget row in the package detail a **Preview** button that opens it). It runs **on click** (Run preview → Reload / Stop): a live preview starts MCP servers and calls real APIs, like placing the widget on a dashboard.
+- It renders inside the host's sandbox: dash-core can't import dash-electron's iframe (`PreviewIframe`, the Widget Builder's), so `utils/widgetPreviewRenderer.js` is a slot the host fills at startup (`setWidgetPreviewRenderer`, like `setHostModules`). Without one the detail says live preview isn't available.
+- `AppPages/WidgetPreview.js`: loads the package bundle (`mainApi.widgets.readBundle`), mounts the widget by its last name segment, passes `userConfig` defaults as props. **Providers:** a picker per provider type the widget needs, pre-selecting the user's default for that type (`resolveProviderName`, the rule dashboards use) or the only provider of that type; with several and no default the user picks before Run (preview only — nothing app-wide changes; changing it stops a running preview). Only those types are declared to the sandbox. A required type with no provider at all → "Needs a <type> provider to show live data." + **Set up** (provider create flow). Load failures and errors from the widget show in the panel. (Default-only, as first planned, would have blocked every MCP widget here: dashboards bind providers per widget, so no MCP provider was a type default.)
+- Built-in widgets don't get a live preview (they have no bundle, and rendering them in the host tree would bypass the sandbox).
+
 ### Phase 4: Previews and authoring
 
 NAV-011, NAV-012 (after the ownership fix), P2 items.
@@ -303,3 +310,4 @@ NAV-011, NAV-012 (after the ownership fix), P2 items.
 | 1.5     | 2026-10-03 | John   | Slice 3c: Themes page (list + preview)          |
 | 1.6     | 2026-10-04 | John   | Cleanup: removed the replaced Settings sections |
 | 1.7     | 2026-10-04 | John   | Providers restyle, status, Used by, nav dot     |
+| 1.8     | 2026-10-04 | John   | Live widget preview (NAV-011 slice A)           |

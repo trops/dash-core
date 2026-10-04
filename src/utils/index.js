@@ -5,6 +5,7 @@ export * from "@trops/dash-react";
 // Dash-specific utilities
 export * from "./layout";
 export * from "./widgetBundleLoader";
+export * from "./widgetPreviewRenderer";
 export * from "./dragTypes";
 export * from "./resolveIcon";
 export * from "./validation";

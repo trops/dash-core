@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   Button3,
@@ -11,6 +11,9 @@ import {
   SegmentedControl,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
+import { AppContext } from "../../Context/App/AppContext";
+import { ComponentManager } from "../../ComponentManager";
+import { WidgetPreview } from "./WidgetPreview";
 import { useInstalledWidgets } from "../../hooks/useInstalledWidgets";
 import { useWidgetUpdates } from "../../hooks/useWidgetUpdates";
 import { useRegistryAuthGate } from "../../hooks/useRegistryAuthGate";
@@ -26,6 +29,9 @@ import { useWidgetInstall } from "./useWidgetInstall";
 import { filterOrgs, packageLabel, widgetOrgs } from "./widgetSummary";
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+// Registered widget config (userConfig defaults for the live preview).
+const getWidgetConfig = (name) =>
+  (name && ComponentManager.config && ComponentManager.config(name)) || null;
 const CHIPS = [
   { value: "all", label: "All" },
   { value: "inUse", label: "In use" },
@@ -172,19 +178,28 @@ const PackageDetail = ({
             {pkg.widgets.map((w) => {
               const used = (pkg.widgetUsage[w.name] || []).length;
               return (
-                <button
+                <div
                   key={w.name}
-                  type="button"
-                  onClick={() => onSelectWidget(w.name)}
-                  className={`w-full text-left rounded-md px-2 py-1.5 border flex flex-row items-center justify-between gap-3 ${hairline}`}
+                  className={`rounded-md px-2 py-1.5 border flex flex-row items-center justify-between gap-3 ${hairline}`}
                 >
-                  <span className="text-sm truncate">
+                  <button
+                    type="button"
+                    onClick={() => onSelectWidget(w.name)}
+                    className="flex-1 min-w-0 text-left text-sm truncate"
+                  >
                     {w.displayName || w.name}
-                  </span>
+                  </button>
                   <span className={`text-xs flex-shrink-0 ${muted}`}>
                     {used ? `on ${plural(used, "dashboard")}` : "not used"}
                   </span>
-                </button>
+                  {pkg.isBuiltIn ? null : (
+                    <Button3
+                      title="Preview"
+                      size="xs"
+                      onClick={() => onSelectWidget(w.name)}
+                    />
+                  )}
+                </div>
               );
             })}
           </div>
@@ -241,7 +256,14 @@ const PackageDetail = ({
 };
 
 /** One widget's details, with a way back to its package. */
-const WidgetDetail = ({ pkg, widget, workspaces, onBack, onOpenWorkspace }) => {
+const WidgetDetail = ({
+  pkg,
+  widget,
+  workspaces,
+  appProviders,
+  onBack,
+  onOpenWorkspace,
+}) => {
   const { muted, strong, hairline } = useConfigTokens();
   const providers = getUserConfigurableProviders(widget.providers);
   return (
@@ -267,6 +289,22 @@ const WidgetDetail = ({ pkg, widget, workspaces, onBack, onOpenWorkspace }) => {
       {widget.description ? (
         <p className="text-sm">{widget.description}</p>
       ) : null}
+      <div className="flex flex-col gap-2">
+        <SectionLabel text="Preview" />
+        <WidgetPreview
+          widget={widget}
+          appProviders={appProviders}
+          getWidgetConfig={getWidgetConfig}
+          // A provider create flow for the missing type (Providers page).
+          onSetUpProvider={(type, providerClass) =>
+            window.dispatchEvent(
+              new CustomEvent("dash:open-settings-create-provider", {
+                detail: { type, providerClass },
+              }),
+            )
+          }
+        />
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="flex flex-col gap-2 min-w-0">
           <SectionLabel text="Used on" />
@@ -375,6 +413,7 @@ export const WidgetsPage = ({
   } = useWidgetUpdates(widgets, refresh);
   const { ensureAuthed, authGate } = useRegistryAuthGate();
   const install = useWidgetInstall(refresh);
+  const appProviders = (useContext(AppContext) || {}).providers || {};
 
   const [query, setQuery] = useState("");
   const [orgFilter, setOrgFilter] = useState([]);
@@ -520,6 +559,7 @@ export const WidgetsPage = ({
         pkg={selectedPkg}
         widget={selectedWidget}
         workspaces={workspaces}
+        appProviders={appProviders}
         onOpenWorkspace={onOpenWorkspace}
         onBack={() => setSelection({ packageId: selectedPkg.id })}
       />
