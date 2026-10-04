@@ -34,7 +34,8 @@ const ShadeSwatch = ({ tokenKey, resolvedClass, cssValue }) => {
   );
 };
 
-const ColorSwatchGrid = ({ displayTheme }) => {
+// Also the Themes page palette (app-navigation NAV-009).
+export const ColorSwatchGrid = ({ displayTheme }) => {
   const cssValueMap = displayTheme.cssValue || {};
   return (
     <div className="flex flex-col space-y-4">

@@ -87,6 +87,18 @@ describe("DashboardStage — Manage pages", () => {
     );
   });
 
+  it("Edit theme opens the theme editor on the theme the Themes page picked", () => {
+    expect(src).toMatch(
+      /function handleOpenThemeManager\(themeKey = null\) \{[\s\S]*?setThemeEditorKey\(typeof themeKey === "string" \? themeKey : null\);[\s\S]*?setIsThemeManagerOpen\(true\);/,
+    );
+    expect(src).toMatch(
+      /<AppPage[\s\S]*?onOpenThemeEditor=\{handleOpenThemeManager\}/,
+    );
+    expect(src).toMatch(
+      /<ThemeManagerModal[\s\S]*?initialThemeKey=\{themeEditorKey\}/,
+    );
+  });
+
   it("closing by dashboard name never closes a page tab", () => {
     expect(src).toMatch(
       /\(openTabsRef\.current \|\| \[\]\)\.find\(\s*\(t\) =>\s*t\.workspace &&/,

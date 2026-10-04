@@ -15,11 +15,14 @@ import PanelThemePicker from "./Panel/PanelThemePicker";
 import PanelThemeStudio from "./Studio/PanelThemeStudio";
 import { ThemeQuickCreate, ThemeNewChooser } from "./Wizard";
 import { DiscoverThemesDetail } from "../Settings/details/DiscoverThemesDetail";
+import { editorThemeKey } from "./editorThemeKey";
 
 export const ThemeManagerModal = ({
   open,
   setIsOpen,
   startInCreate = false,
+  // Open on this theme (Themes page › Edit theme); else the app theme.
+  initialThemeKey = null,
 }) => {
   const {
     changeThemesForApplication,
@@ -67,12 +70,11 @@ export const ThemeManagerModal = ({
       startInCreateHandledRef.current = false;
     } else {
       if (themeKeySelected === null && themes) {
-        const themeKeyTemp =
-          settings && "theme" in settings
-            ? settings["theme"] in themes
-              ? settings["theme"]
-              : Object.keys(themes)[0]
-            : Object.keys(themes)[0];
+        const themeKeyTemp = editorThemeKey({
+          initialThemeKey,
+          settings,
+          themes,
+        });
 
         const themeModel = ThemeModel(rawThemes[themeKeyTemp]);
 
@@ -95,7 +97,15 @@ export const ThemeManagerModal = ({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, themes, rawThemes, settings, themeKeySelected, startInCreate]);
+  }, [
+    open,
+    themes,
+    rawThemes,
+    settings,
+    themeKeySelected,
+    startInCreate,
+    initialThemeKey,
+  ]);
 
   function handleThemeSelected(themeUpdated, themeKey) {
     let newRawThemeSelected = deepCopy(rawThemeSelected);

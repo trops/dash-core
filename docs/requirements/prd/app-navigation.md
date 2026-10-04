@@ -138,9 +138,9 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 **NAV-009: Themes page**
 **Acceptance Criteria:**
 
-- [ ] AC1: List with a colour strip per theme, mode, and App theme / used-by count; search; Dark / Light chips.
-- [ ] AC2: Detail: a dashboard preview drawn in the theme, the palette (roles + hex), used by (dashboards, Open).
-- [ ] AC3: Actions: Use as app theme (or "Active"), Edit theme (opens the theme editor), Duplicate; New theme.
+- [x] AC1: List with a colour strip per theme, mode, and App theme / used-by count; search; Dark / Light chips. _(Chips are In use / Not used; Dark / Light is the app-wide switch plus a preview toggle — every theme has both variants.)_
+- [x] AC2: Detail: a dashboard preview drawn in the theme, the palette (roles + hex), used by (dashboards, Open).
+- [x] AC3: Actions: Use as app theme (or "Active"), Edit theme (opens the theme editor), Duplicate; New theme.
 
 ### Should-Have (P1)
 
@@ -254,6 +254,14 @@ NAV-010 (dash-react first), then NAV-006, NAV-008, NAV-009 in the list + detail 
 - Stage passes `onOpenPrivacySettings` → `openAppSettings("privacy-security")`.
 - `WidgetsSection` is no longer used by any page; kept for the cleanup.
 
+**Implementation notes (slice 3c — Themes, 2026-10-03):**
+
+- `AppPages/ThemesPage.js` replaces `ThemesSection` on the Themes page. Filter bar: search, chips All / In use / Not used (in use = the app theme or used by a dashboard), the app-wide Light / Dark switch (moved from the old list header), Browse marketplace (existing `DiscoverThemesDetail`). List: the app theme first (✓), then A-Z; colour dots, name, "App theme" / "Used by N dashboards" / "Not in use".
+- Detail: name + dots, "Current app theme" / usage; **Preview** — `AppPages/ThemePreview.js`, a mock dashboard (header, sidebar, three cards, button, tag) painted inline from the variant's `cssValue` (ThemeModel resolves real hex for every theme, so non-active themes preview correctly), with a Dark / Light toggle that doesn't change the app; **Palette** (ThemeDetail's `ColorSwatchGrid`, now exported) for the previewed variant; **Used by** with Open. Actions: Use as app theme, Edit theme, Duplicate (`rawThemes[key]` → `theme-<time>`, "<name> (Copy)", registry metadata dropped, then selected), Publish… (not for registry themes), Delete (confirmed, naming the dashboards that use it; hidden for the app theme). New Theme opens the creation wizard (`ThemeManagerModal startInCreate`).
+- **Edit theme now opens the editor on the selected theme** (it always opened the app theme): `ThemeManagerModal` takes `initialThemeKey` (`Theme/editorThemeKey.js` picks it, else the app theme, else the first); the stage keeps `themeEditorKey` and `handleOpenThemeManager(themeKey)` sets it.
+- `AppPages/themeSummary.js` (pure): `themeRows`, `filterThemes`, `duplicateTheme`, `paint`.
+- `ThemesSection` is no longer used by any page; kept for the cleanup.
+
 ### Phase 4: Previews and authoring
 
 NAV-011, NAV-012 (after the ownership fix), P2 items.
@@ -278,3 +286,4 @@ NAV-011, NAV-012 (after the ownership fix), P2 items.
 | 1.2     | 2026-10-03 | John   | Slice 2: Dashboards page, FilterMenu, Go to     |
 | 1.3     | 2026-10-03 | John   | Slice 3a: Bots page (list + detail)             |
 | 1.4     | 2026-10-03 | John   | Slice 3b: Widgets page (org → package → widget) |
+| 1.5     | 2026-10-03 | John   | Slice 3c: Themes page (list + preview)          |
