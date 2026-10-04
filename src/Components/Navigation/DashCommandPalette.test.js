@@ -50,3 +50,22 @@ describe("DashCommandPalette — Go to", () => {
     expect(screen.queryByRole("region", { name: "Go to" })).toBeNull();
   });
 });
+
+describe("DashCommandPalette — Providers (app-navigation NAV-007 AC2)", () => {
+  it("a provider result opens it on the Providers page", () => {
+    const onOpenProviderDetail = jest.fn();
+    const setIsOpen = jest.fn();
+    render(
+      <DashCommandPalette
+        isOpen
+        setIsOpen={setIsOpen}
+        providers={{ Gong: { type: "gong" } }}
+        onOpenProviderDetail={onOpenProviderDetail}
+      />,
+    );
+    const group = screen.getByRole("region", { name: "Providers" });
+    fireEvent.click(within(group).getByText("Gong"));
+    expect(onOpenProviderDetail).toHaveBeenCalledWith("Gong");
+    expect(setIsOpen).toHaveBeenCalledWith(false);
+  });
+});

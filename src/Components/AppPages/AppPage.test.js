@@ -203,6 +203,22 @@ describe("AppPage", () => {
     expect(onOpenWorkspace).toHaveBeenCalledWith({ id: 1 });
   });
 
+  it("Providers: Used by opens dashboards and bots", () => {
+    const onOpenWorkspace = jest.fn();
+    const onOpenBotInBotsView = jest.fn();
+    render(
+      <AppPage
+        pageKey="providers"
+        onOpenWorkspace={onOpenWorkspace}
+        onOpenBotInBotsView={onOpenBotInBotsView}
+      />,
+    );
+    fireEvent.click(screen.getByText("open ws"));
+    expect(onOpenWorkspace).toHaveBeenCalledWith({ id: 1 });
+    fireEvent.click(screen.getByText("bot in bots view"));
+    expect(onOpenBotInBotsView).toHaveBeenCalledWith({ id: 1 }, "b1");
+  });
+
   it("renders nothing for an unknown page", () => {
     const { container } = render(<AppPage pageKey="nope" />);
     expect(container).toBeEmptyDOMElement();

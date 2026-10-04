@@ -52,6 +52,7 @@ import { DashboardConfigModal } from "./DashboardConfigModal";
 import { useTeamBots } from "../Bots/useTeamBots";
 import { BotsView } from "../Bots/BotsView";
 import { usePendingApprovalCount } from "../Bots/usePendingApprovalCount";
+import { useProvidersNeedingSetup } from "../AppPages/useProviderStatus";
 import { AppPage } from "../AppPages/AppPage";
 import {
   pageForSettingsSection,
@@ -250,6 +251,8 @@ const DashboardStageInner = ({
   const [providerLink, setProviderLink] = useState(null);
   // Bot approvals waiting anywhere — the sidebar's Bots dot (NAV-001 AC3).
   const pendingApprovals = usePendingApprovalCount();
+  // Providers that still need a credential — the Providers item's dot.
+  const providersNeedingSetup = useProvidersNeedingSetup();
 
   /**
    * @param {Boolean} previewMode this is a toggle telling the dash we are editing
@@ -2198,7 +2201,10 @@ const DashboardStageInner = ({
               onSignOut={handleSidebarSignOut}
               activePageKey={activePageKey}
               onOpenPage={handleOpenPageGuarded}
-              pageAttention={{ bots: pendingApprovals }}
+              pageAttention={{
+                bots: pendingApprovals,
+                providers: providersNeedingSetup,
+              }}
             />
           )}
           <div className="flex flex-col flex-1 min-w-0 overflow-hidden">

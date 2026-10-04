@@ -529,6 +529,14 @@ function SubHeading3({ title }) {
   return React.createElement("h3", null, title);
 }
 
+// Simple stand-ins (McpCatalogDetail).
+function Icon2({ icon }) {
+  return React.createElement("span", { "data-icon": icon });
+}
+function FormLabel({ label, title, children }) {
+  return React.createElement("label", null, label || title, children);
+}
+
 function Toggle({ text, enabled, setEnabled }) {
   return React.createElement(
     "label",
@@ -599,6 +607,8 @@ module.exports = {
         : type === "border"
           ? "border"
           : type,
+  Icon2,
+  FormLabel,
   colorTypes: ["primary", "secondary", "tertiary", "neutral"],
   themeVariants: ["very-light", "light", "medium", "dark", "very-dark"],
 };

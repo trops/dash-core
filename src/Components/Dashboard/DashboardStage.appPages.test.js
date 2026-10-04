@@ -13,9 +13,12 @@ describe("DashboardStage — Manage pages", () => {
     expect(src).toMatch(/import \{ AppPage \} from "\.\.\/AppPages\/AppPage"/);
     expect(src).toMatch(/openPageTab\(/);
     expect(src).toMatch(
-      /<DashSidebar[\s\S]*?activePageKey=\{activePageKey\}[\s\S]*?onOpenPage=\{handleOpenPageGuarded\}[\s\S]*?pageAttention=\{\{ bots: pendingApprovals \}\}/,
+      /<DashSidebar[\s\S]*?activePageKey=\{activePageKey\}[\s\S]*?onOpenPage=\{handleOpenPageGuarded\}[\s\S]*?pageAttention=\{\{\s*bots: pendingApprovals,\s*providers: providersNeedingSetup,?\s*\}\}/,
     );
     expect(src).toMatch(/usePendingApprovalCount\(\)/);
+    expect(src).toMatch(
+      /const providersNeedingSetup = useProvidersNeedingSetup\(\)/,
+    );
   });
 
   it("a page tab has no workspace, so dashboard-only UI switches off", () => {

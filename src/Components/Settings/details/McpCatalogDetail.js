@@ -182,7 +182,9 @@ export const McpCatalogDetail = ({
     if (!initialSelectedId || selectedServer || catalog.length === 0) return;
     const match = catalog.find((s) => s && s.id === initialSelectedId);
     if (match) {
-      setSelectedServer(match);
+      // Same as clicking the card: select it AND open its configuration
+      // (setting the server alone left the grid showing).
+      handleSelectServer(match);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalog, initialSelectedId]);

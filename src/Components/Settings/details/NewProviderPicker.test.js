@@ -66,7 +66,12 @@ describe("NewProviderPicker — class chooser wiring", () => {
     // The createRequested useEffect must branch on `websocket`
     // (in addition to the existing mcp + credential branches) so
     // the deep-link from Widget Builder works for WebSocket types.
-    expect(source).toMatch(/initialProviderClass.*===\s*["']websocket["']/);
+    expect(source).toMatch(
+      /startCreate\(initialProviderClass, initialProviderType\)/,
+    );
+    expect(source).toMatch(
+      /function startCreate\(providerClass, providerType\)[\s\S]*?providerClass === "websocket"/,
+    );
   });
 });
 
@@ -147,102 +152,53 @@ describe("Create-provider forms — consistent back-to-chooser button", () => {
     // The list-item onClick must clear every detail-overlay flag so
     // the read-only detail wins on the next render.
     const source = readSection("ProvidersSection.js");
-    const onClickBlock = source.match(
-      /onClick=\{\(\)\s*=>\s*\{[\s\S]{0,800}setSelectedName\(name\)[\s\S]{0,800}\}\}/,
+    expect(source).toMatch(/onClick=\{\(\) => selectProvider\(name\)\}/);
+    const selectBlock = source.match(
+      /const selectProvider = \(name\) => \{[\s\S]*?\n  \};/,
     );
-    expect(onClickBlock).toBeTruthy();
-    expect(onClickBlock[0]).toMatch(/setIsShowingClassChooser\(false\)/);
+    expect(selectBlock).toBeTruthy();
+    expect(selectBlock[0]).toMatch(/setSelectedName\(name\)/);
+    expect(selectBlock[0]).toMatch(/setIsShowingClassChooser\(false\)/);
   });
 });
 
 /**
- * Providers list — search + class filter + alphabetized All view.
- *
- * The Settings → Providers sidebar has been reorganized to mirror
- * the Widgets sidebar: a search box up top, a 4-pill class filter
- * (All / Credentials / MCP / WebSocket), and a single alphabetized
- * list when the filter is "All". The per-class footer "Add MCP
- * Server" / "Add WebSocket Provider" buttons are removed in favor
- * of the chooser opened by the section-header "+ New Provider"
- * button (which got a "← Back" affordance in 0.1.455).
+ * Providers list (app-navigation NAV-007): a page-style filter bar —
+ * search, class chips (All / Credentials / MCP / WebSocket) and a Needs
+ * setup chip — over a list grouped by class. Adding goes through the
+ * chooser opened by the header "New Provider" button; there are no
+ * per-class "Add …" buttons. Behaviour is covered by
+ * ProvidersSection.test.js; these pin the source shape.
  */
 describe("Providers list — search and class filter", () => {
   const sectionsDir = path.join(__dirname, "..", "sections");
   const readSection = (name) =>
     fs.readFileSync(path.join(sectionsDir, name), "utf8");
 
-  test("Sidebar has a search input for filtering providers", () => {
+  test("has a search input for filtering providers", () => {
     const source = readSection("ProvidersSection.js");
+    expect(source).toMatch(/\bSearchInput\b/);
     expect(source).toMatch(/placeholder=["']Search providers/i);
-  });
-
-  test("searchQuery state is declared and wired to a setter", () => {
-    const source = readSection("ProvidersSection.js");
-    expect(source).toMatch(/searchQuery/);
     expect(source).toMatch(/setSearchQuery/);
   });
 
-  test("Default class filter is 'all'", () => {
+  test("the class filter defaults to all and offers the three classes", () => {
     const source = readSection("ProvidersSection.js");
-    // The providerTab useState initializer must be "all".
     expect(source).toMatch(/providerTab[^=]*=\s*useState\(["']all["']\)/);
+    for (const value of ["all", "credentials", "mcp", "websocket"]) {
+      expect(source).toMatch(new RegExp(`value: "${value}"`));
+    }
   });
 
-  test("Sidebar has 4 class-filter triggers (All / Credentials / MCP / WebSocket)", () => {
+  test("the list is grouped by class through groupProviders", () => {
     const source = readSection("ProvidersSection.js");
-    expect(source).toMatch(/Tabs3\.Trigger\s+value=["']all["']/);
-    expect(source).toMatch(/Tabs3\.Trigger\s+value=["']credentials["']/);
-    expect(source).toMatch(/Tabs3\.Trigger\s+value=["']mcp["']/);
-    expect(source).toMatch(/Tabs3\.Trigger\s+value=["']websocket["']/);
-  });
-
-  test("Filter logic has an 'all' branch that merges all three groups", () => {
-    const source = readSection("ProvidersSection.js");
-    // Some branch must compare providerTab to "all" and produce a
-    // merged list containing credential + mcp + websocket providers.
-    expect(source).toMatch(/providerTab\s*===\s*["']all["']/);
-    // The merged-all expression spreads all three groups; capture the
-    // shape of `[...credentialProviders, ...mcpProviders, ...wsProviders]`
-    // (or any permutation, in case of refactor).
-    expect(source).toMatch(/\.\.\.credentialProviders/);
-    expect(source).toMatch(/\.\.\.mcpProviders/);
-    expect(source).toMatch(/\.\.\.wsProviders/);
-  });
-
-  test("Sidebar shows a count of visible providers", () => {
-    const source = readSection("ProvidersSection.js");
-    // Mirrors "127 widgets" in the Widgets sidebar — assert the
-    // pattern `<length>` followed by the word "provider".
-    expect(source).toMatch(/\.length\}\s*\n?\s*provider/);
+    expect(source).toMatch(/groupProviders\(/);
   });
 
   test("Per-tab footer 'Add MCP Server' / 'Add WebSocket Provider' buttons are removed", () => {
     const source = readSection("ProvidersSection.js");
-    // The new chooser ("+ New Provider" header button) is the
-    // canonical add path.
+    // The chooser ("New Provider" header button) is the canonical add path.
     expect(source).not.toMatch(/Add MCP Server/);
     expect(source).not.toMatch(/Add WebSocket Provider/);
-  });
-
-  test("Providers search uses SearchInput (matches NotificationsSection styling)", () => {
-    const source = readSection("ProvidersSection.js");
-    // Imported from @trops/dash-react so the magnifying-glass icon
-    // and compact size match the other Settings lists exactly.
-    expect(source).toMatch(/\bSearchInput\b/);
-    // The compact inputClassName matches Notifications' "py-1.5 text-xs"
-    // so the search box height is consistent across Settings sections.
-    const notifications = fs.readFileSync(
-      path.join(sectionsDir, "NotificationsSection.js"),
-      "utf8",
-    );
-    const notificationsClass = notifications.match(
-      /<SearchInput[\s\S]*?inputClassName=["']([^"']+)["']/,
-    );
-    expect(notificationsClass).toBeTruthy();
-    const providersClass = source.match(
-      /<SearchInput[\s\S]*?inputClassName=["']([^"']+)["']/,
-    );
-    expect(providersClass).toBeTruthy();
-    expect(providersClass[1]).toBe(notificationsClass[1]);
   });
 });
