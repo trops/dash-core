@@ -148,7 +148,7 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 
 **NAV-011: Live widget preview** _(slice A implemented 2026-10-04; Add to dashboard is slice B)_ — the widget detail renders the selected widget live in an isolated frame (the AI Widget Builder's `evaluateBundle` path with error isolation), using the user's providers; a widget whose provider isn't set up shows "Needs a <type> provider to show live data".
 
-**NAV-012: Authoring actions** — for packages the user authored: AI-built drafts get **Publish…** and **Edit in Widget Builder**; published packages get **Publish vX.Y.Z** when changed since the last publish (else **Publish new version…**) and **Edit in Widget Builder**; the widget detail gets **Edit in Widget Builder**. Requires `deriveWidgetOwnership` to recognise packages owned by an org the user belongs to (known gap).
+**NAV-012: Authoring actions** _(implemented 2026-10-04 — see notes; no org membership: users publish only under their own username)_ — for packages the user authored: AI-built drafts get **Publish…** and **Edit in Widget Builder**; published packages get **Publish vX.Y.Z** when changed since the last publish (else **Publish new version…**) and **Edit in Widget Builder**; the widget detail gets **Edit in Widget Builder**. Requires `deriveWidgetOwnership` to recognise packages owned by an org the user belongs to (known gap).
 
 ### Nice-to-Have (P2)
 
@@ -283,6 +283,13 @@ NAV-010 (dash-react first), then NAV-006, NAV-008, NAV-009 in the list + detail 
 - `AppPages/WidgetPreview.js`: loads the package bundle (`mainApi.widgets.readBundle`), mounts the widget by its last name segment, passes `userConfig` defaults as props. **Providers:** a picker per provider type the widget needs, pre-selecting the user's default for that type (`resolveProviderName`, the rule dashboards use) or the only provider of that type; with several and no default the user picks before Run (preview only — nothing app-wide changes; changing it stops a running preview). Only those types are declared to the sandbox. A required type with no provider at all → "Needs a <type> provider to show live data." + **Set up** (provider create flow). Load failures and errors from the widget show in the panel. (Default-only, as first planned, would have blocked every MCP widget here: dashboards bind providers per widget, so no MCP provider was a type default.)
 - Built-in widgets don't get a live preview (they have no bundle, and rendering them in the host tree would bypass the sandbox).
 
+**Implementation notes (authoring actions — NAV-012, 2026-10-04):**
+
+- Ownership follows the registry: every user publishes only under their own registered username as the scope (the publish endpoint rejects any other scope), so "theirs" = `@<username>/*` plus their local `@ai-built` packages and drafts (which publish under their username). There is **no org membership** to model — the earlier "org-membership" idea is dropped. The rule (`deriveWidgetScope` / `deriveWidgetOwnership`, with its security tests) moved from dash-electron into `utils/widgetOwnership.js`; the Widget Builder uses the same one.
+- `AppPages/useRegistryIdentity.js`: the signed-in username (`registryAuth.getProfile`) and published versions (`registryAuth.getPackages`), re-read on window focus and after the publish modal closes. Signed out → only local AI-built packages are the user's.
+- Widgets page: the "Mine" chip = the user's packages. Their packages get **Publish…** (or **Publish new version…** when already on the registry), **Edit in Widget Builder** (opens the builder in edit mode via `dash:edit-widget-with-ai` with `widgetId: "<package>/<component>"` — the builder's own convention for a package without a dashboard instance — so the owner gets **Update Original** / **Remix as New**; no grid cell, so installing swaps / places nothing. On the package's first widget; each widget detail has it too), and a line "Published vX · installed vY" / "Not published yet" / "Sign in to the registry to publish.". Drafts can now be published. Others' packages no longer offer Publish… (it would have republished a copy under the user's scope).
+- "Publish vX.Y.Z when changed since the last publish" isn't shown: nothing records whether local files changed after a publish; the modal handles the version bump.
+
 ### Phase 4: Previews and authoring
 
 NAV-011, NAV-012 (after the ownership fix), P2 items.
@@ -311,3 +318,4 @@ NAV-011, NAV-012 (after the ownership fix), P2 items.
 | 1.6     | 2026-10-04 | John   | Cleanup: removed the replaced Settings sections |
 | 1.7     | 2026-10-04 | John   | Providers restyle, status, Used by, nav dot     |
 | 1.8     | 2026-10-04 | John   | Live widget preview (NAV-011 slice A)           |
+| 1.9     | 2026-10-04 | John   | Authoring actions for the user's own widgets    |
