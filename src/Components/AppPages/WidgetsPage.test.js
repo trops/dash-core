@@ -137,6 +137,17 @@ jest.mock("../WidgetPreflightReview", () => ({
   WidgetPreflightReview: () => null,
 }));
 const mockInstallFromZip = jest.fn().mockResolvedValue();
+// The live preview has its own tests; here it just reports its props.
+jest.mock("./WidgetPreview", () => ({
+  WidgetPreview: ({ widget, onSetUpProvider }) => (
+    <div data-testid="widget-preview">
+      {widget.name}
+      <button onClick={() => onSetUpProvider("slack", "mcp")}>
+        preview-setup
+      </button>
+    </div>
+  ),
+}));
 jest.mock("./useWidgetInstall", () => ({
   useWidgetInstall: () => ({
     progress: { open: false, complete: false, widgets: [] },
@@ -342,11 +353,49 @@ describe("WidgetsPage widget detail (NAV-008 AC4)", () => {
     fireEvent.click(pkgRow("slack"));
     fireEvent.click(within(list()).getByText("Slack Channels"));
     const d = detail();
-    expect(within(d).getByText("trops.slack.Channels")).toBeInTheDocument();
+    expect(
+      within(d).getAllByText("trops.slack.Channels")[0],
+    ).toBeInTheDocument();
     expect(within(d).getByText("list_channels")).toBeInTheDocument();
     expect(within(d).getByText("Not on any dashboard yet")).toBeTruthy();
     fireEvent.click(within(d).getByRole("button", { name: "← slack" }));
     expect(within(detail()).getByText("@trops/slack")).toBeInTheDocument();
+  });
+});
+
+describe("WidgetsPage live preview (NAV-011)", () => {
+  it("the widget detail has the live preview for that widget", () => {
+    setup();
+    fireEvent.click(pkgRow("slack"));
+    fireEvent.click(within(list()).getByText("Slack Channels"));
+    expect(within(detail()).getByTestId("widget-preview")).toHaveTextContent(
+      "trops.slack.Channels",
+    );
+  });
+
+  it("each widget row in the package detail has Preview", () => {
+    setup();
+    fireEvent.click(pkgRow("slack"));
+    const previews = within(detail()).getAllByRole("button", {
+      name: "Preview",
+    });
+    expect(previews).toHaveLength(2);
+    fireEvent.click(previews[1]);
+    expect(within(detail()).getByTestId("widget-preview")).toHaveTextContent(
+      "trops.slack.Messages",
+    );
+  });
+
+  it("Set up starts the provider create flow", () => {
+    const events = [];
+    const onEvent = (e) => events.push(e.detail);
+    window.addEventListener("dash:open-settings-create-provider", onEvent);
+    setup();
+    fireEvent.click(pkgRow("slack"));
+    fireEvent.click(within(list()).getByText("Slack Channels"));
+    fireEvent.click(screen.getByText("preview-setup"));
+    window.removeEventListener("dash:open-settings-create-provider", onEvent);
+    expect(events).toEqual([{ type: "slack", providerClass: "mcp" }]);
   });
 });
 
