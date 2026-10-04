@@ -27,7 +27,7 @@ import { Modal, Button, FontAwesomeIcon } from "@trops/dash-react";
  *     useWidgetUpdates().batchStatus.
  *   - isBatchUpdating: boolean — true while updatePackages is in flight.
  *   - onConfirm: (selectedPackageNames) => Promise<{succeeded, failed}>.
- *     The caller (WidgetsSection) wires this to updatePackages.
+ *     The caller (the Widgets page) wires this to updatePackages.
  */
 export const UpdateAllWidgetsModal = ({
   isOpen,

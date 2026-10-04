@@ -1,9 +1,9 @@
 /**
  * PrivacySecurityList
  *
- * Left column of the redesigned Privacy & Security section. Mirrors
- * the DashboardsSection list style (search + Tabs3 toggle + grouped
- * Sidebar items with badge counts).
+ * Left column of the redesigned Privacy & Security section. Uses the
+ * Settings list style (search + Tabs3 toggle + grouped Sidebar items
+ * with badge counts).
  *
  * Search matches against packageId AND component names within each
  * package, so typing "search" finds the package containing

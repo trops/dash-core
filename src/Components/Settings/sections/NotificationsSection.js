@@ -13,8 +13,8 @@ import { SectionLayout } from "../SectionLayout";
 /**
  * NotificationsSection
  *
- * Master-detail layout for notification preferences. Mirrors the
- * WidgetsSection pattern (SectionLayout + Sidebar + SearchInput):
+ * Master-detail layout for notification preferences. Uses the
+ * Settings list pattern (SectionLayout + Sidebar + SearchInput):
  *
  *   - Left list: a pinned "Global" entry (master enable + DND
  *     toggles), then an alphabetical, searchable list of every

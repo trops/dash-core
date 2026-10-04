@@ -262,6 +262,8 @@ NAV-010 (dash-react first), then NAV-006, NAV-008, NAV-009 in the list + detail 
 - `AppPages/themeSummary.js` (pure): `themeRows`, `filterThemes`, `duplicateTheme`, `paint`.
 - `ThemesSection` is no longer used by any page; kept for the cleanup.
 
+**Cleanup (2026-10-04):** removed the Settings components the Manage pages replaced — `DashboardsSection`, `DashboardDetail`, `BotsSection` (+ test), `WidgetsSection`, `InstalledWidgetDetail`, `ThemesSection`, `ThemeDetail` (its swatch grid moved to `Theme/ColorSwatchGrid.js`). None were exported from the package. The Providers search-styling test now compares against `NotificationsSection`; comments that named the removed files point at the pages.
+
 ### Phase 4: Previews and authoring
 
 NAV-011, NAV-012 (after the ownership fix), P2 items.
@@ -287,3 +289,4 @@ NAV-011, NAV-012 (after the ownership fix), P2 items.
 | 1.3     | 2026-10-03 | John   | Slice 3a: Bots page (list + detail)             |
 | 1.4     | 2026-10-03 | John   | Slice 3b: Widgets page (org → package → widget) |
 | 1.5     | 2026-10-03 | John   | Slice 3c: Themes page (list + preview)          |
+| 1.6     | 2026-10-04 | John   | Cleanup: removed the replaced Settings sections |

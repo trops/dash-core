@@ -9,7 +9,7 @@ import { FontAwesomeIcon } from "@trops/dash-react";
  * Extracted from AppUpdatesModal so BOTH update entry points can render
  * the same consent UI bound to their own `useWidgetUpdates` instance:
  *   - AppUpdatesModal (the on-launch "updates available" prompt), and
- *   - WidgetsSection / Settings → Widgets (the batch update modal).
+ *   - the Widgets page (AppPages/WidgetsPage — the batch update modal).
  *
  * Before this existed, the Settings path had no consent UI: when
  * `updatePackages` set `pendingPreflight` and suspended on its resolver,

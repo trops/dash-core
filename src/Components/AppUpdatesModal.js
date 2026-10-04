@@ -7,8 +7,7 @@ import { WidgetPreflightReview } from "./WidgetPreflightReview";
  * Footer buttons are rendered with raw <button> + explicit Tailwind
  * because dash-react's `Button` uses theme tokens that don't have
  * sufficient contrast on this dark modal (visible as black text on a
- * dark-gray fill). The same pattern WidgetsSection uses for its
- * prominent "Updates Available" trigger.
+ * dark-gray fill).
  */
 const secondaryBtnClass =
   "px-3 py-2 text-sm font-medium rounded bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed text-gray-100";
@@ -23,9 +22,9 @@ const primaryBtnClass =
  * Surfaces both categories side-by-side so the user sees the full
  * picture without drilling into Settings → Widgets / Dashboards.
  * "Update widgets now" routes through the same updatePackages batch
- * the WidgetsSection uses; dashboards just deep-link into their
+ * the Widgets page uses; dashboards just deep-link into their
  * settings panel (the dashboard update flow is more involved than a
- * single button press and lives in DashboardsSection).
+ * single button press).
  *
  * UX:
  *   - "isChecking" state shows a spinner so the user knows we're
