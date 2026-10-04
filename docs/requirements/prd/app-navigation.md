@@ -124,8 +124,8 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 **NAV-007: Providers page**
 **Acceptance Criteria:**
 
-- [ ] AC1: Today's Providers section full-screen (list + detail), with status (Connected / Needs a token / Sign in again).
-- [ ] AC2: Deep links from the Bots view and elsewhere open the provider selected (and the create flow when asked).
+- [x] AC1: Today's Providers section full-screen (list + detail), with status (Connected / Needs a token / Sign in again). _(Needs setup / Connected / Starts when used / Saved; "Sign in again" deferred — not detectable without connecting.)_
+- [x] AC2: Deep links from the Bots view and elsewhere open the provider selected (and the create flow when asked).
 
 **NAV-008: Widgets page**
 **Acceptance Criteria:**
@@ -264,6 +264,18 @@ NAV-010 (dash-react first), then NAV-006, NAV-008, NAV-009 in the list + detail 
 
 **Cleanup (2026-10-04):** removed the Settings components the Manage pages replaced — `DashboardsSection`, `DashboardDetail`, `BotsSection` (+ test), `WidgetsSection`, `InstalledWidgetDetail`, `ThemesSection`, `ThemeDetail` (its swatch grid moved to `Theme/ColorSwatchGrid.js`). None were exported from the package. The Providers search-styling test now compares against `NotificationsSection`; comments that named the removed files point at the pages.
 
+**Implementation notes (Providers — NAV-007, 2026-10-04):**
+
+- Restyled in place (`ProvidersSection` / `ProviderDetail`); the create / edit flows (class chooser, MCP catalog, custom MCP form, WebSocket form, credential form) are unchanged. The header's and deep links' create routing moved into one `startCreate(class, type)`.
+- Filter bar: search, class chips All / Credentials / MCP / WebSocket, a "Needs setup only" checkbox, and "N providers need setup". List grouped by class (MCP servers, API credentials, WebSocket), A-Z; each row has the class icon, type, "used by N" and a status dot; the first provider is selected by default.
+- Status (`AppPages/providerSummary.js`, pure): **Needs setup** — a credential the MCP server config uses (env mapping / `{{placeholder}}`) or the catalog marks required is empty; a credentials provider with nothing saved; a WebSocket provider without a URL. Otherwise MCP is **Connected** (server running) or **Starts when used**; credentials **Saved**; WebSocket **Ready**. "Sign in again" (expired OAuth) is deferred — it can't be known without connecting; Test Connection still reports it.
+- Detail (view mode): name, "type · class", status with "Missing: …"; actions in the header (Authorize, Test Connection, Update Allowed Tools, Edit, Delete — same handlers); the default-for-type toggle; **Used by** — dashboards whose widgets resolve to it (`getAllProviderBindings`, with widget counts, Open) and bots granted it (Open in Bots view; leads excluded); server configuration and tools with theme tokens and `SectionLabel`s.
+- `AppPages/useProviderStatus.js`: running MCP servers (`mcpGetServerStatus`, again on window focus; state only updates when it changes), bots (`bots.list` + `onListChanged`), status and usage; `useMcpCatalog`; `useProvidersNeedingSetup` for the left nav.
+- **Left nav:** Providers shows an amber dot / count when any provider needs setup (`pageAttention.providers`).
+- **Fix:** `ProvidersSection` ignored `initialProviderName` / `initialCreateRequested` since slice 1, so "Open Settings › Providers" landed with nothing selected and create links didn't start the flow. Both are now applied once on mount (waiting for providers to load).
+- **Fix:** the MCP catalog's pre-select (`initialSelectedId`, used by "add a <type> provider" links incl. the Widget Builder) set the server without opening its configuration, so links landed on the full grid; it now runs the same `handleSelectServer` as clicking the card.
+- **Fix:** the command palette's provider results had no select handler (`onOpenProviderDetail` was passed but unused); choosing one now opens it on the Providers page.
+
 ### Phase 4: Previews and authoring
 
 NAV-011, NAV-012 (after the ownership fix), P2 items.
@@ -290,3 +302,4 @@ NAV-011, NAV-012 (after the ownership fix), P2 items.
 | 1.4     | 2026-10-03 | John   | Slice 3b: Widgets page (org → package → widget) |
 | 1.5     | 2026-10-03 | John   | Slice 3c: Themes page (list + preview)          |
 | 1.6     | 2026-10-04 | John   | Cleanup: removed the replaced Settings sections |
+| 1.7     | 2026-10-04 | John   | Providers restyle, status, Used by, nav dot     |

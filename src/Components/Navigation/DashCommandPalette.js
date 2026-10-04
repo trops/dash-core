@@ -27,6 +27,8 @@ export const DashCommandPalette = ({
   onToggleThemeVariant = null,
   // Provider actions
   onCreateNewProvider = null,
+  // Opens a provider on the Providers page (app-navigation NAV-007 AC2).
+  onOpenProviderDetail = null,
   // Settings actions
   onOpenSettings = null,
   onToggleDebugMode = null,
@@ -267,6 +269,11 @@ export const DashCommandPalette = ({
             <CommandPalette.Item
               key={item.key}
               icon={<FontAwesomeIcon icon="plug" className="h-3.5 w-3.5" />}
+              onSelect={
+                onOpenProviderDetail
+                  ? () => handleSelect(() => onOpenProviderDetail(item.label))
+                  : undefined
+              }
             >
               {item.label}
               {item.type && (

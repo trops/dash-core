@@ -42,9 +42,14 @@ describe("Providers page — create-provider-with-type wiring", () => {
 
   test("ProvidersSection routes mcp class to MCP add flow", () => {
     const source = readSrc("sections/ProvidersSection.js");
-    // Must reference initialProviderClass === "mcp" or equivalent
-    // routing in the create-trigger logic.
-    expect(source).toMatch(/initialProviderClass.*===\s*["']mcp["']/);
+    // The create trigger (header or deep link) routes through
+    // startCreate(class, type), which branches on the class.
+    expect(source).toMatch(
+      /startCreate\(initialProviderClass, initialProviderType\)/,
+    );
+    expect(source).toMatch(
+      /function startCreate\(providerClass, providerType\)[\s\S]*?providerClass === "mcp"/,
+    );
   });
 
   test("McpCatalogDetail accepts initialSelectedId", () => {

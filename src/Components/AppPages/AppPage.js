@@ -125,6 +125,9 @@ export const AppPage = ({
         initialCreateRequested={!!link.create}
         initialProviderType={link.type || null}
         initialProviderClass={link.providerClass || null}
+        workspaces={workspaces}
+        onOpenWorkspace={onOpenWorkspace}
+        onOpenBotInBotsView={onOpenBotInBotsView}
         {...createProps}
       />
     );

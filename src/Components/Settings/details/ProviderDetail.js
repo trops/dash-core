@@ -1,12 +1,15 @@
 import React, { useState, useContext, useMemo, useRef } from "react";
 import {
   Button,
+  Button3,
   InputText,
+  SectionLabel,
   SubHeading3,
   Tag,
   FontAwesomeIcon,
 } from "@trops/dash-react";
 import { AppContext } from "../../../Context/App/AppContext";
+import { useConfigTokens } from "../../Dashboard/ConfigListRow";
 import {
   deriveFormFields,
   formatFieldName,
@@ -35,7 +38,15 @@ export const ProviderDetail = ({
   catalogAuthCommand = null,
   catalogCredentialSchema = {},
   onBack = null,
+  // Providers page (app-navigation NAV-007): status, who uses it, and
+  // where Open goes.
+  status = null,
+  usage = null,
+  workspaces = [],
+  onOpenWorkspace = null,
+  onOpenBotInBotsView = null,
 }) => {
+  const { muted, strong, hairline } = useConfigTokens();
   const appContext = useContext(AppContext);
   const dashApi = appContext?.dashApi;
   const isMcp = provider?.providerClass === "mcp";
@@ -547,322 +558,330 @@ export const ProviderDetail = ({
   // ── Read-only detail view ──
   if (!providerName || !provider) return null;
 
-  return (
-    <div className="flex flex-col flex-1 min-h-0">
-      {/* Body */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
-        {/* Name */}
-        <SubHeading3 title={providerName} padding={false} />
+  const classLabel = isWs
+    ? "WebSocket"
+    : isMcp
+      ? "MCP server"
+      : "API credentials";
+  const STATUS_DOT = {
+    needsSetup: "bg-amber-400",
+    connected: "bg-green-400",
+    ready: "bg-gray-500",
+  };
+  const statusDot = (status && STATUS_DOT[status.key]) || STATUS_DOT.ready;
+  const plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
+  const wsById = (id) =>
+    (workspaces || []).find((w) => String(w.id) === String(id)) || null;
+  const resultBox = (result) =>
+    result ? (
+      <div
+        className={`p-3 rounded-lg border text-sm ${
+          result.success
+            ? "border-green-700 text-green-300"
+            : "border-red-700 text-red-300"
+        }`}
+      >
+        <div className="flex items-center gap-2">
+          <FontAwesomeIcon
+            icon={result.success ? "circle-check" : "circle-exclamation"}
+          />
+          <span>{result.message}</span>
+        </div>
+      </div>
+    ) : null;
+  const row = (label, value) => (
+    <div className="flex gap-3 text-sm">
+      <span className={`w-24 shrink-0 ${muted}`}>{label}</span>
+      {value}
+    </div>
+  );
 
-        {/* Info */}
-        <div className="flex flex-col space-y-3">
-          {provider.type && (
-            <div className="flex flex-row items-center gap-2">
-              <span className="text-sm opacity-50">Type:</span>
-              <Tag text={provider.type} />
-              {provider.isDefaultForType && (
-                <Tag text={`Default for ${provider.type}`} />
-              )}
-            </div>
-          )}
-          <div className="flex flex-row items-center gap-2">
-            <span className="text-sm opacity-50">Class:</span>
-            <Tag
-              text={
-                isWs ? "WebSocket" : isMcp ? "MCP Server" : "API Credentials"
-              }
-            />
-          </div>
-          {/* Default-for-type toggle. When set, any widget that requires
-              this provider type and hasn't been bound explicitly will use
-              this provider automatically. Single-winner per type: flipping
-              this on clears the flag on every sibling provider of the same
-              type. */}
-          {provider.type && onToggleDefaultForType && (
-            <div className="flex flex-row items-center gap-2 pt-1">
-              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={!!provider.isDefaultForType}
-                  onChange={(e) =>
-                    onToggleDefaultForType(
-                      providerName,
-                      provider,
-                      e.target.checked,
-                    )
-                  }
-                  className="h-4 w-4"
-                />
-                <span>
-                  Use as default for{" "}
-                  <code className="text-xs bg-white/5 px-1.5 py-0.5 rounded">
-                    {provider.type}
-                  </code>{" "}
-                  widgets
+  return (
+    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-5 gap-5">
+      {/* Header: name, type · class, status; actions */}
+      <div className="flex flex-row flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-1 min-w-0">
+          <h3 className={`text-lg font-semibold truncate ${strong}`}>
+            {providerName}
+          </h3>
+          <span className={`text-sm ${muted}`}>
+            {provider.type ? `${provider.type} · ` : ""}
+            {classLabel}
+            {provider.isDefaultForType ? " · default for its type" : ""}
+          </span>
+          {status ? (
+            <span className="flex flex-row flex-wrap items-center gap-1.5 text-sm">
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${statusDot}`}
+              />
+              <span
+                className={status.key === "needsSetup" ? "text-amber-400" : ""}
+              >
+                {status.label}
+              </span>
+              {status.missing && status.missing.length ? (
+                <span className={`text-xs ${muted}`}>
+                  {`Missing: ${status.missing.join(", ")}`}
                 </span>
-              </label>
+              ) : null}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex flex-row flex-wrap items-center gap-2">
+          {isMcp && resolvedAuthCommand && (
+            <Button3
+              title={isAuthorizing ? "Authorizing..." : "Authorize"}
+              onClick={handleAuthorize}
+              size="sm"
+            />
+          )}
+          {isMcp && (
+            <Button3
+              title={isTesting ? "Testing..." : "Test Connection"}
+              onClick={handleTestConnection}
+              size="sm"
+            />
+          )}
+          {isWs && (
+            <Button3
+              title={isWsTesting ? "Testing..." : "Test Connection"}
+              onClick={handleWsTestConnection}
+              size="sm"
+            />
+          )}
+          {isMcp && selectedTools && onSaveAllowedTools && (
+            <Button
+              title="Update Allowed Tools"
+              onClick={() => onSaveAllowedTools(providerName, selectedTools)}
+              size="sm"
+            />
+          )}
+          <Button3
+            title="Edit"
+            onClick={() => onStartEdit(providerName, provider)}
+            size="sm"
+          />
+          <Button3
+            title="Delete"
+            onClick={() => onDelete(providerName)}
+            size="sm"
+          />
+        </div>
+      </div>
+
+      {/* Default-for-type: any widget that needs this type and hasn't been
+          bound explicitly uses this provider. Single winner per type —
+          turning it on clears the flag on every sibling of the same type. */}
+      {provider.type && onToggleDefaultForType && (
+        <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={!!provider.isDefaultForType}
+            onChange={(e) =>
+              onToggleDefaultForType(providerName, provider, e.target.checked)
+            }
+            className="h-4 w-4"
+          />
+          <span>
+            Use as default for{" "}
+            <code
+              className={`text-xs px-1.5 py-0.5 rounded border ${hairline}`}
+            >
+              {provider.type}
+            </code>{" "}
+            widgets
+          </span>
+        </label>
+      )}
+
+      {/* Used by */}
+      {usage ? (
+        <div data-testid="provider-used-by" className="flex flex-col gap-2">
+          <SectionLabel text="Used by" />
+          {usage.count ? (
+            <div className="flex flex-col gap-1.5">
+              {usage.dashboards.map((d) => {
+                const ws = wsById(d.workspaceId);
+                return (
+                  <div
+                    key={`d-${d.workspaceId}`}
+                    className="flex flex-row items-center justify-between gap-3 text-sm"
+                  >
+                    <span className="flex flex-row items-center gap-2 min-w-0">
+                      <FontAwesomeIcon icon="clone" className={muted} />
+                      <span className="truncate">{d.workspaceName}</span>
+                      <span className={`text-xs ${muted}`}>
+                        {plural(d.widgets, "widget")}
+                      </span>
+                    </span>
+                    {ws && onOpenWorkspace ? (
+                      <Button3
+                        title="Open"
+                        size="xs"
+                        onClick={() => onOpenWorkspace(ws)}
+                      />
+                    ) : null}
+                  </div>
+                );
+              })}
+              {usage.bots.map((b) => {
+                const ws = b.workspaceId ? wsById(b.workspaceId) : null;
+                return (
+                  <div
+                    key={`b-${b.id}`}
+                    className="flex flex-row items-center justify-between gap-3 text-sm"
+                  >
+                    <span className="flex flex-row items-center gap-2 min-w-0">
+                      <FontAwesomeIcon icon="robot" className={muted} />
+                      <span className="truncate">{b.name}</span>
+                      <span className={`text-xs ${muted}`}>
+                        {ws ? ws.name : "Unassigned"}
+                      </span>
+                    </span>
+                    {ws && onOpenBotInBotsView ? (
+                      <Button3
+                        title="Open in Bots view"
+                        size="xs"
+                        onClick={() => onOpenBotInBotsView(ws, b.id)}
+                      />
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
+          ) : (
+            <span className={`text-sm ${muted}`}>
+              No dashboards or bots use it yet.
+            </span>
           )}
         </div>
+      ) : null}
 
-        {/* MCP-specific info */}
-        {isMcp && provider.mcpConfig && (
-          <>
-            {/* Section: Server Configuration */}
-            <div className="space-y-4">
-              <div className="border-t border-white/10 pt-4">
-                <p className="text-xs font-semibold opacity-40 uppercase tracking-wider mb-3">
-                  Server Configuration
-                </p>
-                <div className="space-y-2 text-sm">
-                  <div className="flex gap-2">
-                    <span className="opacity-50 w-20">Transport:</span>
-                    <span>
-                      {provider.mcpConfig.transport === "streamable_http"
-                        ? "Streamable HTTP"
-                        : "stdio"}
-                    </span>
-                  </div>
-                  {provider.mcpConfig.transport === "streamable_http" ? (
-                    <div className="flex gap-2">
-                      <span className="opacity-50 w-20">Endpoint:</span>
-                      <span className="text-xs opacity-70">
-                        Remote hosted server
-                      </span>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex gap-2">
-                        <span className="opacity-50 w-20">Command:</span>
-                        <code className="text-xs bg-white/5 px-2 py-0.5 rounded">
-                          {provider.mcpConfig.command}{" "}
-                          {(provider.mcpConfig.args || []).join(" ")}
-                        </code>
-                      </div>
-                      {provider.mcpConfig.envMapping &&
-                        Object.keys(provider.mcpConfig.envMapping).length >
-                          0 && (
-                          <div className="flex gap-2">
-                            <span className="opacity-50 w-20">Env Vars:</span>
-                            <span className="text-xs">
-                              {Object.keys(provider.mcpConfig.envMapping).join(
-                                ", ",
-                              )}
-                            </span>
-                          </div>
-                        )}
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Section: Connection & Tools */}
-            <div className="space-y-4">
-              <div className="border-t border-white/10 pt-4">
-                <p className="text-xs font-semibold opacity-40 uppercase tracking-wider mb-3">
-                  Connection & Tools
-                </p>
-              </div>
-
-              {/* Auth Result */}
-              {authResult && (
-                <div
-                  className={`p-3 rounded-lg text-sm ${
-                    authResult.success
-                      ? "bg-green-900/30 border border-green-700 text-green-300"
-                      : "bg-red-900/30 border border-red-700 text-red-300"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <FontAwesomeIcon
-                      icon={
-                        authResult.success
-                          ? "circle-check"
-                          : "circle-exclamation"
-                      }
-                    />
-                    <span>{authResult.message}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Test Connection Result */}
-              {testResult && (
-                <div
-                  className={`p-3 rounded-lg text-sm ${
-                    testResult.success
-                      ? "bg-green-900/30 border border-green-700 text-green-300"
-                      : "bg-red-900/30 border border-red-700 text-red-300"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <FontAwesomeIcon
-                      icon={
-                        testResult.success
-                          ? "circle-check"
-                          : "circle-exclamation"
-                      }
-                    />
-                    <span>{testResult.message}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Tool Selection after successful test */}
-              {testResult?.success &&
-                testResult.tools?.length > 0 &&
-                selectedTools && (
-                  <ToolSelector
-                    tools={testResult.tools}
-                    selectedTools={selectedTools}
-                    onSelectionChange={setSelectedTools}
-                  />
-                )}
-
-              {/* Allowed Tools read-only display (when no test result) */}
-              {!testResult &&
-                provider?.allowedTools &&
-                provider.allowedTools.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap gap-1">
-                      {provider.allowedTools.map((tool) => (
-                        <span
-                          key={tool}
-                          className="text-xs font-mono px-2 py-0.5 rounded bg-white/5 opacity-70"
-                        >
-                          {tool}
-                        </span>
-                      ))}
-                    </div>
-                    <p className="text-xs opacity-40">
-                      {provider.allowedTools.length} tool
-                      {provider.allowedTools.length !== 1 ? "s" : ""} allowed —
-                      test connection to modify
-                    </p>
-                  </div>
-                )}
-
-              {/* No tools or test yet */}
-              {!testResult &&
-                (!provider?.allowedTools ||
-                  provider.allowedTools.length === 0) && (
-                  <p className="text-sm opacity-40">
-                    No tools configured — use Test Connection to discover
-                    available tools.
-                  </p>
-                )}
-            </div>
-          </>
-        )}
-
-        {/* WebSocket-specific info */}
-        {isWs && provider.wsConfig && (
-          <>
-            <div className="space-y-4">
-              <div className="border-t border-white/10 pt-4">
-                <p className="text-xs font-semibold opacity-40 uppercase tracking-wider mb-3">
-                  Connection
-                </p>
-                <div className="space-y-2 text-sm">
-                  <div className="flex gap-2">
-                    <span className="opacity-50 w-24 shrink-0">URL:</span>
-                    <code className="text-xs bg-white/5 px-2 py-0.5 rounded break-all">
-                      {provider.wsConfig.url}
-                    </code>
-                  </div>
-                  {provider.wsConfig.headers &&
-                    Object.keys(provider.wsConfig.headers).length > 0 && (
-                      <div className="flex gap-2">
-                        <span className="opacity-50 w-24 shrink-0">
-                          Headers:
-                        </span>
-                        <span className="text-xs opacity-70">
-                          {Object.keys(provider.wsConfig.headers).join(", ")}
-                        </span>
-                      </div>
-                    )}
-                  {provider.wsConfig.subprotocols &&
-                    provider.wsConfig.subprotocols.length > 0 && (
-                      <div className="flex gap-2">
-                        <span className="opacity-50 w-24 shrink-0">
-                          Subprotocols:
-                        </span>
-                        <span className="text-xs opacity-70">
-                          {provider.wsConfig.subprotocols.join(", ")}
-                        </span>
-                      </div>
-                    )}
-                </div>
-              </div>
-            </div>
-
-            {/* WebSocket Test Result */}
-            {wsTestResult && (
-              <div
-                className={`p-3 rounded-lg text-sm ${
-                  wsTestResult.success
-                    ? "bg-green-900/30 border border-green-700 text-green-300"
-                    : "bg-red-900/30 border border-red-700 text-red-300"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <FontAwesomeIcon
-                    icon={
-                      wsTestResult.success
-                        ? "circle-check"
-                        : "circle-exclamation"
-                    }
-                  />
-                  <span>{wsTestResult.message}</span>
-                </div>
-              </div>
+      {/* MCP: server configuration, then connection & tools */}
+      {isMcp && provider.mcpConfig && (
+        <>
+          <div className="flex flex-col gap-2">
+            <SectionLabel text="Server configuration" />
+            {row(
+              "Transport",
+              <span>
+                {provider.mcpConfig.transport === "streamable_http"
+                  ? "Streamable HTTP"
+                  : "stdio"}
+              </span>,
             )}
-          </>
-        )}
-      </div>
+            {provider.mcpConfig.transport === "streamable_http" ? (
+              row(
+                "Endpoint",
+                <span className={`text-xs ${muted}`}>
+                  Remote hosted server
+                </span>,
+              )
+            ) : (
+              <>
+                {row(
+                  "Command",
+                  <code
+                    className={`text-xs px-2 py-0.5 rounded border break-all ${hairline}`}
+                  >
+                    {provider.mcpConfig.command}{" "}
+                    {(provider.mcpConfig.args || []).join(" ")}
+                  </code>,
+                )}
+                {provider.mcpConfig.envMapping &&
+                  Object.keys(provider.mcpConfig.envMapping).length > 0 &&
+                  row(
+                    "Env vars",
+                    <span className="text-xs">
+                      {Object.keys(provider.mcpConfig.envMapping).join(", ")}
+                    </span>,
+                  )}
+              </>
+            )}
+          </div>
 
-      {/* Footer */}
-      <div className="flex-shrink-0 flex flex-row justify-end gap-2 px-6 py-4 border-t border-white/10">
-        {isMcp && resolvedAuthCommand && (
-          <Button
-            title={isAuthorizing ? "Authorizing..." : "Authorize"}
-            onClick={handleAuthorize}
-            size="sm"
-          />
-        )}
-        {isMcp && (
-          <Button
-            title={isTesting ? "Testing..." : "Test Connection"}
-            onClick={handleTestConnection}
-            size="sm"
-          />
-        )}
-        {isWs && (
-          <Button
-            title={isWsTesting ? "Testing..." : "Test Connection"}
-            onClick={handleWsTestConnection}
-            size="sm"
-          />
-        )}
-        {isMcp && selectedTools && onSaveAllowedTools && (
-          <Button
-            title="Update Allowed Tools"
-            onClick={() => onSaveAllowedTools(providerName, selectedTools)}
-            size="sm"
-          />
-        )}
-        <Button
-          title="Edit"
-          onClick={() => onStartEdit(providerName, provider)}
-          size="sm"
-        />
-        <Button
-          title="Delete"
-          onClick={() => onDelete(providerName)}
-          size="sm"
-        />
-      </div>
+          <div className="flex flex-col gap-3">
+            <SectionLabel text="Connection & tools" />
+            {resultBox(authResult)}
+            {resultBox(testResult)}
+
+            {/* Tool selection after a successful test */}
+            {testResult?.success &&
+              testResult.tools?.length > 0 &&
+              selectedTools && (
+                <ToolSelector
+                  tools={testResult.tools}
+                  selectedTools={selectedTools}
+                  onSelectionChange={setSelectedTools}
+                />
+              )}
+
+            {/* Allowed tools (read-only until a test) */}
+            {!testResult &&
+              provider?.allowedTools &&
+              provider.allowedTools.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    {provider.allowedTools.map((tool) => (
+                      <span
+                        key={tool}
+                        className={`text-xs font-mono px-2 py-0.5 rounded border ${hairline} ${muted}`}
+                      >
+                        {tool}
+                      </span>
+                    ))}
+                  </div>
+                  <p className={`text-xs ${muted}`}>
+                    {provider.allowedTools.length} tool
+                    {provider.allowedTools.length !== 1 ? "s" : ""} allowed —
+                    test connection to modify
+                  </p>
+                </div>
+              )}
+
+            {!testResult &&
+              (!provider?.allowedTools ||
+                provider.allowedTools.length === 0) && (
+                <p className={`text-sm ${muted}`}>
+                  No tools configured — use Test Connection to discover
+                  available tools.
+                </p>
+              )}
+          </div>
+        </>
+      )}
+
+      {/* WebSocket: connection */}
+      {isWs && provider.wsConfig && (
+        <div className="flex flex-col gap-2">
+          <SectionLabel text="Connection" />
+          {row(
+            "URL",
+            <code
+              className={`text-xs px-2 py-0.5 rounded border break-all ${hairline}`}
+            >
+              {provider.wsConfig.url}
+            </code>,
+          )}
+          {provider.wsConfig.headers &&
+            Object.keys(provider.wsConfig.headers).length > 0 &&
+            row(
+              "Headers",
+              <span className="text-xs">
+                {Object.keys(provider.wsConfig.headers).join(", ")}
+              </span>,
+            )}
+          {provider.wsConfig.subprotocols &&
+            provider.wsConfig.subprotocols.length > 0 &&
+            row(
+              "Subprotocols",
+              <span className="text-xs">
+                {provider.wsConfig.subprotocols.join(", ")}
+              </span>,
+            )}
+          {resultBox(wsTestResult)}
+        </div>
+      )}
     </div>
   );
 };

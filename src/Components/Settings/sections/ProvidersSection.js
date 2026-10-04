@@ -1,14 +1,19 @@
 import React, { useState, useContext, useRef, useEffect } from "react";
 import {
+  Checkbox,
   ConfirmationModal,
   FontAwesomeIcon,
   SearchInput,
-  Sidebar,
-  Tag3,
-  Tabs3,
+  SectionLabel,
+  SegmentedControl,
 } from "@trops/dash-react";
 import { AppContext } from "../../../Context/App/AppContext";
-import { SectionLayout } from "../SectionLayout";
+import { useConfigTokens } from "../../Dashboard/ConfigListRow";
+import {
+  useMcpCatalog,
+  useProviderStatus,
+} from "../../AppPages/useProviderStatus";
+import { groupProviders } from "../../AppPages/providerSummary";
 import { ProviderDetail } from "../details/ProviderDetail";
 import { McpCatalogDetail } from "../details/McpCatalogDetail";
 import { CustomMcpServerForm } from "../details/CustomMcpServerForm";
@@ -20,11 +25,47 @@ import {
   headerTemplateToRows,
 } from "../../../utils/mcpUtils";
 
+// Class chips; values match providerTab ("credentials" is the credential class).
+const CLASS_CHIPS = [
+  { value: "all", label: "All" },
+  { value: "credentials", label: "Credentials" },
+  { value: "mcp", label: "MCP" },
+  { value: "websocket", label: "WebSocket" },
+];
+const CLS_OF_TAB = {
+  credentials: "credential",
+  mcp: "mcp",
+  websocket: "websocket",
+};
+const STATUS_DOT = {
+  needsSetup: "bg-amber-400",
+  connected: "bg-green-400",
+  ready: "bg-gray-500",
+};
+const plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
+
+/**
+ * ProvidersSection — the Providers Manage page (app-navigation PRD NAV-007):
+ * search, class chips and a Needs setup filter over a list grouped by class,
+ * each provider with its status (Needs setup / Connected / Starts when used /
+ * Saved) and how many dashboards and bots use it; the detail adds what's
+ * missing and Used by. The create / edit flows (class chooser, MCP catalog,
+ * custom MCP form, WebSocket form, credential form) are unchanged.
+ */
 export const ProvidersSection = ({
   dashApi = null,
   credentials = null,
   createRequested = false,
   onCreateAcknowledged = null,
+  // Used by: dashboards (Open) and bots (Open in Bots view).
+  workspaces = [],
+  onOpenWorkspace = null,
+  onOpenBotInBotsView = null,
+  // Deep links (Bots view "Open Settings › Providers", provider prompts): a
+  // provider to select, or a create flow to start. AppPage remounts this
+  // section for each new link, so these are read once.
+  initialProviderName = null,
+  initialCreateRequested = false,
   // Optional: when createRequested fires, pre-route the create flow
   // by class and pre-select the provider type. Used by the
   // cross-modal "Add new <type>" CTA from the Widget Builder.
@@ -35,17 +76,12 @@ export const ProvidersSection = ({
   const providers = appContext?.providers || {};
   const refreshProviders = appContext?.refreshProviders;
 
-  // Load MCP catalog for authCommand lookups
-  const [catalog, setCatalog] = useState([]);
-  useEffect(() => {
-    if (!dashApi) return;
-    dashApi.mcpGetCatalog(
-      (event, result) => {
-        if (result?.catalog) setCatalog(result.catalog);
-      },
-      () => {},
-    );
-  }, [dashApi]);
+  const { muted, strong, hairline, selectedBg, selectedBorder } =
+    useConfigTokens();
+  // MCP catalog: authCommand / credentialSchema lookups and status.
+  const catalog = useMcpCatalog(dashApi);
+  const status = useProviderStatus({ providers, workspaces, dashApi, catalog });
+  const [needsSetupOnly, setNeedsSetupOnly] = useState(false);
 
   const [providerTab, setProviderTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -78,17 +114,6 @@ export const ProvidersSection = ({
 
   const providerEntries = Object.entries(providers);
   const appId = credentials?.appId;
-
-  // Separate credential and MCP providers for display
-  const credentialProviders = providerEntries.filter(
-    ([, p]) => (p.providerClass || "credential") === "credential",
-  );
-  const mcpProviders = providerEntries.filter(
-    ([, p]) => p.providerClass === "mcp",
-  );
-  const wsProviders = providerEntries.filter(
-    ([, p]) => p.providerClass === "websocket",
-  );
 
   function resetForm() {
     setFormName("");
@@ -446,45 +471,51 @@ export const ProvidersSection = ({
   // cross-modal "Add new <type>" event dispatched by the Widget
   // Builder, with optional initialProviderType/initialProviderClass
   // for type pre-fill / catalog pre-select).
+  function startCreate(providerClass, providerType) {
+    resetForm();
+    setSelectedName(null);
+    setIsShowingClassChooser(false);
+    // External create requests (deep-link or header button) do NOT
+    // come via the chooser, so any leftover "came from chooser" state
+    // from a prior session must be cleared before routing.
+    setCameFromClassChooser(false);
+    if (providerClass === "mcp") {
+      // MCP class: open the catalog detail. Pre-select happens in
+      // McpCatalogDetail via the initialSelectedId prop passed below.
+      setIsCreating(false);
+      setIsAddingMcp(true);
+    } else if (providerClass === "websocket") {
+      // WebSocket class: open the WebSocket add form. Reachable via
+      // a future Widget Builder deep-link for ws-typed widgets.
+      setIsCreating(false);
+      setIsAddingMcp(false);
+      setIsAddingWs(true);
+    } else if (providerClass === "credential") {
+      // Credential class: open the credential create form and
+      // pre-fill the type field if provided.
+      setIsAddingMcp(false);
+      setIsCreating(true);
+      if (providerType) {
+        setFormType(providerType);
+      }
+    } else {
+      // No class specified — Settings header "+ New Provider"
+      // button hits this branch. Show the chooser so the user
+      // picks Credential / MCP / WebSocket explicitly instead of
+      // landing on the credential form by default.
+      setIsAddingMcp(false);
+      setIsCreating(false);
+      setIsAddingWs(false);
+      setIsShowingClassChooser(true);
+    }
+  }
+
   const prevCreateRequested = useRef(false);
   useEffect(() => {
+    // The header's New Provider always starts at the class chooser — the
+    // class / type props belong to a deep link (applied below), not to it.
     if (createRequested && !prevCreateRequested.current) {
-      resetForm();
-      setSelectedName(null);
-      setIsShowingClassChooser(false);
-      // External create requests (deep-link or header button) do NOT
-      // come via the chooser, so any leftover "came from chooser" state
-      // from a prior session must be cleared before routing.
-      setCameFromClassChooser(false);
-      if (initialProviderClass === "mcp") {
-        // MCP class: open the catalog detail. Pre-select happens in
-        // McpCatalogDetail via the initialSelectedId prop passed below.
-        setIsCreating(false);
-        setIsAddingMcp(true);
-      } else if (initialProviderClass === "websocket") {
-        // WebSocket class: open the WebSocket add form. Reachable via
-        // a future Widget Builder deep-link for ws-typed widgets.
-        setIsCreating(false);
-        setIsAddingMcp(false);
-        setIsAddingWs(true);
-      } else if (initialProviderClass === "credential") {
-        // Credential class: open the credential create form and
-        // pre-fill the type field if provided.
-        setIsAddingMcp(false);
-        setIsCreating(true);
-        if (initialProviderType) {
-          setFormType(initialProviderType);
-        }
-      } else {
-        // No class specified — Settings header "+ New Provider"
-        // button hits this branch. Show the chooser so the user
-        // picks Credential / MCP / WebSocket explicitly instead of
-        // landing on the credential form by default.
-        setIsAddingMcp(false);
-        setIsCreating(false);
-        setIsAddingWs(false);
-        setIsShowingClassChooser(true);
-      }
+      startCreate(null, null);
     }
     prevCreateRequested.current = createRequested;
     if (createRequested && onCreateAcknowledged) {
@@ -493,124 +524,132 @@ export const ProvidersSection = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createRequested]);
 
+  // Deep links, once: a provider to select, or a create flow to start.
+  // Providers can arrive after mount, so wait until the named one exists.
+  const linkApplied = useRef(false);
+  useEffect(() => {
+    if (linkApplied.current) return;
+    if (initialCreateRequested) {
+      linkApplied.current = true;
+      startCreate(initialProviderClass, initialProviderType);
+    } else if (initialProviderName && providers[initialProviderName]) {
+      linkApplied.current = true;
+      setSelectedName(initialProviderName);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCreateRequested, initialProviderName, providers]);
+
+  const groups = groupProviders(providers, {
+    cls: CLS_OF_TAB[providerTab] || "all",
+    query: searchQuery,
+    needsSetupOnly,
+    statusOf: (name) => status.statusOf(name).key,
+  });
+  const visibleNames = groups.flatMap((g) => g.items.map((i) => i.name));
+  const isFlowOpen =
+    // A create link not applied yet: don't flash a provider first.
+    (initialCreateRequested && !linkApplied.current) ||
+    isCreating ||
+    isShowingClassChooser ||
+    isAddingMcp ||
+    isAddingWs ||
+    isEditingMcp ||
+    isEditingWs;
+  // The selected provider, else the first one shown (like the other pages).
+  const shownName =
+    selectedName && providers[selectedName]
+      ? selectedName
+      : !isFlowOpen
+        ? visibleNames[0] || null
+        : null;
   const selectedProvider =
     selectedName && providers[selectedName] ? providers[selectedName] : null;
-
-  // Class filter (All + 3 classes). "All" merges every group so the
-  // user gets one alphabetized list by default — mirrors the Widgets
-  // sidebar pattern.
-  const tabFilteredProviders =
-    providerTab === "all"
-      ? [...credentialProviders, ...mcpProviders, ...wsProviders]
-      : providerTab === "credentials"
-        ? credentialProviders
-        : providerTab === "mcp"
-          ? mcpProviders
-          : wsProviders;
-
-  const trimmedQuery = searchQuery.trim().toLowerCase();
-  const visibleProviders = tabFilteredProviders
-    .filter(([name, provider]) => {
-      if (!trimmedQuery) return true;
-      return (
-        name.toLowerCase().includes(trimmedQuery) ||
-        (provider.type || "").toLowerCase().includes(trimmedQuery)
-      );
-    })
-    .slice()
-    .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  const shownProvider = shownName ? providers[shownName] : null;
+  const needsSetupCount = Object.keys(providers).filter(
+    (name) => status.statusOf(name).key === "needsSetup",
+  ).length;
 
   const iconForClass = (cls) =>
     cls === "mcp" ? "server" : cls === "websocket" ? "plug" : "key";
 
+  const selectProvider = (name) => {
+    setSelectedName(name);
+    setIsCreating(false);
+    setIsEditing(false);
+    setIsAddingMcp(false);
+    setIsAddingWs(false);
+    setIsEditingMcp(false);
+    setIsEditingWs(false);
+    setIsShowingClassChooser(false);
+    setCameFromClassChooser(false);
+    resetForm();
+  };
+
   const listContent = (
-    <>
-      <div className="px-2 pt-2 pb-2">
-        <SearchInput
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder="Search providers..."
-          inputClassName="py-1.5 text-xs"
-        />
-      </div>
-      <div className="px-2">
-        <Tabs3
-          value={providerTab}
-          onValueChange={setProviderTab}
-          backgroundColor="bg-transparent"
-          spacing="p-0"
-        >
-          <Tabs3.List className="w-full flex" spacing="p-0.5">
-            <Tabs3.Trigger value="all" className="flex-1">
-              All
-            </Tabs3.Trigger>
-            <Tabs3.Trigger value="credentials" className="flex-1">
-              Credentials
-            </Tabs3.Trigger>
-            <Tabs3.Trigger value="mcp" className="flex-1">
-              MCP
-            </Tabs3.Trigger>
-            <Tabs3.Trigger value="websocket" className="flex-1">
-              WebSocket
-            </Tabs3.Trigger>
-          </Tabs3.List>
-        </Tabs3>
-      </div>
-      <div className="px-3 pt-2 pb-1">
-        <span className="text-xs opacity-40">
-          {visibleProviders.length} provider
-          {visibleProviders.length === 1 ? "" : "s"}
-        </span>
-      </div>
-      <Sidebar.Content>
-        {visibleProviders.map(([name, provider]) => {
-          const isSelected = selectedName === name && !isCreating;
-          const cls = provider.providerClass || "credential";
-          return (
-            <Sidebar.Item
-              key={name}
-              icon={
+    <div
+      role="list"
+      aria-label="Providers"
+      className="min-h-0 overflow-y-auto flex flex-col gap-3 pr-2"
+    >
+      {groups.map((g) => (
+        <div key={g.cls} className="flex flex-col gap-1">
+          <span data-testid="provider-group" className="px-3">
+            <SectionLabel text={g.label} />
+          </span>
+          {g.items.map(({ name, provider, cls }) => {
+            const active = !isFlowOpen && name === shownName;
+            const st = status.statusOf(name);
+            const dot = STATUS_DOT[st.key] || STATUS_DOT.ready;
+            const used = status.usageOf(name).count;
+            return (
+              <button
+                key={name}
+                type="button"
+                aria-current={active ? "true" : undefined}
+                onClick={() => selectProvider(name)}
+                className={`w-full text-left rounded-lg px-3 py-2 border flex flex-row items-center gap-3 ${
+                  active
+                    ? `${selectedBg} ${selectedBorder}`
+                    : "border-transparent"
+                }`}
+              >
                 <FontAwesomeIcon
                   icon={iconForClass(cls)}
-                  className="h-3.5 w-3.5"
+                  className={`flex-shrink-0 ${muted}`}
                 />
-              }
-              active={isSelected}
-              onClick={() => {
-                setSelectedName(name);
-                setIsCreating(false);
-                setIsEditing(false);
-                setIsAddingMcp(false);
-                setIsAddingWs(false);
-                setIsEditingMcp(false);
-                setIsEditingWs(false);
-                setIsShowingClassChooser(false);
-                setCameFromClassChooser(false);
-                resetForm();
-              }}
-              badge={provider.type ? <Tag3 text={provider.type} /> : null}
-              className={isSelected ? "bg-white/10 opacity-100" : ""}
-            >
-              {name}
-            </Sidebar.Item>
-          );
-        })}
-
-        {visibleProviders.length === 0 && (
-          <span className="text-sm opacity-40 py-8 text-center">
-            {trimmedQuery
-              ? `No providers match "${searchQuery.trim()}"`
-              : providerTab === "all"
-                ? "No providers configured"
-                : providerTab === "credentials"
-                  ? "No API credentials configured"
-                  : providerTab === "mcp"
-                    ? "No MCP servers configured"
-                    : "No WebSocket providers configured"}
-          </span>
-        )}
-      </Sidebar.Content>
-    </>
+                <span className="flex-1 min-w-0 flex flex-col">
+                  <span
+                    data-name
+                    className={`text-sm font-medium truncate ${strong}`}
+                  >
+                    {name}
+                  </span>
+                  <span className={`text-xs truncate ${muted}`}>
+                    {provider.type || cls}
+                    {used ? ` · used by ${used}` : ""}
+                  </span>
+                </span>
+                <span
+                  className={`flex flex-row items-center gap-1.5 text-xs flex-shrink-0 ${muted}`}
+                >
+                  <span
+                    className={`inline-block h-2 w-2 rounded-full ${dot}`}
+                  />
+                  {st.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ))}
+      {!visibleNames.length ? (
+        <span className={`text-sm px-3 ${muted}`}>
+          {Object.keys(providers).length
+            ? "No providers match these filters."
+            : "No providers yet."}
+        </span>
+      ) : null}
+    </div>
   );
 
   // Closes whichever create-flow detail is open and re-opens the
@@ -725,15 +764,21 @@ export const ProvidersSection = ({
         onBack={() => setIsEditingMcp(false)}
       />
     );
-  } else if (selectedName && selectedProvider) {
+  } else if (shownName && shownProvider) {
     // Look up authCommand from the catalog for this provider type
     const catalogEntry = catalog.find(
-      (entry) => entry.id === selectedProvider.type,
+      (entry) => entry.id === shownProvider.type,
     );
     detailContent = (
       <ProviderDetail
-        providerName={selectedName}
-        provider={selectedProvider}
+        key={shownName}
+        providerName={shownName}
+        provider={shownProvider}
+        status={status.statusOf(shownName)}
+        usage={status.usageOf(shownName)}
+        workspaces={workspaces}
+        onOpenWorkspace={onOpenWorkspace}
+        onOpenBotInBotsView={onOpenBotInBotsView}
         isEditing={isEditing}
         formName={formName}
         setFormName={setFormName}
@@ -751,15 +796,64 @@ export const ProvidersSection = ({
         catalogCredentialSchema={catalogEntry?.credentialSchema || {}}
       />
     );
+  } else if (!isFlowOpen) {
+    detailContent = (
+      <span className={`p-5 text-sm ${muted}`}>
+        {Object.keys(providers).length
+          ? "No providers match these filters."
+          : "No providers yet. Add one with New Provider."}
+      </span>
+    );
   }
 
   return (
-    <>
-      <SectionLayout
-        listContent={listContent}
-        detailContent={detailContent}
-        emptyDetailMessage="Select a provider to view details"
-      />
+    // The page's base text colour (plain names inherit it); muted text
+    // keeps its own token.
+    <div
+      data-testid="providers-page"
+      className={`flex flex-col flex-1 min-h-0 gap-3 px-6 pt-4 pb-4 ${strong}`}
+    >
+      {/* Filter bar — fixed; the list and detail scroll on their own. */}
+      <div className="flex-shrink-0 flex flex-row flex-wrap items-center gap-2">
+        <div className="w-72">
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search providers…"
+          />
+        </div>
+        <SegmentedControl
+          ariaLabel="Class"
+          options={CLASS_CHIPS}
+          value={providerTab}
+          onChange={setProviderTab}
+        />
+        <Checkbox
+          label="Needs setup only"
+          checked={needsSetupOnly}
+          onChange={setNeedsSetupOnly}
+        />
+        <span className="flex-1" />
+        {needsSetupCount ? (
+          <span className="flex flex-row items-center gap-1.5 text-xs text-amber-400">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
+            {plural(needsSetupCount, "provider")} need
+            {needsSetupCount === 1 ? "s" : ""} setup
+          </span>
+        ) : null}
+      </div>
+
+      <div className="flex-1 min-h-0 grid grid-cols-3 gap-4">
+        {listContent}
+        {/* The create / edit forms scroll inside themselves (with their own
+            footers), so this pane only clips. */}
+        <div
+          data-testid="provider-detail"
+          className={`col-span-2 min-h-0 flex flex-col overflow-hidden rounded-lg border ${hairline}`}
+        >
+          {detailContent}
+        </div>
+      </div>
       <ConfirmationModal
         isOpen={!!deleteTarget}
         setIsOpen={() => setDeleteTarget(null)}
@@ -770,6 +864,6 @@ export const ProvidersSection = ({
         onConfirm={handleConfirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-    </>
+    </div>
   );
 };
