@@ -14,6 +14,7 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { AppContext } from "../../Context/App/AppContext";
 import { ComponentManager } from "../../ComponentManager";
 import { WidgetPreview } from "./WidgetPreview";
+import { useRegistryIdentity } from "./useRegistryIdentity";
 import { useInstalledWidgets } from "../../hooks/useInstalledWidgets";
 import { useWidgetUpdates } from "../../hooks/useWidgetUpdates";
 import { useRegistryAuthGate } from "../../hooks/useRegistryAuthGate";
@@ -45,6 +46,32 @@ const openBuilder = (detail) =>
       ? new CustomEvent("dash:open-widget-builder", { detail })
       : new Event("dash:open-widget-builder"),
   );
+
+/**
+ * Open the Widget Builder on an installed widget (the same event as a
+ * dashboard widget's "Edit with AI"). The builder decides update-in-place vs
+ * remix with the same ownership rule.
+ */
+const editInBuilder = (widget, pkg) => {
+  const component =
+    ((widget && widget.componentNames) || []).find(
+      (n) => n && !String(n).startsWith("@"),
+    ) ||
+    (widget && widget.name);
+  window.dispatchEvent(
+    new CustomEvent("dash:edit-widget-with-ai", {
+      detail: {
+        widgetComponentName: component,
+        sourcePackage: pkg.id,
+        // Puts the builder in edit mode (Update original for the owner).
+        // "<package>/<component>" is what the builder itself uses when it
+        // edits a package without a dashboard instance; with no grid cell,
+        // installing swaps / places nothing.
+        widgetId: `${pkg.id}/${component}`,
+      },
+    }),
+  );
+};
 
 /** Dashboards using a package or widget, each with Open. */
 const UsedOn = ({ usage, workspaces, onOpenWorkspace, muted }) => {
@@ -92,10 +119,16 @@ const PackageDetail = ({
   onUpdate,
   onPublish,
   onRemove,
+  identity,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const first = pkg.widgets[0] || {};
   const installed = !pkg.isBuiltIn && !pkg.isDraft;
+  // The user's own package (their scope, or local AI-built): they can
+  // publish it — always under their own username — and edit it.
+  const own = pkg.mine && !pkg.isBuiltIn;
+  const signedIn = !!(identity && identity.signedIn);
+  const published = own && identity ? identity.publishedVersion(pkg.id) : null;
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-row flex-wrap items-start justify-between gap-3">
@@ -141,11 +174,18 @@ const PackageDetail = ({
               onClick={() => openBuilder({ resumeDraftId: first.draftId })}
             />
           ) : null}
-          {installed ? (
+          {own && signedIn ? (
             <Button3
-              title="Publish…"
+              title={published ? "Publish new version…" : "Publish…"}
               size="sm"
               onClick={() => onPublish(pkg)}
+            />
+          ) : null}
+          {own && !pkg.isDraft ? (
+            <Button3
+              title="Edit in Widget Builder"
+              size="sm"
+              onClick={() => editInBuilder(first, pkg)}
             />
           ) : null}
           {!pkg.isBuiltIn && first.path ? (
@@ -164,6 +204,15 @@ const PackageDetail = ({
           )}
         </div>
       </div>
+      {own ? (
+        <span className={`text-xs ${muted}`}>
+          {!signedIn
+            ? "Sign in to the registry to publish."
+            : published
+              ? `Published v${published} · installed v${pkg.version || "?"}`
+              : "Not published yet"}
+        </span>
+      ) : null}
       {updateError && installed && pkg.update ? (
         <span className="text-xs text-red-400">{updateError}</span>
       ) : null}
@@ -271,20 +320,29 @@ const WidgetDetail = ({
       <div>
         <Button3 title={`← ${packageLabel(pkg)}`} size="xs" onClick={onBack} />
       </div>
-      <div className="flex flex-row items-center gap-3 min-w-0">
-        <span
-          className={`flex items-center justify-center h-10 w-10 rounded-lg border flex-shrink-0 ${hairline}`}
-        >
-          <FontAwesomeIcon icon={resolveIcon(widget.icon)} />
-        </span>
-        <div className="flex flex-col gap-0.5 min-w-0">
-          <h3 className={`text-lg font-semibold truncate ${strong}`}>
-            {widget.displayName || widget.name}
-          </h3>
-          <span className={`text-xs font-mono truncate ${muted}`}>
-            {widget.name}
+      <div className="flex flex-row flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-row items-center gap-3 min-w-0">
+          <span
+            className={`flex items-center justify-center h-10 w-10 rounded-lg border flex-shrink-0 ${hairline}`}
+          >
+            <FontAwesomeIcon icon={resolveIcon(widget.icon)} />
           </span>
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <h3 className={`text-lg font-semibold truncate ${strong}`}>
+              {widget.displayName || widget.name}
+            </h3>
+            <span className={`text-xs font-mono truncate ${muted}`}>
+              {widget.name}
+            </span>
+          </div>
         </div>
+        {pkg.mine && !pkg.isBuiltIn && !pkg.isDraft ? (
+          <Button3
+            title="Edit in Widget Builder"
+            size="sm"
+            onClick={() => editInBuilder(widget, pkg)}
+          />
+        ) : null}
       </div>
       {widget.description ? (
         <p className="text-sm">{widget.description}</p>
@@ -414,6 +472,7 @@ export const WidgetsPage = ({
   const { ensureAuthed, authGate } = useRegistryAuthGate();
   const install = useWidgetInstall(refresh);
   const appProviders = (useContext(AppContext) || {}).providers || {};
+  const identity = useRegistryIdentity();
 
   const [query, setQuery] = useState("");
   const [orgFilter, setOrgFilter] = useState([]);
@@ -429,8 +488,9 @@ export const WidgetsPage = ({
   const [publishWidget, setPublishWidget] = useState(null);
 
   const orgs = useMemo(
-    () => widgetOrgs(widgets, { workspaces, updates }),
-    [widgets, workspaces, updates],
+    () =>
+      widgetOrgs(widgets, { workspaces, updates, username: identity.username }),
+    [widgets, workspaces, updates, identity.username],
   );
   const shown = filterOrgs(orgs, { query, orgs: orgFilter, chip });
   const visible = shown.flatMap((o) => o.packages);
@@ -582,6 +642,7 @@ export const WidgetsPage = ({
         onUpdate={updatePackage}
         onPublish={(pkg) => setPublishWidget(pkg.widgets[0])}
         onRemove={setRemoveTarget}
+        identity={identity}
       />
     );
   } else {
@@ -807,7 +868,11 @@ export const WidgetsPage = ({
         <PublishWidgetModal
           isOpen={!!publishWidget}
           setIsOpen={(open) => {
-            if (!open) setPublishWidget(null);
+            if (!open) {
+              setPublishWidget(null);
+              // A publish just happened (maybe): update "Published v…".
+              identity.refresh();
+            }
           }}
           appId={credentials?.appId}
           widget={publishWidget}

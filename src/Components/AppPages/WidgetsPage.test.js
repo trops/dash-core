@@ -137,6 +137,19 @@ jest.mock("../WidgetPreflightReview", () => ({
   WidgetPreflightReview: () => null,
 }));
 const mockInstallFromZip = jest.fn().mockResolvedValue();
+// Signed in as "trops", who has published @trops/slack v1.2.0.
+let mockIdentity = null;
+jest.mock("./useRegistryIdentity", () => ({
+  useRegistryIdentity: () => mockIdentity,
+}));
+function mockSignedInAs(username, published = {}) {
+  mockIdentity = {
+    username,
+    signedIn: !!username,
+    publishedVersion: (id) => published[id] || null,
+    refresh: () => {},
+  };
+}
 // The live preview has its own tests; here it just reports its props.
 jest.mock("./WidgetPreview", () => ({
   WidgetPreview: ({ widget, onSetUpProvider }) => (
@@ -200,6 +213,7 @@ const pkgLabels = () =>
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockSignedInAs("trops", { "@trops/slack": "1.2.0" });
 });
 afterEach(() => {
   delete window.mainApi;
@@ -251,7 +265,8 @@ describe("WidgetsPage list (NAV-008 AC1, AC2)", () => {
     fireEvent.click(screen.getByRole("radio", { name: "In use" }));
     expect(pkgLabels()).toEqual(["slack", "Dash Samples"]);
     fireEvent.click(screen.getByRole("radio", { name: "Mine" }));
-    expect(pkgLabels()).toEqual(["Thing (draft)"]);
+    // Signed in as trops: their scope and their AI-built drafts.
+    expect(pkgLabels()).toEqual(["slack", "Thing (draft)"]);
     fireEvent.click(screen.getByRole("radio", { name: "Not used" }));
     expect(pkgLabels()).toEqual(["charts", "Thing (draft)"]);
   });
@@ -306,7 +321,13 @@ describe("WidgetsPage package detail (NAV-008 AC3)", () => {
   it("publishes, opens in Finder and manages permissions", () => {
     const { onOpenPrivacySettings } = setup();
     fireEvent.click(pkgRow("slack"));
-    fireEvent.click(within(detail()).getByRole("button", { name: "Publish…" }));
+    // Already on the registry, so it's a new version.
+    expect(
+      within(detail()).getByText("Published v1.2.0 · installed v1.2.0"),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(detail()).getByRole("button", { name: "Publish new version…" }),
+    );
     expect(screen.getByTestId("publish")).toHaveTextContent("@trops/slack");
     fireEvent.click(
       within(detail()).getByRole("button", { name: "Open in Finder" }),
@@ -327,14 +348,77 @@ describe("WidgetsPage package detail (NAV-008 AC3)", () => {
     fireEvent.click(within(detail()).getByRole("button", { name: "Resume" }));
     expect(events).toEqual([{ resumeDraftId: "x" }]);
     window.removeEventListener("dash:open-widget-builder", onEvent);
-    expect(within(detail()).queryByRole("button", { name: "Publish…" })).toBe(
-      null,
+    // A draft is the user's own — it can be published (under their scope).
+    expect(within(detail()).getByText("Not published yet")).toBeInTheDocument();
+    fireEvent.click(within(detail()).getByRole("button", { name: "Publish…" }));
+    expect(screen.getByTestId("publish")).toHaveTextContent(
+      "@ai-built/draft-x",
     );
     fireEvent.click(within(detail()).getByRole("button", { name: "Delete" }));
     fireEvent.click(
       within(screen.getByTestId("confirmation-modal")).getByText("Delete"),
     );
     await waitFor(() => expect(drafts.delete).toHaveBeenCalledWith("x"));
+  });
+
+  it("someone else's package can't be published or edited in the builder", () => {
+    setup();
+    fireEvent.click(pkgRow("charts"));
+    for (const name of [
+      "Publish…",
+      "Publish new version…",
+      "Edit in Widget Builder",
+    ]) {
+      expect(within(detail()).queryByRole("button", { name })).toBeNull();
+    }
+    expect(
+      within(detail()).getByRole("button", { name: "Uninstall" }),
+    ).toBeInTheDocument();
+  });
+
+  it("signed out: only AI-built packages are the user's", () => {
+    mockSignedInAs(null);
+    setup();
+    fireEvent.click(pkgRow("slack"));
+    expect(
+      within(detail()).queryByRole("button", { name: /^Publish/ }),
+    ).toBeNull();
+    fireEvent.click(pkgRow("Thing (draft)"));
+    expect(
+      within(detail()).getByText("Sign in to the registry to publish."),
+    ).toBeInTheDocument();
+  });
+
+  it("Edit in Widget Builder opens the builder on the package's widget", () => {
+    setup();
+    const events = [];
+    const onEvent = (e) => events.push(e.detail);
+    window.addEventListener("dash:edit-widget-with-ai", onEvent);
+    fireEvent.click(pkgRow("slack"));
+    fireEvent.click(
+      within(detail()).getByRole("button", { name: "Edit in Widget Builder" }),
+    );
+    // And from one widget's detail.
+    fireEvent.click(within(list()).getByText("Channel Messages"));
+    fireEvent.click(
+      within(detail()).getByRole("button", { name: "Edit in Widget Builder" }),
+    );
+    window.removeEventListener("dash:edit-widget-with-ai", onEvent);
+    expect(events).toEqual([
+      // widgetId puts the builder in edit mode (Update original for the
+      // owner) — "<package>/<component>", as the builder uses for packages
+      // it edits without a dashboard instance; no cell, so nothing is swapped.
+      {
+        widgetComponentName: "trops.slack.Channels",
+        sourcePackage: "@trops/slack",
+        widgetId: "@trops/slack/trops.slack.Channels",
+      },
+      {
+        widgetComponentName: "trops.slack.Messages",
+        sourcePackage: "@trops/slack",
+        widgetId: "@trops/slack/trops.slack.Messages",
+      },
+    ]);
   });
 
   it("built-in widgets can't be updated, published or uninstalled", () => {

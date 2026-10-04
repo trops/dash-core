@@ -5,6 +5,7 @@
  */
 import { collectComponentsFromLayout } from "../../hooks/useInstalledWidgets";
 import { getUserConfigurableProviders } from "../../utils/providerUtils";
+import { deriveWidgetOwnership } from "../../utils/widgetOwnership";
 
 export const BUILT_IN = "Built-in";
 export const AI_BUILT = "AI-built";
@@ -83,7 +84,10 @@ const ORG_RANK = (name) =>
  *   isBuiltIn, isDraft, mine, update, providers, description, widgets,
  *   usedOn, widgetUsage }> }>}
  */
-export function widgetOrgs(widgets, { workspaces = [], updates } = {}) {
+export function widgetOrgs(
+  widgets,
+  { workspaces = [], updates, username = null } = {},
+) {
   const packages = new Map();
   for (const w of widgets || []) {
     if (!w) continue;
@@ -98,7 +102,14 @@ export function widgetOrgs(widgets, { workspaces = [], updates } = {}) {
         source: sourceOf(w, org),
         isBuiltIn: w.source === "builtin",
         isDraft: w.kind === "draft",
-        mine: org === AI_BUILT,
+        // The user's own: their username's scope (the only scope they can
+        // publish under), plus their local @ai-built packages and drafts.
+        mine:
+          !(w.source === "builtin") &&
+          deriveWidgetOwnership({
+            originalPackage: id,
+            registryUsername: username,
+          }).isOwner,
         update: null,
         description: null,
         providers: [],

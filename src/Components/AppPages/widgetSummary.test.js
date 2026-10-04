@@ -138,6 +138,29 @@ describe("widgetOrgs (app-navigation NAV-008 AC1)", () => {
     ]);
   });
 
+  it("the user's own packages: their scope, AI-built and drafts — not others'", () => {
+    // Every user publishes only under their own username as the scope.
+    const mineAs = (username) =>
+      widgetOrgs(widgets, { workspaces, updates, username })
+        .flatMap((o) => o.packages)
+        .filter((p) => p.mine)
+        .map((p) => p.id);
+    expect(mineAs("trops")).toEqual([
+      "@trops/slack",
+      "@ai-built/draft-x",
+      "@ai-built/notes",
+    ]);
+    expect(mineAs("acme")).toEqual([
+      "@acme/charts",
+      "@ai-built/draft-x",
+      "@ai-built/notes",
+    ]);
+    // Signed out: only the local AI-built packages.
+    expect(mineAs(null)).toEqual(["@ai-built/draft-x", "@ai-built/notes"]);
+    // Never by substring / prefix.
+    expect(mineAs("trop")).toEqual(["@ai-built/draft-x", "@ai-built/notes"]);
+  });
+
   it("marks drafts and AI-built packages as the user's; built-ins have no package id", () => {
     const [draft, notes] = orgs[2].packages;
     expect(draft.isDraft).toBe(true);

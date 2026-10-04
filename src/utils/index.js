@@ -6,6 +6,7 @@ export * from "@trops/dash-react";
 export * from "./layout";
 export * from "./widgetBundleLoader";
 export * from "./widgetPreviewRenderer";
+export * from "./widgetOwnership";
 export * from "./dragTypes";
 export * from "./resolveIcon";
 export * from "./validation";
