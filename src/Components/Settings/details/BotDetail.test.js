@@ -289,6 +289,14 @@ describe("BotDetail — event picker", () => {
       />,
     );
     expect(screen.getByText("pr.opened")).toBeInTheDocument();
+    // Mark the form changed (Save is disabled until it is); saved
+    // instructions are trimmed, so the values checked below are unchanged.
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: {
+        value:
+          screen.getByPlaceholderText("What should this bot do?").value + " ",
+      },
+    });
     fireEvent.click(screen.getByText("Save"));
     expect(onSave.mock.calls[0][0].subscriptions).toEqual([
       { eventType: "pr.opened" },
@@ -524,6 +532,14 @@ describe("BotDetail (edit)", () => {
     expect(screen.getByText("Delete")).toBeInTheDocument();
     // An attached-but-not-connected server still renders, checked, and is kept.
     expect(screen.getByLabelText("GitHub")).toBeChecked();
+    // Mark the form changed (Save is disabled until it is); saved
+    // instructions are trimmed, so the values checked below are unchanged.
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: {
+        value:
+          screen.getByPlaceholderText("What should this bot do?").value + " ",
+      },
+    });
     fireEvent.click(screen.getByText("Save"));
     const def = onSave.mock.calls[0][0];
     expect(def.id).toBe("bot_1");
@@ -560,6 +576,14 @@ describe("BotDetail (edit)", () => {
     expect(screen.getByPlaceholderText("Cron, e.g. 0 7 * * 1-5")).toHaveValue(
       "*/5 * * * *",
     );
+    // Mark the form changed (Save is disabled until it is); saved
+    // instructions are trimmed, so the values checked below are unchanged.
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: {
+        value:
+          screen.getByPlaceholderText("What should this bot do?").value + " ",
+      },
+    });
     fireEvent.click(screen.getByText("Save"));
     expect(onSave.mock.calls[0][0].schedules).toEqual([
       { cron: "*/5 * * * *", prompt: "" },
@@ -1032,6 +1056,14 @@ describe("BotDetail (a bot with no AI model of its own)", () => {
     expect(
       screen.getByText(/runs fail until you choose one/i),
     ).toBeInTheDocument();
+    // Mark the form changed (Save is disabled until it is); saved
+    // instructions are trimmed, so the values checked below are unchanged.
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: {
+        value:
+          screen.getByPlaceholderText("What should this bot do?").value + " ",
+      },
+    });
     fireEvent.click(screen.getByText("Save"));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0][0].provider).toBeNull();
@@ -1081,5 +1113,62 @@ describe("BotDetail (approval policy)", () => {
     ).toBeInTheDocument();
     fireEvent.click(screen.getByText("Save"));
     expect(onSave.mock.calls[0][0].approvalPolicy).toBe("ask-every");
+  });
+});
+
+describe("BotDetail (save feedback)", () => {
+  const bot = {
+    id: "bot_1",
+    name: "Agenda",
+    instructions: "Read the calendar.",
+    provider: "claude-code",
+  };
+  const edit = () =>
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "Read today's calendar." },
+    });
+
+  it("keeps Save disabled until something changes", () => {
+    render(<BotDetail bot={bot} providers={{}} onSave={jest.fn()} />);
+    expect(screen.getByText("Save")).toBeDisabled();
+    edit();
+    expect(screen.getByText("Save")).not.toBeDisabled();
+  });
+
+  it("says Saved after a successful save, until the next edit", async () => {
+    const onSave = jest.fn().mockResolvedValue({ id: "bot_1" });
+    render(<BotDetail bot={bot} providers={{}} onSave={onSave} />);
+    edit();
+    fireEvent.click(screen.getByText("Save"));
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+    expect(screen.getByText("Save")).toBeDisabled();
+    fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
+      target: { value: "Agenda 2" },
+    });
+    expect(screen.queryByText("Saved")).toBeNull();
+  });
+
+  it("shows Saving… while saving", async () => {
+    let finish;
+    const onSave = jest.fn(() => new Promise((r) => (finish = r)));
+    render(<BotDetail bot={bot} providers={{}} onSave={onSave} />);
+    edit();
+    fireEvent.click(screen.getByText("Save"));
+    expect(screen.getByText("Saving…")).toBeDisabled();
+    finish({});
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+  });
+
+  it("shows a failed save next to the button, and keeps the changes", async () => {
+    const onSave = jest
+      .fn()
+      .mockRejectedValue(new Error("invalid bot — name is required"));
+    render(<BotDetail bot={bot} providers={{}} onSave={onSave} />);
+    edit();
+    fireEvent.click(screen.getByText("Save"));
+    const msg = await screen.findByText("invalid bot — name is required");
+    expect(msg.closest("[data-testid='bot-detail-footer']")).not.toBeNull();
+    expect(screen.queryByText("Saved")).toBeNull();
+    expect(screen.getByText("Save")).not.toBeDisabled();
   });
 });

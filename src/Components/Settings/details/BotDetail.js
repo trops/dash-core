@@ -305,6 +305,8 @@ export const BotDetail = ({
   const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  // "Saved" shows after a successful save until the next edit.
+  const [justSaved, setJustSaved] = useState(false);
 
   // Unsaved changes: the editable fields now vs. when the form opened (or
   // last saved).
@@ -329,6 +331,9 @@ export const BotDetail = ({
   });
   const [baseline, setBaseline] = useState(snapshot);
   const dirty = snapshot !== baseline;
+  useEffect(() => {
+    if (dirty) setJustSaved(false);
+  }, [dirty]);
   useEffect(() => {
     if (typeof onDirtyChange === "function") onDirtyChange(dirty);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -518,10 +523,14 @@ export const BotDetail = ({
     setSubscriptions((prev) => prev.filter((s) => s.eventType !== eventType));
   };
 
-  const canSave = name.trim() && instructions.trim() && !saving;
+  // An existing bot saves only when something changed, so Save visibly does
+  // something; a new bot can always be created once it has a name.
+  const canSave =
+    name.trim() && instructions.trim() && !saving && (isCreating || dirty);
 
   const handleSave = async () => {
     setError(null);
+    setJustSaved(false);
     const cron = advanced
       ? advancedCron.trim()
       : buildCron({ frequency, time, dayOfWeek, dayOfMonth });
@@ -549,6 +558,7 @@ export const BotDetail = ({
     try {
       await onSave(definition);
       setBaseline(snapshot);
+      setJustSaved(true);
     } catch (e) {
       setError((e && e.message) || "Failed to save bot");
     } finally {
@@ -997,11 +1007,10 @@ export const BotDetail = ({
             The bot runs automatically when one of these events fires.
           </span>
         </div>
-
-        {error ? <span className="text-sm text-red-400">{error}</span> : null}
       </div>
 
       <div
+        data-testid="bot-detail-footer"
         className={`flex-shrink-0 flex flex-row justify-between gap-2 px-6 py-4 border-t ${hairline}`}
       >
         <div>
@@ -1009,7 +1018,12 @@ export const BotDetail = ({
             <Button title="Delete" onClick={onDelete} size="sm" />
           ) : null}
         </div>
-        <div className="flex flex-row gap-2">
+        <div className="flex flex-row items-center gap-2">
+          {error ? (
+            <span className="text-sm text-red-400">{error}</span>
+          ) : justSaved ? (
+            <span className="text-sm opacity-70">Saved</span>
+          ) : null}
           {isCreating && onCancel ? (
             <Button title="Cancel" onClick={onCancel} size="sm" />
           ) : null}
@@ -1022,7 +1036,7 @@ export const BotDetail = ({
             />
           ) : null}
           <Button
-            title={isCreating ? "Create" : "Save"}
+            title={saving ? "Saving…" : isCreating ? "Create" : "Save"}
             onClick={handleSave}
             size="sm"
             disabled={!canSave}
