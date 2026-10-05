@@ -53,6 +53,9 @@ const BOTS_PUBLISH = "bots-publish";
 const BOTS_SEARCH_REGISTRY = "bots-search-registry";
 const BOTS_PREVIEW_REGISTRY_INSTALL = "bots-preview-registry-install";
 const BOTS_INSTALL_FROM_REGISTRY = "bots-install-from-registry";
+// Bot widgets on the dashboard (TEAM-012): add one, or link one to a bot.
+const BOTS_ADD_WIDGET = "bots-add-widget";
+const BOTS_BIND_WIDGET = "bots-bind-widget";
 
 // --- Main → Renderer (send) ---
 const BOT_STREAM = "bot-stream"; // { botId, event: BotEvent }
@@ -105,6 +108,8 @@ module.exports = {
   BOTS_SEARCH_REGISTRY,
   BOTS_PREVIEW_REGISTRY_INSTALL,
   BOTS_INSTALL_FROM_REGISTRY,
+  BOTS_ADD_WIDGET,
+  BOTS_BIND_WIDGET,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,

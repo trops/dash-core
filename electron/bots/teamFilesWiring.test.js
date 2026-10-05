@@ -151,3 +151,30 @@ describe("registry install — wiring (TEAM-007 slice 3b)", () => {
     assert.ok(verifyAt > 0 && openAt > verifyAt);
   });
 });
+
+describe("bot widgets on the dashboard — wiring (TEAM-012)", () => {
+  it("has IPC channels and renderer API to add and link bot widgets", () => {
+    assert.equal(events.BOTS_ADD_WIDGET, "bots-add-widget");
+    assert.equal(events.BOTS_BIND_WIDGET, "bots-bind-widget");
+    assert.match(api, /addBotWidget: \(workspaceId, opts\) =>/);
+    assert.match(api, /bindBotWidget: \(workspaceId, widgetId, botId\) =>/);
+  });
+
+  it("only shows or links bots on the dashboard's own team", () => {
+    assert.match(
+      ctrl,
+      /addBotWidget\(workspaceId[\s\S]{0,400}isOnTeam\(bot, workspaceId\)/,
+    );
+    assert.match(
+      ctrl,
+      /bindBotWidget\(workspaceId, widgetId, botId\) \{[\s\S]{0,200}isOnTeam\(bot, workspaceId\)/,
+    );
+  });
+
+  it("saves the dashboard and tells open windows to reload it", () => {
+    assert.match(
+      ctrl,
+      /this\._broadcast\("workspace:saved", \{ workspaceId: workspace\.id \}\)/,
+    );
+  });
+});

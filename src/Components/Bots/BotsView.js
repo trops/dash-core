@@ -259,9 +259,31 @@ export const BotsView = ({
     afterChange();
   };
 
-  const saveBot = async (definition) => {
+  // Place a bot widget on this dashboard (TEAM-012) and say how it went.
+  const showOnDashboard = async (kind, bot = null) => {
+    const bots = api();
+    if (!bots || !bots.addBotWidget || !workspace) return;
+    setMenuOpen(false);
+    const r =
+      (await bots.addBotWidget(
+        workspace.id,
+        kind === "results" ? { kind, botId: bot.id } : { kind },
+      )) || {};
+    setTeamNote({
+      text: r.error
+        ? r.error
+        : kind === "results"
+          ? `Added ${bot.name}'s results to the dashboard.`
+          : "Added Bot activity to the dashboard.",
+    });
+  };
+
+  const saveBot = async (definition, opts = {}) => {
     const bots = api();
     const saved = await bots.save(definition);
+    if (opts.showOnDashboard && saved && saved.id) {
+      await showOnDashboard("results", saved);
+    }
     setDirty(false);
     afterChange();
     // Saving a lead's draft makes it a real bot — the draft goes away.
@@ -487,6 +509,11 @@ export const BotsView = ({
         <Button3 title="Export team" size="xs" onClick={exportTeam} />
         <Button3 title="Import team" size="xs" onClick={importTeam} />
         <Button3 title="Find in registry" size="xs" onClick={openRegistry} />
+        <Button3
+          title="Show team activity"
+          size="xs"
+          onClick={() => showOnDashboard("activity")}
+        />
         <Button3
           title="Publish team…"
           size="xs"
@@ -739,6 +766,11 @@ export const BotsView = ({
               ) : (
                 <>
                   <Button3
+                    title="Show on dashboard"
+                    size="xs"
+                    onClick={() => showOnDashboard("results", selected)}
+                  />
+                  <Button3
                     title="Publish bot…"
                     size="xs"
                     onClick={() => openPublish("bot")}
@@ -827,6 +859,7 @@ export const BotsView = ({
                   getWidgetConfig={getWidgetConfig}
                   bots={allBots}
                   onSave={saveBot}
+                  canShowOnDashboard={!!workspace}
                   onDirtyChange={setDirty}
                   onDiscard={() => {
                     setDirty(false);

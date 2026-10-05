@@ -56,3 +56,8 @@ import { ComponentManager } from "./ComponentManager";
 import { LayoutContainer } from "./Components/Layout";
 import { LayoutGridContainer } from "./Components/Layout";
 ComponentManager.registerContainerTypes(LayoutContainer, LayoutGridContainer);
+
+// --- Built-in bot widgets (bot-teams TEAM-012) ---
+import { registerBotWidgets } from "./Widgets/Bots";
+registerBotWidgets(ComponentManager);
+export { BOT_WIDGET_CONFIGS } from "./Widgets/Bots";
