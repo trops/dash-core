@@ -11,6 +11,14 @@ import {
 import { BotsView } from "./BotsView";
 import { AppContext } from "../../Context/App/AppContext";
 
+const mockEnsureAuthed = jest.fn().mockResolvedValue(true);
+jest.mock("../../hooks/useRegistryAuthGate", () => ({
+  useRegistryAuthGate: () => ({
+    ensureAuthed: mockEnsureAuthed,
+    authGate: null,
+  }),
+}));
+
 jest.mock("../../ComponentManager", () => ({
   ComponentManager: { config: jest.fn().mockReturnValue(null) },
 }));
@@ -630,5 +638,122 @@ describe("BotsView — team export/import (TEAM-006/007 slice 1)", () => {
     fireEvent.click(within(teamList()).getByText("Import team"));
     await waitFor(() => expect(previewTeamImport).toHaveBeenCalledTimes(2));
     expect(screen.queryByText(/Import team:/)).toBeNull();
+  });
+});
+
+describe("BotsView — publish to the registry (TEAM-006 slice 3a)", () => {
+  const preview = (kind) => ({
+    kind,
+    signedIn: true,
+    username: "trops",
+    notIncluded: [],
+    last: null,
+    suggested: {
+      displayName: kind === "team" ? "Kitchen Sink" : "Inbox Watch",
+      name: kind === "team" ? "kitchen-sink" : "inbox-watch",
+      version: "1.0.0",
+      description: "",
+      visibility: "private",
+    },
+    pkg:
+      kind === "team"
+        ? {
+            type: "bot-team",
+            members: [
+              {
+                role: "inbox-watch",
+                embedded: {
+                  name: "Inbox Watch",
+                  instructions: "Watch my inbox",
+                  providers: [],
+                },
+              },
+            ],
+            wiring: [],
+          }
+        : {
+            type: "bot",
+            bot: {
+              name: "Inbox Watch",
+              instructions: "Watch my inbox",
+              providers: [],
+            },
+          },
+  });
+
+  it("publishes the team after a sign-in check, private by default", async () => {
+    const previewPublish = jest.fn().mockResolvedValue(preview("team"));
+    const publish = jest.fn().mockResolvedValue({
+      success: true,
+      package: "trops/kitchen-sink",
+      version: "1.0.0",
+      visibility: "private",
+    });
+    setup({ apiOver: { previewPublish, publish } });
+    fireEvent.click(within(teamList()).getByText("Publish team…"));
+    expect(
+      await screen.findByText("Publish team to the registry"),
+    ).toBeInTheDocument();
+    expect(mockEnsureAuthed).toHaveBeenCalled();
+    expect(previewPublish).toHaveBeenCalledWith({
+      kind: "team",
+      workspaceId: 7,
+      name: "Kitchen Sink",
+    });
+    fireEvent.click(screen.getByText("Publish"));
+    await waitFor(() =>
+      expect(publish).toHaveBeenCalledWith({
+        kind: "team",
+        workspaceId: 7,
+        name: "Kitchen Sink",
+        meta: expect.objectContaining({
+          name: "kitchen-sink",
+          visibility: "private",
+        }),
+      }),
+    );
+    expect(
+      await screen.findByText("Published trops/kitchen-sink v1.0.0 (private)."),
+    ).toBeInTheDocument();
+  });
+
+  it("publishes one bot from its … menu (never offered for the lead)", async () => {
+    const previewPublish = jest.fn().mockResolvedValue(preview("bot"));
+    setup({ apiOver: { previewPublish, publish: jest.fn() } });
+    fireEvent.click(within(teamList()).getByText("Inbox Watch"));
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+    fireEvent.click(screen.getByText("Publish bot…"));
+    expect(
+      await screen.findByText("Publish bot to the registry"),
+    ).toBeInTheDocument();
+    expect(previewPublish).toHaveBeenCalledWith({
+      kind: "bot",
+      workspaceId: 7,
+      botId: "b1",
+      name: "Kitchen Sink",
+    });
+  });
+
+  it("does nothing when the user cancels sign-in", async () => {
+    mockEnsureAuthed.mockResolvedValueOnce(false);
+    const previewPublish = jest.fn();
+    setup({ apiOver: { previewPublish } });
+    fireEvent.click(within(teamList()).getByText("Publish team…"));
+    await waitFor(() => expect(mockEnsureAuthed).toHaveBeenCalled());
+    expect(previewPublish).not.toHaveBeenCalled();
+  });
+
+  it("shows the registry's error in the dialog", async () => {
+    const previewPublish = jest.fn().mockResolvedValue(preview("team"));
+    const publish = jest.fn().mockResolvedValue({
+      success: false,
+      error: "Version 1.0.0 already exists",
+    });
+    setup({ apiOver: { previewPublish, publish } });
+    fireEvent.click(within(teamList()).getByText("Publish team…"));
+    fireEvent.click(await screen.findByText("Publish"));
+    expect(
+      await screen.findByText("Version 1.0.0 already exists"),
+    ).toBeInTheDocument();
   });
 });

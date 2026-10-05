@@ -1050,7 +1050,7 @@ accepted suggestion in the form; the audit log records the install and grant.
 > so that others can install a proven bot instead of building it from scratch.
 
 **Priority:** P1
-**Status:** Backlog
+**Status:** In Progress — a bot publishes to the registry as `type: "bot"` (bot-teams TEAM-006 slice 3a, 2026-10-05): portable definition, providers by type, never credentials/sessions/memory/ids. Not yet: model tiers, install variables, required/optional tools with purposes, high-risk flags, update diffs.
 
 **Acceptance Criteria:**
 

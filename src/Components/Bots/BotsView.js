@@ -20,6 +20,8 @@ import { BotRunHistory } from "./BotRunHistory";
 import { BotDetail } from "../Settings/details/BotDetail";
 import { DraftBanner } from "./DraftBanner";
 import { TeamImportReview } from "./TeamImportReview";
+import { PublishBotDialog } from "./PublishBotDialog";
+import { useRegistryAuthGate } from "../../hooks/useRegistryAuthGate";
 import { AppContext } from "../../Context/App/AppContext";
 import { ComponentManager } from "../../ComponentManager";
 import { STATUS_DOT, triggerSummary } from "./teamUtils";
@@ -125,6 +127,14 @@ export const BotsView = ({
   const [installing, setInstalling] = useState(false);
   const [importError, setImportError] = useState(null);
   const [teamNote, setTeamNote] = useState(null);
+  // Registry publish (TEAM-006 slice 3a): what's being published and how
+  // it went.
+  const { ensureAuthed, authGate } = useRegistryAuthGate();
+  const [publishTarget, setPublishTarget] = useState(null);
+  const [publishPreview, setPublishPreview] = useState(null);
+  const [publishing, setPublishing] = useState(false);
+  const [publishResult, setPublishResult] = useState(null);
+  const [publishError, setPublishError] = useState(null);
   const [allBots, setAllBots] = useState([]);
   const nameOf = useMemo(() => {
     const names = new Map(allBots.map((b) => [b.id, b.name]));
@@ -377,11 +387,66 @@ export const BotsView = ({
     }
   };
 
+  const openPublish = async (kind) => {
+    const bots = api();
+    if (!bots || !bots.previewPublish || !workspace) return;
+    setMenuOpen(false);
+    const signedIn = await ensureAuthed({
+      message: "Sign in to the Dash registry to publish.",
+    });
+    if (!signedIn) return;
+    const target = {
+      kind,
+      workspaceId: workspace.id,
+      ...(kind === "bot" && selected ? { botId: selected.id } : {}),
+      name: workspace.name,
+    };
+    const preview = (await bots.previewPublish(target)) || {};
+    if (preview.error) {
+      setTeamNote({ text: preview.error });
+      return;
+    }
+    setPublishTarget(target);
+    setPublishResult(null);
+    setPublishError(null);
+    setPublishPreview(preview);
+  };
+
+  const doPublish = async (meta) => {
+    const bots = api();
+    if (!bots || !publishTarget) return;
+    setPublishing(true);
+    setPublishError(null);
+    try {
+      const r = (await bots.publish({ ...publishTarget, meta })) || {};
+      if (r.success) {
+        setPublishResult(r);
+        afterChange();
+      } else {
+        setPublishError(r.error || "Publish failed.");
+      }
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const closePublish = () => {
+    setPublishPreview(null);
+    setPublishTarget(null);
+    setPublishResult(null);
+    setPublishError(null);
+  };
+
   const teamActions = (
     <div className="flex flex-col gap-1">
       <div className="flex flex-row flex-wrap gap-2">
         <Button3 title="Export team" size="xs" onClick={exportTeam} />
         <Button3 title="Import team" size="xs" onClick={importTeam} />
+        <Button3
+          title="Publish team…"
+          size="xs"
+          onClick={() => openPublish("team")}
+        />
       </div>
       {teamNote ? (
         <div className={`text-xs flex flex-col gap-0.5 ${muted}`}>
@@ -620,6 +685,11 @@ export const BotsView = ({
               ) : (
                 <>
                   <Button3
+                    title="Publish bot…"
+                    size="xs"
+                    onClick={() => openPublish("bot")}
+                  />
+                  <Button3
                     title="Remove from team"
                     size="xs"
                     onClick={removeFromTeam}
@@ -742,6 +812,17 @@ export const BotsView = ({
         onConfirm={deleteBot}
         onCancel={() => setConfirmDelete(false)}
       />
+      <PublishBotDialog
+        open={!!publishPreview}
+        preview={publishPreview}
+        publishing={publishing}
+        result={publishResult}
+        error={publishError}
+        onPublish={doPublish}
+        onClose={closePublish}
+      />
+      {/* Last, so the sign-in prompt stacks above the publish dialog. */}
+      {authGate}
     </div>
   );
 };

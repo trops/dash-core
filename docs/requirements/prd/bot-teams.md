@@ -345,7 +345,7 @@ Want me to draft a bot that follows up on renewals?"
 > so that others can install the whole team instead of rebuilding it.
 
 **Priority:** P1
-**Status:** In Progress (slice 1 — local `.team.json` export; registry publish is slices 2–3)
+**Status:** In Progress (slice 1 local export ✓, slice 2 registry types ✓ in dash-registry 1.6.0, slice 3a registry publish ✓; 3b find & install next)
 
 **Acceptance Criteria:**
 
@@ -422,6 +422,13 @@ answers from today's runs.
 - Their AI model is kept when it's Claude Code or an AI provider type the user has; otherwise it follows the user's default.
 - Export can't carry widget triggers (wired to a dashboard's widget instances) or providers of unknown type — it lists them as "Not included".
 - UI: Bots view team list → **Export team** / **Import team**; `TeamImportReview` shows members, wiring ("Agenda completes → Inbox runs"), provider picks and the policy note. IPC: `bots-export-team`, `bots-preview-team-import`, `bots-install-team` (install re-validates the manifest in the main process).
+
+**Implementation notes (slices 2 + 3a — registry types and publish, 2026-10-05):**
+
+- dash-registry 1.6.0 accepts `type: "bot"` and `"bot-team"` (no widgets required): the publish manifest carries `providerTypes` and a display summary — `team: { members: [{ role, name }], wiring }` or `bot: { name }` — validated and stored; the zip carries `team.json` / `bot.json`. Search covers bot names, team member names and provider types; Bots / Teams filters, cards and package pages.
+- Single bots are first-class (decided 2026-10-05): a user who wants one bot from a team installs just that bot (3b: per-bot checkboxes on the review), and a publisher can publish any bot on its own. Members are **not** auto-published as separate packages.
+- `electron/bots/botPackage.js` (pure): `buildBotPackage` (one bot embedded like a team member), `validateBotPackage`, `toTeamManifest` (a bot installs as a one-bot team), `registryManifestFor`, `publishFiles`, `toPackageName`, `nextVersion`, `checkPublishMeta`.
+- Publish: Bots view → **Publish team…** / bot **…** → **Publish bot…** (never a lead) → sign-in check (`useRegistryAuthGate`) → `PublishBotDialog` shows every bot's full instructions, wiring and "Not included", with name / package name / version / description / visibility. **Private by default** (decided 2026-10-05: instructions can hold personal details). The main process rebuilds the package, publishes under the signed-in username via `publishToRegistry` (signed, like themes), and remembers `published { name, version, visibility }` (team settings / the bot) so the next publish bumps the patch.
 
 ---
 

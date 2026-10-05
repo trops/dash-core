@@ -58,3 +58,47 @@ describe("team export/import — wiring", () => {
     assert.equal(safeFileName(""), "team.team.json");
   });
 });
+
+describe("registry publish — wiring (TEAM-006 slice 3a)", () => {
+  it("has IPC channels and renderer API for preview + publish", () => {
+    assert.equal(events.BOTS_PREVIEW_PUBLISH, "bots-preview-publish");
+    assert.equal(events.BOTS_PUBLISH, "bots-publish");
+    assert.match(api, /previewPublish: \(opts\) =>/);
+    assert.match(
+      api,
+      /publish: \(opts\) => ipcRenderer\.invoke\(BOTS_PUBLISH, opts\)/,
+    );
+  });
+
+  it("rebuilds the package in the main process and checks fields first", () => {
+    assert.match(
+      ctrl,
+      /async publish\(opts = \{\}\) \{[\s\S]{0,200}checkPublishMeta\(meta\)[\s\S]{0,200}this\._publishable\(opts\)/,
+    );
+  });
+
+  it("publishes under the signed-in user's username, private unless public", () => {
+    assert.match(ctrl, /scope: identity\.username/);
+    assert.match(ctrl, /meta\.visibility === "public" \? "public" : "private"/);
+  });
+
+  it("never publishes a team lead", () => {
+    assert.match(
+      ctrl,
+      /if \(isLead\(bot\)\) return \{ error: "A team lead can't be published\." \}/,
+    );
+  });
+});
+
+describe("registry publish — cache", () => {
+  it("refreshes the registry index after a successful publish", () => {
+    const pub = fs.readFileSync(
+      path.join(__dirname, "..", "controller", "botPublish.js"),
+      "utf8",
+    );
+    assert.match(
+      pub,
+      /if \(result && result\.success\) \{[\s\S]{0,300}fetchRegistryIndex\(true\)/,
+    );
+  });
+});

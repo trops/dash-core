@@ -39,6 +39,15 @@ const {
   wireTeam,
 } = require("../bots/teamManifest");
 const { saveTeamFile, openTeamFile } = require("./teamFiles");
+const {
+  buildBotPackage,
+  registryManifestFor,
+  toPackageName,
+  nextVersion,
+  checkPublishMeta,
+  publishFiles,
+} = require("../bots/botPackage");
+const { registryIdentity, zipAndPublish } = require("./botPublish");
 const { unassignTeam, isOnTeam } = require("../bots/teams");
 const {
   TEAM_SERVER,
@@ -614,6 +623,130 @@ const botController = {
         id: created[m.role].id,
         name: created[m.role].name,
       })),
+    };
+  },
+
+  /**
+   * What would be published (TEAM-006 slice 3a): a dashboard's team
+   * (`kind: "team"`) or one bot (`kind: "bot"`). Built here from the
+   * stored bots — the renderer only shows it.
+   */
+  _publishable({ kind, workspaceId, botId, name }) {
+    if (kind === "team") {
+      const bots = this._store.list().filter((b) => isOnTeam(b, workspaceId));
+      const { manifest, notIncluded } = buildTeamManifest({
+        name,
+        bots,
+        providers: this._providerList(),
+      });
+      if (!manifest.members.length) {
+        return { error: "This dashboard has no bots to publish." };
+      }
+      const last = this._store.getTeamSettings(workspaceId).published || null;
+      return { pkg: manifest, notIncluded, last, defaultName: name };
+    }
+    const bot = this._store.get(botId);
+    if (!bot) return { error: "That bot no longer exists." };
+    if (isLead(bot)) return { error: "A team lead can't be published." };
+    const { pkg, notIncluded } = buildBotPackage({
+      bot,
+      providers: this._providerList(),
+    });
+    return {
+      pkg,
+      notIncluded,
+      last: bot.published || null,
+      defaultName: bot.name,
+    };
+  },
+
+  /** The publish dialog's contents: package, notes, suggested fields, sign-in. */
+  async previewPublish(opts = {}) {
+    const p = this._publishable(opts);
+    if (p.error) return p;
+    const identity = await registryIdentity();
+    const lastName =
+      p.last && p.last.name ? p.last.name.split("/").pop() : null;
+    return {
+      kind: opts.kind,
+      pkg: p.pkg,
+      notIncluded: p.notIncluded,
+      last: p.last,
+      signedIn: identity.signedIn,
+      username: identity.username || null,
+      suggested: {
+        displayName: p.defaultName || "",
+        name: lastName || toPackageName(p.defaultName),
+        version: nextVersion(p.last && p.last.version),
+        description: "",
+        visibility: (p.last && p.last.visibility) || "private",
+      },
+    };
+  },
+
+  /**
+   * Publish a bot or team to the registry under the user's username. The
+   * package is rebuilt here; only the publish fields come from the dialog.
+   */
+  async publish(opts = {}) {
+    const meta = (opts && opts.meta) || {};
+    const errors = checkPublishMeta(meta);
+    if (errors.length) return { success: false, error: errors.join(" ") };
+    const p = this._publishable(opts);
+    if (p.error) return { success: false, error: p.error };
+    const identity = await registryIdentity();
+    if (!identity.signedIn) {
+      return {
+        success: false,
+        authRequired: true,
+        error: "Sign in to the Dash registry to publish (Settings › Account).",
+      };
+    }
+    const pkg = {
+      ...p.pkg,
+      name: meta.displayName,
+      description: meta.description || "",
+      version: meta.version,
+    };
+    const visibility = meta.visibility === "public" ? "public" : "private";
+    const manifest = registryManifestFor(pkg, {
+      scope: identity.username,
+      name: meta.name,
+      displayName: meta.displayName,
+      version: meta.version,
+      description: meta.description || "",
+      visibility,
+      appOrigin: this._appId,
+      author: identity.displayName,
+    });
+    const result = await zipAndPublish(publishFiles(pkg, manifest), manifest);
+    if (!result || !result.success) {
+      return {
+        success: false,
+        authRequired: !!(result && result.authRequired),
+        error: (result && result.error) || "Publish failed.",
+        details: result && result.details,
+      };
+    }
+    // Remember what was published so the next publish bumps from here.
+    const published = {
+      name: `${identity.username}/${meta.name}`,
+      version: meta.version,
+      visibility,
+      at: new Date().toISOString(),
+    };
+    if (opts.kind === "team") {
+      this._store.setTeamSettings(opts.workspaceId, { published });
+    } else {
+      this._store.update(opts.botId, { published });
+    }
+    return {
+      success: true,
+      package: published.name,
+      version: meta.version,
+      visibility,
+      registryUrl: result.registryUrl || null,
+      warnings: result.warnings || [],
     };
   },
 

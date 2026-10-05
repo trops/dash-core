@@ -42,6 +42,8 @@ const {
   BOTS_EXPORT_TEAM,
   BOTS_PREVIEW_TEAM_IMPORT,
   BOTS_INSTALL_TEAM,
+  BOTS_PREVIEW_PUBLISH,
+  BOTS_PUBLISH,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
@@ -90,6 +92,13 @@ const botApi = {
   /** Install a reviewed team into this dashboard (new, paused bots). */
   installTeam: (workspaceId, manifest, choices) =>
     ipcRenderer.invoke(BOTS_INSTALL_TEAM, { workspaceId, manifest, choices }),
+  /**
+   * What publishing would send (TEAM-006): opts { kind: "team"|"bot",
+   * workspaceId?, botId?, name? } → { pkg, notIncluded, suggested, signedIn }.
+   */
+  previewPublish: (opts) => ipcRenderer.invoke(BOTS_PREVIEW_PUBLISH, opts),
+  /** Publish a bot or team to the registry: opts + meta { displayName, name, version, description, visibility }. */
+  publish: (opts) => ipcRenderer.invoke(BOTS_PUBLISH, opts),
   /** The latest runs across every bot, newest first (the Bot monitor). */
   listRecentRuns: (limit) =>
     ipcRenderer.invoke(BOTS_LIST_RECENT_RUNS, { limit }),
