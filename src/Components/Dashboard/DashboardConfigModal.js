@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useContext } from "react";
+import React, { useState, useMemo, useContext, useEffect } from "react";
 import {
   ThemeContext,
   FontAwesomeIcon,
@@ -28,6 +28,7 @@ import {
   formatEventString,
 } from "../../utils/listenerResolution";
 import { WidgetsTab } from "./WidgetsTab";
+import { getBotEmitters } from "../Settings/details/eventCatalog";
 import { PermissionsTab } from "./PermissionsTab";
 import { BotsTab } from "./BotsTab";
 import { ConfigListRow, useConfigTokens } from "./ConfigListRow";
@@ -304,9 +305,31 @@ export const DashboardConfigModal = ({
       typeof getWidgetConfig === "function" ? getWidgetConfig : () => null,
     [getWidgetConfig],
   );
+  // This dashboard's bots as Listeners sources (TEAM-012); null until
+  // loaded so their wiring isn't judged before the bots are known.
+  const [botEmitters, setBotEmitters] = useState(null);
+  const workspaceId = workspace ? workspace.id : null;
+  useEffect(() => {
+    const bots = typeof window !== "undefined" && window.mainApi?.bots;
+    if (!isOpen || !bots || !bots.list || workspaceId == null) return undefined;
+    let alive = true;
+    Promise.all([
+      bots.list(),
+      bots.listToolSources ? bots.listToolSources() : Promise.resolve([]),
+    ])
+      .then(([list, sources]) => {
+        if (alive) setBotEmitters(getBotEmitters(list, sources, workspaceId));
+      })
+      .catch(() => {
+        if (alive) setBotEmitters([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [isOpen, workspaceId]);
   const emitters = useMemo(
-    () => getEmitters(workspace, wConfig),
-    [workspace, wConfig],
+    () => [...getEmitters(workspace, wConfig), ...(botEmitters || [])],
+    [workspace, wConfig, botEmitters],
   );
   const receivers = useMemo(
     () => getReceivers(workspace, wConfig),
@@ -317,8 +340,8 @@ export const DashboardConfigModal = ({
     [workspace],
   );
   const orphans = useMemo(
-    () => getOrphanedListeners(workspace, wConfig),
-    [workspace, wConfig],
+    () => getOrphanedListeners(workspace, wConfig, botEmitters),
+    [workspace, wConfig, botEmitters],
   );
   const effectiveWiring = useMemo(() => {
     // Apply staged removes/adds to the persisted wiring for an
@@ -1371,6 +1394,7 @@ function sameWiringEntry(a, b) {
 
 const ORPHAN_REASON_LABEL = {
   "source-missing": "The emitting widget was deleted.",
+  "bot-missing": "The bot was deleted or moved to another dashboard.",
   "source-component-mismatch":
     "The emitter's id is now held by a different widget.",
   "event-not-emitted": "The emitting widget no longer emits this event.",
@@ -1727,7 +1751,7 @@ function EventsColumn({
       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
         {emittersForList.length === 0 ? (
           <div className={`text-sm ${muted}`}>
-            No other widgets in this dashboard emit events.
+            Nothing else on this dashboard emits events — no widgets or bots.
           </div>
         ) : (
           emittersForList.map((e) => (

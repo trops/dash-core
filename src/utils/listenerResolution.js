@@ -48,6 +48,14 @@ export function parseEventString(eventString) {
 }
 
 /** Build an event string in the canonical runtime format. */
+/**
+ * Bots publish on the same bus (`bot:<ref>[<botId>].<event>`); as listener
+ * sources they aren't widgets in the layout (bot-teams TEAM-012).
+ */
+export function isBotSource(component) {
+  return typeof component === "string" && component.startsWith("bot:");
+}
+
 export function formatEventString(component, itemId, event) {
   return `${component}[${itemId}].${event}`;
 }
@@ -230,7 +238,11 @@ export function getCurrentWiring(workspace) {
  * Each entry includes a `reason` so the modal can show a sensible
  * message.
  */
-export function getOrphanedListeners(workspace, getWidgetConfig) {
+export function getOrphanedListeners(
+  workspace,
+  getWidgetConfig,
+  botEmitters = null,
+) {
   const wiring = getCurrentWiring(workspace);
   if (wiring.length === 0) return [];
 
@@ -261,6 +273,21 @@ export function getOrphanedListeners(workspace, getWidgetConfig) {
 
   const orphans = [];
   for (const w of wiring) {
+    // Bot sources (TEAM-012): judged against the dashboard's bots once they
+    // are known (`botEmitters`); before that, left alone.
+    if (isBotSource(w.sourceComponent)) {
+      if (!Array.isArray(botEmitters)) continue;
+      const bot = botEmitters.find(
+        (b) =>
+          b.component === w.sourceComponent &&
+          String(b.itemId) === String(w.sourceItemId),
+      );
+      if (!bot) orphans.push({ ...w, reason: "bot-missing" });
+      else if (!bot.events.includes(w.eventName)) {
+        orphans.push({ ...w, reason: "event-not-emitted" });
+      }
+      continue;
+    }
     const srcKey = `${w.sourceComponent}|${w.sourceItemId}`;
     const src = byCompositeKey.get(srcKey);
     if (!src) {
@@ -344,7 +371,9 @@ export function pruneDeadListenerReferences(workspace) {
             const parsed = parseEventString(raw);
             if (
               parsed &&
-              liveKeys.has(`${parsed.component}|${parsed.itemId}`)
+              // Bot sources live outside the layout — never pruned here.
+              (isBotSource(parsed.component) ||
+                liveKeys.has(`${parsed.component}|${parsed.itemId}`))
             ) {
               kept.push(raw);
             } else {

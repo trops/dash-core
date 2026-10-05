@@ -185,11 +185,12 @@ function SelectableCard({
   );
 }
 
-function FontAwesomeIcon({ icon, className }) {
+function FontAwesomeIcon({ icon, className, onClick }) {
   const name = typeof icon === "string" ? icon : (icon && icon.iconName) || "";
   return React.createElement("span", {
     "data-testid": "icon-" + name,
     className: className,
+    onClick: onClick,
   });
 }
 
