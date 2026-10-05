@@ -50,6 +50,13 @@ const {
   findBotPackages,
 } = require("../bots/botPackage");
 const { downloadBotPackage } = require("./botRegistryInstall");
+const { placeWidget, setWidgetPrefs } = require("../utils/placeWidget");
+
+// Built-in bot widgets (TEAM-012): registered by dash-core's renderer.
+const BOT_WIDGETS = {
+  results: "dash.bots.BotResults",
+  activity: "dash.bots.BotActivity",
+};
 const { registryIdentity, zipAndPublish } = require("./botPublish");
 const { unassignTeam, isOnTeam } = require("../bots/teams");
 const {
@@ -851,6 +858,80 @@ const botController = {
       registryUrl: result.registryUrl || null,
       warnings: result.warnings || [],
     };
+  },
+
+  /** A saved dashboard by id, or null. */
+  _loadWorkspace(workspaceId) {
+    const workspaceController = require("./workspaceController");
+    const res =
+      workspaceController.listWorkspacesForApplication(
+        this._getMainWindow(),
+        this._appId,
+      ) || {};
+    return (
+      (res.workspaces || []).find(
+        (w) => String(w.id) === String(workspaceId),
+      ) || null
+    );
+  },
+
+  /** Save a dashboard and tell open windows to reload it. */
+  _saveWorkspace(workspace) {
+    const workspaceController = require("./workspaceController");
+    const res = workspaceController.saveWorkspaceForApplication(
+      this._getMainWindow(),
+      this._appId,
+      workspace,
+    );
+    if (res && res.error)
+      return { error: res.message || "Couldn't save the dashboard." };
+    this._broadcast("workspace:saved", { workspaceId: workspace.id });
+    return { ok: true };
+  },
+
+  /**
+   * "Show on dashboard" (TEAM-012): place a Bot results widget for one bot
+   * (`kind: "results"`, its botId saved in the widget's settings) or the
+   * team's Bot activity widget (`kind: "activity"`) on the dashboard.
+   */
+  addBotWidget(workspaceId, { kind = "results", botId = null } = {}) {
+    const component = BOT_WIDGETS[kind];
+    if (!component) return { error: "Unknown bot widget." };
+    if (kind === "results") {
+      const bot = this._store.get(botId);
+      if (!bot || !isOnTeam(bot, workspaceId)) {
+        return { error: "That bot isn't on this dashboard's team." };
+      }
+    }
+    const workspace = this._loadWorkspace(workspaceId);
+    if (!workspace)
+      return { error: "Save the dashboard first, then try again." };
+    const placed = placeWidget(workspace, {
+      component,
+      userPrefs: kind === "results" ? { botId } : {},
+    });
+    const saved = this._saveWorkspace(placed.workspace);
+    if (saved.error) return saved;
+    return { added: true, widgetId: placed.widgetId, cell: placed.cell };
+  },
+
+  /** Link an existing Bot results widget to a bot on its dashboard's team. */
+  bindBotWidget(workspaceId, widgetId, botId) {
+    const bot = this._store.get(botId);
+    if (!bot || !isOnTeam(bot, workspaceId)) {
+      return { error: "That bot isn't on this dashboard's team." };
+    }
+    const workspace = this._loadWorkspace(workspaceId);
+    if (!workspace) return { error: "That dashboard wasn't found." };
+    const next = setWidgetPrefs(
+      workspace,
+      widgetId,
+      { botId },
+      BOT_WIDGETS.results,
+    );
+    if (!next) return { error: "That widget isn't on the dashboard." };
+    const saved = this._saveWorkspace(next);
+    return saved.error ? saved : { bound: true };
   },
 
   stop(botId) {

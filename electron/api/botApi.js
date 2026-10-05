@@ -47,6 +47,8 @@ const {
   BOTS_SEARCH_REGISTRY,
   BOTS_PREVIEW_REGISTRY_INSTALL,
   BOTS_INSTALL_FROM_REGISTRY,
+  BOTS_ADD_WIDGET,
+  BOTS_BIND_WIDGET,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
@@ -123,6 +125,12 @@ const botApi = {
   previewPublish: (opts) => ipcRenderer.invoke(BOTS_PREVIEW_PUBLISH, opts),
   /** Publish a bot or team to the registry: opts + meta { displayName, name, version, description, visibility }. */
   publish: (opts) => ipcRenderer.invoke(BOTS_PUBLISH, opts),
+  /** Show a bot (or the team's activity) on the dashboard: opts { kind: "results"|"activity", botId? }. */
+  addBotWidget: (workspaceId, opts) =>
+    ipcRenderer.invoke(BOTS_ADD_WIDGET, { workspaceId, ...(opts || {}) }),
+  /** Link a Bot results widget to a bot on its dashboard's team. */
+  bindBotWidget: (workspaceId, widgetId, botId) =>
+    ipcRenderer.invoke(BOTS_BIND_WIDGET, { workspaceId, widgetId, botId }),
   /** The latest runs across every bot, newest first (the Bot monitor). */
   listRecentRuns: (limit) =>
     ipcRenderer.invoke(BOTS_LIST_RECENT_RUNS, { limit }),

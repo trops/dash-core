@@ -540,6 +540,27 @@ answers from today's runs.
 
 ---
 
+**TEAM-012: Bot results on the dashboard**
+
+> As a team owner,
+> I want my bots' results shown on the dashboard they work for,
+> so that I see what they found without opening the Bots view.
+
+**Priority:** P1
+**Status:** In Progress (slice 1, 2026-10-05)
+
+**Acceptance Criteria:**
+
+- [x] AC1: A built-in **Bot results** widget (`dash.bots.BotResults`) shows one bot's status, when it last ran and what triggered it, its latest answer as plain text (a failed run's readable error), approvals waiting, **Run now** (not for a lead) and **Open in Bots view**; it updates live. The bot is a widget setting (`botId`); unlinked — or linked to a bot no longer on the team — it offers this dashboard's bots.
+- [x] AC2: A built-in **Bot activity** widget (`dash.bots.BotActivity`) lists the latest runs of **this dashboard's** bots only (decided 2026-10-05), newest first, with approvals waiting on top; a row opens its bot in the Bots view.
+- [x] AC3: **Show on dashboard** (a bot's … menu) and **Show team activity** (team list) place the widget in the grid's next empty cell — adding a row when the grid is full — and the open dashboard reloads.
+- [x] AC4: The New bot form (in a dashboard's Bots view) has **Show results on this dashboard**, ticked by default (decided 2026-10-05).
+- [ ] AC5 (next): structured results — a bot can return items (title, subtitle, link) the widget renders as a list.
+
+**Implementation notes (slice 1):** widgets in `src/Widgets/Bots/` (registered by dash-core's index; content components tested apart from the `Widget` frame), reusing `useTeamBots`, `botStatus`/`STATUS_DOT`, `readableError`, `toPlainText`, `triggerLabel`. Placement: `electron/utils/placeWidget.js` (pure; mirrors the Assistant's `add_widget` plus the full-grid row). `botController.addBotWidget` / `bindBotWidget` load, place / link (team-scoped), save and broadcast `workspace:saved`. "Open in Bots view" dispatches `dash:open-bots-view`, handled by DashboardStage's `openBotsView`.
+
+---
+
 ### Nice-to-Have (P2)
 
 **TEAM-009: Team updates**

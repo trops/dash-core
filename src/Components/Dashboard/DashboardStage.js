@@ -356,6 +356,17 @@ const DashboardStageInner = ({
     },
     [workspaceSelected, previewMode, focusBot],
   );
+  // A bot widget's "Open in Bots view" (TEAM-012).
+  useEffect(() => {
+    const handler = (e) => {
+      const d = (e && e.detail) || {};
+      if (d.workspaceId === undefined || d.workspaceId === null) return;
+      openBotsView(d.workspaceId, d.botId || null, d.tab || "conversation");
+    };
+    window.addEventListener("dash:open-bots-view", handler);
+    return () => window.removeEventListener("dash:open-bots-view", handler);
+  }, [openBotsView]);
+
   const openBotSettings = useCallback(() => {
     openAppSettings("bots");
     // eslint-disable-next-line react-hooks/exhaustive-deps

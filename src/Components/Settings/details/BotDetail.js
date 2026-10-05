@@ -188,7 +188,11 @@ export const BotDetail = ({
   // [{ provider, tools, toolsChecked }]. Nothing is selected until the user
   // accepts a suggestion (or ticks it themselves).
   suggestions = null,
+  // In a dashboard's Bots view: a new bot can show its results on that
+  // dashboard (TEAM-012). Passed to onSave as { showOnDashboard }.
+  canShowOnDashboard = false,
 }) => {
+  const [showOnDashboard, setShowOnDashboard] = useState(true);
   const [name, setName] = useState(bot?.name || "");
   const [instructions, setInstructions] = useState(bot?.instructions || "");
   // A saved bot without its own AI model shows (and keeps) "Default AI
@@ -556,7 +560,11 @@ export const BotDetail = ({
     };
     setSaving(true);
     try {
-      await onSave(definition);
+      if (isCreating && canShowOnDashboard) {
+        await onSave(definition, { showOnDashboard });
+      } else {
+        await onSave(definition);
+      }
       setBaseline(snapshot);
       setJustSaved(true);
     } catch (e) {
@@ -601,6 +609,13 @@ export const BotDetail = ({
             The dashboard this bot works for. A bot on a team only runs on its
             own dashboard&apos;s events; Unassigned bots hear every dashboard.
           </span>
+          {isCreating && canShowOnDashboard ? (
+            <Checkbox
+              label="Show results on this dashboard"
+              checked={showOnDashboard}
+              onChange={(on) => setShowOnDashboard(!!on)}
+            />
+          ) : null}
           {offTeam.length ? (
             <span className="text-xs opacity-70">
               {offTeam.length === 1

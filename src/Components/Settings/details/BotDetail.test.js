@@ -1172,3 +1172,69 @@ describe("BotDetail (save feedback)", () => {
     expect(screen.getByText("Save")).not.toBeDisabled();
   });
 });
+
+describe("BotDetail (show results on the dashboard, TEAM-012)", () => {
+  const fill = () => {
+    fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
+      target: { value: "Inbox" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "Scan mail" },
+    });
+  };
+
+  it("offers 'Show results on this dashboard', ticked, when creating on a dashboard", () => {
+    const onSave = jest.fn().mockResolvedValue({ id: "bot_new" });
+    render(
+      <BotDetail
+        isCreating
+        providers={{}}
+        onSave={onSave}
+        canShowOnDashboard
+      />,
+    );
+    const box = screen.getByRole("checkbox", {
+      name: "Show results on this dashboard",
+    });
+    expect(box).toBeChecked();
+    fill();
+    fireEvent.click(screen.getByText("Create"));
+    expect(onSave.mock.calls[0][1]).toEqual({ showOnDashboard: true });
+    expect(onSave.mock.calls[0][0].showOnDashboard).toBeUndefined();
+  });
+
+  it("passes the choice when unticked", () => {
+    const onSave = jest.fn().mockResolvedValue({ id: "bot_new" });
+    render(
+      <BotDetail
+        isCreating
+        providers={{}}
+        onSave={onSave}
+        canShowOnDashboard
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Show results on this dashboard" }),
+    );
+    fill();
+    fireEvent.click(screen.getByText("Create"));
+    expect(onSave.mock.calls[0][1]).toEqual({ showOnDashboard: false });
+  });
+
+  it("isn't offered outside a dashboard, or when editing", () => {
+    const { unmount } = render(
+      <BotDetail isCreating providers={{}} onSave={jest.fn()} />,
+    );
+    expect(screen.queryByText("Show results on this dashboard")).toBeNull();
+    unmount();
+    render(
+      <BotDetail
+        bot={{ id: "b1", name: "X", instructions: "Y" }}
+        providers={{}}
+        onSave={jest.fn()}
+        canShowOnDashboard
+      />,
+    );
+    expect(screen.queryByText("Show results on this dashboard")).toBeNull();
+  });
+});

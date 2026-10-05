@@ -907,3 +907,71 @@ describe("BotsView — install from the registry (TEAM-007 slice 3b)", () => {
     expect(screen.getByText(/From trops\/inbox v1\.0\.0/)).toBeInTheDocument();
   });
 });
+
+describe("BotsView — show bots on the dashboard (TEAM-012)", () => {
+  it("shows a bot's results on the dashboard from its … menu", async () => {
+    const addBotWidget = jest
+      .fn()
+      .mockResolvedValue({ added: true, widgetId: 5 });
+    setup({ apiOver: { addBotWidget } });
+    fireEvent.click(within(teamList()).getByText("Inbox Watch"));
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+    fireEvent.click(screen.getByText("Show on dashboard"));
+    await waitFor(() =>
+      expect(addBotWidget).toHaveBeenCalledWith(7, {
+        kind: "results",
+        botId: "b1",
+      }),
+    );
+    expect(
+      await screen.findByText("Added Inbox Watch's results to the dashboard."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the team's activity on the dashboard", async () => {
+    const addBotWidget = jest
+      .fn()
+      .mockResolvedValue({ added: true, widgetId: 6 });
+    setup({ apiOver: { addBotWidget } });
+    fireEvent.click(within(teamList()).getByText("Show team activity"));
+    await waitFor(() =>
+      expect(addBotWidget).toHaveBeenCalledWith(7, { kind: "activity" }),
+    );
+    expect(
+      await screen.findByText("Added Bot activity to the dashboard."),
+    ).toBeInTheDocument();
+  });
+
+  it("says why it couldn't add the widget", async () => {
+    const addBotWidget = jest.fn().mockResolvedValue({
+      error: "Save the dashboard first, then try again.",
+    });
+    setup({ apiOver: { addBotWidget } });
+    fireEvent.click(within(teamList()).getByText("Show team activity"));
+    expect(
+      await screen.findByText("Save the dashboard first, then try again."),
+    ).toBeInTheDocument();
+  });
+
+  it("a new bot shows its results on the dashboard when the box is ticked", async () => {
+    const addBotWidget = jest
+      .fn()
+      .mockResolvedValue({ added: true, widgetId: 7 });
+    const save = jest.fn().mockResolvedValue({ id: "bot_new", name: "Digest" });
+    setup({ apiOver: { addBotWidget, save } });
+    fireEvent.click(within(teamList()).getByText("+ Add bot"));
+    fireEvent.change(await screen.findByPlaceholderText("e.g. PR Digest"), {
+      target: { value: "Digest" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "Summarise" },
+    });
+    fireEvent.click(screen.getByText("Create"));
+    await waitFor(() =>
+      expect(addBotWidget).toHaveBeenCalledWith(7, {
+        kind: "results",
+        botId: "bot_new",
+      }),
+    );
+  });
+});
