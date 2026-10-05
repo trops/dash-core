@@ -66,8 +66,8 @@ const {
   getDefaultModel,
   getCuratedModels,
   migrateModelId,
-  DEFAULT_PROVIDER,
 } = require("../llm/modelProviders");
+const { resolveBotProviderId } = require("../bots/runProvider");
 const {
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
@@ -734,7 +734,18 @@ const botController = {
 
   /** Resolve provider config + fresh decrypted credentials for a bot. */
   _resolveRunProfile(bot) {
-    const providerId = bot.provider || DEFAULT_PROVIDER;
+    let providers = [];
+    try {
+      const win = this._getMainWindow();
+      ({ providers = [] } =
+        this._providers.listProviders(win, this._appId) || {});
+    } catch (_e) {
+      // No provider list — the bot's own provider still works; with none it
+      // fails below with a clear message.
+    }
+    // The bot's own provider, else the AI provider marked default; throws
+    // NO_AI_MODEL_MESSAGE with neither (no silent fallback).
+    const providerId = resolveBotProviderId(bot, providers);
     const provider = getProvider(providerId);
     const model = bot.model
       ? migrateModelId(providerId, bot.model)
@@ -742,9 +753,6 @@ const botController = {
 
     let credentials = {};
     try {
-      const win = this._getMainWindow();
-      const { providers = [] } =
-        this._providers.listProviders(win, this._appId) || {};
       const match =
         providers.find((p) => p.type === providerId && p.isDefaultForType) ||
         providers.find((p) => p.type === providerId);

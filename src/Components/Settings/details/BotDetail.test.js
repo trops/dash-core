@@ -989,3 +989,68 @@ describe("BotDetail — a lead's suggestions (TEAM-005 5b)", () => {
     expect(screen.queryByText("Accept all suggestions")).toBeNull();
   });
 });
+
+describe("BotDetail (a bot with no AI model of its own)", () => {
+  const bot = {
+    id: "bot_lead",
+    name: "Daily Lead",
+    instructions: "Lead the team",
+    provider: null,
+  };
+
+  it("shows it follows the default AI provider — not a made-up pick", () => {
+    render(
+      <BotDetail
+        bot={bot}
+        providers={{
+          p1: { type: "openai" },
+          p2: { type: "anthropic", isDefaultForType: true },
+        }}
+        onSave={jest.fn()}
+      />,
+    );
+    const select = screen.getByLabelText("Model source");
+    expect(select).toHaveValue("default");
+    expect(
+      screen.getByRole("option", { name: "Default AI provider (Anthropic)" }),
+    ).toBeInTheDocument();
+  });
+
+  it("says when no default is set, and keeps provider null on save", async () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail
+        bot={bot}
+        providers={{ p1: { type: "openai" } }}
+        onSave={onSave}
+      />,
+    );
+    expect(screen.getByLabelText("Model source")).toHaveValue("default");
+    expect(
+      screen.getByRole("option", { name: "Default AI provider — none set" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/runs fail until you choose one/i),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0].provider).toBeNull();
+  });
+
+  it("saves an explicit choice when the user picks one", async () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail
+        bot={bot}
+        providers={{ p1: { type: "openai" } }}
+        onSave={onSave}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Model source"), {
+      target: { value: "claude-code" },
+    });
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0].provider).toBe("claude-code");
+  });
+});

@@ -95,7 +95,9 @@ export const LayoutManagerModal = ({
 
     if (selectedTemplate && onCreateWorkspace) {
       const layoutObj = createLayoutFromTemplate(selectedTemplate, menuId);
-      onCreateWorkspace(layoutObj, selectedThemeKey, dashboardName.trim());
+      Promise.resolve(
+        onCreateWorkspace(layoutObj, selectedThemeKey, dashboardName.trim()),
+      ).catch((e) => console.error("Failed to create dashboard:", e));
     }
     setIsOpen(false);
   }

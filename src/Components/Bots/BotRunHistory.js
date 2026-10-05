@@ -1,6 +1,11 @@
 import React, { useCallback, useContext, useEffect, useState } from "react";
 import { Button3, ThemeContext } from "@trops/dash-react";
-import { errorNextSteps, toPlainText, triggerLabel } from "./botConversation";
+import {
+  errorNextSteps,
+  readableError,
+  toPlainText,
+  triggerLabel,
+} from "./botConversation";
 
 /**
  * BotRunHistory — a bot's runs, newest first (Bots view › Activity,
@@ -62,7 +67,7 @@ function dotFor(status) {
 }
 
 function firstLine(run) {
-  if (run.status === "failed" && run.error) return run.error;
+  if (run.status === "failed" && run.error) return readableError(run.error);
   if (run.outputUnavailable) return "Answer unavailable";
   return toPlainText(run.output || "").split("\n")[0];
 }
@@ -72,6 +77,7 @@ export const BotRunHistory = ({
   isLead = false,
   nameOf = undefined,
   onOpenSettings = null,
+  onChangeModel = null,
 }) => {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
   const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
@@ -185,26 +191,38 @@ export const BotRunHistory = ({
                   ))}
                 </div>
               ) : null}
-              {r.error ? <div className="text-red-300">{r.error}</div> : null}
+              {r.error ? (
+                <div className="text-red-300">{readableError(r.error)}</div>
+              ) : null}
               {r.status === "failed" ? (
                 <div className="flex flex-row flex-wrap gap-2">
-                  {errorNextSteps(r.error || "failed", { isLead }).map(
-                    (step) =>
-                      step.action === "run-again" ? (
+                  {errorNextSteps(readableError(r.error) || "failed", {
+                    isLead,
+                  }).map((step) =>
+                    step.action === "run-again" ? (
+                      <Button3
+                        key={step.action}
+                        title={step.label}
+                        size="xs"
+                        onClick={() => runAgain(r.prompt)}
+                      />
+                    ) : step.action === "change-model" ? (
+                      onChangeModel ? (
                         <Button3
                           key={step.action}
                           title={step.label}
                           size="xs"
-                          onClick={() => runAgain(r.prompt)}
+                          onClick={() => onChangeModel()}
                         />
-                      ) : onOpenSettings ? (
-                        <Button3
-                          key={step.action}
-                          title={step.label}
-                          size="xs"
-                          onClick={() => onOpenSettings(step.section)}
-                        />
-                      ) : null,
+                      ) : null
+                    ) : onOpenSettings ? (
+                      <Button3
+                        key={step.action}
+                        title={step.label}
+                        size="xs"
+                        onClick={() => onOpenSettings(step.section)}
+                      />
+                    ) : null,
                   )}
                 </div>
               ) : null}

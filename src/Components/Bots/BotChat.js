@@ -40,6 +40,7 @@ import { appendAnswerText } from "../../utils/answerText";
  * @param {(id: string, decision: object) => void} [onApprove]
  * @param {(botId: string) => string} [nameOf]  bot names for trigger chains
  * @param {(section: string) => void} [onOpenSettings]  error next steps
+ * @param {() => void} [onChangeModel]  "Change AI model" — opens the bot's Settings
  * @param {object[]} [drafts]  a lead's drafts awaiting review (TEAM-005)
  * @param {(draftId: string) => void} [onOpenDraft]
  */
@@ -59,6 +60,7 @@ export const BotChat = ({
   onApprove = null,
   nameOf = undefined,
   onOpenSettings = null,
+  onChangeModel = null,
   drafts = EMPTY,
   onOpenDraft = null,
 }) => {
@@ -311,6 +313,15 @@ export const BotChat = ({
                     size="xs"
                     onClick={() => startRun(t.prompt || "", false)}
                   />
+                ) : step.action === "change-model" ? (
+                  onChangeModel ? (
+                    <Button3
+                      key={step.action}
+                      title={step.label}
+                      size="xs"
+                      onClick={() => onChangeModel()}
+                    />
+                  ) : null
                 ) : onOpenSettings ? (
                   <Button3
                     key={step.action}

@@ -545,6 +545,7 @@ export const BotsView = ({
               onApprove={team ? team.approve : null}
               nameOf={nameOf}
               onOpenSettings={onOpenSettings}
+              onChangeModel={() => switchTab("settings")}
               drafts={isLead ? drafts : undefined}
               onOpenDraft={isLead ? (id) => select(DRAFT_PREFIX + id) : null}
             />
@@ -555,6 +556,7 @@ export const BotsView = ({
               isLead={isLead}
               nameOf={nameOf}
               onOpenSettings={onOpenSettings}
+              onChangeModel={() => switchTab("settings")}
             />
           ) : null}
           {tab === "settings" ? (

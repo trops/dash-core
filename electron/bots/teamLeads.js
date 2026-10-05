@@ -12,8 +12,7 @@
 "use strict";
 
 const { normalizeWorkspaceId, isOnTeam } = require("./teams");
-
-const AI_PROVIDER_TYPES = ["anthropic", "openai", "xai"];
+const { defaultAiProviderType } = require("./runProvider");
 
 function isLead(bot) {
   return !!bot && bot.role === "lead";
@@ -29,15 +28,12 @@ function leadOf(bots, workspaceId) {
 }
 
 /**
- * The user's default model source: their default AI provider (else the
- * first configured one), falling back to Claude Code — no API key needed.
+ * A new lead's model source: the AI provider the user marked default, else
+ * none — the lead then follows that default at run time, and a run with no
+ * default marked fails with a clear message (runProvider.js).
  */
 function defaultLeadProvider(providers) {
-  const ai = (Array.isArray(providers) ? providers : []).filter(
-    (p) => p && AI_PROVIDER_TYPES.includes(p.type),
-  );
-  const pick = ai.find((p) => p.isDefaultForType) || ai[0];
-  return pick ? pick.type : "claude-code";
+  return defaultAiProviderType(providers);
 }
 
 // What the lead says about adding or changing bots. Earlier generated
@@ -91,7 +87,7 @@ function leadDefinition({ workspaceId, dashboardName, provider }) {
     role: "lead",
     workspaceId: normalizeWorkspaceId(workspaceId),
     instructions: leadInstructions(name),
-    provider: provider || "claude-code",
+    provider: provider || null,
     model: null,
     engine: null,
     approvalPolicy: "ask",

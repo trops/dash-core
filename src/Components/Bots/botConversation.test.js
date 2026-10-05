@@ -4,6 +4,7 @@ import {
   attentionCount,
   triggerLabel,
   errorNextSteps,
+  readableError,
 } from "./botConversation";
 
 const run = (over) => ({
@@ -243,13 +244,27 @@ describe("errorNextSteps (TEAM-011 gaps)", () => {
     expect(errorNextSteps("x", { isLead: true })[0].label).toBe("Ask again");
   });
 
-  it("points provider problems at Settings › Providers", () => {
+  it("points AI model problems at the bot's AI model", () => {
     for (const text of [
-      "Slack couldn't start: Authentication required: …. Check its settings in Settings › Providers.",
       "Your credit balance is too low to access the Anthropic API.",
       "401 invalid x-api-key",
       "Invalid API key provided",
+      "You exceeded your current quota, please check your plan and billing details.",
+      "No AI model chosen for this bot. Choose one in its Settings tab.",
+    ]) {
+      expect(actions(text)).toEqual(["run-again", "change-model"]);
+    }
+    expect(errorNextSteps("401 invalid x-api-key")[1]).toEqual({
+      action: "change-model",
+      label: "Change AI model",
+    });
+  });
+
+  it("points provider problems at Settings › Providers", () => {
+    for (const text of [
+      "Slack couldn't start: Authentication required: …. Check its settings in Settings › Providers.",
       "Token expired",
+      "403 Forbidden",
     ]) {
       expect(actions(text)).toEqual(["run-again", "open-settings"]);
     }
@@ -307,5 +322,37 @@ describe("answer turns keep their run's times (5b)", () => {
     const answer = turns.find((t) => t.kind === "bot");
     expect(answer.startedAt).toBe("2026-10-03T10:00:00.000Z");
     expect(answer.endedAt).toBe("2026-10-03T10:00:20.000Z");
+  });
+});
+
+describe("readableError", () => {
+  it("pulls the message out of a raw API error", () => {
+    expect(
+      readableError(
+        '400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API."},"request_id":"req_1"}',
+      ),
+    ).toBe("Your credit balance is too low to access the Anthropic API.");
+    expect(readableError('{"message":"Rate limited"}')).toBe("Rate limited");
+    expect(readableError('401 {"error":"invalid x-api-key"}')).toBe(
+      "invalid x-api-key",
+    );
+  });
+
+  it("leaves plain text (and unparseable JSON) alone", () => {
+    expect(readableError("Something odd")).toBe("Something odd");
+    expect(readableError("bad {json")).toBe("bad {json");
+    expect(readableError("")).toBe("");
+    expect(readableError(null)).toBe("");
+  });
+
+  it("is what a failed run's error turn shows", () => {
+    const turns = buildConversation([
+      {
+        status: "failed",
+        error: '400 {"type":"error","error":{"message":"Out of credits"}}',
+        prompt: "x",
+      },
+    ]);
+    expect(turns.find((t) => t.kind === "error").text).toBe("Out of credits");
   });
 });
