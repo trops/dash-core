@@ -10,7 +10,9 @@
  *   2. server not in the bot's configured mcpServers → deny WITHOUT prompting
  *   3. tool in allowedTools → allow (auto)
  *   4. base grant covers it  → allow
- *   5. otherwise             → create a pending approval and await the decision
+ *   5. read-only tool (MCP readOnlyHint) under "ask" → allow; "ask-every"
+ *      asks before these too
+ *   6. otherwise             → create a pending approval and await the decision
  *
  * Every decision is reported to an injected `audit` hook (US-003 AC5).
  *
@@ -26,7 +28,8 @@
  *   allowedTools?: string[],
  *   mcpServers?: string[],
  *   internalServers?: string[],
- *   approvalPolicy?: "ask" | "allow",
+ *   approvalPolicy?: "ask" | "ask-every" | "allow",
+ *   isReadOnly?: (toolName: string) => boolean,
  *   resolveServer: (toolName: string) => (string | null),
  *   createApproval: (request: object) => { id: string, promise: Promise<any> },
  *   gate?: (req: object) => { allow: boolean, reason?: string },
@@ -47,6 +50,8 @@ function createRequestPermission(ctx) {
     audit = () => {},
     isPaused = () => false,
     workspaceId,
+    approvalPolicy = "ask",
+    isReadOnly = () => false,
   } = ctx || {};
 
   if (!botId) throw new Error("PermissionGate: ctx.botId is required");
@@ -132,7 +137,17 @@ function createRequestPermission(ctx) {
       );
     }
 
-    // 5. Grant gap → ask. Create a pending approval and await the decision.
+    // 5. Read-only tools aren't external actions — they run without a
+    //    prompt unless the bot asks before every tool.
+    if (approvalPolicy !== "ask-every" && isReadOnly(toolName)) {
+      return record(
+        toolName,
+        { allow: true },
+        { outcome: "read-only", serverName },
+      );
+    }
+
+    // 6. Grant gap → ask. Create a pending approval and await the decision.
     const { id, promise } = createApproval({
       botId,
       workspaceId,

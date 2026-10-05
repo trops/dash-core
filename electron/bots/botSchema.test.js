@@ -89,6 +89,16 @@ describe("botSchema.validateBotDefinition", () => {
     assert.ok(r.errors.some((e) => /whilePaused/.test(e)));
   });
 
+  it("accepts every approval policy: ask, ask-every, allow", () => {
+    for (const approvalPolicy of ["ask", "ask-every", "allow"]) {
+      assert.equal(
+        validateBotDefinition({ ...good(), approvalPolicy }).valid,
+        true,
+        approvalPolicy,
+      );
+    }
+  });
+
   it("allows provider null (use default) but rejects empty string", () => {
     assert.equal(
       validateBotDefinition({ ...good(), provider: null }).valid,

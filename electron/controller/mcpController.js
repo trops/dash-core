@@ -22,6 +22,10 @@ const fs = require("fs");
 const os = require("os");
 const responseCache = require("../utils/responseCache");
 const { gateToolCall, gateToolCallWithJit } = require("../mcp/permissionGate");
+const {
+  findCatalogEntry,
+  markReadOnlyTools,
+} = require("../mcp/catalogReadOnly");
 const { serverKey, parseServerKey } = require("../utils/mcpServerKey");
 const { describeStartFailure, StderrTail } = require("../utils/mcpStartError");
 const { connectedServersFromMap } = require("../bots/toolSources");
@@ -549,6 +553,7 @@ const mcpController = {
       // A stdio server's recent stderr — the real reason when it exits
       // during startup (e.g. a missing token).
       let stderrTail = null;
+      let readOnlyTools = null;
       try {
         // Stop if in stale/error state
         if (activeServers.has(key)) {
@@ -559,6 +564,11 @@ const mcpController = {
         // (saved provider config may reference a stale or archived package)
         try {
           const { catalog } = mcpController.getCatalog(win);
+          // Read-only tools the catalog lists for servers that don't
+          // annotate their own (matched by name or command + args).
+          readOnlyTools =
+            findCatalogEntry(catalog, serverName, mcpConfig)?.readOnlyTools ||
+            null;
           const catalogEntry = (catalog || []).find(
             (entry) => entry.name === serverName,
           );
@@ -747,7 +757,7 @@ const mcpController = {
         let tools = [];
         try {
           const toolsResult = await client.listTools();
-          tools = toolsResult.tools || [];
+          tools = markReadOnlyTools(toolsResult.tools || [], readOnlyTools);
         } catch (toolsError) {
           console.warn(
             `[mcpController] Could not list tools for ${serverName}:`,
@@ -769,6 +779,7 @@ const mcpController = {
           client,
           transport,
           tools,
+          readOnlyTools,
           resources,
           status: STATUS.CONNECTED,
           workspaceId: workspaceId || null,
@@ -1111,7 +1122,10 @@ const mcpController = {
 
       // Refresh tool list from server
       const toolsResult = await server.client.listTools();
-      const tools = toolsResult.tools || [];
+      const tools = markReadOnlyTools(
+        toolsResult.tools || [],
+        server.readOnlyTools,
+      );
 
       // Update cached tools
       server.tools = tools;

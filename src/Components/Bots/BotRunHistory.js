@@ -21,6 +21,7 @@ const DECISION_TEXT = {
   allowed: "you allowed",
   "allowed-always": "you always allowed",
   denied: "you denied",
+  "read-only": "read-only, ran without asking",
 };
 
 function api() {

@@ -495,6 +495,54 @@ describe("BotRunner — run record extras (TEAM-011 gaps)", () => {
     ]);
   });
 
+  it("tells the gate the bot's policy and which tools are read-only, and logs read-only runs", async () => {
+    let gateOpts = null;
+    const engine = {
+      id: "tool-loop",
+      run() {
+        return (async function* () {
+          // The gate audits a read-only tool it ran without asking.
+          gateOpts.audit({
+            outcome: "read-only",
+            toolName: "list_events",
+            serverName: "Google Calendar",
+          });
+          gateOpts.audit({ outcome: "granted", toolName: "x" });
+          yield { type: "done" };
+        })();
+      },
+    };
+    const { runner, runs } = makeRunner(engine, {
+      bot: { approvalPolicy: "ask-every" },
+      deps: {
+        resolveTools: async () => ({
+          tools: [
+            { name: "list_events", annotations: { readOnlyHint: true } },
+            { name: "create_event", annotations: { readOnlyHint: false } },
+            { name: "send_email" },
+          ],
+          resolveServer: () => "Google Calendar",
+        }),
+        makeRequestPermission: (opts) => {
+          gateOpts = opts;
+          return async () => ({ allow: true });
+        },
+      },
+    });
+    await runner.run("bot_1", {});
+    assert.equal(gateOpts.approvalPolicy, "ask-every");
+    assert.equal(gateOpts.isReadOnly("list_events"), true);
+    assert.equal(gateOpts.isReadOnly("create_event"), false);
+    assert.equal(gateOpts.isReadOnly("send_email"), false);
+    assert.deepEqual(runs[0].run.approvals, [
+      {
+        tool: "list_events",
+        provider: "Google Calendar",
+        decision: "read-only",
+      },
+    ]);
+  });
+
   it("records no approvals when none were asked", async () => {
     const engine = mockEngine([{ type: "done" }]);
     const { runner, runs } = makeRunner(engine);

@@ -240,6 +240,13 @@
       "description": "Search, read, send, and manage Gmail messages, threads, labels, and drafts.",
       "icon": "envelope",
       "tags": ["google", "email", "communication"],
+      "readOnlyTools": [
+        "read_email",
+        "search_emails",
+        "list_email_labels",
+        "get_filter",
+        "list_filters"
+      ],
       "mcpConfig": {
         "transport": "stdio",
         "command": "npx",

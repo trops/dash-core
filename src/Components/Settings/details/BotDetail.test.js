@@ -1054,3 +1054,32 @@ describe("BotDetail (a bot with no AI model of its own)", () => {
     expect(onSave.mock.calls[0][0].provider).toBe("claude-code");
   });
 });
+
+describe("BotDetail (approval policy)", () => {
+  it("offers Ask before every tool and explains what each policy does", () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail
+        bot={{
+          id: "b1",
+          name: "Agenda",
+          instructions: "x",
+          provider: "claude-code",
+        }}
+        providers={{}}
+        onSave={onSave}
+      />,
+    );
+    const select = screen.getByLabelText("Approval policy");
+    expect(select).toHaveValue("ask");
+    expect(
+      screen.getByText(/read-only tools run without asking/i),
+    ).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: "ask-every" } });
+    expect(
+      screen.getByText(/asks before every tool, reads included/i),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave.mock.calls[0][0].approvalPolicy).toBe("ask-every");
+  });
+});

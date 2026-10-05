@@ -174,3 +174,66 @@ describe("createRequestPermission — decision ladder", () => {
     assert.equal(audit[0].toolName, "mcp__github__list_prs");
   });
 });
+
+describe("createRequestPermission — read-only tools", () => {
+  const readOnly = (name) => name === "mcp__github__list_prs";
+
+  it('"ask" (default) runs a read-only tool without a prompt', async () => {
+    const { requestPermission, approvals, audit } = setup({
+      isReadOnly: readOnly,
+    });
+    const d = await requestPermission("mcp__github__list_prs", {});
+    assert.equal(d.allow, true);
+    assert.equal(approvals.length, 0);
+    assert.equal(audit[0].outcome, "read-only");
+    assert.equal(audit[0].serverName, "github");
+  });
+
+  it('"ask" still asks before a tool that is not read-only', async () => {
+    const { requestPermission, approvals } = setup({
+      isReadOnly: readOnly,
+      approvalPolicy: "ask",
+    });
+    requestPermission("mcp__github__create_issue", {});
+    assert.equal(approvals.length, 1);
+  });
+
+  it('"ask-every" asks before read-only tools too', async () => {
+    const { requestPermission, approvals } = setup({
+      isReadOnly: readOnly,
+      approvalPolicy: "ask-every",
+    });
+    requestPermission("mcp__github__list_prs", {});
+    assert.equal(approvals.length, 1);
+  });
+
+  it('"ask-every" still honours "Always allow" grants', async () => {
+    const { requestPermission, approvals, audit } = setup({
+      isReadOnly: readOnly,
+      approvalPolicy: "ask-every",
+      gate: () => ({ allow: true }),
+    });
+    const d = await requestPermission("mcp__github__list_prs", {});
+    assert.equal(d.allow, true);
+    assert.equal(approvals.length, 0);
+    assert.equal(audit[0].outcome, "granted");
+  });
+
+  it("read-only never reaches a server the bot isn't configured with", async () => {
+    const { requestPermission, approvals } = setup({
+      isReadOnly: () => true,
+    });
+    const d = await requestPermission("mcp__slack__list_channels", {});
+    assert.equal(d.allow, false);
+    assert.equal(approvals.length, 0);
+  });
+
+  it("read-only never overrides pause", async () => {
+    const { requestPermission } = setup({
+      isReadOnly: readOnly,
+      isPaused: () => true,
+    });
+    const d = await requestPermission("mcp__github__list_prs", {});
+    assert.equal(d.allow, false);
+  });
+});
