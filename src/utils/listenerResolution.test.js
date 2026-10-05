@@ -16,6 +16,7 @@ import {
   getCurrentWiring,
   getOrphanedListeners,
   applyWiringChanges,
+  pruneDeadListenerReferences,
 } from "./listenerResolution";
 
 // Minimal getWidgetConfig stub — returns the events/handlers inline so
@@ -481,5 +482,62 @@ describe("event string format round-trip", () => {
       itemId: "k-1",
       event: "prospectSelected",
     });
+  });
+});
+
+describe("bots as listener sources (TEAM-012)", () => {
+  const ws = {
+    id: 7,
+    layout: [
+      {
+        id: 2,
+        component: "trops.gmail.GmailInbox",
+        dashboardId: 7,
+        listeners: {
+          refresh: [
+            "bot:local/inbox[bot_i].completed",
+            "bot:local/inbox[bot_i].tool.gmail.search_emails",
+            "bot:local/gone[bot_gone].completed",
+          ],
+        },
+      },
+    ],
+  };
+  const cfg = () => ({ events: [], eventHandlers: ["refresh"] });
+  const botEmitters = [
+    {
+      key: "bot:local/inbox|bot_i",
+      component: "bot:local/inbox",
+      itemId: "bot_i",
+      label: "Inbox (bot)",
+      events: ["completed", "failed", "tool.gmail.search_emails"],
+    },
+  ];
+
+  it("parses a bot event string, tool events included", () => {
+    expect(
+      parseEventString("bot:local/inbox[bot_i].tool.gmail.search_emails"),
+    ).toEqual({
+      component: "bot:local/inbox",
+      itemId: "bot_i",
+      event: "tool.gmail.search_emails",
+    });
+  });
+
+  it("never prunes bot sources on load (they aren't widgets in the layout)", () => {
+    const copy = JSON.parse(JSON.stringify(ws));
+    pruneDeadListenerReferences(copy);
+    expect(copy.layout[0].listeners.refresh).toHaveLength(3);
+  });
+
+  it("flags only bots that are gone, when the dashboard's bots are known", () => {
+    const orphans = getOrphanedListeners(ws, cfg, botEmitters);
+    expect(orphans.map((o) => `${o.sourceComponent}|${o.reason}`)).toEqual([
+      "bot:local/gone|bot-missing",
+    ]);
+  });
+
+  it("doesn't judge bot sources before the bots have loaded", () => {
+    expect(getOrphanedListeners(ws, cfg)).toEqual([]);
   });
 });

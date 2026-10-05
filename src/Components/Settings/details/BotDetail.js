@@ -19,18 +19,11 @@ import {
 } from "./cronBuilder";
 import {
   buildWidgetEventCatalog,
-  widgetSubscription,
   describeSubscription,
   buildBotEventCatalog,
-  botSubscription,
+  buildTriggerOptions,
 } from "./eventCatalog";
 import { dashboardOptions, offTeamSubscriptions } from "../../Bots/teamUtils";
-
-// "Run on events" sources: a dashboard widget, or another bot.
-const EVENT_FROM_OPTIONS = [
-  { value: "widget", label: "A dashboard widget" },
-  { value: "bot", label: "Another bot" },
-];
 
 /**
  * BotDetail — create/edit form for a Bot Factory bot (Settings → Bots).
@@ -287,7 +280,6 @@ export const BotDetail = ({
     () => buildWidgetEventCatalog(workspaces, getWidgetConfig),
     [workspaces, getWidgetConfig],
   );
-  const [pickFrom, setPickFrom] = useState("widget");
   // Team = the dashboard this bot belongs to ("" = Unassigned). A bot on a
   // team only hears its own dashboard's events (bot-teams TEAM-001).
   const [team, setTeam] = useState(() => {
@@ -299,11 +291,10 @@ export const BotDetail = ({
     [workspaces],
   );
   const offTeam = offTeamSubscriptions(subscriptions, team);
-  // The event picker opens on the bot's own dashboard.
-  const [pickWorkspace, setPickWorkspace] = useState(team);
-  const [pickWidget, setPickWidget] = useState("");
-  const [pickBot, setPickBot] = useState("");
-  const [pickEvent, setPickEvent] = useState("");
+  // "Runs when…" (TEAM-012): one picker of everything that can trigger the
+  // bot; a just-added trigger reminds the user to Save.
+  const [pickTrigger, setPickTrigger] = useState("");
+  const [triggerAdded, setTriggerAdded] = useState(false);
 
   const { currentTheme = {} } = useContext(ThemeContext) || {};
   const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
@@ -492,35 +483,46 @@ export const BotDetail = ({
     });
   };
 
-  // Cascading picker options. A widget's option value is "ref|instanceId".
-  const pickedWs = eventCatalog.find((w) => w.workspaceId === pickWorkspace);
-  const pickedWidget = pickedWs
-    ? pickedWs.widgets.find((w) => `${w.ref}|${w.instanceId}` === pickWidget)
-    : null;
-
-  // Other bots' events, derived from their providers + tools (this bot
-  // excluded — it can't trigger itself).
+  // Other bots' events (this bot excluded — it can't trigger itself), for
+  // labelling the triggers already on the bot.
   const botCatalog = useMemo(
     () => buildBotEventCatalog(bots, toolSources, bot?.id || null),
     [bots, toolSources, bot?.id],
   );
-  const pickedBot = botCatalog.find((b) => b.botId === pickBot) || null;
-  const pickedBotEvent = pickedBot
-    ? pickedBot.events.find((e) => e.event === pickEvent) || null
-    : null;
-  const canAddEvent =
-    pickFrom === "bot" ? !!pickedBotEvent : !!(pickedWidget && pickEvent);
+
+  // Everything that can trigger this bot, grouped (TEAM-012).
+  const triggerOptions = useMemo(
+    () =>
+      buildTriggerOptions({
+        team: team || null,
+        workspaces,
+        getWidgetConfig,
+        bots,
+        toolSources,
+        botId: bot?.id || null,
+        existing: subscriptions.map((s) => s.eventType),
+      }),
+    [
+      team,
+      workspaces,
+      getWidgetConfig,
+      bots,
+      toolSources,
+      bot?.id,
+      subscriptions,
+    ],
+  );
+  const pickedTrigger =
+    triggerOptions.find((o) => o.value === pickTrigger) || null;
 
   const addSubscription = () => {
-    if (!canAddEvent) return;
-    const sub =
-      pickFrom === "bot"
-        ? botSubscription(pickedBot, pickedBotEvent)
-        : widgetSubscription(pickedWs, pickedWidget, pickEvent);
+    if (!pickedTrigger) return;
+    const sub = pickedTrigger.subscription;
     setSubscriptions((prev) =>
       prev.some((s) => s.eventType === sub.eventType) ? prev : [...prev, sub],
     );
-    setPickEvent("");
+    setPickTrigger("");
+    setTriggerAdded(true);
   };
 
   const removeSubscription = (eventType) => {
@@ -919,103 +921,36 @@ export const BotDetail = ({
               This bot doesn&apos;t run on any events yet.
             </span>
           )}
-          <SelectInput
-            label="From"
-            value={pickFrom}
-            onChange={(v) => {
-              setPickFrom(v);
-              setPickEvent("");
-            }}
-            options={EVENT_FROM_OPTIONS}
-          />
-          {pickFrom === "bot" ? (
-            botCatalog.length ? (
-              <div className="flex flex-col gap-2">
-                <SelectInput
-                  label="Bot"
-                  value={pickBot}
-                  onChange={(v) => {
-                    setPickBot(v);
-                    setPickEvent("");
-                  }}
-                  placeholder="Choose a bot…"
-                  options={botCatalog.map((b) => ({
-                    value: b.botId,
-                    label: b.name,
-                  }))}
-                />
-                <SelectInput
-                  label="Event"
-                  value={pickEvent}
-                  onChange={setPickEvent}
-                  placeholder="Choose an event…"
-                  options={(pickedBot ? pickedBot.events : []).map((e) => ({
-                    value: e.event,
-                    label: e.label,
-                  }))}
-                />
-                <Button
-                  title="Add event"
-                  onClick={addSubscription}
-                  size="sm"
-                  disabled={!canAddEvent}
-                />
-              </div>
-            ) : (
-              <span className="text-xs opacity-50">
-                No other bots yet. Create another bot to trigger this one when
-                it finishes or uses a tool.
-              </span>
-            )
-          ) : eventCatalog.length ? (
+          {triggerOptions.length ? (
             <div className="flex flex-col gap-2">
               <SelectInput
-                label="Dashboard"
-                value={pickWorkspace}
-                onChange={(v) => {
-                  setPickWorkspace(v);
-                  setPickWidget("");
-                  setPickEvent("");
-                }}
-                placeholder="Choose a dashboard…"
-                options={eventCatalog.map((w) => ({
-                  value: w.workspaceId,
-                  label: w.name,
+                label="Runs when…"
+                value={pickTrigger}
+                onChange={setPickTrigger}
+                placeholder="Choose what triggers this bot…"
+                options={triggerOptions.map((o) => ({
+                  value: o.value,
+                  label: o.label,
+                  group: o.group,
                 }))}
-              />
-              <SelectInput
-                label="Widget"
-                value={pickWidget}
-                onChange={(v) => {
-                  setPickWidget(v);
-                  setPickEvent("");
-                }}
-                placeholder="Choose a widget…"
-                options={(pickedWs ? pickedWs.widgets : []).map((w) => ({
-                  value: `${w.ref}|${w.instanceId}`,
-                  label: w.label,
-                }))}
-              />
-              <SelectInput
-                label="Event"
-                value={pickEvent}
-                onChange={setPickEvent}
-                placeholder="Choose an event…"
-                options={(pickedWidget ? pickedWidget.events : []).map(
-                  (ev) => ({ value: ev, label: ev }),
-                )}
               />
               <Button
-                title="Add event"
+                title="Add trigger"
                 onClick={addSubscription}
                 size="sm"
-                disabled={!pickedWidget || !pickEvent}
+                disabled={!pickedTrigger}
               />
+              {triggerAdded && dirty ? (
+                <span className="text-xs opacity-70">
+                  Save to keep this trigger.
+                </span>
+              ) : null}
             </div>
           ) : (
             <span className="text-xs opacity-50">
-              No widgets on your dashboards publish events yet. Add a widget
-              that publishes events to a dashboard to trigger this bot from it.
+              {team
+                ? "Nothing can trigger this bot yet. Add a widget that publishes events to this dashboard, or another bot to its team."
+                : "Nothing can trigger this bot yet. Add a widget that publishes events to a dashboard, or create another bot."}
             </span>
           )}
           <span className="text-xs opacity-50">

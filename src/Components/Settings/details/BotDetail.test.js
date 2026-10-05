@@ -186,7 +186,7 @@ describe("BotDetail — event picker", () => {
     expect(screen.queryByPlaceholderText(/Event name/)).toBeNull();
   });
 
-  it("picks Dashboard › Widget › Event and saves eventType + source", () => {
+  it("picks a widget event from Runs when… and saves eventType + source", () => {
     const onSave = jest.fn().mockResolvedValue({});
     render(
       <BotDetail
@@ -198,16 +198,15 @@ describe("BotDetail — event picker", () => {
       />,
     );
     fillRequired();
-    fireEvent.change(screen.getByLabelText("Dashboard"), {
-      target: { value: "7" },
+    // One picker: no From / Dashboard / Widget steps.
+    expect(screen.queryByLabelText("From")).toBeNull();
+    expect(screen.queryByLabelText("Dashboard")).toBeNull();
+    expect(screen.queryByLabelText("Widget")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Runs when…"), {
+      target: { value: "trops.samples.EventSender[3].buttonClicked" },
     });
-    fireEvent.change(screen.getByLabelText("Widget"), {
-      target: { value: "trops.samples.EventSender|3" },
-    });
-    fireEvent.change(screen.getByLabelText("Event"), {
-      target: { value: "buttonClicked" },
-    });
-    fireEvent.click(screen.getByText("Add event"));
+    fireEvent.click(screen.getByText("Add trigger"));
+    expect(screen.getByText("Save to keep this trigger.")).toBeInTheDocument();
     // Chip shows the friendly path, not the raw bus string.
     expect(screen.getByText(/Kitchen Sink › .* › buttonClicked/)).toBeTruthy();
     fireEvent.click(screen.getByText("Create"));
@@ -223,7 +222,7 @@ describe("BotDetail — event picker", () => {
     expect(sub.label).toMatch(/Kitchen Sink › .* › buttonClicked/);
   });
 
-  it("Add event stays disabled until an event is chosen", () => {
+  it("Add trigger stays disabled until a trigger is chosen", () => {
     render(
       <BotDetail
         isCreating
@@ -233,7 +232,7 @@ describe("BotDetail — event picker", () => {
         onSave={jest.fn()}
       />,
     );
-    expect(screen.getByText("Add event")).toBeDisabled();
+    expect(screen.getByText("Add trigger")).toBeDisabled();
   });
 
   it("flags a subscription whose widget is gone, and it can be removed", () => {
@@ -303,10 +302,29 @@ describe("BotDetail — event picker", () => {
     ]);
   });
 
-  it("explains when no dashboard widget publishes events", () => {
+  it("explains when nothing can trigger the bot", () => {
     render(<BotDetail isCreating providers={{}} onSave={jest.fn()} />);
     expect(
-      screen.getByText(/No widgets on your dashboards publish events/),
+      screen.getByText(/Nothing can trigger this bot yet/),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Runs when…")).toBeNull();
+  });
+
+  it("a team bot is only offered its own dashboard's widgets", () => {
+    render(
+      <BotDetail
+        isCreating
+        defaultWorkspaceId={8}
+        providers={{}}
+        workspaces={workspaces}
+        getWidgetConfig={getWidgetConfig}
+        onSave={jest.fn()}
+      />,
+    );
+    // Dashboard 8 has no publishing widget; Kitchen Sink's aren't offered.
+    expect(screen.queryByLabelText("Runs when…")).toBeNull();
+    expect(
+      screen.getByText(/Add a widget that publishes events to this dashboard/),
     ).toBeInTheDocument();
   });
 });
@@ -651,24 +669,22 @@ describe("BotDetail — bot events in the picker", () => {
     });
   };
 
-  it("picks Another bot › Bot › Event and saves the bot event", async () => {
+  it("picks another bot's event from Runs when… and saves it", async () => {
     const onSave = jest.fn().mockResolvedValue({});
     render(
       <BotDetail isCreating providers={{}} bots={[gmailBot]} onSave={onSave} />,
     );
     fillRequired();
-    fireEvent.change(screen.getByLabelText("From"), {
-      target: { value: "bot" },
-    });
-    fireEvent.change(screen.getByLabelText("Bot"), {
-      target: { value: "bot_9" },
-    });
     // Tool events appear once the provider list has loaded.
-    await screen.findByText("Gmail New › search_emails");
-    fireEvent.change(screen.getByLabelText("Event"), {
-      target: { value: "tool.gmail.search_emails" },
+    await screen.findByText(
+      "Gmail Email Check › uses search_emails (Gmail New)",
+    );
+    fireEvent.change(screen.getByLabelText("Runs when…"), {
+      target: {
+        value: "bot:local/gmail-email-check[bot_9].tool.gmail.search_emails",
+      },
     });
-    fireEvent.click(screen.getByText("Add event"));
+    fireEvent.click(screen.getByText("Add trigger"));
     expect(
       screen.getByText("Gmail Email Check › Gmail New › search_emails"),
     ).toBeInTheDocument();
@@ -694,11 +710,10 @@ describe("BotDetail — bot events in the picker", () => {
         onSave={jest.fn()}
       />,
     );
-    fireEvent.change(screen.getByLabelText("From"), {
-      target: { value: "bot" },
-    });
-    expect(screen.queryByLabelText("Bot")).toBeNull();
-    expect(screen.getByText(/No other bots yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/Gmail Email Check ›/)).toBeNull();
+    expect(
+      screen.getByText(/Nothing can trigger this bot yet/),
+    ).toBeInTheDocument();
   });
 
   it("flags a subscription whose source bot was deleted", () => {
@@ -791,8 +806,12 @@ describe("BotDetail — Team", () => {
       />,
     );
     expect(screen.getByLabelText("Team")).toHaveValue("7");
-    // The event picker opens on this dashboard.
-    expect(screen.getByLabelText("Dashboard")).toHaveValue("7");
+    // The picker offers this dashboard's widgets.
+    expect(
+      Array.from(screen.getByLabelText("Runs when…").options).some((o) =>
+        o.value.startsWith("trops.samples.EventSender[3]."),
+      ),
+    ).toBe(true);
     fill();
     fireEvent.click(screen.getByText("Create"));
     expect(onSave.mock.calls[0][0].workspaceId).toBe("7");

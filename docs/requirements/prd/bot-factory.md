@@ -1043,6 +1043,8 @@ accepted suggestion in the form; the audit log records the install and grant.
 
 ---
 
+> **Note (2026-10-05):** the event picker (US-011 AC9) is now a single grouped "Runs when…" select — see bot-teams TEAM-012 AC6. Subscriptions are stored unchanged.
+
 **US-026: Bot templates as registry assets**
 
 > As a bot creator,

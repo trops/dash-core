@@ -4,6 +4,8 @@ import {
   describeSubscription,
   buildBotEventCatalog,
   botSubscription,
+  buildTriggerOptions,
+  getBotEmitters,
 } from "./eventCatalog";
 
 // Bot events — derived from each bot's providers (by TYPE) + selected tools.
@@ -222,5 +224,190 @@ describe("describeSubscription", () => {
       label: "pr.opened",
       missing: false,
     });
+  });
+});
+
+describe("buildTriggerOptions (one 'Runs when…' picker, TEAM-012)", () => {
+  const twoSenders = {
+    ...kitchenSink,
+    layout: [
+      ...kitchenSink.layout,
+      { component: "trops.samples.EventSender", id: 5, dashboardId: 7 },
+    ],
+  };
+  const other = {
+    id: 9,
+    name: "Daily Brief",
+    layout: [{ component: "trops.samples.EventSender", id: 2, dashboardId: 9 }],
+  };
+  const bots = [
+    {
+      id: "bot_a",
+      name: "Agenda",
+      ref: "local/agenda",
+      workspaceId: "7",
+      mcpServers: [],
+    },
+    {
+      id: "bot_i",
+      name: "Inbox",
+      ref: "local/inbox",
+      workspaceId: "7",
+      mcpServers: ["Gmail 3"],
+      toolSelections: { "Gmail 3": ["search_emails"] },
+    },
+    {
+      id: "bot_x",
+      name: "Elsewhere",
+      ref: "local/elsewhere",
+      workspaceId: "9",
+      mcpServers: [],
+    },
+    {
+      id: "bot_me",
+      name: "Me",
+      ref: "local/me",
+      workspaceId: "7",
+      mcpServers: [],
+    },
+  ];
+  const toolSources = [
+    { name: "Gmail 3", type: "gmail", tools: ["search_emails"] },
+  ];
+  const base = {
+    workspaces: [twoSenders, other],
+    getWidgetConfig: widgetConfigs,
+    bots,
+    toolSources,
+    botId: "bot_me",
+  };
+  const labels = (opts) => opts.map((o) => `${o.group} | ${o.label}`);
+
+  it("a team bot sees its own dashboard's widgets and its teammates", () => {
+    const opts = buildTriggerOptions({ ...base, team: "7" });
+    expect(labels(opts)).toEqual([
+      "Widgets on Kitchen Sink | Event Sender › buttonClicked",
+      "Widgets on Kitchen Sink | Event Sender › messageSent",
+      "Widgets on Kitchen Sink | Event Sender (2) › buttonClicked",
+      "Widgets on Kitchen Sink | Event Sender (2) › messageSent",
+      "Bots on this team | Agenda › Completed",
+      "Bots on this team | Agenda › Failed",
+      "Bots on this team | Inbox › Completed",
+      "Bots on this team | Inbox › Failed",
+      "Bots on this team | Inbox › uses search_emails (Gmail 3)",
+    ]);
+  });
+
+  it("each option carries the subscription it adds, keyed by its eventType", () => {
+    const opts = buildTriggerOptions({ ...base, team: "7" });
+    const w = opts[0];
+    expect(w.value).toBe("trops.samples.EventSender[3].buttonClicked");
+    expect(w.subscription.eventType).toBe(w.value);
+    expect(w.subscription.source.kind).toBe("widget");
+    const b = opts.find((o) => o.label === "Agenda › Completed");
+    expect(b.value).toBe("bot:local/agenda[bot_a].completed");
+    expect(b.subscription.source).toMatchObject({
+      kind: "bot",
+      instanceId: "bot_a",
+    });
+  });
+
+  it("an unassigned bot sees every dashboard's widgets and every bot", () => {
+    const opts = buildTriggerOptions({ ...base, team: null });
+    const groups = [...new Set(opts.map((o) => o.group))];
+    expect(groups).toEqual([
+      "Widgets on Kitchen Sink",
+      "Widgets on Daily Brief",
+      "Bots",
+    ]);
+    expect(
+      opts.some((o) => o.label === "Elsewhere (Daily Brief) › Completed"),
+    ).toBe(true);
+    expect(
+      opts.some((o) => o.label === "Agenda (Kitchen Sink) › Completed"),
+    ).toBe(true);
+  });
+
+  it("never offers the bot itself, or triggers it already has", () => {
+    const opts = buildTriggerOptions({
+      ...base,
+      team: "7",
+      existing: ["bot:local/agenda[bot_a].completed"],
+    });
+    expect(opts.some((o) => o.label.startsWith("Me "))).toBe(false);
+    expect(opts.some((o) => o.label === "Agenda › Completed")).toBe(false);
+    expect(opts.some((o) => o.label === "Agenda › Failed")).toBe(true);
+  });
+
+  it("is empty when nothing on the dashboard can trigger the bot", () => {
+    expect(
+      buildTriggerOptions({
+        ...base,
+        team: "8",
+        workspaces: [empty],
+        bots: [],
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("getBotEmitters (bots as Listeners sources, TEAM-012)", () => {
+  const bots = [
+    {
+      id: "bot_i",
+      name: "Inbox",
+      ref: "local/inbox",
+      workspaceId: "7",
+      mcpServers: ["Gmail 3"],
+      toolSelections: { "Gmail 3": ["search_emails"] },
+    },
+    {
+      id: "bot_l",
+      name: "Kitchen Lead",
+      ref: "local/lead",
+      role: "lead",
+      workspaceId: "7",
+    },
+    {
+      id: "bot_x",
+      name: "Elsewhere",
+      ref: "local/elsewhere",
+      workspaceId: "9",
+    },
+  ];
+  const toolSources = [
+    { name: "Gmail 3", type: "gmail", tools: ["search_emails"] },
+  ];
+
+  it("lists this dashboard's bots as sources shaped like widget emitters", () => {
+    const out = getBotEmitters(bots, toolSources, 7);
+    expect(out).toEqual([
+      {
+        key: "bot:local/inbox|bot_i",
+        component: "bot:local/inbox",
+        itemId: "bot_i",
+        label: "Inbox (bot)",
+        events: ["completed", "failed", "tool.gmail.search_emails"],
+      },
+      {
+        key: "bot:local/lead|bot_l",
+        component: "bot:local/lead",
+        itemId: "bot_l",
+        label: "Kitchen Lead (bot)",
+        events: ["completed", "failed"],
+      },
+    ]);
+  });
+
+  it("their events are exactly what the bus carries", () => {
+    const [inbox] = getBotEmitters(bots, toolSources, "7");
+    expect(`${inbox.component}[${inbox.itemId}].${inbox.events[0]}`).toBe(
+      "bot:local/inbox[bot_i].completed",
+    );
+  });
+
+  it("is empty without a dashboard or bots", () => {
+    expect(getBotEmitters(bots, toolSources, null)).toEqual([]);
+    expect(getBotEmitters(null, toolSources, 7)).toEqual([]);
   });
 });

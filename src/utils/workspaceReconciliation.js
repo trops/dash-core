@@ -21,7 +21,7 @@
  */
 
 import { forEachWidget } from "./providerResolution";
-import { parseEventString } from "./listenerResolution";
+import { isBotSource, parseEventString } from "./listenerResolution";
 
 /**
  * Build the set of canonical keys and the set of itemIds for every
@@ -100,6 +100,10 @@ function pruneListeners(listeners, liveCanonicalKeys) {
       continue;
     }
     const kept = value.filter((eventStr) => {
+      // Bots aren't layout widgets, so they never appear in
+      // liveCanonicalKeys. Their wiring is checked against the bot list
+      // in the Listeners tab instead.
+      if (isBotSource(parseEventString(eventStr)?.component)) return true;
       const key = eventStringToCanonicalKey(eventStr);
       if (!key) return true; // unparseable — leave alone
       return liveCanonicalKeys.has(key);

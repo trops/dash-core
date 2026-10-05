@@ -158,6 +158,39 @@ describe("reconcileWorkspaceAfterLayoutChange — delete-widget steel thread", (
   });
 });
 
+describe("reconcileWorkspaceAfterLayoutChange — bot sources", () => {
+  test("keeps listeners on a bot (bots are not layout widgets)", () => {
+    const workspace = {
+      layout: [
+        mkReceiver("Detail", "d-1", {
+          refresh: ["bot:local/inbox[bot_i].completed", "Gone[g-1].evt"],
+        }),
+      ],
+    };
+    const out = reconcileWorkspaceAfterLayoutChange(workspace);
+    expect(out.layout[0].listeners.refresh).toEqual([
+      "bot:local/inbox[bot_i].completed",
+    ]);
+  });
+
+  test("keeps bot listeners on pages[].layout", () => {
+    const workspace = {
+      pages: [
+        {
+          id: "p1",
+          layout: [
+            mkReceiver("Detail", "d-1", {
+              refresh: ["bot:local/inbox[bot_i].completed"],
+            }),
+          ],
+        },
+      ],
+    };
+    const out = reconcileWorkspaceAfterLayoutChange(workspace);
+    expect(out).toBe(workspace);
+  });
+});
+
 describe("reconcileWorkspaceAfterLayoutChange — LayoutModel-shape identity", () => {
   // Simulates what LayoutModel produces on workspace load: numeric `id`
   // plus a composite `uuid = ${dashboardId}-${component}-${id}`. No

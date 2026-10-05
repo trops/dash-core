@@ -166,3 +166,132 @@ export function botSubscription(botEntry, ev) {
     label: `${botEntry.name} › ${ev.label}`,
   };
 }
+
+function botEventLabel(ev) {
+  if (!ev.event.startsWith("tool.")) return ev.label;
+  // Tool events are labelled "<provider> › <tool>" in the catalog.
+  const [provider, tool] = String(ev.label).split(" › ");
+  return tool ? `uses ${tool} (${provider})` : ev.label;
+}
+
+/**
+ * Everything that can trigger a bot, flattened for one "Runs when…" picker
+ * (bot-teams TEAM-012): `{ value, label, group, subscription }`, value = the
+ * subscription's eventType.
+ *
+ * A team bot only runs on its own dashboard's events, so it's offered that
+ * dashboard's widgets ("Widgets on <dashboard>") and its teammates ("Bots on
+ * this team"). An unassigned bot is offered every dashboard's widgets and
+ * every bot ("Bots", labelled with their dashboard). The bot itself and
+ * triggers it already has are left out; two copies of one widget are
+ * numbered.
+ *
+ * @param {{ team: string|null, workspaces: object[], getWidgetConfig: Function,
+ *           bots: object[], toolSources: object[], botId?: string,
+ *           existing?: string[] }} input
+ */
+export function buildTriggerOptions({
+  team = null,
+  workspaces = [],
+  getWidgetConfig = null,
+  bots = [],
+  toolSources = [],
+  botId = null,
+  existing = [],
+}) {
+  const teamKey =
+    team === null || team === undefined || team === "" ? null : String(team);
+  const taken = new Set(existing || []);
+  const out = [];
+
+  // Widgets.
+  const wsList = (Array.isArray(workspaces) ? workspaces : []).filter(
+    (ws) => ws && (teamKey === null || String(ws.id) === teamKey),
+  );
+  for (const ws of buildWidgetEventCatalog(wsList, getWidgetConfig)) {
+    const group = `Widgets on ${ws.name}`;
+    const seen = {};
+    for (const widget of ws.widgets) {
+      seen[widget.label] = (seen[widget.label] || 0) + 1;
+      const name =
+        seen[widget.label] > 1
+          ? `${widget.label} (${seen[widget.label]})`
+          : widget.label;
+      for (const event of widget.events) {
+        const subscription = widgetSubscription(ws, widget, event);
+        if (taken.has(subscription.eventType)) continue;
+        out.push({
+          value: subscription.eventType,
+          label: `${name} › ${event}`,
+          group,
+          subscription,
+        });
+      }
+    }
+  }
+
+  // Bots.
+  const nameOfWs = new Map(
+    (Array.isArray(workspaces) ? workspaces : [])
+      .filter(Boolean)
+      .map((ws) => [String(ws.id), ws.name || `Dashboard ${ws.id}`]),
+  );
+  const candidates = (Array.isArray(bots) ? bots : []).filter(
+    (b) =>
+      b &&
+      (teamKey === null ||
+        (b.workspaceId !== null &&
+          b.workspaceId !== undefined &&
+          String(b.workspaceId) === teamKey)),
+  );
+  const wsOf = new Map(candidates.map((b) => [b.id, b.workspaceId]));
+  for (const entry of buildBotEventCatalog(candidates, toolSources, botId)) {
+    const where =
+      teamKey === null &&
+      wsOf.get(entry.botId) !== null &&
+      wsOf.get(entry.botId) !== undefined
+        ? ` (${nameOfWs.get(String(wsOf.get(entry.botId))) || "another dashboard"})`
+        : "";
+    for (const ev of entry.events) {
+      const subscription = botSubscription(entry, ev);
+      if (taken.has(subscription.eventType)) continue;
+      out.push({
+        value: subscription.eventType,
+        label: `${entry.name}${where} › ${botEventLabel(ev)}`,
+        group: teamKey === null ? "Bots" : "Bots on this team",
+        subscription,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * A dashboard's bots as Dashboard Config › Listeners sources (bot-teams
+ * TEAM-012), shaped like getEmitters() entries: component `bot:<ref>`,
+ * itemId = bot id, so a wired handler stores `bot:<ref>[<botId>].<event>` —
+ * exactly what bots publish on the bus.
+ *
+ * @param {object[]} bots
+ * @param {object[]} toolSources  bots.listToolSources()
+ * @param {string|number} workspaceId
+ */
+export function getBotEmitters(bots, toolSources, workspaceId) {
+  if (workspaceId === null || workspaceId === undefined || workspaceId === "") {
+    return [];
+  }
+  const team = (Array.isArray(bots) ? bots : []).filter(
+    (b) =>
+      b &&
+      b.workspaceId !== null &&
+      b.workspaceId !== undefined &&
+      String(b.workspaceId) === String(workspaceId),
+  );
+  return buildBotEventCatalog(team, toolSources).map((entry) => ({
+    key: `bot:${entry.ref}|${entry.botId}`,
+    component: `bot:${entry.ref}`,
+    itemId: entry.botId,
+    label: `${entry.name} (bot)`,
+    events: entry.events.map((e) => e.event),
+  }));
+}
