@@ -19,6 +19,7 @@ import { BotChat } from "./BotChat";
 import { BotRunHistory } from "./BotRunHistory";
 import { BotDetail } from "../Settings/details/BotDetail";
 import { DraftBanner } from "./DraftBanner";
+import { TeamImportReview } from "./TeamImportReview";
 import { AppContext } from "../../Context/App/AppContext";
 import { ComponentManager } from "../../ComponentManager";
 import { STATUS_DOT, triggerSummary } from "./teamUtils";
@@ -118,6 +119,12 @@ export const BotsView = ({
       : "conversation",
   );
   const [menuOpen, setMenuOpen] = useState(false);
+  // Team export/import (TEAM-006/007, slice 1): the review being shown, and
+  // the last outcome ({ text, details?: string[] }).
+  const [importPreview, setImportPreview] = useState(null);
+  const [installing, setInstalling] = useState(false);
+  const [importError, setImportError] = useState(null);
+  const [teamNote, setTeamNote] = useState(null);
   const [allBots, setAllBots] = useState([]);
   const nameOf = useMemo(() => {
     const names = new Map(allBots.map((b) => [b.id, b.name]));
@@ -194,6 +201,7 @@ export const BotsView = ({
       setSelectedId(id);
       setTab(id === NEW_BOT || isDraftId(id) ? "settings" : "conversation");
       setMenuOpen(false);
+      setImportPreview(null);
     });
 
   const switchTab = (next) =>
@@ -305,6 +313,92 @@ export const BotsView = ({
     afterChange();
   };
 
+  // ─── Team export/import (TEAM-006/007, slice 1) ───────────────────
+
+  const exportTeam = async () => {
+    const bots = api();
+    if (!bots || !bots.exportTeam || !workspace) return;
+    const r =
+      (await bots.exportTeam(workspace.id, { name: workspace.name })) || {};
+    if (r.saved) {
+      const file = String(r.filePath || "")
+        .split(/[\\/]/)
+        .pop();
+      setTeamNote({
+        text: `Saved ${file} (${r.members} bot${r.members === 1 ? "" : "s"}).`,
+        details: r.notIncluded || [],
+      });
+    } else if (r.error) {
+      setTeamNote({ text: r.error });
+    }
+  };
+
+  const importTeam = () =>
+    guarded(async () => {
+      const bots = api();
+      if (!bots || !bots.previewTeamImport || !workspace) return;
+      const r = (await bots.previewTeamImport(workspace.id)) || {};
+      if (r.canceled) return;
+      if (r.error) {
+        setTeamNote({
+          text: [r.error, ...(r.errors || [])].join(" "),
+        });
+        return;
+      }
+      setDirty(false);
+      setTeamNote(null);
+      setImportError(null);
+      setImportPreview(r);
+    });
+
+  const installTeam = async (choices) => {
+    const bots = api();
+    if (!bots || !importPreview || !workspace) return;
+    setInstalling(true);
+    try {
+      const r =
+        (await bots.installTeam(
+          workspace.id,
+          importPreview.manifest,
+          choices,
+        )) || {};
+      if (r.error) {
+        setImportError([r.error, ...(r.errors || [])].join(" "));
+        return;
+      }
+      const n = (r.installed || []).length;
+      setTeamNote({
+        text: `Added ${n} paused bot${n === 1 ? "" : "s"} from ${importPreview.manifest.name}. Resume them when you're ready.`,
+      });
+      setImportPreview(null);
+      afterChange();
+    } finally {
+      setInstalling(false);
+    }
+  };
+
+  const teamActions = (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-row flex-wrap gap-2">
+        <Button3 title="Export team" size="xs" onClick={exportTeam} />
+        <Button3 title="Import team" size="xs" onClick={importTeam} />
+      </div>
+      {teamNote ? (
+        <div className={`text-xs flex flex-col gap-0.5 ${muted}`}>
+          <span>{teamNote.text}</span>
+          {teamNote.details && teamNote.details.length ? (
+            <>
+              <span>Not included:</span>
+              {teamNote.details.map((d, i) => (
+                <span key={i}>{`· ${d}`}</span>
+              ))}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+
   const turnOffLead = async () => {
     const bots = api();
     if (!bots || !workspace) return;
@@ -397,6 +491,7 @@ export const BotsView = ({
         </>
       ) : null}
       <div className="flex-1" />
+      {teamActions}
       <Button title="+ Add bot" size="sm" onClick={() => select(NEW_BOT)} />
     </nav>
   );
@@ -436,163 +531,189 @@ export const BotsView = ({
       ref={rootRef}
       className={`flex flex-1 min-h-0 gap-4 p-4 ${strong} ${isNarrow ? "flex-col" : "flex-row"}`}
     >
-      {isNarrow ? picker : teamList}
-
-      <section
-        aria-label="Selected bot"
-        className={`flex-1 min-w-0 min-h-0 flex flex-col rounded-xl border ${hairline}`}
-      >
-        <div className="flex flex-row items-start justify-between gap-4 px-5 pt-4">
-          <div className="min-w-0">
-            <div className="flex flex-row items-center gap-2">
-              <h2 className="text-lg font-semibold truncate">
-                {selected
-                  ? selected.name
-                  : selectedDraft
-                    ? selectedDraft.definition.name
-                    : "New bot"}
-              </h2>
-              {selected ? (
-                <span
-                  className={`flex flex-row items-center gap-1.5 text-xs ${muted}`}
-                >
-                  <span className={`h-2 w-2 rounded-full ${statusDot}`} />
-                  {status}
-                </span>
-              ) : null}
-            </div>
-            <div className={`text-sm ${muted}`}>
-              {selected
-                ? isLead
-                  ? "Answers questions about this team · costs nothing until asked"
-                  : [
-                      (selected.mcpServers || []).join(", "),
-                      triggerSummary(selected),
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")
-                : `Joins the ${workspace ? workspace.name : "dashboard"} team`}
-            </div>
-          </div>
-          {selected ? (
-            <div className="flex flex-row items-center gap-2 flex-shrink-0">
-              {!isLead ? (
-                <Button2 title="Run now" size="sm" onClick={runNow} />
-              ) : null}
-              {!isLead ? (
-                <Button3
-                  title={status === "Paused" ? "Resume" : "Pause"}
-                  size="sm"
-                  onClick={togglePause}
-                />
-              ) : null}
-              <Button3
-                title="⋯"
-                size="sm"
-                ariaLabel="More actions"
-                onClick={() => setMenuOpen((v) => !v)}
-              />
-            </div>
-          ) : null}
+      {isNarrow ? (
+        <div className="flex flex-col gap-2">
+          {picker}
+          {teamActions}
         </div>
-        {menuOpen && selected ? (
-          <div className="flex flex-row justify-end gap-2 px-5 pt-2">
-            {isLead ? (
-              <Button3 title="Turn off lead" size="xs" onClick={turnOffLead} />
-            ) : (
-              <>
-                <Button3
-                  title="Remove from team"
-                  size="xs"
-                  onClick={removeFromTeam}
-                />
-                <Button3
-                  title="Delete"
-                  size="xs"
-                  onClick={() => setConfirmDelete(true)}
-                />
-              </>
-            )}
-          </div>
-        ) : null}
+      ) : (
+        teamList
+      )}
 
-        <div
-          role="tablist"
-          className={`flex flex-row gap-6 px-5 mt-3 border-b ${hairline}`}
+      {importPreview ? (
+        <TeamImportReview
+          preview={importPreview}
+          installing={installing}
+          error={importError}
+          onInstall={installTeam}
+          onCancel={() => {
+            setImportPreview(null);
+            setImportError(null);
+          }}
+        />
+      ) : (
+        <section
+          aria-label="Selected bot"
+          className={`flex-1 min-w-0 min-h-0 flex flex-col rounded-xl border ${hairline}`}
         >
-          {tabs.map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={tab === id}
-              onClick={() => switchTab(id)}
-              className={`py-2.5 text-sm font-medium -mb-px border-b-2 ${
-                tab === id ? "border-indigo-400" : `border-transparent ${muted}`
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex-1 min-h-0 flex flex-col">
-          {tab === "conversation" && selected ? (
-            <BotChat
-              bot={selected}
-              isLead={isLead}
-              approvals={team ? team.approvalsFor(selected.id) : []}
-              onApprove={team ? team.approve : null}
-              nameOf={nameOf}
-              onOpenSettings={onOpenSettings}
-              onChangeModel={() => switchTab("settings")}
-              drafts={isLead ? drafts : undefined}
-              onOpenDraft={isLead ? (id) => select(DRAFT_PREFIX + id) : null}
-            />
-          ) : null}
-          {tab === "activity" && selected ? (
-            <BotRunHistory
-              bot={selected}
-              isLead={isLead}
-              nameOf={nameOf}
-              onOpenSettings={onOpenSettings}
-              onChangeModel={() => switchTab("settings")}
-            />
-          ) : null}
-          {tab === "settings" ? (
-            <div className="flex-1 min-h-0 flex flex-col">
-              {selectedDraft ? (
-                <DraftBanner
-                  draft={selectedDraft}
-                  onDiscard={discardDraft}
-                  onOpenSettings={onOpenSettings}
+          <div className="flex flex-row items-start justify-between gap-4 px-5 pt-4">
+            <div className="min-w-0">
+              <div className="flex flex-row items-center gap-2">
+                <h2 className="text-lg font-semibold truncate">
+                  {selected
+                    ? selected.name
+                    : selectedDraft
+                      ? selectedDraft.definition.name
+                      : "New bot"}
+                </h2>
+                {selected ? (
+                  <span
+                    className={`flex flex-row items-center gap-1.5 text-xs ${muted}`}
+                  >
+                    <span className={`h-2 w-2 rounded-full ${statusDot}`} />
+                    {status}
+                  </span>
+                ) : null}
+              </div>
+              <div className={`text-sm ${muted}`}>
+                {selected
+                  ? isLead
+                    ? "Answers questions about this team · costs nothing until asked"
+                    : [
+                        (selected.mcpServers || []).join(", "),
+                        triggerSummary(selected),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")
+                  : `Joins the ${workspace ? workspace.name : "dashboard"} team`}
+              </div>
+            </div>
+            {selected ? (
+              <div className="flex flex-row items-center gap-2 flex-shrink-0">
+                {!isLead ? (
+                  <Button2 title="Run now" size="sm" onClick={runNow} />
+                ) : null}
+                {!isLead ? (
+                  <Button3
+                    title={status === "Paused" ? "Resume" : "Pause"}
+                    size="sm"
+                    onClick={togglePause}
+                  />
+                ) : null}
+                <Button3
+                  title="⋯"
+                  size="sm"
+                  ariaLabel="More actions"
+                  onClick={() => setMenuOpen((v) => !v)}
                 />
-              ) : null}
-              <BotDetail
-                key={`${selected ? selected.id : selectedId || NEW_BOT}-${formKey}`}
-                bot={
-                  selected ||
-                  (selectedDraft && selectedDraft.definition) ||
-                  null
-                }
-                isCreating={!selected}
-                suggestions={selectedDraft ? selectedDraft.suggestions : null}
-                defaultWorkspaceId={workspace ? workspace.id : null}
-                providers={providers}
-                workspaces={workspaces}
-                getWidgetConfig={getWidgetConfig}
-                bots={allBots}
-                onSave={saveBot}
-                onDirtyChange={setDirty}
-                onDiscard={() => {
-                  setDirty(false);
-                  setFormKey((k) => k + 1);
-                }}
-              />
+              </div>
+            ) : null}
+          </div>
+          {menuOpen && selected ? (
+            <div className="flex flex-row justify-end gap-2 px-5 pt-2">
+              {isLead ? (
+                <Button3
+                  title="Turn off lead"
+                  size="xs"
+                  onClick={turnOffLead}
+                />
+              ) : (
+                <>
+                  <Button3
+                    title="Remove from team"
+                    size="xs"
+                    onClick={removeFromTeam}
+                  />
+                  <Button3
+                    title="Delete"
+                    size="xs"
+                    onClick={() => setConfirmDelete(true)}
+                  />
+                </>
+              )}
             </div>
           ) : null}
-        </div>
-      </section>
+
+          <div
+            role="tablist"
+            className={`flex flex-row gap-6 px-5 mt-3 border-b ${hairline}`}
+          >
+            {tabs.map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={tab === id}
+                onClick={() => switchTab(id)}
+                className={`py-2.5 text-sm font-medium -mb-px border-b-2 ${
+                  tab === id
+                    ? "border-indigo-400"
+                    : `border-transparent ${muted}`
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex-1 min-h-0 flex flex-col">
+            {tab === "conversation" && selected ? (
+              <BotChat
+                bot={selected}
+                isLead={isLead}
+                approvals={team ? team.approvalsFor(selected.id) : []}
+                onApprove={team ? team.approve : null}
+                nameOf={nameOf}
+                onOpenSettings={onOpenSettings}
+                onChangeModel={() => switchTab("settings")}
+                drafts={isLead ? drafts : undefined}
+                onOpenDraft={isLead ? (id) => select(DRAFT_PREFIX + id) : null}
+              />
+            ) : null}
+            {tab === "activity" && selected ? (
+              <BotRunHistory
+                bot={selected}
+                isLead={isLead}
+                nameOf={nameOf}
+                onOpenSettings={onOpenSettings}
+                onChangeModel={() => switchTab("settings")}
+              />
+            ) : null}
+            {tab === "settings" ? (
+              <div className="flex-1 min-h-0 flex flex-col">
+                {selectedDraft ? (
+                  <DraftBanner
+                    draft={selectedDraft}
+                    onDiscard={discardDraft}
+                    onOpenSettings={onOpenSettings}
+                  />
+                ) : null}
+                <BotDetail
+                  key={`${selected ? selected.id : selectedId || NEW_BOT}-${formKey}`}
+                  bot={
+                    selected ||
+                    (selectedDraft && selectedDraft.definition) ||
+                    null
+                  }
+                  isCreating={!selected}
+                  suggestions={selectedDraft ? selectedDraft.suggestions : null}
+                  defaultWorkspaceId={workspace ? workspace.id : null}
+                  providers={providers}
+                  workspaces={workspaces}
+                  getWidgetConfig={getWidgetConfig}
+                  bots={allBots}
+                  onSave={saveBot}
+                  onDirtyChange={setDirty}
+                  onDiscard={() => {
+                    setDirty(false);
+                    setFormKey((k) => k + 1);
+                  }}
+                />
+              </div>
+            ) : null}
+          </div>
+        </section>
+      )}
 
       <ConfirmationModal
         isOpen={!!pendingNav}

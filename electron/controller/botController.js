@@ -32,7 +32,14 @@ const { EventDispatcher } = require("../bots/EventDispatcher");
 const { normalizeMcpResult } = require("../bots/mcpResult");
 const BotEventPublisher = require("../bots/BotEventPublisher");
 const { stopBotRun } = require("../bots/stopRun");
-const { unassignTeam } = require("../bots/teams");
+const {
+  buildTeamManifest,
+  validateTeamManifest,
+  planTeamInstall,
+  wireTeam,
+} = require("../bots/teamManifest");
+const { saveTeamFile, openTeamFile } = require("./teamFiles");
+const { unassignTeam, isOnTeam } = require("../bots/teams");
 const {
   TEAM_SERVER,
   TEAM_TOOLS,
@@ -515,6 +522,99 @@ const botController = {
   /** Remove a draft (discarded, or saved as a real bot). */
   dismissDraft(draftId) {
     return { dismissed: this._drafts ? this._drafts.remove(draftId) : false };
+  },
+
+  /** The user's Dash providers (name, type, …); [] when unavailable. */
+  _providerList() {
+    try {
+      const win = this._getMainWindow();
+      return (
+        (this._providers.listProviders(win, this._appId) || {}).providers || []
+      );
+    } catch (_e) {
+      return [];
+    }
+  },
+
+  /**
+   * Export a dashboard's team to a `.team.json` the user saves (bot-teams
+   * TEAM-006, slice 1). The lead is left out; `notIncluded` lists anything
+   * that couldn't travel (widget triggers, providers of unknown type).
+   */
+  async exportTeam(workspaceId, { name, description } = {}) {
+    const bots = this._store.list().filter((b) => isOnTeam(b, workspaceId));
+    const { manifest, notIncluded } = buildTeamManifest({
+      name,
+      description,
+      bots,
+      providers: this._providerList(),
+    });
+    if (!manifest.members.length) {
+      return { saved: false, error: "This dashboard has no bots to export." };
+    }
+    const result = await saveTeamFile(this._getMainWindow(), manifest, name);
+    return { ...result, notIncluded, members: manifest.members.length };
+  },
+
+  /**
+   * Pick a `.team.json` and check it (TEAM-007, slice 1). Returns the clean
+   * manifest plus an install plan for this dashboard (providers matched by
+   * type) for the review screen — nothing is created yet.
+   */
+  async previewTeamImport(workspaceId) {
+    const file = await openTeamFile(this._getMainWindow());
+    if (file.canceled || file.error) return file;
+    let json;
+    try {
+      json = JSON.parse(file.text);
+    } catch (_e) {
+      return { error: "That file isn't valid JSON." };
+    }
+    const { valid, errors, manifest } = validateTeamManifest(json);
+    if (!valid) {
+      return { error: "That isn't a Dash team file.", errors };
+    }
+    return {
+      fileName: file.fileName,
+      manifest,
+      plan: planTeamInstall(manifest, {
+        workspaceId,
+        providers: this._providerList(),
+      }),
+    };
+  },
+
+  /**
+   * Install a team into a dashboard: a new, paused bot per role, providers
+   * as chosen on the review screen, wiring resolved to the new bots. The
+   * manifest is re-checked here — the renderer's copy isn't trusted.
+   */
+  installTeam(workspaceId, manifest, choices = {}) {
+    const { valid, errors, manifest: clean } = validateTeamManifest(manifest);
+    if (!valid) return { error: "That isn't a Dash team file.", errors };
+    const plan = planTeamInstall(clean, {
+      workspaceId,
+      providers: this._providerList(),
+      choices,
+    });
+    const created = {};
+    for (const member of plan.members) {
+      const bot = this.save(member.definition);
+      // Installed in setup state: nothing runs until the user resumes it.
+      this._pause.pauseBot(bot.id);
+      created[member.role] = bot;
+    }
+    const subs = wireTeam(plan.wiring, created);
+    for (const [role, subscriptions] of Object.entries(subs)) {
+      this.save({ ...created[role], subscriptions });
+    }
+    return {
+      installed: plan.members.map((m) => ({
+        role: m.role,
+        id: created[m.role].id,
+        name: created[m.role].name,
+      })),
+    };
   },
 
   stop(botId) {
