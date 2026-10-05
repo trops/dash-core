@@ -189,6 +189,15 @@ describe("BotsPage detail (NAV-006 AC2)", () => {
     expect(await within(d).findByText(/Sent 3 emails/)).toBeInTheDocument();
   });
 
+  it("labels a stopped last run as Stopped", async () => {
+    const { botsApi } = setup();
+    botsApi.getRuns.mockResolvedValue([
+      { status: "stopped", endedAt: "2026-10-05T09:00:00Z", output: "" },
+    ]);
+    fireEvent.click(within(list()).getByText("Inbox Watch"));
+    expect(await within(detail()).findByText(/^Stopped ·/)).toBeInTheDocument();
+  });
+
   it("a lead uses team tools only and can't be run directly", () => {
     setup();
     fireEvent.click(within(list()).getByText("Kitchen Sink Lead"));

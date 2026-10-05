@@ -34,6 +34,7 @@ const STATUS_DOT = {
   failed: "bg-red-400",
   running: "bg-indigo-400",
   skipped: "bg-gray-500",
+  stopped: "bg-gray-500",
 };
 
 const TRIGGER_LABELS = {

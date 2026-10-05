@@ -290,6 +290,12 @@ class BotRunner {
       this._active.delete(botId);
       this._startedAt.delete(botId);
     }
+    // Stopped by the user (abort): neither completed nor failed — even when
+    // the engine threw on its way out.
+    if (controller.signal.aborted) {
+      status = "stopped";
+      errorMessage = null;
+    }
 
     const runRecord = {
       trigger,
