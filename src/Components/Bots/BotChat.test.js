@@ -289,12 +289,36 @@ describe("BotChat — triggers and next steps (TEAM-011 gaps)", () => {
       {
         trigger: "manual",
         status: "failed",
-        error: "Your credit balance is too low to access the Anthropic API.",
+        error: "Slack couldn't start: Authentication required.",
         prompt: "x",
       },
     ]);
     fireEvent.click(await screen.findByText("Open Settings › Providers"));
     expect(onOpenSettings).toHaveBeenCalledWith("providers");
+  });
+
+  it("an AI model problem shows the readable message and offers Change AI model", async () => {
+    const onChangeModel = jest.fn();
+    setupWith(
+      [
+        {
+          trigger: "manual",
+          status: "failed",
+          error:
+            '400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API."}}',
+          prompt: "x",
+        },
+      ],
+      { onChangeModel },
+    );
+    expect(
+      await screen.findByText(
+        "Your credit balance is too low to access the Anthropic API.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Open Settings › Providers")).toBeNull();
+    fireEvent.click(screen.getByText("Change AI model"));
+    expect(onChangeModel).toHaveBeenCalled();
   });
 
   it("a lead's failed answer offers Ask again", async () => {

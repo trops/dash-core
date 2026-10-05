@@ -152,6 +152,29 @@ describe("BotRunHistory — details, next steps, live (TEAM-011 gaps)", () => {
     expect(onOpenSettings).toHaveBeenCalledWith("providers");
   });
 
+  it("an AI model error reads cleanly and offers Change AI model", async () => {
+    const onChangeModel = jest.fn();
+    setupLive(
+      [
+        {
+          ...failed,
+          error:
+            '400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API."}}',
+        },
+      ],
+      { onChangeModel },
+    );
+    const row = await screen.findByTestId("run-row");
+    expect(row).toHaveTextContent(
+      "Your credit balance is too low to access the Anthropic API.",
+    );
+    expect(row).not.toHaveTextContent("invalid_request_error");
+    fireEvent.click(row);
+    expect(screen.queryByText("Open Settings › Providers")).toBeNull();
+    fireEvent.click(screen.getByText("Change AI model"));
+    expect(onChangeModel).toHaveBeenCalled();
+  });
+
   it("reloads when this bot's run finishes", async () => {
     const { api, listeners } = setupLive([]);
     await screen.findByText(/hasn.t run yet/);

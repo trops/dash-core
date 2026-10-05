@@ -38,22 +38,51 @@ export function triggerLabel(r, nameOf = sameId) {
   return text;
 }
 
+// The bot's AI model can't run: no model chosen, or its key, credit or quota.
+const AI_MODEL_PROBLEM =
+  /no ai model chosen|credit balance|api[ -]?key|x-api-key|insufficient[_ ]quota|exceeded your current quota|billing/i;
+
+// An MCP provider problem: a server that couldn't start, or an auth failure.
 const PROVIDER_PROBLEM =
-  /couldn't start|settings › providers|credit balance|api[ -]?key|x-api-key|\b401\b|unauthori[sz]ed|authentication|token (has )?expired|expired token|invalid token|forbidden|\b403\b/i;
+  /couldn't start|settings › providers|\b401\b|unauthori[sz]ed|authentication|token (has )?expired|expired token|invalid token|forbidden|\b403\b/i;
+
+/**
+ * A run error as a person reads it: raw API errors (`400 {"type":"error",
+ * "error":{"message":…}}`) become just their message; anything else is
+ * left as is.
+ */
+export function readableError(text) {
+  const raw = text == null ? "" : String(text);
+  const start = raw.indexOf("{");
+  if (start === -1) return raw;
+  try {
+    const body = JSON.parse(raw.slice(start));
+    const err = body && body.error;
+    const message =
+      (err && typeof err === "object" && err.message) ||
+      (typeof err === "string" && err) ||
+      (body && body.message);
+    return typeof message === "string" && message ? message : raw;
+  } catch (_e) {
+    return raw;
+  }
+}
 
 /**
  * Next steps for a failed run: always run it again (ask again, for a lead);
- * and when the error points at a provider (a server that couldn't start, an
- * AI provider's key or credit), a way to its settings.
+ * when the bot's AI model can't run (no model, key, credit), a way to change
+ * it; when an MCP provider is the problem, a way to its settings.
  *
- * @returns {{ action: "run-again" | "open-settings", label: string, section?: string }[]}
+ * @returns {{ action: "run-again" | "change-model" | "open-settings", label: string, section?: string }[]}
  */
 export function errorNextSteps(text, { isLead = false } = {}) {
   if (!text) return [];
   const steps = [
     { action: "run-again", label: isLead ? "Ask again" : "Run again" },
   ];
-  if (PROVIDER_PROBLEM.test(String(text))) {
+  if (AI_MODEL_PROBLEM.test(String(text))) {
+    steps.push({ action: "change-model", label: "Change AI model" });
+  } else if (PROVIDER_PROBLEM.test(String(text))) {
     steps.push({
       action: "open-settings",
       section: "providers",
@@ -87,7 +116,7 @@ function turnsForRun(r, { pending = false, nameOf = sameId } = {}) {
     // The prompt rides along so "Run again" can repeat the run.
     turns.push({
       kind: "error",
-      text: r.error,
+      text: readableError(r.error),
       prompt: r.prompt || "",
       at: r.endedAt || at,
     });

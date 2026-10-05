@@ -48,7 +48,9 @@ describe("DashboardStage — Bots view wiring (TEAM-011)", () => {
     expect(stageSrc).toMatch(
       /useTeamBots\(workspaceSelected\?\.id \?\? null\)/,
     );
-    expect(stageSrc).toMatch(/if \(popout \|\| !workspaceSelected\) return/);
+    expect(stageSrc).toMatch(
+      /if \(popout \|\| !workspaceSelected \|\| !workspaceSelectedIsSaved\) return/,
+    );
   });
 
   it("entering edit mode returns to the dashboard", () => {
@@ -76,7 +78,9 @@ describe("DashboardStage — bot teams wiring", () => {
       /bots\.ensureLead\(\s*workspaceSelected\.id,\s*workspaceSelected\.name/,
     );
     // Never from a popped-out widget window.
-    expect(stageSrc).toMatch(/if \(popout \|\| !workspaceSelected\) return/);
+    expect(stageSrc).toMatch(
+      /if \(popout \|\| !workspaceSelected \|\| !workspaceSelectedIsSaved\) return/,
+    );
   });
 
   it("wraps the assistant dock in WorkspaceContext (current dashboard + list)", () => {

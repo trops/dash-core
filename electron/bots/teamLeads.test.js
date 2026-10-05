@@ -34,7 +34,7 @@ describe("lead lookup", () => {
 });
 
 describe("defaultLeadProvider", () => {
-  it("uses the default AI provider type, else the first one", () => {
+  it("uses the AI provider marked default", () => {
     assert.equal(
       defaultLeadProvider([
         { type: "openai" },
@@ -43,12 +43,12 @@ describe("defaultLeadProvider", () => {
       ]),
       "anthropic",
     );
-    assert.equal(defaultLeadProvider([{ type: "xai" }]), "xai");
   });
 
-  it("falls back to Claude Code (no API key needed)", () => {
-    assert.equal(defaultLeadProvider([{ type: "gmail" }]), "claude-code");
-    assert.equal(defaultLeadProvider(null), "claude-code");
+  it("is none when no AI provider is marked default — no second guess", () => {
+    assert.equal(defaultLeadProvider([{ type: "xai" }]), null);
+    assert.equal(defaultLeadProvider([{ type: "gmail" }]), null);
+    assert.equal(defaultLeadProvider(null), null);
   });
 });
 
@@ -64,6 +64,13 @@ describe("leadDefinition", () => {
     assert.equal(def.workspaceId, "7");
     assert.equal(def.name, "Kitchen Sink Lead");
     assert.equal(def.provider, "claude-code");
+  });
+
+  it("has no provider when none is given (follows the default at run time)", () => {
+    assert.equal(
+      leadDefinition({ workspaceId: 7, dashboardName: "X" }).provider,
+      null,
+    );
   });
 
   it("is idle: no schedule, no events, no providers", () => {

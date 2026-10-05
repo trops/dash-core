@@ -70,6 +70,7 @@ import { applyBulkUserPrefs } from "../../utils/applyBulkUserPrefs";
 import { applyBulkProviderBindings } from "../../utils/applyBulkProviderBindings";
 import { moveWidgetAcrossContainers } from "../../utils/layout";
 import { ComponentManager } from "../../ComponentManager";
+import { saveNewWorkspace, isSavedWorkspace } from "./saveNewWorkspace";
 
 /**
  * DashboardStage - Main application wrapper component
@@ -386,8 +387,13 @@ const DashboardStageInner = ({
   // Every dashboard gets an idle team lead the first time it's opened
   // (bot-teams TEAM-002). Idempotent; respects a lead turned off for this
   // dashboard and the global "Create team leads automatically" switch.
+  // Only for saved dashboards — an unsaved one would leave an orphan lead.
+  const workspaceSelectedIsSaved = isSavedWorkspace(
+    workspaceConfig,
+    workspaceSelected?.id,
+  );
   useEffect(() => {
-    if (popout || !workspaceSelected) return;
+    if (popout || !workspaceSelected || !workspaceSelectedIsSaved) return;
     const bots = typeof window !== "undefined" && window.mainApi?.bots;
     if (!bots || typeof bots.ensureLead !== "function") return;
     Promise.resolve(
@@ -396,7 +402,7 @@ const DashboardStageInner = ({
       .then(() => teamRefreshRef.current && teamRefreshRef.current())
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [popout, workspaceSelected?.id]);
+  }, [popout, workspaceSelected?.id, workspaceSelectedIsSaved]);
 
   // Modal state
   const [isThemeManagerOpen, setIsThemeManagerOpen] = useState(false);
@@ -1063,28 +1069,32 @@ const DashboardStageInner = ({
     setIsLayoutPickerOpen(true);
   }
 
-  function handleCreateFromTemplate(
+  // Saves the new dashboard before opening it, so it survives a reload.
+  // Rejects on a failed save — the wizard shows the error.
+  async function handleCreateFromTemplate(
     layoutObjOrArray,
     themeKey = null,
     name = null,
   ) {
-    try {
-      const layout = Array.isArray(layoutObjOrArray)
-        ? layoutObjOrArray
-        : [layoutObjOrArray];
-      const newWorkspace = WorkspaceModel({
-        layout,
-        themeKey,
-        menuId: layout[0].menuId,
-        name: name || undefined,
-      });
-      handleOpenTab(newWorkspace);
-      setSidebarCollapsed(true);
-      setPreviewMode(false);
-      return { success: true, workspace: newWorkspace };
-    } catch (e) {
-      console.log(e);
-    }
+    const layout = Array.isArray(layoutObjOrArray)
+      ? layoutObjOrArray
+      : [layoutObjOrArray];
+    const newWorkspace = WorkspaceModel({
+      layout,
+      themeKey,
+      menuId: layout[0].menuId,
+      name: name || undefined,
+    });
+    await saveNewWorkspace({
+      dashApi,
+      appId: credentials?.appId,
+      workspace: newWorkspace,
+    });
+    loadWorkspaces();
+    handleOpenTab(newWorkspace);
+    setSidebarCollapsed(true);
+    setPreviewMode(false);
+    return { success: true, workspace: newWorkspace };
   }
 
   // ─── Workspace Loading ────────────────────────────────────────────

@@ -60,6 +60,28 @@ function presentProviderTypes(providers) {
   return present;
 }
 
+// Model source of a saved bot with no AI model of its own (provider: null):
+// it runs on the AI provider marked default, else its runs fail.
+const USE_DEFAULT_PROVIDER = "default";
+
+/** The AI provider type marked default, else null — never a first-found pick. */
+function markedDefaultProviderType(providers) {
+  const def = Object.values(providers || {}).find(
+    (p) => p && AI_PROVIDER_TYPES.includes(p.type) && p.isDefaultForType,
+  );
+  return def ? def.type : null;
+}
+
+function useDefaultOption(providers) {
+  const type = markedDefaultProviderType(providers);
+  return {
+    value: USE_DEFAULT_PROVIDER,
+    label: type
+      ? `Default AI provider (${PROVIDER_LABELS[type] || type})`
+      : "Default AI provider — none set",
+  };
+}
+
 function providerOptionsFrom(providers) {
   return [
     ...presentProviderTypes(providers).map((t) => ({
@@ -161,9 +183,17 @@ export const BotDetail = ({
 }) => {
   const [name, setName] = useState(bot?.name || "");
   const [instructions, setInstructions] = useState(bot?.instructions || "");
+  // A saved bot without its own AI model shows (and keeps) "Default AI
+  // provider"; a new bot pre-selects the user's default.
+  const followsDefault = !!bot?.id && !bot?.provider;
   const [provider, setProvider] = useState(
-    bot?.provider || defaultProviderId(providers),
+    bot?.provider ||
+      (bot?.id ? USE_DEFAULT_PROVIDER : defaultProviderId(providers)),
   );
+  const usesDefault = provider === USE_DEFAULT_PROVIDER;
+  const effectiveProvider = usesDefault
+    ? markedDefaultProviderType(providers)
+    : provider;
   const [model, setModel] = useState(bot?.model || "");
   const [engine, setEngine] = useState(bot?.engine || "");
   const [approvalPolicy, setApprovalPolicy] = useState(
@@ -325,8 +355,12 @@ export const BotDetail = ({
       setModelOptions([]);
       return undefined;
     }
+    if (!effectiveProvider) {
+      setModelOptions([]);
+      return undefined;
+    }
     api.llm
-      .listModels(provider || "anthropic")
+      .listModels(effectiveProvider)
       .then((res) => {
         if (alive) setModelOptions((res && res.models) || []);
       })
@@ -336,7 +370,7 @@ export const BotDetail = ({
     return () => {
       alive = false;
     };
-  }, [provider]);
+  }, [effectiveProvider]);
 
   // Configured providers + any the bot already has (so a provider that was
   // since removed still shows, checked, and isn't silently dropped on save).
@@ -487,7 +521,7 @@ export const BotDetail = ({
       ...(bot?.id ? { id: bot.id } : {}),
       name: name.trim(),
       instructions: instructions.trim(),
-      provider: provider || null,
+      provider: provider && !usesDefault ? provider : null,
       model: model.trim() || null,
       engine: engine || null,
       approvalPolicy,
@@ -701,8 +735,21 @@ export const BotDetail = ({
               label="Model source"
               value={provider}
               onChange={setProvider}
-              options={providerOptionsFrom(providers)}
+              options={
+                followsDefault || usesDefault
+                  ? [
+                      useDefaultOption(providers),
+                      ...providerOptionsFrom(providers),
+                    ]
+                  : providerOptionsFrom(providers)
+              }
             />
+            {usesDefault && !markedDefaultProviderType(providers) ? (
+              <span className="text-xs text-red-400">
+                No AI provider is marked default, so this bot&apos;s runs fail
+                until you choose one here.
+              </span>
+            ) : null}
             <span className="text-xs opacity-50">
               Which AI powers the bot — an API key from your Anthropic, OpenAI
               or xAI providers, or &quot;Claude Code (CLI)&quot;, which uses
