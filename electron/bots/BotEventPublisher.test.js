@@ -61,6 +61,18 @@ describe("BotEventPublisher", () => {
     assert.equal(published[0].content.error, "boom");
   });
 
+  it("publishes nothing for a stopped run — downstream bots don't start", () => {
+    const { pub, published } = setup();
+    pub.startRun(bot.id);
+    pub.onRunEvent(bot.id, { type: "text", text: "half done" });
+    pub.endRun(bot, { trigger: "manual", status: "stopped" });
+    assert.equal(published.length, 0);
+    // Per-run state is still cleared.
+    pub.startRun(bot.id);
+    pub.endRun(bot, { trigger: "manual", status: "completed" });
+    assert.equal(published[0].content.output, "");
+  });
+
   it("publishes nothing for a skipped run", () => {
     const { pub, published } = setup();
     pub.endRun(bot, { skipped: true });

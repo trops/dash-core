@@ -564,3 +564,40 @@ describe("BotRunner — via (TEAM-004)", () => {
     assert.equal(runs[0].run.via, undefined);
   });
 });
+
+describe("BotRunner.run — stopped runs", () => {
+  // An engine that yields some text, then waits until the run is aborted and
+  // either ends quietly or throws like an aborted fetch.
+  function stoppableEngine({ throwOnAbort }) {
+    return {
+      id: "tool-loop",
+      run(ctx) {
+        return (async function* () {
+          yield { type: "text", text: "partial" };
+          await new Promise((resolve) =>
+            ctx.signal.addEventListener("abort", resolve, { once: true }),
+          );
+          if (throwOnAbort) {
+            const e = new Error("This operation was aborted");
+            e.name = "AbortError";
+            throw e;
+          }
+        })();
+      },
+    };
+  }
+
+  for (const throwOnAbort of [false, true]) {
+    it(`records "stopped", not completed or failed (engine ${throwOnAbort ? "throws" : "ends quietly"})`, async () => {
+      const { runner, runs } = makeRunner(stoppableEngine({ throwOnAbort }));
+      const pending = runner.run("bot_1", {});
+      await new Promise((r) => setTimeout(r, 10));
+      assert.equal(runner.abort("bot_1"), true);
+      const record = await pending;
+      assert.equal(record.status, "stopped");
+      assert.equal(record.error, null);
+      assert.equal(runs[0].run.status, "stopped");
+      assert.equal(runs[0].run.output, "partial");
+    });
+  }
+});

@@ -40,6 +40,7 @@ const RUN_STATUS = {
   completed: "Completed",
   failed: "Failed",
   cancelled: "Cancelled",
+  stopped: "Stopped",
   skipped: "Skipped",
 };
 

@@ -8,6 +8,7 @@
  *
  *   1. paused        → deny (pause enforced at the gate; US-014)
  *   2. server not in the bot's configured mcpServers → deny WITHOUT prompting
+ *   2b. "allow" policy → allow (Allow without prompting)
  *   3. tool in allowedTools → allow (auto)
  *   4. base grant covers it  → allow
  *   5. read-only tool (MCP readOnlyHint) under "ask" → allow; "ask-every"
@@ -115,6 +116,16 @@ function createRequestPermission(ctx) {
           reason: `tool '${toolName}' is not on a server this bot is configured to use`,
         },
         { outcome: "denied-unconfigured", serverName: serverName || null },
+      );
+    }
+
+    // 2b. "Allow without prompting": every tool on the bot's own providers
+    //     runs without a prompt (pause and unconfigured servers still apply).
+    if (approvalPolicy === "allow") {
+      return record(
+        toolName,
+        { allow: true },
+        { outcome: "policy-allow", serverName },
       );
     }
 

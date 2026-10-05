@@ -19,6 +19,7 @@ const STATUS_DOT = {
   completed: "bg-green-400",
   failed: "bg-red-400",
   running: "bg-indigo-400",
+  stopped: "bg-gray-500",
 };
 const TICK_MS = 30000;
 

@@ -237,3 +237,31 @@ describe("createRequestPermission — read-only tools", () => {
     assert.equal(d.allow, false);
   });
 });
+
+describe('createRequestPermission — "allow" policy (every engine)', () => {
+  it("runs any tool on a configured provider without a prompt", async () => {
+    const { requestPermission, approvals, audit } = setup({
+      approvalPolicy: "allow",
+    });
+    const d = await requestPermission("mcp__github__create_issue", {});
+    assert.equal(d.allow, true);
+    assert.equal(approvals.length, 0);
+    assert.equal(audit[0].outcome, "policy-allow");
+  });
+
+  it("never reaches a provider the bot isn't configured with", async () => {
+    const { requestPermission, approvals } = setup({ approvalPolicy: "allow" });
+    const d = await requestPermission("mcp__slack__post_message", {});
+    assert.equal(d.allow, false);
+    assert.equal(approvals.length, 0);
+  });
+
+  it("never overrides pause", async () => {
+    const { requestPermission } = setup({
+      approvalPolicy: "allow",
+      isPaused: () => true,
+    });
+    const d = await requestPermission("mcp__github__create_issue", {});
+    assert.equal(d.allow, false);
+  });
+});

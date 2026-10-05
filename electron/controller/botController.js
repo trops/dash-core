@@ -31,6 +31,7 @@ const { matchSubscribedBots } = require("../bots/eventMatcher");
 const { EventDispatcher } = require("../bots/EventDispatcher");
 const { normalizeMcpResult } = require("../bots/mcpResult");
 const BotEventPublisher = require("../bots/BotEventPublisher");
+const { stopBotRun } = require("../bots/stopRun");
 const { unassignTeam } = require("../bots/teams");
 const {
   TEAM_SERVER,
@@ -517,7 +518,12 @@ const botController = {
   },
 
   stop(botId) {
-    return { stopped: this._runner.abort(botId) };
+    const { stopped } = stopBotRun({
+      runner: this._runner,
+      approvals: this._approvals,
+      botId,
+    });
+    return { stopped };
   },
 
   /**
