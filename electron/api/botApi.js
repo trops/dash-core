@@ -39,6 +39,9 @@ const {
   BOTS_LIST_RECENT_RUNS,
   BOTS_LIST_DRAFTS,
   BOTS_DISMISS_DRAFT,
+  BOTS_EXPORT_TEAM,
+  BOTS_PREVIEW_TEAM_IMPORT,
+  BOTS_INSTALL_TEAM,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
@@ -78,6 +81,15 @@ const botApi = {
   /** Remove a draft (discarded, or saved as a real bot). */
   dismissDraft: (draftId) =>
     ipcRenderer.invoke(BOTS_DISMISS_DRAFT, { draftId }),
+  /** Save this dashboard's team as a .team.json (TEAM-006). meta: { name, description } */
+  exportTeam: (workspaceId, meta) =>
+    ipcRenderer.invoke(BOTS_EXPORT_TEAM, { workspaceId, meta }),
+  /** Pick and check a .team.json; returns { manifest, plan } for review (TEAM-007). */
+  previewTeamImport: (workspaceId) =>
+    ipcRenderer.invoke(BOTS_PREVIEW_TEAM_IMPORT, { workspaceId }),
+  /** Install a reviewed team into this dashboard (new, paused bots). */
+  installTeam: (workspaceId, manifest, choices) =>
+    ipcRenderer.invoke(BOTS_INSTALL_TEAM, { workspaceId, manifest, choices }),
   /** The latest runs across every bot, newest first (the Bot monitor). */
   listRecentRuns: (limit) =>
     ipcRenderer.invoke(BOTS_LIST_RECENT_RUNS, { limit }),

@@ -53,7 +53,7 @@ function makeTeam(over = {}) {
   };
 }
 
-function setup({ team = makeTeam(), narrow = false } = {}) {
+function setup({ team = makeTeam(), narrow = false, apiOver = {} } = {}) {
   const api = {
     getRuns: jest.fn().mockResolvedValue([]),
     run: jest.fn().mockResolvedValue({ status: "completed" }),
@@ -65,6 +65,7 @@ function setup({ team = makeTeam(), narrow = false } = {}) {
     save: jest.fn().mockResolvedValue({ id: "b9" }),
     pauseBot: jest.fn().mockResolvedValue({}),
     resumeBot: jest.fn().mockResolvedValue({}),
+    ...apiOver,
   };
   window.mainApi = { bots: api };
   render(
@@ -537,5 +538,97 @@ describe("BotsView — 5b: Review draft and accepting suggestions", () => {
     expect(
       await screen.findByRole("button", { name: "Accept Gmail New" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("BotsView — team export/import (TEAM-006/007 slice 1)", () => {
+  const preview = {
+    fileName: "Daily Brief.team.json",
+    manifest: {
+      name: "Daily Brief",
+      description: "",
+      members: [
+        {
+          role: "agenda",
+          embedded: {
+            type: "bot",
+            name: "Agenda",
+            instructions: "Read the calendar.",
+            modelSource: "claude-code",
+            approvalPolicy: "ask",
+            schedules: [],
+            providers: [],
+          },
+        },
+      ],
+      wiring: [],
+    },
+    plan: { members: [{ role: "agenda", needs: [] }], wiring: [] },
+  };
+
+  it("exports the team and says what was saved and left out", async () => {
+    const exportTeam = jest.fn().mockResolvedValue({
+      saved: true,
+      filePath: "/x/Kitchen Sink.team.json",
+      members: 2,
+      notIncluded: [
+        'CRM Sync: the trigger "Inbox › newMail" (a widget on this dashboard)',
+      ],
+    });
+    setup({ apiOver: { exportTeam } });
+    fireEvent.click(within(teamList()).getByText("Export team"));
+    await waitFor(() =>
+      expect(exportTeam).toHaveBeenCalledWith(7, { name: "Kitchen Sink" }),
+    );
+    expect(
+      await screen.findByText("Saved Kitchen Sink.team.json (2 bots)."),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Not included:/)).toBeInTheDocument();
+    expect(screen.getByText(/CRM Sync: the trigger/)).toBeInTheDocument();
+  });
+
+  it("imports: review first, then installs paused bots and refreshes the team", async () => {
+    const previewTeamImport = jest.fn().mockResolvedValue(preview);
+    const installTeam = jest.fn().mockResolvedValue({
+      installed: [{ role: "agenda", id: "bot_n1", name: "Agenda" }],
+    });
+    const { team } = setup({ apiOver: { previewTeamImport, installTeam } });
+    fireEvent.click(within(teamList()).getByText("Import team"));
+    expect(
+      await screen.findByText("Import team: Daily Brief"),
+    ).toBeInTheDocument();
+    expect(previewTeamImport).toHaveBeenCalledWith(7);
+    expect(installTeam).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Install team"));
+    await waitFor(() =>
+      expect(installTeam).toHaveBeenCalledWith(7, preview.manifest, {}),
+    );
+    expect(
+      await screen.findByText(
+        "Added 1 paused bot from Daily Brief. Resume them when you're ready.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Import team: Daily Brief")).toBeNull();
+    expect(team.refresh).toHaveBeenCalled();
+  });
+
+  it("shows why a file couldn't be imported, and does nothing on cancel", async () => {
+    const previewTeamImport = jest
+      .fn()
+      .mockResolvedValueOnce({
+        error: "That isn't a Dash team file.",
+        errors: ['type must be "bot-team"'],
+      })
+      .mockResolvedValueOnce({ canceled: true });
+    setup({ apiOver: { previewTeamImport } });
+    fireEvent.click(within(teamList()).getByText("Import team"));
+    expect(
+      await screen.findByText(
+        /That isn't a Dash team file. type must be "bot-team"/,
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(within(teamList()).getByText("Import team"));
+    await waitFor(() => expect(previewTeamImport).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/Import team:/)).toBeNull();
   });
 });

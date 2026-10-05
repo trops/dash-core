@@ -1,7 +1,7 @@
 # PRD: Bot Teams — Dashboard Teams, Team Leads, and Installable Teams
 
 **Status:** Draft
-**Last Updated:** 2026-10-01
+**Last Updated:** 2026-10-05
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; team UI consumed by dash-electron)
 **Related PRDs:** [bot-factory.md](./bot-factory.md) (bots, events, memory, templates, access review), [dashboard-marketplace.md](./dashboard-marketplace.md), [mcp-providers.md](./mcp-providers.md), dash-electron `docs/requirements/prd/ai-assistant.md`
@@ -345,7 +345,7 @@ Want me to draft a bot that follows up on renewals?"
 > so that others can install the whole team instead of rebuilding it.
 
 **Priority:** P1
-**Status:** Backlog
+**Status:** In Progress (slice 1 — local `.team.json` export; registry publish is slices 2–3)
 
 **Acceptance Criteria:**
 
@@ -373,7 +373,7 @@ Want me to draft a bot that follows up on renewals?"
 > so that I get a working team without configuring each bot.
 
 **Priority:** P1
-**Status:** Backlog
+**Status:** In Progress (slice 1 — local `.team.json` import; registry install is slice 3)
 
 **Acceptance Criteria:**
 
@@ -411,6 +411,17 @@ answers from today's runs.
 - [ ] Integration tests pass
 - [ ] Acceptance criteria verified
 - [ ] Documentation updated
+
+---
+
+**Implementation notes (TEAM-006/007 slice 1 — local export/import, 2026-10-05):**
+
+- `electron/bots/teamManifest.js` (pure): `buildTeamManifest` (members by role, providers by **type** with the member's tool choices, role wiring from bot→bot subscriptions incl. `tool.<type>.<tool>` events; the lead is left out), `validateTeamManifest` (schema v1, limits, roles, wiring only between known roles; returns a clean copy — unknown fields such as ids or grants are dropped), `planTeamInstall` (a new bot definition per role on the target dashboard; providers matched by type — the only one of a type is pre-picked, several ask, none is reported missing), `wireTeam` (role wiring → the new bots' subscriptions, the event picker's shape).
+- Members are **embedded** (registry templates, US-026, don't exist yet). Install variables (AC3), the grouped access review (AC4), the lead brief (AC6) and the team source record (AC8) are deferred.
+- Imported bots always start on **"Ask before external actions"** whatever the file says (decided 2026-10-05: a shared file can't switch prompts off); the review shows what the file said. They are installed **paused** and with no grants.
+- Their AI model is kept when it's Claude Code or an AI provider type the user has; otherwise it follows the user's default.
+- Export can't carry widget triggers (wired to a dashboard's widget instances) or providers of unknown type — it lists them as "Not included".
+- UI: Bots view team list → **Export team** / **Import team**; `TeamImportReview` shows members, wiring ("Agenda completes → Inbox runs"), provider picks and the policy note. IPC: `bots-export-team`, `bots-preview-team-import`, `bots-install-team` (install re-validates the manifest in the main process).
 
 ---
 

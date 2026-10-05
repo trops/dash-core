@@ -42,6 +42,10 @@ const BOTS_LIST_RECENT_RUNS = "bots-list-recent-runs";
 // Lead drafts (TEAM-005): bots a team lead proposed, awaiting review.
 const BOTS_LIST_DRAFTS = "bots-list-drafts";
 const BOTS_DISMISS_DRAFT = "bots-dismiss-draft";
+// Team export/import (TEAM-006/007, slice 1): a dashboard's team as .team.json.
+const BOTS_EXPORT_TEAM = "bots-export-team";
+const BOTS_PREVIEW_TEAM_IMPORT = "bots-preview-team-import";
+const BOTS_INSTALL_TEAM = "bots-install-team";
 
 // --- Main → Renderer (send) ---
 const BOT_STREAM = "bot-stream"; // { botId, event: BotEvent }
@@ -86,6 +90,9 @@ module.exports = {
   BOTS_LIST_RECENT_RUNS,
   BOTS_LIST_DRAFTS,
   BOTS_DISMISS_DRAFT,
+  BOTS_EXPORT_TEAM,
+  BOTS_PREVIEW_TEAM_IMPORT,
+  BOTS_INSTALL_TEAM,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
