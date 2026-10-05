@@ -166,6 +166,16 @@ class BotRunner {
         }
       };
 
+      // Tools their server declares read-only (MCP readOnlyHint, or the
+      // catalog's readOnlyTools) — the gate runs these without a prompt
+      // unless the bot asks before every tool.
+      const readOnly = new Set(
+        (tools || [])
+          .filter(
+            (t) => t && t.annotations && t.annotations.readOnlyHint === true,
+          )
+          .map((t) => t.name),
+      );
       const requestPermission = this._makeRequestPermission({
         botId,
         workspaceId: bot.workspaceId,
@@ -174,7 +184,20 @@ class BotRunner {
         internalServers: this._internalServers,
         resolveServer,
         createApproval,
-        audit: this._audit,
+        approvalPolicy: bot.approvalPolicy,
+        isReadOnly: (toolName) => readOnly.has(toolName),
+        // Read-only tools that ran without asking show in the run's
+        // approvals too, so the user can see what ran.
+        audit: (entry) => {
+          if (entry && entry.outcome === "read-only") {
+            approvalLog.push({
+              tool: entry.toolName || "tool",
+              provider: entry.serverName || null,
+              decision: "read-only",
+            });
+          }
+          this._audit(entry);
+        },
         isPaused: () => this._isPaused(botId),
         gate: this._gate,
       });

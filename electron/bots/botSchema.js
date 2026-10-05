@@ -14,7 +14,9 @@
 
 const SCHEMA_VERSION = 1;
 
-const APPROVAL_POLICIES = new Set(["ask", "allow"]);
+// "ask": ask before tools that aren't read-only; "ask-every": ask before
+// every tool; "allow": never ask.
+const APPROVAL_POLICIES = new Set(["ask", "ask-every", "allow"]);
 const WHILE_PAUSED = new Set(["queue", "drop"]);
 
 // A bot id is used as a filesystem path segment (its working directory), so it

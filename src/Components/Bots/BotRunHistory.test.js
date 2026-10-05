@@ -141,6 +141,27 @@ describe("BotRunHistory — details, next steps, live (TEAM-011 gaps)", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows read-only tools that ran without asking", async () => {
+    setupLive([
+      {
+        ...failed,
+        approvals: [
+          {
+            tool: "list_events",
+            provider: "Google Calendar",
+            decision: "read-only",
+          },
+        ],
+      },
+    ]);
+    fireEvent.click(await screen.findByTestId("run-row"));
+    expect(
+      screen.getByText(
+        "list_events on Google Calendar · read-only, ran without asking",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("a failed run offers Run again and Open Settings › Providers", async () => {
     const { api, onOpenSettings } = setupLive([failed]);
     fireEvent.click(await screen.findByTestId("run-row"));

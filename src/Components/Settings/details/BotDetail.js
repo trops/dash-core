@@ -108,8 +108,16 @@ function defaultProviderId(providers) {
   return def ? def.type : "claude-code";
 }
 
+const APPROVAL_HINTS = {
+  ask: "Read-only tools run without asking; anything that sends, changes or deletes asks first, unless you chose Always allow.",
+  "ask-every":
+    "Asks before every tool, reads included, unless you chose Always allow.",
+  allow: "Runs every tool without asking.",
+};
+
 const APPROVAL_OPTIONS = [
   { value: "ask", label: "Ask before external actions" },
+  { value: "ask-every", label: "Ask before every tool" },
   { value: "allow", label: "Allow without prompting" },
 ];
 
@@ -199,6 +207,7 @@ export const BotDetail = ({
   const [approvalPolicy, setApprovalPolicy] = useState(
     bot?.approvalPolicy || "ask",
   );
+  const approvalHint = APPROVAL_HINTS[approvalPolicy] || null;
 
   // --- Providers: the user's Dash MCP providers (Settings → Providers) ---
   const [selectedServers, setSelectedServers] = useState(bot?.mcpServers || []);
@@ -780,6 +789,9 @@ export const BotDetail = ({
           onChange={setApprovalPolicy}
           options={APPROVAL_OPTIONS}
         />
+        {approvalHint ? (
+          <span className="text-xs opacity-50">{approvalHint}</span>
+        ) : null}
 
         <div className="flex flex-col gap-2">
           <span className="text-sm font-medium">Schedule</span>
