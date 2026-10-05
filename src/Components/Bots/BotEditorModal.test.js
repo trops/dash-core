@@ -90,6 +90,10 @@ describe("BotEditorModal", () => {
       },
     });
     expect(screen.getByLabelText("Team")).toHaveValue("9");
+    // Save is disabled until something changes.
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "x " },
+    });
     fireEvent.click(screen.getByText("Save"));
     await waitFor(() => expect(save).toHaveBeenCalled());
     expect(save.mock.calls[0][0]).toMatchObject({
