@@ -46,6 +46,9 @@ const BOTS_DISMISS_DRAFT = "bots-dismiss-draft";
 const BOTS_EXPORT_TEAM = "bots-export-team";
 const BOTS_PREVIEW_TEAM_IMPORT = "bots-preview-team-import";
 const BOTS_INSTALL_TEAM = "bots-install-team";
+// Registry publish (TEAM-006 slice 3a): a bot or a team, to the Dash registry.
+const BOTS_PREVIEW_PUBLISH = "bots-preview-publish";
+const BOTS_PUBLISH = "bots-publish";
 
 // --- Main → Renderer (send) ---
 const BOT_STREAM = "bot-stream"; // { botId, event: BotEvent }
@@ -93,6 +96,8 @@ module.exports = {
   BOTS_EXPORT_TEAM,
   BOTS_PREVIEW_TEAM_IMPORT,
   BOTS_INSTALL_TEAM,
+  BOTS_PREVIEW_PUBLISH,
+  BOTS_PUBLISH,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
