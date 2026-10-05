@@ -609,11 +609,11 @@ describe("BotsView — team export/import (TEAM-006/007 slice 1)", () => {
     expect(installTeam).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText("Install team"));
     await waitFor(() =>
-      expect(installTeam).toHaveBeenCalledWith(7, preview.manifest, {}),
+      expect(installTeam).toHaveBeenCalledWith(7, preview.manifest, {}, null),
     );
     expect(
       await screen.findByText(
-        "Added 1 paused bot from Daily Brief. Resume them when you're ready.",
+        "Added 1 paused bot from Daily Brief. Resume it when you're ready.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText("Import team: Daily Brief")).toBeNull();
@@ -755,5 +755,155 @@ describe("BotsView — publish to the registry (TEAM-006 slice 3a)", () => {
     expect(
       await screen.findByText("Version 1.0.0 already exists"),
     ).toBeInTheDocument();
+  });
+});
+
+describe("BotsView — install from the registry (TEAM-007 slice 3b)", () => {
+  const regPreview = {
+    previewId: "rp_1",
+    kind: "team",
+    source: {
+      package: "trops/daily-brief-test",
+      version: "1.0.0",
+      author: "trops",
+    },
+    manifest: {
+      name: "Daily Brief (test)",
+      description: "",
+      members: [
+        {
+          role: "agenda",
+          embedded: {
+            type: "bot",
+            name: "Agenda",
+            instructions: "Calendar.",
+            modelSource: "claude-code",
+            approvalPolicy: "ask",
+            schedules: [],
+            providers: [],
+          },
+        },
+        {
+          role: "inbox",
+          embedded: {
+            type: "bot",
+            name: "Inbox",
+            instructions: "Mail.",
+            modelSource: "claude-code",
+            approvalPolicy: "ask",
+            schedules: [],
+            providers: [],
+          },
+        },
+      ],
+      wiring: [{ role: "inbox", on: { role: "agenda", event: "completed" } }],
+    },
+    plan: {
+      members: [
+        { role: "agenda", needs: [] },
+        { role: "inbox", needs: [] },
+      ],
+      wiring: [{ role: "inbox", on: { role: "agenda", event: "completed" } }],
+    },
+  };
+  const searchRegistry = () =>
+    jest.fn().mockResolvedValue([
+      {
+        ref: "trops/daily-brief-test",
+        displayName: "Daily Brief (test)",
+        author: "trops",
+        type: "bot-team",
+        version: "1.0.0",
+        providerTypes: [],
+        team: {
+          members: [
+            { role: "agenda", name: "Agenda" },
+            { role: "inbox", name: "Inbox" },
+          ],
+        },
+      },
+    ]);
+
+  it("finds a team, reviews it, and installs just the ticked bots from the checked copy", async () => {
+    const previewRegistryInstall = jest.fn().mockResolvedValue(regPreview);
+    const installFromRegistry = jest.fn().mockResolvedValue({
+      installed: [{ role: "inbox", id: "bot_n2", name: "Inbox" }],
+      droppedWiring: [
+        { role: "inbox", on: { role: "agenda", event: "completed" } },
+      ],
+    });
+    const installTeam = jest.fn();
+    const { team } = setup({
+      apiOver: {
+        searchRegistry: searchRegistry(),
+        previewRegistryInstall,
+        installFromRegistry,
+        installTeam,
+      },
+    });
+    fireEvent.click(within(teamList()).getByText("Find in registry"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Review Daily Brief (test)" }),
+    );
+    await waitFor(() =>
+      expect(previewRegistryInstall).toHaveBeenCalledWith(
+        7,
+        "trops/daily-brief-test",
+      ),
+    );
+    expect(
+      await screen.findByText(
+        "From the registry: trops/daily-brief-test v1.0.0 by trops",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Agenda" }));
+    fireEvent.click(screen.getByText("Install 1 bot"));
+    await waitFor(() =>
+      expect(installFromRegistry).toHaveBeenCalledWith(7, "rp_1", {}, [
+        "inbox",
+      ]),
+    );
+    expect(installTeam).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText(
+        "Added 1 paused bot from Daily Brief (test). Resume it when you're ready.",
+      ),
+    ).toBeInTheDocument();
+    expect(team.refresh).toHaveBeenCalled();
+  });
+
+  it("shows why a registry package couldn't be opened", async () => {
+    const previewRegistryInstall = jest.fn().mockResolvedValue({
+      error: "The package failed verification: bad signature",
+    });
+    setup({
+      apiOver: { searchRegistry: searchRegistry(), previewRegistryInstall },
+    });
+    fireEvent.click(within(teamList()).getByText("Find in registry"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Review Daily Brief (test)" }),
+    );
+    expect(
+      await screen.findByText("The package failed verification: bad signature"),
+    ).toBeInTheDocument();
+  });
+
+  it("says where an installed bot came from", () => {
+    const fromRegistry = {
+      ...inbox,
+      installedFrom: {
+        package: "trops/inbox",
+        version: "1.0.0",
+        role: "inbox",
+      },
+    };
+    setup({
+      team: makeTeam({
+        members: [fromRegistry, crm],
+        bots: [lead, fromRegistry, crm],
+      }),
+    });
+    fireEvent.click(within(teamList()).getByText("Inbox Watch"));
+    expect(screen.getByText(/From trops\/inbox v1\.0\.0/)).toBeInTheDocument();
   });
 });

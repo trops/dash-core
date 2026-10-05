@@ -373,7 +373,7 @@ Want me to draft a bot that follows up on renewals?"
 > so that I get a working team without configuring each bot.
 
 **Priority:** P1
-**Status:** In Progress (slice 1 — local `.team.json` import; registry install is slice 3)
+**Status:** Implemented for v1 (slices 1 + 3b, 2026-10-05) — local import and registry install, with per-bot picking. Deferred: AC1 "new dashboard named after the team", AC3 install variables, AC4 grouped access review, AC6 lead brief, AC7 setup checklist.
 
 **Acceptance Criteria:**
 
@@ -429,6 +429,13 @@ answers from today's runs.
 - Single bots are first-class (decided 2026-10-05): a user who wants one bot from a team installs just that bot (3b: per-bot checkboxes on the review), and a publisher can publish any bot on its own. Members are **not** auto-published as separate packages.
 - `electron/bots/botPackage.js` (pure): `buildBotPackage` (one bot embedded like a team member), `validateBotPackage`, `toTeamManifest` (a bot installs as a one-bot team), `registryManifestFor`, `publishFiles`, `toPackageName`, `nextVersion`, `checkPublishMeta`.
 - Publish: Bots view → **Publish team…** / bot **…** → **Publish bot…** (never a lead) → sign-in check (`useRegistryAuthGate`) → `PublishBotDialog` shows every bot's full instructions, wiring and "Not included", with name / package name / version / description / visibility. **Private by default** (decided 2026-10-05: instructions can hold personal details). The main process rebuilds the package, publishes under the signed-in username via `publishToRegistry` (signed, like themes), and remembers `published { name, version, visibility }` (team settings / the bot) so the next publish bumps the patch.
+
+**Implementation notes (slice 3b — find and install from the registry, 2026-10-05):**
+
+- Bots view → **Find in registry** (`RegistryBrowse`): search over bot names, team member names, providers, author and description (`botPackage.findBotPackages` on the app's registry index), All / Bots / Teams.
+- Picking one: `botRegistryInstall.downloadBotPackage` — the theme-install path (lookup → /download → storage URL), **`verifyDownloadedPackage` before the zip is opened**, 5 MB cap — then `botPackage.readPackageFiles` (`team.json` or `bot.json`, validated; a bot becomes a one-bot team). The main process keeps the checked copy under a preview id; `installFromRegistry` installs from it, never from a manifest the renderer sends.
+- Review (`TeamImportReview`): "From the registry: scope/name vX by author"; a **checkbox per bot** (a single bot has none). `planTeamInstall({ roles })` installs only the picked bots, wires only between them, and reports `droppedWiring` and `sharedMemory`; the review warns "X normally runs when Y completes — that trigger won't be set up" and "X may rely on team memory its teammates write".
+- Each registry-installed bot records `installedFrom { package, version, role }` (AC8), shown as "From scope/name vX" under its name. Local imports get the same checkboxes.
 
 ---
 

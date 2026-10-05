@@ -245,3 +245,96 @@ describe("publishFiles", () => {
     );
   });
 });
+
+describe("readPackageFiles (TEAM-007 slice 3b)", () => {
+  const { readPackageFiles } = require("./botPackage");
+  const { pkg } = buildBotPackage({ bot: inbox, providers });
+  const { manifest: team } = buildTeamManifest({
+    name: "Daily Brief",
+    bots: [inbox],
+    providers,
+  });
+
+  it("reads a team package as a team manifest", () => {
+    const r = readPackageFiles({
+      "manifest.json": "{}",
+      "team.json": JSON.stringify(team),
+    });
+    assert.equal(r.kind, "team");
+    assert.equal(r.manifest.type, "bot-team");
+    assert.deepEqual(
+      r.manifest.members.map((m) => m.role),
+      ["inbox"],
+    );
+  });
+
+  it("reads a bot package as a one-bot team", () => {
+    const r = readPackageFiles({ "bot.json": JSON.stringify(pkg) });
+    assert.equal(r.kind, "bot");
+    assert.equal(r.manifest.type, "bot-team");
+    assert.equal(r.manifest.members[0].embedded.name, "Inbox");
+  });
+
+  it("finds the file inside a folder in the zip", () => {
+    const r = readPackageFiles({
+      "daily-brief/team.json": JSON.stringify(team),
+    });
+    assert.equal(r.kind, "team");
+  });
+
+  it("explains a package that has neither file, bad JSON, or a bad definition", () => {
+    assert.match(
+      readPackageFiles({ "manifest.json": "{}" }).error,
+      /no team\.json or bot\.json/,
+    );
+    assert.match(
+      readPackageFiles({ "bot.json": "{nope" }).error,
+      /isn't valid JSON/,
+    );
+    const bad = JSON.parse(JSON.stringify(pkg));
+    bad.bot.instructions = "";
+    const r = readPackageFiles({ "bot.json": JSON.stringify(bad) });
+    assert.match(r.error, /isn't a valid Dash bot/);
+    assert.ok(r.errors.length);
+  });
+});
+
+describe("findBotPackages (TEAM-007 slice 3b)", () => {
+  const { findBotPackages } = require("./botPackage");
+  const index = [
+    { scope: "trops", name: "weather", type: "widget", displayName: "Weather" },
+    {
+      scope: "trops",
+      name: "daily-brief",
+      type: "bot-team",
+      displayName: "Daily Brief",
+      providerTypes: ["google-calendar", "gmail"],
+      team: { members: [{ role: "inbox", name: "Inbox Triage" }] },
+    },
+    {
+      scope: "ann",
+      name: "digest",
+      type: "bot",
+      displayName: "Channel Digest",
+      description: "Summarises a Slack channel",
+      providerTypes: ["slack"],
+      bot: { name: "Digest" },
+    },
+  ];
+  const names = (q, type) => findBotPackages(index, q, type).map((p) => p.name);
+
+  it("lists only bots and teams", () => {
+    assert.deepEqual(names(""), ["daily-brief", "digest"]);
+    assert.deepEqual(names("", "bot"), ["digest"]);
+    assert.deepEqual(names("", "bot-team"), ["daily-brief"]);
+  });
+
+  it("matches names, descriptions, team members and providers", () => {
+    assert.deepEqual(names("triage"), ["daily-brief"]);
+    assert.deepEqual(names("gmail"), ["daily-brief"]);
+    assert.deepEqual(names("slack"), ["digest"]);
+    assert.deepEqual(names("channel"), ["digest"]);
+    assert.deepEqual(names("ann"), ["digest"]);
+    assert.deepEqual(names("nothing-matches"), []);
+  });
+});

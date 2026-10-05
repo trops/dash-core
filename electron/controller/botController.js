@@ -46,7 +46,10 @@ const {
   nextVersion,
   checkPublishMeta,
   publishFiles,
+  readPackageFiles,
+  findBotPackages,
 } = require("../bots/botPackage");
+const { downloadBotPackage } = require("./botRegistryInstall");
 const { registryIdentity, zipAndPublish } = require("./botPublish");
 const { unassignTeam, isOnTeam } = require("../bots/teams");
 const {
@@ -598,17 +601,37 @@ const botController = {
    * as chosen on the review screen, wiring resolved to the new bots. The
    * manifest is re-checked here — the renderer's copy isn't trusted.
    */
-  installTeam(workspaceId, manifest, choices = {}) {
+  installTeam(workspaceId, manifest, choices = {}, roles = null) {
     const { valid, errors, manifest: clean } = validateTeamManifest(manifest);
     if (!valid) return { error: "That isn't a Dash team file.", errors };
-    const plan = planTeamInstall(clean, {
-      workspaceId,
-      providers: this._providerList(),
-      choices,
-    });
+    return this._installTeamPlan(
+      planTeamInstall(clean, {
+        workspaceId,
+        providers: this._providerList(),
+        choices,
+        roles,
+      }),
+      null,
+    );
+  },
+
+  /**
+   * Create a planned team's bots (paused, no grants) and wire them. With a
+   * registry `source`, each bot records where it came from (TEAM-007 AC8).
+   */
+  _installTeamPlan(plan, source) {
+    if (!plan.members.length)
+      return { error: "Pick at least one bot to install." };
     const created = {};
     for (const member of plan.members) {
-      const bot = this.save(member.definition);
+      const bot = this.save(
+        source
+          ? {
+              ...member.definition,
+              installedFrom: { ...source, role: member.role },
+            }
+          : member.definition,
+      );
       // Installed in setup state: nothing runs until the user resumes it.
       this._pause.pauseBot(bot.id);
       created[member.role] = bot;
@@ -623,7 +646,87 @@ const botController = {
         id: created[m.role].id,
         name: created[m.role].name,
       })),
+      droppedWiring: plan.droppedWiring || [],
     };
+  },
+
+  /** Bot and team packages in the registry matching a search (TEAM-007 3b). */
+  async searchBotPackages({ query = "", type = null } = {}) {
+    const registryController = require("./registryController");
+    const index = await registryController.fetchRegistryIndex();
+    return findBotPackages((index && index.packages) || [], query, type).map(
+      (p) => ({
+        ref: p.scope ? `${p.scope}/${p.name}` : p.name,
+        scope: p.scope || null,
+        name: p.name,
+        displayName: p.displayName || p.name,
+        author: p.author || p.scope || "",
+        description: p.description || "",
+        type: p.type,
+        version: p.version || p.latestVersion || null,
+        visibility: p.visibility || null,
+        providerTypes: p.providerTypes || [],
+        team: p.team || null,
+        bot: p.bot || null,
+      }),
+    );
+  },
+
+  /**
+   * Download, verify and check a registry package, then plan installing it
+   * into this dashboard (TEAM-007 3b). The checked copy is kept here under a
+   * preview id — installFromRegistry installs from it, never from a copy the
+   * renderer sends back.
+   */
+  async previewRegistryInstall(workspaceId, packageRef) {
+    const dl = await downloadBotPackage(packageRef);
+    if (dl.error) return dl;
+    const read = readPackageFiles(dl.files);
+    if (read.error) return read;
+    const source = {
+      package: dl.pkg.scope ? `${dl.pkg.scope}/${dl.pkg.name}` : dl.pkg.name,
+      version: dl.pkg.version,
+    };
+    if (!this._registryPreviews) this._registryPreviews = new Map();
+    // Keep only the latest few previews.
+    while (this._registryPreviews.size >= 5) {
+      this._registryPreviews.delete(this._registryPreviews.keys().next().value);
+    }
+    const previewId = `rp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    this._registryPreviews.set(previewId, { manifest: read.manifest, source });
+    return {
+      previewId,
+      kind: read.kind,
+      source: {
+        ...source,
+        author: dl.pkg.author,
+        displayName: dl.pkg.displayName,
+      },
+      manifest: read.manifest,
+      plan: planTeamInstall(read.manifest, {
+        workspaceId,
+        providers: this._providerList(),
+      }),
+    };
+  },
+
+  /** Install the previewed registry package — all bots, or the ones picked. */
+  installFromRegistry(workspaceId, previewId, choices = {}, roles = null) {
+    const preview =
+      this._registryPreviews && this._registryPreviews.get(previewId);
+    if (!preview) {
+      return { error: "That preview has expired — find the package again." };
+    }
+    this._registryPreviews.delete(previewId);
+    return this._installTeamPlan(
+      planTeamInstall(preview.manifest, {
+        workspaceId,
+        providers: this._providerList(),
+        choices,
+        roles,
+      }),
+      preview.source,
+    );
   },
 
   /**

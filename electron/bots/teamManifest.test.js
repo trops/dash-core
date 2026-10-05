@@ -417,3 +417,74 @@ describe("wireTeam", () => {
     });
   });
 });
+
+describe("planTeamInstall — picking bots (TEAM-007 slice 3b)", () => {
+  const manifest = buildTeamManifest({
+    name: "Daily Brief",
+    bots: team,
+    providers,
+  }).manifest;
+  // Agenda and Writer mention team memory; Inbox doesn't (in this fixture).
+  manifest.members[0].embedded.instructions =
+    "Save the list to team memory under brief/agenda.";
+  manifest.members[2].embedded.instructions =
+    "Read brief/inbox from team memory, write the file.";
+
+  it("installs every bot when none are picked out", () => {
+    const plan = planTeamInstall(manifest, { workspaceId: "ws2", providers });
+    assert.deepEqual(
+      plan.members.map((m) => m.role),
+      ["agenda", "inbox", "writer"],
+    );
+    assert.deepEqual(plan.droppedWiring, []);
+    assert.deepEqual(plan.sharedMemory, []);
+  });
+
+  it("installs only the picked bots, wiring only between them", () => {
+    const plan = planTeamInstall(manifest, {
+      workspaceId: "ws2",
+      providers,
+      roles: ["agenda", "writer"],
+    });
+    assert.deepEqual(
+      plan.members.map((m) => m.role),
+      ["agenda", "writer"],
+    );
+    assert.deepEqual(plan.wiring, []);
+  });
+
+  it("reports triggers a picked bot loses because its source wasn't picked", () => {
+    const plan = planTeamInstall(manifest, {
+      workspaceId: "ws2",
+      providers,
+      roles: ["agenda", "writer"],
+    });
+    assert.deepEqual(plan.droppedWiring, [
+      {
+        role: "writer",
+        on: { role: "inbox", event: "tool.gmail.search_emails" },
+      },
+    ]);
+  });
+
+  it("flags picked bots that rely on team memory when the team is split", () => {
+    const plan = planTeamInstall(manifest, {
+      workspaceId: "ws2",
+      providers,
+      roles: ["writer"],
+    });
+    assert.deepEqual(plan.sharedMemory, ["writer"]);
+  });
+
+  it("ignores roles that aren't in the team", () => {
+    const plan = planTeamInstall(manifest, {
+      workspaceId: "ws2",
+      providers,
+      roles: ["inbox", "ghost"],
+    });
+    assert.deepEqual(
+      plan.members.map((m) => m.role),
+      ["inbox"],
+    );
+  });
+});

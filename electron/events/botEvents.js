@@ -49,6 +49,10 @@ const BOTS_INSTALL_TEAM = "bots-install-team";
 // Registry publish (TEAM-006 slice 3a): a bot or a team, to the Dash registry.
 const BOTS_PREVIEW_PUBLISH = "bots-preview-publish";
 const BOTS_PUBLISH = "bots-publish";
+// Registry install (TEAM-007 slice 3b): find, preview, install bots and teams.
+const BOTS_SEARCH_REGISTRY = "bots-search-registry";
+const BOTS_PREVIEW_REGISTRY_INSTALL = "bots-preview-registry-install";
+const BOTS_INSTALL_FROM_REGISTRY = "bots-install-from-registry";
 
 // --- Main → Renderer (send) ---
 const BOT_STREAM = "bot-stream"; // { botId, event: BotEvent }
@@ -98,6 +102,9 @@ module.exports = {
   BOTS_INSTALL_TEAM,
   BOTS_PREVIEW_PUBLISH,
   BOTS_PUBLISH,
+  BOTS_SEARCH_REGISTRY,
+  BOTS_PREVIEW_REGISTRY_INSTALL,
+  BOTS_INSTALL_FROM_REGISTRY,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
