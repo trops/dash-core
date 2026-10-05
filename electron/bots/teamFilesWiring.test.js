@@ -31,20 +31,23 @@ describe("team export/import — wiring", () => {
   it("exposes exportTeam / previewTeamImport / installTeam to the renderer", () => {
     assert.match(api, /exportTeam: \(workspaceId, meta\) =>/);
     assert.match(api, /previewTeamImport: \(workspaceId\) =>/);
-    assert.match(api, /installTeam: \(workspaceId, manifest, choices\) =>/);
+    assert.match(
+      api,
+      /installTeam: \(workspaceId, manifest, choices, roles\) =>/,
+    );
   });
 
   it("installTeam re-checks the manifest instead of trusting the renderer", () => {
     assert.match(
       ctrl,
-      /installTeam\(workspaceId, manifest, choices = \{\}\) \{\s*const \{ valid, errors, manifest: clean \} = validateTeamManifest\(manifest\);/,
+      /installTeam\(workspaceId, manifest, choices = \{\}, roles = null\) \{\s*const \{ valid, errors, manifest: clean \} = validateTeamManifest\(manifest\);/,
     );
   });
 
   it("installs every member paused, then wires the new bots", () => {
     assert.match(
       ctrl,
-      /const bot = this\.save\(member\.definition\);[\s\S]{0,200}this\._pause\.pauseBot\(bot\.id\);/,
+      /for \(const member of plan\.members\) \{\s*const bot = this\.save\([\s\S]{0,300}this\._pause\.pauseBot\(bot\.id\);/,
     );
     assert.match(ctrl, /wireTeam\(plan\.wiring, created\)/);
   });
@@ -100,5 +103,51 @@ describe("registry publish — cache", () => {
       pub,
       /if \(result && result\.success\) \{[\s\S]{0,300}fetchRegistryIndex\(true\)/,
     );
+  });
+});
+
+describe("registry install — wiring (TEAM-007 slice 3b)", () => {
+  it("has IPC channels and renderer API for search, preview and install", () => {
+    assert.equal(events.BOTS_SEARCH_REGISTRY, "bots-search-registry");
+    assert.equal(
+      events.BOTS_PREVIEW_REGISTRY_INSTALL,
+      "bots-preview-registry-install",
+    );
+    assert.equal(
+      events.BOTS_INSTALL_FROM_REGISTRY,
+      "bots-install-from-registry",
+    );
+    assert.match(api, /searchRegistry: \(opts\) =>/);
+    assert.match(api, /previewRegistryInstall: \(workspaceId, packageRef\) =>/);
+    assert.match(
+      api,
+      /installFromRegistry: \(workspaceId, previewId, choices, roles\) =>/,
+    );
+  });
+
+  it("installs from the main process's checked copy, not the renderer's", () => {
+    assert.match(
+      ctrl,
+      /this\._registryPreviews\.set\(previewId, \{ manifest: read\.manifest, source \}\)/,
+    );
+    assert.match(
+      ctrl,
+      /installFromRegistry\(workspaceId, previewId, choices = \{\}, roles = null\) \{\s*const preview =\s*this\._registryPreviews && this\._registryPreviews\.get\(previewId\);/,
+    );
+  });
+
+  it("records where registry bots came from, and installs them paused", () => {
+    assert.match(ctrl, /installedFrom: \{ \.\.\.source, role: member\.role \}/);
+    assert.match(ctrl, /this\._pause\.pauseBot\(bot\.id\);/);
+  });
+
+  it("verifies the download before opening the zip", () => {
+    const dl = fs.readFileSync(
+      path.join(__dirname, "..", "controller", "botRegistryInstall.js"),
+      "utf8",
+    );
+    const verifyAt = dl.indexOf("verifyDownloadedPackage({");
+    const openAt = dl.indexOf("new AdmZip(zipBuffer)");
+    assert.ok(verifyAt > 0 && openAt > verifyAt);
   });
 });

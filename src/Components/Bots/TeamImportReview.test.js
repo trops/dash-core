@@ -133,6 +133,9 @@ describe("TeamImportReview (TEAM-007 slice 1)", () => {
 
   it("uses the only matching provider, offers a choice, or says it's missing", () => {
     setup();
+    expect(
+      screen.getByText(/Not chosen — installs without gmail/),
+    ).toBeInTheDocument();
     const agenda = screen.getByTestId("team-member-Agenda");
     expect(
       within(agenda).getByText("google-calendar: Google Calendar"),
@@ -171,13 +174,16 @@ describe("TeamImportReview (TEAM-007 slice 1)", () => {
       target: { value: "Gmail Work" },
     });
     fireEvent.click(screen.getByText("Install team"));
-    expect(onInstall).toHaveBeenCalledWith({ inbox: { gmail: "Gmail Work" } });
+    expect(onInstall).toHaveBeenCalledWith(
+      { inbox: { gmail: "Gmail Work" } },
+      null,
+    );
   });
 
   it("installs with no choices when the user picks none (unpicked providers stay off)", () => {
     const { onInstall } = setup();
     fireEvent.click(screen.getByText("Install team"));
-    expect(onInstall).toHaveBeenCalledWith({});
+    expect(onInstall).toHaveBeenCalledWith({}, null);
   });
 
   it("can be cancelled, and disables Install while installing", () => {
@@ -185,5 +191,124 @@ describe("TeamImportReview (TEAM-007 slice 1)", () => {
     expect(screen.getByText("Install team")).toBeDisabled();
     fireEvent.click(screen.getByText("Cancel"));
     expect(onCancel).toHaveBeenCalled();
+  });
+});
+
+describe("TeamImportReview — picking bots (TEAM-007 slice 3b)", () => {
+  const withMemory = {
+    ...preview,
+    manifest: {
+      ...preview.manifest,
+      members: preview.manifest.members.map((m) =>
+        m.role === "writer"
+          ? {
+              ...m,
+              embedded: {
+                ...m.embedded,
+                instructions: "Read brief/inbox from team memory.",
+              },
+            }
+          : m,
+      ),
+    },
+  };
+
+  it("ticks every bot by default and installs them all (no roles)", () => {
+    const onInstall = jest.fn();
+    render(
+      <TeamImportReview
+        preview={preview}
+        onInstall={onInstall}
+        onCancel={jest.fn()}
+      />,
+    );
+    for (const name of ["Agenda", "Inbox", "Writer"]) {
+      expect(screen.getByRole("checkbox", { name })).toBeChecked();
+    }
+    fireEvent.click(screen.getByText("Install team"));
+    expect(onInstall).toHaveBeenCalledWith({}, null);
+  });
+
+  it("installs only the ticked bots and warns about what they lose", () => {
+    const onInstall = jest.fn();
+    render(
+      <TeamImportReview
+        preview={withMemory}
+        onInstall={onInstall}
+        onCancel={jest.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "Inbox" }));
+    expect(
+      screen.getByText(
+        "Writer normally runs when Inbox completes — that trigger won't be set up.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Writer shares results with its teammates through team memory/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Install 2 bots")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Install 2 bots"));
+    expect(onInstall).toHaveBeenCalledWith({}, ["agenda", "writer"]);
+  });
+
+  it("can't install with nothing ticked", () => {
+    render(
+      <TeamImportReview
+        preview={preview}
+        onInstall={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    );
+    for (const name of ["Agenda", "Inbox", "Writer"]) {
+      fireEvent.click(screen.getByRole("checkbox", { name }));
+    }
+    expect(screen.getByText("Install 0 bots")).toBeDisabled();
+  });
+
+  it("says where a registry package came from", () => {
+    render(
+      <TeamImportReview
+        preview={{
+          ...preview,
+          fileName: undefined,
+          source: {
+            package: "trops/daily-brief",
+            version: "1.0.0",
+            author: "trops",
+          },
+        }}
+        onInstall={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    );
+    expect(
+      screen.getByText("From the registry: trops/daily-brief v1.0.0 by trops"),
+    ).toBeInTheDocument();
+  });
+
+  it("calls a single bot a bot", () => {
+    const one = {
+      ...preview,
+      kind: "bot",
+      manifest: {
+        ...preview.manifest,
+        members: [preview.manifest.members[0]],
+        wiring: [],
+      },
+      plan: { ...preview.plan, members: [preview.plan.members[0]], wiring: [] },
+    };
+    render(
+      <TeamImportReview
+        preview={one}
+        onInstall={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    );
+    expect(screen.getByText("Install bot: Daily Brief")).toBeInTheDocument();
+    expect(screen.getByText("Install bot")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).toBeNull();
   });
 });

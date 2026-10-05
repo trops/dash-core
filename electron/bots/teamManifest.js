@@ -332,64 +332,98 @@ function validateTeamManifest(input) {
  * @param {{ workspaceId: string, providers: object[],
  *           choices?: { [role]: { [type]: string } } }} opts
  */
-function planTeamInstall(manifest, { workspaceId, providers, choices = {} }) {
+// Team bots often hand results to each other through team memory.
+const MEMORY_HINT = /team memory|memory_(get|set)/i;
+
+function planTeamInstall(
+  manifest,
+  { workspaceId, providers, choices = {}, roles = null },
+) {
+  // Which bots to install (TEAM-007 slice 3b): every one unless picked out.
+  const picked = new Set(
+    Array.isArray(roles) ? roles : manifest.members.map((m) => m.role),
+  );
+  const isPartial = manifest.members.some((m) => !picked.has(m.role));
   const list = Array.isArray(providers) ? providers : [];
   const namesOfType = (type) =>
     list.filter((p) => p && p.name && p.type === type).map((p) => p.name);
   const haveAiType = (type) =>
     list.some((p) => p && p.type === type && AI_TYPES.includes(type));
 
-  const members = manifest.members.map(({ role, embedded: e }) => {
-    const roleChoices = (choices && choices[role]) || {};
-    const needs = [];
-    const mcpServers = [];
-    const toolSelections = {};
-    for (const p of e.providers) {
-      const options = namesOfType(p.type);
-      const picked = roleChoices[p.type];
-      const chosen = options.includes(picked)
-        ? picked
-        : options.length === 1
-          ? options[0]
-          : null;
-      needs.push({ type: p.type, options, chosen });
-      if (chosen && !mcpServers.includes(chosen)) {
-        mcpServers.push(chosen);
-        if (Array.isArray(p.tools)) toolSelections[chosen] = [...p.tools];
+  const members = manifest.members
+    .filter((m) => picked.has(m.role))
+    .map(({ role, embedded: e }) => {
+      const roleChoices = (choices && choices[role]) || {};
+      const needs = [];
+      const mcpServers = [];
+      const toolSelections = {};
+      for (const p of e.providers) {
+        const options = namesOfType(p.type);
+        const picked = roleChoices[p.type];
+        const chosen = options.includes(picked)
+          ? picked
+          : options.length === 1
+            ? options[0]
+            : null;
+        needs.push({ type: p.type, options, chosen });
+        if (chosen && !mcpServers.includes(chosen)) {
+          mcpServers.push(chosen);
+          if (Array.isArray(p.tools)) toolSelections[chosen] = [...p.tools];
+        }
       }
-    }
-    const source = e.modelSource;
-    const provider =
-      source === "claude-code" || (source && haveAiType(source))
-        ? source
-        : null;
-    return {
-      role,
-      fileApprovalPolicy: e.approvalPolicy,
-      needs,
-      definition: {
-        name: e.name,
-        instructions: e.instructions,
-        provider,
-        model: provider ? e.model : null,
-        engine: e.engine,
-        approvalPolicy: IMPORT_APPROVAL_POLICY,
-        workspaceId,
-        mcpServers,
-        toolSelections,
-        schedules: e.schedules.map((s) => ({ cron: s.cron, prompt: s.prompt })),
-        subscriptions: [],
-      },
-    };
-  });
+      const source = e.modelSource;
+      const provider =
+        source === "claude-code" || (source && haveAiType(source))
+          ? source
+          : null;
+      return {
+        role,
+        fileApprovalPolicy: e.approvalPolicy,
+        needs,
+        definition: {
+          name: e.name,
+          instructions: e.instructions,
+          provider,
+          model: provider ? e.model : null,
+          engine: e.engine,
+          approvalPolicy: IMPORT_APPROVAL_POLICY,
+          workspaceId,
+          mcpServers,
+          toolSelections,
+          schedules: e.schedules.map((s) => ({
+            cron: s.cron,
+            prompt: s.prompt,
+          })),
+          subscriptions: [],
+        },
+      };
+    });
 
+  const copy = (w) => ({
+    role: w.role,
+    on: { role: w.on.role, event: w.on.event },
+  });
   return {
     name: manifest.name,
     members,
-    wiring: manifest.wiring.map((w) => ({
-      role: w.role,
-      on: { role: w.on.role, event: w.on.event },
-    })),
+    // Wiring only between the bots being installed.
+    wiring: manifest.wiring
+      .filter((w) => picked.has(w.role) && picked.has(w.on.role))
+      .map(copy),
+    // Triggers a picked bot loses because the bot that fired them stays out.
+    droppedWiring: manifest.wiring
+      .filter((w) => picked.has(w.role) && !picked.has(w.on.role))
+      .map(copy),
+    // Picked bots that look like they rely on team memory, when the team is
+    // split (their teammates may have been the ones writing it).
+    sharedMemory: isPartial
+      ? manifest.members
+          .filter(
+            (m) =>
+              picked.has(m.role) && MEMORY_HINT.test(m.embedded.instructions),
+          )
+          .map((m) => m.role)
+      : [],
   };
 }
 

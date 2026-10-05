@@ -223,7 +223,77 @@ function publishFiles(pkg, registryManifest) {
   ];
 }
 
+/**
+ * Read a downloaded package (its files by path) into a checked team
+ * manifest ready for planTeamInstall — a single bot becomes a one-bot team.
+ * @param {{ [path: string]: string }} files
+ * @returns {{ kind: "team"|"bot", manifest: object } | { error: string, errors?: string[] }}
+ */
+function readPackageFiles(files) {
+  const entries = Object.entries(files || {});
+  const find = (base) =>
+    entries.find(([p]) => p === base || p.endsWith("/" + base));
+  const teamFile = find("team.json");
+  const botFile = find("bot.json");
+  const file = teamFile || botFile;
+  if (!file) return { error: "The package has no team.json or bot.json." };
+  let json;
+  try {
+    json = JSON.parse(file[1]);
+  } catch (_e) {
+    return { error: "The package's definition isn't valid JSON." };
+  }
+  if (teamFile) {
+    const r = validateTeamManifest(json);
+    return r.valid
+      ? { kind: "team", manifest: r.manifest }
+      : { error: "The package isn't a valid Dash team.", errors: r.errors };
+  }
+  const r = validateBotPackage(json);
+  return r.valid
+    ? { kind: "bot", manifest: toTeamManifest(r.pkg) }
+    : { error: "The package isn't a valid Dash bot.", errors: r.errors };
+}
+
+/**
+ * Bot and team packages in a registry index matching a search — by name,
+ * description, author, tags, the bot's name, team member names and the
+ * providers they use.
+ * @param {object[]} packages  the registry index
+ * @param {string} [query]
+ * @param {"bot"|"bot-team"} [type]  both when omitted
+ */
+function findBotPackages(packages, query = "", type = null) {
+  const q = String(query || "")
+    .trim()
+    .toLowerCase();
+  return (Array.isArray(packages) ? packages : []).filter((p) => {
+    if (!p || (p.type !== PACKAGE_TYPE_BOT && p.type !== PACKAGE_TYPE_TEAM)) {
+      return false;
+    }
+    if (type && p.type !== type) return false;
+    if (!q) return true;
+    const text = [
+      p.name,
+      p.displayName,
+      p.description,
+      p.author,
+      p.scope,
+      ...(p.tags || []),
+      ...(p.providerTypes || []),
+      p.bot && p.bot.name,
+      ...((p.team && p.team.members) || []).map((m) => m && m.name),
+    ]
+      .filter(Boolean)
+      .join("\n")
+      .toLowerCase();
+    return text.includes(q);
+  });
+}
+
 module.exports = {
+  findBotPackages,
+  readPackageFiles,
   publishFiles,
   PACKAGE_TYPE_BOT,
   PACKAGE_TYPE_TEAM,

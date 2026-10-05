@@ -44,6 +44,9 @@ const {
   BOTS_INSTALL_TEAM,
   BOTS_PREVIEW_PUBLISH,
   BOTS_PUBLISH,
+  BOTS_SEARCH_REGISTRY,
+  BOTS_PREVIEW_REGISTRY_INSTALL,
+  BOTS_INSTALL_FROM_REGISTRY,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_BUDGET_ALERT,
@@ -89,9 +92,30 @@ const botApi = {
   /** Pick and check a .team.json; returns { manifest, plan } for review (TEAM-007). */
   previewTeamImport: (workspaceId) =>
     ipcRenderer.invoke(BOTS_PREVIEW_TEAM_IMPORT, { workspaceId }),
-  /** Install a reviewed team into this dashboard (new, paused bots). */
-  installTeam: (workspaceId, manifest, choices) =>
-    ipcRenderer.invoke(BOTS_INSTALL_TEAM, { workspaceId, manifest, choices }),
+  /** Install a reviewed team into this dashboard (new, paused bots); roles = the bots picked (all when omitted). */
+  installTeam: (workspaceId, manifest, choices, roles) =>
+    ipcRenderer.invoke(BOTS_INSTALL_TEAM, {
+      workspaceId,
+      manifest,
+      choices,
+      roles,
+    }),
+  /** Bot and team packages in the registry: opts { query, type: "bot"|"bot-team"|null }. */
+  searchRegistry: (opts) => ipcRenderer.invoke(BOTS_SEARCH_REGISTRY, opts),
+  /** Download + verify + check a registry package; returns { previewId, manifest, plan, source }. */
+  previewRegistryInstall: (workspaceId, packageRef) =>
+    ipcRenderer.invoke(BOTS_PREVIEW_REGISTRY_INSTALL, {
+      workspaceId,
+      packageRef,
+    }),
+  /** Install a previewed registry package (from the main process's checked copy). */
+  installFromRegistry: (workspaceId, previewId, choices, roles) =>
+    ipcRenderer.invoke(BOTS_INSTALL_FROM_REGISTRY, {
+      workspaceId,
+      previewId,
+      choices,
+      roles,
+    }),
   /**
    * What publishing would send (TEAM-006): opts { kind: "team"|"bot",
    * workspaceId?, botId?, name? } → { pkg, notIncluded, suggested, signedIn }.

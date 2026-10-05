@@ -21,6 +21,7 @@ import { BotDetail } from "../Settings/details/BotDetail";
 import { DraftBanner } from "./DraftBanner";
 import { TeamImportReview } from "./TeamImportReview";
 import { PublishBotDialog } from "./PublishBotDialog";
+import { RegistryBrowse } from "./RegistryBrowse";
 import { useRegistryAuthGate } from "../../hooks/useRegistryAuthGate";
 import { AppContext } from "../../Context/App/AppContext";
 import { ComponentManager } from "../../ComponentManager";
@@ -127,6 +128,8 @@ export const BotsView = ({
   const [installing, setInstalling] = useState(false);
   const [importError, setImportError] = useState(null);
   const [teamNote, setTeamNote] = useState(null);
+  // Registry install (TEAM-007 slice 3b): the search panel is open.
+  const [registryOpen, setRegistryOpen] = useState(false);
   // Registry publish (TEAM-006 slice 3a): what's being published and how
   // it went.
   const { ensureAuthed, authGate } = useRegistryAuthGate();
@@ -212,6 +215,7 @@ export const BotsView = ({
       setTab(id === NEW_BOT || isDraftId(id) ? "settings" : "conversation");
       setMenuOpen(false);
       setImportPreview(null);
+      setRegistryOpen(false);
     });
 
   const switchTab = (next) =>
@@ -361,24 +365,64 @@ export const BotsView = ({
       setImportPreview(r);
     });
 
-  const installTeam = async (choices) => {
+  const openRegistry = () =>
+    guarded(() => {
+      setDirty(false);
+      setTeamNote(null);
+      setImportPreview(null);
+      setRegistryOpen(true);
+    });
+
+  // A registry package was picked: download, verify and check it in the
+  // main process, then review it like an imported file.
+  const pickRegistryPackage = async (ref) => {
+    const bots = api();
+    if (!bots || !bots.previewRegistryInstall || !workspace) return;
+    let r = (await bots.previewRegistryInstall(workspace.id, ref)) || {};
+    if (r.authRequired) {
+      const signedIn = await ensureAuthed({
+        message: "Sign in to the Dash registry to install.",
+      });
+      if (!signedIn) return;
+      r = (await bots.previewRegistryInstall(workspace.id, ref)) || {};
+    }
+    if (r.error) {
+      setTeamNote({ text: [r.error, ...(r.errors || [])].join(" ") });
+      return;
+    }
+    setTeamNote(null);
+    setImportError(null);
+    setRegistryOpen(false);
+    setImportPreview(r);
+  };
+
+  const installTeam = async (choices, roles = null) => {
     const bots = api();
     if (!bots || !importPreview || !workspace) return;
     setInstalling(true);
     try {
+      // A registry package installs from the main process's checked copy.
       const r =
-        (await bots.installTeam(
-          workspace.id,
-          importPreview.manifest,
-          choices,
-        )) || {};
+        (importPreview.previewId
+          ? await bots.installFromRegistry(
+              workspace.id,
+              importPreview.previewId,
+              choices,
+              roles,
+            )
+          : await bots.installTeam(
+              workspace.id,
+              importPreview.manifest,
+              choices,
+              roles,
+            )) || {};
       if (r.error) {
         setImportError([r.error, ...(r.errors || [])].join(" "));
         return;
       }
       const n = (r.installed || []).length;
       setTeamNote({
-        text: `Added ${n} paused bot${n === 1 ? "" : "s"} from ${importPreview.manifest.name}. Resume them when you're ready.`,
+        text: `Added ${n} paused bot${n === 1 ? "" : "s"} from ${importPreview.manifest.name}. Resume ${n === 1 ? "it" : "them"} when you're ready.`,
       });
       setImportPreview(null);
       afterChange();
@@ -442,6 +486,7 @@ export const BotsView = ({
       <div className="flex flex-row flex-wrap gap-2">
         <Button3 title="Export team" size="xs" onClick={exportTeam} />
         <Button3 title="Import team" size="xs" onClick={importTeam} />
+        <Button3 title="Find in registry" size="xs" onClick={openRegistry} />
         <Button3
           title="Publish team…"
           size="xs"
@@ -605,8 +650,14 @@ export const BotsView = ({
         teamList
       )}
 
-      {importPreview ? (
+      {registryOpen && !importPreview ? (
+        <RegistryBrowse
+          onPick={pickRegistryPackage}
+          onClose={() => setRegistryOpen(false)}
+        />
+      ) : importPreview ? (
         <TeamImportReview
+          key={importPreview.previewId || importPreview.fileName || "import"}
           preview={importPreview}
           installing={installing}
           error={importError}
@@ -647,6 +698,9 @@ export const BotsView = ({
                     : [
                         (selected.mcpServers || []).join(", "),
                         triggerSummary(selected),
+                        selected.installedFrom
+                          ? `From ${selected.installedFrom.package} v${selected.installedFrom.version}`
+                          : null,
                       ]
                         .filter(Boolean)
                         .join(" · ")

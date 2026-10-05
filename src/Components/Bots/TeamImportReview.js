@@ -2,6 +2,7 @@ import React, { useContext, useState } from "react";
 import {
   Button,
   Button3,
+  Checkbox,
   SectionLabel,
   SelectInput,
   ThemeContext,
@@ -19,6 +20,14 @@ const MODEL_LABELS = {
   openai: "OpenAI",
   xai: "xAI",
 };
+
+const MEMORY_HINT = /team memory|memory_(get|set)/i;
+
+function eventVerb(ev) {
+  if (ev === "completed") return "completes";
+  if (ev === "failed") return "fails";
+  return `uses ${ev.replace(/^tool\./, "").replace(".", " ")}`;
+}
 
 /** "Agenda completes → Inbox runs" */
 export function wiringText(w, names) {
@@ -57,9 +66,39 @@ export const TeamImportReview = ({
   const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
   const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
 
-  const { manifest, plan, fileName } = preview || {};
+  const { manifest, plan, fileName, source } = preview || {};
   const [choices, setChoices] = useState({});
+  // Which bots to install (TEAM-007 slice 3b): all, until the user unticks.
+  const [picked, setPicked] = useState(
+    () => new Set(((manifest && manifest.members) || []).map((m) => m.role)),
+  );
   if (!manifest || !plan) return null;
+
+  const isBot = preview.kind === "bot";
+  const isPartial = manifest.members.some((m) => !picked.has(m.role));
+  const pickedRoles = manifest.members
+    .map((m) => m.role)
+    .filter((r) => picked.has(r));
+  const toggle = (role, on) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(role);
+      else next.delete(role);
+      return next;
+    });
+  // What a split team loses: triggers from bots left out, and team memory
+  // their teammates would have written.
+  const dropped = manifest.wiring.filter(
+    (w) => picked.has(w.role) && !picked.has(w.on.role),
+  );
+  const memoryRoles = isPartial
+    ? manifest.members
+        .filter(
+          (m) =>
+            picked.has(m.role) && MEMORY_HINT.test(m.embedded.instructions),
+        )
+        .map((m) => m.role)
+    : [];
 
   const names = Object.fromEntries(
     manifest.members.map((m) => [m.role, m.embedded.name]),
@@ -90,7 +129,7 @@ export const TeamImportReview = ({
     const value =
       (choices[role] && choices[role][need.type]) || need.chosen || "";
     return (
-      <div key={need.type} className="max-w-sm">
+      <div key={need.type} className="max-w-sm flex flex-col gap-1">
         <SelectInput
           label={`${need.type} provider`}
           value={value}
@@ -98,6 +137,11 @@ export const TeamImportReview = ({
           placeholder="Choose a provider…"
           options={need.options.map((o) => ({ value: o, label: o }))}
         />
+        {value ? null : (
+          <span className={`text-xs ${muted}`}>
+            {`Not chosen — installs without ${need.type} (you can add it later in the bot's Settings).`}
+          </span>
+        )}
       </div>
     );
   };
@@ -108,29 +152,59 @@ export const TeamImportReview = ({
       className={`flex-1 min-w-0 min-h-0 flex flex-col rounded-xl border ${hairline}`}
     >
       <div className="px-5 pt-4 flex flex-col gap-1">
-        <h2 className="text-lg font-semibold">{`Import team: ${manifest.name}`}</h2>
+        <h2 className="text-lg font-semibold">
+          {isBot
+            ? `Install bot: ${manifest.name}`
+            : `Import team: ${manifest.name}`}
+        </h2>
         {manifest.description ? (
           <span className={`text-sm ${muted}`}>{manifest.description}</span>
         ) : null}
-        {fileName ? (
+        {source ? (
+          <span className={`text-xs ${muted}`}>
+            {`From the registry: ${source.package} v${source.version}${source.author ? ` by ${source.author}` : ""}`}
+          </span>
+        ) : fileName ? (
           <span className={`text-xs ${muted}`}>{fileName}</span>
         ) : null}
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-4">
-        {plan.wiring.length ? (
+        {dropped.length || memoryRoles.length ? (
           <div className="flex flex-col gap-1">
-            <SectionLabel text="How the team works together" />
-            {plan.wiring.map((w, i) => (
-              <span key={i} className="text-sm">
-                {wiringText(w, names)}
+            <SectionLabel text="Installing only some of the team" />
+            {dropped.map((w, i) => (
+              <span key={`d${i}`} className="text-xs text-red-400">
+                {`${names[w.role]} normally runs when ${names[w.on.role]} ${eventVerb(w.on.event)} — that trigger won't be set up.`}
+              </span>
+            ))}
+            {memoryRoles.map((r) => (
+              <span key={`m${r}`} className="text-xs text-red-400">
+                {`${names[r]} shares results with its teammates through team memory — that hand-off won't work for the bots you left out.`}
               </span>
             ))}
           </div>
         ) : null}
 
+        {manifest.wiring.some(
+          (w) => picked.has(w.role) && picked.has(w.on.role),
+        ) ? (
+          <div className="flex flex-col gap-1">
+            <SectionLabel text="How the team works together" />
+            {manifest.wiring
+              .filter((w) => picked.has(w.role) && picked.has(w.on.role))
+              .map((w, i) => (
+                <span key={i} className="text-sm">
+                  {wiringText(w, names)}
+                </span>
+              ))}
+          </div>
+        ) : null}
+
         <div className="flex flex-col gap-2">
-          <SectionLabel text={`Members · ${manifest.members.length}`} />
+          {isBot ? null : (
+            <SectionLabel text={`Members · ${manifest.members.length}`} />
+          )}
           {manifest.members.map(({ role, embedded: e }) => {
             const p = planOf[role] || { needs: [] };
             const policy =
@@ -141,9 +215,17 @@ export const TeamImportReview = ({
               <div
                 key={role}
                 data-testid={`team-member-${e.name}`}
-                className={`rounded-lg border p-3 flex flex-col gap-1.5 ${hairline}`}
+                className={`rounded-lg border p-3 flex flex-col gap-1.5 ${hairline} ${picked.has(role) ? "" : "opacity-50"}`}
               >
-                <span className="text-sm font-medium">{e.name}</span>
+                {isBot ? (
+                  <span className="text-sm font-medium">{e.name}</span>
+                ) : (
+                  <Checkbox
+                    label={e.name}
+                    checked={picked.has(role)}
+                    onChange={(on) => toggle(role, on)}
+                  />
+                )}
                 <span className={`text-xs ${muted}`}>
                   {e.instructions.length > 280
                     ? `${e.instructions.slice(0, 280)}…`
@@ -177,10 +259,16 @@ export const TeamImportReview = ({
         <div className="flex flex-row gap-2">
           <Button3 title="Cancel" size="sm" onClick={onCancel} />
           <Button
-            title="Install team"
+            title={
+              isBot
+                ? "Install bot"
+                : isPartial
+                  ? `Install ${pickedRoles.length} bot${pickedRoles.length === 1 ? "" : "s"}`
+                  : "Install team"
+            }
             size="sm"
-            disabled={installing}
-            onClick={() => onInstall(choices)}
+            disabled={installing || pickedRoles.length === 0}
+            onClick={() => onInstall(choices, isPartial ? pickedRoles : null)}
           />
         </div>
       </div>
