@@ -506,6 +506,33 @@ const botController = {
     };
   },
 
+  /**
+   * Team leads by dashboard for the AI Assistant's "To:" picker (bot-teams
+   * TEAM-013), with running state and availability.
+   */
+  listLeads() {
+    const workspaceController = require("./workspaceController");
+    let workspaces = [];
+    try {
+      workspaces =
+        (
+          workspaceController.listWorkspacesForApplication(
+            this._getMainWindow(),
+            this._appId,
+          ) || {}
+        ).workspaces || [];
+    } catch (_e) {
+      workspaces = [];
+    }
+    const { summarizeLeads } = require("../bots/teamDirectory");
+    return summarizeLeads({
+      workspaces,
+      bots: this._store.list(),
+      availability: (id) => this.leadAvailability(id),
+      isRunning: (id) => this._runner.listActive().includes(id),
+    });
+  },
+
   // ---- Lead drafts (TEAM-005) -----------------------------------------------
 
   /**

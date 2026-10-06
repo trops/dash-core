@@ -5,7 +5,8 @@
  * Includes role labels for clear visual differentiation.
  */
 import { useContext } from "react";
-import { ThemeContext } from "@trops/dash-react";
+import { Caption2, ThemeContext, useStatusTokens } from "@trops/dash-react";
+import { leadLabel } from "../leadMessages";
 import { StreamingText } from "./StreamingText";
 import { ToolCallBlock } from "./ToolCallBlock";
 import { renderSafeMarkdown } from "../../../utils/safeMarkdown";
@@ -37,6 +38,7 @@ export const MessageBubble = ({
 }) => {
   const { role, content, toolCalls, hidden } = message;
   const { currentTheme } = useContext(ThemeContext) || {};
+  const statusTokens = useStatusTokens();
   // Prefer theme-provided panel colors so assistant chrome follows the
   // active app theme. Fall back to the original muted neutral if no
   // theme is in scope.
@@ -69,7 +71,7 @@ export const MessageBubble = ({
       <div className="flex justify-end mb-4">
         <div className="max-w-[85%]">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-indigo-400 mb-1 text-right">
-            You
+            {message.to ? `You → ${leadLabel(message.to)}` : "You"}
           </div>
           <div
             className={`px-3 py-2 rounded-lg text-sm text-gray-100 whitespace-pre-wrap break-words leading-relaxed ${userBubbleBg}`}
@@ -175,5 +177,42 @@ export const MessageBubble = ({
     );
   }
 
+  // A team lead's direct answer (bot-teams TEAM-013), labelled with the
+  // lead and its dashboard.
+  if (role === "lead") {
+    const text = typeof content === "string" ? content : textOfContent(content);
+    return (
+      <div className="mb-4" data-testid="lead-bubble">
+        <Caption2 block className="font-semibold uppercase tracking-wider mb-1">
+          {leadLabel(message.from)}
+        </Caption2>
+        <div
+          className={`text-sm leading-relaxed px-3 py-2 rounded-lg ${bubbleBg} ${
+            currentTheme?.["text-primary-medium"] || ""
+          }`}
+        >
+          {message.error ? (
+            <span className={statusTokens.error.icon}>{message.error}</span>
+          ) : text ? (
+            <AssistantTextContent text={text} />
+          ) : (
+            <Caption2 className="italic">
+              {message.streaming ? "Working…" : "No answer."}
+            </Caption2>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return null;
 };
+
+function textOfContent(content) {
+  return Array.isArray(content)
+    ? content
+        .filter((c) => c && c.type === "text")
+        .map((c) => c.text)
+        .join("")
+    : "";
+}

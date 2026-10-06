@@ -35,6 +35,8 @@ const BOTS_DISMISS_LEAD_INTRO = "bots-dismiss-lead-intro";
 const BOTS_GET_SETTINGS = "bots-get-settings";
 const BOTS_SET_SETTINGS = "bots-set-settings";
 const BOTS_ASK_LEAD = "bots-ask-lead";
+// AI Assistant recipient picker (TEAM-013): team leads by dashboard.
+const BOTS_LIST_LEADS = "bots-list-leads";
 // Bots view (TEAM-011): a bot run history.
 const BOTS_GET_RUNS = "bots-get-runs";
 // Bot monitor (TEAM-011 B3): the latest runs across every bot.
@@ -96,6 +98,7 @@ module.exports = {
   BOTS_GET_SETTINGS,
   BOTS_SET_SETTINGS,
   BOTS_ASK_LEAD,
+  BOTS_LIST_LEADS,
   BOTS_GET_RUNS,
   BOTS_LIST_RECENT_RUNS,
   BOTS_LIST_DRAFTS,

@@ -82,3 +82,25 @@ describe("botApi — lead IPC", () => {
     }
   });
 });
+
+describe("AI Assistant recipient picker wiring (TEAM-013)", () => {
+  it("listLeads builds the directory from saved dashboards via summarizeLeads", () => {
+    assert.match(
+      ctrl,
+      /listLeads\(\) \{[\s\S]{0,600}listWorkspacesForApplication[\s\S]{0,400}summarizeLeads\(/,
+    );
+    assert.match(ctrl, /availability: \(id\) => this\.leadAvailability\(id\)/);
+  });
+
+  it("exposes bots.listLeads and passes via through askLead", () => {
+    assert.match(
+      api,
+      /listLeads: \(\) => ipcRenderer\.invoke\(BOTS_LIST_LEADS\)/,
+    );
+    assert.match(
+      api,
+      /askLead: \(botId, question, continueConversation = false, via = null\)/,
+    );
+    assert.match(api, /continueConversation,\s*via,/);
+  });
+});

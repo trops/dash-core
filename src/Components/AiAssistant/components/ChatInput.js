@@ -49,7 +49,9 @@ export const ChatInput = ({ onSend, onStop, isLoading, disabled }) => {
       setQueued(true);
       return;
     }
-    onSend(trimmed);
+    // onSend returns false when it refused the message (e.g. the chosen
+    // team lead is paused) — keep the text so the user can resend it.
+    if (onSend(trimmed) === false) return;
     setInput("");
   };
 
@@ -58,7 +60,7 @@ export const ChatInput = ({ onSend, onStop, isLoading, disabled }) => {
     setQueued(false);
     const trimmed = input.trim();
     if (!trimmed) return;
-    onSend(trimmed);
+    if (onSend(trimmed) === false) return;
     setInput("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, queued]);
