@@ -240,6 +240,15 @@ function useStatusTokens() {
   };
 }
 
+function AlertBanner({ message, children, variant }) {
+  return React.createElement(
+    "div",
+    { role: "alert", "data-variant": variant },
+    message,
+    children,
+  );
+}
+
 function Code({ children, className = "" }) {
   return React.createElement(
     "code",
@@ -600,6 +609,7 @@ module.exports = {
   Caption2: Caption,
   Caption3: Caption,
   useStatusTokens,
+  AlertBanner,
   Code,
   Code2: Code,
   Code3: Code,

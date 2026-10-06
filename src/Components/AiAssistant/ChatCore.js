@@ -15,10 +15,26 @@
  * @param {function} onPublishEvent - Optional callback for publishing events (replaces useWidgetEvents)
  */
 import { useState, useEffect, useCallback, useRef } from "react";
-import { SubHeading2 } from "@trops/dash-react";
+import { AlertBanner, SubHeading2 } from "@trops/dash-react";
 import { ChatMessages } from "./components/ChatMessages";
 import { ChatInput } from "./components/ChatInput";
 import { ToolSelector } from "./components/ToolSelector";
+import { RecipientPicker, useTeamLeads } from "./components/RecipientPicker";
+import {
+  availabilityNotice,
+  buildLlmHistory,
+  hasLeadSession,
+} from "./leadMessages";
+import { appendAnswerText } from "../../utils/answerText";
+import { readableError } from "../Bots/botConversation";
+
+// The fields of a team lead stored on chat messages / the saved recipient.
+const pickLead = (lead) => ({
+  botId: lead.botId,
+  leadName: lead.leadName,
+  dashboardName: lead.dashboardName,
+  dashboardLabel: lead.dashboardLabel || lead.dashboardName,
+});
 
 let requestCounter = 0;
 function generateRequestId(uuid) {
@@ -63,8 +79,19 @@ export function ChatCore({
   // orient the user before they type anything (e.g. the widget
   // builder introducing the widget being edited).
   initialMessage = null,
+  // Offer a "To:" picker so the user can message a team lead directly
+  // (bot-teams TEAM-013). Only the AI Assistant panel turns this on.
+  enableLeadRecipients = false,
 }) {
   const mainApi = window.mainApi;
+
+  // Direct-to-lead state (TEAM-013). recipient null = the Assistant.
+  const [recipient, setRecipient] = useState(null);
+  const recipientRef = useRef(null);
+  recipientRef.current = recipient;
+  const [leadNotice, setLeadNotice] = useState(null);
+  const leadRunRef = useRef(null);
+  const { leads, loaded: leadsLoaded } = useTeamLeads(enableLeadRecipients);
 
   // Conversation state
   const [messages, setMessages] = useState([]);
@@ -114,7 +141,11 @@ export function ChatCore({
   // Persistence helpers
   const saveConversation = useCallback(
     (msgs, tools) => {
-      const data = { messages: msgs, enabledTools: tools || enabledTools };
+      const data = {
+        messages: msgs,
+        enabledTools: tools || enabledTools,
+        recipient: recipientRef.current,
+      };
       if (api && uuid) {
         api.storeData({
           data,
@@ -152,6 +183,9 @@ export function ChatCore({
           if (data?.enabledTools) {
             setEnabledTools(data.enabledTools);
           }
+          if (enableLeadRecipients && data?.recipient?.botId) {
+            setRecipient(data.recipient);
+          }
         },
         callbackError: () => {},
       });
@@ -165,6 +199,9 @@ export function ChatCore({
           }
           if (data?.enabledTools) {
             setEnabledTools(data.enabledTools);
+          }
+          if (enableLeadRecipients && data?.recipient?.botId) {
+            setRecipient(data.recipient);
           }
         }
       } catch (e) {
@@ -181,12 +218,15 @@ export function ChatCore({
           if (data?.enabledTools) {
             setEnabledTools(data.enabledTools);
           }
+          if (enableLeadRecipients && data?.recipient?.botId) {
+            setRecipient(data.recipient);
+          }
         }
       } catch (e) {
         /* ignore */
       }
     }
-  }, [api, uuid, persistKey, sessionKey]);
+  }, [api, uuid, persistKey, sessionKey, enableLeadRecipients]);
 
   // Discover connected MCP tools (only for anthropic backend)
   const refreshTools = useCallback(() => {
@@ -303,15 +343,189 @@ export function ChatCore({
     };
   }, [mainApi, onPublishEvent, saveConversation]);
 
+  // ---- Direct-to-lead messages (bot-teams TEAM-013) ----------------------
+
+  // Replace the lead's streaming placeholder with its final answer/error.
+  const finishLeadRun = useCallback(
+    (placeholderId, { content, error: leadError }) => {
+      const run = leadRunRef.current;
+      if (run && run.listenerId != null) {
+        mainApi?.bots?.removeListener?.(run.listenerId);
+      }
+      leadRunRef.current = null;
+      setMessages((prev) => {
+        const updated = prev.map((m) =>
+          m.id === placeholderId
+            ? {
+                ...m,
+                streaming: false,
+                content: content !== undefined ? content : m.content,
+                error: leadError || undefined,
+              }
+            : m,
+        );
+        saveConversation(updated);
+        return updated;
+      });
+      setIsLoading(false);
+    },
+    [mainApi, saveConversation],
+  );
+
+  // Send `text` straight to the selected team lead — the Assistant's model
+  // is not called. Returns false (text stays in the box) when the lead
+  // can't take it right now.
+  const sendToLead = useCallback(
+    (text) => {
+      const lead = leads.find((l) => l.botId === recipient.botId) || recipient;
+      const notice = availabilityNotice(lead);
+      if (notice) {
+        setLeadNotice(notice);
+        return false;
+      }
+      if (!mainApi?.bots?.askLead) {
+        setLeadNotice("Team leads aren't available in this window.");
+        return false;
+      }
+      setLeadNotice(null);
+      setError(null);
+
+      const target = pickLead(lead);
+      const placeholderId = `msg-lead-${Date.now()}`;
+      const continueConversation = hasLeadSession(messages, target.botId);
+      setMessages((prev) => [
+        ...prev,
+        { id: `msg-${Date.now()}`, role: "user", content: text, to: target },
+        {
+          id: placeholderId,
+          role: "lead",
+          from: target,
+          content: "",
+          streaming: true,
+        },
+      ]);
+      setIsLoading(true);
+
+      let streamed = "";
+      let afterTool = false;
+      const listenerId = mainApi.bots.onStream
+        ? mainApi.bots.onStream((payload) => {
+            if (!payload || payload.botId !== target.botId) return;
+            const event = payload.event || {};
+            if (event.type === "text" && event.text) {
+              streamed = appendAnswerText(streamed, event.text, { afterTool });
+              afterTool = false;
+              const now = streamed;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === placeholderId ? { ...m, content: now } : m,
+                ),
+              );
+            } else if (
+              event.type === "tool_call" ||
+              event.type === "tool_result"
+            ) {
+              afterTool = true;
+            }
+          })
+        : null;
+      leadRunRef.current = {
+        botId: target.botId,
+        listenerId,
+        placeholderId,
+        streamed: () => streamed,
+      };
+
+      Promise.resolve(
+        mainApi.bots.askLead(
+          target.botId,
+          text,
+          continueConversation,
+          "assistant",
+        ),
+      )
+        .then((record) => {
+          // Stop already finished this run.
+          if (
+            !leadRunRef.current ||
+            leadRunRef.current.placeholderId !== placeholderId
+          )
+            return;
+          if (record?.skipped) {
+            finishLeadRun(placeholderId, {
+              error: `${target.leadName} is busy with another run — try again when it finishes.`,
+            });
+          } else if (record?.error || record?.status === "failed") {
+            finishLeadRun(placeholderId, {
+              error:
+                readableError(String(record.error || "")) ||
+                `${target.leadName} couldn't answer.`,
+            });
+          } else {
+            finishLeadRun(placeholderId, {
+              content: record?.output || streamed,
+            });
+          }
+        })
+        .catch((e) => {
+          if (!leadRunRef.current) return;
+          finishLeadRun(placeholderId, {
+            error: e?.message || `${target.leadName} couldn't answer.`,
+          });
+        });
+      return true;
+    },
+    [leads, recipient, mainApi, messages, finishLeadRun],
+  );
+
+  // Stop waiting for the lead (AC9) and stop its run.
+  const stopLeadRun = useCallback(() => {
+    const run = leadRunRef.current;
+    if (!run) return false;
+    mainApi?.bots?.stop?.(run.botId);
+    const partial = run.streamed();
+    finishLeadRun(run.placeholderId, {
+      content: partial ? `${partial}\n\n(stopped)` : "(stopped)",
+    });
+    return true;
+  }, [mainApi, finishLeadRun]);
+
+  const handleRecipientChange = useCallback(
+    (lead) => {
+      const next = lead ? pickLead(lead) : null;
+      setRecipient(next);
+      recipientRef.current = next;
+      setLeadNotice(null);
+      saveConversation(messages);
+    },
+    [messages, saveConversation],
+  );
+
+  // The selected lead was removed or turned off → back to the Assistant.
+  useEffect(() => {
+    if (!enableLeadRecipients || !leadsLoaded || !recipient) return;
+    if (leads.some((l) => l.botId === recipient.botId)) return;
+    setLeadNotice(
+      `${recipient.leadName} is no longer available — messages go to the Assistant.`,
+    );
+    setRecipient(null);
+    recipientRef.current = null;
+  }, [enableLeadRecipients, leadsLoaded, leads, recipient]);
+
   // Send message. `options.hidden` marks the user message so
   // MessageBubble skips rendering it — useful for app-injected
   // priming prompts where the agent's reply should appear first,
   // but the prompt still needs to be in conversation history.
   const handleSend = useCallback(
     (text, options = {}) => {
+      if (enableLeadRecipients && recipient && !options.hidden) {
+        if (isLoading) return false;
+        return sendToLead(text);
+      }
       if (!mainApi?.llm || isLoading) return;
 
       setError(null);
+      setLeadNotice(null);
 
       const userMessage = {
         id: `msg-${Date.now()}`,
@@ -327,10 +541,14 @@ export function ChatCore({
         onPublishEvent("messageSent", { text });
       }
 
-      const apiMessages = updatedMessages.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      }));
+      // With lead recipients on, direct lead exchanges are folded in as
+      // labelled context (TEAM-013 AC10); otherwise unchanged.
+      const apiMessages = enableLeadRecipients
+        ? buildLlmHistory(updatedMessages)
+        : updatedMessages.map((msg) => ({
+            role: msg.role,
+            content: msg.content,
+          }));
 
       const allTools = [];
       const toolServerMap = {};
@@ -391,11 +609,15 @@ export function ChatCore({
       onPublishEvent,
       backend,
       isAnthropicBackend,
+      enableLeadRecipients,
+      recipient,
+      sendToLead,
     ],
   );
 
   // Stop streaming
   const handleStop = useCallback(() => {
+    if (stopLeadRun()) return;
     if (activeRequestId.current && mainApi?.llm) {
       mainApi.llm.abortRequest(activeRequestId.current);
 
@@ -428,7 +650,7 @@ export function ChatCore({
       activeRequestId.current = null;
       toolCallsRef.current = [];
     }
-  }, [mainApi, streamingText, saveConversation]);
+  }, [mainApi, streamingText, saveConversation, stopLeadRun]);
 
   // Auto-send an initial message once the chat is ready and empty.
   // Runs at most once per mount. Skipped if the conversation was
@@ -510,6 +732,10 @@ export function ChatCore({
     setError(null);
     setStreamingText("");
     setSessionActive(false);
+    // A new chat goes back to the Assistant (TEAM-013 AC5).
+    setRecipient(null);
+    recipientRef.current = null;
+    setLeadNotice(null);
     saveConversation([]);
     // Allow the initial-message auto-send to re-fire on the fresh
     // empty conversation. Without this reset, the greeting only ever
@@ -669,6 +895,26 @@ export function ChatCore({
         streamingText={streamingText}
         isLoading={isLoading}
       />
+
+      {/* Direct-to-lead recipient (TEAM-013) */}
+      {enableLeadRecipients && leadNotice && (
+        <div className="px-3 pt-2">
+          <AlertBanner
+            variant="warning"
+            size="compact"
+            message={leadNotice}
+            onClose={() => setLeadNotice(null)}
+          />
+        </div>
+      )}
+      {enableLeadRecipients && (
+        <RecipientPicker
+          leads={leads}
+          recipient={recipient}
+          onChange={handleRecipientChange}
+          disabled={isLoading}
+        />
+      )}
 
       {/* Input */}
       <ChatInput

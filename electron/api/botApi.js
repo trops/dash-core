@@ -35,6 +35,7 @@ const {
   BOTS_GET_SETTINGS,
   BOTS_SET_SETTINGS,
   BOTS_ASK_LEAD,
+  BOTS_LIST_LEADS,
   BOTS_GET_RUNS,
   BOTS_LIST_RECENT_RUNS,
   BOTS_LIST_DRAFTS,
@@ -189,12 +190,19 @@ const botApi = {
    * Ask a lead; `continueConversation` resumes its session for follow-ups.
    * Streams on onStream; resolves to the run record (answer in `output`).
    */
-  askLead: (botId, question, continueConversation = false) =>
+  askLead: (botId, question, continueConversation = false, via = null) =>
     ipcRenderer.invoke(BOTS_ASK_LEAD, {
       botId,
       question,
       continueConversation,
+      via,
     }),
+  /**
+   * Team leads by dashboard for the AI Assistant's "To:" picker (TEAM-013):
+   * [{ botId, leadName, dashboardId, dashboardName, dashboardLabel,
+   *    running, paused, overBudget }].
+   */
+  listLeads: () => ipcRenderer.invoke(BOTS_LIST_LEADS),
 
   /** Subscribe to streamed run events: { botId, event }. */
   onStream: (callback) => _addListener(BOT_STREAM, callback),

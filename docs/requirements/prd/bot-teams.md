@@ -1,7 +1,7 @@
 # PRD: Bot Teams — Dashboard Teams, Team Leads, and Installable Teams
 
 **Status:** Draft
-**Last Updated:** 2026-10-05
+**Last Updated:** 2026-10-06
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; team UI consumed by dash-electron)
 **Related PRDs:** [bot-factory.md](./bot-factory.md) (bots, events, memory, templates, access review), [dashboard-marketplace.md](./dashboard-marketplace.md), [mcp-providers.md](./mcp-providers.md), dash-electron `docs/requirements/prd/ai-assistant.md`
@@ -349,9 +349,9 @@ Want me to draft a bot that follows up on renewals?"
 
 **Acceptance Criteria:**
 
-- [ ] AC1: A `.team.json` manifest schema is defined (see Team Manifest Schema): metadata, shared install variables, the lead's brief, members by **role**, wiring between roles, memory keys, and a suggested budget.
+- [x] AC1: A `.team.json` manifest schema is defined (see Team Manifest Schema): metadata, shared install variables, the lead's brief, members by **role**, wiring between roles, memory keys, and a suggested budget.
 - [ ] AC2: Members are referenced as registry bot templates (`{ ref, version }`, bot-factory US-026) or embedded templates. Roles are team-local names (`planner`, `tracker`, `reporter`) and are the only way members refer to each other.
-- [ ] AC3: Wiring is expressed between roles and portable events: `{ role: "tracker", on: { role: "planner", event: "completed" } }`, `{ on: { role: "watcher", event: "tool.gmail.search_emails" } }`, or a widget event by package and widget name. It never contains bot ids, dashboard ids, or provider names.
+- [x] AC3: Wiring is expressed between roles and portable events: `{ role: "tracker", on: { role: "planner", event: "completed" } }`, `{ on: { role: "watcher", event: "tool.gmail.search_emails" } }`, or a widget event by package and widget name. It never contains bot ids, dashboard ids, or provider names.
 - [ ] AC4: **Export team** in the Bots tab builds the manifest from the current team, converting each member to a template (bot-factory US-026) and each bot-event subscription between members into role wiring, using the `source.ref` and `source.event` the event picker already stores. Install variables are suggested for values like project keys and channels.
 - [ ] AC5: Teams publish with `type: "bot-team"` through the existing publish workflow, gated by `shareable`. Publishing validates the manifest and flags high-risk combinations per member (bot-factory US-026 AC5).
 - [ ] AC6: A manifest never contains credentials, sessions, memory values, run history, grants, or local ids.
@@ -383,8 +383,8 @@ Want me to draft a bot that follows up on renewals?"
 - [ ] AC4: One **access review**, grouped by member (bot-factory US-029): the user checks tools per bot, and grants stay per bot. Unchecking a required tool marks that member Limited or not runnable without blocking the rest.
 - [ ] AC5: On install, each role becomes a **new, unique bot** (new id; `ref` = the member template's registry id) in the dashboard's team, **in setup state**. Wiring is resolved from roles to the new bots' event names (`bot:<ref>[<newBotId>].<event>`) and to this dashboard's widget instances.
 - [ ] AC6: The team's lead brief is applied to the dashboard's lead (created if needed). An installed team never replaces an existing lead's settings without asking.
-- [ ] AC7: A setup checklist (bot-factory US-027 AC5) completes setup. Members activate individually or all at once.
-- [ ] AC8: The installed team records its source (`teamRef`, version) and which bot fills which role.
+- [x] AC7: A setup checklist (bot-factory US-027 AC5) completes setup. Members activate individually or all at once.
+- [x] AC8: The installed team records its source (`teamRef`, version) and which bot fills which role.
 
 **Edge Cases:**
 
@@ -560,6 +560,73 @@ answers from today's runs.
 - [x] AC7: **Widgets can listen to bots** — Dashboard Config › Listeners lists this dashboard's bots as sources (Completed, Failed, tool events); a wired handler stores `bot:<ref>[<botId>].<event>`, which the runtime already delivers (bots publish on `widget-event:broadcast`). Bot sources are never pruned on load; a bot that's gone shows "The bot was deleted or moved to another dashboard."
 
 **Implementation notes (slice 1):** widgets in `src/Widgets/Bots/` (registered by dash-core's index; content components tested apart from the `Widget` frame), reusing `useTeamBots`, `botStatus`/`STATUS_DOT`, `readableError`, `toPlainText`, `triggerLabel`. Placement: `electron/utils/placeWidget.js` (pure; mirrors the Assistant's `add_widget` plus the full-grid row). `botController.addBotWidget` / `bindBotWidget` load, place / link (team-scoped), save and broadcast `workspace:saved`. "Open in Bots view" dispatches `dash:open-bots-view`, handled by DashboardStage's `openBotsView`.
+
+---
+
+**TEAM-013: Message a team lead directly from the AI Assistant**
+
+> As a team owner,
+> I want to pick a team lead from a list in the AI Assistant and send my message straight to it,
+> so that I can talk to any team without remembering lead names or which dashboard they belong to.
+
+**Priority:** P1
+**Status:** In Progress — slice 1 implemented (2026-10-06); slice 2 (@ shortcut, AC6) next
+
+**Context:** TEAM-004 already lets the Assistant reach leads, but only through the model: the user names a dashboard in prose, the Assistant calls `list_teams` / `ask_team_lead`, rewords the question, and relays (summarises) the answer. TEAM-013 adds an explicit recipient: messages to a selected lead go **directly** to the lead (decided 2026-10-06), as the Bots view's lead chat already does.
+
+**Acceptance Criteria:**
+
+- [ ] AC1: A **"To:"** recipient picker sits beside the Assistant's message box. Options: **Assistant** (default) and a **Team leads** group with one entry per dashboard that has a lead, labelled `<lead name> · <dashboard>` with a status dot (idle / running / paused / over budget). Dashboards without a lead are not listed.
+- [x] AC2: The list comes from a new main-process **team directory** call (`mainApi.bots.listLeads()` → `[{ botId, leadName, dashboardId, dashboardName, dashboardLabel, running, paused, overBudget }]`), built from the saved dashboards plus lead ids, `leadAvailability` and running state. It refreshes on `bot-list-changed` and run start/finish.
+- [ ] AC3: With a lead selected, **Send** calls `askLead(botId, text, { continueConversation, via: "assistant" })` directly — the Assistant model is **not** called. The user's bubble reads "You → `<lead>` · `<dashboard>`"; the lead's answer streams (`bot-stream` for that bot) into a **lead bubble** labelled `<lead> · <dashboard>`, joined with `appendAnswerText` like the Bots view.
+- [x] AC4: Follow-ups to a lead continue its session (`continueConversation: true` once that lead has answered in this chat) — including after switching to another recipient and back (changed 2026-10-06: keeping the lead's context is more useful than restarting it). **New chat** starts every lead fresh.
+- [x] AC5: The selected recipient shows in the "To:" picker above the message box (the picker is the chip), persists with the conversation, and resets to **Assistant** on **New chat**.
+- [ ] AC6: Typing **@** at the start of an empty message box opens the same list; choosing a lead sets the recipient and removes the "@".
+- [ ] AC7: A paused, over-budget or busy (already running) lead is not run: an inline notice says why (e.g. "Daily Brief Lead is paused — resume it in the Bots view") and the typed text stays in the box. A failed run shows its readable error in the lead bubble.
+- [ ] AC8: Lead exchanges are labelled "Asked via the AI Assistant" in the Bots view (as TEAM-004 runs are), and appear in the lead's conversation there.
+- [x] AC9: While a lead is answering, **Stop** stops the lead's run (`bots.stop`) and keeps any partial answer, marked "(stopped)".
+- [x] AC10: When the user next messages the **Assistant**, earlier direct lead exchanges in the thread are included in its history as labelled context ("You asked Daily Brief Lead (Daily Brief): …" / "Daily Brief Lead answered: …"), so "summarise what the lead said" works (decided 2026-10-06).
+
+**Edge Cases:**
+
+- No dashboards have a lead → the picker shows only Assistant, with a hint "Turn on a team lead in a dashboard's Bots view".
+- The selected lead is deleted or turned off mid-conversation → the recipient resets to Assistant with a notice; earlier lead bubbles stay.
+- A dashboard is renamed → labels update on the next directory refresh; earlier bubbles keep the name they were sent with.
+- Two dashboards with the same name → entries are disambiguated (as in the event picker).
+- Long answers (no run timeout exists) → the lead bubble shows "working… Ns" until done; Stop is available.
+
+**Technical Notes:**
+
+- **dash-core electron:** new `botController.listLeads()` + `BOTS_LIST_LEADS` channel and `botApi.listLeads`. The renderer currently has no team directory: `summarizeTeams` / `leadAvailability` are main-only.
+- **dash-electron:** register the `bots-list-leads` handler in `public/electron.js`; make the existing `bots-ask-lead` handler pass `via` through (it currently drops it).
+- **ChatCore:** messages gain an optional `from: { type: "lead", botId, leadName, dashboardName }`; `MessageBubble` renders lead bubbles (any other role currently renders nothing); `handleSend` routes lead-addressed text to `askLead` (not the LLM) and, when the Assistant is next addressed, folds earlier lead exchanges into its history as labelled user-role context (AC10); ChatInput gains the recipient picker.
+- The Assistant panel in dash-electron uses dash-core's `ChatCore`, so the UI change lands in dash-core; dash-electron only needs the IPC wiring and a dash-core bump.
+- `ask_team_lead`'s fan-out cap (5 per 2 minutes) does not apply here: each direct message is one explicit user action.
+
+**Implementation notes (slice 1, 2026-10-06):**
+
+- **Directory:** `summarizeLeads` in `electron/bots/teamDirectory.js` (pure, node-tested) — one entry per dashboard with a lead, numbered labels for same-named dashboards, tolerant of failing availability/running lookups. `botController.listLeads()` feeds it the saved dashboards (`workspaceController`, as `_loadWorkspace` does), `leadAvailability` and the runner's active set. `botApi.listLeads` / `BOTS_LIST_LEADS`; `botApi.askLead` gains a 4th `via` argument.
+- **Opt-in:** `ChatCore` takes `enableLeadRecipients` (default false) — only the dash-electron AI Assistant panel turns it on, so the widget builder chat and the Chat sample widget are unchanged (no picker, no `listLeads` IPC, history built exactly as before).
+- **Renderer:** `components/RecipientPicker.js` (`useTeamLeads` refreshes on `bot-list-changed` + `bot-run-active`; dash-react `SelectInput` with a "Team leads" option group). `leadMessages.js` (pure, jest-tested): `buildLlmHistory` folds lead exchanges into labelled user-role context and merges consecutive user entries; `availabilityNotice`; `hasLeadSession`. User messages to a lead carry `to: lead`; answers are `role: "lead"` with `from: lead`, streamed into a placeholder that keeps its id when it finishes (no remount). `ChatInput`'s `onSend` may return `false` to keep the text (refused send).
+- **dash-electron:** the `bots-ask-lead` handler forwards `via` only when it is `"assistant"`; new `bots-list-leads` handler.
+- **Verified in the app (2026-10-06):** 12 real leads listed; "Daily Brief (test) Lead" answered a direct question in a labelled bubble; its run recorded `trigger: "ask", via: "assistant"`.
+
+**Example Scenario:**
+
+```
+User opens the Assistant, clicks "To: Assistant ▾" and picks "Daily Brief Lead · Daily Brief (test)".
+Types "What did the inbox bot flag today?" and presses Enter.
+Expected: a "You → Daily Brief Lead · Daily Brief (test)" bubble, then a lead bubble streams the
+lead's answer; the Bots view for Daily Brief shows the exchange labelled "Asked via the AI Assistant".
+User asks "Any of those urgent?" — the lead answers with the previous context (same session).
+```
+
+**Definition of Done:**
+
+- [ ] Code implemented and reviewed
+- [ ] Unit tests pass (directory, routing, bubble rendering, availability notices)
+- [ ] Verified in the app (pick a lead, ask, follow up, paused lead, New chat)
+- [ ] Documentation updated
 
 ---
 
@@ -801,7 +868,9 @@ answers from today's runs.
 
 ### Open Questions
 
-None open. The six questions raised in the first draft were resolved on 2026-10-01 (see the last six rows of Decisions Made):
+None open. TEAM-013's three questions were resolved on 2026-10-06 (see the last three rows of Decisions Made): the Assistant sees direct lead exchanges as labelled context; the picker lists leads only; "All team leads" is deferred.
+
+The six questions raised in the first draft were resolved on 2026-10-01 (see the 2026-10-01 rows of Decisions Made):
 
 1. One team per dashboard, or several? → **One team per dashboard** (v1).
 2. Create leads automatically? → **Yes, for every dashboard, idle until engaged.**
@@ -828,6 +897,10 @@ None open. The six questions raised in the first draft were resolved on 2026-10-
 | 2026-10-01 | A lead defaults to the user's default model source, fast tier                       | Answering from team data is light work; no extra setup                    | John  |
 | 2026-10-01 | The Assistant can reach every team, with a capped fan-out per question              | Cross-team answers are useful; the cap bounds cost and reach              | John  |
 | 2026-10-01 | Unassigned (global) bots stay global and can be moved into a team                   | No forced migration; existing bots keep working                           | John  |
+| 2026-10-06 | TEAM-013: a lead picked in the Assistant gets the message directly (not via model)  | User's exact words, one run instead of two, no rewording of the answer    | John  |
+| 2026-10-06 | TEAM-013: the Assistant sees direct lead exchanges as labelled context              | "Summarise what the lead said" works; one thread                          | John  |
+| 2026-10-06 | TEAM-013: the picker lists team leads only                                          | Leads are the team front door; other bots later if wanted                 | John  |
+| 2026-10-06 | TEAM-013: "All team leads" option deferred (P2)                                     | ask_team_lead via the Assistant already fans out                          | John  |
 
 ---
 
@@ -929,3 +1002,5 @@ None open. The six questions raised in the first draft were resolved on 2026-10-
 | 1.9     | 2026-10-03 | John   | Text before/after a tool call no longer runs together            |
 | 1.10    | 2026-10-03 | John   | Dashboard Config restyle slice 1 (frame + list tabs)             |
 | 1.11    | 2026-10-03 | John   | Dashboard Config restyle slice 2 (card tabs, WidgetGrantRow)     |
+| 1.12    | 2026-10-06 | John   | Added TEAM-013 (message a lead directly from the Assistant)      |
+| 1.13    | 2026-10-06 | John   | TEAM-013 slice 1 implemented (picker, direct send, context)      |
