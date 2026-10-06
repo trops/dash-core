@@ -219,6 +219,27 @@ function Caption({ text, children, className = "", block = false }) {
   );
 }
 
+// Mirrors dash-react useStatusTokens() shape (Utils/statusColors.js), dark palette.
+function useStatusTokens() {
+  const make = (c) => ({
+    bg: `bg-${c}-950`,
+    text: `text-${c}-200`,
+    strongText: `text-${c}-100`,
+    border: `border-${c}-800`,
+    accentBorder: `border-${c}-500`,
+    icon: `text-${c}-400`,
+    solidBg: `bg-${c}-500`,
+    hoverBg: `hover:bg-${c}-900`,
+    hoverText: `hover:text-${c}-100`,
+  });
+  return {
+    error: make("red"),
+    success: make("green"),
+    warning: make("amber"),
+    info: make("blue"),
+  };
+}
+
 function Code({ children, className = "" }) {
   return React.createElement(
     "code",
@@ -578,6 +599,7 @@ module.exports = {
   Caption,
   Caption2: Caption,
   Caption3: Caption,
+  useStatusTokens,
   Code,
   Code2: Code,
   Code3: Code,
