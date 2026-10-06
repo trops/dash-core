@@ -4,6 +4,8 @@
  * Input bar with send button. Supports Enter to send, Shift+Enter for newline.
  */
 import { useState, useRef, useEffect } from "react";
+import { LeadMentionMenu } from "./LeadMentionMenu";
+import { filterRecipients } from "../leadMessages";
 
 // When the panel mounts while hidden/collapsed, scrollHeight is 0 — pinning
 // that as an inline height collapses the input to a sliver, so leave the
@@ -18,9 +20,36 @@ const autoResize = (el) => {
   el.style.height = Math.min(el.scrollHeight, 120) + "px";
 };
 
-export const ChatInput = ({ onSend, onStop, isLoading, disabled }) => {
+export const ChatInput = ({
+  onSend,
+  onStop,
+  isLoading,
+  disabled,
+  // @ shortcut (bot-teams TEAM-013 AC6). Only the AI Assistant passes
+  // these; without onPickRecipient an "@" is just text (widget chats,
+  // Slack-style @mentions).
+  leads = null,
+  onPickRecipient = null,
+}) => {
   const [input, setInput] = useState("");
   const textareaRef = useRef(null);
+
+  // The @ list is open while the box starts with "@" (and wasn't dismissed
+  // with Esc); the text after "@" filters it.
+  const [mentionDismissed, setMentionDismissed] = useState(false);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const mentionOn = !!onPickRecipient && Array.isArray(leads);
+  const mentionOpen = mentionOn && input.startsWith("@") && !mentionDismissed;
+  const mentionOptions = mentionOpen
+    ? filterRecipients(leads, input.slice(1))
+    : [];
+
+  const pickMention = (option) => {
+    onPickRecipient(option && !option.isAssistant ? option : null);
+    setInput("");
+    setMentionIndex(0);
+    setMentionDismissed(false);
+  };
 
   // Auto-resize; re-measure once the input's container actually gets laid
   // out (e.g. the panel is expanded).
@@ -66,12 +95,39 @@ export const ChatInput = ({ onSend, onStop, isLoading, disabled }) => {
   }, [isLoading, queued]);
 
   const handleChange = (e) => {
-    setInput(e.target.value);
+    const value = e.target.value;
+    setInput(value);
     // Clearing the box cancels a queued message.
-    if (!e.target.value.trim()) setQueued(false);
+    if (!value.trim()) setQueued(false);
+    // A fresh "@" (or a changed filter) re-opens the list from the top.
+    if (!value.startsWith("@")) setMentionDismissed(false);
+    setMentionIndex(0);
   };
 
   const handleKeyDown = (e) => {
+    if (mentionOpen) {
+      const count = mentionOptions.length;
+      if (e.key === "ArrowDown" && count) {
+        e.preventDefault();
+        setMentionIndex((i) => (i + 1) % count);
+        return;
+      }
+      if (e.key === "ArrowUp" && count) {
+        e.preventDefault();
+        setMentionIndex((i) => (i - 1 + count) % count);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMentionDismissed(true);
+        return;
+      }
+      if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
+        e.preventDefault();
+        if (count) pickMention(mentionOptions[mentionIndex] || null);
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -80,6 +136,13 @@ export const ChatInput = ({ onSend, onStop, isLoading, disabled }) => {
 
   return (
     <div className="flex flex-col gap-1 px-3 py-2 border-t border-gray-700/50">
+      {mentionOpen && (
+        <LeadMentionMenu
+          options={mentionOptions}
+          activeIndex={mentionIndex}
+          onPick={pickMention}
+        />
+      )}
       <div className="flex items-end gap-2">
         <textarea
           ref={textareaRef}

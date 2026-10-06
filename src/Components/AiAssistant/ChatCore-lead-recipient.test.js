@@ -216,4 +216,29 @@ describe("ChatCore — direct-to-lead (TEAM-013)", () => {
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(api.bots.listLeads).not.toHaveBeenCalled();
   });
+
+  test("@ shortcut: '@dai' + Enter sets the To: picker to that lead (AC6)", async () => {
+    const api = makeMainApi();
+    window.mainApi = api;
+    renderChat();
+    const select = await screen.findByRole("combobox");
+    await waitFor(() =>
+      expect(select.querySelectorAll("option").length).toBeGreaterThan(1),
+    );
+    fireEvent.change(input(), { target: { value: "@dai" } });
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    fireEvent.keyDown(input(), { key: "Enter", code: "Enter" });
+    expect(select).toHaveValue("lead_1");
+    expect(input()).toHaveValue("");
+    expect(api.bots.askLead).not.toHaveBeenCalled();
+    expect(api.llm.sendMessage).not.toHaveBeenCalled();
+  });
+
+  test("with lead recipients off (widget chats), @ stays plain text", async () => {
+    const api = makeMainApi();
+    window.mainApi = api;
+    renderChat({ enableLeadRecipients: false });
+    fireEvent.change(input(), { target: { value: "@channel ship it" } });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
 });

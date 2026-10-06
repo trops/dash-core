@@ -103,3 +103,29 @@ export function hasLeadSession(messages, botId) {
       m.from.botId === botId,
   );
 }
+
+/** The "Assistant" entry in the @ list (the default recipient). */
+export const ASSISTANT_RECIPIENT = Object.freeze({
+  botId: null,
+  leadName: "Assistant",
+  dashboardName: "",
+  dashboardLabel: "",
+  isAssistant: true,
+});
+
+/**
+ * Recipients for the @ shortcut (AC6): the Assistant and each lead whose
+ * lead or dashboard name contains `query` (any case), in list order.
+ */
+export function filterRecipients(leads, query) {
+  const q = String(query || "")
+    .trim()
+    .toLowerCase();
+  const all = [ASSISTANT_RECIPIENT, ...(leads || [])];
+  if (!q) return all;
+  return all.filter((r) =>
+    [r.leadName, r.dashboardLabel || r.dashboardName]
+      .filter(Boolean)
+      .some((s) => s.toLowerCase().includes(q)),
+  );
+}
