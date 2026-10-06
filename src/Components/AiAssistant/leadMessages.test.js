@@ -7,6 +7,8 @@ import {
   buildLlmHistory,
   availabilityNotice,
   hasLeadSession,
+  filterRecipients,
+  ASSISTANT_RECIPIENT,
 } from "./leadMessages";
 
 const lead = {
@@ -136,5 +138,53 @@ describe("hasLeadSession (AC4)", () => {
         "lead_1",
       ),
     ).toBe(false);
+  });
+});
+
+describe("filterRecipients (AC6 @ shortcut)", () => {
+  const leads = [
+    lead,
+    {
+      ...lead,
+      botId: "lead_2",
+      leadName: "Sales Lead",
+      dashboardName: "Sales",
+      dashboardLabel: "Sales",
+    },
+    {
+      ...lead,
+      botId: "lead_3",
+      leadName: "Ops Lead",
+      dashboardName: "Daily Ops",
+      dashboardLabel: "Daily Ops",
+    },
+  ];
+
+  test("empty query → Assistant first, then every lead", () => {
+    const out = filterRecipients(leads, "");
+    expect(out[0]).toBe(ASSISTANT_RECIPIENT);
+    expect(out.slice(1).map((l) => l.botId)).toEqual([
+      "lead_1",
+      "lead_2",
+      "lead_3",
+    ]);
+  });
+
+  test("matches the lead or dashboard name, any case", () => {
+    expect(filterRecipients(leads, "DAI").map((l) => l.botId)).toEqual([
+      "lead_1",
+      "lead_3",
+    ]);
+    expect(filterRecipients(leads, "sales").map((l) => l.botId)).toEqual([
+      "lead_2",
+    ]);
+  });
+
+  test("'assist' matches the Assistant entry", () => {
+    expect(filterRecipients(leads, "assist")).toEqual([ASSISTANT_RECIPIENT]);
+  });
+
+  test("no match → empty list", () => {
+    expect(filterRecipients(leads, "zzz")).toEqual([]);
   });
 });

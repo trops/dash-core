@@ -922,6 +922,10 @@ export function ChatCore({
         onStop={handleStop}
         isLoading={isLoading}
         disabled={!isReady}
+        // @ shortcut only where lead recipients are on (the AI Assistant);
+        // elsewhere "@" stays plain text (TEAM-013 AC6).
+        leads={enableLeadRecipients ? leads : null}
+        onPickRecipient={enableLeadRecipients ? handleRecipientChange : null}
       />
     </div>
   );

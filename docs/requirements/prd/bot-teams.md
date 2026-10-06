@@ -570,7 +570,7 @@ answers from today's runs.
 > so that I can talk to any team without remembering lead names or which dashboard they belong to.
 
 **Priority:** P1
-**Status:** In Progress — slice 1 implemented (2026-10-06); slice 2 (@ shortcut, AC6) next
+**Status:** Implemented (slice 1 + slice 2, 2026-10-06)
 
 **Context:** TEAM-004 already lets the Assistant reach leads, but only through the model: the user names a dashboard in prose, the Assistant calls `list_teams` / `ask_team_lead`, rewords the question, and relays (summarises) the answer. TEAM-013 adds an explicit recipient: messages to a selected lead go **directly** to the lead (decided 2026-10-06), as the Bots view's lead chat already does.
 
@@ -581,7 +581,7 @@ answers from today's runs.
 - [ ] AC3: With a lead selected, **Send** calls `askLead(botId, text, { continueConversation, via: "assistant" })` directly — the Assistant model is **not** called. The user's bubble reads "You → `<lead>` · `<dashboard>`"; the lead's answer streams (`bot-stream` for that bot) into a **lead bubble** labelled `<lead> · <dashboard>`, joined with `appendAnswerText` like the Bots view.
 - [x] AC4: Follow-ups to a lead continue its session (`continueConversation: true` once that lead has answered in this chat) — including after switching to another recipient and back (changed 2026-10-06: keeping the lead's context is more useful than restarting it). **New chat** starts every lead fresh.
 - [x] AC5: The selected recipient shows in the "To:" picker above the message box (the picker is the chip), persists with the conversation, and resets to **Assistant** on **New chat**.
-- [ ] AC6: Typing **@** at the start of an empty message box opens the same list; choosing a lead sets the recipient and removes the "@".
+- [x] AC6: Typing **@** at the start of an empty message box opens the same list (Assistant + leads), filtered by the text after "@" (lead or dashboard name); ↑/↓ move, Enter/Tab pick, Esc closes and keeps the text; choosing sets the recipient and clears the box. Only where lead recipients are on — in widget chats, and anywhere later in a message (Slack-style @mentions, emails), "@" stays plain text.
 - [ ] AC7: A paused, over-budget or busy (already running) lead is not run: an inline notice says why (e.g. "Daily Brief Lead is paused — resume it in the Bots view") and the typed text stays in the box. A failed run shows its readable error in the lead bubble.
 - [ ] AC8: Lead exchanges are labelled "Asked via the AI Assistant" in the Bots view (as TEAM-004 runs are), and appear in the lead's conversation there.
 - [x] AC9: While a lead is answering, **Stop** stops the lead's run (`bots.stop`) and keeps any partial answer, marked "(stopped)".
@@ -609,6 +609,8 @@ answers from today's runs.
 - **Opt-in:** `ChatCore` takes `enableLeadRecipients` (default false) — only the dash-electron AI Assistant panel turns it on, so the widget builder chat and the Chat sample widget are unchanged (no picker, no `listLeads` IPC, history built exactly as before).
 - **Renderer:** `components/RecipientPicker.js` (`useTeamLeads` refreshes on `bot-list-changed` + `bot-run-active`; dash-react `SelectInput` with a "Team leads" option group). `leadMessages.js` (pure, jest-tested): `buildLlmHistory` folds lead exchanges into labelled user-role context and merges consecutive user entries; `availabilityNotice`; `hasLeadSession`. User messages to a lead carry `to: lead`; answers are `role: "lead"` with `from: lead`, streamed into a placeholder that keeps its id when it finishes (no remount). `ChatInput`'s `onSend` may return `false` to keep the text (refused send).
 - **dash-electron:** the `bots-ask-lead` handler forwards `via` only when it is `"assistant"`; new `bots-list-leads` handler.
+  **Implementation notes (slice 2, 2026-10-06):** `filterRecipients` + `ASSISTANT_RECIPIENT` in `leadMessages.js`; `components/LeadMentionMenu.js` is a listbox (focus stays in the textarea; options pick on mousedown); `ChatInput` takes optional `leads` / `onPickRecipient` — without `onPickRecipient` the shortcut is off. Verified in the app: `@dai` → Daily Brief (test) Lead, Enter sets the To: picker and clears the box (light + dark).
+
 - **Verified in the app (2026-10-06):** 12 real leads listed; "Daily Brief (test) Lead" answered a direct question in a labelled bubble; its run recorded `trigger: "ask", via: "assistant"`.
 
 **Example Scenario:**
@@ -1004,3 +1006,4 @@ The six questions raised in the first draft were resolved on 2026-10-01 (see the
 | 1.11    | 2026-10-03 | John   | Dashboard Config restyle slice 2 (card tabs, WidgetGrantRow)     |
 | 1.12    | 2026-10-06 | John   | Added TEAM-013 (message a lead directly from the Assistant)      |
 | 1.13    | 2026-10-06 | John   | TEAM-013 slice 1 implemented (picker, direct send, context)      |
+| 1.14    | 2026-10-06 | John   | TEAM-013 slice 2 (@ shortcut); TEAM-013 Implemented              |
