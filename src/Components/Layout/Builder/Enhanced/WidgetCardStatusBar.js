@@ -8,8 +8,15 @@
  * Expanded: per-task detail with schedule description, last-fire time, fire count
  */
 
-import React, { useState, useEffect } from "react";
-import { FontAwesomeIcon } from "@trops/dash-react";
+import React, { useState, useEffect, useContext } from "react";
+import {
+  Caption2,
+  FontAwesomeIcon,
+  ThemeContext,
+  getStylesForItem,
+  themeObjects,
+  useStatusTokens,
+} from "@trops/dash-react";
 import { ComponentManager } from "../../../../ComponentManager";
 import { useWidgetSchedulerStatus } from "../../../../hooks/useWidgetSchedulerStatus";
 
@@ -106,6 +113,17 @@ function formatScheduleDescription(task) {
 export const WidgetCardStatusBar = ({ item, className = "" }) => {
   const [expanded, setExpanded] = useState(false);
   const [now, setNow] = useState(Date.now());
+  // Theme tokens + light/dark status colors so the strip follows the
+  // active theme (hardcoded grays rendered dark-only).
+  const { currentTheme } = useContext(ThemeContext);
+  const statusTokens = useStatusTokens();
+  const t = (key) => currentTheme?.[key] || "";
+  // The strip renders as a sibling below the widget's Panel, so it takes
+  // the Panel's corner radius and sits slightly apart from it rather
+  // than butting a square edge against the rounded card.
+  const panelRadius =
+    getStylesForItem(themeObjects.PANEL, currentTheme, {}).borderRadius ||
+    "rounded-lg";
 
   // Check if widget declares scheduledTasks in its config
   const widgetConfig = item?.component
@@ -160,30 +178,30 @@ export const WidgetCardStatusBar = ({ item, className = "" }) => {
 
   return (
     <div
-      className={`border-t border-gray-700/50 bg-gray-900/30 select-none ${className}`}
+      className={`mt-1 border ${panelRadius} overflow-hidden ${t("border-primary-dark")} ${t("bg-primary-dark")} select-none ${className}`}
     >
       {/* Collapsed strip */}
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className={`flex items-center w-full px-3 py-1 text-xs gap-2 cursor-pointer transition-colors hover:bg-gray-800/40 ${
-          allPaused ? "text-gray-500" : "text-blue-400"
-        }`}
+        className={`flex items-center w-full px-3 py-1 text-xs gap-2 cursor-pointer transition-colors ${t(
+          "hover-bg-primary-dark",
+        )} ${allPaused ? `${t("text-primary-medium")} opacity-60` : t("text-secondary-medium")}`}
       >
-        <FontAwesomeIcon icon="clock" className="text-[10px] shrink-0" />
+        <FontAwesomeIcon icon="clock" className="text-xs shrink-0" />
         <span className="truncate flex-1 text-left">{summaryText}</span>
         <FontAwesomeIcon
           icon={expanded ? "chevron-up" : "chevron-down"}
-          className="text-[10px] text-gray-500 shrink-0"
+          className="text-xs opacity-60 shrink-0"
         />
       </button>
 
       {/* Expanded detail */}
       {expanded && (
         <div className="px-3 pb-2 pt-1 space-y-2">
-          <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+          <Caption2 block className="font-semibold uppercase tracking-wider">
             Scheduled Tasks
-          </div>
+          </Caption2>
           {tasks.map((task) => {
             const remaining =
               task.enabled && task.nextFireAt ? task.nextFireAt - now : null;
@@ -196,51 +214,49 @@ export const WidgetCardStatusBar = ({ item, className = "" }) => {
                   <div className="flex items-center gap-1.5">
                     <span
                       className={`inline-block w-1.5 h-1.5 rounded-full ${
-                        task.enabled ? "bg-green-500" : "bg-gray-600"
+                        task.enabled
+                          ? statusTokens.success.solidBg
+                          : t("bg-primary-medium")
                       }`}
                     />
                     <span
-                      className={
-                        task.enabled ? "text-gray-200" : "text-gray-500"
-                      }
+                      className={`${t("text-primary-medium")} ${
+                        task.enabled ? "" : "opacity-60"
+                      }`}
                     >
                       {task.displayName || task.taskKey}
                     </span>
                     {!task.enabled && (
-                      <span className="text-gray-600 text-[10px]">
-                        (paused)
-                      </span>
+                      <Caption2 className="opacity-70">(paused)</Caption2>
                     )}
                   </div>
-                  <span className="text-gray-500 text-[10px]">
-                    {formatScheduleDescription(task)}
-                  </span>
+                  <Caption2>{formatScheduleDescription(task)}</Caption2>
                 </div>
 
                 {/* Detail line */}
                 {task.enabled && (
-                  <div className="text-[10px] text-gray-500 pl-4 flex items-center gap-1.5">
+                  <Caption2 block className="pl-4 flex items-center gap-1.5">
                     <span>Next in {formatCountdown(remaining)}</span>
                     {lastFiredText && (
                       <>
-                        <span className="text-gray-700">&middot;</span>
+                        <span className="opacity-50">&middot;</span>
                         <span>Last: {lastFiredText}</span>
                       </>
                     )}
                     {task.fireCount > 0 && (
                       <>
-                        <span className="text-gray-700">&middot;</span>
+                        <span className="opacity-50">&middot;</span>
                         <span>#{task.fireCount}</span>
                       </>
                     )}
-                  </div>
+                  </Caption2>
                 )}
 
                 {/* Paused detail: show schedule only */}
                 {!task.enabled && (
-                  <div className="text-[10px] text-gray-600 pl-4">
+                  <Caption2 block className="pl-4 opacity-70">
                     {formatScheduleDescription(task)}
-                  </div>
+                  </Caption2>
                 )}
               </div>
             );
