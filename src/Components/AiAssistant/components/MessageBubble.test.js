@@ -7,6 +7,7 @@ import React from "react";
 import "@testing-library/jest-dom";
 import { render } from "@testing-library/react";
 import { MessageBubble } from "./MessageBubble";
+import { ThemeContext } from "@trops/dash-react";
 
 const assistant = (text) => ({ role: "assistant", content: text });
 
@@ -42,5 +43,43 @@ describe("MessageBubble (assistant)", () => {
       <MessageBubble message={assistant("[click me](javascript:alert(1))")} />,
     );
     expect(container.innerHTML).not.toMatch(/javascript:/i);
+  });
+});
+
+describe("MessageBubble (user)", () => {
+  // Real theme keys (ThemeModel); "bg-primary-bright"/"bg-primary" don't
+  // exist, which left the user's bubble with no background.
+  const theme = {
+    "bg-primary-medium": "bg-theme-user",
+    "bg-secondary-dark": "bg-theme-assistant",
+    "text-primary-medium": "text-theme-body",
+  };
+  const renderUser = (message) =>
+    render(
+      <ThemeContext.Provider value={{ currentTheme: theme }}>
+        <MessageBubble
+          message={{ role: "user", content: "whats the latest?", ...message }}
+        />
+      </ThemeContext.Provider>,
+    );
+
+  it("draws the user's message in a themed rounded bubble", () => {
+    const { getByText } = renderUser();
+    const bubble = getByText("whats the latest?");
+    expect(bubble.className).toMatch(/bg-theme-user/);
+    expect(bubble.className).toMatch(/rounded-lg/);
+    expect(bubble.className).toMatch(/text-theme-body/);
+  });
+
+  it("keeps the bubble for messages sent to a team lead", () => {
+    const { getByText } = renderUser({
+      to: {
+        botId: "l",
+        leadName: "Algolia Search Lead",
+        dashboardName: "Algolia Search",
+        dashboardLabel: "Algolia Search",
+      },
+    });
+    expect(getByText("whats the latest?").className).toMatch(/bg-theme-user/);
   });
 });
