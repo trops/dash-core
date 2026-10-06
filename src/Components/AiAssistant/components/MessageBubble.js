@@ -43,8 +43,11 @@ export const MessageBubble = ({
     currentTheme?.["bg-secondary-dark"] ||
     currentTheme?.["bg-primary-dark"] ||
     "";
-  const userBubbleBg =
-    currentTheme?.["bg-primary-bright"] || currentTheme?.["bg-primary"] || "";
+  // The user's bubble uses the primary surface so it stands apart from the
+  // Assistant/lead bubbles (secondary). "bg-primary-medium" is a real
+  // ThemeModel key; the old "bg-primary-bright"/"bg-primary" don't exist,
+  // which left the user's text with no bubble at all.
+  const userBubbleBg = currentTheme?.["bg-primary-medium"] || "";
   const bubbleText = currentTheme?.["text-primary-medium"] || "";
 
   // App-injected priming messages (e.g. widget-builder "Hello…" seed)
