@@ -3,7 +3,8 @@
  *
  * Scrollable message list that auto-scrolls to the bottom on new messages.
  */
-import { useEffect, useRef } from "react";
+import { useContext, useEffect, useRef } from "react";
+import { Caption2, ThemeContext } from "@trops/dash-react";
 import { MessageBubble } from "./MessageBubble";
 
 export const ChatMessages = ({
@@ -13,6 +14,8 @@ export const ChatMessages = ({
   isLoading = false,
 }) => {
   const scrollRef = useRef(null);
+  const { currentTheme } = useContext(ThemeContext) || {};
+  const t = (key) => currentTheme?.[key] || "";
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -22,10 +25,12 @@ export const ChatMessages = ({
 
   if (messages.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center text-gray-600 text-sm">
+      <div className="flex-1 flex items-center justify-center">
         <div className="text-center space-y-1">
           <div className="text-2xl">{"\u{1F4AC}"}</div>
-          <div>Send a message to start chatting</div>
+          <Caption2 block className="text-sm">
+            Send a message to start chatting
+          </Caption2>
         </div>
       </div>
     );
@@ -55,21 +60,34 @@ export const ChatMessages = ({
         !streamingRequestId &&
         messages[messages.length - 1]?.role === "user" && (
           <div className="mb-4">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
+            <Caption2
+              block
+              className="font-semibold uppercase tracking-wider mb-1"
+            >
               Assistant
-            </div>
-            <div className="text-sm leading-relaxed px-3 py-2 rounded-lg bg-gray-800/40 text-gray-500 italic flex items-center gap-2">
+            </Caption2>
+            <div
+              className={`text-sm leading-relaxed px-3 py-2 rounded-lg italic flex items-center gap-2 opacity-70 ${t(
+                "bg-primary-dark",
+              )} ${t("text-primary-medium")}`}
+            >
               <span className="inline-flex gap-0.5">
                 <span
-                  className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce"
+                  className={`w-1.5 h-1.5 rounded-full animate-bounce ${t(
+                    "bg-primary-medium",
+                  )}`}
                   style={{ animationDelay: "0ms" }}
                 />
                 <span
-                  className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce"
+                  className={`w-1.5 h-1.5 rounded-full animate-bounce ${t(
+                    "bg-primary-medium",
+                  )}`}
                   style={{ animationDelay: "150ms" }}
                 />
                 <span
-                  className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce"
+                  className={`w-1.5 h-1.5 rounded-full animate-bounce ${t(
+                    "bg-primary-medium",
+                  )}`}
                   style={{ animationDelay: "300ms" }}
                 />
               </span>

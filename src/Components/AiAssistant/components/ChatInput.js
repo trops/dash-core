@@ -3,7 +3,8 @@
  *
  * Input bar with send button. Supports Enter to send, Shift+Enter for newline.
  */
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useContext } from "react";
+import { Button, Caption2, ThemeContext } from "@trops/dash-react";
 import { LeadMentionMenu } from "./LeadMentionMenu";
 import { filterRecipients } from "../leadMessages";
 
@@ -31,6 +32,8 @@ export const ChatInput = ({
   leads = null,
   onPickRecipient = null,
 }) => {
+  const { currentTheme } = useContext(ThemeContext) || {};
+  const t = (key) => currentTheme?.[key] || "";
   const [input, setInput] = useState("");
   const textareaRef = useRef(null);
 
@@ -135,7 +138,11 @@ export const ChatInput = ({
   };
 
   return (
-    <div className="flex flex-col gap-1 px-3 py-2 border-t border-gray-700/50">
+    <div
+      className={`flex flex-col gap-1 px-3 py-2 border-t ${t(
+        "border-primary-dark",
+      )}`}
+    >
       {mentionOpen && (
         <LeadMentionMenu
           options={mentionOptions}
@@ -152,30 +159,22 @@ export const ChatInput = ({
           placeholder="Type a message..."
           disabled={disabled}
           rows={1}
-          className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-500 resize-none disabled:opacity-50"
+          className={`flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none resize-none disabled:opacity-50 ${t(
+            "bg-primary-dark",
+          )} ${t("border-primary-dark")} ${t("text-primary-medium")}`}
         />
         {isLoading ? (
-          <button
-            onClick={onStop}
-            className="px-3 py-2 rounded-lg bg-red-700 hover:bg-red-600 text-white text-sm font-medium transition-colors shrink-0"
-          >
-            Stop
-          </button>
+          <Button title="Stop" danger onClick={onStop} className="shrink-0" />
         ) : (
-          <button
+          <Button
+            title="Send"
             onClick={handleSend}
             disabled={!input.trim() || disabled}
-            className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors shrink-0"
-          >
-            Send
-          </button>
+            className="shrink-0"
+          />
         )}
       </div>
-      {queued && (
-        <span className="text-xs text-gray-500">
-          Sends when the current reply finishes
-        </span>
-      )}
+      {queued && <Caption2>Sends when the current reply finishes</Caption2>}
     </div>
   );
 };

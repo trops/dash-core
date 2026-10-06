@@ -20,11 +20,9 @@ function AssistantTextContent({ text }) {
 
   return (
     <div
-      className="prose prose-invert prose-sm max-w-none
+      className="prose prose-sm max-w-none
                 prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2
-                prose-li:my-0.5
-                prose-pre:bg-black/40 prose-pre:text-gray-300 prose-code:text-indigo-300
-                prose-a:text-indigo-400 leading-relaxed"
+                prose-li:my-0.5 leading-relaxed"
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
@@ -39,17 +37,15 @@ export const MessageBubble = ({
   const { role, content, toolCalls, hidden } = message;
   const { currentTheme } = useContext(ThemeContext) || {};
   const statusTokens = useStatusTokens();
-  // Prefer theme-provided panel colors so assistant chrome follows the
-  // active app theme. Fall back to the original muted neutral if no
-  // theme is in scope.
+  // Theme-provided colors so the chat follows the active light/dark
+  // theme. No hardcoded fallbacks — they only read correctly on dark.
   const bubbleBg =
     currentTheme?.["bg-secondary-dark"] ||
     currentTheme?.["bg-primary-dark"] ||
-    "bg-gray-800/40";
+    "";
   const userBubbleBg =
-    currentTheme?.["bg-primary-bright"] ||
-    currentTheme?.["bg-primary"] ||
-    "bg-indigo-700/40";
+    currentTheme?.["bg-primary-bright"] || currentTheme?.["bg-primary"] || "";
+  const bubbleText = currentTheme?.["text-primary-medium"] || "";
 
   // App-injected priming messages (e.g. widget-builder "Hello…" seed)
   // are kept in state for conversation continuity but suppressed from
@@ -69,12 +65,15 @@ export const MessageBubble = ({
 
     return (
       <div className="flex justify-end mb-4">
-        <div className="max-w-[85%]">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-indigo-400 mb-1 text-right">
+        <div className="max-w-md">
+          <Caption2
+            block
+            className="font-semibold uppercase tracking-wider mb-1 text-right"
+          >
             {message.to ? `You → ${leadLabel(message.to)}` : "You"}
-          </div>
+          </Caption2>
           <div
-            className={`px-3 py-2 rounded-lg text-sm text-gray-100 whitespace-pre-wrap break-words leading-relaxed ${userBubbleBg}`}
+            className={`px-3 py-2 rounded-lg text-sm whitespace-pre-wrap break-words leading-relaxed ${userBubbleBg} ${bubbleText}`}
           >
             {text}
           </div>
@@ -133,13 +132,16 @@ export const MessageBubble = ({
       if (isLast) {
         return (
           <div className="mb-4">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
-              Assistant
-            </div>
-            <div
-              className={`text-sm leading-relaxed px-3 py-2 rounded-lg text-gray-500 italic ${bubbleBg}`}
+            <Caption2
+              block
+              className="font-semibold uppercase tracking-wider mb-1"
             >
-              Thinking...
+              Assistant
+            </Caption2>
+            <div
+              className={`text-sm leading-relaxed px-3 py-2 rounded-lg ${bubbleBg}`}
+            >
+              <Caption2 className="italic">Thinking...</Caption2>
             </div>
           </div>
         );
@@ -149,14 +151,14 @@ export const MessageBubble = ({
 
     return (
       <div className="mb-4">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
+        <Caption2 block className="font-semibold uppercase tracking-wider mb-1">
           Assistant
-        </div>
+        </Caption2>
         <div
-          className={`text-sm leading-relaxed px-3 py-2 rounded-lg ${bubbleBg}`}
+          className={`text-sm leading-relaxed px-3 py-2 rounded-lg ${bubbleBg} ${bubbleText}`}
         >
           {isStreaming && (
-            <div className="text-gray-200">
+            <div>
               <StreamingText text={streamingText} isStreaming={true} />
             </div>
           )}
@@ -187,9 +189,7 @@ export const MessageBubble = ({
           {leadLabel(message.from)}
         </Caption2>
         <div
-          className={`text-sm leading-relaxed px-3 py-2 rounded-lg ${bubbleBg} ${
-            currentTheme?.["text-primary-medium"] || ""
-          }`}
+          className={`text-sm leading-relaxed px-3 py-2 rounded-lg ${bubbleBg} ${bubbleText}`}
         >
           {message.error ? (
             <span className={statusTokens.error.icon}>{message.error}</span>

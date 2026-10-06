@@ -179,8 +179,13 @@ describe("ChatCore — direct-to-lead (TEAM-013)", () => {
     renderChat();
     await pick("lead_2");
     send("Status?");
-    expect(await screen.findByRole("alert")).toHaveTextContent(
+    // Other banners (e.g. "No MCP tools connected") are alerts too.
+    const notice = await screen.findByText(
       "Sales Lead is paused — resume it in the Bots view.",
+    );
+    expect(notice.closest('[role="alert"]')).toHaveAttribute(
+      "data-variant",
+      "warning",
     );
     expect(api.bots.askLead).not.toHaveBeenCalled();
     expect(input()).toHaveValue("Status?");
