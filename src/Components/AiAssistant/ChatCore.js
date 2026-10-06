@@ -14,8 +14,14 @@
  * @param {string} persistKey - Optional localStorage key for persistence when api is not available
  * @param {function} onPublishEvent - Optional callback for publishing events (replaces useWidgetEvents)
  */
-import { useState, useEffect, useCallback, useRef } from "react";
-import { AlertBanner, SubHeading2 } from "@trops/dash-react";
+import { useState, useEffect, useCallback, useRef, useContext } from "react";
+import {
+  AlertBanner,
+  Button3,
+  SubHeading2,
+  ThemeContext,
+  useStatusTokens,
+} from "@trops/dash-react";
 import { ChatMessages } from "./components/ChatMessages";
 import { ChatInput } from "./components/ChatInput";
 import { ToolSelector } from "./components/ToolSelector";
@@ -84,6 +90,9 @@ export function ChatCore({
   enableLeadRecipients = false,
 }) {
   const mainApi = window.mainApi;
+  const { currentTheme } = useContext(ThemeContext) || {};
+  const t = (key) => currentTheme?.[key] || "";
+  const statusTokens = useStatusTokens();
 
   // Direct-to-lead state (TEAM-013). recipient null = the Assistant.
   const [recipient, setRecipient] = useState(null);
@@ -763,97 +772,105 @@ export function ChatCore({
     isAnthropicBackend && servers.some((s) => s.tools?.length > 0);
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden bg-gray-900 text-gray-200">
+    <div
+      className={`flex flex-col flex-1 overflow-hidden ${t(
+        "bg-primary-very-dark",
+      )} ${t("text-primary-medium")}`}
+    >
       {/* Header — only shown when title is provided */}
       {title ? (
-        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700/50 shrink-0">
+        <div
+          className={`flex items-center justify-between px-3 py-2 border-b shrink-0 ${t(
+            "border-primary-dark",
+          )}`}
+        >
           <div className="flex items-center gap-2">
             <SubHeading2 title={title} />
             {isCliBackend && sessionActive && (
               <span
-                className="inline-block w-2 h-2 rounded-full bg-green-400"
+                className={`inline-block w-2 h-2 rounded-full ${statusTokens.success.solidBg}`}
                 title="CLI session active"
               />
             )}
           </div>
           <div className="flex items-center gap-1">
-            <button
-              onClick={handleNewChat}
-              className="px-2 py-1 text-xs rounded bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
-            >
+            <Button3 size="sm" onClick={handleNewChat}>
               New Chat
-            </button>
+            </Button3>
           </div>
         </div>
       ) : (
         <div className="flex items-center justify-end px-3 py-1 shrink-0">
-          <button
-            onClick={handleNewChat}
-            className="px-2 py-1 text-xs rounded bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
-          >
+          <Button3 size="sm" onClick={handleNewChat}>
             New Chat
-          </button>
+          </Button3>
         </div>
       )}
 
       {/* Error banner */}
       {error && (
-        <div className="mx-3 mt-2 p-2 bg-red-900/30 border border-red-700 rounded text-red-300 text-xs">
-          {error}
-          <button
-            onClick={() => setError(null)}
-            className="ml-2 text-red-400 hover:text-red-300"
-          >
-            Dismiss
-          </button>
+        <div className="mx-3 mt-2">
+          <AlertBanner
+            variant="error"
+            size="compact"
+            message={error}
+            onClose={() => setError(null)}
+          />
         </div>
       )}
 
       {/* Anthropic API key warning */}
       {isAnthropicBackend && !apiKey && (
-        <div className="mx-3 mt-2 p-2 bg-yellow-900/30 border border-yellow-700 rounded text-yellow-300 text-xs">
-          Add an Anthropic API key in Settings &gt; AI Assistant to start
-          chatting.
+        <div className="mx-3 mt-2">
+          <AlertBanner
+            variant="warning"
+            size="compact"
+            message="Add an Anthropic API key in Settings > AI Assistant to start chatting."
+          />
         </div>
       )}
 
       {/* CLI checking state */}
       {isCliBackend && cliAvailable === null && (
-        <div className="mx-3 mt-2 p-2 bg-gray-800/50 border border-gray-700 rounded text-gray-400 text-xs">
-          Checking for Claude Code CLI...
+        <div className="mx-3 mt-2">
+          <AlertBanner
+            variant="info"
+            size="compact"
+            message="Checking for Claude Code CLI..."
+          />
         </div>
       )}
 
       {/* CLI setup panel */}
       {isCliBackend && cliAvailable === false && (
-        <div className="mx-3 mt-2 p-3 bg-yellow-900/30 border border-yellow-700 rounded text-yellow-300 text-xs">
-          <p className="font-semibold mb-2">Claude Code CLI not found</p>
-          <ol className="list-decimal list-inside space-y-1 mb-3 text-yellow-300/90">
-            <li>
-              Download Claude Code from{" "}
-              <button
-                onClick={() =>
-                  mainApi?.shell?.openExternal?.("https://claude.ai/download")
-                }
-                className="underline hover:text-yellow-200 font-mono"
-              >
-                claude.ai/download
-              </button>
-            </li>
-            <li>
-              Open your terminal and run{" "}
-              <span className="font-mono bg-yellow-900/50 px-1 rounded">
-                claude auth login
-              </span>
-            </li>
-            <li>Complete authentication in your browser</li>
-          </ol>
-          <button
-            onClick={handleCheckCliAgain}
-            className="px-3 py-1 text-xs rounded bg-yellow-800/60 hover:bg-yellow-700/60 text-yellow-200 border border-yellow-600/50 transition-colors"
+        <div className="mx-3 mt-2">
+          <AlertBanner
+            variant="warning"
+            size="compact"
+            title="Claude Code CLI not found"
           >
-            Check Again
-          </button>
+            <ol className="list-decimal list-inside space-y-1 mb-2">
+              <li>
+                Download Claude Code from{" "}
+                <button
+                  onClick={() =>
+                    mainApi?.shell?.openExternal?.("https://claude.ai/download")
+                  }
+                  className="underline font-mono hover:opacity-80"
+                >
+                  claude.ai/download
+                </button>
+              </li>
+              <li>
+                Open your terminal and run{" "}
+                <span className="font-mono">claude auth login</span>
+              </li>
+              <li>Complete authentication in your browser</li>
+            </ol>
+            <Button3 size="sm" onClick={handleCheckCliAgain}>
+              Check Again
+            </Button3>
+          </AlertBanner>
         </div>
       )}
 
@@ -863,17 +880,23 @@ export function ChatCore({
         !hasTools &&
         apiKey &&
         messages.length === 0 && (
-          <div className="mx-3 mt-2 p-2 bg-gray-800/50 border border-gray-700 rounded text-gray-400 text-xs">
-            No MCP tools connected. Connect providers (GitHub, Slack, etc.) to
-            enable tool-use.
+          <div className="mx-3 mt-2">
+            <AlertBanner
+              variant="info"
+              size="compact"
+              message="No MCP tools connected. Connect providers (GitHub, Slack, etc.) to enable tool-use."
+            />
           </div>
         )}
 
       {/* CLI tools info */}
       {isCliBackend && cliAvailable && messages.length === 0 && (
-        <div className="mx-3 mt-2 p-2 bg-gray-800/50 border border-gray-700 rounded text-gray-400 text-xs">
-          Using Claude Code CLI. Your configured MCP tools pass through
-          automatically.
+        <div className="mx-3 mt-2">
+          <AlertBanner
+            variant="info"
+            size="compact"
+            message="Using Claude Code CLI. Your configured MCP tools pass through automatically."
+          />
         </div>
       )}
 

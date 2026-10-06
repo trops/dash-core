@@ -148,7 +148,7 @@ function Button2({ title, onClick, disabled }) {
   );
 }
 
-function Button3({ title, onClick, disabled, ariaLabel, tooltip }) {
+function Button3({ title, children, onClick, disabled, ariaLabel, tooltip }) {
   // Mirrors dash-react ≥1.0.58: ariaLabel → aria-label, tooltip → title attr.
   return React.createElement(
     "button",
@@ -158,7 +158,7 @@ function Button3({ title, onClick, disabled, ariaLabel, tooltip }) {
       "aria-label": ariaLabel,
       title: tooltip,
     },
-    title,
+    children !== undefined ? children : title,
   );
 }
 
@@ -194,11 +194,11 @@ function FontAwesomeIcon({ icon, className, onClick }) {
   });
 }
 
-function Button({ title, onClick, disabled }) {
+function Button({ title, children, onClick, disabled }) {
   return React.createElement(
     "button",
     { onClick: onClick, disabled: disabled },
-    title,
+    children !== undefined ? children : title,
   );
 }
 
