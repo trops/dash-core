@@ -731,3 +731,4 @@ const cliController = {
 
 module.exports = cliController;
 module.exports.buildClaudeCliArgs = buildClaudeCliArgs;
+module.exports.resolveCliBinary = resolveCliBinary;

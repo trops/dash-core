@@ -4,7 +4,7 @@
  */
 "use strict";
 
-const { describe, it, afterEach } = require("node:test");
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const claudeAgentEngine = require("./claudeAgentEngine");
 
@@ -45,8 +45,14 @@ function ctx(over = {}) {
   };
 }
 
+// No real `which claude` in tests: default to "not installed".
+beforeEach(() => {
+  claudeAgentEngine.__setCliResolverForTest(() => null);
+});
+
 afterEach(() => {
   claudeAgentEngine.__setQueryForTest(null);
+  claudeAgentEngine.__setCliResolverForTest(null);
   captured = null;
 });
 
@@ -323,5 +329,60 @@ describe("claudeAgentEngine", () => {
     assert.equal(events.length, 1);
     assert.equal(events[0].type, "error");
     assert.match(events[0].message, /boom/);
+  });
+
+  describe("Claude CLI binary", () => {
+    it("runs the user's installed claude when one is found", async () => {
+      claudeAgentEngine.__setCliResolverForTest(
+        () => "/Users/me/.local/bin/claude",
+      );
+      stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+      await collect(claudeAgentEngine.run(ctx()));
+      assert.equal(
+        captured.options.pathToClaudeCodeExecutable,
+        "/Users/me/.local/bin/claude",
+      );
+    });
+
+    it("falls back to the SDK's bundled CLI when none is installed", async () => {
+      stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+      await collect(claudeAgentEngine.run(ctx()));
+      assert.equal("pathToClaudeCodeExecutable" in captured.options, false);
+    });
+
+    it("skips a Windows .cmd shim the SDK can't spawn", () => {
+      assert.equal(
+        claudeAgentEngine.usableCliPath(
+          "C:\\Users\\me\\AppData\\Roaming\\npm\\claude.cmd",
+          "win32",
+        ),
+        null,
+      );
+      assert.equal(
+        claudeAgentEngine.usableCliPath(
+          "C:\\Users\\me\\.local\\bin\\claude.exe",
+          "win32",
+        ),
+        "C:\\Users\\me\\.local\\bin\\claude.exe",
+      );
+      assert.equal(
+        claudeAgentEngine.usableCliPath("/usr/local/bin/claude", "darwin"),
+        "/usr/local/bin/claude",
+      );
+      assert.equal(claudeAgentEngine.usableCliPath(null, "darwin"), null);
+    });
+
+    it("explains a missing bundled CLI in plain words", async () => {
+      claudeAgentEngine.__setQueryForTest(() => {
+        throw new Error(
+          "Native CLI binary for darwin-x64 not found. Reinstall @anthropic-ai/claude-agent-sdk without --omit=optional, or set options.pathToClaudeCodeExecutable.",
+        );
+      });
+      const events = await collect(claudeAgentEngine.run(ctx()));
+      assert.equal(events[0].type, "error");
+      assert.equal(events[0].code, "CLAUDE_CLI_NOT_FOUND");
+      assert.match(events[0].message, /Claude Code CLI not found/);
+      assert.doesNotMatch(events[0].message, /pathToClaudeCodeExecutable/);
+    });
   });
 });
