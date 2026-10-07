@@ -68,16 +68,17 @@ function strongKeywords(keywords) {
 
 /**
  * How well `text` fits the capability: the number of keywords it contains,
- * or 0 unless it contains at least half of them including a specific
- * (non-weak) one — so "send SMS" doesn't match every messaging provider.
+ * or 0 unless it contains at least half of the specific (non-weak) ones —
+ * so "send SMS" doesn't match every messaging provider, and extra words in a
+ * longer request ("… to a local file") don't hide a good match.
  */
 function score(text, keywords) {
   const hay = String(text || "").toLowerCase();
-  const hits = keywords.filter((k) => hay.includes(k) || hay.includes(stem(k)));
+  const has = (k) => hay.includes(k) || hay.includes(stem(k));
+  const hits = keywords.filter(has);
   if (!hits.length) return 0;
-  const strong = keywords.filter((k) => !isWeak(k));
-  if (strong.length && !hits.some((k) => !isWeak(k))) return 0;
-  if (hits.length < Math.ceil(keywords.length / 2)) return 0;
+  const specific = strongKeywords(keywords);
+  if (specific.filter(has).length < Math.ceil(specific.length / 2)) return 0;
   return hits.length;
 }
 

@@ -1,6 +1,6 @@
 # PRD: Bot Capabilities — Image Results, Web Fetch, and Finding Providers
 
-**Status:** In Progress (Phases 1–2 implemented; Phase 3 slice 3a implemented)
+**Status:** In Progress (Phases 1–3 implemented; Phase 4 / P2 not started)
 **Last Updated:** 2026-10-07
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; dash-electron consumes it via a version bump)
@@ -299,12 +299,12 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 > so that I can decide what to add without researching.
 
 **Priority:** P1
-**Status:** In Progress (data done in slice 3a; review UI in 3b)
+**Status:** Implemented
 
 **Acceptance Criteria:**
 
 - [x] AC1: `propose_bot` can attach `suggestions` — provider ids returned by `find_providers` — to a missing capability. _(As a separate `gaps: [{ need, suggestions: [id] }]` field rather than objects inside `needs`: a string-or-object union becomes an untyped "any" on the Claude Code engine's tool schema, so leads there wouldn't see the shape. `needs` stays a list of strings.)_
-- [ ] AC2: The draft review shows each need with its suggestions and their tier labels; vetted and built-in suggestions come first. _(Data ready: `draft.gaps[].suggestions` are sorted installed → built-in → vetted → community. UI in slice 3b.)_
+- [x] AC2: The draft review shows each need with its suggestions and their tier labels (Installed / Built into Dash / Vetted / Community · unverified), most trusted first. _(Slice 3b: `src/Components/Bots/DraftGaps.js`, rendered in `BotDetail` next to the lead's existing "Suggested by the lead" grants; the draft banner no longer repeats those needs in its "Needs a provider you don't have" line.)_
 - [x] AC3: Suggestions are validated when the draft is built: an id the lead's `find_providers` didn't return (remembered per lead for 30 minutes in `botController._foundProviders`) is dropped and listed in `dropped`. Kept suggestions are full snapshots (incl. `install`), so the review can install without searching again. A gap's need is also added to `missing`, so today's "Needs a provider you don't have" line still shows it.
 
 ---
@@ -316,15 +316,24 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 > so that I can fill the gap and approve the bot in one place.
 
 **Priority:** P1
-**Status:** Not Started
+**Status:** Implemented (slice 3b)
 
 **Acceptance Criteria:**
 
-- [ ] AC1: Each suggestion has an **Install** button (or **Use** for installed and built-in providers that only need adding to the bot).
-- [ ] AC2: **Vetted** suggestions install through the existing confirmation dialog used by `install_known_mcp_server`.
-- [ ] AC3: **Community** suggestions open the Custom MCP server form pre-filled from the registry entry, with a clear "Unverified: this runs third-party code on your computer" warning and the exact command or URL shown.
-- [ ] AC4: After install, the provider can be granted to the draft in the same review, and the need is marked filled.
-- [ ] AC5: Nothing installs without the user's click and confirmation; leads and bots have no install tool.
+- [x] AC1: Each suggestion has an **Install** button (or **Use** for installed and built-in providers that only need adding to the bot).
+- [x] AC2: **Vetted** suggestions install through the existing confirmation dialog used by `install_known_mcp_server`.
+- [x] AC3: **Community** suggestions open the Custom MCP server form pre-filled from the registry entry, with a clear "Unverified: this runs third-party code on your computer" warning and the exact command or URL shown.
+- [x] AC4: After install, the provider can be granted to the draft in the same review, and the need is marked filled.
+- [x] AC5: Nothing installs without the user's click and confirmation; leads and bots have no install tool.
+
+**Implementation notes (slice 3b, 2026-10-07):**
+
+- **Actions** (`DraftGaps`): **Use** for a provider the user has (also offered once a suggested provider has been installed — matched by catalog type, or by name for a custom server); **Add** (built-in) and **Install…** (community) open `AddProviderDialog` — the same `McpCatalogDetail` form as Settings › Providers, in a dialog over the draft review; **Install** (vetted) dispatches `dash:install-known-external`, the existing confirmation dialog's UI path. Entries Dash can't install show "Can't be installed from Dash".
+- **Why a dialog, not the Providers page:** the first build navigated to Providers, but the app's unsaved-edits guard then asked the user to discard the draft's edits first. In the dialog the review stays mounted, edits survive, and the provider can be turned on right away. Verified in the app: an edited draft name survived Add → configure → Save, and **Use** turned the new provider on.
+- **Shared save:** `src/utils/saveMcpProvider.js` (unique type for new custom servers, then `dash:provider-installed`) is used by both Settings › Providers (`handleMcpSave`) and the dialog. `BotDetail` reloads its provider list on `dash:provider-installed` and window focus.
+- **Community pre-fill:** `McpCatalogDetail` takes `initialCustom { name, mcpConfig, credentialSchema, warning }` and opens `CustomMcpServerForm` pre-filled; the form's new `warning` prop shows an `AlertBanner` ("Unverified: this runs third-party code on your computer — <command or URL> (source: …)"). Covered by unit tests; not exercised end to end in the app because the MCP Registry was down during verification, so no community suggestion could be produced.
+- **dash-electron:** `InstallExternalMcpModal`'s header reads "Add this MCP provider to Dash? Check what will run below before installing." when opened from the UI, and keeps the AI-assistant wording for the `install_known_mcp_server` tool. Verified in the app.
+- **Matching fix (find_providers):** a longer request like "download an image from a URL to a local file" missed Web Fetch because extra words raised the bar; an entry now needs at least half of the _specific_ (non-common) words. "send SMS" still doesn't return Slack and "stock photos" doesn't return Algolia.
 
 ---
 
@@ -533,10 +542,11 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 
 ## Revision History
 
-| Version | Date       | Author | Changes                                                                                    |
-| ------- | ---------- | ------ | ------------------------------------------------------------------------------------------ |
-| 1.0     | 2026-10-07 | John   | Initial draft                                                                              |
-| 1.1     | 2026-10-07 | John   | Web Fetch limits as provider settings; multiple copies; new settings field types (FR-C02a) |
-| 1.2     | 2026-10-07 | John   | CAP-001 implemented (Phase 1); Open Question 6 (Claude Code's own image copies)            |
-| 1.3     | 2026-10-07 | John   | CAP-002 Web Fetch + FR-C02a settings fields implemented (Phase 2); Open Question 7         |
-| 1.4     | 2026-10-07 | John   | Phase 3 slice 3a: find_providers, registry search, draft gaps (CAP-003; CAP-004 data)      |
+| Version | Date       | Author | Changes                                                                                                 |
+| ------- | ---------- | ------ | ------------------------------------------------------------------------------------------------------- |
+| 1.0     | 2026-10-07 | John   | Initial draft                                                                                           |
+| 1.1     | 2026-10-07 | John   | Web Fetch limits as provider settings; multiple copies; new settings field types (FR-C02a)              |
+| 1.2     | 2026-10-07 | John   | CAP-001 implemented (Phase 1); Open Question 6 (Claude Code's own image copies)                         |
+| 1.3     | 2026-10-07 | John   | CAP-002 Web Fetch + FR-C02a settings fields implemented (Phase 2); Open Question 7                      |
+| 1.4     | 2026-10-07 | John   | Phase 3 slice 3a: find_providers, registry search, draft gaps (CAP-003; CAP-004 data)                   |
+| 1.5     | 2026-10-07 | John   | Phase 3 slice 3b: gaps in the draft review, Use/Add/Install, add-provider dialog (CAP-004 AC2, CAP-005) |

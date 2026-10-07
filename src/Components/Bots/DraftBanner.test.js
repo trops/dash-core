@@ -65,6 +65,16 @@ describe("DraftBanner (TEAM-005)", () => {
     expect(onOpenSettings).toHaveBeenCalledWith("providers");
   });
 
+  it("doesn't repeat needs the form lists as gaps (bot-capabilities CAP-004)", () => {
+    renderBanner({
+      missing: ["Notion", "download images"],
+      gaps: [{ need: "download images", suggestions: [] }],
+    });
+    expect(
+      screen.getByText(/Needs a provider you don.t have: Notion$/),
+    ).toBeInTheDocument();
+  });
+
   it("says what was left out, and warns about duplicates", () => {
     renderBanner({ duplicateOf: "Inbox Watch" });
     expect(screen.getByText(/not a valid schedule/)).toBeInTheDocument();

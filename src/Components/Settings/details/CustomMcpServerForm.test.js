@@ -73,3 +73,24 @@ describe("CustomMcpServerForm editing a built-in provider", () => {
     expect(screen.queryByText("Credentials")).toBeNull();
   });
 });
+
+describe("CustomMcpServerForm with a warning (bot-capabilities CAP-005)", () => {
+  it("shows the unverified warning above the form", () => {
+    render(
+      <AppContext.Provider value={{ dashApi: {}, credentials: { appId: "a" } }}>
+        <CustomMcpServerForm
+          initialName="Photos MCP"
+          initialTransport="stdio"
+          initialCommand="npx"
+          initialArgs="-y photos-mcp"
+          warning="Unverified: this runs third-party code on your computer"
+          onSave={jest.fn()}
+          onBack={jest.fn()}
+        />
+      </AppContext.Provider>,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/Unverified/);
+    expect(screen.getByDisplayValue("Photos MCP")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("-y photos-mcp")).toBeInTheDocument();
+  });
+});
