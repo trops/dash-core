@@ -82,3 +82,31 @@ describe("McpCatalogDetail built-in provider (bot-capabilities CAP-002)", () => 
     expect(screen.getByRole("switch")).toBeChecked();
   });
 });
+
+describe("McpCatalogDetail pre-filled custom server (bot-capabilities CAP-005)", () => {
+  it("opens the custom form with the suggested server and its warning", async () => {
+    renderDetail({
+      initialCustom: {
+        name: "Photos MCP",
+        mcpConfig: {
+          transport: "stdio",
+          command: "npx",
+          args: ["-y", "photos-mcp"],
+          envMapping: { PHOTOS_KEY: "PHOTOS_KEY" },
+        },
+        credentialSchema: {
+          PHOTOS_KEY: { displayName: "PHOTOS_KEY", secret: true },
+        },
+        warning: "Unverified: this runs third-party code — npx -y photos-mcp",
+      },
+    });
+    expect(
+      await screen.findByText("Configure Custom MCP Server"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/Unverified/);
+    expect(screen.getByDisplayValue("Photos MCP")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("npx")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("-y photos-mcp")).toBeInTheDocument();
+    expect(screen.getAllByDisplayValue("PHOTOS_KEY").length).toBeGreaterThan(0);
+  });
+});

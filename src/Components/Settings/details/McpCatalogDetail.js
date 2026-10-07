@@ -75,9 +75,16 @@ export const McpCatalogDetail = ({
   // has no chooser to return to). Internal stage 1 → stage 2 navigation
   // continues to use the local handleBack.
   onBack = null,
+  // Optional: open the custom-server form pre-filled — a community server a
+  // team lead suggested (bot-capabilities CAP-005):
+  // { name, mcpConfig, credentialSchema, warning }.
+  initialCustom = null,
 }) => {
   const appContext = useContext(AppContext);
   const dashApi = appContext?.dashApi;
+  // Used once: going back to the catalog and choosing "custom" again starts
+  // a blank form.
+  const [customPrefill, setCustomPrefill] = useState(initialCustom);
 
   const [catalog, setCatalog] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -86,7 +93,7 @@ export const McpCatalogDetail = ({
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
-  const [isCustom, setIsCustom] = useState(false);
+  const [isCustom, setIsCustom] = useState(!!initialCustom);
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [authResult, setAuthResult] = useState(null);
   const [selectedTools, setSelectedTools] = useState(null);
@@ -421,6 +428,31 @@ export const McpCatalogDetail = ({
 
   // ── Custom Server Form ──
   if (isCustom) {
+    if (customPrefill && customPrefill.mcpConfig) {
+      const cfg = customPrefill.mcpConfig;
+      return (
+        <CustomMcpServerForm
+          onSave={onSave}
+          onBack={() => {
+            setCustomPrefill(null);
+            handleBack();
+          }}
+          initialName={customPrefill.name || ""}
+          initialCredentialSchema={customPrefill.credentialSchema || {}}
+          initialTransport={cfg.transport || "stdio"}
+          initialCommand={cfg.command || ""}
+          initialArgs={(cfg.args || []).join(" ")}
+          initialEnvMappingRows={envMappingToRows(cfg.envMapping, nextRowId)}
+          initialUrl={cfg.url || ""}
+          initialHeaderRows={headerTemplateToRows(
+            cfg.headerTemplate,
+            nextRowId,
+          )}
+          initialMcpConfig={cfg}
+          warning={customPrefill.warning || null}
+        />
+      );
+    }
     return <CustomMcpServerForm onSave={onSave} onBack={handleBack} />;
   }
 

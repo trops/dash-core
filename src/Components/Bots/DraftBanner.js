@@ -17,7 +17,9 @@ export const DraftBanner = ({ draft, onDiscard, onOpenSettings = null }) => {
   const hairline = currentTheme["border-primary-dark"] || "border-gray-600";
   if (!draft) return null;
   const suggestions = draft.suggestions || [];
-  const missing = draft.missing || [];
+  // Gaps with suggested providers are shown (with actions) in the form below.
+  const gapNeeds = new Set((draft.gaps || []).map((g) => g && g.need));
+  const missing = (draft.missing || []).filter((m) => !gapNeeds.has(m));
   const dropped = draft.dropped || [];
   const notes = draft.notes || [];
 

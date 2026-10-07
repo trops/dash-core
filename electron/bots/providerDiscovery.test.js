@@ -151,6 +151,14 @@ describe("findProviders", () => {
     assert.equal(slack.runs, "npx -y slack-mcp-server");
   });
 
+  it("extra words in a longer request don't hide a good match", async () => {
+    const r = await findProviders(
+      "Download an image from a URL to a local file",
+      deps(),
+    );
+    assert.ok(r.results.some((e) => e.id === "builtin:web-fetch"));
+  });
+
   it("common words alone don't match (send SMS isn't Slack)", async () => {
     const r = await findProviders("send SMS text messages", deps());
     assert.equal(

@@ -221,6 +221,17 @@ describe("ProvidersSection deep links (NAV-007 AC2)", () => {
     expect(screen.getByTestId("mcp-catalog")).toHaveTextContent("gmail");
   });
 
+  it("saves new MCP providers through the shared saveMcpProvider", () => {
+    // Pinned in source: the same save (unique custom types, the
+    // dash:provider-installed announcement — see saveMcpProvider.test.js) as
+    // the draft review's Add/Install dialog.
+    const src = require("fs").readFileSync(
+      require("path").join(__dirname, "ProvidersSection.js"),
+      "utf8",
+    );
+    expect(src).toMatch(/function handleMcpSave[\s\S]{0,800}saveMcpProvider\(/);
+  });
+
   it("after a create link, the header's New Provider still shows the class chooser", () => {
     const utils = setup({
       initialCreateRequested: true,

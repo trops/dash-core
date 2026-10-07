@@ -24,6 +24,7 @@ import {
   buildTriggerOptions,
 } from "./eventCatalog";
 import { dashboardOptions, offTeamSubscriptions } from "../../Bots/teamUtils";
+import { DraftGaps } from "../../Bots/DraftGaps";
 
 /**
  * BotDetail — create/edit form for a Bot Factory bot (Settings → Bots).
@@ -181,6 +182,9 @@ export const BotDetail = ({
   // [{ provider, tools, toolsChecked }]. Nothing is selected until the user
   // accepts a suggestion (or ticks it themselves).
   suggestions = null,
+  // Capabilities the draft lacks, with providers the lead's find_providers
+  // suggested (bot-capabilities CAP-004/005): [{ need, suggestions }].
+  gaps = null,
   // In a dashboard's Bots view: a new bot can show its results on that
   // dashboard (TEAM-012). Passed to onSave as { showOnDashboard }.
   canShowOnDashboard = false,
@@ -334,6 +338,19 @@ export const BotDetail = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dirty]);
 
+  // Reload the provider list when one is added (a draft's gap installed
+  // from here, or any provider saved) — the form keeps its edits.
+  const [sourcesNonce, setSourcesNonce] = useState(0);
+  useEffect(() => {
+    const reload = () => setSourcesNonce((n) => n + 1);
+    window.addEventListener("dash:provider-installed", reload);
+    window.addEventListener("focus", reload);
+    return () => {
+      window.removeEventListener("dash:provider-installed", reload);
+      window.removeEventListener("focus", reload);
+    };
+  }, []);
+
   // Discover the user's configured MCP providers — running or not. The bot
   // starts any that aren't running when it runs.
   useEffect(() => {
@@ -354,7 +371,7 @@ export const BotDetail = ({
     return () => {
       alive = false;
     };
-  }, [bot?.workspaceId]);
+  }, [bot?.workspaceId, sourcesNonce]);
 
   // Fetch the model list for the chosen provider.
   useEffect(() => {
@@ -643,6 +660,20 @@ export const BotDetail = ({
                 onClick={() => pendingSuggestions.forEach(acceptSuggestion)}
               />
             </div>
+          ) : null}
+          {gaps && gaps.length ? (
+            <DraftGaps
+              gaps={gaps}
+              toolSources={toolSources}
+              selectedServers={selectedServers}
+              onUse={(providerName) =>
+                acceptSuggestion({
+                  provider: providerName,
+                  tools: [],
+                  toolsChecked: false,
+                })
+              }
+            />
           ) : null}
           {availableServers.length ? (
             <div className="flex flex-col gap-1">

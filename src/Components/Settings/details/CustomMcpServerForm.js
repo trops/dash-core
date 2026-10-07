@@ -11,6 +11,7 @@ import {
   SubHeading3,
   CodeEditorInline,
   Stepper,
+  AlertBanner,
 } from "@trops/dash-react";
 import { AppContext } from "../../../Context/App/AppContext";
 import {
@@ -145,6 +146,8 @@ export function buildMcpConfig(
  * @param {object} initialMcpConfig - The full saved/catalog mcpConfig. Fields
  *   the form does NOT own (argsMapping, staticEnv, tokenRefresh, etc.) are
  *   preserved verbatim on save so editing never silently drops them.
+ * @param {string} warning - Optional warning shown above the form, e.g. for a
+ *   community server suggested by a team lead (bot-capabilities CAP-005).
  */
 export const CustomMcpServerForm = ({
   onSave,
@@ -163,6 +166,7 @@ export const CustomMcpServerForm = ({
   initialAllowedTools = null,
   initialAuthCommand = null,
   initialMcpConfig = null,
+  warning = null,
 }) => {
   const appContext = useContext(AppContext);
   const dashApi = appContext?.dashApi;
@@ -602,6 +606,13 @@ export const CustomMcpServerForm = ({
           {/* ── Step 1: Configure ── */}
           <Stepper.Step label="Configure" description="Server & credentials">
             <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
+              {warning ? (
+                <AlertBanner
+                  variant="warning"
+                  size="compact"
+                  message={warning}
+                />
+              ) : null}
               {/* Provider Name */}
               <div className="flex flex-col gap-2">
                 <FormLabel title="Provider Name" required={true} />

@@ -853,6 +853,7 @@ export const BotsView = ({
                   }
                   isCreating={!selected}
                   suggestions={selectedDraft ? selectedDraft.suggestions : null}
+                  gaps={selectedDraft ? selectedDraft.gaps : null}
                   defaultWorkspaceId={workspace ? workspace.id : null}
                   providers={providers}
                   workspaces={workspaces}

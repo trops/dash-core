@@ -19,7 +19,7 @@ import { McpCatalogDetail } from "../details/McpCatalogDetail";
 import { CustomMcpServerForm } from "../details/CustomMcpServerForm";
 import { WebSocketProviderForm } from "../details/WebSocketProviderForm";
 import { NewProviderPicker } from "../details/NewProviderPicker";
-import { uniqueProviderType } from "../../../utils/providerType";
+import { saveMcpProvider } from "../../../utils/saveMcpProvider";
 import {
   envMappingToRows,
   headerTemplateToRows,
@@ -245,35 +245,27 @@ export const ProvidersSection = ({
     allowedTools = null,
   ) {
     if (!dashApi || !appId) return;
-    // Forward-only unique types: a hand-rolled custom MCP server arrives with
-    // the generic default type "custom", which conflates multiple customs at
-    // widget-binding/runtime time. Give each NEW one a unique slug so it has a
-    // distinct identity like catalog providers. Catalog installs pass a real
-    // id (not "custom") and are untouched; the edit path preserves type, so no
-    // existing provider is ever renamed.
-    let resolvedType = providerType;
-    if (resolvedType === "custom") {
-      const existingTypes = Object.values(providers || {}).map((p) => p.type);
-      resolvedType = uniqueProviderType(providerName, existingTypes);
-    }
-    dashApi.saveProvider(
+    // Shared with the draft review's Add/Install dialog: a new custom server
+    // gets a unique type (the edit path preserves type, so no existing
+    // provider is ever renamed), and the save is announced
+    // (dash:provider-installed) so open bot forms can turn it on.
+    saveMcpProvider({
+      dashApi,
       appId,
-      providerName,
-      {
-        providerType: resolvedType,
-        credentials: mcpCredentials,
-        providerClass: "mcp",
-        mcpConfig,
-        allowedTools,
-      },
-      () => {
+      providers,
+      name: providerName,
+      type: providerType,
+      credentials: mcpCredentials,
+      mcpConfig,
+      allowedTools,
+    })
+      .then(() => {
         setIsAddingMcp(false);
         refreshProviders && refreshProviders();
         setSelectedName(providerName);
         setProviderTab("mcp");
-      },
-      (e, err) => console.error("Save MCP provider error:", err),
-    );
+      })
+      .catch((err) => console.error("Save MCP provider error:", err));
   }
 
   // Handle MCP provider editing via CustomMcpServerForm

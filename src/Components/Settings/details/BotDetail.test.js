@@ -1,6 +1,12 @@
 import React from "react";
 import "@testing-library/jest-dom";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  act,
+} from "@testing-library/react";
 import { BotDetail } from "./BotDetail";
 
 describe("BotDetail (create)", () => {
@@ -1255,5 +1261,91 @@ describe("BotDetail (show results on the dashboard, TEAM-012)", () => {
       />,
     );
     expect(screen.queryByText("Show results on this dashboard")).toBeNull();
+  });
+});
+
+describe("BotDetail — gaps the lead found providers for (bot-capabilities CAP-005)", () => {
+  const gaps = [
+    {
+      need: "download images",
+      suggestions: [
+        {
+          id: "builtin:web-fetch",
+          tier: "built-in",
+          name: "Web Fetch",
+          description: "",
+          runs: "Built into Dash",
+          credentials: [],
+          installable: true,
+          install: { kind: "catalog", catalogId: "web-fetch" },
+        },
+      ],
+    },
+  ];
+  const draftBot = {
+    name: "Image Labeler",
+    instructions: "Label images.",
+    mcpServers: [],
+    toolSelections: {},
+    schedules: [],
+    subscriptions: [],
+  };
+  let listToolSources;
+  beforeEach(() => {
+    listToolSources = jest
+      .fn()
+      .mockResolvedValue([{ name: "Gmail New", type: "gmail", tools: null }]);
+    window.mainApi = { bots: { listToolSources } };
+  });
+  afterEach(() => {
+    delete window.mainApi;
+  });
+
+  it("shows each gap with its suggestions", async () => {
+    render(
+      <BotDetail
+        bot={draftBot}
+        isCreating
+        providers={{}}
+        gaps={gaps}
+        onSave={jest.fn()}
+      />,
+    );
+    expect(await screen.findByText("download images")).toBeInTheDocument();
+    expect(screen.getByText("Add Web Fetch")).toBeInTheDocument();
+  });
+
+  it("after an install, the new provider can be turned on with Use", async () => {
+    render(
+      <BotDetail
+        bot={draftBot}
+        isCreating
+        providers={{}}
+        gaps={gaps}
+        onSave={jest.fn()}
+      />,
+    );
+    await screen.findByLabelText("Gmail New");
+    listToolSources.mockResolvedValue([
+      { name: "Gmail New", type: "gmail", tools: null },
+      { name: "Web Fetch", type: "web-fetch", tools: ["fetch_image"] },
+    ]);
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("dash:provider-installed", {
+          detail: { name: "Web Fetch" },
+        }),
+      );
+    });
+    fireEvent.click(await screen.findByText("Use Web Fetch"));
+    expect(screen.getByLabelText("Web Fetch")).toBeChecked();
+  });
+
+  it("no gaps → no gap list", async () => {
+    render(
+      <BotDetail bot={draftBot} isCreating providers={{}} onSave={jest.fn()} />,
+    );
+    await screen.findByLabelText("Gmail New");
+    expect(screen.queryByTestId("draft-gaps")).toBeNull();
   });
 });
