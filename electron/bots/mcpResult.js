@@ -2,7 +2,8 @@
  * mcpResult.js
  *
  * Normalizes an mcpController.callTool(...) return value into the
- * { text, isError } shape the tool-loop engine's executeTool contract expects.
+ * { text, images?, isError } shape the engines' executeTool contract expects
+ * (`images` only when the tool returned some — see toolImages.js).
  * Mirrors the extraction in electron/controller/llmController.js so bot tool
  * results read the same as the AI Assistant's. Pure — no Electron.
  *
@@ -13,9 +14,11 @@
  */
 "use strict";
 
+const { collectImages } = require("./toolImages");
+
 /**
  * @param {object} mcpResult
- * @returns {{ text: string, isError: boolean }}
+ * @returns {{ text: string, images?: Array<{data: string, mimeType: string}>, isError: boolean }}
  */
 function normalizeMcpResult(mcpResult) {
   if (!mcpResult) return { text: "No result returned.", isError: true };
@@ -28,13 +31,17 @@ function normalizeMcpResult(mcpResult) {
     return { text: "No result returned.", isError: false };
   }
 
-  // MCP standard: { content: [{ type: "text", text }] }
+  // MCP standard: { content: [{ type: "text", text } | { type: "image", data, mimeType }] }
   if (result.content && Array.isArray(result.content)) {
-    const text = result.content
+    const textParts = result.content
       .filter((c) => c && c.type === "text")
-      .map((c) => c.text)
-      .join("\n");
-    return { text, isError: !!result.isError };
+      .map((c) => c.text);
+    // Images go to the model (CAP-001); ones it can't take leave a note.
+    const { images, notes } = collectImages(result.content);
+    const text = [...textParts, ...notes].join("\n");
+    return images.length
+      ? { text, images, isError: !!result.isError }
+      : { text, isError: !!result.isError };
   }
 
   if (typeof result === "string") return { text: result, isError: false };

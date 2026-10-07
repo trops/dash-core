@@ -121,6 +121,37 @@ describe("claudeAgentEngine", () => {
     assert.equal(events[4].stopReason, "success");
   });
 
+  it("shows a placeholder for image parts of a tool result (CAP-001)", async () => {
+    stubQuery([
+      {
+        type: "user",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "t1",
+              content: [
+                { type: "text", text: "shoe.jpg" },
+                {
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: "image/jpeg",
+                    data: Buffer.alloc(1024).toString("base64"),
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+      { type: "result", subtype: "success", usage: {} },
+    ]);
+    const events = await collect(claudeAgentEngine.run(ctx()));
+    const result = events.find((e) => e.type === "tool_result");
+    assert.equal(result.output, "shoe.jpg\n[image: image/jpeg, 1 KB]");
+  });
+
   it("passes model, systemPrompt, cwd and resume through to the SDK", async () => {
     stubQuery([{ type: "result", subtype: "success", usage: {} }]);
     await collect(claudeAgentEngine.run(ctx({ session: { id: "sess_9" } })));

@@ -21,6 +21,7 @@
 
 const { createEventStream } = require("./eventStream");
 const { BOT_MCP_SERVER, buildBotMcpServer } = require("./agentToolBridge");
+const { imagePlaceholder } = require("../toolImages");
 
 // The SDK names bridged tools "mcp__<server>__<tool>".
 const BRIDGED_PREFIX = `mcp__${BOT_MCP_SERVER}__`;
@@ -86,9 +87,21 @@ function* _fromUser(message) {
     let text = "";
     if (typeof b.content === "string") text = b.content;
     else if (Array.isArray(b.content)) {
+      // Images show as placeholders in Activity, never as data (CAP-001).
       text = b.content
-        .filter((c) => c && c.type === "text")
-        .map((c) => c.text)
+        .map((c) =>
+          c && c.type === "text"
+            ? c.text
+            : c && c.type === "image"
+              ? // API shape { source: { data, media_type } } or MCP { data, mimeType }
+                imagePlaceholder({
+                  data: (c.source && c.source.data) || c.data || "",
+                  mimeType:
+                    (c.source && c.source.media_type) || c.mimeType || "image",
+                })
+              : null,
+        )
+        .filter((t) => t)
         .join("\n");
     }
     yield {

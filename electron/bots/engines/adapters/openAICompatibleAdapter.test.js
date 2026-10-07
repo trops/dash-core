@@ -48,6 +48,49 @@ describe("openAICompatibleAdapter.formatToolResults", () => {
       { role: "tool", tool_call_id: "c2", content: "Error: nope" },
     ]);
   });
+
+  it("sends images in one user message after the tool messages (CAP-001)", () => {
+    const msgs = adapter.formatToolResults([
+      {
+        id: "c1",
+        name: "fetch_image",
+        text: "shoe.jpg",
+        images: [{ data: "AAAA", mimeType: "image/jpeg" }],
+        isError: false,
+      },
+      { id: "c2", name: "b", text: "ok", isError: false },
+    ]);
+    assert.deepEqual(msgs, [
+      { role: "tool", tool_call_id: "c1", content: "shoe.jpg" },
+      { role: "tool", tool_call_id: "c2", content: "ok" },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "Images returned by fetch_image (call c1):",
+          },
+          {
+            type: "image_url",
+            image_url: { url: "data:image/jpeg;base64,AAAA" },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("an image-only tool result still gets non-empty tool content", () => {
+    const msgs = adapter.formatToolResults([
+      {
+        id: "c1",
+        name: "snap",
+        text: "",
+        images: [{ data: "AAAA", mimeType: "image/png" }],
+        isError: false,
+      },
+    ]);
+    assert.match(msgs[0].content, /image/);
+  });
 });
 
 function fakeClient(response) {

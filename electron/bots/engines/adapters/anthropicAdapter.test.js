@@ -66,6 +66,43 @@ describe("anthropicAdapter.formatToolResults", () => {
       },
     ]);
   });
+
+  it("puts images inside the tool_result as base64 image blocks (CAP-001)", () => {
+    const msgs = adapter.formatToolResults([
+      {
+        id: "t1",
+        name: "fetch_image",
+        text: "shoe.jpg",
+        images: [{ data: "AAAA", mimeType: "image/jpeg" }],
+        isError: false,
+      },
+    ]);
+    assert.deepEqual(msgs[0].content[0].content, [
+      { type: "text", text: "shoe.jpg" },
+      {
+        type: "image",
+        source: { type: "base64", media_type: "image/jpeg", data: "AAAA" },
+      },
+    ]);
+  });
+
+  it("omits an empty text block when a result is image-only", () => {
+    const msgs = adapter.formatToolResults([
+      {
+        id: "t1",
+        name: "snap",
+        text: "",
+        images: [{ data: "AAAA", mimeType: "image/png" }],
+        isError: false,
+      },
+    ]);
+    assert.deepEqual(msgs[0].content[0].content, [
+      {
+        type: "image",
+        source: { type: "base64", media_type: "image/png", data: "AAAA" },
+      },
+    ]);
+  });
 });
 
 // Fake stream matching the subset of the Anthropic SDK the adapter uses:
