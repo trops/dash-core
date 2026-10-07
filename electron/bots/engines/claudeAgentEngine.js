@@ -33,6 +33,32 @@ function __setQueryForTest(fn) {
   _queryImpl = fn;
 }
 
+// Test seam: injected CLI lookup (see __setCliResolverForTest).
+let _cliResolver = null;
+
+/** @param {Function|null} fn */
+function __setCliResolverForTest(fn) {
+  _cliResolver = fn;
+}
+
+function _resolveInstalledCli() {
+  if (_cliResolver) return _cliResolver();
+  // Same lookup the Assistant's CLI backend uses (login-shell PATH + `which`).
+  // Lazy require: keeps this module loadable under plain Node.
+  return require("../../controller/cliController").resolveCliBinary();
+}
+
+/**
+ * The user's installed `claude`, if the SDK can spawn it. The SDK spawns the
+ * path directly (no shell), so a Windows .cmd/.ps1 shim won't start — use the
+ * SDK's bundled CLI instead.
+ */
+function usableCliPath(cliPath, platform = process.platform) {
+  if (!cliPath) return null;
+  if (platform === "win32" && !/\.exe$/i.test(cliPath)) return null;
+  return cliPath;
+}
+
 async function _loadQuery() {
   if (_queryImpl) return _queryImpl;
   const mod = await import("@anthropic-ai/claude-agent-sdk");
@@ -164,6 +190,16 @@ async function _runAgent(ctx, stream) {
     strictMcpConfig: true,
     env,
   };
+  // Run the user's installed Claude Code CLI — the one they chose and logged
+  // into. The SDK's bundled CLI is per-platform and the packaged app only
+  // carries the build machine's (arm64), so it's missing on Intel Macs.
+  let cliPath = null;
+  try {
+    cliPath = usableCliPath(_resolveInstalledCli());
+  } catch (_e) {
+    cliPath = null;
+  }
+  if (cliPath) options.pathToClaudeCodeExecutable = cliPath;
   // Read-only bots (team leads) get none of the SDK's built-ins — no shell,
   // files, or web; only their bridged team tools.
   if (ctx.builtinTools === "none") options.tools = [];
@@ -251,9 +287,20 @@ const claudeAgentEngine = {
       try {
         await _runAgent(ctx, stream);
       } catch (err) {
+        const message = (err && err.message) || "";
+        // No installed CLI and no bundled one for this platform.
+        if (/Native CLI binary for .* not found/.test(message)) {
+          stream.push({
+            type: "error",
+            message:
+              "Claude Code CLI not found. Install Claude Code, or choose another AI provider for this bot.",
+            code: "CLAUDE_CLI_NOT_FOUND",
+          });
+          return;
+        }
         stream.push({
           type: "error",
-          message: (err && err.message) || "Claude Agent engine error",
+          message: message || "Claude Agent engine error",
           code: (err && err.code) || "CLAUDE_AGENT_ERROR",
         });
       } finally {
@@ -266,3 +313,5 @@ const claudeAgentEngine = {
 
 module.exports = claudeAgentEngine;
 module.exports.__setQueryForTest = __setQueryForTest;
+module.exports.__setCliResolverForTest = __setCliResolverForTest;
+module.exports.usableCliPath = usableCliPath;
