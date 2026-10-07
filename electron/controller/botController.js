@@ -68,6 +68,11 @@ const { isLead, leadOf, planEnsureLead } = require("../bots/teamLeads");
 const { recentRuns } = require("../bots/recentRuns");
 const { coalesce } = require("../bots/coalesce");
 const { buildDraft, DraftStore } = require("../bots/botDrafts");
+const { findProviders } = require("../bots/providerDiscovery");
+const { searchRegistry } = require("../bots/registrySearch");
+
+// How long a lead's find_providers results stay valid for its drafts.
+const FOUND_PROVIDERS_TTL_MS = 30 * 60 * 1000;
 const { onWorkspaceDeleted } = require("../utils/workspaceEvents");
 const {
   checkChain,
@@ -173,6 +178,9 @@ const botController = {
     // Bots a team lead drafted, awaiting the user's review (TEAM-005). In
     // memory only — a restart drops them (the lead's answer still says so).
     this._drafts = new DraftStore();
+    // What each lead's find_providers returned (leadId → { at, entries }), so
+    // drafts only keep suggestions that were really found (CAP-004).
+    this._foundProviders = new Map();
 
     // Event-bus bridge (P1: FR-009): per-bot cooldown so a chatty event can't
     // flood the runner with event-triggered runs.
@@ -555,9 +563,44 @@ const botController = {
       team,
       workspaceId,
       leadId: botId,
+      knownProviders: this._knownProvidersFor(botId),
     });
     if (res.draft) this._drafts.add(res.draft);
     return res;
+  },
+
+  /**
+   * A lead's find_providers (bot-capabilities CAP-003): search the user's
+   * providers, Dash's catalogs and the MCP Registry. What it returns is
+   * remembered for this lead for a while, so a draft can only suggest
+   * providers that were actually found (CAP-004). Read-only.
+   */
+  async _findProviders({ workspaceId, botId }, capability) {
+    const found = await findProviders(capability, {
+      listInstalled: () => this.listToolSources(workspaceId),
+      getCatalog: () =>
+        (this._mcp.getCatalog && this._mcp.getCatalog(null).catalog) || [],
+      getKnownExternal: () =>
+        (this._mcp.getKnownExternalCatalog &&
+          this._mcp.getKnownExternalCatalog().servers) ||
+        [],
+      searchRegistry: (query) => searchRegistry(query),
+    });
+    const now = Date.now();
+    const prev = this._foundProviders.get(botId);
+    const entries =
+      prev && now - prev.at < FOUND_PROVIDERS_TTL_MS ? prev.entries : {};
+    for (const entry of found.results) entries[entry.id] = entry;
+    this._foundProviders.set(botId, { at: now, entries });
+    return found;
+  },
+
+  /** find_providers results this lead got recently (id → entry). */
+  _knownProvidersFor(botId) {
+    const rec = this._foundProviders && this._foundProviders.get(botId);
+    return rec && Date.now() - rec.at < FOUND_PROVIDERS_TTL_MS
+      ? rec.entries
+      : {};
   },
 
   /** Drafts awaiting review on a dashboard, oldest first. */
@@ -1322,6 +1365,8 @@ const botController = {
           isPaused: (id) => this._pause.isPaused(id),
           proposeBot: (teamCtx, proposal) =>
             this._proposeBot(teamCtx, proposal),
+          findProviders: (teamCtx, capability) =>
+            this._findProviders(teamCtx, capability),
           listProviders: () => this.listToolSources(caller.workspaceId),
           listDrafts: (ws) => this.listDrafts(ws),
         },

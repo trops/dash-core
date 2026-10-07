@@ -20,6 +20,7 @@
 "use strict";
 
 const { teamOf } = require("./teams");
+const { describeFindings } = require("./providerDiscovery");
 
 const TEAM_SERVER = "bot-team";
 const RUN_ANSWER_LIMIT = 1500;
@@ -84,9 +85,25 @@ const TEAM_TOOLS = [
     inputSchema: { type: "object", properties: {} },
   },
   {
+    name: "find_providers",
+    description:
+      "Search for providers that could give a bot a capability the user's providers don't cover (e.g. 'download an image from a URL', 'search stock photos'). Looks in the user's providers, Dash's built-in catalog, Dash's vetted list, and the public MCP Registry (unverified community servers), in that order, and returns ids you can suggest in propose_bot's gaps. Read-only: you can't install anything; the user does.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        capability: {
+          type: "string",
+          description:
+            "What the bot needs to do, in a few plain words — e.g. 'download images', 'send SMS'.",
+        },
+      },
+      required: ["capability"],
+    },
+  },
+  {
     name: "propose_bot",
     description:
-      "Draft a new bot for this team when the user asks for one. Creates a DRAFT only — the user reviews it in this dashboard's Bots view and saves it themselves; you can't create, save or run bots. Call team_providers first and suggest only those providers (by name or type); put services the user doesn't have in 'needs'. Event triggers can only be other bots on this team finishing ('completed') or failing ('failed'). If a team bot already does this, say so instead of drafting a duplicate.",
+      "Draft a new bot for this team when the user asks for one. Creates a DRAFT only — the user reviews it in this dashboard's Bots view and saves it themselves; you can't create, save or run bots. Call team_providers first and suggest only those providers (by name or type). For a capability none of them covers, call find_providers and list it in 'gaps' with the ids it returned, so the user can add one from the review. Event triggers can only be other bots on this team finishing ('completed') or failing ('failed'). If a team bot already does this, say so instead of drafting a duplicate.",
     inputSchema: {
       type: "object",
       properties: {
@@ -138,6 +155,27 @@ const TEAM_TOOLS = [
           description:
             "Short names of services the user would need a provider for (e.g. 'Microsoft Teams'). Put anything else in reasoning.",
           items: { type: "string" },
+        },
+        gaps: {
+          type: "array",
+          description:
+            "Capabilities the user's providers don't cover, each with provider ids from find_providers that could fill it (best first). Only ids find_providers returned are kept.",
+          items: {
+            type: "object",
+            properties: {
+              need: {
+                type: "string",
+                description: "The capability, e.g. 'download images'.",
+              },
+              suggestions: {
+                type: "array",
+                description:
+                  "Ids from find_providers, e.g. 'builtin:web-fetch'.",
+                items: { type: "string" },
+              },
+            },
+            required: ["need"],
+          },
         },
       },
       required: ["name", "instructions"],
@@ -335,6 +373,24 @@ function handleTeamTool(deps, ctx, toolName, args = {}) {
             .join("\n"),
         );
       }
+      case "find_providers": {
+        // Async (the registry search); callers await tool results.
+        const capability = String((args && args.capability) || "").trim();
+        if (!capability) {
+          return fail("Say what capability you need, e.g. 'download images'.");
+        }
+        if (typeof deps.findProviders !== "function") {
+          return fail("Finding providers isn't available here.");
+        }
+        return Promise.resolve()
+          .then(() => deps.findProviders(ctx, capability))
+          .then((found) => ok(describeFindings(capability, found)))
+          .catch((err) =>
+            fail(
+              `Couldn't search for providers: ${err.message || String(err)}`,
+            ),
+          );
+      }
       case "propose_bot": {
         if (typeof deps.proposeBot !== "function") {
           return fail("Drafting bots isn't available here.");
@@ -375,6 +431,15 @@ function describeDraft(draft) {
               `${s.provider}: ${s.tools.length ? s.tools.join(", ") : "any tools"}`,
           )
           .join("; "),
+    );
+  }
+  for (const gap of draft.gaps || []) {
+    lines.push(
+      gap.suggestions.length
+        ? `For "${gap.need}" the user can add: ${gap.suggestions
+            .map((s) => `${s.name} (${s.tier})`)
+            .join(", ")} — from the draft review.`
+        : `For "${gap.need}" no suggested provider was kept (only ids from find_providers count).`,
     );
   }
   if (draft.missing && draft.missing.length) {

@@ -275,3 +275,101 @@ describe("buildDraft — needs cleanup (5b)", () => {
     assert.equal(d.notes.length, 1);
   });
 });
+
+describe("buildDraft — gaps with suggested providers (bot-capabilities CAP-004)", () => {
+  const known = {
+    "builtin:web-fetch": {
+      id: "builtin:web-fetch",
+      tier: "built-in",
+      name: "Web Fetch",
+      install: { kind: "catalog", catalogId: "web-fetch" },
+    },
+    "community:io.x/img": {
+      id: "community:io.x/img",
+      tier: "community",
+      name: "io.x/img",
+      install: { kind: "custom", mcpConfig: { transport: "stdio" } },
+    },
+    "installed:Gmail New": {
+      id: "installed:Gmail New",
+      tier: "installed",
+      name: "Gmail New",
+      install: { kind: "use", providerName: "Gmail New" },
+    },
+  };
+  const buildWith = (proposal) =>
+    buildDraft({
+      proposal,
+      sources,
+      team,
+      workspaceId: WS,
+      leadId: "lead_1",
+      knownProviders: known,
+      now: () => "2026-10-02T12:00:00.000Z",
+    });
+
+  it("keeps suggestions the lead's search returned, as snapshots, best tier first", () => {
+    const { draft } = buildWith({
+      name: "Image Labeler",
+      instructions: "Label product images.",
+      gaps: [
+        {
+          need: "download images",
+          suggestions: ["community:io.x/img", "builtin:web-fetch"],
+        },
+      ],
+    });
+    assert.equal(draft.gaps.length, 1);
+    assert.equal(draft.gaps[0].need, "download images");
+    assert.deepEqual(
+      draft.gaps[0].suggestions.map((x) => x.id),
+      ["builtin:web-fetch", "community:io.x/img"],
+    );
+    assert.deepEqual(draft.gaps[0].suggestions[0].install, {
+      kind: "catalog",
+      catalogId: "web-fetch",
+    });
+    assert.ok(draft.missing.includes("download images"));
+  });
+
+  it("drops ids find_providers didn't return, and says so", () => {
+    const { draft } = buildWith({
+      name: "Image Labeler",
+      instructions: "Label product images.",
+      gaps: [
+        {
+          need: "download images",
+          suggestions: ["builtin:web-fetch", "community:io.evil/made-up"],
+        },
+      ],
+    });
+    assert.deepEqual(
+      draft.gaps[0].suggestions.map((x) => x.id),
+      ["builtin:web-fetch"],
+    );
+    assert.match(draft.dropped.join(" "), /io\.evil\/made-up/);
+  });
+
+  it("keeps a gap with no valid suggestions (the need is still real)", () => {
+    const { draft } = buildWith({
+      name: "X",
+      instructions: "Y",
+      gaps: [{ need: "stock photos", suggestions: ["vetted:nope"] }],
+    });
+    assert.deepEqual(draft.gaps, [{ need: "stock photos", suggestions: [] }]);
+  });
+
+  it("without find_providers results every suggestion is dropped", () => {
+    const { draft } = build({
+      name: "X",
+      instructions: "Y",
+      gaps: [{ need: "stock photos", suggestions: ["builtin:web-fetch"] }],
+    });
+    assert.deepEqual(draft.gaps[0].suggestions, []);
+  });
+
+  it("has no gaps when none were proposed", () => {
+    const { draft } = build({ name: "X", instructions: "Y" });
+    assert.deepEqual(draft.gaps, []);
+  });
+});
