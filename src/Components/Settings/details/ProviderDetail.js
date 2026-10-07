@@ -14,6 +14,7 @@ import {
   deriveFormFields,
   formatFieldName,
   isLikelySecret,
+  isBuiltinMcpConfig,
 } from "../../../utils/mcpUtils";
 import { ToolSelector } from "./ToolSelector";
 
@@ -309,13 +310,22 @@ export const ProviderDetail = ({
           <span className="opacity-50 w-24 shrink-0">Transport:</span>
           <Tag
             text={
-              provider.mcpConfig.transport === "streamable_http"
-                ? "Streamable HTTP"
-                : "stdio"
+              isBuiltinMcpConfig(provider.mcpConfig)
+                ? "Built into Dash"
+                : provider.mcpConfig.transport === "streamable_http"
+                  ? "Streamable HTTP"
+                  : "stdio"
             }
           />
         </div>
-        {provider.mcpConfig.transport === "streamable_http" ? (
+        {isBuiltinMcpConfig(provider.mcpConfig) ? (
+          <div className="flex gap-2">
+            <span className="opacity-50 w-24 shrink-0">Runs:</span>
+            <span className="text-xs opacity-70">
+              Inside Dash — nothing to install
+            </span>
+          </div>
+        ) : provider.mcpConfig.transport === "streamable_http" ? (
           <div className="flex gap-2">
             <span className="opacity-50 w-24 shrink-0">Endpoint:</span>
             <span className="text-xs opacity-70">Remote hosted server</span>
@@ -765,12 +775,21 @@ export const ProviderDetail = ({
             {row(
               "Transport",
               <span>
-                {provider.mcpConfig.transport === "streamable_http"
-                  ? "Streamable HTTP"
-                  : "stdio"}
+                {isBuiltinMcpConfig(provider.mcpConfig)
+                  ? "Built into Dash"
+                  : provider.mcpConfig.transport === "streamable_http"
+                    ? "Streamable HTTP"
+                    : "stdio"}
               </span>,
             )}
-            {provider.mcpConfig.transport === "streamable_http" ? (
+            {isBuiltinMcpConfig(provider.mcpConfig) ? (
+              row(
+                "Runs",
+                <span className={`text-xs ${muted}`}>
+                  Inside Dash — nothing to install
+                </span>,
+              )
+            ) : provider.mcpConfig.transport === "streamable_http" ? (
               row(
                 "Endpoint",
                 <span className={`text-xs ${muted}`}>

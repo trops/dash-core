@@ -51,7 +51,7 @@ export function deriveFormFields(mcpConfig, credentialSchema = {}) {
     const schemaMeta = credentialSchema[key];
 
     if (schemaMeta) {
-      return {
+      const field = {
         key,
         displayName: schemaMeta.displayName || formatFieldName(key),
         required: schemaMeta.required === true,
@@ -59,6 +59,12 @@ export function deriveFormFields(mcpConfig, credentialSchema = {}) {
         instructions: schemaMeta.instructions || null,
         type: schemaMeta.type || "text",
       };
+      // Number/toggle/list settings (e.g. Web Fetch) carry their range,
+      // default, unit and placeholder through to the form.
+      for (const extra of ["min", "max", "default", "unit", "placeholder"]) {
+        if (schemaMeta[extra] !== undefined) field[extra] = schemaMeta[extra];
+      }
+      return field;
     }
 
     // Auto-generate defaults from the field name
@@ -71,6 +77,14 @@ export function deriveFormFields(mcpConfig, credentialSchema = {}) {
       type: "text",
     };
   });
+}
+
+/**
+ * True for a provider that runs inside Dash (`transport: "in_process"`),
+ * such as Web Fetch — no command, URL, env vars or headers to configure.
+ */
+export function isBuiltinMcpConfig(mcpConfig) {
+  return !!mcpConfig && mcpConfig.transport === "in_process";
 }
 
 /**
@@ -113,6 +127,9 @@ export function buildMcpConfigFromOverrides(
   envMappingRows,
   headerRows,
 ) {
+  // Built-in providers (e.g. Web Fetch) run inside Dash: nothing to override.
+  if (isBuiltinMcpConfig(baseMcpConfig)) return { ...baseMcpConfig };
+
   if (baseMcpConfig.transport === "streamable_http") {
     const headerTemplate = {};
     headerRows.forEach((row) => {

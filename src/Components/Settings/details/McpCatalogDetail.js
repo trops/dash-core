@@ -16,8 +16,14 @@ import {
   buildMcpConfigFromOverrides,
   envMappingToRows,
   headerTemplateToRows,
+  isBuiltinMcpConfig,
 } from "../../../utils/mcpUtils";
 import { CustomMcpServerForm } from "./CustomMcpServerForm";
+import {
+  ProviderSettingField,
+  validateSettingField,
+  hasSettingValue,
+} from "./ProviderSettingField";
 import { ToolSelector } from "./ToolSelector";
 import { AdvancedMcpConfig } from "../../Provider/AdvancedMcpConfig";
 
@@ -106,6 +112,9 @@ export const McpCatalogDetail = ({
       headerRows,
     );
   }, [selectedServer, envMappingRows, headerRows]);
+
+  // Built-in providers (e.g. Web Fetch) run inside Dash: no command or URL.
+  const isBuiltin = isBuiltinMcpConfig(selectedServer?.mcpConfig);
 
   // Derive form fields from effectiveMcpConfig + credentialSchema
   const formFields = useMemo(() => {
@@ -254,7 +263,7 @@ export const McpCatalogDetail = ({
   // Handle credential field changes
   const handleCredentialChange = (fieldName, value) => {
     setCredentialData((prev) => ({ ...prev, [fieldName]: value }));
-    if (formErrors[fieldName] && value?.trim()) {
+    if (formErrors[fieldName] && hasSettingValue(value)) {
       setFormErrors((prev) => {
         const next = { ...prev };
         delete next[fieldName];
@@ -270,9 +279,8 @@ export const McpCatalogDetail = ({
       errors.providerName = "Provider name is required";
     }
     formFields.forEach((field) => {
-      if (field.required && !credentialData[field.key]?.trim()) {
-        errors[field.key] = `${field.displayName} is required`;
-      }
+      const error = validateSettingField(field, credentialData[field.key]);
+      if (error) errors[field.key] = error;
     });
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -463,13 +471,22 @@ export const McpCatalogDetail = ({
                       </span>
                       <Tag
                         text={
-                          effectiveMcpConfig.transport === "streamable_http"
-                            ? "Streamable HTTP"
-                            : "stdio"
+                          isBuiltin
+                            ? "Built into Dash"
+                            : effectiveMcpConfig.transport === "streamable_http"
+                              ? "Streamable HTTP"
+                              : "stdio"
                         }
                       />
                     </div>
-                    {effectiveMcpConfig.transport === "streamable_http" ? (
+                    {isBuiltin ? (
+                      <div className="flex gap-2">
+                        <span className="opacity-50 w-24 shrink-0">Runs:</span>
+                        <span className="text-xs opacity-70">
+                          Inside Dash — nothing to install
+                        </span>
+                      </div>
+                    ) : effectiveMcpConfig.transport === "streamable_http" ? (
                       <div className="flex gap-2">
                         <span className="opacity-50 w-24 shrink-0">
                           Endpoint:
@@ -508,18 +525,20 @@ export const McpCatalogDetail = ({
                   </div>
                 </div>
 
-                {/* Advanced Configuration */}
-                <AdvancedMcpConfig
-                  transport={effectiveMcpConfig.transport || "stdio"}
-                  envMappingRows={envMappingRows}
-                  onEnvMappingRowsChange={setEnvMappingRows}
-                  headerRows={headerRows}
-                  onHeaderRowsChange={setHeaderRows}
-                />
+                {/* Advanced Configuration (not for built-ins: nothing to map) */}
+                {!isBuiltin && (
+                  <AdvancedMcpConfig
+                    transport={effectiveMcpConfig.transport || "stdio"}
+                    envMappingRows={envMappingRows}
+                    onEnvMappingRowsChange={setEnvMappingRows}
+                    headerRows={headerRows}
+                    onHeaderRowsChange={setHeaderRows}
+                  />
+                )}
 
                 {/* Provider Name */}
                 <div className="flex flex-col gap-2">
-                  <FormLabel label="Provider Name" required={true} />
+                  <FormLabel title="Provider Name" required={true} />
                   <p className="text-sm opacity-50">
                     A name to identify this MCP server instance (e.g.,
                     &quot;Algolia Production&quot;)
@@ -550,60 +569,24 @@ export const McpCatalogDetail = ({
                   <>
                     <div className="border-t border-white/10 pt-4">
                       <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
-                        {effectiveMcpConfig.transport === "streamable_http"
-                          ? "Server Configuration"
-                          : "Authentication"}
+                        {isBuiltin
+                          ? "Settings"
+                          : effectiveMcpConfig.transport === "streamable_http"
+                            ? "Server Configuration"
+                            : "Authentication"}
                       </p>
                     </div>
 
                     {formFields.map((field) => (
-                      <div key={field.key} className="flex flex-col gap-2">
-                        <FormLabel
-                          label={field.displayName}
-                          required={field.required}
-                        />
-                        {field.instructions && (
-                          <p className="text-sm opacity-50">
-                            {field.instructions}
-                          </p>
-                        )}
-                        <div className="flex gap-2">
-                          <div className="flex-1">
-                            <InputText
-                              type={field.secret ? "password" : "text"}
-                              value={credentialData[field.key] || ""}
-                              onChange={(value) =>
-                                handleCredentialChange(field.key, value)
-                              }
-                              placeholder={
-                                field.type === "file"
-                                  ? "Select a file..."
-                                  : `Enter ${field.displayName.toLowerCase()}`
-                              }
-                            />
-                          </div>
-                          {field.type === "file" && (
-                            <button
-                              onClick={async () => {
-                                const filepath =
-                                  await window.mainApi.dialog.chooseFile(true, [
-                                    "json",
-                                  ]);
-                                if (filepath)
-                                  handleCredentialChange(field.key, filepath);
-                              }}
-                              className="px-3 py-1.5 text-sm rounded bg-white/10 hover:bg-white/20 transition-colors"
-                            >
-                              Browse
-                            </button>
-                          )}
-                        </div>
-                        {formErrors[field.key] && (
-                          <p className="text-sm text-red-400">
-                            {formErrors[field.key]}
-                          </p>
-                        )}
-                      </div>
+                      <ProviderSettingField
+                        key={field.key}
+                        field={field}
+                        value={credentialData[field.key]}
+                        onChange={(value) =>
+                          handleCredentialChange(field.key, value)
+                        }
+                        error={formErrors[field.key]}
+                      />
                     ))}
                   </>
                 )}

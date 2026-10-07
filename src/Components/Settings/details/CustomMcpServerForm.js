@@ -19,101 +19,11 @@ import {
   mcpJsonToFormState,
 } from "../../../utils/mcpUtils";
 import { ToolSelector } from "./ToolSelector";
-
-/**
- * Credential-field renderer for `type: "directory-list"`.
- *
- * Owns the in-progress row state locally so adding an empty row via
- * "Add directory" produces a new input immediately, even though empty
- * rows are stripped out of the persisted comma-separated string passed
- * back via `onChange`. Derives its initial rows from `value`; subsequent
- * external changes to `value` don't clobber in-progress typing.
- */
-const DirectoryListField = ({ field, value, onChange, errorText }) => {
-  const initialRows = useMemo(() => {
-    const parsed = (value || "").split(",").map((p) => p.trim());
-    const nonEmpty = parsed.filter(Boolean);
-    return nonEmpty.length === 0 ? [""] : nonEmpty;
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const [rows, setRows] = useState(initialRows);
-
-  const updateRows = (next) => {
-    setRows(next);
-    onChange(
-      next
-        .map((p) => p.trim())
-        .filter(Boolean)
-        .join(","),
-    );
-  };
-
-  return (
-    <div className="flex flex-col gap-2">
-      <FormLabel label={field.displayName} required={field.required} />
-      {field.instructions && (
-        <p className="text-xs opacity-50">{field.instructions}</p>
-      )}
-      <div className="flex flex-col gap-2">
-        {rows.map((rowValue, idx) => (
-          <div key={idx} className="flex gap-2 items-center">
-            <div className="flex-1">
-              <InputText
-                type="text"
-                value={rowValue}
-                onChange={(v) => {
-                  const next = [...rows];
-                  next[idx] = v;
-                  updateRows(next);
-                }}
-                placeholder="/Users/you/some/folder"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={async () => {
-                const picked = await window.mainApi.dialog.chooseFile(
-                  false,
-                  [],
-                );
-                if (picked) {
-                  const next = [...rows];
-                  next[idx] = picked;
-                  updateRows(next);
-                }
-              }}
-              className="px-3 py-1.5 text-sm rounded bg-white/10 hover:bg-white/20 transition-colors whitespace-nowrap"
-            >
-              Choose folder…
-            </button>
-            {rows.length > 1 && (
-              <button
-                type="button"
-                onClick={() => {
-                  const next = rows.filter((_, i) => i !== idx);
-                  updateRows(next.length ? next : [""]);
-                }}
-                className="px-2 py-1.5 text-sm rounded bg-white/5 hover:bg-red-500/20 text-red-300 transition-colors"
-                aria-label="Remove path"
-              >
-                <FontAwesomeIcon icon="xmark" className="text-xs" />
-              </button>
-            )}
-          </div>
-        ))}
-        <button
-          type="button"
-          onClick={() => setRows([...rows, ""])}
-          className="text-sm text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1 self-start"
-        >
-          <FontAwesomeIcon icon="plus" className="text-xs" />
-          <span>Add directory</span>
-        </button>
-      </div>
-      {errorText && <p className="text-sm text-red-400">{errorText}</p>}
-    </div>
-  );
-};
+import {
+  ProviderSettingField,
+  validateSettingField,
+  hasSettingValue,
+} from "./ProviderSettingField";
 
 let rowIdCounter = 0;
 const nextRowId = () => `row_${++rowIdCounter}`;
@@ -126,7 +36,7 @@ const nextRowId = () => `row_${++rowIdCounter}`;
  * form doesn't render (argsMapping, staticEnv, tokenRefresh, etc.) are copied
  * through so editing a provider never drops them.
  */
-function buildMcpConfig(
+export function buildMcpConfig(
   transport,
   {
     command,
@@ -141,6 +51,10 @@ function buildMcpConfig(
   },
   baseConfig = {},
 ) {
+  // Built-in providers (e.g. Web Fetch) run inside Dash; their config has
+  // nothing the form edits, so it's kept exactly as saved.
+  if (transport === "in_process") return { ...baseConfig };
+
   // Everything on baseConfig that the form doesn't own gets preserved.
   // `auth`/`oauth` are owned by the form's auth-type selector, so they're
   // excluded here and re-emitted below based on the current selection
@@ -255,6 +169,9 @@ export const CustomMcpServerForm = ({
 
   // Transport selection
   const [transport, setTransport] = useState(initialTransport);
+  // Built-in providers (e.g. Web Fetch) run inside Dash: only their
+  // settings are editable — no transport, command, URL or JSON view.
+  const isBuiltin = transport === "in_process";
 
   // Common
   const [providerName, setProviderName] = useState(initialName);
@@ -434,7 +351,7 @@ export const CustomMcpServerForm = ({
   // --- credential field change ---
   const handleCredentialChange = (fieldName, value) => {
     setCredentialData((prev) => ({ ...prev, [fieldName]: value }));
-    if (formErrors[fieldName] && value?.trim()) {
+    if (formErrors[fieldName] && hasSettingValue(value)) {
       setFormErrors((prev) => {
         const next = { ...prev };
         delete next[fieldName];
@@ -486,31 +403,15 @@ export const CustomMcpServerForm = ({
       if (!command?.trim()) {
         errors.command = "Command is required";
       }
-    } else {
+    } else if (!isBuiltin) {
       if (!url?.trim()) {
         errors.url = "URL is required";
       }
     }
+    // Type-aware: required, number ranges, absolute directory paths.
     formFields.forEach((field) => {
-      const raw = credentialData[field.key];
-      if (field.required && !raw?.trim()) {
-        errors[field.key] = `${field.displayName} is required`;
-        return;
-      }
-      // directory-list: every non-empty entry must be an absolute path.
-      // `~` is not expanded by child_process.spawn, so the MCP filesystem
-      // server would never match a real path against a tilde prefix.
-      if (field.type === "directory-list" && raw?.trim()) {
-        const bad = raw
-          .split(",")
-          .map((p) => p.trim())
-          .filter(Boolean)
-          .find((p) => !p.startsWith("/"));
-        if (bad) {
-          errors[field.key] =
-            `"${bad}" must be an absolute path (no \`~\`, use /Users/you/...)`;
-        }
-      }
+      const error = validateSettingField(field, credentialData[field.key]);
+      if (error) errors[field.key] = error;
     });
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -703,7 +604,7 @@ export const CustomMcpServerForm = ({
             <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
               {/* Provider Name */}
               <div className="flex flex-col gap-2">
-                <FormLabel label="Provider Name" required={true} />
+                <FormLabel title="Provider Name" required={true} />
                 <p className="text-sm opacity-50">
                   A name to identify this MCP server (e.g., &quot;My Custom
                   Server&quot;)
@@ -729,8 +630,20 @@ export const CustomMcpServerForm = ({
                 )}
               </div>
 
+              {/* Built-in: nothing to connect to, just settings */}
+              {isBuiltin && (
+                <div className="flex gap-2 items-center text-sm">
+                  <Tag text="Built into Dash" />
+                  <span className="opacity-70">
+                    Runs inside Dash — nothing to install
+                  </span>
+                </div>
+              )}
+
               {/* View Mode Toggle */}
-              <div className="flex items-center gap-1">
+              <div
+                className={`flex items-center gap-1 ${isBuiltin ? "hidden" : ""}`}
+              >
                 <button
                   onClick={() => {
                     if (viewMode === "json") handleSwitchToForm();
@@ -788,7 +701,7 @@ export const CustomMcpServerForm = ({
               {viewMode === "form" && (
                 <>
                   {/* Transport Selector */}
-                  <div className="space-y-2">
+                  <div className={`space-y-2 ${isBuiltin ? "hidden" : ""}`}>
                     <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
                       Transport Type
                     </p>
@@ -839,7 +752,7 @@ export const CustomMcpServerForm = ({
 
                       {/* Command */}
                       <div className="flex flex-col gap-2">
-                        <FormLabel label="Command" required={true} />
+                        <FormLabel title="Command" required={true} />
                         <p className="text-sm opacity-50">
                           The executable to run (e.g., npx, node, python)
                         </p>
@@ -866,7 +779,7 @@ export const CustomMcpServerForm = ({
 
                       {/* Args */}
                       <div className="flex flex-col gap-2">
-                        <FormLabel label="Arguments" />
+                        <FormLabel title="Arguments" />
                         <p className="text-sm opacity-50">
                           Space-separated arguments passed to the command
                         </p>
@@ -881,7 +794,7 @@ export const CustomMcpServerForm = ({
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
                           <div>
-                            <FormLabel label="Environment Variable Mapping" />
+                            <FormLabel title="Environment Variable Mapping" />
                             <p className="text-sm opacity-50 mt-1">
                               Map environment variables to credential fields
                             </p>
@@ -945,7 +858,7 @@ export const CustomMcpServerForm = ({
 
                       {/* URL */}
                       <div className="flex flex-col gap-2">
-                        <FormLabel label="Server URL" required={true} />
+                        <FormLabel title="Server URL" required={true} />
                         <p className="text-sm opacity-50">
                           Use{" "}
                           <code className="text-xs bg-white/10 px-1 py-0.5 rounded">
@@ -999,7 +912,7 @@ export const CustomMcpServerForm = ({
                       {authType === "oauth" && (
                         <div className="space-y-3">
                           <div className="flex flex-col gap-2">
-                            <FormLabel label="Scopes" />
+                            <FormLabel title="Scopes" />
                             <p className="text-sm opacity-50">
                               Space-separated OAuth scopes (optional — many
                               servers grant defaults).
@@ -1035,7 +948,7 @@ export const CustomMcpServerForm = ({
                                 otherwise.
                               </p>
                               <div className="flex flex-col gap-2">
-                                <FormLabel label="Client ID" />
+                                <FormLabel title="Client ID" />
                                 <InputText
                                   value={oauthClientId}
                                   onChange={setOauthClientId}
@@ -1043,7 +956,7 @@ export const CustomMcpServerForm = ({
                                 />
                               </div>
                               <div className="flex flex-col gap-2">
-                                <FormLabel label="Client secret" />
+                                <FormLabel title="Client secret" />
                                 <InputText
                                   type="password"
                                   value={oauthClientSecret}
@@ -1060,7 +973,7 @@ export const CustomMcpServerForm = ({
                       {authType === "apiKey" && (
                         <div className="space-y-3">
                           <div>
-                            <FormLabel label="Request Headers" />
+                            <FormLabel title="Request Headers" />
                             <p className="text-sm opacity-50 mt-1">
                               Use{" "}
                               <code className="text-xs bg-white/10 px-1 py-0.5 rounded">
@@ -1129,84 +1042,27 @@ export const CustomMcpServerForm = ({
                     <>
                       <div className="border-t border-white/10 pt-4">
                         <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
-                          Credentials
+                          {isBuiltin ? "Settings" : "Credentials"}
                         </p>
-                        <p className="text-sm opacity-50 mt-1">
-                          Values for the fields referenced in your configuration
-                          above
-                        </p>
+                        {!isBuiltin && (
+                          <p className="text-sm opacity-50 mt-1">
+                            Values for the fields referenced in your
+                            configuration above
+                          </p>
+                        )}
                       </div>
 
-                      {formFields.map((field) => {
-                        // directory-list: repeating rows with an absolute-path
-                        // input + directory picker. Local state inside the
-                        // component so adding an empty row doesn't get
-                        // immediately stripped by the filter on write.
-                        if (field.type === "directory-list") {
-                          return (
-                            <DirectoryListField
-                              key={field.key}
-                              field={field}
-                              value={credentialData[field.key] || ""}
-                              onChange={(v) =>
-                                handleCredentialChange(field.key, v)
-                              }
-                              errorText={formErrors[field.key]}
-                            />
-                          );
-                        }
-
-                        // Default: single text/password input with optional
-                        // "Browse" button for file-type credentials.
-                        return (
-                          <div key={field.key} className="flex flex-col gap-2">
-                            <FormLabel
-                              label={field.displayName}
-                              required={field.required}
-                            />
-                            <div className="flex gap-2">
-                              <div className="flex-1">
-                                <InputText
-                                  type={field.secret ? "password" : "text"}
-                                  value={credentialData[field.key] || ""}
-                                  onChange={(value) =>
-                                    handleCredentialChange(field.key, value)
-                                  }
-                                  placeholder={
-                                    field.type === "file"
-                                      ? "Select a file..."
-                                      : `Enter ${field.displayName.toLowerCase()}`
-                                  }
-                                />
-                              </div>
-                              {field.type === "file" && (
-                                <button
-                                  onClick={async () => {
-                                    const filepath =
-                                      await window.mainApi.dialog.chooseFile(
-                                        true,
-                                        ["json"],
-                                      );
-                                    if (filepath)
-                                      handleCredentialChange(
-                                        field.key,
-                                        filepath,
-                                      );
-                                  }}
-                                  className="px-3 py-1.5 text-sm rounded bg-white/10 hover:bg-white/20 transition-colors"
-                                >
-                                  Browse
-                                </button>
-                              )}
-                            </div>
-                            {formErrors[field.key] && (
-                              <p className="text-sm text-red-400">
-                                {formErrors[field.key]}
-                              </p>
-                            )}
-                          </div>
-                        );
-                      })}
+                      {formFields.map((field) => (
+                        <ProviderSettingField
+                          key={field.key}
+                          field={field}
+                          value={credentialData[field.key]}
+                          onChange={(value) =>
+                            handleCredentialChange(field.key, value)
+                          }
+                          error={formErrors[field.key]}
+                        />
+                      ))}
                     </>
                   )}
                 </>

@@ -91,8 +91,9 @@ step "Running Jest tests"
 npx jest --watchAll=false
 
 # 6. Run MCP tests
+#   CAP-002: built-in providers (Web Fetch) — builtinServers/
 step "Running MCP tests"
-node --test electron/controller/mcpController.test.js electron/mcp/mcpServerCatalog.test.js electron/mcp/catalogReadOnly.test.js electron/mcp/installExternalMcpTool.test.js electron/mcp/mcpOAuthProvider.test.js electron/controller/providerController.test.js
+node --test electron/controller/mcpController.test.js electron/mcp/mcpServerCatalog.test.js electron/mcp/catalogReadOnly.test.js electron/mcp/installExternalMcpTool.test.js electron/mcp/mcpOAuthProvider.test.js electron/controller/providerController.test.js electron/mcp/builtinServers/index.test.js electron/mcp/builtinServers/webFetch.test.js electron/mcp/builtinServers/safeFetch.test.js electron/mcp/builtinServers/addressGuard.test.js electron/mcp/builtinServers/imageSniff.test.js electron/mcp/builtinServers/htmlToText.test.js
 
 # 6a-llm. Run LLM model-provider tests
 step "Running LLM model-provider tests"

@@ -365,6 +365,67 @@
           "instructions": "Your Gong API Access Key Secret, provided when the access key was created."
         }
       }
+    },
+    {
+      "id": "web-fetch",
+      "name": "Web Fetch",
+      "description": "Download images and web pages from HTTPS sites so bots can see and read them. Built into Dash — nothing to install. Only reaches public websites.",
+      "icon": "globe",
+      "tags": ["web", "images", "built-in"],
+      "mcpConfig": {
+        "transport": "in_process",
+        "builtin": "web-fetch"
+      },
+      "credentialSchema": {
+        "maxDownloadMb": {
+          "type": "number",
+          "displayName": "Max download size",
+          "required": false,
+          "secret": false,
+          "default": 10,
+          "min": 1,
+          "max": 50,
+          "unit": "MB",
+          "instructions": "Largest file Web Fetch will download."
+        },
+        "timeoutSeconds": {
+          "type": "number",
+          "displayName": "Timeout",
+          "required": false,
+          "secret": false,
+          "default": 20,
+          "min": 5,
+          "max": 120,
+          "unit": "seconds",
+          "instructions": "How long to wait for a site before giving up."
+        },
+        "maxImages": {
+          "type": "number",
+          "displayName": "Max images per result",
+          "required": false,
+          "secret": false,
+          "default": 5,
+          "min": 1,
+          "max": 20,
+          "instructions": "Most images one fetch_image call returns when given several URLs."
+        },
+        "allowedSites": {
+          "type": "text-list",
+          "displayName": "Allowed sites",
+          "required": false,
+          "secret": false,
+          "placeholder": "cdn.example.com or *.example.com",
+          "instructions": "Leave empty to allow any public website. *.example.com matches its subdomains."
+        },
+        "shrinkLargeImages": {
+          "type": "toggle",
+          "displayName": "Shrink large images",
+          "required": false,
+          "secret": false,
+          "default": true,
+          "instructions": "Shrink PNG and JPEG images that are too big for the model. When off, they're refused with an error."
+        }
+      }
     }
   ]
 }

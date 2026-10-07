@@ -1,6 +1,6 @@
 # PRD: Bot Capabilities — Image Results, Web Fetch, and Finding Providers
 
-**Status:** In Progress (Phase 1 implemented)
+**Status:** In Progress (Phases 1–2 implemented)
 **Last Updated:** 2026-10-07
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; dash-electron consumes it via a version bump)
@@ -196,20 +196,20 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 > so that bots can use web content without shell access or scripts.
 
 **Priority:** P0
-**Status:** Not Started
+**Status:** Implemented (AC5b partly — see notes)
 
 **Acceptance Criteria:**
 
-- [ ] AC1: A **Web Fetch** provider appears in the built-in catalog and is listed and configured in **Settings › Providers** like any other provider. It needs no credentials. It runs inside Dash with no `node`, `uvx`, or other runtime required on the user's machine.
-- [ ] AC2: `fetch_image(url)` downloads an image and returns it as an image result (CAP-001), plus a short text line (final URL, type, size, dimensions where known).
-- [ ] AC3: `fetch_url(url)` downloads a page and returns readable text (HTML converted to text/markdown), truncated to a stated limit.
-- [ ] AC4: Fixed safety rules apply to every request and **can't be changed in settings**:
+- [x] AC1: A **Web Fetch** provider appears in the built-in catalog and is listed and configured in **Settings › Providers** like any other provider. It needs no credentials. It runs inside Dash with no `node`, `uvx`, or other runtime required on the user's machine.
+- [x] AC2: `fetch_image(url)` downloads an image and returns it as an image result (CAP-001), plus a short text line (final URL, type, size, dimensions where known).
+- [x] AC3: `fetch_url(url)` downloads a page and returns readable text (HTML converted to text/markdown), truncated to a stated limit.
+- [x] AC4: Fixed safety rules apply to every request and **can't be changed in settings**:
   - HTTPS only.
   - At most 5 redirects, each re-checked against these rules.
   - `fetch_image` only accepts `image/png`, `image/jpeg`, `image/gif`, `image/webp`.
   - Requests to localhost, private, link-local, and other internal addresses are refused, checked on the resolved IP (not just the hostname) so DNS tricks can't reach internal machines.
   - The model's own image limits (e.g. Anthropic's per-image size) apply whatever the settings say.
-- [ ] AC5: The provider has **user settings**, edited in Settings › Providers and stored as non-secret fields in its `credentialSchema` (the same mechanism Filesystem uses for **Allowed Directories**):
+- [x] AC5: The provider has **user settings**, edited in Settings › Providers and stored as non-secret fields in its `credentialSchema` (the same mechanism Filesystem uses for **Allowed Directories**):
 
   | Setting               | Field type       | Default | Range / notes                                                                                                                                                 |
   | --------------------- | ---------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -221,11 +221,11 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 
   Out-of-range values are refused when saving, with the allowed range shown. A provider saved before a setting existed uses that setting's default.
 
-- [ ] AC5a: The user can add **more than one** Web Fetch provider, each with its own name and settings (e.g. "Web Fetch — product images" limited to the product CDN, and an unrestricted "Web Fetch — research"). Each bot only uses the copies granted to it, and the lead sees each copy by name in `team_providers`.
-- [ ] AC5b: Settings take effect on the next tool call; no restart or reconnect is needed.
-- [ ] AC6: Calls go through the normal bot permission gate: granting the provider to a bot, choosing its tools, approvals, and "Always allow" all work as for other providers.
-- [ ] AC7: The provider shows up in `team_providers`, so leads can propose bots that use it.
-- [ ] AC8: Errors are plain and specific, and name the setting when one applies ("Not an image: text/html", "Blocked: private network address", "Too large: 14 MB; this provider's limit is 10 MB (Settings › Providers › Web Fetch)", "Not in this provider's allowed sites: example.org").
+- [x] AC5a: The user can add **more than one** Web Fetch provider, each with its own name and settings (e.g. "Web Fetch — product images" limited to the product CDN, and an unrestricted "Web Fetch — research"). Each bot only uses the copies granted to it, and the lead sees each copy by name in `team_providers`.
+- [ ] AC5b: Settings take effect on the next tool call; no restart or reconnect is needed. _(Partly: saving restarts the copy Settings runs, but bots' per-dashboard copies keep the old settings until they restart (e.g. app restart) — the same as any provider's credentials today. See Open Question 7.)_
+- [x] AC6: Calls go through the normal bot permission gate: granting the provider to a bot, choosing its tools, approvals, and "Always allow" all work as for other providers.
+- [x] AC7: The provider shows up in `team_providers`, so leads can propose bots that use it.
+- [x] AC8: Errors are plain and specific, and name the setting when one applies ("Not an image: text/html", "Blocked: private network address", "Too large: 14 MB; this provider's limit is 10 MB (Settings › Providers › Web Fetch)", "Not in this provider's allowed sites: example.org").
 
 **Edge Cases:**
 
@@ -236,11 +236,20 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 
 **Definition of Done:**
 
-- [ ] Code implemented and reviewed
-- [ ] Unit tests pass (URL rules, address blocking, redirect handling, size cap, type checks, each setting and its range checks)
-- [ ] Manual test: the Algolia enrichment bot fetches and labels an image with no built-in shell tools
-- [ ] Acceptance criteria verified
-- [ ] Documentation updated
+- [x] Code implemented and reviewed
+- [x] Unit tests pass (URL rules, address blocking, redirect handling, size cap, type checks, each setting and its range checks)
+- [ ] Manual test: the Algolia enrichment bot fetches and labels an image with no built-in shell tools _(the user's hands-on test; an equivalent engine-level run passed — see notes)_
+- [x] Acceptance criteria verified
+- [x] Documentation updated
+
+**Implementation notes (2026-10-07):**
+
+- **In-process transport:** `mcpConfig: { transport: "in_process", builtin: "web-fetch" }`. `mcpController.startServer` gets the client side of an in-memory link from `electron/mcp/builtinServers/index.js` (`createBuiltinTransport`, MCP SDK `InMemoryTransport`); everything downstream (tool allow-lists, bot grants and approvals, widgets, the Assistant, Test connection) is unchanged. The catalog's command refresh skips built-ins.
+- **Modules (`electron/mcp/builtinServers/`):** `webFetch.js` (the MCP server, settings with defaults and ranges, shrink via Electron `nativeImage` — PNG/JPEG only), `safeFetch.js` (HTTPS only, ≤ 5 redirects each re-checked, internal addresses refused by a guarded DNS lookup on the IP actually connected to, size cap while streaming, timeout, allowed sites), `addressGuard.js` (IPv4/IPv6 internal ranges incl. IPv4-in-IPv6, NAT64, 6to4), `imageSniff.js` (type and size from the bytes), `htmlToText.js` (small HTML → light markdown; no new dependency).
+- **`fetch_image`** takes `url` or `urls` (up to Max images per result); per-URL failures are listed while successes are returned. Tools carry no read-only hint, so under "Ask before external actions" each call asks (or uses "Always allow"). Tool names start with `fetch_`, so mcpController's existing 5-second response cache applies.
+- **Settings UI (FR-C02a):** see FR-C02a notes.
+- **Verified in the app:** through the real IPC — tools listed; a public PNG returned as an image; `https://127.0.0.1` refused; `https://localtest.me` (DNS → 127.0.0.1) refused by the DNS check; `http://` refused; a page returned as text; a site outside Allowed sites refused, naming the setting. Settings screens checked in light and dark; a test copy saved (detail shows "Built into Dash"), edited, Test connection ("Connected! Found 2 tools."), then deleted. End to end, a Claude Code bot (user's CLI, Claude Haiku 4.5) called `fetch_image` on the Google logo through the bot result path and answered "Google".
+- **Not changed:** the widget-side picker (`McpServerPicker`, layout builder) keeps its own text-only field renderer, so Web Fetch's settings show as plain text boxes there (values still work). Follow-up: use `ProviderSettingField` there too.
 
 ---
 
@@ -367,6 +376,7 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 - **Description:** The provider settings form (`credentialSchema`) gains a `number` field type (with `min`, `max`, `default`, and a unit label) and a `text-list` field type (add/remove rows, like `directory-list` but free text, with optional per-item validation). A `toggle` field type is also added (today the form only special-cases `file` and `directory-list`; everything else renders as text). Values are validated when saving. Built with dash-react inputs.
 - **Priority:** P0 (needed by Web Fetch's settings)
 - **Validation:** Unit tests for validation and defaults; light and dark screenshots of the Web Fetch settings form.
+- **Status:** Implemented (2026-10-07). One shared renderer, `src/Components/Settings/details/ProviderSettingField.js` (text/password, file, directory-list, number, toggle, text-list; built from dash-react `InputText`, `Switch`, `ButtonIcon`, `FormLabel`, `Caption2`), with `validateSettingField` (type-aware: required, number ranges, absolute directory paths) and `hasSettingValue`. Used by `McpCatalogDetail` (create) and `CustomMcpServerForm` (edit), replacing their copied renderers and the old `DirectoryListField`. `deriveFormFields` now carries `min`/`max`/`default`/`unit`/`placeholder`. Built-ins show "Built into Dash" instead of transport/command/JSON, in the forms and in `ProviderDetail`. Values keep the shapes the main process reads (numbers as strings, toggles as booleans, lists comma-joined). Also fixed while here: these forms passed `label` to dash-react `FormLabel`, which takes `title`, so field names (e.g. "Provider Name") never rendered.
 
 **FR-C03: Provider discovery**
 
@@ -440,6 +450,7 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 4. **CAP-006 timing:** ship the built-in tools setting with phase 1, or later?
 5. ~~**Which models count as vision-capable**~~ — resolved: send the images and translate an API refusal into a plain error (see CAP-001 AC6).
 6. **Claude Code keeps its own copies of images:** the CLI saves session transcripts and tool-result images under `~/.claude/projects/<bot sandbox path>/`. Should Dash clean these up (e.g. when a bot is deleted, or after N days), turn off the CLI's session saving for bots where possible, or just document it?
+7. **Settings reaching running bot copies (CAP-002 AC5b):** saving a provider restarts only the copy Settings runs; bots' per-dashboard copies keep their old settings/credentials until they restart. Restart every running copy of a provider on save (all providers, not just Web Fetch), or read Web Fetch's settings per call?
 
 ### Decisions Made
 
@@ -519,3 +530,4 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 | 1.0     | 2026-10-07 | John   | Initial draft                                                                              |
 | 1.1     | 2026-10-07 | John   | Web Fetch limits as provider settings; multiple copies; new settings field types (FR-C02a) |
 | 1.2     | 2026-10-07 | John   | CAP-001 implemented (Phase 1); Open Question 6 (Claude Code's own image copies)            |
+| 1.3     | 2026-10-07 | John   | CAP-002 Web Fetch + FR-C02a settings fields implemented (Phase 2); Open Question 7         |
