@@ -189,31 +189,44 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 
 **Acceptance Criteria:**
 
-- [ ] AC1: A **Web Fetch** provider appears in the built-in catalog and needs no credentials. It runs inside Dash with no `node`, `uvx`, or other runtime required on the user's machine.
+- [ ] AC1: A **Web Fetch** provider appears in the built-in catalog and is listed and configured in **Settings › Providers** like any other provider. It needs no credentials. It runs inside Dash with no `node`, `uvx`, or other runtime required on the user's machine.
 - [ ] AC2: `fetch_image(url)` downloads an image and returns it as an image result (CAP-001), plus a short text line (final URL, type, size, dimensions where known).
 - [ ] AC3: `fetch_url(url)` downloads a page and returns readable text (HTML converted to text/markdown), truncated to a stated limit.
-- [ ] AC4: Safety rules apply to every request:
+- [ ] AC4: Fixed safety rules apply to every request and **can't be changed in settings**:
   - HTTPS only.
   - At most 5 redirects, each re-checked against these rules.
-  - A size cap (proposed 10 MB) enforced while streaming.
-  - A timeout (proposed 20 s).
   - `fetch_image` only accepts `image/png`, `image/jpeg`, `image/gif`, `image/webp`.
   - Requests to localhost, private, link-local, and other internal addresses are refused, checked on the resolved IP (not just the hostname) so DNS tricks can't reach internal machines.
-- [ ] AC5: The provider has an optional **Allowed sites** list (hostnames, `*.example.com` supported). Empty means any public site.
+  - The model's own image limits (e.g. Anthropic's per-image size) apply whatever the settings say.
+- [ ] AC5: The provider has **user settings**, edited in Settings › Providers and stored as non-secret fields in its `credentialSchema` (the same mechanism Filesystem uses for **Allowed Directories**):
+
+  | Setting               | Field type       | Default | Range / notes                                                                                                                                                 |
+  | --------------------- | ---------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | Max download size     | number (MB)      | 10      | 1–50; the 50 MB ceiling is fixed so one fetch can't exhaust memory. Enforced while streaming.                                                                 |
+  | Timeout               | number (seconds) | 20      | 5–120                                                                                                                                                         |
+  | Max images per result | number           | 5       | 1–20                                                                                                                                                          |
+  | Allowed sites         | list of text     | empty   | Hostnames; `*.example.com` matches subdomains. Empty means any public site.                                                                                   |
+  | Shrink large images   | toggle           | on      | On: images over the model's limit are downscaled in the main process (Electron `nativeImage`). Off: they're rejected with an error giving the size and limit. |
+
+  Out-of-range values are refused when saving, with the allowed range shown. A provider saved before a setting existed uses that setting's default.
+
+- [ ] AC5a: The user can add **more than one** Web Fetch provider, each with its own name and settings (e.g. "Web Fetch — product images" limited to the product CDN, and an unrestricted "Web Fetch — research"). Each bot only uses the copies granted to it, and the lead sees each copy by name in `team_providers`.
+- [ ] AC5b: Settings take effect on the next tool call; no restart or reconnect is needed.
 - [ ] AC6: Calls go through the normal bot permission gate: granting the provider to a bot, choosing its tools, approvals, and "Always allow" all work as for other providers.
 - [ ] AC7: The provider shows up in `team_providers`, so leads can propose bots that use it.
-- [ ] AC8: Errors are plain and specific ("Not an image: text/html", "Blocked: private network address", "Too large: 14 MB, limit 10 MB").
+- [ ] AC8: Errors are plain and specific, and name the setting when one applies ("Not an image: text/html", "Blocked: private network address", "Too large: 14 MB; this provider's limit is 10 MB (Settings › Providers › Web Fetch)", "Not in this provider's allowed sites: example.org").
 
 **Edge Cases:**
 
 - URL that redirects from HTTPS to HTTP → refused.
+- Redirect to a site outside **Allowed sites** → refused, naming the redirect target.
 - Server that lies about `Content-Type` → the image's bytes are checked (magic number) before it's returned.
-- Very large dimensions → downscaled to the model's limits where possible (see CAP-001).
+- Very large dimensions → downscaled when **Shrink large images** is on; otherwise refused (see CAP-001).
 
 **Definition of Done:**
 
 - [ ] Code implemented and reviewed
-- [ ] Unit tests pass (URL rules, address blocking, redirect handling, size cap, type checks)
+- [ ] Unit tests pass (URL rules, address blocking, redirect handling, size cap, type checks, each setting and its range checks)
 - [ ] Manual test: the Algolia enrichment bot fetches and labels an image with no built-in shell tools
 - [ ] Acceptance criteria verified
 - [ ] Documentation updated
@@ -334,9 +347,15 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 
 **FR-C02: Web Fetch provider**
 
-- **Description:** Built-in, in-process provider with `fetch_image` and `fetch_url`, safety rules, and optional allowed sites (CAP-002).
+- **Description:** Built-in, in-process provider with `fetch_image` and `fetch_url`, fixed safety rules, and user settings (size, timeout, image count, allowed sites, shrink) configured in Settings › Providers; multiple copies allowed (CAP-002).
 - **Priority:** P0
-- **Validation:** Unit tests for every safety rule; manual end-to-end bot.
+- **Validation:** Unit tests for every safety rule and setting; manual end-to-end bot.
+
+**FR-C02a: Number and list fields for provider settings**
+
+- **Description:** The provider settings form (`credentialSchema`) gains a `number` field type (with `min`, `max`, `default`, and a unit label) and a `text-list` field type (add/remove rows, like `directory-list` but free text, with optional per-item validation). A `toggle` field type is also added (today the form only special-cases `file` and `directory-list`; everything else renders as text). Values are validated when saving. Built with dash-react inputs.
+- **Priority:** P0 (needed by Web Fetch's settings)
+- **Validation:** Unit tests for validation and defaults; light and dark screenshots of the Web Fetch settings form.
 
 **FR-C03: Provider discovery**
 
@@ -390,6 +409,7 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 
 - **Tool result shape:** `{ text, images?, isError }` is the one contract between `_callTool`, the engines, and the adapters. `images` is optional so in-process tools don't change.
 - **Web Fetch lives in the main process.** It's registered as a built-in provider served in-process (like the memory and team virtual servers, but granted and gated like a normal provider). It uses Electron's `net`/Node `https` with a custom DNS lookup that rejects internal addresses.
+- **Settings are read per call.** Each tool call reads the calling provider's saved settings (by provider name), clamps them to the fixed ceilings, and applies them. Fixed safety rules are code, not settings.
 - **Discovery is read-only.** `find_providers` reads local catalogs and one public HTTPS endpoint, and never installs anything. Installing reuses the existing paths (`install_known_mcp_server` confirmation; `CustomMcpServerForm`).
 
 ### Dependencies
@@ -403,8 +423,8 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 
 ### Open Questions
 
-1. **Size and count limits:** 10 MB per fetch, 5 images per result, 20 s timeout. Are those right?
-2. **Downscaling:** downscale large images in the main process (Electron `nativeImage`), or reject them with a clear error?
+1. ~~**Size and count limits**~~ — resolved: user settings on the provider (see Decisions Made).
+2. ~~**Downscaling**~~ — resolved: the **Shrink large images** setting (on by default).
 3. **Web Fetch as a granted provider vs. always-on tool:** this PRD makes it a provider the user grants per bot. Confirm that's preferred over giving every bot the tools automatically.
 4. **CAP-006 timing:** ship the built-in tools setting with phase 1, or later?
 5. **Which models count as vision-capable** for AC6 of CAP-001: per-provider flag in `modelProviders.js`, or try and report the API error?
@@ -417,6 +437,8 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 | Web Fetch is a provider, not a hidden built-in | Reuses grants, tool selection, approvals, "Always allow"; visible to leads via `team_providers`; user decides which bots get web access | 2026-10-07 |
 | Leads suggest, users install                   | Installing runs third-party code with the user's credentials                                                                            | 2026-10-07 |
 | Images first                                   | Every other phase (Web Fetch, Puppeteer, image search) depends on images reaching the model                                             | 2026-10-07 |
+| Web Fetch limits are provider settings         | The user sets size, timeout, image count, allowed sites, and shrink in Settings › Providers; safety rules and ceilings stay fixed       | 2026-10-07 |
+| Multiple Web Fetch copies allowed              | Different bots can get different limits (e.g. one locked to a CDN) by granting different copies                                         | 2026-10-07 |
 
 ---
 
@@ -437,7 +459,8 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 
 ### Phase 2: Web Fetch provider (P0)
 
-- CAP-002 (depends on Phase 1)
+- FR-C02a: number, list, and toggle fields for provider settings
+- CAP-002 (depends on Phase 1 and FR-C02a)
 
 ### Phase 3: Finding providers (P1)
 
@@ -473,11 +496,13 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 
 - The Algolia enrichment bot from the problem statement labels a real image with no built-in shell tools (released app, Intel Mac)
 - Light and dark screenshots of the draft review with tier labels and the unverified warning
+- Light and dark screenshots of Settings › Providers › Web Fetch; two Web Fetch copies with different allowed sites, each granted to a different bot
 
 ---
 
 ## Revision History
 
-| Version | Date       | Author | Changes       |
-| ------- | ---------- | ------ | ------------- |
-| 1.0     | 2026-10-07 | John   | Initial draft |
+| Version | Date       | Author | Changes                                                                                    |
+| ------- | ---------- | ------ | ------------------------------------------------------------------------------------------ |
+| 1.0     | 2026-10-07 | John   | Initial draft                                                                              |
+| 1.1     | 2026-10-07 | John   | Web Fetch limits as provider settings; multiple copies; new settings field types (FR-C02a) |
