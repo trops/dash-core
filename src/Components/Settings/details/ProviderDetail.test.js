@@ -96,3 +96,27 @@ describe("ProviderDetail — Test Connection", () => {
     expect(api.mcpStopServer).toHaveBeenCalled();
   });
 });
+
+describe("ProviderDetail — built-in provider (bot-capabilities CAP-002)", () => {
+  it("shows 'Built into Dash', not stdio or a command", () => {
+    render(
+      <AppContext.Provider value={{ dashApi: {} }}>
+        <ProviderDetail
+          providerName="Web Fetch"
+          provider={{
+            providerClass: "mcp",
+            type: "web-fetch",
+            mcpConfig: { transport: "in_process", builtin: "web-fetch" },
+            credentials: {},
+          }}
+        />
+      </AppContext.Provider>,
+    );
+    expect(screen.getByText("Built into Dash")).toBeInTheDocument();
+    expect(
+      screen.getByText("Inside Dash — nothing to install"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("stdio")).toBeNull();
+    expect(screen.queryByText("Command")).toBeNull();
+  });
+});

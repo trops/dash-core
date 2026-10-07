@@ -25,6 +25,27 @@ const dashApi = {
           name: "Slack",
           mcpConfig: { transport: "stdio", command: "npx", envMapping: {} },
         },
+        {
+          id: "web-fetch",
+          name: "Web Fetch",
+          description: "Download images and web pages",
+          mcpConfig: { transport: "in_process", builtin: "web-fetch" },
+          credentialSchema: {
+            maxDownloadMb: {
+              type: "number",
+              displayName: "Max download size",
+              default: 10,
+              min: 1,
+              max: 50,
+              unit: "MB",
+            },
+            shrinkLargeImages: {
+              type: "toggle",
+              displayName: "Shrink large images",
+              default: true,
+            },
+          },
+        },
       ],
     }),
   mcpGetKnownExternalCatalog: (ok) => ok(null, { servers: [] }),
@@ -47,5 +68,17 @@ describe("McpCatalogDetail pre-select (app-navigation NAV-007 AC2)", () => {
     renderDetail({ initialSelectedId: "nope" });
     expect(await screen.findByText("Slack")).toBeInTheDocument();
     expect(screen.queryByText(/^Configure /)).toBeNull();
+  });
+});
+
+describe("McpCatalogDetail built-in provider (bot-capabilities CAP-002)", () => {
+  it("shows 'Built into Dash' and the settings, not a command", async () => {
+    renderDetail({ initialSelectedId: "web-fetch" });
+    expect(await screen.findByText("Configure Web Fetch")).toBeInTheDocument();
+    expect(screen.getByText("Built into Dash")).toBeInTheDocument();
+    expect(screen.queryByText("Command:")).toBeNull();
+    expect(screen.getByText("Settings")).toBeInTheDocument();
+    expect(screen.getByText("Max download size")).toBeInTheDocument();
+    expect(screen.getByRole("switch")).toBeChecked();
   });
 });

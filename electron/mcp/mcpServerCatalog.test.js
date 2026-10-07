@@ -112,6 +112,28 @@ describe("mcpServerCatalog structural validation", () => {
     );
   });
 
+  it("web-fetch is built in, and its number settings match what the provider reads", () => {
+    const { NUMBER_SETTINGS } = require("./builtinServers/webFetch");
+    const { BUILTIN_SERVERS } = require("./builtinServers");
+    const wf = catalog.servers.find((s) => s.id === "web-fetch");
+    assert.ok(wf, "web-fetch entry missing");
+    assert.equal(wf.mcpConfig.transport, "in_process");
+    assert.ok(BUILTIN_SERVERS[wf.mcpConfig.builtin], "unknown builtin id");
+    for (const [key, range] of Object.entries(NUMBER_SETTINGS)) {
+      const field = wf.credentialSchema[key];
+      assert.ok(field, `missing setting ${key}`);
+      assert.equal(field.type, "number");
+      assert.equal(field.default, range.default, `${key} default`);
+      assert.equal(field.min, range.min, `${key} min`);
+      assert.equal(field.max, range.max, `${key} max`);
+    }
+    assert.equal(wf.credentialSchema.allowedSites.type, "text-list");
+    assert.equal(wf.credentialSchema.shrinkLargeImages.type, "toggle");
+    assert.ok(
+      Object.values(wf.credentialSchema).every((f) => f.secret === false),
+    );
+  });
+
   it("every server has required fields", () => {
     for (const server of catalog.servers) {
       assert.ok(server.id, "Server missing id");

@@ -31,6 +31,10 @@ const { describeStartFailure, StderrTail } = require("../utils/mcpStartError");
 const { connectedServersFromMap } = require("../bots/toolSources");
 const { applyPathScopeToCredentials } = require("../utils/mcpScopeResolver");
 const { readEnforceFlag, readJitFlag } = require("../utils/securityFlags");
+const {
+  isBuiltinTransport,
+  createBuiltinTransport,
+} = require("../mcp/builtinServers");
 const { app } = require("electron");
 
 /**
@@ -572,7 +576,8 @@ const mcpController = {
           const catalogEntry = (catalog || []).find(
             (entry) => entry.name === serverName,
           );
-          if (catalogEntry?.mcpConfig) {
+          // Built-ins have no command to refresh from the catalog.
+          if (catalogEntry?.mcpConfig && !isBuiltinTransport(mcpConfig)) {
             const cat = catalogEntry.mcpConfig;
             if (cat.command) mcpConfig.command = cat.command;
             if (cat.args) mcpConfig.args = [...cat.args];
@@ -602,7 +607,13 @@ const mcpController = {
         // (which builds its own transport) instead of the generic connect.
         let oauthProvider = null;
         let oauthUrl = null;
-        if (mcpConfig.transport === "streamable_http") {
+        if (isBuiltinTransport(mcpConfig)) {
+          // Built-in provider (e.g. Web Fetch): runs inside Dash, linked to
+          // the client in memory — no process to spawn, nothing to install.
+          transport = await createBuiltinTransport(mcpConfig, credentials, {
+            serverName,
+          });
+        } else if (mcpConfig.transport === "streamable_http") {
           // Remote HTTP transport - connect to a hosted MCP server
           const url = interpolate(mcpConfig.url, credentials);
           if (!url) {
