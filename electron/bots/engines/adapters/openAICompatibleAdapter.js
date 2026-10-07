@@ -111,15 +111,40 @@ const openAICompatibleAdapter = {
 
   /**
    * OpenAI takes each tool result as its own `role: "tool"` message keyed by
-   * tool_call_id.
-   * @param {Array<{id: string, name: string, text: string, isError: boolean}>} results
+   * tool_call_id. Tool messages can only carry text, so images (CAP-001)
+   * follow in one user message, each group labelled with the call it came from.
+   * @param {Array<{id: string, name: string, text: string, images?: Array<{data: string, mimeType: string}>, isError: boolean}>} results
    */
   formatToolResults(results) {
-    return results.map((r) => ({
-      role: "tool",
-      tool_call_id: r.id,
-      content: r.isError ? `Error: ${r.text}` : r.text,
-    }));
+    const messages = results.map((r) => {
+      const hasImages = Array.isArray(r.images) && r.images.length > 0;
+      const text =
+        r.text ||
+        (hasImages
+          ? `Returned ${r.images.length} image(s), attached below.`
+          : "");
+      return {
+        role: "tool",
+        tool_call_id: r.id,
+        content: r.isError ? `Error: ${text}` : text,
+      };
+    });
+    const parts = [];
+    for (const r of results) {
+      if (!Array.isArray(r.images) || !r.images.length) continue;
+      parts.push({
+        type: "text",
+        text: `Images returned by ${r.name} (call ${r.id}):`,
+      });
+      for (const img of r.images) {
+        parts.push({
+          type: "image_url",
+          image_url: { url: `data:${img.mimeType};base64,${img.data}` },
+        });
+      }
+    }
+    if (parts.length) messages.push({ role: "user", content: parts });
+    return messages;
   },
 };
 

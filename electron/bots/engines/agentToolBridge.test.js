@@ -119,4 +119,38 @@ describe("buildBotMcpServer", () => {
     assert.equal(out.isError, true);
     assert.equal(out.content[0].text, "boom");
   });
+
+  it("returns images to the SDK as MCP image blocks (CAP-001)", async () => {
+    const ctx = {
+      tools: [{ name: "fetch_image", inputSchema: {} }],
+      executeTool: async () => ({
+        text: "shoe.jpg",
+        images: [{ data: "AAAA", mimeType: "image/jpeg" }],
+        isError: false,
+      }),
+    };
+    const sdk = fakeSdk();
+    buildBotMcpServer(ctx, sdk, z);
+    const out = await sdk.made[0].handler({});
+    assert.deepEqual(out.content, [
+      { type: "text", text: "shoe.jpg" },
+      { type: "image", data: "AAAA", mimeType: "image/jpeg" },
+    ]);
+  });
+
+  it("an image-only result has no empty text block", async () => {
+    const ctx = {
+      tools: [{ name: "snap", inputSchema: {} }],
+      executeTool: async () => ({
+        text: "",
+        images: [{ data: "AAAA", mimeType: "image/png" }],
+      }),
+    };
+    const sdk = fakeSdk();
+    buildBotMcpServer(ctx, sdk, z);
+    const out = await sdk.made[0].handler({});
+    assert.deepEqual(out.content, [
+      { type: "image", data: "AAAA", mimeType: "image/png" },
+    ]);
+  });
 });

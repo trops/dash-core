@@ -21,6 +21,11 @@
 const { createEventStream } = require("./eventStream");
 const anthropicAdapter = require("./adapters/anthropicAdapter");
 const openAICompatibleAdapter = require("./adapters/openAICompatibleAdapter");
+const {
+  describeResult,
+  stripImagesForStorage,
+  imageRejectionMessage,
+} = require("../toolImages");
 
 const ADAPTERS = {
   anthropic: anthropicAdapter,
@@ -44,7 +49,7 @@ function resolveAdapter(ctx) {
   return adapter;
 }
 
-async function runLoop(ctx, stream) {
+async function runLoop(ctx, stream, state) {
   const adapter = resolveAdapter(ctx);
   const maxTurns = ctx.maxTurns || DEFAULT_MAX_TURNS;
   const providerTools = adapter.toProviderTools(ctx.tools || []);
@@ -57,11 +62,18 @@ async function runLoop(ctx, stream) {
   if (ctx.prompt) messages.push({ role: "user", content: ctx.prompt });
 
   const aborted = () => ctx.signal && ctx.signal.aborted;
+  // The stored session keeps placeholders, not image data (CAP-001); the live
+  // history keeps the images so later turns of this run can still see them.
+  const pushSession = () =>
+    stream.push({
+      type: "session",
+      session: { messages: stripImagesForStorage(messages) },
+    });
 
   let turn = 0;
   while (turn <= maxTurns) {
     if (aborted()) {
-      stream.push({ type: "session", session: { messages } });
+      pushSession();
       return;
     }
 
@@ -81,7 +93,7 @@ async function runLoop(ctx, stream) {
 
     const toolCalls = result.toolCalls || [];
     if (!toolCalls.length || result.stopReason === "end_turn") {
-      stream.push({ type: "session", session: { messages } });
+      pushSession();
       stream.push({
         type: "done",
         stopReason: result.stopReason || "end_turn",
@@ -95,7 +107,7 @@ async function runLoop(ctx, stream) {
     const results = [];
     for (const call of toolCalls) {
       if (aborted()) {
-        stream.push({ type: "session", session: { messages } });
+        pushSession();
         return;
       }
 
@@ -107,6 +119,7 @@ async function runLoop(ctx, stream) {
       });
 
       let text = "";
+      let images = null;
       let isError = false;
 
       // Every tool call routes through the gate before executing — the engine
@@ -120,6 +133,10 @@ async function runLoop(ctx, stream) {
           const r = await ctx.executeTool(call.name, call.input);
           text = (r && r.text) || "";
           isError = !!(r && r.isError);
+          if (r && Array.isArray(r.images) && r.images.length) {
+            images = r.images;
+            state.sentImages = true;
+          }
         } catch (err) {
           text = `Error: ${err.message}`;
           isError = true;
@@ -130,10 +147,15 @@ async function runLoop(ctx, stream) {
         type: "tool_result",
         id: call.id,
         name: call.name,
-        output: text,
+        // Activity shows a placeholder per image, never the image data.
+        output: images ? describeResult({ text, images }) : text,
         isError,
       });
-      results.push({ id: call.id, name: call.name, text, isError });
+      results.push(
+        images
+          ? { id: call.id, name: call.name, text, images, isError }
+          : { id: call.id, name: call.name, text, isError },
+      );
     }
 
     for (const m of adapter.formatToolResults(results)) messages.push(m);
@@ -153,14 +175,19 @@ const toolLoopEngine = {
 
   run(ctx) {
     const stream = createEventStream();
+    const state = { sentImages: false };
     (async () => {
       try {
-        await runLoop(ctx, stream);
+        await runLoop(ctx, stream, state);
       } catch (err) {
+        // A model that can't read images gets a plain explanation.
+        const imageMessage = state.sentImages
+          ? imageRejectionMessage(err, ctx.model)
+          : null;
         stream.push({
           type: "error",
-          message: err.message || "Engine error",
-          code: err.code || "ENGINE_ERROR",
+          message: imageMessage || err.message || "Engine error",
+          code: imageMessage ? "MODEL_NO_IMAGES" : err.code || "ENGINE_ERROR",
         });
       } finally {
         stream.end();

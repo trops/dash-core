@@ -1,6 +1,6 @@
 # PRD: Bot Capabilities — Image Results, Web Fetch, and Finding Providers
 
-**Status:** Draft
+**Status:** In Progress (Phase 1 implemented)
 **Last Updated:** 2026-10-07
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; dash-electron consumes it via a version bump)
@@ -150,31 +150,42 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 > so that bots can describe, classify, or check images.
 
 **Priority:** P0
-**Status:** Not Started
+**Status:** Implemented
 
 **Acceptance Criteria:**
 
-- [ ] AC1: A tool result is `{ text, images, isError }`, where `images` is a list of `{ data (base64), mimeType }`. `text`-only results behave exactly as today.
-- [ ] AC2: `normalizeMcpResult` keeps MCP `{ type: "image", data, mimeType }` blocks in `images`, and still joins text blocks into `text`.
-- [ ] AC3: The Anthropic adapter sends images as `image` content blocks inside the `tool_result`; the OpenAI-compatible adapter sends them in the format that API accepts for tool output (or as a follow-up user message with `image_url` parts where tool messages can't carry images).
-- [ ] AC4: `agentToolBridge` returns image blocks to the Claude Agent SDK alongside text.
-- [ ] AC5: In-process tools (memory, team) are unaffected.
-- [ ] AC6: If the bot's model can't take images, the run doesn't fail silently: the tool result text says the image was omitted because the model doesn't support images, and names the model.
-- [ ] AC7: Images in the Activity feed and run history are shown as a placeholder ("image, 240 KB, image/png") rather than stored inline, so run logs don't grow by megabytes.
+- [x] AC1: A tool result is `{ text, images, isError }`, where `images` is a list of `{ data (base64), mimeType }`. `text`-only results behave exactly as today.
+- [x] AC2: `normalizeMcpResult` keeps MCP `{ type: "image", data, mimeType }` blocks in `images`, and still joins text blocks into `text`.
+- [x] AC3: The Anthropic adapter sends images as `image` content blocks inside the `tool_result`; the OpenAI-compatible adapter sends them in the format that API accepts for tool output (or as a follow-up user message with `image_url` parts where tool messages can't carry images).
+- [x] AC4: `agentToolBridge` returns image blocks to the Claude Agent SDK alongside text.
+- [x] AC5: In-process tools (memory, team) are unaffected.
+- [x] AC6: If the bot's model can't take images, the run doesn't fail silently. _(Implemented as: images are sent, and if the API refuses them the run error reads "This model can't read images (model). Choose a model that supports images in the bot's Settings." — no per-model capability flag to maintain.)_
+- [x] AC7: Images in the Activity feed and run history are shown as a placeholder ("[image: image/png, 240 KB]") rather than stored inline, so run logs don't grow by megabytes.
 
 **Edge Cases:**
 
 - Unsupported image type (e.g. SVG, TIFF) → dropped with a text note naming the type.
-- Image larger than the provider's limit (e.g. Anthropic's per-image size limit) → downscaled if possible, otherwise dropped with a text note giving the size and limit.
-- Many images in one result → capped (proposed: 5), with a note saying how many were omitted.
+- Image larger than the provider's limit (e.g. Anthropic's per-image size limit) → dropped with a text note giving the size and limit. _(Shrinking moved to CAP-002's **Shrink large images** setting, where Web Fetch has Electron's image tools.)_
+- Many images in one result → capped at 5, with a note saying how many were omitted.
+
+**Implementation notes (2026-10-07):**
+
+- **One helper module:** `electron/bots/toolImages.js` (pure, no Electron) — `collectImages` (PNG/JPEG/GIF/WebP, ≤ 5 MB each, ≤ 5 per result, a note per dropped image), `imagePlaceholder`/`describeResult` (Activity text), `stripImagesForStorage` (saved sessions), `imageRejectionMessage` (AC6).
+- **Normalizer:** `bots/mcpResult.js` adds `images` only when there are some, so text-only results keep their exact old shape.
+- **Tool-loop engine:** passes `images` to the adapter; Activity's `tool_result.output` gets placeholders; the stored session is `stripImagesForStorage(messages)` while the live history keeps the images for later turns of the same run. A continued session sees placeholders, not images.
+- **Anthropic adapter:** text-only results stay a string; with images, the `tool_result` content is `[text?, image…]` (no empty text block — the API rejects those).
+- **OpenAI-compatible adapter:** Chat Completions tool messages are text-only, so images follow in one `user` message of `image_url` data-URL parts, each group labelled "Images returned by <tool> (call <id>)". An image-only tool message gets "Returned N image(s), attached below."
+- **Claude Agent bridge:** returns MCP `{ type: "image", data, mimeType }` blocks; `_fromUser` shows placeholders for image parts in either the API or MCP shape.
+- **Verified for real** on the claude-agent engine with the user's installed CLI (Claude Haiku 4.5): a test tool returned a solid-red PNG and the model answered "Red". The Anthropic API path couldn't be run for real (the account was out of credit); it's covered by adapter unit tests.
+- **Found while verifying:** the Claude Code CLI writes each session transcript, and every tool-result image, to `~/.claude/projects/<bot sandbox path>/<session>/` (images under `tool-results/`, and the path is appended to the tool-result text). Dash's own logs stay image-free, but Claude Code bots leave image copies there. Follow-up: see Open Question 6.
 
 **Definition of Done:**
 
-- [ ] Code implemented and reviewed
-- [ ] Unit tests pass (normalizer, both adapters, bridge)
-- [ ] Integration test: a fake MCP tool returning an image reaches a stubbed model call as an image
-- [ ] Acceptance criteria verified
-- [ ] Documentation updated
+- [x] Code implemented and reviewed
+- [x] Unit tests pass (normalizer, both adapters, bridge)
+- [x] Integration test: a fake MCP tool returning an image reaches a stubbed model call as an image
+- [x] Acceptance criteria verified
+- [x] Documentation updated
 
 ---
 
@@ -427,7 +438,8 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 2. ~~**Downscaling**~~ — resolved: the **Shrink large images** setting (on by default).
 3. **Web Fetch as a granted provider vs. always-on tool:** this PRD makes it a provider the user grants per bot. Confirm that's preferred over giving every bot the tools automatically.
 4. **CAP-006 timing:** ship the built-in tools setting with phase 1, or later?
-5. **Which models count as vision-capable** for AC6 of CAP-001: per-provider flag in `modelProviders.js`, or try and report the API error?
+5. ~~**Which models count as vision-capable**~~ — resolved: send the images and translate an API refusal into a plain error (see CAP-001 AC6).
+6. **Claude Code keeps its own copies of images:** the CLI saves session transcripts and tool-result images under `~/.claude/projects/<bot sandbox path>/`. Should Dash clean these up (e.g. when a bot is deleted, or after N days), turn off the CLI's session saving for bots where possible, or just document it?
 
 ### Decisions Made
 
@@ -506,3 +518,4 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 | ------- | ---------- | ------ | ------------------------------------------------------------------------------------------ |
 | 1.0     | 2026-10-07 | John   | Initial draft                                                                              |
 | 1.1     | 2026-10-07 | John   | Web Fetch limits as provider settings; multiple copies; new settings field types (FR-C02a) |
+| 1.2     | 2026-10-07 | John   | CAP-001 implemented (Phase 1); Open Question 6 (Claude Code's own image copies)            |

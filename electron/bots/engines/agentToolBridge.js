@@ -85,10 +85,20 @@ function buildBotMcpServer(ctx, sdk, z) {
       jsonSchemaToZodShape(t.inputSchema, z),
       async (args) => {
         const r = await ctx.executeTool(t.name, args);
-        return {
-          content: [{ type: "text", text: (r && r.text) || "" }],
-          isError: !!(r && r.isError),
-        };
+        const text = (r && r.text) || "";
+        const images = r && Array.isArray(r.images) ? r.images : [];
+        // Images go back as MCP image blocks so the agent sees them (CAP-001).
+        const content = images.length
+          ? [
+              ...(text ? [{ type: "text", text }] : []),
+              ...images.map((img) => ({
+                type: "image",
+                data: img.data,
+                mimeType: img.mimeType,
+              })),
+            ]
+          : [{ type: "text", text }];
+        return { content, isError: !!(r && r.isError) };
       },
     ),
   );

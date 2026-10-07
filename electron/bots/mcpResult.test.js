@@ -48,6 +48,34 @@ describe("normalizeMcpResult", () => {
     assert.deepEqual(r, { text: '{"a":1}', isError: false });
   });
 
+  it("keeps MCP image blocks in images (CAP-001)", () => {
+    const r = normalizeMcpResult({
+      success: true,
+      result: {
+        content: [
+          { type: "text", text: "a photo" },
+          { type: "image", data: "AAAA", mimeType: "image/png" },
+        ],
+      },
+    });
+    assert.deepEqual(r, {
+      text: "a photo",
+      images: [{ data: "AAAA", mimeType: "image/png" }],
+      isError: false,
+    });
+  });
+
+  it("adds a note to the text when an image is dropped", () => {
+    const r = normalizeMcpResult({
+      success: true,
+      result: {
+        content: [{ type: "image", data: "AAAA", mimeType: "image/tiff" }],
+      },
+    });
+    assert.equal("images" in r, false);
+    assert.match(r.text, /image\/tiff/);
+  });
+
   it("handles a null/empty result", () => {
     assert.equal(normalizeMcpResult(null).isError, true);
     assert.equal(normalizeMcpResult({ success: true }).isError, false);

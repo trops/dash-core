@@ -245,6 +245,101 @@ describe("toolLoopEngine (engine contract)", () => {
     assert.ok(events.some((e) => e.type === "done"));
   });
 
+  describe("image tool results (CAP-001)", () => {
+    const IMG = {
+      data: Buffer.alloc(2048).toString("base64"),
+      mimeType: "image/png",
+    };
+
+    // Adapter that formats results Anthropic-style so images land in history.
+    function imageAdapter(script, seen) {
+      const a = mockAdapter(script);
+      a.formatToolResults = (results) => {
+        seen.push(results);
+        return [
+          {
+            role: "user",
+            content: results.map((r) => ({
+              type: "tool_result",
+              tool_use_id: r.id,
+              content: [
+                { type: "text", text: r.text },
+                ...(r.images || []).map((i) => ({
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: i.mimeType,
+                    data: i.data,
+                  },
+                })),
+              ],
+            })),
+          },
+        ];
+      };
+      return a;
+    }
+
+    it("passes images to the adapter; Activity shows a placeholder", async () => {
+      const seen = [];
+      const ctx = baseCtx({
+        adapter: imageAdapter(
+          [
+            { toolCalls: [{ id: "t1", name: "fetch_image", input: {} }] },
+            { text: "a red shoe", stopReason: "end_turn" },
+          ],
+          seen,
+        ),
+        executeTool: async () => ({ text: "shoe.png", images: [IMG] }),
+      });
+      const events = await drain(toolLoopEngine.run(ctx));
+      assert.deepEqual(seen[0][0].images, [IMG]);
+      const toolResult = events.find((e) => e.type === "tool_result");
+      assert.equal(toolResult.output, "shoe.png\n[image: image/png, 2 KB]");
+      assert.equal(JSON.stringify(toolResult).includes(IMG.data), false);
+    });
+
+    it("the saved session holds placeholders, not image data", async () => {
+      const ctx = baseCtx({
+        adapter: imageAdapter(
+          [
+            { toolCalls: [{ id: "t1", name: "fetch_image", input: {} }] },
+            { text: "done", stopReason: "end_turn" },
+          ],
+          [],
+        ),
+        executeTool: async () => ({ text: "shoe.png", images: [IMG] }),
+      });
+      const events = await drain(toolLoopEngine.run(ctx));
+      const session = events.find((e) => e.type === "session").session;
+      const json = JSON.stringify(session);
+      assert.equal(json.includes(IMG.data), false);
+      assert.match(json, /\[image: image\/png, 2 KB\]/);
+    });
+
+    it("explains a model that refuses images", async () => {
+      let turn = 0;
+      const adapter = imageAdapter(
+        [{ toolCalls: [{ id: "t1", name: "fetch_image", input: {} }] }],
+        [],
+      );
+      const firstTurn = adapter.runTurn;
+      adapter.runTurn = async (args) => {
+        if (turn++ === 0) return firstTurn(args);
+        throw new Error("400 image input is not supported for this model");
+      };
+      const ctx = baseCtx({
+        adapter,
+        model: "text-only-model",
+        executeTool: async () => ({ text: "x", images: [IMG] }),
+      });
+      const events = await drain(toolLoopEngine.run(ctx));
+      const err = events.find((e) => e.type === "error");
+      assert.match(err.message, /can't read images/);
+      assert.match(err.message, /text-only-model/);
+    });
+  });
+
   it("exposes capabilities and the built-in adapter map", () => {
     assert.equal(toolLoopEngine.id, "tool-loop");
     assert.deepEqual(toolLoopEngine.capabilities, {

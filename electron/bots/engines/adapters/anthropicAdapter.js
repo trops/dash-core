@@ -52,6 +52,20 @@ function mcpToolToAnthropic(tool) {
   };
 }
 
+// A text-only result stays a plain string; with images it's a block list
+// (no empty text block — the API rejects those).
+function toolResultContent(r) {
+  if (!Array.isArray(r.images) || !r.images.length) return r.text;
+  const blocks = r.text ? [{ type: "text", text: r.text }] : [];
+  for (const img of r.images) {
+    blocks.push({
+      type: "image",
+      source: { type: "base64", media_type: img.mimeType, data: img.data },
+    });
+  }
+  return blocks;
+}
+
 const anthropicAdapter = {
   id: "anthropic",
 
@@ -111,7 +125,8 @@ const anthropicAdapter = {
 
   /**
    * Anthropic takes tool results as a single user message of tool_result blocks.
-   * @param {Array<{id: string, name: string, text: string, isError: boolean}>} results
+   * Images ride inside the tool_result as base64 image blocks (CAP-001).
+   * @param {Array<{id: string, name: string, text: string, images?: Array<{data: string, mimeType: string}>, isError: boolean}>} results
    */
   formatToolResults(results) {
     return [
@@ -120,7 +135,7 @@ const anthropicAdapter = {
         content: results.map((r) => ({
           type: "tool_result",
           tool_use_id: r.id,
-          content: r.text,
+          content: toolResultContent(r),
           is_error: !!r.isError,
         })),
       },
