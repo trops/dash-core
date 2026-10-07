@@ -1,6 +1,6 @@
 # PRD: Bot Capabilities — Image Results, Web Fetch, and Finding Providers
 
-**Status:** In Progress (Phases 1–2 implemented)
+**Status:** In Progress (Phases 1–2 implemented; Phase 3 slice 3a implemented)
 **Last Updated:** 2026-10-07
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; dash-electron consumes it via a version bump)
@@ -262,25 +262,33 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 > so that "no tool for this" comes with options.
 
 **Priority:** P1
-**Status:** Not Started
+**Status:** Implemented (slice 3a)
 
 **Acceptance Criteria:**
 
-- [ ] AC1: Leads get a read-only tool, `find_providers(capability)`, where `capability` is a plain description ("download an image from a URL", "search stock photos").
-- [ ] AC2: It searches, in this order, and labels each result with its tier:
+- [x] AC1: Leads get a read-only tool, `find_providers(capability)`, where `capability` is a plain description ("download an image from a URL", "search stock photos").
+- [x] AC2: It searches, in this order, and labels each result with its tier:
   1. **Installed:** the user's configured providers.
   2. **Built-in:** the built-in catalog.
   3. **Vetted:** the curated list.
   4. **Community (unverified):** the official MCP Registry search API (`https://registry.modelcontextprotocol.io/v0/servers?search=…`).
-- [ ] AC3: Each result includes name, description, tier, how it runs (command or URL), what credentials it needs, and the source repo when known. Registry results are de-duplicated (the API returns one row per version; keep the latest).
-- [ ] AC4: Results are fenced as untrusted data in the lead's prompt, like other team tool output.
-- [ ] AC5: If the registry can't be reached, the tool still returns the local tiers and says the community search was unavailable.
-- [ ] AC6: `propose_bot`'s description tells the lead to call `find_providers` for anything `team_providers` doesn't cover.
+- [x] AC3: Each result includes name, description, tier, how it runs (command or URL), what credentials it needs, and the source repo when known. Registry results are de-duplicated (the API returns one row per version; keep the latest).
+- [x] AC4: Results are fenced as untrusted data in the lead's prompt, like other team tool output.
+- [x] AC5: If the registry can't be reached, the tool still returns the local tiers and says the community search was unavailable.
+- [x] AC6: `propose_bot`'s description tells the lead to call `find_providers` for anything `team_providers` doesn't cover.
 
 **Edge Cases:**
 
 - No match anywhere → the lead says so and keeps the gap in `needs`.
 - A registry entry with no install information → listed with a "no install info" note, no Install button.
+
+**Implementation notes (slice 3a, 2026-10-07):**
+
+- **`electron/bots/providerDiscovery.js`** (Electron-free): `findProviders(capability, deps)` → `{ results, notes }`. Ids: `installed:<name>`, `builtin:<id>`, `vetted:<id>`, `community:<registry name>`. Each result: name, description, tier, `runs` ("Built into Dash" / command / URL), `credentials` (secret or required fields), `sourceUrl`, `installable`, and `install` (`use` / `catalog` / `vetted` / `custom` with `mcpConfig` + `credentialSchema`). A catalog type the user already has is shown as installed, not again as built-in/vetted.
+- **Matching:** keywords from the description (stop words dropped). Locally an entry must contain at least half of them, including a specific one — common words (search, send, messages, web, page, …) count but can't make a match alone, so "send SMS" doesn't return Slack and "stock photos" doesn't return Algolia. The registry is searched with the specific words (up to 3); its rows only need one specific word, since the registry already matched them.
+- **Registry (`electron/bots/registrySearch.js`):** `GET https://registry.modelcontextprotocol.io/v0/servers?search=<word>&limit=30` through Web Fetch's `safeFetch`, pinned to that host (HTTPS, 2 MB cap, 10 s timeout), cached 5 minutes. **No `version=latest`:** during testing that query answered in 16 s, timed out, or returned 500, while the plain query took ~0.2 s — versions are de-duplicated client-side (prefer `isLatest`, then newest `updatedAt`). npm packages → `npx -y <pkg>`, PyPI → `uvx <pkg>`, a `streamable-http` remote → its URL (headers → header template); env vars/headers become credential fields. Other package types and SSE remotes → "No install info Dash can use". Searches are independent: if some fail the rest are kept ("results may be incomplete"); if all fail, the local tiers come back with "Community search … is unavailable right now". The registry was intermittently slow/failing during development — that fallback is real, not theoretical.
+- **Tool:** `find_providers` in `TEAM_TOOLS` (`electron/bots/teamTools.js`), async, output fenced; served via `botController._findProviders`. Lead instructions (`CURRENT_LEAD_ACTION`) tell the lead to search before saying something's impossible; the previous text moved to `LEAD_ACTION_HISTORY` so existing leads upgrade.
+- **Verified with a real lead** (Algolia Data Enrichment, Claude Code CLI): asked for a stock-photo bot, it called team_providers → team_list_bots → find_providers → team_get_bot → propose_bot, picked StockCake (community, CC0 images) over the stock-market servers the word "stock" also found, and warned it's unverified.
 
 ---
 
@@ -291,13 +299,13 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 > so that I can decide what to add without researching.
 
 **Priority:** P1
-**Status:** Not Started
+**Status:** In Progress (data done in slice 3a; review UI in 3b)
 
 **Acceptance Criteria:**
 
-- [ ] AC1: `propose_bot`'s `needs` items can include `suggestions`: provider references returned by `find_providers` (id, tier, name).
-- [ ] AC2: The draft review shows each need with its suggestions and their tier labels; vetted and built-in suggestions come first.
-- [ ] AC3: Suggestions are validated when the draft is saved: an id that `find_providers` didn't return is dropped.
+- [x] AC1: `propose_bot` can attach `suggestions` — provider ids returned by `find_providers` — to a missing capability. _(As a separate `gaps: [{ need, suggestions: [id] }]` field rather than objects inside `needs`: a string-or-object union becomes an untyped "any" on the Claude Code engine's tool schema, so leads there wouldn't see the shape. `needs` stays a list of strings.)_
+- [ ] AC2: The draft review shows each need with its suggestions and their tier labels; vetted and built-in suggestions come first. _(Data ready: `draft.gaps[].suggestions` are sorted installed → built-in → vetted → community. UI in slice 3b.)_
+- [x] AC3: Suggestions are validated when the draft is built: an id the lead's `find_providers` didn't return (remembered per lead for 30 minutes in `botController._foundProviders`) is dropped and listed in `dropped`. Kept suggestions are full snapshots (incl. `install`), so the review can install without searching again. A gap's need is also added to `missing`, so today's "Needs a provider you don't have" line still shows it.
 
 ---
 
@@ -531,3 +539,4 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 | 1.1     | 2026-10-07 | John   | Web Fetch limits as provider settings; multiple copies; new settings field types (FR-C02a) |
 | 1.2     | 2026-10-07 | John   | CAP-001 implemented (Phase 1); Open Question 6 (Claude Code's own image copies)            |
 | 1.3     | 2026-10-07 | John   | CAP-002 Web Fetch + FR-C02a settings fields implemented (Phase 2); Open Question 7         |
+| 1.4     | 2026-10-07 | John   | Phase 3 slice 3a: find_providers, registry search, draft gaps (CAP-003; CAP-004 data)      |

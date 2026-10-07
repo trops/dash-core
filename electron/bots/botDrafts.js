@@ -24,6 +24,10 @@ const MAX_NAME = 80;
 const MAX_INSTRUCTIONS = 8000;
 const MAX_REASONING = 1000;
 const MAX_PER_DASHBOARD = 10;
+const MAX_GAPS = 10;
+const MAX_SUGGESTIONS = 5;
+// find_providers tiers, most trusted first (providerDiscovery.TIER_ORDER).
+const TIER_RANK = ["installed", "built-in", "vetted", "community"];
 
 const str = (v, max) =>
   String(v === undefined || v === null ? "" : v)
@@ -55,6 +59,7 @@ function buildDraft({
   team = [],
   workspaceId,
   leadId,
+  knownProviders = {},
   now,
 }) {
   const name = str(proposal.name, MAX_NAME);
@@ -112,6 +117,40 @@ function buildDraft({
       (s) => lower(s.name) === lower(n) || lower(s.type) === lower(n),
     );
     if (!have && !missing.includes(n)) missing.push(n);
+  }
+
+  // Gaps with suggested providers (bot-capabilities CAP-004): only ids the
+  // lead's find_providers actually returned survive, kept as snapshots so the
+  // review can install without searching again. Best tier first.
+  const gaps = [];
+  for (const gap of (Array.isArray(proposal.gaps) ? proposal.gaps : []).slice(
+    0,
+    MAX_GAPS,
+  )) {
+    const need = str(gap && gap.need, 200);
+    if (!need) continue;
+    const suggestions = [];
+    for (const id of Array.isArray(gap.suggestions) ? gap.suggestions : []) {
+      const key = str(id, 300);
+      const entry =
+        key && Object.prototype.hasOwnProperty.call(knownProviders, key)
+          ? knownProviders[key]
+          : null;
+      if (!entry) {
+        if (key) {
+          dropped.push(
+            `Suggested provider "${key}" — not from your find_providers results.`,
+          );
+        }
+        continue;
+      }
+      if (!suggestions.some((s) => s.id === entry.id)) suggestions.push(entry);
+    }
+    suggestions.sort(
+      (a, b) => TIER_RANK.indexOf(a.tier) - TIER_RANK.indexOf(b.tier),
+    );
+    gaps.push({ need, suggestions: suggestions.slice(0, MAX_SUGGESTIONS) });
+    if (!missing.includes(need)) missing.push(need);
   }
 
   // Schedule (optional).
@@ -182,6 +221,7 @@ function buildDraft({
       reasoning: str(proposal.reasoning, MAX_REASONING),
       definition,
       suggestions,
+      gaps,
       missing,
       dropped,
       duplicateOf: dup ? dup.name : null,

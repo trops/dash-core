@@ -36,6 +36,18 @@ describe("botController — team lead wiring", () => {
     assert.match(ctrl, /workspaceId: caller\.workspaceId/);
   });
 
+  it("find_providers is served to the lead and remembered per lead (CAP-003/004)", () => {
+    assert.match(
+      ctrl,
+      /findProviders: \(teamCtx, capability\) =>\s*this\._findProviders\(teamCtx, capability\)/,
+    );
+    // Drafts only keep suggestions this lead's searches actually returned.
+    assert.match(
+      ctrl,
+      /buildDraft\(\{[\s\S]{0,300}knownProviders: this\._knownProvidersFor\(botId\)/,
+    );
+  });
+
   it("auto-allows team tools at the gate (internal server)", () => {
     assert.match(ctrl, /internalServers: \[MEMORY_SERVER, TEAM_SERVER\]/);
   });

@@ -100,6 +100,7 @@ describe("teamTools definitions", () => {
         "team_recent_runs",
         "team_memory_read",
         "team_providers",
+        "find_providers",
         "propose_bot",
       ],
     );
@@ -163,9 +164,10 @@ describe("handleTeamTool", () => {
   });
 
   it("every result is fenced as untrusted team data", () => {
-    // The read tools return team data (fenced); propose_bot returns its own summary.
+    // The read tools return team data (fenced); propose_bot returns its own
+    // summary; find_providers is async (its own test below).
     for (const name of TEAM_TOOLS.map((t) => t.name).filter(
-      (n) => n !== "propose_bot",
+      (n) => n !== "propose_bot" && n !== "find_providers",
     )) {
       const r = handleTeamTool(deps, lead, name, { name: "Inbox Watch" });
       assert.match(r.text, /<team_data>/, name);
@@ -338,5 +340,84 @@ describe("team_list_bots — drafts awaiting review", () => {
   it("its description says it includes drafts", () => {
     const def = TEAM_TOOLS.find((t) => t.name === "team_list_bots");
     assert.match(def.description, /drafts/i);
+  });
+});
+
+describe("find_providers (bot-capabilities CAP-003)", () => {
+  const found = {
+    results: [
+      {
+        id: "builtin:web-fetch",
+        tier: "built-in",
+        name: "Web Fetch",
+        description: "Download images",
+        runs: "Built into Dash",
+        credentials: [],
+        sourceUrl: null,
+        installable: true,
+        install: { kind: "catalog", catalogId: "web-fetch" },
+      },
+    ],
+    notes: [],
+  };
+
+  it("lists findings by tier with ids, fenced as team data", async () => {
+    let asked = null;
+    const r = await handleTeamTool(
+      {
+        ...deps,
+        findProviders: async (ctx, capability) => {
+          asked = { ctx, capability };
+          return found;
+        },
+      },
+      lead,
+      "find_providers",
+      { capability: "download an image from a URL" },
+    );
+    assert.equal(r.isError, false);
+    assert.deepEqual(asked, {
+      ctx: lead,
+      capability: "download an image from a URL",
+    });
+    assert.match(r.text, /<team_data>/);
+    assert.match(r.text, /Built into Dash/);
+    assert.match(r.text, /\[id: builtin:web-fetch\]/);
+    assert.match(r.text, /gaps/);
+  });
+
+  it("needs a capability", async () => {
+    const r = await handleTeamTool(
+      { ...deps, findProviders: async () => found },
+      lead,
+      "find_providers",
+      {},
+    );
+    assert.equal(r.isError, true);
+  });
+
+  it("reports a failed search as an error", async () => {
+    const r = await handleTeamTool(
+      {
+        ...deps,
+        findProviders: async () => {
+          throw new Error("boom");
+        },
+      },
+      lead,
+      "find_providers",
+      { capability: "x" },
+    );
+    assert.equal(r.isError, true);
+    assert.match(r.text, /boom/);
+  });
+
+  it("propose_bot accepts gaps with suggestion ids", () => {
+    const tool = TEAM_TOOLS.find((t) => t.name === "propose_bot");
+    const gaps = tool.inputSchema.properties.gaps;
+    assert.equal(gaps.type, "array");
+    assert.equal(gaps.items.properties.need.type, "string");
+    assert.equal(gaps.items.properties.suggestions.items.type, "string");
+    assert.match(tool.description, /find_providers/);
   });
 });
