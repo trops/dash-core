@@ -24,8 +24,10 @@ export const DraftBanner = ({ draft, onDiscard, onOpenSettings = null }) => {
   const notes = draft.notes || [];
 
   return (
+    // Rendered at the top of the bot form's scroll area (BotDetail header),
+    // which supplies the side padding — no outer margin of its own.
     <div
-      className={`mx-5 mt-4 rounded-lg border px-4 py-3 flex flex-col gap-2 text-sm ${hairline}`}
+      className={`rounded-lg border px-4 py-3 flex flex-col gap-2 text-sm ${hairline}`}
     >
       <div className="flex flex-row items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
