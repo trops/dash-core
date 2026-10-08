@@ -2,9 +2,10 @@
  * runProvider.js
  *
  * Which AI provider a bot runs on. A bot's own provider wins; a bot without
- * one (`provider: null`) uses the AI provider the user marked default for its
- * type. With no default marked, the run fails with NO_AI_MODEL_MESSAGE —
- * never a silent fallback to some other provider.
+ * one (`provider: null`) runs on Claude Code (CLI) — the default, which needs
+ * no API key. An API-key provider (Anthropic, OpenAI, xAI) is used only when
+ * the bot picks it: marking one "default" in Settings › Providers chooses
+ * among keys of that type, it doesn't move bots onto it.
  *
  * Pure (NFR-006): decisions only; botController applies them.
  */
@@ -12,8 +13,8 @@
 
 const AI_PROVIDER_TYPES = ["anthropic", "openai", "xai"];
 
-const NO_AI_MODEL_MESSAGE =
-  "No AI model chosen for this bot. Choose one in its Settings tab, or mark an AI provider as the default in Settings › Providers.";
+/** What a bot with no AI model of its own runs on. */
+const DEFAULT_BOT_PROVIDER = "claude-code";
 
 /** The type of the AI provider marked default, else null. */
 function defaultAiProviderType(providers) {
@@ -23,16 +24,14 @@ function defaultAiProviderType(providers) {
   return pick ? pick.type : null;
 }
 
-/** The provider id a bot runs on; throws NO_AI_MODEL_MESSAGE when there's none. */
-function resolveBotProviderId(bot, providers) {
-  const id = (bot && bot.provider) || defaultAiProviderType(providers);
-  if (!id) throw new Error(NO_AI_MODEL_MESSAGE);
-  return id;
+/** The provider id a bot runs on: its own, else Claude Code (CLI). */
+function resolveBotProviderId(bot, _providers) {
+  return (bot && bot.provider) || DEFAULT_BOT_PROVIDER;
 }
 
 module.exports = {
   AI_PROVIDER_TYPES,
-  NO_AI_MODEL_MESSAGE,
+  DEFAULT_BOT_PROVIDER,
   defaultAiProviderType,
   resolveBotProviderId,
 };

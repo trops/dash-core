@@ -25,6 +25,11 @@ describe("buildBotEventCatalog", () => {
     },
   ];
 
+  it("leaves out team leads — their answers never go on the event bus", () => {
+    const lead = { id: "bot_l", name: "Lead", ref: "local/lead", role: "lead" };
+    expect(buildBotEventCatalog([lead, gmailBot], sources)).toHaveLength(1);
+  });
+
   it("lists Completed, Failed and one event per allowed provider tool", () => {
     const [entry] = buildBotEventCatalog([gmailBot], sources);
     expect(entry).toMatchObject({
@@ -395,16 +400,12 @@ describe("getBotEmitters (bots as Listeners sources, TEAM-012)", () => {
           "tool.gmail.search_emails": "uses search_emails (Gmail 3)",
         },
       },
-      {
-        key: "bot:local/lead|bot_l",
-        component: "bot:local/lead",
-        itemId: "bot_l",
-        label: "Kitchen Lead (bot)",
-        name: "Kitchen Lead",
-        events: ["completed", "failed"],
-        eventLabels: { completed: "Completed", failed: "Failed" },
-      },
     ]);
+  });
+
+  it("leaves out the team lead — its answers never go on the event bus", () => {
+    const out = getBotEmitters(bots, toolSources, 7);
+    expect(out.map((b) => b.itemId)).not.toContain("bot_l");
   });
 
   it("their events are exactly what the bus carries", () => {

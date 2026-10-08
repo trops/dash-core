@@ -56,24 +56,14 @@ function presentProviderTypes(providers) {
 }
 
 // Model source of a saved bot with no AI model of its own (provider: null):
-// it runs on the AI provider marked default, else its runs fail.
+// it runs on Claude Code (CLI), the default (electron/bots/runProvider.js).
 const USE_DEFAULT_PROVIDER = "default";
+const DEFAULT_BOT_PROVIDER = "claude-code";
 
-/** The AI provider type marked default, else null — never a first-found pick. */
-function markedDefaultProviderType(providers) {
-  const def = Object.values(providers || {}).find(
-    (p) => p && AI_PROVIDER_TYPES.includes(p.type) && p.isDefaultForType,
-  );
-  return def ? def.type : null;
-}
-
-function useDefaultOption(providers) {
-  const type = markedDefaultProviderType(providers);
+function useDefaultOption() {
   return {
     value: USE_DEFAULT_PROVIDER,
-    label: type
-      ? `Default AI provider (${PROVIDER_LABELS[type] || type})`
-      : "Default AI provider — none set",
+    label: "Default — Claude Code (CLI)",
   };
 }
 
@@ -90,17 +80,11 @@ function providerOptionsFrom(providers) {
 }
 
 /**
- * The provider to pre-select for a new bot: the user's configured default AI
- * (its `isDefaultForType`, else the first configured). If none is configured,
- * fall back to the always-available Claude Code (CLI) — it's the only option in
- * that case and needs no API key.
+ * The provider to pre-select for a new bot: Claude Code (CLI), the default.
+ * An API key is used only when the user picks it for the bot.
  */
-function defaultProviderId(providers) {
-  const list = Object.values(providers || {}).filter(
-    (p) => p && AI_PROVIDER_TYPES.includes(p.type),
-  );
-  const def = list.find((p) => p.isDefaultForType) || list[0];
-  return def ? def.type : "claude-code";
+function defaultProviderId() {
+  return DEFAULT_BOT_PROVIDER;
 }
 
 const APPROVAL_HINTS = {
@@ -207,9 +191,7 @@ export const BotDetail = ({
       (bot?.id ? USE_DEFAULT_PROVIDER : defaultProviderId(providers)),
   );
   const usesDefault = provider === USE_DEFAULT_PROVIDER;
-  const effectiveProvider = usesDefault
-    ? markedDefaultProviderType(providers)
-    : provider;
+  const effectiveProvider = usesDefault ? DEFAULT_BOT_PROVIDER : provider;
   const [model, setModel] = useState(bot?.model || "");
   const [engine, setEngine] = useState(bot?.engine || "");
   const [approvalPolicy, setApprovalPolicy] = useState(
@@ -837,19 +819,10 @@ export const BotDetail = ({
               onChange={setProvider}
               options={
                 followsDefault || usesDefault
-                  ? [
-                      useDefaultOption(providers),
-                      ...providerOptionsFrom(providers),
-                    ]
+                  ? [useDefaultOption(), ...providerOptionsFrom(providers)]
                   : providerOptionsFrom(providers)
               }
             />
-            {usesDefault && !markedDefaultProviderType(providers) ? (
-              <span className="text-xs text-red-400">
-                No AI provider is marked default, so this bot&apos;s runs fail
-                until you choose one here.
-              </span>
-            ) : null}
             <span className="text-xs opacity-50">
               Which AI powers the bot — an API key from your Anthropic, OpenAI
               or xAI providers, or &quot;Claude Code (CLI)&quot;, which uses

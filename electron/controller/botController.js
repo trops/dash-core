@@ -1246,8 +1246,7 @@ const botController = {
       // No provider list — the bot's own provider still works; with none it
       // fails below with a clear message.
     }
-    // The bot's own provider, else the AI provider marked default; throws
-    // NO_AI_MODEL_MESSAGE with neither (no silent fallback).
+    // The bot's own provider, else Claude Code (CLI) — the default.
     const providerId = resolveBotProviderId(bot, providers);
     const provider = getProvider(providerId);
     const model = bot.model

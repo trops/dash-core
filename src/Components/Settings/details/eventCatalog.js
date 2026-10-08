@@ -130,6 +130,9 @@ export function buildBotEventCatalog(bots, toolSources, excludeBotId = null) {
   const out = [];
   for (const bot of bots) {
     if (!bot || !bot.id || !bot.ref || bot.id === excludeBotId) continue;
+    // A team lead's answers never go on the event bus (botController._run),
+    // so it has no events to offer.
+    if (bot.role === "lead") continue;
     const events = [
       { event: "completed", label: "Completed" },
       { event: "failed", label: "Failed" },
