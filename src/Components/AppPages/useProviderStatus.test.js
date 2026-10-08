@@ -98,6 +98,47 @@ describe("useProviderStatus (app-navigation NAV-007)", () => {
     expect(result.current.statusOf("Algolia").label).toBe("Saved");
   });
 
+  it("uses the catalog's 'one of these' credential options", async () => {
+    setupBots();
+    const stableDashApi = makeDashApi();
+    const catalog = (credentialOptions) => [
+      {
+        id: "slack",
+        credentialSchema: {
+          xoxbToken: { displayName: "Bot Token" },
+          xoxpToken: { displayName: "User Token", required: true },
+        },
+        credentialOptions,
+      },
+    ];
+    // Without options the (required) user token is missing…
+    const without = renderHook(() =>
+      useProviderStatus({
+        providers,
+        workspaces,
+        dashApi: stableDashApi,
+        catalog: catalog(undefined),
+      }),
+    );
+    await waitFor(() =>
+      expect(without.result.current.statusOf("Slack").key).toBe("needsSetup"),
+    );
+    // …with options, the filled bot token is enough.
+    const withOptions = renderHook(() =>
+      useProviderStatus({
+        providers,
+        workspaces,
+        dashApi: stableDashApi,
+        catalog: catalog([["xoxbToken"], ["xoxpToken"]]),
+      }),
+    );
+    await waitFor(() =>
+      expect(withOptions.result.current.statusOf("Slack").key).not.toBe(
+        "needsSetup",
+      ),
+    );
+  });
+
   it("uses the catalog's required fields", async () => {
     setupBots();
     const stableDashApi = makeDashApi();

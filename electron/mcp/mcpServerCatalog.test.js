@@ -134,6 +134,28 @@ describe("mcpServerCatalog structural validation", () => {
     );
   });
 
+  it("credentialOptions name only fields in the entry's credentialSchema", () => {
+    const slack = catalog.servers.find((s) => s.id === "slack");
+    assert.ok(
+      Array.isArray(slack.credentialOptions),
+      "slack lists its options",
+    );
+    for (const server of catalog.servers) {
+      for (const option of server.credentialOptions || []) {
+        assert.ok(
+          Array.isArray(option) && option.length,
+          `${server.id}: empty option`,
+        );
+        for (const key of option) {
+          assert.ok(
+            server.credentialSchema && server.credentialSchema[key],
+            `${server.id}: option field "${key}" isn't in credentialSchema`,
+          );
+        }
+      }
+    }
+  });
+
   it("every server has required fields", () => {
     for (const server of catalog.servers) {
       assert.ok(server.id, "Server missing id");

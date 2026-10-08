@@ -19,7 +19,11 @@ const isEmpty = (v) => v === undefined || v === null || String(v).trim() === "";
  * - Credentials: nothing saved at all.
  * - WebSocket: no URL.
  */
-export function missingFields(provider, credentialSchema = {}) {
+export function missingFields(
+  provider,
+  credentialSchema = {},
+  credentialOptions = null,
+) {
   if (!provider) return [];
   const cls = classOf(provider);
   if (cls === "websocket") {
@@ -33,9 +37,38 @@ export function missingFields(provider, credentialSchema = {}) {
     const used = new Set(
       deriveFormFields(provider.mcpConfig, {}).map((f) => f.key),
     );
-    return deriveFormFields(provider.mcpConfig, credentialSchema || {})
-      .filter((f) => (used.has(f.key) || f.required) && isEmpty(creds[f.key]))
+    const fields = deriveFormFields(provider.mcpConfig, credentialSchema || {});
+    const nameOf = (key) => {
+      const f = fields.find((x) => x.key === key);
+      return (f && f.displayName) || formatFieldName(key);
+    };
+    // "One of these" credentials (catalog `credentialOptions`, e.g. Slack:
+    // bot token OR user token OR browser token + cookie): their fields are
+    // satisfied when any one option is fully filled in.
+    const options = (
+      Array.isArray(credentialOptions) ? credentialOptions : []
+    ).filter((o) => Array.isArray(o) && o.length);
+    const inOptions = new Set(options.flat());
+    const missing = fields
+      .filter(
+        (f) =>
+          !inOptions.has(f.key) &&
+          (used.has(f.key) || f.required) &&
+          isEmpty(creds[f.key]),
+      )
       .map((f) => f.displayName || formatFieldName(f.key));
+    if (
+      options.length &&
+      !options.some((o) => o.every((key) => !isEmpty(creds[key])))
+    ) {
+      const choices = options.map((o) => o.map(nameOf).join(" + "));
+      const listed =
+        choices.length > 1
+          ? `${choices.slice(0, -1).join(", ")}, or ${choices[choices.length - 1]}`
+          : choices[0];
+      missing.unshift(`One of: ${listed}`);
+    }
+    return missing;
   }
   return Object.values(creds).some((v) => !isEmpty(v)) ? [] : ["Credentials"];
 }
@@ -45,9 +78,9 @@ export function missingFields(provider, credentialSchema = {}) {
  */
 export function providerStatus(
   provider,
-  { running = false, credentialSchema } = {},
+  { running = false, credentialSchema, credentialOptions = null } = {},
 ) {
-  const missing = missingFields(provider, credentialSchema);
+  const missing = missingFields(provider, credentialSchema, credentialOptions);
   if (missing.length)
     return { key: "needsSetup", label: "Needs setup", missing };
   const cls = classOf(provider);
