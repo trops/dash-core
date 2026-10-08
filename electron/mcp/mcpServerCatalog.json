@@ -334,8 +334,9 @@
           "type": "text",
           "displayName": "API Key",
           "required": false,
+          "worksWithout": true,
           "secret": true,
-          "instructions": "Your Algolia Search API Key, found in the Algolia dashboard under API Keys."
+          "instructions": "Optional — only if your MCP endpoint requires one. Your Algolia Search API Key, found in the Algolia dashboard under API Keys."
         }
       }
     },

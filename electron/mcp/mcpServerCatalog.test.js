@@ -156,6 +156,25 @@ describe("mcpServerCatalog structural validation", () => {
     }
   });
 
+  it("worksWithout is only set on fields of the entry's own schema, and Algolia's API key has it", () => {
+    const algolia = catalog.servers.find((s) => s.id === "algolia");
+    assert.strictEqual(algolia.credentialSchema.apiKey.worksWithout, true);
+    assert.notStrictEqual(algolia.credentialSchema.url.worksWithout, true);
+    for (const server of catalog.servers) {
+      for (const [key, field] of Object.entries(
+        server.credentialSchema || {},
+      )) {
+        if ("worksWithout" in field) {
+          assert.strictEqual(
+            typeof field.worksWithout,
+            "boolean",
+            `${server.id}.${key}: worksWithout must be true/false`,
+          );
+        }
+      }
+    }
+  });
+
   it("every server has required fields", () => {
     for (const server of catalog.servers) {
       assert.ok(server.id, "Server missing id");

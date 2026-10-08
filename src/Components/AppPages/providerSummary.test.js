@@ -158,6 +158,47 @@ describe("missingFields — 'one of these' credential options", () => {
   });
 });
 
+describe("missingFields — fields the server works without", () => {
+  // Algolia's hosted MCP endpoint: the URL is needed; the API key only when
+  // the endpoint asks for one (the header template still references it).
+  const algolia = (credentials) => ({
+    type: "algolia",
+    providerClass: "mcp",
+    mcpConfig: {
+      transport: "streamable_http",
+      url: "{{url}}",
+      headerTemplate: { Authorization: "Bearer {{apiKey}}" },
+    },
+    credentials,
+  });
+  const schema = {
+    url: { displayName: "MCP Server URL" },
+    apiKey: { displayName: "API Key", worksWithout: true },
+  };
+
+  it("an empty worksWithout field isn't missing", () => {
+    expect(missingFields(algolia({ url: "https://mcp" }), schema)).toEqual([]);
+    expect(
+      providerStatus(algolia({ url: "https://mcp" }), {
+        credentialSchema: schema,
+      }).key,
+    ).toBe("ready");
+  });
+
+  it("the other referenced fields are still needed", () => {
+    expect(missingFields(algolia({}), schema)).toEqual(["MCP Server URL"]);
+  });
+
+  it("without the flag the key is still counted (unchanged)", () => {
+    expect(
+      missingFields(algolia({ url: "https://mcp" }), {
+        ...schema,
+        apiKey: { displayName: "API Key" },
+      }),
+    ).toEqual(["API Key"]);
+  });
+});
+
 describe("providerStatus", () => {
   it("needs setup > connected > ready", () => {
     expect(providerStatus(slack, { running: true })).toEqual({
