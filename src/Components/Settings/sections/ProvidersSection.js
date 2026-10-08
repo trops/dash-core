@@ -10,10 +10,17 @@ import {
 import { AppContext } from "../../../Context/App/AppContext";
 import { useConfigTokens } from "../../Dashboard/ConfigListRow";
 import {
+  getWidgetRequirements,
   useMcpCatalog,
   useProviderStatus,
 } from "../../AppPages/useProviderStatus";
 import { groupProviders } from "../../AppPages/providerSummary";
+import {
+  applyProviderUse,
+  planProviderUse,
+  providerUseModel,
+} from "../../AppPages/providerUsePlan";
+import { ProviderUseDialog } from "../../AppPages/ProviderUseDialog";
 import { ProviderDetail } from "../details/ProviderDetail";
 import { McpCatalogDetail } from "../details/McpCatalogDetail";
 import { CustomMcpServerForm } from "../details/CustomMcpServerForm";
@@ -61,6 +68,8 @@ export const ProvidersSection = ({
   workspaces = [],
   onOpenWorkspace = null,
   onOpenBotInBotsView = null,
+  // Re-reads dashboards (and open tabs) after Choose where to use… saves.
+  onReloadWorkspaces = null,
   // Deep links (Bots view "Open Settings › Providers", provider prompts): a
   // provider to select, or a create flow to start. AppPage remounts this
   // section for each new link, so these are read once.
@@ -107,6 +116,42 @@ export const ProvidersSection = ({
   const [isEditingMcp, setIsEditingMcp] = useState(false);
   const [isAddingWs, setIsAddingWs] = useState(false);
   const [isEditingWs, setIsEditingWs] = useState(false);
+  // NAV-015 "Choose where to use…": the provider whose dialog is open, and
+  // the rows worked out when it opened (kept fixed while the user ticks).
+  const [useTarget, setUseTarget] = useState(null);
+  const [useModel, setUseModel] = useState(null);
+
+  const openChooseWhereToUse = (name) => {
+    setUseModel(
+      providerUseModel({
+        providerName: name,
+        providers,
+        workspaces,
+        bots: status.bots,
+        getWidgetRequirements,
+        statusOf: status.statusOf,
+      }),
+    );
+    setUseTarget(name);
+  };
+  const closeChooseWhereToUse = () => {
+    setUseTarget(null);
+    setUseModel(null);
+  };
+  const saveProviderUse = async (picks) => {
+    const plan = planProviderUse(useModel, picks);
+    const result = await applyProviderUse({
+      plan,
+      workspaces,
+      bots: status.bots,
+      dashApi,
+      appId: credentials?.appId,
+      botsApi: window.mainApi && window.mainApi.bots,
+    });
+    // Fresh dashboards for Used by, the status and any open dashboard tabs.
+    if (result.dashboards && onReloadWorkspaces) onReloadWorkspaces();
+    return result;
+  };
 
   // Row ID counter for env/header rows in MCP edit mode
   const nextRowIdRef = useRef(0);
@@ -771,6 +816,7 @@ export const ProvidersSection = ({
         workspaces={workspaces}
         onOpenWorkspace={onOpenWorkspace}
         onOpenBotInBotsView={onOpenBotInBotsView}
+        onChooseWhereToUse={openChooseWhereToUse}
         isEditing={isEditing}
         formName={formName}
         setFormName={setFormName}
@@ -855,6 +901,12 @@ export const ProvidersSection = ({
         variant="danger"
         onConfirm={handleConfirmDelete}
         onCancel={() => setDeleteTarget(null)}
+      />
+      <ProviderUseDialog
+        isOpen={!!useTarget}
+        model={useModel}
+        onSave={saveProviderUse}
+        onClose={closeChooseWhereToUse}
       />
     </div>
   );

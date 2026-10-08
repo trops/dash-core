@@ -128,6 +128,7 @@ export const AppPage = ({
         workspaces={workspaces}
         onOpenWorkspace={onOpenWorkspace}
         onOpenBotInBotsView={onOpenBotInBotsView}
+        onReloadWorkspaces={onReloadWorkspaces}
         {...createProps}
       />
     );

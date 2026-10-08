@@ -46,6 +46,8 @@ export const ProviderDetail = ({
   workspaces = [],
   onOpenWorkspace = null,
   onOpenBotInBotsView = null,
+  // NAV-015: opens "Use <provider> for…" (tick the widgets and bots).
+  onChooseWhereToUse = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const appContext = useContext(AppContext);
@@ -707,7 +709,16 @@ export const ProviderDetail = ({
       {/* Used by */}
       {usage ? (
         <div data-testid="provider-used-by" className="flex flex-col gap-2">
-          <SectionLabel text="Used by" />
+          <div className="flex flex-row items-center justify-between gap-3">
+            <SectionLabel text="Used by" />
+            {onChooseWhereToUse && provider && provider.type ? (
+              <Button3
+                title="Choose where to use…"
+                size="xs"
+                onClick={() => onChooseWhereToUse(providerName)}
+              />
+            ) : null}
+          </div>
           {usage.count ? (
             <div className="flex flex-col gap-1.5">
               {usage.dashboards.map((d) => {
