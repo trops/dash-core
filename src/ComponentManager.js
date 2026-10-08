@@ -57,6 +57,40 @@ function canonicalScopedId(config, widgetKey) {
   );
 }
 
+/**
+ * The INTERNAL layout components every map includes, built fresh each call.
+ */
+function internalComponents() {
+  return {
+    // Legacy flexbox container (deprecated, use LayoutGridContainer)
+    Container: {
+      name: "Container",
+      component: _containerComponent,
+      canHaveChildren: true,
+      userConfig: {},
+      workspace: "layout",
+      type: "workspace",
+      width: "w-full",
+    },
+    // Grid-first container (primary container type)
+    LayoutGridContainer: {
+      name: "LayoutGridContainer",
+      component: _gridContainerComponent,
+      canHaveChildren: true,
+      userConfig: {},
+      workspace: "layout",
+      type: "grid",
+      width: "w-full",
+      grid: {
+        rows: 1,
+        cols: 1,
+        gap: "gap-2",
+        1.1: { component: null, hide: false },
+      },
+    },
+  };
+}
+
 export const ComponentManager = {
   // _componentMap: {},
 
@@ -155,36 +189,7 @@ export const ComponentManager = {
     let componentsCopy = deepCopy(this.componentMap());
     if (componentsCopy) {
       // additional INTERNAL components that we need
-
-      // Legacy flexbox container (deprecated, use LayoutGridContainer)
-      componentsCopy["Container"] = {
-        name: "Container",
-        component: _containerComponent,
-        canHaveChildren: true,
-        userConfig: {},
-        workspace: "layout",
-        type: "workspace",
-        width: "w-full",
-      };
-
-      // Grid-first container (primary container type)
-      componentsCopy["LayoutGridContainer"] = {
-        name: "LayoutGridContainer",
-        component: _gridContainerComponent,
-        canHaveChildren: true,
-        userConfig: {},
-        workspace: "layout",
-        type: "grid",
-        width: "w-full",
-        grid: {
-          rows: 1,
-          cols: 1,
-          gap: "gap-2",
-          1.1: { component: null, hide: false },
-        },
-      };
-
-      return componentsCopy;
+      return { ...componentsCopy, ...internalComponents() };
     }
     return {};
   },
@@ -387,11 +392,21 @@ export const ComponentManager = {
           defaultValue: { value: "" },
         };
 
-        const components = this.map();
-        const resolvedKey = resolveComponentKey(components, component);
-        if (resolvedKey && resolvedKey in components) {
-          const tempComponent = components[resolvedKey];
-          delete tempComponent["component"];
+        // Look up just this entry — copying the whole registry (map()) for
+        // every call made pages that call config per widget (e.g. Providers'
+        // "used by") take seconds. Internal containers win, as in map().
+        const internal = internalComponents();
+        const registry = this.componentMap() || {};
+        const source =
+          resolveComponentKey(internal, component) !== null
+            ? internal
+            : registry;
+        const resolvedKey = resolveComponentKey(source, component);
+        if (resolvedKey && resolvedKey in source) {
+          // Copy only this entry; the React component isn't serializable
+          // and the registry's own entry must keep it.
+          const { component: _reactComponent, ...tempComponent } =
+            source[resolvedKey];
           let c = JSON.parse(JSON.stringify(tempComponent));
           c["component"] = resolvedKey;
 
