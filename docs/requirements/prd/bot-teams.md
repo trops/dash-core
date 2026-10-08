@@ -639,7 +639,7 @@ User asks "Any of those urgent?" — the lead answers with the previous context 
 > so that I can understand and build a team's flow without opening each bot's settings.
 
 **Priority:** P1
-**Status:** Draft (2026-10-08) — mockup: `docs/design/bot-team-diagram.html`
+**Status:** In Progress — slice 1 implemented (2026-10-08); slice 2 (drag to wire) next. Mockup: `docs/design/bot-team-diagram.html`
 
 **Context:** bots already trigger each other: every run publishes `completed` / `failed` and `tool.<providerType>.<tool>` events (`bot:<ref>[<botId>].<event>`, botEvents.js), and a bot listens through `subscriptions: [{ eventType, label, source }]`. Today those links are only visible inside each bot's Settings. The diagram draws them and makes adding one a drag. Bots only for now — widgets as event sources are a later story (decided 2026-10-08).
 
@@ -647,12 +647,12 @@ User asks "Any of those urgent?" — the lead answers with the previous context 
 
 _Slice 1 — the diagram (read-only wiring) and the list icons_
 
-- [ ] AC1: The Bots view list shows each bot's avatar (the robot on its colour), the same as the Bots page — one shared `BotAvatar`.
-- [ ] AC2: The Bots view gets a **Diagram / List** switch (remembered per user). Diagram shows the lead on top and the team's bots in a row underneath, joined by thin grey "team" lines; cards show avatar, name (up to two lines), trigger summary and status dot. When the space is too narrow, the bots wrap onto more rows instead of shrinking.
-- [ ] AC3: Lines go from a bot to each team bot that subscribes to one of its events, labelled with the event (`completed`, `failed`, `tool · <provider>.<tool>`). After-completed / tool lines are solid; after-failed lines are dashed red. The lead is never a line end (it isn't triggered by events).
-- [ ] AC4: Clicking a bot selects it: its lines are highlighted (others fade), and the side panel shows its summary — last run, providers, **Runs after** and **Then triggers** lists — plus **Conversation** (or **Ask the lead**), **Activity**, **Settings** and **Run now** (not for the lead).
-- [ ] AC5: Conversation / Activity / Settings open the bot's existing detail (today's tabs, unchanged) **beside** the diagram, replacing the summary; clicking another bot switches the detail to that bot on the same tab; × returns to the summary. Hovering a card shows the same three as small icon buttons.
-- [ ] AC6: A bot with a pending approval shows a **Needs approval** badge on its card; clicking it opens its Activity.
+- [x] AC1: The Bots view list shows each bot's avatar (the robot on its colour), the same as the Bots page — one shared `BotAvatar`.
+- [x] AC2: The Bots view gets a **Diagram / List** switch (remembered per user). Diagram shows the lead on top and the team's bots in a row underneath, joined by thin grey "team" lines; cards show avatar, name (up to two lines), trigger summary and status dot. When the space is too narrow, the bots wrap onto more rows instead of shrinking.
+- [x] AC3: Lines go from a bot to each team bot that subscribes to one of its events, labelled with the event (`completed`, `failed`, `tool · <provider>.<tool>`). After-completed / tool lines are solid; after-failed lines are dashed red. The lead is never a line end (it isn't triggered by events).
+- [x] AC4: Clicking a bot selects it: its lines are highlighted (others fade), and the side panel shows its summary — last run, providers, **Runs after** and **Then triggers** lists — plus **Conversation** (or **Ask the lead**), **Activity**, **Settings** and **Run now** (not for the lead).
+- [x] AC5: Conversation / Activity / Settings open the bot's existing detail (today's tabs, unchanged) **beside** the diagram, replacing the summary; clicking another bot switches the detail to that bot on the same tab; × returns to the summary. Hovering a card shows the same three as small icon buttons.
+- [x] AC6: A bot with a pending approval shows a **Needs approval** badge on its card; clicking it opens its Activity.
 
 _Slice 2 — drag to wire_
 
@@ -685,6 +685,15 @@ _Slice 2 — drag to wire_
 - [ ] Unit tests: line derivation from subscriptions, layout (rows), event list per bot, subscription add/edit/remove, prompt note
 - [ ] Verified in the app (wire two bots, run the first, the second runs with the note; light and dark)
 - [ ] Documentation updated
+
+**Implementation notes (slice 1, 2026-10-08):**
+
+- `Bots/teamDiagram.js` (pure): `parseBotEventType`, `diagramEdges` (team bot → team bot; the lead, other dashboards, deleted bots and self-subscriptions draw no line), `runsAfter` (includes other-dashboard / deleted sources for the summary), `thenTriggers`, `diagramLayout` (rows from the measured width; cards 200–240 px, wrapping instead of shrinking).
+- `Bots/TeamChart.js`: cards and labels are absolutely positioned with inline styles (the prebuilt CSS has no arbitrary sizes or negative offsets); lines are SVG paths with `stroke="currentColor"` and colour classes. Selecting a bot that has lines highlights them and fades the rest; selecting the lead (or a bot with no lines) fades nothing. Named TeamChart because `teamDiagram.js` holds the helpers and macOS file names ignore case.
+- `Bots/BotFlowSummary.js`: status instead of "last run" (the Bots view has no last-run data without another call); providers, Runs after (other dashboards marked), Then triggers, Conversation / Activity / Settings / Run now.
+- `Bots/BotAvatar.js`: shared by the Bots page, the Bots view list and the diagram (AC1).
+- `BotsView`: Diagram is the default; the choice is remembered in `localStorage` (`dash:botsView:mode`, wrapped in try/catch). In Diagram mode the bot's tabs open in a half-width panel beside the diagram (× back to the summary); + Add bot and drafts open their form there; a focus request (Open in Bots view) opens the tabs. Narrow windows keep the bot picker.
+- Verified live on the Algolia Data Enrichment team with a temporary trigger (Record Reader runs after Schema Planner completes): line + label drawn, summary lists it, Activity opens beside the diagram (bots wrap to two rows), light and dark.
 
 ---
 
@@ -1003,7 +1012,7 @@ The six questions raised in the first draft were resolved on 2026-10-01 (see the
 
 **Deliverables:**
 
-- [ ] Slice 1: shared BotAvatar in the Bots view list; Diagram / List switch; org chart with event lines from subscriptions; selection + side summary; detail beside the diagram; Needs approval badge
+- [x] Slice 1: shared BotAvatar in the Bots view list; Diagram / List switch; org chart with event lines from subscriptions; selection + side summary; detail beside the diagram; Needs approval badge
 - [ ] Slice 2: drag-to-wire handles, event popover (add / edit / remove), subscription `note` in the event prompt, loop warning
 
 ### Phase 2: Grow, share, and install teams (P1)
@@ -1077,3 +1086,4 @@ The six questions raised in the first draft were resolved on 2026-10-01 (see the
 | 1.13    | 2026-10-06 | John   | TEAM-013 slice 1 implemented (picker, direct send, context)      |
 | 1.14    | 2026-10-06 | John   | TEAM-013 slice 2 (@ shortcut); TEAM-013 Implemented              |
 | 1.15    | 2026-10-08 | John   | Added TEAM-014 team diagram (from the approved mockup)           |
+| 1.16    | 2026-10-08 | John   | TEAM-014 slice 1: diagram, summary, detail beside, list avatars  |
