@@ -4,7 +4,7 @@ import { ComponentManager } from "../../ComponentManager";
 import { getAllProviderBindings } from "../../utils/providerResolution";
 import { classOf, providerStatus, providerUsage } from "./providerSummary";
 
-const getWidgetRequirements = (name) =>
+export const getWidgetRequirements = (name) =>
   (name && ComponentManager.config(name)?.providers) || [];
 
 const entryFor = (catalog, provider) =>
@@ -129,6 +129,8 @@ export function useProviderStatus({
         });
       },
       usageOf: (name) => providerUsage(name, { workspaces, bots, bindingsFor }),
+      // The bot definitions (Choose where to use… saves them).
+      bots,
       refresh: checkRunning,
     }),
     [providers, running, catalog, workspaces, bots, bindingsFor, checkRunning],

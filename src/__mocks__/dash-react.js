@@ -129,7 +129,7 @@ function SearchInput({ value, onChange, placeholder }) {
   });
 }
 
-function Checkbox({ label, checked, onChange }) {
+function Checkbox({ label, checked, onChange, disabled }) {
   return React.createElement(
     "label",
     null,
@@ -137,6 +137,7 @@ function Checkbox({ label, checked, onChange }) {
     React.createElement("input", {
       type: "checkbox",
       checked: !!checked,
+      disabled: disabled,
       onChange: (e) => onChange(e.target.checked),
       "aria-label": label,
     }),

@@ -70,7 +70,7 @@ const workspaces = [
   },
 ];
 
-function setup(props = {}) {
+function setup({ appProviders = providers, ...props } = {}) {
   window.mainApi = {
     bots: {
       list: jest.fn().mockResolvedValue([
@@ -87,13 +87,14 @@ function setup(props = {}) {
       ok(null, { status: name === "Slack" ? "connected" : "disconnected" }),
     ),
     deleteProvider: jest.fn((appId, name, ok) => ok()),
+    saveWorkspace: jest.fn((appId, ws, ok) => ok(null, {})),
     mcpStopServer: jest.fn(),
   };
   const onOpenWorkspace = jest.fn();
   const onOpenBotInBotsView = jest.fn();
   const utils = render(
     <AppContext.Provider
-      value={{ providers, dashApi, refreshProviders: jest.fn() }}
+      value={{ providers: appProviders, dashApi, refreshProviders: jest.fn() }}
     >
       <ProvidersSection
         dashApi={dashApi}
@@ -203,6 +204,69 @@ describe("ProvidersSection detail (NAV-007)", () => {
       expect.any(Function),
       expect.any(Function),
     );
+  });
+});
+
+describe("ProvidersSection Choose where to use… (NAV-015)", () => {
+  it("moves a widget and a bot to this provider, saves, and reloads dashboards", async () => {
+    const appProviders = {
+      ...providers,
+      Slack: { ...providers.Slack, isDefaultForType: false },
+      "Slack Comms": {
+        type: "slack",
+        providerClass: "mcp",
+        mcpConfig: { transport: "stdio", envMapping: { T: "xoxbToken" } },
+        credentials: { xoxbToken: "y" },
+      },
+    };
+    const boundWorkspaces = [
+      {
+        id: 1,
+        name: "Kitchen Sink",
+        layout: [
+          {
+            id: 1,
+            component: "SlackWidget",
+            dashboardId: 1,
+            selectedProviders: { slack: "Slack" },
+          },
+        ],
+      },
+    ];
+    const onReloadWorkspaces = jest.fn();
+    const { dashApi } = setup({
+      appProviders,
+      workspaces: boundWorkspaces,
+      onReloadWorkspaces,
+    });
+    window.mainApi.bots.save = jest.fn(async (d) => d);
+    fireEvent.click(row("Slack Comms"));
+    // Bots load asynchronously; wait for them before opening the dialog.
+    await waitFor(() => expect(window.mainApi.bots.list).toHaveBeenCalled());
+    await waitFor(() => Promise.resolve());
+    fireEvent.click(
+      within(detail()).getByRole("button", { name: "Choose where to use…" }),
+    );
+    const modal = screen.getByTestId("modal");
+    expect(within(modal).getByText("Use Slack Comms for…")).toBeInTheDocument();
+    fireEvent.click(within(modal).getByLabelText("SlackWidget"));
+    fireEvent.click(within(modal).getByLabelText("Digest"));
+    fireEvent.click(
+      within(modal).getByRole("button", { name: "Save — 2 changes" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("provider-use-summary")).toBeInTheDocument(),
+    );
+    const saved = dashApi.saveWorkspace.mock.calls[0][1];
+    expect(saved.layout[0].selectedProviders.slack).toBe("Slack Comms");
+    expect(saved.selectedProviders["1"].slack).toBe("Slack Comms");
+    expect(window.mainApi.bots.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "b1",
+        mcpServers: ["Slack", "Slack Comms"],
+      }),
+    );
+    expect(onReloadWorkspaces).toHaveBeenCalled();
   });
 });
 
