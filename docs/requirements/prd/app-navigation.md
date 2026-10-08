@@ -150,6 +150,29 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 
 **NAV-012: Authoring actions** _(implemented 2026-10-04 — see notes; no org membership: users publish only under their own username)_ — for packages the user authored: AI-built drafts get **Publish…** and **Edit in Widget Builder**; published packages get **Publish vX.Y.Z** when changed since the last publish (else **Publish new version…**) and **Edit in Widget Builder**; the widget detail gets **Edit in Widget Builder**. Requires `deriveWidgetOwnership` to recognise packages owned by an org the user belongs to (known gap).
 
+**NAV-015: Choose where a provider is used** _(Draft — 2026-10-08)_
+
+**User Story:** As a user with several providers of the same type (e.g. a broken "Slack" and a working "Slack Dash Comms"), I want to open the provider I want to use and tick every widget and bot that should use it, so I can switch many dashboards at once without editing each one.
+
+**Why here:** the Providers page already knows everything that uses a provider (`providerUsage`), and starting from the provider you _want_ makes the action unambiguous — nothing is copied between providers, you only choose where this one is used. It covers repairs (a broken provider), rollouts (a new provider to existing dashboards) and splits (some widgets on one, some on another).
+
+**Acceptance Criteria:**
+
+- [ ] AC1: The provider detail's **Used by** section has **Choose where to use…**, which opens a dialog titled "Use <provider> for…".
+- [ ] AC2: The dialog lists every place that can take a provider of this **type**: widgets grouped by dashboard (every page and the sidebar layout), then a **Bots** group (non-lead bots). Items using this provider start ticked.
+- [ ] AC3: Each row shows what it uses now — "now: <provider>", with a "needs setup" warning when that provider needs setup (same status as the Providers list), or "now: default — <name>" / "now: default — none set" when nothing is chosen.
+- [ ] AC4: Unticking a row removes this provider from it, with no further prompt. The row then reads "→ uses default: <name>", or "→ uses default: none set" when there's no default for the type, so a widget left without a provider is visible before saving. Choosing a _different_ provider happens on that provider's screen or in Dashboard Config.
+- [ ] AC5: Shortcuts: tick all on a dashboard (its group header), and **Select all needing setup** (every row whose current provider needs setup).
+- [ ] AC6: **Save — N changes** applies only the rows that changed:
+  - **Widgets:** per dashboard, through `applyBulkProviderBindings` (both binding layers — widget-level `selectedProviders` and `workspace.selectedProviders` — so a stale value can't shadow the choice). Ticked → this provider; unticked → binding cleared (falls back to the default).
+  - **Bots:** ticked → added to the bot's `mcpServers`; unticked → removed. The bot's tool selections for this provider (`allowedTools`) are kept on removal, so re-ticking restores them.
+  - Each changed dashboard and bot is saved once.
+- [ ] AC7: After saving, a summary: "Slack Dash Comms is now used by 11 widgets on 4 dashboards and 1 bot; removed from 2 widgets." If a dashboard or bot fails to save, it's named and the others are kept; nothing is half-written within one dashboard.
+- [ ] AC8: Used by, the status dot and the "N providers need setup" count refresh after saving.
+- [ ] AC9: Credential and WebSocket providers work the same way for widgets; the Bots group appears only for MCP providers (bots use MCP providers only — see the parked credential/websocket idea).
+
+**Out of scope for NAV-015:** copying settings between providers; deleting the old provider from the dialog (use Delete on its own detail); changing a type's default (stays the "Use as default for <type> widgets" checkbox).
+
 ### Nice-to-Have (P2)
 
 **NAV-013: Collapsible org sections** on Widgets when the list is long.
@@ -190,6 +213,7 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 - Open-ended filters are a searchable multi-select dropdown; fixed small sets are chips. (2026-10-03)
 - Widgets list shows org → package → widgets; packages are the publish/install unit, widgets the placeable unit. (2026-10-03)
 - Dashboards and Folders leave Settings for the Dashboards page. (2026-10-03)
+- NAV-015 starts from the provider the user _wants_ ("Choose where to use…"), not from the broken one ("Replace with…" read as copying settings). Unticking removes the provider with no prompt and shows the fallback default inline; bots are included in their own group. (2026-10-08)
 
 ---
 
@@ -294,6 +318,14 @@ NAV-010 (dash-react first), then NAV-006, NAV-008, NAV-009 in the list + detail 
 
 NAV-011, NAV-012 (after the ownership fix), P2 items.
 
+### Phase 5: Choose where a provider is used (NAV-015)
+
+- **Plan (pure, tested):** `planProviderUse({ provider, workspaces, bots, picks })` → per-dashboard binding changes (for `applyBulkProviderBindings`) and per-bot `mcpServers` changes, from the rows' before/after ticks. Rows come from the same bindings the Used by section reads (`getAllProviderBindings`), filtered by provider type.
+- **Dialog:** `AppPages/ProviderUseDialog.js` — dash-react `Modal`, grouped checkbox list, "now:" / "→ uses default:" lines, the two shortcuts, Save — N changes.
+- **Save:** each changed dashboard through the existing workspace save path, each changed bot through the bot update path; per-item results feed the summary (AC7).
+- **Tests first:** plan (tick / untick / unchanged rows, page + sidebar layouts, both binding layers, bots keep `allowedTools`, only type-matching widgets); dialog render (start ticks, default line on untick, shortcuts, change count); save partial failure.
+- **Live:** in the dev app, move the user's Slack widgets from "Slack" to "Slack Dash Comms" and confirm they render; screenshots light and dark.
+
 ---
 
 ## Testing Requirements
@@ -319,3 +351,4 @@ NAV-011, NAV-012 (after the ownership fix), P2 items.
 | 1.7     | 2026-10-04 | John   | Providers restyle, status, Used by, nav dot     |
 | 1.8     | 2026-10-04 | John   | Live widget preview (NAV-011 slice A)           |
 | 1.9     | 2026-10-04 | John   | Authoring actions for the user's own widgets    |
+| 1.10    | 2026-10-08 | John   | NAV-015: choose where a provider is used        |
