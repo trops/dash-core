@@ -49,10 +49,21 @@ export function missingFields(
       Array.isArray(credentialOptions) ? credentialOptions : []
     ).filter((o) => Array.isArray(o) && o.length);
     const inOptions = new Set(options.flat());
+    // Catalog fields the server works without (e.g. Algolia's API key on an
+    // endpoint that doesn't ask for one) aren't missing when empty. The
+    // catalog's `required: false` can't be used for this: it's set on fields
+    // servers do need (GitHub's token).
+    const worksWithout = (key) =>
+      !!(
+        credentialSchema &&
+        credentialSchema[key] &&
+        credentialSchema[key].worksWithout
+      );
     const missing = fields
       .filter(
         (f) =>
           !inOptions.has(f.key) &&
+          !worksWithout(f.key) &&
           (used.has(f.key) || f.required) &&
           isEmpty(creds[f.key]),
       )
