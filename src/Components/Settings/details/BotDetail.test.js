@@ -1349,3 +1349,31 @@ describe("BotDetail — gaps the lead found providers for (bot-capabilities CAP-
     expect(screen.queryByTestId("draft-gaps")).toBeNull();
   });
 });
+
+describe("BotDetail — Instructions grows to fit", () => {
+  it("asks the TextArea to grow instead of scrolling inside the form", () => {
+    render(<BotDetail isCreating providers={{}} onSave={jest.fn()} />);
+    expect(
+      screen.getByPlaceholderText("What should this bot do?"),
+    ).toHaveAttribute("data-autogrow", "true");
+  });
+});
+
+describe("BotDetail — header scrolls with the form", () => {
+  it("renders the header inside the scroll area, above Name", () => {
+    render(
+      <BotDetail
+        isCreating
+        providers={{}}
+        onSave={jest.fn()}
+        header={<div data-testid="draft-header">Drafted by your team lead</div>}
+      />,
+    );
+    const header = screen.getByTestId("draft-header");
+    const scroller = header.closest(".overflow-y-auto");
+    expect(scroller).not.toBeNull();
+    expect(scroller).toContainElement(
+      screen.getByPlaceholderText("e.g. PR Digest"),
+    );
+  });
+});

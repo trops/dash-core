@@ -49,6 +49,8 @@ function TextArea({ label, value, onChange, placeholder, rows, ...htmlProps }) {
     backgroundColor: _b,
     textColor: _t,
     borderColor: _bc,
+    // dash-react sizes the box itself; expose the flag for tests.
+    autoGrow,
     ...rest
   } = htmlProps;
   return React.createElement(
@@ -57,6 +59,7 @@ function TextArea({ label, value, onChange, placeholder, rows, ...htmlProps }) {
     label,
     React.createElement("textarea", {
       ...rest,
+      "data-autogrow": autoGrow ? "true" : undefined,
       value: value,
       onChange: (e) => onChange(e.target.value),
       placeholder: placeholder,

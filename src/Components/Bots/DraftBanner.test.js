@@ -110,4 +110,13 @@ describe("DraftBanner — notes from the lead", () => {
       screen.getByText("Tell me which channel to post to."),
     ).toBeInTheDocument();
   });
+
+  it("adds no outer spacing of its own (it sits inside the form's padded scroll area)", () => {
+    const { container } = render(
+      <DraftBanner draft={draft} onDiscard={() => {}} />,
+    );
+    // mx-5 isn't in dash-electron's prebuilt bundle; the form supplies px-6.
+    expect(container.innerHTML).not.toMatch(/\bmx-5\b/);
+    expect(container.firstChild.className).toMatch(/\brounded-lg\b/);
+  });
 });

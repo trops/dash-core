@@ -188,6 +188,9 @@ export const BotDetail = ({
   // In a dashboard's Bots view: a new bot can show its results on that
   // dashboard (TEAM-012). Passed to onSave as { showOnDashboard }.
   canShowOnDashboard = false,
+  // Optional content at the top of the form's scroll area (e.g. a lead's
+  // draft banner) — scrolls with the form instead of staying pinned above it.
+  header = null,
 }) => {
   const [showOnDashboard, setShowOnDashboard] = useState(true);
   const [name, setName] = useState(bot?.name || "");
@@ -598,6 +601,7 @@ export const BotDetail = ({
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-4">
+        {header}
         <div className="flex flex-col gap-2">
           <span className="text-sm font-medium">Name</span>
           <InputText
@@ -614,6 +618,9 @@ export const BotDetail = ({
             onChange={setInstructions}
             placeholder="What should this bot do?"
             rows={5}
+            // Grow with the text — the form already scrolls; no scroll
+            // inside a scroll.
+            autoGrow
           />
         </div>
 

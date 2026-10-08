@@ -837,14 +837,17 @@ export const BotsView = ({
             ) : null}
             {tab === "settings" ? (
               <div className="flex-1 min-h-0 flex flex-col">
-                {selectedDraft ? (
-                  <DraftBanner
-                    draft={selectedDraft}
-                    onDiscard={discardDraft}
-                    onOpenSettings={onOpenSettings}
-                  />
-                ) : null}
                 <BotDetail
+                  // The lead's banner scrolls with the form (not pinned).
+                  header={
+                    selectedDraft ? (
+                      <DraftBanner
+                        draft={selectedDraft}
+                        onDiscard={discardDraft}
+                        onOpenSettings={onOpenSettings}
+                      />
+                    ) : null
+                  }
                   key={`${selected ? selected.id : selectedId || NEW_BOT}-${formKey}`}
                   bot={
                     selected ||
