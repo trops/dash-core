@@ -61,7 +61,16 @@ function makeTeam(over = {}) {
   };
 }
 
-function setup({ team = makeTeam(), narrow = false, apiOver = {} } = {}) {
+// Most tests cover the List view (TEAM-011); TEAM-014's diagram is the
+// default and has its own tests below (mode: null = nothing remembered).
+function setup({
+  team = makeTeam(),
+  narrow = false,
+  apiOver = {},
+  mode = "list",
+} = {}) {
+  window.localStorage.clear();
+  if (mode) window.localStorage.setItem("dash:botsView:mode", mode);
   const api = {
     getRuns: jest.fn().mockResolvedValue([]),
     run: jest.fn().mockResolvedValue({ status: "completed" }),
@@ -91,9 +100,80 @@ function setup({ team = makeTeam(), narrow = false, apiOver = {} } = {}) {
 
 afterEach(() => {
   delete window.mainApi;
+  window.localStorage.clear();
 });
 
 const teamList = () => screen.getByRole("navigation", { name: "Team" });
+
+describe("BotsView — team diagram (TEAM-014 slice 1)", () => {
+  it("opens on the diagram by default, with the lead's summary beside it", () => {
+    setup({ mode: null });
+    expect(screen.getByTestId("diagram-card-lead_7")).toBeInTheDocument();
+    expect(screen.getByTestId("diagram-card-b1")).toBeInTheDocument();
+    const side = screen.getByRole("complementary", { name: "Selected bot" });
+    expect(within(side).getByText("Kitchen Lead")).toBeInTheDocument();
+    expect(
+      within(side).getByRole("button", { name: "Ask the lead" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("tab")).toBeNull();
+  });
+
+  it("clicking a bot shows its summary; Activity opens its tabs beside the diagram; × goes back", () => {
+    setup({ mode: null });
+    fireEvent.click(screen.getByRole("button", { name: "Inbox Watch" }));
+    const side = screen.getByRole("complementary", { name: "Selected bot" });
+    expect(within(side).getByText("Inbox Watch")).toBeInTheDocument();
+    expect(
+      within(side).getByRole("button", { name: "Run now" }),
+    ).toBeInTheDocument();
+    fireEvent.click(within(side).getByRole("button", { name: "Activity" }));
+    expect(screen.getByRole("tab", { name: "Activity" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    // The diagram stays.
+    expect(screen.getByTestId("diagram-card-b1")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to summary" }));
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(
+      screen.getByRole("complementary", { name: "Selected bot" }),
+    ).toBeInTheDocument();
+  });
+
+  it("a card's Settings icon opens that bot's Settings", () => {
+    setup({ mode: null });
+    fireEvent.mouseEnter(screen.getByTestId("diagram-card-b2"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Settings — CRM Sync" }),
+    );
+    expect(screen.getByRole("tab", { name: "Settings" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(
+      screen.getByRole("heading", { name: "CRM Sync" }),
+    ).toBeInTheDocument();
+  });
+
+  it("+ Add bot opens the new-bot form beside the diagram", () => {
+    setup({ mode: null });
+    fireEvent.click(screen.getByRole("button", { name: "+ Add bot" }));
+    expect(screen.getByRole("tab", { name: "New bot" })).toBeInTheDocument();
+    expect(screen.getByTestId("diagram-card-lead_7")).toBeInTheDocument();
+  });
+
+  it("List switches to the list (with avatars) and is remembered", () => {
+    setup({ mode: null });
+    fireEvent.click(screen.getByRole("radio", { name: "List" }));
+    expect(within(teamList()).getAllByTestId("bot-avatar")).toHaveLength(3);
+    expect(window.localStorage.getItem("dash:botsView:mode")).toBe("list");
+  });
+
+  it("narrow windows keep the bot picker (no diagram)", () => {
+    setup({ mode: null, narrow: true });
+    expect(screen.queryByTestId("diagram-card-lead_7")).toBeNull();
+  });
+});
 
 describe("BotsView — team list", () => {
   it("lists the lead first, then members, with status labels", () => {

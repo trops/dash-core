@@ -5,7 +5,6 @@ import {
   Checkbox,
   ConfirmationModal,
   FilterMenu,
-  FontAwesomeIcon,
   SearchInput,
   SectionLabel,
   SegmentedControl,
@@ -16,13 +15,9 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { BotDetail } from "../Settings/details/BotDetail";
 import { STATUS_DOT, groupBotsByTeam, triggerSummary } from "../Bots/teamUtils";
 import { toPlainText } from "../Bots/botConversation";
+import { BotAvatar } from "../Bots/BotAvatar";
 import { useAllBots } from "./useAllBots";
-import {
-  approvalText,
-  avatarColor,
-  botHandle,
-  botProviders,
-} from "./botSummary";
+import { approvalText, botHandle, botProviders } from "./botSummary";
 
 // Widget config (declared `events`) by component name — feeds the bot
 // editor's "Run on events" picker.
@@ -45,20 +40,6 @@ const RUN_STATUS = {
 };
 
 const teamKey = (group) => group.workspaceId || UNASSIGNED;
-
-/** The generic robot avatar on the bot's colour. */
-const BotAvatar = ({ bot, large = false }) => {
-  const color = avatarColor(bot);
-  const size = large ? "h-12 w-12 text-xl" : "h-8 w-8 text-sm";
-  return (
-    <span
-      data-testid="bot-avatar"
-      className={`flex items-center justify-center rounded-lg flex-shrink-0 text-white ${size} ${color}`}
-    >
-      <FontAwesomeIcon icon="robot" />
-    </span>
-  );
-};
 
 const StatusLabel = ({ status, muted }) => {
   const dot = STATUS_DOT[status] || STATUS_DOT.Idle;

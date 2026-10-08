@@ -10,12 +10,17 @@ import {
   Button,
   Button2,
   Button3,
+  ButtonIcon,
   ConfirmationModal,
   SectionLabel,
+  SegmentedControl,
   SelectInput,
   ThemeContext,
 } from "@trops/dash-react";
 import { BotChat } from "./BotChat";
+import { BotAvatar } from "./BotAvatar";
+import { TeamChart } from "./TeamChart";
+import { BotFlowSummary } from "./BotFlowSummary";
 import { BotRunHistory } from "./BotRunHistory";
 import { BotDetail } from "../Settings/details/BotDetail";
 import { DraftBanner } from "./DraftBanner";
@@ -80,6 +85,25 @@ function useNarrow(ref, forced) {
 
 const TABS = ["conversation", "activity", "settings"];
 
+// Diagram / List (TEAM-014), remembered per viewer. Storage can be blocked.
+const MODE_KEY = "dash:botsView:mode";
+const readMode = () => {
+  try {
+    return window.localStorage.getItem(MODE_KEY) === "list"
+      ? "list"
+      : "diagram";
+  } catch (_e) {
+    return "diagram";
+  }
+};
+const writeMode = (mode) => {
+  try {
+    window.localStorage.setItem(MODE_KEY, mode);
+  } catch (_e) {
+    // Not remembered — fine.
+  }
+};
+
 export const BotsView = ({
   workspace,
   workspaces = [],
@@ -122,6 +146,15 @@ export const BotsView = ({
       : "conversation",
   );
   const [menuOpen, setMenuOpen] = useState(false);
+  // Team diagram (TEAM-014): the view, and whether the selected bot's
+  // Conversation / Activity / Settings is open beside the diagram (else its
+  // summary is). A focus request (Open in Bots view) opens it.
+  const [mode, setModeState] = useState(readMode);
+  const [detailOpen, setDetailOpen] = useState(() => !!focusTarget);
+  const setMode = (next) => {
+    setModeState(next);
+    writeMode(next);
+  };
   // Team export/import (TEAM-006/007, slice 1): the review being shown, and
   // the last outcome ({ text, details?: string[] }).
   const [importPreview, setImportPreview] = useState(null);
@@ -216,12 +249,38 @@ export const BotsView = ({
       setMenuOpen(false);
       setImportPreview(null);
       setRegistryOpen(false);
+      // A new bot or a draft has no summary — its form opens (diagram).
+      if (id === NEW_BOT || isDraftId(id)) setDetailOpen(true);
     });
 
   const switchTab = (next) =>
     guarded(() => {
       setDirty(false);
       setTab(next);
+    });
+
+  // Diagram: open a bot's tab beside the diagram / back to its summary.
+  const openBot = (id, nextTab) =>
+    guarded(() => {
+      setDirty(false);
+      setSelectedId(id);
+      setTab(TABS.includes(nextTab) ? nextTab : "conversation");
+      setMenuOpen(false);
+      setImportPreview(null);
+      setRegistryOpen(false);
+      setDetailOpen(true);
+    });
+  const closeDetail = () =>
+    guarded(() => {
+      setDirty(false);
+      setDetailOpen(false);
+      // A new bot / draft has no summary — back to the lead (or first bot).
+      if (selectedId === NEW_BOT || isDraftId(selectedId)) {
+        setSelectedId(
+          (lead && lead.id) || (members[0] && members[0].id) || null,
+        );
+        setTab("conversation");
+      }
     });
 
   // A new focus request (seq) from the Bot monitor re-selects its bot.
@@ -237,6 +296,7 @@ export const BotsView = ({
       setSelectedId(focus.botId);
       setTab(TABS.includes(focus.tab) ? focus.tab : "conversation");
       setMenuOpen(false);
+      setDetailOpen(true);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus && focus.seq, focus && focus.botId, team && team.bots]);
@@ -565,6 +625,7 @@ export const BotsView = ({
           active ? `${selectedBg} ${selectedBorder}` : "border-transparent"
         }`}
       >
+        <BotAvatar bot={b} />
         <div className="flex-1 min-w-0">
           <div className="flex flex-row items-center gap-2 text-sm font-medium">
             <span className="truncate">{b.name}</span>
@@ -592,15 +653,28 @@ export const BotsView = ({
     );
   };
 
+  const teamLabel = `Team · ${all.length} bot${all.length === 1 ? "" : "s"}`;
+  const viewSwitch = (
+    <SegmentedControl
+      ariaLabel="Team view"
+      size="xs"
+      value={mode}
+      onChange={(v) => setMode(v === "list" ? "list" : "diagram")}
+      options={[
+        { value: "diagram", label: "Diagram" },
+        { value: "list", label: "List" },
+      ]}
+    />
+  );
+
   const teamList = (
     <nav
       aria-label="Team"
       className={`w-72 flex-shrink-0 flex flex-col gap-1 rounded-xl border p-2 ${hairline}`}
     >
-      <div className="px-2 pt-1 pb-2">
-        <SectionLabel
-          text={`Team · ${all.length} bot${all.length === 1 ? "" : "s"}`}
-        />
+      <div className="flex flex-row items-center justify-between gap-2 px-2 pt-1 pb-2">
+        <SectionLabel text={teamLabel} />
+        {viewSwitch}
       </div>
       {lead ? (
         row(lead)
@@ -632,6 +706,59 @@ export const BotsView = ({
       <Button title="+ Add bot" size="sm" onClick={() => select(NEW_BOT)} />
     </nav>
   );
+
+  // Diagram mode (TEAM-014): the team as an org chart; drafts, team actions
+  // and + Add bot stay reachable underneath.
+  const teamDiagram = (
+    <section
+      aria-label="Team"
+      className={`flex-1 min-w-0 min-h-0 flex flex-col rounded-xl border ${hairline}`}
+    >
+      <div
+        className={`flex flex-row items-center justify-between gap-3 px-4 py-3 border-b ${hairline}`}
+      >
+        <SectionLabel text={teamLabel} />
+        <div className="flex flex-row items-center gap-2">
+          {viewSwitch}
+          <Button
+            title="+ Add bot"
+            size="sm"
+            onClick={() => openBot(NEW_BOT, "settings")}
+          />
+        </div>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto p-2">
+        {lead ? null : (
+          <div
+            className={`flex flex-row items-center gap-3 px-3 py-2 text-xs ${muted}`}
+          >
+            <span>Team lead is off</span>
+            <Button3 title="Turn on" size="xs" onClick={turnOnLead} />
+          </div>
+        )}
+        <TeamChart
+          lead={lead}
+          members={members}
+          selectedId={selectedId}
+          statusOf={(id) => (team ? team.statusOf(id) : "Idle")}
+          approvalsFor={(id) => (team ? team.approvalsFor(id) : [])}
+          onSelect={(id) => select(id)}
+          onOpen={openBot}
+        />
+        {drafts.length ? (
+          <div className="flex flex-col gap-1 px-2 pt-2">
+            <SectionLabel text="Drafts" />
+            {drafts.map(draftRow)}
+          </div>
+        ) : null}
+      </div>
+      <div className={`px-4 py-3 border-t ${hairline}`}>{teamActions}</div>
+    </section>
+  );
+  const diagramMode = mode === "diagram";
+  // The diagram with the summary / bot detail beside it (wide windows only;
+  // narrow windows keep the bot picker).
+  const sideBySide = diagramMode && !isNarrow;
 
   const picker = (
     <div className="flex flex-row items-end gap-2">
@@ -673,6 +800,8 @@ export const BotsView = ({
           {picker}
           {teamActions}
         </div>
+      ) : diagramMode ? (
+        teamDiagram
       ) : (
         teamList
       )}
@@ -694,10 +823,27 @@ export const BotsView = ({
             setImportError(null);
           }}
         />
+      ) : sideBySide && !detailOpen && selected ? (
+        <aside
+          aria-label="Selected bot"
+          className={`w-80 flex-shrink-0 min-h-0 overflow-y-auto rounded-xl border ${hairline}`}
+        >
+          <BotFlowSummary
+            bot={selected}
+            team={all}
+            nameOf={(id) => {
+              const n = nameOf(id);
+              return n === id ? null : n;
+            }}
+            status={status}
+            onOpen={(t) => openBot(selected.id, t)}
+            onRunNow={runNow}
+          />
+        </aside>
       ) : (
         <section
           aria-label="Selected bot"
-          className={`flex-1 min-w-0 min-h-0 flex flex-col rounded-xl border ${hairline}`}
+          className={`${sideBySide ? "w-1/2 flex-shrink-0" : "flex-1"} min-w-0 min-h-0 flex flex-col rounded-xl border ${hairline}`}
         >
           <div className="flex flex-row items-start justify-between gap-4 px-5 pt-4">
             <div className="min-w-0">
@@ -752,7 +898,22 @@ export const BotsView = ({
                   ariaLabel="More actions"
                   onClick={() => setMenuOpen((v) => !v)}
                 />
+                {sideBySide ? (
+                  <ButtonIcon
+                    icon="xmark"
+                    size="sm"
+                    ariaLabel="Back to summary"
+                    onClick={closeDetail}
+                  />
+                ) : null}
               </div>
+            ) : sideBySide ? (
+              <ButtonIcon
+                icon="xmark"
+                size="sm"
+                ariaLabel="Close"
+                onClick={closeDetail}
+              />
             ) : null}
           </div>
           {menuOpen && selected ? (
