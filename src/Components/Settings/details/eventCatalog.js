@@ -292,6 +292,11 @@ export function getBotEmitters(bots, toolSources, workspaceId) {
     component: `bot:${entry.ref}`,
     itemId: entry.botId,
     label: `${entry.name} (bot)`,
+    name: entry.name,
     events: entry.events.map((e) => e.event),
+    // event → "Completed" / "Failed" / "uses <tool> (<provider>)"
+    eventLabels: Object.fromEntries(
+      entry.events.map((e) => [e.event, botEventLabel(e)]),
+    ),
   }));
 }

@@ -5,6 +5,7 @@ import {
   formatEventString,
   parseEventString,
   applyWiringChanges,
+  isBotSource,
 } from "../../../../../utils/listenerResolution";
 import {
   pickWidgetDisplayName,
@@ -12,13 +13,15 @@ import {
 } from "../../../../../utils/widgetIdentity";
 import deepEqual from "deep-equal";
 import { SectionLayout } from "../../../../Settings/SectionLayout";
+import { useBotEmitters } from "../../../../Settings/details/useBotEmitters";
 
 /**
  * PanelEditItemHandlers
  *
  * Per-widget listener editor (opens from a widget's overflow menu).
  * Lets the user wire one widget's event handlers to events emitted by
- * other widgets in the same workspace.
+ * other widgets in the same workspace, or to events from the dashboard's
+ * bots (bot-teams TEAM-012: `bot:<ref>[<botId>].<event>`).
  *
  * Two earlier bugs lived here:
  *   1. The right-hand source list double-counted widgets because
@@ -74,6 +77,10 @@ export const PanelEditItemHandlers = ({ workspace, onUpdate, item = null }) => {
     });
     return list;
   })();
+
+  // This dashboard's bots as sources; null until loaded.
+  const botEmitters = useBotEmitters(workspaceSelected?.id);
+  const botSources = botEmitters || [];
 
   function handleSelectEventHandler(handler) {
     setEventHandlerSelected(() => handler);
@@ -164,13 +171,27 @@ export const PanelEditItemHandlers = ({ workspace, onUpdate, item = null }) => {
     }
   });
 
+  botSources.forEach((bot) => {
+    bot.events.forEach((event) => {
+      validEventStrings.add(
+        formatEventString(bot.component, bot.itemId, event),
+      );
+    });
+  });
+  // Until the bots are loaded, bot listeners can't be judged — keep them.
+  const isValidEvent = (e) => {
+    if (validEventStrings.has(e)) return true;
+    const parsed = botEmitters === null ? parseEventString(e) : null;
+    return !!parsed && isBotSource(parsed.component);
+  };
+
   // Get the listeners for the current item, filtering out orphaned references
   const rawListeners = itemSelected ? itemSelected["listeners"] || {} : {};
   const listeners = {};
   Object.keys(rawListeners).forEach((handler) => {
     const events = rawListeners[handler];
     if (Array.isArray(events)) {
-      const validEvents = events.filter((e) => validEventStrings.has(e));
+      const validEvents = events.filter(isValidEvent);
       if (validEvents.length > 0) {
         listeners[handler] = validEvents;
       }
@@ -211,6 +232,29 @@ export const PanelEditItemHandlers = ({ workspace, onUpdate, item = null }) => {
     </Sidebar.Content>
   );
 
+  const eventRow = (eventString, text) => {
+    const selected = isSelectedEvent(eventString);
+    return (
+      <div
+        key={eventString}
+        onClick={() =>
+          selected
+            ? handleRemoveEvent(eventString)
+            : handleSelectEvent(eventString)
+        }
+        className={`flex flex-row items-center gap-3 px-3 py-2 rounded-md cursor-pointer ${
+          selected ? "opacity-100" : "opacity-60 hover:opacity-80"
+        }`}
+      >
+        <FontAwesomeIcon
+          icon={selected ? "square-check" : "square"}
+          className="h-4 w-4 flex-shrink-0"
+        />
+        <span className="text-sm">{text}</span>
+      </div>
+    );
+  };
+
   // Build the detail content (right column) — when a handler is selected
   const connectedCount = eventHandlerSelected
     ? getConnectedCount(eventHandlerSelected)
@@ -245,41 +289,46 @@ export const PanelEditItemHandlers = ({ workspace, onUpdate, item = null }) => {
               </div>
               {layout.events
                 .filter((value, index, array) => array.indexOf(value) === index)
-                .map((event) => {
-                  const eventString = formatEventString(
-                    layout.component,
-                    layout.id,
+                .map((event) =>
+                  eventRow(
+                    formatEventString(layout.component, layout.id, event),
                     event,
-                  );
-                  const selected = isSelectedEvent(eventString);
-
-                  return (
-                    <div
-                      key={eventString}
-                      onClick={() =>
-                        selected
-                          ? handleRemoveEvent(eventString)
-                          : handleSelectEvent(eventString)
-                      }
-                      className={`flex flex-row items-center gap-3 px-3 py-2 rounded-md cursor-pointer ${
-                        selected ? "opacity-100" : "opacity-60 hover:opacity-80"
-                      }`}
-                    >
-                      <FontAwesomeIcon
-                        icon={selected ? "square-check" : "square"}
-                        className="h-4 w-4 flex-shrink-0"
-                      />
-                      <span className="text-sm">{event}</span>
-                    </div>
-                  );
-                })}
+                  ),
+                )}
             </div>
           );
         })}
 
-        {sourceWidgets.length === 0 && (
+        {botSources.length > 0 && (
+          <div className="flex flex-col space-y-4">
+            <span className="text-xs font-semibold opacity-40 uppercase tracking-wider">
+              Bots on this dashboard
+            </span>
+            {botSources.map((bot) => (
+              <div key={bot.key} className="flex flex-col space-y-2">
+                <div className="flex flex-row items-center gap-2 mb-1">
+                  <FontAwesomeIcon
+                    icon="robot"
+                    className="h-3.5 w-3.5 opacity-60"
+                  />
+                  <span className="text-sm font-semibold opacity-90">
+                    {bot.name}
+                  </span>
+                </div>
+                {bot.events.map((event) =>
+                  eventRow(
+                    formatEventString(bot.component, bot.itemId, event),
+                    (bot.eventLabels && bot.eventLabels[event]) || event,
+                  ),
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {sourceWidgets.length === 0 && botSources.length === 0 && (
           <span className="text-sm opacity-40">
-            No events available from other widgets
+            No events available from other widgets or bots
           </span>
         )}
       </div>

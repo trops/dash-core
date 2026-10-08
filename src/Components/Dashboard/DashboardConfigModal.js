@@ -28,7 +28,7 @@ import {
   formatEventString,
 } from "../../utils/listenerResolution";
 import { WidgetsTab } from "./WidgetsTab";
-import { getBotEmitters } from "../Settings/details/eventCatalog";
+import { useBotEmitters } from "../Settings/details/useBotEmitters";
 import { PermissionsTab } from "./PermissionsTab";
 import { BotsTab } from "./BotsTab";
 import { ConfigListRow, useConfigTokens } from "./ConfigListRow";
@@ -307,26 +307,7 @@ export const DashboardConfigModal = ({
   );
   // This dashboard's bots as Listeners sources (TEAM-012); null until
   // loaded so their wiring isn't judged before the bots are known.
-  const [botEmitters, setBotEmitters] = useState(null);
-  const workspaceId = workspace ? workspace.id : null;
-  useEffect(() => {
-    const bots = typeof window !== "undefined" && window.mainApi?.bots;
-    if (!isOpen || !bots || !bots.list || workspaceId == null) return undefined;
-    let alive = true;
-    Promise.all([
-      bots.list(),
-      bots.listToolSources ? bots.listToolSources() : Promise.resolve([]),
-    ])
-      .then(([list, sources]) => {
-        if (alive) setBotEmitters(getBotEmitters(list, sources, workspaceId));
-      })
-      .catch(() => {
-        if (alive) setBotEmitters([]);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [isOpen, workspaceId]);
+  const botEmitters = useBotEmitters(workspace ? workspace.id : null, isOpen);
   const emitters = useMemo(
     () => [...getEmitters(workspace, wConfig), ...(botEmitters || [])],
     [workspace, wConfig, botEmitters],
