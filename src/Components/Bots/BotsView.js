@@ -428,34 +428,54 @@ export const BotsView = ({
     return saved;
   };
 
-  const discardDraft = async () => {
-    if (!selectedDraft || !team || !team.dismissDraft) return;
-    await team.dismissDraft(selectedDraft.id);
-    setDirty(false);
-    setSelectedId((lead && lead.id) || (members[0] && members[0].id) || null);
-    setTab("conversation");
+  // Discarding a draft (row ×, the draft form's button, its banner) asks
+  // first; the lead can draft it again if asked.
+  const [discardTarget, setDiscardTarget] = useState(null);
+  const discardDraft = () => {
+    if (selectedDraft) setDiscardTarget(selectedDraft);
+  };
+  const confirmDiscardDraft = async () => {
+    const d = discardTarget;
+    setDiscardTarget(null);
+    if (!d || !team || !team.dismissDraft) return;
+    await team.dismissDraft(d.id);
+    if (selectedId === DRAFT_PREFIX + d.id) {
+      setDirty(false);
+      setSelectedId((lead && lead.id) || (members[0] && members[0].id) || null);
+      setTab("conversation");
+      setDetailOpen(false);
+    }
   };
 
   const draftRow = (d) => {
     const id = DRAFT_PREFIX + d.id;
     const active = id === selectedId;
+    const name = (d.definition && d.definition.name) || "draft";
     return (
-      <button
+      <div
         key={id}
-        type="button"
-        onClick={() => select(id)}
-        aria-current={active ? "true" : undefined}
-        className={`w-full text-left rounded-lg px-3 py-2 flex flex-col border ${
+        className={`w-full rounded-lg flex flex-row items-center gap-1 border ${
           active ? `${selectedBg} ${selectedBorder}` : "border-transparent"
         }`}
       >
-        <span className="text-sm font-medium truncate">
-          {d.definition && d.definition.name}
-        </span>
-        <span className={`text-xs ${muted}`}>
-          Drafted by the lead · not created yet
-        </span>
-      </button>
+        <button
+          type="button"
+          onClick={() => select(id)}
+          aria-current={active ? "true" : undefined}
+          className="flex-1 min-w-0 text-left px-3 py-2 flex flex-col"
+        >
+          <span className="text-sm font-medium truncate">{name}</span>
+          <span className={`text-xs ${muted}`}>
+            Drafted by the lead · not created yet
+          </span>
+        </button>
+        <ButtonIcon
+          icon="xmark"
+          size="xs"
+          ariaLabel={`Discard draft ${name}`}
+          onClick={() => setDiscardTarget(d)}
+        />
+      </div>
     );
   };
 
@@ -1099,6 +1119,7 @@ export const BotsView = ({
                   onSave={saveBot}
                   canShowOnDashboard={!!workspace}
                   onDirtyChange={setDirty}
+                  onDiscardDraft={selectedDraft ? discardDraft : null}
                   onDiscard={() => {
                     setDirty(false);
                     setFormKey((k) => k + 1);
@@ -1125,6 +1146,22 @@ export const BotsView = ({
           if (nav) nav();
         }}
         onCancel={() => setPendingNav(null)}
+      />
+      <ConfirmationModal
+        isOpen={!!discardTarget}
+        setIsOpen={(open) => !open && setDiscardTarget(null)}
+        title="Discard this draft?"
+        message={`"${
+          (discardTarget &&
+            discardTarget.definition &&
+            discardTarget.definition.name) ||
+          "This draft"
+        }" won't be created. Your team lead can draft it again if you ask.`}
+        confirmLabel="Discard"
+        cancelLabel="Keep draft"
+        variant="danger"
+        onConfirm={confirmDiscardDraft}
+        onCancel={() => setDiscardTarget(null)}
       />
       <ConfirmationModal
         isOpen={confirmDelete}
