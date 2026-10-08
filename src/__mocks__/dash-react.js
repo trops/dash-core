@@ -586,6 +586,22 @@ function SubHeading3({ title }) {
   return React.createElement("h3", null, title);
 }
 
+// Sidebar stand-in (PanelEditItemHandlers): Content wraps, Item is a button.
+function Sidebar({ children }) {
+  return React.createElement("nav", null, children);
+}
+Sidebar.Content = function SidebarContent({ children }) {
+  return React.createElement("div", null, children);
+};
+Sidebar.Item = function SidebarItem({ children, onClick, badge }) {
+  return React.createElement(
+    "button",
+    { type: "button", onClick },
+    children,
+    badge ? React.createElement("span", null, badge) : null,
+  );
+};
+
 // Simple stand-ins (McpCatalogDetail).
 function Icon2({ icon }) {
   return React.createElement("span", { "data-icon": icon });
@@ -610,6 +626,7 @@ function Toggle({ text, enabled, setEnabled }) {
 module.exports = {
   SectionLabel,
   SubHeading3,
+  Sidebar,
   Toggle,
   ButtonIcon2: ButtonIcon,
   isHexColor,

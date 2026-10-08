@@ -387,14 +387,22 @@ describe("getBotEmitters (bots as Listeners sources, TEAM-012)", () => {
         component: "bot:local/inbox",
         itemId: "bot_i",
         label: "Inbox (bot)",
+        name: "Inbox",
         events: ["completed", "failed", "tool.gmail.search_emails"],
+        eventLabels: {
+          completed: "Completed",
+          failed: "Failed",
+          "tool.gmail.search_emails": "uses search_emails (Gmail 3)",
+        },
       },
       {
         key: "bot:local/lead|bot_l",
         component: "bot:local/lead",
         itemId: "bot_l",
         label: "Kitchen Lead (bot)",
+        name: "Kitchen Lead",
         events: ["completed", "failed"],
+        eventLabels: { completed: "Completed", failed: "Failed" },
       },
     ]);
   });
