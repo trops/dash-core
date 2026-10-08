@@ -632,6 +632,62 @@ User asks "Any of those urgent?" — the lead answers with the previous context 
 
 ---
 
+**TEAM-014: Team diagram — see and wire how a team's bots trigger each other**
+
+> As a team owner,
+> I want to see my dashboard's bots as an org chart with lines showing which bot runs after which, and drag from one bot to another to add a trigger,
+> so that I can understand and build a team's flow without opening each bot's settings.
+
+**Priority:** P1
+**Status:** Draft (2026-10-08) — mockup: `docs/design/bot-team-diagram.html`
+
+**Context:** bots already trigger each other: every run publishes `completed` / `failed` and `tool.<providerType>.<tool>` events (`bot:<ref>[<botId>].<event>`, botEvents.js), and a bot listens through `subscriptions: [{ eventType, label, source }]`. Today those links are only visible inside each bot's Settings. The diagram draws them and makes adding one a drag. Bots only for now — widgets as event sources are a later story (decided 2026-10-08).
+
+**Acceptance Criteria:**
+
+_Slice 1 — the diagram (read-only wiring) and the list icons_
+
+- [ ] AC1: The Bots view list shows each bot's avatar (the robot on its colour), the same as the Bots page — one shared `BotAvatar`.
+- [ ] AC2: The Bots view gets a **Diagram / List** switch (remembered per user). Diagram shows the lead on top and the team's bots in a row underneath, joined by thin grey "team" lines; cards show avatar, name (up to two lines), trigger summary and status dot. When the space is too narrow, the bots wrap onto more rows instead of shrinking.
+- [ ] AC3: Lines go from a bot to each team bot that subscribes to one of its events, labelled with the event (`completed`, `failed`, `tool · <provider>.<tool>`). After-completed / tool lines are solid; after-failed lines are dashed red. The lead is never a line end (it isn't triggered by events).
+- [ ] AC4: Clicking a bot selects it: its lines are highlighted (others fade), and the side panel shows its summary — last run, providers, **Runs after** and **Then triggers** lists — plus **Conversation** (or **Ask the lead**), **Activity**, **Settings** and **Run now** (not for the lead).
+- [ ] AC5: Conversation / Activity / Settings open the bot's existing detail (today's tabs, unchanged) **beside** the diagram, replacing the summary; clicking another bot switches the detail to that bot on the same tab; × returns to the summary. Hovering a card shows the same three as small icon buttons.
+- [ ] AC6: A bot with a pending approval shows a **Needs approval** badge on its card; clicking it opens its Activity.
+
+_Slice 2 — drag to wire_
+
+- [ ] AC7: Each team bot (not the lead) has a handle at the bottom of its card. Dragging from it draws a line that follows the pointer; valid drop targets highlight, and the source bot and the lead are shown as not droppable.
+- [ ] AC8: Dropping on a bot opens a popover: **When <source bot>…** with one choice per event it can publish — Completed, Failed, and **Used <tool>** for each tool it's allowed (from its providers' tool selections) — and an optional **Then ask it to** note. **Add trigger** saves a subscription on the target bot (`eventType`, `label`, `source.workspaceId`, `note`) through the normal bot save; the line appears.
+- [ ] AC9: Clicking a line (or its label) opens the same popover to change the event or note, or **Remove** the trigger.
+- [ ] AC10: The **note** is added to the triggered run's prompt as the owner's instruction, outside the untrusted payload fence ("When this happens: <note>"). Runs without a note are unchanged.
+- [ ] AC11: A trigger that would make a loop is still allowed to be drawn but is shown with a warning on the line ("loops stop after 5 runs"), because the runtime's chain guard (MAX_CHAIN_DEPTH) already stops it.
+- [ ] AC12: The bot's Settings shows the same triggers as the lines (one source of truth: `subscriptions`); editing either updates the other.
+
+**Edge Cases:**
+
+- A bot subscribes to a bot on **another** dashboard → no line; the side panel lists it under Runs after as "<bot> (other dashboard)".
+- A subscription to a deleted bot → no line; Settings shows it as broken (as today).
+- Two triggers between the same pair (e.g. completed and failed) → two lines with separate labels.
+- A team with only the lead → the diagram shows the lead and "No bots yet — + New bot".
+- Many bots (> 8) → more rows; the canvas scrolls vertically.
+
+**Technical Notes:**
+
+- **Drawing:** hand-built SVG lines over absolutely-positioned cards — no new dependency (decided 2026-10-08; revisit React Flow if teams grow past ~15 bots). Layout is computed from the container width (rows of cards), not stored.
+- **Lines** come from `subscriptions` whose `eventType` starts with `bot:` and whose `[<botId>]` is a team member (`botEventType` / `botRef` in botEvents.js).
+- **Tool events offered** = the source bot's `toolSelections` per provider, as `tool.<providerType>.<tool>`.
+- **Note (AC10):** `composeEventPrompt(event, note)` in botEvents.js; `sourceFromEvent` already carries the subscription's label.
+- Reuse: `BotDetail` tabs, the Bots page avatar (`avatarColor`), theme tokens via `useConfigTokens`; dash-react for controls (Modal / popover, Button3, Checkbox, RadioGroup).
+
+**Definition of Done:**
+
+- [ ] Code implemented and reviewed
+- [ ] Unit tests: line derivation from subscriptions, layout (rows), event list per bot, subscription add/edit/remove, prompt note
+- [ ] Verified in the app (wire two bots, run the first, the second runs with the note; light and dark)
+- [ ] Documentation updated
+
+---
+
 ### Nice-to-Have (P2)
 
 **TEAM-009: Team updates**
@@ -903,6 +959,10 @@ The six questions raised in the first draft were resolved on 2026-10-01 (see the
 | 2026-10-06 | TEAM-013: the Assistant sees direct lead exchanges as labelled context              | "Summarise what the lead said" works; one thread                          | John  |
 | 2026-10-06 | TEAM-013: the picker lists team leads only                                          | Leads are the team front door; other bots later if wanted                 | John  |
 | 2026-10-06 | TEAM-013: "All team leads" option deferred (P2)                                     | ask_team_lead via the Assistant already fans out                          | John  |
+| 2026-10-08 | TEAM-014: the team diagram shows bots only; widgets as event sources come later     | Keeps the first version readable; bot→bot links are the hidden ones       | John  |
+| 2026-10-08 | TEAM-014: the lead sits on top without event lines                                  | The lead coordinates and answers; it isn't triggered by events            | John  |
+| 2026-10-08 | TEAM-014: hand-built SVG, no diagram library                                        | Team-sized charts; no new dependency                                      | John  |
+| 2026-10-08 | TEAM-014: bot detail opens beside the diagram, not over it                          | Seeing the flow while working on a bot is the point                       | John  |
 
 ---
 
@@ -936,6 +996,15 @@ The six questions raised in the first draft were resolved on 2026-10-01 (see the
 - [ ] Dashboard | Bots switch; full-stage team list + selected bot (Conversation / Activity / Settings)
 - [ ] `bots.getRuns`; run prompt + tool-call summary stored (sealed) for conversations; reply to continue
 - [ ] Bot Activity side panel slimmed to a global monitor; Dashboard Config › Bots → summary + Open in Bots view
+
+### Phase 1.6: Team diagram (P1)
+
+**Stories:** TEAM-014
+
+**Deliverables:**
+
+- [ ] Slice 1: shared BotAvatar in the Bots view list; Diagram / List switch; org chart with event lines from subscriptions; selection + side summary; detail beside the diagram; Needs approval badge
+- [ ] Slice 2: drag-to-wire handles, event popover (add / edit / remove), subscription `note` in the event prompt, loop warning
 
 ### Phase 2: Grow, share, and install teams (P1)
 
@@ -1007,3 +1076,4 @@ The six questions raised in the first draft were resolved on 2026-10-01 (see the
 | 1.12    | 2026-10-06 | John   | Added TEAM-013 (message a lead directly from the Assistant)      |
 | 1.13    | 2026-10-06 | John   | TEAM-013 slice 1 implemented (picker, direct send, context)      |
 | 1.14    | 2026-10-06 | John   | TEAM-013 slice 2 (@ shortcut); TEAM-013 Implemented              |
+| 1.15    | 2026-10-08 | John   | Added TEAM-014 team diagram (from the approved mockup)           |
