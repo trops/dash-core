@@ -31,6 +31,11 @@
       "description": "Read, search, and send messages across your Slack workspace. Provide ONE of: a bot token (xoxb-), a user OAuth token (xoxp-), or a browser-session pair (xoxc- + xoxd-). The browser-session pair works without workspace admin approval and gives full visibility.",
       "icon": "slack",
       "tags": ["communication", "messaging", "team"],
+      "credentialOptions": [
+        ["xoxbToken"],
+        ["xoxpToken"],
+        ["xoxcToken", "xoxdToken"]
+      ],
       "mcpConfig": {
         "transport": "stdio",
         "command": "npx",

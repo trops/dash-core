@@ -87,6 +87,77 @@ describe("missingFields (app-navigation NAV-007)", () => {
   });
 });
 
+describe("missingFields — 'one of these' credential options", () => {
+  // Slack: any ONE of bot token, user token, or browser token + cookie.
+  const realSlack = (credentials) => ({
+    type: "slack",
+    providerClass: "mcp",
+    mcpConfig: {
+      transport: "stdio",
+      command: "npx",
+      envMapping: {
+        SLACK_MCP_XOXB_TOKEN: "xoxbToken",
+        SLACK_MCP_XOXP_TOKEN: "xoxpToken",
+        SLACK_MCP_XOXC_TOKEN: "xoxcToken",
+        SLACK_MCP_XOXD_TOKEN: "xoxdToken",
+      },
+    },
+    credentials,
+  });
+  const schema = {
+    xoxbToken: { displayName: "Bot Token (xoxb-)" },
+    xoxpToken: { displayName: "User OAuth Token (xoxp-)" },
+    xoxcToken: { displayName: "Browser Session Token (xoxc-)" },
+    xoxdToken: { displayName: "Browser Session Cookie (xoxd-)" },
+  };
+  const options = [["xoxbToken"], ["xoxpToken"], ["xoxcToken", "xoxdToken"]];
+
+  it("any one complete option is enough", () => {
+    expect(
+      missingFields(realSlack({ xoxbToken: "xoxb-1" }), schema, options),
+    ).toEqual([]);
+    expect(
+      missingFields(realSlack({ xoxpToken: "xoxp-1" }), schema, options),
+    ).toEqual([]);
+    expect(
+      missingFields(
+        realSlack({ xoxcToken: "xoxc-1", xoxdToken: "xoxd-1" }),
+        schema,
+        options,
+      ),
+    ).toEqual([]);
+  });
+
+  it("nothing filled → one plain 'One of' line", () => {
+    expect(missingFields(realSlack({}), schema, options)).toEqual([
+      "One of: Bot Token (xoxb-), User OAuth Token (xoxp-), or Browser Session Token (xoxc-) + Browser Session Cookie (xoxd-)",
+    ]);
+  });
+
+  it("half an option (token without its cookie) doesn't count", () => {
+    expect(
+      missingFields(realSlack({ xoxcToken: "xoxc-1" }), schema, options),
+    ).toHaveLength(1);
+  });
+
+  it("fields outside the options are still checked as before", () => {
+    const p = realSlack({ xoxbToken: "xoxb-1" });
+    p.mcpConfig.envMapping.SLACK_TEAM = "teamId";
+    expect(
+      missingFields(p, { ...schema, teamId: { displayName: "Team" } }, options),
+    ).toEqual(["Team"]);
+  });
+
+  it("providerStatus passes the options through", () => {
+    expect(
+      providerStatus(realSlack({ xoxbToken: "xoxb-1" }), {
+        credentialSchema: schema,
+        credentialOptions: options,
+      }).key,
+    ).toBe("ready");
+  });
+});
+
 describe("providerStatus", () => {
   it("needs setup > connected > ready", () => {
     expect(providerStatus(slack, { running: true })).toEqual({

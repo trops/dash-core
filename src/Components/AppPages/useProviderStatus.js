@@ -7,9 +7,13 @@ import { classOf, providerStatus, providerUsage } from "./providerSummary";
 const getWidgetRequirements = (name) =>
   (name && ComponentManager.config(name)?.providers) || [];
 
+const entryFor = (catalog, provider) =>
+  (catalog || []).find((e) => e && e.id === provider.type) || {};
 const schemaFor = (catalog, provider) =>
-  ((catalog || []).find((e) => e && e.id === provider.type) || {})
-    .credentialSchema || {};
+  entryFor(catalog, provider).credentialSchema || {};
+// "One of these" credential sets (e.g. Slack: bot OR user OR browser pair).
+const optionsFor = (catalog, provider) =>
+  entryFor(catalog, provider).credentialOptions || null;
 
 /** The MCP catalog (credential schemas, auth commands) — loaded once. */
 export function useMcpCatalog(dashApi) {
@@ -121,6 +125,7 @@ export function useProviderStatus({
         return providerStatus(p, {
           running: !!running[name],
           credentialSchema: p ? schemaFor(catalog, p) : {},
+          credentialOptions: p ? optionsFor(catalog, p) : null,
         });
       },
       usageOf: (name) => providerUsage(name, { workspaces, bots, bindingsFor }),
@@ -140,8 +145,10 @@ export function useProvidersNeedingSetup() {
       Object.values(providers || {}).filter(
         (p) =>
           p &&
-          providerStatus(p, { credentialSchema: schemaFor(catalog, p) }).key ===
-            "needsSetup",
+          providerStatus(p, {
+            credentialSchema: schemaFor(catalog, p),
+            credentialOptions: optionsFor(catalog, p),
+          }).key === "needsSetup",
       ).length,
     [providers, catalog],
   );
