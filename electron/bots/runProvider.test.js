@@ -1,7 +1,7 @@
 /**
  * runProvider.test.js — which AI provider a bot runs on. A bot without its
- * own provider uses the AI provider the user marked default; with no default
- * marked the run fails with a clear message — never a silent second choice.
+ * own provider runs on Claude Code (CLI), the default; an API key is used
+ * only when the bot picks it.
  */
 "use strict";
 
@@ -10,7 +10,7 @@ const assert = require("node:assert/strict");
 const {
   defaultAiProviderType,
   resolveBotProviderId,
-  NO_AI_MODEL_MESSAGE,
+  DEFAULT_BOT_PROVIDER,
 } = require("./runProvider");
 
 describe("defaultAiProviderType", () => {
@@ -48,15 +48,17 @@ describe("resolveBotProviderId", () => {
     );
   });
 
-  it("uses the default-marked AI provider when the bot has none", () => {
-    assert.equal(resolveBotProviderId({ provider: null }, providers), "xai");
-  });
-
-  it("throws a readable error when there is neither", () => {
-    assert.throws(
-      () => resolveBotProviderId({ provider: null }, [{ type: "openai" }]),
-      (e) => e.message === NO_AI_MODEL_MESSAGE,
+  it("runs a bot with no provider on Claude Code (CLI) — the default", () => {
+    // An API key marked default for its type doesn't take bots over.
+    assert.equal(
+      resolveBotProviderId({ provider: null }, providers),
+      DEFAULT_BOT_PROVIDER,
     );
-    assert.match(NO_AI_MODEL_MESSAGE, /No AI model chosen for this bot/);
+    assert.equal(DEFAULT_BOT_PROVIDER, "claude-code");
+    assert.equal(
+      resolveBotProviderId({ provider: null }, [{ type: "openai" }]),
+      "claude-code",
+    );
+    assert.equal(resolveBotProviderId(null, null), "claude-code");
   });
 });

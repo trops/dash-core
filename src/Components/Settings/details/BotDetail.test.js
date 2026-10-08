@@ -30,7 +30,7 @@ describe("BotDetail (create)", () => {
     expect(screen.getByText("Create")).not.toBeDisabled();
   });
 
-  it("auto-selects the user's default AI provider for a new bot", () => {
+  it("a new bot starts on Claude Code (CLI), even with an API key marked default", () => {
     const onSave = jest.fn().mockResolvedValue({});
     render(
       <BotDetail
@@ -42,8 +42,7 @@ describe("BotDetail (create)", () => {
         onSave={onSave}
       />,
     );
-    // Shows the actual provider name, pre-selected — not a vague "default".
-    expect(screen.getByLabelText("Model source")).toHaveValue("anthropic");
+    expect(screen.getByLabelText("Model source")).toHaveValue("claude-code");
     fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
       target: { value: "X" },
     });
@@ -51,7 +50,7 @@ describe("BotDetail (create)", () => {
       target: { value: "Y" },
     });
     fireEvent.click(screen.getByText("Create"));
-    expect(onSave.mock.calls[0][0].provider).toBe("anthropic");
+    expect(onSave.mock.calls[0][0].provider).toBe("claude-code");
   });
 
   it("offers Claude Code (CLI) as a provider option", () => {
@@ -99,7 +98,8 @@ describe("BotDetail (create)", () => {
     expect(onSave.mock.calls[0][0]).toMatchObject({
       name: "PR Digest",
       instructions: "Summarize PRs",
-      provider: "anthropic",
+      // Claude Code (CLI) is the default, even with an API key marked default.
+      provider: "claude-code",
       model: null,
       approvalPolicy: "ask",
       mcpServers: [],
@@ -1100,7 +1100,7 @@ describe("BotDetail (a bot with no AI model of its own)", () => {
     provider: null,
   };
 
-  it("shows it follows the default AI provider — not a made-up pick", () => {
+  it("shows it runs on the default, Claude Code (CLI) — not an API key marked default", () => {
     render(
       <BotDetail
         bot={bot}
@@ -1114,11 +1114,11 @@ describe("BotDetail (a bot with no AI model of its own)", () => {
     const select = screen.getByLabelText("Model source");
     expect(select).toHaveValue("default");
     expect(
-      screen.getByRole("option", { name: "Default AI provider (Anthropic)" }),
+      screen.getByRole("option", { name: "Default — Claude Code (CLI)" }),
     ).toBeInTheDocument();
   });
 
-  it("says when no default is set, and keeps provider null on save", async () => {
+  it("no warning that runs fail, and keeps provider null on save", async () => {
     const onSave = jest.fn().mockResolvedValue({});
     render(
       <BotDetail
@@ -1129,11 +1129,11 @@ describe("BotDetail (a bot with no AI model of its own)", () => {
     );
     expect(screen.getByLabelText("Model source")).toHaveValue("default");
     expect(
-      screen.getByRole("option", { name: "Default AI provider — none set" }),
+      screen.getByRole("option", { name: "Default — Claude Code (CLI)" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/runs fail until you choose one/i),
-    ).toBeInTheDocument();
+      screen.queryByText(/runs fail until you choose one/i),
+    ).not.toBeInTheDocument();
     // Mark the form changed (Save is disabled until it is); saved
     // instructions are trimmed, so the values checked below are unchanged.
     fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
