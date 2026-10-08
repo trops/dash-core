@@ -8,8 +8,22 @@
  *
  * Pure: no React, no IPC.
  */
+import {
+  buildBotEventCatalog,
+  botSubscription,
+} from "../Settings/details/eventCatalog";
 
 const BOT_EVENT_RE = /^bot:(.+)\[([^\]]+)\]\.(.+)$/;
+
+const slugify = (name) =>
+  String(name || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "bot";
+
+/** The bot's event ref — mirrors botRef in electron/bots/botEvents.js. */
+export const botRefOf = (bot) =>
+  (bot && bot.ref) || `local/${slugify(bot && bot.name)}`;
 
 /** @returns {{ ref, botId, event } | null} */
 export function parseBotEventType(eventType) {
@@ -51,6 +65,8 @@ export function diagramEdges(members = [], lead = null) {
       if (!ids.has(parsed.botId) || parsed.botId === to.id) continue;
       edges.push({
         key: `${to.id}|${sub.eventType}`,
+        eventType: sub.eventType,
+        note: sub.note || null,
         from: parsed.botId,
         to: to.id,
         event: parsed.event,
@@ -139,5 +155,96 @@ export function diagramLayout({
     cards,
     width: avail,
     height: (n ? rowTop + (rows - 1) * rowH + cardH : leadTop + cardH) + 110,
+  };
+}
+
+/**
+ * The keys of every line that's part of a loop (TEAM-014 AC11): a line
+ * from → to is in a loop when `to` can reach `from` again.
+ */
+export function loopEdges(edges = []) {
+  const next = new Map();
+  for (const e of edges) {
+    if (!next.has(e.from)) next.set(e.from, new Set());
+    next.get(e.from).add(e.to);
+  }
+  const reaches = (start, goal) => {
+    const seen = new Set();
+    const stack = [start];
+    while (stack.length) {
+      const id = stack.pop();
+      if (id === goal) return true;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      for (const n of next.get(id) || []) stack.push(n);
+    }
+    return false;
+  };
+  return new Set(edges.filter((e) => reaches(e.to, e.from)).map((e) => e.key));
+}
+
+/**
+ * What a bot can trigger others on (TEAM-014 AC8): Completed, Failed, and
+ * each tool it may use — the same list as the Settings picker
+ * (buildBotEventCatalog), for a bot with or without a saved ref.
+ */
+export function eventChoices(bot, toolSources = []) {
+  if (!bot) return [];
+  const [entry] = buildBotEventCatalog(
+    [{ ...bot, ref: botRefOf(bot) }],
+    toolSources,
+  );
+  return entry ? entry.events : [];
+}
+
+const subscriptionFor = (source, event, label, note) => {
+  const sub = botSubscription(
+    { botId: source.id, ref: botRefOf(source), name: source.name || source.id },
+    { event, label },
+  );
+  const text = typeof note === "string" ? note.trim() : "";
+  return text ? { ...sub, note: text } : sub;
+};
+
+/**
+ * `target` with a trigger on `source`'s event added — the same subscription
+ * the Settings picker makes, plus the owner's note. Adding one it already
+ * has replaces it (no duplicates).
+ */
+export function addTrigger(target, source, event, label, note) {
+  const sub = subscriptionFor(source, event, label, note);
+  const rest = (target.subscriptions || []).filter(
+    (s) => !s || s.eventType !== sub.eventType,
+  );
+  return { ...target, subscriptions: [...rest, sub] };
+}
+
+/** `target` with the trigger `oldEventType` changed (event and/or note). */
+export function updateTrigger(
+  target,
+  oldEventType,
+  source,
+  event,
+  label,
+  note,
+) {
+  const sub = subscriptionFor(source, event, label, note);
+  const subs = (target.subscriptions || []).filter(
+    (s) => s && s.eventType !== sub.eventType,
+  );
+  const at = subs.findIndex((s) => s.eventType === oldEventType);
+  if (at < 0) return addTrigger(target, source, event, label, note);
+  const nextSubs = [...subs];
+  nextSubs[at] = sub;
+  return { ...target, subscriptions: nextSubs };
+}
+
+/** `target` without the trigger `eventType`. */
+export function removeTrigger(target, eventType) {
+  return {
+    ...target,
+    subscriptions: (target.subscriptions || []).filter(
+      (s) => !s || s.eventType !== eventType,
+    ),
   };
 }

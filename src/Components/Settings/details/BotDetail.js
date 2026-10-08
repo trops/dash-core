@@ -935,12 +935,24 @@ export const BotDetail = ({
                     key={sub.eventType}
                     className="flex flex-row items-center justify-between gap-2"
                   >
-                    <span className="text-sm">
-                      {label}
-                      {missing ? (
-                        <span className="text-xs opacity-60">
-                          {" "}
-                          ({kind === "bot" ? "bot" : "widget"} missing)
+                    <span className="text-sm flex flex-col">
+                      <span>
+                        {label}
+                        {missing ? (
+                          <span className="text-xs opacity-60">
+                            {" "}
+                            ({kind === "bot" ? "bot" : "widget"} missing)
+                          </span>
+                        ) : null}
+                      </span>
+                      {/* The owner's note for this trigger (TEAM-014) —
+                          edited from the team diagram. */}
+                      {sub.note ? (
+                        <span
+                          data-testid="trigger-note"
+                          className="text-xs opacity-60"
+                        >
+                          {`Then: ${sub.note}`}
                         </span>
                       ) : null}
                     </span>

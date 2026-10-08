@@ -31,6 +31,12 @@ import { useRegistryAuthGate } from "../../hooks/useRegistryAuthGate";
 import { AppContext } from "../../Context/App/AppContext";
 import { ComponentManager } from "../../ComponentManager";
 import { STATUS_DOT, triggerSummary } from "./teamUtils";
+import {
+  addTrigger,
+  eventChoices,
+  removeTrigger,
+  updateTrigger,
+} from "./teamDiagram";
 
 /**
  * BotsView — a dashboard's team, full stage (bot-teams PRD TEAM-011).
@@ -207,6 +213,22 @@ export const BotsView = ({
     };
   }, []);
 
+  // Providers' types and tools (TEAM-014): which tool events a bot can
+  // trigger others on, in the diagram's trigger popover.
+  const [toolSources, setToolSources] = useState([]);
+  const workspaceId = workspace ? workspace.id : null;
+  useEffect(() => {
+    const bots = api();
+    if (!bots || !bots.listToolSources) return undefined;
+    let alive = true;
+    Promise.resolve(bots.listToolSources(workspaceId))
+      .then((l) => alive && setToolSources(Array.isArray(l) ? l : []))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [workspaceId]);
+
   // Fall back to the lead when the selection disappears (deleted elsewhere).
   useEffect(() => {
     if (selectedId === NEW_BOT) return;
@@ -306,6 +328,37 @@ export const BotsView = ({
   const runNow = () => {
     const bots = api();
     if (bots && selected) bots.run(selected.id, "", false);
+  };
+
+  // Diagram wiring (TEAM-014 slice 2): a trigger is a subscription on the
+  // target bot, saved with the bot like the Settings picker does.
+  const findBot = (id) => all.find((b) => b.id === id) || null;
+  const saveTrigger = async ({
+    mode,
+    sourceId,
+    targetId,
+    oldEventType,
+    event,
+    label,
+    note,
+  }) => {
+    const bots = api();
+    const source = findBot(sourceId);
+    const target = findBot(targetId);
+    if (!bots || !source || !target) throw new Error("bot not found");
+    const next =
+      mode === "edit"
+        ? updateTrigger(target, oldEventType, source, event, label, note)
+        : addTrigger(target, source, event, label, note);
+    await bots.save(next);
+    afterChange();
+  };
+  const removeTriggerFrom = async ({ targetId, eventType }) => {
+    const bots = api();
+    const target = findBot(targetId);
+    if (!bots || !target) throw new Error("bot not found");
+    await bots.save(removeTrigger(target, eventType));
+    afterChange();
   };
 
   const status = selected && team ? team.statusOf(selected.id) : "Idle";
@@ -744,6 +797,12 @@ export const BotsView = ({
           approvalsFor={(id) => (team ? team.approvalsFor(id) : [])}
           onSelect={(id) => select(id)}
           onOpen={openBot}
+          // Off while a bot's Settings is open: saving from the diagram
+          // would overwrite that form's unsaved edits.
+          canWire={!(detailOpen && tab === "settings")}
+          choicesFor={(id) => eventChoices(findBot(id), toolSources)}
+          onSaveTrigger={saveTrigger}
+          onRemoveTrigger={removeTriggerFrom}
         />
         {drafts.length ? (
           <div className="flex flex-col gap-1 px-2 pt-2">

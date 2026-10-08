@@ -143,6 +143,25 @@ describe("botSchema.validateBotDefinition", () => {
     assert.equal(r.valid, true);
   });
 
+  it("accepts a trigger note (TEAM-014) and rejects a bad one", () => {
+    const ok = validateBotDefinition({
+      ...good(),
+      subscriptions: [{ eventType: "e", note: "Check the images." }],
+    });
+    assert.equal(ok.valid, true);
+    const notText = validateBotDefinition({
+      ...good(),
+      subscriptions: [{ eventType: "e", note: 42 }],
+    });
+    assert.equal(notText.valid, false);
+    assert.ok(notText.errors.some((e) => /note/.test(e)));
+    const tooLong = validateBotDefinition({
+      ...good(),
+      subscriptions: [{ eventType: "e", note: "x".repeat(2001) }],
+    });
+    assert.equal(tooLong.valid, false);
+  });
+
   it("rejects subscriptions without an eventType", () => {
     const r = validateBotDefinition({
       ...good(),

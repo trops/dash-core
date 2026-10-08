@@ -308,8 +308,12 @@ const botController = {
       }
       if (!this._dispatcher.shouldDispatch(bot.id)) continue;
       this._dispatcher.note(bot.id);
+      // The owner's note on the trigger that matched (TEAM-014), if any.
+      const sub = (bot.subscriptions || []).find(
+        (s) => s && s.eventType === event.eventType,
+      );
       this._run(bot.id, {
-        prompt: composeEventPrompt(event),
+        prompt: composeEventPrompt(event, sub && sub.note),
         trigger: "event",
         cause: causeFromEvent(event),
         source: sourceFromEvent(bot, event),

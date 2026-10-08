@@ -614,6 +614,23 @@ describe("BotDetail (edit)", () => {
     ]);
   });
 
+  it("shows a trigger's note (set on the team diagram, TEAM-014)", () => {
+    render(
+      <BotDetail
+        bot={{
+          ...bot,
+          subscriptions: [{ eventType: "pr.opened", note: "Summarise it." }],
+        }}
+        providers={{}}
+        onSave={jest.fn()}
+        onDelete={jest.fn()}
+      />,
+    );
+    expect(screen.getByTestId("trigger-note")).toHaveTextContent(
+      "Then: Summarise it.",
+    );
+  });
+
   it("renders existing subscriptions and removes one", () => {
     const onSave = jest.fn().mockResolvedValue({});
     render(

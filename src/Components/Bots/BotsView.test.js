@@ -169,6 +169,42 @@ describe("BotsView — team diagram (TEAM-014 slice 1)", () => {
     expect(window.localStorage.getItem("dash:botsView:mode")).toBe("list");
   });
 
+  it("dragging one bot onto another saves a trigger on the second (with the note)", async () => {
+    const { api } = setup({ mode: null });
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Drag to wire Inbox Watch" }),
+    );
+    fireEvent.pointerUp(screen.getByTestId("diagram-card-b2"));
+    const dialog = screen.getByRole("dialog", { name: "Trigger for CRM Sync" });
+    fireEvent.change(within(dialog).getByRole("textbox"), {
+      target: { value: "Sync what it found." },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Add trigger" }),
+    );
+    await waitFor(() => expect(api.save).toHaveBeenCalled());
+    const saved = api.save.mock.calls[0][0];
+    expect(saved.id).toBe("b2");
+    expect(saved.subscriptions).toEqual([
+      expect.objectContaining({
+        eventType: "bot:local/inbox-watch[b1].completed",
+        note: "Sync what it found.",
+        source: expect.objectContaining({ kind: "bot", instanceId: "b1" }),
+      }),
+    ]);
+  });
+
+  it("wiring is off while a bot's Settings is open", () => {
+    setup({ mode: null });
+    fireEvent.mouseEnter(screen.getByTestId("diagram-card-b2"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Settings — CRM Sync" }),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Drag to wire Inbox Watch" }),
+    ).toBeNull();
+  });
+
   it("narrow windows keep the bot picker (no diagram)", () => {
     setup({ mode: null, narrow: true });
     expect(screen.queryByTestId("diagram-card-lead_7")).toBeNull();

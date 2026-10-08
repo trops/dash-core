@@ -18,6 +18,8 @@ const SCHEMA_VERSION = 1;
 // every tool; "allow": never ask.
 const APPROVAL_POLICIES = new Set(["ask", "ask-every", "allow"]);
 const WHILE_PAUSED = new Set(["queue", "drop"]);
+// A trigger's "Then ask it to" note (TEAM-014).
+const MAX_NOTE = 2000;
 
 // A bot id is used as a filesystem path segment (its working directory), so it
 // must be a single safe segment — no separators, no traversal.
@@ -147,6 +149,16 @@ function validateBotDefinition(def) {
     for (const sub of def.subscriptions) {
       if (!sub || typeof sub.eventType !== "string" || !sub.eventType.trim()) {
         errors.push("each subscription must have a non-empty eventType");
+        break;
+      }
+      // The owner's "Then ask it to" note (TEAM-014): optional, short text.
+      if (
+        sub.note != null &&
+        (typeof sub.note !== "string" || sub.note.length > MAX_NOTE)
+      ) {
+        errors.push(
+          `a subscription note must be text of at most ${MAX_NOTE} characters`,
+        );
         break;
       }
     }

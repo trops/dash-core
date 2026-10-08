@@ -68,6 +68,28 @@ function TextArea({ label, value, onChange, placeholder, rows, ...htmlProps }) {
   );
 }
 
+// dash-react RadioGroup: a radio per option, onChange(value).
+function RadioGroup({ label, name, value, onChange, options = [] }) {
+  return React.createElement(
+    "div",
+    { role: "radiogroup", "aria-label": label || undefined },
+    options.map((o) =>
+      React.createElement(
+        "label",
+        { key: String(o.value) },
+        React.createElement("input", {
+          type: "radio",
+          name: name || "radio-group",
+          value: o.value,
+          checked: value === o.value,
+          onChange: (e) => onChange && onChange(e.target.value, e),
+        }),
+        o.label,
+      ),
+    ),
+  );
+}
+
 // dash-react ≥1.0.58 SegmentedControl: a radiogroup of option buttons.
 function SegmentedControl({ options = [], value, onChange, ariaLabel }) {
   return React.createElement(
@@ -599,6 +621,7 @@ module.exports = {
   InputText,
   TextArea,
   SegmentedControl,
+  RadioGroup,
   FilterMenu,
   SearchInput,
   Checkbox,
