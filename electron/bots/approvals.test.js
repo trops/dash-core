@@ -29,6 +29,38 @@ function fakeTimers() {
   };
 }
 
+describe("ApprovalRegistry onChange — every window can stay in sync", () => {
+  it("reports the pending list when one is created, answered, denied or times out", async () => {
+    const t = fakeTimers();
+    const reg = new ApprovalRegistry({
+      setTimer: t.setTimer,
+      clearTimer: t.clearTimer,
+    });
+    const seen = [];
+    const off = reg.onChange((list) => seen.push(list.map((a) => a.id)));
+    const a = reg.create({ botId: "b1", toolName: "x" });
+    const b = reg.create({ botId: "b1", toolName: "y" });
+    const c = reg.create({ botId: "b2", toolName: "z" });
+    reg.resolve(a.id);
+    reg.deny(b.id);
+    t.fireAll();
+    assert.deepEqual(seen, [
+      [a.id],
+      [a.id, b.id],
+      [a.id, b.id, c.id],
+      [b.id, c.id],
+      [c.id],
+      [],
+    ]);
+    // Settling an unknown / already-settled id reports nothing.
+    reg.resolve(a.id);
+    assert.equal(seen.length, 6);
+    off();
+    reg.create({ botId: "b3", toolName: "w" });
+    assert.equal(seen.length, 6);
+  });
+});
+
 describe("ApprovalRegistry", () => {
   it("create returns an id + promise and lists the pending approval", () => {
     const reg = new ApprovalRegistry();

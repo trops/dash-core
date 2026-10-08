@@ -53,6 +53,14 @@ function api() {
     : null;
 }
 
+/** "2:39 PM" for a run time, or "" when it's missing / unreadable. */
+function timeOf(at) {
+  if (!at) return "";
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
 export const BotChat = ({
   bot,
   isLead = false,
@@ -106,11 +114,13 @@ export const BotChat = ({
     if (!bots || !bots.onStream || !bot) return undefined;
     const id = bots.onStream(({ botId, event }) => {
       if (botId !== bot.id || !event) return;
+      // A run this chat didn't start (Run now, a trigger, a schedule) is
+      // its own run — not a continuation of the last one.
       const cur = liveRef.current || {
         trigger: "running",
         text: "",
         toolCalls: [],
-        continued: true,
+        continued: false,
       };
       let next = cur;
       if (event.type === "text") {
@@ -263,6 +273,7 @@ export const BotChat = ({
         return (
           <div key={i} className={`text-xs ${muted}`}>
             {t.text}
+            {timeOf(t.at) ? ` · ${timeOf(t.at)}` : ""}
           </div>
         );
       case "user":
@@ -285,18 +296,40 @@ export const BotChat = ({
               >
                 <FontAwesomeIcon
                   icon={
-                    c.ok === false ? "xmark" : c.ok ? "check" : "circle-notch"
+                    c.ok === false
+                      ? "xmark"
+                      : c.ok
+                        ? "check"
+                        : t.live
+                          ? "circle-notch"
+                          : "minus"
                   }
                   className="h-3 w-3"
                 />
                 <span className="font-mono">{c.tool}</span>
                 {c.provider ? <span>· {c.provider}</span> : null}
                 {c.ok === false ? <span>· failed</span> : null}
+                {c.ok == null && !t.live ? <span>· didn't finish</span> : null}
               </div>
             ))}
           </div>
         );
       case "error": {
+        if (t.stale) {
+          // A later run exists — this failure is history (the bot may already
+          // be fixed), so no Run again / Change AI model here.
+          return (
+            <div
+              key={i}
+              className={`rounded-md border px-3 py-2 text-sm flex flex-col gap-1 ${hairline} ${muted}`}
+            >
+              <span className="text-xs">
+                {`Earlier run failed${timeOf(t.at) ? ` · ${timeOf(t.at)}` : ""}`}
+              </span>
+              <span>{t.text}</span>
+            </div>
+          );
+        }
         const steps = errorNextSteps(t.text, { isLead });
         return (
           <div

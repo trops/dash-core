@@ -164,7 +164,7 @@ Bots stay a power-user feature. Multi-bot workflows remain hand-assembled and un
 
 **Definition of Done:**
 
-- [ ] Code implemented and reviewed
+- [x] Code implemented and reviewed
 - [ ] Unit tests pass
 - [ ] Integration tests pass
 - [ ] Acceptance criteria verified
@@ -639,7 +639,7 @@ User asks "Any of those urgent?" — the lead answers with the previous context 
 > so that I can understand and build a team's flow without opening each bot's settings.
 
 **Priority:** P1
-**Status:** In Progress — slice 1 implemented (2026-10-08); slice 2 (drag to wire) next. Mockup: `docs/design/bot-team-diagram.html`
+**Status:** Implemented — slices 1 and 2 (2026-10-08). Mockup: `docs/design/bot-team-diagram.html`
 
 **Context:** bots already trigger each other: every run publishes `completed` / `failed` and `tool.<providerType>.<tool>` events (`bot:<ref>[<botId>].<event>`, botEvents.js), and a bot listens through `subscriptions: [{ eventType, label, source }]`. Today those links are only visible inside each bot's Settings. The diagram draws them and makes adding one a drag. Bots only for now — widgets as event sources are a later story (decided 2026-10-08).
 
@@ -656,12 +656,12 @@ _Slice 1 — the diagram (read-only wiring) and the list icons_
 
 _Slice 2 — drag to wire_
 
-- [ ] AC7: Each team bot (not the lead) has a handle at the bottom of its card. Dragging from it draws a line that follows the pointer; valid drop targets highlight, and the source bot and the lead are shown as not droppable.
-- [ ] AC8: Dropping on a bot opens a popover: **When <source bot>…** with one choice per event it can publish — Completed, Failed, and **Used <tool>** for each tool it's allowed (from its providers' tool selections) — and an optional **Then ask it to** note. **Add trigger** saves a subscription on the target bot (`eventType`, `label`, `source.workspaceId`, `note`) through the normal bot save; the line appears.
-- [ ] AC9: Clicking a line (or its label) opens the same popover to change the event or note, or **Remove** the trigger.
-- [ ] AC10: The **note** is added to the triggered run's prompt as the owner's instruction, outside the untrusted payload fence ("When this happens: <note>"). Runs without a note are unchanged.
-- [ ] AC11: A trigger that would make a loop is still allowed to be drawn but is shown with a warning on the line ("loops stop after 5 runs"), because the runtime's chain guard (MAX_CHAIN_DEPTH) already stops it.
-- [ ] AC12: The bot's Settings shows the same triggers as the lines (one source of truth: `subscriptions`); editing either updates the other.
+- [x] AC7: Each team bot (not the lead) has a handle at the bottom of its card. Dragging from it draws a line that follows the pointer; valid drop targets highlight, and the source bot and the lead are shown as not droppable.
+- [x] AC8: Dropping on a bot opens a popover: **When <source bot>…** with one choice per event it can publish — Completed, Failed, and **Used <tool>** for each tool it's allowed (from its providers' tool selections) — and an optional **Then ask it to** note. **Add trigger** saves a subscription on the target bot (`eventType`, `label`, `source.workspaceId`, `note`) through the normal bot save; the line appears.
+- [x] AC9: Clicking a line (or its label) opens the same popover to change the event or note, or **Remove** the trigger.
+- [x] AC10: The **note** is added to the triggered run's prompt as the owner's instruction, outside the untrusted payload fence ("When this happens: <note>"). Runs without a note are unchanged.
+- [x] AC11: A trigger that would make a loop is still allowed to be drawn but is shown with a warning on the line ("loops stop after 5 runs"), because the runtime's chain guard (MAX_CHAIN_DEPTH) already stops it.
+- [x] AC12: The bot's Settings shows the same triggers as the lines (one source of truth: `subscriptions`); editing either updates the other.
 
 **Edge Cases:**
 
@@ -682,8 +682,8 @@ _Slice 2 — drag to wire_
 **Definition of Done:**
 
 - [ ] Code implemented and reviewed
-- [ ] Unit tests: line derivation from subscriptions, layout (rows), event list per bot, subscription add/edit/remove, prompt note
-- [ ] Verified in the app (wire two bots, run the first, the second runs with the note; light and dark)
+- [x] Unit tests: line derivation from subscriptions, layout (rows), event list per bot, subscription add/edit/remove, prompt note
+- [x] Verified in the app (wire two bots, run the first, the second runs with the note; light and dark)
 - [ ] Documentation updated
 
 **Implementation notes (slice 1, 2026-10-08):**
@@ -694,6 +694,16 @@ _Slice 2 — drag to wire_
 - `Bots/BotAvatar.js`: shared by the Bots page, the Bots view list and the diagram (AC1).
 - `BotsView`: Diagram is the default; the choice is remembered in `localStorage` (`dash:botsView:mode`, wrapped in try/catch). In Diagram mode the bot's tabs open in a half-width panel beside the diagram (× back to the summary); + Add bot and drafts open their form there; a focus request (Open in Bots view) opens the tabs. Narrow windows keep the bot picker.
 - Verified live on the Algolia Data Enrichment team with a temporary trigger (Record Reader runs after Schema Planner completes): line + label drawn, summary lists it, Activity opens beside the diagram (bots wrap to two rows), light and dark.
+
+**Implementation notes (slice 2, 2026-10-08):**
+
+- A trigger is a subscription on the target bot, built with the Settings picker's own `botSubscription` (`eventType`, `source: { kind: "bot", ref, instanceId, event }`, `label`) plus `note`; `addTrigger` / `updateTrigger` / `removeTrigger` (teamDiagram.js) and the bot's normal save. A bot without a saved `ref` uses `local/<slug>`, as the runtime does.
+- Event choices come from `buildBotEventCatalog` (the bot's providers' tools, narrowed by its tool selection; tool sources from `bots.listToolSources`). Bots can have dozens of tools, so the popover offers **Completed / Failed / Uses a tool…** and the tool is picked from a dropdown.
+- `TeamChart`: handles at the bottom of team bots' cards; a pointer drag draws a dashed line that follows the pointer; the drop is the target card's `pointerup`; the lead and the source are dimmed and not droppable. Line labels are buttons that open the popover in edit mode. `loopEdges` marks lines that are part of a loop ("· loop", amber outline); the popover warns before a trigger that closes one. An open popover makes the chart taller so it never clips.
+- Wiring is off while a bot's Settings tab is open beside the diagram (a diagram save would overwrite that form's unsaved edits).
+- Note: `composeEventPrompt(event, note)` appends "For this trigger, your owner asks: …" after the untrusted payload fence (fence tags in the note are neutralised); `botController` passes the matching subscription's note. `botSchema` validates `note` (text, ≤ 2000 chars). Bot Settings shows the note under the trigger (read-only).
+- Verified live: dragged Schema Planner onto Record Reader (Completed + note) → ran Schema Planner (needed one approval) → Record Reader was triggered by the event with the note after the fence (its own run then failed: its Anthropic API key had no credit) → edited, then removed the trigger from the popover.
+- Follow-up: team export (`.team.json` wiring) doesn't carry notes yet.
 
 ---
 
@@ -1013,7 +1023,7 @@ The six questions raised in the first draft were resolved on 2026-10-01 (see the
 **Deliverables:**
 
 - [x] Slice 1: shared BotAvatar in the Bots view list; Diagram / List switch; org chart with event lines from subscriptions; selection + side summary; detail beside the diagram; Needs approval badge
-- [ ] Slice 2: drag-to-wire handles, event popover (add / edit / remove), subscription `note` in the event prompt, loop warning
+- [x] Slice 2: drag-to-wire handles, event popover (add / edit / remove), subscription `note` in the event prompt, loop warning
 
 ### Phase 2: Grow, share, and install teams (P1)
 
@@ -1087,3 +1097,4 @@ The six questions raised in the first draft were resolved on 2026-10-01 (see the
 | 1.14    | 2026-10-06 | John   | TEAM-013 slice 2 (@ shortcut); TEAM-013 Implemented              |
 | 1.15    | 2026-10-08 | John   | Added TEAM-014 team diagram (from the approved mockup)           |
 | 1.16    | 2026-10-08 | John   | TEAM-014 slice 1: diagram, summary, detail beside, list avatars  |
+| 1.17    | 2026-10-08 | John   | TEAM-014 slice 2: drag to wire, trigger notes; Implemented       |

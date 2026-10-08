@@ -52,6 +52,7 @@ const {
   BOTS_BIND_WIDGET,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
+  BOT_APPROVALS_CHANGED,
   BOT_BUDGET_ALERT,
   BOT_RUN_ACTIVE,
   BOT_LIST_CHANGED,
@@ -208,6 +209,9 @@ const botApi = {
   onStream: (callback) => _addListener(BOT_STREAM, callback),
   /** Subscribe to new pending approvals: { id, request }. */
   onApprovalPending: (callback) => _addListener(BOT_APPROVAL_PENDING, callback),
+  /** callback({ approvals }) — the full pending list after any change. */
+  onApprovalsChanged: (callback) =>
+    _addListener(BOT_APPROVALS_CHANGED, callback),
   /** Subscribe to budget warn/exceeded alerts. */
   onBudgetAlert: (callback) => _addListener(BOT_BUDGET_ALERT, callback),
   /** Subscribe to active-run count changes: { count, running }. */

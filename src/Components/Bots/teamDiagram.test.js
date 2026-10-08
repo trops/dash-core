@@ -6,6 +6,11 @@ import {
   diagramLayout,
   runsAfter,
   thenTriggers,
+  loopEdges,
+  eventChoices,
+  addTrigger,
+  updateTrigger,
+  removeTrigger,
 } from "./teamDiagram";
 
 const ev = (bot, event, ref = `local/${bot}`) => `bot:${ref}[${bot}].${event}`;
@@ -81,6 +86,8 @@ describe("diagramEdges (TEAM-014)", () => {
     expect(diagramEdges(members, lead)).toEqual([
       {
         key: `reader|${ev("planner", "completed")}`,
+        eventType: ev("planner", "completed"),
+        note: null,
         from: "planner",
         to: "reader",
         event: "completed",
@@ -89,6 +96,8 @@ describe("diagramEdges (TEAM-014)", () => {
       },
       {
         key: `checker|${ev("reader", "completed")}`,
+        eventType: ev("reader", "completed"),
+        note: null,
         from: "reader",
         to: "checker",
         event: "completed",
@@ -97,6 +106,8 @@ describe("diagramEdges (TEAM-014)", () => {
       },
       {
         key: `checker|${ev("reader", "tool.algolia.search_index")}`,
+        eventType: ev("reader", "tool.algolia.search_index"),
+        note: null,
         from: "reader",
         to: "checker",
         event: "tool.algolia.search_index",
@@ -105,6 +116,8 @@ describe("diagramEdges (TEAM-014)", () => {
       },
       {
         key: `matcher|${ev("checker", "failed")}`,
+        eventType: ev("checker", "failed"),
+        note: null,
         from: "checker",
         to: "matcher",
         event: "failed",
@@ -180,5 +193,130 @@ describe("diagramLayout", () => {
     const l = diagramLayout({ width: 900, count: 0 });
     expect(l.cards).toEqual([]);
     expect(l.lead.w).toBeGreaterThan(0);
+  });
+});
+
+describe("loopEdges (TEAM-014 AC11)", () => {
+  it("marks every line that's part of a loop", () => {
+    const edges = [
+      { key: "1", from: "a", to: "b" },
+      { key: "2", from: "b", to: "c" },
+      { key: "3", from: "c", to: "a" },
+      { key: "4", from: "c", to: "d" },
+    ];
+    expect([...loopEdges(edges)].sort()).toEqual(["1", "2", "3"]);
+  });
+
+  it("no loop → nothing marked", () => {
+    expect(
+      loopEdges([
+        { key: "1", from: "a", to: "b" },
+        { key: "2", from: "b", to: "c" },
+      ]).size,
+    ).toBe(0);
+  });
+});
+
+describe("eventChoices (TEAM-014 AC8)", () => {
+  const bot = {
+    id: "bot_1",
+    name: "Reader",
+    mcpServers: ["Algolia HR", "Unknown"],
+    toolSelections: { "Algolia HR": ["search_index"] },
+  };
+  const sources = [
+    {
+      name: "Algolia HR",
+      type: "algolia",
+      tools: ["search_index", "recommend"],
+    },
+  ];
+
+  it("Completed, Failed, then each tool the bot may use (its selection)", () => {
+    expect(eventChoices(bot, sources)).toEqual([
+      { event: "completed", label: "Completed" },
+      { event: "failed", label: "Failed" },
+      {
+        event: "tool.algolia.search_index",
+        label: "Algolia HR › search_index",
+      },
+    ]);
+  });
+
+  it("works for a bot without a saved ref (local/<slug>)", () => {
+    expect(
+      eventChoices({ id: "bot_2", name: "X" }, []).map((e) => e.event),
+    ).toEqual(["completed", "failed"]);
+  });
+});
+
+describe("addTrigger / updateTrigger / removeTrigger", () => {
+  const source = { id: "bot_1", name: "Schema Planner" };
+  const target = {
+    id: "bot_2",
+    name: "Record Reader",
+    subscriptions: [{ eventType: "Notepad[1].saved", label: "keep me" }],
+  };
+
+  it("adds the same subscription the Settings picker makes, plus the note", () => {
+    const next = addTrigger(
+      target,
+      source,
+      "completed",
+      "Completed",
+      "Read them.",
+    );
+    expect(next.subscriptions).toHaveLength(2);
+    expect(next.subscriptions[1]).toEqual({
+      eventType: "bot:local/schema-planner[bot_1].completed",
+      source: {
+        kind: "bot",
+        ref: "local/schema-planner",
+        instanceId: "bot_1",
+        event: "completed",
+      },
+      label: "Schema Planner › Completed",
+      note: "Read them.",
+    });
+    expect(target.subscriptions).toHaveLength(1);
+  });
+
+  it("an empty note isn't stored; adding an existing trigger again doesn't duplicate it", () => {
+    const once = addTrigger(target, source, "completed", "Completed", "  ");
+    expect(once.subscriptions[1].note).toBeUndefined();
+    const twice = addTrigger(once, source, "completed", "Completed", "x");
+    expect(twice.subscriptions).toHaveLength(2);
+    expect(twice.subscriptions[1].note).toBe("x");
+  });
+
+  it("updateTrigger changes the event and note in place; removeTrigger drops only it", () => {
+    const withTrigger = addTrigger(
+      target,
+      source,
+      "completed",
+      "Completed",
+      "a",
+    );
+    const old = "bot:local/schema-planner[bot_1].completed";
+    const changed = updateTrigger(
+      withTrigger,
+      old,
+      source,
+      "failed",
+      "Failed",
+      "b",
+    );
+    expect(changed.subscriptions.map((x) => x.eventType)).toEqual([
+      "Notepad[1].saved",
+      "bot:local/schema-planner[bot_1].failed",
+    ]);
+    expect(changed.subscriptions[1].note).toBe("b");
+    const removed = removeTrigger(
+      changed,
+      "bot:local/schema-planner[bot_1].failed",
+    );
+    expect(removed.subscriptions).toEqual([
+      { eventType: "Notepad[1].saved", label: "keep me" },
+    ]);
   });
 });

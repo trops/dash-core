@@ -101,3 +101,105 @@ describe("TeamChart (TEAM-014 slice 1)", () => {
     expect(screen.getByText(/No bots yet/)).toBeInTheDocument();
   });
 });
+
+describe("TeamChart — drag to wire (TEAM-014 slice 2)", () => {
+  const choicesFor = () => [
+    { event: "completed", label: "Completed" },
+    { event: "failed", label: "Failed" },
+  ];
+  function wire(props = {}) {
+    const onSaveTrigger = jest.fn().mockResolvedValue(undefined);
+    const onRemoveTrigger = jest.fn().mockResolvedValue(undefined);
+    render(
+      <TeamChart
+        lead={lead}
+        members={[planner, reader, checker]}
+        statusOf={() => "Idle"}
+        approvalsFor={() => []}
+        onSelect={jest.fn()}
+        onOpen={jest.fn()}
+        width={1000}
+        canWire
+        choicesFor={choicesFor}
+        onSaveTrigger={onSaveTrigger}
+        onRemoveTrigger={onRemoveTrigger}
+        {...props}
+      />,
+    );
+    return { onSaveTrigger, onRemoveTrigger };
+  }
+  const handle = (name) =>
+    screen.getByRole("button", { name: `Drag to wire ${name}` });
+
+  it("team bots have a handle; the lead doesn't", () => {
+    wire();
+    expect(handle("Record Reader")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Drag to wire Algolia Lead" }),
+    ).toBeNull();
+  });
+
+  it("dragging from one bot onto another opens the popover; Add trigger saves it", async () => {
+    const { onSaveTrigger } = wire();
+    fireEvent.pointerDown(handle("Image Checker"));
+    fireEvent.pointerUp(screen.getByTestId("diagram-card-planner"));
+    const dialog = screen.getByRole("dialog", {
+      name: "Trigger for Schema Planner",
+    });
+    expect(within(dialog).getByText("after Image Checker")).toBeInTheDocument();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Add trigger" }),
+    );
+    expect(onSaveTrigger).toHaveBeenCalledWith({
+      mode: "add",
+      sourceId: "checker",
+      targetId: "planner",
+      oldEventType: null,
+      event: "completed",
+      label: "Completed",
+      note: "",
+    });
+  });
+
+  it("dropping on the lead or on the same bot does nothing", () => {
+    wire();
+    fireEvent.pointerDown(handle("Record Reader"));
+    fireEvent.pointerUp(screen.getByTestId("diagram-card-lead"));
+    fireEvent.pointerDown(handle("Record Reader"));
+    fireEvent.pointerUp(screen.getByTestId("diagram-card-reader"));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("clicking a line's label edits it; Remove removes it", () => {
+    const { onRemoveTrigger } = wire();
+    fireEvent.click(
+      screen.getByTestId(`edge-label-reader|${ev("planner", "completed")}`),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "Trigger for Record Reader",
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
+    expect(onRemoveTrigger).toHaveBeenCalledWith({
+      targetId: "reader",
+      eventType: ev("planner", "completed"),
+    });
+  });
+
+  it("no handles while wiring is off (e.g. a bot's Settings is open)", () => {
+    wire({ canWire: false });
+    expect(
+      screen.queryByRole("button", { name: "Drag to wire Record Reader" }),
+    ).toBeNull();
+  });
+
+  it("lines in a loop are marked", () => {
+    const loopPlanner = {
+      ...planner,
+      subscriptions: [{ eventType: ev("reader", "completed") }],
+    };
+    wire({ members: [loopPlanner, reader] });
+    expect(
+      screen.getByTestId(`edge-label-planner|${ev("reader", "completed")}`),
+    ).toHaveTextContent("loop");
+  });
+});

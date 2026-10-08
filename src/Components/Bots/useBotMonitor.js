@@ -75,6 +75,13 @@ export function useBotMonitor() {
     const b = api();
     if (!b) return undefined;
     const ids = [];
+    // The whole queue after any change (answered anywhere, denied, timed
+    // out) — replaces this copy, so answered approvals disappear here too.
+    if (b.onApprovalsChanged) {
+      ids.push(
+        b.onApprovalsChanged((p) => setApprovals((p && p.approvals) || EMPTY)),
+      );
+    }
     if (b.onApprovalPending) {
       ids.push(
         b.onApprovalPending((approval) =>

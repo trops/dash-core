@@ -200,7 +200,7 @@ describe("triggerLabel (TEAM-011 gaps)", () => {
         },
         nameOf,
       ),
-    ).toBe("Triggered by Inbox Watch › completed · Lead Scout → Inbox Watch");
+    ).toBe("Started after Inbox Watch completed · Lead Scout → Inbox Watch");
   });
 
   it("schedules and typed runs are unchanged", () => {
@@ -354,5 +354,92 @@ describe("readableError", () => {
       },
     ]);
     expect(turns.find((t) => t.kind === "error").text).toBe("Out of credits");
+  });
+});
+
+describe("each run reads as its own run (Bots view conversation)", () => {
+  const nameOf = (id) => ({ b1: "Schema Planner" })[id] || id;
+
+  it("bot events say what the other bot did, not just '› Completed'", () => {
+    const label = (eventType, lbl) =>
+      triggerLabel(
+        { trigger: "event", source: { eventType, label: lbl, chain: ["b1"] } },
+        nameOf,
+      );
+    expect(
+      label("bot:local/sp[b1].completed", "Schema Planner › Completed"),
+    ).toBe("Started after Schema Planner completed");
+    expect(label("bot:local/sp[b1].failed", "Schema Planner › Failed")).toBe(
+      "Started after Schema Planner failed",
+    );
+    expect(label("bot:local/sp[b1].tool.algolia.search_index", "x")).toBe(
+      "Started after Schema Planner used search_index",
+    );
+    // A deleted / unknown bot falls back to the trigger's label.
+    expect(
+      triggerLabel(
+        {
+          trigger: "event",
+          source: {
+            eventType: "bot:local/gone[b9].completed",
+            label: "Old Bot › Completed",
+            chain: [],
+          },
+        },
+        nameOf,
+      ),
+    ).toBe("Started after Old Bot completed");
+  });
+
+  it("a run nobody typed a prompt for gets a 'Run now' header", () => {
+    const turns = buildConversation([
+      { trigger: "manual", prompt: "", status: "completed", output: "ok" },
+    ]);
+    expect(turns[0]).toMatchObject({ kind: "system", text: "Run now" });
+  });
+
+  it("only the latest run's error is current; earlier ones are marked stale", () => {
+    const failed = (at) => ({
+      trigger: "manual",
+      prompt: "go",
+      status: "failed",
+      error: "credit balance is too low",
+      startedAt: at,
+    });
+    const turns = buildConversation([failed("t1"), failed("t2")]);
+    const errors = turns.filter((t) => t.kind === "error");
+    expect(errors.map((e) => !!e.stale)).toEqual([true, false]);
+    // A run in progress makes the last error stale too.
+    const withLive = buildConversation([failed("t1")], {
+      live: { trigger: "running", text: "", toolCalls: [] },
+    });
+    expect(withLive.find((t) => t.kind === "error").stale).toBe(true);
+  });
+
+  it("a run in progress started elsewhere is its own run: divider + 'Running now'", () => {
+    const turns = buildConversation(
+      [{ trigger: "manual", prompt: "go", status: "failed", error: "x" }],
+      { live: { trigger: "running", text: "", toolCalls: [] } },
+    );
+    const tail = turns.slice(-3);
+    expect(tail.map((t) => t.kind)).toEqual(["divider", "system", "bot"]);
+    expect(tail[1].text).toBe("Running now");
+  });
+
+  it("tool calls of a finished run are never 'in progress'", () => {
+    const turns = buildConversation([
+      {
+        trigger: "manual",
+        prompt: "go",
+        status: "failed",
+        error: "x",
+        toolCalls: [{ tool: "search", ok: null }],
+      },
+    ]);
+    expect(turns.find((t) => t.kind === "tools").live).toBe(false);
+    const live = buildConversation([], {
+      live: { prompt: "go", toolCalls: [{ tool: "search", ok: null }] },
+    });
+    expect(live.find((t) => t.kind === "tools").live).toBe(true);
   });
 });

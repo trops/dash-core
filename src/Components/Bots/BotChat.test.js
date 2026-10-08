@@ -176,6 +176,21 @@ describe("BotChat — sending", () => {
     expect(await screen.findByText("Done")).toBeInTheDocument();
   });
 
+  it("a run started elsewhere streams in as its own run (Running now)", async () => {
+    const { listeners } = setup();
+    expect(await screen.findByText("2 need attention")).toBeInTheDocument();
+    act(() => {
+      listeners.stream({ botId: "b1", event: { type: "text", text: "Hi" } });
+    });
+    expect(screen.getByText("Running now")).toBeInTheDocument();
+    // The divider (there's also a New conversation button).
+    expect(
+      screen
+        .getAllByText("New conversation")
+        .some((el) => el.tagName !== "BUTTON"),
+    ).toBe(true);
+  });
+
   it("separates streamed text before and after a tool call", async () => {
     const { api, listeners } = setup();
     api.run.mockImplementation(() => new Promise(() => {}));
@@ -263,9 +278,32 @@ describe("BotChat — triggers and next steps (TEAM-011 gaps)", () => {
     ]);
     expect(
       await screen.findByText(
-        "Triggered by Inbox Watch › completed · Lead Scout → Inbox Watch",
+        "Started after Inbox Watch completed · Lead Scout → Inbox Watch",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("only the latest failure offers Run again; an earlier one is marked as earlier", async () => {
+    setupWith([
+      { trigger: "manual", status: "failed", error: "First", prompt: "a" },
+      { trigger: "manual", status: "failed", error: "Second", prompt: "b" },
+    ]);
+    expect(await screen.findByText("Second")).toBeInTheDocument();
+    expect(screen.getAllByText("Run again")).toHaveLength(1);
+    expect(screen.getByText(/Earlier run failed/)).toBeInTheDocument();
+  });
+
+  it("a finished run's unanswered tool call says it didn't finish (no spinner)", async () => {
+    setupWith([
+      {
+        trigger: "manual",
+        status: "failed",
+        error: "boom",
+        prompt: "a",
+        toolCalls: [{ tool: "search_index", ok: null }],
+      },
+    ]);
+    expect(await screen.findByText(/didn't finish/)).toBeInTheDocument();
   });
 
   it("a failed run offers Run again (same prompt, fresh run)", async () => {

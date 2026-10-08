@@ -25,6 +25,7 @@ function setup(over = {}) {
     approve: jest.fn().mockResolvedValue({}),
     stop: jest.fn().mockResolvedValue(true),
     onApprovalPending: jest.fn((cb) => ((listeners.approval = cb), "l1")),
+    onApprovalsChanged: jest.fn((cb) => ((listeners.approvals = cb), "l5")),
     onRunActive: jest.fn((cb) => ((listeners.active = cb), "l2")),
     onStream: jest.fn((cb) => ((listeners.stream = cb), "l3")),
     onListChanged: jest.fn((cb) => ((listeners.listChanged = cb), "l4")),
@@ -61,6 +62,17 @@ describe("useBotMonitor", () => {
     });
     expect(api.approve).toHaveBeenCalledWith("a1", { allow: true });
     expect(result.current.approvals.map((a) => a.id)).toEqual(["a2"]);
+  });
+
+  it("drops approvals answered elsewhere (the queue's full list replaces this copy)", async () => {
+    const { listeners } = setup();
+    const { result } = renderHook(() => useBotMonitor());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => listeners.approval({ id: "a2", request: { botId: "b2" } }));
+    expect(result.current.approvals).toHaveLength(2);
+    // Answered in a bot's conversation → the main process sends the new list.
+    act(() => listeners.approvals({ approvals: [] }));
+    expect(result.current.approvals).toEqual([]);
   });
 
   it("re-reads running bots when the running set changes", async () => {

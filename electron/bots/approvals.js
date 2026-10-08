@@ -36,6 +36,29 @@ class ApprovalRegistry {
     this._clearTimer = opts.clearTimer || ((h) => clearTimeout(h));
     /** @type {Map<string, any>} */
     this._pending = new Map();
+    /** Listeners told the pending list after every change. */
+    this._listeners = new Set();
+  }
+
+  /**
+   * Called with the pending list whenever it changes — created, answered,
+   * denied or timed out — so every window can show the same queue.
+   * @returns {() => void} unsubscribe
+   */
+  onChange(fn) {
+    this._listeners.add(fn);
+    return () => this._listeners.delete(fn);
+  }
+
+  _changed() {
+    const list = this.list();
+    for (const fn of this._listeners) {
+      try {
+        fn(list);
+      } catch (_e) {
+        // A listener's failure never affects the queue.
+      }
+    }
   }
 
   /**
@@ -63,6 +86,7 @@ class ApprovalRegistry {
           reason: "approval timed out",
           timedOut: true,
         });
+        this._changed();
       }
     }, timeoutMs);
 
@@ -73,6 +97,7 @@ class ApprovalRegistry {
       _resolve: resolveFn,
       _timer: timer,
     });
+    this._changed();
 
     return { id, promise };
   }
@@ -93,6 +118,7 @@ class ApprovalRegistry {
     this._pending.delete(id);
     this._clearTimer(entry._timer);
     entry._resolve(result);
+    this._changed();
     return true;
   }
 

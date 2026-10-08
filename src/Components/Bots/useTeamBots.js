@@ -100,6 +100,15 @@ export function useTeamBots(workspaceId) {
         ),
       );
     }
+    // The whole queue after any change (answered anywhere, denied, timed
+    // out) — replaces this copy, so answered approvals disappear here too.
+    if (bots_.onApprovalsChanged) {
+      ids.push(
+        bots_.onApprovalsChanged((p) =>
+          setApprovals((p && p.approvals) || EMPTY),
+        ),
+      );
+    }
     if (bots_.onApprovalPending) {
       ids.push(
         bots_.onApprovalPending((approval) =>
