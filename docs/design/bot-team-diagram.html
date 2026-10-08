@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bot Team Diagram</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+<style>
+  :root {
+    --bg: #0f1115; --panel: #15171c; --card: #1a1d23; --card-hi: #20242c;
+    --line: #2a2e37; --text: #d6d9e0; --strong: #eef0f4; --muted: #8b909c;
+    --accent: #8b7cf6; --accent-soft: #2a2550; --amber: #f5b942; --green: #4ade80;
+    --red: #f87171; --org: #3a3f4a;
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f6f8; --panel: #ffffff; --card: #ffffff; --card-hi: #f1f2f6;
+    --line: #dfe2e8; --text: #2b2f38; --strong: #11131a; --muted: #6b7180;
+    --accent: #6d5ce8; --accent-soft: #ece9fd; --org: #c9cdd6;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+  .frame { max-width: 1240px; margin: 0 auto; padding: 20px 16px 40px; }
+  .note { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
+  .note b { color: var(--text); }
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; color: var(--strong); font-weight: 600; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+  .seg button { background: none; border: 0; color: var(--muted); padding: 5px 12px; border-radius: 6px;
+    font: inherit; font-size: 12px; cursor: pointer; }
+  .seg button.on { background: var(--card-hi); color: var(--strong); }
+  .spacer { flex: 1; }
+  .btn { background: none; border: 1px solid var(--line); color: var(--text); border-radius: 7px;
+    padding: 5px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .layout { display: grid; grid-template-columns: 1fr 300px; gap: 14px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .surface { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; position: relative; overflow: hidden; }
+  .label { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted);
+    font-family: ui-monospace, Menlo, monospace; }
+  .surface-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px;
+    border-bottom: 1px solid var(--line); gap: 10px; flex-wrap: wrap; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); align-items: center; flex-wrap: wrap; }
+  .legend i.sw { display: inline-block; width: 22px; height: 0; border-top: 2px solid var(--accent); vertical-align: middle; margin-right: 6px; }
+  .legend i.sw.fail { border-top: 2px dashed var(--red); }
+  .legend i.sw.org { border-top: 1px solid var(--org); }
+  .canvas-wrap { overflow-x: auto; }
+  .canvas { position: relative; height: 470px; }
+  svg.edges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .node { position: absolute; width: var(--nw, 210px); background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px; display: flex; gap: 10px; align-items: flex-start; cursor: pointer;
+    transition: border-color .12s, box-shadow .12s; user-select: none; }
+  .node:hover { border-color: var(--accent); }
+  .node.sel { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .node.drop-ok { border-color: var(--green); box-shadow: 0 0 0 3px rgba(74,222,128,.18); }
+  .node.drop-no { opacity: .45; }
+  .avatar { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; color: #fff; flex-shrink: 0; font-size: 15px; }
+  .nname { color: var(--strong); font-weight: 600; font-size: 13px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .nsub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .ntop { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+  .tag { font-size: 10px; letter-spacing: .08em; border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-left: auto; flex-shrink: 0; }
+  .dot.run { background: var(--green); } .dot.warn { background: var(--amber); }
+  .handle { position: absolute; left: 50%; bottom: -7px; width: 14px; height: 14px; margin-left: -7px;
+    border-radius: 50%; background: var(--panel); border: 2px solid var(--accent); cursor: crosshair; }
+  .handle:hover { background: var(--accent); }
+  .handle .tip { display: none; position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+    white-space: nowrap; font-size: 11px; background: var(--strong); color: var(--bg); padding: 3px 7px; border-radius: 5px; }
+  .handle:hover .tip { display: block; }
+  .edge-label { font-size: 11px; fill: var(--text); }
+  .edge-pill { fill: var(--panel); stroke: var(--line); }
+  .edge-hit { stroke: transparent; stroke-width: 14; fill: none; cursor: pointer; }
+  .side { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+  .side h3 { margin: 0; font-size: 15px; color: var(--strong); }
+  .row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+  .row span:first-child { color: var(--muted); }
+  .flow-item { font-size: 12px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; display: flex; gap: 8px; align-items: center; }
+  .muted { color: var(--muted); }
+  /* Popover */
+  .pop { position: absolute; z-index: 5; width: 340px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: 0 18px 40px rgba(0,0,0,.35); display: none; }
+  .pop.open { display: block; }
+  .pop-head { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .pop-head .t { color: var(--strong); font-weight: 600; font-size: 13px; }
+  .pop-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; max-height: 320px; overflow-y: auto; }
+  .opt { display: flex; gap: 9px; align-items: flex-start; font-size: 13px; cursor: pointer; padding: 6px 8px; border-radius: 8px; border: 1px solid transparent; }
+  .opt:hover { background: var(--card-hi); }
+  .opt.on { border-color: var(--accent); background: var(--accent-soft); }
+  .opt small { display: block; color: var(--muted); font-size: 11px; }
+  .opt code { font-size: 11px; }
+  textarea { width: 100%; min-height: 64px; resize: vertical; background: var(--bg); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; font-size: 12px; }
+  .pop-foot { padding: 10px 14px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; }
+  /* List view */
+  .list { padding: 10px; display: none; flex-direction: column; gap: 4px; }
+  .list.on { display: flex; }
+  .li { display: flex; gap: 10px; align-items: center; padding: 10px; border-radius: 10px; border: 1px solid transparent; }
+  .li.sel { border-color: var(--accent); background: var(--card-hi); }
+  .qa { position: absolute; top: -13px; right: 10px; display: none; gap: 4px; }
+  .node:hover .qa, .node.sel .qa { display: flex; }
+  .qa button { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel);
+    color: var(--muted); cursor: pointer; font-size: 12px; display: grid; place-items: center; }
+  .qa button:hover { color: var(--strong); border-color: var(--accent); }
+  .badge { position: absolute; top: -8px; left: 12px; font-size: 10px; background: var(--amber); color: #1a1300;
+    border-radius: 999px; padding: 1px 7px; font-weight: 600; cursor: pointer; }
+  .drawer { display: none; flex-direction: column; min-height: 0; padding: 0; }
+  .drawer.open { display: flex; }
+  .layout.wide { grid-template-columns: 1fr 460px; }
+  .layout.wide #side { display: none; }
+  .dr-head { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; gap: 10px; align-items: center; }
+  .dr-tabs { display: flex; gap: 18px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+  .dr-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); padding: 10px 0;
+    font: inherit; font-size: 13px; cursor: pointer; }
+  .dr-tabs button.on { color: var(--strong); border-bottom-color: var(--accent); }
+  .dr-body { flex: 1; min-height: 360px; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; }
+  .bubble { padding: 10px 12px; border-radius: 10px; max-width: 85%; }
+  .bubble.me { align-self: flex-end; background: var(--accent-soft); }
+  .bubble.bot { align-self: flex-start; background: var(--card-hi); }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field .v { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--bg); }
+  .act { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; }
+  .drawer a { color: var(--accent); }
+  .hint { position: absolute; left: 16px; bottom: 12px; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="note"><b>Mockup — Bots view, team diagram (bots only).</b> Drag from a bot's bottom handle onto another bot to wire an event · click a line to edit or remove it · click a bot to see its flow · hover a bot for Conversation / Activity / Settings (or use the side panel) · List shows the list with the avatars (the icon fix). The lead sits on top and isn't wired by events.</div>
+  <header>
+    <h1>Algolia Data Enrichment</h1>
+    <div class="seg"><button>Dashboard</button><button class="on">Bots</button></div>
+    <div class="spacer"></div>
+    <div class="seg" id="viewSeg"><button data-v="diagram" class="on"><i class="fa-solid fa-sitemap"></i> Diagram</button><button data-v="list"><i class="fa-solid fa-list"></i> List</button></div>
+    <button class="btn" id="themeBtn"><i class="fa-solid fa-circle-half-stroke"></i> Light / dark</button>
+  </header>
+
+  <div class="layout">
+    <div class="surface">
+      <div class="surface-head">
+        <span class="label">Team · 5 bots</span>
+        <div class="legend">
+          <span><i class="sw"></i>runs after (completed / tool)</span>
+          <span><i class="sw fail"></i>runs after failed</span>
+          <span><i class="sw org"></i>team</span>
+          <button class="btn primary"><i class="fa-solid fa-plus"></i> New bot</button>
+        </div>
+      </div>
+      <div class="canvas-wrap" id="diagramView">
+        <div class="canvas" id="canvas" style="height:500px">
+          <svg class="edges" id="edges"></svg>
+          <div class="pop" id="pop"></div>
+          <div class="hint">Tip: drag <i class="fa-regular fa-circle"></i> to another bot</div>
+        </div>
+      </div>
+      <div class="list" id="listView"></div>
+    </div>
+
+    <div class="surface side" id="side"></div>
+    <div class="surface drawer" id="drawer"></div>
+  </div>
+</div>
+
+<script>
+const BOTS = [
+  { id: "lead", name: "Algolia Data Enrichment Lead", sub: "Answers questions about this team", lead: true, color: "#8b7cf6", x: 441, y: 28, status: "" },
+  { id: "planner", name: "Algolia Enrichment Schema Planner", sub: "Runs manually", color: "#3b82f6", x: 24, y: 214, status: "",
+    tools: [["algolia", ["search_index", "search_for_facet_values"]]] },
+  { id: "reader", name: "Algolia Product Record Reader", sub: "Runs after Schema Planner", color: "#14b8a6", x: 302, y: 214, status: "run",
+    tools: [["algolia", ["search_index", "recommendations"]]] },
+  { id: "checker", name: "Product Image Checker", sub: "Runs after Record Reader", color: "#f59e0b", x: 580, y: 214, status: "",
+    tools: [["web-fetch", ["fetch_image", "fetch_url"]]] },
+  { id: "matcher", name: "Product Stock Photo Matcher", sub: "Runs manually", color: "#ec4899", x: 858, y: 214, status: "warn", approval: true,
+    tools: [["web-fetch", ["fetch_image"]], ["algolia", ["search_index"]]] },
+];
+let edges = [
+  { from: "planner", to: "reader", event: "completed", note: "Read the records the plan names." },
+  { from: "reader", to: "checker", event: "completed", note: "" },
+  { from: "checker", to: "planner", event: "failed", note: "Re-plan without image fields." },
+];
+let selected = "reader";
+let W = 210; const H = 62;
+const byId = (id) => BOTS.find((b) => b.id === id);
+const canvas = document.getElementById("canvas");
+const svg = document.getElementById("edges");
+const pop = document.getElementById("pop");
+
+function eventsOf(bot) {
+  const ev = [
+    { key: "completed", label: "Completed", hint: "when a run finishes — passes its answer" },
+    { key: "failed", label: "Failed", hint: "when a run errors" },
+  ];
+  for (const [prov, tools] of bot.tools || []) for (const t of tools)
+    ev.push({ key: `tool.${prov}.${t}`, label: `Used ${t}`, hint: `tool · ${prov}`, tool: true });
+  return ev;
+}
+const eventLabel = (k) => k === "completed" ? "completed" : k === "failed" ? "failed" : k.replace(/^tool\./, "tool · ");
+
+function avatar(b, size = 34) {
+  return `<div class="avatar" style="background:${b.color};width:${size}px;height:${size}px"><i class="fa-solid fa-robot"></i></div>`;
+}
+
+function renderNodes() {
+  canvas.querySelectorAll(".node").forEach((n) => n.remove());
+  for (const b of BOTS) {
+    const el = document.createElement("div");
+    el.className = "node" + (b.id === selected ? " sel" : "");
+    el.style.left = b.x + "px"; el.style.top = b.y + "px"; if (b.w) el.style.width = b.w + "px";
+    el.dataset.id = b.id;
+    el.innerHTML = `${avatar(b)}<div style="min-width:0;flex:1"><div class="ntop"><span class="nname">${b.name}</span>${b.lead ? '<span class="tag">LEAD</span>' : ""}<span class="dot ${b.status}"></span></div><div class="nsub">${subOf(b)}</div></div>` +
+      `<div class="qa"><button title="${b.lead ? "Ask the lead" : "Conversation"}" data-open="conversation"><i class="fa-regular fa-comment"></i></button><button title="Activity" data-open="activity"><i class="fa-solid fa-wave-square"></i></button><button title="Settings" data-open="settings"><i class="fa-solid fa-gear"></i></button></div>` + (b.approval ? `<span class="badge" data-open="activity">Needs approval</span>` : "") +
+      (b.lead ? "" : `<div class="handle" data-h="${b.id}"><span class="tip">Drag to another bot</span></div>`);
+    el.addEventListener("click", (e) => { if (e.target.closest(".handle")) return; const o = e.target.closest("[data-open]"); selected = b.id; render(); if (o) openDrawer(b.id, o.dataset.open); else if (drawerOpen) openDrawer(b.id, drawerTab); });
+    canvas.appendChild(el);
+  }
+}
+function subOf(b) {
+  if (b.lead) return b.sub;
+  const ins = edges.filter((e) => e.to === b.id);
+  if (!ins.length) return "Runs manually";
+  return "Runs after " + ins.map((e) => `${byId(e.from).name.split(" ").slice(-2).join(" ")} ${e.event === "failed" ? "fails" : e.event === "completed" ? "" : "uses a tool"}`.trim()).join(", ");
+}
+
+const bottom = (b) => [b.x + W / 2, b.y + H + 8];
+function edgePath(a, b) {
+  const [sx, sy] = bottom(a), [tx, ty] = bottom(b);
+  const dip = 70 + Math.abs(tx - sx) * 0.12;
+  return { d: `M${sx},${sy} C${sx},${sy + dip} ${tx},${ty + dip} ${tx},${ty}`, mx: (sx + tx) / 2, my: sy + dip * 0.75 };
+}
+function renderEdges() {
+  const lead = byId("lead");
+  let out = `<defs><marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker>
+    <marker id="arrf" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--red)"/></marker></defs>`;
+  // Org bracket (team structure, not an event).
+  const lx = lead.x + (lead.w || W) / 2, ly = lead.y + H + 4, busY = 170;
+  out += `<path d="M${lx},${ly} V${busY}" stroke="var(--org)" fill="none"/>`;
+  const members = BOTS.filter((b) => !b.lead);
+  const firstRow = members.slice(0, layoutCols);
+  out += `<path d="M${firstRow[0].x + W / 2},${busY} H${firstRow[firstRow.length - 1].x + W / 2}" stroke="var(--org)" fill="none"/>`;
+  for (const m of firstRow) out += `<path d="M${m.x + W / 2},${busY} V${m.y}" stroke="var(--org)" fill="none"/>`;
+  edges.forEach((e, i) => {
+    const p = edgePath(byId(e.from), byId(e.to));
+    const fail = e.event === "failed";
+    const hot = selected && (e.from === selected || e.to === selected);
+    const color = fail ? "var(--red)" : "var(--accent)";
+    out += `<path d="${p.d}" stroke="${color}" stroke-width="${hot ? 2.5 : 1.6}" fill="none" ${fail ? 'stroke-dasharray="6 5"' : ""} opacity="${selected && !hot ? 0.35 : 1}" marker-end="url(#${fail ? "arrf" : "arr"})"/>`;
+    out += `<path class="edge-hit" d="${p.d}" data-edge="${i}"/>`;
+    const txt = eventLabel(e.event); const w = txt.length * 6.2 + 16;
+    out += `<g data-edge="${i}" style="cursor:pointer"><rect class="edge-pill" x="${p.mx - w / 2}" y="${p.my - 10}" width="${w}" height="20" rx="10"/><text class="edge-label" x="${p.mx}" y="${p.my + 4}" text-anchor="middle">${txt}</text></g>`;
+  });
+  out += `<path id="ghost" stroke="var(--accent)" stroke-width="2" stroke-dasharray="5 4" fill="none"/>`;
+  svg.innerHTML = out;
+  svg.querySelectorAll("[data-edge]").forEach((el) => el.addEventListener("click", (ev) => { ev.stopPropagation(); openEdit(+el.dataset.edge, ev); }));
+}
+
+function renderSide() {
+  const b = byId(selected);
+  const side = document.getElementById("side");
+  if (!b) { side.innerHTML = '<span class="muted">Select a bot.</span>'; return; }
+  const ins = edges.filter((e) => e.to === b.id), outs = edges.filter((e) => e.from === b.id);
+  const item = (e, dir) => `<div class="flow-item"><i class="fa-solid ${dir === "in" ? "fa-arrow-right-to-bracket" : "fa-arrow-right-from-bracket"} muted"></i><span>${dir === "in" ? "After " + byId(e.from).name : byId(e.to).name + " runs"} <span class="muted">· ${eventLabel(e.event)}</span></span></div>`;
+  side.innerHTML = `<div style="display:flex;gap:10px;align-items:center">${avatar(b, 40)}<div><h3>${b.name}</h3><div class="muted" style="font-size:12px">${b.lead ? "Team lead" : subOf(b)}</div></div></div>
+    <div class="row"><span>Last run</span><span>${b.status === "run" ? "Running…" : "Today 10:42"}</span></div>
+    <div class="row"><span>Providers</span><span>${(b.tools || []).map((t) => t[0]).join(", ") || "—"}</span></div>
+    ${b.lead ? '<div class="muted" style="font-size:12px">The lead plans and answers questions; it isn\'t triggered by other bots.</div>' : `
+    <div class="label">Runs after</div>${ins.map((e) => item(e, "in")).join("") || '<span class="muted" style="font-size:12px">Nothing — runs manually or on its schedule.</span>'}
+    <div class="label">Then triggers</div>${outs.map((e) => item(e, "out")).join("") || '<span class="muted" style="font-size:12px">Nothing yet — drag its handle to a bot.</span>'}`}
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-side="conversation"><i class="fa-regular fa-comment"></i> ${b.lead ? "Ask the lead" : "Conversation"}</button><button class="btn" data-side="activity"><i class="fa-solid fa-wave-square"></i> Activity</button><button class="btn" data-side="settings"><i class="fa-solid fa-gear"></i> Settings</button>${b.lead ? "" : '<button class="btn primary">Run now</button>'}</div>`;
+}
+
+function wireSide() { document.querySelectorAll("[data-side]").forEach((x) => (x.onclick = () => openDrawer(selected, x.dataset.side))); }
+function renderList() {
+  document.getElementById("listView").innerHTML = BOTS.map((b) => `<div class="li ${b.id === selected ? "sel" : ""}">${avatar(b)}<div style="min-width:0;flex:1"><div class="ntop"><span class="nname">${b.name}</span>${b.lead ? '<span class="tag">LEAD</span>' : ""}</div><div class="nsub">${subOf(b)}</div></div><span class="dot ${b.status}"></span></div>`).join("");
+}
+function layout() {
+  // One row when it fits; otherwise wrap so cards never get too narrow to read.
+  const members = BOTS.filter((b) => !b.lead);
+  const avail = Math.max(document.getElementById("diagramView").clientWidth, 420);
+  const gap = 20, minW = 200;
+  const cols = Math.max(1, Math.min(members.length, Math.floor((avail - gap) / (minW + gap))));
+  W = Math.min(240, Math.floor((avail - gap * (cols + 1)) / cols));
+  const rowW = cols * W + (cols - 1) * gap;
+  const start = Math.max(gap, (avail - rowW) / 2);
+  members.forEach((b, i) => {
+    b.x = start + (i % cols) * (W + gap);
+    b.y = 214 + Math.floor(i / cols) * 170;
+  });
+  const rows = Math.ceil(members.length / cols);
+  const lead = byId("lead"); lead.w = Math.min(320, W + 80); lead.x = (avail - lead.w) / 2; lead.y = 28;
+  canvas.style.width = avail + "px";
+  canvas.style.height = 214 + rows * 170 + 90 + "px";
+  canvas.style.setProperty("--nw", W + "px");
+  layoutCols = cols;
+}
+let layoutCols = 4;
+window.addEventListener("resize", () => render());
+function layoutOnly() { layout(); renderNodes(); renderEdges(); }
+function render() {
+  layout();
+  setTimeout(wireSide, 0); renderNodes(); renderEdges(); renderSide(); renderList(); }
+
+// ── Drag to wire ───────────────────────────────────────────────
+let drag = null;
+let justDropped = false;
+canvas.addEventListener("mousedown", (e) => {
+  const h = e.target.closest(".handle"); if (!h) return;
+  e.preventDefault(); closePop();
+  drag = { from: h.dataset.h };
+  canvas.querySelectorAll(".node").forEach((n) => {
+    const id = n.dataset.id;
+    n.classList.add(id === drag.from || id === "lead" ? "drop-no" : "x");
+  });
+});
+window.addEventListener("mousemove", (e) => {
+  if (!drag) return;
+  const r = canvas.getBoundingClientRect();
+  const [sx, sy] = bottom(byId(drag.from));
+  const tx = e.clientX - r.left, ty = e.clientY - r.top;
+  document.getElementById("ghost").setAttribute("d", `M${sx},${sy} C${sx},${sy + 80} ${tx},${ty + 80} ${tx},${ty}`);
+  canvas.querySelectorAll(".node").forEach((n) => n.classList.remove("drop-ok"));
+  const over = document.elementFromPoint(e.clientX, e.clientY)?.closest(".node");
+  if (over && over.dataset.id !== drag.from && over.dataset.id !== "lead") over.classList.add("drop-ok");
+});
+window.addEventListener("mouseup", (e) => {
+  if (!drag) return;
+  const over = document.elementFromPoint(e.clientX, e.clientY)?.closest(".node");
+  const from = drag.from; drag = null;
+  // The click that follows this mouseup would close the popup.
+  justDropped = true; setTimeout(() => (justDropped = false), 0);
+  canvas.querySelectorAll(".node").forEach((n) => n.classList.remove("drop-ok", "drop-no", "x"));
+  document.getElementById("ghost").setAttribute("d", "");
+  if (over && over.dataset.id !== from && over.dataset.id !== "lead") openNew(from, over.dataset.id);
+});
+
+function placePop(target) {
+  const t = byId(target);
+  let left = t.x + W / 2 - 170; left = Math.max(8, Math.min(left, canvas.clientWidth - 348));
+  pop.style.left = left + "px"; pop.style.top = Math.min(t.y + H + 24, 120) + "px";
+}
+function popHtml({ title, sub, from, chosen, note, foot }) {
+  return `<div class="pop-head"><div class="t">${title}</div><div class="muted" style="font-size:12px">${sub}</div></div>
+   <div class="pop-body"><div class="label">When ${byId(from).name}…</div>
+   ${eventsOf(byId(from)).map((ev) => `<label class="opt ${ev.key === chosen ? "on" : ""}" data-ev="${ev.key}"><input type="radio" name="ev" ${ev.key === chosen ? "checked" : ""}/><span>${ev.label}<small>${ev.hint}</small></span></label>`).join("")}
+   <div class="label">Then ask it to (optional)</div><textarea id="noteBox" placeholder="e.g. Check the images in the records it read.">${note || ""}</textarea>
+   <div class="muted" style="font-size:11px">Its run gets the event's message (e.g. the first bot's answer) plus this note. Loops are stopped automatically.</div></div>
+   <div class="pop-foot">${foot}</div>`;
+}
+function wireOpts() {
+  pop.querySelectorAll(".opt").forEach((o) => o.addEventListener("click", () => {
+    pop.querySelectorAll(".opt").forEach((x) => x.classList.remove("on")); o.classList.add("on"); o.querySelector("input").checked = true;
+  }));
+}
+const chosenEv = () => pop.querySelector(".opt.on")?.dataset.ev;
+function openNew(from, to) {
+  placePop(to);
+  pop.innerHTML = popHtml({ title: `Run ${byId(to).name}`, sub: `after ${byId(from).name}`, from, chosen: "completed", note: "",
+    foot: `<button class="btn" id="cancelBtn">Cancel</button><button class="btn primary" id="saveBtn">Add trigger</button>` });
+  pop.classList.add("open"); wireOpts();
+  pop.querySelector("#cancelBtn").onclick = closePop;
+  pop.querySelector("#saveBtn").onclick = () => {
+    edges.push({ from, to, event: chosenEv(), note: pop.querySelector("#noteBox").value });
+    selected = to; closePop(); render();
+  };
+}
+function openEdit(i, ev) {
+  const e = edges[i]; placePop(e.to);
+  pop.innerHTML = popHtml({ title: `${byId(e.to).name}`, sub: `runs after ${byId(e.from).name}`, from: e.from, chosen: e.event, note: e.note,
+    foot: `<button class="btn" id="rmBtn" style="color:var(--red);margin-right:auto"><i class="fa-regular fa-trash-can"></i> Remove</button><button class="btn" id="cancelBtn">Cancel</button><button class="btn primary" id="saveBtn">Save</button>` });
+  pop.classList.add("open"); wireOpts();
+  pop.querySelector("#cancelBtn").onclick = closePop;
+  pop.querySelector("#rmBtn").onclick = () => { edges.splice(i, 1); closePop(); render(); };
+  pop.querySelector("#saveBtn").onclick = () => { e.event = chosenEv(); e.note = pop.querySelector("#noteBox").value; closePop(); render(); };
+}
+function closePop() { pop.classList.remove("open"); }
+canvas.addEventListener("click", (e) => { if (justDropped) return; if (!e.target.closest(".pop") && !e.target.closest(".node") && !e.target.closest("[data-edge]")) closePop(); });
+
+let drawerOpen = false, drawerTab = "conversation";
+function openDrawer(id, tab) {
+  drawerOpen = true; drawerTab = tab; const b = byId(id); const d = document.getElementById("drawer");
+  const tabs = [["conversation", b.lead ? "Ask the lead" : "Conversation"], ["activity", "Activity"], ["settings", "Settings"]];
+  const ins = edges.filter((e) => e.to === b.id);
+  const body = {
+    conversation: `<div class="bubble me">${b.lead ? "Which bots handle images?" : "Run on the spring catalog."}</div>
+      <div class="bubble bot">${b.lead ? "Product Image Checker checks image URLs; Stock Photo Matcher finds replacements." : "Done — 1,240 records read, 37 missing an image."}</div>
+      <div class="field" style="margin-top:auto"><div class="v muted">Message ${b.name}…</div></div>`,
+    activity: `${b.approval ? '<div class="act" style="border-color:var(--amber)"><i class="fa-solid fa-hand" style="color:var(--amber)"></i><div><b>Needs approval</b><div class="muted">wants to call algolia.search_index · <a href="#">Allow</a> · <a href="#">Deny</a></div></div></div>' : ""}
+      <div class="act"><i class="fa-solid fa-check" style="color:var(--green)"></i><div><b>Completed</b> · 10:42<div class="muted">${ins.length ? "Triggered by " + byId(ins[0].from).name + " (" + eventLabel(ins[0].event) + ")" : "Run manually"}</div></div></div>
+      <div class="act"><i class="fa-solid fa-xmark" style="color:var(--red)"></i><div><b>Failed</b> · 09:15<div class="muted">fetch_image: HTTP 404</div></div></div>`,
+    settings: `<div class="field"><span class="label">Name</span><div class="v">${b.name}</div></div>
+      <div class="field"><span class="label">Instructions</span><div class="v" style="min-height:70px">…</div></div>
+      <div class="field"><span class="label">Providers</span><div class="v">${(b.tools || []).map((t) => t[0]).join(", ") || "—"}</div></div>
+      <div class="field"><span class="label">Runs after</span><div class="v">${ins.map((e) => byId(e.from).name + " · " + eventLabel(e.event)).join("<br>") || "Nothing — manual or schedule"}</div>
+      <span class="muted" style="font-size:11px">Same triggers as the lines on the diagram.</span></div>`,
+  }[tab];
+  d.innerHTML = `<div class="dr-head">${avatar(b, 36)}<div style="flex:1;min-width:0"><div style="font-weight:600;color:var(--strong)">${b.name}</div><div class="muted" style="font-size:12px">${subOf(b)}</div></div><button class="btn" id="drClose"><i class="fa-solid fa-xmark"></i></button></div>
+    <div class="dr-tabs">${tabs.map(([k, l]) => `<button data-tab="${k}" class="${k === tab ? "on" : ""}">${l}</button>`).join("")}</div>
+    <div class="dr-body">${body}</div>`;
+  d.classList.add("open"); document.querySelector(".layout").classList.add("wide"); layoutOnly();
+  d.querySelector("#drClose").onclick = () => { drawerOpen = false; d.classList.remove("open"); document.querySelector(".layout").classList.remove("wide"); render(); };
+  d.querySelectorAll("[data-tab]").forEach((x) => (x.onclick = () => openDrawer(id, x.dataset.tab)));
+}
+document.getElementById("viewSeg").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  document.querySelectorAll("#viewSeg button").forEach((x) => x.classList.toggle("on", x === b));
+  const list = b.dataset.v === "list";
+  document.getElementById("diagramView").style.display = list ? "none" : "";
+  document.getElementById("listView").classList.toggle("on", list);
+});
+document.getElementById("themeBtn").onclick = () => {
+  const r = document.documentElement; r.dataset.theme = r.dataset.theme === "dark" ? "light" : "dark";
+};
+render();
+</script>
+</body>
+</html>
