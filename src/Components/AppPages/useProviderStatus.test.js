@@ -2,10 +2,12 @@ import React from "react";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { AppContext } from "../../Context/App/AppContext";
 
+const mockConfig = jest.fn((name) =>
+  name === "SlackWidget" ? { providers: [{ type: "slack" }] } : null,
+);
 jest.mock("../../ComponentManager", () => ({
   ComponentManager: {
-    config: (name) =>
-      name === "SlackWidget" ? { providers: [{ type: "slack" }] } : null,
+    config: (...args) => mockConfig(...args),
   },
 }));
 
@@ -152,6 +154,32 @@ describe("useProviderStatus (app-navigation NAV-007)", () => {
       window.dispatchEvent(new Event("focus"));
     });
     expect(dashApi.mcpGetServerStatus).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe("useProviderStatus — work out widget bindings once (perf)", () => {
+  it("looks each widget up once, however many providers ask 'used by'", async () => {
+    setupBots();
+    const stableDashApi = makeDashApi();
+    const { result } = renderHook(() =>
+      useProviderStatus({
+        providers,
+        workspaces,
+        dashApi: stableDashApi,
+        catalog: [],
+      }),
+    );
+    await waitFor(() =>
+      expect(result.current.usageOf("Slack").bots).toHaveLength(1),
+    );
+    mockConfig.mockClear();
+    for (const name of Object.keys(providers)) result.current.usageOf(name);
+    for (const name of Object.keys(providers)) result.current.usageOf(name);
+    // Cached from the first lookup above: no further widget lookups.
+    expect(mockConfig).not.toHaveBeenCalled();
+    expect(result.current.usageOf("Slack").dashboards).toEqual([
+      { workspaceId: 1, workspaceName: "Kitchen Sink", widgets: 1 },
+    ]);
   });
 });
 

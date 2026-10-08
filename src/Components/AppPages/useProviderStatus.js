@@ -93,15 +93,26 @@ export function useProviderStatus({
     };
   }, []);
 
-  const bindingsFor = useCallback(
-    (workspace) =>
-      getAllProviderBindings({
-        workspace,
-        appProviders: providers,
-        getWidgetRequirements,
-      }),
-    [providers],
-  );
+  // Each dashboard's widget → provider bindings, worked out once and reused
+  // for every provider's "used by" (it walks every widget; per provider it
+  // made the Providers page take seconds). Recomputed when providers or
+  // dashboards change.
+  const bindingsFor = useMemo(() => {
+    const cache = new Map();
+    return (workspace) => {
+      if (!cache.has(workspace)) {
+        cache.set(
+          workspace,
+          getAllProviderBindings({
+            workspace,
+            appProviders: providers,
+            getWidgetRequirements,
+          }),
+        );
+      }
+      return cache.get(workspace);
+    };
+  }, [providers, workspaces]);
 
   return useMemo(
     () => ({

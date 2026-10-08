@@ -198,3 +198,64 @@ describe("ComponentManager.config — identity fields surfaced to consumers", ()
     expect(ComponentManager.config("PipelineKanban")).toBe(null);
   });
 });
+
+describe("ComponentManager.config — copies only the requested widget (perf)", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    freshComponentMap({});
+  });
+
+  const widget = {
+    component: stubComponent,
+    type: "widget",
+    name: "Clock",
+    userConfig: { tz: { type: "text", defaultValue: "UTC" } },
+    providers: [{ type: "algolia" }],
+    events: ["tick"],
+  };
+
+  test("doesn't deep-copy the whole registry (no map() call)", () => {
+    freshComponentMap({ "trops.clock.Clock": widget });
+    const spy = jest.spyOn(ComponentManager, "map");
+    const cfg = ComponentManager.config("trops.clock.Clock");
+    expect(spy).not.toHaveBeenCalled();
+    expect(cfg.id).toBe("trops.clock.Clock");
+    expect(cfg.providers).toEqual([{ type: "algolia" }]);
+    expect(cfg.events).toEqual(["tick"]);
+    expect(cfg.userPrefs).toEqual({ tz: "UTC" });
+  });
+
+  test("the result is a copy: changing it leaves the registry alone", () => {
+    freshComponentMap({ "trops.clock.Clock": widget });
+    const cfg = ComponentManager.config("trops.clock.Clock");
+    cfg.userConfig.tz.defaultValue = "changed";
+    cfg.providers.push({ type: "x" });
+    expect(widget.userConfig.tz.defaultValue).toBe("UTC");
+    expect(widget.providers).toEqual([{ type: "algolia" }]);
+    // The registered React component is never stripped from the registry.
+    expect(ComponentManager.componentMap()["trops.clock.Clock"].component).toBe(
+      stubComponent,
+    );
+  });
+
+  test("built-in containers still resolve, with the same shape as map()", () => {
+    freshComponentMap({});
+    const grid = ComponentManager.config("LayoutGridContainer");
+    expect(grid).toMatchObject({
+      id: "LayoutGridContainer",
+      type: "grid",
+      name: "LayoutGridContainer",
+      canHaveChildren: true,
+      workspace: "layout",
+    });
+    const container = ComponentManager.config("Container");
+    expect(container).toMatchObject({
+      id: "Container",
+      type: "workspace",
+      canHaveChildren: true,
+    });
+    const fromMap = ComponentManager.map();
+    expect(fromMap.LayoutGridContainer.type).toBe("grid");
+    expect(fromMap.Container.type).toBe("workspace");
+  });
+});
