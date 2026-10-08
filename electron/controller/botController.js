@@ -103,6 +103,7 @@ const { resolveBotProviderId } = require("../bots/runProvider");
 const {
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
+  BOT_APPROVALS_CHANGED,
   BOT_BUDGET_ALERT,
   BOT_RUN_ACTIVE,
   BOT_LIST_CHANGED,
@@ -155,6 +156,11 @@ const botController = {
     // the renderer for the Activity Manager queue (Slice 7 UI).
     const approvals = new ApprovalRegistry();
     this._approvals = approvals;
+    // Every change to the queue (answered anywhere, denied, timed out) goes
+    // to every window, so no copy keeps showing an answered approval.
+    approvals.onChange((list) =>
+      this._broadcast(BOT_APPROVALS_CHANGED, { approvals: list }),
+    );
     const approvalsForRunner = {
       create: (request) => {
         const res = approvals.create(request);

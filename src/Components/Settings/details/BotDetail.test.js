@@ -614,6 +614,42 @@ describe("BotDetail (edit)", () => {
     ]);
   });
 
+  it("saving keeps changes made elsewhere since the form opened (only edited fields win)", async () => {
+    // The form opened on Anthropic; since then the provider was switched to
+    // the CLI elsewhere and a trigger was added on the team diagram.
+    window.mainApi = {
+      bots: {
+        get: jest.fn().mockResolvedValue({
+          ...bot,
+          provider: "claude-code",
+          subscriptions: [{ eventType: "bot:local/x[b2].completed" }],
+        }),
+      },
+    };
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail
+        bot={{ ...bot, subscriptions: [] }}
+        providers={{}}
+        onSave={onSave}
+        onDelete={jest.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "do it better" },
+    });
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    const saved = onSave.mock.calls[0][0];
+    expect(window.mainApi.bots.get).toHaveBeenCalledWith("bot_1");
+    expect(saved.instructions).toBe("do it better");
+    expect(saved.provider).toBe("claude-code");
+    expect(saved.subscriptions).toEqual([
+      { eventType: "bot:local/x[b2].completed" },
+    ]);
+    delete window.mainApi;
+  });
+
   it("shows a trigger's note (set on the team diagram, TEAM-014)", () => {
     render(
       <BotDetail

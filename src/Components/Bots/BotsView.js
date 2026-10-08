@@ -344,21 +344,35 @@ export const BotsView = ({
   }) => {
     const bots = api();
     const source = findBot(sourceId);
-    const target = findBot(targetId);
+    const target = await latestBot(targetId);
     if (!bots || !source || !target) throw new Error("bot not found");
     const next =
       mode === "edit"
         ? updateTrigger(target, oldEventType, source, event, label, note)
         : addTrigger(target, source, event, label, note);
-    await bots.save(next);
+    // Only the triggers change — the rest of the bot stays as saved.
+    await bots.save({ id: target.id, subscriptions: next.subscriptions });
     afterChange();
   };
   const removeTriggerFrom = async ({ targetId, eventType }) => {
     const bots = api();
-    const target = findBot(targetId);
+    const target = await latestBot(targetId);
     if (!bots || !target) throw new Error("bot not found");
-    await bots.save(removeTrigger(target, eventType));
+    await bots.save({
+      id: target.id,
+      subscriptions: removeTrigger(target, eventType).subscriptions,
+    });
     afterChange();
+  };
+  // The bot as saved right now (the view's copy can be behind a save made
+  // elsewhere); falls back to the view's copy.
+  const latestBot = async (id) => {
+    const bots = api();
+    if (bots && bots.get) {
+      const fresh = await Promise.resolve(bots.get(id)).catch(() => null);
+      if (fresh) return fresh;
+    }
+    return findBot(id);
   };
 
   const status = selected && team ? team.statusOf(selected.id) : "Idle";

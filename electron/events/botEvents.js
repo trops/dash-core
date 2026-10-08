@@ -62,6 +62,10 @@ const BOTS_BIND_WIDGET = "bots-bind-widget";
 // --- Main → Renderer (send) ---
 const BOT_STREAM = "bot-stream"; // { botId, event: BotEvent }
 const BOT_APPROVAL_PENDING = "bot-approval-pending"; // { id, request }
+// The whole pending list, after any change (created, answered, denied, timed
+// out) — windows replace their copy, so answered approvals disappear
+// everywhere. { approvals: [{ id, request, createdAt }] }
+const BOT_APPROVALS_CHANGED = "bot-approvals-changed";
 const BOT_BUDGET_ALERT = "bot-budget-alert"; // { botId, cost, estimated, status }
 const BOT_RUN_ACTIVE = "bot-run-active"; // { count, running: string[] }
 // A bot was created, edited or deleted (anywhere) — refresh team lists.
@@ -115,6 +119,7 @@ module.exports = {
   BOTS_BIND_WIDGET,
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
+  BOT_APPROVALS_CHANGED,
   BOT_BUDGET_ALERT,
   BOT_RUN_ACTIVE,
   BOT_LIST_CHANGED,

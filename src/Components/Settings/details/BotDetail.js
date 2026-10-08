@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useContext } from "react";
+import React, { useState, useEffect, useMemo, useContext, useRef } from "react";
+import { keepLatest } from "./botFormMerge";
 import {
   Button,
   Button3,
@@ -557,11 +558,42 @@ export const BotDetail = ({
   const handleSave = async () => {
     setError(null);
     setJustSaved(false);
+    const edited = formDefinition();
+    setSaving(true);
+    try {
+      // Only what this form changed is saved over the latest copy — a
+      // provider switched elsewhere or a trigger added on the team diagram
+      // since the form opened isn't put back (keepLatest).
+      let definition = edited;
+      const api = getMainApi();
+      if (bot?.id && api?.bots?.get) {
+        const latest = await Promise.resolve(api.bots.get(bot.id)).catch(
+          () => null,
+        );
+        definition = keepLatest(edited, openedRef.current, latest);
+      }
+      if (isCreating && canShowOnDashboard) {
+        await onSave(definition, { showOnDashboard });
+      } else {
+        await onSave(definition);
+      }
+      openedRef.current = edited;
+      setBaseline(snapshot);
+      setJustSaved(true);
+    } catch (e) {
+      setError((e && e.message) || "Failed to save bot");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // The definition this form would save, from its fields.
+  function formDefinition() {
     const cron = advanced
       ? advancedCron.trim()
       : buildCron({ frequency, time, dayOfWeek, dayOfMonth });
     const schedules = cron ? [{ cron, prompt: schedulePrompt.trim() }] : [];
-    const definition = {
+    return {
       ...(bot?.id ? { id: bot.id } : {}),
       name: name.trim(),
       instructions: instructions.trim(),
@@ -580,21 +612,12 @@ export const BotDetail = ({
       schedules,
       subscriptions,
     };
-    setSaving(true);
-    try {
-      if (isCreating && canShowOnDashboard) {
-        await onSave(definition, { showOnDashboard });
-      } else {
-        await onSave(definition);
-      }
-      setBaseline(snapshot);
-      setJustSaved(true);
-    } catch (e) {
-      setError((e && e.message) || "Failed to save bot");
-    } finally {
-      setSaving(false);
-    }
-  };
+  }
+
+  // The definition as the form opened (then as last saved) — what keepLatest
+  // compares against to tell which fields this form changed.
+  const openedRef = useRef(null);
+  if (openedRef.current === null) openedRef.current = formDefinition();
 
   const scheduleOn = advanced || frequency !== "off";
 

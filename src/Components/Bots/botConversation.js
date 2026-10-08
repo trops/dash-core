@@ -29,13 +29,38 @@ const sameId = (id) => id;
 export function triggerLabel(r, nameOf = sameId) {
   if (!r) return null;
   if (r.trigger === "schedule") return "Scheduled run";
+  // A run streaming in that this window didn't start (Run now, a trigger…).
+  if (r.trigger === "running") return "Running now";
   if (r.trigger !== "event") return null;
   const src = r.source;
   if (!src || !(src.label || src.eventType)) return "Triggered by an event";
-  let text = `Triggered by ${src.label || src.eventType}`;
+  let text =
+    botEventText(src, nameOf) || `Triggered by ${src.label || src.eventType}`;
   const chain = Array.isArray(src.chain) ? src.chain : [];
   if (chain.length > 1) text += ` · ${chain.map(nameOf).join(" → ")}`;
   return text;
+}
+
+const BOT_EVENT_RE = /^bot:.+\[([^\]]+)\]\.(.+)$/;
+
+/**
+ * "Started after Schema Planner completed" for a bot event — what the other
+ * bot did, so it doesn't read as this run's own status. Null otherwise.
+ */
+function botEventText(src, nameOf) {
+  const m = String(src.eventType || "").match(BOT_EVENT_RE);
+  if (!m) return null;
+  const [, botId, event] = m;
+  const named = nameOf(botId);
+  const who =
+    (named && named !== botId ? named : null) ||
+    String(src.label || "").split(" › ")[0] ||
+    "another bot";
+  const did =
+    event === "completed" || event === "failed"
+      ? event
+      : `used ${String(event).split(".").slice(2).join(".") || event}`;
+  return `Started after ${who} ${did}`;
 }
 
 // The bot's AI model can't run: no model chosen, or its key, credit or quota.
@@ -92,7 +117,10 @@ export function errorNextSteps(text, { isLead = false } = {}) {
   return steps;
 }
 
-function turnsForRun(r, { pending = false, nameOf = sameId } = {}) {
+function turnsForRun(
+  r,
+  { pending = false, stale = false, nameOf = sameId } = {},
+) {
   const turns = [];
   const at = r.startedAt || r.at || null;
   const label = triggerLabel(r, nameOf);
@@ -108,9 +136,14 @@ function turnsForRun(r, { pending = false, nameOf = sameId } = {}) {
     }
     // Typed by the user: a manual run, a reply, or a question to the lead.
     turns.push({ kind: "user", text: r.prompt, at });
+  } else {
+    // Started with no prompt (Run now) — still its own, labelled run.
+    turns.push({ kind: "system", text: "Run now", at });
   }
   if (Array.isArray(r.toolCalls) && r.toolCalls.length) {
-    turns.push({ kind: "tools", calls: r.toolCalls, at });
+    // Only a run in progress has tool calls still going; a finished run's
+    // unanswered ones didn't finish (no spinner).
+    turns.push({ kind: "tools", calls: r.toolCalls, at, live: pending });
   }
   if (r.status === "failed" && r.error) {
     // The prompt rides along so "Run again" can repeat the run.
@@ -119,6 +152,9 @@ function turnsForRun(r, { pending = false, nameOf = sameId } = {}) {
       text: readableError(r.error),
       prompt: r.prompt || "",
       at: r.endedAt || at,
+      // A later run exists — this failure is history (no Run again / Change
+      // AI model; the bot may already be fixed).
+      stale,
     });
   }
   if (r.outputUnavailable) {
@@ -159,7 +195,8 @@ export function buildConversation(runs, { live = null, nameOf = sameId } = {}) {
         at: r.startedAt || r.at || null,
       });
     }
-    turns.push(...turnsForRun(r, { nameOf }));
+    const later = i < list.length - 1 || !!live;
+    turns.push(...turnsForRun(r, { nameOf, stale: later }));
   });
   if (live) {
     if (list.length && !live.continued) {
@@ -173,7 +210,7 @@ export function buildConversation(runs, { live = null, nameOf = sameId } = {}) {
           toolCalls: live.toolCalls || [],
           text: live.text || "",
         },
-        { pending: true },
+        { pending: true, nameOf },
       ),
     );
   }

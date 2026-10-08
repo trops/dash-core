@@ -170,7 +170,13 @@ describe("BotsView — team diagram (TEAM-014 slice 1)", () => {
   });
 
   it("dragging one bot onto another saves a trigger on the second (with the note)", async () => {
-    const { api } = setup({ mode: null });
+    // The saved bot is newer than the view's copy (a trigger added elsewhere).
+    const get = jest.fn().mockResolvedValue({
+      ...crm,
+      provider: "claude-code",
+      subscriptions: [{ eventType: "Notepad[1].saved" }],
+    });
+    const { api } = setup({ mode: null, apiOver: { get } });
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Drag to wire Inbox Watch" }),
     );
@@ -185,7 +191,11 @@ describe("BotsView — team diagram (TEAM-014 slice 1)", () => {
     await waitFor(() => expect(api.save).toHaveBeenCalled());
     const saved = api.save.mock.calls[0][0];
     expect(saved.id).toBe("b2");
+    // Only the triggers are sent, built on the latest saved copy.
+    expect(get).toHaveBeenCalledWith("b2");
+    expect(Object.keys(saved).sort()).toEqual(["id", "subscriptions"]);
     expect(saved.subscriptions).toEqual([
+      { eventType: "Notepad[1].saved" },
       expect.objectContaining({
         eventType: "bot:local/inbox-watch[b1].completed",
         note: "Sync what it found.",

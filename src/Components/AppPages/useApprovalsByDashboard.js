@@ -48,6 +48,8 @@ export function useApprovalsByDashboard() {
     if (!b) return undefined;
     const ids = [];
     if (b.onApprovalPending) ids.push(b.onApprovalPending(() => reload()));
+    // Answered / denied / timed out anywhere → re-read.
+    if (b.onApprovalsChanged) ids.push(b.onApprovalsChanged(() => reload()));
     if (b.onRunActive) ids.push(b.onRunActive(() => reload()));
     if (b.onListChanged) ids.push(b.onListChanged(() => reload()));
     return () => {
