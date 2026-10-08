@@ -179,6 +179,9 @@ export const BotDetail = ({
   // Optional "Discard changes" (the Bots view's inline Settings tab): the
   // host resets the form; enabled only with unsaved changes.
   onDiscard = null,
+  // A lead's draft being reviewed: "Discard draft" beside Create (the host
+  // asks first and removes the draft).
+  onDiscardDraft = null,
   // A team lead's suggested providers/tools for a drafted bot (TEAM-005):
   // [{ provider, tools, toolsChecked }]. Nothing is selected until the user
   // accepts a suggestion (or ticks it themselves).
@@ -1049,6 +1052,14 @@ export const BotDetail = ({
           ) : null}
           {isCreating && onCancel ? (
             <Button title="Cancel" onClick={onCancel} size="sm" />
+          ) : null}
+          {isCreating && onDiscardDraft ? (
+            <Button
+              title="Discard draft"
+              onClick={onDiscardDraft}
+              size="sm"
+              disabled={saving}
+            />
           ) : null}
           {onDiscard && !isCreating ? (
             <Button

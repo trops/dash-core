@@ -585,15 +585,107 @@ describe("BotsView — lead drafts (TEAM-005)", () => {
     await waitFor(() => expect(team.dismissDraft).toHaveBeenCalledWith("d1"));
   });
 
-  it("Discard draft removes it and returns to the lead", async () => {
+  const confirmDiscard = () =>
+    fireEvent.click(
+      within(screen.getByTestId("confirmation-modal")).getByText("Discard"),
+    );
+
+  it("Discard draft (in the draft's banner) asks, then removes it and returns to the lead", async () => {
     const team = renderWithDraft();
     fireEvent.click(within(teamList()).getByText("Morning Digest"));
-    fireEvent.click(screen.getByText("Discard draft"));
+    fireEvent.click(screen.getAllByText("Discard draft")[0]);
+    expect(team.dismissDraft).not.toHaveBeenCalled();
+    confirmDiscard();
     await waitFor(() => expect(team.dismissDraft).toHaveBeenCalledWith("d1"));
     // Back to the lead once the dismiss resolves.
     expect(
       await screen.findByRole("heading", { name: "Kitchen Lead" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("BotsView — discarding a draft you don't want", () => {
+  const draft = {
+    id: "d1",
+    workspaceId: "7",
+    definition: {
+      name: "Morning Digest",
+      instructions: "Summarise urgent mail.",
+      workspaceId: "7",
+      mcpServers: [],
+      toolSelections: {},
+      approvalPolicy: "ask",
+      schedules: [],
+      subscriptions: [],
+    },
+    suggestions: [],
+    missing: [],
+    dropped: [],
+    duplicateOf: null,
+  };
+  function renderWithDraft(mode = "list") {
+    setup({ mode });
+    document.body.innerHTML = "";
+    const team = makeTeam({ drafts: [draft], dismissDraft: jest.fn() });
+    render(
+      <AppContext.Provider value={{ providers: {} }}>
+        <BotsView
+          workspace={workspace}
+          workspaces={[workspace]}
+          team={team}
+          narrow={false}
+        />
+      </AppContext.Provider>,
+    );
+    return team;
+  }
+  const confirm = () =>
+    fireEvent.click(
+      within(screen.getByTestId("confirmation-modal")).getByText("Discard"),
+    );
+
+  it("each draft row has a remove button that asks first (List)", async () => {
+    const team = renderWithDraft("list");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Discard draft Morning Digest" }),
+    );
+    expect(screen.getByTestId("confirmation-modal")).toHaveTextContent(
+      "Morning Digest",
+    );
+    confirm();
+    await waitFor(() => expect(team.dismissDraft).toHaveBeenCalledWith("d1"));
+  });
+
+  it("…and in the Diagram's drafts list", async () => {
+    const team = renderWithDraft(null);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Discard draft Morning Digest" }),
+    );
+    confirm();
+    await waitFor(() => expect(team.dismissDraft).toHaveBeenCalledWith("d1"));
+  });
+
+  it("an open draft's form has Discard draft next to Create", async () => {
+    const team = renderWithDraft("list");
+    fireEvent.click(within(teamList()).getByText("Morning Digest"));
+    expect(screen.getByText("Create")).toBeInTheDocument();
+    // The footer one (the banner has a link too).
+    const buttons = screen.getAllByRole("button", { name: "Discard draft" });
+    expect(buttons.length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(buttons[buttons.length - 1]);
+    confirm();
+    await waitFor(() => expect(team.dismissDraft).toHaveBeenCalledWith("d1"));
+  });
+
+  it("Cancel keeps the draft", () => {
+    const team = renderWithDraft("list");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Discard draft Morning Digest" }),
+    );
+    fireEvent.click(
+      within(screen.getByTestId("confirmation-modal")).getByText("Keep draft"),
+    );
+    expect(team.dismissDraft).not.toHaveBeenCalled();
   });
 });
 
