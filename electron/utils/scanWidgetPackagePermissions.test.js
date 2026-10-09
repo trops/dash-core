@@ -82,6 +82,27 @@ test("mergePermissions: drops raw template names from older scans", () => {
   ]);
 });
 
+test("scanFileForMcpUsage: compiled templates (.concat) become wildcards", () => {
+  const code = [
+    'useMcpProvider("algolia");',
+    'callTool("algolia_search_".concat(selectedIndex), {});',
+    'callTool("list_indices", {});',
+  ].join("\n");
+  const out = scanFileForMcpUsage(code);
+  assert.deepStrictEqual(out.tools, ["algolia_search_*", "list_indices"]);
+});
+
+test("mergePermissions: drops plain names a scanned wildcard covers", () => {
+  const merged = mergePermissions(
+    { algolia: { tools: ["algolia_search_", "list_indices"] } },
+    { algolia: { tools: ["algolia_search_*"] } },
+  );
+  assert.deepStrictEqual(merged.algolia.tools, [
+    "algolia_search_*",
+    "list_indices",
+  ]);
+});
+
 test("scanFileForMcpUsage: line comments stripped", () => {
   const code = `
     useMcpProvider("github");

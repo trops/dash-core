@@ -35,7 +35,11 @@
 
 const fs = require("fs");
 const path = require("path");
-const { toolPatternFromTemplate } = require("../mcp/toolPattern");
+const {
+  toolPatternFromTemplate,
+  isToolPattern,
+  toolListAllows,
+} = require("../mcp/toolPattern");
 
 const SOURCE_EXTS = new Set([".js", ".jsx", ".ts", ".tsx"]);
 const SKIP_DIRS = new Set([
@@ -68,18 +72,20 @@ function scanFileForMcpUsage(code) {
   if (typeof code !== "string" || !code) return { providers: [], tools: [] };
   const stripped = _stripLineComments(code);
   const providerPattern = /useMcpProvider\s*\(\s*["'`]([^"'`]+)["'`]/g;
-  const callPattern = /callTool\s*\(\s*["'`]([^"'`]+)["'`]/g;
-  return {
-    providers: Array.from(new Set(_captureAll(stripped, providerPattern))),
+  // Group 2 is the literal; group 3 is set when the literal is followed by
+  // `.concat(` — the compiled form of a template (`"a_".concat(x)`).
+  const callPattern = /callTool\s*\(\s*(["'`])([^"'`]+)\1(\s*\.concat\s*\()?/g;
+  const tools = [];
+  for (const m of stripped.matchAll(callPattern)) {
     // Template names (`algolia_search_${index}`) become wildcard patterns
     // (`algolia_search_*`); ones too vague to pattern are dropped.
-    tools: Array.from(
-      new Set(
-        _captureAll(stripped, callPattern)
-          .map(toolPatternFromTemplate)
-          .filter(Boolean),
-      ),
-    ),
+    const raw = m[3] ? m[2] + "${}" : m[2];
+    const tool = toolPatternFromTemplate(raw);
+    if (tool) tools.push(tool);
+  }
+  return {
+    providers: Array.from(new Set(_captureAll(stripped, providerPattern))),
+    tools: Array.from(new Set(tools)),
   };
 }
 
@@ -296,7 +302,12 @@ function mergePermissions(human, scanned) {
       } else {
         const existing = new Set(out[name].tools || []);
         for (const t of perms.tools || []) existing.add(t);
-        out[name].tools = Array.from(existing).sort();
+        // Drop plain names a scanned wildcard already covers, e.g. the
+        // "algolia_search_" older scans read from compiled bundles.
+        const wildcards = (perms.tools || []).filter(isToolPattern);
+        out[name].tools = Array.from(existing)
+          .filter((t) => isToolPattern(t) || !toolListAllows(wildcards, t))
+          .sort();
       }
     }
   }
