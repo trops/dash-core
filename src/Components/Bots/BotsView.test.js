@@ -155,6 +155,78 @@ describe("BotsView — team diagram (TEAM-014 slice 1)", () => {
     ).toBeInTheDocument();
   });
 
+  describe("the bot panel beside the diagram is resizable", () => {
+    // The view's content box: 1200px wide → 1184px after the 16px gap,
+    // so the panel starts at half (592px) and the diagram keeps ≥ 320px.
+    let RealRO;
+    beforeEach(() => {
+      RealRO = global.ResizeObserver;
+      global.ResizeObserver = class {
+        constructor(cb) {
+          this.cb = cb;
+        }
+        observe() {
+          this.cb([{ contentRect: { width: 1200 } }]);
+        }
+        disconnect() {}
+      };
+    });
+    afterEach(() => {
+      global.ResizeObserver = RealRO;
+    });
+
+    const openActivity = () => {
+      fireEvent.click(screen.getByRole("button", { name: "Inbox Watch" }));
+      const side = screen.getByRole("complementary", { name: "Selected bot" });
+      fireEvent.click(within(side).getByRole("button", { name: "Activity" }));
+    };
+    const panel = () => screen.getByRole("region", { name: "Selected bot" });
+    const handle = () =>
+      screen.getByRole("separator", { name: "Resize bot panel" });
+
+    it("has a handle; the panel starts at half and steps with the arrow keys", () => {
+      setup({ mode: null });
+      openActivity();
+      expect(panel().style.width).toBe("592px");
+      fireEvent.keyDown(handle(), { key: "ArrowLeft" });
+      expect(panel().style.width).toBe("608px");
+    });
+
+    it("the width is remembered; double-click goes back to half", () => {
+      setup({ mode: null });
+      openActivity();
+      fireEvent.keyDown(handle(), { key: "ArrowLeft" });
+      expect(window.localStorage.getItem("dash:botsView:panelWidth")).toBe(
+        "608",
+      );
+      fireEvent.doubleClick(handle());
+      expect(panel().style.width).toBe("592px");
+      expect(
+        window.localStorage.getItem("dash:botsView:panelWidth"),
+      ).toBeNull();
+    });
+
+    it("keeps the diagram at least 320px and the panel at least 360px", () => {
+      setup({ mode: null });
+      openActivity();
+      for (let i = 0; i < 60; i++) {
+        fireEvent.keyDown(handle(), { key: "ArrowLeft" });
+      }
+      expect(panel().style.width).toBe("864px"); // 1184 − 320
+      for (let i = 0; i < 60; i++) {
+        fireEvent.keyDown(handle(), { key: "ArrowRight" });
+      }
+      expect(panel().style.width).toBe("360px");
+    });
+
+    it("no handle in the List view", () => {
+      setup({ mode: "list" });
+      expect(
+        screen.queryByRole("separator", { name: "Resize bot panel" }),
+      ).toBeNull();
+    });
+  });
+
   it("+ Add bot opens the new-bot form beside the diagram", () => {
     setup({ mode: null });
     fireEvent.click(screen.getByRole("button", { name: "+ Add bot" }));

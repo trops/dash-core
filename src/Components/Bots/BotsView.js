@@ -12,10 +12,12 @@ import {
   Button3,
   ButtonIcon,
   ConfirmationModal,
+  ResizeHandle,
   SectionLabel,
   SegmentedControl,
   SelectInput,
   ThemeContext,
+  useResizableWidth,
 } from "@trops/dash-react";
 import { BotChat } from "./BotChat";
 import { BotAvatar } from "./BotAvatar";
@@ -89,6 +91,28 @@ function useNarrow(ref, forced) {
   return typeof forced === "boolean" ? forced : narrow;
 }
 
+/** The view's content width (px), or 0 until measured. */
+function useContentWidth(ref) {
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(([entry]) => {
+      setWidth(Math.round(entry.contentRect.width));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return width;
+}
+
+// The bot panel beside the diagram (TEAM-014): the user drags its edge.
+// Starts at half; the diagram keeps DIAGRAM_MIN, the panel PANEL_MIN.
+const PANEL_WIDTH_KEY = "dash:botsView:panelWidth";
+const PANEL_GAP = 16; // gap-4 between the diagram and the panel
+const PANEL_MIN = 360;
+const DIAGRAM_MIN = 320;
+
 const TABS = ["conversation", "activity", "settings"];
 
 // Diagram / List (TEAM-014), remembered per viewer. Storage can be blocked.
@@ -131,6 +155,15 @@ export const BotsView = ({
 
   const rootRef = useRef(null);
   const isNarrow = useNarrow(rootRef, narrow);
+  const contentWidth = useContentWidth(rootRef);
+  const panelRoom = Math.max(0, contentWidth - PANEL_GAP);
+  const { width: panelWidth, handleProps: panelHandle } = useResizableWidth({
+    defaultWidth: Math.round(panelRoom / 2),
+    min: PANEL_MIN,
+    max: panelRoom - DIAGRAM_MIN,
+    edge: "left",
+    storageKey: PANEL_WIDTH_KEY,
+  });
 
   const lead = team ? team.lead : null;
   const members = team ? team.members : [];
@@ -852,6 +885,9 @@ export const BotsView = ({
   // The diagram with the summary / bot detail beside it (wide windows only;
   // narrow windows keep the bot picker).
   const sideBySide = diagramMode && !isNarrow;
+  // Its width is the user's once the view has been measured and has room
+  // for both minimums.
+  const resizable = sideBySide && panelRoom >= PANEL_MIN + DIAGRAM_MIN;
 
   const picker = (
     <div className="flex flex-row items-end gap-2">
@@ -934,201 +970,220 @@ export const BotsView = ({
           />
         </aside>
       ) : (
-        <section
-          aria-label="Selected bot"
-          className={`${sideBySide ? "w-1/2 flex-shrink-0" : "flex-1"} min-w-0 min-h-0 flex flex-col rounded-xl border ${hairline}`}
-        >
-          <div className="flex flex-row items-start justify-between gap-4 px-5 pt-4">
-            <div className="min-w-0">
-              <div className="flex flex-row items-center gap-2">
-                <h2 className="text-lg font-semibold truncate">
-                  {selected
-                    ? selected.name
-                    : selectedDraft
-                      ? selectedDraft.definition.name
-                      : "New bot"}
-                </h2>
-                {selected ? (
-                  <span
-                    className={`flex flex-row items-center gap-1.5 text-xs ${muted}`}
-                  >
-                    <span className={`h-2 w-2 rounded-full ${statusDot}`} />
-                    {status}
-                  </span>
-                ) : null}
-              </div>
-              <div className={`text-sm ${muted}`}>
-                {selected
-                  ? isLead
-                    ? "Answers questions about this team · costs nothing until asked"
-                    : [
-                        (selected.mcpServers || []).join(", "),
-                        triggerSummary(selected),
-                        selected.installedFrom
-                          ? `From ${selected.installedFrom.package} v${selected.installedFrom.version}`
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")
-                  : `Joins the ${workspace ? workspace.name : "dashboard"} team`}
-              </div>
-            </div>
-            {selected ? (
-              <div className="flex flex-row items-center gap-2 flex-shrink-0">
-                {!isLead ? (
-                  <Button2 title="Run now" size="sm" onClick={runNow} />
-                ) : null}
-                {!isLead ? (
-                  <Button3
-                    title={status === "Paused" ? "Resume" : "Pause"}
-                    size="sm"
-                    onClick={togglePause}
-                  />
-                ) : null}
-                <Button3
-                  title="⋯"
-                  size="sm"
-                  ariaLabel="More actions"
-                  onClick={() => setMenuOpen((v) => !v)}
-                />
-                {sideBySide ? (
-                  <ButtonIcon
-                    icon="xmark"
-                    size="sm"
-                    ariaLabel="Back to summary"
-                    onClick={closeDetail}
-                  />
-                ) : null}
-              </div>
-            ) : sideBySide ? (
-              <ButtonIcon
-                icon="xmark"
-                size="sm"
-                ariaLabel="Close"
-                onClick={closeDetail}
-              />
-            ) : null}
-          </div>
-          {menuOpen && selected ? (
-            <div className="flex flex-row justify-end gap-2 px-5 pt-2">
-              {isLead ? (
-                <Button3
-                  title="Turn off lead"
-                  size="xs"
-                  onClick={turnOffLead}
-                />
-              ) : (
-                <>
-                  <Button3
-                    title="Show on dashboard"
-                    size="xs"
-                    onClick={() => showOnDashboard("results", selected)}
-                  />
-                  <Button3
-                    title="Publish bot…"
-                    size="xs"
-                    onClick={() => openPublish("bot")}
-                  />
-                  <Button3
-                    title="Remove from team"
-                    size="xs"
-                    onClick={removeFromTeam}
-                  />
-                  <Button3
-                    title="Delete"
-                    size="xs"
-                    onClick={() => setConfirmDelete(true)}
-                  />
-                </>
-              )}
+        <>
+          {resizable ? (
+            // Sits in the gap: the negative margins keep the gap 16px.
+            <div className="flex flex-row" style={{ margin: "0 -12px" }}>
+              <ResizeHandle {...panelHandle} ariaLabel="Resize bot panel" />
             </div>
           ) : null}
-
-          <div
-            role="tablist"
-            className={`flex flex-row gap-6 px-5 mt-3 border-b ${hairline}`}
+          <section
+            aria-label="Selected bot"
+            className={`${
+              resizable
+                ? "flex-shrink-0"
+                : sideBySide
+                  ? "w-1/2 flex-shrink-0"
+                  : "flex-1"
+            } min-w-0 min-h-0 flex flex-col rounded-xl border ${hairline}`}
+            style={resizable ? { width: panelWidth } : undefined}
           >
-            {tabs.map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={tab === id}
-                onClick={() => switchTab(id)}
-                className={`py-2.5 text-sm font-medium -mb-px border-b-2 ${
-                  tab === id
-                    ? "border-indigo-400"
-                    : `border-transparent ${muted}`
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex-1 min-h-0 flex flex-col">
-            {tab === "conversation" && selected ? (
-              <BotChat
-                bot={selected}
-                isLead={isLead}
-                approvals={team ? team.approvalsFor(selected.id) : []}
-                onApprove={team ? team.approve : null}
-                nameOf={nameOf}
-                onOpenSettings={onOpenSettings}
-                onChangeModel={() => switchTab("settings")}
-                drafts={isLead ? drafts : undefined}
-                onOpenDraft={isLead ? (id) => select(DRAFT_PREFIX + id) : null}
-              />
-            ) : null}
-            {tab === "activity" && selected ? (
-              <BotRunHistory
-                bot={selected}
-                isLead={isLead}
-                nameOf={nameOf}
-                onOpenSettings={onOpenSettings}
-                onChangeModel={() => switchTab("settings")}
-              />
-            ) : null}
-            {tab === "settings" ? (
-              <div className="flex-1 min-h-0 flex flex-col">
-                <BotDetail
-                  // The lead's banner scrolls with the form (not pinned).
-                  header={
-                    selectedDraft ? (
-                      <DraftBanner
-                        draft={selectedDraft}
-                        onDiscard={discardDraft}
-                        onOpenSettings={onOpenSettings}
-                      />
-                    ) : null
-                  }
-                  key={`${selected ? selected.id : selectedId || NEW_BOT}-${formKey}`}
-                  bot={
-                    selected ||
-                    (selectedDraft && selectedDraft.definition) ||
-                    null
-                  }
-                  isCreating={!selected}
-                  suggestions={selectedDraft ? selectedDraft.suggestions : null}
-                  gaps={selectedDraft ? selectedDraft.gaps : null}
-                  defaultWorkspaceId={workspace ? workspace.id : null}
-                  providers={providers}
-                  workspaces={workspaces}
-                  getWidgetConfig={getWidgetConfig}
-                  bots={allBots}
-                  onSave={saveBot}
-                  canShowOnDashboard={!!workspace}
-                  onDirtyChange={setDirty}
-                  onDiscardDraft={selectedDraft ? discardDraft : null}
-                  onDiscard={() => {
-                    setDirty(false);
-                    setFormKey((k) => k + 1);
-                  }}
+            <div className="flex flex-row items-start justify-between gap-4 px-5 pt-4">
+              <div className="min-w-0">
+                <div className="flex flex-row items-center gap-2">
+                  <h2 className="text-lg font-semibold truncate">
+                    {selected
+                      ? selected.name
+                      : selectedDraft
+                        ? selectedDraft.definition.name
+                        : "New bot"}
+                  </h2>
+                  {selected ? (
+                    <span
+                      className={`flex flex-row items-center gap-1.5 text-xs ${muted}`}
+                    >
+                      <span className={`h-2 w-2 rounded-full ${statusDot}`} />
+                      {status}
+                    </span>
+                  ) : null}
+                </div>
+                <div className={`text-sm ${muted}`}>
+                  {selected
+                    ? isLead
+                      ? "Answers questions about this team · costs nothing until asked"
+                      : [
+                          (selected.mcpServers || []).join(", "),
+                          triggerSummary(selected),
+                          selected.installedFrom
+                            ? `From ${selected.installedFrom.package} v${selected.installedFrom.version}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")
+                    : `Joins the ${workspace ? workspace.name : "dashboard"} team`}
+                </div>
+              </div>
+              {selected ? (
+                <div className="flex flex-row items-center gap-2 flex-shrink-0">
+                  {!isLead ? (
+                    <Button2 title="Run now" size="sm" onClick={runNow} />
+                  ) : null}
+                  {!isLead ? (
+                    <Button3
+                      title={status === "Paused" ? "Resume" : "Pause"}
+                      size="sm"
+                      onClick={togglePause}
+                    />
+                  ) : null}
+                  <Button3
+                    title="⋯"
+                    size="sm"
+                    ariaLabel="More actions"
+                    onClick={() => setMenuOpen((v) => !v)}
+                  />
+                  {sideBySide ? (
+                    <ButtonIcon
+                      icon="xmark"
+                      size="sm"
+                      ariaLabel="Back to summary"
+                      onClick={closeDetail}
+                    />
+                  ) : null}
+                </div>
+              ) : sideBySide ? (
+                <ButtonIcon
+                  icon="xmark"
+                  size="sm"
+                  ariaLabel="Close"
+                  onClick={closeDetail}
                 />
+              ) : null}
+            </div>
+            {menuOpen && selected ? (
+              <div className="flex flex-row justify-end gap-2 px-5 pt-2">
+                {isLead ? (
+                  <Button3
+                    title="Turn off lead"
+                    size="xs"
+                    onClick={turnOffLead}
+                  />
+                ) : (
+                  <>
+                    <Button3
+                      title="Show on dashboard"
+                      size="xs"
+                      onClick={() => showOnDashboard("results", selected)}
+                    />
+                    <Button3
+                      title="Publish bot…"
+                      size="xs"
+                      onClick={() => openPublish("bot")}
+                    />
+                    <Button3
+                      title="Remove from team"
+                      size="xs"
+                      onClick={removeFromTeam}
+                    />
+                    <Button3
+                      title="Delete"
+                      size="xs"
+                      onClick={() => setConfirmDelete(true)}
+                    />
+                  </>
+                )}
               </div>
             ) : null}
-          </div>
-        </section>
+
+            <div
+              role="tablist"
+              className={`flex flex-row gap-6 px-5 mt-3 border-b ${hairline}`}
+            >
+              {tabs.map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === id}
+                  onClick={() => switchTab(id)}
+                  className={`py-2.5 text-sm font-medium -mb-px border-b-2 ${
+                    tab === id
+                      ? "border-indigo-400"
+                      : `border-transparent ${muted}`
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1 min-h-0 flex flex-col">
+              {tab === "conversation" && selected ? (
+                <BotChat
+                  bot={selected}
+                  isLead={isLead}
+                  approvals={team ? team.approvalsFor(selected.id) : []}
+                  onApprove={team ? team.approve : null}
+                  nameOf={nameOf}
+                  onOpenSettings={onOpenSettings}
+                  onChangeModel={() => switchTab("settings")}
+                  drafts={isLead ? drafts : undefined}
+                  onOpenDraft={
+                    isLead ? (id) => select(DRAFT_PREFIX + id) : null
+                  }
+                />
+              ) : null}
+              {tab === "activity" && selected ? (
+                <BotRunHistory
+                  bot={selected}
+                  isLead={isLead}
+                  nameOf={nameOf}
+                  onOpenSettings={onOpenSettings}
+                  onChangeModel={() => switchTab("settings")}
+                />
+              ) : null}
+              {tab === "settings" ? (
+                <div className="flex-1 min-h-0 flex flex-col">
+                  <BotDetail
+                    // The lead's banner scrolls with the form (not pinned).
+                    header={
+                      selectedDraft ? (
+                        <DraftBanner
+                          draft={selectedDraft}
+                          onDiscard={discardDraft}
+                          onOpenSettings={onOpenSettings}
+                        />
+                      ) : null
+                    }
+                    key={`${selected ? selected.id : selectedId || NEW_BOT}-${formKey}`}
+                    bot={
+                      selected ||
+                      (selectedDraft && selectedDraft.definition) ||
+                      null
+                    }
+                    isCreating={!selected}
+                    suggestions={
+                      selectedDraft ? selectedDraft.suggestions : null
+                    }
+                    gaps={selectedDraft ? selectedDraft.gaps : null}
+                    defaultWorkspaceId={workspace ? workspace.id : null}
+                    providers={providers}
+                    workspaces={workspaces}
+                    getWidgetConfig={getWidgetConfig}
+                    bots={allBots}
+                    onSave={saveBot}
+                    canShowOnDashboard={!!workspace}
+                    onDirtyChange={setDirty}
+                    onDiscardDraft={selectedDraft ? discardDraft : null}
+                    onDiscard={() => {
+                      setDirty(false);
+                      setFormKey((k) => k + 1);
+                    }}
+                  />
+                </div>
+              ) : null}
+            </div>
+          </section>
+        </>
       )}
 
       <ConfirmationModal
