@@ -51,7 +51,11 @@ export function flattenPreflightLines(missing) {
     for (const tool of perms.tools || []) {
       lines.push({
         key: `mcp:${serverName}:tool:${tool}`,
-        label: `Call ${tool} on ${serverName}`,
+        // A wildcard ("algolia_search_*") covers tools named after the
+        // user's data, e.g. one search tool per Algolia index.
+        label: tool.includes("*")
+          ? `Call any ${tool} tool on ${serverName}`
+          : `Call ${tool} on ${serverName}`,
         apply: (acc) => {
           acc.servers = acc.servers || {};
           acc.servers[serverName] = acc.servers[serverName] || {

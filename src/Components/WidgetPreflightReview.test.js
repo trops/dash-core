@@ -81,6 +81,13 @@ describe("flattenPreflightLines", () => {
     expect(flattenPreflightLines(null)).toEqual([]);
     expect(flattenPreflightLines({})).toEqual([]);
   });
+
+  test("labels a wildcard tool as 'any … tool'", () => {
+    const [line] = flattenPreflightLines({
+      servers: { algolia: { tools: ["algolia_search_*"] } },
+    });
+    expect(line.label).toBe("Call any algolia_search_* tool on algolia");
+  });
 });
 
 describe("WidgetPreflightReview", () => {
