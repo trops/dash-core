@@ -488,3 +488,91 @@ describe("planTeamInstall — picking bots (TEAM-007 slice 3b)", () => {
     );
   });
 });
+
+describe("trigger notes travel with the team (TEAM-014)", () => {
+  const NOTE = "Read 3 records from the index the planner chose.";
+  const planner = {
+    id: "bot_p",
+    ref: "local/planner",
+    name: "Planner",
+    workspaceId: "ws1",
+    instructions: "Plan the schema.",
+    provider: "claude-code",
+    mcpServers: [],
+    schedules: [],
+    subscriptions: [],
+  };
+  const reader = {
+    id: "bot_r",
+    ref: "local/reader",
+    name: "Reader",
+    workspaceId: "ws1",
+    instructions: "Read records.",
+    provider: "claude-code",
+    mcpServers: [],
+    schedules: [],
+    subscriptions: [
+      {
+        eventType: "bot:local/planner[bot_p].completed",
+        source: {
+          kind: "bot",
+          ref: "local/planner",
+          instanceId: "bot_p",
+          event: "completed",
+        },
+        label: "Planner › Completed",
+        note: NOTE,
+      },
+    ],
+  };
+  const { manifest } = buildTeamManifest({
+    name: "Enrichment",
+    bots: [planner, reader],
+    providers: [],
+  });
+
+  it("export keeps the note on the wiring", () => {
+    assert.deepEqual(manifest.wiring, [
+      {
+        role: "reader",
+        on: { role: "planner", event: "completed" },
+        note: NOTE,
+      },
+    ]);
+  });
+
+  it("the file check keeps it, and rejects one that's too long", () => {
+    const ok = validateTeamManifest(manifest);
+    assert.equal(ok.valid, true);
+    assert.equal(ok.manifest.wiring[0].note, NOTE);
+    const bad = validateTeamManifest({
+      ...manifest,
+      wiring: [{ ...manifest.wiring[0], note: "x".repeat(2001) }],
+    });
+    assert.equal(bad.valid, false);
+  });
+
+  it("install puts it back on the new bot's trigger", () => {
+    const plan = planTeamInstall(validateTeamManifest(manifest).manifest, {
+      workspaceId: "ws2",
+      providers: [],
+    });
+    assert.equal(plan.wiring[0].note, NOTE);
+    const subs = wireTeam(plan.wiring, {
+      planner: { id: "bot_n1", ref: "local/planner", name: "Planner" },
+      reader: { id: "bot_n2", ref: "local/reader", name: "Reader" },
+    });
+    assert.equal(subs.reader[0].note, NOTE);
+  });
+
+  it("a trigger without a note stays without one", () => {
+    const subs = wireTeam(
+      [{ role: "reader", on: { role: "planner", event: "failed" } }],
+      {
+        planner: { id: "bot_n1", ref: "local/planner", name: "Planner" },
+        reader: { id: "bot_n2", ref: "local/reader", name: "Reader" },
+      },
+    );
+    assert.equal("note" in subs.reader[0], false);
+  });
+});

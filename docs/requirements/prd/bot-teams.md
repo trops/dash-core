@@ -436,6 +436,7 @@ answers from today's runs.
 - Picking one: `botRegistryInstall.downloadBotPackage` — the theme-install path (lookup → /download → storage URL), **`verifyDownloadedPackage` before the zip is opened**, 5 MB cap — then `botPackage.readPackageFiles` (`team.json` or `bot.json`, validated; a bot becomes a one-bot team). The main process keeps the checked copy under a preview id; `installFromRegistry` installs from it, never from a manifest the renderer sends.
 - Review (`TeamImportReview`): "From the registry: scope/name vX by author"; a **checkbox per bot** (a single bot has none). `planTeamInstall({ roles })` installs only the picked bots, wires only between them, and reports `droppedWiring` and `sharedMemory`; the review warns "X normally runs when Y completes — that trigger won't be set up" and "X may rely on team memory its teammates write".
 - Each registry-installed bot records `installedFrom { package, version, role }` (AC8), shown as "From scope/name vX" under its name. Local imports get the same checkboxes.
+- Trigger notes (TEAM-014 slice 2) travel with the team (2026-10-09): a wiring entry may carry `note` (text, ≤ 2000 characters, checked on import); export, install planning and `wireTeam` keep it, so an installed bot's trigger has the same note in its prompt. A trigger without a note stays without one.
 
 ---
 

@@ -30,8 +30,17 @@ const LIMITS = {
   description: 2000,
   instructions: 50000,
   prompt: 5000,
+  // A trigger's note to the triggered bot (botSchema MAX_NOTE).
+  note: 2000,
   short: 200,
 };
+
+/** A wiring entry, with its note when it has one. */
+function wiringEntry(role, on, note) {
+  const entry = { role, on: { role: on.role, event: on.event } };
+  if (typeof note === "string" && note.trim()) entry.note = note.trim();
+  return entry;
+}
 
 const ROLE_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const EVENT_RE = /^(completed|failed|tool\.[A-Za-z0-9_.:-]{1,200})$/;
@@ -120,10 +129,13 @@ function buildTeamManifest({ name, description = "", bots, providers }) {
       const src = (sub && sub.source) || {};
       const label = (sub && (sub.label || sub.eventType)) || "a trigger";
       if (src.kind === "bot" && roleOf.has(src.instanceId)) {
-        wiring.push({
-          role: roleOf.get(bot.id),
-          on: { role: roleOf.get(src.instanceId), event: src.event },
-        });
+        wiring.push(
+          wiringEntry(
+            roleOf.get(bot.id),
+            { role: roleOf.get(src.instanceId), event: src.event },
+            sub.note,
+          ),
+        );
       } else if (src.kind === "bot") {
         notIncluded.push(
           `${bot.name}: the trigger "${label}" (a bot outside this team)`,
@@ -301,7 +313,13 @@ function validateTeamManifest(input) {
         errors.push(`${where}: unknown event`);
         return;
       }
-      wiring.push({ role: w.role, on: { role: on.role, event: on.event } });
+      if (w.note != null && !str(w.note, LIMITS.note)) {
+        errors.push(
+          `${where}: note must be text of at most ${LIMITS.note} characters`,
+        );
+        return;
+      }
+      wiring.push(wiringEntry(w.role, on, w.note));
     });
   }
 
@@ -399,10 +417,7 @@ function planTeamInstall(
       };
     });
 
-  const copy = (w) => ({
-    role: w.role,
-    on: { role: w.on.role, event: w.on.event },
-  });
+  const copy = (w) => wiringEntry(w.role, w.on, w.note);
   return {
     name: manifest.name,
     members,
@@ -450,6 +465,7 @@ function wireTeam(wiring, created) {
         event: w.on.event,
       },
       label: `${src.name} › ${eventLabel(w.on.event)}`,
+      ...(typeof w.note === "string" && w.note ? { note: w.note } : {}),
     });
   }
   return out;
