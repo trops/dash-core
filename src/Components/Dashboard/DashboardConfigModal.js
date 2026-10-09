@@ -1417,14 +1417,24 @@ function ListenersTab({ emitters, receivers, wiring, onAdd, onRemove }) {
   }, [receivers]);
 
   if (receivers.length === 0) {
+    // Bots are emitters too (component `bot:<ref>`) — count them apart.
+    const botCount = emitters.filter((e) =>
+      String(e.component || "").startsWith("bot:"),
+    ).length;
+    const widgetCount = emitters.length - botCount;
+    const senders = [
+      widgetCount > 0 && `${widgetCount} widget${widgetCount === 1 ? "" : "s"}`,
+      botCount > 0 && `${botCount} bot${botCount === 1 ? "" : "s"}`,
+    ].filter(Boolean);
     return (
       <div className="flex items-center justify-center h-full text-sm opacity-60 text-center">
         <div>
-          No widgets in this dashboard declare event handlers.
-          {emitters.length > 0 && (
+          <div>No widget on this dashboard can listen for events yet.</div>
+          {senders.length > 0 && (
             <div className="mt-2">
-              ({emitters.length} widget{emitters.length === 1 ? "" : "s"} emit
-              events but nothing is set up to receive.)
+              {`${senders.join(" and ")} ${
+                emitters.length === 1 ? "sends" : "send"
+              } events. Add a widget that listens to use them.`}
             </div>
           )}
         </div>
