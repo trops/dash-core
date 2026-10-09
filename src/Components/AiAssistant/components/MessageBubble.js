@@ -10,6 +10,7 @@ import { leadLabel } from "../leadMessages";
 import { StreamingText } from "./StreamingText";
 import { ToolCallBlock } from "./ToolCallBlock";
 import { renderSafeMarkdown } from "../../../utils/safeMarkdown";
+import { collapseCodeBlocks } from "../codeBlocks";
 
 function AssistantTextContent({ text }) {
   if (!text) return null;
@@ -33,6 +34,9 @@ export const MessageBubble = ({
   isStreaming,
   streamingText,
   isLast = false,
+  // When set, code blocks in assistant replies show as this one-line note
+  // (ChatCore hideCodeBlocks).
+  codeNote = null,
 }) => {
   const { role, content, toolCalls, hidden } = message;
   const { currentTheme } = useContext(ThemeContext) || {};
@@ -162,10 +166,23 @@ export const MessageBubble = ({
         >
           {isStreaming && (
             <div>
-              <StreamingText text={streamingText} isStreaming={true} />
+              <StreamingText
+                text={
+                  codeNote
+                    ? collapseCodeBlocks(streamingText, codeNote, {
+                        plain: true,
+                      })
+                    : streamingText
+                }
+                isStreaming={true}
+              />
             </div>
           )}
-          {!isStreaming && text && <AssistantTextContent text={text} />}
+          {!isStreaming && text && (
+            <AssistantTextContent
+              text={codeNote ? collapseCodeBlocks(text, codeNote) : text}
+            />
+          )}
           {toolBlocks.map((block) => (
             <ToolCallBlock
               key={block.id}

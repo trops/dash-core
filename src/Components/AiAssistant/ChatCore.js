@@ -79,6 +79,9 @@ export function ChatCore({
   disableTools = false,
   onPublishEvent = null,
   hideToolsBanner = false,
+  // Show code blocks in replies as a one-line note (the Widget Builder has
+  // its own Code tab). true → "Code hidden."; a string → that note.
+  hideCodeBlocks = false,
   cwd = null,
   // Optional starter message auto-sent when the chat mounts with an
   // empty conversation. Used by callers that want the AI to greet /
@@ -917,6 +920,13 @@ export function ChatCore({
         streamingRequestId={isLoading ? activeRequestId.current : null}
         streamingText={streamingText}
         isLoading={isLoading}
+        codeNote={
+          typeof hideCodeBlocks === "string"
+            ? hideCodeBlocks
+            : hideCodeBlocks
+              ? "Code hidden."
+              : null
+        }
       />
 
       {/* Direct-to-lead recipient (TEAM-013) */}
