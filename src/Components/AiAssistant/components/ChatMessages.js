@@ -12,6 +12,7 @@ export const ChatMessages = ({
   streamingRequestId,
   streamingText,
   isLoading = false,
+  codeNote = null,
 }) => {
   const scrollRef = useRef(null);
   const { currentTheme } = useContext(ThemeContext) || {};
@@ -53,6 +54,7 @@ export const ChatMessages = ({
             isStreaming={isStreaming}
             streamingText={isStreaming ? streamingText : ""}
             isLast={index === messages.length - 1}
+            codeNote={codeNote}
           />
         );
       })}

@@ -83,3 +83,25 @@ describe("MessageBubble (user)", () => {
     expect(getByText("whats the latest?").className).toMatch(/bg-theme-user/);
   });
 });
+
+describe("MessageBubble (assistant, code hidden)", () => {
+  // ChatCore hideCodeBlocks — the Widget Builder shows code in its Code tab.
+  const reply = "Done:\n\n```jsx\nexport default function A() {}\n```";
+
+  it("shows a note instead of the code when codeNote is set", () => {
+    const { container } = render(
+      <MessageBubble
+        message={assistant(reply)}
+        codeNote="Code updated — see the Code tab."
+      />,
+    );
+    expect(container).toHaveTextContent("Done:");
+    expect(container).toHaveTextContent("Code updated — see the Code tab.");
+    expect(container).not.toHaveTextContent("export default");
+  });
+
+  it("shows the code when codeNote isn't set", () => {
+    const { container } = render(<MessageBubble message={assistant(reply)} />);
+    expect(container).toHaveTextContent("export default");
+  });
+});
