@@ -125,6 +125,35 @@ test("allow: tool in allowlist, no path arg", () => {
   assert.deepStrictEqual(r, { allow: true });
 });
 
+test("allow: wildcard tool entry covers per-index tool names", () => {
+  installFakeWidget("@trops/widget-wild", {
+    name: "@trops/widget-wild",
+    dash: {
+      permissions: {
+        mcp: {
+          algolia: { tools: ["algolia_search_*"] },
+        },
+      },
+    },
+  });
+  assert.deepStrictEqual(
+    gateToolCall({
+      widgetId: "@trops/widget-wild",
+      serverName: "algolia",
+      toolName: "algolia_search_products",
+      args: {},
+    }),
+    { allow: true },
+  );
+  const denied = gateToolCall({
+    widgetId: "@trops/widget-wild",
+    serverName: "algolia",
+    toolName: "algolia_delete_index",
+    args: {},
+  });
+  assert.strictEqual(denied.allow, false);
+});
+
 // ---------------------------------------------------------------
 // gateBotToolCall — the bot principal shares the same grant core.
 //

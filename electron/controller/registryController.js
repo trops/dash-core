@@ -14,6 +14,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { toPackageId } = require("../utils/packageId");
+const { isNewerVersion } = require("../utils/isNewerVersion");
 const { getStoredToken, authedFetch } = require("./registryAuthController");
 
 // Default registry API base URL
@@ -474,10 +475,9 @@ async function checkUpdates(installedWidgets = []) {
       for (const ref of scopedRefs) {
         const result = byKey.get(`${ref.scope}/${ref.name}`);
         if (!result || !result.exists) continue;
-        if (
-          result.latestVersion &&
-          result.latestVersion !== ref.installed.version
-        ) {
+        // Only offer a higher version — a local install can be ahead of
+        // the registry, and offering the registry's copy would downgrade.
+        if (isNewerVersion(result.latestVersion, ref.installed.version)) {
           // Build the download URL deterministically — same shape the
           // existing index serves (`/api/packages/<scope>/<name>/download?version=<v>`).
           // Constructed client-side because check-versions intentionally
@@ -517,7 +517,7 @@ async function checkUpdates(installedWidgets = []) {
         if (p.name === installedId) return true;
         return false;
       });
-      if (pkg && pkg.version !== installed.version) {
+      if (pkg && isNewerVersion(pkg.version, installed.version)) {
         updates.push({
           name: installed.name,
           currentVersion: installed.version,

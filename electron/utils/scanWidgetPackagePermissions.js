@@ -35,6 +35,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { toolPatternFromTemplate } = require("../mcp/toolPattern");
 
 const SOURCE_EXTS = new Set([".js", ".jsx", ".ts", ".tsx"]);
 const SKIP_DIRS = new Set([
@@ -70,7 +71,15 @@ function scanFileForMcpUsage(code) {
   const callPattern = /callTool\s*\(\s*["'`]([^"'`]+)["'`]/g;
   return {
     providers: Array.from(new Set(_captureAll(stripped, providerPattern))),
-    tools: Array.from(new Set(_captureAll(stripped, callPattern))),
+    // Template names (`algolia_search_${index}`) become wildcard patterns
+    // (`algolia_search_*`); ones too vague to pattern are dropped.
+    tools: Array.from(
+      new Set(
+        _captureAll(stripped, callPattern)
+          .map(toolPatternFromTemplate)
+          .filter(Boolean),
+      ),
+    ),
   };
 }
 
@@ -270,11 +279,14 @@ function scanWidgetPackagePermissionsByComponent(packageDir) {
  */
 function mergePermissions(human, scanned) {
   const out = {};
+  // Older scans wrote raw template names (`x_${y}`), which never match a
+  // real tool. Drop them; the scanner now emits a pattern instead.
+  const real = (tools) => tools.filter((t) => !String(t).includes("${"));
   // Start with human entries (preserves their shape including paths).
   if (human && typeof human === "object") {
     for (const [name, perms] of Object.entries(human)) {
       out[name] = { ...perms };
-      if (Array.isArray(perms.tools)) out[name].tools = [...perms.tools];
+      if (Array.isArray(perms.tools)) out[name].tools = real(perms.tools);
     }
   }
   if (scanned && typeof scanned === "object") {

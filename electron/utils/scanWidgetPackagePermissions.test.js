@@ -57,6 +57,31 @@ test("scanFileForMcpUsage: variable indirection skipped", () => {
   assert.deepStrictEqual(out.tools, ["search_repositories"]);
 });
 
+test("scanFileForMcpUsage: template tool names become wildcards", () => {
+  const code = [
+    'useMcpProvider("algolia");',
+    "callTool(`algolia_search_${selectedIndex}`, {});",
+    "callTool(`${toolName}`, {});",
+  ].join("\n");
+  const out = scanFileForMcpUsage(code);
+  assert.deepStrictEqual(out.tools, ["algolia_search_*"]);
+});
+
+test("mergePermissions: drops raw template names from older scans", () => {
+  const merged = mergePermissions(
+    {
+      algolia: {
+        tools: ["algolia_search_${selectedIndex}", "list_indices"],
+      },
+    },
+    { algolia: { tools: ["algolia_search_*"] } },
+  );
+  assert.deepStrictEqual(merged.algolia.tools, [
+    "algolia_search_*",
+    "list_indices",
+  ]);
+});
+
 test("scanFileForMcpUsage: line comments stripped", () => {
   const code = `
     useMcpProvider("github");

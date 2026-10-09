@@ -44,6 +44,7 @@ const { requestApproval } = require("./jitConsent");
 const { lookup: lookupMountToken } = require("../security/mountTokenRegistry");
 const { resolveSiblings } = require("../security/resolveSiblings");
 const { getWidgetMcpPermissions } = require("./widgetPermissions");
+const { toolListAllows } = require("./toolPattern");
 
 // Lazy default for the registry snapshot — `widgetRegistry.js` pulls
 // in a lot, so we don't want to require it at module-load time. The
@@ -140,7 +141,7 @@ function _evaluateGrant({
     };
   }
 
-  if (!serverPerms.tools.includes(toolName)) {
+  if (!toolListAllows(serverPerms.tools, toolName)) {
     return {
       allow: false,
       reason:
@@ -313,7 +314,7 @@ function _filterSiblingsByDeclaration(
       continue;
     }
     const tools = perms?.servers?.[serverName]?.tools;
-    if (Array.isArray(tools) && tools.includes(toolName)) {
+    if (toolListAllows(tools, toolName)) {
       out.push(sibId);
     }
   }
@@ -401,8 +402,7 @@ async function gateToolCallWithJit(req, opts = {}) {
     grant &&
     grant.servers &&
     grant.servers[req.serverName] &&
-    Array.isArray(grant.servers[req.serverName].tools) &&
-    grant.servers[req.serverName].tools.includes(req.toolName)
+    toolListAllows(grant.servers[req.serverName].tools, req.toolName)
   );
   if (hasToolInGrant) return gateToolCall(req);
 
