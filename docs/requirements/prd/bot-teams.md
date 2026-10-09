@@ -704,7 +704,12 @@ _Slice 2 — drag to wire_
 - Wiring is off while a bot's Settings tab is open beside the diagram (a diagram save would overwrite that form's unsaved edits).
 - Note: `composeEventPrompt(event, note)` appends "For this trigger, your owner asks: …" after the untrusted payload fence (fence tags in the note are neutralised); `botController` passes the matching subscription's note. `botSchema` validates `note` (text, ≤ 2000 chars). Bot Settings shows the note under the trigger (read-only).
 - Verified live: dragged Schema Planner onto Record Reader (Completed + note) → ran Schema Planner (needed one approval) → Record Reader was triggered by the event with the note after the fence (its own run then failed: its Anthropic API key had no credit) → edited, then removed the trigger from the popover.
-- Follow-up: team export (`.team.json` wiring) doesn't carry notes yet.
+- Team export carries trigger notes since 2026-10-09 (see TEAM-006/007 notes).
+
+**Implementation notes (resizable bot panel, 2026-10-09):**
+
+- The bot panel beside the diagram has a drag handle on its left edge (dash-react `ResizeHandle` + `useResizableWidth`, ≥ 1.0.65). It starts at half the view; the diagram keeps ≥ 320px and the panel ≥ 360px; the width is remembered per viewer (`dash:botsView:panelWidth`); double-click resets to half; ← / → step it when focused. Narrow windows and the List view are unchanged.
+- The AI Assistant side panel uses the same handle (it had its own; now its width is remembered too).
 
 ---
 

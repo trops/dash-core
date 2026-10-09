@@ -602,6 +602,70 @@ Sidebar.Item = function SidebarItem({ children, onClick, badge }) {
   );
 };
 
+// dash-react ≥1.0.65 ResizeHandle + useResizableWidth stand-ins: same
+// width rules (clamp, remembered under storageKey, ← / → step 16px in the
+// handle's direction, double-click reset), keyboard + double-click only.
+function useResizableWidth({
+  defaultWidth,
+  min = 0,
+  max = Infinity,
+  edge = "left",
+  storageKey = null,
+}) {
+  const read = () => {
+    try {
+      const raw = storageKey ? window.localStorage.getItem(storageKey) : null;
+      const n = raw == null ? NaN : Number(raw);
+      return Number.isFinite(n) ? n : null;
+    } catch (_e) {
+      return null;
+    }
+  };
+  const [stored, setStored] = React.useState(read);
+  const hi = Math.max(min, max);
+  const clamp = (w) => Math.min(Math.max(w, min), hi);
+  const width = clamp(stored == null ? defaultWidth : stored);
+  const sign = edge === "left" ? -1 : 1;
+  const set = (w) => {
+    const next = clamp(w);
+    setStored(next);
+    if (storageKey) window.localStorage.setItem(storageKey, String(next));
+  };
+  const reset = () => {
+    setStored(null);
+    if (storageKey) window.localStorage.removeItem(storageKey);
+  };
+  return {
+    width,
+    setWidth: set,
+    reset,
+    handleProps: {
+      value: width,
+      min,
+      max: hi,
+      onResize: (start, dx) => set(start + sign * dx),
+      onStep: (dir) => set(width + sign * dir * 16),
+      onReset: reset,
+    },
+  };
+}
+function ResizeHandle({ value, min, max, onStep, onReset, ariaLabel }) {
+  return React.createElement("div", {
+    role: "separator",
+    "aria-orientation": "vertical",
+    "aria-label": ariaLabel,
+    "aria-valuenow": value,
+    "aria-valuemin": min,
+    "aria-valuemax": max,
+    tabIndex: 0,
+    onKeyDown: (e) => {
+      if (e.key === "ArrowLeft") onStep && onStep(-1);
+      if (e.key === "ArrowRight") onStep && onStep(1);
+    },
+    onDoubleClick: () => onReset && onReset(),
+  });
+}
+
 // Simple stand-ins (McpCatalogDetail).
 function Icon2({ icon }) {
   return React.createElement("span", { "data-icon": icon });
@@ -627,6 +691,8 @@ module.exports = {
   SectionLabel,
   SubHeading3,
   Sidebar,
+  ResizeHandle,
+  useResizableWidth,
   Toggle,
   ButtonIcon2: ButtonIcon,
   isHexColor,
