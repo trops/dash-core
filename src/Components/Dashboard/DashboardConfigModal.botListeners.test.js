@@ -104,4 +104,42 @@ describe("Listeners — bots as sources (TEAM-012)", () => {
       }),
     ]);
   });
+
+  it("counts bots apart from widgets when nothing can listen", async () => {
+    window.mainApi = {
+      bots: {
+        list: jest.fn().mockResolvedValue([
+          { id: "b1", name: "A", ref: "local/a", workspaceId: "7" },
+          { id: "b2", name: "B", ref: "local/b", workspaceId: "7" },
+        ]),
+        listToolSources: jest.fn().mockResolvedValue([]),
+      },
+    };
+    const emitterOnly = {
+      "trops.gmail.GmailInbox": { name: "Gmail Inbox", events: ["sent"] },
+    };
+    render(
+      <DashboardConfigModal
+        isOpen
+        setIsOpen={() => {}}
+        workspace={workspace}
+        appProviders={{}}
+        getWidgetRequirements={() => []}
+        getWidgetConfig={(c) => emitterOnly[c] || null}
+        onSaveBindings={() => {}}
+        onSaveListeners={() => {}}
+        initialTab="listeners"
+      />,
+    );
+    expect(
+      await screen.findByText(
+        "1 widget and 2 bots send events. Add a widget that listens to use them.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "No widget on this dashboard can listen for events yet.",
+      ),
+    ).toBeInTheDocument();
+  });
 });
