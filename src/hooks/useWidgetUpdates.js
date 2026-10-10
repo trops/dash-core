@@ -107,12 +107,16 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
   const [isUpdating, setIsUpdating] = useState(null);
   const [needsAuth, setNeedsAuth] = useState(false);
   const [updateError, setUpdateError] = useState(null);
+  // AppWrapper calls this hook (via useAppUpdates) from the component that
+  // PROVIDES AppContext, so useContext comes back empty there. Fall back to
+  // the context AppWrapper broadcasts on window when the check runs
+  // (see computeBatchPreflight).
+  const appProviders = useContext(AppContext)?.providers || null;
   // batchStatus tracks the per-package progress during an updatePackages
   // run so the "Update all" modal can show pending/in-progress/done/failed
   // pips next to each row. Cleared (Map -> empty) when isBatchUpdating
   // flips back to false; consumers that want to keep showing a per-package
   // result after the batch finished should snapshot it themselves.
-  const appProviders = useContext(AppContext)?.providers || null;
   const [batchStatus, setBatchStatus] = useState(new Map());
   const [isBatchUpdating, setIsBatchUpdating] = useState(false);
   const checkedRef = useRef(false);
@@ -599,8 +603,10 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
           // against a type-keyed copy; the original is what gets merged
           // and saved back.
           const grantedMcp = matchingRow
-            ? normalizeGrantsByProviderType([matchingRow], appProviders)[0]
-                ?.granted?.servers || {}
+            ? normalizeGrantsByProviderType(
+                [matchingRow],
+                appProviders || window.__dashAppContext?.providers || null,
+              )[0]?.granted?.servers || {}
             : {};
           const declaredForWidget = byComponent
             ? byComponent[w.name]?.servers || {}
