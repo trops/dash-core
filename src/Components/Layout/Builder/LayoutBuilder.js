@@ -165,6 +165,18 @@ export const LayoutBuilder = ({
     onWorkspaceChangeRef.current = onWorkspaceChange;
   }, [onWorkspaceChange]);
 
+  // Every layout edit goes through here: update LayoutBuilder's own state
+  // AND tell the parent, so the dashboard is marked dirty (Cancel and the
+  // close guard see it) and a parent re-render can't revert it. Only the
+  // [workspace] prop-sync effect above sets state without this — a load,
+  // not an edit.
+  function commitWorkspace(nextWorkspace) {
+    setCurrentWorkspace(nextWorkspace);
+    if (typeof onWorkspaceChangeRef.current === "function") {
+      onWorkspaceChangeRef.current(nextWorkspace);
+    }
+  }
+
   // Listen for AI widget builder placement — modifies layout state directly
   useEffect(() => {
     const handler = (e) => {
@@ -222,10 +234,7 @@ export const LayoutBuilder = ({
         }
         const newWorkspace = JSON.parse(JSON.stringify(ws));
         newWorkspace.layout = newLayout;
-        setCurrentWorkspace(newWorkspace);
-        if (typeof onWorkspaceChangeRef.current === "function") {
-          onWorkspaceChangeRef.current(newWorkspace);
-        }
+        commitWorkspace(newWorkspace);
         console.log(
           `[LayoutBuilder] AI widget placed: ${widgetComponentName} → cell ${cellNumber}`,
         );
@@ -286,10 +295,7 @@ export const LayoutBuilder = ({
 
         const newWorkspace = JSON.parse(JSON.stringify(ws));
         newWorkspace.layout = newLayout;
-        setCurrentWorkspace(newWorkspace);
-        if (typeof onWorkspaceChangeRef.current === "function") {
-          onWorkspaceChangeRef.current(newWorkspace);
-        }
+        commitWorkspace(newWorkspace);
         console.log(
           `[LayoutBuilder] AI widget swapped: ${widgetComponentName} → item ${widgetId}`,
         );
@@ -343,7 +349,7 @@ export const LayoutBuilder = ({
 
   function handleSaveWorkspace(tempWorkspace) {
     console.log("saving workspace", tempWorkspace);
-    setCurrentWorkspace(tempWorkspace);
+    commitWorkspace(tempWorkspace);
     setIsAddWidgetModalOpen(false);
   }
 
@@ -443,7 +449,7 @@ export const LayoutBuilder = ({
           newLayout.length,
           "items",
         );
-        setCurrentWorkspace(newWorkspace);
+        commitWorkspace(newWorkspace);
         setTargetCellNumber(null); // Clear cell number after use
         setShowWidgetDropdown(false);
       } else {
@@ -468,7 +474,7 @@ export const LayoutBuilder = ({
             newWidget.selectedProviders;
         }
 
-        setCurrentWorkspace(newWorkspace);
+        commitWorkspace(newWorkspace);
         setIsAddWidgetModalOpen(false);
       }
     } catch (e) {
@@ -478,9 +484,8 @@ export const LayoutBuilder = ({
 
   function handleSaveNewWorkspace(newWorkspace) {
     console.log("builder save workspace ", newWorkspace);
-    setCurrentWorkspace(() => newWorkspace);
+    commitWorkspace(newWorkspace);
     setIsConfigModalOpen(false);
-    onWorkspaceChange(newWorkspace);
   }
 
   function onClickRemove(id) {
@@ -490,10 +495,7 @@ export const LayoutBuilder = ({
 
       console.log("new workspace after remove ", dashboard.workspace());
       const nextWorkspace = dashboard.workspace();
-      setCurrentWorkspace(nextWorkspace);
-      if (typeof onWorkspaceChangeRef.current === "function") {
-        onWorkspaceChangeRef.current(nextWorkspace);
-      }
+      commitWorkspace(nextWorkspace);
     } catch (e) {
       console.log(e);
     }
@@ -576,7 +578,7 @@ export const LayoutBuilder = ({
           const newWorkspace = JSON.parse(JSON.stringify(currentWorkspace));
 
           newWorkspace["layout"] = newLayout;
-          setCurrentWorkspace(() => newWorkspace);
+          commitWorkspace(newWorkspace);
         } else {
           // console.log("failed new layout", newLayout);
         }
@@ -605,7 +607,7 @@ export const LayoutBuilder = ({
     );
     const newWorkspace = JSON.parse(JSON.stringify(currentWorkspace));
     newWorkspace["layout"] = newLayout;
-    setCurrentWorkspace(newWorkspace);
+    commitWorkspace(newWorkspace);
   }
 
   function onChangeOrder(item, direction) {
@@ -659,14 +661,14 @@ export const LayoutBuilder = ({
     }
 
     // // newWorkspace['layout'] = newLayout;
-    setCurrentWorkspace(() => newWorkspace);
+    commitWorkspace(newWorkspace);
   }
 
   function handleSaveConfiguration(data) {
     console.log("SAVING CONFIG ", data);
 
     const newWorkspace = saveItemToWorkspace(data);
-    setCurrentWorkspace(newWorkspace);
+    commitWorkspace(newWorkspace);
     setIsConfigOpen(false);
     setIsWidgetModalOpen(false);
     setSelectedItem(null);
@@ -848,15 +850,10 @@ export const LayoutBuilder = ({
         };
       }
 
-      setCurrentWorkspace(newWorkspace);
-      // Propagate to the parent (DashboardStage) so workspaceSelected
-      // — what the dashboard config bulk-edit modal reads from —
-      // stays in sync with per-widget provider edits. Mirrors the
-      // pattern in the AI placement / remix handlers above. Without
-      // this, the bulk modal opens with stale provider bindings.
-      if (typeof onWorkspaceChangeRef.current === "function") {
-        onWorkspaceChangeRef.current(newWorkspace);
-      }
+      // commitWorkspace also propagates to the parent (DashboardStage), so
+      // workspaceSelected — what the dashboard config bulk-edit modal reads
+      // from — stays in sync with per-widget provider edits.
+      commitWorkspace(newWorkspace);
     }
   }
 
@@ -950,7 +947,7 @@ export const LayoutBuilder = ({
 
       if (result) {
         const newWorkspace = dashboard.workspace();
-        setCurrentWorkspace(newWorkspace);
+        commitWorkspace(newWorkspace);
 
         console.log("[LayoutBuilder] Cell split successful");
       } else {
@@ -993,7 +990,7 @@ export const LayoutBuilder = ({
         }
 
         const newWorkspace = dashboard.workspace();
-        setCurrentWorkspace(newWorkspace);
+        commitWorkspace(newWorkspace);
 
         console.log("[LayoutBuilder] Cells merged successful");
       } else {
@@ -1012,7 +1009,7 @@ export const LayoutBuilder = ({
 
       if (result) {
         const newWorkspace = dashboard.workspace();
-        setCurrentWorkspace(newWorkspace);
+        commitWorkspace(newWorkspace);
 
         console.log("[LayoutBuilder] Row added successfully");
       } else {
@@ -1031,7 +1028,7 @@ export const LayoutBuilder = ({
 
       if (result) {
         const newWorkspace = dashboard.workspace();
-        setCurrentWorkspace(newWorkspace);
+        commitWorkspace(newWorkspace);
 
         console.log("[LayoutBuilder] Row deleted successfully");
       } else {
@@ -1050,7 +1047,7 @@ export const LayoutBuilder = ({
 
       if (result) {
         const newWorkspace = dashboard.workspace();
-        setCurrentWorkspace(newWorkspace);
+        commitWorkspace(newWorkspace);
 
         console.log("[LayoutBuilder] Column added successfully");
       } else {
@@ -1069,7 +1066,7 @@ export const LayoutBuilder = ({
 
       if (result) {
         const newWorkspace = dashboard.workspace();
-        setCurrentWorkspace(newWorkspace);
+        commitWorkspace(newWorkspace);
 
         console.log("[LayoutBuilder] Column deleted successfully");
       } else {
@@ -1134,10 +1131,7 @@ export const LayoutBuilder = ({
 
       const newWorkspace = JSON.parse(JSON.stringify(workspace));
       newWorkspace["layout"] = newLayout;
-      setCurrentWorkspace(newWorkspace);
-      if (typeof onWorkspaceChangeRef.current === "function") {
-        onWorkspaceChangeRef.current(newWorkspace);
-      }
+      commitWorkspace(newWorkspace);
     } catch (e) {
       console.log("[LayoutBuilder] Error in handleDropWidgetFromSidebar:", e);
     }
@@ -1162,10 +1156,7 @@ export const LayoutBuilder = ({
         targetCellNumber,
       );
       const newWorkspace = dashboard.workspace();
-      setCurrentWorkspace(newWorkspace);
-      if (typeof onWorkspaceChangeRef.current === "function") {
-        onWorkspaceChangeRef.current(newWorkspace);
-      }
+      commitWorkspace(newWorkspace);
     } catch (e) {
       console.error("[LayoutBuilder] Error moving widget:", e);
     }
@@ -1188,7 +1179,7 @@ export const LayoutBuilder = ({
 
       if (result) {
         const newWorkspace = dashboard.workspace();
-        setCurrentWorkspace(newWorkspace);
+        commitWorkspace(newWorkspace);
       } else {
         console.error("[LayoutBuilder] Failed to change row height");
       }
@@ -1205,7 +1196,7 @@ export const LayoutBuilder = ({
 
       if (result) {
         const newWorkspace = dashboard.workspace();
-        setCurrentWorkspace(newWorkspace);
+        commitWorkspace(newWorkspace);
       } else {
         console.error("[LayoutBuilder] Failed to change row mode");
       }
@@ -1229,7 +1220,7 @@ export const LayoutBuilder = ({
         dashboard.changeRowHeight(gridContainerId, rowNumber, multiplier);
       }
       const newWorkspace = dashboard.workspace();
-      setCurrentWorkspace(newWorkspace);
+      commitWorkspace(newWorkspace);
     } catch (e) {
       console.error("[LayoutBuilder] Error changing row sizing:", e);
     }
@@ -1243,7 +1234,7 @@ export const LayoutBuilder = ({
 
       if (result) {
         const newWorkspace = dashboard.workspace();
-        setCurrentWorkspace(newWorkspace);
+        commitWorkspace(newWorkspace);
       } else {
         console.error("[LayoutBuilder] Failed to change col mode");
       }
@@ -1312,7 +1303,7 @@ export const LayoutBuilder = ({
       dashboard.addChildToLayoutItem(widget, component.id, cellNumber);
 
       console.log("NEW WORKSPACE ", dashboard.workspace());
-      setCurrentWorkspace(() => dashboard.workspace());
+      commitWorkspace(dashboard.workspace());
     } catch (e) {
       console.log("error adding widget to grid ", e);
     }
