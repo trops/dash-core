@@ -911,6 +911,22 @@ class WidgetRegistry {
       zip.extractAllTo(widgetPath, true);
       console.log(`[WidgetRegistry] Extracted widget to: ${widgetPath}`);
 
+      // Same scan as installFromLocalPath: record which MCP tools the
+      // package calls in its package.json (dash.permissions.mcp). Without
+      // it a registry install has no declared permissions until the next
+      // app start (boot backfill), so the consent prompt and the
+      // permission dialog's wildcard offer have nothing to go on.
+      try {
+        const {
+          applyScanToPackageJson,
+        } = require("./utils/scanWidgetPackagePermissions");
+        applyScanToPackageJson(widgetPath);
+      } catch (e) {
+        console.warn(
+          `[WidgetRegistry] Permission scan failed for ${widgetName}: ${e.message}`,
+        );
+      }
+
       let config = await this.loadWidgetConfig(widgetName, widgetPath);
 
       if (dashConfigUrl) {
