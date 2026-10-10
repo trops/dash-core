@@ -174,6 +174,12 @@ function requestApproval(req, opts = {}) {
       siblingWidgetIds: Array.isArray(req.siblingWidgetIds)
         ? req.siblingWidgetIds
         : [req.widgetId],
+      // A wildcard the widget declares that covers this tool
+      // ("algolia_search_*"). The modal offers it as a broader grant.
+      toolPattern:
+        typeof req.toolPattern === "string" && req.toolPattern
+          ? req.toolPattern
+          : null,
     });
   });
 }
