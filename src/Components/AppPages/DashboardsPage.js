@@ -649,12 +649,6 @@ export const DashboardsPage = ({
           value={view}
           onChange={setView}
         />
-        <span className="flex-1" />
-        <Button3
-          title="Browse marketplace"
-          size="sm"
-          onClick={() => setMode("marketplace")}
-        />
       </div>
 
       <div className="flex-1 min-h-0 grid grid-cols-3 gap-4">
