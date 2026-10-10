@@ -39,14 +39,16 @@ describe("LayoutBuilder.handleSelectProvider — workspace propagation", () => {
     expect(handlerMatch).not.toBeNull();
   });
 
-  test("handleSelectProvider updates LayoutBuilder local state via setCurrentWorkspace", () => {
-    expect(handlerMatch[0]).toMatch(/setCurrentWorkspace\(/);
+  test("handleSelectProvider commits through commitWorkspace (local state + parent)", () => {
+    expect(handlerMatch[0]).toMatch(/commitWorkspace\(/);
   });
 
-  test("handleSelectProvider propagates the workspace to the parent via onWorkspaceChangeRef.current", () => {
+  test("commitWorkspace propagates the workspace to the parent via onWorkspaceChangeRef.current", () => {
     // Without this call, DashboardStage's workspaceSelected stays
     // stale and the dashboard config bulk-edit modal opens with
     // out-of-date provider bindings.
-    expect(handlerMatch[0]).toMatch(/onWorkspaceChangeRef\.current/);
+    const helper = source.match(/function commitWorkspace\([\s\S]*?\n  \}\n/);
+    expect(helper).not.toBeNull();
+    expect(helper[0]).toMatch(/onWorkspaceChangeRef\.current\(/);
   });
 });

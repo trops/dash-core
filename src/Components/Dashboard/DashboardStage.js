@@ -71,6 +71,7 @@ import { applyBulkProviderBindings } from "../../utils/applyBulkProviderBindings
 import { moveWidgetAcrossContainers } from "../../utils/layout";
 import { ComponentManager } from "../../ComponentManager";
 import { saveNewWorkspace, isSavedWorkspace } from "./saveNewWorkspace";
+import { syncLayoutRefs } from "./editStaging";
 
 /**
  * DashboardStage - Main application wrapper component
@@ -259,6 +260,10 @@ const DashboardStageInner = ({
    * @param {Boolean} previewMode this is a toggle telling the dash we are editing
    */
   const [previewMode, setPreviewMode] = useState(preview);
+  // For callbacks whose closures can be stale (memoized page handlers, the
+  // cross-container move listener): are we editing right now?
+  const previewModeRef = useRef(previewMode);
+  previewModeRef.current = previewMode;
 
   /**
    * @param {String["layout", "workspace", "widget"]} editMode this is the actual mode we are in
@@ -887,30 +892,10 @@ const DashboardStageInner = ({
       // moves can orphan listener bindings and provider entries when a
       // widget ends up outside the layout during the move.
       const reconciled = reconcileWorkspaceAfterLayoutChange(updated);
-      updateTabWorkspace(reconciled);
-
-      if (dashApi && credentials?.appId) {
-        try {
-          dashApi.saveWorkspace(
-            credentials.appId,
-            reconciled,
-            () =>
-              console.log(
-                `[DashboardStage] Cross-container move saved (${detail.sourceScope} → ${detail.targetScope})`,
-              ),
-            (err) =>
-              console.error(
-                "[DashboardStage] Cross-container move save failed:",
-                err,
-              ),
-          );
-        } catch (err) {
-          console.error(
-            "[DashboardStage] Cross-container move save threw:",
-            err,
-          );
-        }
-      }
+      // Moves only happen while editing: stage like any other edit. (This
+      // used to save the whole dashboard on the spot, committing every
+      // other unsaved edit even if the user then pressed Cancel.)
+      stageWorkspaceEdit(reconciled);
     };
     window.addEventListener("dash:cross-container-widget-move", handler);
     return () =>
@@ -1074,6 +1059,17 @@ const DashboardStageInner = ({
     );
   }
 
+  // While editing, a change made outside LayoutBuilder (provider pick,
+  // Dashboard Config bulk edit, grid ↔ sidebar move) waits for Save like
+  // every other edit: update the tab, mirror its layouts into the refs Save
+  // reads, and mark the dashboard dirty so Cancel can undo it.
+  function stageWorkspaceEdit(ws) {
+    if (!ws) return;
+    updateTabWorkspace(ws);
+    syncLayoutRefs(ws, { pageRefsMap, sidebarWorkspaceRef });
+    setIsDirty(true);
+  }
+
   // ─── New Workspace from Empty State ───────────────────────────────
 
   function handleClickNewFromEmpty() {
@@ -1228,24 +1224,7 @@ const DashboardStageInner = ({
       // `handleClickSaveWorkspace` reads from those refs FIRST — so it
       // clobbered the new sidebarLayout with the stale ref contents on
       // save. Keeping everything in sync here closes that window.
-      if (Array.isArray(wsModel.sidebarLayout)) {
-        sidebarWorkspaceRef.current = {
-          ...(sidebarWorkspaceRef.current || {}),
-          layout: wsModel.sidebarLayout,
-        };
-      }
-      if (Array.isArray(wsModel.pages)) {
-        for (const page of wsModel.pages) {
-          if (!page || !page.id || !Array.isArray(page.layout)) continue;
-          if (!pageRefsMap.current[page.id]) {
-            pageRefsMap.current[page.id] = { current: null };
-          }
-          pageRefsMap.current[page.id].current = {
-            ...(pageRefsMap.current[page.id].current || {}),
-            layout: page.layout,
-          };
-        }
-      }
+      syncLayoutRefs(wsModel, { pageRefsMap, sidebarWorkspaceRef });
     }
   }
 
@@ -1275,7 +1254,12 @@ const DashboardStageInner = ({
       };
 
       const reconciled = reconcileWorkspaceAfterLayoutChange(updatedWorkspace);
-      // Update the tab's workspace reference
+      // Editing: wait for Save (Cancel must be able to undo it).
+      if (!previewModeRef.current) {
+        stageWorkspaceEdit(reconciled);
+        return;
+      }
+      // Not editing: a one-off pick, saved straight away.
       updateTabWorkspace(reconciled);
 
       // Persist to main app via IPC
@@ -1320,6 +1304,11 @@ const DashboardStageInner = ({
     );
     if (updatedWorkspace === workspaceSelected) return; // no-op
     const reconciled = reconcileWorkspaceAfterLayoutChange(updatedWorkspace);
+    // Editing: wait for Save (Cancel must be able to undo it).
+    if (!previewModeRef.current) {
+      stageWorkspaceEdit(reconciled);
+      return;
+    }
     updateTabWorkspace(reconciled);
 
     try {
@@ -1357,6 +1346,11 @@ const DashboardStageInner = ({
     // in through React state serialization.
     const updatedWorkspace = applyBulkUserPrefs(workspaceSelected, changes);
     const reconciled = reconcileWorkspaceAfterLayoutChange(updatedWorkspace);
+    // Editing: wait for Save (Cancel must be able to undo it).
+    if (!previewModeRef.current) {
+      stageWorkspaceEdit(reconciled);
+      return;
+    }
     updateTabWorkspace(reconciled);
 
     try {
@@ -1390,6 +1384,11 @@ const DashboardStageInner = ({
 
     const updatedWorkspace = applyWiringChanges(workspaceSelected, changes);
     const reconciled = reconcileWorkspaceAfterLayoutChange(updatedWorkspace);
+    // Editing: wait for Save (Cancel must be able to undo it).
+    if (!previewModeRef.current) {
+      stageWorkspaceEdit(reconciled);
+      return;
+    }
     updateTabWorkspace(reconciled);
 
     try {
@@ -1697,6 +1696,8 @@ const DashboardStageInner = ({
     (updatedWorkspace, pageId) => {
       // Store in per-page ref (used by save function)
       pageRefsMap.current[pageId] = { current: updatedWorkspace };
+      // A main-grid edit: mark dirty so Cancel and the close guard see it.
+      if (!previewModeRef.current) setIsDirty(true);
 
       // Also update the React state so workspaceSelected (which the
       // dashboard config bulk-edit modal reads) stays in sync. Before
@@ -1919,6 +1920,7 @@ const DashboardStageInner = ({
       currentWorkspaceRef.current.menuId = Number(menuId);
     }
     updateTabWorkspace(tempWorkspace);
+    setIsDirty(true);
   }
 
   function handleWorkspaceThemeChange(themeKey) {
@@ -1932,6 +1934,7 @@ const DashboardStageInner = ({
       currentWorkspaceRef.current.themeKey = themeKey || null;
     }
     updateTabWorkspace(tempWorkspace);
+    setIsDirty(true);
   }
 
   function handleScrollableChange(enabled) {
@@ -1958,6 +1961,7 @@ const DashboardStageInner = ({
     }
     currentWorkspaceRef.current = tempWorkspace;
     updateTabWorkspace(tempWorkspace);
+    setIsDirty(true);
   }
 
   // Derive scrollable state from the active page's root layout item
