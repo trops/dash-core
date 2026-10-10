@@ -904,6 +904,47 @@ describe("updatePackages — pre-install MCP preflight", () => {
     expect(window.mainApi.widgets.install).toHaveBeenCalledTimes(1);
   });
 
+  test("outside AppContext, reads providers from the broadcast app context", async () => {
+    // AppWrapper runs the startup update check from the component that
+    // provides AppContext, so the hook falls back to window.__dashAppContext.
+    installMainApiForPreflight({
+      listAll: jest.fn().mockResolvedValue([
+        {
+          widgetId: "trops.slack.SlackListChannels",
+          granted: {
+            servers: {
+              "Slack Dash Comms": {
+                tools: ["list_channels", "send_message"],
+                readPaths: [],
+                writePaths: [],
+              },
+            },
+          },
+        },
+      ]),
+    });
+    window.__dashAppContext = {
+      providers: {
+        "Slack Dash Comms": { type: "slack", providerClass: "mcp" },
+      },
+    };
+    try {
+      const { result } = renderHook(() =>
+        useWidgetUpdates(installedWithGrants, jest.fn()),
+      );
+      await waitFor(() => {
+        expect(result.current.packagesWithUpdates.length).toBe(1);
+      });
+      await act(async () => {
+        await result.current.updatePackages(["@trops/slack"]);
+      });
+      expect(result.current.pendingPreflight).toBeNull();
+      expect(window.mainApi.widgets.install).toHaveBeenCalledTimes(1);
+    } finally {
+      delete window.__dashAppContext;
+    }
+  });
+
   test("uses the widget's own declared tools when the package has a per-widget breakdown", async () => {
     // The package declares send_message, but only for another widget —
     // SlackListChannels itself only needs list_channels (already granted).
