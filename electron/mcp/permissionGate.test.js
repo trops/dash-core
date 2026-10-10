@@ -1180,3 +1180,98 @@ test("remembered approval: forgetting it brings the prompt back", () => {
     false,
   );
 });
+
+// ---------------------------------------------------------------
+// JIT wildcard offer: when the widget declares a pattern covering the
+// requested tool ("algolia_search_*"), the gate passes it to the modal as
+// `toolPattern`, and accepts exactly that pattern back — nothing broader.
+// ---------------------------------------------------------------
+
+const WID_WILD = "@trops/widget-jit-wild";
+
+function setupWildWidget() {
+  installFakeWidget(
+    WID_WILD,
+    {
+      name: WID_WILD,
+      dash: {
+        permissions: {
+          mcp: { algolia: { tools: ["algolia_search_*"] } },
+        },
+      },
+    },
+    { writeGrant: false },
+  );
+  revokeGrant(WID_WILD);
+}
+
+const wildGrant = (tools) => ({
+  grantOrigin: "live",
+  servers: {
+    "Algolia Public HR": { tools, readPaths: [], writePaths: [] },
+  },
+});
+
+test("JIT wildcard: offers the declared pattern; one approval covers every index", async () => {
+  setupWildWidget();
+  const seen = [];
+  __mockApproval = async (req) => {
+    seen.push(req.toolPattern);
+    return { approve: true, granted: wildGrant([req.toolPattern]) };
+  };
+  const call = (toolName) =>
+    gateToolCallWithJit(
+      {
+        widgetId: WID_WILD,
+        serverName: "Algolia Public HR",
+        toolName,
+        args: {},
+      },
+      { enableJit: true },
+    );
+  assert.strictEqual((await call("algolia_search_index_hr")).allow, true);
+  assert.deepStrictEqual(seen, ["algolia_search_*"]);
+  // Another index: no second prompt.
+  assert.strictEqual((await call("algolia_search_index_products")).allow, true);
+  assert.strictEqual(seen.length, 1);
+});
+
+test("JIT wildcard: a broader pattern from the renderer is dropped", async () => {
+  setupWildWidget();
+  __mockApproval = async () => ({
+    approve: true,
+    granted: wildGrant(["algolia_*", "algolia_search_index_hr"]),
+  });
+  await gateToolCallWithJit(
+    {
+      widgetId: WID_WILD,
+      serverName: "Algolia Public HR",
+      toolName: "algolia_search_index_hr",
+      args: {},
+    },
+    { enableJit: true },
+  );
+  assert.deepStrictEqual(
+    getGrant(WID_WILD).servers["Algolia Public HR"].tools,
+    ["algolia_search_index_hr"],
+  );
+});
+
+test("JIT wildcard: no pattern offered when none is declared", async () => {
+  setupJitWidget(null);
+  let offered = "unset";
+  __mockApproval = async (req) => {
+    offered = req.toolPattern;
+    return { approve: false };
+  };
+  await gateToolCallWithJit(
+    {
+      widgetId: WID_JIT,
+      serverName: "google-drive",
+      toolName: "search",
+      args: {},
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(offered, null);
+});

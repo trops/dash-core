@@ -76,7 +76,18 @@ test("requestApproval: emits a permission-required event with the request payloa
   assert.strictEqual(emittedEvents[0].payload.widgetId, "@trops/widget-x");
   assert.strictEqual(emittedEvents[0].payload.domain, "mcp");
   assert.ok(emittedEvents[0].payload.requestId);
+  assert.strictEqual(emittedEvents[0].payload.toolPattern, null);
   // Drain the promise so node doesn't keep the test alive on the timer.
+  await promise.catch(() => {});
+});
+
+test("requestApproval: passes the declared wildcard to the modal", async () => {
+  resetState();
+  const promise = requestApproval(
+    { ...sampleRequest, toolPattern: "read_*" },
+    { timeoutMs: 50 },
+  );
+  assert.strictEqual(emittedEvents[0].payload.toolPattern, "read_*");
   await promise.catch(() => {});
 });
 

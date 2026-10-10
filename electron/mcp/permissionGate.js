@@ -44,7 +44,7 @@ const { requestApproval } = require("./jitConsent");
 const { lookup: lookupMountToken } = require("../security/mountTokenRegistry");
 const { resolveSiblings } = require("../security/resolveSiblings");
 const { getWidgetMcpPermissions } = require("./widgetPermissions");
-const { toolListAllows } = require("./toolPattern");
+const { toolListAllows, isToolPattern, toolMatches } = require("./toolPattern");
 
 // Lazy default for the registry snapshot — `widgetRegistry.js` pulls
 // in a lot, so we don't want to require it at module-load time. The
@@ -265,6 +265,42 @@ function gateBotToolCall({ botId, serverName, toolName, args }) {
 }
 
 /**
+ * The wildcard ("algolia_search_*") this widget declares that covers
+ * `toolName`, or null. Declarations are keyed by provider type
+ * ("algolia") while calls carry the provider instance name
+ * ("Algolia Public HR"), so every declared server is checked, the
+ * matching name first.
+ */
+function _declaredToolPattern(widgetId, serverName, toolName) {
+  const servers = getWidgetMcpPermissions(widgetId)?.servers || {};
+  const names = Object.keys(servers).sort((a, b) =>
+    a === serverName ? -1 : b === serverName ? 1 : 0,
+  );
+  for (const name of names) {
+    const hit = (servers[name]?.tools || []).find(
+      (t) => isToolPattern(t) && toolMatches(t, toolName),
+    );
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * Keep only wildcard tools the gate offered for this request. The
+ * renderer builds the grant, so a pattern it sends must be exactly the
+ * declared one — anything broader is dropped.
+ */
+function _limitGrantPatterns(granted, allowedPattern) {
+  for (const perms of Object.values(granted?.servers || {})) {
+    if (!Array.isArray(perms?.tools)) continue;
+    perms.tools = perms.tools.filter(
+      (t) => !isToolPattern(t) || t === allowedPattern,
+    );
+  }
+  return granted;
+}
+
+/**
  * Filter a sibling-widget list down to widgets whose static manifest
  * declares the given `serverName + toolName`. The originating widget
  * (`originatingWidgetId`) is always retained — the call IS proof of
@@ -433,6 +469,12 @@ async function gateToolCallWithJit(req, opts = {}) {
     req.toolName,
   );
 
+  const toolPattern = _declaredToolPattern(
+    verifiedWidgetId,
+    req.serverName,
+    req.toolName,
+  );
+
   let decision;
   try {
     decision = await requestApproval(
@@ -447,6 +489,7 @@ async function gateToolCallWithJit(req, opts = {}) {
         },
         packageId: siblingInfo.packageId,
         siblingWidgetIds: applicableSiblingIds,
+        toolPattern,
       },
       { timeoutMs: opts.timeoutMs },
     );
@@ -490,6 +533,7 @@ async function gateToolCallWithJit(req, opts = {}) {
         };
   // Force grantOrigin: "live" regardless of what the renderer sent.
   addition.grantOrigin = "live";
+  _limitGrantPatterns(addition, toolPattern);
 
   // Slice 5: when the user opted into "Apply to all widgets from
   // <package>", write the same merged grant for every sibling — each
