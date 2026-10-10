@@ -16,6 +16,9 @@
  *   - allRows: result of `widgetMcp.listAll()` IPC
  *   - registry: Map<packageId, {componentNames, ...}> from
  *     getWidgetRegistry().widgets
+ *   - providers: AppContext.providers (name → { type, ... }). Grants are
+ *     saved by provider name, declarations by provider type; with this
+ *     the grants are compared as types. Optional.
  *
  * Output: { widgets: [{ widgetId, packageId, displayName, missing }] }
  *   - missing has the same shape as a `granted` blob: `{servers, domains}`.
@@ -23,6 +26,8 @@
  *   - Widgets without a manifest are skipped (no declared = nothing to
  *     pre-ask; runtime JIT is the fallback).
  */
+
+import { normalizeGrantsByProviderType } from "./normalizeGrantsByProviderType";
 
 function _isObject(x) {
   return x && typeof x === "object";
@@ -153,7 +158,12 @@ function _collectWidgetComponentNames(layout) {
   return names;
 }
 
-export function computeDashboardPreflight({ layout, allRows, registry }) {
+export function computeDashboardPreflight({
+  layout,
+  allRows,
+  registry,
+  providers = null,
+}) {
   const widgetComponentNames = _collectWidgetComponentNames(layout);
   if (widgetComponentNames.length === 0) return { widgets: [] };
   if (!Array.isArray(allRows)) return { widgets: [] };
@@ -175,8 +185,12 @@ export function computeDashboardPreflight({ layout, allRows, registry }) {
     if (seenWidgetIds.has(row.widgetId)) continue;
     if (!row.declared) continue; // No manifest → falls through to runtime JIT
 
+    // Type-keyed copy of the grant for comparing; `row.granted` (by
+    // provider name) is what the caller merges and saves.
+    const grantedByType = normalizeGrantsByProviderType([row], providers)[0]
+      ?.granted;
     const missing = {
-      servers: _diffServers(row.declared.servers, row.granted?.servers),
+      servers: _diffServers(row.declared.servers, grantedByType?.servers),
       domains: {},
     };
     const fsDiff = _diffFs(row.declared.domains?.fs, row.granted?.domains?.fs);

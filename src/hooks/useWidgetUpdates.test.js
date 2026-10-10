@@ -10,6 +10,7 @@
 
 import { renderHook, act, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { AppContext } from "../Context/App/AppContext";
 import {
   useWidgetUpdates,
   diffMcpServers,
@@ -856,5 +857,83 @@ describe("updatePackages — pre-install MCP preflight", () => {
     expect(window.mainApi.widgets.install).toHaveBeenCalledTimes(1);
     expect(window.mainApi.widgetMcp.setGrant).not.toHaveBeenCalled();
     expect(summary.succeeded).toEqual(["@trops/slack"]);
+  });
+
+  test("a grant saved under the provider NAME counts for the declared type", async () => {
+    // Grants are keyed by provider name ("Slack Dash Comms"); the manifest
+    // declares the type ("slack"). With the provider in AppContext the
+    // two compare, so nothing is asked.
+    installMainApiForPreflight({
+      listAll: jest.fn().mockResolvedValue([
+        {
+          widgetId: "trops.slack.SlackListChannels",
+          granted: {
+            servers: {
+              "Slack Dash Comms": {
+                tools: ["list_channels", "send_message"],
+                readPaths: [],
+                writePaths: [],
+              },
+            },
+          },
+        },
+      ]),
+    });
+    const wrapper = ({ children }) => (
+      <AppContext.Provider
+        value={{
+          providers: {
+            "Slack Dash Comms": { type: "slack", providerClass: "mcp" },
+          },
+        }}
+      >
+        {children}
+      </AppContext.Provider>
+    );
+    const { result } = renderHook(
+      () => useWidgetUpdates(installedWithGrants, jest.fn()),
+      { wrapper },
+    );
+    await waitFor(() => {
+      expect(result.current.packagesWithUpdates.length).toBe(1);
+    });
+    await act(async () => {
+      await result.current.updatePackages(["@trops/slack"]);
+    });
+    expect(result.current.pendingPreflight).toBeNull();
+    expect(window.mainApi.widgets.install).toHaveBeenCalledTimes(1);
+  });
+
+  test("uses the widget's own declared tools when the package has a per-widget breakdown", async () => {
+    // The package declares send_message, but only for another widget —
+    // SlackListChannels itself only needs list_channels (already granted).
+    installMainApiForPreflight({
+      manifest: jest.fn().mockResolvedValue({
+        packageId: "@trops/slack",
+        version: "0.0.735",
+        permissions: {
+          mcp: { slack: { tools: ["list_channels", "send_message"] } },
+          mcpByComponent: {
+            SlackListChannels: {
+              servers: { slack: { tools: ["list_channels"] } },
+            },
+            SlackComposer: {
+              servers: { slack: { tools: ["send_message"] } },
+            },
+          },
+        },
+      }),
+    });
+    const { result } = renderHook(() =>
+      useWidgetUpdates(installedWithGrants, jest.fn()),
+    );
+    await waitFor(() => {
+      expect(result.current.packagesWithUpdates.length).toBe(1);
+    });
+    await act(async () => {
+      await result.current.updatePackages(["@trops/slack"]);
+    });
+    expect(result.current.pendingPreflight).toBeNull();
+    expect(window.mainApi.widgets.install).toHaveBeenCalledTimes(1);
   });
 });
