@@ -18,10 +18,21 @@ const SOURCE = fs.readFileSync(
   "utf8",
 );
 
-// Mirrors `electron/mcp/jitConsent.js` (DEFAULT_TIMEOUT_MS = 60_000).
-// Pinning here avoids a cross-package import from the renderer test
-// into the electron-only module.
-const MAIN_JIT_TIMEOUT_MS = 60_000;
+// Read from `electron/mcp/jitConsent.js`'s source (a renderer test can't
+// require the electron-only module), so the two can't drift apart.
+// Accepts a literal like `300_000` or a product like `5 * 60 * 1000`.
+const MAIN_JIT_TIMEOUT_MS = (() => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "electron", "mcp", "jitConsent.js"),
+    "utf8",
+  );
+  const m = src.match(/const DEFAULT_TIMEOUT_MS = ([\d_*\s]+);/);
+  if (!m) throw new Error("DEFAULT_TIMEOUT_MS not found in jitConsent.js");
+  return m[1]
+    .split("*")
+    .map((n) => Number(n.trim().replace(/_/g, "")))
+    .reduce((a, b) => a * b, 1);
+})();
 const REQUIRED_SLACK_MS = 25_000; // IPC + grant write + re-eval headroom
 
 describe("useMcpProvider — CALL_TOOL_TIMEOUT_MS", () => {

@@ -535,6 +535,50 @@ function setupJitWidget(initialGrant) {
   }
 }
 
+test("JIT timeout: the reason says the request expired, in plain words", async () => {
+  setupJitWidget(null);
+  __mockApproval = async () => {
+    const err = new Error("timed out");
+    err.code = "JIT_TIMEOUT";
+    err.timeoutMs = 5 * 60 * 1000;
+    throw err;
+  };
+  const r = await gateToolCallWithJit(
+    {
+      widgetId: WID_JIT,
+      serverName: "google-drive",
+      toolName: "search",
+      args: {},
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(r.allow, false);
+  assert.strictEqual(
+    r.reason,
+    "Permission request for 'search' on 'google-drive' expired — no answer within 5 minutes. Try again.",
+  );
+});
+
+test("JIT failure: other errors aren't prefixed with 'JIT consent'", async () => {
+  setupJitWidget(null);
+  __mockApproval = async () => {
+    throw new Error("invalid request: widgetId required");
+  };
+  const r = await gateToolCallWithJit(
+    {
+      widgetId: WID_JIT,
+      serverName: "google-drive",
+      toolName: "search",
+      args: {},
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(
+    r.reason,
+    "Permission request failed: invalid request: widgetId required",
+  );
+});
+
 test("JIT escalates: widget has no grant at all", async () => {
   setupJitWidget(null);
   let approvalCalled = false;

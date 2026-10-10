@@ -36,6 +36,7 @@
 
 const { getGrant, setGrant } = require("../mcp/grantedPermissions");
 const { requestApproval } = require("../mcp/jitConsent");
+const { approvalErrorReason } = require("../mcp/approvalErrorReason");
 const { lookup: lookupMountToken } = require("./mountTokenRegistry");
 const { resolveSiblings } = require("./resolveSiblings");
 
@@ -325,7 +326,7 @@ async function gateFsCallWithJit(req, opts = {}) {
   } catch (e) {
     return {
       allow: false,
-      reason: "JIT consent " + (e && e.message ? e.message : "failed"),
+      reason: approvalErrorReason(e, `'${req.action}' on '${filename}'`),
     };
   }
 

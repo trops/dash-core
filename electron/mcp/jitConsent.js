@@ -33,7 +33,12 @@ const { BrowserWindow, ipcMain } = require("electron");
 
 const REQUEST_CHANNEL = "widget:permission-required";
 const RESPONSE_CHANNEL = "widget:permission-response";
-const DEFAULT_TIMEOUT_MS = 60_000;
+// Sent when a prompt times out, so the modal drops it instead of leaving
+// a dialog whose answer nothing is waiting for.
+const EXPIRED_CHANNEL = "widget:permission-expired";
+// Long enough for someone who stepped away for a moment; the widget's
+// call waits this long for the answer.
+const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 
 // requestId → { resolve, reject, timeout, coalesceKey, joinedResolvers }
 const _pending = new Map();
@@ -72,7 +77,7 @@ function coalesceKeyOf(req) {
   ].join("::");
 }
 
-function emitEvent(payload) {
+function emitEvent(payload, channel = REQUEST_CHANNEL) {
   let wins = [];
   try {
     wins = BrowserWindow.getAllWindows() || [];
@@ -81,7 +86,7 @@ function emitEvent(payload) {
   }
   for (const w of wins) {
     try {
-      w?.webContents?.send?.(REQUEST_CHANNEL, payload);
+      w?.webContents?.send?.(channel, payload);
     } catch {
       // best-effort broadcast
     }
@@ -142,8 +147,11 @@ function requestApproval(req, opts = {}) {
       _pending.delete(requestId);
       _coalesce.delete(entry.coalesceKey);
       const err = new Error(
-        `JIT consent timed out for ${req.widgetId} (${req.domain}/${req.action}) after ${timeoutMs}ms`,
+        `permission request timed out for ${req.widgetId} (${req.domain}/${req.action}) after ${timeoutMs}ms`,
       );
+      err.code = "JIT_TIMEOUT";
+      err.timeoutMs = timeoutMs;
+      emitEvent({ requestId }, EXPIRED_CHANNEL);
       reject(err);
       for (const j of entry.joinedResolvers) j.reject(err);
     }, timeoutMs);
@@ -225,5 +233,6 @@ module.exports = {
   _resetForTest,
   REQUEST_CHANNEL,
   RESPONSE_CHANNEL,
+  EXPIRED_CHANNEL,
   DEFAULT_TIMEOUT_MS,
 };

@@ -41,6 +41,7 @@
 const { getGrant, setGrant } = require("./grantedPermissions");
 const { safePath } = require("../utils/safePath");
 const { requestApproval } = require("./jitConsent");
+const { approvalErrorReason } = require("./approvalErrorReason");
 const { lookup: lookupMountToken } = require("../security/mountTokenRegistry");
 const { resolveSiblings } = require("../security/resolveSiblings");
 const { getWidgetMcpPermissions } = require("./widgetPermissions");
@@ -496,7 +497,10 @@ async function gateToolCallWithJit(req, opts = {}) {
   } catch (e) {
     return {
       allow: false,
-      reason: "JIT consent " + (e && e.message ? e.message : "failed"),
+      reason: approvalErrorReason(
+        e,
+        `'${req.toolName}' on '${req.serverName}'`,
+      ),
     };
   }
 

@@ -49,6 +49,8 @@ const {
   requestApproval,
   _handleResponse,
   _resetForTest,
+  DEFAULT_TIMEOUT_MS,
+  EXPIRED_CHANNEL,
 } = require("./jitConsent");
 
 function resetState() {
@@ -117,8 +119,24 @@ test("requestApproval: times out after the deadline", async () => {
   resetState();
   await assert.rejects(
     requestApproval(sampleRequest, { timeoutMs: 30 }),
-    /timeout|timed out/i,
+    (err) => err.code === "JIT_TIMEOUT" && err.timeoutMs === 30,
   );
+});
+
+test("requestApproval: waits five minutes by default", () => {
+  assert.strictEqual(DEFAULT_TIMEOUT_MS, 5 * 60 * 1000);
+});
+
+test("requestApproval: a timeout tells the windows the prompt expired", async () => {
+  resetState();
+  await assert.rejects(requestApproval(sampleRequest, { timeoutMs: 30 }));
+  const asked = emittedEvents.find((e) => e.channel !== EXPIRED_CHANNEL);
+  const expired = emittedEvents.find((e) => e.channel === EXPIRED_CHANNEL);
+  assert.strictEqual(EXPIRED_CHANNEL, "widget:permission-expired");
+  assert.ok(expired, "expected an expired event");
+  assert.deepStrictEqual(expired.payload, {
+    requestId: asked.payload.requestId,
+  });
 });
 
 test("requestApproval: coalesces duplicate requests during pending window", async () => {
