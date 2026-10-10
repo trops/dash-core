@@ -465,6 +465,27 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
 
   const clearNeedsAuth = useCallback(() => setNeedsAuth(false), []);
 
+  // `updates` holds what the last registry check found. The app-launch
+  // Update all dialog and the Widgets page each run this hook, so a
+  // package can be updated (or uninstalled) through the other one. Keep
+  // only entries whose package is still installed at the version the
+  // check was made against; the installed list reloads on every install.
+  const liveUpdates = useMemo(() => {
+    if (!updates || updates.size === 0) return updates;
+    const installedVersion = new Map();
+    for (const w of installedWidgets) {
+      if (!w || w.source !== "installed" || !w.version) continue;
+      installedVersion.set(w.packageId || w.name, w.version);
+    }
+    const live = new Map();
+    for (const [key, info] of updates) {
+      if (info && installedVersion.get(info.name) === info.currentVersion) {
+        live.set(key, info);
+      }
+    }
+    return live.size === updates.size ? updates : live;
+  }, [updates, installedWidgets]);
+
   // Derived list of packages with updates available, deduped by
   // package id. `updates` carries each entry under TWO keys (the
   // package id AND each widget's CM key — see the .set() loop above);
@@ -472,9 +493,9 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
   // widget names that ride along so users see what a single package
   // update will actually bring with it.
   const packagesWithUpdates = useMemo(() => {
-    if (!updates || updates.size === 0) return [];
+    if (!liveUpdates || liveUpdates.size === 0) return [];
     const byPackage = new Map();
-    for (const [, info] of updates) {
+    for (const [, info] of liveUpdates) {
       if (!info || !info.name) continue;
       if (!byPackage.has(info.name)) {
         byPackage.set(info.name, {
@@ -503,7 +524,7 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
     return Array.from(byPackage.values()).sort((a, b) =>
       a.name.localeCompare(b.name),
     );
-  }, [updates, installedWidgets]);
+  }, [liveUpdates, installedWidgets]);
 
   // Sequentially update each package in `packageNames`. Sequential
   // (not parallel) on purpose: the install IPC hits a single registry
@@ -820,7 +841,7 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
   );
 
   return {
-    updates,
+    updates: liveUpdates,
     packagesWithUpdates,
     isChecking,
     updateWidget,

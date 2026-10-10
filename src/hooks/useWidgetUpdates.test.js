@@ -125,6 +125,59 @@ describe("useWidgetUpdates — packagesWithUpdates derivation", () => {
   });
 });
 
+describe("useWidgetUpdates — updates installed elsewhere", () => {
+  // The Widgets page and the app-launch Update all dialog each run this
+  // hook. An update installed through one must drop out of the other once
+  // its installed list reloads, without a new registry check.
+  test("a package now at its latest version stops counting as an update", async () => {
+    const checkUpdates = jest.fn().mockResolvedValue(sampleUpdates);
+    installMainApi({ checkUpdates });
+    const { result, rerender } = renderHook(
+      ({ installed }) => useWidgetUpdates(installed, jest.fn()),
+      { initialProps: { installed: sampleInstalled } },
+    );
+    await waitFor(() => {
+      expect(result.current.packagesWithUpdates.length).toBe(2);
+    });
+
+    rerender({
+      installed: sampleInstalled.map((w) =>
+        w.packageId === "@trops/slack" ? { ...w, version: "0.0.735" } : w,
+      ),
+    });
+
+    expect(result.current.packagesWithUpdates.map((p) => p.name)).toEqual([
+      "@trops/gmail",
+    ]);
+    expect(result.current.updates.has("@trops/slack")).toBe(false);
+    expect(result.current.updates.has("SlackListChannels")).toBe(false);
+    expect(result.current.updates.has("GmailUnreadCount")).toBe(true);
+    expect(checkUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  test("an uninstalled package stops counting as an update", async () => {
+    installMainApi({
+      checkUpdates: jest.fn().mockResolvedValue(sampleUpdates),
+    });
+    const { result, rerender } = renderHook(
+      ({ installed }) => useWidgetUpdates(installed, jest.fn()),
+      { initialProps: { installed: sampleInstalled } },
+    );
+    await waitFor(() => {
+      expect(result.current.packagesWithUpdates.length).toBe(2);
+    });
+
+    rerender({
+      installed: sampleInstalled.filter((w) => w.packageId !== "@trops/gmail"),
+    });
+
+    expect(result.current.packagesWithUpdates.map((p) => p.name)).toEqual([
+      "@trops/slack",
+    ]);
+    expect(result.current.updates.has("GmailUnreadCount")).toBe(false);
+  });
+});
+
 describe("useWidgetUpdates — updatePackages batch orchestration", () => {
   test("runs sequentially: in-progress fires BEFORE the per-install await resolves", async () => {
     // Per-call resolver pattern (see seeding test) — single shared
