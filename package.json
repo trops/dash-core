@@ -11,6 +11,9 @@
     },
     "./electron": {
       "require": "./dist/electron/index.js"
+    },
+    "./scanner": {
+      "require": "./dist/scanner/index.js"
     }
   },
   "files": [
