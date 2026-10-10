@@ -91,6 +91,41 @@ const lastEventCache = new Map();
 // the main window leaves it false.
 let replayEnabled = false;
 
+// A bot's results (`bot:<ref>[<botId>].result.<name>`, team-dashboards
+// TD-002) are state, not commands: every window replays the latest saved one
+// to a widget that subscribes, so a dashboard opened after the bot ran still
+// shows it. When each result last arrived live, so a fetch that resolves late
+// never overwrites a newer live result.
+const BOT_RESULT_EVENT = /^bot:.+\]\.result\.[A-Za-z][A-Za-z0-9_]*$/;
+const resultSeenAt = new Map();
+
+function noteLiveResult(eventType) {
+  if (BOT_RESULT_EVENT.test(eventType)) resultSeenAt.set(eventType, Date.now());
+}
+
+function isSubscribed(eventType, action, uuid) {
+  return (event.list.get(eventType) || []).some(
+    (s) => s.uuid === uuid && s.action === action,
+  );
+}
+
+function replayLatestResult(eventType, action, uuid) {
+  const getLatestResult = window.mainApi?.bots?.getLatestResult;
+  if (typeof getLatestResult !== "function") return;
+  const subscribedAt = Date.now();
+  Promise.resolve()
+    .then(() => getLatestResult(eventType))
+    .then((content) => {
+      if (!content) return;
+      if ((resultSeenAt.get(eventType) || 0) >= subscribedAt) return;
+      if (!isSubscribed(eventType, action, uuid)) return;
+      action({ message: content, event: eventType, uuid, replay: true });
+    })
+    .catch(() => {
+      // No saved result to show — the widget waits for the next live one.
+    });
+}
+
 export const DashboardPublisher = {
   sub: (eventType, action, uuid) => {
     event.on(eventType, action, uuid);
@@ -117,12 +152,18 @@ export const DashboardPublisher = {
           // Replay must not break subscription
         }
       }, 0);
+    } else if (
+      typeof action === "function" &&
+      BOT_RESULT_EVENT.test(eventType)
+    ) {
+      replayLatestResult(eventType, action, uuid);
     }
   },
   // meta.workspaceId — the publishing widget's dashboard. Forwarded over IPC
   // so bots subscribed to one dashboard's widget ignore copies of it.
   pub: (eventType, content, meta = null) => {
     lastEventCache.set(eventType, { content, timestamp: Date.now() });
+    noteLiveResult(eventType);
     event.emit(eventType, content);
 
     // Notify monitor callbacks (debugger)
@@ -169,6 +210,7 @@ export const DashboardPublisher = {
     replayEnabled = replay;
 
     ipcBridgeListener = (_e, message) => {
+      if (message && message.eventType) noteLiveResult(message.eventType);
       if (replayEnabled && message && message.eventType) {
         lastEventCache.set(message.eventType, {
           content: message.content,

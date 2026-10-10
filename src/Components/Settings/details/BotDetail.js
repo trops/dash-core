@@ -26,6 +26,7 @@ import {
 } from "./eventCatalog";
 import { dashboardOptions, offTeamSubscriptions } from "../../Bots/teamUtils";
 import { DraftGaps } from "../../Bots/DraftGaps";
+import { resultNameFor } from "./resultNames";
 
 /**
  * BotDetail — create/edit form for a Bot Factory bot (Settings → Bots).
@@ -286,6 +287,42 @@ export const BotDetail = ({
   const offTeam = offTeamSubscriptions(subscriptions, team);
   // "Runs when…" (TEAM-012): one picker of everything that can trigger the
   // bot; a just-added trigger reminds the user to Save.
+  // --- Results the bot reports to its dashboard (team-dashboards TD-001) ---
+  const [publishes, setPublishes] = useState(() =>
+    (bot?.publishes || []).filter((p) => p && p.name),
+  );
+  const [newResultLabel, setNewResultLabel] = useState("");
+  const [newResultDescription, setNewResultDescription] = useState("");
+
+  function addResult() {
+    const label = newResultLabel.trim();
+    if (!label) return;
+    const description = newResultDescription.trim();
+    setPublishes((list) => [
+      ...list,
+      {
+        name: resultNameFor(
+          label,
+          list.map((p) => p.name),
+        ),
+        label,
+        ...(description ? { description } : {}),
+      },
+    ]);
+    setNewResultLabel("");
+    setNewResultDescription("");
+  }
+
+  function relabelResult(name, label) {
+    setPublishes((list) =>
+      list.map((p) => (p.name === name ? { ...p, label } : p)),
+    );
+  }
+
+  function removeResult(name) {
+    setPublishes((list) => list.filter((p) => p.name !== name));
+  }
+
   const [pickTrigger, setPickTrigger] = useState("");
   const [triggerAdded, setTriggerAdded] = useState(false);
 
@@ -315,6 +352,7 @@ export const BotDetail = ({
     advancedCron,
     schedulePrompt,
     subscriptions,
+    publishes,
     team,
   });
   const [baseline, setBaseline] = useState(snapshot);
@@ -596,6 +634,11 @@ export const BotDetail = ({
       ),
       schedules,
       subscriptions,
+      // A blank label falls back to the result's name.
+      publishes: publishes.map((p) => ({
+        ...p,
+        label: (p.label || "").trim() || p.name,
+      })),
     };
   }
 
@@ -1004,6 +1047,60 @@ export const BotDetail = ({
           )}
           <span className="text-xs opacity-50">
             The bot runs automatically when one of these events fires.
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-medium">Results</span>
+          {publishes.length ? (
+            <div className="flex flex-col gap-2">
+              {publishes.map((p) => (
+                <div key={p.name} className="flex flex-col gap-1">
+                  <div className="flex flex-row items-center gap-2">
+                    <InputText
+                      value={p.label || ""}
+                      onChange={(v) => relabelResult(p.name, v)}
+                      placeholder={p.name}
+                    />
+                    <span className="text-xs opacity-50">{p.name}</span>
+                    <Button3
+                      title="Remove"
+                      size="xs"
+                      ariaLabel={`Remove result ${p.label || p.name}`}
+                      onClick={() => removeResult(p.name)}
+                    />
+                  </div>
+                  {p.description ? (
+                    <span className="text-xs opacity-60">{p.description}</span>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <span className="text-xs opacity-50">
+              This bot doesn&apos;t report any results yet.
+            </span>
+          )}
+          <InputText
+            value={newResultLabel}
+            onChange={setNewResultLabel}
+            placeholder="Result, e.g. Important emails"
+          />
+          <InputText
+            value={newResultDescription}
+            onChange={setNewResultDescription}
+            placeholder="What it holds (optional)"
+          />
+          <Button
+            title="Add result"
+            onClick={addResult}
+            size="sm"
+            disabled={!newResultLabel.trim()}
+          />
+          <span className="text-xs opacity-50">
+            Lists this bot reports to its dashboard, like the important emails
+            it found. Widgets on the dashboard can show them (Configure ›
+            Listeners), and other bots can run when one arrives.
           </span>
         </div>
       </div>

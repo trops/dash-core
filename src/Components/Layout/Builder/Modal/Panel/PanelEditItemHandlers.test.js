@@ -33,6 +33,7 @@ const bots = [
     name: "Schema Planner",
     workspaceId: 7,
     mcpServers: [],
+    publishes: [{ name: "plan", label: "Schema plan" }],
   },
   // Another dashboard's bot — not offered.
   {
@@ -113,5 +114,24 @@ describe("PanelEditItemHandlers — bots as listener sources", () => {
     expect(
       screen.queryByText("Bots on this dashboard"),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("PanelEditItemHandlers — a bot's events grouped (team-dashboards TD-001)", () => {
+  it("groups a bot's run events apart from its results", async () => {
+    renderPanel();
+    await screen.findByText("Schema Planner");
+    expect(screen.getByText("When it runs")).toBeInTheDocument();
+    expect(screen.getByText("Its results")).toBeInTheDocument();
+    expect(screen.getByText("Schema plan (result)")).toBeInTheDocument();
+  });
+
+  it("ticking a result wires bot:<ref>[<id>].result.<name>", async () => {
+    const onUpdate = renderPanel();
+    fireEvent.click(await screen.findByText("Schema plan (result)"));
+    const [nextItem] = onUpdate.mock.calls[0];
+    expect(nextItem.listeners.onMessage).toEqual([
+      "bot:local/schema-planner[b1].result.plan",
+    ]);
   });
 });

@@ -41,6 +41,8 @@ const BOTS_LIST_LEADS = "bots-list-leads";
 const BOTS_GET_RUNS = "bots-get-runs";
 // Bot monitor (TEAM-011 B3): the latest runs across every bot.
 const BOTS_LIST_RECENT_RUNS = "bots-list-recent-runs";
+// Team dashboards (TD-002): the latest result a bot sent, for late widgets.
+const BOTS_GET_LATEST_RESULT = "bots-get-latest-result";
 // Lead drafts (TEAM-005): bots a team lead proposed, awaiting review.
 const BOTS_LIST_DRAFTS = "bots-list-drafts";
 const BOTS_DISMISS_DRAFT = "bots-dismiss-draft";
@@ -105,6 +107,7 @@ module.exports = {
   BOTS_LIST_LEADS,
   BOTS_GET_RUNS,
   BOTS_LIST_RECENT_RUNS,
+  BOTS_GET_LATEST_RESULT,
   BOTS_LIST_DRAFTS,
   BOTS_DISMISS_DRAFT,
   BOTS_EXPORT_TEAM,

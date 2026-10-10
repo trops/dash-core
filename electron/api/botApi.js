@@ -37,6 +37,7 @@ const {
   BOTS_ASK_LEAD,
   BOTS_LIST_LEADS,
   BOTS_GET_RUNS,
+  BOTS_GET_LATEST_RESULT,
   BOTS_LIST_RECENT_RUNS,
   BOTS_LIST_DRAFTS,
   BOTS_DISMISS_DRAFT,
@@ -83,6 +84,9 @@ const botApi = {
   /** The bot's latest runs (oldest first), answers decrypted. */
   getRuns: (botId, limit) =>
     ipcRenderer.invoke(BOTS_GET_RUNS, { botId, limit }),
+  /** The latest result a bot sent, by its result event type (TD-002). */
+  getLatestResult: (eventType) =>
+    ipcRenderer.invoke(BOTS_GET_LATEST_RESULT, { eventType }),
   stop: (botId) => ipcRenderer.invoke(BOTS_STOP, { botId }),
   /** Bots a team lead drafted for this dashboard, awaiting review (TEAM-005). */
   listDrafts: (workspaceId) =>

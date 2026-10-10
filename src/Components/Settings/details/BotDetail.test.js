@@ -1430,3 +1430,99 @@ describe("BotDetail — header scrolls with the form", () => {
     );
   });
 });
+
+describe("BotDetail — Results (team-dashboards TD-001)", () => {
+  const bot = {
+    id: "bot_r",
+    name: "Triage",
+    instructions: "Find important emails",
+    provider: "anthropic",
+    approvalPolicy: "ask",
+    mcpServers: [],
+    schedules: [],
+    publishes: [
+      {
+        name: "importantEmails",
+        label: "Important emails",
+        description: "Need a reply today",
+      },
+    ],
+  };
+  const renderEdit = (b = bot) => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail bot={b} providers={{}} onSave={onSave} onDelete={jest.fn()} />,
+    );
+    return onSave;
+  };
+
+  it("explains results when the bot has none", () => {
+    renderEdit({ ...bot, publishes: [] });
+    expect(screen.getByText("Results")).toBeInTheDocument();
+    expect(
+      screen.getByText(/doesn.t report any results yet/),
+    ).toBeInTheDocument();
+  });
+
+  it("adds a result named from its label and saves it", () => {
+    const onSave = renderEdit({ ...bot, publishes: [] });
+    expect(screen.getByText("Add result")).toBeDisabled();
+    fireEvent.change(
+      screen.getByPlaceholderText("Result, e.g. Important emails"),
+      {
+        target: { value: "Important emails" },
+      },
+    );
+    fireEvent.change(screen.getByPlaceholderText("What it holds (optional)"), {
+      target: { value: "Need a reply today" },
+    });
+    fireEvent.click(screen.getByText("Add result"));
+    expect(screen.getByText("importantEmails")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave.mock.calls[0][0].publishes).toEqual([
+      {
+        name: "importantEmails",
+        label: "Important emails",
+        description: "Need a reply today",
+      },
+    ]);
+  });
+
+  it("numbers a second result with the same label", () => {
+    const onSave = renderEdit();
+    fireEvent.change(
+      screen.getByPlaceholderText("Result, e.g. Important emails"),
+      {
+        target: { value: "Important emails" },
+      },
+    );
+    fireEvent.click(screen.getByText("Add result"));
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave.mock.calls[0][0].publishes.map((p) => p.name)).toEqual([
+      "importantEmails",
+      "importantEmails2",
+    ]);
+  });
+
+  it("renaming a result keeps its name, so wired widgets keep working", () => {
+    const onSave = renderEdit();
+    fireEvent.change(screen.getByDisplayValue("Important emails"), {
+      target: { value: "Priority mail" },
+    });
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave.mock.calls[0][0].publishes).toEqual([
+      {
+        name: "importantEmails",
+        label: "Priority mail",
+        description: "Need a reply today",
+      },
+    ]);
+  });
+
+  it("removes a result", () => {
+    const onSave = renderEdit();
+    fireEvent.click(screen.getByLabelText("Remove result Important emails"));
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave.mock.calls[0][0].publishes).toEqual([]);
+  });
+});

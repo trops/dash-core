@@ -48,6 +48,42 @@ describe("jsonSchemaToZodShape", () => {
     assert.equal(shape.x.safeParse({ anything: 1 }).success, true);
   });
 
+  it("keeps a nested object's unlisted fields (JSON Schema allows them)", () => {
+    const shape = jsonSchemaToZodShape(
+      {
+        type: "object",
+        properties: {
+          items: { type: "array", items: { type: "object" } },
+          filter: { type: "object", properties: { q: { type: "string" } } },
+        },
+      },
+      z,
+    );
+    const items = shape.items.safeParse([{ title: "a", link: "https://x" }]);
+    assert.deepEqual(items.data, [{ title: "a", link: "https://x" }]);
+    const filter = shape.filter.safeParse({ q: "x", limit: 5 });
+    assert.deepEqual(filter.data, { q: "x", limit: 5 });
+  });
+
+  it("drops unlisted fields only when the schema says additionalProperties: false", () => {
+    const shape = jsonSchemaToZodShape(
+      {
+        type: "object",
+        properties: {
+          opts: {
+            type: "object",
+            properties: { q: { type: "string" } },
+            additionalProperties: false,
+          },
+        },
+      },
+      z,
+    );
+    assert.deepEqual(shape.opts.safeParse({ q: "x", extra: 1 }).data, {
+      q: "x",
+    });
+  });
+
   it("handles an empty/missing schema", () => {
     assert.deepEqual(jsonSchemaToZodShape(undefined, z), {});
     assert.deepEqual(jsonSchemaToZodShape({ type: "object" }, z), {});

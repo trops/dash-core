@@ -6,6 +6,7 @@ import {
   botSubscription,
   buildTriggerOptions,
   getBotEmitters,
+  groupBotEvents,
 } from "./eventCatalog";
 
 // Bot events — derived from each bot's providers (by TYPE) + selected tools.
@@ -418,5 +419,83 @@ describe("getBotEmitters (bots as Listeners sources, TEAM-012)", () => {
   it("is empty without a dashboard or bots", () => {
     expect(getBotEmitters(bots, toolSources, null)).toEqual([]);
     expect(getBotEmitters(null, toolSources, 7)).toEqual([]);
+  });
+});
+
+describe("bot results as events (team-dashboards TD-001)", () => {
+  const triage = {
+    id: "bot_t",
+    name: "Triage",
+    ref: "local/triage",
+    workspaceId: "7",
+    publishes: [
+      { name: "importantEmails", label: "Important emails" },
+      { name: "digest" },
+      { name: "bad.name" },
+    ],
+  };
+
+  it("lists each declared result after Completed and Failed", () => {
+    const [entry] = buildBotEventCatalog([triage], []);
+    expect(entry.events).toEqual([
+      { event: "completed", label: "Completed" },
+      { event: "failed", label: "Failed" },
+      { event: "result.importantEmails", label: "Important emails" },
+      { event: "result.digest", label: "digest" },
+    ]);
+  });
+
+  it("offers results in Listeners as '<label> (result)'", () => {
+    const [src] = getBotEmitters([triage], [], 7);
+    expect(src.events).toContain("result.importantEmails");
+    expect(src.eventLabels["result.importantEmails"]).toBe(
+      "Important emails (result)",
+    );
+    expect(`${src.component}[${src.itemId}].result.importantEmails`).toBe(
+      "bot:local/triage[bot_t].result.importantEmails",
+    );
+  });
+
+  it("offers results as triggers in 'Runs when…'", () => {
+    const options = buildTriggerOptions({ team: "7", bots: [triage] });
+    const opt = options.find(
+      (o) => o.value === "bot:local/triage[bot_t].result.importantEmails",
+    );
+    expect(opt.label).toBe("Triage › Important emails (result)");
+    expect(opt.subscription.source).toEqual({
+      kind: "bot",
+      ref: "local/triage",
+      instanceId: "bot_t",
+      event: "result.importantEmails",
+    });
+  });
+});
+
+describe("groupBotEvents (Listeners: when it runs / its results / tools)", () => {
+  it("splits a bot's events into run, result and tool groups, in that order", () => {
+    expect(
+      groupBotEvents([
+        "completed",
+        "tool.gmail.search",
+        "result.importantEmails",
+        "failed",
+      ]),
+    ).toEqual([
+      { key: "run", title: "When it runs", events: ["completed", "failed"] },
+      {
+        key: "results",
+        title: "Its results",
+        events: ["result.importantEmails"],
+      },
+      { key: "tools", title: "Tools it uses", events: ["tool.gmail.search"] },
+    ]);
+  });
+
+  it("leaves out empty groups", () => {
+    expect(groupBotEvents(["completed", "failed"])).toEqual([
+      { key: "run", title: "When it runs", events: ["completed", "failed"] },
+    ]);
+    expect(groupBotEvents([])).toEqual([]);
+    expect(groupBotEvents(undefined)).toEqual([]);
   });
 });

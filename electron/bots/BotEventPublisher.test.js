@@ -154,3 +154,29 @@ describe("BotEventPublisher", () => {
     assert.deepEqual(published[1].chain, ["bot_9"]);
   });
 });
+
+describe("BotEventPublisher — results (team-dashboards TD-001)", () => {
+  const payload = { botId: "bot_9", name: "importantEmails", items: [] };
+
+  it("publishes result.<name> with the payload and the run's chain", () => {
+    const { pub, published } = setup();
+    pub.startRun(bot.id, { chain: ["bot_1"], depth: 1 });
+    pub.sendResult(bot, payload);
+    assert.equal(published.length, 1);
+    const m = published[0];
+    assert.equal(
+      m.eventType,
+      "bot:local/gmail-email-check[bot_9].result.importantEmails",
+    );
+    assert.deepEqual(m.content.items, []);
+    assert.deepEqual(m.chain, ["bot_1", "bot_9"]);
+    assert.equal(m.depth, 2);
+  });
+
+  it("publishes nothing for an invalid name or no bot", () => {
+    const { pub, published } = setup();
+    pub.sendResult(bot, { name: "a.b" });
+    pub.sendResult(null, payload);
+    assert.equal(published.length, 0);
+  });
+});

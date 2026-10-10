@@ -14,7 +14,8 @@
  *     clock:       { now(): string }                       // ISO timestamps
  *
  * Persisted blob shape:
- *   { bots: { [id]: BotDefinition }, runs: { [id]: Run[] } }
+ *   { bots: { [id]: BotDefinition }, runs: { [id]: Run[] },
+ *     results: { [id]: { [resultName]: sealed JSON } } }
  *
  * Each bot gets a private working directory at <botsRoot>/<id>/files, created
  * on create() and removed on delete().
@@ -198,6 +199,7 @@ class BotStore {
     if (!data.bots[id]) return false;
     delete data.bots[id];
     delete data.runs[id];
+    if (data.results) delete data.results[id];
     this._save(data);
 
     if (isValidBotId(id)) {
@@ -277,6 +279,39 @@ class BotStore {
       }
       return out;
     });
+  }
+
+  // ---- Latest results (team-dashboards TD-002) -------------------------
+
+  /**
+   * Save the latest result a bot sent under `name`, replacing the previous
+   * one. Results can hold sensitive text (emails), so they're sealed at rest
+   * like run answers.
+   */
+  setResult(id, name, payload) {
+    const data = this._load();
+    if (!data.bots[id]) throw new Error(`BotStore.setResult: no bot "${id}"`);
+    const json = JSON.stringify(payload);
+    data.results = data.results || {};
+    data.results[id] = {
+      ...(data.results[id] || {}),
+      [name]: this._box ? this._box.seal(json) : json,
+    };
+    this._save(data);
+  }
+
+  /** The latest result a bot sent under `name`, or null. */
+  getResult(id, name) {
+    const { results } = this._load();
+    const stored = results && results[id] && results[id][name];
+    if (typeof stored !== "string") return null;
+    const json = this._box ? this._box.open(stored) : stored;
+    if (typeof json !== "string") return null;
+    try {
+      return JSON.parse(json);
+    } catch (_e) {
+      return null;
+    }
   }
 
   // ---- Team settings (bot-teams TEAM-002) --------------------------------

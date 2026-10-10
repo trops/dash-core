@@ -4,6 +4,7 @@
  * Turns a bot's run into events on the dashboard bus (PRD US-010):
  *   - `completed` / `failed` when the run ends (with its final text / error)
  *   - `tool.<providerType>.<tool>` per successful provider tool call
+ *   - `result.<name>` per result the bot sends (team-dashboards TD-001)
  * Every event carries the run's loop chain (see botEvents.checkChain).
  *
  * One run per bot at a time (BotRunner skips overlaps), so per-run state is
@@ -16,6 +17,7 @@
 const {
   rootCause,
   toolEventName,
+  resultEventName,
   completedPayload,
   failedPayload,
   toolPayload,
@@ -65,6 +67,13 @@ class BotEventPublisher {
       args,
       result: result.text,
     });
+    this._send(bot, name, payload);
+  }
+
+  /** The bot sent a result (a resultPayload) during its run. */
+  sendResult(bot, payload) {
+    const name = resultEventName(payload && payload.name);
+    if (!bot || !name) return;
     this._send(bot, name, payload);
   }
 
