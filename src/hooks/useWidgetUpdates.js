@@ -1,4 +1,13 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  useContext,
+} from "react";
+import { AppContext } from "../Context/App/AppContext";
+import { normalizeGrantsByProviderType } from "../utils/normalizeGrantsByProviderType";
 
 // --- Preflight helpers ---
 //
@@ -103,6 +112,7 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
   // pips next to each row. Cleared (Map -> empty) when isBatchUpdating
   // flips back to false; consumers that want to keep showing a per-package
   // result after the batch finished should snapshot it themselves.
+  const appProviders = useContext(AppContext)?.providers || null;
   const [batchStatus, setBatchStatus] = useState(new Map());
   const [isBatchUpdating, setIsBatchUpdating] = useState(false);
   const checkedRef = useRef(false);
@@ -568,6 +578,9 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
       for (const { name: packageId, manifest } of manifests) {
         const declaredMcp = manifest?.permissions?.mcp;
         if (!declaredMcp || Object.keys(declaredMcp).length === 0) continue;
+        // Per-widget breakdown when the package has one — otherwise every
+        // widget in the package would be asked for the package's tools.
+        const byComponent = manifest?.permissions?.mcpByComponent || null;
 
         // Find installed widgets that belong to this package. The
         // new version may add widgets not yet installed — those fall
@@ -581,8 +594,18 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
             rowByComponentName.get(w.name) ||
             rowByWidgetId.get(`${packageId}.${w.name}`);
           const widgetId = matchingRow?.widgetId || `${packageId}.${w.name}`;
-          const grantedMcp = matchingRow?.granted?.servers || {};
-          const missingServers = diffMcpServers(declaredMcp, grantedMcp);
+          // Saved grants are keyed by provider name ("Algolia Public HR"),
+          // declared permissions by provider type ("algolia"). Compare
+          // against a type-keyed copy; the original is what gets merged
+          // and saved back.
+          const grantedMcp = matchingRow
+            ? normalizeGrantsByProviderType([matchingRow], appProviders)[0]
+                ?.granted?.servers || {}
+            : {};
+          const declaredForWidget = byComponent
+            ? byComponent[w.name]?.servers || {}
+            : declaredMcp;
+          const missingServers = diffMcpServers(declaredForWidget, grantedMcp);
           if (Object.keys(missingServers).length === 0) continue;
           widgetsWithMissing.push({
             widgetId,
@@ -603,7 +626,7 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
         ? null
         : { widgets: widgetsWithMissing };
     },
-    [installedWidgets],
+    [installedWidgets, appProviders],
   );
 
   const updatePackages = useCallback(

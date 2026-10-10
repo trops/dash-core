@@ -12,6 +12,7 @@ export * from "./resolveIcon";
 export * from "./validation";
 export * from "./mcpUtils";
 export * from "./providerUtils";
+export * from "./normalizeGrantsByProviderType";
 export * from "./scopedComponentId";
 export * from "./themeGenerator";
 export * from "./markdownFormParser";

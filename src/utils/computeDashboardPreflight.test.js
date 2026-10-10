@@ -63,6 +63,49 @@ const row = ({
   grantOrigin: granted ? "live" : null,
 });
 
+describe("computeDashboardPreflight — grants saved by provider name", () => {
+  const layout = [grid(1), widget("GDriveFileList")];
+  const granted = { servers: { "Google Drive": { tools: ["search"] } } };
+  const allRows = [
+    row({
+      widgetId: "trops.google-drive.GDriveFileList",
+      declared: { servers: { "google-drive": { tools: ["search"] } } },
+      granted,
+    }),
+  ];
+
+  test("a name-keyed grant covers the type-keyed declaration", () => {
+    const out = computeDashboardPreflight({
+      layout,
+      allRows,
+      registry: REGISTRY,
+      providers: { "Google Drive": { type: "google-drive" } },
+    });
+    expect(out.widgets).toEqual([]);
+  });
+
+  test("the original name-keyed grant is what's returned for merging", () => {
+    const out = computeDashboardPreflight({
+      layout,
+      allRows: [
+        row({
+          widgetId: "trops.google-drive.GDriveFileList",
+          declared: {
+            servers: { "google-drive": { tools: ["search", "list_folder"] } },
+          },
+          granted,
+        }),
+      ],
+      registry: REGISTRY,
+      providers: { "Google Drive": { type: "google-drive" } },
+    });
+    expect(out.widgets[0].missing.servers["google-drive"].tools).toEqual([
+      "list_folder",
+    ]);
+    expect(out.widgets[0].granted).toEqual(granted);
+  });
+});
+
 describe("computeDashboardPreflight — basics", () => {
   test("widget with declared but no granted → reported as needing all of declared", () => {
     const layout = [grid(1), widget("GDriveFileList")];

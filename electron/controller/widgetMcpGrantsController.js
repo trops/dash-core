@@ -27,6 +27,7 @@ const { getWidgetRegistry } = require("../widgetRegistry");
 const { buildGrantsListing } = require("./widgetMcpGrantsListing");
 const { expandToComponentRows } = require("./expandToComponentRows");
 const { isBroadening } = require("./grantDiff");
+const { toProviderNames } = require("../mcp/grantServerNames");
 
 // Native confirm dialog for any set-grant call that broadens the
 // widget's current permissions. The dialog runs at OS level — a
@@ -70,12 +71,29 @@ async function _confirmBroadening(event, widgetId, summary) {
   return result.response === 1;
 }
 
-function setupWidgetMcpGrantsHandlers() {
+/**
+ * @param {object} [options]
+ * @param {() => Array<{name, type, providerClass}>} [options.listProviders]
+ *   the user's providers. Grants from declared permissions are keyed by
+ *   provider type; they're saved under the provider names instead, the
+ *   key tool calls are checked against (see grantServerNames).
+ */
+function setupWidgetMcpGrantsHandlers({ listProviders } = {}) {
+  const _providers = () => {
+    try {
+      return typeof listProviders === "function" ? listProviders() || [] : [];
+    } catch (e) {
+      console.warn("[widgetMcpGrants] listProviders failed:", e.message);
+      return [];
+    }
+  };
+
   ipcMain.handle("widget-mcp:get-grant", (event, widgetId) => {
     return getGrant(widgetId);
   });
 
-  ipcMain.handle("widget-mcp:set-grant", async (event, widgetId, perms) => {
+  ipcMain.handle("widget-mcp:set-grant", async (event, widgetId, rawPerms) => {
+    const perms = toProviderNames(rawPerms, _providers());
     const current = getGrant(widgetId);
     const diff = isBroadening(current, perms);
     if (diff.broadening) {
