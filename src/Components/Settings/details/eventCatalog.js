@@ -116,7 +116,8 @@ export function describeSubscription(sub, catalog, botCatalog = []) {
 /**
  * Events other bots publish (bot:<ref>[<botId>].<event>, PRD US-010), for the
  * "Another bot" side of the picker. Derived from each bot's settings — never
- * hand-declared: Completed, Failed, and one `tool.<providerType>.<tool>` per
+ * hand-declared: Completed, Failed, one `result.<name>` per result the bot
+ * declares (team-dashboards TD-001), and one `tool.<providerType>.<tool>` per
  * tool the bot may use (the provider's tools, narrowed by the bot's
  * selection). Providers with no known type or tool list are skipped.
  *
@@ -124,6 +125,9 @@ export function describeSubscription(sub, catalog, botCatalog = []) {
  * @param {Array<{name, type, tools}>} toolSources  bots.listToolSources()
  * @param {string} [excludeBotId]  the bot being edited — can't trigger itself
  */
+// A declared result name — mirrors electron/bots/botSchema.js RESULT_NAME_RE.
+const RESULT_NAME_RE = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
+
 export function buildBotEventCatalog(bots, toolSources, excludeBotId = null) {
   if (!Array.isArray(bots)) return [];
   const sources = Array.isArray(toolSources) ? toolSources : [];
@@ -137,6 +141,10 @@ export function buildBotEventCatalog(bots, toolSources, excludeBotId = null) {
       { event: "completed", label: "Completed" },
       { event: "failed", label: "Failed" },
     ];
+    for (const p of bot.publishes || []) {
+      if (!p || !RESULT_NAME_RE.test(p.name || "")) continue;
+      events.push({ event: `result.${p.name}`, label: p.label || p.name });
+    }
     for (const provider of bot.mcpServers || []) {
       const src = sources.find((s) => s && s.name === provider);
       if (!src || !src.type || !Array.isArray(src.tools)) continue;
@@ -171,6 +179,9 @@ export function botSubscription(botEntry, ev) {
 }
 
 function botEventLabel(ev) {
+  // A result is a list the bot reports to its dashboard — never a message
+  // it sends anywhere, so the label avoids "sends".
+  if (ev.event.startsWith("result.")) return `${ev.label} (result)`;
   if (!ev.event.startsWith("tool.")) return ev.label;
   // Tool events are labelled "<provider> › <tool>" in the catalog.
   const [provider, tool] = String(ev.label).split(" › ");
@@ -267,6 +278,29 @@ export function buildTriggerOptions({
     }
   }
   return out;
+}
+
+/**
+ * A bot's events grouped for Listeners: how its runs go (Completed, Failed),
+ * the results it reports (team-dashboards TD-001), and the tools it uses.
+ * Empty groups are left out.
+ * @param {string[]} events  bare event names (completed, result.x, tool.y.z)
+ */
+export function groupBotEvents(events) {
+  const groups = [
+    { key: "run", title: "When it runs", events: [] },
+    { key: "results", title: "Its results", events: [] },
+    { key: "tools", title: "Tools it uses", events: [] },
+  ];
+  for (const ev of Array.isArray(events) ? events : []) {
+    const key = ev.startsWith("result.")
+      ? "results"
+      : ev.startsWith("tool.")
+        ? "tools"
+        : "run";
+    groups.find((g) => g.key === key).events.push(ev);
+  }
+  return groups.filter((g) => g.events.length);
 }
 
 /**

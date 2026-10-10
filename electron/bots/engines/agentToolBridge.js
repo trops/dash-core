@@ -38,8 +38,12 @@ function zodTypeFor(prop, z) {
       return z.boolean();
     case "array":
       return z.array(p.items ? zodTypeFor(p.items, z) : z.any());
-    case "object":
-      return z.object(jsonSchemaToZodShape(p, z));
+    case "object": {
+      // JSON Schema allows unlisted fields unless additionalProperties is
+      // false; zod's default would silently drop them (send_result items).
+      const obj = z.object(jsonSchemaToZodShape(p, z));
+      return p.additionalProperties === false ? obj : obj.passthrough();
+    }
     default:
       return z.any();
   }

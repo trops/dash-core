@@ -183,3 +183,40 @@ describe("Lead drafts (TEAM-005)", () => {
     );
   });
 });
+
+describe("botController — results (team-dashboards TD-001/TD-002)", () => {
+  it("gives declared-result bots send_result, auto-allowed like memory", () => {
+    assert.match(
+      ctrl,
+      /internalServers: \[MEMORY_SERVER, TEAM_SERVER, RESULTS_SERVER\]/,
+    );
+    assert.match(
+      ctrl,
+      /for \(const tool of resultToolsFor\(bot\)\) \{\s*tools\.push\(tool\);\s*toolServer\[tool\.name\] = RESULTS_SERVER;/,
+    );
+  });
+
+  it("routes send_result to sendResult with the store and the bus", () => {
+    assert.match(
+      ctrl,
+      /if \(serverName === RESULTS_SERVER\) \{[\s\S]{0,120}return sendResult\(\s*\{ store: this\._store, publisher: this\._events \},\s*opts\.botId,\s*args,/,
+    );
+  });
+
+  it("serves the latest result by event type", () => {
+    assert.match(
+      ctrl,
+      /getLatestResult\(eventType\) \{\s*return latestResult\(this\._store, eventType\);/,
+    );
+  });
+});
+
+describe("botApi / events — latest result IPC (TD-002)", () => {
+  it("defines and exposes the latest-result channel", () => {
+    assert.equal(events.BOTS_GET_LATEST_RESULT, "bots-get-latest-result");
+    assert.match(
+      api,
+      /getLatestResult: \(eventType\) =>\s*ipcRenderer\.invoke\(BOTS_GET_LATEST_RESULT, \{ eventType \}\)/,
+    );
+  });
+});

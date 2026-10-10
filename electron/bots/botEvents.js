@@ -10,15 +10,18 @@
  *   installed from one, else `local/<slug>` fixed at creation — never its
  *   display name, so renames and repeat template installs don't break
  *   subscriptions.
- * - events: `completed`, `failed`, and `tool.<providerType>.<tool>` per
+ * - events: `completed`, `failed`, `tool.<providerType>.<tool>` per
  *   successful provider tool call (provider TYPE, e.g. `gmail` — portable —
- *   never the user's provider name).
+ *   never the user's provider name), and `result.<name>` per result the bot
+ *   sends (team-dashboards TD-001).
  *
  * Payloads are keyed by `botId` (identity); `botName` is only a label.
  *
  * Pure (NFR-006): no Electron, no I/O.
  */
 "use strict";
+
+const { RESULT_NAME_RE } = require("./botSchema");
 
 /** Stop bot→bot chains at this depth (PRD US-011 AC6). */
 const MAX_CHAIN_DEPTH = 5;
@@ -44,6 +47,25 @@ function botEventType(bot, event) {
 function toolEventName(providerType, tool) {
   if (!providerType || !tool) return null;
   return `tool.${providerType}.${tool}`;
+}
+
+/** `result.<name>` for a declared result name, else null. */
+function resultEventName(name) {
+  return typeof name === "string" && RESULT_NAME_RE.test(name)
+    ? `result.${name}`
+    : null;
+}
+
+/**
+ * The bot and result name of a result event type
+ * (`bot:<ref>[<botId>].result.<name>`), else null.
+ */
+function parseResultEventType(eventType) {
+  const m =
+    /^bot:.+\[(bot_[A-Za-z0-9_-]+)\]\.result\.([A-Za-z][A-Za-z0-9_]{0,39})$/.exec(
+      typeof eventType === "string" ? eventType : "",
+    );
+  return m ? { botId: m[1], name: m[2] } : null;
 }
 
 /** Keep the tail (a run's final answer comes last) and mark the cut. */
@@ -73,6 +95,22 @@ function toolPayload(bot, { provider, providerType, tool, args, result }) {
     tool,
     args: args === undefined ? null : args,
     result: truncateText(result),
+  };
+}
+
+/**
+ * A result the bot sent (TD-001). `items` are already checked and size-capped
+ * by resultTools.checkResult, so they're carried whole — never truncated
+ * mid-JSON.
+ */
+function resultPayload(bot, { name, label, items, summary, sentAt }) {
+  return {
+    ...identity(bot),
+    name,
+    label: label || name,
+    items,
+    summary: summary == null || summary === "" ? null : String(summary),
+    sentAt,
   };
 }
 
@@ -198,10 +236,13 @@ module.exports = {
   botRef,
   botEventType,
   toolEventName,
+  resultEventName,
+  parseResultEventType,
   truncateText,
   completedPayload,
   failedPayload,
   toolPayload,
+  resultPayload,
   rootCause,
   causeFromEvent,
   sourceFromEvent,

@@ -358,3 +358,57 @@ describe("BotStore.onChange — bot definitions changed (TEAM-011 refresh)", () 
     assert.equal(store.get(bot.id).name, "x");
   });
 });
+
+// Latest results a bot sent (team-dashboards TD-002).
+describe("BotStore — latest results", () => {
+  const { createSecretBox } = require("./secretBox");
+  const crypto = {
+    isEncryptionAvailable: () => true,
+    encryptString: (s) => Buffer.from("X" + s, "utf8"),
+    decryptString: (b) => b.toString("utf8").slice(1),
+  };
+  const payload = (n) => ({ name: "emails", items: [{ title: `mail ${n}` }] });
+
+  it("keeps only the latest result per name and survives a restart", () => {
+    const { store, persistence, root } = freshStore();
+    const bot = store.create(validDef);
+    assert.equal(store.getResult(bot.id, "emails"), null);
+    store.setResult(bot.id, "emails", payload(1));
+    store.setResult(bot.id, "emails", payload(2));
+    store.setResult(bot.id, "digest", { name: "digest", items: [] });
+    const again = new BotStore({ persistence, paths: { botsRoot: root } });
+    assert.deepEqual(again.getResult(bot.id, "emails"), payload(2));
+    assert.deepEqual(again.getResult(bot.id, "digest").items, []);
+  });
+
+  it("refuses a result for an unknown bot", () => {
+    const { store } = freshStore();
+    assert.throws(() => store.setResult("bot_nope", "x", {}), /no bot/);
+  });
+
+  it("deletes a bot's results with the bot", () => {
+    const { store, persistence } = freshStore();
+    const bot = store.create(validDef);
+    store.setResult(bot.id, "emails", payload(1));
+    store.delete(bot.id);
+    assert.equal(persistence._blob().results[bot.id], undefined);
+    assert.equal(store.getResult(bot.id, "emails"), null);
+  });
+
+  it("seals results at rest", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "botstore-test-"));
+    tmpRoots.push(root);
+    const persistence = memPersistence();
+    const store = new BotStore({
+      persistence,
+      paths: { botsRoot: root },
+      secretBox: createSecretBox(crypto),
+    });
+    const bot = store.create(validDef);
+    store.setResult(bot.id, "emails", payload(1));
+    const raw = persistence._blob().results[bot.id].emails;
+    assert.ok(raw.startsWith("enc:v1:"));
+    assert.ok(!raw.includes("mail 1"));
+    assert.deepEqual(store.getResult(bot.id, "emails"), payload(1));
+  });
+});

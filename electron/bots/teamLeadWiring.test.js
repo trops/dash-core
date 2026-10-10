@@ -49,7 +49,7 @@ describe("botController — team lead wiring", () => {
   });
 
   it("auto-allows team tools at the gate (internal server)", () => {
-    assert.match(ctrl, /internalServers: \[MEMORY_SERVER, TEAM_SERVER\]/);
+    assert.match(ctrl, /internalServers: \[MEMORY_SERVER, TEAM_SERVER\b/);
   });
 
   it("deleting a lead turns it off for that dashboard", () => {

@@ -12,6 +12,9 @@ const {
   botRef,
   botEventType,
   toolEventName,
+  resultEventName,
+  parseResultEventType,
+  resultPayload,
   truncateText,
   completedPayload,
   failedPayload,
@@ -289,5 +292,58 @@ describe("sourceFromEvent — what triggered an event run (TEAM-011)", () => {
   it("tolerates missing input", () => {
     assert.equal(sourceFromEvent(bot, null), null);
     assert.equal(sourceFromEvent(null, { eventType: "a" }).label, null);
+  });
+});
+
+describe("result events (team-dashboards TD-001)", () => {
+  it("names a result event result.<name>, only for valid names", () => {
+    assert.equal(resultEventName("importantEmails"), "result.importantEmails");
+    assert.equal(resultEventName("a.b"), null);
+    assert.equal(resultEventName(""), null);
+    assert.equal(resultEventName(undefined), null);
+  });
+
+  it("parses the bot and name out of a result event type", () => {
+    const type = botEventType(bot, resultEventName("importantEmails"));
+    assert.deepEqual(parseResultEventType(type), {
+      botId: "bot_9",
+      name: "importantEmails",
+    });
+  });
+
+  it("doesn't parse other events", () => {
+    assert.equal(parseResultEventType(botEventType(bot, "completed")), null);
+    assert.equal(
+      parseResultEventType(botEventType(bot, "tool.gmail.search")),
+      null,
+    );
+    assert.equal(parseResultEventType("Widget[1].result.x"), null);
+    assert.equal(parseResultEventType(null), null);
+  });
+
+  it("builds a result payload with identity, label and items", () => {
+    const p = resultPayload(bot, {
+      name: "importantEmails",
+      label: "Important emails",
+      items: [{ title: "a" }],
+      summary: "1 email",
+      sentAt: "2026-10-10T00:00:00.000Z",
+    });
+    assert.deepEqual(p, {
+      botId: "bot_9",
+      ref: "local/gmail-email-check",
+      botName: "Gmail Email Check",
+      name: "importantEmails",
+      label: "Important emails",
+      items: [{ title: "a" }],
+      summary: "1 email",
+      sentAt: "2026-10-10T00:00:00.000Z",
+    });
+  });
+
+  it("labels by name and nulls an empty summary", () => {
+    const p = resultPayload(bot, { name: "x", items: [], summary: "" });
+    assert.equal(p.label, "x");
+    assert.equal(p.summary, null);
   });
 });

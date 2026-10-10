@@ -14,6 +14,7 @@ import {
 import deepEqual from "deep-equal";
 import { SectionLayout } from "../../../../Settings/SectionLayout";
 import { useBotEmitters } from "../../../../Settings/details/useBotEmitters";
+import { groupBotEvents } from "../../../../Settings/details/eventCatalog";
 
 /**
  * PanelEditItemHandlers
@@ -315,12 +316,19 @@ export const PanelEditItemHandlers = ({ workspace, onUpdate, item = null }) => {
                     {bot.name}
                   </span>
                 </div>
-                {bot.events.map((event) =>
-                  eventRow(
-                    formatEventString(bot.component, bot.itemId, event),
-                    (bot.eventLabels && bot.eventLabels[event]) || event,
-                  ),
-                )}
+                {groupBotEvents(bot.events).map((group) => (
+                  <div key={group.key} className="flex flex-col space-y-1">
+                    <span className="px-3 text-xs opacity-50">
+                      {group.title}
+                    </span>
+                    {group.events.map((event) =>
+                      eventRow(
+                        formatEventString(bot.component, bot.itemId, event),
+                        (bot.eventLabels && bot.eventLabels[event]) || event,
+                      ),
+                    )}
+                  </div>
+                ))}
               </div>
             ))}
           </div>

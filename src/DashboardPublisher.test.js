@@ -456,3 +456,99 @@ describe("DashboardPublisher — monitor callbacks", () => {
     unsub();
   });
 });
+
+describe("DashboardPublisher — latest bot results (team-dashboards TD-002)", () => {
+  const RESULT = "bot:local/triage[bot_a].result.importantEmails";
+  const saved = { name: "importantEmails", items: [{ title: "a" }] };
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  afterEach(() => DashboardPublisher.disableIpcBridge());
+
+  test("a widget subscribing to a result gets the saved latest one", async () => {
+    const getLatestResult = jest.fn().mockResolvedValue(saved);
+    window.mainApi = { bots: { getLatestResult } };
+    const handler = jest.fn();
+
+    DashboardPublisher.sub(RESULT, handler, "w1");
+    await flush();
+
+    expect(getLatestResult).toHaveBeenCalledWith(RESULT);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0][0]).toEqual({
+      message: saved,
+      event: RESULT,
+      uuid: "w1",
+      replay: true,
+    });
+  });
+
+  test("nothing is replayed when there is no saved result", async () => {
+    window.mainApi = {
+      bots: { getLatestResult: jest.fn().mockResolvedValue(null) },
+    };
+    const handler = jest.fn();
+    DashboardPublisher.sub(RESULT, handler, "w1");
+    await flush();
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  test("other events are never fetched", async () => {
+    const getLatestResult = jest.fn().mockResolvedValue(saved);
+    window.mainApi = { bots: { getLatestResult } };
+    DashboardPublisher.sub(
+      "bot:local/triage[bot_a].completed",
+      jest.fn(),
+      "w1",
+    );
+    DashboardPublisher.sub("Widget[1].clicked", jest.fn(), "w2");
+    await flush();
+    expect(getLatestResult).not.toHaveBeenCalled();
+  });
+
+  test("a live result that arrives first wins over the saved one", async () => {
+    let resolve;
+    const getLatestResult = jest.fn(() => new Promise((r) => (resolve = r)));
+    let broadcast;
+    window.mainApi = {
+      bots: { getLatestResult },
+      on: (_channel, fn) => (broadcast = fn),
+      removeListener: jest.fn(),
+    };
+    DashboardPublisher.enableIpcBridge();
+    const handler = jest.fn();
+    DashboardPublisher.sub(RESULT, handler, "w1");
+    await flush();
+
+    const live = { name: "importantEmails", items: [] };
+    broadcast(null, { eventType: RESULT, content: live });
+    resolve(saved);
+    await flush();
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0][0].message).toEqual(live);
+  });
+
+  test("a widget that unsubscribed before the fetch returns gets nothing", async () => {
+    let resolve;
+    window.mainApi = {
+      bots: { getLatestResult: () => new Promise((r) => (resolve = r)) },
+    };
+    const handler = jest.fn();
+    DashboardPublisher.sub(RESULT, handler, "w1");
+    await flush();
+    DashboardPublisher.listeners().clear();
+    resolve(saved);
+    await flush();
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  test("a failed fetch is ignored", async () => {
+    window.mainApi = {
+      bots: { getLatestResult: jest.fn().mockRejectedValue(new Error("x")) },
+    };
+    const handler = jest.fn();
+    expect(() => DashboardPublisher.sub(RESULT, handler, "w1")).not.toThrow();
+    await flush();
+    expect(handler).not.toHaveBeenCalled();
+  });
+});

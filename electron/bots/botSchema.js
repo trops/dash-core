@@ -20,6 +20,11 @@ const APPROVAL_POLICIES = new Set(["ask", "ask-every", "allow"]);
 const WHILE_PAUSED = new Set(["queue", "drop"]);
 // A trigger's "Then ask it to" note (TEAM-014).
 const MAX_NOTE = 2000;
+// A declared result's name (team-dashboards TD-001): a short identifier, no
+// dots, so `result.<name>` can never collide with other bot events.
+const RESULT_NAME_RE = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
+const MAX_RESULTS = 20;
+const MAX_RESULT_TEXT = 200;
 
 // A bot id is used as a filesystem path segment (its working directory), so it
 // must be a single safe segment — no separators, no traversal.
@@ -123,6 +128,7 @@ function validateBotDefinition(def) {
     "allowedTools",
     "schedules",
     "subscriptions",
+    "publishes",
   ]) {
     if (def[field] !== undefined && !Array.isArray(def[field])) {
       errors.push(`${field} must be an array`);
@@ -163,11 +169,40 @@ function validateBotDefinition(def) {
       }
     }
   }
+  // Declared results (TD-001): { name, label?, description? }, unique names.
+  if (Array.isArray(def.publishes)) {
+    const err = publishesError(def.publishes);
+    if (err) errors.push(err);
+  }
   return { valid: errors.length === 0, errors };
+}
+
+function publishesError(publishes) {
+  if (publishes.length > MAX_RESULTS) {
+    return `a bot can declare at most ${MAX_RESULTS} results`;
+  }
+  const seen = new Set();
+  for (const p of publishes) {
+    if (!p || typeof p.name !== "string" || !RESULT_NAME_RE.test(p.name)) {
+      return "each result needs a name made of letters, digits and underscores, starting with a letter (at most 40 characters)";
+    }
+    if (seen.has(p.name)) return `result "${p.name}" is declared twice`;
+    seen.add(p.name);
+    for (const field of ["label", "description"]) {
+      if (
+        p[field] != null &&
+        (typeof p[field] !== "string" || p[field].length > MAX_RESULT_TEXT)
+      ) {
+        return `a result's ${field} must be text of at most ${MAX_RESULT_TEXT} characters`;
+      }
+    }
+  }
+  return null;
 }
 
 module.exports = {
   SCHEMA_VERSION,
+  RESULT_NAME_RE,
   newBotId,
   isValidBotId,
   withDefaults,

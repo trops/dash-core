@@ -205,3 +205,44 @@ describe("botSchema.withDefaults — toolSelections", () => {
     assert.deepEqual(withDefaults({ name: "a" }).toolSelections, {});
   });
 });
+
+describe("botSchema.validateBotDefinition — publishes (TD-001)", () => {
+  const base = { ...withDefaults({ name: "a", instructions: "b" }) };
+  const check = (publishes) =>
+    validateBotDefinition({ ...base, publishes }).errors;
+
+  it("defaults to no results and accepts declared ones", () => {
+    assert.deepEqual(base.publishes, []);
+    assert.deepEqual(
+      check([
+        { name: "importantEmails", label: "Important emails" },
+        { name: "digest_2", description: "Daily digest" },
+      ]),
+      [],
+    );
+  });
+
+  it("rejects a non-array", () => {
+    assert.deepEqual(check({}), ["publishes must be an array"]);
+  });
+
+  it("rejects names that aren't short identifiers", () => {
+    for (const name of ["", "2x", "a.b", "a b", "x".repeat(41), null]) {
+      assert.equal(check([{ name }]).length, 1, String(name));
+    }
+  });
+
+  it("rejects duplicate names", () => {
+    assert.match(check([{ name: "a" }, { name: "a" }])[0], /declared twice/);
+  });
+
+  it("rejects long or non-text labels", () => {
+    assert.equal(check([{ name: "a", label: "x".repeat(201) }]).length, 1);
+    assert.equal(check([{ name: "a", description: 3 }]).length, 1);
+  });
+
+  it("caps the number of results", () => {
+    const many = Array.from({ length: 21 }, (_, i) => ({ name: `r${i}` }));
+    assert.match(check(many)[0], /at most 20 results/);
+  });
+});

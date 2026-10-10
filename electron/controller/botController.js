@@ -81,6 +81,12 @@ const {
   composeEventPrompt,
 } = require("../bots/botEvents");
 const {
+  RESULTS_SERVER,
+  resultToolsFor,
+  sendResult,
+  latestResult,
+} = require("../bots/resultTools");
+const {
   listToolSources,
   ensureBotServers,
   resolveBotTools,
@@ -209,7 +215,8 @@ const botController = {
       approvals: approvalsForRunner,
       // Memory tools are the bot's own sandbox — auto-allowed at the gate.
       // Team tools are a lead's read-only view of its own team.
-      internalServers: [MEMORY_SERVER, TEAM_SERVER],
+      // Results only reach the bot's own dashboard bus (TD-001).
+      internalServers: [MEMORY_SERVER, TEAM_SERVER, RESULTS_SERVER],
       resolveRunProfile: (bot) => this._resolveRunProfile(bot),
       resolveTools: (bot) => this._resolveTools(bot),
       callTool: (serverName, toolName, args, o) =>
@@ -403,6 +410,14 @@ const botController = {
     const runs = this._store.getRuns(botId) || [];
     const n = Math.max(1, Math.min(100, Number(limit) || 50));
     return runs.slice(-n);
+  },
+
+  /**
+   * The latest result a bot sent, by its event type, so a widget that opens
+   * later still shows it (TD-002).
+   */
+  getLatestResult(eventType) {
+    return latestResult(this._store, eventType);
   },
 
   /**
@@ -1347,6 +1362,11 @@ const botController = {
       tools.push(tool);
       toolServer[tool.name] = MEMORY_SERVER;
     }
+    // send_result, for a bot that declares results (team-dashboards TD-001).
+    for (const tool of resultToolsFor(bot)) {
+      tools.push(tool);
+      toolServer[tool.name] = RESULTS_SERVER;
+    }
     return { tools, resolveServer: (toolName) => toolServer[toolName] || null };
   },
 
@@ -1357,6 +1377,14 @@ const botController = {
         this._memory,
         { workspaceId: opts.workspaceId, botId: opts.botId },
         toolName,
+        args,
+      );
+    }
+    if (serverName === RESULTS_SERVER) {
+      // Saved as the latest result for its name, then put on the bus.
+      return sendResult(
+        { store: this._store, publisher: this._events },
+        opts.botId,
         args,
       );
     }
