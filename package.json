@@ -1,6 +1,6 @@
 {
   "name": "@trops/dash-core",
-  "version": "0.1.713",
+  "version": "0.1.715",
   "description": "Core framework for Dash dashboard applications",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
@@ -11,6 +11,9 @@
     },
     "./electron": {
       "require": "./dist/electron/index.js"
+    },
+    "./scanner": {
+      "require": "./dist/scanner/index.js"
     }
   },
   "files": [

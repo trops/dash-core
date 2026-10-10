@@ -89,4 +89,18 @@ const config = {
     external: EXTERNAL,
 };
 
-export default config;
+// Standalone MCP permission scanner (`@trops/dash-core/scanner`). Plain
+// Node, no Electron — the widget publish scripts call it to put the
+// package's declared tools into the registry manifest.
+const scannerConfig = {
+    input: "electron/utils/scanWidgetPackagePermissions.js",
+    output: {
+        file: "dist/scanner/index.js",
+        format: "cjs",
+        exports: "auto",
+    },
+    plugins: [resolve({ preferBuiltins: true }), commonjs()],
+    external: ["fs", "path"],
+};
+
+export default [config, scannerConfig];
