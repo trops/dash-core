@@ -464,7 +464,7 @@ const EnforcementToggles = () => {
   //     "test-server" doesn't exist — the goal is the consent flow, not
   //     the server response)
   //   message includes "user declined" → denied
-  //   message includes "JIT consent timed out" → timeout
+  //   message includes "expired" → timeout
   //   anything else → unknown error
   const triggerTestJitPrompt = async () => {
     setLastTestResult({ status: "pending", message: "Waiting for response…" });
@@ -489,10 +489,10 @@ const EnforcementToggles = () => {
           status: "denied",
           message: "Denied — no grant written.",
         });
-      } else if (/timed out/i.test(msg)) {
+      } else if (/expired/i.test(msg)) {
         setLastTestResult({
           status: "timeout",
-          message: "Timed out — no response within 60s.",
+          message: "Timed out — no response within 5 minutes.",
         });
       } else {
         setLastTestResult({

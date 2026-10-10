@@ -25,14 +25,14 @@ const NO_WORKSPACE = "__no_workspace__";
 
 /**
  * Renderer-side timeout for `callTool`. MUST exceed
- * `electron/mcp/jitConsent.js`'s `DEFAULT_TIMEOUT_MS` (60_000) so that
- * an in-flight JIT consent prompt can resolve before this Promise
+ * `electron/mcp/jitConsent.js`'s `DEFAULT_TIMEOUT_MS` (5 minutes) so
+ * that an in-flight JIT consent prompt can resolve before this Promise
  * rejects. Pre-fix value (30_000) caused the renderer to error out
  * mid-prompt — even on user approval the widget had already failed.
- * 90_000 = 60s main JIT timeout + 30s slack for IPC roundtrip,
+ * 330_000 = 5 min main JIT timeout + 30s slack for IPC roundtrip,
  * grant write, and gate re-evaluation.
  */
-export const CALL_TOOL_TIMEOUT_MS = 90_000;
+export const CALL_TOOL_TIMEOUT_MS = 330_000;
 
 function rendererStateKey(workspaceId, serverName) {
   const wid =
