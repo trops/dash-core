@@ -421,4 +421,5 @@ module.exports = {
   mergePermissions,
   applyScanToPackageJson,
   backfillPackagePermissions,
+  toolListAllows,
 };
