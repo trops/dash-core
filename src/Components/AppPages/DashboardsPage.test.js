@@ -44,6 +44,7 @@ jest.mock("../Settings/details/NewDashboardChooser", () => ({
   NewDashboardChooser: ({ onSelect }) => (
     <div data-testid="chooser">
       <button onClick={() => onSelect("wizard")}>wizard</button>
+      <button onClick={() => onSelect("marketplace")}>marketplace</button>
     </div>
   ),
 }));
@@ -307,9 +308,16 @@ describe("DashboardsPage — creating", () => {
     expect(h.onOpenWizard).toHaveBeenCalled();
   });
 
-  it("Browse marketplace opens the marketplace", () => {
+  it("there's no separate Browse marketplace button", () => {
     setup();
-    fireEvent.click(screen.getByRole("button", { name: "Browse marketplace" }));
+    expect(
+      screen.queryByRole("button", { name: "Browse marketplace" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("New Dashboard's marketplace option opens the marketplace", () => {
+    setup({ createRequested: true });
+    fireEvent.click(screen.getByText("marketplace"));
     expect(screen.getByTestId("marketplace")).toBeInTheDocument();
   });
 });
