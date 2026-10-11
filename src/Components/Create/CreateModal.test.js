@@ -21,6 +21,7 @@ import {
 import { ThemeContext } from "@trops/dash-react";
 import { AppContext } from "../../Context/App/AppContext";
 import { CreateModal } from "./CreateModal";
+import { setWidgetBuilderRenderer } from "../../utils/widgetBuilderRenderer";
 
 jest.mock("../../ComponentManager", () => ({
   ComponentManager: { config: () => null },
@@ -292,5 +293,111 @@ describe("CreateModal — Continue a draft (2c-2)", () => {
     setup({ drafts: DRAFTS, props: { initialType: "bot" } });
     await screen.findByRole("button", { name: /Fill in the bot form/ });
     expect(screen.queryByText("Continue a draft")).toBeNull();
+  });
+});
+
+describe("CreateModal — the Widget Builder inside Create (2c-3)", () => {
+  const Builder = jest.fn(
+    ({ initialPrompt, resumeDraftId, onClose, onTitle }) => (
+      <div data-testid="builder">
+        <span data-testid="builder-prompt">{String(initialPrompt)}</span>
+        <span data-testid="builder-draft">{String(resumeDraftId)}</span>
+        <button onClick={onClose}>builder done</button>
+        <button onClick={() => onTitle("Unread mail")}>name it</button>
+      </div>
+    ),
+  );
+
+  beforeEach(() => {
+    Builder.mockClear();
+    setWidgetBuilderRenderer(Builder);
+  });
+  afterEach(() => setWidgetBuilderRenderer(null));
+
+  const sendWidget = async (text) => {
+    await screen.findByRole("button", { name: /^AI: Claude Code/ });
+    fireEvent.change(promptBox(), { target: { value: text } });
+    fireEvent.click(sendButton());
+  };
+
+  test("Send shows the builder inside Create with the prompt — no window event", async () => {
+    const { setIsOpen } = setup();
+    const onOpen = jest.fn();
+    window.addEventListener("dash:open-widget-builder", onOpen);
+    await sendWidget("Count my unread email");
+    window.removeEventListener("dash:open-widget-builder", onOpen);
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(setIsOpen).not.toHaveBeenCalled();
+    expect(screen.getByTestId("builder-prompt")).toHaveTextContent(
+      "Count my unread email",
+    );
+    expect(screen.getByTestId("builder-draft")).toHaveTextContent("null");
+    const nav = screen.getByRole("navigation", { name: "Where you are" });
+    expect(nav).toHaveTextContent("Create›New widget");
+  });
+
+  test("closing ends the builder step — reopening starts fresh, no builder remount", async () => {
+    window.mainApi = {
+      llm: {
+        checkCliAvailable: jest.fn().mockResolvedValue({ available: true }),
+      },
+      drafts: { list: jest.fn().mockResolvedValue([]) },
+    };
+    function Host() {
+      const [open, setOpen] = React.useState(true);
+      return (
+        <ThemeContext.Provider value={{ currentTheme: {} }}>
+          <AppContext.Provider value={{ providers: {}, settings: {} }}>
+            <button onClick={() => setOpen(true)}>reopen</button>
+            <CreateModal open={open} setIsOpen={setOpen} />
+          </AppContext.Provider>
+        </ThemeContext.Provider>
+      );
+    }
+    render(<Host />);
+    await sendWidget("Count my unread email");
+    expect(screen.getByTestId("builder")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByTestId("builder")).toBeNull();
+    Builder.mockClear();
+    fireEvent.click(screen.getByText("reopen"));
+    expect(Builder).not.toHaveBeenCalled();
+    expect(promptBox()).toBeInTheDocument();
+  });
+
+  test("Back returns to the start screen with the prompt kept", async () => {
+    setup();
+    await sendWidget("Count my unread email");
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.queryByTestId("builder")).toBeNull();
+    expect(promptBox()).toHaveValue("Count my unread email");
+  });
+
+  test("the builder finishing closes Create", async () => {
+    const { setIsOpen } = setup();
+    await sendWidget("Count my unread email");
+    fireEvent.click(screen.getByText("builder done"));
+    expect(setIsOpen).toHaveBeenCalledWith(false);
+  });
+
+  test("the builder can name the step", async () => {
+    setup();
+    await sendWidget("Count my unread email");
+    fireEvent.click(screen.getByText("name it"));
+    expect(
+      screen.getByRole("navigation", { name: "Where you are" }),
+    ).toHaveTextContent("Create›Unread mail");
+  });
+
+  test("Continue a draft opens it inside Create, titled with its name", async () => {
+    setup({
+      drafts: [{ id: "d1", name: "Tokyo clock", updatedAt: Date.now() }],
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /Tokyo clock/ }));
+    expect(screen.getByTestId("builder-draft")).toHaveTextContent("d1");
+    expect(screen.getByTestId("builder-prompt")).toHaveTextContent("null");
+    expect(
+      screen.getByRole("navigation", { name: "Where you are" }),
+    ).toHaveTextContent("Create›Tokyo clock");
   });
 });
