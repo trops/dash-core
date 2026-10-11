@@ -188,7 +188,7 @@ describe("botController — results (team-dashboards TD-001/TD-002)", () => {
   it("gives declared-result bots send_result, auto-allowed like memory", () => {
     assert.match(
       ctrl,
-      /internalServers: \[MEMORY_SERVER, TEAM_SERVER, RESULTS_SERVER\]/,
+      /internalServers: \[\s*MEMORY_SERVER,\s*TEAM_SERVER,\s*RESULTS_SERVER,/,
     );
     assert.match(
       ctrl,

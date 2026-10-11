@@ -164,3 +164,18 @@ describe("mergeDashTeamSettings", () => {
     assert.equal(s.models["claude-code"].planner, "claude-sonnet-4-6");
   });
 });
+
+describe("Dash team instructions (slice 3a)", () => {
+  it("the Planner knows its tools and the plan format; the slice 2 text upgrades", () => {
+    const planner = ROLES.find((r) => r.role === "planner");
+    assert.match(planner.instructions, /search_library/);
+    assert.match(planner.instructions, /ask_role/);
+    assert.match(planner.instructions, /<plan><\/plan>/);
+    assert.equal(planner.history.length, 1);
+    const bots = ROLE_IDS.map((r) => teamBot(r));
+    bots[0].instructions = planner.history[0];
+    const plan = planEnsureDashTeam(bots);
+    assert.equal(plan[0].action, "upgrade");
+    assert.equal(plan[0].role, "planner");
+  });
+});

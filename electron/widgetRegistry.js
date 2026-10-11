@@ -1223,6 +1223,99 @@ class WidgetRegistry {
 // Lazy initialization to avoid accessing app.getPath before app is ready
 let widgetRegistry = null;
 
+/**
+ * An installed widget's sources: component code, .dash.js config and
+ * manifest. Used by the renderer (widget:read-sources) and by the Dash
+ * team's read_widget tool (create-entry CRE-011).
+ * @returns {Promise<{ success, componentCode?, configCode?, manifest?,
+ *   widgetName?, componentName?, error? }>}
+ */
+async function readWidgetSources({ widgetName, componentName } = {}) {
+  try {
+    const registry = getWidgetRegistry();
+    const widget = registry.getWidget(widgetName);
+    if (!widget || !widget.path) {
+      return {
+        success: false,
+        error: `Widget not found: ${widgetName}`,
+      };
+    }
+
+    const widgetsDir = findWidgetsDir(widget.path);
+    if (!widgetsDir) {
+      return {
+        success: false,
+        error: `No source files found for: ${widgetName}`,
+      };
+    }
+
+    // Find target component (use componentName or first .dash.js file).
+    // Strip scope prefix from scoped IDs like "trops.algolia.AlgoliaSearchWidget"
+    // since the file on disk is just "AlgoliaSearchWidget.js".
+    const files = fs.readdirSync(widgetsDir);
+    let target = componentName;
+    if (target && target.includes(".")) {
+      const bare = target.split(".").pop();
+      if (files.some((f) => f === `${bare}.js` || f === `${bare}.dash.js`)) {
+        target = bare;
+      }
+    }
+    if (!target) {
+      target = files
+        .find((f) => f.endsWith(".dash.js"))
+        ?.replace(".dash.js", "");
+    }
+
+    if (!target) {
+      return {
+        success: false,
+        error: `No widget component found in: ${widgetsDir}`,
+      };
+    }
+
+    const componentPath = path.join(widgetsDir, `${target}.js`);
+    const configPath = path.join(widgetsDir, `${target}.dash.js`);
+
+    if (!fs.existsSync(componentPath)) {
+      return {
+        success: false,
+        error: `Component source not found: ${target}.js`,
+      };
+    }
+
+    const componentCode = fs.readFileSync(componentPath, "utf8");
+    const configCode = fs.existsSync(configPath)
+      ? fs.readFileSync(configPath, "utf8")
+      : "";
+
+    // Read manifest
+    const manifestPath = path.join(widget.path, "dash.json");
+    let manifest = null;
+    if (fs.existsSync(manifestPath)) {
+      try {
+        manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      } catch (_) {
+        /* ignore parse errors */
+      }
+    }
+
+    return {
+      success: true,
+      componentCode,
+      configCode,
+      manifest,
+      widgetName,
+      componentName: target,
+    };
+  } catch (error) {
+    console.error(
+      `[WidgetRegistry] Error reading sources for ${widgetName}:`,
+      error,
+    );
+    return { success: false, error: error.message };
+  }
+}
+
 function getWidgetRegistry() {
   if (!widgetRegistry) {
     widgetRegistry = new WidgetRegistry();
@@ -1520,95 +1613,8 @@ function setupWidgetRegistryHandlers() {
     }
   });
 
-  ipcMain.handle(
-    "widget:read-sources",
-    async (event, { widgetName, componentName }) => {
-      try {
-        const registry = getWidgetRegistry();
-        const widget = registry.getWidget(widgetName);
-        if (!widget || !widget.path) {
-          return {
-            success: false,
-            error: `Widget not found: ${widgetName}`,
-          };
-        }
-
-        const widgetsDir = findWidgetsDir(widget.path);
-        if (!widgetsDir) {
-          return {
-            success: false,
-            error: `No source files found for: ${widgetName}`,
-          };
-        }
-
-        // Find target component (use componentName or first .dash.js file).
-        // Strip scope prefix from scoped IDs like "trops.algolia.AlgoliaSearchWidget"
-        // since the file on disk is just "AlgoliaSearchWidget.js".
-        const files = fs.readdirSync(widgetsDir);
-        let target = componentName;
-        if (target && target.includes(".")) {
-          const bare = target.split(".").pop();
-          if (
-            files.some((f) => f === `${bare}.js` || f === `${bare}.dash.js`)
-          ) {
-            target = bare;
-          }
-        }
-        if (!target) {
-          target = files
-            .find((f) => f.endsWith(".dash.js"))
-            ?.replace(".dash.js", "");
-        }
-
-        if (!target) {
-          return {
-            success: false,
-            error: `No widget component found in: ${widgetsDir}`,
-          };
-        }
-
-        const componentPath = path.join(widgetsDir, `${target}.js`);
-        const configPath = path.join(widgetsDir, `${target}.dash.js`);
-
-        if (!fs.existsSync(componentPath)) {
-          return {
-            success: false,
-            error: `Component source not found: ${target}.js`,
-          };
-        }
-
-        const componentCode = fs.readFileSync(componentPath, "utf8");
-        const configCode = fs.existsSync(configPath)
-          ? fs.readFileSync(configPath, "utf8")
-          : "";
-
-        // Read manifest
-        const manifestPath = path.join(widget.path, "dash.json");
-        let manifest = null;
-        if (fs.existsSync(manifestPath)) {
-          try {
-            manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-          } catch (_) {
-            /* ignore parse errors */
-          }
-        }
-
-        return {
-          success: true,
-          componentCode,
-          configCode,
-          manifest,
-          widgetName,
-          componentName: target,
-        };
-      } catch (error) {
-        console.error(
-          `[WidgetRegistry] Error reading sources for ${widgetName}:`,
-          error,
-        );
-        return { success: false, error: error.message };
-      }
-    },
+  ipcMain.handle("widget:read-sources", async (event, args) =>
+    readWidgetSources(args || {}),
   );
 
   ipcMain.handle("widget:read-all-bundles", async () => {
@@ -1680,6 +1686,7 @@ function setupWidgetRegistryHandlers() {
 
 module.exports = WidgetRegistry;
 module.exports.getWidgetRegistry = getWidgetRegistry;
+module.exports.readWidgetSources = readWidgetSources;
 // For backward compatibility, provide widgetRegistry as a getter
 Object.defineProperty(module.exports, "widgetRegistry", {
   get: getWidgetRegistry,
