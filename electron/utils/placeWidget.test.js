@@ -162,3 +162,57 @@ describe("placeWidget — dashboards with pages", () => {
     );
   });
 });
+
+describe("placeWidget — page and cell (CRE-011 3c)", () => {
+  const grid = (taken = {}) => [
+    {
+      id: 1,
+      component: "LayoutGridContainer",
+      parent: 0,
+      grid: { rows: 2, cols: 2, ...taken },
+    },
+  ];
+  const ws = () => ({
+    activePageId: "b",
+    pages: [
+      { id: "a", name: "Home", layout: grid() },
+      { id: "b", name: "Second", layout: grid() },
+    ],
+    layout: grid(),
+  });
+
+  it("places on a named page; the mirror keeps showing the shown page", () => {
+    const { workspace } = placeWidget(ws(), { component: "W", page: "Home" });
+    assert.ok(workspace.pages[0].layout.some((i) => i.component === "W"));
+    assert.ok(!workspace.pages[1].layout.some((i) => i.component === "W"));
+    assert.ok(!workspace.layout.some((i) => i.component === "W"));
+  });
+
+  it("places in the asked-for cell", () => {
+    const { workspace, cell, widgetId } = placeWidget(ws(), {
+      component: "W",
+      row: 2,
+      col: 2,
+    });
+    assert.deepEqual(cell, { row: 2, col: 2 });
+    assert.equal(workspace.pages[1].layout[0].grid["2.2"].component, widgetId);
+    assert.deepEqual(workspace.layout, workspace.pages[1].layout);
+  });
+
+  it("refuses a cell outside the grid, a taken cell, or an unknown page", () => {
+    assert.throws(
+      () => placeWidget(ws(), { component: "W", row: 3, col: 1 }),
+      /outside the 2×2 grid/,
+    );
+    const taken = ws();
+    taken.pages[1].layout[0].grid["1.1"] = { component: 5, hide: false };
+    assert.throws(
+      () => placeWidget(taken, { component: "W", row: 1, col: 1 }),
+      /already holds a widget/,
+    );
+    assert.throws(
+      () => placeWidget(ws(), { component: "W", page: "Nope" }),
+      /No page/,
+    );
+  });
+});

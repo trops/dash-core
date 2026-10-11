@@ -67,13 +67,14 @@ function deps(over = {}) {
 }
 
 describe("tools and servers", () => {
-  it("the Builder builds, the Checker checks; only build_widget needs approval", () => {
+  it("the Builder builds, the Checker checks; only build/place need approval", () => {
     assert.deepEqual(
       roleToolsFor("builder").map((t) => t.name),
       [
         "widget_guide",
         "build_widget",
         "draft_bot",
+        "place_widget",
         "read_widget",
         "list_providers",
         "list_dashboards",
@@ -84,6 +85,7 @@ describe("tools and servers", () => {
       ["check_widget", "read_widget", "list_providers"],
     );
     assert.equal(serverForTool("build_widget"), ROLE_BUILD_SERVER);
+    assert.equal(serverForTool("place_widget"), ROLE_BUILD_SERVER);
     for (const t of ["widget_guide", "check_widget", "read_widget"]) {
       assert.equal(serverForTool(t), ROLE_SERVER);
     }

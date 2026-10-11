@@ -208,6 +208,17 @@ describe("Dash team instructions (slice 3b-2)", () => {
     const builder = ROLES.find((r) => r.role === "builder");
     assert.match(builder.instructions, /draft_bot/);
     assert.match(builder.instructions, /never that it's created/);
-    assert.equal(builder.history.length, 2);
+    assert.ok(builder.history.length >= 2);
+  });
+});
+
+describe("Dash team instructions (slice 3c)", () => {
+  it("the Builder places widgets only after the Checker passes them", () => {
+    const builder = ROLES.find((r) => r.role === "builder");
+    assert.match(
+      builder.instructions,
+      /place_widget only after the Checker passed it/,
+    );
+    assert.equal(builder.history.length, 3);
   });
 });

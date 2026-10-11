@@ -84,6 +84,7 @@ const {
   HandoffCap,
 } = require("../bots/roleTools");
 const { compareConfigs } = require("../bots/configDiff");
+const { resolveWidgetComponent } = require("../bots/widgetComponent");
 const { recentRuns } = require("../bots/recentRuns");
 const { coalesce } = require("../bots/coalesce");
 const { buildDraft, DraftStore } = require("../bots/botDrafts");
@@ -1488,6 +1489,7 @@ const botController = {
       compareConfigs,
       listDashboards: () => this._dashboardsWithBots(),
       draftBot: (req) => this._teamDraftBot(req),
+      placeWidget: (req) => this._teamPlaceWidget(req),
     };
   },
 
@@ -1513,7 +1515,60 @@ const botController = {
       bots: bots
         .filter((b) => isOnTeam(b, ws.id))
         .map((b) => (isLead(b) ? `${b.name} (lead)` : b.name)),
+      pages: Array.isArray(ws.pages)
+        ? ws.pages.map((p) =>
+            p.id === ws.activePageId ? `${p.name} (shown)` : p.name,
+          )
+        : [],
     }));
+  },
+
+  /**
+   * place_widget: put an installed widget on a dashboard — the shown page or
+   * a named one, the next free cell or a given one — then save and refresh
+   * open windows (CRE-011, scenarios G4).
+   */
+  _teamPlaceWidget({ dashboard, widget, component, page, row, col, settings }) {
+    const dashboards = this._dashboardsWithBots();
+    const want = String(dashboard || "").trim();
+    const hit =
+      dashboards.find((d) => d.id === want) ||
+      dashboards.find((d) => d.name.toLowerCase() === want.toLowerCase());
+    if (!hit) {
+      return {
+        error: `No dashboard "${want}". The user's dashboards: ${
+          dashboards.map((d) => d.name).join(", ") || "none"
+        }.`,
+      };
+    }
+    const resolved = resolveWidgetComponent(widget, component, () =>
+      require("../widgetRegistry").getWidgetRegistry().getWidgets(),
+    );
+    if (resolved.error) return resolved;
+    const ws = this._loadWorkspace(hit.id);
+    if (!ws) return { error: "That dashboard couldn't be read." };
+    let placed;
+    try {
+      placed = placeWidget(ws, {
+        component: resolved.component,
+        userPrefs: settings || {},
+        page: page || undefined,
+        row: row === undefined || row === null ? undefined : row,
+        col: col === undefined || col === null ? undefined : col,
+      });
+    } catch (err) {
+      return { error: err.message };
+    }
+    const saved = this._saveWorkspace(placed.workspace);
+    if (saved.error) return saved;
+    const { layoutOf } = require("../utils/activeLayout");
+    const target = layoutOf(placed.workspace, page || undefined);
+    return {
+      component: resolved.component,
+      dashboardName: hit.name,
+      page: target.page ? target.page.name : null,
+      cell: placed.cell,
+    };
   },
 
   /**

@@ -161,6 +161,10 @@ function loadToolHandlers() {
       return mockProviderController;
     if (mod === "../controller/registryController")
       return mockRegistryController;
+    // Both pull in Electron; the handlers under test only need a widget list.
+    if (mod === "../controller/registryAuthController") return {};
+    if (mod === "../widgetRegistry")
+      return { getWidgetRegistry: () => ({ getWidgets: () => [] }) };
     if (mod === "../controller/settingsController")
       return mockSettingsController;
     if (mod === "../controller/themeFromUrlController")
@@ -931,13 +935,21 @@ describe("MCP Tool Handlers", () => {
       assert.deepStrictEqual(gridNode.grid.colModes, { 1: "1/4" });
     });
 
-    it("creates plain Container when layout omitted", async () => {
+    it("defaults to a 1×1 grid when layout is omitted", async () => {
+      const result = await handlers.handleCreateDashboard({ name: "Default" });
+      assert.deepEqual(parseResult(result).layout, { rows: 1, cols: 1 });
+    });
+
+    it("creates a plain Container when layout is null", async () => {
       const result = await handlers.handleCreateDashboard({
         name: "Plain Dashboard",
+        layout: null,
       });
       const data = parseResult(result);
       assert.equal(data.layout, undefined);
-      const ws = mockWorkspaces.find((w) => String(w.id) === data.id);
+      // By name: ids are Date.now(), so two dashboards made in the same
+      // millisecond share one.
+      const ws = mockWorkspaces.find((w) => w.name === "Plain Dashboard");
       assert.ok(ws.layout.find((n) => n.component === "Container"));
     });
 
@@ -1574,5 +1586,168 @@ describe("MCP Tool Handlers", () => {
     it("returns null for non-array input", () => {
       assert.equal(handlers.findGridNode(null), null);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dashboards with pages (create-entry CRE-011 slice 3c, scenarios G4): the
+// app draws pages[active].layout; the top-level layout is only a mirror.
+// ---------------------------------------------------------------------------
+function gridLayout(widgets = []) {
+  const grid = { rows: 2, cols: 2, gap: "gap-2" };
+  widgets.forEach((w, i) => {
+    grid[`${Math.floor(i / 2) + 1}.${(i % 2) + 1}`] = {
+      component: w.id,
+      hide: false,
+    };
+  });
+  return [
+    {
+      id: 1,
+      order: 1,
+      component: "LayoutGridContainer",
+      type: "grid",
+      parent: 0,
+      grid,
+    },
+    ...widgets.map((w, i) => ({
+      id: w.id,
+      order: i + 2,
+      component: w.component,
+      parent: 1,
+      config: {},
+      userPrefs: {},
+    })),
+  ];
+}
+
+function pagedWorkspace() {
+  const home = gridLayout([{ id: 2, component: "Clock" }]);
+  const second = gridLayout([{ id: 2, component: "Notes" }]);
+  return {
+    id: 300,
+    name: "Paged",
+    label: "Paged",
+    type: "workspace",
+    activePageId: "p2",
+    pages: [
+      { id: "p1", name: "Home", layout: home },
+      { id: "p2", name: "Second", layout: second },
+    ],
+    // The mirror, as last saved (stale on purpose: Home's layout).
+    layout: JSON.parse(JSON.stringify(home)),
+  };
+}
+
+describe("Layout tools on dashboards with pages (3c)", () => {
+  let handlers;
+  const win = createMockWindow();
+  const ws = () => mockWorkspaces.find((w) => w.id === 300);
+  const page = (id) => ws().pages.find((p) => p.id === id);
+  const comps = (layout) => layout.map((i) => i.component);
+
+  beforeEach(() => {
+    mockWorkspaces = [pagedWorkspace()];
+    mockSent = [];
+    mockServerContext = { win, appId: "@trops/dash-electron" };
+    handlers = loadToolHandlers();
+  });
+
+  it("add_widget lands in the page being shown, and the mirror follows it", async () => {
+    const res = parseResult(
+      await handlers.handleAddWidget({
+        dashboardId: "300",
+        widgetName: "Weather",
+      }),
+    );
+    assert.ok(res.widgetId);
+    assert.ok(comps(page("p2").layout).includes("Weather"));
+    assert.ok(!comps(page("p1").layout).includes("Weather"));
+    assert.deepEqual(ws().layout, page("p2").layout);
+  });
+
+  it("add_widget with page targets that page (by name or id)", async () => {
+    await handlers.handleAddWidget({
+      dashboardId: "300",
+      widgetName: "Weather",
+      page: "Home",
+    });
+    assert.ok(comps(page("p1").layout).includes("Weather"));
+    assert.ok(!comps(page("p2").layout).includes("Weather"));
+    // Home isn't the page being shown, so the mirror stays the shown page.
+    assert.ok(!comps(ws().layout).includes("Weather"));
+    const bad = await handlers.handleAddWidget({
+      dashboardId: "300",
+      widgetName: "Weather",
+      page: "Nope",
+    });
+    assert.equal(bad.isError, true);
+    assert.match(parseResult(bad).error, /page/i);
+  });
+
+  it("get_dashboard reads the page being shown and lists the pages", async () => {
+    const data = parseResult(
+      await handlers.handleGetDashboard({ dashboardId: "300" }),
+    );
+    assert.deepEqual(
+      data.widgets.map((w) => w.type),
+      ["Notes"],
+    );
+    assert.deepEqual(
+      data.pages.map((p) => [p.name, p.active]),
+      [
+        ["Home", false],
+        ["Second", true],
+      ],
+    );
+  });
+
+  it("list_dashboards counts widgets on every page", async () => {
+    const data = parseResult(await handlers.handleListDashboards());
+    assert.equal(data[0].widgetCount, 2);
+  });
+
+  it("remove_widget removes from the shown page", async () => {
+    await handlers.handleRemoveWidget({ dashboardId: "300", widgetId: "2" });
+    assert.ok(!comps(page("p2").layout).includes("Notes"));
+    assert.ok(comps(page("p1").layout).includes("Clock"));
+    assert.deepEqual(ws().layout, page("p2").layout);
+  });
+
+  it("configure_widget changes the shown page's widget", async () => {
+    await handlers.handleConfigureWidget({
+      dashboardId: "300",
+      widgetId: "2",
+      config: { title: "Mine" },
+    });
+    const notes = page("p2").layout.find((i) => i.id === 2);
+    assert.equal(notes.config.title, "Mine");
+    const clock = page("p1").layout.find((i) => i.id === 2);
+    assert.equal(clock.config.title, undefined);
+  });
+
+  it("set_layout, update_layout and move_widget work on the shown page's grid", async () => {
+    await handlers.handleSetLayout({ dashboardId: "300", rows: 3, cols: 3 });
+    let grid = page("p2").layout.find(
+      (i) => i.component === "LayoutGridContainer",
+    ).grid;
+    assert.equal(grid.rows, 3);
+    assert.equal(page("p1").layout[0].grid.rows, 2);
+    await handlers.handleUpdateLayout({ dashboardId: "300", gap: "gap-4" });
+    grid = page("p2").layout.find(
+      (i) => i.component === "LayoutGridContainer",
+    ).grid;
+    assert.equal(grid.gap, "gap-4");
+    await handlers.handleMoveWidget({
+      dashboardId: "300",
+      widgetId: "2",
+      row: 3,
+      col: 3,
+    });
+    grid = page("p2").layout.find(
+      (i) => i.component === "LayoutGridContainer",
+    ).grid;
+    assert.equal(grid["3.3"].component, 2);
+    assert.deepEqual(ws().layout, page("p2").layout);
   });
 });
