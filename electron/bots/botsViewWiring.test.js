@@ -120,7 +120,7 @@ describe("botController — delete clears private memory", () => {
   it("forgets the deleted bot's private memory", () => {
     assert.match(
       ctrl,
-      /delete\(botId\) \{[\s\S]{0,700}this\._memory\.forgetBot\(botId\)[\s\S]{0,200}return this\._store\.delete\(botId\);/,
+      /delete\(botId\) \{[\s\S]{0,1000}this\._memory\.forgetBot\(botId\)[\s\S]{0,200}return this\._store\.delete\(botId\);/,
     );
   });
 });

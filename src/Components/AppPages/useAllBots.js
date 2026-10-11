@@ -20,6 +20,8 @@ function api() {
 
 export function useAllBots() {
   const [bots, setBots] = useState(EMPTY);
+  // The Dash team's role bots (CRE-011) — not in list().
+  const [dashTeam, setDashTeam] = useState(EMPTY);
   const [running, setRunning] = useState(EMPTY);
   const [paused, setPaused] = useState(NOT_PAUSED);
   const [approvals, setApprovals] = useState(EMPTY);
@@ -43,14 +45,16 @@ export function useAllBots() {
       return;
     }
     try {
-      const [list, run, pause, pending] = await Promise.all([
+      const [list, run, pause, pending, team] = await Promise.all([
         b.list ? b.list() : EMPTY,
         b.listRunning ? b.listRunning() : EMPTY,
         b.getPauseState ? b.getPauseState() : NOT_PAUSED,
         b.listApprovals ? b.listApprovals() : EMPTY,
+        b.listDashTeam ? b.listDashTeam() : EMPTY,
         loadRecent(),
       ]);
       setBots(Array.isArray(list) ? list : EMPTY);
+      setDashTeam(Array.isArray(team) ? team : EMPTY);
       setRunning((run || []).map((r) => (r && r.id) || r));
       setPaused(pause || NOT_PAUSED);
       setApprovals(pending || EMPTY);
@@ -116,6 +120,7 @@ export function useAllBots() {
     () => ({
       loading,
       bots,
+      dashTeam,
       statusOf: (botId) =>
         botStatus({
           botId,
@@ -130,6 +135,16 @@ export function useAllBots() {
       approve,
       refresh,
     }),
-    [loading, bots, running, paused, approvals, lastRuns, approve, refresh],
+    [
+      loading,
+      bots,
+      dashTeam,
+      running,
+      paused,
+      approvals,
+      lastRuns,
+      approve,
+      refresh,
+    ],
   );
 }

@@ -450,3 +450,28 @@ describe("claudeAgentEngine — usage (CRE-012)", () => {
     });
   });
 });
+
+describe("claudeAgentEngine — read-only built-ins (CRE-011)", () => {
+  it("keeps only Read, Glob and Grep", async () => {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(claudeAgentEngine.run(ctx({ builtinTools: "read-only" })));
+    assert.deepEqual(captured.options.tools, ["Read", "Glob", "Grep"]);
+  });
+
+  it("denies any other built-in, even under allow; reads go through the policy", async () => {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(
+      claudeAgentEngine.run(
+        ctx({ builtinTools: "read-only", approvalPolicy: "allow" }),
+      ),
+    );
+    const write = await captured.options.canUseTool("Write", {
+      file_path: "/x",
+    });
+    assert.equal(write.behavior, "deny");
+    const bash = await captured.options.canUseTool("Bash", { command: "ls" });
+    assert.equal(bash.behavior, "deny");
+    const read = await captured.options.canUseTool("Read", { file_path: "/x" });
+    assert.equal(read.behavior, "allow");
+  });
+});

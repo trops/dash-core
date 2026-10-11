@@ -65,6 +65,16 @@ const {
   handleTeamTool,
 } = require("../bots/teamTools");
 const { isLead, leadOf, planEnsureLead } = require("../bots/teamLeads");
+const {
+  ROLES,
+  dashTeamBot,
+  isDashTeam,
+  planEnsureDashTeam,
+  modelForRole,
+  builtinToolsFor,
+  mergeDashTeamSettings,
+  tierModel,
+} = require("../bots/dashTeam");
 const { recentRuns } = require("../bots/recentRuns");
 const { coalesce } = require("../bots/coalesce");
 const { buildDraft, DraftStore } = require("../bots/botDrafts");
@@ -105,7 +115,10 @@ const {
   getCuratedModels,
   migrateModelId,
 } = require("../llm/modelProviders");
-const { resolveBotProviderId } = require("../bots/runProvider");
+const {
+  resolveBotProviderId,
+  DEFAULT_BOT_PROVIDER,
+} = require("../bots/runProvider");
 const {
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
@@ -177,8 +190,14 @@ const botController = {
       },
     };
 
-    // Pause state (global kill switch + per-bot), enforced at the gate.
-    this._pause = new PauseController();
+    // Pause state (global kill switch + per-bot), enforced at the gate and
+    // before a run starts; saved so it survives a restart (CRE-011 AC3).
+    this._pause = new PauseController({
+      persistence: {
+        load: () => this._store.getPauseState(),
+        save: (state) => this._store.setPauseState(state),
+      },
+    });
 
     // Budgets: accrue per-run cost, auto-pause bots over their monthly cap.
     this._budgets = new BudgetController({
@@ -220,6 +239,9 @@ const botController = {
       // Results only reach the bot's own dashboard bus (TD-001).
       internalServers: [MEMORY_SERVER, TEAM_SERVER, RESULTS_SERVER],
       resolveRunProfile: (bot) => this._resolveRunProfile(bot),
+      // A paused bot doesn't start at all (CRE-011 AC3).
+      startBlocker: (botId) =>
+        this._pause.isPaused(botId) ? "this bot is paused" : null,
       resolveTools: (bot) => this._resolveTools(bot),
       callTool: (serverName, toolName, args, o) =>
         this._callTool(serverName, toolName, args, o),
@@ -285,7 +307,30 @@ const botController = {
       this._notifyDraftsChanged(),
     );
 
+    this.ensureDashTeam();
+
     this._ready = true;
+  },
+
+  /**
+   * The Dash team (CRE-011): create any missing role bots and upgrade
+   * generated instructions the user hasn't edited. Safe to call any time.
+   */
+  ensureDashTeam() {
+    const created = [];
+    for (const step of planEnsureDashTeam(this._store.list())) {
+      try {
+        if (step.action === "create") {
+          created.push(this._store.create(step.definition));
+        } else if (step.action === "upgrade") {
+          this._store.update(step.bot.id, { instructions: step.instructions });
+        }
+      } catch (_e) {
+        // A broken store shouldn't stop the app starting; the team is
+        // retried on the next launch.
+      }
+    }
+    return created;
   },
 
   /** Re-evaluate missed schedules on system resume (powerMonitor). */
@@ -341,8 +386,34 @@ const botController = {
 
   // ---- IPC-facing operations ---------------------------------------------
 
+  /** Every bot the user made — the Dash team is listed separately. */
   list() {
-    return this._store.list();
+    return this._store.list().filter((b) => !isDashTeam(b));
+  },
+
+  /**
+   * The Dash team (CRE-011) in role order: each role bot with its summary,
+   * tier, the model it runs on now, the tier's recommended model and
+   * whether it's paused.
+   */
+  listDashTeam() {
+    const bots = this._store.list();
+    const settings = this._store.getSettings();
+    return ROLES.map((spec) => {
+      const bot = dashTeamBot(bots, spec.role);
+      if (!bot) return null;
+      const providerId = bot.provider || DEFAULT_BOT_PROVIDER;
+      return {
+        ...bot,
+        summary: spec.summary,
+        tier: spec.tier,
+        providerId,
+        model: bot.model || null,
+        runsOn: modelForRole(bot, providerId, settings),
+        recommendedModel: tierModel(providerId, spec.tier),
+        paused: this._pause.isPaused(bot.id),
+      };
+    }).filter(Boolean);
   },
 
   /**
@@ -370,6 +441,24 @@ const botController = {
   },
 
   save(definition) {
+    const existing =
+      definition && definition.id ? this._store.get(definition.id) : null;
+    // The Dash team's identity is fixed: a form can't turn a team bot into a
+    // dashboard bot, and a new bot can't claim to be on the Dash team.
+    if (isDashTeam(existing)) {
+      definition = {
+        ...definition,
+        system: existing.system,
+        role: existing.role,
+        workspaceId: null,
+        // Dash hands it work; nothing else starts it.
+        schedules: [],
+        subscriptions: [],
+      };
+    } else if (definition && isDashTeam(definition)) {
+      const { system: _s, ...rest } = definition;
+      definition = rest;
+    }
     const saved =
       definition && definition.id && this._store.get(definition.id)
         ? this._store.update(definition.id, definition)
@@ -380,6 +469,11 @@ const botController = {
 
   delete(botId) {
     const bot = this._store.get(botId);
+    if (isDashTeam(bot)) {
+      throw new Error(
+        `${bot.name} is part of the Dash team and can't be deleted — pause it instead.`,
+      );
+    }
     this._scheduler.unregister(botId);
     // A deleted bot's remembered approvals go with it.
     grantStore.revokeGrant(botId);
@@ -500,16 +594,22 @@ const botController = {
     return this._store.setTeamSettings(workspaceId, { introDismissed: true });
   },
 
-  /** Global bot settings: { autoLeads }. */
+  /** Global bot settings: { autoLeads, dashTeam: { models } }. */
   getBotSettings() {
     return this._store.getSettings();
   },
 
   setBotSettings(patch) {
-    const { autoLeads } = patch || {};
-    return this._store.setSettings(
-      autoLeads === undefined ? {} : { autoLeads: !!autoLeads },
-    );
+    const { autoLeads, dashTeam } = patch || {};
+    const next = {};
+    if (autoLeads !== undefined) next.autoLeads = !!autoLeads;
+    if (dashTeam !== undefined) {
+      next.dashTeam = mergeDashTeamSettings(
+        this._store.getSettings().dashTeam,
+        dashTeam,
+      );
+    }
+    return this._store.setSettings(next);
   },
 
   /**
@@ -1269,9 +1369,21 @@ const botController = {
     // The bot's own provider, else Claude Code (CLI) — the default.
     const providerId = resolveBotProviderId(bot, providers);
     const provider = getProvider(providerId);
-    const model = bot.model
-      ? migrateModelId(providerId, bot.model)
-      : getDefaultModel(providerId);
+    // Dash team bots run on their role's model for this provider; leads with
+    // no model of their own on the fast tier (they only read team data).
+    let model;
+    if (isDashTeam(bot)) {
+      model = migrateModelId(
+        providerId,
+        modelForRole(bot, providerId, this._store.getSettings()),
+      );
+    } else if (bot.model) {
+      model = migrateModelId(providerId, bot.model);
+    } else if (isLead(bot)) {
+      model = tierModel(providerId, "fast") || getDefaultModel(providerId);
+    } else {
+      model = getDefaultModel(providerId);
+    }
 
     let credentials = {};
     try {
@@ -1292,6 +1404,13 @@ const botController = {
       baseURL: provider.baseURL,
       model,
       credentials,
+      // Engine built-ins: none for leads and most Dash team roles, read-only
+      // for the Builder; undefined = the engine's full set.
+      builtinTools: isLead(bot)
+        ? "none"
+        : isDashTeam(bot)
+          ? builtinToolsFor(bot)
+          : undefined,
       // Sandbox dir for engines with native file/shell tools (claude-agent).
       workingDir: this._botsRoot
         ? path.join(this._botsRoot, bot.id, "files")

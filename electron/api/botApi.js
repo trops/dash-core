@@ -33,6 +33,7 @@ const {
   BOTS_GET_TEAM_SETTINGS,
   BOTS_DISMISS_LEAD_INTRO,
   BOTS_GET_SETTINGS,
+  BOTS_LIST_DASH_TEAM,
   BOTS_SET_SETTINGS,
   BOTS_ASK_LEAD,
   BOTS_LIST_LEADS,
@@ -188,7 +189,12 @@ const botApi = {
     ipcRenderer.invoke(BOTS_GET_TEAM_SETTINGS, { workspaceId }),
   dismissLeadIntro: (workspaceId) =>
     ipcRenderer.invoke(BOTS_DISMISS_LEAD_INTRO, { workspaceId }),
-  /** Global bot settings: { autoLeads }. */
+  /**
+   * The Dash team's role bots (CRE-011), in role order, each with its
+   * summary, tier, recommended model and pause state. Not in list().
+   */
+  listDashTeam: () => ipcRenderer.invoke(BOTS_LIST_DASH_TEAM),
+  /** Global bot settings: { autoLeads, dashTeam: { models } }. */
   getSettings: () => ipcRenderer.invoke(BOTS_GET_SETTINGS),
   setSettings: (patch) => ipcRenderer.invoke(BOTS_SET_SETTINGS, { patch }),
   /**

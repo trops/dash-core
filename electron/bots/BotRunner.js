@@ -56,6 +56,9 @@ class BotRunner {
     // bot's own sandbox, not external actions. Forwarded to the gate ctx.
     this._internalServers = deps.internalServers || [];
     this._isPaused = deps.isPaused || (() => false);
+    // (botId) → reason string | null: a run that may not start at all (a
+    // paused bot, CRE-011 AC3). Optional.
+    this._startBlocker = deps.startBlocker || (() => null);
     // Called after each run with the run's token usage so budgets (Slice 5)
     // can accrue cost. Optional — default no-op keeps the runner portable.
     this._onUsage = deps.onUsage || null;
@@ -110,6 +113,12 @@ class BotRunner {
 
     const bot = this._store.get(botId);
     if (!bot) throw new Error(`BotRunner.run: no bot "${botId}"`);
+
+    const blocked = this._startBlocker(botId);
+    if (blocked) {
+      emit({ type: "skipped", reason: blocked });
+      return { botId, skipped: true, reason: blocked };
+    }
 
     const trigger = opts.trigger || "manual";
     const startedAt = this._now();
@@ -250,9 +259,11 @@ class BotRunner {
         approvalPolicy: bot.approvalPolicy,
         createApproval,
       };
-      // A team lead is read-only: only its team tools, never the engine's
-      // built-ins (shell, files, web…) — bot-teams TEAM-002 AC4.
+      // Engine built-ins this bot may use: a team lead gets none (bot-teams
+      // TEAM-002 AC4); Dash team roles get what their job needs (CRE-011) —
+      // the run profile says which.
       if (bot.role === "lead") ctx.builtinTools = "none";
+      else if (profile.builtinTools) ctx.builtinTools = profile.builtinTools;
 
       for await (const event of engine.run(ctx)) {
         emit(event);

@@ -49,3 +49,32 @@ describe("PauseController", () => {
     assert.ok(audits.some((a) => a.type === "pause-bot" && a.botId === "b1"));
   });
 });
+
+describe("PauseController — survives a restart (CRE-011 AC3)", () => {
+  it("saves every change and loads it back", () => {
+    let saved = null;
+    const persistence = { load: () => saved, save: (s) => (saved = s) };
+    const p = new PauseController({ persistence });
+    p.pauseBot("b1");
+    assert.deepEqual(saved, { global: false, bots: ["b1"] });
+    const again = new PauseController({ persistence });
+    assert.equal(again.isPaused("b1"), true);
+    again.resumeBot("b1");
+    again.pauseAll();
+    const third = new PauseController({ persistence });
+    assert.equal(third.isPaused("b1"), true);
+    assert.deepEqual(third.list(), { global: true, bots: [] });
+  });
+
+  it("a broken load starts unpaused", () => {
+    const p = new PauseController({
+      persistence: {
+        load: () => {
+          throw new Error("bad file");
+        },
+        save: () => {},
+      },
+    });
+    assert.equal(p.isPaused("b1"), false);
+  });
+});

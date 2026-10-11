@@ -192,6 +192,9 @@ export const BotDetail = ({
 }) => {
   const showInstructions = !section || section === "instructions";
   const showAccess = !section || section === "access";
+  // A Dash team role (CRE-011) is never on a dashboard and only runs when
+  // Dash hands it work — no Team, Schedule, events or Results.
+  const isTeamRole = !!bot && bot.system === "dash-team";
   const [showOnDashboard, setShowOnDashboard] = useState(true);
   const [name, setName] = useState(bot?.name || "");
   const [instructions, setInstructions] = useState(bot?.instructions || "");
@@ -696,35 +699,37 @@ export const BotDetail = ({
               />
             </div>
 
-            <div className="flex flex-col gap-2">
-              <SelectInput
-                label="Team"
-                value={team}
-                onChange={setTeam}
-                options={teamOptions}
-              />
-              <span className="text-xs opacity-50">
-                The dashboard this bot works for. A bot on a team only runs on
-                its own dashboard&apos;s events; Unassigned bots hear every
-                dashboard.
-              </span>
-              {isCreating && canShowOnDashboard ? (
-                <Checkbox
-                  label="Show results on this dashboard"
-                  checked={showOnDashboard}
-                  onChange={(on) => setShowOnDashboard(!!on)}
+            {isTeamRole ? null : (
+              <div className="flex flex-col gap-2">
+                <SelectInput
+                  label="Team"
+                  value={team}
+                  onChange={setTeam}
+                  options={teamOptions}
                 />
-              ) : null}
-              {offTeam.length ? (
-                <span className="text-xs opacity-70">
-                  {offTeam.length === 1
-                    ? "1 event this bot runs on comes"
-                    : `${offTeam.length} events this bot runs on come`}{" "}
-                  from another dashboard and won&apos;t fire while it&apos;s on
-                  this team.
+                <span className="text-xs opacity-50">
+                  The dashboard this bot works for. A bot on a team only runs on
+                  its own dashboard&apos;s events; Unassigned bots hear every
+                  dashboard.
                 </span>
-              ) : null}
-            </div>
+                {isCreating && canShowOnDashboard ? (
+                  <Checkbox
+                    label="Show results on this dashboard"
+                    checked={showOnDashboard}
+                    onChange={(on) => setShowOnDashboard(!!on)}
+                  />
+                ) : null}
+                {offTeam.length ? (
+                  <span className="text-xs opacity-70">
+                    {offTeam.length === 1
+                      ? "1 event this bot runs on comes"
+                      : `${offTeam.length} events this bot runs on come`}{" "}
+                    from another dashboard and won&apos;t fire while it&apos;s
+                    on this team.
+                  </span>
+                ) : null}
+              </div>
+            )}
           </>
         )}
 
@@ -950,7 +955,7 @@ export const BotDetail = ({
           </>
         )}
 
-        {showInstructions && (
+        {showInstructions && !isTeamRole && (
           <>
             <div className="flex flex-col gap-2">
               <span className="text-sm font-medium">Schedule</span>
