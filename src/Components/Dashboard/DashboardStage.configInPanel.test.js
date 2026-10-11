@@ -90,3 +90,16 @@ describe("Listeners fits the narrow panel", () => {
     expect(handlers).toMatch(/stacked=\{stacked\}/);
   });
 });
+
+describe("DashboardStage — bot tabs in the panel (CRE-006 AC5)", () => {
+  test("the Bot tab renders BotConfigPanel, keyed by the bot", () => {
+    expect(stage).toMatch(
+      /botEditor=\{\s*selectedEditBot \? \(\s*<BotConfigPanel\s+key=\{selectedEditBot\.id\}/,
+    );
+  });
+
+  test("re-staging keeps the form as first opened (for keepLatest at Save)", () => {
+    expect(stage).toMatch(/opened: prevForm \? prevForm\.opened : opened,/);
+    expect(stage).toMatch(/pendingBotFormsRef\.current = \{\};/);
+  });
+});
