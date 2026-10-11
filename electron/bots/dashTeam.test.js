@@ -202,3 +202,12 @@ describe("Dash team instructions (slice 3b-1)", () => {
     );
   });
 });
+
+describe("Dash team instructions (slice 3b-2)", () => {
+  it("the Builder drafts bots and never says they're created", () => {
+    const builder = ROLES.find((r) => r.role === "builder");
+    assert.match(builder.instructions, /draft_bot/);
+    assert.match(builder.instructions, /never that it's created/);
+    assert.equal(builder.history.length, 2);
+  });
+});

@@ -120,3 +120,13 @@ describe("DraftBanner — notes from the lead", () => {
     expect(container.firstChild.className).toMatch(/\brounded-lg\b/);
   });
 });
+
+describe("DraftBanner — who drafted it (CRE-011, 3b-2)", () => {
+  test("a lead's draft and a Dash team draft", () => {
+    renderBanner();
+    expect(screen.getByText("Drafted by your team lead")).toBeInTheDocument();
+    document.body.innerHTML = "";
+    renderBanner({ author: "dash-team" });
+    expect(screen.getByText("Drafted by the Dash team")).toBeInTheDocument();
+  });
+});

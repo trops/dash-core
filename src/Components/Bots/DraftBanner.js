@@ -1,5 +1,6 @@
 import React, { useContext } from "react";
 import { Button3, ThemeContext } from "@trops/dash-react";
+import { draftAuthor } from "./teamUtils";
 
 /**
  * DraftBanner — shown above a lead's drafted bot in the Bots view (bot-teams
@@ -31,7 +32,7 @@ export const DraftBanner = ({ draft, onDiscard, onOpenSettings = null }) => {
     >
       <div className="flex flex-row items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
-          <span className="font-medium">Drafted by your team lead</span>
+          <span className="font-medium">Drafted by {draftAuthor(draft)}</span>
           {draft.reasoning ? (
             <span className={muted}>{draft.reasoning}</span>
           ) : null}

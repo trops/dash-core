@@ -499,7 +499,9 @@ export const BotsView = ({
         >
           <span className="text-sm font-medium truncate">{name}</span>
           <span className={`text-xs ${muted}`}>
-            Drafted by the lead · not created yet
+            {d.author === "dash-team"
+              ? "Drafted by the Dash team · not created yet"
+              : "Drafted by the lead · not created yet"}
           </span>
         </button>
         <ButtonIcon

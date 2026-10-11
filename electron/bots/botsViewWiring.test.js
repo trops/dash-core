@@ -151,7 +151,10 @@ describe("Lead drafts (TEAM-005)", () => {
       ctrl,
       /proposeBot: \(teamCtx, proposal\) =>\s*this\._proposeBot\(teamCtx, proposal\),/,
     );
-    assert.match(ctrl, /_proposeBot\(\{ workspaceId, botId \}, proposal\) \{/);
+    assert.match(
+      ctrl,
+      /_proposeBot\(\{ workspaceId, botId \}, proposal, \{ author = "lead" \} = \{\}\) \{/,
+    );
     assert.match(ctrl, /sources: this\.listToolSources\(workspaceId\)/);
   });
 

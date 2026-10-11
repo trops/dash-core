@@ -70,7 +70,14 @@ describe("tools and servers", () => {
   it("the Builder builds, the Checker checks; only build_widget needs approval", () => {
     assert.deepEqual(
       roleToolsFor("builder").map((t) => t.name),
-      ["widget_guide", "build_widget", "read_widget", "list_providers"],
+      [
+        "widget_guide",
+        "build_widget",
+        "draft_bot",
+        "read_widget",
+        "list_providers",
+        "list_dashboards",
+      ],
     );
     assert.deepEqual(
       roleToolsFor("checker").map((t) => t.name),

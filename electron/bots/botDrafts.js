@@ -8,6 +8,8 @@
  *     toolSelections stay empty until the user picks them in the form;
  *   - a schedule only if its cron parses;
  *   - event subscriptions only to this team's bots' real events;
+ *   - declared results (publishes, team-dashboards TD-001) only with valid,
+ *     unique names — the Dash team's Builder drafts these (CRE-011);
  *   - anything else is dropped (and said so), or listed as missing.
  * The lead never saves or runs a draft — DraftStore just holds it until the
  * user saves or discards it in the Bots view.
@@ -17,7 +19,11 @@
 const crypto = require("crypto");
 const { Cron } = require("croner");
 const { botRef, botEventType } = require("./botEvents");
-const { validateBotDefinition, withDefaults } = require("./botSchema");
+const {
+  validateBotDefinition,
+  withDefaults,
+  RESULT_NAME_RE,
+} = require("./botSchema");
 
 const BOT_EVENTS = ["completed", "failed"];
 const MAX_NAME = 80;
@@ -26,6 +32,8 @@ const MAX_REASONING = 1000;
 const MAX_PER_DASHBOARD = 10;
 const MAX_GAPS = 10;
 const MAX_SUGGESTIONS = 5;
+const MAX_PUBLISHES = 20;
+const MAX_RESULT_TEXT = 200;
 // find_providers tiers, most trusted first (providerDiscovery.TIER_ORDER).
 const TIER_RANK = ["installed", "built-in", "vetted", "community"];
 
@@ -60,6 +68,9 @@ function buildDraft({
   workspaceId,
   leadId,
   knownProviders = {},
+  // Who drafted it: "lead" (a team lead's propose_bot) or "dash-team" (the
+  // Dash team's Builder, CRE-011) — the review says which.
+  author = "lead",
   now,
 }) {
   const name = str(proposal.name, MAX_NAME);
@@ -195,6 +206,28 @@ function buildDraft({
     });
   }
 
+  // Declared results (optional): what the bot sends to its dashboard.
+  const publishes = [];
+  for (const p of (Array.isArray(proposal.publishes)
+    ? proposal.publishes
+    : []
+  ).slice(0, MAX_PUBLISHES)) {
+    const resultName = str(p && p.name, 40);
+    if (!RESULT_NAME_RE.test(resultName)) {
+      dropped.push(
+        `Result "${resultName || "?"}" — a result name is letters, digits and underscores, starting with a letter.`,
+      );
+      continue;
+    }
+    if (publishes.some((x) => x.name === resultName)) continue;
+    const entry = { name: resultName };
+    const label = str(p.label, MAX_RESULT_TEXT);
+    const description = str(p.description, MAX_RESULT_TEXT);
+    if (label) entry.label = label;
+    if (description) entry.description = description;
+    publishes.push(entry);
+  }
+
   const definition = withDefaults({
     name,
     instructions,
@@ -204,6 +237,7 @@ function buildDraft({
     approvalPolicy: "ask",
     schedules,
     subscriptions,
+    ...(publishes.length ? { publishes } : {}),
   });
   delete definition.session;
   const { valid, errors } = validateBotDefinition(definition);
@@ -217,6 +251,7 @@ function buildDraft({
       id: `draft_${crypto.randomBytes(6).toString("hex")}`,
       workspaceId: String(workspaceId),
       leadId: leadId || null,
+      author: author === "dash-team" ? "dash-team" : "lead",
       createdAt: (now || (() => new Date().toISOString()))(),
       reasoning: str(proposal.reasoning, MAX_REASONING),
       definition,

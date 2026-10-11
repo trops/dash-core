@@ -101,7 +101,7 @@ describe("roleToolsFor", () => {
   it("gives each role only its tools", () => {
     assert.deepEqual(
       roleToolsFor("planner").map((t) => t.name),
-      ["search_library", "list_providers", "ask_role"],
+      ["search_library", "list_providers", "list_dashboards", "ask_role"],
     );
     assert.deepEqual(
       roleToolsFor("scout").map((t) => t.name),
