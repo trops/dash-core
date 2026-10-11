@@ -43,9 +43,13 @@ describe("DashboardStage — select to edit", () => {
   test("Save writes staged bot edits before the dashboard, and stops on failure", () => {
     const body = fnBody(stage, "handleClickSaveWorkspace");
     expect(body).not.toBeNull();
-    expect(body).toMatch(/Object\.values\(pendingBotEdits\)/);
+    expect(body).toMatch(/Object\.entries\(pendingBotEdits\)/);
+    // Each staged bot is merged over the latest copy (keepLatest) first.
     expect(body).toMatch(
-      /Promise\.all\(staged\.map\(\(def\) => window\.mainApi\.bots\.save\(def\)\)\)\s*\.then\(\(\) => saveDashboardWorkspace\(\)\)\s*\.catch\(/,
+      /return \{ \.\.\.latest, \.\.\.keepLatest\(form\.edited, form\.opened, latest\) \};/,
+    );
+    expect(body).toMatch(
+      /api\.save\(await finalDefinition\(id, def\)\)[\s\S]{0,40}\)\s*\.then\(\(\) => saveDashboardWorkspace\(\)\)\s*\.catch\(/,
     );
   });
 
@@ -56,8 +60,9 @@ describe("DashboardStage — select to edit", () => {
   });
 
   test("the bot form in the editor stages instead of saving", () => {
+    // The bot tabs (BotConfigPanel) hand each change to onStage.
     expect(stage).toMatch(
-      /onSave=\{async \(definition\) => \{[\s\S]{0,200}setPendingBotEdits\(/,
+      /onStage=\{\(definition, opened\) => \{[\s\S]{0,800}setPendingBotEdits\(/,
     );
     const botEditor = stage.slice(stage.indexOf("botEditor={"));
     expect(botEditor.slice(0, 1500)).not.toMatch(/bots\.save\(/);

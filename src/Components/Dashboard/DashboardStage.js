@@ -49,9 +49,10 @@ import { PinnedSidebar } from "./PinnedSidebar";
 import { DashSidebar } from "../Navigation/DashSidebar";
 import { EditPanel } from "./EditPanel";
 import { WidgetConfigPanel } from "./WidgetConfigPanel";
+import { BotConfigPanel } from "./BotConfigPanel";
+import { keepLatest } from "../Settings/details/botFormMerge";
 import { EditBotsRow } from "./EditBotsRow";
 import { EditSelectionContext, relatedTo, widgetsOf } from "./editSelection";
-import { BotDetail } from "../Settings/details/BotDetail";
 
 import { AppContext } from "../../Context/App/AppContext";
 import { WorkspaceContext } from "../../Context/WorkspaceContext";
@@ -324,6 +325,10 @@ const DashboardStageInner = ({
   // Bot edits made in the editor wait for the dashboard's Save, like every
   // other edit; Cancel discards them. botId → definition.
   const [pendingBotEdits, setPendingBotEdits] = useState({});
+  // For each staged bot: the form's edited fields and the form as it
+  // opened, so Save can merge over the latest copy (keepLatest) and not
+  // put back changes made elsewhere meanwhile. botId → { edited, opened }.
+  const pendingBotFormsRef = useRef({});
   // This month's spend per bot (bots.getSpend buckets), for the bots row.
   const [monthSpend, setMonthSpend] = useState(null);
   useEffect(() => {
@@ -2121,6 +2126,7 @@ const DashboardStageInner = ({
     originalWorkspaceRef.current = null;
     setIsDirty(false);
     setPendingBotEdits({});
+    pendingBotFormsRef.current = {};
     setPreviewMode(true);
   }
 
@@ -2143,6 +2149,7 @@ const DashboardStageInner = ({
       originalWorkspaceRef.current = deepCopy(workspaceSelected);
       setIsDirty(false);
       setPendingBotEdits({});
+      pendingBotFormsRef.current = {};
       setPreviewMode(false);
       setStageMode("dashboard");
       return;
@@ -2242,9 +2249,21 @@ const DashboardStageInner = ({
   // Save: staged bot edits first (phase 1c), then the dashboard. A failed
   // bot save stops here so nothing is half-saved silently.
   function handleClickSaveWorkspace() {
-    const staged = Object.values(pendingBotEdits);
+    const staged = Object.entries(pendingBotEdits);
     if (staged.length === 0) return saveDashboardWorkspace();
-    Promise.all(staged.map((def) => window.mainApi.bots.save(def)))
+    const api = window.mainApi.bots;
+    // Only what the form changed goes over the latest copy (keepLatest),
+    // like the bot form's own Save.
+    const finalDefinition = async (id, def) => {
+      const form = pendingBotFormsRef.current[id];
+      if (!form || typeof api.get !== "function") return def;
+      const latest = await Promise.resolve(api.get(id)).catch(() => null);
+      if (!latest) return def;
+      return { ...latest, ...keepLatest(form.edited, form.opened, latest) };
+    };
+    Promise.all(
+      staged.map(async ([id, def]) => api.save(await finalDefinition(id, def))),
+    )
       .then(() => saveDashboardWorkspace())
       .catch((err) => {
         const id = `${Date.now()}-bot-save`;
@@ -2374,6 +2393,7 @@ const DashboardStageInner = ({
     originalWorkspaceRef.current = null;
     setIsDirty(false);
     setPendingBotEdits({});
+    pendingBotFormsRef.current = {};
 
     setPreviewMode(() => true);
   }
@@ -2854,31 +2874,38 @@ const DashboardStageInner = ({
                 }
                 botEditor={
                   selectedEditBot ? (
-                    <div className="flex flex-col flex-1 min-h-0">
-                      <span className="px-4 pt-3 text-xs opacity-70">
-                        Bot changes wait for the dashboard's Save.
-                      </span>
-                      <BotDetail
-                        key={selectedEditBot.id}
-                        bot={selectedEditBot}
-                        providers={appContext?.providers || {}}
-                        workspaces={workspaceConfig}
-                        getWidgetConfig={(name) =>
-                          (name && ComponentManager.config(name)) || null
-                        }
-                        bots={team.bots || []}
-                        defaultWorkspaceId={workspaceSelected?.id}
-                        onSave={async (definition) => {
-                          const next = { ...selectedEditBot, ...definition };
-                          setPendingBotEdits((prev) => ({
-                            ...prev,
-                            [selectedEditBot.id]: next,
-                          }));
-                          setIsDirty(true);
-                          return next;
-                        }}
-                      />
-                    </div>
+                    <BotConfigPanel
+                      key={selectedEditBot.id}
+                      bot={selectedEditBot}
+                      formProps={{
+                        providers: appContext?.providers || {},
+                        workspaces: workspaceConfig,
+                        getWidgetConfig: (name) =>
+                          (name && ComponentManager.config(name)) || null,
+                        bots: team.bots || [],
+                        defaultWorkspaceId: workspaceSelected?.id,
+                      }}
+                      onStage={(definition, opened) => {
+                        const id = selectedEditBot.id;
+                        const prevForm = pendingBotFormsRef.current[id];
+                        pendingBotFormsRef.current = {
+                          ...pendingBotFormsRef.current,
+                          [id]: {
+                            edited: definition,
+                            // The form as first opened, across re-stages.
+                            opened: prevForm ? prevForm.opened : opened,
+                          },
+                        };
+                        setPendingBotEdits((prev) => ({
+                          ...prev,
+                          [id]: {
+                            ...(prev[id] || selectedEditBot),
+                            ...definition,
+                          },
+                        }));
+                        setIsDirty(true);
+                      }}
+                    />
                   ) : null
                 }
               />
