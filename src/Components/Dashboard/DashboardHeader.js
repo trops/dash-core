@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useState } from "react";
 import {
+  Button3,
   ButtonIcon,
   ButtonIcon2,
   SegmentedControl,
@@ -15,6 +16,12 @@ export const DashboardHeader = ({
   onClickEdit = null,
   onPopout = null,
   onSaveChanges = null,
+  // Select-to-edit (phase 1c): the breadcrumb and the grid buttons.
+  selectionLabel = null,
+  selectionKind = null,
+  onClearSelection = null,
+  onAddRow = null,
+  onAddColumn = null,
   // Name, folder, theme, layout toggles and Dashboard Config moved to the
   // EditPanel (create-entry phase 1b).
   // Dashboard | Bots switch (bot-teams PRD TEAM-011). Present = render the
@@ -26,6 +33,10 @@ export const DashboardHeader = ({
 }) => {
   const [workspaceSelected, setWorkspaceSelected] = useState(workspace);
   const { currentTheme } = useContext(ThemeContext);
+  const dashboardTitle = (workspaceSelected.name || "Untitled").replace(
+    /^./,
+    (c) => c.toUpperCase(),
+  );
 
   useEffect(() => {
     if (deepEqual(workspace, workspaceSelected) === false) {
@@ -103,17 +114,45 @@ export const DashboardHeader = ({
           {/* Edit mode (create-entry phase 1b): say what is being edited;
               name, folder, theme, layout toggles and Dashboard Config live
               in the EditPanel on the right. */}
-          <div className="flex flex-row items-center gap-3 flex-1 min-w-0">
+          <nav
+            aria-label="What you are editing"
+            className="flex flex-row items-center gap-3 flex-1 min-w-0"
+          >
             <Tag text="Editing" />
-            <SubHeading3
-              title={(workspaceSelected.name || "Untitled").replace(/^./, (c) =>
-                c.toUpperCase(),
-              )}
-              padding={false}
-              className="font-bold text-base truncate"
-            />
-          </div>
+            {selectionLabel ? (
+              <>
+                <Button3
+                  title={dashboardTitle}
+                  onClick={onClearSelection}
+                  size="sm"
+                />
+                <span className="opacity-50">›</span>
+                <span
+                  className={`font-semibold truncate ${currentTheme["text-primary-light"] || ""}`}
+                >
+                  {selectionLabel}
+                </span>
+                {selectionKind && (
+                  <span
+                    className={`text-xs ${currentTheme["text-primary-medium"] || ""}`}
+                  >
+                    {selectionKind}
+                  </span>
+                )}
+              </>
+            ) : (
+              <SubHeading3
+                title={dashboardTitle}
+                padding={false}
+                className="font-bold text-base truncate"
+              />
+            )}
+          </nav>
           <div className="flex flex-row space-x-1 shrink-0 items-center">
+            {onAddRow && <Button3 title="+ Row" onClick={onAddRow} size="sm" />}
+            {onAddColumn && (
+              <Button3 title="+ Column" onClick={onAddColumn} size="sm" />
+            )}
             {onClickEdit !== null && (
               <ButtonIcon2
                 icon="xmark"

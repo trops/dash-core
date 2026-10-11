@@ -105,3 +105,71 @@ describe("EditPanel (phase 1b)", () => {
     expect(h.onThemeChange).toHaveBeenCalledWith("t2");
   });
 });
+
+describe("EditPanel — selection tabs (phase 1c)", () => {
+  const widgetSel = {
+    kind: "widget",
+    uuid: "d-Emails-2",
+    label: "Important Emails",
+    component: "ai-built.emails.Emails",
+  };
+
+  test("selecting a widget opens its Widget tab", () => {
+    const { rerender } = render(
+      <ThemeContext.Provider value={{ currentTheme: {}, themes: {} }}>
+        <EditPanel workspace={workspace} selection={null} />
+      </ThemeContext.Provider>,
+    );
+    expect(screen.queryByRole("tab", { name: "Widget" })).toBeNull();
+    rerender(
+      <ThemeContext.Provider value={{ currentTheme: {}, themes: {} }}>
+        <EditPanel workspace={workspace} selection={widgetSel} />
+      </ThemeContext.Provider>,
+    );
+    expect(screen.getByRole("tab", { name: "Widget" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByText("Important Emails")).toBeInTheDocument();
+  });
+
+  test("the Widget tab opens Configure at a section, edits with AI and removes", () => {
+    const onWidgetAction = jest.fn();
+    renderPanel({
+      selection: widgetSel,
+      onWidgetAction,
+      widgetHasProviders: true,
+    });
+    fireEvent.click(screen.getByText("Settings"));
+    fireEvent.click(screen.getByText("Listeners"));
+    fireEvent.click(screen.getByText("Providers"));
+    fireEvent.click(screen.getByText("Code"));
+    fireEvent.click(screen.getByText("Edit with AI"));
+    fireEvent.click(screen.getByText("Remove from dashboard"));
+    expect(onWidgetAction.mock.calls).toEqual([
+      ["configure", "edit"],
+      ["configure", "handlers"],
+      ["configure", "providers"],
+      ["configure", "code"],
+      ["edit-with-ai"],
+      ["remove"],
+    ]);
+  });
+
+  test("Providers is offered only when the widget declares providers", () => {
+    renderPanel({ selection: widgetSel, onWidgetAction: jest.fn() });
+    expect(screen.queryByText("Providers")).toBeNull();
+  });
+
+  test("selecting a bot opens its Bot tab with the bot editor", () => {
+    renderPanel({
+      selection: { kind: "bot", botId: "bot_t", label: "Triage" },
+      botEditor: <div>bot form here</div>,
+    });
+    expect(screen.getByRole("tab", { name: "Bot" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByText("bot form here")).toBeInTheDocument();
+  });
+});

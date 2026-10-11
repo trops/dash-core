@@ -73,3 +73,38 @@ describe("GridCellFrame", () => {
     expect(screen.queryByLabelText("Pop out widget")).toBeNull();
   });
 });
+
+describe("GridCellFrame — select to edit (phase 1c)", () => {
+  test("clicking the frame while editing selects the widget", () => {
+    const onSelect = jest.fn();
+    render(frame(true, { onSelect, label: "Important Emails" }));
+    fireEvent.click(screen.getByText("widget body"));
+    expect(onSelect).toHaveBeenCalled();
+  });
+
+  test("keyboard: Enter on the focused frame selects it", () => {
+    const onSelect = jest.fn();
+    render(frame(true, { onSelect, label: "Important Emails" }));
+    const cell = screen.getByRole("group", { name: "Important Emails" });
+    fireEvent.keyDown(cell, { key: "Enter" });
+    expect(onSelect).toHaveBeenCalled();
+  });
+
+  test("view mode never selects", () => {
+    const onSelect = jest.fn();
+    render(frame(false, { onSelect }));
+    fireEvent.click(screen.getByText("widget body"));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  test("marks selected, related and dimmed states", () => {
+    const { rerender, container } = render(frame(true, { selected: true }));
+    expect(container.firstChild).toHaveAttribute("data-state", "selected");
+    rerender(frame(true, { related: true }));
+    expect(container.firstChild).toHaveAttribute("data-state", "related");
+    rerender(frame(true, { dimmed: true }));
+    expect(container.firstChild).toHaveAttribute("data-state", "dimmed");
+    rerender(frame(false, { selected: true }));
+    expect(container.firstChild).not.toHaveAttribute("data-state");
+  });
+});

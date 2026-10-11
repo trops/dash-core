@@ -1,4 +1,4 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   Button,
   InputText,
@@ -22,6 +22,11 @@ import { WidgetSidebar } from "../Navigation/WidgetSidebar";
  *   Dashboard — name, folder, Scrollable, pinned sidebar, Dashboard Config
  *   Theme     — the dashboard's theme
  *
+ *   Widget    — the selected widget (phase 1c): its Settings, Listeners,
+ *               Providers and Code open the Configure dialog at that
+ *               section; Edit with AI; Remove
+ *   Bot       — the selected bot's form (passed in as `botEditor`)
+ *
  * Every change here is staged like any other edit and saved with Save.
  */
 export const EditPanel = ({
@@ -38,9 +43,30 @@ export const EditPanel = ({
   onSidebarChange = null,
   onOpenConfig = null,
   configUnresolvedCount = 0,
+  // Select-to-edit (phase 1c)
+  selection = null,
+  onWidgetAction = null,
+  widgetHasProviders = false,
+  botEditor = null,
 }) => {
   const { currentTheme = {}, themes: contextThemes } = useContext(ThemeContext);
   const [tab, setTab] = useState("add");
+  const selectionKey = selection
+    ? selection.kind === "widget"
+      ? `widget:${selection.uuid}`
+      : `bot:${selection.botId}`
+    : null;
+  // A new selection opens its tab; clearing it leaves a stale tab — fall
+  // back to Add.
+  useEffect(() => {
+    if (!selection) {
+      setTab((t) => (t === "widget" || t === "bot" ? "add" : t));
+    } else {
+      setTab(selection.kind);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectionKey]);
+  const act = (...args) => onWidgetAction && onWidgetAction(...args);
   const allThemes =
     themes && Object.keys(themes).length > 0 ? themes : contextThemes || {};
   const ws = workspace || {};
@@ -71,6 +97,12 @@ export const EditPanel = ({
       >
         <Tabs3.List className="mx-3 mt-3 self-start">
           <Tabs3.Trigger value="add">Add</Tabs3.Trigger>
+          {selection?.kind === "widget" && (
+            <Tabs3.Trigger value="widget">Widget</Tabs3.Trigger>
+          )}
+          {selection?.kind === "bot" && (
+            <Tabs3.Trigger value="bot">Bot</Tabs3.Trigger>
+          )}
           <Tabs3.Trigger value="dashboard">Dashboard</Tabs3.Trigger>
           <Tabs3.Trigger value="theme">Theme</Tabs3.Trigger>
         </Tabs3.List>
@@ -78,6 +110,78 @@ export const EditPanel = ({
         <Tabs3.Content value="add" className="flex flex-1 min-h-0">
           <WidgetSidebar embedded username={username} />
         </Tabs3.Content>
+
+        {selection?.kind === "widget" && (
+          <Tabs3.Content
+            value="widget"
+            className="flex flex-col gap-4 p-4 overflow-y-auto"
+          >
+            <div className="flex flex-col gap-1">
+              <SectionLabel>Widget</SectionLabel>
+              <span className="text-base font-semibold">
+                {selection.label || selection.component}
+              </span>
+              <span
+                className={`text-xs break-all ${currentTheme["text-primary-medium"] || ""}`}
+              >
+                {selection.component}
+              </span>
+            </div>
+            <div className="flex flex-col gap-2">
+              <SectionLabel>Configure</SectionLabel>
+              <Button
+                title="Settings"
+                onClick={() => act("configure", "edit")}
+                size="sm"
+              />
+              <Button
+                title="Listeners"
+                onClick={() => act("configure", "handlers")}
+                size="sm"
+              />
+              {widgetHasProviders && (
+                <Button
+                  title="Providers"
+                  onClick={() => act("configure", "providers")}
+                  size="sm"
+                />
+              )}
+              <Button
+                title="Code"
+                onClick={() => act("configure", "code")}
+                size="sm"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <SectionLabel>More</SectionLabel>
+              <Button
+                title="Edit with AI"
+                onClick={() => act("edit-with-ai")}
+                size="sm"
+              />
+              <Button
+                title="Remove from dashboard"
+                onClick={() => act("remove")}
+                size="sm"
+              />
+            </div>
+            <span
+              className={`text-xs ${currentTheme["text-primary-medium"] || ""}`}
+            >
+              Changes wait for Save. Press Esc or click the dashboard name to go
+              back to the dashboard.
+            </span>
+          </Tabs3.Content>
+        )}
+
+        {selection?.kind === "bot" && (
+          <Tabs3.Content
+            value="bot"
+            className="flex flex-col flex-1 min-h-0 overflow-y-auto"
+          >
+            {botEditor}
+          </Tabs3.Content>
+        )}
 
         <Tabs3.Content
           value="dashboard"

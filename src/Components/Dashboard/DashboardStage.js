@@ -43,6 +43,10 @@ import { PageTabBar } from "../Navigation/PageTabBar";
 import { PinnedSidebar } from "./PinnedSidebar";
 import { DashSidebar } from "../Navigation/DashSidebar";
 import { EditPanel } from "./EditPanel";
+import { EditBotsRow } from "./EditBotsRow";
+import { EditSelectionContext, relatedTo, widgetsOf } from "./editSelection";
+import { BotDetail } from "../Settings/details/BotDetail";
+import { getUserConfigurableProviders } from "../../utils/providerUtils";
 
 import { AppContext } from "../../Context/App/AppContext";
 import { WorkspaceContext } from "../../Context/WorkspaceContext";
@@ -172,6 +176,7 @@ const PageLayoutBuilder = React.memo(function PageLayoutBuilder({
       editMode={editMode}
       workspaceRef={workspaceRef}
       onWidgetPopout={onWidgetPopout}
+      pageId={page.id}
     />
   );
 });
@@ -302,6 +307,90 @@ const DashboardStageInner = ({
     !previewMode &&
     stageMode === "dashboard" &&
     workspaceSelected !== null;
+
+  // ─── Select-to-edit (create-entry phase 1c) ──────────────────────
+  // What's selected in the editor: a widget, a bot, or null (the dashboard).
+  const [editSelection, setEditSelection] = useState(null);
+  // Bot edits made in the editor wait for the dashboard's Save, like every
+  // other edit; Cancel discards them. botId → definition.
+  const [pendingBotEdits, setPendingBotEdits] = useState({});
+  // This month's spend per bot (bots.getSpend buckets), for the bots row.
+  const [monthSpend, setMonthSpend] = useState(null);
+  useEffect(() => {
+    if (!isEditingDashboard) {
+      setEditSelection(null);
+      return undefined;
+    }
+    let alive = true;
+    const api = typeof window !== "undefined" ? window.mainApi : null;
+    if (api?.bots?.getSpend) {
+      Promise.resolve(api.bots.getSpend())
+        .then((s) => alive && setMonthSpend(s || {}))
+        .catch(() => {});
+    }
+    // Esc goes back from a selection to the dashboard.
+    const onKey = (e) => {
+      if (e.key === "Escape") setEditSelection(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      alive = false;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [isEditingDashboard]);
+  // The team as edited (staged bot edits applied) and every widget on the
+  // dashboard — for what's connected to the selection.
+  const editTeamBots = useMemo(
+    () =>
+      (team.members || []).map((b) =>
+        pendingBotEdits[b.id] ? { ...b, ...pendingBotEdits[b.id] } : b,
+      ),
+    [team.members, pendingBotEdits],
+  );
+  const editWidgets = useMemo(
+    () =>
+      isEditingDashboard && workspaceSelected
+        ? widgetsOf([
+            ...(workspaceSelected.pages || []).flatMap((p) => p.layout || []),
+            ...(workspaceSelected.sidebarLayout || []),
+          ])
+        : [],
+    [isEditingDashboard, workspaceSelected],
+  );
+  const editRelated = useMemo(
+    () =>
+      relatedTo(editSelection, { widgets: editWidgets, bots: editTeamBots }),
+    [editSelection, editWidgets, editTeamBots],
+  );
+  const editSelectionValue = useMemo(
+    () => ({
+      selection: editSelection,
+      related: editRelated,
+      select: setEditSelection,
+    }),
+    [editSelection, editRelated],
+  );
+  // Tell the builder holding the selected widget (or the visible page) to
+  // act: open Configure at a section, Edit with AI, Remove, + Row/Column.
+  function dispatchEditAction(action, section = null) {
+    window.dispatchEvent(
+      new CustomEvent("dash:edit-widget-action", {
+        detail: {
+          workspaceId: workspaceSelected?.id,
+          pageId: currentActivePageId,
+          uuid:
+            editSelection?.kind === "widget" ? editSelection.uuid : undefined,
+          action,
+          section,
+        },
+      }),
+    );
+    if (action === "remove") setEditSelection(null);
+  }
+  const selectedEditBot =
+    editSelection?.kind === "bot"
+      ? editTeamBots.find((b) => b.id === editSelection.botId) || null
+      : null;
   // Which bot the Bots view should open on ({ workspaceId, botId, tab, seq }).
   const [botsFocus, setBotsFocus] = useState(() =>
     popout && popoutView === "bots" && popoutBotId
@@ -1868,6 +1957,7 @@ const DashboardStageInner = ({
     currentWorkspaceRef.current = null;
     originalWorkspaceRef.current = null;
     setIsDirty(false);
+    setPendingBotEdits({});
     setPreviewMode(true);
   }
 
@@ -1889,6 +1979,7 @@ const DashboardStageInner = ({
       // reset the dirty flag so we start from a clean slate.
       originalWorkspaceRef.current = deepCopy(workspaceSelected);
       setIsDirty(false);
+      setPendingBotEdits({});
       setPreviewMode(false);
       setStageMode("dashboard");
       return;
@@ -1985,7 +2076,28 @@ const DashboardStageInner = ({
     return rootItem?.scrollable || false;
   }
 
+  // Save: staged bot edits first (phase 1c), then the dashboard. A failed
+  // bot save stops here so nothing is half-saved silently.
   function handleClickSaveWorkspace() {
+    const staged = Object.values(pendingBotEdits);
+    if (staged.length === 0) return saveDashboardWorkspace();
+    Promise.all(staged.map((def) => window.mainApi.bots.save(def)))
+      .then(() => saveDashboardWorkspace())
+      .catch((err) => {
+        const id = `${Date.now()}-bot-save`;
+        setToasts((prev) => [
+          ...prev,
+          {
+            id,
+            type: "error",
+            title: "Couldn't save a bot",
+            message: (err && err.message) || String(err),
+          },
+        ]);
+      });
+  }
+
+  function saveDashboardWorkspace() {
     try {
       console.log("dashboard clicked save workspace ", workspaceSelected);
       // we have to remove the widgetConfig which contains the component
@@ -2098,6 +2210,7 @@ const DashboardStageInner = ({
     currentWorkspaceRef.current = null;
     originalWorkspaceRef.current = null;
     setIsDirty(false);
+    setPendingBotEdits({});
 
     setPreviewMode(() => true);
   }
@@ -2215,297 +2328,358 @@ const DashboardStageInner = ({
 
       {/* ─── Main Content Area ──────────────────────── */}
       <DndProvider backend={HTML5Backend}>
-        <div className="flex flex-row flex-1 overflow-hidden">
-          {!popout && !isEditingDashboard && (
-            <DashSidebar
-              collapsed={sidebarCollapsed}
-              onCollapsedChange={setSidebarCollapsed}
-              workspaces={workspaceConfig}
-              menuItems={menuItems}
-              activeTabId={activeTabId}
-              recentDashboards={recentDashboards}
-              authStatus={authStatus}
-              authProfile={authProfile}
-              onOpenWorkspace={handleOpenTabGuarded}
-              onNewDashboard={() => setIsLayoutPickerOpen(true)}
-              onOpenSettings={() => openAppSettings("general")}
-              onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
-              onSignIn={handleSidebarSignIn}
-              onSignOut={handleSidebarSignOut}
-              activePageKey={activePageKey}
-              onOpenPage={handleOpenPageGuarded}
-              pageAttention={{
-                bots: pendingApprovals,
-                providers: providersNeedingSetup,
-              }}
-            />
-          )}
-          <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-            {workspaceSelected !== null ? (
-              <>
-                <DashboardHeader
-                  workspace={workspaceSelected}
-                  preview={popout ? true : previewMode}
-                  onClickEdit={
-                    popout ? null : () => leaveBotsGuarded(handleToggleEditMode)
-                  }
-                  onPopout={popout ? null : handlePopout}
-                  onSaveChanges={popout ? null : handleClickSaveWorkspace}
-                  stageMode={stageMode}
-                  onStageModeChange={
-                    popout || previewMode
-                      ? (mode) =>
-                          mode === "bots"
-                            ? setStageMode(mode)
-                            : leaveBotsGuarded(() => setStageMode(mode))
-                      : null
-                  }
-                  botsAttention={team.attention}
-                />
-                <DashboardThemeProvider themeKey={workspaceSelected?.themeKey}>
-                  {/* Missing widgets banner */}
-                  {hasMissing &&
-                    missingComponents.length >= 2 &&
-                    !dismissedMissingForWorkspace.has(
-                      workspaceSelected?.id,
-                    ) && (
-                      <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 flex-shrink-0">
-                        <FontAwesomeIcon
-                          icon="triangle-exclamation"
-                          className="h-3.5 w-3.5 text-amber-400 flex-shrink-0"
-                        />
-                        <span className="text-xs text-amber-300/90 flex-1">
-                          {missingComponents.length} widgets are missing from
-                          this dashboard.
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setIsMissingWidgetsModalOpen(true)}
-                          className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium"
-                        >
-                          Resolve
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setDismissedMissingForWorkspace(
-                              (prev) =>
-                                new Set([...prev, workspaceSelected?.id]),
-                            )
-                          }
-                          className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                        >
-                          <FontAwesomeIcon icon="xmark" className="h-3 w-3" />
-                        </button>
-                      </div>
-                    )}
-                  {/* Unresolved-config banner — separates providers vs
+        <EditSelectionContext.Provider value={editSelectionValue}>
+          <div className="flex flex-row flex-1 overflow-hidden">
+            {!popout && !isEditingDashboard && (
+              <DashSidebar
+                collapsed={sidebarCollapsed}
+                onCollapsedChange={setSidebarCollapsed}
+                workspaces={workspaceConfig}
+                menuItems={menuItems}
+                activeTabId={activeTabId}
+                recentDashboards={recentDashboards}
+                authStatus={authStatus}
+                authProfile={authProfile}
+                onOpenWorkspace={handleOpenTabGuarded}
+                onNewDashboard={() => setIsLayoutPickerOpen(true)}
+                onOpenSettings={() => openAppSettings("general")}
+                onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+                onSignIn={handleSidebarSignIn}
+                onSignOut={handleSidebarSignOut}
+                activePageKey={activePageKey}
+                onOpenPage={handleOpenPageGuarded}
+                pageAttention={{
+                  bots: pendingApprovals,
+                  providers: providersNeedingSetup,
+                }}
+              />
+            )}
+            <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+              {workspaceSelected !== null ? (
+                <>
+                  <DashboardHeader
+                    workspace={workspaceSelected}
+                    preview={popout ? true : previewMode}
+                    onClickEdit={
+                      popout
+                        ? null
+                        : () => leaveBotsGuarded(handleToggleEditMode)
+                    }
+                    onPopout={popout ? null : handlePopout}
+                    onSaveChanges={popout ? null : handleClickSaveWorkspace}
+                    selectionLabel={editSelection?.label || null}
+                    selectionKind={editSelection?.kind || null}
+                    onClearSelection={() => setEditSelection(null)}
+                    onAddRow={() => dispatchEditAction("add-row")}
+                    onAddColumn={() => dispatchEditAction("add-column")}
+                    stageMode={stageMode}
+                    onStageModeChange={
+                      popout || previewMode
+                        ? (mode) =>
+                            mode === "bots"
+                              ? setStageMode(mode)
+                              : leaveBotsGuarded(() => setStageMode(mode))
+                        : null
+                    }
+                    botsAttention={team.attention}
+                  />
+                  <DashboardThemeProvider
+                    themeKey={workspaceSelected?.themeKey}
+                  >
+                    {/* Missing widgets banner */}
+                    {hasMissing &&
+                      missingComponents.length >= 2 &&
+                      !dismissedMissingForWorkspace.has(
+                        workspaceSelected?.id,
+                      ) && (
+                        <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 flex-shrink-0">
+                          <FontAwesomeIcon
+                            icon="triangle-exclamation"
+                            className="h-3.5 w-3.5 text-amber-400 flex-shrink-0"
+                          />
+                          <span className="text-xs text-amber-300/90 flex-1">
+                            {missingComponents.length} widgets are missing from
+                            this dashboard.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setIsMissingWidgetsModalOpen(true)}
+                            className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium"
+                          >
+                            Resolve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDismissedMissingForWorkspace(
+                                (prev) =>
+                                  new Set([...prev, workspaceSelected?.id]),
+                              )
+                            }
+                            className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                          >
+                            <FontAwesomeIcon icon="xmark" className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
+                    {/* Unresolved-config banner — separates providers vs
                       listeners so the message is honest. Clicking
                       Configure opens the modal; X dismisses the banner
                       for the session. */}
-                  {unresolvedCount > 0 &&
-                    !previewMode &&
-                    !dismissedUnresolvedForWorkspace.has(
-                      workspaceSelected?.id,
-                    ) && (
-                      <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 flex-shrink-0">
-                        <FontAwesomeIcon
-                          icon="triangle-exclamation"
-                          className="h-3.5 w-3.5 text-amber-400 flex-shrink-0"
-                        />
-                        <span className="text-xs text-amber-300/90 flex-1">
-                          {[
-                            unresolvedProvidersCount > 0 &&
-                              `${unresolvedProvidersCount} widget${unresolvedProvidersCount === 1 ? "" : "s"} need${unresolvedProvidersCount === 1 ? "s" : ""} a provider`,
-                          ]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setIsConfigModalOpen(true)}
-                          className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium"
-                        >
-                          Configure
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setDismissedUnresolvedForWorkspace(
-                              (prev) =>
-                                new Set([...prev, workspaceSelected?.id]),
-                            )
-                          }
-                          className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                        >
-                          <FontAwesomeIcon icon="xmark" className="h-3 w-3" />
-                        </button>
-                      </div>
-                    )}
-                  {stageMode === "bots" ? (
-                    <BotsView
-                      key={workspaceSelected.id}
-                      workspace={workspaceSelected}
-                      workspaces={workspaceConfig}
-                      team={team}
-                      focus={botsFocus}
-                      onDirtyChange={(d) => {
-                        botsDirtyRef.current = d;
-                      }}
-                      onOpenSettings={(section) => openAppSettings(section)}
-                    />
-                  ) : (
-                    <>
-                      <PageTabBar
-                        pages={workspacePages}
-                        activePageId={currentActivePageId}
-                        onSwitchPage={handleSwitchPage}
-                        onAddPage={handleAddPage}
-                        onRenamePage={handleRenamePage}
-                        onDeletePage={handleDeletePage}
-                        onReorderPages={handleReorderPages}
-                        editMode={!previewMode}
-                        scrollableEnabled={getRootScrollable()}
-                        onScrollableChange={
-                          popout ? null : handleScrollableChange
-                        }
+                    {unresolvedCount > 0 &&
+                      !previewMode &&
+                      !dismissedUnresolvedForWorkspace.has(
+                        workspaceSelected?.id,
+                      ) && (
+                        <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 flex-shrink-0">
+                          <FontAwesomeIcon
+                            icon="triangle-exclamation"
+                            className="h-3.5 w-3.5 text-amber-400 flex-shrink-0"
+                          />
+                          <span className="text-xs text-amber-300/90 flex-1">
+                            {[
+                              unresolvedProvidersCount > 0 &&
+                                `${unresolvedProvidersCount} widget${unresolvedProvidersCount === 1 ? "" : "s"} need${unresolvedProvidersCount === 1 ? "s" : ""} a provider`,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setIsConfigModalOpen(true)}
+                            className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium"
+                          >
+                            Configure
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDismissedUnresolvedForWorkspace(
+                                (prev) =>
+                                  new Set([...prev, workspaceSelected?.id]),
+                              )
+                            }
+                            className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                          >
+                            <FontAwesomeIcon icon="xmark" className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
+                    {stageMode === "bots" ? (
+                      <BotsView
+                        key={workspaceSelected.id}
+                        workspace={workspaceSelected}
+                        workspaces={workspaceConfig}
+                        team={team}
+                        focus={botsFocus}
+                        onDirtyChange={(d) => {
+                          botsDirtyRef.current = d;
+                        }}
+                        onOpenSettings={(section) => openAppSettings(section)}
                       />
-                      <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
-                        {sidebarEnabled && !popout && (
-                          <PinnedSidebar
-                            pages={workspacePages}
-                            activePageId={currentActivePageId}
-                            onSwitchPage={stableSwitchPage}
-                            sidebarLayout={sidebarLayout}
-                            workspace={workspaceSelected}
-                            width={sidebarWidth}
-                            editMode={!previewMode}
-                            onWorkspaceChange={stableWorkspaceChange}
-                            onProviderSelect={stableProviderSelect}
-                            onTogglePreview={stableTogglePreview}
-                            onWidgetPopout={stableWidgetPopout}
-                            sidebarRef={sidebarWorkspaceRef}
+                    ) : (
+                      <>
+                        <PageTabBar
+                          pages={workspacePages}
+                          activePageId={currentActivePageId}
+                          onSwitchPage={handleSwitchPage}
+                          onAddPage={handleAddPage}
+                          onRenamePage={handleRenamePage}
+                          onDeletePage={handleDeletePage}
+                          onReorderPages={handleReorderPages}
+                          editMode={!previewMode}
+                          scrollableEnabled={getRootScrollable()}
+                          onScrollableChange={
+                            popout ? null : handleScrollableChange
+                          }
+                        />
+                        <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
+                          {sidebarEnabled && !popout && (
+                            <PinnedSidebar
+                              pages={workspacePages}
+                              activePageId={currentActivePageId}
+                              onSwitchPage={stableSwitchPage}
+                              sidebarLayout={sidebarLayout}
+                              workspace={workspaceSelected}
+                              width={sidebarWidth}
+                              editMode={!previewMode}
+                              onWorkspaceChange={stableWorkspaceChange}
+                              onProviderSelect={stableProviderSelect}
+                              onTogglePreview={stableTogglePreview}
+                              onWidgetPopout={stableWidgetPopout}
+                              sidebarRef={sidebarWorkspaceRef}
+                            />
+                          )}
+                          <div
+                            className={`flex flex-col w-full flex-1 ${
+                              popout || previewMode === true
+                                ? "overflow-y-auto"
+                                : "overflow-clip"
+                            }`}
+                          >
+                            {renderComponent(workspaceSelected)}
+                          </div>
+                        </div>
+                        {isEditingDashboard && (
+                          <EditBotsRow
+                            bots={editTeamBots}
+                            spend={monthSpend}
+                            selection={editSelection}
+                            related={editRelated}
+                            onSelect={setEditSelection}
                           />
                         )}
-                        <div
-                          className={`flex flex-col w-full flex-1 ${
-                            popout || previewMode === true
-                              ? "overflow-y-auto"
-                              : "overflow-clip"
-                          }`}
-                        >
-                          {renderComponent(workspaceSelected)}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </DashboardThemeProvider>
-              </>
-            ) : activePageKey ? (
-              // A Manage page, full-screen, in the app theme (outside the
-              // dashboard's theme) — app-navigation NAV-003.
-              <AppPage
-                pageKey={activePageKey}
-                subsection={pageSubsection}
-                providerLink={providerLink}
-                workspaces={workspaceConfig}
-                menuItems={menuItems}
-                dashApi={dashApi}
-                credentials={credentials}
-                onReloadWorkspaces={loadWorkspaces}
-                onReloadMenuItems={loadMenuItems}
-                onOpenWorkspace={handleOpenTabGuarded}
-                onOpenThemeEditor={handleOpenThemeManager}
-                onOpenWizard={() => setIsWizardOpen(true)}
-                onOpenBotsView={handleOpenDashboardBotsView}
-                onOpenDashboardConfig={handleOpenDashboardConfig}
-                onOpenBotInBotsView={handleOpenBotInBotsView}
-                onOpenPrivacySettings={() =>
-                  openAppSettings("privacy-security")
-                }
-              />
-            ) : (
-              <div className="flex flex-1 items-center justify-center">
-                <EmptyState
-                  icon={<FontAwesomeIcon icon="clone" className="h-12 w-12" />}
-                  title={popout ? "Dashboard not found" : "No dashboards open"}
-                  description={
-                    popout
-                      ? "The requested dashboard could not be loaded."
-                      : "Press \u2318K to search dashboards, or create a new one."
+                      </>
+                    )}
+                  </DashboardThemeProvider>
+                </>
+              ) : activePageKey ? (
+                // A Manage page, full-screen, in the app theme (outside the
+                // dashboard's theme) — app-navigation NAV-003.
+                <AppPage
+                  pageKey={activePageKey}
+                  subsection={pageSubsection}
+                  providerLink={providerLink}
+                  workspaces={workspaceConfig}
+                  menuItems={menuItems}
+                  dashApi={dashApi}
+                  credentials={credentials}
+                  onReloadWorkspaces={loadWorkspaces}
+                  onReloadMenuItems={loadMenuItems}
+                  onOpenWorkspace={handleOpenTabGuarded}
+                  onOpenThemeEditor={handleOpenThemeManager}
+                  onOpenWizard={() => setIsWizardOpen(true)}
+                  onOpenBotsView={handleOpenDashboardBotsView}
+                  onOpenDashboardConfig={handleOpenDashboardConfig}
+                  onOpenBotInBotsView={handleOpenBotInBotsView}
+                  onOpenPrivacySettings={() =>
+                    openAppSettings("privacy-security")
                   }
-                >
-                  {!popout && (
-                    <div className="flex flex-row gap-2">
-                      <ButtonIcon
-                        icon="magnifying-glass"
-                        text="Search"
-                        onClick={() => setIsCommandPaletteOpen(true)}
-                        size="sm"
-                      />
-                      <ButtonIcon
-                        icon="plus"
-                        text="New Dashboard"
-                        onClick={handleClickNewFromEmpty}
-                        size="sm"
-                      />
-                      <ButtonIcon
-                        icon="wand-magic-sparkles"
-                        text="Wizard"
-                        onClick={() => setIsWizardOpen(true)}
-                        size="sm"
-                      />
-                    </div>
-                  )}
-                </EmptyState>
-              </div>
-            )}
-            {/* Open dashboards and Manage pages (app-navigation NAV-002).
+                />
+              ) : (
+                <div className="flex flex-1 items-center justify-center">
+                  <EmptyState
+                    icon={
+                      <FontAwesomeIcon icon="clone" className="h-12 w-12" />
+                    }
+                    title={
+                      popout ? "Dashboard not found" : "No dashboards open"
+                    }
+                    description={
+                      popout
+                        ? "The requested dashboard could not be loaded."
+                        : "Press \u2318K to search dashboards, or create a new one."
+                    }
+                  >
+                    {!popout && (
+                      <div className="flex flex-row gap-2">
+                        <ButtonIcon
+                          icon="magnifying-glass"
+                          text="Search"
+                          onClick={() => setIsCommandPaletteOpen(true)}
+                          size="sm"
+                        />
+                        <ButtonIcon
+                          icon="plus"
+                          text="New Dashboard"
+                          onClick={handleClickNewFromEmpty}
+                          size="sm"
+                        />
+                        <ButtonIcon
+                          icon="wand-magic-sparkles"
+                          text="Wizard"
+                          onClick={() => setIsWizardOpen(true)}
+                          size="sm"
+                        />
+                      </div>
+                    )}
+                  </EmptyState>
+                </div>
+              )}
+              {/* Open dashboards and Manage pages (app-navigation NAV-002).
                 Leaving a dashboard with unsaved edits — layout or bot —
                 asks first; re-clicking it or closing a background tab
                 doesn't. */}
-            {!popout && !isEditingDashboard && openTabs.length > 0 && (
-              <DashTabBar
-                tabs={openTabs}
-                activeTabId={activeTabId}
-                onSwitchTab={(tabId) =>
-                  tabId === activeTabId
-                    ? handleSwitchTab(tabId)
-                    : leaveBotsGuarded(() => handleSwitchTabGuarded(tabId))
+              {!popout && !isEditingDashboard && openTabs.length > 0 && (
+                <DashTabBar
+                  tabs={openTabs}
+                  activeTabId={activeTabId}
+                  onSwitchTab={(tabId) =>
+                    tabId === activeTabId
+                      ? handleSwitchTab(tabId)
+                      : leaveBotsGuarded(() => handleSwitchTabGuarded(tabId))
+                  }
+                  onCloseTab={(tabId) =>
+                    tabId === activeTabId
+                      ? leaveBotsGuarded(() => handleCloseTab(tabId))
+                      : handleCloseTab(tabId)
+                  }
+                />
+              )}
+            </div>
+            {isEditingDashboard && (
+              <EditPanel
+                workspace={workspaceSelected}
+                menuItems={menuItems}
+                themes={themes || {}}
+                username={authProfile?.username || ""}
+                onNameChange={handleWorkspaceNameChange}
+                onFolderChange={handleWorkspaceFolderChange}
+                onThemeChange={handleWorkspaceThemeChange}
+                scrollableEnabled={getRootScrollable()}
+                onScrollableChange={
+                  workspacePages.length <= 1 ? handleScrollableChange : null
                 }
-                onCloseTab={(tabId) =>
-                  tabId === activeTabId
-                    ? leaveBotsGuarded(() => handleCloseTab(tabId))
-                    : handleCloseTab(tabId)
+                sidebarEnabled={sidebarEnabled}
+                onSidebarChange={handleSidebarToggle}
+                onOpenConfig={() => setIsConfigModalOpen(true)}
+                configUnresolvedCount={unresolvedCount}
+                selection={editSelection}
+                onWidgetAction={dispatchEditAction}
+                widgetHasProviders={
+                  editSelection?.kind === "widget" &&
+                  getUserConfigurableProviders(
+                    ComponentManager.config(editSelection.component)?.providers,
+                  ).length > 0
+                }
+                botEditor={
+                  selectedEditBot ? (
+                    <div className="flex flex-col flex-1 min-h-0">
+                      <span className="px-4 pt-3 text-xs opacity-70">
+                        Bot changes wait for the dashboard's Save.
+                      </span>
+                      <BotDetail
+                        key={selectedEditBot.id}
+                        bot={selectedEditBot}
+                        providers={appContext?.providers || {}}
+                        workspaces={workspaceConfig}
+                        getWidgetConfig={(name) =>
+                          (name && ComponentManager.config(name)) || null
+                        }
+                        bots={team.bots || []}
+                        defaultWorkspaceId={workspaceSelected?.id}
+                        onSave={async (definition) => {
+                          const next = { ...selectedEditBot, ...definition };
+                          setPendingBotEdits((prev) => ({
+                            ...prev,
+                            [selectedEditBot.id]: next,
+                          }));
+                          setIsDirty(true);
+                          return next;
+                        }}
+                      />
+                    </div>
+                  ) : null
                 }
               />
             )}
+            {!popout && !isEditingDashboard && (
+              <WorkspaceContext.Provider value={dockWorkspaceContext}>
+                {renderAiAssistant}
+              </WorkspaceContext.Provider>
+            )}
           </div>
-          {isEditingDashboard && (
-            <EditPanel
-              workspace={workspaceSelected}
-              menuItems={menuItems}
-              themes={themes || {}}
-              username={authProfile?.username || ""}
-              onNameChange={handleWorkspaceNameChange}
-              onFolderChange={handleWorkspaceFolderChange}
-              onThemeChange={handleWorkspaceThemeChange}
-              scrollableEnabled={getRootScrollable()}
-              onScrollableChange={
-                workspacePages.length <= 1 ? handleScrollableChange : null
-              }
-              sidebarEnabled={sidebarEnabled}
-              onSidebarChange={handleSidebarToggle}
-              onOpenConfig={() => setIsConfigModalOpen(true)}
-              configUnresolvedCount={unresolvedCount}
-            />
-          )}
-          {!popout && !isEditingDashboard && (
-            <WorkspaceContext.Provider value={dockWorkspaceContext}>
-              {renderAiAssistant}
-            </WorkspaceContext.Provider>
-          )}
-        </div>
+        </EditSelectionContext.Provider>
 
         {/* ─── Modals (hidden in popout mode) ────────── */}
         {!popout && (
