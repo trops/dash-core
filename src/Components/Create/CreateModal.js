@@ -21,7 +21,9 @@ import { useAiBackend } from "../../hooks/useAiBackend";
 import {
   CREATE_TYPES,
   PROMPT_PLACEHOLDER,
+  RECENT_DRAFTS,
   canSend,
+  draftAge,
   noAiOptions,
   normalizeCreateType,
   routeCreate,
@@ -77,6 +79,8 @@ export const CreateModal = ({
   // null = the start screen; { bot, workspaceId } = the bot form.
   const [botForm, setBotForm] = useState(null);
   const [bots, setBots] = useState(EMPTY);
+  // Recent Widget Builder drafts (newest first) — "Continue a draft".
+  const [drafts, setDrafts] = useState(EMPTY);
 
   // Each open starts fresh on the requested type.
   useEffect(() => {
@@ -96,6 +100,23 @@ export const CreateModal = ({
     }, 50);
     return () => clearTimeout(t);
   }, [open, botForm]);
+
+  // Widget drafts to continue (the host's drafts store; none outside the
+  // app).
+  useEffect(() => {
+    if (!open || type !== "widget") return undefined;
+    let alive = true;
+    const api = typeof window !== "undefined" ? window.mainApi : null;
+    if (!api?.drafts?.list) return undefined;
+    Promise.resolve(api.drafts.list())
+      .then((list) => {
+        if (alive && Array.isArray(list)) setDrafts(list);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [open, type]);
 
   // Other bots → "Another bot" events in the bot form's picker.
   useEffect(() => {
@@ -133,6 +154,22 @@ export const CreateModal = ({
       setBotForm({ bot: action.bot, workspaceId: action.workspaceId });
     }
   };
+
+  const continueDraft = (draft) => {
+    close();
+    window.dispatchEvent(
+      new CustomEvent("dash:open-widget-builder", {
+        detail: { resumeDraftId: draft.id },
+      }),
+    );
+  };
+
+  const recentDrafts =
+    type === "widget"
+      ? [...drafts]
+          .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+          .slice(0, RECENT_DRAFTS)
+      : EMPTY;
 
   const startWithoutAi = (key) => {
     if (key === "blank-bot") {
@@ -228,6 +265,33 @@ export const CreateModal = ({
                 }}
               />
             )}
+          </div>
+        )}
+
+        {recentDrafts.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <SectionLabel>Continue a draft</SectionLabel>
+            <div className="flex flex-row flex-wrap gap-2">
+              {recentDrafts.map((d) => (
+                <Button3 key={d.id} size="sm" onClick={() => continueDraft(d)}>
+                  <span className="inline-flex items-center gap-2">
+                    <FontAwesomeIcon
+                      icon="pen-to-square"
+                      className="h-3.5 w-3.5"
+                    />
+                    {d.name || "Untitled draft"}
+                    <span className={muted}>· {draftAge(d.updatedAt)}</span>
+                  </span>
+                </Button3>
+              ))}
+              {drafts.length > RECENT_DRAFTS && (
+                <Button3
+                  size="sm"
+                  title={`All ${drafts.length} drafts`}
+                  onClick={() => startWithoutAi("widget-drafts")}
+                />
+              )}
+            </div>
           </div>
         )}
 

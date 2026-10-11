@@ -90,6 +90,20 @@ export function noAiOptions(type) {
   return [...(NO_AI_BY_TYPE[type] || []), ...NO_AI_COMMON];
 }
 
+/** How many recent widget drafts the start screen offers to continue. */
+export const RECENT_DRAFTS = 3;
+
+/** "just now" · "5m ago" · "3h ago" · "2d ago" for a draft's updatedAt. */
+export function draftAge(updatedAt, now = Date.now()) {
+  const ms = Math.max(0, now - Number(updatedAt || 0));
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hours = Math.floor(min / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 /** Whether Send can run: a prompt, and an AI for types that need one. */
 export function canSend({ type, prompt, aiBackend }) {
   if (!String(prompt || "").trim()) return false;

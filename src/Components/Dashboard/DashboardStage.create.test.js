@@ -68,4 +68,10 @@ describe("DashboardStage — Create screen", () => {
     );
     expect(source).toMatch(/widgetLink=\{widgetLink\}/);
   });
+
+  test("All drafts opens the Widgets page (2c-2)", () => {
+    expect(source).toMatch(
+      /key === "widget-drafts"\) \{[\s\S]{0,120}handleOpenPageGuarded\("widgets"\);/,
+    );
+  });
 });

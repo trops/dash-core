@@ -45,9 +45,16 @@ const ANTHROPIC = {
   },
 };
 
-function setup({ cli = true, providers = {}, settings = {}, props = {} } = {}) {
+function setup({
+  cli = true,
+  drafts = [],
+  providers = {},
+  settings = {},
+  props = {},
+} = {}) {
   window.mainApi = {
     llm: { checkCliAvailable: jest.fn().mockResolvedValue({ available: cli }) },
+    drafts: { list: jest.fn().mockResolvedValue(drafts) },
     bots: {
       list: jest.fn().mockResolvedValue([]),
       save: jest.fn().mockResolvedValue({ id: "b1", name: "Inbox bot" }),
@@ -230,5 +237,60 @@ describe("CreateModal — Bot", () => {
     expect(
       screen.getByRole("button", { name: /Fill in the bot form/ }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("CreateModal — Continue a draft (2c-2)", () => {
+  const now = Date.now();
+  const DRAFTS = [
+    { id: "d1", name: "Tokyo clock", updatedAt: now - 5 * 60_000 },
+    { id: "d2", name: "PR digest", updatedAt: now - 3 * 3_600_000 },
+    { id: "d3", name: "", updatedAt: now - 2 * 86_400_000 },
+    { id: "d4", name: "Oldest", updatedAt: now - 9 * 86_400_000 },
+  ];
+
+  test("lists the three newest widget drafts with their age", async () => {
+    setup({ drafts: DRAFTS });
+    expect(await screen.findByText("Continue a draft")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Tokyo clock · 5m ago/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /PR digest · 3h ago/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Untitled draft · 2d ago/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Oldest/ })).toBeNull();
+  });
+
+  test("a draft opens the Widget Builder on it and closes Create", async () => {
+    const { setIsOpen } = setup({ drafts: DRAFTS });
+    const onOpen = jest.fn();
+    window.addEventListener("dash:open-widget-builder", onOpen);
+    fireEvent.click(await screen.findByRole("button", { name: /Tokyo clock/ }));
+    window.removeEventListener("dash:open-widget-builder", onOpen);
+    expect(onOpen.mock.calls[0][0].detail).toEqual({ resumeDraftId: "d1" });
+    expect(setIsOpen).toHaveBeenCalledWith(false);
+  });
+
+  test("more than three → All N drafts opens the Widgets page", async () => {
+    const { onStartWithoutAi } = setup({ drafts: DRAFTS });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "All 4 drafts" }),
+    );
+    expect(onStartWithoutAi).toHaveBeenCalledWith("widget-drafts");
+  });
+
+  test("no drafts → no row; Bot never shows it", async () => {
+    setup();
+    await screen.findByRole("button", { name: /^AI: Claude Code/ });
+    expect(screen.queryByText("Continue a draft")).toBeNull();
+  });
+
+  test("Bot doesn't offer widget drafts", async () => {
+    setup({ drafts: DRAFTS, props: { initialType: "bot" } });
+    await screen.findByRole("button", { name: /Fill in the bot form/ });
+    expect(screen.queryByText("Continue a draft")).toBeNull();
   });
 });
