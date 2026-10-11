@@ -156,7 +156,13 @@ const WidgetCardFooter = ({
  * In preview mode: renders children without any wrapper
  * In edit mode: wraps children in a container
  */
-export const WidgetCard = ({ preview = false, children, className = "" }) => {
+export const WidgetCard = ({
+  preview = false,
+  children,
+  className = "",
+  // Edit mode: the selected empty cell (phase 1d) — a solid blue border.
+  highlighted = false,
+}) => {
   // In preview mode, render children without wrapper
   if (preview === true) {
     return (
@@ -170,7 +176,7 @@ export const WidgetCard = ({ preview = false, children, className = "" }) => {
   return (
     <WidgetCardContext.Provider value={{ preview }}>
       <div
-        className={`flex flex-col w-full h-full min-h-0 overflow-hidden rounded border border-dashed border-gray-700 ${className}`}
+        className={`flex flex-col w-full h-full min-h-0 overflow-hidden rounded ${highlighted ? "border-2 border-blue-500" : "border border-dashed border-gray-700"} ${className}`}
       >
         {children}
       </div>

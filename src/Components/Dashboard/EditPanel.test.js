@@ -14,6 +14,11 @@ jest.mock("../Navigation/WidgetSidebar", () => ({
   WidgetSidebar: (props) => (
     <div data-testid="widget-library">
       {props.embedded ? "embedded" : "standalone"} · {props.username || ""}
+      {props.onPick && (
+        <button type="button" onClick={() => props.onPick("dash.clock.Clock")}>
+          pick clock
+        </button>
+      )}
     </div>
   ),
 }));
@@ -171,5 +176,72 @@ describe("EditPanel — selection tabs (phase 1c)", () => {
       "true",
     );
     expect(screen.getByText("bot form here")).toBeInTheDocument();
+  });
+});
+
+describe("EditPanel — placing in a cell and Ask AI (phase 1d)", () => {
+  const cellSel = {
+    kind: "cell",
+    gridItemId: 1,
+    cellNumber: "2.1",
+    label: "Empty cell 2.1",
+  };
+
+  test("a selected empty cell opens Add, and clicking a widget places it there", () => {
+    const onPlaceWidget = jest.fn();
+    renderPanel({ selection: cellSel, onPlaceWidget });
+    expect(screen.getByRole("tab", { name: "Add" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByText(/Placing in cell 2\.1/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText("pick clock"));
+    expect(onPlaceWidget).toHaveBeenCalledWith("dash.clock.Clock");
+  });
+
+  test("without a cell selected, the library is drag-only", () => {
+    renderPanel();
+    expect(screen.queryByText("pick clock")).toBeNull();
+  });
+
+  test("Ask AI builds a widget for the selected cell", () => {
+    const onAskAi = jest.fn();
+    renderPanel({ selection: cellSel, onAskAi });
+    fireEvent.click(screen.getByRole("tab", { name: "Ask AI" }));
+    fireEvent.click(screen.getByText("Build a widget for this cell"));
+    expect(onAskAi).toHaveBeenCalled();
+    expect(screen.getByText(/Opens the Widget Builder/)).toBeInTheDocument();
+  });
+
+  test("Ask AI edits the selected widget", () => {
+    const onAskAi = jest.fn();
+    renderPanel({
+      selection: {
+        kind: "widget",
+        uuid: "w1",
+        label: "Emails",
+        component: "x",
+      },
+      onAskAi,
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Ask AI" }));
+    fireEvent.click(screen.getByText("Edit this widget with AI"));
+    expect(onAskAi).toHaveBeenCalled();
+  });
+
+  test("a selection can ask to open on Ask AI", () => {
+    renderPanel({
+      selection: {
+        kind: "widget",
+        uuid: "w1",
+        label: "Emails",
+        component: "x",
+        openTab: "ask",
+      },
+    });
+    expect(screen.getByRole("tab", { name: "Ask AI" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 });

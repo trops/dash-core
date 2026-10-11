@@ -7,11 +7,16 @@ import React from "react";
  * the layout can highlight themselves and report clicks without threading
  * props through every layout renderer.
  *
- *   selection: { kind: "widget", uuid, id, component, label }
+ *   selection: { kind: "widget", uuid, id, component, label, openTab? }
  *            | { kind: "bot", botId, label }
+ *            | { kind: "cell", gridItemId, cellNumber, scope, label }  (1d)
  *            | null  (the dashboard itself)
+ *
+ * `available` is false outside the editor (no provider): callers fall back
+ * to their old behaviour (e.g. the Add Widget pop-up).
  */
 export const EditSelectionContext = React.createContext({
+  available: false,
   selection: null,
   related: { widgets: new Set(), bots: new Set() },
   select: () => {},

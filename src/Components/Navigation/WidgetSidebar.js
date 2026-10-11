@@ -23,7 +23,7 @@ import { useRegistrySearch } from "../../hooks/useRegistrySearch";
 import { RegistryAuthModal } from "../Registry/RegistryAuthModal";
 import { InstallProgressModal } from "../Settings/details/InstallProgressModal";
 
-const DraggableWidgetItem = ({ widgetKey, widget }) => {
+const DraggableWidgetItem = ({ widgetKey, widget, onPick = null }) => {
   const [{ isDragging }, drag] = useDrag(
     () => ({
       type: SIDEBAR_WIDGET_TYPE,
@@ -48,6 +48,20 @@ const DraggableWidgetItem = ({ widgetKey, widget }) => {
   return (
     <div
       ref={drag}
+      // Click to place in the selected empty cell (phase 1d).
+      role={onPick ? "button" : undefined}
+      tabIndex={onPick ? 0 : undefined}
+      onClick={onPick ? () => onPick(widgetKey) : undefined}
+      onKeyDown={
+        onPick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onPick(widgetKey);
+              }
+            }
+          : undefined
+      }
       className={`flex flex-col gap-1 px-3 py-2 rounded-md text-sm cursor-grab
                 bg-white/5 hover:bg-white/10 transition-colors select-none
                 ${isDragging ? "opacity-30" : ""}`}
@@ -491,6 +505,8 @@ export const WidgetSidebar = ({
   onCollapsedChange,
   embedded = false,
   username = "",
+  // Phase 1d: click a widget to place it in the selected empty cell.
+  onPick = null,
 }) => {
   const collapsed = embedded ? false : collapsedProp;
   const { currentTheme } = useContext(ThemeContext);
@@ -875,6 +891,7 @@ export const WidgetSidebar = ({
                       key={key}
                       widgetKey={key}
                       widget={widget}
+                      onPick={onPick}
                     />
                   ))}
                 </div>

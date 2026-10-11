@@ -50,19 +50,20 @@ export function GridCellFrame({
         : dimmed
           ? "dimmed"
           : undefined;
-  const stateClass =
+  // Safelisted border colours only (one at a time) — the edit card's border
+  // carries the state; dimmed fades the whole card.
+  const borderClass =
     state === "selected"
-      ? "ring-2 ring-blue-500"
+      ? "border-2 border-blue-500"
       : state === "related"
-        ? "ring-2 ring-green-500"
-        : state === "dimmed"
-          ? "opacity-50"
-          : "";
+        ? "border-2 border-green-500"
+        : "border border-dashed border-gray-700";
+  const fadeClass = state === "dimmed" ? "opacity-50" : "";
   return (
     <div
       className={
         editing
-          ? `flex flex-col w-full h-full min-h-0 overflow-hidden rounded border border-dashed border-gray-700 ${stateClass}`
+          ? `flex flex-col w-full h-full min-h-0 overflow-hidden rounded ${borderClass} ${fadeClass}`
           : "relative w-full h-full"
       }
       data-state={state}

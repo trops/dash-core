@@ -48,21 +48,30 @@ export const EditPanel = ({
   onWidgetAction = null,
   widgetHasProviders = false,
   botEditor = null,
+  // Phase 1d: place a picked widget in the selected empty cell; Ask AI.
+  onPlaceWidget = null,
+  onAskAi = null,
 }) => {
   const { currentTheme = {}, themes: contextThemes } = useContext(ThemeContext);
   const [tab, setTab] = useState("add");
   const selectionKey = selection
     ? selection.kind === "widget"
-      ? `widget:${selection.uuid}`
-      : `bot:${selection.botId}`
+      ? `widget:${selection.uuid}:${selection.openTab || ""}`
+      : selection.kind === "cell"
+        ? `cell:${selection.scope}:${selection.gridItemId}:${selection.cellNumber}`
+        : `bot:${selection.botId}`
     : null;
+  const canAskAi = selection?.kind === "widget" || selection?.kind === "cell";
   // A new selection opens its tab; clearing it leaves a stale tab — fall
   // back to Add.
   useEffect(() => {
     if (!selection) {
-      setTab((t) => (t === "widget" || t === "bot" ? "add" : t));
+      setTab((t) => (t === "widget" || t === "bot" || t === "ask" ? "add" : t));
     } else {
-      setTab(selection.kind);
+      setTab(
+        selection.openTab ||
+          (selection.kind === "cell" ? "add" : selection.kind),
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectionKey]);
@@ -103,12 +112,31 @@ export const EditPanel = ({
           {selection?.kind === "bot" && (
             <Tabs3.Trigger value="bot">Bot</Tabs3.Trigger>
           )}
+          {canAskAi && <Tabs3.Trigger value="ask">Ask AI</Tabs3.Trigger>}
           <Tabs3.Trigger value="dashboard">Dashboard</Tabs3.Trigger>
           <Tabs3.Trigger value="theme">Theme</Tabs3.Trigger>
         </Tabs3.List>
 
         <Tabs3.Content value="add" className="flex flex-1 min-h-0">
-          <WidgetSidebar embedded username={username} />
+          <div className="flex flex-col flex-1 min-h-0 min-w-0">
+            {selection?.kind === "cell" && (
+              <span
+                className={`mx-4 mt-3 text-xs ${currentTheme["text-primary-medium"] || ""}`}
+              >
+                Placing in cell {selection.cellNumber} — click a widget, or drag
+                one onto the dashboard.
+              </span>
+            )}
+            <WidgetSidebar
+              embedded
+              username={username}
+              onPick={
+                selection?.kind === "cell" && onPlaceWidget
+                  ? onPlaceWidget
+                  : null
+              }
+            />
+          </div>
         </Tabs3.Content>
 
         {selection?.kind === "widget" && (
@@ -180,6 +208,29 @@ export const EditPanel = ({
             className="flex flex-col flex-1 min-h-0 overflow-y-auto"
           >
             {botEditor}
+          </Tabs3.Content>
+        )}
+
+        {canAskAi && (
+          <Tabs3.Content value="ask" className="flex flex-col gap-3 p-4">
+            <SectionLabel>Ask AI</SectionLabel>
+
+            <Button
+              title={
+                selection.kind === "cell"
+                  ? "Build a widget for this cell"
+                  : "Edit this widget with AI"
+              }
+              onClick={() => onAskAi && onAskAi()}
+              size="sm"
+            />
+
+            <span
+              className={`text-xs ${currentTheme["text-primary-medium"] || ""}`}
+            >
+              Opens the Widget Builder. Building right here in the panel comes
+              with the Create screen.
+            </span>
           </Tabs3.Content>
         )}
 

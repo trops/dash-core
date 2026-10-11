@@ -364,6 +364,7 @@ const DashboardStageInner = ({
   );
   const editSelectionValue = useMemo(
     () => ({
+      available: true,
       selection: editSelection,
       related: editRelated,
       select: setEditSelection,
@@ -2636,6 +2637,38 @@ const DashboardStageInner = ({
                 configUnresolvedCount={unresolvedCount}
                 selection={editSelection}
                 onWidgetAction={dispatchEditAction}
+                onPlaceWidget={(widgetKey) => {
+                  if (editSelection?.kind !== "cell") return;
+                  window.dispatchEvent(
+                    new CustomEvent("dash:edit-widget-action", {
+                      detail: {
+                        workspaceId: workspaceSelected?.id,
+                        pageId: currentActivePageId,
+                        scope: editSelection.scope || "main",
+                        action: "place",
+                        gridItemId: editSelection.gridItemId,
+                        cellNumber: editSelection.cellNumber,
+                        widgetKey,
+                      },
+                    }),
+                  );
+                  setEditSelection(null);
+                }}
+                onAskAi={() => {
+                  if (editSelection?.kind === "cell") {
+                    window.dispatchEvent(
+                      new CustomEvent("dash:open-widget-builder", {
+                        detail: {
+                          cellNumber: editSelection.cellNumber,
+                          gridItemId: editSelection.gridItemId,
+                          workspaceId: workspaceSelected?.id,
+                        },
+                      }),
+                    );
+                  } else if (editSelection?.kind === "widget") {
+                    dispatchEditAction("edit-with-ai");
+                  }
+                }}
                 widgetHasProviders={
                   editSelection?.kind === "widget" &&
                   getUserConfigurableProviders(

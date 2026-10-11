@@ -30,6 +30,7 @@ import {
 import { DashboardModel, LayoutModel } from "../../../Models";
 import { ComponentManager } from "../../../ComponentManager";
 import { findWidgetCell } from "../../Dashboard/editSelection";
+import { WorkspaceScopeContext } from "./LayoutGridContainer";
 import { ProviderSelector } from "../../Provider/ProviderSelector";
 import { McpServerPicker } from "../../Provider/McpServerPicker";
 
@@ -318,6 +319,7 @@ export const LayoutBuilder = ({
   // panel lives in DashboardStage; the widget lives in this builder's
   // layout. Every builder hears the event — only the one holding the widget
   // (by uuid), or the targeted page for + Row / + Column, acts.
+  const scope = useContext(WorkspaceScopeContext);
   const editActionRef = useRef(null);
   editActionRef.current = (detail) => {
     const {
@@ -330,6 +332,22 @@ export const LayoutBuilder = ({
     const ws = wsRef.current;
     if (!ws?.layout || !action) return;
     if (workspaceId != null && String(ws.id) !== String(workspaceId)) return;
+
+    // A widget picked in the panel for a selected empty cell (phase 1d).
+    // Grid ids repeat across pages and the pinned sidebar, so match scope
+    // (main / sidebar) and, on the main grid, the visible page.
+    if (action === "place") {
+      if ((detail.scope || "main") !== scope) return;
+      if (scope === "main" && targetPage != null && targetPage !== pageId) {
+        return;
+      }
+      handleDropWidgetFromSidebar(
+        detail.gridItemId,
+        detail.cellNumber,
+        detail.widgetKey,
+      );
+      return;
+    }
 
     if (action === "add-row" || action === "add-column") {
       const item = uuid ? ws.layout.find((i) => i && i.uuid === uuid) : null;
