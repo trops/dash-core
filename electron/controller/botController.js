@@ -701,7 +701,7 @@ const botController = {
    * and this team's bots, and keep it as a draft for review. Never saves,
    * grants or runs anything.
    */
-  _proposeBot({ workspaceId, botId }, proposal) {
+  _proposeBot({ workspaceId, botId }, proposal, { author = "lead" } = {}) {
     const team = this._store
       .list()
       .filter(
@@ -717,6 +717,7 @@ const botController = {
       workspaceId,
       leadId: botId,
       knownProviders: this._knownProvidersFor(botId),
+      author,
     });
     if (res.draft) this._drafts.add(res.draft);
     return res;
@@ -1485,7 +1486,60 @@ const botController = {
           }
         : {}),
       compareConfigs,
+      listDashboards: () => this._dashboardsWithBots(),
+      draftBot: (req) => this._teamDraftBot(req),
     };
+  },
+
+  /** The user's dashboards with their bots' names (list_dashboards). */
+  _dashboardsWithBots() {
+    let workspaces = [];
+    try {
+      const workspaceController = require("./workspaceController");
+      workspaces =
+        (
+          workspaceController.listWorkspacesForApplication(
+            this._getMainWindow(),
+            this._appId,
+          ) || {}
+        ).workspaces || [];
+    } catch (_e) {
+      workspaces = [];
+    }
+    const bots = this._store.list();
+    return workspaces.map((ws) => ({
+      id: String(ws.id),
+      name: ws.name || ws.label || `Dashboard ${ws.id}`,
+      bots: bots
+        .filter((b) => isOnTeam(b, ws.id))
+        .map((b) => (isLead(b) ? `${b.name} (lead)` : b.name)),
+    }));
+  },
+
+  /**
+   * draft_bot: the Builder's bot draft on a dashboard (by id or name), made
+   * the same way as a lead's propose_bot and waiting in that dashboard's
+   * Bots view for the user to save or discard (CRE-011, G3).
+   */
+  _teamDraftBot({ callerId, dashboard, proposal }) {
+    const dashboards = this._dashboardsWithBots();
+    const want = String(dashboard || "").trim();
+    const ws =
+      dashboards.find((d) => d.id === want) ||
+      dashboards.find((d) => d.name.toLowerCase() === want.toLowerCase());
+    if (!ws) {
+      return {
+        error: `No dashboard "${want}". The user's dashboards: ${
+          dashboards.map((d) => d.name).join(", ") || "none"
+        }.`,
+      };
+    }
+    const res = this._proposeBot(
+      { workspaceId: ws.id, botId: callerId },
+      proposal || {},
+      { author: "dash-team" },
+    );
+    return res && res.draft ? { ...res, dashboardName: ws.name } : res;
   },
 
   /**

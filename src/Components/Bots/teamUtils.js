@@ -95,3 +95,10 @@ export function offTeamSubscriptions(subscriptions, teamWorkspaceId) {
       !sameWorkspace(s.source.workspaceId, teamWorkspaceId),
   );
 }
+
+/** Who drafted a bot, for its review: a team lead or the Dash team. */
+export function draftAuthor(draft) {
+  return draft && draft.author === "dash-team"
+    ? "the Dash team"
+    : "your team lead";
+}

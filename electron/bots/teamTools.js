@@ -456,4 +456,10 @@ function describeDraft(draft) {
   return lines.join("\n");
 }
 
-module.exports = { TEAM_SERVER, TEAM_TOOLS, handleTeamTool, fenceTeamData };
+module.exports = {
+  TEAM_SERVER,
+  TEAM_TOOLS,
+  handleTeamTool,
+  fenceTeamData,
+  describeDraft,
+};
