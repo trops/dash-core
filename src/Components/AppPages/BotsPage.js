@@ -18,6 +18,7 @@ import { toPlainText } from "../Bots/botConversation";
 import { runCostLabel } from "../../utils/runCostLabel";
 import { BotAvatar } from "../Bots/BotAvatar";
 import { useAllBots } from "./useAllBots";
+import { DashTeamPanel } from "./DashTeamPanel";
 import { approvalText, botHandle, botProviders } from "./botSummary";
 
 // Widget config (declared `events`) by component name — feeds the bot
@@ -26,6 +27,9 @@ const getWidgetConfig = (name) =>
   (name && ComponentManager.config(name)) || null;
 
 const UNASSIGNED = "unassigned";
+// The Dash team's group key (CRE-011) — listed first, above dashboard teams.
+const DASH_TEAM = "dash-team";
+const isDashTeamBot = (bot) => !!bot && bot.system === "dash-team";
 const STATUS_FILTERS = [
   { value: "all", label: "All" },
   { value: "Needs approval", label: "Needs approval" },
@@ -41,6 +45,10 @@ const RUN_STATUS = {
 };
 
 const teamKey = (group) => group.workspaceId || UNASSIGNED;
+
+// Under a bot's name in the list: a Dash team role's job, else how it starts.
+const rowSubtitle = (bot) =>
+  isDashTeamBot(bot) ? bot.summary || "" : triggerSummary(bot);
 
 const StatusLabel = ({ status, muted }) => {
   const dot = STATUS_DOT[status] || STATUS_DOT.Idle;
@@ -306,14 +314,19 @@ export const BotsPage = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createRequested]);
 
-  const allGroups = groupBotsByTeam(all.bots, workspaces);
+  const allGroups = [
+    ...(all.dashTeam && all.dashTeam.length
+      ? [{ workspaceId: DASH_TEAM, label: "Dash team", bots: all.dashTeam }]
+      : []),
+    ...groupBotsByTeam(all.bots, workspaces),
+  ];
   const q = query.trim().toLowerCase();
   const matches = (bot) => {
     if (statusFilter !== "all" && all.statusOf(bot.id) !== statusFilter) {
       return false;
     }
     if (!q) return true;
-    return [bot.name || "", botHandle(bot), triggerSummary(bot)]
+    return [bot.name || "", botHandle(bot), rowSubtitle(bot)]
       .join(" ")
       .toLowerCase()
       .includes(q);
@@ -390,9 +403,24 @@ export const BotsPage = ({
           bots={all.bots}
           onSave={handleSave}
           onCancel={() => setMode(null)}
-          onDelete={() => setDeleteTarget(selected.id)}
+          onDelete={
+            isDashTeamBot(selected)
+              ? undefined
+              : () => setDeleteTarget(selected.id)
+          }
         />
       </div>
+    );
+  } else if (selected && isDashTeamBot(selected)) {
+    detail = (
+      <DashTeamPanel
+        key={selected.id}
+        bot={selected}
+        status={all.statusOf(selected.id)}
+        lastRun={all.lastRunOf(selected.id)}
+        onChanged={all.refresh}
+        onEdit={() => setMode("edit")}
+      />
     );
   } else if (selected) {
     const ws = selectedGroup.workspaceId
@@ -504,7 +532,7 @@ export const BotsPage = ({
                         ) : null}
                       </span>
                       <span className={`text-xs truncate ${muted}`}>
-                        {triggerSummary(bot)}
+                        {rowSubtitle(bot)}
                       </span>
                     </span>
                     <StatusLabel status={all.statusOf(bot.id)} muted={muted} />

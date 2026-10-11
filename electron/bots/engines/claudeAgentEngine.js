@@ -113,6 +113,10 @@ function* _fromUser(message) {
   }
 }
 
+// Built-ins a "read-only" bot keeps (the Dash team's Builder, CRE-011):
+// look at files, never change them or run anything.
+const READ_ONLY_BUILTINS = ["Read", "Glob", "Grep"];
+
 /** Build the SDK canUseTool hook from the run context. */
 function _makeCanUseTool(ctx) {
   return async function canUseTool(toolName, input) {
@@ -122,13 +126,23 @@ function _makeCanUseTool(ctx) {
     // No built-ins for this run (team leads): `tools: []` removes them; this
     // is the backstop if one slips through — denied, never asked, even under
     // an "allow" policy. Bridged Dash tools fall through to the gate below.
-    if (
-      ctx.builtinTools === "none" &&
-      !(typeof toolName === "string" && toolName.startsWith(BRIDGED_PREFIX))
-    ) {
+    const bridged =
+      typeof toolName === "string" && toolName.startsWith(BRIDGED_PREFIX);
+    if (ctx.builtinTools === "none" && !bridged) {
       return {
         behavior: "deny",
         message: "This bot has no built-in tools; use its team tools.",
+      };
+    }
+    if (
+      ctx.builtinTools === "read-only" &&
+      !bridged &&
+      !READ_ONLY_BUILTINS.includes(toolName)
+    ) {
+      return {
+        behavior: "deny",
+        message:
+          "This bot can only read files; make changes with its Dash tools.",
       };
     }
     // Trusted bot → run tools without prompting.
@@ -216,6 +230,9 @@ async function _runAgent(ctx, stream) {
   // Read-only bots (team leads) get none of the SDK's built-ins — no shell,
   // files, or web; only their bridged team tools.
   if (ctx.builtinTools === "none") options.tools = [];
+  else if (ctx.builtinTools === "read-only") {
+    options.tools = READ_ONLY_BUILTINS.slice();
+  }
   if (ctx.maxTurns) options.maxTurns = ctx.maxTurns;
   if (ctx.workingDir) options.cwd = ctx.workingDir;
   if (ctx.session && ctx.session.id) options.resume = ctx.session.id;
@@ -335,3 +352,4 @@ module.exports = claudeAgentEngine;
 module.exports.__setQueryForTest = __setQueryForTest;
 module.exports.__setCliResolverForTest = __setCliResolverForTest;
 module.exports.usableCliPath = usableCliPath;
+module.exports.READ_ONLY_BUILTINS = READ_ONLY_BUILTINS;

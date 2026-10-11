@@ -7,25 +7,47 @@
  * ship here — a global "pause all" kill switch and per-bot pause; the workspace/
  * project levels layer on later using the same shape.
  *
+ * State survives a restart when a persistence pair ({ load, save }) is given
+ * (create-entry PRD CRE-011 AC3) — a paused bot stays paused.
+ *
  * Portable (NFR-006): pure state, injected audit sink, no Electron.
  */
 "use strict";
 
 class PauseController {
-  constructor({ audit } = {}) {
+  constructor({ audit, persistence } = {}) {
     this._global = false;
     this._bots = new Set();
     this._audit = audit || (() => {});
+    this._persistence = persistence || null;
+    let saved = null;
+    try {
+      saved = this._persistence ? this._persistence.load() : null;
+    } catch (_e) {
+      saved = null;
+    }
+    if (saved) {
+      this._global = !!saved.global;
+      for (const id of Array.isArray(saved.bots) ? saved.bots : []) {
+        this._bots.add(id);
+      }
+    }
+  }
+
+  _persist() {
+    if (this._persistence) this._persistence.save(this.list());
   }
 
   /** Global kill switch — pauses every bot (US-014 AC7). */
   pauseAll() {
     this._global = true;
+    this._persist();
     this._audit({ type: "pause-all" });
   }
 
   resumeAll() {
     this._global = false;
+    this._persist();
     this._audit({ type: "resume-all" });
   }
 
@@ -35,11 +57,13 @@ class PauseController {
 
   pauseBot(botId) {
     this._bots.add(botId);
+    this._persist();
     this._audit({ type: "pause-bot", botId });
   }
 
   resumeBot(botId) {
     this._bots.delete(botId);
+    this._persist();
     this._audit({ type: "resume-bot", botId });
   }
 

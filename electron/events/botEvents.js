@@ -37,6 +37,8 @@ const BOTS_SET_SETTINGS = "bots-set-settings";
 const BOTS_ASK_LEAD = "bots-ask-lead";
 // AI Assistant recipient picker (TEAM-013): team leads by dashboard.
 const BOTS_LIST_LEADS = "bots-list-leads";
+// The Dash team (create-entry CRE-011): its four role bots for the Bots page.
+const BOTS_LIST_DASH_TEAM = "bots-list-dash-team";
 // Bots view (TEAM-011): a bot run history.
 const BOTS_GET_RUNS = "bots-get-runs";
 // Bot monitor (TEAM-011 B3): the latest runs across every bot.
@@ -105,6 +107,7 @@ module.exports = {
   BOTS_SET_SETTINGS,
   BOTS_ASK_LEAD,
   BOTS_LIST_LEADS,
+  BOTS_LIST_DASH_TEAM,
   BOTS_GET_RUNS,
   BOTS_LIST_RECENT_RUNS,
   BOTS_GET_LATEST_RESULT,

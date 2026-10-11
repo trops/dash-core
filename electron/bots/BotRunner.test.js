@@ -675,3 +675,37 @@ describe("BotRunner — model, provider and cost on the run (CRE-012)", () => {
     assert.equal(runs[0].run.cost, null);
   });
 });
+
+describe("BotRunner — Dash team (CRE-011)", () => {
+  it("a blocked bot (paused) doesn't start", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const { runner, runs } = makeRunner(engine, {
+      deps: { startBlocker: () => "this bot is paused" },
+    });
+    const res = await runner.run("bot_1", { prompt: "go" });
+    assert.deepEqual(res, {
+      botId: "bot_1",
+      skipped: true,
+      reason: "this bot is paused",
+    });
+    assert.equal(engine.lastCtx, null);
+    assert.equal(runs.length, 0);
+  });
+
+  it("the run profile's built-ins reach the engine", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const { runner } = makeRunner(engine, {
+      deps: {
+        resolveRunProfile: async () => ({
+          providerId: "claude-code",
+          engineId: "tool-loop",
+          model: "claude-sonnet-4-6",
+          credentials: {},
+          builtinTools: "read-only",
+        }),
+      },
+    });
+    await runner.run("bot_1", { prompt: "go" });
+    assert.equal(engine.lastCtx.builtinTools, "read-only");
+  });
+});

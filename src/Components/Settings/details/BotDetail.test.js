@@ -1526,3 +1526,29 @@ describe("BotDetail — Results (team-dashboards TD-001)", () => {
     expect(onSave.mock.calls[0][0].publishes).toEqual([]);
   });
 });
+
+describe("BotDetail — Dash team role (CRE-011)", () => {
+  it("has no Team, Schedule or events, and no Delete without onDelete", () => {
+    render(
+      <BotDetail
+        bot={{
+          id: "b_scout",
+          name: "Scout",
+          system: "dash-team",
+          role: "scout",
+          instructions: "Look things up.",
+          provider: "claude-code",
+          schedules: [],
+          subscriptions: [],
+        }}
+        providers={{}}
+        onSave={jest.fn()}
+      />,
+    );
+    expect(screen.getByDisplayValue("Scout")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Team")).toBeNull();
+    expect(screen.queryByText("Schedule")).toBeNull();
+    expect(screen.queryByText("Run on events")).toBeNull();
+    expect(screen.queryByText("Delete")).toBeNull();
+  });
+});

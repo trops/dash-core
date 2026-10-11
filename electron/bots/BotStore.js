@@ -344,6 +344,22 @@ class BotStore {
     this._save(data);
     return data.settings;
   }
+
+  /** Saved pause state ({ global, bots }) — survives a restart (CRE-011). */
+  getPauseState() {
+    const { pause } = this._load();
+    return pause || null;
+  }
+
+  setPauseState(state) {
+    const data = this._load();
+    data.pause = {
+      global: !!(state && state.global),
+      bots: Array.isArray(state && state.bots) ? [...state.bots] : [],
+    };
+    this._save(data);
+    return data.pause;
+  }
 }
 
 module.exports = BotStore;
