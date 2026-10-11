@@ -18,6 +18,7 @@ import { AppContext } from "../../Context/App/AppContext";
 import { ComponentManager } from "../../ComponentManager";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { useAiBackend } from "../../hooks/useAiBackend";
+import { getWidgetBuilderRenderer } from "../../utils/widgetBuilderRenderer";
 import {
   CREATE_TYPES,
   PROMPT_PLACEHOLDER,
@@ -41,8 +42,13 @@ const EMPTY = [];
  * CRE-005, CRE-008). A prompt box with Type and the AI under it, and a row to
  * start without AI. Send hands the prompt to the right builder:
  *
- *   Widget → the Widget Builder, the prompt as its first message
+ *   Widget → the Widget Builder here (the host's, via
+ *            setWidgetBuilderRenderer), the prompt as its first message;
+ *            without one registered, the builder's own window
  *   Bot    → the bot form here, the prompt as its instructions
+ *
+ * Both open as a step inside Create: ← goes back to the start screen with the
+ * prompt kept (CRE-005 AC1).
  *
  * Dashboard and Theme are listed but can't be made with AI yet; their no-AI
  * starts are always in the row below.
@@ -78,6 +84,9 @@ export const CreateModal = ({
   const [prompt, setPrompt] = useState("");
   // null = the start screen; { bot, workspaceId } = the bot form.
   const [botForm, setBotForm] = useState(null);
+  // null = not building; { initialPrompt, resumeDraftId, title } = the Widget
+  // Builder inside Create.
+  const [builderStep, setBuilderStep] = useState(null);
   const [bots, setBots] = useState(EMPTY);
   // Recent Widget Builder drafts (newest first) — "Continue a draft".
   const [drafts, setDrafts] = useState(EMPTY);
@@ -88,18 +97,19 @@ export const CreateModal = ({
     setType(normalizeCreateType(initialType));
     setPrompt("");
     setBotForm(null);
+    setBuilderStep(null);
   }, [open, initialType]);
 
   // The cursor starts in the prompt (CRE-001 AC2). The dialog focuses its
   // first control (Close) on open, so take focus back right after.
   useEffect(() => {
-    if (!open || botForm) return undefined;
+    if (!open || botForm || builderStep) return undefined;
     const t = setTimeout(() => {
       const el = document.getElementById("create-prompt");
       if (el) el.focus();
     }, 50);
     return () => clearTimeout(t);
-  }, [open, botForm]);
+  }, [open, botForm, builderStep]);
 
   // Widget drafts to continue (the host's drafts store; none outside the
   // app).
@@ -136,32 +146,50 @@ export const CreateModal = ({
 
   if (!open) return null;
 
-  const close = () => setIsOpen(false);
+  // Closing ends any step (builder or bot form) here, so reopening starts on
+  // the start screen — never a flash of the last builder, which would rerun
+  // its startup (chat reset, draft resume) before the reset effect.
+  const close = () => {
+    setBuilderStep(null);
+    setBotForm(null);
+    setIsOpen(false);
+  };
   const sendable = canSend({ type, prompt, aiBackend: ai.effective });
   const needsAi = type === "widget";
   const noAi = needsAi && ai.effective === null && ai.cliAvailable !== null;
+
+  const Builder = getWidgetBuilderRenderer();
+
+  // The Widget Builder: inside Create when the host registered one, else its
+  // own window (the old event).
+  const openBuilder = (detail, title) => {
+    if (Builder) {
+      setBuilderStep({
+        initialPrompt: detail.prompt || null,
+        resumeDraftId: detail.resumeDraftId || null,
+        title,
+      });
+      return;
+    }
+    close();
+    window.dispatchEvent(
+      new CustomEvent("dash:open-widget-builder", { detail }),
+    );
+  };
 
   const send = () => {
     if (!sendable) return;
     const action = routeCreate({ type, prompt, workspaceId });
     if (!action) return;
     if (action.kind === "widget-builder") {
-      close();
-      window.dispatchEvent(
-        new CustomEvent("dash:open-widget-builder", { detail: action.detail }),
-      );
+      openBuilder(action.detail, "New widget");
     } else if (action.kind === "bot-form") {
       setBotForm({ bot: action.bot, workspaceId: action.workspaceId });
     }
   };
 
   const continueDraft = (draft) => {
-    close();
-    window.dispatchEvent(
-      new CustomEvent("dash:open-widget-builder", {
-        detail: { resumeDraftId: draft.id },
-      }),
-    );
+    openBuilder({ resumeDraftId: draft.id }, draft.name || "Draft");
   };
 
   const recentDrafts =
@@ -333,8 +361,39 @@ export const CreateModal = ({
     </div>
   );
 
+  const builder = builderStep && Builder && (
+    <div className="flex-1 min-h-0 flex flex-col">
+      <Builder
+        key={builderStep.resumeDraftId || "new"}
+        initialPrompt={builderStep.initialPrompt}
+        resumeDraftId={builderStep.resumeDraftId}
+        onClose={close}
+        onTitle={(title) =>
+          title && setBuilderStep((step) => (step ? { ...step, title } : step))
+        }
+      />
+    </div>
+  );
+
+  // A step inside Create: the builder or the bot form. ← returns to the
+  // start screen (the prompt is kept).
+  const stepTitle = builderStep
+    ? builderStep.title || "New widget"
+    : botForm
+      ? "New bot"
+      : null;
+  const back = () => {
+    setBuilderStep(null);
+    setBotForm(null);
+  };
+
   return (
-    <Modal isOpen={open} setIsOpen={setIsOpen} width="w-11/12" height="h-5/6">
+    <Modal
+      isOpen={open}
+      setIsOpen={(v) => (v ? setIsOpen(true) : close())}
+      width="w-11/12"
+      height="h-5/6"
+    >
       <div
         className={`flex flex-col h-full w-full rounded-lg overflow-clip border ${
           panelStyles.backgroundColor || ""
@@ -344,22 +403,29 @@ export const CreateModal = ({
           className={`flex-shrink-0 flex flex-row items-center justify-between px-6 py-3 border-b ${hairline}`}
         >
           <div className={`flex items-center gap-3 ${strong}`}>
-            {botForm ? (
-              <ButtonIcon
-                icon="arrow-left"
-                onClick={() => setBotForm(null)}
-                ariaLabel="Back"
-              />
+            {stepTitle ? (
+              <ButtonIcon icon="arrow-left" onClick={back} ariaLabel="Back" />
             ) : (
               <FontAwesomeIcon icon="plus" className="h-4 w-4 opacity-70" />
             )}
-            <span className="text-lg font-semibold">
-              {botForm ? "New bot" : "Create"}
-            </span>
+            {stepTitle ? (
+              <nav
+                aria-label="Where you are"
+                className="flex items-center gap-2 text-lg"
+              >
+                <span className={muted}>Create</span>
+                <span className={muted} aria-hidden="true">
+                  ›
+                </span>
+                <span className="font-semibold">{stepTitle}</span>
+              </nav>
+            ) : (
+              <span className="text-lg font-semibold">Create</span>
+            )}
           </div>
           <ButtonIcon icon="xmark" onClick={close} ariaLabel="Close" />
         </div>
-        {botForm ? form : start}
+        {builder || (botForm ? form : start)}
       </div>
     </Modal>
   );
