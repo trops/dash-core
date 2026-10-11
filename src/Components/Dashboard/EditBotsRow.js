@@ -39,14 +39,13 @@ export const EditBotsRow = ({
               : selection?.kind === "widget"
                 ? "dimmed"
                 : undefined;
-          const ring =
+          const stateBorder =
             state === "selected"
-              ? "ring-2 ring-blue-500"
+              ? "border-2 border-blue-500"
               : state === "related"
-                ? "ring-2 ring-green-500"
-                : state === "dimmed"
-                  ? "opacity-50"
-                  : "";
+                ? "border-2 border-green-500"
+                : `border ${currentTheme["border-primary-medium"] || ""}`;
+          const fade = state === "dimmed" ? "opacity-50" : "";
           const name = bot.name || bot.id;
           return (
             <button
@@ -57,11 +56,7 @@ export const EditBotsRow = ({
               onClick={() =>
                 onSelect({ kind: "bot", botId: bot.id, label: name })
               }
-              className={`flex flex-row items-center gap-2 px-3 py-2 rounded-md border text-left ${
-                currentTheme["border-primary-medium"] || ""
-              } ${currentTheme["bg-primary-dark"] || ""} ${
-                currentTheme["text-primary-light"] || ""
-              } ${ring}`}
+              className={`flex flex-row items-center gap-2 px-3 py-2 rounded-md text-left ${stateBorder} ${currentTheme["bg-primary-dark"] || ""} ${currentTheme["text-primary-light"] || ""} ${fade}`}
             >
               <FontAwesomeIcon
                 icon="robot"

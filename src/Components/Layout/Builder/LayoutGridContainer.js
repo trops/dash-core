@@ -320,6 +320,7 @@ export const LayoutGridContainer = memo(
   }) => {
     // Select-to-edit (phase 1c): the editor's current selection.
     const editSelection = useContext(EditSelectionContext);
+    const workspaceScope = useContext(WorkspaceScopeContext);
 
     // Get providers from AppContext (not DashboardContext, which has a structural
     // issue where providers from AppWrapper don't flow through DashboardWrapper)
@@ -1275,7 +1276,19 @@ export const LayoutGridContainer = memo(
         >
           <div
             className="flex flex-col items-center cursor-pointer hover:bg-gray-800/50 rounded-lg px-4 py-2 transition-colors"
-            onClick={() => handleClickAdd(cellNumber)}
+            onClick={() =>
+              // In the editor (phase 1d): select the cell; the panel's Add
+              // tab places the next widget picked. Elsewhere: the pop-up.
+              editSelection.available
+                ? editSelection.select({
+                    kind: "cell",
+                    gridItemId: item.id,
+                    cellNumber,
+                    scope: workspaceScope,
+                    label: `Empty cell ${cellNumber}`,
+                  })
+                : handleClickAdd(cellNumber)
+            }
           >
             <ButtonIcon
               icon="plus"
@@ -1331,6 +1344,39 @@ export const LayoutGridContainer = memo(
         }
       }
 
+      // Select this cell's widget in the editor (phase 1c/1d). openTab "ask"
+
+      // opens the panel on Ask AI.
+
+      const selectWidget = (openTab) => {
+        if (!editSelection.available || !cellComponent) return;
+
+        editSelection.select({
+          kind: "widget",
+
+          uuid: cellComponent.uuid,
+
+          id: cellComponent.id,
+
+          component: cellComponent.component,
+
+          label: pickWidgetDisplayName(
+            cellComponent,
+
+            ComponentManager.config(cellComponent.component, cellComponent),
+          ),
+
+          ...(openTab ? { openTab } : {}),
+        });
+      };
+
+      const isSelectedEmptyCell =
+        !cellComponent &&
+        editSelection.selection?.kind === "cell" &&
+        editSelection.selection.gridItemId === item.id &&
+        editSelection.selection.cellNumber === cellNumber &&
+        (editSelection.selection.scope || "main") === workspaceScope;
+
       const header = (
         <WidgetCard.Header
           item={cellComponent}
@@ -1364,6 +1410,7 @@ export const LayoutGridContainer = memo(
           onConfigure={
             cellComponent
               ? (widgetItem, section) => {
+                  selectWidget();
                   if (onOpenConfig) onOpenConfig(cellComponent, section);
                 }
               : undefined
@@ -1378,6 +1425,7 @@ export const LayoutGridContainer = memo(
           onEditWithAI={
             cellComponent
               ? () => {
+                  selectWidget("ask");
                   window.dispatchEvent(
                     new CustomEvent("dash:edit-widget-with-ai", {
                       detail: {
@@ -1430,21 +1478,7 @@ export const LayoutGridContainer = memo(
               cellComponent,
               ComponentManager.config(cellComponent.component, cellComponent),
             )}
-            onSelect={() =>
-              editSelection.select({
-                kind: "widget",
-                uuid: cellComponent.uuid,
-                id: cellComponent.id,
-                component: cellComponent.component,
-                label: pickWidgetDisplayName(
-                  cellComponent,
-                  ComponentManager.config(
-                    cellComponent.component,
-                    cellComponent,
-                  ),
-                ),
-              })
-            }
+            onSelect={() => selectWidget()}
             selected={
               editSelection.selection?.kind === "widget" &&
               editSelection.selection.uuid === cellComponent.uuid
@@ -1477,7 +1511,7 @@ export const LayoutGridContainer = memo(
       }
 
       return (
-        <WidgetCard preview={false}>
+        <WidgetCard preview={false} highlighted={isSelectedEmptyCell}>
           {header}
           <DroppableEmptyCell
             cellNumber={cellNumber}

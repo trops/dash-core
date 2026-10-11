@@ -88,3 +88,32 @@ describe("LayoutBuilder — edit panel actions", () => {
     expect(builder).toMatch(/handleClickEditItem\(item, section \|\| null\)/);
   });
 });
+
+const grid = fs.readFileSync(
+  path.join(__dirname, "..", "Layout", "Builder", "LayoutGridContainer.js"),
+  "utf8",
+);
+
+describe("phase 1d — routing into the editor", () => {
+  test("an empty cell's Add widget selects the cell (the pop-up is the fallback)", () => {
+    expect(grid).toMatch(
+      /editSelection\.available\s*\?\s*editSelection\.select\(\{\s*kind: "cell"/,
+    );
+  });
+
+  test("the widget menu's Configure and Edit with AI also select the widget", () => {
+    const edit = grid.match(/function renderEditCell\([\s\S]*?\n    \}\n/)[0];
+    expect(edit).toMatch(/selectWidget\(\)[\s\S]{0,80}onOpenConfig/);
+    expect(edit).toMatch(/selectWidget\("ask"\)/);
+  });
+
+  test("LayoutBuilder places a picked widget, only in the matching scope and page", () => {
+    expect(builder).toMatch(/action === "place"/);
+    expect(builder).toMatch(
+      /handleDropWidgetFromSidebar\(\s*detail\.gridItemId,\s*detail\.cellNumber,\s*detail\.widgetKey,?\s*\)/,
+    );
+    expect(builder).toMatch(
+      /const scope = useContext\(WorkspaceScopeContext\)/,
+    );
+  });
+});
