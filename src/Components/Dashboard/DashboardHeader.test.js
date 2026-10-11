@@ -113,3 +113,41 @@ describe("DashboardHeader — edit mode (phase 1b)", () => {
     expect(screen.queryByText("Bluish Hue")).toBeNull();
   });
 });
+
+describe("DashboardHeader — selection breadcrumb and grid buttons (phase 1c)", () => {
+  it("shows the selection, and the dashboard name goes back to the dashboard", () => {
+    const onClearSelection = jest.fn();
+    renderHeader({
+      preview: false,
+      onClickEdit: jest.fn(),
+      selectionLabel: "Important Emails",
+      selectionKind: "widget",
+      onClearSelection,
+    });
+    expect(screen.getByText("Important Emails")).toBeInTheDocument();
+    expect(screen.getByText("widget")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Kitchen sink" }));
+    expect(onClearSelection).toHaveBeenCalled();
+  });
+
+  it("without a selection the name is plain text", () => {
+    renderHeader({ preview: false, onClickEdit: jest.fn() });
+    expect(screen.queryByRole("button", { name: "Kitchen sink" })).toBeNull();
+    expect(screen.getByText("Kitchen sink")).toBeInTheDocument();
+  });
+
+  it("adds a row or column", () => {
+    const onAddRow = jest.fn();
+    const onAddColumn = jest.fn();
+    renderHeader({
+      preview: false,
+      onClickEdit: jest.fn(),
+      onAddRow,
+      onAddColumn,
+    });
+    fireEvent.click(screen.getByText("+ Row"));
+    fireEvent.click(screen.getByText("+ Column"));
+    expect(onAddRow).toHaveBeenCalled();
+    expect(onAddColumn).toHaveBeenCalled();
+  });
+});

@@ -17,6 +17,8 @@ import {
 import { WidgetFactory } from "../../../Widget";
 import { LayoutContainer } from "../../../Components/Layout";
 import { GridCellFrame } from "./GridCellFrame";
+import { pickWidgetDisplayName } from "../../../utils/widgetIdentity";
+import { EditSelectionContext } from "../../Dashboard/editSelection";
 import { AppContext } from "../../../Context/App/AppContext";
 
 import { WidgetCard } from "./Enhanced/WidgetCard";
@@ -316,6 +318,9 @@ export const LayoutGridContainer = memo(
     onDropWidgetFromSidebar = null,
     onWidgetPopout = null,
   }) => {
+    // Select-to-edit (phase 1c): the editor's current selection.
+    const editSelection = useContext(EditSelectionContext);
+
     // Get providers from AppContext (not DashboardContext, which has a structural
     // issue where providers from AppWrapper don't flow through DashboardWrapper)
     const appCtx = useContext(AppContext);
@@ -1417,7 +1422,39 @@ export const LayoutGridContainer = memo(
         ComponentManager.config(cellComponent.component, cellComponent)
       ) {
         return (
-          <GridCellFrame editing header={header} footer={footer}>
+          <GridCellFrame
+            editing
+            header={header}
+            footer={footer}
+            label={pickWidgetDisplayName(
+              cellComponent,
+              ComponentManager.config(cellComponent.component, cellComponent),
+            )}
+            onSelect={() =>
+              editSelection.select({
+                kind: "widget",
+                uuid: cellComponent.uuid,
+                id: cellComponent.id,
+                component: cellComponent.component,
+                label: pickWidgetDisplayName(
+                  cellComponent,
+                  ComponentManager.config(
+                    cellComponent.component,
+                    cellComponent,
+                  ),
+                ),
+              })
+            }
+            selected={
+              editSelection.selection?.kind === "widget" &&
+              editSelection.selection.uuid === cellComponent.uuid
+            }
+            related={editSelection.related.widgets.has(cellComponent.uuid)}
+            dimmed={
+              editSelection.selection?.kind === "bot" &&
+              !editSelection.related.widgets.has(cellComponent.uuid)
+            }
+          >
             <DraggableDroppableCellBody
               enabled
               cellNumber={cellNumber}

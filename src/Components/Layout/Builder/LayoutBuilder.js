@@ -29,6 +29,7 @@ import {
 } from "../../../utils/layout";
 import { DashboardModel, LayoutModel } from "../../../Models";
 import { ComponentManager } from "../../../ComponentManager";
+import { findWidgetCell } from "../../Dashboard/editSelection";
 import { ProviderSelector } from "../../Provider/ProviderSelector";
 import { McpServerPicker } from "../../Provider/McpServerPicker";
 
@@ -66,6 +67,9 @@ export const LayoutBuilder = ({
   preview = false,
   onTogglePreview,
   onWorkspaceChange = null,
+  // Which page (or "sidebar") this builder lays out — edit-panel actions
+  // that aren't tied to a widget (+ Row / + Column) target one page.
+  pageId = null,
   onProviderSelect = null,
   dashboardId,
   editMode = "all",
@@ -308,6 +312,76 @@ export const LayoutBuilder = ({
     return () =>
       window.removeEventListener("dash:swap-widget-in-cell", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Edit panel actions on the selected widget (create-entry phase 1c). The
+  // panel lives in DashboardStage; the widget lives in this builder's
+  // layout. Every builder hears the event — only the one holding the widget
+  // (by uuid), or the targeted page for + Row / + Column, acts.
+  const editActionRef = useRef(null);
+  editActionRef.current = (detail) => {
+    const {
+      workspaceId,
+      pageId: targetPage,
+      uuid,
+      action,
+      section,
+    } = detail || {};
+    const ws = wsRef.current;
+    if (!ws?.layout || !action) return;
+    if (workspaceId != null && String(ws.id) !== String(workspaceId)) return;
+
+    if (action === "add-row" || action === "add-column") {
+      const item = uuid ? ws.layout.find((i) => i && i.uuid === uuid) : null;
+      if (uuid && !item) return; // the selected widget is on another page
+      if (!uuid && targetPage != null && targetPage !== pageId) return;
+      const cell = item ? findWidgetCell(ws.layout, item.id) : null;
+      const grid = cell
+        ? ws.layout.find((i) => i && i.id === cell.gridItemId)
+        : ws.layout.find((i) => i && i.grid);
+      if (!grid?.grid) return;
+      const [row, col] = String(cell?.cellNumber || "")
+        .split(".")
+        .map(Number);
+      if (action === "add-row") {
+        handleAddGridRow(grid.id, row || grid.grid.rows);
+      } else {
+        handleAddGridColumn(grid.id, col || grid.grid.cols);
+      }
+      return;
+    }
+
+    const item = ws.layout.find((i) => i && i.uuid === uuid);
+    if (!item) return;
+    if (action === "configure") {
+      handleClickEditItem(item, section || null);
+    } else if (action === "remove") {
+      onClickRemove(item.id);
+    } else if (action === "edit-with-ai") {
+      const cell = findWidgetCell(ws.layout, item.id);
+      if (!cell) return;
+      window.dispatchEvent(
+        new CustomEvent("dash:edit-widget-with-ai", {
+          detail: {
+            cellNumber: cell.cellNumber,
+            gridItemId: cell.gridItemId,
+            workspaceId: ws.id,
+            widgetComponentName: item.component,
+            widgetId: item.id,
+            selectedProviders: item.selectedProviders || null,
+            userPrefs: item.userPrefs || null,
+            sourcePackage:
+              ComponentManager.config(item.component, item)?._sourcePackage ||
+              null,
+          },
+        }),
+      );
+    }
+  };
+  useEffect(() => {
+    const handler = (e) => editActionRef.current(e.detail);
+    window.addEventListener("dash:edit-widget-action", handler);
+    return () => window.removeEventListener("dash:edit-widget-action", handler);
   }, []);
 
   /**
