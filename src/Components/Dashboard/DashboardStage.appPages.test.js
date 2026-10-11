@@ -42,7 +42,8 @@ describe("DashboardStage — Manage pages", () => {
     expect(bars.length).toBe(1);
     // Rendered after the main-area ternary, not inside the dashboard branch.
     expect(src).toMatch(
-      /\{!popout && openTabs\.length > 0 && \(\s*<DashTabBar/,
+      // Hidden only while a dashboard is being edited (phase 1b).
+      /\{!popout && !isEditingDashboard && openTabs\.length > 0 && \(\s*<DashTabBar/,
     );
   });
 

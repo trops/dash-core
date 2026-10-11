@@ -80,3 +80,36 @@ describe("DashboardHeader — Dashboard | Bots switch (TEAM-011)", () => {
     expect(screen.queryByRole("radiogroup")).toBeNull();
   });
 });
+
+describe("DashboardHeader — edit mode (phase 1b)", () => {
+  it("says what is being edited, with Cancel and Save", () => {
+    const onClickEdit = jest.fn();
+    const onSaveChanges = jest.fn();
+    renderHeader({ preview: false, onClickEdit, onSaveChanges });
+    expect(screen.getByText("Editing")).toBeInTheDocument();
+    expect(screen.getByText("Kitchen sink")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(onClickEdit).toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSaveChanges).toHaveBeenCalled();
+  });
+
+  it("keeps dashboard settings out of the header (they live in the Edit panel)", () => {
+    renderHeader({
+      preview: false,
+      onClickEdit: jest.fn(),
+      onSaveChanges: jest.fn(),
+      onNameChange: jest.fn(),
+      onFolderChange: jest.fn(),
+      onThemeChange: jest.fn(),
+      onScrollableChange: jest.fn(),
+      onSidebarChange: jest.fn(),
+      menuItems: [{ id: 1, name: "Work" }],
+      themes: { t1: { name: "Bluish Hue" } },
+    });
+    expect(screen.queryByDisplayValue("kitchen sink")).toBeNull();
+    expect(screen.queryByText("Scrollable")).toBeNull();
+    expect(screen.queryByText("Sidebar")).toBeNull();
+    expect(screen.queryByText("Bluish Hue")).toBeNull();
+  });
+});

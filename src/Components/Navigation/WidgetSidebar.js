@@ -15,6 +15,7 @@ import {
 } from "@trops/dash-react";
 import { ComponentManager } from "../../ComponentManager";
 import { SIDEBAR_WIDGET_TYPE } from "../../utils/dragTypes";
+import { matchesSource } from "./widgetSource";
 import { getUserConfigurableProviders } from "../../utils/providerUtils";
 import { bareComponentName } from "../../utils/scopedComponentId";
 import { useWidgetRegistryVersion } from "../../hooks/useWidgetRegistryVersion";
@@ -480,7 +481,18 @@ const SidebarDiscoverContent = ({
 
 /* ─── Main Sidebar ─────────────────────────────────────────────────── */
 
-export const WidgetSidebar = ({ collapsed, onCollapsedChange }) => {
+/**
+ * @param {boolean} [embedded] shown inside the dashboard Edit panel's Add
+ *   tab (phase 1b): always expanded, no collapse trigger, full width.
+ * @param {string} [username] signed-in registry username, for the Mine filter.
+ */
+export const WidgetSidebar = ({
+  collapsed: collapsedProp,
+  onCollapsedChange,
+  embedded = false,
+  username = "",
+}) => {
+  const collapsed = embedded ? false : collapsedProp;
   const { currentTheme } = useContext(ThemeContext);
 
   // Tab state
@@ -496,6 +508,8 @@ export const WidgetSidebar = ({ collapsed, onCollapsedChange }) => {
   const [filterProvider, setFilterProvider] = useState("all");
   const [filterHasEvents, setFilterHasEvents] = useState("all");
   const [filterHasHandlers, setFilterHasHandlers] = useState("all");
+  // Mine / Installed / Built in (create-entry CRE-010 AC2).
+  const [filterSource, setFilterSource] = useState("all");
 
   // Counter from the shared `dash:widgets-updated` event so the
   // sidebar re-derives whenever widgets install / update / uninstall.
@@ -591,6 +605,10 @@ export const WidgetSidebar = ({ collapsed, onCollapsedChange }) => {
           (widget.description || "").toLowerCase().includes(q);
         if (!matchesSearch) return false;
       }
+      // Source filter (Mine / Installed / Built in)
+      if (!matchesSource({ key, widget }, filterSource, username)) {
+        return false;
+      }
       // Group filter (package > author > "Other")
       if (filterAuthor !== "all") {
         if ((widget.package || widget.author || "Other") !== filterAuthor)
@@ -636,6 +654,8 @@ export const WidgetSidebar = ({ collapsed, onCollapsedChange }) => {
     filterProvider,
     filterHasEvents,
     filterHasHandlers,
+    filterSource,
+    username,
   ]);
 
   const filteredCount = Object.values(filteredGrouped).reduce(
@@ -645,6 +665,7 @@ export const WidgetSidebar = ({ collapsed, onCollapsedChange }) => {
   const totalCount = allWidgets.length;
   const hasActiveFilters =
     searchQuery ||
+    filterSource !== "all" ||
     filterAuthor !== "all" ||
     filterProvider !== "all" ||
     filterHasEvents !== "all" ||
@@ -652,6 +673,7 @@ export const WidgetSidebar = ({ collapsed, onCollapsedChange }) => {
 
   const clearFilters = () => {
     setSearchQuery("");
+    setFilterSource("all");
     setFilterAuthor("all");
     setFilterProvider("all");
     setFilterHasEvents("all");
@@ -679,12 +701,12 @@ export const WidgetSidebar = ({ collapsed, onCollapsedChange }) => {
       collapsed={collapsed}
       onCollapsedChange={onCollapsedChange}
       side="right"
-      width="w-64"
+      width={embedded ? "w-full" : "w-64"}
       collapsedWidth="w-12"
     >
       <Sidebar.Header>
         <div className="flex items-center justify-between">
-          <Sidebar.Trigger />
+          {embedded ? <span /> : <Sidebar.Trigger />}
           {!collapsed && (
             <div className="flex bg-white/5 rounded-md p-0.5">
               <button
@@ -707,7 +729,7 @@ export const WidgetSidebar = ({ collapsed, onCollapsedChange }) => {
                     : "opacity-50 hover:opacity-70"
                 }`}
               >
-                Discover
+                {embedded ? "Registry" : "Discover"}
               </button>
             </div>
           )}
@@ -723,6 +745,18 @@ export const WidgetSidebar = ({ collapsed, onCollapsedChange }) => {
             placeholder="Search widgets..."
             inputClassName="py-1.5 text-xs"
           />
+
+          <select
+            aria-label="Show"
+            value={filterSource}
+            onChange={(e) => setFilterSource(e.target.value)}
+            className={selectClassName}
+          >
+            <option value="all">All widgets</option>
+            <option value="mine">Mine</option>
+            <option value="installed">Installed</option>
+            <option value="builtin">Built in</option>
+          </select>
 
           <div className="grid grid-cols-2 gap-1.5">
             <select
