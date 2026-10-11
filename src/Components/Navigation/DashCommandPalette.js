@@ -21,6 +21,8 @@ export const DashCommandPalette = ({
   onCreateNewFolder = null,
   onLoadDashboard = null,
   onOpenWizard = null,
+  // Opens the Create screen (create-entry PRD CRE-001 AC1).
+  onCreate = null,
   // Theme actions
   onChangeTheme = null,
   onOpenThemeManager = null,
@@ -89,6 +91,13 @@ export const DashCommandPalette = ({
     });
 
   const dashboardActions = [
+    onCreate &&
+      matchesQuery("Create") && {
+        key: "create",
+        label: "Create…",
+        icon: "plus",
+        action: () => onCreate(),
+      },
     matchesQuery("New Dashboard") && {
       key: "new-dashboard",
       label: "New Dashboard",

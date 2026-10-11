@@ -449,6 +449,8 @@ export const WidgetsPage = ({
   credentials = null,
   onOpenWorkspace = null,
   onOpenPrivacySettings = null,
+  // { action: "discover" | "zip" | "folder", nonce } from the Create screen.
+  installRequest = null,
   createRequested = false,
   onCreateAcknowledged = null,
 }) => {
@@ -510,6 +512,7 @@ export const WidgetsPage = ({
   }));
 
   // The header's New Widget opens the install picker in the detail panel.
+  // (In the app, AppPage sends New Widget to the Create screen instead.)
   const prevCreate = useRef(false);
   useEffect(() => {
     if (createRequested && !prevCreate.current) setMode("picker");
@@ -532,6 +535,13 @@ export const WidgetsPage = ({
       setMode("result");
     }
   };
+
+  // The Create screen's start-without-AI row: browse the registry, install
+  // from a zip or load a folder, right here.
+  useEffect(() => {
+    if (installRequest && installRequest.action) pick(installRequest.action);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [installRequest && installRequest.nonce]);
 
   const updatePackage = async (pkg) => {
     const ok = await ensureAuthed({

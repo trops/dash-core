@@ -1,6 +1,6 @@
 {
   "name": "@trops/dash-core",
-  "version": "0.1.729",
+  "version": "0.1.730",
   "description": "Core framework for Dash dashboard applications",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
@@ -46,7 +46,7 @@
   "peerDependencies": {
     "@headlessui/react": "1.4",
     "@heroicons/react": "^2.0.16",
-    "@trops/dash-react": ">=1.0.65",
+    "@trops/dash-react": ">=1.0.69",
     "prop-types": "^15.8.1",
     "react": "^18.2.0",
     "react-dnd": "^16.0.1",

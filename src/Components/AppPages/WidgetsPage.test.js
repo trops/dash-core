@@ -511,6 +511,19 @@ describe("WidgetsPage page actions", () => {
     ).toBeInTheDocument();
   });
 
+  it("an install request from the Create screen runs that install (CRE-008)", async () => {
+    setup({ installRequest: { action: "zip", nonce: 1 } });
+    await waitFor(() => expect(mockInstallFromZip).toHaveBeenCalled());
+    expect(
+      await screen.findByText('Widget "weather" installed.'),
+    ).toBeInTheDocument();
+  });
+
+  it("a browse request from the Create screen opens the registry search", () => {
+    setup({ installRequest: { action: "discover", nonce: 2 } });
+    expect(screen.getByTestId("discover")).toBeInTheDocument();
+  });
+
   it("the builder card opens the Widget Builder", () => {
     setup({ createRequested: true });
     let fired = false;

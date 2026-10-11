@@ -34,6 +34,11 @@ import { WorkspaceModel, MenuItemModel } from "../../Models";
 
 import { DashboardLoaderModal } from "./Modal/DashboardLoaderModal";
 import { LayoutManagerModal } from "../Layout/LayoutManager";
+import {
+  layoutTemplates,
+  createLayoutFromTemplate,
+} from "../Layout/LayoutManager/layoutTemplates";
+import { CreateModal } from "../Create/CreateModal";
 import { DashboardWizardModal } from "../Layout/DashboardWizard";
 import { OnboardingModal } from "./OnboardingModal";
 
@@ -258,6 +263,8 @@ const DashboardStageInner = ({
   // provider to select / create (a new nonce re-applies it).
   const [pageSubsection, setPageSubsection] = useState(null);
   const [providerLink, setProviderLink] = useState(null);
+  // Widgets page install deep link { action, nonce } (Create screen).
+  const [widgetLink, setWidgetLink] = useState(null);
   // Bot approvals waiting anywhere — the sidebar's Bots dot (NAV-001 AC3).
   const pendingApprovals = usePendingApprovalCount();
   // Providers that still need a credential — the Providers item's dot.
@@ -472,6 +479,19 @@ const DashboardStageInner = ({
     window.addEventListener("dash:open-bots-view", handler);
     return () => window.removeEventListener("dash:open-bots-view", handler);
   }, [openBotsView]);
+  // Open the Create screen from anywhere — Manage pages' New Widget / New Bot
+  // (create-entry PRD CRE-008). detail: { type, workspaceId }.
+  useEffect(() => {
+    const handler = (e) => {
+      const d = (e && e.detail) || {};
+      setCreateRequest({
+        type: d.type || "widget",
+        workspaceId: d.workspaceId ?? null,
+      });
+    };
+    window.addEventListener("dash:open-create", handler);
+    return () => window.removeEventListener("dash:open-create", handler);
+  }, []);
 
   const openBotSettings = useCallback(() => {
     openAppSettings("bots");
@@ -529,6 +549,13 @@ const DashboardStageInner = ({
   const [isDashboardLoaderOpen, setIsDashboardLoaderOpen] = useState(false);
   const [isLayoutPickerOpen, setIsLayoutPickerOpen] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  // The New Dashboard modal opened on a step ("import" | "registry") from
+  // the Create screen's start-without-AI row.
+  const [layoutInitialMethod, setLayoutInitialMethod] = useState(null);
+  // Create screen (create-entry PRD CRE-001): null = closed, else
+  // { type, workspaceId }.
+  const [createRequest, setCreateRequest] = useState(null);
+  const [themeStartInCreate, setThemeStartInCreate] = useState(false);
 
   // First-run onboarding (Phase 3A). Tri-state:
   //   null   — status not yet loaded from main; do not render anything
@@ -1109,6 +1136,7 @@ const DashboardStageInner = ({
     setPreviewMode(true);
     setPageSubsection(opts.subsection || null);
     if (opts.providerLink) setProviderLink(opts.providerLink);
+    if (opts.widgetLink) setWidgetLink(opts.widgetLink);
   }
 
   function handleOpenPageGuarded(key, opts = {}) {
@@ -1174,7 +1202,73 @@ const DashboardStageInner = ({
   // ─── New Workspace from Empty State ───────────────────────────────
 
   function handleClickNewFromEmpty() {
+    setLayoutInitialMethod(null);
     setIsLayoutPickerOpen(true);
+  }
+
+  // ─── Create screen (create-entry PRD CRE-001 / CRE-008) ──────────
+
+  function openCreate(type = "widget", workspaceId = null) {
+    setCreateRequest({ type, workspaceId });
+  }
+
+  // A blank dashboard opens in Edit on Add; rename it in the Dashboard tab.
+  async function handleCreateBlankDashboard() {
+    const menuId = menuItems && menuItems.length > 0 ? menuItems[0].id : 1;
+    try {
+      await handleCreateFromTemplate(
+        createLayoutFromTemplate(layoutTemplates[0], menuId),
+        themeKey || null,
+        "Untitled dashboard",
+      );
+    } catch (e) {
+      console.error("Failed to create dashboard:", e);
+      window.dispatchEvent(
+        new CustomEvent("dash:notify", {
+          detail: {
+            type: "error",
+            message: "Couldn't create the dashboard. Try again.",
+          },
+        }),
+      );
+    }
+  }
+
+  const WIDGET_INSTALL_ACTIONS = {
+    "browse-widgets": "discover",
+    "widget-zip": "zip",
+    "widget-folder": "folder",
+  };
+
+  function handleStartWithoutAi(key) {
+    if (key === "blank-dashboard") {
+      handleCreateBlankDashboard();
+    } else if (key === "import-dashboard" || key === "browse-dashboards") {
+      setLayoutInitialMethod(
+        key === "import-dashboard" ? "import" : "registry",
+      );
+      setIsLayoutPickerOpen(true);
+    } else if (key === "new-theme") {
+      setThemeEditorKey(null);
+      setThemeStartInCreate(true);
+      setIsThemeManagerOpen(true);
+    } else if (WIDGET_INSTALL_ACTIONS[key]) {
+      handleOpenPageGuarded("widgets", {
+        widgetLink: { action: WIDGET_INSTALL_ACTIONS[key], nonce: Date.now() },
+      });
+    }
+  }
+
+  function handleBotCreated(saved) {
+    handleOpenPageGuarded("bots");
+    window.dispatchEvent(
+      new CustomEvent("dash:notify", {
+        detail: {
+          type: "success",
+          message: `Created ${(saved && saved.name) || "the bot"}.`,
+        },
+      }),
+    );
   }
 
   // Saves the new dashboard before opening it, so it survives a reload.
@@ -2362,7 +2456,7 @@ const DashboardStageInner = ({
                 authStatus={authStatus}
                 authProfile={authProfile}
                 onOpenWorkspace={handleOpenTabGuarded}
-                onNewDashboard={() => setIsLayoutPickerOpen(true)}
+                onNewDashboard={() => openCreate()}
                 onOpenSettings={() => openAppSettings("general")}
                 onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
                 onSignIn={handleSidebarSignIn}
@@ -2561,6 +2655,7 @@ const DashboardStageInner = ({
                   pageKey={activePageKey}
                   subsection={pageSubsection}
                   providerLink={providerLink}
+                  widgetLink={widgetLink}
                   workspaces={workspaceConfig}
                   menuItems={menuItems}
                   dashApi={dashApi}
@@ -2757,10 +2852,15 @@ const DashboardStageInner = ({
             <ThemeManagerModal
               open={isThemeManagerOpen}
               initialThemeKey={themeEditorKey}
-              setIsOpen={() => setIsThemeManagerOpen(!isThemeManagerOpen)}
+              startInCreate={themeStartInCreate}
+              setIsOpen={() => {
+                setIsThemeManagerOpen(!isThemeManagerOpen);
+                setThemeStartInCreate(false);
+              }}
               onSave={(themeKey) => {
                 changeCurrentTheme(themeKey);
                 setIsThemeManagerOpen(() => false);
+                setThemeStartInCreate(false);
               }}
             />
 
@@ -2782,6 +2882,20 @@ const DashboardStageInner = ({
               onReloadWorkspaces={loadWorkspaces}
               onOpenWorkspace={handleOpenTabGuarded}
               onOpenWizard={() => setIsWizardOpen(true)}
+              initialMethod={layoutInitialMethod}
+            />
+
+            <CreateModal
+              open={!!createRequest}
+              setIsOpen={(v) => {
+                if (!v) setCreateRequest(null);
+              }}
+              initialType={createRequest ? createRequest.type : "widget"}
+              workspaceId={createRequest ? createRequest.workspaceId : null}
+              workspaces={workspaceConfig}
+              onStartWithoutAi={handleStartWithoutAi}
+              onBotCreated={handleBotCreated}
+              onOpenAiSettings={() => openAppSettings("ai-assistant")}
             />
 
             <DashboardWizardModal
@@ -2905,6 +3019,7 @@ const DashboardStageInner = ({
           }
           onOpenDiscover={() => openAppSettings("widgets")}
           onOpenWizard={() => setIsWizardOpen(true)}
+          onCreate={() => openCreate()}
         />
       )}
 
