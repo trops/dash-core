@@ -23,6 +23,11 @@ const dashboardTools = [
     inputSchema: {
       type: "object",
       properties: {
+        page: {
+          type: "string",
+          description:
+            "Dashboards with pages: the page's name or id. Omit for the page the user is looking at.",
+        },
         dashboardId: {
           type: "string",
           description:
@@ -129,6 +134,11 @@ const widgetTools = [
     inputSchema: {
       type: "object",
       properties: {
+        page: {
+          type: "string",
+          description:
+            "Dashboards with pages: the page's name or id. Omit for the page the user is looking at.",
+        },
         dashboardId: {
           type: "string",
           description:
@@ -160,6 +170,11 @@ const widgetTools = [
     inputSchema: {
       type: "object",
       properties: {
+        page: {
+          type: "string",
+          description:
+            "Dashboards with pages: the page's name or id. Omit for the page the user is looking at.",
+        },
         dashboardId: {
           type: "string",
           description: "Dashboard ID. Omit to use the active dashboard.",
@@ -179,6 +194,11 @@ const widgetTools = [
     inputSchema: {
       type: "object",
       properties: {
+        page: {
+          type: "string",
+          description:
+            "Dashboards with pages: the page's name or id. Omit for the page the user is looking at.",
+        },
         dashboardId: {
           type: "string",
           description: "Dashboard ID. Omit to use the active dashboard.",
@@ -440,10 +460,15 @@ const layoutTools = [
   {
     name: "set_layout",
     description:
-      "Set or replace the grid layout on a dashboard. Creates a LayoutGridContainer with the specified dimensions. Existing widgets in cells that fit the new grid are preserved; widgets outside the new bounds are orphaned (kept but unassigned). Use this to add a grid to an existing dashboard or to resize the grid.",
+      "Set or replace the grid layout on a dashboard. Creates a LayoutGridContainer with the specified dimensions. Existing widgets in cells that fit the new grid are preserved; widgets outside the new bounds are orphaned (kept but unassigned). Use this to add a grid to an existing dashboard or to resize the grid. On a dashboard with pages it changes one page — the one the user is looking at, or the one named in page.",
     inputSchema: {
       type: "object",
       properties: {
+        page: {
+          type: "string",
+          description:
+            "Dashboards with pages: the page's name or id. Omit for the page the user is looking at.",
+        },
         dashboardId: {
           type: "string",
           description: "Dashboard ID. Omit to use the active dashboard.",
@@ -473,10 +498,15 @@ const layoutTools = [
   {
     name: "update_layout",
     description:
-      "Partially update the grid layout. Only specified properties change — omitted properties keep their current values. colModes is merged (not replaced). Widgets in removed rows/columns are orphaned. Dashboard must already have a grid layout.",
+      "Partially update the grid layout. Only specified properties change — omitted properties keep their current values. colModes is merged (not replaced). Widgets in removed rows/columns are orphaned. Dashboard must already have a grid layout. On a dashboard with pages it changes one page — the one the user is looking at, or the one named in page.",
     inputSchema: {
       type: "object",
       properties: {
+        page: {
+          type: "string",
+          description:
+            "Dashboards with pages: the page's name or id. Omit for the page the user is looking at.",
+        },
         dashboardId: {
           type: "string",
           description: "Dashboard ID. Omit to use the active dashboard.",
@@ -509,6 +539,11 @@ const layoutTools = [
     inputSchema: {
       type: "object",
       properties: {
+        page: {
+          type: "string",
+          description:
+            "Dashboards with pages: the page's name or id. Omit for the page the user is looking at.",
+        },
         dashboardId: {
           type: "string",
           description: "Dashboard ID. Omit to use the active dashboard.",

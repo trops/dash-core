@@ -8,10 +8,12 @@
  * placement (electron/mcp/toolHandlers.js) plus the full-grid case.
  *
  * Dashboards with pages draw the ACTIVE page's layout (`pages[].layout`);
- * the top-level `layout` mirrors it. Placement goes into the active page and
- * the mirror is kept in step.
+ * the top-level `layout` mirrors it. Placement goes into the active page (or
+ * the one asked for) and the mirror is kept in step (activeLayout.js).
  */
 "use strict";
+
+const { layoutOf, withLayout } = require("./activeLayout");
 
 function clone(v) {
   return JSON.parse(JSON.stringify(v));
@@ -34,14 +36,11 @@ function findNextEmptyCell(grid) {
   return null;
 }
 
-/** The page whose layout the dashboard shows, or null for a dashboard without pages. */
-function activePage(ws) {
-  if (!Array.isArray(ws.pages) || !ws.pages.length) return null;
-  return ws.pages.find((p) => p && p.id === ws.activePageId) || ws.pages[0];
-}
-
-/** Place into one layout array (mutates it). */
-function placeInto(layout, component, userPrefs) {
+/**
+ * Place into one layout array (mutates it). `at` ({ row, col }) asks for a
+ * cell; it must exist in the grid and be empty.
+ */
+function placeInto(layout, component, userPrefs, at = null) {
   const gridNode = layout.find(
     (i) => i && i.component === "LayoutGridContainer" && i.grid,
   );
@@ -49,7 +48,25 @@ function placeInto(layout, component, userPrefs) {
     (i) => i && /Container$/.test(i.component || ""),
   );
   let cell = null;
-  if (gridNode) {
+  if (gridNode && at) {
+    const grid = gridNode.grid;
+    const row = Number(at.row);
+    const col = Number(at.col);
+    if (!(row >= 1 && row <= grid.rows && col >= 1 && col <= grid.cols)) {
+      throw new Error(
+        `Cell ${at.row}.${at.col} is outside the ${grid.rows}×${grid.cols} grid.`,
+      );
+    }
+    const existing = grid[`${row}.${col}`];
+    if (
+      existing &&
+      existing.component !== null &&
+      existing.component !== undefined
+    ) {
+      throw new Error(`Cell ${row}.${col} already holds a widget.`);
+    }
+    cell = { row, col };
+  } else if (gridNode) {
     const grid = gridNode.grid;
     cell = findNextEmptyCell(grid);
     if (!cell) {
@@ -85,23 +102,24 @@ function placeInto(layout, component, userPrefs) {
 
 /**
  * @param {object} workspace
- * @param {{ component: string, userPrefs?: object }} widget
+ * @param {{ component: string, userPrefs?: object, page?: string,
+ *           row?: number, col?: number }} widget — `page` by name or id
+ *   (default: the page shown); `row` + `col` ask for a cell (default: the
+ *   next empty one, or a new row)
  * @returns {{ workspace: object, widgetId: number, cell: {row, col}|null }}
+ * @throws on an unknown page, or a cell outside the grid / already taken
  */
-function placeWidget(workspace, { component, userPrefs } = {}) {
+function placeWidget(workspace, { component, userPrefs, page, row, col } = {}) {
   if (!component || typeof component !== "string") {
     throw new Error("placeWidget: component is required");
   }
   const ws = clone(workspace || {});
-  const page = activePage(ws);
-  if (page) {
-    page.layout = Array.isArray(page.layout) ? page.layout : [];
-    const placed = placeInto(page.layout, component, userPrefs);
-    ws.layout = clone(page.layout);
-    return { workspace: ws, ...placed };
-  }
-  ws.layout = Array.isArray(ws.layout) ? ws.layout : [];
-  const placed = placeInto(ws.layout, component, userPrefs);
+  const target = layoutOf(ws, page);
+  if (target.error) throw new Error(target.error);
+  const layout = target.layout;
+  const at = row !== undefined && col !== undefined ? { row, col } : null;
+  const placed = placeInto(layout, component, userPrefs, at);
+  withLayout(ws, layout, target.page);
   return { workspace: ws, ...placed };
 }
 

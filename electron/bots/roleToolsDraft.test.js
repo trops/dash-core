@@ -171,3 +171,65 @@ describe("buildDraft — author (3b-2)", () => {
     );
   });
 });
+
+describe("place_widget (3c)", () => {
+  it("passes the request on and words the result", async () => {
+    let seen = null;
+    const r = await handleRoleTool(
+      deps({
+        placeWidget: async (req) => {
+          seen = req;
+          return {
+            component: "ai-built.x.X",
+            dashboardName: "Mail",
+            page: "Home",
+            cell: { row: 1, col: 2 },
+          };
+        },
+      }),
+      as("builder"),
+      "place_widget",
+      { dashboard: "Mail", widget: "@ai-built/x", page: "Home" },
+    );
+    assert.equal(seen.widget, "@ai-built/x");
+    assert.equal(seen.page, "Home");
+    assert.match(
+      r.text,
+      /Placed ai-built\.x\.X on "Mail" \(page Home\) at row 1, column 2/,
+    );
+  });
+
+  it("needs dashboard and widget, and row with col; errors pass through", async () => {
+    const d = deps({
+      placeWidget: async () => ({ error: "Cell 9.9 is outside the 2×2 grid." }),
+    });
+    let r = await handleRoleTool(d, as("builder"), "place_widget", {
+      dashboard: "Mail",
+    });
+    assert.match(r.text, /needs the dashboard and the widget/);
+    r = await handleRoleTool(d, as("builder"), "place_widget", {
+      dashboard: "Mail",
+      widget: "w",
+      row: 1,
+    });
+    assert.match(r.text, /both row and col/);
+    r = await handleRoleTool(d, as("builder"), "place_widget", {
+      dashboard: "Mail",
+      widget: "w",
+    });
+    assert.match(r.text, /outside the 2×2 grid/);
+  });
+
+  it("list_dashboards shows pages", async () => {
+    const r = await handleRoleTool(
+      deps({
+        listDashboards: () => [
+          { id: "1", name: "P", bots: [], pages: ["Home", "Second (shown)"] },
+        ],
+      }),
+      as("builder"),
+      "list_dashboards",
+    );
+    assert.match(r.text, /pages: Home, Second \(shown\)/);
+  });
+});

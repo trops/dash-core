@@ -165,3 +165,14 @@ describe("botController — Builder drafts are marked (3b-2)", () => {
     assert.match(ctrl, /proposal \|\| \{\},\s*\{ author: "dash-team" \}/);
   });
 });
+
+describe("botController — place_widget (3c)", () => {
+  it("resolves the widget, places it with placeWidget and saves", () => {
+    assert.match(ctrl, /placeWidget: \(req\) => this\._teamPlaceWidget\(req\)/);
+    assert.match(ctrl, /resolveWidgetComponent\(widget, component,/);
+    assert.match(
+      ctrl,
+      /const saved = this\._saveWorkspace\(placed\.workspace\);/,
+    );
+  });
+});

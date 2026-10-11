@@ -5,6 +5,20 @@
  * Each handler delegates to existing controllers via getServerContext().
  */
 const { randomUUID } = require("crypto");
+const {
+  layoutOf,
+  withLayout,
+  allLayouts,
+  shownPage,
+} = require("../utils/activeLayout");
+
+/** An MCP error result with a plain message. */
+function errorResult(message) {
+  return {
+    content: [{ type: "text", text: JSON.stringify({ error: message }) }],
+    isError: true,
+  };
+}
 const mcpDashServerController = require("../controller/mcpDashServerController");
 const workspaceController = require("../controller/workspaceController");
 const themeController = require("../controller/themeController");
@@ -58,7 +72,7 @@ async function handleListDashboards() {
   const dashboards = (result.workspaces || []).map((ws, index) => ({
     id: String(ws.id),
     name: ws.name || ws.label || `Dashboard ${index + 1}`,
-    widgetCount: countWidgets(ws.layout),
+    widgetCount: allLayouts(ws).reduce((n, l) => n + countWidgets(l), 0),
     isActive: index === 0,
   }));
 
@@ -70,7 +84,7 @@ async function handleListDashboards() {
 /**
  * get_dashboard — Returns full details for a dashboard by ID (or the active one).
  */
-async function handleGetDashboard({ dashboardId }) {
+async function handleGetDashboard({ dashboardId, page }) {
   const { win, appId } = requireContext();
   const result = workspaceController.listWorkspacesForApplication(win, appId);
 
@@ -122,7 +136,9 @@ async function handleGetDashboard({ dashboardId }) {
     }
   }
 
-  const widgets = (workspace.layout || [])
+  const target = layoutOf(workspace, page);
+  if (target.error) return errorResult(target.error);
+  const widgets = target.layout
     .filter(
       (item) =>
         item.component &&
@@ -139,7 +155,16 @@ async function handleGetDashboard({ dashboardId }) {
   const detail = {
     id: String(workspace.id),
     name: workspace.name || workspace.label || "Dashboard",
-    layout: workspace.layout || [],
+    layout: target.layout,
+    // Dashboards with pages: each page, and which one the user sees.
+    pages: Array.isArray(workspace.pages)
+      ? workspace.pages.map((p) => ({
+          id: String(p.id),
+          name: p.name || String(p.id),
+          active: p === shownPage(workspace),
+        }))
+      : [],
+    page: target.page ? target.page.name || String(target.page.id) : null,
     widgets,
     theme: workspace.theme || null,
   };
@@ -552,7 +577,7 @@ function isValidCell(grid, row, col) {
 /**
  * add_widget — Add a widget to a dashboard by component name.
  */
-async function handleAddWidget({ dashboardId, widgetName, row, col }) {
+async function handleAddWidget({ dashboardId, widgetName, row, col, page }) {
   if (!widgetName || typeof widgetName !== "string" || !widgetName.trim()) {
     return {
       content: [
@@ -601,7 +626,11 @@ async function handleAddWidget({ dashboardId, widgetName, row, col }) {
   if (found.error) return found.response;
 
   const workspace = found.workspace;
-  const layout = workspace.layout || [];
+  // The layout the dashboard draws: the shown page, or the one asked for
+  // (pages draw pages[].layout; the top-level layout only mirrors it).
+  const target = layoutOf(workspace, page);
+  if (target.error) return errorResult(target.error);
+  const layout = target.layout;
 
   // Find the first container to add the widget into
   const container = layout.find(
@@ -707,7 +736,7 @@ async function handleAddWidget({ dashboardId, widgetName, row, col }) {
     config: {},
   };
 
-  workspace.layout = [...layout, newItem];
+  const nextLayout = [...layout, newItem];
 
   // If placing in grid, update the cell assignment
   if (gridNode && targetRow !== null && targetCol !== null) {
@@ -718,6 +747,8 @@ async function handleAddWidget({ dashboardId, widgetName, row, col }) {
       hide: false,
     };
   }
+
+  withLayout(workspace, nextLayout, target.page);
 
   const saveResult = workspaceController.saveWorkspaceForApplication(
     win,
@@ -761,7 +792,7 @@ async function handleAddWidget({ dashboardId, widgetName, row, col }) {
 /**
  * remove_widget — Remove a widget instance from a dashboard.
  */
-async function handleRemoveWidget({ dashboardId, widgetId }) {
+async function handleRemoveWidget({ dashboardId, widgetId, page }) {
   if (!widgetId || typeof widgetId !== "string") {
     return {
       content: [
@@ -789,7 +820,11 @@ async function handleRemoveWidget({ dashboardId, widgetId }) {
   if (found.error) return found.response;
 
   const workspace = found.workspace;
-  const layout = workspace.layout || [];
+  // The layout the dashboard draws: the shown page, or the one asked for
+  // (pages draw pages[].layout; the top-level layout only mirrors it).
+  const target = layoutOf(workspace, page);
+  if (target.error) return errorResult(target.error);
+  const layout = target.layout;
 
   const exists = layout.some((item) => String(item.id) === widgetId);
   if (!exists) {
@@ -806,11 +841,11 @@ async function handleRemoveWidget({ dashboardId, widgetId }) {
     };
   }
 
-  workspace.layout = layout.filter((item) => String(item.id) !== widgetId);
+  const kept = layout.filter((item) => String(item.id) !== widgetId);
 
   // Clean up grid cell assignments that reference this widget
   const numericId = Number(widgetId);
-  for (const item of workspace.layout) {
+  for (const item of kept) {
     if (item.grid) {
       for (const key of Object.keys(item.grid)) {
         if (/^\d+\.\d+$/.test(key)) {
@@ -822,6 +857,8 @@ async function handleRemoveWidget({ dashboardId, widgetId }) {
       }
     }
   }
+
+  withLayout(workspace, kept, target.page);
 
   const saveResult = workspaceController.saveWorkspaceForApplication(
     win,
@@ -850,7 +887,7 @@ async function handleRemoveWidget({ dashboardId, widgetId }) {
         text: JSON.stringify({
           success: true,
           removed: widgetId,
-          remainingWidgets: countWidgets(workspace.layout),
+          remainingWidgets: countWidgets(kept),
         }),
       },
     ],
@@ -860,7 +897,7 @@ async function handleRemoveWidget({ dashboardId, widgetId }) {
 /**
  * configure_widget — Update widget settings (partial merge).
  */
-async function handleConfigureWidget({ dashboardId, widgetId, config }) {
+async function handleConfigureWidget({ dashboardId, widgetId, config, page }) {
   if (!widgetId || typeof widgetId !== "string") {
     return {
       content: [
@@ -902,7 +939,11 @@ async function handleConfigureWidget({ dashboardId, widgetId, config }) {
   if (found.error) return found.response;
 
   const workspace = found.workspace;
-  const layout = workspace.layout || [];
+  // The layout the dashboard draws: the shown page, or the one asked for
+  // (pages draw pages[].layout; the top-level layout only mirrors it).
+  const target = layoutOf(workspace, page);
+  if (target.error) return errorResult(target.error);
+  const layout = target.layout;
   const item = layout.find((i) => String(i.id) === widgetId);
 
   if (!item) {
@@ -921,6 +962,8 @@ async function handleConfigureWidget({ dashboardId, widgetId, config }) {
 
   // Merge config
   item.config = { ...(item.config || {}), ...config };
+
+  withLayout(workspace, layout, target.page);
 
   const saveResult = workspaceController.saveWorkspaceForApplication(
     win,
@@ -2454,7 +2497,14 @@ async function handleGetSetupGuide({ topic }) {
 /**
  * set_layout — Set or replace the grid layout on a dashboard.
  */
-async function handleSetLayout({ dashboardId, rows, cols, gap, colModes }) {
+async function handleSetLayout({
+  dashboardId,
+  rows,
+  cols,
+  gap,
+  colModes,
+  page,
+}) {
   if (
     rows === undefined ||
     cols === undefined ||
@@ -2502,7 +2552,11 @@ async function handleSetLayout({ dashboardId, rows, cols, gap, colModes }) {
   if (found.error) return found.response;
 
   const workspace = found.workspace;
-  const layout = workspace.layout || [];
+  // The layout the dashboard draws: the shown page, or the one asked for
+  // (pages draw pages[].layout; the top-level layout only mirrors it).
+  const target = layoutOf(workspace, page);
+  if (target.error) return errorResult(target.error);
+  const layout = target.layout;
 
   const newGrid = buildEmptyGrid(rows, cols, gap, colModes);
   const existingGridNode = findGridNode(layout);
@@ -2559,11 +2613,13 @@ async function handleSetLayout({ dashboardId, rows, cols, gap, colModes }) {
           item.parent = newGridNode.id;
         }
       }
-      workspace.layout[rootIdx] = newGridNode;
+      layout[rootIdx] = newGridNode;
     } else {
-      workspace.layout = [newGridNode, ...layout];
+      layout.unshift(newGridNode);
     }
   }
+
+  withLayout(workspace, layout, target.page);
 
   const saveResult = workspaceController.saveWorkspaceForApplication(
     win,
@@ -2603,7 +2659,14 @@ async function handleSetLayout({ dashboardId, rows, cols, gap, colModes }) {
 /**
  * update_layout — Partially update grid layout properties.
  */
-async function handleUpdateLayout({ dashboardId, rows, cols, gap, colModes }) {
+async function handleUpdateLayout({
+  dashboardId,
+  rows,
+  cols,
+  gap,
+  colModes,
+  page,
+}) {
   if (
     rows === undefined &&
     cols === undefined &&
@@ -2639,7 +2702,11 @@ async function handleUpdateLayout({ dashboardId, rows, cols, gap, colModes }) {
   if (found.error) return found.response;
 
   const workspace = found.workspace;
-  const gridNode = findGridNode(workspace.layout || []);
+  // The layout the dashboard draws: the shown page, or the one asked for
+  // (pages draw pages[].layout; the top-level layout only mirrors it).
+  const target = layoutOf(workspace, page);
+  if (target.error) return errorResult(target.error);
+  const gridNode = findGridNode(target.layout);
 
   if (!gridNode) {
     return {
@@ -2725,6 +2792,8 @@ async function handleUpdateLayout({ dashboardId, rows, cols, gap, colModes }) {
     grid.cols = newCols;
   }
 
+  withLayout(workspace, target.layout, target.page);
+
   const saveResult = workspaceController.saveWorkspaceForApplication(
     win,
     appId,
@@ -2763,7 +2832,7 @@ async function handleUpdateLayout({ dashboardId, rows, cols, gap, colModes }) {
 /**
  * move_widget — Move a widget to a different grid cell (swap if occupied).
  */
-async function handleMoveWidget({ dashboardId, widgetId, row, col }) {
+async function handleMoveWidget({ dashboardId, widgetId, row, col, page }) {
   if (!widgetId || typeof widgetId !== "string") {
     return {
       content: [
@@ -2802,7 +2871,11 @@ async function handleMoveWidget({ dashboardId, widgetId, row, col }) {
   if (found.error) return found.response;
 
   const workspace = found.workspace;
-  const gridNode = findGridNode(workspace.layout || []);
+  // The layout the dashboard draws: the shown page, or the one asked for
+  // (pages draw pages[].layout; the top-level layout only mirrors it).
+  const target = layoutOf(workspace, page);
+  if (target.error) return errorResult(target.error);
+  const gridNode = findGridNode(target.layout);
 
   if (!gridNode) {
     return {
@@ -2907,6 +2980,8 @@ async function handleMoveWidget({ dashboardId, widgetId, row, col }) {
     ...(gridNode.grid[sourceKey] || {}),
     component: targetComponentId,
   };
+
+  withLayout(workspace, target.layout, target.page);
 
   const saveResult = workspaceController.saveWorkspaceForApplication(
     win,

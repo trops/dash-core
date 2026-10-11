@@ -14,6 +14,7 @@
  *   check_widget    Checker               compile, code checks, scorecard, config
  *   list_dashboards Planner, Builder      the user's dashboards and their bots
  *   draft_bot       Builder               a bot draft on a dashboard, for review
+ *   place_widget    Builder               put an installed widget on a dashboard
  *
  * Everything on ROLE_SERVER only reads (ask_role runs another team bot, itself
  * limited to its role's tools) and is auto-allowed. build_widget installs a
@@ -32,7 +33,7 @@ const { describeDraft } = require("./teamTools");
 const ROLE_SERVER = "dash-team";
 // Tools that change things (installing a widget) — not auto-allowed.
 const ROLE_BUILD_SERVER = "dash-team-build";
-const BUILD_TOOLS = new Set(["build_widget"]);
+const BUILD_TOOLS = new Set(["build_widget", "place_widget"]);
 // The widget rules can be long; enough for the Builder, not the whole doc.
 const GUIDE_LIMIT = 24000;
 const MAX_RESULTS = 8;
@@ -149,6 +150,38 @@ const TOOL_DEFS = {
       required: ["name"],
     },
   },
+  place_widget: {
+    name: "place_widget",
+    description:
+      "Put an installed widget on one of the user's dashboards (the user approves each placement). Dashboards with pages: it goes on the page the user is looking at unless you name one. Without a cell it takes the next free one (adding a row when the grid is full). Place a widget only after the Checker passed it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dashboard: {
+          type: "string",
+          description: "The dashboard's name or id (from list_dashboards).",
+        },
+        widget: {
+          type: "string",
+          description:
+            "The widget: its package as search_library or build_widget gave it (e.g. @ai-built/gmailunreadcount), or a full component id (e.g. dash.bots.BotResults).",
+        },
+        component: {
+          type: "string",
+          description: "Which component, when the package has several.",
+        },
+        page: { type: "string", description: "A page's name or id." },
+        row: { type: "number", description: "Grid row (with col)." },
+        col: { type: "number", description: "Grid column (with row)." },
+        settings: {
+          type: "object",
+          description:
+            "The widget's settings (its userConfig values), e.g. { botId } for Bot results.",
+        },
+      },
+      required: ["dashboard", "widget"],
+    },
+  },
   list_dashboards: {
     name: "list_dashboards",
     description:
@@ -254,6 +287,7 @@ const ROLE_TOOL_NAMES = {
     "widget_guide",
     "build_widget",
     "draft_bot",
+    "place_widget",
     "read_widget",
     "list_providers",
     "list_dashboards",
@@ -550,6 +584,8 @@ function describeCheck(res, compareConfigs) {
  *   listDashboards(): [{ id, name, bots: [name] }]
  *   draftBot({ callerId, dashboard, proposal }): { draft, dashboardName } |
  *     { error } — buildDraft on that dashboard, stored for review
+ *   placeWidget({ callerId, dashboard, widget, component, page, row, col,
+ *     settings }): { component, dashboardName, page, cell } | { error }
  * @param {{ botId: string, role: string }} ctx  the calling team bot
  */
 async function handleRoleTool(deps, ctx, toolName, args = {}) {
@@ -714,6 +750,10 @@ async function handleRoleTool(deps, ctx, toolName, args = {}) {
               (d) =>
                 `- ${d.name} (id ${d.id}) — bots: ${
                   d.bots && d.bots.length ? d.bots.join(", ") : "none"
+                }${
+                  d.pages && d.pages.length
+                    ? ` — pages: ${d.pages.join(", ")}`
+                    : ""
                 }`,
             )
             .join("\n"),
@@ -748,6 +788,39 @@ async function handleRoleTool(deps, ctx, toolName, args = {}) {
         if (results.length)
           lines.push(`Results it sends: ${results.join(", ")}`);
         return ok(lines.join("\n"));
+      }
+      case "place_widget": {
+        if (!deps.placeWidget)
+          return fail("Placing widgets isn't available here.");
+        const dashboard = String(a.dashboard || "").trim();
+        const widget = String(a.widget || "").trim();
+        if (!dashboard || !widget) {
+          return fail("place_widget needs the dashboard and the widget.");
+        }
+        if ((a.row === undefined) !== (a.col === undefined)) {
+          return fail("Give both row and col, or neither.");
+        }
+        const res = await deps.placeWidget({
+          callerId: ctx.botId,
+          dashboard,
+          widget,
+          component: a.component || null,
+          page: a.page || null,
+          row: a.row,
+          col: a.col,
+          settings:
+            a.settings && typeof a.settings === "object" ? a.settings : {},
+        });
+        if (!res || res.error) {
+          return fail(
+            `Couldn't place it: ${(res && res.error) || "unknown error"}`,
+          );
+        }
+        return ok(
+          `Placed ${res.component} on "${res.dashboardName}"${
+            res.page ? ` (page ${res.page})` : ""
+          }${res.cell ? ` at row ${res.cell.row}, column ${res.cell.col}` : ""}.`,
+        );
       }
       default:
         return fail(`Unknown tool "${toolName}".`);
