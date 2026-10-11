@@ -20,6 +20,8 @@
  */
 "use strict";
 
+const { runCost, normalizeUsage } = require("./runCost");
+
 const WARN_AT = 0.8;
 
 function monthKey(ms) {
@@ -92,17 +94,20 @@ class BudgetController {
    * @returns {{ cost: number, estimated: boolean, status: object }}
    */
   recordUsage({ botId, workspaceId, providerId, model, usage } = {}) {
-    const inTok = (usage && usage.inputTokens) || 0;
-    const outTok = (usage && usage.outputTokens) || 0;
-    const pricing = this._getPricing(providerId, model);
-    let cost = 0;
-    let estimated = false;
-    if (pricing) {
-      cost = (inTok / 1e6) * pricing.input + (outTok / 1e6) * pricing.output;
-    } else {
-      // Unknown pricing — track tokens only and flag the figure as estimated.
-      estimated = true;
-    }
+    // One rule with the run record (runCost): API runs in dollars (cache
+    // included), Claude Code runs included in the plan ($0 against budgets),
+    // unknown prices as tokens only.
+    const u = normalizeUsage(usage);
+    const inTok = u.inputTokens;
+    const outTok = u.outputTokens;
+    const cacheTok = u.cacheReadTokens + u.cacheWriteTokens;
+    const priced = runCost({
+      providerId,
+      usage,
+      pricing: this._getPricing(providerId, model),
+    });
+    const cost = priced.usd;
+    const estimated = priced.estimated;
 
     const d = this._load();
     const mk = monthKey(this._now());
@@ -119,6 +124,12 @@ class BudgetController {
       bucket.usd += cost;
       bucket.inputTokens += inTok;
       bucket.outputTokens += outTok;
+      bucket.cacheTokens = (bucket.cacheTokens || 0) + cacheTok;
+      // Tokens from runs a Claude plan covers (no dollars).
+      if (priced.includedInPlan) {
+        bucket.planTokens =
+          (bucket.planTokens || 0) + inTok + outTok + cacheTok;
+      }
       d.spend[mk][key] = bucket;
     }
     this._save(d);

@@ -36,9 +36,7 @@ describe("EditBotsRow (phase 1c)", () => {
     renderRow();
     expect(screen.getByText("Bots on this dashboard")).toBeInTheDocument();
     expect(screen.getByText("Triage")).toBeInTheDocument();
-    expect(
-      screen.getByText("claude-sonnet-5-5 · $14.20 this month"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Sonnet · $14.20 this month")).toBeInTheDocument();
     expect(
       screen.getByText("Default model · No runs this month"),
     ).toBeInTheDocument();

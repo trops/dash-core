@@ -15,6 +15,7 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { BotDetail } from "../Settings/details/BotDetail";
 import { STATUS_DOT, groupBotsByTeam, triggerSummary } from "../Bots/teamUtils";
 import { toPlainText } from "../Bots/botConversation";
+import { runCostLabel } from "../../utils/runCostLabel";
 import { BotAvatar } from "../Bots/BotAvatar";
 import { useAllBots } from "./useAllBots";
 import { approvalText, botHandle, botProviders } from "./botSummary";
@@ -220,6 +221,14 @@ const BotDetailPanel = ({
                   ? ` · ${new Date(lastRun.endedAt).toLocaleString()}`
                   : ""}
               </span>
+              {runCostLabel(lastRun) ? (
+                <span
+                  className={`text-xs ${muted}`}
+                  data-testid="last-run-cost"
+                >
+                  {runCostLabel(lastRun)}
+                </span>
+              ) : null}
               {lastRun.error || lastRun.output ? (
                 <span className={`text-xs line-clamp-3 ${muted}`}>
                   {toPlainText(lastRun.error || lastRun.output)}

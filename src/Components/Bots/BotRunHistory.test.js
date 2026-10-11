@@ -210,3 +210,25 @@ describe("BotRunHistory — details, next steps, live (TEAM-011 gaps)", () => {
     expect(await screen.findAllByTestId("run-row")).toHaveLength(1);
   });
 });
+
+describe("BotRunHistory — model and cost per run (CRE-012)", () => {
+  test("the row shows the short cost; opening it shows model · tokens · cost", async () => {
+    setup([
+      {
+        trigger: "manual",
+        status: "completed",
+        startedAt: "2026-10-11T09:00:00.000Z",
+        output: "Done",
+        model: "claude-sonnet-4-6",
+        usage: { inputTokens: 12000, outputTokens: 2230 },
+        cost: { usd: 0, includedInPlan: true, estimated: false },
+      },
+    ]);
+    const row = await screen.findByTestId("run-row");
+    expect(row).toHaveTextContent("14.2k tok");
+    fireEvent.click(row);
+    expect(screen.getByTestId("run-cost")).toHaveTextContent(
+      "Sonnet · 14.2k tokens · included in your plan",
+    );
+  });
+});

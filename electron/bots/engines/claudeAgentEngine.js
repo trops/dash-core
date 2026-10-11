@@ -271,6 +271,13 @@ async function _runAgent(ctx, stream) {
         usage = {
           inputTokens: u.input_tokens || 0,
           outputTokens: u.output_tokens || 0,
+          cacheReadTokens: u.cache_read_input_tokens || 0,
+          cacheWriteTokens: u.cache_creation_input_tokens || 0,
+          // What the SDK says the run cost at API prices (a Claude plan
+          // covers it; kept as the API equivalent).
+          ...(typeof msg.total_cost_usd === "number"
+            ? { reportedUsd: msg.total_cost_usd }
+            : {}),
         };
       }
       if (ctx.signal && ctx.signal.aborted) break;

@@ -213,3 +213,33 @@ describe("BudgetController.setBudget/getBudgets", () => {
     assert.deepEqual(bc.getBudgets(), { global: 200 });
   });
 });
+
+describe("BudgetController — the run cost rule (CRE-012)", () => {
+  it("Claude Code runs add plan tokens but no dollars", () => {
+    const { bc } = make({ getPricing: () => OPUS });
+    const r = bc.recordUsage({
+      botId: "b1",
+      providerId: "claude-code",
+      model: "opus",
+      usage: { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 200 },
+    });
+    assert.equal(r.cost, 0);
+    const spend = bc.getSpend();
+    const bot = spend["bot:b1"];
+    assert.equal(bot.usd, 0);
+    assert.equal(bot.planTokens, 1700);
+    assert.equal(bot.cacheTokens, 200);
+  });
+
+  it("API runs price cache reads at 0.1× input", () => {
+    const { bc } = make({ getPricing: () => OPUS });
+    const r = bc.recordUsage({
+      botId: "b2",
+      providerId: "anthropic",
+      model: "opus",
+      usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 1_000_000 },
+    });
+    assert.ok(Math.abs(r.cost - 0.5) < 1e-9);
+    assert.equal(bc.getSpend()["bot:b2"].planTokens, undefined);
+  });
+});

@@ -351,3 +351,54 @@ describe("toolLoopEngine (engine contract)", () => {
     assert.ok(toolLoopEngine.ADAPTERS["openai-compatible"]);
   });
 });
+
+describe("toolLoopEngine — usage across turns (CRE-012)", () => {
+  it("adds up every turn's usage, not just the last", async () => {
+    const ctx = baseCtx({
+      adapter: mockAdapter([
+        { toolCalls: [{ id: "c1", name: "t", input: {} }] },
+        { toolCalls: [{ id: "c2", name: "t", input: {} }] },
+        { text: "done", stopReason: "end_turn" },
+      ]),
+    });
+    const events = await drain(toolLoopEngine.run(ctx));
+    const done = events.find((e) => e.type === "done");
+    assert.deepEqual(done.usage, {
+      inputTokens: 3,
+      outputTokens: 3,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    });
+  });
+
+  it("a run that hits the tool-round limit still reports its usage", async () => {
+    const ctx = baseCtx({
+      maxTurns: 1,
+      adapter: mockAdapter([
+        { toolCalls: [{ id: "c", name: "t", input: {} }] },
+      ]),
+    });
+    const events = await drain(toolLoopEngine.run(ctx));
+    const err = events.find((e) => e.type === "error");
+    assert.equal(err.code, "MAX_TURNS");
+    assert.equal(err.usage.inputTokens, 2);
+  });
+
+  it("a stopped run reports its usage on a done event", async () => {
+    const ac = new AbortController();
+    const ctx = baseCtx({
+      signal: ac.signal,
+      executeTool: async () => {
+        ac.abort();
+        return { text: "ok" };
+      },
+      adapter: mockAdapter([
+        { toolCalls: [{ id: "c", name: "t", input: {} }] },
+      ]),
+    });
+    const events = await drain(toolLoopEngine.run(ctx));
+    const done = events.find((e) => e.type === "done");
+    assert.equal(done.stopReason, "aborted");
+    assert.equal(done.usage.inputTokens, 1);
+  });
+});

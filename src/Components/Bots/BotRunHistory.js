@@ -6,6 +6,7 @@ import {
   toPlainText,
   triggerLabel,
 } from "./botConversation";
+import { runCostLabel, runCostShort } from "../../utils/runCostLabel";
 
 /**
  * BotRunHistory — a bot's runs, newest first (Bots view › Activity,
@@ -155,9 +156,19 @@ export const BotRunHistory = ({
               {statusLabel(r.status)}
             </span>
             <span className="flex-1 min-w-0 truncate">{firstLine(r)}</span>
+            {runCostShort(r) ? (
+              <span className={`flex-shrink-0 text-xs ${muted}`}>
+                {runCostShort(r)}
+              </span>
+            ) : null}
           </button>
           {open === i ? (
             <div className="flex flex-col gap-2 pb-3 text-sm">
+              {runCostLabel(r) ? (
+                <div className={`text-xs ${muted}`} data-testid="run-cost">
+                  {runCostLabel(r)}
+                </div>
+              ) : null}
               {triggerLabel(r, nameOf) ? (
                 <div className={`text-xs ${muted}`}>
                   {triggerLabel(r, nameOf)}

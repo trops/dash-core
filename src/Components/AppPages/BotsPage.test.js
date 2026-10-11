@@ -85,6 +85,9 @@ function setup(props = {}) {
         status: "completed",
         endedAt: "2026-10-03T09:00:00Z",
         output: "Sent 3 emails",
+        model: "claude-sonnet-4-6",
+        usage: { inputTokens: 12000, outputTokens: 2230 },
+        cost: { usd: 0.06, includedInPlan: false, estimated: false },
       },
     ]),
     run: jest.fn().mockResolvedValue(true),
@@ -282,5 +285,14 @@ describe("BotsPage edit / create / delete (NAV-006 AC3)", () => {
     expect(within(modal).getByText("Delete bot?")).toBeInTheDocument();
     fireEvent.click(within(modal).getByText("Delete"));
     await waitFor(() => expect(botsApi.delete).toHaveBeenCalledWith("b2"));
+  });
+});
+
+describe("BotsPage — last run cost (CRE-012)", () => {
+  test("the detail's Last run shows model · tokens · cost", async () => {
+    setup();
+    expect(await screen.findByTestId("last-run-cost")).toHaveTextContent(
+      "Sonnet · 14.2k tokens · $0.06",
+    );
   });
 });

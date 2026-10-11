@@ -102,8 +102,17 @@ const openAICompatibleAdapter = {
       stopReason: normalizeStopReason(choice.finish_reason),
       usage: resp.usage
         ? {
-            inputTokens: resp.usage.prompt_tokens,
+            // prompt_tokens includes cached ones; count them as cache reads.
+            inputTokens:
+              (resp.usage.prompt_tokens || 0) -
+              ((resp.usage.prompt_tokens_details &&
+                resp.usage.prompt_tokens_details.cached_tokens) ||
+                0),
             outputTokens: resp.usage.completion_tokens,
+            cacheReadTokens:
+              (resp.usage.prompt_tokens_details &&
+                resp.usage.prompt_tokens_details.cached_tokens) ||
+              0,
           }
         : null,
     };

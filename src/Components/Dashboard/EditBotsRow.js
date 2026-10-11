@@ -2,6 +2,7 @@ import React, { useContext } from "react";
 import { FontAwesomeIcon, SectionLabel } from "@trops/dash-react";
 import { ThemeContext } from "../../Context";
 import { formatMonthCost } from "./editSelection";
+import { modelLabel } from "../../utils/runCostLabel";
 
 /**
  * EditBotsRow — "Bots on this dashboard" under the grid in the dashboard
@@ -67,7 +68,7 @@ export const EditBotsRow = ({
                 <span
                   className={`text-xs ${currentTheme["text-primary-medium"] || ""}`}
                 >
-                  {`${bot.model || "Default model"} · ${formatMonthCost(
+                  {`${modelLabel(bot.model) || "Default model"} · ${formatMonthCost(
                     spend,
                     bot.id,
                   )}`}

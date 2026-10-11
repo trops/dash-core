@@ -95,22 +95,5 @@ export function relatedTo(selection, { widgets = [], bots = [] } = {}) {
   return related;
 }
 
-/**
- * A bot's spend this month, from bots.getSpend() buckets (`bot:<id>`).
- * Dollars when there are any; tokens otherwise (e.g. runs on a Claude plan).
- */
-export function formatMonthCost(spend, botId) {
-  const b = spend && spend[`bot:${botId}`];
-  if (!b) return "No runs this month";
-  const usd = Number(b.usd) || 0;
-  if (usd > 0) {
-    return usd < 0.01 ? "<$0.01 this month" : `$${usd.toFixed(2)} this month`;
-  }
-  const tokens = (Number(b.inputTokens) || 0) + (Number(b.outputTokens) || 0);
-  if (tokens > 0) {
-    const k =
-      tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : String(tokens);
-    return `${k} tokens this month`;
-  }
-  return "No runs this month";
-}
+// A bot's spend this month — shared with the run history (CRE-012).
+export { formatMonthCost } from "../../utils/runCostLabel";
