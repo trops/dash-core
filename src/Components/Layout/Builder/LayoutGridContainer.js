@@ -1,5 +1,5 @@
 import React, { memo, useState, useContext, useRef, useEffect } from "react";
-import { useDrag, useDrop } from "react-dnd";
+import { useDrag, useDrop, DndContext } from "react-dnd";
 
 // Identifies which "bucket" of the workspace a LayoutBuilder belongs
 // to so drop handlers on grid cells can distinguish a same-container
@@ -16,6 +16,7 @@ import {
 } from "@trops/dash-react";
 import { WidgetFactory } from "../../../Widget";
 import { LayoutContainer } from "../../../Components/Layout";
+import { GridCellFrame } from "./GridCellFrame";
 import { AppContext } from "../../../Context/App/AppContext";
 
 import { WidgetCard } from "./Enhanced/WidgetCard";
@@ -33,7 +34,36 @@ import {
 
 import { MergeCellsModal } from "./Modal";
 
-const DraggableDroppableCellBody = ({
+/**
+ * The body around an occupied cell's widget, in BOTH view and edit mode
+ * (create-entry phase 1c) — one component type, so the widget stays mounted
+ * across modes. `enabled` (edit mode) turns on drag/drop and the padded,
+ * scrollable box; disabled (view mode) it's layout-neutral
+ * (display: contents) so view-mode layout is unchanged.
+ *
+ * Grids rendered without a drag-and-drop provider (some previews) get a plain
+ * body — the drag/drop hooks would throw without one.
+ */
+const DraggableDroppableCellBody = (props) => {
+  const dnd = useContext(DndContext);
+  return dnd && dnd.dragDropManager ? (
+    <DndCellBody {...props} />
+  ) : (
+    <PlainCellBody {...props} />
+  );
+};
+
+const PlainCellBody = ({ enabled = true, padding = "", children }) =>
+  enabled ? (
+    <div className={`flex-1 min-h-0 overflow-auto relative ${padding}`}>
+      {children}
+    </div>
+  ) : (
+    <div style={{ display: "contents" }}>{children}</div>
+  );
+
+const DndCellBody = ({
+  enabled = true,
   cellNumber,
   gridContainerId,
   onMoveWidgetToCell,
@@ -47,15 +77,17 @@ const DraggableDroppableCellBody = ({
     () => ({
       type: GRID_CELL_WIDGET_TYPE,
       item: { cellNumber, gridContainerId, hasSpan, workspaceScope },
+      canDrag: () => enabled,
       collect: (monitor) => ({ isDragging: monitor.isDragging() }),
     }),
-    [cellNumber, gridContainerId, hasSpan, workspaceScope],
+    [cellNumber, gridContainerId, hasSpan, workspaceScope, enabled],
   );
 
   const [{ isOver, canDrop, itemType }, drop] = useDrop(
     () => ({
       accept: [GRID_CELL_WIDGET_TYPE, SIDEBAR_WIDGET_TYPE],
       canDrop: (dragItem, monitor) => {
+        if (!enabled) return false;
         const itemType = monitor.getItemType();
         if (itemType === SIDEBAR_WIDGET_TYPE) return true;
         // Allow cross-scope drops (sidebar ↔ main dashboard). Same-scope
@@ -115,10 +147,19 @@ const DraggableDroppableCellBody = ({
       onDropWidgetFromSidebar,
       hasSpan,
       workspaceScope,
+      enabled,
     ],
   );
 
   const isSidebarDrop = itemType === SIDEBAR_WIDGET_TYPE;
+
+  if (!enabled) {
+    return (
+      <div ref={(node) => drag(drop(node))} style={{ display: "contents" }}>
+        {children}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -1161,33 +1202,6 @@ export const LayoutGridContainer = memo(
       return cells;
     }
 
-    // Hover-based popout overlay — avoids Tailwind named groups (requires v3.4+)
-    function PopoutOverlay({ children, onPopout }) {
-      const [hovered, setHovered] = React.useState(false);
-      return (
-        <div
-          className="relative w-full h-full"
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
-        >
-          {children}
-          <button
-            className={`absolute top-1 right-1 p-1 rounded transition-opacity bg-black/60 hover:bg-black/80 text-gray-300 hover:text-white z-10 ${hovered ? "opacity-100" : "opacity-0 pointer-events-none"}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onPopout();
-            }}
-            title="Pop out widget"
-          >
-            <FontAwesomeIcon
-              icon="arrow-up-right-from-square"
-              className="h-3 w-3"
-            />
-          </button>
-        </div>
-      );
-    }
-
     // Render component inside a grid cell (preview mode only)
     function renderCellComponent(componentId, cellNumber, selectableSet) {
       if (!layout || !workspace) {
@@ -1212,21 +1226,30 @@ export const LayoutGridContainer = memo(
         null,
       );
 
-      if (onWidgetPopout && cellComponent.component) {
-        // Prefer uuid over id — uuid is `${dashboardId}-${component}-${id}`
-        // which is globally unique, while id is only unique within a
-        // single page/container. Passing bare id causes WidgetPopoutStage
-        // to find-first-match across layout/pages and render the wrong
-        // widget when two pages share the same numeric id.
-        const popoutKey = cellComponent.uuid || cellComponent.id;
-        return (
-          <PopoutOverlay onPopout={() => onWidgetPopout(popoutKey)}>
-            {rendered}
-          </PopoutOverlay>
-        );
-      }
+      // Prefer uuid over id — uuid is `${dashboardId}-${component}-${id}`
+      // which is globally unique, while id is only unique within a
+      // single page/container. Passing bare id causes WidgetPopoutStage
+      // to find-first-match across layout/pages and render the wrong
+      // widget when two pages share the same numeric id.
+      const popoutKey = cellComponent.uuid || cellComponent.id;
+      const onPopout =
+        onWidgetPopout && cellComponent.component
+          ? () => onWidgetPopout(popoutKey)
+          : null;
 
-      return rendered;
+      // Same frame and body types as edit mode (renderEditCell), so the
+      // widget stays mounted across view ↔ edit (phase 1c).
+      return (
+        <GridCellFrame editing={false} onPopout={onPopout}>
+          <DraggableDroppableCellBody
+            enabled={false}
+            cellNumber={cellNumber}
+            gridContainerId={id}
+          >
+            {rendered}
+          </DraggableDroppableCellBody>
+        </GridCellFrame>
+      );
     }
 
     // Render empty cell in preview mode
@@ -1303,86 +1326,100 @@ export const LayoutGridContainer = memo(
         }
       }
 
-      return (
-        <WidgetCard preview={false}>
-          <WidgetCard.Header
-            item={cellComponent}
-            cellNumber={cellNumber}
-            providers={cellComponent ? availableProviders || [] : []}
-            selectedProviders={cellComponent?.selectedProviders || {}}
-            isSelected={isCellSelected}
-            isSelectable={isCellSelectable}
-            onToggleSelect={() => handleToggleCellSelection(cellNumber)}
-            onSplitHorizontal={() =>
-              handleInstantSplit(cellNumber, "horizontal")
-            }
-            onSplitVertical={() => handleInstantSplit(cellNumber, "vertical")}
-            onProviderChange={
-              cellComponent
-                ? (providerType, providerId, isCreateNew) => {
-                    if (isCreateNew) {
-                      if (onCreateProvider) {
-                        onCreateProvider(cellComponent.id, providerType, true);
-                      }
-                    } else {
-                      if (onProviderSelect) {
-                        onProviderSelect(
-                          cellComponent.id,
-                          providerType,
-                          providerId,
-                        );
-                      }
+      const header = (
+        <WidgetCard.Header
+          item={cellComponent}
+          cellNumber={cellNumber}
+          providers={cellComponent ? availableProviders || [] : []}
+          selectedProviders={cellComponent?.selectedProviders || {}}
+          isSelected={isCellSelected}
+          isSelectable={isCellSelectable}
+          onToggleSelect={() => handleToggleCellSelection(cellNumber)}
+          onSplitHorizontal={() => handleInstantSplit(cellNumber, "horizontal")}
+          onSplitVertical={() => handleInstantSplit(cellNumber, "vertical")}
+          onProviderChange={
+            cellComponent
+              ? (providerType, providerId, isCreateNew) => {
+                  if (isCreateNew) {
+                    if (onCreateProvider) {
+                      onCreateProvider(cellComponent.id, providerType, true);
+                    }
+                  } else {
+                    if (onProviderSelect) {
+                      onProviderSelect(
+                        cellComponent.id,
+                        providerType,
+                        providerId,
+                      );
                     }
                   }
-                : undefined
-            }
-            onConfigure={
-              cellComponent
-                ? (widgetItem, section) => {
-                    if (onOpenConfig) onOpenConfig(cellComponent, section);
-                  }
-                : undefined
-            }
-            onDelete={
-              cellComponent
-                ? () => {
-                    if (onClickRemove) onClickRemove(cellComponent.id);
-                  }
-                : undefined
-            }
-            onEditWithAI={
-              cellComponent
-                ? () => {
-                    window.dispatchEvent(
-                      new CustomEvent("dash:edit-widget-with-ai", {
-                        detail: {
-                          cellNumber,
-                          gridItemId: item.id,
-                          workspaceId: workspace?.id,
-                          widgetComponentName: cellComponent.component,
-                          widgetId: cellComponent.id,
-                          selectedProviders:
-                            cellComponent.selectedProviders || null,
-                          // Pass the live widget's userPrefs so the
-                          // preview renders the same configured state
-                          // the user sees on the dashboard (titles,
-                          // defaults, etc.) instead of blank values.
-                          userPrefs: cellComponent.userPrefs || null,
-                          sourcePackage:
-                            ComponentManager.config(
-                              cellComponent.component,
-                              cellComponent,
-                            )?._sourcePackage || null,
-                        },
-                      }),
-                    );
-                  }
-                : undefined
-            }
-          />
-          {cellComponent &&
-          ComponentManager.config(cellComponent.component, cellComponent) ? (
+                }
+              : undefined
+          }
+          onConfigure={
+            cellComponent
+              ? (widgetItem, section) => {
+                  if (onOpenConfig) onOpenConfig(cellComponent, section);
+                }
+              : undefined
+          }
+          onDelete={
+            cellComponent
+              ? () => {
+                  if (onClickRemove) onClickRemove(cellComponent.id);
+                }
+              : undefined
+          }
+          onEditWithAI={
+            cellComponent
+              ? () => {
+                  window.dispatchEvent(
+                    new CustomEvent("dash:edit-widget-with-ai", {
+                      detail: {
+                        cellNumber,
+                        gridItemId: item.id,
+                        workspaceId: workspace?.id,
+                        widgetComponentName: cellComponent.component,
+                        widgetId: cellComponent.id,
+                        selectedProviders:
+                          cellComponent.selectedProviders || null,
+                        // Pass the live widget's userPrefs so the
+                        // preview renders the same configured state
+                        // the user sees on the dashboard (titles,
+                        // defaults, etc.) instead of blank values.
+                        userPrefs: cellComponent.userPrefs || null,
+                        sourcePackage:
+                          ComponentManager.config(
+                            cellComponent.component,
+                            cellComponent,
+                          )?._sourcePackage || null,
+                      },
+                    }),
+                  );
+                }
+              : undefined
+          }
+        />
+      );
+      const footer = cellComponent ? (
+        <WidgetCard.Footer
+          item={cellComponent}
+          onConfigure={(item, section) =>
+            onOpenConfig && onOpenConfig(item, section)
+          }
+        />
+      ) : null;
+
+      // An occupied cell uses GridCellFrame — the same element tree as view
+      // mode — so its widget stays mounted across view ↔ edit (phase 1c).
+      if (
+        cellComponent &&
+        ComponentManager.config(cellComponent.component, cellComponent)
+      ) {
+        return (
+          <GridCellFrame editing header={header} footer={footer}>
             <DraggableDroppableCellBody
+              enabled
               cellNumber={cellNumber}
               gridContainerId={id}
               onMoveWidgetToCell={onMoveWidgetToCell}
@@ -1398,32 +1435,30 @@ export const LayoutGridContainer = memo(
             >
               {renderedWidget}
             </DraggableDroppableCellBody>
-          ) : (
-            <DroppableEmptyCell
-              cellNumber={cellNumber}
-              gridContainerId={id}
-              onMoveWidgetToCell={onMoveWidgetToCell}
-              onDropWidgetFromSidebar={onDropWidgetFromSidebar}
-            >
-              {cellComponent ? (
-                <div className="flex-1 flex flex-col min-h-[120px]">
-                  <WidgetNotFound component={cellComponent.component} />
-                </div>
-              ) : (
-                <WidgetCard.Body padding="p-0">
-                  {renderEmptyCellContent(cellNumber)}
-                </WidgetCard.Body>
-              )}
-            </DroppableEmptyCell>
-          )}
-          {cellComponent && (
-            <WidgetCard.Footer
-              item={cellComponent}
-              onConfigure={(item, section) =>
-                onOpenConfig && onOpenConfig(item, section)
-              }
-            />
-          )}
+          </GridCellFrame>
+        );
+      }
+
+      return (
+        <WidgetCard preview={false}>
+          {header}
+          <DroppableEmptyCell
+            cellNumber={cellNumber}
+            gridContainerId={id}
+            onMoveWidgetToCell={onMoveWidgetToCell}
+            onDropWidgetFromSidebar={onDropWidgetFromSidebar}
+          >
+            {cellComponent ? (
+              <div className="flex-1 flex flex-col min-h-[120px]">
+                <WidgetNotFound component={cellComponent.component} />
+              </div>
+            ) : (
+              <WidgetCard.Body padding="p-0">
+                {renderEmptyCellContent(cellNumber)}
+              </WidgetCard.Body>
+            )}
+          </DroppableEmptyCell>
+          {footer}
         </WidgetCard>
       );
     }
@@ -1511,81 +1546,150 @@ export const LayoutGridContainer = memo(
       return item["parentWorkspaceName"];
     }
 
-    return preview === false && useGridLayout ? (
-      // Grid layout mode — no outer DragComponent/DropComponent (cell-level drag/drop instead)
+    // Grid layout: ONE element tree for view and edit (create-entry phase
+    // 1c), so widgets stay mounted across modes. Edit-only parts (gutters,
+    // merge/split UI, modals) render only while editing; edit-only wrappers
+    // become display: contents in view mode, leaving view layout unchanged.
+    const editing = preview === false;
+    const hidden = editing ? undefined : { display: "contents" };
+    const viewGridStyle = (overflow, rows) => ({
+      gridTemplateRows: rows,
+      gridTemplateColumns: hasExplicitColModes()
+        ? getColTemplate(item.grid)
+        : `repeat(${item.grid.cols}, 1fr)`,
+      overflow,
+    });
+    const viewGap = `${!item.grid?.gap || item.grid?.gap === "gap-2" ? "dr-grid-gap" : ""} ${item.grid?.gap || "gap-2"}`;
+    return useGridLayout ? (
       <LayoutContainer
+        style={hidden}
         id={`grid-container-parent-${id}`}
         direction={"col"}
         width={"w-full"}
         height={"h-full"}
         scrollable={false}
-        className={`rounded overflow-x-clip border-2 rounded ${getContainerBorderColor(
-          item,
-        )} ${getBorderStyle()} min-h-24 z-10`}
+        className={
+          editing
+            ? `rounded overflow-x-clip border-2 rounded ${getContainerBorderColor(
+                item,
+              )} ${getBorderStyle()} min-h-24 z-10`
+            : ""
+        }
         space={false}
       >
-        <div className="flex flex-col flex-1 min-h-0 pt-2">
+        <div
+          className={editing ? "flex flex-col flex-1 min-h-0 pt-2" : undefined}
+          style={hidden}
+        >
           {/* Merge confirmation modal */}
-          <ConfirmationModal
-            isOpen={selectedCellsForMerge.length >= 2}
-            setIsOpen={() => setSelectedCellsForMerge([])}
-            title="Merge Cells"
-            message={`Merge ${selectedCellsForMerge.length} selected cells into one? This action cannot be undone.`}
-            confirmLabel="Merge"
-            variant="default"
-            onConfirm={() => {
-              const conflicts = getConflictingComponents(selectedCellsForMerge);
-              if (conflicts.length > 1) {
-                handleOpenMergeModal(selectedCellsForMerge);
-              } else {
-                handleMergeCellsConfirm({
-                  cellNumbers: selectedCellsForMerge,
-                  gridContainer: item,
-                  keepComponent: conflicts.length === 1 ? conflicts[0] : null,
-                });
-              }
-            }}
-            onCancel={() => setSelectedCellsForMerge([])}
-          />
+          {editing && (
+            <ConfirmationModal
+              isOpen={selectedCellsForMerge.length >= 2}
+              setIsOpen={() => setSelectedCellsForMerge([])}
+              title="Merge Cells"
+              message={`Merge ${selectedCellsForMerge.length} selected cells into one? This action cannot be undone.`}
+              confirmLabel="Merge"
+              variant="default"
+              onConfirm={() => {
+                const conflicts = getConflictingComponents(
+                  selectedCellsForMerge,
+                );
+                if (conflicts.length > 1) {
+                  handleOpenMergeModal(selectedCellsForMerge);
+                } else {
+                  handleMergeCellsConfirm({
+                    cellNumbers: selectedCellsForMerge,
+                    gridContainer: item,
+                    keepComponent: conflicts.length === 1 ? conflicts[0] : null,
+                  });
+                }
+              }}
+              onCancel={() => setSelectedCellsForMerge([])}
+            />
+          )}
 
           {/* Top column gutter */}
-          {renderColumnGutter()}
+          {editing ? renderColumnGutter() : null}
 
           {/* Row gutter + main grid side by side */}
           {scrollable ? (
-            <div className="relative flex-1 min-h-0">
-              <div className="absolute inset-0 flex flex-row overflow-y-auto items-start">
-                {renderRowGutter()}
+            <div
+              className={editing ? "relative flex-1 min-h-0" : undefined}
+              style={hidden}
+            >
+              <div
+                className={
+                  editing
+                    ? "absolute inset-0 flex flex-row overflow-y-auto items-start"
+                    : undefined
+                }
+                style={hidden}
+              >
+                {editing ? renderRowGutter() : null}
                 <div
                   id={`grid-container-${id}`}
-                  className="grid flex-1 min-h-24 p-4 gap-5"
-                  style={{
-                    gridTemplateRows: getRowTemplate(item.grid),
-                    gridTemplateColumns: hasExplicitColModes()
-                      ? getColTemplate(item.grid)
-                      : `repeat(${item.grid.cols}, 1fr)`,
-                  }}
+                  className={
+                    editing
+                      ? "grid flex-1 min-h-24 p-4 gap-5"
+                      : `dr-grid ${viewGap} grid w-full min-h-24 p-3`
+                  }
+                  style={
+                    editing
+                      ? {
+                          gridTemplateRows: getRowTemplate(item.grid),
+                          gridTemplateColumns: hasExplicitColModes()
+                            ? getColTemplate(item.grid)
+                            : `repeat(${item.grid.cols}, 1fr)`,
+                        }
+                      : viewGridStyle("auto", getRowTemplate(item.grid))
+                  }
                 >
                   {renderGridCells()}
                 </div>
               </div>
             </div>
           ) : (
-            <div className="relative flex-1 min-h-0">
-              <div className="absolute inset-0 flex flex-row overflow-hidden">
-                {renderRowGutter()}
+            <div
+              className={
+                editing
+                  ? "relative flex-1 min-h-0"
+                  : `relative w-full ${height} min-h-24`
+              }
+            >
+              <div
+                className={
+                  editing
+                    ? "absolute inset-0 flex flex-row overflow-hidden"
+                    : undefined
+                }
+                style={hidden}
+              >
+                {editing ? renderRowGutter() : null}
                 <div
                   id={`grid-container-${id}`}
-                  className="grid flex-1 p-4 gap-5"
-                  style={{
-                    gridTemplateRows: hasExplicitRowModes()
-                      ? getRowTemplate(item.grid)
-                      : `repeat(${item.grid.rows}, minmax(0, 1fr))`,
-                    gridTemplateColumns: hasExplicitColModes()
-                      ? getColTemplate(item.grid)
-                      : `repeat(${item.grid.cols}, 1fr)`,
-                    overflow: "hidden",
-                  }}
+                  className={
+                    editing
+                      ? "grid flex-1 p-4 gap-5"
+                      : `dr-grid ${viewGap} absolute inset-0 grid p-3`
+                  }
+                  style={
+                    editing
+                      ? {
+                          gridTemplateRows: hasExplicitRowModes()
+                            ? getRowTemplate(item.grid)
+                            : `repeat(${item.grid.rows}, minmax(0, 1fr))`,
+                          gridTemplateColumns: hasExplicitColModes()
+                            ? getColTemplate(item.grid)
+                            : `repeat(${item.grid.cols}, 1fr)`,
+                          overflow: "hidden",
+                        }
+                      : viewGridStyle(
+                          "hidden",
+                          hasExplicitRowModes()
+                            ? getRowTemplate(item.grid)
+                            : `repeat(${item.grid.rows}, minmax(0, 1fr))`,
+                        )
+                  }
                 >
                   {renderGridCells()}
                 </div>
@@ -1594,63 +1698,70 @@ export const LayoutGridContainer = memo(
           )}
         </div>
 
-        {/* Grid operation modals */}
-        <MergeCellsModal
-          open={mergeModalOpen}
-          setIsOpen={setMergeModalOpen}
-          cellNumbers={selectedCellsForMerge}
-          gridContainer={item}
-          conflictingComponents={getConflictingComponents(
-            selectedCellsForMerge,
-          )}
-          onConfirm={handleMergeCellsConfirm}
-        />
-
-        {/* Context menu for cell operations */}
-        {contextMenuCell && (
+        {editing && (
           <>
-            <div
-              className="fixed inset-0 z-40"
-              onClick={handleCloseContextMenu}
+            {/* Grid operation modals */}
+            <MergeCellsModal
+              open={mergeModalOpen}
+              setIsOpen={setMergeModalOpen}
+              cellNumbers={selectedCellsForMerge}
+              gridContainer={item}
+              conflictingComponents={getConflictingComponents(
+                selectedCellsForMerge,
+              )}
+              onConfirm={handleMergeCellsConfirm}
             />
-            <div
-              className="fixed z-50 bg-gray-800 border border-gray-600 rounded shadow-lg py-1 min-w-48"
-              style={{
-                left: `${contextMenuPosition.x}px`,
-                top: `${contextMenuPosition.y}px`,
-              }}
-            >
-              <button
-                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center"
-                onClick={() => {
-                  handleInstantSplit(contextMenuCell, "horizontal");
-                  handleCloseContextMenu();
-                }}
-              >
-                <FontAwesomeIcon icon="arrows-left-right" className="mr-2" />
-                Split Horizontal
-              </button>
-              <button
-                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center"
-                onClick={() => {
-                  handleInstantSplit(contextMenuCell, "vertical");
-                  handleCloseContextMenu();
-                }}
-              >
-                <FontAwesomeIcon icon="arrows-up-down" className="mr-2" />
-                Split Vertical
-              </button>
-              <button
-                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center"
-                onClick={() => {
-                  handleClickAdd();
-                  handleCloseContextMenu();
-                }}
-              >
-                <FontAwesomeIcon icon="plus" className="mr-2" />
-                Add Widget
-              </button>
-            </div>
+
+            {/* Context menu for cell operations */}
+            {contextMenuCell && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={handleCloseContextMenu}
+                />
+                <div
+                  className="fixed z-50 bg-gray-800 border border-gray-600 rounded shadow-lg py-1 min-w-48"
+                  style={{
+                    left: `${contextMenuPosition.x}px`,
+                    top: `${contextMenuPosition.y}px`,
+                  }}
+                >
+                  <button
+                    className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center"
+                    onClick={() => {
+                      handleInstantSplit(contextMenuCell, "horizontal");
+                      handleCloseContextMenu();
+                    }}
+                  >
+                    <FontAwesomeIcon
+                      icon="arrows-left-right"
+                      className="mr-2"
+                    />
+                    Split Horizontal
+                  </button>
+                  <button
+                    className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center"
+                    onClick={() => {
+                      handleInstantSplit(contextMenuCell, "vertical");
+                      handleCloseContextMenu();
+                    }}
+                  >
+                    <FontAwesomeIcon icon="arrows-up-down" className="mr-2" />
+                    Split Vertical
+                  </button>
+                  <button
+                    className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center"
+                    onClick={() => {
+                      handleClickAdd();
+                      handleCloseContextMenu();
+                    }}
+                  >
+                    <FontAwesomeIcon icon="plus" className="mr-2" />
+                    Add Widget
+                  </button>
+                </div>
+              </>
+            )}
           </>
         )}
       </LayoutContainer>
@@ -1700,40 +1811,6 @@ export const LayoutGridContainer = memo(
           </LayoutContainer>
         </DragComponent>
       </DropComponent>
-    ) : useGridLayout ? (
-      scrollable ? (
-        <div
-          id={`grid-container-${id}`}
-          className={`dr-grid ${!item.grid.gap || item.grid.gap === "gap-2" ? "dr-grid-gap" : ""} grid w-full min-h-24 p-3 ${item.grid.gap || "gap-2"}`}
-          style={{
-            gridTemplateRows: getRowTemplate(item.grid),
-            gridTemplateColumns: hasExplicitColModes()
-              ? getColTemplate(item.grid)
-              : `repeat(${item.grid.cols}, 1fr)`,
-            overflow: "auto",
-          }}
-        >
-          {renderGridCells()}
-        </div>
-      ) : (
-        <div className={`relative w-full ${height} min-h-24`}>
-          <div
-            id={`grid-container-${id}`}
-            className={`dr-grid ${!item.grid.gap || item.grid.gap === "gap-2" ? "dr-grid-gap" : ""} absolute inset-0 grid p-3 ${item.grid.gap || "gap-2"}`}
-            style={{
-              gridTemplateRows: hasExplicitRowModes()
-                ? getRowTemplate(item.grid)
-                : `repeat(${item.grid.rows}, minmax(0, 1fr))`,
-              gridTemplateColumns: hasExplicitColModes()
-                ? getColTemplate(item.grid)
-                : `repeat(${item.grid.cols}, 1fr)`,
-              overflow: "hidden",
-            }}
-          >
-            {renderGridCells()}
-          </div>
-        </div>
-      )
     ) : (
       renderComponentContainer(children)
     );

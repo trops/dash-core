@@ -40,6 +40,7 @@ export const LayoutDragBuilderEdit = ({
   onChangeColMode = null,
   onMoveWidgetToCell = null,
   onDropWidgetFromSidebar = null,
+  onWidgetPopout = null,
 }) => {
   // DndProvider is supplied by DashboardStage — no local provider needed.
   return renderLayout({
@@ -80,5 +81,6 @@ export const LayoutDragBuilderEdit = ({
     onChangeColMode,
     onMoveWidgetToCell,
     onDropWidgetFromSidebar,
+    onWidgetPopout,
   });
 };

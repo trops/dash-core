@@ -16,7 +16,7 @@ import {
 } from "../../../utils/layout";
 import { deepCopy } from "@trops/dash-react";
 import { LayoutContainer } from "../../../Components/Layout";
-import { LayoutDragBuilder, LayoutDragBuilderEdit } from "./";
+import { LayoutDragBuilderEdit } from "./";
 
 import { LayoutBuilderAddItemModal, LayoutBuilderConfigModal } from "./Modal";
 import { EnhancedWidgetDropdown } from "./Enhanced";
@@ -1330,51 +1330,11 @@ export const LayoutBuilder = ({
           grow={true}
           space={preview}
         >
-          {preview === true && (
-            <LayoutDragBuilder
-              key={`layout-drag-${dashboardId}`}
-              dashboardId={dashboardId}
-              isDraggable={true}
-              workspace={currentWorkspace}
-              header={currentWorkspace["name"]}
-              layout={currentWorkspace["layout"]}
-              parentKey={0}
-              debugMode={debugMode}
-              previewMode={preview}
-              onClickAdd={onClickAdd}
-              onClickQuickAdd={onClickQuickAdd}
-              onClickRemove={onClickRemove}
-              onClickShrink={onClickShrink}
-              onClickExpand={onClickExpand}
-              onClickEmptyCell={handleOnClickEmptyCell}
-              onSelectWidgetForCell={handleSelectWidgetForCell}
-              onChangeDirection={onChangeDirection}
-              onChangeOrder={onChangeOrder}
-              onDropItem={onDropItem}
-              onDragItem={onDragItem}
-              onOpenConfig={handleClickEditItem}
-              onOpenEvents={handleClickEvents}
-              onSaveConfiguration={handleSaveConfiguration}
-              onProviderSelect={handleSelectProvider}
-              onCreateProvider={handleOpenProviderModal}
-              onClickEdit={onTogglePreview}
-              onSplitCell={handleSplitCell}
-              onMergeCells={handleMergeCells}
-              onAddGridRow={handleAddGridRow}
-              onDeleteGridRow={handleDeleteGridRow}
-              onAddGridColumn={handleAddGridColumn}
-              onDeleteGridColumn={handleDeleteGridColumn}
-              onChangeRowHeight={handleChangeRowHeight}
-              onChangeRowMode={handleChangeRowMode}
-              onChangeRowSizing={handleChangeRowSizing}
-              onChangeColMode={handleChangeColMode}
-              onMoveWidgetToCell={handleMoveWidgetToCell}
-              onWidgetPopout={onWidgetPopout}
-            />
-          )}
-          {preview === false && editMode === "all" && (
+          {/* One builder for view AND edit, in one slot, so widgets stay
+              mounted across mode switches (create-entry phase 1c). */}
+          {(preview === true || editMode === "all") && (
             <LayoutDragBuilderEdit
-              key={`layout-drag-edit-${dashboardId}`}
+              key={`layout-drag-${dashboardId}`}
               dashboardId={dashboardId}
               isDraggable={true}
               workspace={currentWorkspace}
@@ -1421,6 +1381,7 @@ export const LayoutBuilder = ({
               onChangeColMode={handleChangeColMode}
               onMoveWidgetToCell={handleMoveWidgetToCell}
               onDropWidgetFromSidebar={handleDropWidgetFromSidebar}
+              onWidgetPopout={onWidgetPopout}
             />
           )}
 

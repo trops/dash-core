@@ -16,6 +16,8 @@ export const LayoutContainer = ({
   onClick = undefined,
   padding = "",
   prefix = "layout-container",
+  // Inline style (e.g. display: contents for a grid shell in view mode).
+  style = undefined,
   ...props
 }) => {
   const containerId = "uuid" in props ? props["uuid"] : getUUID(id, prefix);
@@ -62,6 +64,7 @@ export const LayoutContainer = ({
       // id={`LayoutContainer-${containerId}-${id}`}
       id={containerId}
       className={`flex ${classString} ${className}`}
+      style={style}
       onClick={onClick}
     >
       {debug === false && children}

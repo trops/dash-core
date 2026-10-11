@@ -109,9 +109,9 @@ export const renderLayout = ({
           return (hasChildren === 1 && canHaveChildren === true) ||
             component === "LayoutGridContainer" ? (
             <LayoutGridContainer
-              key={`grid-container-${uuid}-${
-                previewMode === true ? "view" : "edit"
-              }`}
+              // No mode in the key: switching view ↔ edit must not remount the
+              // grid and every widget in it (create-entry phase 1c).
+              key={`grid-container-${uuid}`}
               uuid={uuid}
               id={id}
               item={childLayout}
@@ -249,9 +249,7 @@ export const renderLayout = ({
             </LayoutGridContainer>
           ) : (
             <LayoutBuilderGridItem
-              key={`grid-item-${uuid}-${
-                previewMode === true ? "view" : "edit"
-              }`}
+              key={`grid-item-${uuid}`}
               uuid={uuid}
               item={childLayout}
               layout={layout}
@@ -353,9 +351,7 @@ export function renderGridLayout(gridLayout, args) {
         if (componentToRender) {
           gridContents.push(
             <LayoutBuilderGridItem
-              key={`grid-item-${uuid}-${
-                previewMode === true ? "view" : "edit"
-              }`}
+              key={`grid-item-${uuid}`}
               uuid={uuid}
               item={componentToRender}
               layout={layout}
@@ -631,7 +627,7 @@ function renderGridCell({
       >
         <div className="flex flex-col w-full h-full justify-center items-center">
           <LayoutBuilderGridItem
-            key={`grid-item-${uuid}-${previewMode === true ? "view" : "edit"}`}
+            key={`grid-item-${uuid}`}
             uuid={uuid}
             item={componentToRender}
             layout={layout}
