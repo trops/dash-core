@@ -1,6 +1,7 @@
 import {
   CREATE_TYPES,
   canSend,
+  draftAge,
   noAiOptions,
   normalizeCreateType,
   routeCreate,
@@ -76,5 +77,14 @@ describe("createRouting (create-entry PRD CRE-001/005)", () => {
       workspaceId: 7,
     });
     expect(routeCreate({ type: "theme", prompt: "x" })).toBeNull();
+  });
+
+  test("draftAge reads like a list timestamp", () => {
+    const now = 1_000_000_000_000;
+    expect(draftAge(now - 10_000, now)).toBe("just now");
+    expect(draftAge(now - 5 * 60_000, now)).toBe("5m ago");
+    expect(draftAge(now - 3 * 3_600_000, now)).toBe("3h ago");
+    expect(draftAge(now - 2 * 86_400_000, now)).toBe("2d ago");
+    expect(draftAge(undefined, now)).toMatch(/d ago$/);
   });
 });

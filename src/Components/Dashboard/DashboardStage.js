@@ -1252,6 +1252,9 @@ const DashboardStageInner = ({
       setThemeEditorKey(null);
       setThemeStartInCreate(true);
       setIsThemeManagerOpen(true);
+    } else if (key === "widget-drafts") {
+      // Drafts are listed (with Resume) on the Widgets page.
+      handleOpenPageGuarded("widgets");
     } else if (WIDGET_INSTALL_ACTIONS[key]) {
       handleOpenPageGuarded("widgets", {
         widgetLink: { action: WIDGET_INSTALL_ACTIONS[key], nonce: Date.now() },
