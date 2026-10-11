@@ -601,3 +601,77 @@ describe("BotRunner.run — stopped runs", () => {
     });
   }
 });
+
+describe("BotRunner — model, provider and cost on the run (CRE-012)", () => {
+  it("records the provider, model and the costOf result", async () => {
+    const engine = mockEngine([
+      {
+        type: "done",
+        stopReason: "end_turn",
+        usage: { inputTokens: 10, outputTokens: 4 },
+      },
+    ]);
+    const seen = [];
+    const { runner, runs } = makeRunner(engine, {
+      deps: {
+        costOf: (p) => {
+          seen.push(p);
+          return {
+            usd: 0.01,
+            includedInPlan: false,
+            estimated: false,
+            equivalentUsd: 0.01,
+          };
+        },
+      },
+    });
+    await runner.run("bot_1", {});
+    const run = runs[0].run;
+    assert.equal(run.provider, "anthropic");
+    assert.equal(run.model, "claude-opus-4-8");
+    assert.deepEqual(run.cost, {
+      usd: 0.01,
+      includedInPlan: false,
+      estimated: false,
+      equivalentUsd: 0.01,
+    });
+    assert.deepEqual(seen[0], {
+      providerId: "anthropic",
+      model: "claude-opus-4-8",
+      usage: { inputTokens: 10, outputTokens: 4 },
+    });
+  });
+
+  it("a failed run keeps the usage its error reported", async () => {
+    const engine = mockEngine([
+      {
+        type: "error",
+        message: "boom",
+        usage: { inputTokens: 7, outputTokens: 1 },
+      },
+    ]);
+    const { runner, runs } = makeRunner(engine, {
+      deps: {
+        costOf: () => ({
+          usd: 0,
+          includedInPlan: true,
+          estimated: false,
+          equivalentUsd: 0,
+        }),
+      },
+    });
+    await runner.run("bot_1", {});
+    assert.equal(runs[0].run.status, "failed");
+    assert.deepEqual(runs[0].run.usage, { inputTokens: 7, outputTokens: 1 });
+    assert.equal(runs[0].run.cost.includedInPlan, true);
+  });
+
+  it("no usage → no cost", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const { runner, runs } = makeRunner(engine, {
+      deps: { costOf: () => ({ usd: 1 }) },
+    });
+    await runner.run("bot_1", {});
+    assert.equal(runs[0].run.cost, null);
+  });
+});

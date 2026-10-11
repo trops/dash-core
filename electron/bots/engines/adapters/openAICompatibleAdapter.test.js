@@ -121,7 +121,11 @@ describe("openAICompatibleAdapter.runTurn", () => {
     assert.deepEqual(seen, ["hi there"]);
     assert.equal(result.stopReason, "end_turn");
     assert.deepEqual(result.toolCalls, []);
-    assert.deepEqual(result.usage, { inputTokens: 8, outputTokens: 2 });
+    assert.deepEqual(result.usage, {
+      inputTokens: 8,
+      outputTokens: 2,
+      cacheReadTokens: 0,
+    });
   });
 
   it("parses tool_calls and normalizes finish_reason=tool_calls to tool_use", async () => {
@@ -211,5 +215,34 @@ describe("openAICompatibleAdapter.runTurn", () => {
     assert.equal(capturedMessages[0].role, "system");
     assert.equal(capturedMessages[0].content, "You are a bot.");
     assert.equal(capturedMessages[1].role, "user");
+  });
+});
+
+describe("openAICompatibleAdapter — cached prompt tokens (CRE-012)", () => {
+  it("counts cached prompt tokens as cache reads, not input", async () => {
+    const client = fakeClient({
+      choices: [
+        {
+          message: { role: "assistant", content: "ok" },
+          finish_reason: "stop",
+        },
+      ],
+      usage: {
+        prompt_tokens: 100,
+        completion_tokens: 5,
+        prompt_tokens_details: { cached_tokens: 60 },
+      },
+    });
+    const result = await adapter.runTurn({
+      client,
+      model: "gpt-x",
+      messages: [{ role: "user", content: "hi" }],
+      tools: [],
+    });
+    assert.deepEqual(result.usage, {
+      inputTokens: 40,
+      outputTokens: 5,
+      cacheReadTokens: 60,
+    });
   });
 });

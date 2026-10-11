@@ -59,6 +59,9 @@ class BotRunner {
     // Called after each run with the run's token usage so budgets (Slice 5)
     // can accrue cost. Optional — default no-op keeps the runner portable.
     this._onUsage = deps.onUsage || null;
+    // ({ providerId, model, usage }) → { usd, includedInPlan, estimated,
+    // equivalentUsd } — the run's cost on its record (CRE-012).
+    this._costOf = deps.costOf || null;
     /** @type {Map<string, AbortController>} */
     this._active = new Map();
     /** @type {Map<string, string>} botId → ISO start of its in-flight run */
@@ -276,6 +279,8 @@ class BotRunner {
         } else if (event.type === "error") {
           status = "failed";
           errorMessage = event.message;
+          // A failed run still used tokens.
+          if (event.usage) usage = event.usage;
         }
       }
     } catch (err) {
@@ -303,6 +308,17 @@ class BotRunner {
       startedAt,
       endedAt: this._now(),
       usage,
+      // Which model ran it and what it cost (CRE-012 AC4/AC5).
+      provider: runProfile ? runProfile.providerId : null,
+      model: runProfile ? runProfile.model : null,
+      cost:
+        usage && runProfile && this._costOf
+          ? this._costOf({
+              providerId: runProfile.providerId,
+              model: runProfile.model,
+              usage,
+            })
+          : null,
       error: errorMessage,
       output: truncateText(answer),
       // The conversation turn (Bots view, TEAM-011). The store seals the

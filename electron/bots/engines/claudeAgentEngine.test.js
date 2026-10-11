@@ -117,7 +117,12 @@ describe("claudeAgentEngine", () => {
       isError: false,
     });
     assert.deepEqual(events[3], { type: "session", session: { id: "sess_1" } });
-    assert.deepEqual(events[4].usage, { inputTokens: 10, outputTokens: 5 });
+    assert.deepEqual(events[4].usage, {
+      inputTokens: 10,
+      outputTokens: 5,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    });
     assert.equal(events[4].stopReason, "success");
   });
 
@@ -414,6 +419,34 @@ describe("claudeAgentEngine", () => {
       assert.equal(events[0].code, "CLAUDE_CLI_NOT_FOUND");
       assert.match(events[0].message, /Claude Code CLI not found/);
       assert.doesNotMatch(events[0].message, /pathToClaudeCodeExecutable/);
+    });
+  });
+});
+
+describe("claudeAgentEngine — usage (CRE-012)", () => {
+  it("reports cache tokens and the SDK's API-price cost", async () => {
+    stubQuery([
+      {
+        type: "result",
+        subtype: "success",
+        session_id: "sess_2",
+        total_cost_usd: 0.0123,
+        usage: {
+          input_tokens: 10,
+          output_tokens: 5,
+          cache_read_input_tokens: 800,
+          cache_creation_input_tokens: 40,
+        },
+      },
+    ]);
+    const events = await collect(claudeAgentEngine.run(ctx()));
+    const done = events.find((e) => e.type === "done");
+    assert.deepEqual(done.usage, {
+      inputTokens: 10,
+      outputTokens: 5,
+      cacheReadTokens: 800,
+      cacheWriteTokens: 40,
+      reportedUsd: 0.0123,
     });
   });
 });

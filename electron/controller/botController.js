@@ -116,6 +116,8 @@ const {
   BOT_DRAFTS_CHANGED,
 } = require("../events/botEvents");
 
+const { runCost } = require("../bots/runCost");
+
 /** Pricing lookup for BudgetController: curated-model pricing by provider. */
 function pricingFor(providerId, model) {
   const m = getCuratedModels(providerId).find((c) => c.value === model);
@@ -229,6 +231,9 @@ const botController = {
           botId,
           (this._store.get(botId) || {}).workspaceId,
         ),
+      // The run's cost on its record — the same rule as the monthly totals.
+      costOf: ({ providerId, model, usage }) =>
+        runCost({ providerId, usage, pricing: pricingFor(providerId, model) }),
       // After each run, accrue cost and alert on warn/exceeded.
       onUsage: (u) => {
         const r = this._budgets.recordUsage(u);

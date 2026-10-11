@@ -18,6 +18,8 @@
  */
 "use strict";
 
+const { addUsage } = require("../runCost");
+
 const { createEventStream } = require("./eventStream");
 const anthropicAdapter = require("./adapters/anthropicAdapter");
 const openAICompatibleAdapter = require("./adapters/openAICompatibleAdapter");
@@ -70,10 +72,18 @@ async function runLoop(ctx, stream, state) {
       session: { messages: stripImagesForStorage(messages) },
     });
 
+  // Usage across every turn of the run (each adapter call reports one).
+  let usage = null;
+  // A stopped run still reports what it used.
+  const stopped = () => {
+    pushSession();
+    stream.push({ type: "done", stopReason: "aborted", usage });
+  };
+
   let turn = 0;
   while (turn <= maxTurns) {
     if (aborted()) {
-      pushSession();
+      stopped();
       return;
     }
 
@@ -90,6 +100,7 @@ async function runLoop(ctx, stream, state) {
     });
 
     messages.push(result.assistantMessage);
+    usage = addUsage(usage, result.usage);
 
     const toolCalls = result.toolCalls || [];
     if (!toolCalls.length || result.stopReason === "end_turn") {
@@ -97,7 +108,7 @@ async function runLoop(ctx, stream, state) {
       stream.push({
         type: "done",
         stopReason: result.stopReason || "end_turn",
-        usage: result.usage || null,
+        usage,
       });
       return;
     }
@@ -165,6 +176,7 @@ async function runLoop(ctx, stream, state) {
     type: "error",
     message: `Exceeded maximum tool-use rounds (${maxTurns}).`,
     code: "MAX_TURNS",
+    usage,
   });
 }
 

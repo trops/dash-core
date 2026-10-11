@@ -118,6 +118,9 @@ const anthropicAdapter = {
         ? {
             inputTokens: final.usage.input_tokens,
             outputTokens: final.usage.output_tokens,
+            // Prompt caching (counted and priced separately).
+            cacheReadTokens: final.usage.cache_read_input_tokens || 0,
+            cacheWriteTokens: final.usage.cache_creation_input_tokens || 0,
           }
         : null,
     };
