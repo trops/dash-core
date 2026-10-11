@@ -11,6 +11,7 @@ import {
   isRetiredModel,
   migrateModelId,
 } from "../../../utils/modelMigration";
+import { effectiveAiBackend } from "../../Create/aiBackend";
 
 const BACKENDS = [
   { value: "claude-code", label: "Claude Code CLI" },
@@ -174,16 +175,11 @@ export const AiAssistantSection = () => {
       : availableModels;
 
   // Determine effective backend (what will actually be used)
-  const effectiveBackend =
-    preferredBackend === "claude-code" && cliStatus?.available
-      ? "claude-code"
-      : preferredBackend === "anthropic" && hasAnthropicProvider
-        ? "anthropic"
-        : cliStatus?.available
-          ? "claude-code"
-          : hasAnthropicProvider
-            ? "anthropic"
-            : null;
+  const effectiveBackend = effectiveAiBackend({
+    preferred: preferredBackend,
+    cliAvailable: !!cliStatus?.available,
+    hasAnthropic: hasAnthropicProvider,
+  });
 
   return (
     <div className="flex flex-col space-y-6">

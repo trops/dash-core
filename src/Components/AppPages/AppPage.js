@@ -9,6 +9,10 @@ import { ThemesPage } from "./ThemesPage";
 import { FoldersSection } from "../Settings/sections/FoldersSection";
 import { ProvidersSection } from "../Settings/sections/ProvidersSection";
 
+// New Widget and New Bot open the Create screen on that type (create-entry
+// PRD CRE-008); the other pages create in place.
+const OPENS_CREATE = { widgets: "widget", bots: "bot" };
+
 const CREATE_LABEL = {
   dashboards: "New Dashboard",
   folders: "New Folder",
@@ -37,6 +41,8 @@ export const AppPage = ({
   pageKey,
   subsection = null,
   providerLink = null,
+  // Widgets install deep link { action, nonce } — a new nonce re-applies it.
+  widgetLink = null,
   workspaces = [],
   menuItems = [],
   dashApi = null,
@@ -135,6 +141,7 @@ export const AppPage = ({
   } else if (section === "widgets") {
     body = (
       <WidgetsPage
+        installRequest={widgetLink}
         workspaces={workspaces}
         credentials={credentials}
         onOpenWorkspace={onOpenWorkspace}
@@ -193,7 +200,15 @@ export const AppPage = ({
         <Button
           title={CREATE_LABEL[section]}
           size="sm"
-          onClick={() => setCreateRequested(true)}
+          onClick={() =>
+            OPENS_CREATE[section]
+              ? window.dispatchEvent(
+                  new CustomEvent("dash:open-create", {
+                    detail: { type: OPENS_CREATE[section] },
+                  }),
+                )
+              : setCreateRequested(true)
+          }
         />
       </div>
       <div className="flex flex-col flex-1 min-h-0">{body}</div>

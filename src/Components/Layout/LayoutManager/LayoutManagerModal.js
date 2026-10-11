@@ -25,6 +25,9 @@ export const LayoutManagerModal = ({
   onReloadWorkspaces,
   onOpenWorkspace = null,
   onOpenWizard = null,
+  // Open straight on a step ("import" | "registry") — the Create screen's
+  // start-without-AI row; null shows the method picker.
+  initialMethod = null,
 }) => {
   const {
     themes,
@@ -51,7 +54,7 @@ export const LayoutManagerModal = ({
   // Reset state when modal opens
   useEffect(() => {
     if (open) {
-      setCreationMethod(null);
+      setCreationMethod(initialMethod);
       setDashboardName("");
       setActiveStep(0);
       setLocalMenuItems(menuItems || []);

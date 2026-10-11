@@ -1,0 +1,234 @@
+/**
+ * CreateModal — one place to start making things (create-entry PRD CRE-001,
+ * CRE-005, CRE-008).
+ *
+ * Pins: the start screen (heading, prompt with the cursor, Type and AI menus),
+ * Send/Enter for a widget (opens the Widget Builder with the prompt) and a bot
+ * (the bot form with the prompt as instructions, saved through mainApi.bots),
+ * the no-AI row, the no-AI-set-up state, and the AI picker writing the shared
+ * setting.
+ */
+import React from "react";
+import "@testing-library/jest-dom";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+  act,
+} from "@testing-library/react";
+import { ThemeContext } from "@trops/dash-react";
+import { AppContext } from "../../Context/App/AppContext";
+import { CreateModal } from "./CreateModal";
+
+jest.mock("../../ComponentManager", () => ({
+  ComponentManager: { config: () => null },
+}));
+jest.mock("../Settings/details/BotDetail", () => ({
+  BotDetail: ({ bot, defaultWorkspaceId, onSave, onCancel }) => (
+    <div data-testid="bot-form">
+      <span data-testid="bot-instructions">
+        {bot ? bot.instructions : "(blank)"}
+      </span>
+      <span data-testid="bot-workspace">{String(defaultWorkspaceId)}</span>
+      <button onClick={() => onSave({ name: "Inbox bot" })}>Create bot</button>
+      <button onClick={onCancel}>Cancel form</button>
+    </div>
+  ),
+}));
+
+const ANTHROPIC = {
+  "Anthropic (AI Assistant)": {
+    type: "anthropic",
+    providerClass: "credential",
+  },
+};
+
+function setup({ cli = true, providers = {}, settings = {}, props = {} } = {}) {
+  window.mainApi = {
+    llm: { checkCliAvailable: jest.fn().mockResolvedValue({ available: cli }) },
+    bots: {
+      list: jest.fn().mockResolvedValue([]),
+      save: jest.fn().mockResolvedValue({ id: "b1", name: "Inbox bot" }),
+    },
+  };
+  const changeSettings = jest.fn();
+  const handlers = {
+    setIsOpen: jest.fn(),
+    onStartWithoutAi: jest.fn(),
+    onBotCreated: jest.fn(),
+    onOpenAiSettings: jest.fn(),
+  };
+  render(
+    <ThemeContext.Provider value={{ currentTheme: {} }}>
+      <AppContext.Provider value={{ providers, settings, changeSettings }}>
+        <CreateModal open {...handlers} {...props} />
+      </AppContext.Provider>
+    </ThemeContext.Provider>,
+  );
+  return { ...handlers, changeSettings };
+}
+
+const promptBox = () =>
+  screen.getByRole("textbox", { name: "What do you want to make?" });
+const sendButton = () => screen.getByRole("button", { name: "Send" });
+
+afterEach(() => {
+  delete window.mainApi;
+});
+
+describe("CreateModal — start screen", () => {
+  test("shows the heading, the prompt with the cursor, and Type: Widget", async () => {
+    setup();
+    expect(
+      screen.getByText("What do you want to make?", { selector: "div" }),
+    ).toBeInTheDocument();
+    expect(promptBox()).toHaveFocus();
+    expect(
+      screen.getByRole("button", { name: /^Type: Widget/ }),
+    ).toHaveAttribute("aria-haspopup", "menu");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /^AI: Claude Code/ }),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  test("Send is off until there's a prompt", async () => {
+    setup();
+    await screen.findByRole("button", { name: /^AI: Claude Code/ });
+    expect(sendButton()).toBeDisabled();
+    fireEvent.change(promptBox(), { target: { value: "Show my open PRs" } });
+    expect(sendButton()).not.toBeDisabled();
+  });
+
+  test("Enter on a widget prompt opens the Widget Builder with it and closes", async () => {
+    const { setIsOpen } = setup();
+    await screen.findByRole("button", { name: /^AI: Claude Code/ });
+    const onOpen = jest.fn();
+    window.addEventListener("dash:open-widget-builder", onOpen);
+    fireEvent.change(promptBox(), { target: { value: "  Show my open PRs " } });
+    fireEvent.keyDown(promptBox(), { key: "Enter" });
+    window.removeEventListener("dash:open-widget-builder", onOpen);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen.mock.calls[0][0].detail).toEqual({
+      prompt: "Show my open PRs",
+    });
+    expect(setIsOpen).toHaveBeenCalledWith(false);
+  });
+
+  test("Shift+Enter doesn't send", async () => {
+    setup();
+    await screen.findByRole("button", { name: /^AI: Claude Code/ });
+    const onOpen = jest.fn();
+    window.addEventListener("dash:open-widget-builder", onOpen);
+    fireEvent.change(promptBox(), { target: { value: "Show my PRs" } });
+    fireEvent.keyDown(promptBox(), { key: "Enter", shiftKey: true });
+    window.removeEventListener("dash:open-widget-builder", onOpen);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  test("the no-AI row hands its choice to the host and closes", () => {
+    const { onStartWithoutAi, setIsOpen } = setup();
+    fireEvent.click(screen.getByRole("button", { name: /Blank dashboard/ }));
+    expect(setIsOpen).toHaveBeenCalledWith(false);
+    expect(onStartWithoutAi).toHaveBeenCalledWith("blank-dashboard");
+  });
+
+  test("Widget adds registry / file / folder installs to the no-AI row", () => {
+    setup();
+    expect(
+      screen.getByRole("button", { name: /Browse widgets in the registry/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Install a widget from file/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /New theme/ }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("CreateModal — AI", () => {
+  test("with no AI set up, a widget can't be sent and the screen says so", async () => {
+    const { onOpenAiSettings } = setup({ cli: false });
+    await screen.findByText(/No AI is set up yet/);
+    fireEvent.change(promptBox(), { target: { value: "Show my PRs" } });
+    expect(sendButton()).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Set up AI" }));
+    expect(onOpenAiSettings).toHaveBeenCalled();
+  });
+
+  test("the AI picker writes the shared preferred-backend setting", async () => {
+    const { changeSettings } = setup({
+      providers: ANTHROPIC,
+      settings: { aiAssistant: { model: "m1" } },
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^AI: Claude Code/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitemradio", { name: /Anthropic API/ }),
+    );
+    expect(changeSettings).toHaveBeenCalledWith({
+      aiAssistant: { model: "m1", preferredBackend: "anthropic" },
+    });
+  });
+});
+
+describe("CreateModal — Bot", () => {
+  test("Send opens the bot form with the prompt as its instructions; Create saves it", async () => {
+    const { onBotCreated, setIsOpen } = setup({
+      cli: false,
+      props: { initialType: "bot", workspaceId: 7 },
+    });
+    expect(
+      screen.getByRole("button", { name: /^Type: Bot/ }),
+    ).toBeInTheDocument();
+    // A bot doesn't need the AI to be created — no AI picker, Send works.
+    expect(screen.queryByRole("button", { name: /^AI:/ })).toBeNull();
+    fireEvent.change(promptBox(), {
+      target: { value: "Summarize my inbox at 9am" },
+    });
+    fireEvent.click(sendButton());
+    expect(screen.getByTestId("bot-instructions")).toHaveTextContent(
+      "Summarize my inbox at 9am",
+    );
+    expect(screen.getByTestId("bot-workspace")).toHaveTextContent("7");
+    await act(async () => {
+      fireEvent.click(screen.getByText("Create bot"));
+    });
+    expect(window.mainApi.bots.save).toHaveBeenCalledWith({
+      name: "Inbox bot",
+    });
+    expect(setIsOpen).toHaveBeenCalledWith(false);
+    expect(onBotCreated).toHaveBeenCalledWith({ id: "b1", name: "Inbox bot" });
+  });
+
+  test("Fill in the bot form opens a blank form; Back returns to the start", () => {
+    setup({ props: { initialType: "bot" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: /Fill in the bot form/ }),
+    );
+    expect(screen.getByTestId("bot-instructions")).toHaveTextContent("(blank)");
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(promptBox()).toBeInTheDocument();
+  });
+
+  test("Type menu switches to Bot", () => {
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: /^Type: Widget/ }));
+    const menu = screen.getByRole("menu", { name: "Type" });
+    expect(
+      within(menu).getByRole("menuitemradio", { name: /Dashboard/ }),
+    ).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(within(menu).getByRole("menuitemradio", { name: /^Bot/ }));
+    expect(
+      screen.getByRole("button", { name: /^Type: Bot/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Fill in the bot form/ }),
+    ).toBeInTheDocument();
+  });
+});

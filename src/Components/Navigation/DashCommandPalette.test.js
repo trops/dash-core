@@ -69,3 +69,21 @@ describe("DashCommandPalette — Providers (app-navigation NAV-007 AC2)", () => 
     expect(setIsOpen).toHaveBeenCalledWith(false);
   });
 });
+
+describe("DashCommandPalette — Create… (create-entry PRD CRE-001 AC1)", () => {
+  it("opens the Create screen", () => {
+    const onCreate = jest.fn();
+    const setIsOpen = jest.fn();
+    render(
+      <DashCommandPalette isOpen setIsOpen={setIsOpen} onCreate={onCreate} />,
+    );
+    fireEvent.click(screen.getByText("Create…"));
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    expect(setIsOpen).toHaveBeenCalledWith(false);
+  });
+
+  it("is hidden without onCreate", () => {
+    render(<DashCommandPalette isOpen setIsOpen={() => {}} />);
+    expect(screen.queryByText("Create…")).toBeNull();
+  });
+});

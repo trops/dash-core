@@ -98,9 +98,24 @@ describe("AppPage", () => {
   });
 
   it.each([
-    ["bots", "New Bot"],
+    ["bots", "New Bot", "bot"],
+    ["widgets", "New Widget", "widget"],
+  ])(
+    "%s: the primary action opens the Create screen on that type (CRE-008)",
+    (key, label, type) => {
+      const onOpen = jest.fn();
+      window.addEventListener("dash:open-create", onOpen);
+      render(<AppPage pageKey={key} />);
+      fireEvent.click(screen.getByText(label));
+      window.removeEventListener("dash:open-create", onOpen);
+      expect(onOpen).toHaveBeenCalledTimes(1);
+      expect(onOpen.mock.calls[0][0].detail).toEqual({ type });
+      expect(screen.getByTestId("create")).toHaveTextContent("false");
+    },
+  );
+
+  it.each([
     ["providers", "New Provider"],
-    ["widgets", "New Widget"],
     ["themes", "New Theme"],
     ["dashboards", "New Dashboard"],
   ])("%s: the primary action asks the section to create", (key, label) => {

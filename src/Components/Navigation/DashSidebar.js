@@ -96,16 +96,15 @@ export const DashSidebar = ({
           Search
         </Sidebar.Item>
 
-        {/* Dashboards (always visible — primary action sits above Recents
-            so "New Dashboard" doesn't get buried under recent items) */}
-        <Sidebar.Group label="Dashboards">
-          <Sidebar.Item
-            icon={<FontAwesomeIcon icon="plus" className="h-3.5 w-3.5" />}
-            onClick={onNewDashboard}
-          >
-            New Dashboard
-          </Sidebar.Item>
-        </Sidebar.Group>
+        {/* Create — one place to make dashboards, widgets, bots and themes
+            (create-entry PRD CRE-001); sits above Recents so it doesn't get
+            buried under recent items. */}
+        <Sidebar.Item
+          icon={<FontAwesomeIcon icon="plus" className="h-3.5 w-3.5" />}
+          onClick={onNewDashboard}
+        >
+          Create
+        </Sidebar.Item>
 
         {/* Recents (only when expanded and has items) */}
         <CollapsibleContent>

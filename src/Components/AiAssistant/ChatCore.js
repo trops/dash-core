@@ -88,6 +88,9 @@ export function ChatCore({
   // orient the user before they type anything (e.g. the widget
   // builder introducing the widget being edited).
   initialMessage = null,
+  // Show the starter message in the chat (false) — e.g. the user's own
+  // prompt from the Create screen. A greeting stays hidden (default).
+  initialMessageHidden = true,
   // Offer a "To:" picker so the user can message a team lead directly
   // (bot-teams TEAM-013). Only the AI Assistant panel turns this on.
   enableLeadRecipients = false,
@@ -679,7 +682,7 @@ export function ChatCore({
     if (isCliBackend && cliAvailable === null) return;
     if (isCliBackend && !cliAvailable) return;
     initialMessageFiredRef.current = true;
-    handleSend(initialMessage, { hidden: true });
+    handleSend(initialMessage, { hidden: initialMessageHidden !== false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     initialMessage,

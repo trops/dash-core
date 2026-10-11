@@ -687,6 +687,79 @@ function Toggle({ text, enabled, setEnabled }) {
   );
 }
 
+// dash-react ≥1.0.69 ChoiceMenu: a menu button ("Type: Widget") that opens
+// a menu of radio items; disabled options show their hint and can't be picked.
+function ChoiceMenu({
+  label,
+  value,
+  options = [],
+  onChange,
+  showLabel = true,
+  footer = null,
+}) {
+  const [open, setOpen] = React.useState(false);
+  const opts = options.map((o) =>
+    typeof o === "string" ? { value: o, label: o } : o,
+  );
+  const chosen = opts.find((o) => o.value === value);
+  const text = chosen
+    ? showLabel
+      ? label + ": " + chosen.label
+      : chosen.label
+    : label;
+  return React.createElement(
+    "div",
+    null,
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        "aria-haspopup": "menu",
+        "aria-expanded": open,
+        onClick: () => setOpen(!open),
+      },
+      text,
+    ),
+    open &&
+      React.createElement(
+        "div",
+        { role: "menu", "aria-label": label },
+        opts.map((o) =>
+          React.createElement(
+            "button",
+            {
+              key: String(o.value),
+              type: "button",
+              role: "menuitemradio",
+              "aria-checked": o.value === value,
+              "aria-disabled": o.disabled ? true : undefined,
+              onClick: () => {
+                if (o.disabled) return;
+                if (onChange) onChange(o.value);
+                setOpen(false);
+              },
+            },
+            o.label,
+            o.disabled && o.hint
+              ? " " + o.hint
+              : o.description
+                ? " " + o.description
+                : "",
+          ),
+        ),
+        footer,
+      ),
+  );
+}
+
+function Heading2({ title, children }) {
+  return React.createElement(
+    "div",
+    null,
+    children !== undefined ? children : title,
+  );
+}
+
 module.exports = {
   SectionLabel,
   SubHeading3,
@@ -706,6 +779,8 @@ module.exports = {
   SegmentedControl,
   RadioGroup,
   FilterMenu,
+  ChoiceMenu,
+  Heading2,
   SearchInput,
   Checkbox,
   Button,
