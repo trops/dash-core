@@ -18,7 +18,7 @@ import { ComponentManager } from "../../../../ComponentManager";
 import { getUserConfigurableProviders } from "../../../../utils/providerUtils";
 import { pickWidgetDisplayName } from "../../../../utils/widgetIdentity";
 
-const getSections = (item) => {
+export const getSections = (item) => {
   const widgetConfig = item
     ? ComponentManager.config(item.component, item)
     : null;

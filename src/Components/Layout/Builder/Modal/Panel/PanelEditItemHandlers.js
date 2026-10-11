@@ -35,7 +35,13 @@ import { groupBotEvents } from "../../../../Settings/details/eventCatalog";
  *      `workspace.layout`. The fix is `applyWiringChanges`, which
  *      walks every layout location.
  */
-export const PanelEditItemHandlers = ({ workspace, onUpdate, item = null }) => {
+export const PanelEditItemHandlers = ({
+  workspace,
+  onUpdate,
+  item = null,
+  // In the edit panel: list above detail (SectionLayout stacked).
+  stacked = false,
+}) => {
   const [itemSelected, setItemSelected] = useState(item);
   const [workspaceSelected, setWorkspaceSelected] = useState(workspace);
   const [eventHandlerSelected, setEventHandlerSelected] = useState(null);
@@ -352,6 +358,7 @@ export const PanelEditItemHandlers = ({ workspace, onUpdate, item = null }) => {
       listContent={listContent}
       detailContent={detailContent}
       listWidth="w-72"
+      stacked={stacked}
       emptyDetailMessage="Select a handler to view available events"
     />
   );

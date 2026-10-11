@@ -45,6 +45,11 @@ import { MergeCellsModal } from "./Modal";
  * Grids rendered without a drag-and-drop provider (some previews) get a plain
  * body — the drag/drop hooks would throw without one.
  */
+// Configure sections the edit panel shows inline (CRE-006 AC5); others
+// (notifications, schedule) still open the Configure dialog.
+const opensInPanel = (section) =>
+  !section || ["edit", "handlers", "providers", "code"].includes(section);
+
 const DraggableDroppableCellBody = (props) => {
   const dnd = useContext(DndContext);
   return dnd && dnd.dragDropManager ? (
@@ -1369,8 +1374,21 @@ export const LayoutGridContainer = memo(
 
       // opens the panel on Ask AI.
 
-      const selectWidget = (openTab) => {
+      // section: open this inline settings section (edit / handlers /
+      // providers / code) in the edit panel.
+      const selectWidget = (openTab, section = null) => {
         if (!editSelection.available || !cellComponent) return;
+        // A plain click on the widget that's already selected keeps the
+        // selection — React bubbles clicks from the header menu (a portal)
+        // up to the frame, and that would replace a section request.
+        if (
+          !openTab &&
+          !section &&
+          editSelection.selection?.kind === "widget" &&
+          editSelection.selection.uuid === cellComponent.uuid
+        ) {
+          return;
+        }
 
         editSelection.select({
           kind: "widget",
@@ -1394,6 +1412,10 @@ export const LayoutGridContainer = memo(
           ),
 
           ...(openTab ? { openTab } : {}),
+
+          // A fresh marker per request, so asking again for the section
+          // that's already set still switches the panel to it.
+          ...(section ? { section, sectionRequest: Date.now() } : {}),
         });
       };
 
@@ -1437,6 +1459,13 @@ export const LayoutGridContainer = memo(
           onConfigure={
             cellComponent
               ? (widgetItem, section) => {
+                  // Editing: the panel shows the settings inline
+                  // (CRE-006 AC5). Sections it doesn't show inline still
+                  // open the Configure dialog.
+                  if (editSelection.available && opensInPanel(section)) {
+                    selectWidget("widget", section || "edit");
+                    return;
+                  }
                   selectWidget();
                   if (onOpenConfig) onOpenConfig(cellComponent, section);
                 }
@@ -1484,9 +1513,13 @@ export const LayoutGridContainer = memo(
       const footer = cellComponent ? (
         <WidgetCard.Footer
           item={cellComponent}
-          onConfigure={(item, section) =>
-            onOpenConfig && onOpenConfig(item, section)
-          }
+          onConfigure={(item, section) => {
+            if (editSelection.available && opensInPanel(section)) {
+              selectWidget("widget", section || "edit");
+              return;
+            }
+            if (onOpenConfig) onOpenConfig(item, section);
+          }}
         />
       ) : null;
 

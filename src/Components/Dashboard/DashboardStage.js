@@ -48,10 +48,10 @@ import { PageTabBar } from "../Navigation/PageTabBar";
 import { PinnedSidebar } from "./PinnedSidebar";
 import { DashSidebar } from "../Navigation/DashSidebar";
 import { EditPanel } from "./EditPanel";
+import { WidgetConfigPanel } from "./WidgetConfigPanel";
 import { EditBotsRow } from "./EditBotsRow";
 import { EditSelectionContext, relatedTo, widgetsOf } from "./editSelection";
 import { BotDetail } from "../Settings/details/BotDetail";
-import { getUserConfigurableProviders } from "../../utils/providerUtils";
 
 import { AppContext } from "../../Context/App/AppContext";
 import { WorkspaceContext } from "../../Context/WorkspaceContext";
@@ -383,7 +383,7 @@ const DashboardStageInner = ({
   );
   // Tell the builder holding the selected widget (or the visible page) to
   // act: open Configure at a section, Edit with AI, Remove, + Row/Column.
-  function dispatchEditAction(action, section = null) {
+  function dispatchEditAction(action, section = null, extra = null) {
     window.dispatchEvent(
       new CustomEvent("dash:edit-widget-action", {
         detail: {
@@ -393,11 +393,56 @@ const DashboardStageInner = ({
             editSelection?.kind === "widget" ? editSelection.uuid : undefined,
           action,
           section,
+          ...(extra || {}),
         },
       }),
     );
     if (action === "remove") setEditSelection(null);
   }
+  // The selected widget's settings, inline in the panel (CRE-006 AC5):
+  // its page's layout (a page, or the pinned sidebar) and the item, prepared
+  // the way the Configure dialog prepares it.
+  const editConfigTarget = useMemo(() => {
+    if (editSelection?.kind !== "widget" || !workspaceSelected) return null;
+    const layouts = [
+      ...(workspaceSelected.pages || []).map((p) => p.layout || []),
+      workspaceSelected.sidebarLayout || [],
+    ];
+    if (!(workspaceSelected.pages || []).length) {
+      layouts.unshift(workspaceSelected.layout || []);
+    }
+    const layout = layouts.find((l) =>
+      l.some((i) => i && i.uuid === editSelection.uuid),
+    );
+    if (!layout) return null;
+    const raw = layout.find((i) => i && i.uuid === editSelection.uuid);
+    const copy = { ...raw };
+    delete copy.api;
+    delete copy.componentData;
+    return {
+      workspace: { ...workspaceSelected, layout },
+      // LayoutModel recomputes uuid (dashboard-component-id); a placed
+      // widget's uuid can differ. Keep the original so the change written
+      // back still matches the selection.
+      item: {
+        ...(LayoutModel(copy, layout, workspaceSelected.id) || copy),
+        uuid: raw.uuid,
+      },
+    };
+  }, [editSelection, workspaceSelected]);
+  // Which inline section is open; a selection can ask for one (the
+  // widget's gear → Listeners, …).
+  const [editConfigSection, setEditConfigSection] = useState("edit");
+  useEffect(() => {
+    setEditConfigSection(
+      (editSelection?.kind === "widget" && editSelection.section) || "edit",
+    );
+  }, [
+    editSelection?.uuid,
+    editSelection?.section,
+    editSelection?.sectionRequest,
+    editSelection?.kind,
+  ]);
   const selectedEditBot =
     editSelection?.kind === "bot"
       ? editTeamBots.find((b) => b.id === editSelection.botId) || null
@@ -2792,11 +2837,20 @@ const DashboardStageInner = ({
                     dispatchEditAction("edit-with-ai");
                   }
                 }}
-                widgetHasProviders={
-                  editSelection?.kind === "widget" &&
-                  getUserConfigurableProviders(
-                    ComponentManager.config(editSelection.component)?.providers,
-                  ).length > 0
+                widgetConfig={
+                  editConfigTarget ? (
+                    <WidgetConfigPanel
+                      key={editSelection.uuid}
+                      item={editConfigTarget.item}
+                      workspace={editConfigTarget.workspace}
+                      section={editConfigSection}
+                      onSectionChange={setEditConfigSection}
+                      onCommit={(ws) =>
+                        dispatchEditAction("update", null, { workspace: ws })
+                      }
+                      onOpenMore={() => dispatchEditAction("configure")}
+                    />
+                  ) : null
                 }
                 botEditor={
                   selectedEditBot ? (
