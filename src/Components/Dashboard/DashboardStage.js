@@ -42,7 +42,7 @@ import { DashTabBar } from "../Navigation/DashTabBar";
 import { PageTabBar } from "../Navigation/PageTabBar";
 import { PinnedSidebar } from "./PinnedSidebar";
 import { DashSidebar } from "../Navigation/DashSidebar";
-import { WidgetSidebar } from "../Navigation/WidgetSidebar";
+import { EditPanel } from "./EditPanel";
 
 import { AppContext } from "../../Context/App/AppContext";
 import { WorkspaceContext } from "../../Context/WorkspaceContext";
@@ -227,7 +227,6 @@ const DashboardStageInner = ({
   const [activeTabId, setActiveTabId] = useState(null);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [widgetSidebarCollapsed, setWidgetSidebarCollapsed] = useState(true);
 
   // ─── In-app toasts (driven by DashboardActionsApi.notify) ────────
   const [toasts, setToasts] = useState([]);
@@ -294,6 +293,15 @@ const DashboardStageInner = ({
     (popout || previewMode) && workspaceSelected
       ? stageModeByWorkspace[workspaceSelected.id] || "dashboard"
       : "dashboard";
+  // Full-screen edit (create-entry phase 1b): while a dashboard is being
+  // edited the app's left rail, open-tabs bar and assistant rail hide and
+  // the EditPanel sits on the right. The dashboard column keeps its place in
+  // the tree, so widgets don't remount on entering or leaving edit mode.
+  const isEditingDashboard =
+    !popout &&
+    !previewMode &&
+    stageMode === "dashboard" &&
+    workspaceSelected !== null;
   // Which bot the Bots view should open on ({ workspaceId, botId, tab, seq }).
   const [botsFocus, setBotsFocus] = useState(() =>
     popout && popoutView === "bots" && popoutBotId
@@ -2208,7 +2216,7 @@ const DashboardStageInner = ({
       {/* ─── Main Content Area ──────────────────────── */}
       <DndProvider backend={HTML5Backend}>
         <div className="flex flex-row flex-1 overflow-hidden">
-          {!popout && (
+          {!popout && !isEditingDashboard && (
             <DashSidebar
               collapsed={sidebarCollapsed}
               onCollapsedChange={setSidebarCollapsed}
@@ -2238,32 +2246,11 @@ const DashboardStageInner = ({
                 <DashboardHeader
                   workspace={workspaceSelected}
                   preview={popout ? true : previewMode}
-                  onNameChange={handleWorkspaceNameChange}
                   onClickEdit={
                     popout ? null : () => leaveBotsGuarded(handleToggleEditMode)
                   }
                   onPopout={popout ? null : handlePopout}
                   onSaveChanges={popout ? null : handleClickSaveWorkspace}
-                  menuItems={menuItems}
-                  themes={themes || {}}
-                  onFolderChange={popout ? null : handleWorkspaceFolderChange}
-                  onThemeChange={popout ? null : handleWorkspaceThemeChange}
-                  sidebarEnabled={sidebarEnabled}
-                  onSidebarChange={popout ? null : handleSidebarToggle}
-                  scrollableEnabled={
-                    workspacePages.length <= 1 ? getRootScrollable() : undefined
-                  }
-                  onScrollableChange={
-                    workspacePages.length <= 1 && !popout
-                      ? handleScrollableChange
-                      : null
-                  }
-                  onOpenConfig={
-                    popout || previewMode
-                      ? null
-                      : () => setIsConfigModalOpen(true)
-                  }
-                  configUnresolvedCount={unresolvedCount}
                   stageMode={stageMode}
                   onStageModeChange={
                     popout || previewMode
@@ -2477,7 +2464,7 @@ const DashboardStageInner = ({
                 Leaving a dashboard with unsaved edits — layout or bot —
                 asks first; re-clicking it or closing a background tab
                 doesn't. */}
-            {!popout && openTabs.length > 0 && (
+            {!popout && !isEditingDashboard && openTabs.length > 0 && (
               <DashTabBar
                 tabs={openTabs}
                 activeTabId={activeTabId}
@@ -2494,13 +2481,26 @@ const DashboardStageInner = ({
               />
             )}
           </div>
-          {!popout && !previewMode && workspaceSelected && (
-            <WidgetSidebar
-              collapsed={widgetSidebarCollapsed}
-              onCollapsedChange={setWidgetSidebarCollapsed}
+          {isEditingDashboard && (
+            <EditPanel
+              workspace={workspaceSelected}
+              menuItems={menuItems}
+              themes={themes || {}}
+              username={authProfile?.username || ""}
+              onNameChange={handleWorkspaceNameChange}
+              onFolderChange={handleWorkspaceFolderChange}
+              onThemeChange={handleWorkspaceThemeChange}
+              scrollableEnabled={getRootScrollable()}
+              onScrollableChange={
+                workspacePages.length <= 1 ? handleScrollableChange : null
+              }
+              sidebarEnabled={sidebarEnabled}
+              onSidebarChange={handleSidebarToggle}
+              onOpenConfig={() => setIsConfigModalOpen(true)}
+              configUnresolvedCount={unresolvedCount}
             />
           )}
-          {!popout && (
+          {!popout && !isEditingDashboard && (
             <WorkspaceContext.Provider value={dockWorkspaceContext}>
               {renderAiAssistant}
             </WorkspaceContext.Provider>

@@ -2,14 +2,11 @@ import React, { useContext, useEffect, useState } from "react";
 import {
   ButtonIcon,
   ButtonIcon2,
-  InputText,
   SegmentedControl,
-  SelectInput,
   SubHeading3,
-  Toggle,
+  Tag,
 } from "@trops/dash-react";
 import { ThemeContext } from "../../Context";
-import { ThemeColorDots } from "../Theme/ThemeColorDots";
 import deepEqual from "deep-equal";
 
 export const DashboardHeader = ({
@@ -17,20 +14,9 @@ export const DashboardHeader = ({
   preview,
   onClickEdit = null,
   onPopout = null,
-  onNameChange,
   onSaveChanges = null,
-  menuItems = [],
-  themes = {},
-  onFolderChange = null,
-  onThemeChange = null,
-  scrollableEnabled = false,
-  onScrollableChange = null,
-  sidebarEnabled = false,
-  onSidebarChange = null,
-  // Dashboard Config modal trigger. Present = render a gear button in
-  // the header. `configUnresolvedCount` drives an amber dot indicator.
-  onOpenConfig = null,
-  configUnresolvedCount = 0,
+  // Name, folder, theme, layout toggles and Dashboard Config moved to the
+  // EditPanel (create-entry phase 1b).
   // Dashboard | Bots switch (bot-teams PRD TEAM-011). Present = render the
   // switch next to the title in preview mode. `botsAttention` is the team's
   // pending approvals + failed bots, shown as a count on "Bots".
@@ -39,9 +25,7 @@ export const DashboardHeader = ({
   botsAttention = 0,
 }) => {
   const [workspaceSelected, setWorkspaceSelected] = useState(workspace);
-  const { currentTheme, themes: contextThemes } = useContext(ThemeContext);
-  const resolvedThemes =
-    themes && Object.keys(themes).length > 0 ? themes : contextThemes || {};
+  const { currentTheme } = useContext(ThemeContext);
 
   useEffect(() => {
     if (deepEqual(workspace, workspaceSelected) === false) {
@@ -116,93 +100,20 @@ export const DashboardHeader = ({
         </>
       ) : (
         <>
-          <div className="flex flex-row items-center gap-2 flex-1 min-w-0">
-            <InputText
-              name="name"
-              value={workspaceSelected.name}
-              onChange={onNameChange}
-              textSize={"text-lg"}
-              placeholder="My Workspace"
-              bgColor={currentTheme["bg-neutral-very-dark"]}
-              textColor={currentTheme["text-primary-medium"]}
-              hasBorder={false}
-              autoFocus
+          {/* Edit mode (create-entry phase 1b): say what is being edited;
+              name, folder, theme, layout toggles and Dashboard Config live
+              in the EditPanel on the right. */}
+          <div className="flex flex-row items-center gap-3 flex-1 min-w-0">
+            <Tag text="Editing" />
+            <SubHeading3
+              title={(workspaceSelected.name || "Untitled").replace(/^./, (c) =>
+                c.toUpperCase(),
+              )}
+              padding={false}
+              className="font-bold text-base truncate"
             />
-            {onFolderChange && menuItems.length > 0 && (
-              <SelectInput
-                value={workspaceSelected.menuId ?? ""}
-                options={menuItems
-                  .map((m) => ({
-                    label: m.name,
-                    value: m.id,
-                    icon: m.icon || m.folder || "folder",
-                  }))
-                  .sort((a, b) => (a.label || "").localeCompare(b.label || ""))}
-                onChange={(menuId) => {
-                  setWorkspaceSelected((prev) => ({
-                    ...prev,
-                    menuId,
-                  }));
-                  onFolderChange(menuId);
-                }}
-                placeholder="Folder"
-                backgroundColor={currentTheme["bg-neutral-very-dark"]}
-                textColor={currentTheme["text-primary-medium"]}
-                borderColor={currentTheme["border-primary-dark"]}
-                inputClassName="py-1 text-sm"
-                className="w-40 shrink-0"
-              />
-            )}
-            {onThemeChange && Object.keys(resolvedThemes).length > 0 && (
-              <SelectInput
-                value={workspaceSelected.themeKey || ""}
-                options={Object.entries(resolvedThemes)
-                  .sort(([, a], [, b]) =>
-                    (a.name || "").localeCompare(b.name || ""),
-                  )
-                  .map(([key, t]) => ({
-                    label: t.name || key,
-                    value: key,
-                    icon: "palette",
-                    badge: <ThemeColorDots theme={t} />,
-                  }))}
-                onChange={(themeKey) => {
-                  setWorkspaceSelected((prev) => ({
-                    ...prev,
-                    themeKey,
-                  }));
-                  onThemeChange(themeKey);
-                }}
-                placeholder="Select a theme"
-                backgroundColor={currentTheme["bg-neutral-very-dark"]}
-                textColor={currentTheme["text-primary-medium"]}
-                borderColor={currentTheme["border-primary-dark"]}
-                inputClassName="py-1 text-sm"
-                className="w-40 shrink-0"
-              />
-            )}
-            {onScrollableChange && (
-              <Toggle
-                text="Scrollable"
-                enabled={scrollableEnabled}
-                setEnabled={onScrollableChange}
-              />
-            )}
-            {onSidebarChange && (
-              <Toggle
-                text="Sidebar"
-                enabled={sidebarEnabled}
-                setEnabled={onSidebarChange}
-              />
-            )}
           </div>
           <div className="flex flex-row space-x-1 shrink-0 items-center">
-            {onOpenConfig !== null && (
-              <DashboardConfigButton
-                onClick={onOpenConfig}
-                unresolvedCount={configUnresolvedCount}
-              />
-            )}
             {onClickEdit !== null && (
               <ButtonIcon2
                 icon="xmark"
@@ -226,29 +137,3 @@ export const DashboardHeader = ({
     </div>
   );
 };
-
-/**
- * DashboardConfigButton — gear icon with an optional amber dot when the
- * current dashboard has unresolved provider bindings. Opens the
- * Dashboard Config modal. Kept local to DashboardHeader because no
- * other caller needs it.
- */
-function DashboardConfigButton({ onClick, unresolvedCount = 0 }) {
-  return (
-    <div className="relative inline-flex">
-      <ButtonIcon
-        icon="sliders"
-        onClick={onClick}
-        hoverBackgroundColor={"hover:bg-neutral-700"}
-      />
-      {unresolvedCount > 0 && (
-        <span
-          className="absolute top-1 right-1 h-2 w-2 rounded-full bg-amber-400 border border-black/40 pointer-events-none"
-          title={`${unresolvedCount} unresolved provider${
-            unresolvedCount === 1 ? "" : "s"
-          }`}
-        />
-      )}
-    </div>
-  );
-}
