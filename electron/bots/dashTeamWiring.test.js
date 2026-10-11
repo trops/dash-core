@@ -76,3 +76,42 @@ describe("botController — Dash team (CRE-011)", () => {
     );
   });
 });
+
+describe("botController — role tools (CRE-011, slice 3a)", () => {
+  it("team bots get only their role's tools, on an auto-allowed server", () => {
+    assert.match(
+      ctrl,
+      /if \(isDashTeam\(bot\)\) \{\s*const tools = roleToolsFor\(bot\.role\);/,
+    );
+    assert.match(ctrl, /RESULTS_SERVER,\s*ROLE_SERVER,\s*\]/);
+  });
+
+  it("role tool calls re-check that the caller is on the team", () => {
+    assert.match(
+      ctrl,
+      /if \(serverName === ROLE_SERVER\) \{\s*const caller = this\._store\.get\(opts\.botId\);\s*if \(!isDashTeam\(caller\)\)/,
+    );
+    assert.match(ctrl, /\{ botId: caller\.id, role: caller\.role \}/);
+  });
+
+  it("ask_role is capped per run, refuses a busy role and runs it as an ask", () => {
+    assert.match(ctrl, /this\._handoffs = new HandoffCap\(\)/);
+    assert.match(ctrl, /if \(!this\._handoffs\.take\(callerId, runKey\)\)/);
+    assert.match(ctrl, /if \(this\._runner\.isRunning\(target\.id\)\)/);
+    assert.match(ctrl, /trigger: "ask",\s*via: \`dash-team:/);
+  });
+
+  it("team runs stay off the event bus", () => {
+    assert.match(
+      ctrl,
+      /!isLead\(this\._store\.get\(botId\)\) &&\s*!isDashTeam\(this\._store\.get\(botId\)\)/,
+    );
+  });
+});
+
+describe("botController — list_providers covers every provider (3a)", () => {
+  it("credential providers are included, marked", () => {
+    assert.match(ctrl, /p\.providerClass !== "mcp"/);
+    assert.match(ctrl, /return \[\.\.\.mcp, \.\.\.credentials\];/);
+  });
+});

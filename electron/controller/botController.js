@@ -75,6 +75,12 @@ const {
   mergeDashTeamSettings,
   tierModel,
 } = require("../bots/dashTeam");
+const {
+  ROLE_SERVER,
+  roleToolsFor,
+  handleRoleTool,
+  HandoffCap,
+} = require("../bots/roleTools");
 const { recentRuns } = require("../bots/recentRuns");
 const { coalesce } = require("../bots/coalesce");
 const { buildDraft, DraftStore } = require("../bots/botDrafts");
@@ -190,6 +196,9 @@ const botController = {
       },
     };
 
+    // ask_role hand-offs per Planner run (CRE-011 AC4).
+    this._handoffs = new HandoffCap();
+
     // Pause state (global kill switch + per-bot), enforced at the gate and
     // before a run starts; saved so it survives a restart (CRE-011 AC3).
     this._pause = new PauseController({
@@ -237,7 +246,14 @@ const botController = {
       // Memory tools are the bot's own sandbox — auto-allowed at the gate.
       // Team tools are a lead's read-only view of its own team.
       // Results only reach the bot's own dashboard bus (TD-001).
-      internalServers: [MEMORY_SERVER, TEAM_SERVER, RESULTS_SERVER],
+      // The Dash team's role tools read, or hand work to another role
+      // (itself limited to its role's tools) — CRE-011.
+      internalServers: [
+        MEMORY_SERVER,
+        TEAM_SERVER,
+        RESULTS_SERVER,
+        ROLE_SERVER,
+      ],
       resolveRunProfile: (bot) => this._resolveRunProfile(bot),
       // A paused bot doesn't start at all (CRE-011 AC3).
       startBlocker: (botId) =>
@@ -1265,10 +1281,12 @@ const botController = {
     // Track the run for bot events — unless one is already in progress (the
     // runner will skip this one, and the active run keeps its own cause).
     // A team lead's answers are a conversation with the user, not team work —
-    // they don't go on the event bus (so they can't trigger bots).
+    // they don't go on the event bus (so they can't trigger bots); nor do the
+    // Dash team's runs, which are the app's own work.
     const publishes =
       !this._runner.listActive().includes(botId) &&
-      !isLead(this._store.get(botId));
+      !isLead(this._store.get(botId)) &&
+      !isDashTeam(this._store.get(botId));
     const alreadyRunning = !publishes;
     if (!alreadyRunning) this._events.startRun(botId, opts.cause);
     const p = this._runner.run(botId, {
@@ -1419,6 +1437,111 @@ const botController = {
   },
 
   /** Connected MCP servers with real server names + workspace buckets. */
+  /** What the Dash team's role tools read and run (roleTools.js). */
+  _roleToolDeps() {
+    return {
+      installedWidgets: () => {
+        try {
+          return require("../widgetRegistry").getWidgetRegistry().getWidgets();
+        } catch (_e) {
+          return [];
+        }
+      },
+      searchRegistry: async (query) => {
+        // Lazy: the MCP tool handlers require this controller.
+        const { handleSearchWidgets } = require("../mcp/toolHandlers");
+        const res = await handleSearchWidgets({ query });
+        const text =
+          res && res.content && res.content[0] && res.content[0].text;
+        const parsed = text ? JSON.parse(text) : {};
+        if (res && res.isError) {
+          throw new Error(parsed.error || "registry search failed");
+        }
+        return parsed.widgets || [];
+      },
+      readWidget: ({ name, component }) =>
+        require("../widgetRegistry").readWidgetSources({
+          widgetName: name,
+          componentName: component,
+        }),
+      providerTools: () => this._providerToolsWithFlags(),
+      askRole: (req) => this._askRole(req),
+    };
+  },
+
+  /**
+   * The user's providers: MCP ones with each tool's read-only flag when it's
+   * known (running servers carry MCP annotations), otherwise just names;
+   * credential providers marked as such.
+   */
+  _providerToolsWithFlags() {
+    const connected = this._connectedServers();
+    let all = [];
+    try {
+      ({ providers: all = [] } =
+        this._providers.listProviders(this._getMainWindow(), this._appId) ||
+        {});
+    } catch (_e) {
+      all = [];
+    }
+    // Credential providers (an API key a widget uses directly) have no tools.
+    const credentials = (all || [])
+      .filter((p) => p && p.name && p.providerClass !== "mcp")
+      .map((p) => ({ name: p.name, type: p.type || null, credentials: true }));
+    const mcp = this.listToolSources(null).map((p) => {
+      const live = connected.find((c) => c.serverName === p.name);
+      if (!Array.isArray(p.tools)) return p;
+      const byName = new Map(
+        ((live && live.tools) || []).map((t) => [t && t.name, t]),
+      );
+      return {
+        ...p,
+        tools: p.tools.map((name) => byName.get(name) || name),
+      };
+    });
+    return [...mcp, ...credentials];
+  },
+
+  /**
+   * ask_role: run another Dash team role with the Planner's request and hand
+   * back its answer (CRE-011 AC4). One step deep (only the Planner has
+   * ask_role), at most MAX_HANDOFFS per Planner run, never a busy role.
+   */
+  async _askRole({ callerId, role, request }) {
+    const fail = (text) => ({ text, isError: true });
+    const runKey = this._runner.startedAt(callerId) || "idle";
+    if (!this._handoffs.take(callerId, runKey)) {
+      return fail(
+        "You've handed off as many requests as one run allows. Finish with what you have.",
+      );
+    }
+    const target = dashTeamBot(this._store.list(), role);
+    if (!target) return fail(`The ${role} isn't set up.`);
+    if (this._runner.isRunning(target.id)) {
+      return fail(`The ${target.name} is busy with another request.`);
+    }
+    const caller = this._store.get(callerId);
+    const record = await this._run(target.id, {
+      prompt: request,
+      trigger: "ask",
+      via: `dash-team:${(caller && caller.role) || "planner"}`,
+    });
+    if (!record || record.skipped) {
+      return fail(
+        `The ${target.name} didn't run: ${(record && record.reason) || "unknown reason"}.`,
+      );
+    }
+    if (record.status === "failed") {
+      return fail(
+        `The ${target.name} failed: ${record.error || "no details"}.`,
+      );
+    }
+    return {
+      text: `${target.name}: ${record.output || "(no answer)"}`,
+      isError: false,
+    };
+  },
+
   _connectedServers() {
     return this._mcp && this._mcp.listConnectedServers
       ? this._mcp.listConnectedServers()
@@ -1442,6 +1565,17 @@ const botController = {
       return {
         tools: [...TEAM_TOOLS],
         resolveServer: (toolName) => toolServer[toolName] || null,
+      };
+    }
+    // A Dash team role gets only its role's tools (CRE-011) — no providers,
+    // no memory; the runner limits engine built-ins by role.
+    if (isDashTeam(bot)) {
+      const tools = roleToolsFor(bot.role);
+      this._allowedByBot.set(bot.id, {});
+      return {
+        tools,
+        resolveServer: (toolName) =>
+          tools.some((t) => t.name === toolName) ? ROLE_SERVER : null,
       };
     }
     if (this._mcp && this._mcp.startServer && this._providers) {
@@ -1532,6 +1666,22 @@ const botController = {
           listDrafts: (ws) => this.listDrafts(ws),
         },
         { workspaceId: caller.workspaceId, botId: caller.id },
+        toolName,
+        args,
+      );
+    }
+    // The Dash team's role tools, checked against the caller's role.
+    if (serverName === ROLE_SERVER) {
+      const caller = this._store.get(opts.botId);
+      if (!isDashTeam(caller)) {
+        return {
+          text: "These tools are only for the Dash team.",
+          isError: true,
+        };
+      }
+      return handleRoleTool(
+        this._roleToolDeps(),
+        { botId: caller.id, role: caller.role },
         toolName,
         args,
       );
