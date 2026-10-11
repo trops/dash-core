@@ -179,3 +179,26 @@ describe("Dash team instructions (slice 3a)", () => {
     assert.equal(plan[0].role, "planner");
   });
 });
+
+describe("Dash team instructions (slice 3b-1)", () => {
+  it("the Builder and Checker know their tools; earlier text upgrades", () => {
+    const builder = ROLES.find((r) => r.role === "builder");
+    const checker = ROLES.find((r) => r.role === "checker");
+    assert.match(builder.instructions, /widget_guide/);
+    assert.match(builder.instructions, /build_widget/);
+    assert.match(builder.instructions, /at most twice/);
+    assert.match(checker.instructions, /check_widget/);
+    assert.match(checker.instructions, /VERDICT: PASSED/);
+    const bots = ROLE_IDS.map((r) => teamBot(r));
+    bots[2].instructions = builder.history[0];
+    bots[3].instructions = checker.history[0];
+    const plan = planEnsureDashTeam(bots);
+    assert.deepEqual(
+      plan.map((p) => [p.action, p.role]),
+      [
+        ["upgrade", "builder"],
+        ["upgrade", "checker"],
+      ],
+    );
+  });
+});

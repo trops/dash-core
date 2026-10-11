@@ -169,7 +169,14 @@ class BotRunner {
         throw new Error(`no engine registered for "${profile.engineId}"`);
       }
 
-      const { tools, resolveServer } = await this._resolveTools(bot);
+      const {
+        tools,
+        resolveServer,
+        // Virtual servers this run is configured with beyond the bot's
+        // providers (the Dash team's build tools, CRE-011) — the gate asks
+        // about their tools instead of refusing them as unconfigured.
+        servers: extraServers = [],
+      } = await this._resolveTools(bot);
       providerOf = (name) => {
         try {
           return resolveServer(name) || null;
@@ -192,7 +199,7 @@ class BotRunner {
         botId,
         workspaceId: bot.workspaceId,
         allowedTools: bot.allowedTools || [],
-        mcpServers: bot.mcpServers || [],
+        mcpServers: [...(bot.mcpServers || []), ...extraServers],
         internalServers: this._internalServers,
         resolveServer,
         createApproval,

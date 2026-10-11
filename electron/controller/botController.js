@@ -77,10 +77,13 @@ const {
 } = require("../bots/dashTeam");
 const {
   ROLE_SERVER,
+  ROLE_BUILD_SERVER,
+  serverForTool,
   roleToolsFor,
   handleRoleTool,
   HandoffCap,
 } = require("../bots/roleTools");
+const { compareConfigs } = require("../bots/configDiff");
 const { recentRuns } = require("../bots/recentRuns");
 const { coalesce } = require("../bots/coalesce");
 const { buildDraft, DraftStore } = require("../bots/botDrafts");
@@ -163,7 +166,11 @@ const botController = {
       mcpController,
       providerController,
       appId,
+      // The host's widget build/check hooks for the Dash team (CRE-011,
+      // dash-electron teamWidgetTools.cjs). Optional.
+      widgetTools = null,
     } = deps;
+    this._widgetTools = widgetTools;
     this._getWindows = getWindows || (() => []);
     this._getMainWindow = getMainWindow || (() => null);
     this._mcp = mcpController;
@@ -1466,7 +1473,43 @@ const botController = {
         }),
       providerTools: () => this._providerToolsWithFlags(),
       askRole: (req) => this._askRole(req),
+      ...(this._widgetTools
+        ? {
+            widgetGuide: (req) => this._widgetTools.guide(req),
+            buildWidget: (req) =>
+              this._widgetTools.build({
+                ...req,
+                provider: this._providerPick(req.provider),
+              }),
+            checkWidget: (req) => this._widgetTools.check(req),
+          }
+        : {}),
+      compareConfigs,
     };
+  },
+
+  /**
+   * A provider type the Builder names → { type, providerClass } from the
+   * user's providers, so the built config declares the right class; null
+   * when they don't have one of that type.
+   */
+  _providerPick(type) {
+    if (!type) return null;
+    let all = [];
+    try {
+      ({ providers: all = [] } =
+        this._providers.listProviders(this._getMainWindow(), this._appId) ||
+        {});
+    } catch (_e) {
+      all = [];
+    }
+    const want = String(type).toLowerCase();
+    const hit = (all || []).find(
+      (p) => p && String(p.type || "").toLowerCase() === want,
+    );
+    return hit && hit.providerClass
+      ? { type: hit.type, providerClass: hit.providerClass }
+      : null;
   },
 
   /**
@@ -1575,7 +1618,13 @@ const botController = {
       return {
         tools,
         resolveServer: (toolName) =>
-          tools.some((t) => t.name === toolName) ? ROLE_SERVER : null,
+          tools.some((t) => t.name === toolName)
+            ? serverForTool(toolName)
+            : null,
+        // build_widget's server: asked about at the gate, not refused.
+        servers: tools.some((t) => serverForTool(t.name) === ROLE_BUILD_SERVER)
+          ? [ROLE_BUILD_SERVER]
+          : [],
       };
     }
     if (this._mcp && this._mcp.startServer && this._providers) {
@@ -1671,13 +1720,18 @@ const botController = {
       );
     }
     // The Dash team's role tools, checked against the caller's role.
-    if (serverName === ROLE_SERVER) {
+    if (serverName === ROLE_SERVER || serverName === ROLE_BUILD_SERVER) {
       const caller = this._store.get(opts.botId);
       if (!isDashTeam(caller)) {
         return {
           text: "These tools are only for the Dash team.",
           isError: true,
         };
+      }
+      // A tool that changes things only runs from the server the gate asks
+      // about — never through the auto-allowed one.
+      if (serverForTool(toolName) !== serverName) {
+        return { text: `"${toolName}" isn't served here.`, isError: true };
       }
       return handleRoleTool(
         this._roleToolDeps(),

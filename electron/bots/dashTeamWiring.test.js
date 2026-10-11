@@ -89,7 +89,7 @@ describe("botController — role tools (CRE-011, slice 3a)", () => {
   it("role tool calls re-check that the caller is on the team", () => {
     assert.match(
       ctrl,
-      /if \(serverName === ROLE_SERVER\) \{\s*const caller = this\._store\.get\(opts\.botId\);\s*if \(!isDashTeam\(caller\)\)/,
+      /if \(serverName === ROLE_SERVER \|\| serverName === ROLE_BUILD_SERVER\) \{\s*const caller = this\._store\.get\(opts\.botId\);\s*if \(!isDashTeam\(caller\)\)/,
     );
     assert.match(ctrl, /\{ botId: caller\.id, role: caller\.role \}/);
   });
@@ -113,5 +113,35 @@ describe("botController — list_providers covers every provider (3a)", () => {
   it("credential providers are included, marked", () => {
     assert.match(ctrl, /p\.providerClass !== "mcp"/);
     assert.match(ctrl, /return \[\.\.\.mcp, \.\.\.credentials\];/);
+  });
+});
+
+describe("botController — build and check (CRE-011, slice 3b-1)", () => {
+  it("takes the host's widget tools at init", () => {
+    assert.match(
+      ctrl,
+      /widgetTools = null,\s*\} = deps;\s*this\._widgetTools = widgetTools;/,
+    );
+  });
+
+  it("build_widget is served from the server the gate asks about, never the auto-allowed one", () => {
+    assert.match(ctrl, /if \(serverForTool\(toolName\) !== serverName\)/);
+    assert.match(ctrl, /\? serverForTool\(toolName\)/);
+    // ROLE_BUILD_SERVER is not in internalServers.
+    const internal = /internalServers: \[([\s\S]*?)\]/.exec(ctrl)[1];
+    assert.ok(!internal.includes("ROLE_BUILD_SERVER"));
+  });
+
+  it("the Builder's provider type becomes the user's { type, providerClass }", () => {
+    assert.match(ctrl, /provider: this\._providerPick\(req\.provider\)/);
+  });
+});
+
+describe("botController — the build server is configured for the Builder's runs (3b-1)", () => {
+  it("_resolveTools lists it so the gate asks instead of refusing", () => {
+    assert.match(
+      ctrl,
+      /servers: tools\.some\(\(t\) => serverForTool\(t\.name\) === ROLE_BUILD_SERVER\)/,
+    );
   });
 });
