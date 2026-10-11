@@ -709,3 +709,25 @@ describe("BotRunner — Dash team (CRE-011)", () => {
     assert.equal(engine.lastCtx.builtinTools, "read-only");
   });
 });
+
+describe("BotRunner — servers a run is configured with (CRE-011, 3b-1)", () => {
+  it("servers from resolveTools join the bot's providers at the gate", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    let gateCtx = null;
+    const { runner } = makeRunner(engine, {
+      deps: {
+        resolveTools: async () => ({
+          tools: [],
+          resolveServer: () => null,
+          servers: ["dash-team-build"],
+        }),
+        makeRequestPermission: (ctx) => {
+          gateCtx = ctx;
+          return async () => ({ allow: true });
+        },
+      },
+    });
+    await runner.run("bot_1", { prompt: "go" });
+    assert.deepEqual(gateCtx.mcpServers, ["github", "dash-team-build"]);
+  });
+});
