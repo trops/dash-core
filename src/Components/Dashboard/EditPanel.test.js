@@ -138,32 +138,49 @@ describe("EditPanel — selection tabs (phase 1c)", () => {
     expect(screen.getByText("Important Emails")).toBeInTheDocument();
   });
 
-  test("the Widget tab opens Configure at a section, edits with AI and removes", () => {
+  test("the Widget tab shows the widget's settings inline, edits with AI and removes (CRE-006 AC5)", () => {
     const onWidgetAction = jest.fn();
     renderPanel({
       selection: widgetSel,
       onWidgetAction,
-      widgetHasProviders: true,
+      widgetConfig: <div data-testid="widget-config">settings here</div>,
     });
-    fireEvent.click(screen.getByText("Settings"));
-    fireEvent.click(screen.getByText("Listeners"));
-    fireEvent.click(screen.getByText("Providers"));
-    fireEvent.click(screen.getByText("Code"));
+    expect(screen.getByTestId("widget-config")).toBeInTheDocument();
+    // No buttons that open the Configure dialog any more.
+    expect(screen.queryByRole("button", { name: "Listeners" })).toBeNull();
     fireEvent.click(screen.getByText("Edit with AI"));
-    fireEvent.click(screen.getByText("Remove from dashboard"));
-    expect(onWidgetAction.mock.calls).toEqual([
-      ["configure", "edit"],
-      ["configure", "handlers"],
-      ["configure", "providers"],
-      ["configure", "code"],
-      ["edit-with-ai"],
-      ["remove"],
-    ]);
+    fireEvent.click(screen.getByText("Remove"));
+    expect(onWidgetAction.mock.calls).toEqual([["edit-with-ai"], ["remove"]]);
   });
 
-  test("Providers is offered only when the widget declares providers", () => {
-    renderPanel({ selection: widgetSel, onWidgetAction: jest.fn() });
-    expect(screen.queryByText("Providers")).toBeNull();
+  test("a new selection opens its settings from Add or a settings tab; Ask AI stays on Ask AI (CRE-006 AC4)", () => {
+    const panel = (selection) => (
+      <ThemeContext.Provider value={{ currentTheme: {}, themes: {} }}>
+        <EditPanel workspace={workspace} selection={selection} />
+      </ThemeContext.Provider>
+    );
+    const other = { ...widgetSel, uuid: "w-2", label: "Calendar" };
+    const { rerender } = render(panel(null));
+    // From Add → the widget's settings.
+    rerender(panel(widgetSel));
+    expect(screen.getByRole("tab", { name: "Widget" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    // From the Dashboard settings tab → the next widget's settings.
+    fireEvent.click(screen.getByRole("tab", { name: "Dashboard" }));
+    rerender(panel(other));
+    expect(screen.getByRole("tab", { name: "Widget" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    // On Ask AI → stays on Ask AI.
+    fireEvent.click(screen.getByRole("tab", { name: "Ask AI" }));
+    rerender(panel(widgetSel));
+    expect(screen.getByRole("tab", { name: "Ask AI" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   test("selecting a bot opens its Bot tab with the bot editor", () => {

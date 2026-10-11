@@ -371,6 +371,18 @@ export const LayoutBuilder = ({
 
     const item = ws.layout.find((i) => i && i.uuid === uuid);
     if (!item) return;
+    // A change from the edit panel's inline settings (CRE-006 AC5) — staged
+    // like the Configure dialog's save, until the dashboard's Save.
+    if (action === "update") {
+      const next = detail.workspace;
+      if (!next || !Array.isArray(next.layout)) return;
+      commitWorkspace({
+        ...ws,
+        layout: next.layout,
+        selectedProviders: next.selectedProviders ?? ws.selectedProviders,
+      });
+      return;
+    }
     if (action === "configure") {
       handleClickEditItem(item, section || null);
     } else if (action === "remove") {

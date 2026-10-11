@@ -10,6 +10,9 @@ export const SectionLayout = ({
   detailContent = null,
   listWidth = "w-80",
   emptyDetailMessage = "Select an item to view details",
+  // Narrow containers (the edit panel): the list on top, the detail
+  // below, instead of side by side.
+  stacked = false,
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
@@ -23,15 +26,15 @@ export const SectionLayout = ({
 
   return (
     <div
-      className={`flex flex-row flex-1 min-h-0 ${
+      className={`flex ${stacked ? "flex-col" : "flex-row"} flex-1 min-h-0 ${
         panelStyles.textColor || "text-gray-200"
       }`}
     >
       {/* Item List Column */}
       <div
-        className={`flex flex-col flex-shrink-0 ${listWidth} border-r ${
-          headerStyles.borderColor || ""
-        } overflow-y-auto`}
+        className={`flex flex-col flex-shrink-0 ${
+          stacked ? "w-full max-h-48 border-b" : `${listWidth} border-r`
+        } ${headerStyles.borderColor || ""} overflow-y-auto`}
       >
         {listContent}
       </div>

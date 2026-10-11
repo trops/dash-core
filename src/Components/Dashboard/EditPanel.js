@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useState } from "react";
 import {
   Button,
+  Button3,
   InputText,
   RadioGroup,
   SectionLabel,
@@ -46,7 +47,9 @@ export const EditPanel = ({
   // Select-to-edit (phase 1c)
   selection = null,
   onWidgetAction = null,
-  widgetHasProviders = false,
+  // The selected widget's Settings / Listeners / Providers / Code, inline
+  // (WidgetConfigPanel, built by DashboardStage) — CRE-006 AC5.
+  widgetConfig = null,
   botEditor = null,
   // Phase 1d: place a picked widget in the selected empty cell; Ask AI.
   onPlaceWidget = null,
@@ -70,10 +73,16 @@ export const EditPanel = ({
     if (!selection) {
       setTab((t) => (t === "widget" || t === "bot" || t === "ask" ? "add" : t));
     } else {
-      setTab(
-        selection.openTab ||
-          (selection.kind === "cell" ? "add" : selection.kind),
-      );
+      // A new selection opens its own settings (widget: Settings; bot: its
+      // form) — whether you were on Add or a settings tab — so working by
+      // hand never lands in a chat. Only Ask AI stays on Ask AI (CRE-006
+      // AC4).
+      setTab((current) => {
+        if (selection.openTab) return selection.openTab;
+        if (selection.kind === "cell") return current === "ask" ? "ask" : "add";
+        if (current === "ask" && selection.kind === "widget") return "ask";
+        return selection.kind;
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectionKey]);
@@ -144,83 +153,61 @@ export const EditPanel = ({
         {selection?.kind === "widget" && (
           <Tabs3.Content
             value="widget"
-            className="flex flex-col gap-4 p-4 overflow-y-auto"
+            className="flex flex-col flex-1 min-h-0"
           >
-            <div className="flex flex-col gap-1">
-              <SectionLabel>Widget</SectionLabel>
-              <span className="text-base font-semibold">
-                {selection.label || selection.component}
-              </span>
-              <span
-                className={`text-xs break-all ${currentTheme["text-primary-medium"] || ""}`}
-              >
-                {selection.component}
-              </span>
-            </div>
-            <div className="flex flex-col gap-2">
-              <SectionLabel>Configure</SectionLabel>
-              <Button
-                title="Settings"
-                onClick={() => act("configure", "edit")}
-                size="sm"
-              />
-              <Button
-                title="Listeners"
-                onClick={() => act("configure", "handlers")}
-                size="sm"
-              />
-              {widgetHasProviders && (
-                <Button
-                  title="Providers"
-                  onClick={() => act("configure", "providers")}
-                  size="sm"
-                />
-              )}
-              <Button
-                title="Code"
-                onClick={() => act("configure", "code")}
-                size="sm"
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <SectionLabel>More</SectionLabel>
-              {onMoveWidget &&
-                (selection.moving ? (
-                  <div className="flex flex-col gap-2">
-                    <span
-                      role="status"
-                      className={`text-xs ${currentTheme["text-primary-light"] || ""}`}
-                    >
-                      Choose a cell in the same grid: click it, or Tab to it and
-                      press Enter. An empty cell takes the widget; a full one
-                      swaps with it.
-                    </span>
-                    <Button
-                      title="Stop moving"
-                      onClick={() => onMoveWidget(false)}
-                      size="sm"
-                    />
-                  </div>
-                ) : (
+            <div className="flex flex-col gap-2 px-4 pt-4 pb-2">
+              <div className="flex flex-col gap-1">
+                <SectionLabel>Widget</SectionLabel>
+                <span className="text-base font-semibold">
+                  {selection.label || selection.component}
+                </span>
+                <span
+                  className={`text-xs break-all ${currentTheme["text-primary-medium"] || ""}`}
+                >
+                  {selection.component}
+                </span>
+              </div>
+              {onMoveWidget && selection.moving ? (
+                <div className="flex flex-col gap-2">
+                  <span
+                    role="status"
+                    className={`text-xs ${currentTheme["text-primary-light"] || ""}`}
+                  >
+                    Choose a cell in the same grid: click it, or Tab to it and
+                    press Enter. An empty cell takes the widget; a full one
+                    swaps with it.
+                  </span>
                   <Button
-                    title="Move to another cell"
-                    onClick={() => onMoveWidget(true)}
+                    title="Stop moving"
+                    onClick={() => onMoveWidget(false)}
                     size="sm"
                   />
-                ))}
-              <Button
-                title="Edit with AI"
-                onClick={() => act("edit-with-ai")}
-                size="sm"
-              />
-              <Button
-                title="Remove from dashboard"
-                onClick={() => act("remove")}
-                size="sm"
-              />
+                </div>
+              ) : (
+                <div className="flex flex-row flex-wrap gap-2">
+                  {onMoveWidget && (
+                    <Button3
+                      title="Move to another cell"
+                      onClick={() => onMoveWidget(true)}
+                      size="sm"
+                    />
+                  )}
+                  <Button3
+                    title="Edit with AI"
+                    onClick={() => act("edit-with-ai")}
+                    size="sm"
+                  />
+                  <Button3
+                    title="Remove"
+                    onClick={() => act("remove")}
+                    size="sm"
+                  />
+                </div>
+              )}
             </div>
+            {widgetConfig}
             <span
-              className={`text-xs ${currentTheme["text-primary-medium"] || ""}`}
+              className={`px-4 py-2 text-xs ${currentTheme["text-primary-medium"] || ""}`}
             >
               Changes wait for Save. Press Esc or click the dashboard name to go
               back to the dashboard.
