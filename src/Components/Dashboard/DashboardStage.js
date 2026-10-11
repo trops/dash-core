@@ -76,6 +76,9 @@ import { moveWidgetAcrossContainers } from "../../utils/layout";
 import { ComponentManager } from "../../ComponentManager";
 import { saveNewWorkspace, isSavedWorkspace } from "./saveNewWorkspace";
 import { syncLayoutRefs } from "./editStaging";
+import { describeEditChanges } from "./editChanges";
+import { DiscardList } from "./DiscardList";
+import { pickWidgetDisplayName } from "../../utils/widgetIdentity";
 
 /**
  * DashboardStage - Main application wrapper component
@@ -1948,6 +1951,23 @@ const DashboardStageInner = ({
     console.log(e, message);
   }
 
+  // What the Discard prompt will throw away (phase 1e). Computed only while
+  // the prompt is open.
+  const cancelChanges = useMemo(
+    () =>
+      pendingNavigation
+        ? describeEditChanges({
+            original: originalWorkspaceRef.current,
+            current: workspaceSelected,
+            pendingBotEdits,
+            nameOf: (w) =>
+              pickWidgetDisplayName(w, ComponentManager.config(w.component, w)),
+          })
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pendingNavigation],
+  );
+
   // Internal: the unguarded cancel-edit operation. Called both from
   // the direct Cancel button (when nothing is dirty) and from the
   // confirmation modal's Discard action.
@@ -2654,6 +2674,11 @@ const DashboardStageInner = ({
                   );
                   setEditSelection(null);
                 }}
+                onMoveWidget={(on) =>
+                  setEditSelection((sel) =>
+                    sel?.kind === "widget" ? { ...sel, moving: on } : sel,
+                  )
+                }
                 onAskAi={() => {
                   if (editSelection?.kind === "cell") {
                     window.dispatchEvent(
@@ -2918,6 +2943,12 @@ const DashboardStageInner = ({
           pendingNavigation?.kind === "cancel-edit"
             ? "You have edits that haven't been saved. Discard them and exit edit mode?"
             : "You have edits that haven't been saved. Discard them and leave this dashboard?"
+        }
+        // Phase 1e (CRE-006 AC7): list what will be discarded and kept.
+        children={
+          cancelChanges && cancelChanges.discarded.length > 0 ? (
+            <DiscardList changes={cancelChanges} />
+          ) : null
         }
         confirmLabel="Discard changes"
         cancelLabel="Keep editing"

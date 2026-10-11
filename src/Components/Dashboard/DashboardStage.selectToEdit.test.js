@@ -97,7 +97,7 @@ const grid = fs.readFileSync(
 describe("phase 1d — routing into the editor", () => {
   test("an empty cell's Add widget selects the cell (the pop-up is the fallback)", () => {
     expect(grid).toMatch(
-      /editSelection\.available\s*\?\s*editSelection\.select\(\{\s*kind: "cell"/,
+      /if \(editSelection\.available\) \{\s*return editSelection\.select\(\{\s*kind: "cell"[\s\S]{0,200}\}\s*handleClickAdd\(cellNumber\);/,
     );
   });
 
@@ -114,6 +114,34 @@ describe("phase 1d — routing into the editor", () => {
     );
     expect(builder).toMatch(
       /const scope = useContext\(WorkspaceScopeContext\)/,
+    );
+  });
+});
+
+describe("phase 1e — Cancel list and keyboard move", () => {
+  test("the Discard prompt lists the changes", () => {
+    expect(stage).toMatch(
+      /describeEditChanges\(\{\s*original: originalWorkspaceRef\.current,/,
+    );
+    expect(stage).toMatch(/<DiscardList changes=\{cancelChanges\} \/>/);
+  });
+
+  test("a selected widget remembers its grid and cell", () => {
+    expect(grid).toMatch(
+      /gridItemId: item\.id,\s*cellNumber,\s*scope: workspaceScope,\s*label: pickWidgetDisplayName/,
+    );
+  });
+
+  test("while moving, choosing another cell in the same grid moves (or swaps) the widget", () => {
+    expect(grid).toMatch(/const moveTarget =/);
+    expect(grid).toMatch(
+      /onMoveWidgetToCell\(item\.id, moving\.cellNumber, cellNumber\)/,
+    );
+  });
+
+  test("the empty cell's Add widget is a real button", () => {
+    expect(grid).toMatch(
+      /<button\s+type="button"[\s\S]{0,900}handleClickAdd\(cellNumber\);[\s\S]{0,400}<\/button>/,
     );
   });
 });

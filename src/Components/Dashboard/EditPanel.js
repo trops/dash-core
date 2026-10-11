@@ -51,6 +51,8 @@ export const EditPanel = ({
   // Phase 1d: place a picked widget in the selected empty cell; Ask AI.
   onPlaceWidget = null,
   onAskAi = null,
+  // Phase 1e: move the selected widget without dragging (true = start).
+  onMoveWidget = null,
 }) => {
   const { currentTheme = {}, themes: contextThemes } = useContext(ThemeContext);
   const [tab, setTab] = useState("add");
@@ -182,6 +184,30 @@ export const EditPanel = ({
             </div>
             <div className="flex flex-col gap-2">
               <SectionLabel>More</SectionLabel>
+              {onMoveWidget &&
+                (selection.moving ? (
+                  <div className="flex flex-col gap-2">
+                    <span
+                      role="status"
+                      className={`text-xs ${currentTheme["text-primary-light"] || ""}`}
+                    >
+                      Choose a cell in the same grid: click it, or Tab to it and
+                      press Enter. An empty cell takes the widget; a full one
+                      swaps with it.
+                    </span>
+                    <Button
+                      title="Stop moving"
+                      onClick={() => onMoveWidget(false)}
+                      size="sm"
+                    />
+                  </div>
+                ) : (
+                  <Button
+                    title="Move to another cell"
+                    onClick={() => onMoveWidget(true)}
+                    size="sm"
+                  />
+                ))}
               <Button
                 title="Edit with AI"
                 onClick={() => act("edit-with-ai")}

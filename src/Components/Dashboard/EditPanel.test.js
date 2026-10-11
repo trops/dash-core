@@ -245,3 +245,24 @@ describe("EditPanel — placing in a cell and Ask AI (phase 1d)", () => {
     );
   });
 });
+
+describe("EditPanel — moving a widget without dragging (phase 1e)", () => {
+  const sel = { kind: "widget", uuid: "w1", label: "Emails", component: "x" };
+
+  test("Move… starts moving the selected widget", () => {
+    const onMoveWidget = jest.fn();
+    renderPanel({ selection: sel, onMoveWidget });
+    fireEvent.click(screen.getByText("Move to another cell"));
+    expect(onMoveWidget).toHaveBeenCalledWith(true);
+  });
+
+  test("while moving, the panel says how to finish and can stop", () => {
+    const onMoveWidget = jest.fn();
+    renderPanel({ selection: { ...sel, moving: true }, onMoveWidget });
+    expect(
+      screen.getByText(/Choose a cell in the same grid/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Stop moving"));
+    expect(onMoveWidget).toHaveBeenCalledWith(false);
+  });
+});

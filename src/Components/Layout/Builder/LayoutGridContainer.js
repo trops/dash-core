@@ -8,7 +8,6 @@ import { useDrag, useDrop, DndContext } from "react-dnd";
 // defaults to "main".
 export const WorkspaceScopeContext = React.createContext("main");
 import {
-  ButtonIcon,
   DropComponent,
   DragComponent,
   ConfirmationModal,
@@ -321,6 +320,24 @@ export const LayoutGridContainer = memo(
     // Select-to-edit (phase 1c): the editor's current selection.
     const editSelection = useContext(EditSelectionContext);
     const workspaceScope = useContext(WorkspaceScopeContext);
+
+    // Phase 1e: a widget being moved without dragging (Move… in the panel).
+    // Another cell of the same grid becomes a target: empty takes it, full
+    // swaps (DashboardModel.moveWidgetToCell swaps).
+    const moving =
+      editSelection.selection?.kind === "widget" &&
+      editSelection.selection.moving &&
+      editSelection.selection.gridItemId === item.id &&
+      (editSelection.selection.scope || "main") === workspaceScope
+        ? editSelection.selection
+        : null;
+    const moveTarget = (cellNumber) =>
+      moving && moving.cellNumber !== cellNumber && onMoveWidgetToCell
+        ? () => {
+            onMoveWidgetToCell(item.id, moving.cellNumber, cellNumber);
+            editSelection.select({ ...moving, cellNumber, moving: false });
+          }
+        : null;
 
     // Get providers from AppContext (not DashboardContext, which has a structural
     // issue where providers from AppWrapper don't flow through DashboardWrapper)
@@ -1274,30 +1291,34 @@ export const LayoutGridContainer = memo(
           className="w-full h-full min-h-16 flex flex-col items-center justify-center gap-2"
           onContextMenu={(e) => handleCellRightClick(e, cellNumber)}
         >
-          <div
+          <button
+            type="button"
             className="flex flex-col items-center cursor-pointer hover:bg-gray-800/50 rounded-lg px-4 py-2 transition-colors"
-            onClick={() =>
+            onClick={() => {
+              const move = moveTarget(cellNumber);
+              if (move) return move();
               // In the editor (phase 1d): select the cell; the panel's Add
               // tab places the next widget picked. Elsewhere: the pop-up.
-              editSelection.available
-                ? editSelection.select({
-                    kind: "cell",
-                    gridItemId: item.id,
-                    cellNumber,
-                    scope: workspaceScope,
-                    label: `Empty cell ${cellNumber}`,
-                  })
-                : handleClickAdd(cellNumber)
-            }
+              if (editSelection.available) {
+                return editSelection.select({
+                  kind: "cell",
+                  gridItemId: item.id,
+                  cellNumber,
+                  scope: workspaceScope,
+                  label: `Empty cell ${cellNumber}`,
+                });
+              }
+              handleClickAdd(cellNumber);
+            }}
           >
-            <ButtonIcon
-              icon="plus"
-              textColor="text-gray-600"
-              hoverTextColor="hover:text-blue-400"
-              backgroundColor="bg-transparent"
+            <FontAwesomeIcon
+              icon={moving ? "arrow-down" : "plus"}
+              className="h-4 w-4 text-gray-600"
             />
-            <span className="text-xs text-gray-600 mt-1">Add widget</span>
-          </div>
+            <span className="text-xs text-gray-600 mt-1">
+              {moving ? "Move here" : "Add widget"}
+            </span>
+          </button>
           <button
             onClick={() =>
               window.dispatchEvent(
@@ -1359,6 +1380,12 @@ export const LayoutGridContainer = memo(
           id: cellComponent.id,
 
           component: cellComponent.component,
+
+          gridItemId: item.id,
+
+          cellNumber,
+
+          scope: workspaceScope,
 
           label: pickWidgetDisplayName(
             cellComponent,
@@ -1478,7 +1505,12 @@ export const LayoutGridContainer = memo(
               cellComponent,
               ComponentManager.config(cellComponent.component, cellComponent),
             )}
-            onSelect={() => selectWidget()}
+            onSelect={() => {
+              // Phase 1e: while another widget is moving, choosing this one swaps them.
+              const move = moveTarget(cellNumber);
+              if (move) move();
+              else selectWidget();
+            }}
             selected={
               editSelection.selection?.kind === "widget" &&
               editSelection.selection.uuid === cellComponent.uuid
