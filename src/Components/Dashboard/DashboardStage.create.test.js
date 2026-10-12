@@ -32,7 +32,19 @@ describe("DashboardStage — Create screen", () => {
       /window\.addEventListener\("dash:open-create", handler\)/,
     );
     expect(source).toMatch(
-      /setCreateRequest\(\{\s*type: d\.type \|\| "widget",\s*workspaceId: d\.workspaceId \?\? null,\s*\}\)/,
+      /setCreateRequest\(\{\s*type: d\.type \|\| "widget",\s*workspaceId: d\.workspaceId \?\? null,\s*recentId: d\.recentId \|\| null,\s*\}\)/,
+    );
+  });
+
+  test("Expand from the dock opens Create on a plan; Go to dashboard opens a built one (4e-2)", () => {
+    expect(source).toMatch(
+      /initialRecentId=\{createRequest \? createRequest\.recentId : null\}/,
+    );
+    expect(source).toMatch(
+      /window\.addEventListener\("dash:open-built-dashboard", onOpenBuilt\)/,
+    );
+    expect(source).toMatch(
+      /handleOpenBuiltRef\.current = handleOpenBuiltDashboard;/,
     );
   });
 

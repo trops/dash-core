@@ -530,13 +530,15 @@ const DashboardStageInner = ({
     return () => window.removeEventListener("dash:open-bots-view", handler);
   }, [openBotsView]);
   // Open the Create screen from anywhere — Manage pages' New Widget / New Bot
-  // (create-entry PRD CRE-008). detail: { type, workspaceId }.
+  // (create-entry PRD CRE-008). detail: { type, workspaceId, recentId }
+  // — recentId opens a plan conversation (Expand from the dock, 4e-2).
   useEffect(() => {
     const handler = (e) => {
       const d = (e && e.detail) || {};
       setCreateRequest({
         type: d.type || "widget",
         workspaceId: d.workspaceId ?? null,
+        recentId: d.recentId || null,
       });
     };
     window.addEventListener("dash:open-create", handler);
@@ -1853,6 +1855,8 @@ const DashboardStageInner = ({
   const openTabsRef = useRef([]);
   const activeTabIdRef = useRef(null);
   handleOpenTabRef.current = handleOpenTab;
+  const handleOpenBuiltRef = useRef(null);
+  handleOpenBuiltRef.current = handleOpenBuiltDashboard;
   handleCloseTabRef.current = handleCloseTab;
   workspaceConfigRef.current = workspaceConfig;
   openTabsRef.current = openTabs;
@@ -1881,11 +1885,21 @@ const DashboardStageInner = ({
         handleCloseTabRef.current(activeTabIdRef.current);
       }
     }
+    // A dashboard a plan build just made, by id — Go to dashboard in the
+    // dock's Create panel (4e-2).
+    function onOpenBuilt(e) {
+      const id = e.detail?.id;
+      if (id != null && handleOpenBuiltRef.current) {
+        handleOpenBuiltRef.current(id);
+      }
+    }
     window.addEventListener("dash:open-dashboard", onOpen);
     window.addEventListener("dash:close-dashboard", onClose);
+    window.addEventListener("dash:open-built-dashboard", onOpenBuilt);
     return () => {
       window.removeEventListener("dash:open-dashboard", onOpen);
       window.removeEventListener("dash:close-dashboard", onClose);
+      window.removeEventListener("dash:open-built-dashboard", onOpenBuilt);
     };
   }, []);
 
@@ -3024,6 +3038,7 @@ const DashboardStageInner = ({
               onOpenAiSettings={() => openAppSettings("ai-assistant")}
               onOpenWidget={handleOpenScoutMatch}
               onOpenDashboard={handleOpenBuiltDashboard}
+              initialRecentId={createRequest ? createRequest.recentId : null}
             />
 
             <DashboardWizardModal
