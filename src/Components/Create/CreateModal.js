@@ -21,6 +21,7 @@ import { useAiBackend } from "../../hooks/useAiBackend";
 import { getWidgetBuilderRenderer } from "../../utils/widgetBuilderRenderer";
 import { CreateScoutStep } from "./CreateScoutStep";
 import { CreatePlanStep } from "./CreatePlanStep";
+import { recentRows, recentLine } from "./recentRows";
 import {
   createTypes,
   PROMPT_PLACEHOLDER,
@@ -99,8 +100,10 @@ export const CreateModal = ({
   // null = no plan; { prompt } = planning a dashboard with the Planner (4a).
   const [planStep, setPlanStep] = useState(null);
   const [bots, setBots] = useState(EMPTY);
-  // Recent Widget Builder drafts (newest first) — "Continue a draft".
+  // Recent (CRE-007 AC2, 4e-1): Widget Builder drafts and plan
+  // conversations (summaries from the main process).
   const [drafts, setDrafts] = useState(EMPTY);
+  const [recentPlans, setRecentPlans] = useState(EMPTY);
 
   // Each open starts fresh on the requested type.
   useEffect(() => {
@@ -122,22 +125,36 @@ export const CreateModal = ({
     return () => clearTimeout(t);
   }, [open, botForm, builderStep]);
 
-  // Widget drafts to continue (the host's drafts store; none outside the
-  // app).
+  // Recent: widget drafts (the host's drafts store) and plan conversations
+  // (Create's Recent, live as builds progress). None outside the app.
   useEffect(() => {
-    if (!open || type !== "widget") return undefined;
+    if (!open) return undefined;
     let alive = true;
     const api = typeof window !== "undefined" ? window.mainApi : null;
-    if (!api?.drafts?.list) return undefined;
-    Promise.resolve(api.drafts.list())
-      .then((list) => {
-        if (alive && Array.isArray(list)) setDrafts(list);
-      })
-      .catch(() => {});
+    if (api?.drafts?.list) {
+      Promise.resolve(api.drafts.list())
+        .then((list) => {
+          if (alive && Array.isArray(list)) setDrafts(list);
+        })
+        .catch(() => {});
+    }
+    const bots = api && api.bots;
+    const loadPlans = () => {
+      if (!bots || !bots.listCreateRecent) return;
+      Promise.resolve(bots.listCreateRecent())
+        .then((list) => {
+          if (alive && Array.isArray(list)) setRecentPlans(list);
+        })
+        .catch(() => {});
+    };
+    loadPlans();
+    const id =
+      bots && bots.onCreateRecent ? bots.onCreateRecent(loadPlans) : null;
     return () => {
       alive = false;
+      if (id != null && bots.removeListener) bots.removeListener(id);
     };
-  }, [open, type]);
+  }, [open]);
 
   // Other bots → "Another bot" events in the bot form's picker.
   useEffect(() => {
@@ -217,12 +234,23 @@ export const CreateModal = ({
     openBuilder({ resumeDraftId: draft.id }, draft.name || "Draft");
   };
 
-  const recentDrafts =
-    type === "widget"
-      ? [...drafts]
-          .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-          .slice(0, RECENT_DRAFTS)
-      : EMPTY;
+  const recent = recentRows(recentPlans, drafts);
+  const openRecent = (row) => {
+    if (row.kind === "widget-draft") {
+      continueDraft({ id: row.id, name: row.title });
+      return;
+    }
+    setPlanStep({ prompt: "", recentId: row.id });
+  };
+  const removeRecent = async (row) => {
+    const bots = window.mainApi && window.mainApi.bots;
+    if (!bots || !bots.removeCreateRecent) return;
+    try {
+      await bots.removeCreateRecent(row.id);
+    } catch (_e) {
+      // the list stays as it is
+    }
+  };
 
   const startWithoutAi = (key) => {
     if (key === "blank-bot") {
@@ -321,22 +349,46 @@ export const CreateModal = ({
           </div>
         )}
 
-        {recentDrafts.length > 0 && (
-          <div className="flex flex-col gap-2">
-            <SectionLabel>Continue a draft</SectionLabel>
-            <div className="flex flex-row flex-wrap gap-2">
-              {recentDrafts.map((d) => (
-                <Button3 key={d.id} size="sm" onClick={() => continueDraft(d)}>
-                  <span className="inline-flex items-center gap-2">
-                    <FontAwesomeIcon
-                      icon="pen-to-square"
-                      className="h-3.5 w-3.5"
+        {recent.length > 0 && (
+          <div className="flex flex-col gap-2" data-testid="create-recent">
+            <SectionLabel>Recent</SectionLabel>
+            <div className="flex flex-col gap-1">
+              {recent.map((row) => (
+                <div
+                  key={row.key}
+                  className="flex flex-row items-center gap-2"
+                  data-testid="recent-row"
+                >
+                  <Button3 size="sm" onClick={() => openRecent(row)}>
+                    <span
+                      className="inline-flex items-center gap-2"
+                      aria-label={recentLine(row)}
+                    >
+                      <FontAwesomeIcon
+                        icon={
+                          row.kind === "plan"
+                            ? "table-cells-large"
+                            : "pen-to-square"
+                        }
+                        className="h-3.5 w-3.5"
+                      />
+                      {row.title}
+                      <span className={muted}>
+                        · {row.status} · {draftAge(row.updatedAt)}
+                      </span>
+                    </span>
+                  </Button3>
+                  {row.kind === "plan" ? (
+                    <ButtonIcon
+                      icon="xmark"
+                      ariaLabel={`Remove ${row.title} from Recent`}
+                      onClick={() => removeRecent(row)}
                     />
-                    {d.name || "Untitled draft"}
-                    <span className={muted}>· {draftAge(d.updatedAt)}</span>
-                  </span>
-                </Button3>
+                  ) : null}
+                </div>
               ))}
+            </div>
+            <div className="flex flex-row flex-wrap gap-2">
               {drafts.length > RECENT_DRAFTS && (
                 <Button3
                   size="sm"
@@ -403,7 +455,9 @@ export const CreateModal = ({
 
   const planner = planStep && (
     <CreatePlanStep
+      key={planStep.recentId || "new"}
       prompt={planStep.prompt}
+      recentId={planStep.recentId || null}
       onOpenDashboard={
         onOpenDashboard
           ? (id) => {

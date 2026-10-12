@@ -14,19 +14,24 @@
  */
 "use strict";
 
-const VALID_SCOPES = ["workspace", "global", "bot"];
+const VALID_SCOPES = ["workspace", "global", "bot", "plan"];
 
 /**
  * Bucket key for a (scope, id) pair. Global collapses all ids to one bucket;
  * "workspace" is a team's shared memory (id = the dashboard); "bot" is one
  * bot's private memory (id = the bot) — used by bots with no dashboard, so
- * they don't share one bucket.
+ * they don't share one bucket. "plan" is one Create plan's build memory (id =
+ * its Recent entry): what was asked, decided, built and fixed (4e-1).
  */
 function bucketKey(scope, id) {
   if (scope === "global") return "global";
   if (scope === "bot") {
     if (!id) throw new Error("BotMemory: the 'bot' scope needs a bot id");
     return `bot:${id}`;
+  }
+  if (scope === "plan") {
+    if (!id) throw new Error("BotMemory: the 'plan' scope needs a plan id");
+    return `plan:${id}`;
   }
   return `workspace:${id || "default"}`;
 }
@@ -98,6 +103,19 @@ class BotMemory {
     if (!botId) return false;
     const blob = this._read();
     const key = bucketKey("bot", botId);
+    if (!blob.scopes[key]) return false;
+    delete blob.scopes[key];
+    this._write(blob);
+    return true;
+  }
+
+  /**
+   * Drop a whole bucket — a plan removed from Recent takes its memory with it.
+   * @returns {boolean} whether there was anything to remove
+   */
+  forget(scope, id) {
+    const blob = this._read();
+    const key = bucketKey(scope, id);
     if (!blob.scopes[key]) return false;
     delete blob.scopes[key];
     this._write(blob);

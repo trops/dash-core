@@ -42,6 +42,8 @@ const HEAD = {
   "finished-with-problems": "Built, with problems",
   stopped: "Stopped — what's built is kept",
   removed: "Removed",
+  // The app closed while it was building (4e-1): finished steps are kept.
+  interrupted: "Interrupted — the app closed while it was building",
 };
 
 /** The providers waiting steps need, once each: ["gmail"]. */
@@ -70,6 +72,7 @@ export const CreateBuildingStep = ({
   onOpenDashboard = null,
   onEditPlan = null,
   onRemoved = null,
+  onContinue = null,
 }) => {
   const app = useContext(AppContext) || {};
   const { muted, strong, hairline } = useConfigTokens();
@@ -114,7 +117,10 @@ export const CreateBuildingStep = ({
   const hasProblems =
     status === "finished-with-problems" ||
     status === "stopped" ||
-    status === "waiting-for-providers";
+    status === "waiting-for-providers" ||
+    status === "interrupted";
+  // An interrupted build has no live run: it continues first (4e-1).
+  const interrupted = status === "interrupted";
   const anythingBuilt = !!(
     built.dashboard ||
     (built.bots || []).length ||
@@ -223,7 +229,7 @@ export const CreateBuildingStep = ({
           ) : null}
         </div>
 
-        {finished && waitingFor.length ? (
+        {finished && !interrupted && waitingFor.length ? (
           <div
             className="flex flex-row flex-wrap items-center gap-3"
             data-testid="building-waiting"
@@ -300,7 +306,7 @@ export const CreateBuildingStep = ({
                   {s.detail}
                 </pre>
               ) : null}
-              {finished && s.status === "failed" ? (
+              {finished && !interrupted && s.status === "failed" ? (
                 <div
                   className="flex flex-row flex-wrap items-center gap-3 ml-7"
                   data-testid="building-step-options"
@@ -366,6 +372,9 @@ export const CreateBuildingStep = ({
             className="flex flex-row flex-wrap items-center gap-3"
             data-testid="building-recover"
           >
+            {interrupted && onContinue ? (
+              <Button title="Continue building" onClick={onContinue} />
+            ) : null}
             {onEditPlan ? (
               <Button3 title="Edit plan" onClick={onEditPlan} />
             ) : null}

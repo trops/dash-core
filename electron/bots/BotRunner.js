@@ -17,7 +17,7 @@
  *   store              BotStore                                — get/saveSession/appendRun
  *   approvals          ApprovalRegistry                        — create(request)
  *   resolveRunProfile  async (bot) => { engineId, adapterId, baseURL, model, credentials, providerId }
- *   resolveTools       async (bot) => { tools, resolveServer(toolName) => serverName|null }
+ *   resolveTools       async (bot, runOpts) => { tools, resolveServer(toolName) => serverName|null }
  *   callTool           async (serverName, toolName, args, { workspaceId }) => { text, isError }
  *   audit?             (entry) => void
  *   now?               () => string (ISO)
@@ -179,7 +179,7 @@ class BotRunner {
         // providers (the Dash team's build tools, CRE-011) — the gate asks
         // about their tools instead of refusing them as unconfigured.
         servers: extraServers = [],
-      } = await this._resolveTools(bot);
+      } = await this._resolveTools(bot, opts);
       providerOf = (name) => {
         try {
           return resolveServer(name) || null;
@@ -236,6 +236,8 @@ class BotRunner {
           workspaceId: bot.workspaceId,
           // Lets the caller apply this bot's per-provider tool limits.
           botId,
+          // A Dash team run inside a Create plan: its memory (4e-1).
+          ...(opts.planId ? { planId: opts.planId } : {}),
         });
       };
 
