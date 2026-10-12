@@ -21,7 +21,8 @@ import { useAiBackend } from "../../hooks/useAiBackend";
 import { getWidgetBuilderRenderer } from "../../utils/widgetBuilderRenderer";
 import { CreateScoutStep } from "./CreateScoutStep";
 import { CreatePlanStep } from "./CreatePlanStep";
-import { recentRows, recentLine } from "./recentRows";
+import { recentSections } from "./recentRows";
+import { RecentList } from "./RecentList";
 import { StarterCards } from "./StarterCards";
 import { starterPackages, starterToPlan, remixRequest } from "./starters";
 import { foldCreate } from "./CreateDockPanel";
@@ -30,9 +31,7 @@ import { themeFromPrompt } from "./themeFromPrompt";
 import {
   createTypes,
   PROMPT_PLACEHOLDER,
-  RECENT_DRAFTS,
   canSend,
-  draftAge,
   noAiOptions,
   normalizeCreateType,
   routeCreate,
@@ -348,7 +347,7 @@ export const CreateModal = ({
     openBuilder({ resumeDraftId: draft.id }, draft.name || "Draft");
   };
 
-  const recent = recentRows(recentPlans, drafts);
+  const recent = recentSections(recentPlans, drafts);
   const openRecent = (row) => {
     if (row.kind === "widget-draft") {
       continueDraft({ id: row.id, name: row.title });
@@ -477,58 +476,12 @@ export const CreateModal = ({
           <StarterCards starters={starters} onPick={pickStarter} />
         )}
 
-        {recent.length > 0 && (
-          <div className="flex flex-col gap-2" data-testid="create-recent">
-            <SectionLabel>Recent</SectionLabel>
-            <div className="flex flex-col gap-1">
-              {recent.map((row) => (
-                <div
-                  key={row.key}
-                  className="flex flex-row items-center gap-2"
-                  data-testid="recent-row"
-                >
-                  <Button3 size="sm" onClick={() => openRecent(row)}>
-                    <span
-                      className="inline-flex items-center gap-2"
-                      aria-label={recentLine(row)}
-                    >
-                      <FontAwesomeIcon
-                        icon={
-                          row.kind === "plan"
-                            ? "table-cells-large"
-                            : row.kind === "question"
-                              ? "comment"
-                              : "pen-to-square"
-                        }
-                        className="h-3.5 w-3.5"
-                      />
-                      {row.title}
-                      <span className={muted}>
-                        · {row.status} · {draftAge(row.updatedAt)}
-                      </span>
-                    </span>
-                  </Button3>
-                  {row.kind === "plan" || row.kind === "question" ? (
-                    <ButtonIcon
-                      icon="xmark"
-                      ariaLabel={`Remove ${row.title} from Recent`}
-                      onClick={() => removeRecent(row)}
-                    />
-                  ) : null}
-                </div>
-              ))}
-            </div>
-            <div className="flex flex-row flex-wrap gap-2">
-              {drafts.length > RECENT_DRAFTS && (
-                <Button3
-                  size="sm"
-                  title={`All ${drafts.length} drafts`}
-                  onClick={() => startWithoutAi("widget-drafts")}
-                />
-              )}
-            </div>
-          </div>
-        )}
+        <RecentList
+          sections={recent}
+          onOpen={openRecent}
+          onRemove={removeRecent}
+          onAllDrafts={() => startWithoutAi("widget-drafts")}
+        />
 
         <div className="flex flex-col gap-2">
           <SectionLabel>Or start without AI</SectionLabel>

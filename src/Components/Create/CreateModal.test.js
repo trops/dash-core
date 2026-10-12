@@ -298,18 +298,31 @@ describe("CreateModal — Recent (2c-2, 4e-1)", () => {
     },
   ];
 
-  test("plans and widget drafts together, newest first, with status and age", async () => {
+  test("two sections: questions & plans, then unfinished widgets (fix/recent-sections)", async () => {
     setup({ drafts: DRAFTS, recent: PLANS });
-    expect(await screen.findByText("Recent")).toBeInTheDocument();
-    await screen.findByRole("button", { name: /^Morning Brief/ });
-    const rows = screen.getAllByTestId("recent-row").map((r) => r.textContent);
-    expect(rows[0]).toMatch(
-      /Morning Brief· Building 3\/7 · 21\.0k tokens · 1m ago/,
-    );
-    expect(rows[1]).toMatch(/Tokyo clock· Widget draft · 5m ago/);
-    expect(rows[3]).toMatch(/Untitled draft· Widget draft · 2d ago/);
-    expect(rows[4]).toMatch(/Ask Test· Waiting for Gmail · 4d ago/);
-    expect(rows).toHaveLength(6);
+    const conv = await screen.findByTestId("recent-conversations");
+    expect(conv).toHaveTextContent("Questions & plans");
+    const convRows = [...conv.querySelectorAll('[data-testid="recent-row"]')];
+    expect(convRows.map((r) => r.textContent)).toEqual([
+      expect.stringMatching(
+        /Morning BriefBuilding 3\/7 · 21\.0k tokens · 1m ago/,
+      ),
+      expect.stringMatching(/Ask TestWaiting for Gmail · 4d ago/),
+    ]);
+    const dr = screen.getByTestId("recent-drafts");
+    expect(dr).toHaveTextContent("Unfinished widgets");
+    const drRows = [...dr.querySelectorAll('[data-testid="recent-row"]')];
+    expect(drRows.map((r) => r.textContent)).toEqual([
+      expect.stringMatching(/Tokyo clockContinue in Widget Builder · 5m ago/),
+      expect.stringMatching(/PR digestContinue in Widget Builder · 3h ago/),
+      expect.stringMatching(
+        /Untitled draftContinue in Widget Builder · 2d ago/,
+      ),
+    ]);
+    // Drafts have no Remove here (the Widgets page handles drafts).
+    expect(
+      screen.queryByRole("button", { name: "Remove Tokyo clock from Recent" }),
+    ).toBeNull();
   });
 
   test("a widget draft opens the Widget Builder on it and closes Create", async () => {
@@ -346,7 +359,7 @@ describe("CreateModal — Recent (2c-2, 4e-1)", () => {
   test("nothing in Recent → no section", async () => {
     setup();
     await screen.findByRole("button", { name: /^AI: Claude Code/ });
-    expect(screen.queryByText("Recent")).toBeNull();
+    expect(screen.queryByTestId("create-recent")).toBeNull();
   });
 });
 

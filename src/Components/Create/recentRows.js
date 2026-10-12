@@ -5,7 +5,7 @@
  */
 import { formatTokens } from "../../utils/runCostLabel";
 import { providerLabel } from "./planChecklist";
-import { draftAge } from "./createRouting";
+import { draftAge, RECENT_DRAFTS } from "./createRouting";
 
 /** How many rows the start screen shows. */
 export const RECENT_ROWS = 6;
@@ -80,4 +80,27 @@ export function recentRows(plans = [], drafts = [], limit = RECENT_ROWS) {
 /** "Ask Test · Building 3/7 · 21k tokens · 5m ago" */
 export function recentLine(row, now = Date.now()) {
   return `${row.title} · ${row.status} · ${draftAge(row.updatedAt, now)}`;
+}
+
+/**
+ * Recent split in two (fix/recent-sections): conversations — questions and
+ * plans — and unfinished widgets (Widget Builder drafts), which open the
+ * builder to carry on. Same row shape as recentRows.
+ * @returns {{ conversations: object[], drafts: object[], moreDrafts: number }}
+ */
+export function recentSections(
+  plans = [],
+  drafts = [],
+  { conversations = RECENT_ROWS, unfinished = RECENT_DRAFTS } = {},
+) {
+  const rows = recentRows(plans, drafts, Infinity);
+  const conv = rows.filter((r) => r.kind !== "widget-draft");
+  const dr = rows
+    .filter((r) => r.kind === "widget-draft")
+    .map((r) => ({ ...r, status: "Continue in Widget Builder" }));
+  return {
+    conversations: conv.slice(0, conversations),
+    drafts: dr.slice(0, unfinished),
+    moreDrafts: Math.max(0, dr.length - unfinished),
+  };
 }

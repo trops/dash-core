@@ -108,3 +108,23 @@ test("Back to Recent; collapsed renders nothing but still hears a fold", async (
     expect(screen.getByTestId("create-dock-recent")).toBeInTheDocument(),
   );
 });
+
+test("Recent in two sections; Make something new opens Create full size (fix/recent-sections)", async () => {
+  render(<CreateDockPanel />);
+  const conv = await screen.findByTestId("recent-conversations");
+  expect(conv).toHaveTextContent("Questions & plans");
+  expect(conv).toHaveTextContent("Ask Test");
+  const dr = screen.getByTestId("recent-drafts");
+  expect(dr).toHaveTextContent("Unfinished widgets");
+  expect(dr).toHaveTextContent("Clock");
+  expect(dr).toHaveTextContent("Continue in Widget Builder");
+  const onOpen = jest.fn();
+  window.addEventListener("dash:open-create", onOpen);
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Make something new — opens Create full size",
+    }),
+  );
+  window.removeEventListener("dash:open-create", onOpen);
+  expect(onOpen.mock.calls[0][0].detail).toEqual({ type: "dashboard" });
+});
