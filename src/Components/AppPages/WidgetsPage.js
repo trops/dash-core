@@ -449,7 +449,9 @@ export const WidgetsPage = ({
   credentials = null,
   onOpenWorkspace = null,
   onOpenPrivacySettings = null,
-  // { action: "discover" | "zip" | "folder", nonce } from the Create screen.
+  // { action: "discover" | "zip" | "folder" | "select", nonce, package?,
+  // query? } from the Create screen — select opens one of the user's
+  // packages; discover can start on a search (the Scout's registry find).
   installRequest = null,
   createRequested = false,
   onCreateAcknowledged = null,
@@ -539,9 +541,19 @@ export const WidgetsPage = ({
   // The Create screen's start-without-AI row: browse the registry, install
   // from a zip or load a folder, right here.
   useEffect(() => {
-    if (installRequest && installRequest.action) pick(installRequest.action);
+    if (!installRequest || !installRequest.action) return;
+    if (installRequest.action === "select") {
+      const want = String(installRequest.package || "").toLowerCase();
+      const pkg = orgs
+        .flatMap((o) => o.packages)
+        .find((p) => String(p.id).toLowerCase() === want);
+      setMode(null);
+      if (pkg) setSelection({ packageId: pkg.id });
+      return;
+    }
+    pick(installRequest.action);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [installRequest && installRequest.nonce]);
+  }, [installRequest && installRequest.nonce, widgets.length]);
 
   const updatePackage = async (pkg) => {
     const ok = await ensureAuthed({
@@ -613,7 +625,16 @@ export const WidgetsPage = ({
   if (mode === "picker" || (mode === "result" && !install.result)) {
     detail = <InstallWidgetPicker onSelect={pick} />;
   } else if (mode === "discover") {
-    detail = <DiscoverWidgetsDetail onBack={() => setMode("picker")} />;
+    detail = (
+      <DiscoverWidgetsDetail
+        onBack={() => setMode("picker")}
+        initialQuery={
+          installRequest && installRequest.action === "discover"
+            ? installRequest.query || null
+            : null
+        }
+      />
+    );
   } else if (mode === "result") {
     detail = (
       <InstallResult

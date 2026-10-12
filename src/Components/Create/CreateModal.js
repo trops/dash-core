@@ -19,6 +19,7 @@ import { ComponentManager } from "../../ComponentManager";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { useAiBackend } from "../../hooks/useAiBackend";
 import { getWidgetBuilderRenderer } from "../../utils/widgetBuilderRenderer";
+import { CreateScoutStep } from "./CreateScoutStep";
 import {
   CREATE_TYPES,
   PROMPT_PLACEHOLDER,
@@ -71,6 +72,9 @@ export const CreateModal = ({
   onStartWithoutAi = null,
   onBotCreated = null,
   onOpenAiSettings = null,
+  // Open a widget the Scout found: ({ source, name, package }) — the host
+  // shows it on the Widgets page (yours) or in the registry (to install).
+  onOpenWidget = null,
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const appContext = useContext(AppContext) || {};
@@ -87,6 +91,8 @@ export const CreateModal = ({
   // null = not building; { initialPrompt, resumeDraftId, title } = the Widget
   // Builder inside Create.
   const [builderStep, setBuilderStep] = useState(null);
+  // null = no search; { prompt, detail } = the Scout looking first (slice 4).
+  const [scoutStep, setScoutStep] = useState(null);
   const [bots, setBots] = useState(EMPTY);
   // Recent Widget Builder drafts (newest first) — "Continue a draft".
   const [drafts, setDrafts] = useState(EMPTY);
@@ -150,6 +156,7 @@ export const CreateModal = ({
   // the start screen — never a flash of the last builder, which would rerun
   // its startup (chat reset, draft resume) before the reset effect.
   const close = () => {
+    setScoutStep(null);
     setBuilderStep(null);
     setBotForm(null);
     setIsOpen(false);
@@ -182,7 +189,17 @@ export const CreateModal = ({
     const action = routeCreate({ type, prompt, workspaceId });
     if (!action) return;
     if (action.kind === "widget-builder") {
-      openBuilder(action.detail, "New widget");
+      // The Scout looks for something that already does this first (CRE-009).
+      if (
+        action.detail &&
+        action.detail.prompt &&
+        typeof window !== "undefined" &&
+        window.mainApi?.bots?.listDashTeam
+      ) {
+        setScoutStep({ prompt: action.detail.prompt, detail: action.detail });
+      } else {
+        openBuilder(action.detail, "New widget");
+      }
     } else if (action.kind === "bot-form") {
       setBotForm({ bot: action.bot, workspaceId: action.workspaceId });
     }
@@ -361,6 +378,21 @@ export const CreateModal = ({
     </div>
   );
 
+  const scout = scoutStep && !builderStep && (
+    <CreateScoutStep
+      prompt={scoutStep.prompt}
+      onBuildNew={() => {
+        const { detail } = scoutStep;
+        setScoutStep(null);
+        openBuilder(detail, "New widget");
+      }}
+      onUse={(match) => {
+        close();
+        if (onOpenWidget) onOpenWidget(match);
+      }}
+    />
+  );
+
   const builder = builderStep && Builder && (
     <div className="flex-1 min-h-0 flex flex-col">
       <Builder
@@ -379,10 +411,13 @@ export const CreateModal = ({
   // start screen (the prompt is kept).
   const stepTitle = builderStep
     ? builderStep.title || "New widget"
-    : botForm
-      ? "New bot"
-      : null;
+    : scoutStep
+      ? "Looking first"
+      : botForm
+        ? "New bot"
+        : null;
   const back = () => {
+    setScoutStep(null);
     setBuilderStep(null);
     setBotForm(null);
   };
@@ -425,7 +460,7 @@ export const CreateModal = ({
           </div>
           <ButtonIcon icon="xmark" onClick={close} ariaLabel="Close" />
         </div>
-        {builder || (botForm ? form : start)}
+        {builder || scout || (botForm ? form : start)}
       </div>
     </Modal>
   );

@@ -222,3 +222,18 @@ describe("Dash team instructions (slice 3c)", () => {
     assert.equal(builder.history.length, 3);
   });
 });
+
+describe("Dash team instructions (slice 4)", () => {
+  it("the Scout ends with its matches for Create; earlier text upgrades", () => {
+    const scout = ROLES.find((r) => r.role === "scout");
+    assert.match(scout.instructions, /<matches><\/matches>/);
+    assert.equal(scout.history.length, 2);
+    const bots = ROLE_IDS.map((r) => teamBot(r));
+    bots[1].instructions = scout.history[0];
+    const plan = planEnsureDashTeam(bots);
+    assert.deepEqual(
+      plan.map((p) => [p.action, p.role]),
+      [["upgrade", "scout"]],
+    );
+  });
+});

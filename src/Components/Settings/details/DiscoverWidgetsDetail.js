@@ -31,7 +31,7 @@ import { useWidgetRegistryVersion } from "../../../hooks/useWidgetRegistryVersio
  * Contains a back button, search input, scrollable package list, and when a
  * package is selected shows RegistryPackageDetail inline.
  */
-export const DiscoverWidgetsDetail = ({ onBack }) => {
+export const DiscoverWidgetsDetail = ({ onBack, initialQuery = null }) => {
   const { currentTheme } = useContext(ThemeContext);
   const appContext = useContext(AppContext);
   const providers = appContext?.providers || {};
@@ -57,6 +57,12 @@ export const DiscoverWidgetsDetail = ({ onBack }) => {
   } = useRegistrySearch();
 
   const [selectedPackageName, setSelectedPackageName] = useState(null);
+
+  // Start on a search (the Scout's registry find in Create, slice 4).
+  useEffect(() => {
+    if (initialQuery) setSearchQuery(initialQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuery]);
   const [toolConflictWarning, setToolConflictWarning] = useState(null);
 
   // Auth state — used to nudge unauthenticated users toward signing in

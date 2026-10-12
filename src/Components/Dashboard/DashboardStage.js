@@ -1312,6 +1312,33 @@ const DashboardStageInner = ({
     }
   }
 
+  // A widget the Scout found in Create: one of the user's → its page on the
+  // Widgets page; a registry one → the registry search, to install.
+  function handleOpenScoutMatch(match) {
+    if (!match) return;
+    if (match.source === "Registry") {
+      // The registry matches a phrase: the widget's name finds it.
+      handleOpenPageGuarded("widgets", {
+        widgetLink: {
+          action: "discover",
+          query: match.name,
+          nonce: Date.now(),
+        },
+      });
+      return;
+    }
+    // "ai-built.x.Comp" (a component id) or "@ai-built/x" → "@ai-built/x".
+    const raw = String(match.package || "");
+    const parts = raw.split(".");
+    const pkg =
+      !raw.includes("/") && parts.length >= 3
+        ? `@${parts[0]}/${parts[1]}`
+        : raw;
+    handleOpenPageGuarded("widgets", {
+      widgetLink: { action: "select", package: pkg, nonce: Date.now() },
+    });
+  }
+
   function handleBotCreated(saved) {
     handleOpenPageGuarded("bots");
     window.dispatchEvent(
@@ -2980,6 +3007,7 @@ const DashboardStageInner = ({
               onStartWithoutAi={handleStartWithoutAi}
               onBotCreated={handleBotCreated}
               onOpenAiSettings={() => openAppSettings("ai-assistant")}
+              onOpenWidget={handleOpenScoutMatch}
             />
 
             <DashboardWizardModal
