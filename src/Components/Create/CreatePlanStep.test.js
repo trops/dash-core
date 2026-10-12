@@ -7,6 +7,15 @@ import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { CreatePlanStep, withoutPlan } from "./CreatePlanStep";
 
+// The Providers screen (Connect, phase 4b) pulls in the whole app.
+jest.mock("../Settings/sections/ProvidersSection", () => ({
+  ProvidersSection: (props) => (
+    <div data-testid="providers-section">
+      {String(props.initialProviderType)}
+    </div>
+  ),
+}));
+
 const team = [
   {
     id: "b_planner",
@@ -112,7 +121,7 @@ test("the plan card: pieces by group and source, before building, access, estima
   expect(screen.getAllByText("New").length).toBe(2);
   expect(screen.getByText("Bots")).toBeInTheDocument();
   expect(screen.getByTestId("plan-before")).toHaveTextContent(
-    "Install @trops/algolia",
+    "Install Algolia Search · @trops/algolia",
   );
   expect(screen.getByTestId("plan-before")).toHaveTextContent("Connect Gmail");
   expect(screen.getByTestId("plan-access")).toHaveTextContent(
@@ -125,7 +134,7 @@ test("the plan card: pieces by group and source, before building, access, estima
   expect(est).toHaveTextContent("planning so far 2.3k");
   expect(est).toHaveTextContent("included in your plan");
   expect(est).toHaveTextContent("To run: about $0.04 per run");
-  expect(card).toHaveTextContent("Nothing has been built or installed.");
+  expect(card).toHaveTextContent("Nothing has been built or installed yet.");
 });
 
 test("a paused Planner says so", async () => {

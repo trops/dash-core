@@ -7,6 +7,15 @@ import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { CreateScoutStep } from "./CreateScoutStep";
 
+// The Providers screen (Connect, phase 4b) pulls in the whole app.
+jest.mock("../Settings/sections/ProvidersSection", () => ({
+  ProvidersSection: (props) => (
+    <div data-testid="providers-section">
+      {String(props.initialProviderType)}
+    </div>
+  ),
+}));
+
 const scout = { id: "b_scout", role: "scout", name: "Scout", paused: false };
 
 function setup({ team = [scout], record, pending = false } = {}) {
