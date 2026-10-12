@@ -241,6 +241,10 @@
         "additionalProperties": false
       },
       "default": []
+    },
+    "team": {
+      "type": "object",
+      "description": "The dashboard's bots as a team manifest (bot-team): members by role, their results, and wiring between them and the dashboard's widgets by layout widget id (create-entry 5a, US-027). Checked by teamManifest.validateTeamManifest."
     }
   },
   "additionalProperties": false

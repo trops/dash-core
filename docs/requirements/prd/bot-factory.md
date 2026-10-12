@@ -1090,13 +1090,13 @@ accepted suggestion in the form; the audit log records the install and grant.
 
 **Acceptance Criteria:**
 
--   [ ] AC1: `.dashboard.json` (dashboard-marketplace PRD) gains a `bots` array holding embedded bot templates or registry references, plus bot↔widget wiring expressed with the dashboard's layout-local widget IDs, and an optional `project` block.
+-   [~] AC1 (create-entry 5a-1: an optional `team` block — the bot-team manifest — with embedded bots, their results, bot↔bot wiring and bot↔widget `triggers`/`listeners` by layout-local widget id; Export ZIP includes it by default, "Export ZIP without bots" leaves it out; registry references and `project` not yet): `.dashboard.json` (dashboard-marketplace PRD) gains a `bots` array holding embedded bot templates or registry references, plus bot↔widget wiring expressed with the dashboard's layout-local widget IDs, and an optional `project` block.
 -   [ ] AC2: PublishDashboardModal gains an "Include bots" section listing the workspace's bots with checkboxes; included bots are exported as templates per US-026 (install variables suggested automatically for values like repo names and channels).
 -   [ ] AC3: Before import, a single **review screen** shows everything the package will add: widgets, bots (instructions, tier, schedules, subscriptions), MCP servers and requested tools per bot, providers needed, and an estimated monthly cost at the declared schedules.
--   [ ] AC4: On import, the workspace is created, widgets installed, and bots created **in setup state**: not running, schedules and subscriptions inactive.
+-   [x] AC4 (create-entry 5a-1: import from file; registry install is 5a-2): On import, the workspace is created, widgets installed, and bots created **in setup state**: not running, schedules and subscriptions inactive.
 -   [ ] AC5: A **setup checklist** in the new workspace walks through what remains: fill install variables, configure the AI provider, connect MCP servers (via US-025), review each bot's requested access (US-029), and set budgets (defaulting to the package's suggestion, capped by the user's global budget).
 -   [ ] AC6: Each bot activates only when its own checklist items are complete; the user can activate bots individually or all at once.
--   [ ] AC7: Bot↔widget wiring is remapped to the new workspace's widget instances at import; events and memory are scoped to the new workspace by default.
+-   [x] AC7 (create-entry 5a-1): Bot↔widget wiring is remapped to the new workspace's widget instances at import; events and memory are scoped to the new workspace by default.
 -   [ ] AC8: The post-install summary extends the dashboard summary: "3 widgets installed, 2 bots added (setup needed), 4 events wired, 2 MCP servers to connect."
 
 **Edge Cases:**

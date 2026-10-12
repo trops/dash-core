@@ -169,7 +169,7 @@ Nothing plans the three pieces together, so the user has to design the wiring th
 
 ### Follow-ups found in Release 1
 
-- Team export (teamManifest) and bot packages don't carry `publishes` or result wiring yet.
+- ~~Team export (teamManifest) and bot packages don't carry `publishes` or result wiring yet.~~ Done in create-entry 5a-1: members keep `publishes`; wiring may be on `result.<name>`; teams exported with a dashboard carry `triggers` (widget event → role) and `listeners` (role's result → widget handler), re-pointed on import.
 - Widgets built by the Widget Builder have no name in `.dash.js`, so Add Widget lists them as "My Workspace".
 - The install permission review labels `shell.openExternal` as "SHELL", which reads like shell access; it only opens http/https links in the browser.
 
