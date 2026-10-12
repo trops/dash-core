@@ -23,6 +23,15 @@ import { AppContext } from "../../Context/App/AppContext";
 import { CreateModal } from "./CreateModal";
 import { setWidgetBuilderRenderer } from "../../utils/widgetBuilderRenderer";
 
+// The Providers screen (Connect, phase 4b) pulls in the whole app.
+jest.mock("../Settings/sections/ProvidersSection", () => ({
+  ProvidersSection: (props) => (
+    <div data-testid="providers-section">
+      {String(props.initialProviderType)}
+    </div>
+  ),
+}));
+
 jest.mock("../../ComponentManager", () => ({
   ComponentManager: { config: () => null },
 }));

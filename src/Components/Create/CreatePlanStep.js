@@ -1,10 +1,33 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Button, Button3, SectionLabel, TextArea } from "@trops/dash-react";
+import React, { useContext, useEffect, useRef, useState } from "react";
+import {
+  Button,
+  Button3,
+  ConfirmationModal,
+  SectionLabel,
+  TextArea,
+} from "@trops/dash-react";
+import { AppContext } from "../../Context/App/AppContext";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { runTeamRole } from "../../utils/teamRoles";
 import { extractPlan, validatePlan } from "../../utils/teamPlan";
 import { estimatePlan, describeEstimate } from "../../utils/planEstimate";
 import { runCostLabel, usageTokens } from "../../utils/runCostLabel";
+import {
+  buildChecklist,
+  buildButtonLabel,
+  countsLine,
+  editNote,
+  isDone,
+  nextOpen,
+  providerTypesOf,
+  removePiece,
+  swapPiece,
+} from "./planChecklist";
+import {
+  ConnectDialog,
+  InstallReviewDialog,
+  SwapPicker,
+} from "./PlanChecklistDialogs";
 
 /**
  * CreatePlanStep — Type: Dashboard (create-entry PRD CRE-003 AC1/AC5,
@@ -13,6 +36,12 @@ import { runCostLabel, usageTokens } from "../../utils/runCostLabel";
  * hands back a plan — bots, widgets and layout tagged by where each comes
  * from, what's needed before building, how to tell it worked, what the bots
  * can and can't do, and an estimate. Nothing is built here (building is 4d).
+ *
+ * Before building (4b): each install is reviewed and approved, each missing
+ * provider connected (in a window over Create), other steps OK'd. The Build
+ * button names what's still open and walks through it. Pieces can be swapped
+ * (the Scout finds alternatives) or removed; those edits ride along with the
+ * next message so the Planner keeps them.
  *
  * Each reply continues the Planner's session, so it remembers the answers.
  */
@@ -29,21 +58,6 @@ const GROUPS = [
   ["widget", "Widgets"],
   ["layout", "Layout"],
 ];
-const BEFORE_LABEL = {
-  connect: "Connect",
-  install: "Install",
-  approve: "Approve",
-};
-
-/** "Install @x" when the step reads "Install @x from …" already. */
-function startsWithLabel(b) {
-  const label = String(BEFORE_LABEL[b.kind] || b.kind || "").toLowerCase();
-  return String(b.what || "")
-    .trim()
-    .toLowerCase()
-    .startsWith(label);
-}
-
 /** The Planner's words without its <plan> block. */
 export function withoutPlan(text) {
   return String(text || "")
@@ -61,6 +75,7 @@ function isHandoff(event) {
 
 export const CreatePlanStep = ({ prompt }) => {
   const { muted, strong, hairline } = useConfigTokens();
+  const app = useContext(AppContext) || {};
   // [{ who: "you" | "planner" | "note", text, meta? }]
   const [messages, setMessages] = useState([{ who: "you", text: prompt }]);
   const [busy, setBusy] = useState(true);
@@ -71,6 +86,15 @@ export const CreatePlanStep = ({ prompt }) => {
   const [reply, setReply] = useState("");
   // Several questions: picks per question, sent together ({ index: option }).
   const [picks, setPicks] = useState({});
+  // Before building: { [item.id]: "approved" | "done" }, panel edits not yet
+  // told to the Planner, the open window, the piece being swapped, and
+  // whether Build is walking through the open items.
+  const [checks, setChecks] = useState({});
+  const [edits, setEdits] = useState([]);
+  const [dialog, setDialog] = useState(null);
+  const [swapIndex, setSwapIndex] = useState(null);
+  const [walking, setWalking] = useState(false);
+  const [ready, setReady] = useState(false);
   const started = useRef(false);
   const alive = useRef(true);
 
@@ -117,7 +141,11 @@ export const CreatePlanStep = ({ prompt }) => {
     }
     setPlanningTokens((n) => n + usageTokens(res.usage));
     const found = extractPlan(res.output);
-    if (found) setPlan(found);
+    if (found) {
+      setPlan(found);
+      setSwapIndex(null);
+      setReady(false);
+    }
     setMessages((m) => [
       ...m,
       {
@@ -152,7 +180,9 @@ export const CreatePlanStep = ({ prompt }) => {
     setMessages((m) => [...m, { who: "you", text: t }]);
     setReply("");
     setPicks({});
-    ask(t, true);
+    const note = editNote(edits);
+    setEdits([]);
+    ask(note ? `${note}\n${t}` : t, true);
   };
 
   // One question: a tap answers it. Several: taps mark answers, then send.
@@ -176,6 +206,39 @@ export const CreatePlanStep = ({ prompt }) => {
   const check = plan ? validatePlan(plan) : null;
   const estimate =
     plan && pieces.length ? estimatePlan(plan, { team, planningTokens }) : null;
+  const have = providerTypesOf(app.providers);
+  const checklist = plan ? buildChecklist(plan, have) : [];
+
+  const openItem = (item) => {
+    if (!item) {
+      setWalking(false);
+      setReady(true);
+      return;
+    }
+    setDialog({ kind: item.kind, item });
+  };
+  // Build walks through what's open, one window at a time (CRE-003 AC3).
+  const build = () => {
+    setWalking(true);
+    openItem(nextOpen(checklist, checks, have));
+  };
+  const finish = (
+    item,
+    status,
+    nextChecks = { ...checks, [item.id]: status },
+  ) => {
+    setChecks(nextChecks);
+    setDialog(null);
+    if (walking) {
+      const rest = checklist.filter((it) => it.id !== item.id);
+      openItem(nextOpen(rest, nextChecks, have));
+    }
+  };
+  const editPlan = (nextPlan, note) => {
+    setPlan(nextPlan);
+    setEdits((e) => [...e, note]);
+    setReady(false);
+  };
 
   return (
     <div className="flex-1 min-h-0 flex flex-col" data-testid="create-plan">
@@ -280,6 +343,9 @@ export const CreatePlanStep = ({ prompt }) => {
               <span className={`text-lg font-semibold ${strong}`}>
                 {plan.summary}
               </span>
+              <span className={`text-sm ${muted}`} data-testid="plan-counts">
+                {countsLine(plan)}
+              </span>
 
               {GROUPS.map(([kind, label]) => {
                 const group = pieces.filter((p) => p && p.kind === kind);
@@ -287,49 +353,113 @@ export const CreatePlanStep = ({ prompt }) => {
                 return (
                   <div key={kind} className="flex flex-col gap-2">
                     <SectionLabel text={label} />
-                    {group.map((p, i) => (
-                      <div
-                        key={i}
-                        className="flex flex-row items-center gap-3 text-sm"
-                      >
-                        <span
-                          className={`text-xs font-semibold uppercase tracking-wider flex-shrink-0 ${muted}`}
-                        >
-                          {SOURCE_TAG[p.source] || p.source}
-                        </span>
-                        <span className="flex-1 min-w-0 flex flex-col">
-                          <span className={`font-medium truncate ${strong}`}>
-                            {p.name}
-                          </span>
-                          <span className={`text-xs truncate ${muted}`}>
-                            {[
-                              p.package,
-                              (p.providers || []).join(", "),
-                              p.notes,
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </span>
-                        </span>
-                      </div>
-                    ))}
+                    {group.map((p) => {
+                      const index = pieces.indexOf(p);
+                      return (
+                        <div key={index} className="flex flex-col gap-2">
+                          <div className="flex flex-row items-center gap-3 text-sm">
+                            <span
+                              className={`text-xs font-semibold uppercase tracking-wider flex-shrink-0 ${muted}`}
+                            >
+                              {SOURCE_TAG[p.source] || p.source}
+                            </span>
+                            <span className="flex-1 min-w-0 flex flex-col">
+                              <span
+                                className={`font-medium truncate ${strong}`}
+                              >
+                                {p.name}
+                              </span>
+                              <span className={`text-xs truncate ${muted}`}>
+                                {[
+                                  p.package,
+                                  (p.providers || []).join(", "),
+                                  p.notes,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </span>
+                            </span>
+                            {p.kind === "widget" ? (
+                              <Button3
+                                title="Swap…"
+                                size="sm"
+                                onClick={() => setSwapIndex(index)}
+                              />
+                            ) : null}
+                            <Button3
+                              title="Remove"
+                              size="sm"
+                              onClick={() =>
+                                editPlan(
+                                  removePiece(plan, index),
+                                  `removed ${p.name}`,
+                                )
+                              }
+                            />
+                          </div>
+                          {swapIndex === index ? (
+                            <SwapPicker
+                              piece={p}
+                              onCancel={() => setSwapIndex(null)}
+                              onPick={(m) => {
+                                setSwapIndex(null);
+                                editPlan(
+                                  swapPiece(plan, index, m),
+                                  m.source === "New"
+                                    ? `build ${p.name} new`
+                                    : `swapped ${p.name} for ${m.name}`,
+                                );
+                              }}
+                            />
+                          ) : null}
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               })}
 
-              {(plan.beforeBuilding || []).length ? (
-                <div className="flex flex-col gap-1" data-testid="plan-before">
+              {checklist.length ? (
+                <div className="flex flex-col gap-2" data-testid="plan-before">
                   <SectionLabel text="Before building" />
-                  {plan.beforeBuilding.map((b, i) => (
-                    <span key={i} className="text-sm">
-                      {startsWithLabel(b) ? null : (
-                        <span className={`font-medium ${strong}`}>
-                          {(BEFORE_LABEL[b.kind] || b.kind) + " "}
+                  {checklist.map((it) => {
+                    const done = isDone(it, checks, have);
+                    return (
+                      <div
+                        key={it.id}
+                        className="flex flex-row items-center gap-3 text-sm"
+                        data-testid="checklist-item"
+                      >
+                        <span className={`flex-1 min-w-0 ${done ? muted : ""}`}>
+                          {done ? "✓ " : ""}
+                          {it.label}
+                          {it.package ? (
+                            <span className={`text-xs ${muted}`}>
+                              {" "}
+                              · {it.package}
+                            </span>
+                          ) : null}
                         </span>
-                      )}
-                      {b.what}
-                    </span>
-                  ))}
+                        {done ? null : (
+                          <Button3
+                            title={
+                              it.kind === "install"
+                                ? "Review & approve"
+                                : it.kind === "connect"
+                                  ? "Connect"
+                                  : "OK"
+                            }
+                            size="sm"
+                            onClick={() =>
+                              it.kind === "approve"
+                                ? finish(it, "done")
+                                : openItem(it)
+                            }
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               ) : null}
 
@@ -368,14 +498,78 @@ export const CreatePlanStep = ({ prompt }) => {
                   The plan isn't complete yet: {check.errors.join(" ")}
                 </span>
               ) : null}
-              <span className={`text-xs ${muted}`}>
-                Nothing has been built or installed. Building from a plan comes
-                next — ask for changes below.
-              </span>
+              <div className="flex flex-row flex-wrap items-center gap-3">
+                <Button
+                  title={buildButtonLabel(checklist, checks, have)}
+                  onClick={build}
+                />
+                <span className={`text-xs ${muted}`} data-testid="plan-ready">
+                  {ready
+                    ? "Ready to build — building from a plan arrives in the next update. Nothing has been built or installed."
+                    : "Nothing has been built or installed yet."}
+                </span>
+              </div>
             </div>
           ) : null}
         </div>
       </div>
+
+      {dialog && dialog.kind === "install" ? (
+        <InstallReviewDialog
+          item={dialog.item}
+          onApprove={() => finish(dialog.item, "approved")}
+          onSkip={() => {
+            const it = dialog.item;
+            const piece = pieces[it.pieceIndex];
+            editPlan(
+              removePiece(plan, it.pieceIndex),
+              `removed ${piece ? piece.name : it.package}`,
+            );
+            setDialog(null);
+            setWalking(false);
+          }}
+          onClose={() => {
+            setDialog(null);
+            setWalking(false);
+          }}
+        />
+      ) : null}
+      {dialog && dialog.kind === "connect" ? (
+        <ConnectDialog
+          item={dialog.item}
+          onClose={async () => {
+            const it = dialog.item;
+            setDialog(null);
+            if (app.refreshProviders) {
+              try {
+                await app.refreshProviders();
+              } catch (_e) {
+                // keep going; the item stays open
+              }
+            }
+            // Walk on only if it really got connected (no loop otherwise).
+            setWalking(false);
+            void it;
+          }}
+        />
+      ) : null}
+      {dialog && dialog.kind === "approve" ? (
+        <ConfirmationModal
+          isOpen
+          setIsOpen={() => {
+            setDialog(null);
+            setWalking(false);
+          }}
+          title="Before building"
+          message={dialog.item.label}
+          confirmLabel="OK"
+          onConfirm={() => finish(dialog.item, "done")}
+          onCancel={() => {
+            setDialog(null);
+            setWalking(false);
+          }}
+        />
+      ) : null}
 
       <div className={`flex-shrink-0 border-t ${hairline}`}>
         <div className="mx-auto w-full max-w-3xl flex flex-row items-end gap-2 px-6 py-3">
