@@ -32,7 +32,7 @@ describe("DashboardStage — Create screen", () => {
       /window\.addEventListener\("dash:open-create", handler\)/,
     );
     expect(source).toMatch(
-      /setCreateRequest\(\{\s*type: d\.type \|\| "auto",\s*workspaceId: d\.workspaceId \?\? null,\s*recentId: d\.recentId \|\| null,\s*\}\)/,
+      /setCreateRequest\(\{\s*type: d\.type \|\| "auto",\s*workspaceId: d\.workspaceId \?\? null,\s*recentId: d\.recentId \|\| null,\s*seed: d\.seed \|\| null,\s*\}\)/,
     );
   });
 

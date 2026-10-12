@@ -42,7 +42,8 @@ function titleFor(entry) {
 /**
  * What Recent shows for an entry (the renderer turns it into words):
  *   status   draft | building | built | problems | waiting | stopped |
- *            interrupted | removed
+ *            interrupted | removed — and for a question (5e): asked |
+ *            answered
  *   progress { done, total } of the build's steps
  *   tokens   the build's tokens so far
  *   waitingFor  provider names the build waits for
@@ -60,6 +61,13 @@ function summarize(entry) {
     waitingFor: [],
     buildId: (entry.build && entry.build.buildId) || null,
   };
+  if (out.kind === "question") {
+    const messages = (entry.conversation && entry.conversation.messages) || [];
+    const last = messages[messages.length - 1];
+    // Messages are { who: "you" | "planner" | "note", text }.
+    out.status = last && last.who === "planner" ? "answered" : "asked";
+    return out;
+  }
   if (!state) return out;
   const steps = Array.isArray(state.steps) ? state.steps : [];
   out.progress = {
@@ -87,6 +95,8 @@ function summarize(entry) {
     }[state.status] || "draft";
   return out;
 }
+
+const KINDS = new Set(["plan", "question"]);
 
 class CreateRecent {
   /**
@@ -145,7 +155,7 @@ class CreateRecent {
    * change; messages keep the newest MAX_MESSAGES.
    * @returns the saved entry
    */
-  save({ id = null, prompt, conversation } = {}) {
+  save({ id = null, kind, prompt, conversation } = {}) {
     const blob = this._read();
     const now = this._now();
     const prev = (id && blob.entries[id]) || null;
@@ -153,7 +163,8 @@ class CreateRecent {
       ? { ...prev }
       : {
           id: id || this._newId(),
-          kind: "plan",
+          // A plan conversation, or a question (5e). Set once, when made.
+          kind: KINDS.has(kind) ? kind : "plan",
           prompt: "",
           createdAt: now,
           conversation: {},

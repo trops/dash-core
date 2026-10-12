@@ -101,7 +101,14 @@ describe("roleToolsFor", () => {
   it("gives each role only its tools", () => {
     assert.deepEqual(
       roleToolsFor("planner").map((t) => t.name),
-      ["search_library", "list_providers", "list_dashboards", "ask_role"],
+      [
+        "search_library",
+        "list_providers",
+        "list_dashboards",
+        "ask_role",
+        "bot_results",
+        "bot_runs",
+      ],
     );
     assert.deepEqual(
       roleToolsFor("scout").map((t) => t.name),
@@ -319,5 +326,62 @@ describe("search_library — found live (3a)", () => {
       describeProvider({ name: "Algolia", type: "algolia", credentials: true }),
       "Algolia (algolia) — credentials widgets can use (no tools)",
     );
+  });
+});
+
+describe("bot_results / bot_runs (phase 5e)", () => {
+  const H = 3600 * 1000;
+  const recent = new Date(Date.now() - 2 * H).toISOString();
+  const old = new Date(Date.now() - 48 * H).toISOString();
+  const more = {
+    botResults: () => [
+      {
+        botName: "Morning Briefer",
+        dashboard: "Morning Brief",
+        name: "brief",
+        label: "Brief",
+        summary: "3 meetings",
+        items: [{ title: "Design review", time: "9:30" }],
+        sentAt: recent,
+      },
+    ],
+    botRuns: () => [
+      {
+        botName: "Morning Briefer",
+        dashboard: "Morning Brief",
+        run: { endedAt: recent, status: "done", output: "Brief sent." },
+      },
+      {
+        botName: "Inbox Triager",
+        dashboard: null,
+        run: { endedAt: old, status: "error", error: "Gmail not connected" },
+      },
+    ],
+  };
+
+  it("the Planner reads results, fenced as data", async () => {
+    const r = await handleRoleTool(deps(more), as("planner"), "bot_results");
+    assert.equal(r.isError, false);
+    assert.match(r.text, /<dash_data>/);
+    assert.match(r.text, /Morning Briefer · Brief \(dashboard Morning Brief\)/);
+    assert.match(r.text, /Design review — time: 9:30/);
+  });
+
+  it("bot_runs filters by bot and by hours", async () => {
+    let r = await handleRoleTool(deps(more), as("planner"), "bot_runs", {
+      since_hours: 24,
+    });
+    assert.match(r.text, /Brief sent\./);
+    assert.doesNotMatch(r.text, /Inbox Triager/);
+    r = await handleRoleTool(deps(more), as("planner"), "bot_runs", {
+      bot: "inbox",
+    });
+    assert.match(r.text, /Error: Gmail not connected/);
+    assert.doesNotMatch(r.text, /Morning Briefer/);
+  });
+
+  it("only the Planner gets them", async () => {
+    const r = await handleRoleTool(deps(more), as("scout"), "bot_results");
+    assert.equal(r.isError, true);
   });
 });

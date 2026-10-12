@@ -1,7 +1,7 @@
 /**
  * recentRows.js — what Create's Recent shows (create-entry PRD CRE-007 AC2,
- * phase 4e-1): plan conversations (with their build's live status) and
- * Widget Builder drafts, newest first.
+ * phase 4e-1): plan conversations (with their build's live status),
+ * questions to the Planner (5e) and Widget Builder drafts, newest first.
  */
 import { formatTokens } from "../../utils/runCostLabel";
 import { providerLabel } from "./planChecklist";
@@ -22,6 +22,9 @@ const and = (names) =>
  */
 export function recentStatus(summary) {
   const s = summary || {};
+  if (s.kind === "question") {
+    return s.status === "answered" ? "Answered" : "Asked";
+  }
   switch (s.status) {
     case "building": {
       const p = s.progress || { done: 0, total: 0 };
@@ -49,16 +52,16 @@ export function recentStatus(summary) {
 const ms = (t) => (typeof t === "number" ? t : Date.parse(t) || 0);
 
 /**
- * Recent's rows, newest first: { key, kind: "plan"|"widget-draft", id,
+ * Recent's rows, newest first: { key, kind: "plan"|"question"|"widget-draft", id,
  * title, status, updatedAt (ms) }.
  */
 export function recentRows(plans = [], drafts = [], limit = RECENT_ROWS) {
   const rows = [
     ...(plans || []).map((p) => ({
       key: `plan:${p.id}`,
-      kind: "plan",
+      kind: p.kind === "question" ? "question" : "plan",
       id: p.id,
-      title: p.title || "Untitled plan",
+      title: p.title || (p.kind === "question" ? "Question" : "Untitled plan"),
       status: recentStatus(p),
       updatedAt: ms(p.updatedAt),
     })),

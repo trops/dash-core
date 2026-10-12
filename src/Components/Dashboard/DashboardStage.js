@@ -530,8 +530,9 @@ const DashboardStageInner = ({
     return () => window.removeEventListener("dash:open-bots-view", handler);
   }, [openBotsView]);
   // Open the Create screen from anywhere — Manage pages' New Widget / New Bot
-  // (create-entry PRD CRE-008). detail: { type, workspaceId, recentId }
-  // — recentId opens a plan conversation (Expand from the dock, 4e-2).
+  // (create-entry PRD CRE-008). detail: { type, workspaceId, recentId, seed }
+  // — recentId opens a plan conversation (Expand from the dock, 4e-2); seed
+  // starts one from a plan (Open as a plan from Ask, 5e).
   useEffect(() => {
     const handler = (e) => {
       const d = (e && e.detail) || {};
@@ -539,6 +540,7 @@ const DashboardStageInner = ({
         type: d.type || "auto",
         workspaceId: d.workspaceId ?? null,
         recentId: d.recentId || null,
+        seed: d.seed || null,
       });
     };
     window.addEventListener("dash:open-create", handler);
@@ -3045,6 +3047,7 @@ const DashboardStageInner = ({
               onOpenWidget={handleOpenScoutMatch}
               onOpenDashboard={handleOpenBuiltDashboard}
               initialRecentId={createRequest ? createRequest.recentId : null}
+              initialSeed={createRequest ? createRequest.seed : null}
               onOpenTheme={(theme) => {
                 setThemeEditorKey(null);
                 setThemeStartInCreate(false);
