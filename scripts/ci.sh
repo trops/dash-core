@@ -124,7 +124,7 @@ node --test electron/utils/safeJsExecutor.test.js
 
 # 6c2. Run safe-path containment pin
 step "Running safePath containment tests"
-node --test electron/utils/safePath.test.js
+node --test electron/utils/safePath.test.js electron/utils/scanWidgetBotCalls.test.js
 
 # 6c2b. Phase 5D — install-time manifest-signature verifier
 step "Running install-time manifest-signature verifier tests (Phase 5D)"
