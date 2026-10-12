@@ -467,6 +467,7 @@ function ConfirmationModal({
   confirmText,
   onConfirm,
   onCancel,
+  children,
 }) {
   // dash-react's real props are isOpen / confirmLabel / cancelLabel;
   // confirmText is kept for older callers. isOpen === false hides it.
@@ -475,7 +476,8 @@ function ConfirmationModal({
     "div",
     { "data-testid": "confirmation-modal" },
     React.createElement("span", null, title),
-    message ? React.createElement("span", null, message) : null,
+    // Like the real one: children win over message.
+    children || (message ? React.createElement("span", null, message) : null),
     React.createElement(
       "button",
       { onClick: onConfirm },

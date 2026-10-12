@@ -37,6 +37,10 @@ const {
   BOTS_START_PLAN_BUILD,
   BOTS_STOP_PLAN_BUILD,
   BOTS_GET_PLAN_BUILD,
+  BOTS_FIX_PLAN_BUILD,
+  BOTS_RETRY_PLAN_BUILD,
+  BOTS_RESUME_PLAN_BUILD,
+  BOTS_REMOVE_PLAN_BUILD,
   BOTS_SET_SETTINGS,
   BOTS_ASK_LEAD,
   BOTS_LIST_LEADS,
@@ -205,6 +209,18 @@ const botApi = {
     ipcRenderer.invoke(BOTS_STOP_PLAN_BUILD, { buildId }),
   getPlanBuild: (buildId) =>
     ipcRenderer.invoke(BOTS_GET_PLAN_BUILD, { buildId }),
+  /** Let Builder fix it (4d-3): resolves at once; progress on onPlanBuild. */
+  fixPlanBuild: (buildId, stepId) =>
+    ipcRenderer.invoke(BOTS_FIX_PLAN_BUILD, { buildId, stepId }),
+  /** Try a failed Dash step again. */
+  retryPlanBuild: (buildId, stepId) =>
+    ipcRenderer.invoke(BOTS_RETRY_PLAN_BUILD, { buildId, stepId }),
+  /** Run the steps that waited for a provider (now connected). */
+  resumePlanBuild: (buildId) =>
+    ipcRenderer.invoke(BOTS_RESUME_PLAN_BUILD, { buildId }),
+  /** Remove what the build made: { removed, kept } or { error }. */
+  removePlanBuild: (buildId) =>
+    ipcRenderer.invoke(BOTS_REMOVE_PLAN_BUILD, { buildId }),
   /** Global bot settings: { autoLeads, dashTeam: { models } }. */
   getSettings: () => ipcRenderer.invoke(BOTS_GET_SETTINGS),
   setSettings: (patch) => ipcRenderer.invoke(BOTS_SET_SETTINGS, { patch }),

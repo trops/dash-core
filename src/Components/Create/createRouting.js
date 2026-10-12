@@ -17,8 +17,7 @@ export const CREATE_TYPES = [
   {
     value: "dashboard",
     label: "Dashboard",
-    disabled: true,
-    hint: "Making whole dashboards with AI comes later — start one without AI below",
+    description: "Plan a whole dashboard with your Dash team",
   },
   {
     value: "theme",
@@ -29,25 +28,16 @@ export const CREATE_TYPES = [
 ];
 
 /**
- * The types on offer. Dashboard opens the Dash team's Planner (phase 4) —
- * behind the "createDashboardPreview" setting until building from a plan
- * ships, so nobody gets a plan they can't build yet.
+ * The types on offer. Dashboard opens the Dash team's Planner (phase 4); on
+ * for everyone since building, fixing and removing a build shipped (4d-3).
  */
-export function createTypes({ dashboardPreview = false } = {}) {
-  return CREATE_TYPES.map((t) =>
-    t.value === "dashboard" && dashboardPreview
-      ? {
-          value: "dashboard",
-          label: "Dashboard",
-          description: "Plan a whole dashboard with your Dash team (preview)",
-        }
-      : t,
-  );
+export function createTypes() {
+  return CREATE_TYPES;
 }
 
 /** A type the screen can open on; anything else falls back to Widget. */
-export function normalizeCreateType(type, opts = {}) {
-  const pickable = createTypes(opts)
+export function normalizeCreateType(type) {
+  const pickable = createTypes()
     .filter((t) => !t.disabled)
     .map((t) => t.value);
   return pickable.includes(type) ? type : "widget";

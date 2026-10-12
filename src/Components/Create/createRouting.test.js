@@ -9,12 +9,11 @@ import {
 } from "./createRouting";
 
 describe("createRouting (create-entry PRD CRE-001/005)", () => {
-  test("Widget and Bot can be picked; Dashboard and Theme say why not yet", () => {
+  test("Widget, Bot and Dashboard can be picked; Theme says why not yet", () => {
     const byValue = Object.fromEntries(CREATE_TYPES.map((t) => [t.value, t]));
     expect(byValue.widget.disabled).toBeFalsy();
     expect(byValue.bot.disabled).toBeFalsy();
-    expect(byValue.dashboard.disabled).toBe(true);
-    expect(byValue.dashboard.hint).toMatch(/without AI/);
+    expect(byValue.dashboard.disabled).toBeFalsy();
     expect(byValue.theme.disabled).toBe(true);
     expect(byValue.theme.hint).toMatch(/New theme/);
   });
@@ -22,7 +21,7 @@ describe("createRouting (create-entry PRD CRE-001/005)", () => {
   test("normalizeCreateType falls back to Widget for anything not pickable", () => {
     expect(normalizeCreateType("bot")).toBe("bot");
     expect(normalizeCreateType("widget")).toBe("widget");
-    expect(normalizeCreateType("dashboard")).toBe("widget");
+    expect(normalizeCreateType("theme")).toBe("widget");
     expect(normalizeCreateType(undefined)).toBe("widget");
   });
 
@@ -91,16 +90,12 @@ describe("createRouting (create-entry PRD CRE-001/005)", () => {
   });
 });
 
-describe("Type: Dashboard (phase 4a, preview)", () => {
-  test("hidden unless the preview setting is on", () => {
-    expect(normalizeCreateType("dashboard")).toBe("widget");
-    const on = createTypes({ dashboardPreview: true }).find(
-      (t) => t.value === "dashboard",
-    );
-    expect(on.disabled).toBeFalsy();
-    expect(normalizeCreateType("dashboard", { dashboardPreview: true })).toBe(
-      "dashboard",
-    );
+describe("Type: Dashboard (phase 4a; on for everyone since 4d-3)", () => {
+  test("offered without a setting, no longer a preview", () => {
+    const dash = createTypes().find((t) => t.value === "dashboard");
+    expect(dash.disabled).toBeFalsy();
+    expect(dash.description).not.toMatch(/preview/);
+    expect(normalizeCreateType("dashboard")).toBe("dashboard");
   });
 
   test("Send opens the Planner with the prompt", () => {

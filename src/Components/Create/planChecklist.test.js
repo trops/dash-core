@@ -11,6 +11,8 @@ import {
   editNote,
   botSummary,
   scheduleLabel,
+  isSkipped,
+  providerLabel,
 } from "./planChecklist";
 
 const plan = {
@@ -158,5 +160,39 @@ describe("planned bots (4d-2)", () => {
     const plan = { summary: "x", pieces: [widget, bot] };
     expect(removePiece(plan, 0).pieces[0].on).toEqual([]);
     expect(removePiece(plan, 1).pieces[0].listens).toEqual([]);
+  });
+});
+
+describe("skipping a sign-in (4d-3, CRE-004 AC5)", () => {
+  const items = [
+    {
+      id: "connect:gmail",
+      kind: "connect",
+      label: "Connect Gmail",
+      providerType: "gmail",
+    },
+  ];
+  test("a skipped sign-in lets Build go ahead, and Build names it", () => {
+    const state = { "connect:gmail": "skipped" };
+    expect(isDone(items[0], state)).toBe(true);
+    expect(isSkipped(items[0], state)).toBe(true);
+    expect(nextOpen(items, state)).toBeNull();
+    expect(buildButtonLabel(items, state)).toBe("Build without Gmail");
+    expect(
+      buildButtonLabel(
+        [...items, { ...items[0], id: "connect:slack", providerType: "slack" }],
+        { "connect:gmail": "skipped", "connect:slack": "skipped" },
+      ),
+    ).toBe("Build without 2 accounts");
+  });
+  test("connected later, it's no longer skipped", () => {
+    const state = { "connect:gmail": "skipped" };
+    const have = new Set(["gmail"]);
+    expect(isSkipped(items[0], state, have)).toBe(false);
+    expect(buildButtonLabel(items, state, have)).toBe("Build");
+  });
+  test("providerLabel", () => {
+    expect(providerLabel("gmail")).toBe("Gmail");
+    expect(providerLabel("Google Calendar")).toBe("Google Calendar");
   });
 });

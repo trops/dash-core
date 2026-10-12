@@ -18,6 +18,7 @@ import {
   countsLine,
   editNote,
   isDone,
+  isSkipped,
   nextOpen,
   providerTypesOf,
   removePiece,
@@ -30,6 +31,27 @@ import {
   SwapPicker,
 } from "./PlanChecklistDialogs";
 import { CreateBuildingStep } from "./CreateBuildingStep";
+
+/** "Removed the Ask Test dashboard, 1 bot and 1 widget." (4d-3) */
+export function removedText(res) {
+  const r = (res && res.removed) || {};
+  const parts = [];
+  if (r.dashboard) parts.push(`the "${r.dashboard}" dashboard`);
+  const n = (list, one) =>
+    list && list.length
+      ? `${list.length} ${one}${list.length === 1 ? "" : "s"}`
+      : null;
+  [n(r.bots, "bot"), n(r.widgets, "widget")].forEach((p) => p && parts.push(p));
+  const kept = (res && res.kept && res.kept.installs) || [];
+  const problems = (res && res.problems) || [];
+  return (
+    (parts.length
+      ? `Removed ${parts.join(", ").replace(/, ([^,]*)$/, " and $1")}.`
+      : "Nothing was left to remove.") +
+    (kept.length ? ` Still installed: ${kept.join(", ")}.` : "") +
+    (problems.length ? ` Couldn't remove: ${problems.join("; ")}.` : "")
+  );
+}
 
 /**
  * CreatePlanStep — Type: Dashboard (create-entry PRD CRE-003 AC1/AC5,
@@ -127,6 +149,10 @@ export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
   // The running build (4d): { buildId, state } once Build starts.
   const [build, setBuild] = useState(null);
   const [buildError, setBuildError] = useState(null);
+  // Edit plan (4d-3): the earlier build whose work the next Build reuses.
+  const [resumeFrom, setResumeFrom] = useState(null);
+  // Remove what was built (4d-3): what was removed, said on the plan.
+  const [removedNote, setRemovedNote] = useState(null);
   // Bots whose full instructions are showing on the plan card.
   const [openBots, setOpenBots] = useState([]);
   const started = useRef(false);
@@ -254,11 +280,16 @@ export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
       return;
     }
     try {
-      const res = await bots.startPlanBuild(plan, {});
+      const res = await bots.startPlanBuild(
+        plan,
+        resumeFrom ? { resumeFrom } : {},
+      );
       if (!res || res.error) {
         setBuildError((res && res.error) || "The build couldn't start.");
         return;
       }
+      setResumeFrom(null);
+      setRemovedNote(null);
       setBuild(res);
     } catch (err) {
       setBuildError((err && err.message) || "The build couldn't start.");
@@ -302,6 +333,17 @@ export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
         initialState={build.state}
         estimate={estimate}
         onOpenDashboard={onOpenDashboard}
+        onEditPlan={() => {
+          setResumeFrom(build.buildId);
+          setBuild(null);
+          setReady(false);
+        }}
+        onRemoved={(res) => {
+          setResumeFrom(null);
+          setBuild(null);
+          setReady(false);
+          setRemovedNote(removedText(res));
+        }}
       />
     );
   }
@@ -503,7 +545,8 @@ export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
                 <div className="flex flex-col gap-2" data-testid="plan-before">
                   <SectionLabel text="Before building" />
                   {checklist.map((it) => {
-                    const done = isDone(it, checks, have);
+                    const skipped = isSkipped(it, checks, have);
+                    const done = isDone(it, checks, have) && !skipped;
                     return (
                       <div
                         key={it.id}
@@ -517,6 +560,15 @@ export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
                             <span className={`text-xs ${muted}`}>
                               {" "}
                               · {it.package}
+                            </span>
+                          ) : null}
+                          {skipped ? (
+                            <span
+                              className={`text-xs ${muted}`}
+                              data-testid="checklist-skipped"
+                            >
+                              {" "}
+                              · skipped — what needs it waits
                             </span>
                           ) : null}
                         </span>
@@ -588,7 +640,10 @@ export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
                     ? buildError
                     : ready
                       ? "Starting the build…"
-                      : "Nothing has been built or installed yet."}
+                      : resumeFrom
+                        ? "What's built is kept — only what's new or changed gets built."
+                        : removedNote ||
+                          "Nothing has been built or installed yet."}
                 </span>
               </div>
             </div>
@@ -619,6 +674,7 @@ export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
       {dialog && dialog.kind === "connect" ? (
         <ConnectDialog
           item={dialog.item}
+          onSkip={() => finish(dialog.item, "skipped")}
           onClose={async () => {
             const it = dialog.item;
             setDialog(null);

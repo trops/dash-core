@@ -189,7 +189,7 @@ export const InstallReviewDialog = ({ item, onApprove, onSkip, onClose }) => {
  * the catalog with that server picked; anything else opens the credential
  * form with the type filled in.
  */
-export const ConnectDialog = ({ item, onClose }) => {
+export const ConnectDialog = ({ item, onClose, onSkip = null }) => {
   const app = useContext(AppContext) || {};
   const panel = usePanel();
   const { hairline, muted } = useConfigTokens();
@@ -229,7 +229,12 @@ export const ConnectDialog = ({ item, onClose }) => {
           className={`flex flex-row items-center justify-between px-6 py-3 border-b ${hairline}`}
         >
           <span className="text-lg font-semibold">{item.label}</span>
-          <Button3 title="Done" onClick={onClose} />
+          <div className="flex flex-row items-center gap-2">
+            {onSkip ? (
+              <Button3 title="Build without it for now" onClick={onSkip} />
+            ) : null}
+            <Button3 title="Done" onClick={onClose} />
+          </div>
         </div>
         <div className="flex-1 min-h-0 flex flex-col">
           {providerClass ? (

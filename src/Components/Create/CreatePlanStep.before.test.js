@@ -15,7 +15,7 @@ jest.mock("../Settings/sections/ProvidersSection", () => ({
   ),
 }));
 
-import { CreatePlanStep } from "./CreatePlanStep";
+import { CreatePlanStep, removedText } from "./CreatePlanStep";
 
 const team = [
   { id: "b_planner", role: "planner", name: "Planner" },
@@ -206,4 +206,25 @@ test("a planned bot shows what starts it and its instructions on demand (4d-2)",
   expect(screen.getByTestId("plan-bot-instructions")).toHaveTextContent(
     "Write a one-line greeting.",
   );
+});
+
+describe("removedText (4d-3)", () => {
+  test("says what was removed and what stays installed", () => {
+    expect(
+      removedText({
+        removed: {
+          dashboard: "Ask Test",
+          bots: ["Greeter"],
+          widgets: ["@ai-built/ask"],
+        },
+        kept: { installs: ["@trops/google-calendar"] },
+        problems: [],
+      }),
+    ).toBe(
+      'Removed the "Ask Test" dashboard, 1 bot and 1 widget. Still installed: @trops/google-calendar.',
+    );
+    expect(removedText({ removed: {}, kept: {}, problems: ["x: busy"] })).toBe(
+      "Nothing was left to remove. Couldn't remove: x: busy.",
+    );
+  });
 });
