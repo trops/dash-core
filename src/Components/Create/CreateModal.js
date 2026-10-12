@@ -76,6 +76,8 @@ export const CreateModal = ({
   // Open a widget the Scout found: ({ source, name, package }) — the host
   // shows it on the Widgets page (yours) or in the registry (to install).
   onOpenWidget = null,
+  // Open a dashboard a plan build made: (workspaceId) — the live dashboard.
+  onOpenDashboard = null,
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const appContext = useContext(AppContext) || {};
@@ -404,7 +406,19 @@ export const CreateModal = ({
     />
   );
 
-  const planner = planStep && <CreatePlanStep prompt={planStep.prompt} />;
+  const planner = planStep && (
+    <CreatePlanStep
+      prompt={planStep.prompt}
+      onOpenDashboard={
+        onOpenDashboard
+          ? (id) => {
+              close();
+              onOpenDashboard(id);
+            }
+          : null
+      }
+    />
+  );
 
   const builder = builderStep && Builder && (
     <div className="flex-1 min-h-0 flex flex-col">

@@ -731,3 +731,24 @@ describe("BotRunner — servers a run is configured with (CRE-011, 3b-1)", () =>
     assert.deepEqual(gateCtx.mcpServers, ["github", "dash-team-build"]);
   });
 });
+
+describe("BotRunner — a run's approval policy (phase 4d-1)", () => {
+  it("opts.approvalPolicy overrides the bot's for that run only", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const seen = [];
+    const { runner } = makeRunner(engine, {
+      bot: { approvalPolicy: "ask" },
+      deps: {
+        makeRequestPermission: (ctx) => {
+          seen.push(ctx.approvalPolicy);
+          return async () => ({ allow: true });
+        },
+      },
+    });
+    await runner.run("bot_1", { prompt: "go", approvalPolicy: "allow" });
+    assert.equal(engine.lastCtx.approvalPolicy, "allow");
+    await runner.run("bot_1", { prompt: "go" });
+    assert.equal(engine.lastCtx.approvalPolicy, "ask");
+    assert.deepEqual(seen, ["allow", "ask"]);
+  });
+});

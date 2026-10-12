@@ -84,6 +84,7 @@ const {
   HandoffCap,
 } = require("../bots/roleTools");
 const { compareConfigs } = require("../bots/configDiff");
+const { createPlanBuild } = require("../bots/planBuild");
 const { resolveWidgetComponent } = require("../bots/widgetComponent");
 const { recentRuns } = require("../bots/recentRuns");
 const { coalesce } = require("../bots/coalesce");
@@ -137,6 +138,7 @@ const {
   BOT_RUN_ACTIVE,
   BOT_LIST_CHANGED,
   BOT_DRAFTS_CHANGED,
+  BOT_PLAN_BUILD_PROGRESS,
 } = require("../events/botEvents");
 
 const { runCost } = require("../bots/runCost");
@@ -1307,6 +1309,8 @@ const botController = {
       via: opts.via || null,
       // Follow-ups (Ask the lead) resume the session; runs start fresh.
       continueSession: !!opts.continueSession,
+      // A plan build's own team runs: no prompts (the plan was the consent).
+      approvalPolicy: opts.approvalPolicy || undefined,
       emit: (event) => {
         if (!alreadyRunning) this._events.onRunEvent(botId, event);
         this._broadcast(BOT_STREAM, { botId, event });
@@ -1446,6 +1450,141 @@ const botController = {
   },
 
   /** Connected MCP servers with real server names + workspace buckets. */
+  /**
+   * Build an approved plan (create-entry CRE-004, TD-008; phase 4d-1):
+   * install, create the dashboard, the Builder builds and the Checker checks
+   * each new widget, then everything is placed. Progress goes to every window
+   * (BOT_PLAN_BUILD_PROGRESS). Resolves at once with the build's id.
+   */
+  startPlanBuild(plan, { dashboardName = null } = {}) {
+    if (!plan || !Array.isArray(plan.pieces) || !plan.pieces.length) {
+      return { error: "The plan has nothing to build." };
+    }
+    if (!this._builds) this._builds = new Map();
+    const buildId = `build_${Date.now()}`;
+    const entry = { state: null, build: null };
+    const build = createPlanBuild(
+      plan,
+      {
+        installWidget: (pkg, piece) => this._planInstallWidget(pkg, piece),
+        createDashboard: (name, count) =>
+          this._planCreateDashboard(name, count),
+        askRole: (role, request) => this._planAskRole(role, request),
+        abortRole: (role) => {
+          const bot = dashTeamBot(this._store.list(), role);
+          if (bot) this._runner.abort(bot.id);
+        },
+        placeWidget: ({ dashboardId, component, widget }) => {
+          const res = this._teamPlaceWidget({
+            dashboard: dashboardId,
+            widget: component || widget,
+          });
+          if (res && res.error) throw new Error(res.error);
+          return res;
+        },
+        emit: (state) => {
+          entry.state = state;
+          this._broadcast(BOT_PLAN_BUILD_PROGRESS, { buildId, state });
+        },
+      },
+      { dashboardName },
+    );
+    entry.build = build;
+    entry.state = JSON.parse(JSON.stringify(build.state));
+    this._builds.set(buildId, entry);
+    build.run().catch((err) => {
+      console.error("[botController] plan build failed:", err);
+    });
+    return { buildId, state: entry.state };
+  },
+
+  stopPlanBuild(buildId) {
+    const entry = this._builds && this._builds.get(buildId);
+    if (!entry) return { error: "No such build." };
+    entry.build.stop();
+    return { ok: true };
+  },
+
+  getPlanBuild(buildId) {
+    const entry = this._builds && this._builds.get(buildId);
+    return entry ? { buildId, state: entry.state } : null;
+  },
+
+  /** A registry widget, installed for a plan build → its component id. */
+  async _planInstallWidget(pkgName, piece) {
+    const pkg = await require("./registryController").getPackage(pkgName);
+    if (!pkg) throw new Error(`${pkgName} isn't in the registry`);
+    if (!pkg.downloadUrl) throw new Error(`${pkgName} can't be downloaded`);
+    const registry = require("../widgetRegistry").getWidgetRegistry();
+    const config = await registry.downloadWidget(pkg.name, pkg.downloadUrl);
+    this._broadcast("widget:installed", { widgetName: pkg.name, config });
+    const widgets = pkg.widgets || [];
+    const want = String((piece && piece.name) || "").toLowerCase();
+    const w =
+      widgets.find(
+        (x) =>
+          String(x.name || "").toLowerCase() === want ||
+          String(x.displayName || "").toLowerCase() === want,
+      ) || widgets[0];
+    const component =
+      w && pkg.scope ? `${pkg.scope}.${pkg.name}.${w.name}` : null;
+    return { component };
+  },
+
+  /** A new dashboard with an empty grid for the plan's widgets. */
+  _planCreateDashboard(name, count) {
+    const n = Math.max(1, Number(count) || 1);
+    const cols = n > 1 ? 2 : 1;
+    const rows = Math.ceil(n / cols);
+    const grid = { rows, cols, gap: "gap-2" };
+    for (let r = 1; r <= rows; r++) {
+      for (let c = 1; c <= cols; c++) {
+        grid[`${r}.${c}`] = { component: null, hide: false };
+      }
+    }
+    const ws = {
+      id: Date.now(),
+      name: String(name || "New dashboard").trim(),
+      label: String(name || "New dashboard").trim(),
+      type: "workspace",
+      version: 1,
+      menuId: 1,
+      layout: [
+        {
+          id: 1,
+          order: 1,
+          component: "LayoutGridContainer",
+          type: "grid",
+          parent: 0,
+          hasChildren: 1,
+          scrollable: false,
+          width: "w-full",
+          height: "h-full",
+          workspace: "layout",
+          grid,
+        },
+      ],
+    };
+    const saved = this._saveWorkspace(ws);
+    if (saved && saved.error) throw new Error(saved.error);
+    return { id: ws.id, name: ws.name };
+  },
+
+  /** A Dash team role's run inside an approved plan build. */
+  async _planAskRole(role, request) {
+    const bot = dashTeamBot(this._store.list(), role);
+    if (!bot) return { skipped: true, reason: `the ${role} isn't set up` };
+    if (this._pause.isPaused(bot.id)) {
+      return { skipped: true, reason: `the ${bot.name} is paused` };
+    }
+    return this._run(bot.id, {
+      prompt: request,
+      trigger: "ask",
+      via: "plan-build",
+      approvalPolicy: "allow",
+    });
+  },
+
   /** What the Dash team's role tools read and run (roleTools.js). */
   _roleToolDeps() {
     return {

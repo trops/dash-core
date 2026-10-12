@@ -95,17 +95,38 @@ test("Build walks through: review the install, approve, then connect", async () 
   expect(screen.getByText("Connect Gmail & build")).toBeInTheDocument();
 });
 
-test("when nothing's open, Build says it's ready (building is next)", async () => {
+test("when nothing's open, Build starts the build and shows the steps (4d)", async () => {
   setup({ providers: { s: { type: "slack" }, g: { type: "gmail" } } });
+  const startPlanBuild = jest.fn().mockResolvedValue({
+    buildId: "build_1",
+    state: {
+      status: "running",
+      steps: [
+        {
+          id: "dashboard",
+          kind: "dashboard",
+          role: "dash",
+          label: 'Create the "Brief" dashboard',
+          status: "running",
+        },
+      ],
+      totals: { tokens: 0, includedInPlan: true },
+    },
+  });
+  Object.assign(window.mainApi.bots, {
+    startPlanBuild,
+    getPlanBuild: jest.fn().mockResolvedValue(null),
+    onPlanBuild: jest.fn(() => 9),
+  });
   await screen.findByTestId("plan-card");
   fireEvent.click(screen.getByText("Approve 1 install & build"));
   fireEvent.click(await screen.findByText("Approve"));
-  await waitFor(() =>
-    expect(screen.getByTestId("plan-ready")).toHaveTextContent(
-      "Ready to build",
-    ),
+  expect(await screen.findByTestId("create-building")).toBeInTheDocument();
+  expect(startPlanBuild).toHaveBeenCalledWith(
+    expect.objectContaining({ summary: "Brief" }),
+    {},
   );
-  expect(screen.getByText("Build")).toBeInTheDocument();
+  expect(screen.getByText('Create the "Brief" dashboard')).toBeInTheDocument();
 });
 
 test("Skip this piece removes it from the plan", async () => {

@@ -39,6 +39,10 @@ const BOTS_ASK_LEAD = "bots-ask-lead";
 const BOTS_LIST_LEADS = "bots-list-leads";
 // The Dash team (create-entry CRE-011): its four role bots for the Bots page.
 const BOTS_LIST_DASH_TEAM = "bots-list-dash-team";
+// Building an approved plan (create-entry CRE-004, phase 4d).
+const BOTS_START_PLAN_BUILD = "bots-start-plan-build";
+const BOTS_STOP_PLAN_BUILD = "bots-stop-plan-build";
+const BOTS_GET_PLAN_BUILD = "bots-get-plan-build";
 // Bots view (TEAM-011): a bot run history.
 const BOTS_GET_RUNS = "bots-get-runs";
 // Bot monitor (TEAM-011 B3): the latest runs across every bot.
@@ -76,6 +80,7 @@ const BOT_RUN_ACTIVE = "bot-run-active"; // { count, running: string[] }
 const BOT_LIST_CHANGED = "bot-list-changed"; // {}
 // A lead drafted a bot, or a draft was saved/discarded.
 const BOT_DRAFTS_CHANGED = "bot-drafts-changed"; // {}
+const BOT_PLAN_BUILD_PROGRESS = "bot-plan-build-progress"; // { buildId, state }
 
 module.exports = {
   BOTS_LIST,
@@ -108,6 +113,9 @@ module.exports = {
   BOTS_ASK_LEAD,
   BOTS_LIST_LEADS,
   BOTS_LIST_DASH_TEAM,
+  BOTS_START_PLAN_BUILD,
+  BOTS_STOP_PLAN_BUILD,
+  BOTS_GET_PLAN_BUILD,
   BOTS_GET_RUNS,
   BOTS_LIST_RECENT_RUNS,
   BOTS_GET_LATEST_RESULT,
@@ -130,4 +138,5 @@ module.exports = {
   BOT_RUN_ACTIVE,
   BOT_LIST_CHANGED,
   BOT_DRAFTS_CHANGED,
+  BOT_PLAN_BUILD_PROGRESS,
 };
