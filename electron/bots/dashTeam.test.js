@@ -171,7 +171,7 @@ describe("Dash team instructions (slice 3a)", () => {
     assert.match(planner.instructions, /search_library/);
     assert.match(planner.instructions, /ask_role/);
     assert.match(planner.instructions, /<plan><\/plan>/);
-    assert.equal(planner.history.length, 1);
+    assert.ok(planner.history.length >= 1);
     const bots = ROLE_IDS.map((r) => teamBot(r));
     bots[0].instructions = planner.history[0];
     const plan = planEnsureDashTeam(bots);
@@ -235,5 +235,14 @@ describe("Dash team instructions (slice 4)", () => {
       plan.map((p) => [p.action, p.role]),
       [["upgrade", "scout"]],
     );
+  });
+});
+
+describe("Dash team instructions (phase 4a)", () => {
+  it("the Planner's plan says what bots can and can't do, with tappable questions", () => {
+    const planner = ROLES.find((r) => r.role === "planner");
+    assert.match(planner.instructions, /"access": \[string\]/);
+    assert.match(planner.instructions, /short tappable options/);
+    assert.equal(planner.history.length, 2);
   });
 });

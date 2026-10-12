@@ -115,3 +115,20 @@ describe("extractMatches", () => {
     expect(extractMatches("<matches>{oops</matches>")).toBeNull();
   });
 });
+
+describe("runTeamRole — conversation and events (phase 4a)", () => {
+  test("continues the session when asked, and passes events through", async () => {
+    const api = setupBots({
+      team: [scout],
+      events: [{ type: "tool_call", name: "ask_role" }],
+      record: { status: "completed", output: "ok" },
+    });
+    const events = [];
+    await runTeamRole("scout", "more", {
+      continueConversation: true,
+      onEvent: (e) => events.push(e.type),
+    });
+    expect(api.run).toHaveBeenCalledWith("b_scout", "more", true);
+    expect(events).toEqual(["tool_call"]);
+  });
+});

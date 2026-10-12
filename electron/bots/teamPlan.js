@@ -17,6 +17,7 @@
  *                   notes? }],
  *     beforeBuilding: [{ kind: "connect" | "install" | "approve", what }],
  *     checks:    [string],                                 // how to tell it worked
+ *     access?:   [string],                                 // what bots can / can't do (CRE-003 AC5)
  *     estimate:  { build: string, running?: string|null }
  *   }
  *
@@ -151,6 +152,19 @@ function validatePlan(plan, context = {}) {
     !(plan.checks || []).length
   ) {
     warnings.push("Something gets built, but there are no checks.");
+  }
+
+  if (plan.access !== undefined) {
+    if (!Array.isArray(plan.access) || plan.access.some((a) => !isStr(a))) {
+      errors.push("access must be a list of sentences.");
+    }
+  } else if (
+    Array.isArray(pieces) &&
+    pieces.some((p) => p && p.kind === "bot")
+  ) {
+    warnings.push(
+      "The plan has bots but doesn't say what they can and can't do.",
+    );
   }
 
   if (!plan.estimate || !isStr(plan.estimate.build)) {

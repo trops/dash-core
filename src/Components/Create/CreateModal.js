@@ -20,8 +20,9 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { useAiBackend } from "../../hooks/useAiBackend";
 import { getWidgetBuilderRenderer } from "../../utils/widgetBuilderRenderer";
 import { CreateScoutStep } from "./CreateScoutStep";
+import { CreatePlanStep } from "./CreatePlanStep";
 import {
-  CREATE_TYPES,
+  createTypes,
   PROMPT_PLACEHOLDER,
   RECENT_DRAFTS,
   canSend,
@@ -84,7 +85,12 @@ export const CreateModal = ({
   });
   const ai = useAiBackend();
 
-  const [type, setType] = useState(normalizeCreateType(initialType));
+  // Type: Dashboard (the Planner) is a preview until building ships (4d).
+  const dashboardPreview = !!(
+    appContext.settings && appContext.settings.createDashboardPreview
+  );
+  const typeOpts = { dashboardPreview };
+  const [type, setType] = useState(normalizeCreateType(initialType, typeOpts));
   const [prompt, setPrompt] = useState("");
   // null = the start screen; { bot, workspaceId } = the bot form.
   const [botForm, setBotForm] = useState(null);
@@ -93,6 +99,8 @@ export const CreateModal = ({
   const [builderStep, setBuilderStep] = useState(null);
   // null = no search; { prompt, detail } = the Scout looking first (slice 4).
   const [scoutStep, setScoutStep] = useState(null);
+  // null = no plan; { prompt } = planning a dashboard with the Planner (4a).
+  const [planStep, setPlanStep] = useState(null);
   const [bots, setBots] = useState(EMPTY);
   // Recent Widget Builder drafts (newest first) — "Continue a draft".
   const [drafts, setDrafts] = useState(EMPTY);
@@ -100,7 +108,7 @@ export const CreateModal = ({
   // Each open starts fresh on the requested type.
   useEffect(() => {
     if (!open) return;
-    setType(normalizeCreateType(initialType));
+    setType(normalizeCreateType(initialType, typeOpts));
     setPrompt("");
     setBotForm(null);
     setBuilderStep(null);
@@ -156,6 +164,7 @@ export const CreateModal = ({
   // the start screen — never a flash of the last builder, which would rerun
   // its startup (chat reset, draft resume) before the reset effect.
   const close = () => {
+    setPlanStep(null);
     setScoutStep(null);
     setBuilderStep(null);
     setBotForm(null);
@@ -200,6 +209,8 @@ export const CreateModal = ({
       } else {
         openBuilder(action.detail, "New widget");
       }
+    } else if (action.kind === "dashboard-plan") {
+      setPlanStep({ prompt: action.detail.prompt });
     } else if (action.kind === "bot-form") {
       setBotForm({ bot: action.bot, workspaceId: action.workspaceId });
     }
@@ -275,7 +286,7 @@ export const CreateModal = ({
             <ChoiceMenu
               label="Type"
               value={type}
-              options={CREATE_TYPES}
+              options={createTypes(typeOpts)}
               onChange={setType}
             />
             <div className="flex-1" />
@@ -393,6 +404,8 @@ export const CreateModal = ({
     />
   );
 
+  const planner = planStep && <CreatePlanStep prompt={planStep.prompt} />;
+
   const builder = builderStep && Builder && (
     <div className="flex-1 min-h-0 flex flex-col">
       <Builder
@@ -411,12 +424,15 @@ export const CreateModal = ({
   // start screen (the prompt is kept).
   const stepTitle = builderStep
     ? builderStep.title || "New widget"
-    : scoutStep
-      ? "Looking first"
-      : botForm
-        ? "New bot"
-        : null;
+    : planStep
+      ? "Plan a dashboard"
+      : scoutStep
+        ? "Looking first"
+        : botForm
+          ? "New bot"
+          : null;
   const back = () => {
+    setPlanStep(null);
     setScoutStep(null);
     setBuilderStep(null);
     setBotForm(null);
@@ -460,7 +476,7 @@ export const CreateModal = ({
           </div>
           <ButtonIcon icon="xmark" onClick={close} ariaLabel="Close" />
         </div>
-        {builder || scout || (botForm ? form : start)}
+        {builder || planner || scout || (botForm ? form : start)}
       </div>
     </Modal>
   );

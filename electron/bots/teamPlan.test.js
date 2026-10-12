@@ -227,3 +227,25 @@ describe("extractPlan", () => {
     assert.equal(extractPlan("<plan>{not json</plan>"), null);
   });
 });
+
+describe("validatePlan — access (phase 4a, CRE-003 AC5)", () => {
+  const base = {
+    summary: "x",
+    pieces: [{ kind: "bot", name: "Digest", source: "new" }],
+    estimate: { build: "?" },
+  };
+  it("accepts access lines; warns when bots come without them", () => {
+    const ok = validatePlan({
+      ...base,
+      access: ["Bots can read Gmail", "None can send email"],
+    });
+    assert.ok(!ok.warnings.some((w) => /can and can't/.test(w)));
+    assert.match(validatePlan(base).warnings.join(" "), /can and can't do/);
+  });
+  it("rejects access that isn't a list of sentences", () => {
+    assert.match(
+      validatePlan({ ...base, access: "read" }).errors.join(" "),
+      /access must be a list/,
+    );
+  });
+});

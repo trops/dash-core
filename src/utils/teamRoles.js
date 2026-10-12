@@ -31,11 +31,17 @@ export async function findTeamRole(role) {
 /**
  * @param {string} role
  * @param {string} prompt
- * @param {{ onText?: (soFar: string) => void, onStart?: (bot) => void }} [opts]
+ * @param {{ onText?: (soFar: string) => void, onStart?: (bot) => void,
+ *   onEvent?: (event) => void, continueConversation?: boolean }} [opts]
+ *   continueConversation resumes the role's last session (a reply).
  * @returns {Promise<{ skipped: true, reason: string } |
  *   { status, output, model, usage, cost, error, bot }>}
  */
-export async function runTeamRole(role, prompt, { onText, onStart } = {}) {
+export async function runTeamRole(
+  role,
+  prompt,
+  { onText, onStart, onEvent, continueConversation = false } = {},
+) {
   const api = bots();
   if (!api || typeof api.run !== "function") {
     return { skipped: true, reason: "the Dash team isn't available here" };
@@ -53,6 +59,7 @@ export async function runTeamRole(role, prompt, { onText, onStart } = {}) {
     typeof api.onStream === "function"
       ? api.onStream(({ botId, event } = {}) => {
           if (botId !== bot.id || !event) return;
+          if (onEvent) onEvent(event);
           if (event.type === "tool_call") afterTool = true;
           if (event.type !== "text") return;
           text = appendAnswerText(text, event.text, { afterTool });
@@ -61,7 +68,7 @@ export async function runTeamRole(role, prompt, { onText, onStart } = {}) {
         })
       : null;
   try {
-    const record = await api.run(bot.id, prompt, false);
+    const record = await api.run(bot.id, prompt, !!continueConversation);
     if (!record) return { status: "failed", error: "no answer", bot };
     if (record.skipped) {
       return { skipped: true, reason: record.reason || "it didn't run", bot };
