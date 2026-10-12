@@ -217,3 +217,33 @@ describe("publishing registry widgets: versions are pinned (bug fixed in 5a-2)",
     assert.match(dash, /^const fs = require\("fs"\);$/m);
   });
 });
+
+describe("built-in bot widgets are not registry dependencies (5b)", () => {
+  it("Bot results and Bot activity are left out", () => {
+    const deps = buildWidgetDependencies(
+      [
+        { component: "dash.bots.BotResults", packageId: null },
+        { component: "dash.bots.BotActivity", packageId: null },
+        {
+          component: "trops.clock.DigitalClockWidget",
+          packageId: "@trops/clock",
+        },
+      ],
+      {
+        getWidgets: () => [
+          {
+            name: "@trops/clock",
+            packageId: "@trops/clock",
+            scope: "trops",
+            version: "1.0.0",
+            componentNames: [],
+          },
+        ],
+      },
+    );
+    assert.deepEqual(
+      deps.map((d) => d.widgetName),
+      ["DigitalClockWidget"],
+    );
+  });
+});

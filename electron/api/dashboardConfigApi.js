@@ -16,6 +16,7 @@ const {
   DASHBOARD_CONFIG_CHECK_UPDATES,
   DASHBOARD_CONFIG_PROVIDER_SETUP,
   DASHBOARD_CONFIG_PUBLISH_PREVIEW,
+  DASHBOARD_CONFIG_PACKAGE_CONFIG,
   DASHBOARD_CONFIG_INSTALL_PROGRESS,
   DASHBOARD_CONFIG_COLLECT_DEPENDENCIES,
   DASHBOARD_CONFIG_PUBLISH_PLAN,
@@ -186,6 +187,13 @@ const dashboardConfigApi = {
    * @param {number|string} workspaceId - Workspace to preview
    * @returns {Promise<Object>} Preview with dashboardName, widgetCount, widgets, componentNames
    */
+  /**
+   * A registry dashboard's .dashboard.json, checked but not installed —
+   * starter thumbnails and Remix (create-entry 5b). { success, config }.
+   */
+  getPackageConfig: (packageName) =>
+    ipcRenderer.invoke(DASHBOARD_CONFIG_PACKAGE_CONFIG, { packageName }),
+
   getPublishPreview: (appId, workspaceId) =>
     ipcRenderer.invoke(DASHBOARD_CONFIG_PUBLISH_PREVIEW, {
       appId,

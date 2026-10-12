@@ -55,9 +55,17 @@ const titleCase = (t) =>
     .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
     .join(" ");
 
-/** "gmail" / "Google Calendar" → "Gmail" / "Google Calendar". */
+// Names that don't title-case well.
+const PROVIDER_NAMES = {
+  github: "GitHub",
+  gitlab: "GitLab",
+  hubspot: "HubSpot",
+};
+
+/** "gmail" / "Google Calendar" / "github" → "Gmail" / "Google Calendar" / "GitHub". */
 export function providerLabel(name) {
-  return titleCase(normalizeType(name));
+  const type = normalizeType(name);
+  return PROVIDER_NAMES[type] || titleCase(type);
 }
 
 /**

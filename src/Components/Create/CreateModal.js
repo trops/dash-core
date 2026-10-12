@@ -22,6 +22,8 @@ import { getWidgetBuilderRenderer } from "../../utils/widgetBuilderRenderer";
 import { CreateScoutStep } from "./CreateScoutStep";
 import { CreatePlanStep } from "./CreatePlanStep";
 import { recentRows, recentLine } from "./recentRows";
+import { StarterCards } from "./StarterCards";
+import { starterPackages, starterToPlan, remixRequest } from "./starters";
 import { foldCreate } from "./CreateDockPanel";
 import { pickType } from "./autoType";
 import { themeFromPrompt } from "./themeFromPrompt";
@@ -121,6 +123,8 @@ export const CreateModal = ({
   // conversations (summaries from the main process).
   const [drafts, setDrafts] = useState(EMPTY);
   const [recentPlans, setRecentPlans] = useState(EMPTY);
+  // Starters (CRE-002, 5b): registry dashboards tagged "starter" with bots.
+  const [starters, setStarters] = useState(EMPTY);
 
   // Each open starts fresh on the requested type.
   useEffect(() => {
@@ -175,6 +179,34 @@ export const CreateModal = ({
       if (id != null && bots.removeListener) bots.removeListener(id);
     };
   }, [open]);
+
+  // Starters, for Auto and Dashboard (the registry index; none offline).
+  const wantsStarters = type === "auto" || type === "dashboard";
+  useEffect(() => {
+    if (!open || !wantsStarters) return undefined;
+    let alive = true;
+    const registry = window.mainApi && window.mainApi.registry;
+    if (!registry || !registry.fetchIndex) return undefined;
+    Promise.resolve(registry.fetchIndex())
+      .then((index) => alive && setStarters(starterPackages(index)))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [open, wantsStarters]);
+
+  // A starter opens as a plan the Planner adapts — never built directly.
+  const pickStarter = (card, pkg, config) => {
+    const plan = starterToPlan(config, pkg);
+    setPlanStep({
+      prompt: "",
+      seed: {
+        plan,
+        request: remixRequest(card, plan),
+        label: `Start from the ${card.name} starter`,
+      },
+    });
+  };
 
   // Other bots → "Another bot" events in the bot form's picker.
   useEffect(() => {
@@ -427,6 +459,10 @@ export const CreateModal = ({
           </div>
         )}
 
+        {wantsStarters && starters.length > 0 && (
+          <StarterCards starters={starters} onPick={pickStarter} />
+        )}
+
         {recent.length > 0 && (
           <div className="flex flex-col gap-2" data-testid="create-recent">
             <SectionLabel>Recent</SectionLabel>
@@ -536,6 +572,7 @@ export const CreateModal = ({
       key={planStep.recentId || "new"}
       prompt={planStep.prompt}
       recentId={planStep.recentId || null}
+      seed={planStep.seed || null}
       onState={setPlanInfo}
       onOpenDashboard={
         onOpenDashboard
