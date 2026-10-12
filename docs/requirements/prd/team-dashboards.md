@@ -104,7 +104,7 @@ Nothing plans the three pieces together, so the user has to design the wiring th
 
 **Acceptance Criteria:**
 
-- [ ] AC1: `propose_bot` accepts triggers on widgets of the lead's own dashboard, validated against the dashboard's widget event catalog.
+- [ ] AC1: `propose_bot` accepts triggers on widgets of the lead's own dashboard, validated against the dashboard's widget event catalog. (Plan builds do this — create-entry 4d-2: a planned bot's `on` becomes a subscription to the placed widget's exact event, checked against its .dash.js; the lead's `propose_bot` itself is still open.)
 - [ ] AC2: `propose_bot` accepts declared results (TD-001).
 
 ### TD-007: One plan from a goal (P1) — Release 3
@@ -120,9 +120,9 @@ Nothing plans the three pieces together, so the user has to design the wiring th
 
 **Acceptance Criteria:**
 
-- [ ] AC1: Approving the plan saves the bots, generates the widgets, places them on the dashboard and wires listeners and triggers.
+- [x] AC1 (create-entry 4d-1 + 4d-2, dash-core electron/bots/planBuild.js): Approving the plan saves the bots, generates the widgets, places them on the dashboard and wires listeners and triggers. Bots are saved as planned (not drafts) after a draft-style check; a provider that isn't connected fails that step. Wiring is checked against the widget's .dash.js, and a widget publishing with the raw `api.publishEvent` (unprefixed, so nothing hears it) fails the step — the Widget Builder and `build_widget` reject it earlier.
 - [ ] AC2: Anything that needs the user (provider sign-in, grants) is listed, never done for them.
-- [ ] AC3: Widget generation runs without opening the Widget Builder window, with progress shown.
+- [x] AC3 (create-entry 4d-1): Widget generation runs without opening the Widget Builder window, with progress shown.
 
 ---
 

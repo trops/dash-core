@@ -149,4 +149,46 @@ function setWidgetPrefs(workspace, widgetId, prefs, component = null) {
   return found ? ws : null;
 }
 
-module.exports = { placeWidget, setWidgetPrefs };
+/**
+ * Add an event to a widget's listeners (`listeners[handler]`) — in every
+ * layout (pages and the top-level mirror) where that widget id holds
+ * `component` (when given). Adding one that's already there is a no-op.
+ * @returns {object|null} the new workspace, or null when the widget isn't there
+ */
+function addWidgetListener(
+  workspace,
+  widgetId,
+  handler,
+  eventType,
+  component = null,
+) {
+  const ws = clone(workspace || {});
+  const layouts = [
+    ws.layout,
+    ...(ws.pages || []).map((p) => p && p.layout),
+  ].filter(Array.isArray);
+  let found = false;
+  for (const layout of layouts) {
+    const item = layout.find(
+      (i) =>
+        i &&
+        String(i.id) === String(widgetId) &&
+        (!component || i.component === component),
+    );
+    if (!item) continue;
+    const listeners =
+      item.listeners && typeof item.listeners === "object"
+        ? { ...item.listeners }
+        : {};
+    const list = Array.isArray(listeners[handler])
+      ? [...listeners[handler]]
+      : [];
+    if (!list.includes(eventType)) list.push(eventType);
+    listeners[handler] = list;
+    item.listeners = listeners;
+    found = true;
+  }
+  return found ? ws : null;
+}
+
+module.exports = { placeWidget, setWidgetPrefs, addWidgetListener };

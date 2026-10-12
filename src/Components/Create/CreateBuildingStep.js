@@ -9,6 +9,7 @@ import { formatTokens, modelLabel } from "../../utils/runCostLabel";
  * Builder, the Checker, or Dash itself with no AI), its model and tokens; a
  * running total sits against the estimate. Stop halts after the current
  * step and keeps what's built; when it's done, Go to dashboard opens it.
+ * Saved bots are offered as Run <bot> now — never run on their own (4d-2).
  */
 
 const ROLE = { builder: "Builder", checker: "Checker", dash: "Dash" };
@@ -37,6 +38,8 @@ export const CreateBuildingStep = ({
   const { muted, strong, hairline } = useConfigTokens();
   const [state, setState] = useState(initialState);
   const [stopping, setStopping] = useState(false);
+  // botId → "starting" | "started" | error text
+  const [runs, setRuns] = useState({});
 
   useEffect(() => {
     const bots = window.mainApi && window.mainApi.bots;
@@ -62,6 +65,25 @@ export const CreateBuildingStep = ({
   const running = status === "waiting" || status === "running";
   const totals = (state && state.totals) || { tokens: 0, includedInPlan: true };
   const finished = !running;
+
+  const savedBots = Object.values((state && state.bots) || {}).filter(
+    (b) => b && b.id,
+  );
+  const runBot = async (bot) => {
+    setRuns((r) => ({ ...r, [bot.id]: "starting" }));
+    try {
+      const res = await window.mainApi.bots.run(bot.id);
+      setRuns((r) => ({
+        ...r,
+        [bot.id]: res && res.error ? String(res.error) : "started",
+      }));
+    } catch (err) {
+      setRuns((r) => ({
+        ...r,
+        [bot.id]: (err && err.message) || "It couldn't start.",
+      }));
+    }
+  };
 
   const stop = async () => {
     setStopping(true);
@@ -156,6 +178,31 @@ export const CreateBuildingStep = ({
                 : ""}
           </span>
         </div>
+
+        {finished && savedBots.length ? (
+          <div className="flex flex-col gap-2" data-testid="building-run-bots">
+            <SectionLabel text="Try the bots" />
+            {savedBots.map((b) => {
+              const run = runs[b.id];
+              return (
+                <div key={b.id} className="flex flex-row items-center gap-3">
+                  <Button3
+                    title={`Run ${b.name} now`}
+                    onClick={() => runBot(b)}
+                    disabled={run === "starting" || run === "started"}
+                  />
+                  <span className={`text-xs ${muted}`}>
+                    {run === "started"
+                      ? "Running — its result shows on the dashboard."
+                      : run && run !== "starting"
+                        ? run
+                        : ""}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
 
         {finished && state && state.dashboard && onOpenDashboard ? (
           <div className="flex flex-row items-center gap-3">

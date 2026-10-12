@@ -35,6 +35,7 @@ const SCENARIOS = {
         source: "new",
         providers: ["github"],
         notes: "Weekdays 8am; publishes digest",
+        instructions: "Summarize yesterday's open pull requests.",
       },
       {
         kind: "widget",
@@ -85,6 +86,7 @@ const SCENARIOS = {
         source: "new",
         providers: ["slack"],
         notes: "Can post to Slack (slack_post_message only)",
+        instructions: "Post the day's summary to #general.",
       },
     ],
     beforeBuilding: [{ kind: "approve", what: "the Daily summary bot" }],
@@ -231,7 +233,9 @@ describe("extractPlan", () => {
 describe("validatePlan — access (phase 4a, CRE-003 AC5)", () => {
   const base = {
     summary: "x",
-    pieces: [{ kind: "bot", name: "Digest", source: "new" }],
+    pieces: [
+      { kind: "bot", name: "Digest", source: "new", instructions: "Digest." },
+    ],
     estimate: { build: "?" },
   };
   it("accepts access lines; warns when bots come without them", () => {
@@ -246,6 +250,75 @@ describe("validatePlan — access (phase 4a, CRE-003 AC5)", () => {
     assert.match(
       validatePlan({ ...base, access: "read" }).errors.join(" "),
       /access must be a list/,
+    );
+  });
+});
+
+describe("validatePlan — bots and wiring (phase 4d-2)", () => {
+  const plan = (pieces) => ({
+    summary: "Ask",
+    pieces,
+    checks: ["the bot answers"],
+    access: ["The bot reads nothing"],
+    estimate: { build: "?" },
+  });
+  const button = {
+    kind: "widget",
+    name: "Ask button",
+    source: "new",
+    events: ["askClicked"],
+    listens: [{ bot: "Greeter", result: "greeting", handler: "showGreeting" }],
+  };
+  const bot = {
+    kind: "bot",
+    name: "Greeter",
+    source: "new",
+    instructions: "Write a one-line greeting.",
+    results: [{ name: "greeting" }],
+    on: [{ widget: "Ask button", event: "askClicked" }],
+    showResults: true,
+  };
+
+  it("a wired widget and bot are a valid plan", () => {
+    const res = validatePlan(plan([button, bot]));
+    assert.deepEqual(res.errors, []);
+    assert.deepEqual(res.warnings, []);
+  });
+
+  it("a new bot needs instructions", () => {
+    const { instructions: _i, ...bare } = bot;
+    assert.match(
+      validatePlan(plan([button, bare])).errors.join(" "),
+      /a new bot\) needs instructions/,
+    );
+  });
+
+  it("on must name a widget in the plan; an unlisted event warns", () => {
+    const stray = { ...bot, on: [{ widget: "Nope", event: "x" }] };
+    assert.match(
+      validatePlan(plan([button, stray])).errors.join(" "),
+      /names "Nope", which isn't a widget in the plan/,
+    );
+    const odd = { ...bot, on: [{ widget: "Ask button", event: "other" }] };
+    assert.match(
+      validatePlan(plan([button, odd])).warnings.join(" "),
+      /doesn't list the event "other"/,
+    );
+  });
+
+  it("listens must name a bot in the plan, with a result and a handler", () => {
+    const w = {
+      ...button,
+      listens: [{ bot: "Ghost", result: "r", handler: "h" }],
+    };
+    assert.match(
+      validatePlan(plan([w, bot])).errors.join(" "),
+      /names "Ghost", which isn't a bot in the plan/,
+    );
+    const half = { ...button, listens: [{ bot: "Greeter" }] };
+    assert.match(
+      validatePlan(plan([half, bot])).errors.join(" "),
+      /needs a bot, a result and a handler/,
     );
   });
 });

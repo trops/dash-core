@@ -6,7 +6,11 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { placeWidget, setWidgetPrefs } = require("./placeWidget");
+const {
+  placeWidget,
+  setWidgetPrefs,
+  addWidgetListener,
+} = require("./placeWidget");
 
 function dashboard(cells) {
   const grid = { rows: 1, cols: 2, gap: "gap-2" };
@@ -213,6 +217,35 @@ describe("placeWidget — page and cell (CRE-011 3c)", () => {
     assert.throws(
       () => placeWidget(ws(), { component: "W", page: "Nope" }),
       /No page/,
+    );
+  });
+});
+
+describe("addWidgetListener (phase 4d-2)", () => {
+  const EV = "bot:local/greeter[bot_9].result.greeting";
+  it("adds the event under the handler, once", () => {
+    const ws = dashboard([2, null]);
+    const once = addWidgetListener(ws, 2, "showGreeting", EV);
+    const twice = addWidgetListener(once, 2, "showGreeting", EV);
+    assert.deepEqual(twice.layout[1].listeners, { showGreeting: [EV] });
+    assert.equal(ws.layout[1].listeners, undefined);
+  });
+  it("writes every layout that has the widget (pages and the mirror)", () => {
+    const page = dashboard([2, null]);
+    const ws = {
+      id: 7,
+      layout: JSON.parse(JSON.stringify(page.layout)),
+      pages: [{ id: "p1", name: "One", layout: page.layout }],
+    };
+    const out = addWidgetListener(ws, 2, "h", EV);
+    assert.deepEqual(out.layout[1].listeners, { h: [EV] });
+    assert.deepEqual(out.pages[0].layout[1].listeners, { h: [EV] });
+  });
+  it("null when the widget isn't there or is another component", () => {
+    assert.equal(addWidgetListener(dashboard([2, null]), 99, "h", EV), null);
+    assert.equal(
+      addWidgetListener(dashboard([2, null]), 2, "h", EV, "other.pkg.W"),
+      null,
     );
   });
 });

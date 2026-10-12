@@ -145,3 +145,52 @@ test("progress updates arrive; the end shows problems, cost vs estimate and Go t
   fireEvent.click(screen.getByText("Go to dashboard"));
   expect(onOpenDashboard).toHaveBeenCalledWith("77");
 });
+
+test("saved bots are offered as Run now — never run on their own (4d-2)", async () => {
+  window.mainApi.bots.run = jest.fn().mockResolvedValue({ runId: "r1" });
+  const withBots = {
+    ...finished,
+    status: "done",
+    bots: { 0: { id: "bot_9", name: "Greeter" } },
+    steps: [
+      {
+        id: "bot:0",
+        kind: "bot",
+        role: "dash",
+        label: "Save the Greeter bot",
+        status: "done",
+        detail: "Greeter",
+      },
+      {
+        id: "trigger:0:0",
+        kind: "trigger",
+        role: "dash",
+        label: "Start Greeter when Ask sends askClicked",
+        status: "done",
+      },
+    ],
+  };
+  render(<CreateBuildingStep buildId="b1" initialState={withBots} />);
+  expect(window.mainApi.bots.run).not.toHaveBeenCalled();
+  expect(screen.getAllByTestId("building-step")[1].textContent).toMatch(
+    /Dash.*Start Greeter when Ask sends askClicked.*no AI/,
+  );
+  fireEvent.click(screen.getByText("Run Greeter now"));
+  expect(window.mainApi.bots.run).toHaveBeenCalledWith("bot_9");
+  expect(
+    await screen.findByText("Running — its result shows on the dashboard."),
+  ).toBeInTheDocument();
+});
+
+test("no Run now while building", () => {
+  render(
+    <CreateBuildingStep
+      buildId="b1"
+      initialState={{
+        ...running,
+        bots: { 0: { id: "bot_9", name: "Greeter" } },
+      }}
+    />,
+  );
+  expect(screen.queryByText("Run Greeter now")).toBeNull();
+});

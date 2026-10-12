@@ -16,7 +16,13 @@
  *                   source: "yours" | "ai-built" | "registry" | "new" | "update",
  *                   package?,        // yours / ai-built / registry / update
  *                   providers?: [type],
- *                   notes? }],
+ *                   notes?,
+ *                   // widget: events it publishes; bot results it shows
+ *                   events?: [string], listens?: [{ bot, result, handler }],
+ *                   // new bot (saved as planned, 4d-2)
+ *                   instructions?, tools?: [{ provider, tools: [string] }],
+ *                   schedule?: { cron, prompt? }, results?: [{ name, label? }],
+ *                   on?: [{ widget, event }], showResults?: boolean }],
  *     beforeBuilding: [{ kind: "connect" | "install" | "approve", what }],
  *     checks:    [string],                                 // how to tell it worked
  *     access?:   [string],                                 // what bots can / can't do (CRE-003 AC5)
@@ -140,6 +146,73 @@ function validatePlan(plan, context = {}) {
               `${at} needs ${type}, which isn't connected — add it to beforeBuilding.`,
             );
           }
+        }
+      }
+    });
+  }
+
+  // Bots are saved exactly as planned (phase 4d-2): a new bot needs
+  // instructions; what starts it must name a widget in the plan, and what a
+  // widget shows must name a bot in the plan.
+  if (Array.isArray(pieces)) {
+    const byName = (kind) => {
+      const out = new Map();
+      for (const p of pieces) {
+        if (p && p.kind === kind && isStr(p.name)) {
+          out.set(p.name.trim().toLowerCase(), p);
+        }
+      }
+      return out;
+    };
+    const widgets = byName("widget");
+    const bots = byName("bot");
+    pieces.forEach((p, i) => {
+      if (!p || typeof p !== "object") return;
+      const at = `pieces[${i}]`;
+      if (p.kind === "bot" && p.source === "new" && !isStr(p.instructions)) {
+        errors.push(`${at} (a new bot) needs instructions.`);
+      }
+      for (const key of ["events", "results", "tools"]) {
+        if (p[key] !== undefined && !Array.isArray(p[key])) {
+          errors.push(`${at}.${key} must be a list.`);
+        }
+      }
+      if (p.on !== undefined) {
+        if (!Array.isArray(p.on)) errors.push(`${at}.on must be a list.`);
+        else {
+          p.on.forEach((o, j) => {
+            if (!o || !isStr(o.widget) || !isStr(o.event)) {
+              errors.push(`${at}.on[${j}] needs a widget and an event.`);
+              return;
+            }
+            const w = widgets.get(o.widget.trim().toLowerCase());
+            if (!w) {
+              errors.push(
+                `${at}.on[${j}] names "${o.widget}", which isn't a widget in the plan.`,
+              );
+            } else if (Array.isArray(w.events) && !w.events.includes(o.event)) {
+              warnings.push(
+                `${at}.on[${j}]: ${o.widget} doesn't list the event "${o.event}".`,
+              );
+            }
+          });
+        }
+      }
+      if (p.listens !== undefined) {
+        if (!Array.isArray(p.listens)) {
+          errors.push(`${at}.listens must be a list.`);
+        } else {
+          p.listens.forEach((l, j) => {
+            if (!l || !isStr(l.bot) || !isStr(l.result) || !isStr(l.handler)) {
+              errors.push(
+                `${at}.listens[${j}] needs a bot, a result and a handler.`,
+              );
+            } else if (!bots.has(l.bot.trim().toLowerCase())) {
+              errors.push(
+                `${at}.listens[${j}] names "${l.bot}", which isn't a bot in the plan.`,
+              );
+            }
+          });
         }
       }
     });

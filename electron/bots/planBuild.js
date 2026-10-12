@@ -8,6 +8,10 @@
  *   build       each new / updated widget                     Builder
  *   check       each widget the Builder built                 Checker
  *   place       each widget, onto the dashboard               Dash · no AI
+ *   bot         save each new bot on the dashboard (TD-008)   Dash · no AI
+ *   results     a Bot results widget for a bot (showResults)  Dash · no AI
+ *   trigger     a widget event starts a bot (TD-006)          Dash · no AI
+ *   listen      a widget shows a bot's result                 Dash · no AI
  *
  * Steps that need judgment go to the team's roles; everything else is done
  * directly, so it's instant and free. A failed step is kept (with why); the
@@ -18,6 +22,10 @@
  * Pure (NFR-006): every effect is an injected hook.
  */
 "use strict";
+
+const { buildDraft } = require("./botDrafts");
+const { eventNames } = require("./configDiff");
+const { parseDashConfig } = require("../utils/dashConfigParser");
 
 const AI_BUILT = /@ai-built\/[a-z0-9][a-z0-9-]*/g;
 
@@ -83,11 +91,93 @@ function planSteps(plan, { dashboardName } = {}) {
       label: `Place ${p.name}`,
     });
   });
+  // Bots are saved as planned, then wired to the placed widgets (4d-2).
+  const bots = botPieces(plan);
+  const widgetIndex = indexByName(widgets);
+  const botIndex = indexByName(bots);
+  bots.forEach((b, i) => {
+    add({
+      id: `bot:${i}`,
+      kind: "bot",
+      bot: i,
+      role: "dash",
+      label: `Save the ${b.name} bot`,
+      needs: ["dashboard"],
+    });
+  });
+  bots.forEach((b, i) => {
+    if (b.showResults) {
+      add({
+        id: `results:${i}`,
+        kind: "results",
+        bot: i,
+        role: "dash",
+        label: `Show ${b.name}'s results on the dashboard`,
+        needs: [`bot:${i}`],
+      });
+    }
+  });
+  bots.forEach((b, i) => {
+    (Array.isArray(b.on) ? b.on : []).forEach((o, j) => {
+      const w = widgetIndex.get(lower(o && o.widget));
+      if (w === undefined || !o.event) return;
+      add({
+        id: `trigger:${i}:${j}`,
+        kind: "trigger",
+        bot: i,
+        piece: w,
+        event: o.event,
+        role: "dash",
+        label: `Start ${b.name} when ${widgets[w].name} sends ${o.event}`,
+        needs: [`bot:${i}`, `place:${w}`],
+      });
+    });
+  });
+  widgets.forEach((p, w) => {
+    (Array.isArray(p.listens) ? p.listens : []).forEach((l, j) => {
+      const i = botIndex.get(lower(l && l.bot));
+      if (i === undefined || !l.result || !l.handler) return;
+      add({
+        id: `listen:${w}:${j}`,
+        kind: "listen",
+        bot: i,
+        piece: w,
+        result: l.result,
+        handler: l.handler,
+        role: "dash",
+        label: `${p.name} shows ${bots[i].name}'s ${l.result}`,
+        needs: [`bot:${i}`, `place:${w}`],
+      });
+    });
+  });
   return steps;
+}
+
+const lower = (v) =>
+  String(v || "")
+    .trim()
+    .toLowerCase();
+
+/** The plan's new bots — the ones a build saves. */
+function botPieces(plan) {
+  return ((plan && plan.pieces) || []).filter(
+    (p) => p && p.kind === "bot" && p.source === "new",
+  );
+}
+
+function indexByName(list) {
+  const out = new Map();
+  list.forEach((p, i) => {
+    if (!out.has(lower(p.name))) out.set(lower(p.name), i);
+  });
+  return out;
 }
 
 /** What a widget piece needs to have happened before it can be placed. */
 function blockersFor(step, steps) {
+  if (Array.isArray(step.needs)) {
+    return steps.filter((s) => step.needs.includes(s.id));
+  }
   if (step.kind === "check")
     return steps.filter((s) => s.id === `build:${step.piece}`);
   if (step.kind === "place") {
@@ -112,10 +202,147 @@ function buildRequest(plan, piece) {
     `Plan: ${plan.summary || ""}`,
     `Widget: ${piece.name}${piece.notes ? ` — ${piece.notes}` : ""}`,
     `Providers: ${providers}`,
+    ...wiringLines(plan, piece),
     `Use a PascalCase name based on "${piece.name}". Read widget_guide first, then build_widget${
       piece.source === "update" ? " with update: true" : ""
     }. Finish with the widget's package name (@ai-built/…).`,
   ].join("\n");
+}
+
+/** What the plan wires to this widget — the Builder must declare it. */
+function wiringLines(plan, piece) {
+  const lines = [];
+  const events = Array.isArray(piece.events)
+    ? piece.events.filter(Boolean)
+    : [];
+  if (events.length) {
+    const starts = botPieces(plan)
+      .filter((b) =>
+        (b.on || []).some((o) => o && lower(o.widget) === lower(piece.name)),
+      )
+      .map((b) => b.name);
+    lines.push(
+      `It must publish these events with publishEvent from useWidgetEvents (never api.publishEvent — bots can't hear that) and list them in events in its .dash.js: ${events.join(", ")}${
+        starts.length
+          ? ` (they start the ${starts.join(", ")} bot — Dash wires that)`
+          : ""
+      }.`,
+    );
+  }
+  if (events.length && !(piece.providers || []).length) {
+    lines.push(
+      "It's an action widget: give it a title, a short line saying what the button does, and a sent status after it's pressed (as in the widget rules' Action widgets section). It needs no provider, so no loading or empty states.",
+    );
+  }
+  const listens = Array.isArray(piece.listens) ? piece.listens : [];
+  for (const l of listens) {
+    if (!l || !l.handler) continue;
+    lines.push(
+      `It must declare the event handler ${l.handler} (eventHandlers in its .dash.js) and show what arrives there: the ${l.bot} bot's "${l.result}" result. Dash wires the listener.`,
+    );
+  }
+  return lines;
+}
+
+/**
+ * A plan's new bot as a bot definition, saved exactly as planned
+ * (team-dashboards TD-008): checked like a draft — only the user's providers
+ * and tools, a valid schedule, valid result names — with its providers and
+ * tools taken as chosen. Throws when it can't work (a provider that isn't
+ * connected) rather than saving a bot that can't.
+ * @param {object} piece  the plan's bot piece
+ * @param {{ dashboardId, sources, team }} ctx  sources = listToolSources
+ */
+function planBotDefinition(piece, { dashboardId, sources, team }) {
+  const res = buildDraft({
+    proposal: {
+      name: piece.name,
+      instructions: piece.instructions,
+      providers: (Array.isArray(piece.tools) ? piece.tools : []).map((t) => ({
+        name: t && t.provider,
+        tools: (t && t.tools) || [],
+      })),
+      schedule: piece.schedule || null,
+      publishes: Array.isArray(piece.results) ? piece.results : [],
+      reasoning: piece.notes || "",
+    },
+    sources: sources || [],
+    team: team || [],
+    workspaceId: dashboardId,
+    leadId: null,
+    knownProviders: {},
+    author: "dash-team",
+  });
+  if (res.error) throw new Error(res.error);
+  const draft = res.draft;
+  if (draft.missing.length) {
+    throw new Error(
+      `${piece.name} needs ${draft.missing.join(", ")}, which isn't connected`,
+    );
+  }
+  const definition = {
+    ...draft.definition,
+    mcpServers: [],
+    toolSelections: {},
+  };
+  for (const sug of draft.suggestions) {
+    definition.mcpServers.push(sug.provider);
+    if (sug.tools.length) definition.toolSelections[sug.provider] = sug.tools;
+  }
+  return definition;
+}
+
+// `api.publishEvent(...)` publishes the bare name — no widget prefix — so no
+// bot subscription can match it. Widgets publish with useWidgetEvents'
+// publishEvent (or the publishEvent prop), which adds the prefix.
+const RAW_PUBLISH = /\bapi\s*(?:\?\.|\.)\s*publishEvent\s*\(/;
+
+/** True when widget code publishes with the raw api.publishEvent. */
+function publishesRaw(componentCode) {
+  return RAW_PUBLISH.test(String(componentCode || ""));
+}
+
+/**
+ * The events a widget sends and the handlers it declares, from its .dash.js
+ * source — null when it can't be read (then wiring isn't checked) — and
+ * whether its code publishes with the raw api.publishEvent (rawPublish).
+ */
+function widgetWiring(configCode, componentCode = "") {
+  if (!configCode) return null;
+  let parsed;
+  try {
+    parsed = parseDashConfig(configCode);
+  } catch (_e) {
+    return null;
+  }
+  if (!parsed || !parsed.ok || !parsed.config) return null;
+  const handlers = (
+    Array.isArray(parsed.config.eventHandlers)
+      ? parsed.config.eventHandlers
+      : []
+  )
+    .map((h) => (typeof h === "string" ? h : h && (h.name || h.handler)))
+    .filter(Boolean);
+  return {
+    events: eventNames(parsed.config),
+    handlers,
+    rawPublish: publishesRaw(componentCode),
+  };
+}
+
+/** A bot's subscription to one placed widget's event (TD-006). */
+function triggerSubscription({ dashboardId, widgetId, component, event }) {
+  return {
+    eventType: `${component}[${widgetId}].${event}`,
+    source: {
+      kind: "widget",
+      ref: component,
+      instanceId: String(widgetId),
+      event,
+      workspaceId: String(dashboardId),
+    },
+    label: `${String(component).split(".").pop()} › ${event}`,
+  };
 }
 
 /** The package the Builder says it built (the last @ai-built/… it names). */
@@ -148,7 +375,11 @@ function tokensOf(usage) {
  *   createDashboard(name, pieceCount) → { id, name } | throws
  *   askRole(role, request) → run record ({ status, output, error, model, usage, cost, skipped, reason })
  *   abortRole(role)
- *   placeWidget({ dashboardId, component|widget }) → { component } | throws
+ *   placeWidget({ dashboardId, component|widget }) → { component, widgetId } | throws
+ *   saveBot({ dashboardId, piece }) → { id, name } | throws
+ *   placeBotResults({ dashboardId, botId }) → { component, widgetId } | throws
+ *   wireTrigger({ dashboardId, botId, widgetId, component, event }) | throws
+ *   wireListener({ dashboardId, widgetId, component, handler, botId, result }) | throws
  *   emit(state)   progress after every change
  *   now()
  * @param {{ dashboardName?: string }} [opts]
@@ -165,6 +396,8 @@ function createPlanBuild(plan, deps, opts = {}) {
     dashboard: null, // { id, name }
     // piece index → { component?, package? } — what to place
     made: {},
+    // bot index → { id, name } — saved bots (offered as Run now at the end)
+    bots: {},
     totals: { tokens: 0, usd: 0, includedInPlan: true },
   };
   let stopping = false;
@@ -172,6 +405,7 @@ function createPlanBuild(plan, deps, opts = {}) {
   const pieces = (plan.pieces || [])
     .filter(Boolean)
     .filter((p) => p.kind === "widget");
+  const bots = botPieces(plan);
   const emit = () => deps.emit && deps.emit(JSON.parse(JSON.stringify(state)));
 
   const account = (step, record) => {
@@ -250,8 +484,55 @@ function createPlanBuild(plan, deps, opts = {}) {
           component: made.component || null,
           widget: made.package || piece.package,
         });
+        state.made[step.piece] = {
+          ...made,
+          component: (res && res.component) || made.component || null,
+          widgetId: res && res.widgetId != null ? res.widgetId : null,
+        };
         step.detail =
           res && res.component ? res.component : made.package || piece.package;
+        return;
+      }
+      case "bot": {
+        const saved = await deps.saveBot({
+          dashboardId: state.dashboard.id,
+          piece: bots[step.bot],
+        });
+        state.bots[step.bot] = { id: saved.id, name: saved.name };
+        step.detail = saved.name;
+        return;
+      }
+      case "results": {
+        const res = await deps.placeBotResults({
+          dashboardId: state.dashboard.id,
+          botId: state.bots[step.bot].id,
+        });
+        step.detail = res && res.component ? res.component : "Bot results";
+        return;
+      }
+      case "trigger": {
+        const made = state.made[step.piece] || {};
+        await deps.wireTrigger({
+          dashboardId: state.dashboard.id,
+          botId: state.bots[step.bot].id,
+          widgetId: made.widgetId,
+          component: made.component,
+          event: step.event,
+        });
+        step.detail = `${made.component}[${made.widgetId}].${step.event}`;
+        return;
+      }
+      case "listen": {
+        const made = state.made[step.piece] || {};
+        await deps.wireListener({
+          dashboardId: state.dashboard.id,
+          widgetId: made.widgetId,
+          component: made.component,
+          handler: step.handler,
+          botId: state.bots[step.bot].id,
+          result: step.result,
+        });
+        step.detail = `${step.handler} ← ${step.result}`;
         return;
       }
       default:
@@ -317,6 +598,12 @@ module.exports = {
   STATUS,
   planSteps,
   blockersFor,
+  botPieces,
+  wiringLines,
+  planBotDefinition,
+  triggerSubscription,
+  widgetWiring,
+  publishesRaw,
   buildRequest,
   builtPackage,
   verdictOf,

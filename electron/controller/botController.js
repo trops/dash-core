@@ -50,7 +50,11 @@ const {
   findBotPackages,
 } = require("../bots/botPackage");
 const { downloadBotPackage } = require("./botRegistryInstall");
-const { placeWidget, setWidgetPrefs } = require("../utils/placeWidget");
+const {
+  placeWidget,
+  setWidgetPrefs,
+  addWidgetListener,
+} = require("../utils/placeWidget");
 
 // Built-in bot widgets (TEAM-012): registered by dash-core's renderer.
 const BOT_WIDGETS = {
@@ -84,7 +88,12 @@ const {
   HandoffCap,
 } = require("../bots/roleTools");
 const { compareConfigs } = require("../bots/configDiff");
-const { createPlanBuild } = require("../bots/planBuild");
+const {
+  createPlanBuild,
+  planBotDefinition,
+  triggerSubscription,
+  widgetWiring,
+} = require("../bots/planBuild");
 const { resolveWidgetComponent } = require("../bots/widgetComponent");
 const { recentRuns } = require("../bots/recentRuns");
 const { coalesce } = require("../bots/coalesce");
@@ -100,6 +109,7 @@ const {
   causeFromEvent,
   sourceFromEvent,
   composeEventPrompt,
+  botEventType,
 } = require("../bots/botEvents");
 const {
   RESULTS_SERVER,
@@ -1482,6 +1492,17 @@ const botController = {
           if (res && res.error) throw new Error(res.error);
           return res;
         },
+        saveBot: (req) => this._planSaveBot(req),
+        placeBotResults: ({ dashboardId, botId }) => {
+          const res = this.addBotWidget(dashboardId, {
+            kind: "results",
+            botId,
+          });
+          if (res && res.error) throw new Error(res.error);
+          return { component: BOT_WIDGETS.results, widgetId: res.widgetId };
+        },
+        wireTrigger: (req) => this._planWireTrigger(req),
+        wireListener: (req) => this._planWireListener(req),
         emit: (state) => {
           entry.state = state;
           this._broadcast(BOT_PLAN_BUILD_PROGRESS, { buildId, state });
@@ -1568,6 +1589,95 @@ const botController = {
     const saved = this._saveWorkspace(ws);
     if (saved && saved.error) throw new Error(saved.error);
     return { id: ws.id, name: ws.name };
+  },
+
+  /**
+   * A plan's new bot, saved on the build's dashboard exactly as planned
+   * (team-dashboards TD-008): checked like a draft (only the user's
+   * providers and tools, a valid schedule, valid result names), with its
+   * providers and tools taken as chosen. A provider that isn't connected
+   * fails the step instead of saving a bot that can't work.
+   */
+  _planSaveBot({ dashboardId, piece }) {
+    const definition = planBotDefinition(piece, {
+      dashboardId,
+      sources: this.listToolSources(dashboardId),
+      team: this._store
+        .list()
+        .filter((b) => String(b.workspaceId) === String(dashboardId)),
+    });
+    const saved = this.save(definition);
+    return { id: saved.id, name: saved.name };
+  },
+
+  /** What a placed widget sends and handles ({ events, handlers }), or null. */
+  async _planWidgetWiring(component) {
+    const parts = String(component || "").split(".");
+    const name = parts.length >= 3 ? `@${parts[0]}/${parts[1]}` : component;
+    const src = await require("../widgetRegistry").readWidgetSources({
+      widgetName: name,
+      componentName: component,
+    });
+    return src && src.success
+      ? widgetWiring(src.configCode, src.componentCode)
+      : null;
+  },
+
+  /** A widget event starts a bot (TD-006): the bot subscribes to it. */
+  async _planWireTrigger({ dashboardId, botId, widgetId, component, event }) {
+    const wiring = await this._planWidgetWiring(component);
+    if (wiring && wiring.rawPublish) {
+      throw new Error(
+        `the widget sends "${event}" with api.publishEvent, which bots can't hear — it needs publishEvent from useWidgetEvents`,
+      );
+    }
+    if (wiring && !wiring.events.includes(event)) {
+      throw new Error(
+        `the widget doesn't send "${event}" (it sends ${wiring.events.join(", ") || "nothing"})`,
+      );
+    }
+    const bot = this._store.get(botId);
+    if (!bot) throw new Error("the bot wasn't saved");
+    const sub = triggerSubscription({
+      dashboardId,
+      widgetId,
+      component,
+      event,
+    });
+    const subs = Array.isArray(bot.subscriptions) ? bot.subscriptions : [];
+    if (subs.some((x) => x && x.eventType === sub.eventType)) return;
+    this.save({ ...bot, subscriptions: [...subs, sub] });
+  },
+
+  /** A widget shows a bot's result: listeners[handler] gets the result event. */
+  async _planWireListener({
+    dashboardId,
+    widgetId,
+    component,
+    handler,
+    botId,
+    result,
+  }) {
+    const wiring = await this._planWidgetWiring(component);
+    if (wiring && !wiring.handlers.includes(handler)) {
+      throw new Error(
+        `the widget has no handler "${handler}" (it has ${wiring.handlers.join(", ") || "none"})`,
+      );
+    }
+    const bot = this._store.get(botId);
+    if (!bot) throw new Error("the bot wasn't saved");
+    const ws = this._loadWorkspace(dashboardId);
+    if (!ws) throw new Error("the dashboard couldn't be read");
+    const next = addWidgetListener(
+      ws,
+      widgetId,
+      handler,
+      botEventType(bot, `result.${result}`),
+      component,
+    );
+    if (!next) throw new Error("the widget isn't on the dashboard");
+    const saved = this._saveWorkspace(next);
+    if (saved && saved.error) throw new Error(saved.error);
   },
 
   /** A Dash team role's run inside an approved plan build. */
@@ -1707,6 +1817,7 @@ const botController = {
       dashboardName: hit.name,
       page: target.page ? target.page.name : null,
       cell: placed.cell,
+      widgetId: placed.widgetId,
     };
   },
 

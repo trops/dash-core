@@ -76,6 +76,28 @@ describe("the renderer's plan checker matches the main process's", () => {
       estimate: { build: "~$1" },
     },
     { summary: "x", pieces: [{ kind: "gadget" }], access: "no", estimate: {} },
+    {
+      summary: "Ask",
+      pieces: [
+        {
+          kind: "widget",
+          name: "Ask",
+          source: "new",
+          events: ["askClicked"],
+          listens: [{ bot: "Ghost", result: "r", handler: "h" }],
+        },
+        {
+          kind: "bot",
+          name: "Greeter",
+          source: "new",
+          on: [
+            { widget: "Ask", event: "other" },
+            { widget: "Nope", event: "x" },
+          ],
+        },
+      ],
+      estimate: { build: "?" },
+    },
   ];
   test.each(samples.map((s, i) => [i, s]))("sample %i", (_i, plan) => {
     expect(rendererPlan.validatePlan(plan, { providers: ["gmail"] })).toEqual(

@@ -21,6 +21,7 @@ import {
   nextOpen,
   providerTypesOf,
   removePiece,
+  botSummary,
   swapPiece,
 } from "./planChecklist";
 import {
@@ -74,6 +75,33 @@ function isHandoff(event) {
   );
 }
 
+/** A planned bot on the plan card: what starts it, what it can use (4d-2). */
+const BotPlanDetails = ({ piece, muted, open, onToggle }) => {
+  const sum = botSummary(piece);
+  return (
+    <div className="flex flex-col gap-1 ml-6 text-xs" data-testid="plan-bot">
+      <span>{sum.starts}</span>
+      <span className={muted}>{sum.uses}</span>
+      {sum.shows ? <span className={muted}>{sum.shows}</span> : null}
+      <div>
+        <Button3
+          title={open ? "Hide instructions" : "Show instructions"}
+          size="sm"
+          onClick={onToggle}
+        />
+      </div>
+      {open ? (
+        <span
+          className="whitespace-pre-wrap"
+          data-testid="plan-bot-instructions"
+        >
+          {piece.instructions}
+        </span>
+      ) : null}
+    </div>
+  );
+};
+
 export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const app = useContext(AppContext) || {};
@@ -99,6 +127,8 @@ export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
   // The running build (4d): { buildId, state } once Build starts.
   const [build, setBuild] = useState(null);
   const [buildError, setBuildError] = useState(null);
+  // Bots whose full instructions are showing on the plan card.
+  const [openBots, setOpenBots] = useState([]);
   const started = useRef(false);
   const alive = useRef(true);
 
@@ -433,6 +463,20 @@ export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
                               }
                             />
                           </div>
+                          {p.kind === "bot" && p.source === "new" ? (
+                            <BotPlanDetails
+                              piece={p}
+                              muted={muted}
+                              open={openBots.includes(index)}
+                              onToggle={() =>
+                                setOpenBots((o) =>
+                                  o.includes(index)
+                                    ? o.filter((x) => x !== index)
+                                    : [...o, index],
+                                )
+                              }
+                            />
+                          ) : null}
                           {swapIndex === index ? (
                             <SwapPicker
                               piece={p}
