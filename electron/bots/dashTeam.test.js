@@ -243,7 +243,7 @@ describe("Dash team instructions (phase 4a)", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /"access": \[string\]/);
     assert.match(planner.instructions, /short tappable options/);
-    assert.equal(planner.history.length, 4);
+    assert.equal(planner.history.length, 5);
   });
 });
 
@@ -261,8 +261,8 @@ describe("Dash team instructions (phase 4d-2)", () => {
     );
     assert.match(planner.instructions, /"showResults": boolean/);
     // The 4a text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[1], /short tappable options/);
-    assert.doesNotMatch(planner.history[1], /showResults/);
+    assert.match(planner.history[2], /short tappable options/);
+    assert.doesNotMatch(planner.history[2], /showResults/);
   });
 });
 
@@ -272,7 +272,22 @@ describe("Dash team instructions (phase 5d)", () => {
     assert.match(planner.instructions, /"sample": \[string\]/);
     assert.match(planner.instructions, /never the user's real data/);
     // The 4d-2 text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[0], /"showResults": boolean/);
-    assert.doesNotMatch(planner.history[0], /"sample"/);
+    assert.match(planner.history[1], /"showResults": boolean/);
+    assert.doesNotMatch(planner.history[1], /"sample"/);
+  });
+});
+
+describe("Dash team instructions (phase 5e)", () => {
+  it("the Planner answers questions from bot results, without a plan", () => {
+    const planner = ROLES.find((r) => r.role === "planner");
+    assert.match(planner.instructions, /bot_results/);
+    assert.match(planner.instructions, /A question gets no plan/);
+    assert.match(
+      planner.instructions,
+      /When the user asks to make or change something, end every answer with the plan/,
+    );
+    // The 5d text is kept so an unedited Planner upgrades.
+    assert.match(planner.history[0], /"sample": \[string\]/);
+    assert.doesNotMatch(planner.history[0], /bot_results/);
   });
 });

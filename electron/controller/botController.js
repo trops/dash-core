@@ -2158,9 +2158,63 @@ const botController = {
         : {}),
       compareConfigs,
       listDashboards: () => this._dashboardsWithBots(),
+      botResults: () => this._botResultsForTeam(),
+      botRuns: () => this._botRunsForTeam(),
       draftBot: (req) => this._teamDraftBot(req),
       placeWidget: (req) => this._teamPlaceWidget(req),
     };
+  },
+
+  /** Dashboard id → name, for the results and runs the Planner reads. */
+  _dashboardNames() {
+    const names = new Map();
+    for (const d of this._dashboardsWithBots()) names.set(d.id, d.name);
+    return names;
+  },
+
+  /**
+   * The latest result each of the user's bots sent (bot_results, CRE-011
+   * AC6). The Dash team's own bots are left out.
+   */
+  _botResultsForTeam() {
+    const names = this._dashboardNames();
+    const out = [];
+    for (const bot of this._store.list()) {
+      if (isDashTeam(bot)) continue;
+      for (const decl of bot.publishes || []) {
+        if (!decl || !decl.name) continue;
+        let r = null;
+        try {
+          r = this._store.getResult(bot.id, decl.name);
+        } catch (_e) {
+          r = null;
+        }
+        if (!r) continue;
+        out.push({
+          botName: bot.name || bot.id,
+          dashboard: names.get(String(bot.workspaceId)) || null,
+          name: decl.name,
+          label: r.label || decl.label || decl.name,
+          summary: r.summary,
+          items: r.items,
+          sentAt: r.sentAt || null,
+        });
+      }
+    }
+    return out;
+  },
+
+  /** Recent runs of the user's bots, newest first (bot_runs). */
+  _botRunsForTeam() {
+    const names = this._dashboardNames();
+    return recentRuns({
+      bots: this._store.list().filter((b) => !isDashTeam(b)),
+      getRuns: (id) => this._store.getRuns(id),
+      limit: 50,
+    }).map((r) => ({
+      ...r,
+      dashboard: r.workspaceId ? names.get(r.workspaceId) || null : null,
+    }));
   },
 
   /** The user's dashboards with their bots' names (list_dashboards). */

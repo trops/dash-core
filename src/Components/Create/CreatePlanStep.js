@@ -32,6 +32,7 @@ import {
 } from "./PlanChecklistDialogs";
 import { CreateBuildingStep } from "./CreateBuildingStep";
 import { PlanSketch } from "./PlanSketch";
+import { YouBubble, TeamBubble } from "./ChatBubbles";
 
 /**
  * The Planner's first question in a conversation reopened from Recent: its
@@ -490,44 +491,20 @@ export const CreatePlanStep = ({
         >
           {messages.map((m, i) =>
             m.who === "you" ? (
-              <div
-                key={i}
-                className={`self-end max-w-xl rounded-lg border px-4 py-3 text-sm ${hairline} ${strong}`}
-              >
-                {m.text}
-              </div>
+              <YouBubble key={i}>{m.text}</YouBubble>
             ) : m.who === "note" ? (
               <span key={i} className={`text-xs ${muted}`}>
                 {m.text}
               </span>
             ) : (
-              <div
-                key={i}
-                className="flex flex-col gap-1"
-                data-testid="planner-message"
-              >
-                <div className="flex flex-row items-center gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider">
-                    Planner
-                  </span>
-                  {m.meta ? (
-                    <span className={`text-xs ${muted}`}>{m.meta}</span>
-                  ) : null}
-                </div>
-                <p className="text-sm whitespace-pre-wrap">{m.text}</p>
-              </div>
+              <TeamBubble key={i} meta={m.meta} testId="planner-message">
+                {m.text}
+              </TeamBubble>
             ),
           )}
 
           {busy ? (
-            <div className="flex flex-col gap-1">
-              <span className="text-xs font-semibold uppercase tracking-wider">
-                Planner
-              </span>
-              <p className={`text-sm whitespace-pre-wrap ${muted}`}>
-                {withoutPlan(soFar) || "Thinking…"}
-              </p>
-            </div>
+            <TeamBubble muted>{withoutPlan(soFar) || "Thinking…"}</TeamBubble>
           ) : null}
 
           {!busy && questions.length ? (

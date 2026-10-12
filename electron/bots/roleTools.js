@@ -15,6 +15,8 @@
  *   list_dashboards Planner, Builder      the user's dashboards and their bots
  *   draft_bot       Builder               a bot draft on a dashboard, for review
  *   place_widget    Builder               put an installed widget on a dashboard
+ *   bot_results     Planner               the latest result each bot sent (5e)
+ *   bot_runs        Planner               recent bot runs and their answers (5e)
  *
  * Everything on ROLE_SERVER only reads (ask_role runs another team bot, itself
  * limited to its role's tools) and is auto-allowed. build_widget installs a
@@ -29,6 +31,11 @@
 "use strict";
 
 const { describeDraft } = require("./teamTools");
+const {
+  describeResults,
+  describeRuns,
+  filterRuns,
+} = require("./resultsDigest");
 
 const ROLE_SERVER = "dash-team";
 // Tools that change things (installing a widget) — not auto-allowed.
@@ -182,6 +189,30 @@ const TOOL_DEFS = {
       required: ["dashboard", "widget"],
     },
   },
+  bot_results: {
+    name: "bot_results",
+    description:
+      'Read the latest result each of the user\'s bots sent to its dashboard (what a Bot results widget shows): bot, result, dashboard, when it was sent, and its items. Only the latest result per name is kept. Use it to answer questions like "what did my bots find?".',
+    inputSchema: { type: "object", properties: {} },
+  },
+  bot_runs: {
+    name: "bot_runs",
+    description:
+      "Read the user's recent bot runs, newest first: bot, dashboard, when, status, and the bot's answer (clipped). Filter by bot name and/or the last N hours, e.g. since_hours 24 for today.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        bot: {
+          type: "string",
+          description: "Only bots whose name contains this.",
+        },
+        since_hours: {
+          type: "number",
+          description: "Only runs that ended in the last this-many hours.",
+        },
+      },
+    },
+  },
   list_dashboards: {
     name: "list_dashboards",
     description:
@@ -281,7 +312,14 @@ const TOOL_DEFS = {
 };
 
 const ROLE_TOOL_NAMES = {
-  planner: ["search_library", "list_providers", "list_dashboards", "ask_role"],
+  planner: [
+    "search_library",
+    "list_providers",
+    "list_dashboards",
+    "ask_role",
+    "bot_results",
+    "bot_runs",
+  ],
   scout: ["search_library", "read_widget", "list_providers"],
   builder: [
     "widget_guide",
@@ -740,6 +778,18 @@ async function handleRoleTool(deps, ctx, toolName, args = {}) {
           return fail((res && res.error) || `Couldn't check ${name}.`);
         }
         return ok(describeCheck(res, deps.compareConfigs));
+      }
+      case "bot_results": {
+        const results = (deps.botResults && deps.botResults()) || [];
+        return ok(describeResults(results));
+      }
+      case "bot_runs": {
+        const runs = (deps.botRuns && deps.botRuns()) || [];
+        return ok(
+          describeRuns(
+            filterRuns(runs, { bot: args.bot, sinceHours: args.since_hours }),
+          ),
+        );
       }
       case "list_dashboards": {
         const dashboards = (deps.listDashboards && deps.listDashboards()) || [];

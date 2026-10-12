@@ -86,6 +86,8 @@ export const CreateModal = ({
   onOpenDashboard = null,
   // Open on a plan conversation from Recent — Expand from the dock (4e-2).
   initialRecentId = null,
+  // Open on a plan to start from — Open as a plan from Ask (5e).
+  initialSeed = null,
   // Open the theme editor on a theme Create made (unsaved) — Type: Theme.
   onOpenTheme = null,
 }) => {
@@ -135,8 +137,10 @@ export const CreateModal = ({
     setBuilderStep(null);
     if (initialRecentId) {
       setPlanStep({ prompt: "", recentId: initialRecentId });
+    } else if (initialSeed) {
+      setPlanStep({ prompt: "", seed: initialSeed });
     }
-  }, [open, initialType, initialRecentId]);
+  }, [open, initialType, initialRecentId, initialSeed]);
 
   // The cursor starts in the prompt (CRE-001 AC2). The dialog focuses its
   // first control (Close) on open, so take focus back right after.
@@ -350,6 +354,16 @@ export const CreateModal = ({
       continueDraft({ id: row.id, name: row.title });
       return;
     }
+    if (row.kind === "question") {
+      // Questions live in the dock (5e).
+      setIsOpen(false);
+      window.dispatchEvent(
+        new CustomEvent("dash:create-fold", {
+          detail: { recentId: row.id, title: row.title, kind: "question" },
+        }),
+      );
+      return;
+    }
     setPlanStep({ prompt: "", recentId: row.id });
   };
   const removeRecent = async (row) => {
@@ -482,7 +496,9 @@ export const CreateModal = ({
                         icon={
                           row.kind === "plan"
                             ? "table-cells-large"
-                            : "pen-to-square"
+                            : row.kind === "question"
+                              ? "comment"
+                              : "pen-to-square"
                         }
                         className="h-3.5 w-3.5"
                       />
@@ -492,7 +508,7 @@ export const CreateModal = ({
                       </span>
                     </span>
                   </Button3>
-                  {row.kind === "plan" ? (
+                  {row.kind === "plan" || row.kind === "question" ? (
                     <ButtonIcon
                       icon="xmark"
                       ariaLabel={`Remove ${row.title} from Recent`}

@@ -328,3 +328,52 @@ describe("botController — Recent and build memory are wired", () => {
     );
   });
 });
+
+describe("questions in Recent (phase 5e)", () => {
+  const make = () => {
+    let blob = null;
+    let n = 0;
+    return new CreateRecent({
+      persistence: {
+        read: () => blob,
+        write: (b) => (blob = JSON.parse(JSON.stringify(b))),
+      },
+      now: () => `2026-10-12T08:00:0${n++}Z`,
+      newId: () => `plan_q${n}`,
+    });
+  };
+
+  it("a question keeps its kind; asked until the Planner answers", () => {
+    const r = make();
+    const e = r.save({
+      kind: "question",
+      prompt: "What did my bots find today?",
+      conversation: {
+        messages: [{ who: "you", text: "What did my bots find today?" }],
+      },
+    });
+    assert.equal(e.kind, "question");
+    assert.equal(r.list()[0].status, "asked");
+    r.save({
+      id: e.id,
+      kind: "plan", // ignored: the kind is set when made
+      conversation: {
+        messages: [
+          { who: "you", text: "What did my bots find today?" },
+          {
+            who: "planner",
+            text: "Morning Briefer sent a brief at 8:02.",
+          },
+        ],
+      },
+    });
+    const row = r.list()[0];
+    assert.equal(row.kind, "question");
+    assert.equal(row.status, "answered");
+  });
+
+  it("an unknown kind is a plan", () => {
+    const r = make();
+    assert.equal(r.save({ kind: "gadget", prompt: "x" }).kind, "plan");
+  });
+});

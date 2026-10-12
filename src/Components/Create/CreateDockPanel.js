@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from "react";
 import {
+  Button,
   Button3,
   ButtonIcon,
   FontAwesomeIcon,
   ResizeHandle,
   SectionLabel,
+  TextArea,
   useResizableWidth,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { CreatePlanStep } from "./CreatePlanStep";
+import { AskStep } from "./AskStep";
 import { recentRows } from "./recentRows";
 import { draftAge } from "./createRouting";
 
@@ -18,7 +21,9 @@ import { draftAge } from "./createRouting";
  * (`dash:create-fold` { recentId, title }) carries on here in a compact
  * layout — chat, plan, Before building and the build's live steps — and
  * Expand reopens it full size (`dash:open-create` { type, recentId }). With
- * nothing folded it shows Recent.
+ * nothing folded it shows an Ask box (5e — questions go to the Planner, which
+ * reads the bots' results) and Recent, where questions and plans share one
+ * list (CRE-007 AC4). A question opens here, never full size.
  *
  * The host's dock decides when it's open (`collapsed`); it stays mounted
  * either way so a fold is never missed.
@@ -36,8 +41,10 @@ export function foldCreate(detail) {
 
 export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
   const { muted, strong, hairline } = useConfigTokens();
-  // { recentId, title } — the conversation folded here, or null (Recent).
+  // { recentId, title, kind?: "question", question? } — the conversation
+  // folded here (a new question has no recentId yet), or null (Recent).
   const [folded, setFolded] = useState(null);
+  const [asking, setAsking] = useState("");
   const [plans, setPlans] = useState([]);
   const [drafts, setDrafts] = useState([]);
   const { width, handleProps } = useResizableWidth({
@@ -51,7 +58,13 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
   useEffect(() => {
     const onFold = (e) => {
       const d = (e && e.detail) || {};
-      if (d.recentId) setFolded({ recentId: d.recentId, title: d.title || "" });
+      if (d.recentId) {
+        setFolded({
+          recentId: d.recentId,
+          title: d.title || "",
+          kind: d.kind === "question" ? "question" : "plan",
+        });
+      }
     };
     window.addEventListener("dash:create-fold", onFold);
     return () => window.removeEventListener("dash:create-fold", onFold);
@@ -86,15 +99,15 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
   if (collapsed) return null;
 
   const expand = () => {
-    if (!folded) return;
+    if (!folded || folded.kind === "question") return;
     const { recentId } = folded;
     setFolded(null);
     if (onCollapse) onCollapse();
     openCreate({ type: "dashboard", recentId });
   };
   const openRow = (row) => {
-    if (row.kind === "plan") {
-      setFolded({ recentId: row.id, title: row.title });
+    if (row.kind === "plan" || row.kind === "question") {
+      setFolded({ recentId: row.id, title: row.title, kind: row.kind });
       return;
     }
     // A widget draft opens in the Widget Builder (full size).
@@ -105,6 +118,17 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
     );
   };
   const rows = recentRows(plans, drafts, 12);
+  const askNow = () => {
+    const q = asking.trim();
+    if (!q) return;
+    setAsking("");
+    setFolded({ recentId: null, title: q, kind: "question", question: q });
+  };
+  // Open as a plan: Create (full size) starts from the answer's plan.
+  const openPlan = (seed) => {
+    if (onCollapse) onCollapse();
+    openCreate({ type: "dashboard", seed });
+  };
 
   return (
     <aside
@@ -129,9 +153,12 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
         <span
           className={`flex-1 min-w-0 truncate text-sm font-semibold ${strong}`}
         >
-          {folded ? folded.title || "Plan a dashboard" : "Create"}
+          {folded
+            ? folded.title ||
+              (folded.kind === "question" ? "Question" : "Plan a dashboard")
+            : "Create"}
         </span>
-        {folded ? (
+        {folded && folded.kind !== "question" ? (
           <ButtonIcon
             icon="up-right-and-down-left-from-center"
             ariaLabel="Expand"
@@ -146,7 +173,16 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
           />
         ) : null}
       </div>
-      {folded ? (
+      {folded && folded.kind === "question" ? (
+        <div className="flex-1 min-h-0 flex flex-col">
+          <AskStep
+            key={folded.recentId || `new:${folded.question}`}
+            question={folded.question || ""}
+            recentId={folded.recentId}
+            onOpenPlan={openPlan}
+          />
+        </div>
+      ) : folded ? (
         <div className="flex-1 min-h-0 flex flex-col">
           <CreatePlanStep
             key={folded.recentId}
@@ -167,6 +203,29 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
           className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2 p-3"
           data-testid="create-dock-recent"
         >
+          <div className="flex flex-col gap-2 pb-2" data-testid="ask-box">
+            <TextArea
+              aria-label="Ask about your dashboards and bots"
+              value={asking}
+              onChange={(v) => setAsking(v)}
+              placeholder="Ask about your dashboards and bots — e.g. what did my bots find today?"
+              rows={2}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  askNow();
+                }
+              }}
+            />
+            <div className="flex flex-row justify-end">
+              <Button
+                size="sm"
+                title="Ask"
+                onClick={askNow}
+                disabled={!asking.trim()}
+              />
+            </div>
+          </div>
           <SectionLabel text="Recent" />
           {rows.length ? (
             rows.map((row) => (
@@ -181,7 +240,7 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
             ))
           ) : (
             <span className={`text-sm ${muted}`}>
-              Nothing yet. Plans you start in Create show up here.
+              Nothing yet. Questions and plans show up here.
             </span>
           )}
           <div className="pt-2">
