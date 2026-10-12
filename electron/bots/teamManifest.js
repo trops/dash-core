@@ -7,10 +7,20 @@
  * choices; wiring is between roles. A manifest never carries bot or
  * dashboard ids, provider names, grants, sessions, memory or credentials.
  *
+ * Inside a dashboard package (create-entry phase 5a) a team also carries what
+ * ties it to the dashboard's widgets, by layout-local widget id (kept on
+ * import): `triggers` (a widget event starts a role) and `listeners` (a
+ * widget handler shows a role's result). Members keep their results
+ * (`publishes`), and bot → bot wiring may be on a result (`result.<name>`).
+ * Older versions drop these fields, never fail on them.
+ *
  * Pure (NFR-006): decisions only; botController reads/writes files and saves
  * the bots.
  */
 "use strict";
+
+const { RESULT_NAME_RE } = require("./botSchema");
+const { botEventType, parseResultEventType } = require("./botEvents");
 
 const SCHEMA_VERSION = 1;
 const TEAM_TYPE = "bot-team";
@@ -33,6 +43,9 @@ const LIMITS = {
   // A trigger's note to the triggered bot (botSchema MAX_NOTE).
   note: 2000,
   short: 200,
+  results: 20,
+  triggers: 100,
+  listeners: 100,
 };
 
 /** A wiring entry, with its note when it has one. */
@@ -43,7 +56,11 @@ function wiringEntry(role, on, note) {
 }
 
 const ROLE_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
-const EVENT_RE = /^(completed|failed|tool\.[A-Za-z0-9_.:-]{1,200})$/;
+const EVENT_RE =
+  /^(completed|failed|tool\.[A-Za-z0-9_.:-]{1,200}|result\.[A-Za-z][A-Za-z0-9_]{0,39})$/;
+// A widget's own event name, and a handler it declares.
+const WIDGET_EVENT_RE = /^[A-Za-z0-9_.:-]{1,100}$/;
+const HANDLER_RE = /^[A-Za-z0-9_.:-]{1,100}$/;
 
 function slugify(name) {
   const s = String(name || "")
@@ -60,6 +77,43 @@ function eventLabel(event) {
   return event;
 }
 
+/** Every layout of a workspace: main, pages and the sidebar. */
+function layoutsOf(workspace) {
+  const ws = workspace || {};
+  return [
+    ws.layout,
+    ...(Array.isArray(ws.pages) ? ws.pages.map((p) => p && p.layout) : []),
+    ws.sidebarLayout,
+  ].filter(Array.isArray);
+}
+
+/**
+ * A workspace without the listener entries that point at these bots' results
+ * — they travel as role-based `listeners` instead, so no bot id leaks into
+ * a package (create-entry 5a).
+ */
+function stripBotListeners(workspace, botIds) {
+  const ids = new Set((botIds || []).map(String));
+  const ws = JSON.parse(JSON.stringify(workspace || {}));
+  for (const layout of layoutsOf(ws)) {
+    for (const item of layout) {
+      if (!item || !item.listeners || typeof item.listeners !== "object") {
+        continue;
+      }
+      for (const [handler, list] of Object.entries(item.listeners)) {
+        if (!Array.isArray(list)) continue;
+        const kept = list.filter((ev) => {
+          const r = parseResultEventType(ev);
+          return !(r && ids.has(r.botId));
+        });
+        if (kept.length) item.listeners[handler] = kept;
+        else delete item.listeners[handler];
+      }
+    }
+  }
+  return ws;
+}
+
 // ─── Export ──────────────────────────────────────────────────────────
 
 /**
@@ -69,7 +123,16 @@ function eventLabel(event) {
  * @param {{ name: string, description?: string, bots: object[], providers: object[] }} input
  * @returns {{ manifest: object, notIncluded: string[] }}
  */
-function buildTeamManifest({ name, description = "", bots, providers }) {
+function buildTeamManifest({
+  name,
+  description = "",
+  bots,
+  providers,
+  // The dashboard the team is exported with (5a): its widget triggers and
+  // result listeners travel too.
+  dashboardId = null,
+  workspace = null,
+}) {
   const members = (Array.isArray(bots) ? bots : []).filter(
     (b) => b && b.role !== "lead",
   );
@@ -119,16 +182,42 @@ function buildTeamManifest({ name, description = "", bots, providers }) {
           .filter((s) => s && typeof s.cron === "string")
           .map((s) => ({ cron: s.cron, prompt: s.prompt || "" })),
         providers: providersOut,
+        publishes: (Array.isArray(bot.publishes) ? bot.publishes : [])
+          .filter((p) => p && RESULT_NAME_RE.test(String(p.name || "")))
+          .map((p) => ({
+            name: p.name,
+            label: p.label || "",
+            description: p.description || "",
+          })),
       },
     };
   });
 
   const wiring = [];
+  const triggers = [];
+  const onThisDashboard = (src) =>
+    dashboardId != null &&
+    src.kind === "widget" &&
+    String(src.workspaceId) === String(dashboardId) &&
+    src.instanceId != null &&
+    src.ref &&
+    WIDGET_EVENT_RE.test(String(src.event || ""));
   for (const bot of members) {
     for (const sub of bot.subscriptions || []) {
       const src = (sub && sub.source) || {};
       const label = (sub && (sub.label || sub.eventType)) || "a trigger";
-      if (src.kind === "bot" && roleOf.has(src.instanceId)) {
+      if (onThisDashboard(src)) {
+        const t = {
+          role: roleOf.get(bot.id),
+          widget: String(src.instanceId),
+          component: src.ref,
+          event: src.event,
+        };
+        if (typeof sub.note === "string" && sub.note.trim()) {
+          t.note = sub.note.trim();
+        }
+        triggers.push(t);
+      } else if (src.kind === "bot" && roleOf.has(src.instanceId)) {
         wiring.push(
           wiringEntry(
             roleOf.get(bot.id),
@@ -148,6 +237,42 @@ function buildTeamManifest({ name, description = "", bots, providers }) {
     }
   }
 
+  // Widgets showing a team bot's result (listeners[handler] holds its
+  // result event).
+  const listeners = [];
+  for (const layout of layoutsOf(workspace)) {
+    for (const item of layout) {
+      if (!item || !item.listeners || typeof item.listeners !== "object") {
+        continue;
+      }
+      for (const [handler, list] of Object.entries(item.listeners)) {
+        if (!Array.isArray(list) || !HANDLER_RE.test(handler)) continue;
+        for (const ev of list) {
+          const r = parseResultEventType(ev);
+          if (!r || !roleOf.has(r.botId)) continue;
+          const l = {
+            widget: String(item.id),
+            component: item.component || "",
+            handler,
+            role: roleOf.get(r.botId),
+            result: r.name,
+          };
+          if (
+            !listeners.some(
+              (x) =>
+                x.widget === l.widget &&
+                x.handler === l.handler &&
+                x.role === l.role &&
+                x.result === l.result,
+            )
+          ) {
+            listeners.push(l);
+          }
+        }
+      }
+    }
+  }
+
   return {
     manifest: {
       schemaVersion: SCHEMA_VERSION,
@@ -157,6 +282,8 @@ function buildTeamManifest({ name, description = "", bots, providers }) {
       version: "1.0.0",
       members: manifestMembers,
       wiring,
+      triggers,
+      listeners,
     },
     notIncluded,
   };
@@ -269,6 +396,20 @@ function validateTeamManifest(input) {
       ) {
         errors.push(`${where}: providers are malformed`);
       }
+      const pubs = Array.isArray(e.publishes) ? e.publishes : [];
+      if (
+        pubs.length > LIMITS.results ||
+        !pubs.every(
+          (p) =>
+            p &&
+            typeof p.name === "string" &&
+            RESULT_NAME_RE.test(p.name) &&
+            (p.label == null || str(p.label, LIMITS.short)) &&
+            (p.description == null || str(p.description, LIMITS.description)),
+        )
+      ) {
+        errors.push(`${where}: results are malformed`);
+      }
       members.push({
         role: m.role,
         embedded: {
@@ -287,6 +428,11 @@ function validateTeamManifest(input) {
           providers: provs.map((p) => ({
             type: p && p.type,
             tools: p && Array.isArray(p.tools) ? [...p.tools] : null,
+          })),
+          publishes: pubs.map((p) => ({
+            name: p && p.name,
+            label: (p && p.label) || "",
+            description: (p && p.description) || "",
           })),
         },
       });
@@ -323,6 +469,84 @@ function validateTeamManifest(input) {
     });
   }
 
+  // A role's declared results, for listeners.
+  const resultsOf = new Map(
+    members.map((m) => [m.role, m.embedded.publishes.map((p) => p.name)]),
+  );
+  const widgetId = (v) => typeof v === "string" && v.length && v.length <= 64;
+
+  const triggers = [];
+  const rawTriggers = input.triggers == null ? [] : input.triggers;
+  if (!Array.isArray(rawTriggers) || rawTriggers.length > LIMITS.triggers) {
+    errors.push("triggers must be a list");
+  } else {
+    rawTriggers.forEach((t, i) => {
+      const where = `trigger ${i + 1}`;
+      if (
+        !t ||
+        !roles.has(t.role) ||
+        !widgetId(t.widget) ||
+        !str(t.component, LIMITS.short) ||
+        !t.component ||
+        typeof t.event !== "string" ||
+        !WIDGET_EVENT_RE.test(t.event)
+      ) {
+        errors.push(
+          `${where}: needs a role, a widget, its component and an event`,
+        );
+        return;
+      }
+      if (t.note != null && !str(t.note, LIMITS.note)) {
+        errors.push(`${where}: note is too long`);
+        return;
+      }
+      const out = {
+        role: t.role,
+        widget: t.widget,
+        component: t.component,
+        event: t.event,
+      };
+      if (typeof t.note === "string" && t.note.trim()) out.note = t.note.trim();
+      triggers.push(out);
+    });
+  }
+
+  const listeners = [];
+  const rawListeners = input.listeners == null ? [] : input.listeners;
+  if (!Array.isArray(rawListeners) || rawListeners.length > LIMITS.listeners) {
+    errors.push("listeners must be a list");
+  } else {
+    rawListeners.forEach((l, i) => {
+      const where = `listener ${i + 1}`;
+      if (
+        !l ||
+        !roles.has(l.role) ||
+        !widgetId(l.widget) ||
+        !str(l.component, LIMITS.short) ||
+        typeof l.handler !== "string" ||
+        !HANDLER_RE.test(l.handler) ||
+        typeof l.result !== "string" ||
+        !RESULT_NAME_RE.test(l.result)
+      ) {
+        errors.push(
+          `${where}: needs a widget, its handler, a role and a result`,
+        );
+        return;
+      }
+      if (!(resultsOf.get(l.role) || []).includes(l.result)) {
+        errors.push(`${where}: ${l.role} doesn't send "${l.result}"`);
+        return;
+      }
+      listeners.push({
+        widget: l.widget,
+        component: l.component || "",
+        handler: l.handler,
+        role: l.role,
+        result: l.result,
+      });
+    });
+  }
+
   if (errors.length) return { valid: false, errors, manifest: null };
   return {
     valid: true,
@@ -335,6 +559,8 @@ function validateTeamManifest(input) {
       version: input.version || "1.0.0",
       members,
       wiring,
+      triggers,
+      listeners,
     },
   };
 }
@@ -413,6 +639,7 @@ function planTeamInstall(
             prompt: s.prompt,
           })),
           subscriptions: [],
+          publishes: (e.publishes || []).map((p) => ({ ...p })),
         },
       };
     });
@@ -429,6 +656,13 @@ function planTeamInstall(
     droppedWiring: manifest.wiring
       .filter((w) => picked.has(w.role) && !picked.has(w.on.role))
       .map(copy),
+    // The dashboard's widgets ↔ the picked bots (5a).
+    triggers: (manifest.triggers || [])
+      .filter((t) => picked.has(t.role))
+      .map((t) => ({ ...t })),
+    listeners: (manifest.listeners || [])
+      .filter((l) => picked.has(l.role))
+      .map((l) => ({ ...l })),
     // Picked bots that look like they rely on team memory, when the team is
     // split (their teammates may have been the ones writing it).
     sharedMemory: isPartial
@@ -471,6 +705,48 @@ function wireTeam(wiring, created) {
   return out;
 }
 
+/**
+ * Resolve a plan's widget triggers and result listeners to the created bots
+ * on this dashboard (create-entry 5a). Widget ids are the package's own —
+ * kept on import.
+ *
+ * @param {{ triggers?: object[], listeners?: object[] }} plan
+ * @param {{ [role]: { id, ref, name } }} created
+ * @param {string|number} dashboardId
+ * @returns {{ subscriptions: { [role]: object[] },
+ *   listeners: Array<{ widget, component, handler, eventType }> }}
+ */
+function wireWidgets(plan, created, dashboardId) {
+  const subscriptions = {};
+  for (const t of (plan && plan.triggers) || []) {
+    if (!created[t.role]) continue;
+    (subscriptions[t.role] = subscriptions[t.role] || []).push({
+      eventType: `${t.component}[${t.widget}].${t.event}`,
+      source: {
+        kind: "widget",
+        ref: t.component,
+        instanceId: String(t.widget),
+        event: t.event,
+        workspaceId: String(dashboardId),
+      },
+      label: `${String(t.component).split(".").pop()} › ${t.event}`,
+      ...(t.note ? { note: t.note } : {}),
+    });
+  }
+  const listeners = [];
+  for (const l of (plan && plan.listeners) || []) {
+    const bot = created[l.role];
+    if (!bot) continue;
+    listeners.push({
+      widget: l.widget,
+      component: l.component || null,
+      handler: l.handler,
+      eventType: botEventType(bot, `result.${l.result}`),
+    });
+  }
+  return { subscriptions, listeners };
+}
+
 module.exports = {
   SCHEMA_VERSION,
   TEAM_TYPE,
@@ -479,4 +755,6 @@ module.exports = {
   validateTeamManifest,
   planTeamInstall,
   wireTeam,
+  wireWidgets,
+  stripBotListeners,
 };

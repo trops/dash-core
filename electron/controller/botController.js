@@ -37,6 +37,8 @@ const {
   validateTeamManifest,
   planTeamInstall,
   wireTeam,
+  wireWidgets,
+  stripBotListeners,
 } = require("../bots/teamManifest");
 const { saveTeamFile, openTeamFile } = require("./teamFiles");
 const {
@@ -69,6 +71,15 @@ const {
   handleTeamTool,
 } = require("../bots/teamTools");
 const { isLead, leadOf, planEnsureLead } = require("../bots/teamLeads");
+// Every widget item of a workspace: main layout, pages and the sidebar.
+const layoutItems = (ws) =>
+  [
+    ws && ws.layout,
+    ...((ws && ws.pages) || []).map((p) => p && p.layout),
+    ws && ws.sidebarLayout,
+  ]
+    .filter(Array.isArray)
+    .flat();
 // A plan build that's still going (fix / retry / resume / remove wait).
 const isBuildBusy = (state) =>
   !state || state.status === "running" || state.status === "waiting";
@@ -918,12 +929,64 @@ const botController = {
       description,
       bots,
       providers: this._providerList(),
+      // Its widget triggers and result listeners go along (5a).
+      dashboardId: workspaceId,
+      workspace: this._loadWorkspace(workspaceId),
     });
     if (!manifest.members.length) {
       return { saved: false, error: "This dashboard has no bots to export." };
     }
     const result = await saveTeamFile(this._getMainWindow(), manifest, name);
     return { ...result, notIncluded, members: manifest.members.length };
+  },
+
+  /**
+   * A dashboard's team for a dashboard package (create-entry 5a, US-027):
+   * the manifest (with widget triggers and result listeners by layout widget
+   * id), the workspace without bot listener entries (they travel as
+   * role-based listeners), and what couldn't travel. Null team when the
+   * dashboard has no bots.
+   */
+  teamForDashboard(workspace, { name, description } = {}) {
+    const workspaceId = workspace && workspace.id;
+    const bots = this._store
+      .list()
+      .filter((b) => b.role !== "lead" && isOnTeam(b, workspaceId));
+    if (!bots.length) return { team: null, workspace, notIncluded: [] };
+    const { manifest, notIncluded } = buildTeamManifest({
+      name: name || (workspace && workspace.name) || "Team",
+      description,
+      bots,
+      providers: this._providerList(),
+      dashboardId: workspaceId,
+      workspace,
+    });
+    return {
+      team: manifest,
+      workspace: stripBotListeners(
+        workspace,
+        bots.map((b) => b.id),
+      ),
+      notIncluded,
+    };
+  },
+
+  /**
+   * Install a dashboard package's team into the dashboard it just created
+   * (create-entry 5a, US-027 AC4/AC7): bots paused, providers by type, and
+   * the wiring re-pointed to the new bots and this dashboard. The manifest
+   * is re-checked here.
+   */
+  installDashboardTeam(workspaceId, manifest) {
+    const { valid, errors, manifest: clean } = validateTeamManifest(manifest);
+    if (!valid) return { error: "The dashboard's team isn't valid.", errors };
+    return this._installTeamPlan(
+      planTeamInstall(clean, {
+        workspaceId,
+        providers: this._providerList(),
+      }),
+      null,
+    );
   },
 
   /**
@@ -995,6 +1058,49 @@ const botController = {
       created[member.role] = bot;
     }
     const subs = wireTeam(plan.wiring, created);
+    // The dashboard's widgets (5a): triggers become subscriptions on this
+    // dashboard; listeners go into its layout. A widget that isn't there
+    // isn't wired, and says so.
+    const dashboardId =
+      plan.members[0] && plan.members[0].definition.workspaceId;
+    const unwired = [];
+    let ws = dashboardId != null ? this._loadWorkspace(dashboardId) : null;
+    const hasWidget = (id, component) =>
+      !!ws &&
+      layoutItems(ws).some(
+        (i) =>
+          i &&
+          String(i.id) === String(id) &&
+          (!component || i.component === component),
+      );
+    const widgetWiring = wireWidgets(plan, created, dashboardId);
+    for (const [role, list] of Object.entries(widgetWiring.subscriptions)) {
+      for (const sub of list) {
+        if (hasWidget(sub.source.instanceId, sub.source.ref)) {
+          (subs[role] = subs[role] || []).push(sub);
+        } else {
+          unwired.push(
+            `${created[role].name}: ${sub.label} (that widget isn't on the dashboard)`,
+          );
+        }
+      }
+    }
+    let layoutChanged = false;
+    for (const l of widgetWiring.listeners) {
+      const next = ws
+        ? addWidgetListener(ws, l.widget, l.handler, l.eventType, l.component)
+        : null;
+      if (next) {
+        ws = next;
+        layoutChanged = true;
+      } else {
+        unwired.push(`${l.handler} (that widget isn't on the dashboard)`);
+      }
+    }
+    if (layoutChanged) {
+      const saved = this._saveWorkspace(ws);
+      if (saved && saved.error) unwired.push(`listeners: ${saved.error}`);
+    }
     for (const [role, subscriptions] of Object.entries(subs)) {
       this.save({ ...created[role], subscriptions });
     }
@@ -1005,6 +1111,7 @@ const botController = {
         name: created[m.role].name,
       })),
       droppedWiring: plan.droppedWiring || [],
+      unwired,
     };
   },
 

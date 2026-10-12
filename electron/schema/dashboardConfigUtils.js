@@ -80,6 +80,11 @@ function extractEventWiring(layout) {
     if (!targetWidget) continue;
 
     for (const [eventName, listenerConfig] of Object.entries(item.listeners)) {
+      // Today's listeners are lists of full event names
+      // (listeners[handler] = ["Comp[id].event", …]) and travel inside the
+      // layout as they are. Reading one as an object made "0", "1", … into
+      // source widgets, and import then wrote that over the real list.
+      if (Array.isArray(listenerConfig)) continue;
       if (typeof listenerConfig === "string") {
         // Simple format: "SourceWidget"
         wiring.push({
@@ -410,8 +415,14 @@ function applyEventWiringToLayout(layout, eventWiring) {
 
     const listeners = listenersByTarget.get(item.component);
     if (listeners) {
-      // Merge with any existing listeners
-      item.listeners = { ...(item.listeners || {}), ...listeners };
+      // Merge with any existing listeners — never over a list the layout
+      // already carries (today's format).
+      const existing = item.listeners || {};
+      const merged = { ...existing };
+      for (const [key, value] of Object.entries(listeners)) {
+        if (!Array.isArray(existing[key])) merged[key] = value;
+      }
+      item.listeners = merged;
     }
   }
 

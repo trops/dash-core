@@ -24,6 +24,7 @@ import { StarRating } from "../Settings/details/StarRating";
 import { PublishDashboardModal } from "../Settings/details/PublishDashboardModal";
 import { dashboardSummary } from "./dashboardSummary";
 import { useApprovalsByDashboard } from "./useApprovalsByDashboard";
+import { exportedText } from "./exportedText";
 
 const UNCATEGORIZED = "Uncategorized";
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -154,7 +155,9 @@ const DashboardDetailPanel = ({
     });
   };
 
-  async function exportZip() {
+  // With its bots by default (create-entry 5a): they come back wired to
+  // the imported dashboard's widgets.
+  async function exportZip(includeBots = true) {
     setMenuOpen(false);
     if (!appId) return;
     setExportStatus("Exporting…");
@@ -162,11 +165,9 @@ const DashboardDetailPanel = ({
       const result = await window.mainApi.dashboardConfig.exportDashboardConfig(
         appId,
         ws.id,
-        {},
+        { includeBots },
       );
-      setExportStatus(
-        result?.success ? "Exported." : result?.error || "Export failed.",
-      );
+      setExportStatus(exportedText(result));
     } catch (err) {
       setExportStatus(err.message || "Export failed.");
     }
@@ -243,7 +244,22 @@ const DashboardDetailPanel = ({
             }}
           />
           <Button3 title="Duplicate" size="xs" onClick={duplicate} />
-          <Button3 title="Export ZIP" size="xs" onClick={exportZip} />
+          <Button3
+            title={
+              (team.members || []).length
+                ? "Export ZIP with bots"
+                : "Export ZIP"
+            }
+            size="xs"
+            onClick={() => exportZip(true)}
+          />
+          {(team.members || []).length ? (
+            <Button3
+              title="Export ZIP without bots"
+              size="xs"
+              onClick={() => exportZip(false)}
+            />
+          ) : null}
           {isShareable ? (
             <Button3
               title="Publish"

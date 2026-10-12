@@ -81,10 +81,19 @@ async function exportDashboardConfig(
       };
     }
 
+    // The dashboard's bots, as a team (create-entry 5a, US-027) — unless
+    // left out. Their result listeners leave the layout and travel by role.
+    const teamExport =
+      options.includeBots === false
+        ? { team: null, workspace, notIncluded: [] }
+        : teamForExport(workspace, options);
+
     // Strip publisher-specific personalization (userPrefs,
     // selectedProviders) so the exported file carries a clean
     // template, not one pre-filled with the publisher's paths.
-    const sharedWorkspace = stripPersonalizationFromWorkspace(workspace);
+    const sharedWorkspace = stripPersonalizationFromWorkspace(
+      teamExport.workspace,
+    );
     const layout = sharedWorkspace.layout || [];
 
     // 2. Collect components, extract wiring, resolve deps — walk main
@@ -132,6 +141,7 @@ async function exportDashboardConfig(
       widgets,
       providers,
       eventWiring,
+      ...(teamExport.team ? { team: teamExport.team } : {}),
     });
 
     // 4. Bundle theme if workspace has a themeKey
@@ -206,6 +216,8 @@ async function exportDashboardConfig(
       success: true,
       filePath,
       config: dashboardConfig,
+      bots: teamExport.team ? teamExport.team.members.length : 0,
+      notIncluded: teamExport.notIncluded,
     };
   } catch (error) {
     console.error(
@@ -833,6 +845,13 @@ async function processDashboardConfig(
     };
   }
 
+  // The dashboard's bots (create-entry 5a, US-027): created paused, wired
+  // to this dashboard's widgets and to each other.
+  let botsSummary = null;
+  if (dashboardConfig.team) {
+    botsSummary = installTeamForImport(workspace.id, dashboardConfig.team);
+  }
+
   // Build provider requirements summary
   const providerSummary = (dashboardConfig.providers || []).map((p) => ({
     type: p.type,
@@ -856,8 +875,44 @@ async function processDashboardConfig(
       eventsWired: eventWiringSummary,
       providersRequired: providerSummary,
       themeInstalled: themeInstalled || null,
+      bots: botsSummary,
     },
   };
+}
+
+/** The dashboard's team for export, via the bot controller (when it runs). */
+function teamForExport(workspace, options = {}) {
+  try {
+    const botController = require("./botController");
+    if (!botController._ready)
+      return { team: null, workspace, notIncluded: [] };
+    return botController.teamForDashboard(workspace, {
+      description: options.description,
+    });
+  } catch (err) {
+    console.warn("[DashboardConfigController] Bots not exported:", err.message);
+    return {
+      team: null,
+      workspace,
+      notIncluded: [`the dashboard's bots (${err.message})`],
+    };
+  }
+}
+
+/**
+ * Install an imported dashboard's team: { installed, unwired, droppedWiring }
+ * or { error } — the dashboard itself is already saved either way.
+ */
+function installTeamForImport(workspaceId, team) {
+  try {
+    const botController = require("./botController");
+    if (!botController._ready) {
+      return { error: "Bots aren't available right now." };
+    }
+    return botController.installDashboardTeam(workspaceId, team);
+  } catch (err) {
+    return { error: err.message };
+  }
 }
 
 /**
