@@ -28,6 +28,7 @@ import {
   InstallReviewDialog,
   SwapPicker,
 } from "./PlanChecklistDialogs";
+import { CreateBuildingStep } from "./CreateBuildingStep";
 
 /**
  * CreatePlanStep — Type: Dashboard (create-entry PRD CRE-003 AC1/AC5,
@@ -73,7 +74,7 @@ function isHandoff(event) {
   );
 }
 
-export const CreatePlanStep = ({ prompt }) => {
+export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const app = useContext(AppContext) || {};
   // [{ who: "you" | "planner" | "note", text, meta? }]
@@ -95,6 +96,9 @@ export const CreatePlanStep = ({ prompt }) => {
   const [swapIndex, setSwapIndex] = useState(null);
   const [walking, setWalking] = useState(false);
   const [ready, setReady] = useState(false);
+  // The running build (4d): { buildId, state } once Build starts.
+  const [build, setBuild] = useState(null);
+  const [buildError, setBuildError] = useState(null);
   const started = useRef(false);
   const alive = useRef(true);
 
@@ -209,16 +213,37 @@ export const CreatePlanStep = ({ prompt }) => {
   const have = providerTypesOf(app.providers);
   const checklist = plan ? buildChecklist(plan, have) : [];
 
+  // Nothing open: build it (4d). Approving here is the consent — nothing
+  // asks again during the build.
+  const startBuild = async () => {
+    setReady(true);
+    setBuildError(null);
+    const bots = window.mainApi && window.mainApi.bots;
+    if (!bots || !bots.startPlanBuild) {
+      setBuildError("Building from a plan isn't available in this version.");
+      return;
+    }
+    try {
+      const res = await bots.startPlanBuild(plan, {});
+      if (!res || res.error) {
+        setBuildError((res && res.error) || "The build couldn't start.");
+        return;
+      }
+      setBuild(res);
+    } catch (err) {
+      setBuildError((err && err.message) || "The build couldn't start.");
+    }
+  };
   const openItem = (item) => {
     if (!item) {
       setWalking(false);
-      setReady(true);
+      startBuild();
       return;
     }
     setDialog({ kind: item.kind, item });
   };
   // Build walks through what's open, one window at a time (CRE-003 AC3).
-  const build = () => {
+  const buildPlan = () => {
     setWalking(true);
     openItem(nextOpen(checklist, checks, have));
   };
@@ -239,6 +264,17 @@ export const CreatePlanStep = ({ prompt }) => {
     setEdits((e) => [...e, note]);
     setReady(false);
   };
+
+  if (build) {
+    return (
+      <CreateBuildingStep
+        buildId={build.buildId}
+        initialState={build.state}
+        estimate={estimate}
+        onOpenDashboard={onOpenDashboard}
+      />
+    );
+  }
 
   return (
     <div className="flex-1 min-h-0 flex flex-col" data-testid="create-plan">
@@ -501,12 +537,14 @@ export const CreatePlanStep = ({ prompt }) => {
               <div className="flex flex-row flex-wrap items-center gap-3">
                 <Button
                   title={buildButtonLabel(checklist, checks, have)}
-                  onClick={build}
+                  onClick={buildPlan}
                 />
                 <span className={`text-xs ${muted}`} data-testid="plan-ready">
-                  {ready
-                    ? "Ready to build — building from a plan arrives in the next update. Nothing has been built or installed."
-                    : "Nothing has been built or installed yet."}
+                  {buildError
+                    ? buildError
+                    : ready
+                      ? "Starting the build…"
+                      : "Nothing has been built or installed yet."}
                 </span>
               </div>
             </div>

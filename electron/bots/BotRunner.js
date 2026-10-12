@@ -121,6 +121,9 @@ class BotRunner {
     }
 
     const trigger = opts.trigger || "manual";
+    // A run may override the bot's approval policy — the Dash team's runs
+    // inside an approved plan build (the plan was the consent, CRE-003 AC3).
+    const approvalPolicy = opts.approvalPolicy || bot.approvalPolicy;
     const startedAt = this._now();
     // Approval decisions made during this run, for the run record (Bots view
     // › Activity). Names only — never the tool's input.
@@ -203,7 +206,7 @@ class BotRunner {
         internalServers: this._internalServers,
         resolveServer,
         createApproval,
-        approvalPolicy: bot.approvalPolicy,
+        approvalPolicy,
         isReadOnly: (toolName) => readOnly.has(toolName),
         // Read-only tools that ran without asking show in the run's
         // approvals too, so the user can see what ran.
@@ -263,7 +266,7 @@ class BotRunner {
         // For engines with their own agent loop + native tools (claude-agent):
         // a sandbox dir, the approval policy, and a direct approval channel.
         workingDir: profile.workingDir,
-        approvalPolicy: bot.approvalPolicy,
+        approvalPolicy,
         createApproval,
       };
       // Engine built-ins this bot may use: a team lead gets none (bot-teams

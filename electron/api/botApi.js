@@ -34,6 +34,9 @@ const {
   BOTS_DISMISS_LEAD_INTRO,
   BOTS_GET_SETTINGS,
   BOTS_LIST_DASH_TEAM,
+  BOTS_START_PLAN_BUILD,
+  BOTS_STOP_PLAN_BUILD,
+  BOTS_GET_PLAN_BUILD,
   BOTS_SET_SETTINGS,
   BOTS_ASK_LEAD,
   BOTS_LIST_LEADS,
@@ -59,6 +62,7 @@ const {
   BOT_RUN_ACTIVE,
   BOT_LIST_CHANGED,
   BOT_DRAFTS_CHANGED,
+  BOT_PLAN_BUILD_PROGRESS,
 } = require("../events/botEvents");
 
 let _nextListenerId = 0;
@@ -194,6 +198,13 @@ const botApi = {
    * summary, tier, recommended model and pause state. Not in list().
    */
   listDashTeam: () => ipcRenderer.invoke(BOTS_LIST_DASH_TEAM),
+  /** Build an approved plan (CRE-004): resolves to { buildId, state }. */
+  startPlanBuild: (plan, opts = {}) =>
+    ipcRenderer.invoke(BOTS_START_PLAN_BUILD, { plan, opts }),
+  stopPlanBuild: (buildId) =>
+    ipcRenderer.invoke(BOTS_STOP_PLAN_BUILD, { buildId }),
+  getPlanBuild: (buildId) =>
+    ipcRenderer.invoke(BOTS_GET_PLAN_BUILD, { buildId }),
   /** Global bot settings: { autoLeads, dashTeam: { models } }. */
   getSettings: () => ipcRenderer.invoke(BOTS_GET_SETTINGS),
   setSettings: (patch) => ipcRenderer.invoke(BOTS_SET_SETTINGS, { patch }),
@@ -230,6 +241,8 @@ const botApi = {
   onListChanged: (callback) => _addListener(BOT_LIST_CHANGED, callback),
   /** A lead drafted a bot, or a draft was saved/discarded. */
   onDraftsChanged: (callback) => _addListener(BOT_DRAFTS_CHANGED, callback),
+  /** A plan build's progress: ({ buildId, state }) after every change. */
+  onPlanBuild: (callback) => _addListener(BOT_PLAN_BUILD_PROGRESS, callback),
 
   removeListener: (id) => {
     const entry = _listenerMap.get(id);

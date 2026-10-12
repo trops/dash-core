@@ -1312,6 +1312,21 @@ const DashboardStageInner = ({
     }
   }
 
+  // A dashboard a plan build made (phase 4d): open it, live (not the editor).
+  async function handleOpenBuiltDashboard(workspaceId) {
+    try {
+      const res = await window.mainApi.workspace.listWorkspacesForApplication(
+        credentials?.appId,
+      );
+      const list = Array.isArray(res) ? res : (res && res.workspaces) || [];
+      const ws = list.find((w) => String(w.id) === String(workspaceId));
+      loadWorkspaces();
+      if (ws) handleOpenTab(ws);
+    } catch (_e) {
+      loadWorkspaces();
+    }
+  }
+
   // A widget the Scout found in Create: one of the user's → its page on the
   // Widgets page; a registry one → the registry search, to install.
   function handleOpenScoutMatch(match) {
@@ -3008,6 +3023,7 @@ const DashboardStageInner = ({
               onBotCreated={handleBotCreated}
               onOpenAiSettings={() => openAppSettings("ai-assistant")}
               onOpenWidget={handleOpenScoutMatch}
+              onOpenDashboard={handleOpenBuiltDashboard}
             />
 
             <DashboardWizardModal

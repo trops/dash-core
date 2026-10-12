@@ -176,3 +176,17 @@ describe("botController — place_widget (3c)", () => {
     );
   });
 });
+
+describe("botController — building a plan (phase 4d-1)", () => {
+  it("builds with createPlanBuild and broadcasts progress", () => {
+    assert.match(ctrl, /const build = createPlanBuild\(/);
+    assert.match(
+      ctrl,
+      /this\._broadcast\(BOT_PLAN_BUILD_PROGRESS, \{ buildId, state \}\)/,
+    );
+  });
+  it("the team's runs in a build don't ask (the plan was the consent); other runs unchanged", () => {
+    assert.match(ctrl, /via: "plan-build",\s*approvalPolicy: "allow",/);
+    assert.match(ctrl, /approvalPolicy: opts\.approvalPolicy \|\| undefined,/);
+  });
+});
