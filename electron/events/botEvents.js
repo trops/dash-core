@@ -43,6 +43,12 @@ const BOTS_LIST_DASH_TEAM = "bots-list-dash-team";
 const BOTS_START_PLAN_BUILD = "bots-start-plan-build";
 const BOTS_STOP_PLAN_BUILD = "bots-stop-plan-build";
 const BOTS_GET_PLAN_BUILD = "bots-get-plan-build";
+// After a build (4d-3): fix / retry a failed step, resume what waited for a
+// provider, remove what was built.
+const BOTS_FIX_PLAN_BUILD = "bots-fix-plan-build";
+const BOTS_RETRY_PLAN_BUILD = "bots-retry-plan-build";
+const BOTS_RESUME_PLAN_BUILD = "bots-resume-plan-build";
+const BOTS_REMOVE_PLAN_BUILD = "bots-remove-plan-build";
 // Bots view (TEAM-011): a bot run history.
 const BOTS_GET_RUNS = "bots-get-runs";
 // Bot monitor (TEAM-011 B3): the latest runs across every bot.
@@ -116,6 +122,10 @@ module.exports = {
   BOTS_START_PLAN_BUILD,
   BOTS_STOP_PLAN_BUILD,
   BOTS_GET_PLAN_BUILD,
+  BOTS_FIX_PLAN_BUILD,
+  BOTS_RETRY_PLAN_BUILD,
+  BOTS_RESUME_PLAN_BUILD,
+  BOTS_REMOVE_PLAN_BUILD,
   BOTS_GET_RUNS,
   BOTS_LIST_RECENT_RUNS,
   BOTS_GET_LATEST_RESULT,

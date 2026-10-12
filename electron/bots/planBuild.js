@@ -19,6 +19,14 @@
  * the current step (and aborts a running role). Nothing here asks the user
  * anything — approving the plan was the consent (CRE-003 AC3).
  *
+ * After it finishes (4d-3, CRE-004 AC4/AC5):
+ *   fix(stepId)    the Builder fixes the widget a failed step is about (at
+ *                  most twice per widget), then what depends on it runs again
+ *   retry(stepId)  a failed Dash step runs again
+ *   resume()       steps waiting for a provider that wasn't connected run
+ *   opts.resume    an edited plan reuses what an earlier build already made
+ * Finished steps are never run twice.
+ *
  * Pure (NFR-006): every effect is an injected hook.
  */
 "use strict";
@@ -36,7 +44,12 @@ const STATUS = {
   failed: "failed",
   skipped: "skipped",
   stopped: "stopped",
+  // Needs a provider the user skipped connecting ("waiting for Gmail").
+  needsProvider: "needs-provider",
 };
+
+// How many times the Builder may fix one widget before it's over to the user.
+const MAX_FIXES = 2;
 
 /** The steps for a plan, all waiting. */
 function planSteps(plan, { dashboardName } = {}) {
@@ -70,6 +83,7 @@ function planSteps(plan, { dashboardName } = {}) {
         id: `build:${i}`,
         kind: "build",
         piece: i,
+        source: p.source,
         role: "builder",
         label: `Build ${p.name}`,
       });
@@ -192,29 +206,81 @@ function blockersFor(step, steps) {
   return [];
 }
 
-/** The Builder's request for one widget. */
-function buildRequest(plan, piece) {
+/**
+ * The Builder's request for one widget. With `fix` ({ package, problem }) it
+ * asks the Builder to fix what it built (Let Builder fix it, 4d-3).
+ */
+function buildRequest(plan, piece, fix = null) {
   const providers = (piece.providers || []).join(", ") || "none";
-  return [
-    piece.source === "update"
+  const update = piece.source === "update" || !!(fix && fix.package);
+  const first = fix
+    ? fix.package
+      ? `Fix the widget ${fix.package} you built for this plan.`
+      : `Build this plan's widget again — the last try didn't work.`
+    : piece.source === "update"
       ? `Update the widget ${piece.package || piece.name} for this plan.`
-      : `Build a new widget for this plan.`,
+      : `Build a new widget for this plan.`;
+  return [
+    first,
+    ...(fix ? [`What went wrong: ${fix.problem}`] : []),
     `Plan: ${plan.summary || ""}`,
     `Widget: ${piece.name}${piece.notes ? ` — ${piece.notes}` : ""}`,
     `Providers: ${providers}`,
     ...wiringLines(plan, piece),
-    `Use a PascalCase name based on "${piece.name}". Read widget_guide first, then build_widget${
-      piece.source === "update" ? " with update: true" : ""
+    `Use a PascalCase name based on "${piece.name}"${
+      fix && fix.package ? " (keep the same name)" : ""
+    }. Read widget_guide first, then build_widget${
+      update ? " with update: true" : ""
     }. Finish with the widget's package name (@ai-built/…).`,
   ].join("\n");
+}
+
+/**
+ * The events a widget must send: its own, plus any a planned bot starts on
+ * (the bot's `on` wins when the two disagree — both are sent).
+ */
+function eventsToSend(plan, piece) {
+  return [
+    ...(Array.isArray(piece.events) ? piece.events : []),
+    ...botPieces(plan).flatMap((b) =>
+      (Array.isArray(b.on) ? b.on : [])
+        .filter((o) => o && lower(o.widget) === lower(piece.name))
+        .map((o) => o.event),
+    ),
+  ].filter((e, i, all) => e && all.indexOf(e) === i);
+}
+
+/**
+ * The Checker's request for one widget. A widget made new in this build has
+ * no users yet, so a config that changed since its first version isn't a
+ * breaking change — and after Let Builder fix it, the Checker is told what
+ * the fix was for, so the change it asked for isn't held against it (4d-3).
+ */
+function checkRequest(plan, piece, made = {}) {
+  const lines = [
+    `Check ${made.package}. Run check_widget, read the code if you need to, and end with VERDICT: PASSED or VERDICT: FAILED.`,
+  ];
+  const sends = eventsToSend(plan, piece);
+  if (sends.length) {
+    lines.push(`The plan needs it to send: ${sends.join(", ")}.`);
+  }
+  if (piece.source === "new") {
+    lines.push(
+      "It was made new in this build, so nothing else uses an earlier version: a config that changed since then is not a breaking change.",
+    );
+  }
+  if (made.fixedFor) {
+    lines.push(
+      `The Builder just changed it to fix this: ${made.fixedFor}\nA change that fix asked for is not a problem — judge the widget against the plan.`,
+    );
+  }
+  return lines.join("\n");
 }
 
 /** What the plan wires to this widget — the Builder must declare it. */
 function wiringLines(plan, piece) {
   const lines = [];
-  const events = Array.isArray(piece.events)
-    ? piece.events.filter(Boolean)
-    : [];
+  const events = eventsToSend(plan, piece);
   if (events.length) {
     const starts = botPieces(plan)
       .filter((b) =>
@@ -276,9 +342,12 @@ function planBotDefinition(piece, { dashboardId, sources, team }) {
   if (res.error) throw new Error(res.error);
   const draft = res.draft;
   if (draft.missing.length) {
-    throw new Error(
+    // The build waits for these instead of failing (CRE-004 AC5).
+    const err = new Error(
       `${piece.name} needs ${draft.missing.join(", ")}, which isn't connected`,
     );
+    err.waitingFor = draft.missing.slice();
+    throw err;
   }
   const definition = {
     ...draft.definition,
@@ -367,6 +436,220 @@ function tokensOf(usage) {
   );
 }
 
+const widgetPieces = (plan) =>
+  ((plan && plan.pieces) || []).filter((p) => p && p.kind === "widget");
+
+const BUILT = new Set(["new", "update"]);
+
+/** What makes a planned widget or bot "the same" across plan edits. */
+function pieceSignature(p) {
+  if (!p) return "";
+  if (p.kind === "bot") {
+    return JSON.stringify([
+      p.instructions || "",
+      p.tools || [],
+      p.schedule || null,
+      p.results || [],
+      p.on || [],
+      !!p.showResults,
+    ]);
+  }
+  return BUILT.has(p.source)
+    ? JSON.stringify([
+        p.source,
+        p.package || "",
+        p.providers || [],
+        p.events || [],
+        p.listens || [],
+        p.notes || "",
+      ])
+    : JSON.stringify([p.source, p.package || ""]);
+}
+
+/** new index → old index, by kind and name (first match wins). */
+function matchByName(list, prevList) {
+  const prevIndex = indexByName(prevList);
+  const out = new Map();
+  list.forEach((p, i) => {
+    const j = prevIndex.get(lower(p.name));
+    if (j !== undefined) out.set(i, j);
+  });
+  return out;
+}
+
+/**
+ * Reuse what an earlier build of this plan made (Edit plan, 4d-3): the same
+ * dashboard; unchanged widgets and bots are kept as they are; a changed
+ * widget the Builder made is updated in place (it stays placed); a changed
+ * bot is saved over the old one. Pieces the edited plan dropped are left
+ * where they are and listed in state.leftovers.
+ */
+function reuseEarlier(plan, steps, state, earlier) {
+  const prev = earlier && earlier.state;
+  if (!prev || !prev.dashboard || !earlier.plan) return;
+  const widgets = widgetPieces(plan);
+  const prevWidgets = widgetPieces(earlier.plan);
+  const prevMade = prev.made || {};
+  const byId = new Map(steps.map((s) => [s.id, s]));
+  const prevById = new Map((prev.steps || []).map((s) => [s.id, s]));
+  const keep = (id, prevId) => {
+    const s = byId.get(id);
+    const p = prevById.get(prevId);
+    if (!s || !p || p.status !== STATUS.done) return false;
+    s.status = STATUS.done;
+    s.detail = p.detail;
+    s.reused = true;
+    return true;
+  };
+  // Carried from earlier edits too, so Remove still finds them.
+  const leftovers = Array.isArray(prev.leftovers) ? prev.leftovers.slice() : [];
+  const widgetLeftover = (j) => {
+    const p = prevWidgets[j];
+    const made = prevMade[j] || {};
+    const built = (prev.steps || []).some(
+      (x) => x.id === `build:${j}` && x.status === STATUS.done,
+    );
+    return {
+      kind: "widget",
+      name: p.name,
+      package: made.package || p.package || null,
+      // Made by this build (not an update of an earlier widget).
+      built: built && p.source === "new",
+    };
+  };
+
+  state.dashboard = { ...prev.dashboard };
+  const dash = byId.get("dashboard");
+  if (dash) {
+    dash.status = STATUS.done;
+    dash.detail = prev.dashboard.name;
+    dash.reused = true;
+  }
+
+  const wMatch = matchByName(widgets, prevWidgets);
+  wMatch.forEach((j, i) => {
+    const same = pieceSignature(widgets[i]) === pieceSignature(prevWidgets[j]);
+    const made = prevMade[j] || {};
+    if (same) {
+      ["install", "build", "check", "place"].forEach((k) =>
+        keep(`${k}:${i}`, `${k}:${j}`),
+      );
+      state.made[i] = { ...made };
+    } else if (
+      BUILT.has(widgets[i].source) &&
+      BUILT.has(prevWidgets[j].source) &&
+      made.package
+    ) {
+      // Changed: the Builder updates what it made; it stays placed.
+      const b = byId.get(`build:${i}`);
+      if (b) {
+        b.fix = {
+          package: made.package,
+          problem: "the plan for this widget changed — make it match the plan",
+        };
+      }
+      keep(`place:${i}`, `place:${j}`);
+      state.made[i] = { ...made };
+    } else if (made.widgetId != null || made.package) {
+      leftovers.push(widgetLeftover(j));
+    }
+    if (prev.fixes && prev.fixes[j]) state.fixes[i] = prev.fixes[j];
+  });
+  const matchedW = new Set(wMatch.values());
+  prevWidgets.forEach((_p, j) => {
+    const made = prevMade[j];
+    if (!matchedW.has(j) && made && (made.widgetId != null || made.package)) {
+      leftovers.push(widgetLeftover(j));
+    }
+  });
+
+  const bots = botPieces(plan);
+  const prevBots = botPieces(earlier.plan);
+  const bMatch = matchByName(bots, prevBots);
+  const prevSaved = prev.bots || {};
+  bMatch.forEach((j, i) => {
+    const saved = prevSaved[j];
+    if (!saved) return;
+    state.bots[i] = { ...saved };
+    if (pieceSignature(bots[i]) === pieceSignature(prevBots[j])) {
+      keep(`bot:${i}`, `bot:${j}`);
+    } else {
+      // Changed: saved over the old bot (its triggers stay; new ones added).
+      const s = byId.get(`bot:${i}`);
+      if (s) s.replaces = saved.id;
+    }
+    keep(`results:${i}`, `results:${j}`);
+  });
+  const matchedB = new Set(bMatch.values());
+  prevBots.forEach((p, j) => {
+    if (!matchedB.has(j) && prevSaved[j]) {
+      leftovers.push({ kind: "bot", name: p.name, id: prevSaved[j].id });
+    }
+  });
+
+  // Wiring: kept when the same bot, widget and event (or handler) were wired.
+  const oldW = new Map(wMatch);
+  const oldB = new Map(bMatch);
+  for (const s of steps) {
+    if (s.kind !== "trigger" && s.kind !== "listen") continue;
+    const p = (prev.steps || []).find(
+      (x) =>
+        x.kind === s.kind &&
+        x.status === STATUS.done &&
+        x.bot === oldB.get(s.bot) &&
+        x.piece === oldW.get(s.piece) &&
+        (s.kind === "trigger"
+          ? x.event === s.event
+          : x.handler === s.handler && x.result === s.result),
+    );
+    if (p) keep(s.id, p.id);
+  }
+  state.leftovers = leftovers;
+}
+
+/**
+ * What a build has made so far, for Remove what was built (4d-3):
+ *   dashboard  { id, name } | null — deleted
+ *   bots       [{ id, name }] — deleted
+ *   widgets    [package] — widgets the Builder made new here; uninstalled
+ *   updated    [package] — widgets it updated; they keep their changes
+ *   installs   [package] — registry installs; they stay installed
+ * Includes what an earlier build of the plan made (state.leftovers).
+ */
+function builtSummary(state, plan) {
+  const pieces = widgetPieces(plan);
+  const out = {
+    dashboard: state.dashboard ? { ...state.dashboard } : null,
+    bots: [],
+    widgets: [],
+    updated: [],
+    installs: [],
+  };
+  const add = (list, v) => v && !list.includes(v) && list.push(v);
+  for (const step of state.steps || []) {
+    if (step.status !== STATUS.done) continue;
+    const piece = step.piece != null ? pieces[step.piece] : null;
+    const made = (step.piece != null && state.made[step.piece]) || {};
+    if (step.kind === "install") add(out.installs, piece && piece.package);
+    if (step.kind === "build") {
+      add(
+        piece && piece.source === "update" ? out.updated : out.widgets,
+        made.package,
+      );
+    }
+  }
+  for (const b of Object.values(state.bots || {})) {
+    if (b && b.id && !out.bots.some((x) => x.id === b.id)) out.bots.push(b);
+  }
+  for (const l of state.leftovers || []) {
+    if (l.kind === "bot" && l.id && !out.bots.some((x) => x.id === l.id)) {
+      out.bots.push({ id: l.id, name: l.name });
+    }
+    if (l.kind === "widget" && l.built) add(out.widgets, l.package);
+  }
+  return out;
+}
+
 /**
  * Run a plan build.
  * @param {object} plan  the approved plan
@@ -376,14 +659,17 @@ function tokensOf(usage) {
  *   askRole(role, request) → run record ({ status, output, error, model, usage, cost, skipped, reason })
  *   abortRole(role)
  *   placeWidget({ dashboardId, component|widget }) → { component, widgetId } | throws
- *   saveBot({ dashboardId, piece }) → { id, name } | throws
+ *   saveBot({ dashboardId, piece, botId? }) → { id, name } | throws (an
+ *     error with waitingFor = provider names → the step waits for them)
  *   placeBotResults({ dashboardId, botId }) → { component, widgetId } | throws
  *   wireTrigger({ dashboardId, botId, widgetId, component, event }) | throws
  *   wireListener({ dashboardId, widgetId, component, handler, botId, result }) | throws
  *   emit(state)   progress after every change
  *   now()
- * @param {{ dashboardName?: string }} [opts]
- * @returns {{ state, run: () => Promise<state>, stop: () => void }}
+ * @param {{ dashboardName?: string, resume?: { plan, state } }} [opts]
+ *   resume — an earlier build of this plan whose work is reused (Edit plan)
+ * @returns {{ state, run, stop, fix, retry, resume }} — run/fix/retry/resume
+ *   resolve with the state when that pass ends, or { error }
  */
 function createPlanBuild(plan, deps, opts = {}) {
   const now = deps.now || (() => new Date().toISOString());
@@ -394,29 +680,39 @@ function createPlanBuild(plan, deps, opts = {}) {
     finishedAt: null,
     steps,
     dashboard: null, // { id, name }
-    // piece index → { component?, package? } — what to place
+    // piece index → { component?, package?, widgetId? } — what to place
     made: {},
     // bot index → { id, name } — saved bots (offered as Run now at the end)
     bots: {},
+    // piece index → how many times the Builder has fixed it
+    fixes: {},
+    // what an earlier build made that the edited plan no longer has
+    leftovers: [],
     totals: { tokens: 0, usd: 0, includedInPlan: true },
   };
+  reuseEarlier(plan, steps, state, opts.resume);
   let stopping = false;
   let current = null;
-  const pieces = (plan.pieces || [])
-    .filter(Boolean)
-    .filter((p) => p.kind === "widget");
+  let busy = false;
+  const pieces = widgetPieces(plan);
   const bots = botPieces(plan);
-  const emit = () => deps.emit && deps.emit(JSON.parse(JSON.stringify(state)));
+  const emit = () => {
+    state.built = builtSummary(state, plan);
+    if (deps.emit) deps.emit(JSON.parse(JSON.stringify(state)));
+  };
 
   const account = (step, record) => {
     if (!record) return;
-    step.model = record.model || null;
-    step.tokens = tokensOf(record.usage);
+    const tokens = tokensOf(record.usage);
     const c = record.cost || null;
-    step.usd = c && typeof c.usd === "number" ? c.usd : 0;
+    const usd = c && typeof c.usd === "number" ? c.usd : 0;
+    step.model = record.model || null;
+    // A fixed step adds up every try.
+    step.tokens = (step.tokens || 0) + tokens;
+    step.usd = (step.usd || 0) + usd;
     step.includedInPlan = !!(c && c.includedInPlan);
-    state.totals.tokens += step.tokens;
-    state.totals.usd += step.usd;
+    state.totals.tokens += tokens;
+    state.totals.usd += usd;
     if (c && !c.includedInPlan) state.totals.includedInPlan = false;
   };
 
@@ -439,7 +735,10 @@ function createPlanBuild(plan, deps, opts = {}) {
         return;
       }
       case "build": {
-        const record = await deps.askRole("builder", buildRequest(plan, piece));
+        const record = await deps.askRole(
+          "builder",
+          buildRequest(plan, piece, step.fix || null),
+        );
         account(step, record);
         if (!record || record.skipped)
           throw new Error(
@@ -449,15 +748,21 @@ function createPlanBuild(plan, deps, opts = {}) {
           throw new Error(record.error || "the Builder failed");
         const pkg = builtPackage(record.output);
         if (!pkg) throw new Error("the Builder didn't build it");
-        state.made[step.piece] = { package: pkg };
+        state.made[step.piece] = {
+          ...state.made[step.piece],
+          package: pkg,
+          // What this pass fixed — the Checker judges the change by it.
+          fixedFor: step.fix ? step.fix.problem : null,
+        };
         step.detail = pkg;
+        step.fix = null;
         return;
       }
       case "check": {
         const made = state.made[step.piece] || {};
         const record = await deps.askRole(
           "checker",
-          `Check ${made.package}. Run check_widget, read the code if you need to, and end with VERDICT: PASSED or VERDICT: FAILED.`,
+          checkRequest(plan, piece, made),
         );
         account(step, record);
         if (!record || record.skipped)
@@ -497,6 +802,7 @@ function createPlanBuild(plan, deps, opts = {}) {
         const saved = await deps.saveBot({
           dashboardId: state.dashboard.id,
           piece: bots[step.bot],
+          ...(step.replaces ? { botId: step.replaces } : {}),
         });
         state.bots[step.bot] = { id: saved.id, name: saved.name };
         step.detail = saved.name;
@@ -540,21 +846,76 @@ function createPlanBuild(plan, deps, opts = {}) {
     }
   }
 
+  // What the user can do about a failed step (CRE-004 AC4): the Builder can
+  // fix a widget it made (at most MAX_FIXES times); Dash's own steps can run
+  // again. Edit plan and Remove what was built are always there.
+  const BUILDER_FIXES = new Set(["build", "check", "trigger", "listen"]);
+  const RETRIES = new Set(["install", "dashboard", "place", "bot", "results"]);
+  function markOptions(step) {
+    const piece = step.piece != null ? pieces[step.piece] : null;
+    const used = step.piece != null ? state.fixes[step.piece] || 0 : 0;
+    step.fixesLeft =
+      piece && BUILT.has(piece.source) && BUILDER_FIXES.has(step.kind)
+        ? Math.max(0, MAX_FIXES - used)
+        : 0;
+    step.canFix = step.fixesLeft > 0;
+    // The Builder's tries are used up — over to the user.
+    step.fixesUsedUp =
+      !!piece &&
+      BUILT.has(piece.source) &&
+      BUILDER_FIXES.has(step.kind) &&
+      !step.canFix;
+    step.canRetry = RETRIES.has(step.kind);
+  }
+
+  function reset(step) {
+    step.status = STATUS.waiting;
+    for (const k of [
+      "error",
+      "canFix",
+      "canRetry",
+      "fixesLeft",
+      "fixesUsedUp",
+      "waitingFor",
+      "startedAt",
+      "finishedAt",
+    ]) {
+      delete step[k];
+    }
+  }
+
+  // A step can't run until what it needs is done; when what it needs is
+  // waiting for a provider, it waits too.
+  function hold(step) {
+    const blocked = blockersFor(step, steps).find(
+      (b) => b.status !== STATUS.done,
+    );
+    if (!blocked) return false;
+    if (blocked.status === STATUS.needsProvider) {
+      step.status = STATUS.needsProvider;
+      step.waitingFor = (blocked.waitingFor || []).slice();
+    } else {
+      step.status = STATUS.skipped;
+      step.error = `${blocked.label} didn't finish`;
+    }
+    return true;
+  }
+
   async function run() {
+    if (busy) return { error: "The build is still running." };
+    busy = true;
+    stopping = false;
     state.status = "running";
-    state.startedAt = now();
+    state.startedAt = state.startedAt || now();
+    state.finishedAt = null;
     emit();
     for (const step of steps) {
+      if (step.status !== STATUS.waiting) continue;
       if (stopping) {
         step.status = STATUS.stopped;
         continue;
       }
-      const blocked = blockersFor(step, steps).find(
-        (b) => b.status !== STATUS.done,
-      );
-      if (blocked) {
-        step.status = STATUS.skipped;
-        step.error = `${blocked.label} didn't finish`;
+      if (hold(step)) {
         emit();
         continue;
       }
@@ -566,8 +927,16 @@ function createPlanBuild(plan, deps, opts = {}) {
         await runStep(step);
         step.status = STATUS.done;
       } catch (err) {
-        step.status = stopping ? STATUS.stopped : STATUS.failed;
-        step.error = (err && err.message) || String(err);
+        const waitingFor =
+          err && Array.isArray(err.waitingFor) && err.waitingFor;
+        if (waitingFor && waitingFor.length && !stopping) {
+          step.status = STATUS.needsProvider;
+          step.waitingFor = waitingFor.slice();
+        } else {
+          step.status = stopping ? STATUS.stopped : STATUS.failed;
+          step.error = (err && err.message) || String(err);
+          if (step.status === STATUS.failed) markOptions(step);
+        }
       }
       step.finishedAt = now();
       current = null;
@@ -579,10 +948,71 @@ function createPlanBuild(plan, deps, opts = {}) {
             (s) => s.status === STATUS.failed || s.status === STATUS.skipped,
           )
         ? "finished-with-problems"
-        : "done";
+        : steps.some((s) => s.status === STATUS.needsProvider)
+          ? "waiting-for-providers"
+          : "done";
     state.finishedAt = now();
+    busy = false;
     emit();
     return state;
+  }
+
+  // Skipped steps get another go after a fix or retry: what held them back
+  // may be done now (if not, they're skipped again).
+  const resetSkipped = () =>
+    steps.filter((s) => s.status === STATUS.skipped).forEach(reset);
+
+  /** Let Builder fix it: the Builder fixes the widget, then it's checked again. */
+  function fix(stepId) {
+    const step = steps.find((s) => s.id === stepId);
+    if (busy) return Promise.resolve({ error: "The build is still running." });
+    if (!step || step.status !== STATUS.failed || !step.canFix) {
+      return Promise.resolve({ error: "The Builder can't fix that step." });
+    }
+    const w = step.piece;
+    state.fixes[w] = (state.fixes[w] || 0) + 1;
+    const made = state.made[w] || {};
+    const build = steps.find((s) => s.id === `build:${w}`);
+    const check = steps.find((s) => s.id === `check:${w}`);
+    const problem = [
+      `${step.label}: ${step.error}`,
+      step.kind === "check" && step.detail
+        ? `The Checker said:\n${step.detail}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    if (build) {
+      reset(build);
+      build.fix = { package: made.package || null, problem };
+    }
+    if (check) reset(check);
+    reset(step);
+    resetSkipped();
+    return run();
+  }
+
+  /** Try again: one of Dash's own steps runs again. */
+  function retry(stepId) {
+    const step = steps.find((s) => s.id === stepId);
+    if (busy) return Promise.resolve({ error: "The build is still running." });
+    if (!step || step.status !== STATUS.failed || !step.canRetry) {
+      return Promise.resolve({ error: "That step can't be tried again." });
+    }
+    reset(step);
+    resetSkipped();
+    return run();
+  }
+
+  /** Providers were connected: the steps waiting for them run (AC5). */
+  function resume() {
+    if (busy) return Promise.resolve({ error: "The build is still running." });
+    const waiting = steps.filter((s) => s.status === STATUS.needsProvider);
+    if (!waiting.length) {
+      return Promise.resolve({ error: "Nothing is waiting." });
+    }
+    waiting.forEach(reset);
+    return run();
   }
 
   function stop() {
@@ -591,11 +1021,15 @@ function createPlanBuild(plan, deps, opts = {}) {
       deps.abortRole(current.role);
   }
 
-  return { state, run, stop };
+  return { state, run, stop, fix, retry, resume };
 }
 
 module.exports = {
   STATUS,
+  MAX_FIXES,
+  builtSummary,
+  pieceSignature,
+  reuseEarlier,
   planSteps,
   blockersFor,
   botPieces,
@@ -605,6 +1039,8 @@ module.exports = {
   widgetWiring,
   publishesRaw,
   buildRequest,
+  checkRequest,
+  eventsToSend,
   builtPackage,
   verdictOf,
   createPlanBuild,

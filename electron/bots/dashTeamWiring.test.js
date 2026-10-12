@@ -195,7 +195,7 @@ describe("botController — bots and wiring in a build (phase 4d-2)", () => {
   it("saves planned bots (not drafts) and wires both ways", () => {
     assert.match(ctrl, /saveBot: \(req\) => this\._planSaveBot\(req\)/);
     assert.match(ctrl, /const definition = planBotDefinition\(piece,/);
-    assert.match(ctrl, /const saved = this\.save\(definition\);/);
+    assert.match(ctrl, /const saved = this\.save\(\s*existing\s*\?/);
     assert.match(
       ctrl,
       /this\.addBotWidget\(dashboardId, \{\s*kind: "results",/,
@@ -211,5 +211,48 @@ describe("botController — bots and wiring in a build (phase 4d-2)", () => {
     assert.match(ctrl, /the widget has no handler/);
     assert.match(ctrl, /with api\.publishEvent, which bots can't hear/);
     assert.match(ctrl, /widgetWiring\(src\.configCode, src\.componentCode\)/);
+  });
+});
+
+describe("botController — after a build (phase 4d-3)", () => {
+  const events = fs.readFileSync(
+    path.join(__dirname, "..", "events", "botEvents.js"),
+    "utf8",
+  );
+  const api = fs.readFileSync(
+    path.join(__dirname, "..", "api", "botApi.js"),
+    "utf8",
+  );
+  it("fix, retry, resume and remove are wired end to end", () => {
+    for (const [ev, method] of [
+      ["BOTS_FIX_PLAN_BUILD", "fixPlanBuild"],
+      ["BOTS_RETRY_PLAN_BUILD", "retryPlanBuild"],
+      ["BOTS_RESUME_PLAN_BUILD", "resumePlanBuild"],
+      ["BOTS_REMOVE_PLAN_BUILD", "removePlanBuild"],
+    ]) {
+      assert.match(events, new RegExp(`const ${ev} = "`));
+      assert.match(api, new RegExp(`${method}: \\(buildId`));
+      assert.match(api, new RegExp(`ipcRenderer\\.invoke\\(${ev},`));
+      assert.match(ctrl, new RegExp(`^  ${method}\\(buildId`, "m"));
+    }
+  });
+  it("only a finished build can be fixed, retried, resumed or removed", () => {
+    assert.match(
+      ctrl,
+      /if \(isBuildBusy\(entry\.state\)\)\s*return \{ error: "The build is still running\." \}/,
+    );
+  });
+  it("Edit plan reuses the earlier build's work", () => {
+    assert.match(
+      ctrl,
+      /resume = \{ plan: earlier\.plan, state: earlier\.state \};/,
+    );
+    assert.match(ctrl, /\{ dashboardName, resume \},/);
+  });
+  it("Remove deletes the dashboard, its bots and lead, and new widgets — not installs", () => {
+    assert.match(ctrl, /leadOf\(this\._store\.list\(\), dashboardId\)/);
+    assert.match(ctrl, /for \(const pkg of built\.widgets \|\| \[\]\)/);
+    assert.match(ctrl, /deleteWorkspaceForApplication\(/);
+    assert.doesNotMatch(ctrl, /for \(const pkg of built\.installs/);
   });
 });

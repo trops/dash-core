@@ -87,12 +87,7 @@ export const CreateModal = ({
   });
   const ai = useAiBackend();
 
-  // Type: Dashboard (the Planner) is a preview until building ships (4d).
-  const dashboardPreview = !!(
-    appContext.settings && appContext.settings.createDashboardPreview
-  );
-  const typeOpts = { dashboardPreview };
-  const [type, setType] = useState(normalizeCreateType(initialType, typeOpts));
+  const [type, setType] = useState(normalizeCreateType(initialType));
   const [prompt, setPrompt] = useState("");
   // null = the start screen; { bot, workspaceId } = the bot form.
   const [botForm, setBotForm] = useState(null);
@@ -110,7 +105,7 @@ export const CreateModal = ({
   // Each open starts fresh on the requested type.
   useEffect(() => {
     if (!open) return;
-    setType(normalizeCreateType(initialType, typeOpts));
+    setType(normalizeCreateType(initialType));
     setPrompt("");
     setBotForm(null);
     setBuilderStep(null);
@@ -288,7 +283,7 @@ export const CreateModal = ({
             <ChoiceMenu
               label="Type"
               value={type}
-              options={createTypes(typeOpts)}
+              options={createTypes()}
               onChange={setType}
             />
             <div className="flex-1" />

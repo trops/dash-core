@@ -55,6 +55,11 @@ const titleCase = (t) =>
     .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
     .join(" ");
 
+/** "gmail" / "Google Calendar" → "Gmail" / "Google Calendar". */
+export function providerLabel(name) {
+  return titleCase(normalizeType(name));
+}
+
 /**
  * @param {object} plan
  * @param {Set<string>} have  the user's provider types
@@ -104,9 +109,23 @@ export function buildChecklist(plan, have = new Set()) {
 /** Whether an item is done: approved/OK'd, or (connect) the type now exists. */
 export function isDone(item, state = {}, have = new Set()) {
   if (item.kind === "connect") {
-    return have.has(item.providerType) || state[item.id] === "done";
+    // Skipped: the build goes ahead and waits for it (CRE-004 AC5).
+    return (
+      have.has(item.providerType) ||
+      state[item.id] === "done" ||
+      state[item.id] === "skipped"
+    );
   }
   return state[item.id] === "approved" || state[item.id] === "done";
+}
+
+/** A sign-in the user skipped and still hasn't connected. */
+export function isSkipped(item, state = {}, have = new Set()) {
+  return (
+    item.kind === "connect" &&
+    state[item.id] === "skipped" &&
+    !have.has(item.providerType)
+  );
 }
 
 /**
@@ -116,7 +135,15 @@ export function isDone(item, state = {}, have = new Set()) {
  */
 export function buildButtonLabel(items, state = {}, have = new Set()) {
   const open = items.filter((it) => !isDone(it, state, have));
-  if (!open.length) return "Build";
+  if (!open.length) {
+    const skipped = items.filter((it) => isSkipped(it, state, have));
+    if (skipped.length === 1) {
+      return `Build without ${providerLabel(skipped[0].providerType)}`;
+    }
+    return skipped.length
+      ? `Build without ${skipped.length} accounts`
+      : "Build";
+  }
   const connects = open.filter((it) => it.kind === "connect");
   const installs = open.filter((it) => it.kind === "install");
   const others = open.filter((it) => it.kind === "approve");

@@ -69,6 +69,9 @@ const {
   handleTeamTool,
 } = require("../bots/teamTools");
 const { isLead, leadOf, planEnsureLead } = require("../bots/teamLeads");
+// A plan build that's still going (fix / retry / resume / remove wait).
+const isBuildBusy = (state) =>
+  !state || state.status === "running" || state.status === "waiting";
 const {
   ROLES,
   dashTeamBot,
@@ -1465,14 +1468,30 @@ const botController = {
    * install, create the dashboard, the Builder builds and the Checker checks
    * each new widget, then everything is placed. Progress goes to every window
    * (BOT_PLAN_BUILD_PROGRESS). Resolves at once with the build's id.
+   * `resumeFrom` (Edit plan, 4d-3): an earlier build of this plan whose work
+   * is reused — same dashboard, unchanged pieces kept.
    */
-  startPlanBuild(plan, { dashboardName = null } = {}) {
+  startPlanBuild(plan, { dashboardName = null, resumeFrom = null } = {}) {
     if (!plan || !Array.isArray(plan.pieces) || !plan.pieces.length) {
       return { error: "The plan has nothing to build." };
     }
     if (!this._builds) this._builds = new Map();
+    let resume = null;
+    if (resumeFrom) {
+      const earlier = this._builds.get(resumeFrom);
+      if (!earlier) return { error: "The earlier build isn't there any more." };
+      if (isBuildBusy(earlier.state)) {
+        return { error: "The earlier build is still running." };
+      }
+      if (earlier.state && earlier.state.status === "removed") {
+        return { error: "What the earlier build made was removed." };
+      }
+      resume = { plan: earlier.plan, state: earlier.state };
+      // The new build owns that work now (and removes it, if asked).
+      this._builds.delete(resumeFrom);
+    }
     const buildId = `build_${Date.now()}`;
-    const entry = { state: null, build: null };
+    const entry = { plan, state: null, build: null };
     const build = createPlanBuild(
       plan,
       {
@@ -1508,7 +1527,7 @@ const botController = {
           this._broadcast(BOT_PLAN_BUILD_PROGRESS, { buildId, state });
         },
       },
-      { dashboardName },
+      { dashboardName, resume },
     );
     entry.build = build;
     entry.state = JSON.parse(JSON.stringify(build.state));
@@ -1529,6 +1548,143 @@ const botController = {
   getPlanBuild(buildId) {
     const entry = this._builds && this._builds.get(buildId);
     return entry ? { buildId, state: entry.state } : null;
+  },
+
+  /** A finished build and one of its steps, or { error }. */
+  _finishedBuild(buildId, stepId = null) {
+    const entry = this._builds && this._builds.get(buildId);
+    if (!entry) return { error: "No such build." };
+    if (isBuildBusy(entry.state))
+      return { error: "The build is still running." };
+    if (entry.state && entry.state.status === "removed") {
+      return { error: "What this build made was removed." };
+    }
+    const step =
+      stepId != null
+        ? ((entry.state && entry.state.steps) || []).find(
+            (x) => x.id === stepId,
+          )
+        : null;
+    if (stepId != null && !step) return { error: "No such step." };
+    return { entry, step };
+  },
+
+  _continueBuild(promise) {
+    Promise.resolve(promise).catch((err) => {
+      console.error("[botController] plan build failed:", err);
+    });
+    return { ok: true };
+  },
+
+  /** Let Builder fix it (CRE-004 AC4): the Builder fixes the step's widget. */
+  fixPlanBuild(buildId, stepId) {
+    const { entry, step, error } = this._finishedBuild(buildId, stepId);
+    if (error) return { error };
+    if (step.status !== "failed" || !step.canFix) {
+      return { error: "The Builder can't fix that step." };
+    }
+    return this._continueBuild(entry.build.fix(stepId));
+  },
+
+  /** Try again: a failed Dash step runs again. */
+  retryPlanBuild(buildId, stepId) {
+    const { entry, step, error } = this._finishedBuild(buildId, stepId);
+    if (error) return { error };
+    if (step.status !== "failed" || !step.canRetry) {
+      return { error: "That step can't be tried again." };
+    }
+    return this._continueBuild(entry.build.retry(stepId));
+  },
+
+  /** Providers were connected: the steps waiting for them run (AC5). */
+  resumePlanBuild(buildId) {
+    const { entry, error } = this._finishedBuild(buildId);
+    if (error) return { error };
+    if (!entry.state.steps.some((x) => x.status === "needs-provider")) {
+      return { error: "Nothing is waiting." };
+    }
+    return this._continueBuild(entry.build.resume());
+  },
+
+  /**
+   * Remove what was built (CRE-004 AC4): the dashboard, the bots saved for it
+   * (and its lead), and the widgets the Builder made new for it. Registry
+   * installs stay installed and updated widgets keep their changes.
+   * → { removed: { dashboard, bots, widgets }, kept: { installs, updated } }
+   */
+  removePlanBuild(buildId) {
+    const { entry, error } = this._finishedBuild(buildId);
+    if (error) return { error };
+    const built = (entry.state && entry.state.built) || {};
+    const removed = { dashboard: null, bots: [], widgets: [] };
+    const problems = [];
+
+    const dashboardId = built.dashboard ? built.dashboard.id : null;
+    const bots = (built.bots || []).slice();
+    const lead = dashboardId ? leadOf(this._store.list(), dashboardId) : null;
+    if (lead && !bots.some((b) => b.id === lead.id)) {
+      bots.push({ id: lead.id, name: lead.name });
+    }
+    for (const b of bots) {
+      if (!this._store.get(b.id)) continue;
+      try {
+        this.delete(b.id);
+        removed.bots.push(b.name);
+      } catch (err) {
+        problems.push(`${b.name}: ${err.message}`);
+      }
+    }
+
+    for (const pkg of built.widgets || []) {
+      try {
+        require("./schedulerController").cleanupWidget(pkg);
+        if (
+          require("../widgetRegistry").getWidgetRegistry().uninstallWidget(pkg)
+        ) {
+          removed.widgets.push(pkg);
+          this._broadcast("widget:uninstalled", { widgetName: pkg });
+        }
+      } catch (err) {
+        problems.push(`${pkg}: ${err.message}`);
+      }
+    }
+
+    if (dashboardId) {
+      const ws = this._loadWorkspace(dashboardId);
+      if (ws) {
+        const res =
+          require("./workspaceController").deleteWorkspaceForApplication(
+            this._getMainWindow(),
+            this._appId,
+            ws.id,
+          );
+        if (res && res.success) {
+          removed.dashboard = built.dashboard.name;
+          this._broadcast("workspace:saved", {
+            workspaceId: ws.id,
+            deleted: true,
+          });
+        } else {
+          problems.push(
+            `${built.dashboard.name}: ${(res && res.message) || "couldn't delete it"}`,
+          );
+        }
+      }
+    }
+
+    const kept = {
+      installs: built.installs || [],
+      updated: built.updated || [],
+    };
+    entry.state = {
+      ...entry.state,
+      status: "removed",
+      removed,
+      kept,
+      problems,
+    };
+    this._broadcast(BOT_PLAN_BUILD_PROGRESS, { buildId, state: entry.state });
+    return { removed, kept, problems };
   },
 
   /** A registry widget, installed for a plan build → its component id. */
@@ -1598,7 +1754,7 @@ const botController = {
    * providers and tools taken as chosen. A provider that isn't connected
    * fails the step instead of saving a bot that can't work.
    */
-  _planSaveBot({ dashboardId, piece }) {
+  _planSaveBot({ dashboardId, piece, botId = null }) {
     const definition = planBotDefinition(piece, {
       dashboardId,
       sources: this.listToolSources(dashboardId),
@@ -1606,7 +1762,18 @@ const botController = {
         .list()
         .filter((b) => String(b.workspaceId) === String(dashboardId)),
     });
-    const saved = this.save(definition);
+    // An edited plan's changed bot is saved over the one built before
+    // (4d-3); its triggers stay.
+    const existing = botId ? this._store.get(botId) : null;
+    const saved = this.save(
+      existing
+        ? {
+            ...definition,
+            id: existing.id,
+            subscriptions: existing.subscriptions || [],
+          }
+        : definition,
+    );
     return { id: saved.id, name: saved.name };
   },
 

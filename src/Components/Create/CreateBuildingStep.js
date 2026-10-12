@@ -1,7 +1,15 @@
-import React, { useEffect, useState } from "react";
-import { Button, Button3, SectionLabel } from "@trops/dash-react";
+import React, { useContext, useEffect, useState } from "react";
+import {
+  Button,
+  Button3,
+  ConfirmationModal,
+  SectionLabel,
+} from "@trops/dash-react";
+import { AppContext } from "../../Context/App/AppContext";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { formatTokens, modelLabel } from "../../utils/runCostLabel";
+import { normalizeType, providerLabel } from "./planChecklist";
+import { ConnectDialog } from "./PlanChecklistDialogs";
 
 /**
  * CreateBuildingStep — building an approved plan (create-entry PRD CRE-004
@@ -10,6 +18,11 @@ import { formatTokens, modelLabel } from "../../utils/runCostLabel";
  * running total sits against the estimate. Stop halts after the current
  * step and keeps what's built; when it's done, Go to dashboard opens it.
  * Saved bots are offered as Run <bot> now — never run on their own (4d-2).
+ *
+ * When a step fails (4d-3, CRE-004 AC4): Let Builder fix it (at most twice
+ * per widget) or Try again on the step, and Edit plan / Remove what was
+ * built for the whole build; finished steps are kept. Steps that need a
+ * provider the user skipped wait for it (AC5) with Connect <provider>.
  */
 
 const ROLE = { builder: "Builder", checker: "Checker", dash: "Dash" };
@@ -20,6 +33,7 @@ const MARK = {
   failed: "✗",
   skipped: "–",
   stopped: "■",
+  "needs-provider": "○",
 };
 const HEAD = {
   waiting: "Getting ready…",
@@ -27,19 +41,48 @@ const HEAD = {
   done: "Built",
   "finished-with-problems": "Built, with problems",
   stopped: "Stopped — what's built is kept",
+  removed: "Removed",
 };
+
+/** The providers waiting steps need, once each: ["gmail"]. */
+export function waitingProviders(steps) {
+  const out = [];
+  for (const s of steps || []) {
+    if (s.status !== "needs-provider") continue;
+    for (const p of s.waitingFor || []) {
+      const t = normalizeType(p);
+      if (t && !out.includes(t)) out.push(t);
+    }
+  }
+  return out;
+}
+
+/** "Gmail" · "Gmail and Slack" */
+const andList = (names) =>
+  names.length > 1
+    ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
+    : names[0] || "";
 
 export const CreateBuildingStep = ({
   buildId,
   initialState = null,
   estimate = null,
   onOpenDashboard = null,
+  onEditPlan = null,
+  onRemoved = null,
 }) => {
+  const app = useContext(AppContext) || {};
   const { muted, strong, hairline } = useConfigTokens();
   const [state, setState] = useState(initialState);
   const [stopping, setStopping] = useState(false);
   // botId → "starting" | "started" | error text
   const [runs, setRuns] = useState({});
+  // A fix / retry / resume / remove that couldn't start.
+  const [actionError, setActionError] = useState(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  // The provider type being connected (waiting steps).
+  const [connecting, setConnecting] = useState(null);
 
   useEffect(() => {
     const bots = window.mainApi && window.mainApi.bots;
@@ -65,6 +108,18 @@ export const CreateBuildingStep = ({
   const running = status === "waiting" || status === "running";
   const totals = (state && state.totals) || { tokens: 0, includedInPlan: true };
   const finished = !running;
+  const waitingFor = waitingProviders(steps);
+  const built = (state && state.built) || {};
+  const leftovers = (state && state.leftovers) || [];
+  const hasProblems =
+    status === "finished-with-problems" ||
+    status === "stopped" ||
+    status === "waiting-for-providers";
+  const anythingBuilt = !!(
+    built.dashboard ||
+    (built.bots || []).length ||
+    (built.widgets || []).length
+  );
 
   const savedBots = Object.values((state && state.bots) || {}).filter(
     (b) => b && b.id,
@@ -94,6 +149,62 @@ export const CreateBuildingStep = ({
     }
   };
 
+  // Fix / retry / resume start in the main process; progress comes back on
+  // onPlanBuild like the first pass.
+  const act = async (call) => {
+    setActionError(null);
+    setStopping(false);
+    try {
+      const res = await call();
+      if (res && res.error) setActionError(res.error);
+    } catch (err) {
+      setActionError((err && err.message) || "That didn't start.");
+    }
+  };
+  const fix = (step) =>
+    act(() => window.mainApi.bots.fixPlanBuild(buildId, step.id));
+  const retry = (step) =>
+    act(() => window.mainApi.bots.retryPlanBuild(buildId, step.id));
+
+  // Connect, then the waiting steps run (only if it really got connected,
+  // they'd wait again otherwise).
+  const connected = async () => {
+    setConnecting(null);
+    if (app.refreshProviders) {
+      try {
+        await app.refreshProviders();
+      } catch (_e) {
+        // the resume below says if it's still missing
+      }
+    }
+    act(() => window.mainApi.bots.resumePlanBuild(buildId));
+  };
+
+  const remove = async () => {
+    setRemoving(true);
+    setActionError(null);
+    try {
+      const res = await window.mainApi.bots.removePlanBuild(buildId);
+      setConfirmRemove(false);
+      if (res && res.error) {
+        setActionError(res.error);
+        return;
+      }
+      if (onRemoved) onRemoved(res);
+    } catch (err) {
+      setActionError((err && err.message) || "It couldn't be removed.");
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  const heading =
+    stopping && running
+      ? "Stopping after this step…"
+      : status === "waiting-for-providers"
+        ? `Built — waiting for ${andList(waitingFor.map(providerLabel))}`
+        : HEAD[status] || status;
+
   return (
     <div
       className="flex-1 min-h-0 overflow-y-auto"
@@ -105,14 +216,30 @@ export const CreateBuildingStep = ({
             className={`text-lg font-semibold ${strong}`}
             data-testid="building-status"
           >
-            {stopping && running
-              ? "Stopping after this step…"
-              : HEAD[status] || status}
+            {heading}
           </span>
           {running ? (
             <Button3 title="Stop" onClick={stop} disabled={stopping} />
           ) : null}
         </div>
+
+        {finished && waitingFor.length ? (
+          <div
+            className="flex flex-row flex-wrap items-center gap-3"
+            data-testid="building-waiting"
+          >
+            {waitingFor.map((t) => (
+              <Button3
+                key={t}
+                title={`Connect ${providerLabel(t)}`}
+                onClick={() => setConnecting(t)}
+              />
+            ))}
+            <span className={`text-xs ${muted}`}>
+              The steps that need it run once it's connected.
+            </span>
+          </div>
+        ) : null}
 
         <div className="flex flex-col gap-2" data-testid="building-steps">
           <SectionLabel text="Steps · who did what" />
@@ -142,7 +269,17 @@ export const CreateBuildingStep = ({
                       : ""}
                 </span>
               </div>
-              {s.error ? (
+              {s.status === "needs-provider" ? (
+                <span
+                  className={`text-xs ml-7 ${muted}`}
+                  data-testid="building-step-waiting"
+                >
+                  waiting for{" "}
+                  {andList(
+                    (s.waitingFor || []).map((p) => providerLabel(p) || p),
+                  )}
+                </span>
+              ) : s.error ? (
                 <span
                   className="text-xs ml-7"
                   data-testid="building-step-error"
@@ -150,7 +287,10 @@ export const CreateBuildingStep = ({
                   {s.error}
                 </span>
               ) : s.status === "done" && s.detail && s.kind !== "check" ? (
-                <span className={`text-xs ml-7 ${muted}`}>{s.detail}</span>
+                <span className={`text-xs ml-7 ${muted}`}>
+                  {s.reused ? "kept from before · " : ""}
+                  {s.detail}
+                </span>
               ) : null}
               {s.kind === "check" && s.status === "failed" && s.detail ? (
                 <pre
@@ -160,9 +300,45 @@ export const CreateBuildingStep = ({
                   {s.detail}
                 </pre>
               ) : null}
+              {finished && s.status === "failed" ? (
+                <div
+                  className="flex flex-row flex-wrap items-center gap-3 ml-7"
+                  data-testid="building-step-options"
+                >
+                  {s.canFix ? (
+                    <Button3
+                      title="Let Builder fix it"
+                      size="sm"
+                      onClick={() => fix(s)}
+                    />
+                  ) : null}
+                  {s.canRetry ? (
+                    <Button3
+                      title="Try again"
+                      size="sm"
+                      onClick={() => retry(s)}
+                    />
+                  ) : null}
+                  <span className={`text-xs ${muted}`}>
+                    {s.canFix && s.fixesLeft === 1
+                      ? "The Builder's last try."
+                      : s.fixesUsedUp
+                        ? "The Builder tried twice — edit the plan or remove what was built."
+                        : ""}
+                  </span>
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
+
+        {leftovers.length ? (
+          <span className={`text-xs ${muted}`} data-testid="building-leftovers">
+            Still on the dashboard from before:{" "}
+            {leftovers.map((l) => l.name).join(", ")} — the edited plan doesn't
+            have them. Remove them in Edit.
+          </span>
+        ) : null}
 
         <div className="flex flex-col gap-1" data-testid="building-total">
           <SectionLabel text={finished ? "Cost" : "Running total"} />
@@ -179,7 +355,31 @@ export const CreateBuildingStep = ({
           </span>
         </div>
 
-        {finished && savedBots.length ? (
+        {actionError ? (
+          <span className="text-xs" data-testid="building-action-error">
+            {actionError}
+          </span>
+        ) : null}
+
+        {finished && hasProblems && (onEditPlan || anythingBuilt) ? (
+          <div
+            className="flex flex-row flex-wrap items-center gap-3"
+            data-testid="building-recover"
+          >
+            {onEditPlan ? (
+              <Button3 title="Edit plan" onClick={onEditPlan} />
+            ) : null}
+            {anythingBuilt ? (
+              <Button3
+                title="Remove what was built"
+                onClick={() => setConfirmRemove(true)}
+              />
+            ) : null}
+            <span className={`text-xs ${muted}`}>Finished steps are kept.</span>
+          </div>
+        ) : null}
+
+        {finished && status !== "removed" && savedBots.length ? (
           <div className="flex flex-col gap-2" data-testid="building-run-bots">
             <SectionLabel text="Try the bots" />
             {savedBots.map((b) => {
@@ -204,7 +404,11 @@ export const CreateBuildingStep = ({
           </div>
         ) : null}
 
-        {finished && state && state.dashboard && onOpenDashboard ? (
+        {finished &&
+        status !== "removed" &&
+        state &&
+        state.dashboard &&
+        onOpenDashboard ? (
           <div className="flex flex-row items-center gap-3">
             <Button
               title="Go to dashboard"
@@ -214,6 +418,66 @@ export const CreateBuildingStep = ({
           </div>
         ) : null}
       </div>
+
+      {confirmRemove ? (
+        <ConfirmationModal
+          isOpen
+          setIsOpen={(v) => !v && setConfirmRemove(false)}
+          title="Remove what was built?"
+          confirmLabel={removing ? "Removing…" : "Remove"}
+          variant="danger"
+          onConfirm={remove}
+          onCancel={() => setConfirmRemove(false)}
+        >
+          <RemoveSummary built={built} muted={muted} strong={strong} />
+        </ConfirmationModal>
+      ) : null}
+
+      {connecting ? (
+        <ConnectDialog
+          item={{
+            id: `connect:${connecting}`,
+            kind: "connect",
+            label: `Connect ${providerLabel(connecting)}`,
+            providerType: connecting,
+          }}
+          onClose={connected}
+        />
+      ) : null}
+    </div>
+  );
+};
+
+/** What Remove takes away and what stays (CRE-006 AC7's rule: installs stay). */
+// The modal body sets no text color, so each line takes the theme's.
+export const RemoveSummary = ({ built, muted = "", strong = "" }) => {
+  const goes = [];
+  if (built.dashboard) goes.push(`The "${built.dashboard.name}" dashboard`);
+  for (const b of built.bots || []) goes.push(`The ${b.name} bot`);
+  if (built.dashboard) goes.push("The dashboard's team lead, if it has one");
+  for (const w of built.widgets || []) goes.push(`The ${w} widget`);
+  const stays = [
+    ...(built.installs || []).map((p) => `${p} — stays installed`),
+    ...(built.updated || []).map((p) => `${p} — keeps its changes`),
+  ];
+  return (
+    <div className="flex flex-col gap-2 text-sm" data-testid="remove-summary">
+      <SectionLabel text="Removed" />
+      {goes.map((g) => (
+        <span key={g} className={strong}>
+          {g}
+        </span>
+      ))}
+      {stays.length ? (
+        <>
+          <SectionLabel text="Kept" />
+          {stays.map((g) => (
+            <span key={g} className={muted}>
+              {g}
+            </span>
+          ))}
+        </>
+      ) : null}
     </div>
   );
 };

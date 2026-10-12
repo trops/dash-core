@@ -239,7 +239,7 @@ describe("CreateModal — Bot", () => {
     const menu = screen.getByRole("menu", { name: "Type" });
     expect(
       within(menu).getByRole("menuitemradio", { name: /Dashboard/ }),
-    ).toHaveAttribute("aria-disabled", "true");
+    ).not.toHaveAttribute("aria-disabled", "true");
     fireEvent.click(within(menu).getByRole("menuitemradio", { name: /^Bot/ }));
     expect(
       screen.getByRole("button", { name: /^Type: Bot/ }),

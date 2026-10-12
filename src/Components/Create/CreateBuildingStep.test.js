@@ -7,6 +7,15 @@ import "@testing-library/jest-dom";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { CreateBuildingStep } from "./CreateBuildingStep";
 
+// The Providers screen (Connect) pulls in the whole app.
+jest.mock("../Settings/sections/ProvidersSection", () => ({
+  ProvidersSection: (props) => (
+    <div data-testid="providers-section">
+      {String(props.initialProviderType)}
+    </div>
+  ),
+}));
+
 const running = {
   status: "running",
   steps: [
