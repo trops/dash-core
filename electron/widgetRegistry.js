@@ -600,6 +600,13 @@ class WidgetRegistry {
         // Non-fatal — the gate's runtime JIT still backs us up.
       }
 
+      // Widgets may not start bots directly — only by events the user
+      // wires a bot to (TD-005). Refused here, before it's registered.
+      require("./utils/scanWidgetBotCalls").assertNoBotCalls(
+        widgetName,
+        widgetPath,
+      );
+
       let config = await this.loadWidgetConfig(widgetName, widgetPath);
 
       if (dashConfigPath) {
@@ -694,6 +701,7 @@ class WidgetRegistry {
       });
       const results = [];
       let skipped = 0;
+      const refused = [];
 
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
@@ -707,6 +715,21 @@ class WidgetRegistry {
         const widgetPath = path.join(resolvedPath, entry.name);
 
         if (!this.isWidgetFolder(widgetPath)) {
+          skipped++;
+          continue;
+        }
+
+        // Widgets that start bots directly aren't loaded (TD-005).
+        const botScan =
+          require("./utils/scanWidgetBotCalls").scanWidgetBotCalls(widgetPath);
+        if (!botScan.ok) {
+          console.warn(
+            require("./utils/scanWidgetBotCalls").botCallsMessage(
+              entry.name,
+              botScan.files,
+            ),
+          );
+          refused.push(entry.name);
           skipped++;
           continue;
         }
@@ -727,6 +750,7 @@ class WidgetRegistry {
 
       // Attach skipped count as metadata on the array
       results.skipped = skipped;
+      results.refused = refused;
       return results;
     } catch (error) {
       console.error(
@@ -926,6 +950,13 @@ class WidgetRegistry {
           `[WidgetRegistry] Permission scan failed for ${widgetName}: ${e.message}`,
         );
       }
+
+      // Widgets may not start bots directly — only by events the user
+      // wires a bot to (TD-005). Refused here, before it's registered.
+      require("./utils/scanWidgetBotCalls").assertNoBotCalls(
+        widgetName,
+        widgetPath,
+      );
 
       let config = await this.loadWidgetConfig(widgetName, widgetPath);
 
