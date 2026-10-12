@@ -747,6 +747,79 @@ function wireWidgets(plan, created, dashboardId) {
   return { subscriptions, listeners };
 }
 
+/**
+ * The registry's display summary of a team (what bot-team packages and,
+ * since 5a-2, dashboards with bots carry in manifest.json): roles, names and
+ * bot → bot wiring. The full definition stays in the zip.
+ */
+function teamSummaryFor(manifest) {
+  return {
+    members: (manifest.members || []).map((m) => ({
+      role: m.role,
+      name: m.embedded.name,
+    })),
+    wiring: (manifest.wiring || []).map((w) => ({
+      role: w.role,
+      on: { role: w.on.role, event: w.on.event },
+    })),
+  };
+}
+
+/** Provider types the team's bots need, once each. */
+function teamProviderTypes(manifest) {
+  const out = [];
+  for (const m of (manifest && manifest.members) || []) {
+    for (const p of (m.embedded && m.embedded.providers) || []) {
+      if (p && p.type && !out.includes(p.type)) out.push(p.type);
+    }
+  }
+  return out;
+}
+
+/**
+ * Each bot in plain words, for the publish screen (create-entry 5a-2):
+ * { role, name, starts: ["on a schedule", "when Ask sends askClicked",
+ * "when Greeter sends its greeting result"], providers: ["gmail"] }.
+ */
+function describeTeam(manifest) {
+  const names = Object.fromEntries(
+    ((manifest && manifest.members) || []).map((m) => [
+      m.role,
+      m.embedded.name,
+    ]),
+  );
+  return ((manifest && manifest.members) || []).map((m) => {
+    const starts = [];
+    if ((m.embedded.schedules || []).length) starts.push("on a schedule");
+    for (const t of (manifest.triggers || []).filter(
+      (x) => x.role === m.role,
+    )) {
+      starts.push(
+        `when ${String(t.component).split(".").pop()} sends ${t.event}`,
+      );
+    }
+    for (const w of (manifest.wiring || []).filter((x) => x.role === m.role)) {
+      const from = names[w.on.role] || w.on.role;
+      const ev = w.on.event;
+      starts.push(
+        ev === "completed"
+          ? `when ${from} finishes`
+          : ev === "failed"
+            ? `when ${from} fails`
+            : ev.startsWith("result.")
+              ? `when ${from} sends its ${ev.slice(7)} result`
+              : `when ${from} uses ${ev.replace(/^tool\./, "")}`,
+      );
+    }
+    return {
+      role: m.role,
+      name: m.embedded.name,
+      starts,
+      providers: (m.embedded.providers || []).map((p) => p.type),
+    };
+  });
+}
+
 module.exports = {
   SCHEMA_VERSION,
   TEAM_TYPE,
@@ -757,4 +830,7 @@ module.exports = {
   wireTeam,
   wireWidgets,
   stripBotListeners,
+  teamSummaryFor,
+  teamProviderTypes,
+  describeTeam,
 };

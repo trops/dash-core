@@ -15,6 +15,9 @@
 
 const { app, dialog } = require("electron");
 const path = require("path");
+// The publish step reads each pinned widget's package.json for its
+// permissions (it never ran before: every dep came out unpinned).
+const fs = require("fs");
 const AdmZip = require("adm-zip");
 const { getFileContents } = require("../utils/file");
 const {
@@ -1514,7 +1517,15 @@ async function prepareDashboardForPublish(
     // widget's own `defaultValue` on each field never gets a chance.
     // Layout position, ordering, nested containers, and any title text
     // are preserved (they're part of the template, not personal).
-    let sharedWorkspace = stripPersonalizationFromWorkspace(workspace);
+    // The dashboard's bots go along unless left out (create-entry 5a-2,
+    // US-027 AC2) — the same as Export ZIP.
+    const teamExport =
+      options.includeBots === false
+        ? { team: null, workspace, notIncluded: [] }
+        : teamForExport(workspace, options);
+    let sharedWorkspace = stripPersonalizationFromWorkspace(
+      teamExport.workspace,
+    );
 
     // Remap layout-item `packageId` from any local-only scope (e.g.
     // `@ai-built/foo`) to the publisher's scope (`@<callerScope>/foo`).
@@ -1565,8 +1576,13 @@ async function prepareDashboardForPublish(
       }
     }
 
+    // Each layout item's own packageId says which installed package (and
+    // so which version) it came from — the same refs the dependency plan
+    // uses. Bare component names can't be matched to a package's version
+    // (layouts store scoped ids), so every dep came out unpinned and the
+    // version-pin guard below refused the publish.
     const widgets = buildWidgetDependencies(
-      componentNames,
+      collectDependencyRefsFromWorkspace(workspace),
       widgetRegistry,
       componentConfigs,
     );
@@ -1612,6 +1628,7 @@ async function prepareDashboardForPublish(
       widgets,
       providers,
       eventWiring,
+      ...(teamExport.team ? { team: teamExport.team } : {}),
     });
 
     // 4. Bundle theme if workspace has a themeKey
@@ -1907,6 +1924,8 @@ async function prepareDashboardForPublish(
       filePath,
       manifest,
       config: dashboardConfig,
+      bots: teamExport.team ? teamExport.team.members.length : 0,
+      notIncluded: teamExport.notIncluded,
       warnings:
         missingFromRegistry.length > 0 ? missingFromRegistry : undefined,
       registryCheckFailed: registryCheckFailed || undefined,
@@ -2073,6 +2092,9 @@ function getDashboardPublishPreview(appId, workspaceId, widgetRegistry = null) {
 
     const componentNames = collectComponentNamesFromWorkspace(workspace);
     const widgets = buildWidgetDependencies(componentNames, widgetRegistry);
+    // Its bots, as they'd be published (create-entry 5a-2).
+    const teamExport = teamForExport(workspace);
+    const { describeTeam } = require("../bots/teamManifest");
 
     return {
       success: true,
@@ -2080,6 +2102,8 @@ function getDashboardPublishPreview(appId, workspaceId, widgetRegistry = null) {
       widgetCount: componentNames.length,
       widgets: widgets.map((w) => ({ name: w.name, package: w.package })),
       componentNames: [...componentNames],
+      bots: teamExport.team ? describeTeam(teamExport.team) : [],
+      botsNotIncluded: teamExport.notIncluded || [],
     };
   } catch (error) {
     console.error(

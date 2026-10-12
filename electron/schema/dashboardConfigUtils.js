@@ -660,6 +660,22 @@ function generateRegistryManifest(dashboardConfig, options = {}) {
     }
   }
 
+  // Its bots (bot-factory US-027, create-entry 5a-2): the registry keeps a
+  // display summary — the full team is in the .dashboard.json.
+  if (
+    dashboardConfig.team &&
+    Array.isArray(dashboardConfig.team.members) &&
+    dashboardConfig.team.members.length
+  ) {
+    const {
+      teamSummaryFor,
+      teamProviderTypes,
+    } = require("../bots/teamManifest");
+    manifest.team = teamSummaryFor(dashboardConfig.team);
+    const types = teamProviderTypes(dashboardConfig.team);
+    if (types.length) manifest.providerTypes = types;
+  }
+
   return manifest;
 }
 
@@ -703,6 +719,17 @@ function buildDashboardPreview(source) {
       usedBy: p.usedBy || [],
     })),
     appOrigin: source.appOrigin || null,
+    // Its bots, when it has any (create-entry 5a-2): the registry's summary
+    // (roles, names, wiring) and the provider types they need.
+    team:
+      source.team &&
+      Array.isArray(source.team.members) &&
+      source.team.members.length
+        ? source.team
+        : null,
+    providerTypes: Array.isArray(source.providerTypes)
+      ? source.providerTypes
+      : [],
     summary: {
       widgetCount: (source.widgets || []).length,
       eventCount: (source.eventWiring || []).length,
