@@ -23,6 +23,9 @@ export const ThemeManagerModal = ({
   startInCreate = false,
   // Open on this theme (Themes page › Edit theme); else the app theme.
   initialThemeKey = null,
+  // Open the new-theme screen on this unsaved theme (Create › Type: Theme,
+  // create-entry phase 5c) — nothing is saved until Create Theme.
+  initialTheme = null,
 }) => {
   const {
     changeThemesForApplication,
@@ -44,6 +47,8 @@ export const ThemeManagerModal = ({
   // this guard the effect re-fires after a theme is created (themes change →
   // isCreating flips false) and bounces the user back to the chooser.
   const startInCreateHandledRef = useRef(false);
+  // The same, once per open, for initialTheme.
+  const initialThemeHandledRef = useRef(false);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedMethod, setSelectedMethod] = useState(null);
   const [wizardName, setWizardName] = useState("");
@@ -68,6 +73,7 @@ export const ThemeManagerModal = ({
       setIsSearching(false);
       setSelectedMethod(null);
       startInCreateHandledRef.current = false;
+      initialThemeHandledRef.current = false;
     } else {
       if (themeKeySelected === null && themes) {
         const themeKeyTemp = editorThemeKey({
@@ -82,7 +88,16 @@ export const ThemeManagerModal = ({
         setThemeSelected(() => themeModel);
         setRawThemeSelected(() => rawThemes[themeKeyTemp]);
       }
-      if (
+      if (initialTheme && !initialThemeHandledRef.current) {
+        initialThemeHandledRef.current = true;
+        setIsChoosingMode(false);
+        setIsSearching(false);
+        setIsEditing(false);
+        setIsCreating(true);
+        setSelectedMethod("ai");
+        setWizardName(initialTheme.name || "");
+        setWizardTheme(initialTheme);
+      } else if (
         startInCreate &&
         !startInCreateHandledRef.current &&
         !isChoosingMode &&
@@ -105,6 +120,7 @@ export const ThemeManagerModal = ({
     themeKeySelected,
     startInCreate,
     initialThemeKey,
+    initialTheme,
   ]);
 
   function handleThemeSelected(themeUpdated, themeKey) {
@@ -339,6 +355,9 @@ export const ThemeManagerModal = ({
                         onExtract={handleUrlExtract}
                         onMapToTheme={handleUrlMapToTheme}
                         initialMethod={selectedMethod}
+                        seedTheme={
+                          selectedMethod === "ai" ? initialTheme : null
+                        }
                       />
                     ) : null
                   }

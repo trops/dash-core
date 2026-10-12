@@ -9,20 +9,42 @@ import {
 } from "./createRouting";
 
 describe("createRouting (create-entry PRD CRE-001/005)", () => {
-  test("Widget, Bot and Dashboard can be picked; Theme says why not yet", () => {
-    const byValue = Object.fromEntries(CREATE_TYPES.map((t) => [t.value, t]));
-    expect(byValue.widget.disabled).toBeFalsy();
-    expect(byValue.bot.disabled).toBeFalsy();
-    expect(byValue.dashboard.disabled).toBeFalsy();
-    expect(byValue.theme.disabled).toBe(true);
-    expect(byValue.theme.hint).toMatch(/New theme/);
+  test("Auto first, then Widget, Bot, Dashboard and Theme — all pickable (5c)", () => {
+    expect(CREATE_TYPES.map((t) => t.value)).toEqual([
+      "auto",
+      "widget",
+      "bot",
+      "dashboard",
+      "theme",
+    ]);
+    expect(CREATE_TYPES.every((t) => !t.disabled)).toBe(true);
   });
 
-  test("normalizeCreateType falls back to Widget for anything not pickable", () => {
+  test("normalizeCreateType falls back to Auto for anything not pickable", () => {
     expect(normalizeCreateType("bot")).toBe("bot");
     expect(normalizeCreateType("widget")).toBe("widget");
-    expect(normalizeCreateType("theme")).toBe("widget");
-    expect(normalizeCreateType(undefined)).toBe("widget");
+    expect(normalizeCreateType("theme")).toBe("theme");
+    expect(normalizeCreateType("nope")).toBe("auto");
+    expect(normalizeCreateType(undefined)).toBe("auto");
+  });
+
+  test("Auto and Theme route and can send (5c)", () => {
+    expect(routeCreate({ type: "auto", prompt: " a brief " })).toEqual({
+      kind: "auto",
+      detail: { prompt: "a brief" },
+    });
+    expect(routeCreate({ type: "theme", prompt: "warm" })).toEqual({
+      kind: "theme",
+      detail: { prompt: "warm" },
+    });
+    // Auto guesses without an AI; Theme needs one.
+    expect(canSend({ type: "auto", prompt: "x", aiBackend: null })).toBe(true);
+    expect(canSend({ type: "theme", prompt: "x", aiBackend: null })).toBe(
+      false,
+    );
+    expect(
+      canSend({ type: "theme", prompt: "x", aiBackend: "claude-code" }),
+    ).toBe(true);
   });
 
   test("the no-AI row always offers dashboards and a theme, plus the type's own", () => {
@@ -77,7 +99,7 @@ describe("createRouting (create-entry PRD CRE-001/005)", () => {
       bot: { instructions: "Summarize my inbox" },
       workspaceId: 7,
     });
-    expect(routeCreate({ type: "theme", prompt: "x" })).toBeNull();
+    expect(routeCreate({ type: "nope", prompt: "x" })).toBeNull();
   });
 
   test("draftAge reads like a list timestamp", () => {

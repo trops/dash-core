@@ -32,7 +32,7 @@ describe("DashboardStage — Create screen", () => {
       /window\.addEventListener\("dash:open-create", handler\)/,
     );
     expect(source).toMatch(
-      /setCreateRequest\(\{\s*type: d\.type \|\| "widget",\s*workspaceId: d\.workspaceId \?\? null,\s*recentId: d\.recentId \|\| null,\s*\}\)/,
+      /setCreateRequest\(\{\s*type: d\.type \|\| "auto",\s*workspaceId: d\.workspaceId \?\? null,\s*recentId: d\.recentId \|\| null,\s*\}\)/,
     );
   });
 
@@ -84,6 +84,26 @@ describe("DashboardStage — Create screen", () => {
   test("All drafts opens the Widgets page (2c-2)", () => {
     expect(source).toMatch(
       /key === "widget-drafts"\) \{[\s\S]{0,120}handleOpenPageGuarded\("widgets"\);/,
+    );
+  });
+
+  test("Type: Theme hands its theme to the theme editor, unsaved; Auto by default (5c)", () => {
+    expect(source).toMatch(/initialTheme=\{themeInitial\}/);
+    expect(source).toMatch(
+      /onOpenTheme=\{\(theme\) => \{[\s\S]{0,200}setThemeInitial\(theme\);[\s\S]{0,60}setIsThemeManagerOpen\(true\);/,
+    );
+    expect(source).toMatch(
+      /function openCreate\(type = "auto", workspaceId = null\)/,
+    );
+    const modal = require("fs").readFileSync(
+      require("path").join(__dirname, "..", "Theme", "ThemeManagerModal.js"),
+      "utf8",
+    );
+    expect(modal).toMatch(
+      /setSelectedMethod\("ai"\);[\s\S]{0,120}setWizardTheme\(initialTheme\);/,
+    );
+    expect(modal).toMatch(
+      /seedTheme=\{\s*selectedMethod === "ai" \? initialTheme : null\s*\}/,
     );
   });
 });

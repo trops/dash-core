@@ -5,6 +5,11 @@
 
 export const CREATE_TYPES = [
   {
+    value: "auto",
+    label: "Auto",
+    description: "Describe anything — Dash works out what to make",
+  },
+  {
     value: "widget",
     label: "Widget",
     description: "One widget, built with AI",
@@ -22,8 +27,7 @@ export const CREATE_TYPES = [
   {
     value: "theme",
     label: "Theme",
-    disabled: true,
-    hint: "Making themes with AI comes later — use New theme below",
+    description: "Colors for the app, made from a description",
   },
 ];
 
@@ -35,15 +39,17 @@ export function createTypes() {
   return CREATE_TYPES;
 }
 
-/** A type the screen can open on; anything else falls back to Widget. */
+/** A type the screen can open on; anything else falls back to Auto. */
 export function normalizeCreateType(type) {
   const pickable = createTypes()
     .filter((t) => !t.disabled)
     .map((t) => t.value);
-  return pickable.includes(type) ? type : "widget";
+  return pickable.includes(type) ? type : "auto";
 }
 
 export const PROMPT_PLACEHOLDER = {
+  auto: "Describe what you want — a widget, a bot, a whole dashboard or a theme",
+  theme: "Describe the look — colors, mood, or a brand",
   widget: "Describe the widget — what it shows and where the data comes from",
   bot: "Describe what the bot should do — this becomes its instructions",
   dashboard: "Describe the dashboard — what it's for and what it should show",
@@ -114,9 +120,10 @@ export function draftAge(updatedAt, now = Date.now()) {
 /** Whether Send can run: a prompt, and an AI for types that need one. */
 export function canSend({ type, prompt, aiBackend }) {
   if (!String(prompt || "").trim()) return false;
-  if (type === "widget") return !!aiBackend;
-  // The Planner runs on its own model source (Bots page › Dash team).
-  return type === "bot" || type === "dashboard";
+  if (type === "widget" || type === "theme") return !!aiBackend;
+  // The Planner runs on its own model source (Bots page › Dash team); Auto
+  // falls back to a keyword guess without an AI.
+  return type === "bot" || type === "dashboard" || type === "auto";
 }
 
 /**
@@ -125,6 +132,8 @@ export function canSend({ type, prompt, aiBackend }) {
  *   bot    → the bot form, the prompt as its instructions (no AI needed to
  *            create it; the bot uses its own AI when it runs)
  *   dashboard → the Planner, the prompt as the first message (phase 4)
+ *   auto   → work out which of the above (or theme) first (phase 5c)
+ *   theme  → the AI makes a theme; it opens unsaved in the theme editor
  */
 export function routeCreate({ type, prompt, workspaceId = null }) {
   const text = String(prompt || "").trim();
@@ -141,5 +150,7 @@ export function routeCreate({ type, prompt, workspaceId = null }) {
       workspaceId,
     };
   }
+  if (type === "auto") return { kind: "auto", detail: { prompt: text } };
+  if (type === "theme") return { kind: "theme", detail: { prompt: text } };
   return null;
 }

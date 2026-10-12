@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import {
   Modal,
   ThemeContext,
@@ -23,6 +23,8 @@ import { CreateScoutStep } from "./CreateScoutStep";
 import { CreatePlanStep } from "./CreatePlanStep";
 import { recentRows, recentLine } from "./recentRows";
 import { foldCreate } from "./CreateDockPanel";
+import { pickType } from "./autoType";
+import { themeFromPrompt } from "./themeFromPrompt";
 import {
   createTypes,
   PROMPT_PLACEHOLDER,
@@ -82,6 +84,8 @@ export const CreateModal = ({
   onOpenDashboard = null,
   // Open on a plan conversation from Recent — Expand from the dock (4e-2).
   initialRecentId = null,
+  // Open the theme editor on a theme Create made (unsaved) — Type: Theme.
+  onOpenTheme = null,
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const appContext = useContext(AppContext) || {};
@@ -92,6 +96,14 @@ export const CreateModal = ({
   const ai = useAiBackend();
 
   const [type, setType] = useState(normalizeCreateType(initialType));
+  // Type: Auto (phase 5c): { prompt } while it works out what to make, and
+  // the pick it made ({ type, why, by: "ai" | "guess" }) for the header.
+  const [autoStep, setAutoStep] = useState(null);
+  const [autoPick, setAutoPick] = useState(null);
+  // Type: Theme: { prompt, error? } while the AI makes it.
+  const [themeStep, setThemeStep] = useState(null);
+  // Answers that arrive after Back or Close are dropped.
+  const askSeq = useRef(0);
   const [prompt, setPrompt] = useState("");
   // null = the start screen; { bot, workspaceId } = the bot form.
   const [botForm, setBotForm] = useState(null);
@@ -186,15 +198,23 @@ export const CreateModal = ({
   // the start screen — never a flash of the last builder, which would rerun
   // its startup (chat reset, draft resume) before the reset effect.
   const close = () => {
+    askSeq.current += 1;
     setPlanStep(null);
     setScoutStep(null);
     setBuilderStep(null);
     setBotForm(null);
+    setAutoStep(null);
+    setAutoPick(null);
+    setThemeStep(null);
     setIsOpen(false);
   };
   const sendable = canSend({ type, prompt, aiBackend: ai.effective });
-  const needsAi = type === "widget";
-  const noAi = needsAi && ai.effective === null && ai.cliAvailable !== null;
+  // The AI picker shows for types that ask the AI here.
+  const needsAi = type === "widget" || type === "theme" || type === "auto";
+  const noAi =
+    (type === "widget" || type === "theme") &&
+    ai.effective === null &&
+    ai.cliAvailable !== null;
 
   const Builder = getWidgetBuilderRenderer();
 
@@ -217,8 +237,58 @@ export const CreateModal = ({
 
   const send = () => {
     if (!sendable) return;
-    const action = routeCreate({ type, prompt, workspaceId });
+    setAutoPick(null);
+    perform(routeCreate({ type, prompt, workspaceId }));
+  };
+
+  // A theme from the description, opened unsaved in the theme editor.
+  const makeTheme = (text) => {
+    const seq = ++askSeq.current;
+    setThemeStep({ prompt: text });
+    themeFromPrompt(text, {
+      backend: ai.effective,
+      providers: appContext.providers,
+    }).then(
+      (theme) => {
+        if (seq !== askSeq.current) return;
+        close();
+        if (onOpenTheme) onOpenTheme(theme);
+      },
+      (err) => {
+        if (seq !== askSeq.current) return;
+        setThemeStep({
+          prompt: text,
+          error: (err && err.message) || "The theme couldn't be made.",
+        });
+      },
+    );
+  };
+
+  // Auto: work out what to make, then carry on as that type.
+  const decide = (text) => {
+    const seq = ++askSeq.current;
+    setAutoStep({ prompt: text });
+    pickType(text, {
+      backend: ai.effective,
+      providers: appContext.providers,
+    }).then((pick) => {
+      if (seq !== askSeq.current) return;
+      setAutoStep(null);
+      setAutoPick(pick);
+      perform(routeCreate({ type: pick.type, prompt: text, workspaceId }));
+    });
+  };
+
+  const perform = (action) => {
     if (!action) return;
+    if (action.kind === "auto") {
+      decide(action.detail.prompt);
+      return;
+    }
+    if (action.kind === "theme") {
+      makeTheme(action.detail.prompt);
+      return;
+    }
     if (action.kind === "widget-builder") {
       // The Scout looks for something that already does this first (CRE-009).
       if (
@@ -502,7 +572,11 @@ export const CreateModal = ({
         ? "Looking first"
         : botForm
           ? "New bot"
-          : null;
+          : autoStep
+            ? "Deciding what to make"
+            : themeStep
+              ? "New theme"
+              : null;
   // Fold the plan into the dock's Create panel; it carries on there (4e-2).
   const canFold = !!(planStep && planInfo && planInfo.recentId);
   const fold = () => {
@@ -511,11 +585,48 @@ export const CreateModal = ({
     close();
   };
   const back = () => {
+    askSeq.current += 1;
     setPlanStep(null);
     setScoutStep(null);
     setBuilderStep(null);
     setBotForm(null);
+    setAutoStep(null);
+    setAutoPick(null);
+    setThemeStep(null);
   };
+  // Auto picked wrong: back to the start, the prompt kept, Type set to its
+  // pick so another is one choice away.
+  const changePick = () => {
+    const picked = autoPick && autoPick.type;
+    back();
+    if (picked) setType(picked);
+  };
+
+  // Working out what to make, or making a theme: a status, and for a
+  // theme that failed, why and Try again.
+  const waiting = (autoStep || themeStep) && (
+    <div
+      className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 p-8"
+      data-testid="create-waiting"
+    >
+      {themeStep && themeStep.error ? (
+        <>
+          <span className={`text-sm ${strong}`}>{themeStep.error}</span>
+          <div className="flex flex-row gap-2">
+            <Button3
+              title="Try again"
+              onClick={() => makeTheme(themeStep.prompt)}
+            />
+            <Button3 title="Back" onClick={back} />
+          </div>
+        </>
+      ) : (
+        <span className={`text-sm ${muted}`} role="status">
+          {autoStep ? "Deciding what to make…" : "Making a theme…"}
+        </span>
+      )}
+    </div>
+  );
 
   return (
     <Modal
@@ -548,12 +659,27 @@ export const CreateModal = ({
                   ›
                 </span>
                 <span className="font-semibold">{stepTitle}</span>
+                {autoPick && !autoStep ? (
+                  <span
+                    className={`text-sm ${muted}`}
+                    data-testid="auto-pick"
+                    title={autoPick.why || undefined}
+                  >
+                    ·{" "}
+                    {autoPick.by === "ai"
+                      ? "picked by Auto"
+                      : "guessed by Auto"}
+                  </span>
+                ) : null}
               </nav>
             ) : (
               <span className="text-lg font-semibold">Create</span>
             )}
           </div>
           <div className="flex items-center gap-2">
+            {autoPick && !autoStep ? (
+              <Button3 title="Change" size="sm" onClick={changePick} />
+            ) : null}
             {canFold ? (
               <ButtonIcon
                 icon="down-left-and-up-right-to-center"
@@ -570,7 +696,7 @@ export const CreateModal = ({
             <ButtonIcon icon="xmark" onClick={close} ariaLabel="Close" />
           </div>
         </div>
-        {builder || planner || scout || (botForm ? form : start)}
+        {builder || planner || scout || waiting || (botForm ? form : start)}
       </div>
     </Modal>
   );
