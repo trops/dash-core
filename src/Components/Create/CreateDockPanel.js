@@ -5,15 +5,14 @@ import {
   ButtonIcon,
   FontAwesomeIcon,
   ResizeHandle,
-  SectionLabel,
   TextArea,
   useResizableWidth,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { CreatePlanStep } from "./CreatePlanStep";
 import { AskStep } from "./AskStep";
-import { recentRows } from "./recentRows";
-import { draftAge } from "./createRouting";
+import { recentSections } from "./recentRows";
+import { RecentList } from "./RecentList";
 
 /**
  * CreateDockPanel — Create in the right-hand dock (create-entry PRD CRE-007
@@ -117,7 +116,7 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
       }),
     );
   };
-  const rows = recentRows(plans, drafts, 12);
+  const sections = recentSections(plans, drafts, { conversations: 12 });
   const askNow = () => {
     const q = asking.trim();
     if (!q) return;
@@ -226,29 +225,30 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
               />
             </div>
           </div>
-          <SectionLabel text="Recent" />
-          {rows.length ? (
-            rows.map((row) => (
-              <Button3 key={row.key} size="sm" onClick={() => openRow(row)}>
-                <span className="flex flex-col items-start text-left gap-0.5">
-                  <span className={strong}>{row.title}</span>
-                  <span className={`text-xs ${muted}`}>
-                    {row.status} · {draftAge(row.updatedAt)}
-                  </span>
-                </span>
-              </Button3>
-            ))
-          ) : (
-            <span className={`text-sm ${muted}`}>
-              Nothing yet. Questions and plans show up here.
-            </span>
-          )}
+          <RecentList
+            sections={sections}
+            onOpen={openRow}
+            empty={
+              <span className={`text-sm ${muted}`}>
+                Nothing yet. Questions, plans and unfinished widgets show up
+                here.
+              </span>
+            }
+          />
           <div className="pt-2">
             <Button3
               size="sm"
-              title="Open Create"
               onClick={() => openCreate({ type: "dashboard" })}
-            />
+              ariaLabel="Make something new — opens Create full size"
+            >
+              <span className="inline-flex items-center gap-2">
+                <FontAwesomeIcon
+                  icon="up-right-and-down-left-from-center"
+                  className="h-3 w-3"
+                />
+                Make something new…
+              </span>
+            </Button3>
           </div>
         </div>
       )}

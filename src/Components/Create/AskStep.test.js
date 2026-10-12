@@ -14,7 +14,7 @@ import {
   hasPlan,
   planSeed,
 } from "./askThread";
-import { recentRows, recentStatus } from "./recentRows";
+import { recentRows, recentStatus, recentSections } from "./recentRows";
 
 jest.mock("../Settings/sections/ProvidersSection", () => ({
   ProvidersSection: () => <div data-testid="providers-section" />,
@@ -206,5 +206,34 @@ describe("CreateDockPanel — the Ask box", () => {
     expect(await screen.findByTestId("ask-answer")).toBeInTheDocument();
     // A question has no Expand.
     expect(screen.queryByRole("button", { name: "Expand" })).toBeNull();
+  });
+});
+
+describe("recentSections (fix/recent-sections)", () => {
+  test("conversations and unfinished widgets apart; drafts say what opening does", () => {
+    const plans = [
+      {
+        id: "q",
+        kind: "question",
+        title: "What ran?",
+        status: "answered",
+        updatedAt: 5,
+      },
+      { id: "p", title: "Brief", status: "draft", updatedAt: 1 },
+    ];
+    const drafts = [1, 2, 3, 4].map((n) => ({
+      id: `d${n}`,
+      name: `W${n}`,
+      updatedAt: 10 - n,
+    }));
+    const s = recentSections(plans, drafts);
+    expect(s.conversations.map((r) => r.id)).toEqual(["q", "p"]);
+    expect(s.drafts.map((r) => [r.id, r.status])).toEqual([
+      ["d1", "Continue in Widget Builder"],
+      ["d2", "Continue in Widget Builder"],
+      ["d3", "Continue in Widget Builder"],
+    ]);
+    expect(s.moreDrafts).toBe(1);
+    expect(recentSections([], [], {}).conversations).toEqual([]);
   });
 });
