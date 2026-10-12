@@ -22,6 +22,7 @@ import { getWidgetBuilderRenderer } from "../../utils/widgetBuilderRenderer";
 import { CreateScoutStep } from "./CreateScoutStep";
 import { CreatePlanStep } from "./CreatePlanStep";
 import { recentRows, recentLine } from "./recentRows";
+import { foldCreate } from "./CreateDockPanel";
 import {
   createTypes,
   PROMPT_PLACEHOLDER,
@@ -79,6 +80,8 @@ export const CreateModal = ({
   onOpenWidget = null,
   // Open a dashboard a plan build made: (workspaceId) — the live dashboard.
   onOpenDashboard = null,
+  // Open on a plan conversation from Recent — Expand from the dock (4e-2).
+  initialRecentId = null,
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const appContext = useContext(AppContext) || {};
@@ -99,6 +102,8 @@ export const CreateModal = ({
   const [scoutStep, setScoutStep] = useState(null);
   // null = no plan; { prompt } = planning a dashboard with the Planner (4a).
   const [planStep, setPlanStep] = useState(null);
+  // The plan's { recentId, busy }, for Fold (4e-2).
+  const [planInfo, setPlanInfo] = useState(null);
   const [bots, setBots] = useState(EMPTY);
   // Recent (CRE-007 AC2, 4e-1): Widget Builder drafts and plan
   // conversations (summaries from the main process).
@@ -112,7 +117,10 @@ export const CreateModal = ({
     setPrompt("");
     setBotForm(null);
     setBuilderStep(null);
-  }, [open, initialType]);
+    if (initialRecentId) {
+      setPlanStep({ prompt: "", recentId: initialRecentId });
+    }
+  }, [open, initialType, initialRecentId]);
 
   // The cursor starts in the prompt (CRE-001 AC2). The dialog focuses its
   // first control (Close) on open, so take focus back right after.
@@ -458,6 +466,7 @@ export const CreateModal = ({
       key={planStep.recentId || "new"}
       prompt={planStep.prompt}
       recentId={planStep.recentId || null}
+      onState={setPlanInfo}
       onOpenDashboard={
         onOpenDashboard
           ? (id) => {
@@ -494,6 +503,13 @@ export const CreateModal = ({
         : botForm
           ? "New bot"
           : null;
+  // Fold the plan into the dock's Create panel; it carries on there (4e-2).
+  const canFold = !!(planStep && planInfo && planInfo.recentId);
+  const fold = () => {
+    if (!canFold || planInfo.busy) return;
+    foldCreate({ recentId: planInfo.recentId, title: stepTitle });
+    close();
+  };
   const back = () => {
     setPlanStep(null);
     setScoutStep(null);
@@ -537,7 +553,22 @@ export const CreateModal = ({
               <span className="text-lg font-semibold">Create</span>
             )}
           </div>
-          <ButtonIcon icon="xmark" onClick={close} ariaLabel="Close" />
+          <div className="flex items-center gap-2">
+            {canFold ? (
+              <ButtonIcon
+                icon="down-left-and-up-right-to-center"
+                onClick={fold}
+                disabled={planInfo.busy}
+                ariaLabel="Fold into the sidebar"
+                title={
+                  planInfo.busy
+                    ? "Fold after the Planner answers"
+                    : "Fold into the sidebar"
+                }
+              />
+            ) : null}
+            <ButtonIcon icon="xmark" onClick={close} ariaLabel="Close" />
+          </div>
         </div>
         {builder || planner || scout || (botForm ? form : start)}
       </div>

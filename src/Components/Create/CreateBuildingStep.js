@@ -73,6 +73,8 @@ export const CreateBuildingStep = ({
   onEditPlan = null,
   onRemoved = null,
   onContinue = null,
+  // The dock's narrow panel (4e-2).
+  compact = false,
 }) => {
   const app = useContext(AppContext) || {};
   const { muted, strong, hairline } = useConfigTokens();
@@ -216,7 +218,11 @@ export const CreateBuildingStep = ({
       className="flex-1 min-h-0 overflow-y-auto"
       data-testid="create-building"
     >
-      <div className="mx-auto w-full max-w-3xl flex flex-col gap-5 px-6 py-8">
+      <div
+        className={`mx-auto w-full max-w-3xl flex flex-col ${
+          compact ? "gap-3 px-3 py-3" : "gap-5 px-6 py-8"
+        }`}
+      >
         <div className="flex flex-row items-center justify-between gap-3">
           <span
             className={`text-lg font-semibold ${strong}`}

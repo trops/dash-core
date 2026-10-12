@@ -144,6 +144,11 @@ export const CreatePlanStep = ({
   prompt,
   recentId = null,
   onOpenDashboard = null,
+  // The dock's narrow panel (4e-2).
+  compact = false,
+  // ({ recentId, busy }) — the modal folds a plan into the dock by its id,
+  // and not while the Planner is answering (that answer would be lost).
+  onState = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const app = useContext(AppContext) || {};
@@ -155,6 +160,8 @@ export const CreatePlanStep = ({
   // Recent (4e-1): this conversation's id (its plan memory too); whether
   // it's loaded (a reopened one restores first); what it was started with.
   const planId = useRef(recentId);
+  // The id as state too, so the host hears it as soon as it's saved.
+  const [savedId, setSavedId] = useState(recentId);
   const [loaded, setLoaded] = useState(!recentId);
   const [origPrompt, setOrigPrompt] = useState(prompt);
   // A reopened conversation's next question re-introduces the plan: the
@@ -277,7 +284,10 @@ export const CreatePlanStep = ({
             : null,
         )
           .then((res) => {
-            if (res && res.id) planId.current = res.id;
+            if (res && res.id) {
+              planId.current = res.id;
+              if (alive.current) setSavedId(res.id);
+            }
           })
           .catch(() => {})
           .then(() => alive.current && ask(prompt, false));
@@ -339,6 +349,11 @@ export const CreatePlanStep = ({
     }, 300);
     return () => clearTimeout(t);
   }, [loaded, messages, plan, checks, planningTokens]);
+
+  useEffect(() => {
+    if (onState) onState({ recentId: savedId, busy });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy, savedId]);
 
   const answer = (text) => {
     const t = String(text || "").trim();
@@ -437,6 +452,7 @@ export const CreatePlanStep = ({
   if (build) {
     return (
       <CreateBuildingStep
+        compact={compact}
         buildId={build.buildId}
         initialState={build.state}
         estimate={estimate}
@@ -460,7 +476,11 @@ export const CreatePlanStep = ({
   return (
     <div className="flex-1 min-h-0 flex flex-col" data-testid="create-plan">
       <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl flex flex-col gap-4 px-6 py-8">
+        <div
+          className={`mx-auto w-full max-w-3xl flex flex-col ${
+            compact ? "gap-3 px-3 py-3" : "gap-4 px-6 py-8"
+          }`}
+        >
           {messages.map((m, i) =>
             m.who === "you" ? (
               <div
@@ -819,7 +839,11 @@ export const CreatePlanStep = ({
       ) : null}
 
       <div className={`flex-shrink-0 border-t ${hairline}`}>
-        <div className="mx-auto w-full max-w-3xl flex flex-row items-end gap-2 px-6 py-3">
+        <div
+          className={`mx-auto w-full max-w-3xl flex flex-row items-end gap-2 ${
+            compact ? "px-3 py-2" : "px-6 py-3"
+          }`}
+        >
           <div className="flex-1">
             <TextArea
               aria-label="Reply to the Planner"

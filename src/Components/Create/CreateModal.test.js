@@ -73,6 +73,23 @@ function setup({
       onCreateRecent: jest.fn(() => 9),
       removeListener: jest.fn(),
       removeCreateRecent: jest.fn().mockResolvedValue({ ok: true }),
+      // A plan conversation (Expand from the dock, Fold — 4e-2).
+      getCreateRecent: jest.fn().mockResolvedValue({
+        id: "plan_9",
+        prompt: "A greeter",
+        conversation: {
+          messages: [
+            { who: "you", text: "A greeter" },
+            { who: "planner", text: "Here is the plan." },
+          ],
+          plan: {
+            summary: "Greet",
+            pieces: [{ kind: "layout", name: "Greet", source: "new" }],
+          },
+        },
+        build: null,
+      }),
+      saveCreateRecent: jest.fn().mockResolvedValue({ id: "plan_9" }),
     },
   };
   const changeSettings = jest.fn();
@@ -497,5 +514,54 @@ describe("CreateModal — the Scout looks first (slice 4)", () => {
         package: "@trops/algolia",
       }),
     );
+  });
+});
+
+describe("CreateModal — Fold into the dock (4e-2)", () => {
+  test("opens on a plan from Recent (Expand); Fold sends it to the dock and closes", async () => {
+    const { setIsOpen } = setup({ props: { initialRecentId: "plan_9" } });
+    expect(await screen.findByText("Here is the plan.")).toBeInTheDocument();
+    expect(window.mainApi.bots.getCreateRecent).toHaveBeenCalledWith("plan_9");
+    const onFold = jest.fn();
+    window.addEventListener("dash:create-fold", onFold);
+    const fold = await screen.findByRole("button", {
+      name: "Fold into the sidebar",
+    });
+    expect(fold).not.toBeDisabled();
+    fireEvent.click(fold);
+    window.removeEventListener("dash:create-fold", onFold);
+    expect(onFold.mock.calls[0][0].detail).toEqual({
+      recentId: "plan_9",
+      title: "Plan a dashboard",
+    });
+    expect(setIsOpen).toHaveBeenCalledWith(false);
+  });
+
+  test("while the Planner answers, Fold is there but waits", async () => {
+    setup();
+    window.mainApi.bots.listDashTeam = jest
+      .fn()
+      .mockResolvedValue([
+        { id: "b_planner", role: "planner", name: "Planner" },
+      ]);
+    window.mainApi.bots.onStream = jest.fn(() => 1);
+    window.mainApi.bots.run = jest.fn(() => new Promise(() => {}));
+    fireEvent.click(screen.getByRole("button", { name: /^Type:/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Dashboard/ }));
+    fireEvent.change(promptBox(), { target: { value: "A greeter" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    const fold = await screen.findByRole("button", {
+      name: "Fold into the sidebar",
+    });
+    expect(fold).toBeDisabled();
+    expect(fold).toHaveAttribute("title", "Fold after the Planner answers");
+  });
+
+  test("no Fold on the start screen", async () => {
+    setup();
+    await screen.findByRole("button", { name: /^AI: Claude Code/ });
+    expect(
+      screen.queryByRole("button", { name: "Fold into the sidebar" }),
+    ).toBeNull();
   });
 });
