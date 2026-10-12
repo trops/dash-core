@@ -401,3 +401,64 @@ describe("CreateModal — the Widget Builder inside Create (2c-3)", () => {
     ).toHaveTextContent("Create›Tokyo clock");
   });
 });
+
+describe("CreateModal — the Scout looks first (slice 4)", () => {
+  const Builder = jest.fn(({ initialPrompt }) => (
+    <div data-testid="builder">
+      <span data-testid="builder-prompt">{String(initialPrompt)}</span>
+    </div>
+  ));
+  beforeEach(() => setWidgetBuilderRenderer(Builder));
+  afterEach(() => setWidgetBuilderRenderer(null));
+
+  const withScout = () => {
+    Object.assign(window.mainApi.bots, {
+      listDashTeam: jest
+        .fn()
+        .mockResolvedValue([{ id: "b_scout", role: "scout", name: "Scout" }]),
+      onStream: jest.fn(() => 1),
+      removeListener: jest.fn(),
+      run: jest.fn().mockResolvedValue({
+        status: "completed",
+        output:
+          'Found one.<matches>[{"source":"Registry","name":"Algolia Search","package":"@trops/algolia","why":"search"}]</matches>',
+      }),
+    });
+  };
+
+  const sendWidget = async (text) => {
+    await screen.findByRole("button", { name: /^AI: Claude Code/ });
+    fireEvent.change(promptBox(), { target: { value: text } });
+    fireEvent.click(sendButton());
+  };
+
+  test("Send shows the Scout's step; Build new instead opens the builder with the prompt", async () => {
+    setup();
+    withScout();
+    await sendWidget("an Algolia search widget");
+    await screen.findByTestId("scout-matches");
+    expect(
+      screen.getByRole("navigation", { name: "Where you are" }),
+    ).toHaveTextContent("Create›Looking first");
+    expect(screen.queryByTestId("builder")).toBeNull();
+    fireEvent.click(screen.getByText("Build new instead"));
+    expect(screen.getByTestId("builder-prompt")).toHaveTextContent(
+      "an Algolia search widget",
+    );
+  });
+
+  test("picking a match closes Create and hands it to the host", async () => {
+    const onOpenWidget = jest.fn();
+    const { setIsOpen } = setup({ props: { onOpenWidget } });
+    withScout();
+    await sendWidget("an Algolia search widget");
+    fireEvent.click(await screen.findByText("Install"));
+    expect(setIsOpen).toHaveBeenCalledWith(false);
+    expect(onOpenWidget).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "Registry",
+        package: "@trops/algolia",
+      }),
+    );
+  });
+});

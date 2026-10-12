@@ -25,3 +25,12 @@ export * from "./safeMarkdown";
 // Note: DynamicWidgetLoader and WidgetRegistry are Electron-only
 // export * from "./DynamicWidgetLoader";
 // export * from "./WidgetRegistry";
+
+// The Dash team from the app (create-entry CRE-011 slice 4).
+export {
+  runTeamRole,
+  findTeamRole,
+  extractMatches,
+  withoutMatches,
+} from "./teamRoles";
+export { runCostLabel, runCostShort, modelLabel } from "./runCostLabel";
