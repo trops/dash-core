@@ -98,6 +98,21 @@ describe("the renderer's plan checker matches the main process's", () => {
       ],
       estimate: { build: "?" },
     },
+    // Preview samples (5d): good, and not a list of lines.
+    {
+      summary: "S",
+      pieces: [
+        {
+          kind: "widget",
+          name: "A",
+          source: "new",
+          sample: ["9:30 Standup", "Unread: 4"],
+        },
+        { kind: "widget", name: "B", source: "new", sample: "oops" },
+        { kind: "widget", name: "C", source: "new", sample: [1, 2] },
+      ],
+      estimate: { build: "?" },
+    },
   ];
   test.each(samples.map((s, i) => [i, s]))("sample %i", (_i, plan) => {
     expect(rendererPlan.validatePlan(plan, { providers: ["gmail"] })).toEqual(

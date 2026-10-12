@@ -243,7 +243,7 @@ describe("Dash team instructions (phase 4a)", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /"access": \[string\]/);
     assert.match(planner.instructions, /short tappable options/);
-    assert.equal(planner.history.length, 3);
+    assert.equal(planner.history.length, 4);
   });
 });
 
@@ -261,7 +261,18 @@ describe("Dash team instructions (phase 4d-2)", () => {
     );
     assert.match(planner.instructions, /"showResults": boolean/);
     // The 4a text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[0], /short tappable options/);
-    assert.doesNotMatch(planner.history[0], /showResults/);
+    assert.match(planner.history[1], /short tappable options/);
+    assert.doesNotMatch(planner.history[1], /showResults/);
+  });
+});
+
+describe("Dash team instructions (phase 5d)", () => {
+  it("the Planner adds made-up sample data for the preview", () => {
+    const planner = ROLES.find((r) => r.role === "planner");
+    assert.match(planner.instructions, /"sample": \[string\]/);
+    assert.match(planner.instructions, /never the user's real data/);
+    // The 4d-2 text is kept so an unedited Planner upgrades.
+    assert.match(planner.history[0], /"showResults": boolean/);
+    assert.doesNotMatch(planner.history[0], /"sample"/);
   });
 });

@@ -148,7 +148,8 @@ test("Remove and Swap edit the plan, and the next message tells the Planner", as
   await screen.findByTestId("plan-card");
   fireEvent.click(screen.getAllByText("Swap…")[0]);
   fireEvent.click(await screen.findByText("Use"));
-  expect(screen.getByText("Inbox count")).toBeInTheDocument();
+  // (The preview sketch names it too.)
+  expect(screen.getAllByText("Inbox count").length).toBeGreaterThan(0);
   // The Gmail install is gone (Inbox count is already yours).
   expect(screen.queryByText(/Install Gmail Inbox/)).toBeNull();
   fireEvent.click(screen.getAllByText("Remove")[2]);

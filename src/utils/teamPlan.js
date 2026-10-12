@@ -22,7 +22,9 @@
  *                   // new bot (saved as planned, 4d-2)
  *                   instructions?, tools?: [{ provider, tools: [string] }],
  *                   schedule?: { cron, prompt? }, results?: [{ name, label? }],
- *                   on?: [{ widget, event }], showResults?: boolean }],
+ *                   on?: [{ widget, event }], showResults?: boolean,
+                   // made-up lines for the plan's preview (5d)
+                   sample?: [string] }],
  *     beforeBuilding: [{ kind: "connect" | "install" | "approve", what }],
  *     checks:    [string],                                 // how to tell it worked
  *     access?:   [string],                                 // what bots can / can't do (CRE-003 AC5)
@@ -126,6 +128,19 @@ function validatePlan(plan, context = {}) {
       }
       if (p.providers !== undefined && !Array.isArray(p.providers)) {
         errors.push(`${at}.providers must be a list.`);
+      }
+      // Made-up preview data (5d): never blocks building — the preview
+      // only shows short text lines.
+      if (
+        p.sample !== undefined &&
+        !(
+          Array.isArray(p.sample) &&
+          p.sample.every((x) => typeof x === "string")
+        )
+      ) {
+        warnings.push(
+          `${at}.sample should be a list of short lines; it isn't shown.`,
+        );
       }
       // A registry widget is installed first — the user approves it.
       if (
