@@ -58,6 +58,7 @@ const ANTHROPIC = {
 function setup({
   cli = true,
   drafts = [],
+  recent = [],
   providers = {},
   settings = {},
   props = {},
@@ -68,6 +69,10 @@ function setup({
     bots: {
       list: jest.fn().mockResolvedValue([]),
       save: jest.fn().mockResolvedValue({ id: "b1", name: "Inbox bot" }),
+      listCreateRecent: jest.fn().mockResolvedValue(recent),
+      onCreateRecent: jest.fn(() => 9),
+      removeListener: jest.fn(),
+      removeCreateRecent: jest.fn().mockResolvedValue({ ok: true }),
     },
   };
   const changeSettings = jest.fn();
@@ -250,7 +255,7 @@ describe("CreateModal — Bot", () => {
   });
 });
 
-describe("CreateModal — Continue a draft (2c-2)", () => {
+describe("CreateModal — Recent (2c-2, 4e-1)", () => {
   const now = Date.now();
   const DRAFTS = [
     { id: "d1", name: "Tokyo clock", updatedAt: now - 5 * 60_000 },
@@ -258,23 +263,39 @@ describe("CreateModal — Continue a draft (2c-2)", () => {
     { id: "d3", name: "", updatedAt: now - 2 * 86_400_000 },
     { id: "d4", name: "Oldest", updatedAt: now - 9 * 86_400_000 },
   ];
+  const PLANS = [
+    {
+      id: "plan_1",
+      title: "Morning Brief",
+      status: "building",
+      progress: { done: 3, total: 7 },
+      tokens: 21000,
+      updatedAt: new Date(now - 60_000).toISOString(),
+    },
+    {
+      id: "plan_2",
+      title: "Ask Test",
+      status: "waiting",
+      waitingFor: ["gmail"],
+      updatedAt: new Date(now - 4 * 86_400_000).toISOString(),
+    },
+  ];
 
-  test("lists the three newest widget drafts with their age", async () => {
-    setup({ drafts: DRAFTS });
-    expect(await screen.findByText("Continue a draft")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /Tokyo clock · 5m ago/ }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /PR digest · 3h ago/ }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /Untitled draft · 2d ago/ }),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Oldest/ })).toBeNull();
+  test("plans and widget drafts together, newest first, with status and age", async () => {
+    setup({ drafts: DRAFTS, recent: PLANS });
+    expect(await screen.findByText("Recent")).toBeInTheDocument();
+    await screen.findByRole("button", { name: /^Morning Brief/ });
+    const rows = screen.getAllByTestId("recent-row").map((r) => r.textContent);
+    expect(rows[0]).toMatch(
+      /Morning Brief· Building 3\/7 · 21\.0k tokens · 1m ago/,
+    );
+    expect(rows[1]).toMatch(/Tokyo clock· Widget draft · 5m ago/);
+    expect(rows[3]).toMatch(/Untitled draft· Widget draft · 2d ago/);
+    expect(rows[4]).toMatch(/Ask Test· Waiting for Gmail · 4d ago/);
+    expect(rows).toHaveLength(6);
   });
 
-  test("a draft opens the Widget Builder on it and closes Create", async () => {
+  test("a widget draft opens the Widget Builder on it and closes Create", async () => {
     const { setIsOpen } = setup({ drafts: DRAFTS });
     const onOpen = jest.fn();
     window.addEventListener("dash:open-widget-builder", onOpen);
@@ -284,7 +305,20 @@ describe("CreateModal — Continue a draft (2c-2)", () => {
     expect(setIsOpen).toHaveBeenCalledWith(false);
   });
 
-  test("more than three → All N drafts opens the Widgets page", async () => {
+  test("a plan can be removed from Recent; Recent follows changes", async () => {
+    setup({ recent: PLANS });
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Remove Morning Brief from Recent",
+      }),
+    );
+    expect(window.mainApi.bots.removeCreateRecent).toHaveBeenCalledWith(
+      "plan_1",
+    );
+    expect(window.mainApi.bots.onCreateRecent).toHaveBeenCalled();
+  });
+
+  test("more than three drafts → All N drafts opens the Widgets page", async () => {
     const { onStartWithoutAi } = setup({ drafts: DRAFTS });
     fireEvent.click(
       await screen.findByRole("button", { name: "All 4 drafts" }),
@@ -292,16 +326,10 @@ describe("CreateModal — Continue a draft (2c-2)", () => {
     expect(onStartWithoutAi).toHaveBeenCalledWith("widget-drafts");
   });
 
-  test("no drafts → no row; Bot never shows it", async () => {
+  test("nothing in Recent → no section", async () => {
     setup();
     await screen.findByRole("button", { name: /^AI: Claude Code/ });
-    expect(screen.queryByText("Continue a draft")).toBeNull();
-  });
-
-  test("Bot doesn't offer widget drafts", async () => {
-    setup({ drafts: DRAFTS, props: { initialType: "bot" } });
-    await screen.findByRole("button", { name: /Fill in the bot form/ });
-    expect(screen.queryByText("Continue a draft")).toBeNull();
+    expect(screen.queryByText("Recent")).toBeNull();
   });
 });
 

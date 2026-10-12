@@ -88,7 +88,9 @@ function fail(text) {
 /**
  * Execute a memory_* tool call in-process.
  * @param {import("./BotMemory").BotMemory} memory
- * @param {{ workspaceId?: string|number, botId?: string }} ctx  the calling bot
+ * @param {{ workspaceId?: string|number, botId?: string, planId?: string }} ctx
+ *   the calling bot; planId = a Dash team run inside a Create plan, which
+ *   only ever sees that plan's memory (4e-1)
  * @param {string} toolName
  * @param {object} args
  * @returns {{ text: string, isError: boolean }}
@@ -100,7 +102,10 @@ function handleMemoryTool(memory, ctx, toolName, args = {}) {
   const onTeam = ws !== null && ws !== undefined && ws !== "";
   let scope;
   let id;
-  if (args && args.scope === "global") {
+  if (ctx && ctx.planId) {
+    scope = "plan";
+    id = String(ctx.planId);
+  } else if (args && args.scope === "global") {
     scope = "global";
     id = null;
   } else if (onTeam) {
@@ -110,7 +115,8 @@ function handleMemoryTool(memory, ctx, toolName, args = {}) {
     scope = "bot";
     id = ctx && ctx.botId;
   }
-  const label = scope === "bot" ? "private" : scope;
+  const label =
+    scope === "bot" ? "private" : scope === "plan" ? "this plan" : scope;
   try {
     switch (toolName) {
       case "memory_set": {

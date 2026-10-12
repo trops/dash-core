@@ -32,6 +32,22 @@ import {
 } from "./PlanChecklistDialogs";
 import { CreateBuildingStep } from "./CreateBuildingStep";
 
+/**
+ * The Planner's first question in a conversation reopened from Recent: its
+ * session may have moved on, so the plan comes along — and the plan's memory
+ * holds the rest (4e-1).
+ */
+export function reopenedRequest(original, plan, text) {
+  return [
+    `You're picking up a saved plan. It started from: "${original || ""}".`,
+    "This plan's memory has what was asked, answered and built so far.",
+    plan
+      ? `The plan as it stands:\n\`\`\`json\n${JSON.stringify(plan)}\n\`\`\``
+      : "There's no plan yet.",
+    `Now: ${text}`,
+  ].join("\n");
+}
+
 /** "Removed the Ask Test dashboard, 1 bot and 1 widget." (4d-3) */
 export function removedText(res) {
   const r = (res && res.removed) || {};
@@ -124,12 +140,26 @@ const BotPlanDetails = ({ piece, muted, open, onToggle }) => {
   );
 };
 
-export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
+export const CreatePlanStep = ({
+  prompt,
+  recentId = null,
+  onOpenDashboard = null,
+}) => {
   const { muted, strong, hairline } = useConfigTokens();
   const app = useContext(AppContext) || {};
   // [{ who: "you" | "planner" | "note", text, meta? }]
-  const [messages, setMessages] = useState([{ who: "you", text: prompt }]);
+  const [messages, setMessages] = useState(
+    recentId ? [] : [{ who: "you", text: prompt }],
+  );
   const [busy, setBusy] = useState(true);
+  // Recent (4e-1): this conversation's id (its plan memory too); whether
+  // it's loaded (a reopened one restores first); what it was started with.
+  const planId = useRef(recentId);
+  const [loaded, setLoaded] = useState(!recentId);
+  const [origPrompt, setOrigPrompt] = useState(prompt);
+  // A reopened conversation's next question re-introduces the plan: the
+  // Planner's own session may have moved on to other work since.
+  const reopened = useRef(false);
   const [soFar, setSoFar] = useState("");
   const [plan, setPlan] = useState(null);
   const [planningTokens, setPlanningTokens] = useState(0);
@@ -161,8 +191,16 @@ export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
   const ask = async (text, continueConversation) => {
     setBusy(true);
     setSoFar("");
-    const res = await runTeamRole("planner", text, {
-      continueConversation,
+    let request = text;
+    let cont = continueConversation;
+    if (reopened.current) {
+      reopened.current = false;
+      cont = false;
+      request = reopenedRequest(origPrompt, plan, text);
+    }
+    const res = await runTeamRole("planner", request, {
+      continueConversation: cont,
+      planId: planId.current,
       onText: (t) => alive.current && setSoFar(t),
       onEvent: (event) => {
         if (!alive.current || !isHandoff(event)) return;
@@ -221,7 +259,29 @@ export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
     alive.current = true;
     if (!started.current) {
       started.current = true;
-      ask(prompt, false);
+      const bots = window.mainApi && window.mainApi.bots;
+      if (recentId) {
+        // Reopened from Recent: as it was — no new question.
+        Promise.resolve(bots && bots.getCreateRecent(recentId))
+          .then((entry) => {
+            if (!alive.current) return;
+            restore(entry);
+          })
+          .catch(() => alive.current && restore(null));
+      } else {
+        // Kept in Recent from the start, then the Planner (with this plan's
+        // memory) — saving first gives the plan its id.
+        Promise.resolve(
+          bots && bots.saveCreateRecent
+            ? bots.saveCreateRecent({ prompt })
+            : null,
+        )
+          .then((res) => {
+            if (res && res.id) planId.current = res.id;
+          })
+          .catch(() => {})
+          .then(() => alive.current && ask(prompt, false));
+      }
       if (window.mainApi?.bots?.listDashTeam) {
         Promise.resolve(window.mainApi.bots.listDashTeam())
           .then((t) => alive.current && setTeam(Array.isArray(t) ? t : []))
@@ -233,6 +293,52 @@ export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // A conversation from Recent, as it was left (4e-1).
+  const restore = (entry) => {
+    const conv = (entry && entry.conversation) || {};
+    setOrigPrompt((entry && entry.prompt) || prompt || "");
+    setMessages(
+      Array.isArray(conv.messages) && conv.messages.length
+        ? conv.messages
+        : [{ who: "you", text: (entry && entry.prompt) || "" }],
+    );
+    if (conv.plan) setPlan(conv.plan);
+    if (conv.checks) setChecks(conv.checks);
+    setPlanningTokens(Number(conv.planningTokens) || 0);
+    const b = entry && entry.build;
+    if (b && b.state && b.state.status === "removed") {
+      setRemovedNote(removedText(b.state));
+    } else if (b && b.buildId) {
+      setBuild({ buildId: b.buildId, state: b.state });
+    }
+    if (!entry) {
+      setMessages((m) => [
+        ...m,
+        { who: "note", text: "This conversation isn't in Recent any more." },
+      ]);
+    }
+    reopened.current = true;
+    setBusy(false);
+    setLoaded(true);
+  };
+
+  // Saved as it goes, so Back, Close and a restart lose nothing (CRE-003
+  // AC4); the main process writes its facts to the plan's memory.
+  useEffect(() => {
+    if (!loaded || !planId.current) return undefined;
+    const bots = window.mainApi && window.mainApi.bots;
+    if (!bots || !bots.saveCreateRecent) return undefined;
+    const t = setTimeout(() => {
+      Promise.resolve(
+        bots.saveCreateRecent({
+          id: planId.current,
+          conversation: { messages, plan, checks, planningTokens },
+        }),
+      ).catch(() => {});
+    }, 300);
+    return () => clearTimeout(t);
+  }, [loaded, messages, plan, checks, planningTokens]);
 
   const answer = (text) => {
     const t = String(text || "").trim();
@@ -271,7 +377,7 @@ export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
 
   // Nothing open: build it (4d). Approving here is the consent — nothing
   // asks again during the build.
-  const startBuild = async () => {
+  const startBuild = async (continueFrom = null) => {
     setReady(true);
     setBuildError(null);
     const bots = window.mainApi && window.mainApi.bots;
@@ -280,10 +386,12 @@ export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
       return;
     }
     try {
-      const res = await bots.startPlanBuild(
-        plan,
-        resumeFrom ? { resumeFrom } : {},
-      );
+      const from = continueFrom || resumeFrom;
+      const res = await bots.startPlanBuild(plan, {
+        ...(from ? { resumeFrom: from } : {}),
+        // Kept on this conversation in Recent, with its build memory.
+        ...(planId.current ? { recentId: planId.current } : {}),
+      });
       if (!res || res.error) {
         setBuildError((res && res.error) || "The build couldn't start.");
         return;
@@ -333,6 +441,7 @@ export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
         initialState={build.state}
         estimate={estimate}
         onOpenDashboard={onOpenDashboard}
+        onContinue={() => startBuild(build.buildId)}
         onEditPlan={() => {
           setResumeFrom(build.buildId);
           setBuild(null);
@@ -643,7 +752,7 @@ export const CreatePlanStep = ({ prompt, onOpenDashboard = null }) => {
                       : resumeFrom
                         ? "What's built is kept — only what's new or changed gets built."
                         : removedNote ||
-                          "Nothing has been built or installed yet."}
+                          "Kept in Recent · nothing has been built or installed yet."}
                 </span>
               </div>
             </div>

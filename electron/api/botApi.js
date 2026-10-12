@@ -41,6 +41,11 @@ const {
   BOTS_RETRY_PLAN_BUILD,
   BOTS_RESUME_PLAN_BUILD,
   BOTS_REMOVE_PLAN_BUILD,
+  CREATE_RECENT_LIST,
+  CREATE_RECENT_GET,
+  CREATE_RECENT_SAVE,
+  CREATE_RECENT_REMOVE,
+  CREATE_RECENT_CHANGED,
   BOTS_SET_SETTINGS,
   BOTS_ASK_LEAD,
   BOTS_LIST_LEADS,
@@ -88,8 +93,14 @@ const botApi = {
 
   /** Start a run. Stream events arrive via onStream(). */
   /** Start a run; `continueConversation` replies within its last session. */
-  run: (botId, prompt, continueConversation = false) =>
-    ipcRenderer.invoke(BOTS_RUN, { botId, prompt, continueConversation }),
+  run: (botId, prompt, continueConversation = false, opts = {}) =>
+    ipcRenderer.invoke(BOTS_RUN, {
+      botId,
+      prompt,
+      continueConversation,
+      // A Dash team run inside a Create plan: that plan's memory (4e-1).
+      planId: (opts && opts.planId) || null,
+    }),
   /** The bot's latest runs (oldest first), answers decrypted. */
   getRuns: (botId, limit) =>
     ipcRenderer.invoke(BOTS_GET_RUNS, { botId, limit }),
@@ -219,6 +230,14 @@ const botApi = {
   resumePlanBuild: (buildId) =>
     ipcRenderer.invoke(BOTS_RESUME_PLAN_BUILD, { buildId }),
   /** Remove what the build made: { removed, kept } or { error }. */
+  /** Create's Recent (4e-1): summaries, newest first. */
+  listCreateRecent: () => ipcRenderer.invoke(CREATE_RECENT_LIST),
+  /** One conversation, whole — to reopen it. */
+  getCreateRecent: (id) => ipcRenderer.invoke(CREATE_RECENT_GET, { id }),
+  /** Save a conversation as it goes: { id?, prompt?, conversation? } → { id }. */
+  saveCreateRecent: (entry) =>
+    ipcRenderer.invoke(CREATE_RECENT_SAVE, { entry }),
+  removeCreateRecent: (id) => ipcRenderer.invoke(CREATE_RECENT_REMOVE, { id }),
   removePlanBuild: (buildId) =>
     ipcRenderer.invoke(BOTS_REMOVE_PLAN_BUILD, { buildId }),
   /** Global bot settings: { autoLeads, dashTeam: { models } }. */
@@ -259,6 +278,8 @@ const botApi = {
   onDraftsChanged: (callback) => _addListener(BOT_DRAFTS_CHANGED, callback),
   /** A plan build's progress: ({ buildId, state }) after every change. */
   onPlanBuild: (callback) => _addListener(BOT_PLAN_BUILD_PROGRESS, callback),
+  /** Recent changed (a save, a build's progress, a removal). */
+  onCreateRecent: (callback) => _addListener(CREATE_RECENT_CHANGED, callback),
 
   removeListener: (id) => {
     const entry = _listenerMap.get(id);

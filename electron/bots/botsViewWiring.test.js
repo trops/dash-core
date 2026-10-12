@@ -25,7 +25,7 @@ describe("botController — Bots view backend", () => {
   it("run() can continue the bot's conversation (reply to continue)", () => {
     assert.match(
       ctrl,
-      /run\(botId, prompt, \{ continueConversation = false \} = \{\}\)/,
+      /run\(botId, prompt, \{ continueConversation = false, planId = null \} = \{\}\)/,
     );
     assert.match(
       ctrl,
@@ -80,7 +80,7 @@ describe("botApi / events — Bots view IPC", () => {
     assert.match(api, /getRuns: \(botId, limit\) =>/);
     assert.match(
       api,
-      /run: \(botId, prompt, continueConversation = false\) =>[\s\S]{0,120}continueConversation/,
+      /run: \(botId, prompt, continueConversation = false, opts = \{\}\) =>[\s\S]{0,120}continueConversation/,
     );
   });
 });
@@ -111,7 +111,7 @@ describe("botController — memory context (private memory)", () => {
   it("passes the calling bot's id to the memory tools", () => {
     assert.match(
       ctrl,
-      /handleMemoryTool\(\s*this\._memory,\s*\{ workspaceId: opts\.workspaceId, botId: opts\.botId \},/,
+      /handleMemoryTool\(\s*this\._memory,\s*\{\s*workspaceId: opts\.workspaceId,\s*botId: opts\.botId,\s*planId: opts\.planId \|\| null,\s*\},/,
     );
   });
 });

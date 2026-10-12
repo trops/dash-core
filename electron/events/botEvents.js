@@ -49,6 +49,12 @@ const BOTS_FIX_PLAN_BUILD = "bots-fix-plan-build";
 const BOTS_RETRY_PLAN_BUILD = "bots-retry-plan-build";
 const BOTS_RESUME_PLAN_BUILD = "bots-resume-plan-build";
 const BOTS_REMOVE_PLAN_BUILD = "bots-remove-plan-build";
+// Create's Recent (4e-1): plan conversations and their builds.
+const CREATE_RECENT_LIST = "create-recent-list";
+const CREATE_RECENT_GET = "create-recent-get";
+const CREATE_RECENT_SAVE = "create-recent-save";
+const CREATE_RECENT_REMOVE = "create-recent-remove";
+const CREATE_RECENT_CHANGED = "create-recent-changed";
 // Bots view (TEAM-011): a bot run history.
 const BOTS_GET_RUNS = "bots-get-runs";
 // Bot monitor (TEAM-011 B3): the latest runs across every bot.
@@ -126,6 +132,11 @@ module.exports = {
   BOTS_RETRY_PLAN_BUILD,
   BOTS_RESUME_PLAN_BUILD,
   BOTS_REMOVE_PLAN_BUILD,
+  CREATE_RECENT_LIST,
+  CREATE_RECENT_GET,
+  CREATE_RECENT_SAVE,
+  CREATE_RECENT_REMOVE,
+  CREATE_RECENT_CHANGED,
   BOTS_GET_RUNS,
   BOTS_LIST_RECENT_RUNS,
   BOTS_GET_LATEST_RESULT,

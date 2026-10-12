@@ -33,6 +33,7 @@ function createElectronHost() {
   const store = new Store({ name: "dash-bots" });
   const budgetStore = new Store({ name: "dash-bot-budgets" });
   const memoryStore = new Store({ name: "dash-bot-memory" });
+  const recentStore = new Store({ name: "dash-create-recent" });
   const botsRoot = path.join(app.getPath("userData"), "bots");
 
   return {
@@ -57,6 +58,11 @@ function createElectronHost() {
     memoryPersistence: {
       read: () => memoryStore.get("store", { scopes: {} }),
       write: (obj) => memoryStore.set("store", obj),
+    },
+    // Create's Recent: plan conversations and their builds (4e-1).
+    recentPersistence: {
+      read: () => recentStore.get("store", { entries: {} }),
+      write: (obj) => recentStore.set("store", obj),
     },
   };
 }

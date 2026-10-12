@@ -98,6 +98,13 @@ const {
   widgetWiring,
 } = require("../bots/planBuild");
 const { resolveWidgetComponent } = require("../bots/widgetComponent");
+const { CreateRecent } = require("../bots/createRecent");
+const {
+  conversationFacts,
+  buildFacts,
+  aboutDashboard,
+  MEMORY_NOTE,
+} = require("../bots/planMemory");
 const { recentRuns } = require("../bots/recentRuns");
 const { coalesce } = require("../bots/coalesce");
 const { buildDraft, DraftStore } = require("../bots/botDrafts");
@@ -152,6 +159,7 @@ const {
   BOT_LIST_CHANGED,
   BOT_DRAFTS_CHANGED,
   BOT_PLAN_BUILD_PROGRESS,
+  CREATE_RECENT_CHANGED,
 } = require("../events/botEvents");
 
 const { runCost } = require("../bots/runCost");
@@ -240,6 +248,22 @@ const botController = {
     // Scoped, durable bot memory (P1: FR-010), served as in-process memory_*
     // tools that every bot can use without a consent prompt.
     this._memory = new BotMemory({ persistence: host.memoryPersistence });
+    // Create's Recent (4e-1): conversations and builds survive a restart; a
+    // build that was running when the app closed is "interrupted".
+    this._recent = new CreateRecent({
+      persistence: host.recentPersistence || {
+        read: () => this._recentBlob || { entries: {} },
+        write: (o) => {
+          this._recentBlob = o;
+        },
+      },
+    });
+    try {
+      this._recent.markInterrupted();
+    } catch (err) {
+      console.error("[botController] Recent couldn't be read:", err);
+    }
+    this._recent.onChange(() => this._broadcast(CREATE_RECENT_CHANGED, {}));
     // Bots a team lead drafted, awaiting the user's review (TEAM-005). In
     // memory only — a restart drops them (the lead's answer still says so).
     this._drafts = new DraftStore();
@@ -531,12 +555,99 @@ const botController = {
    * Run a bot. `continueConversation` resumes its last session — a reply in
    * the Bots view (TEAM-011) — logged with trigger "reply".
    */
-  run(botId, prompt, { continueConversation = false } = {}) {
+  run(botId, prompt, { continueConversation = false, planId = null } = {}) {
+    // Only the Dash team works inside a plan (and so sees its memory).
+    const inPlan =
+      planId && isDashTeam(this._store.get(botId)) && this._recent.get(planId);
     return this._run(botId, {
-      prompt,
+      prompt: inPlan ? `${prompt}\n\n${MEMORY_NOTE}` : prompt,
       trigger: continueConversation ? "reply" : "manual",
       continueSession: !!continueConversation,
+      ...(inPlan ? { planId: String(planId) } : {}),
     });
+  },
+
+  // ── Create's Recent (create-entry CRE-007 AC2, phase 4e-1) ──────────────
+
+  /** Recent conversations, newest first (summaries). */
+  listCreateRecent() {
+    return this._recent.list();
+  },
+
+  /** One conversation, whole — to reopen it. */
+  getCreateRecent(id) {
+    return this._recent.get(id);
+  },
+
+  /**
+   * Save a conversation as it goes ({ id?, prompt?, conversation? }); a new
+   * one gets its id. Its facts go to the plan's memory (no AI).
+   */
+  saveCreateRecent(req = {}) {
+    const entry = this._recent.save(req || {});
+    this._writePlanMemory(entry.id, conversationFacts(entry));
+    return { id: entry.id, title: entry.title };
+  },
+
+  /** Remove a conversation from Recent, and its plan memory with it. */
+  removeCreateRecent(id) {
+    const entry = this._recent.get(id);
+    if (!entry) return { error: "It isn't in Recent." };
+    const buildId = entry.build && entry.build.buildId;
+    const live = buildId && this._builds && this._builds.get(buildId);
+    if (live && isBuildBusy(live.state)) {
+      return { error: "It's still building — stop it first." };
+    }
+    if (live) this._builds.delete(buildId);
+    this._recent.remove(id);
+    this._memory.forget("plan", id);
+    return { ok: true };
+  },
+
+  _writePlanMemory(planId, facts) {
+    if (!planId) return;
+    for (const [key, value] of Object.entries(facts || {})) {
+      try {
+        this._memory.set("plan", planId, key, value);
+      } catch (err) {
+        console.error("[botController] plan memory:", err);
+      }
+    }
+  },
+
+  /** A build's progress, kept on its conversation and in its memory. */
+  _keepBuild(recentId, buildId, plan, state) {
+    if (!recentId) return;
+    try {
+      const entry = this._recent.saveBuild(recentId, { buildId, plan, state });
+      this._writePlanMemory(recentId, buildFacts(state, plan));
+      // Finished with a dashboard: its team learns why it exists.
+      if (entry && state && state.dashboard && !isBuildBusy(state)) {
+        const about = aboutDashboard(entry, plan, state);
+        if (about)
+          this._memory.set("workspace", state.dashboard.id, "about", about);
+      }
+    } catch (err) {
+      console.error("[botController] Recent:", err);
+    }
+  },
+
+  /**
+   * A build from an earlier session, from Recent: its last state, with no
+   * live run behind it (Continue building, Edit plan and Remove work on it).
+   */
+  _restoredBuild(buildId) {
+    const saved = this._recent.findByBuild(buildId);
+    if (!saved || !saved.build) return null;
+    if (!this._builds) this._builds = new Map();
+    const entry = {
+      plan: saved.build.plan,
+      state: saved.build.state,
+      build: null,
+      recentId: saved.id,
+    };
+    this._builds.set(buildId, entry);
+    return entry;
   },
 
   /**
@@ -1471,14 +1582,20 @@ const botController = {
    * `resumeFrom` (Edit plan, 4d-3): an earlier build of this plan whose work
    * is reused — same dashboard, unchanged pieces kept.
    */
-  startPlanBuild(plan, { dashboardName = null, resumeFrom = null } = {}) {
+  startPlanBuild(
+    plan,
+    { dashboardName = null, resumeFrom = null, recentId = null } = {},
+  ) {
     if (!plan || !Array.isArray(plan.pieces) || !plan.pieces.length) {
       return { error: "The plan has nothing to build." };
     }
     if (!this._builds) this._builds = new Map();
+    // Its conversation in Recent (4e-1) — a build without one isn't kept.
+    const planId = recentId && this._recent.get(recentId) ? recentId : null;
     let resume = null;
     if (resumeFrom) {
-      const earlier = this._builds.get(resumeFrom);
+      const earlier =
+        this._builds.get(resumeFrom) || this._restoredBuild(resumeFrom);
       if (!earlier) return { error: "The earlier build isn't there any more." };
       if (isBuildBusy(earlier.state)) {
         return { error: "The earlier build is still running." };
@@ -1491,14 +1608,14 @@ const botController = {
       this._builds.delete(resumeFrom);
     }
     const buildId = `build_${Date.now()}`;
-    const entry = { plan, state: null, build: null };
+    const entry = { plan, state: null, build: null, recentId: planId };
     const build = createPlanBuild(
       plan,
       {
         installWidget: (pkg, piece) => this._planInstallWidget(pkg, piece),
         createDashboard: (name, count) =>
           this._planCreateDashboard(name, count),
-        askRole: (role, request) => this._planAskRole(role, request),
+        askRole: (role, request) => this._planAskRole(role, request, planId),
         abortRole: (role) => {
           const bot = dashTeamBot(this._store.list(), role);
           if (bot) this._runner.abort(bot.id);
@@ -1525,6 +1642,7 @@ const botController = {
         emit: (state) => {
           entry.state = state;
           this._broadcast(BOT_PLAN_BUILD_PROGRESS, { buildId, state });
+          this._keepBuild(planId, buildId, plan, state);
         },
       },
       { dashboardName, resume },
@@ -1546,13 +1664,17 @@ const botController = {
   },
 
   getPlanBuild(buildId) {
-    const entry = this._builds && this._builds.get(buildId);
+    const entry =
+      (this._builds && this._builds.get(buildId)) ||
+      this._restoredBuild(buildId);
     return entry ? { buildId, state: entry.state } : null;
   },
 
   /** A finished build and one of its steps, or { error }. */
   _finishedBuild(buildId, stepId = null) {
-    const entry = this._builds && this._builds.get(buildId);
+    const entry =
+      (this._builds && this._builds.get(buildId)) ||
+      this._restoredBuild(buildId);
     if (!entry) return { error: "No such build." };
     if (isBuildBusy(entry.state))
       return { error: "The build is still running." };
@@ -1580,6 +1702,7 @@ const botController = {
   fixPlanBuild(buildId, stepId) {
     const { entry, step, error } = this._finishedBuild(buildId, stepId);
     if (error) return { error };
+    if (!entry.build) return { error: "Continue building first." };
     if (step.status !== "failed" || !step.canFix) {
       return { error: "The Builder can't fix that step." };
     }
@@ -1590,6 +1713,7 @@ const botController = {
   retryPlanBuild(buildId, stepId) {
     const { entry, step, error } = this._finishedBuild(buildId, stepId);
     if (error) return { error };
+    if (!entry.build) return { error: "Continue building first." };
     if (step.status !== "failed" || !step.canRetry) {
       return { error: "That step can't be tried again." };
     }
@@ -1600,6 +1724,7 @@ const botController = {
   resumePlanBuild(buildId) {
     const { entry, error } = this._finishedBuild(buildId);
     if (error) return { error };
+    if (!entry.build) return { error: "Continue building first." };
     if (!entry.state.steps.some((x) => x.status === "needs-provider")) {
       return { error: "Nothing is waiting." };
     }
@@ -1660,6 +1785,8 @@ const botController = {
           );
         if (res && res.success) {
           removed.dashboard = built.dashboard.name;
+          // What Create told its team about it goes too (4e-1).
+          this._memory.delete("workspace", dashboardId, "about");
           this._broadcast("workspace:saved", {
             workspaceId: ws.id,
             deleted: true,
@@ -1684,6 +1811,7 @@ const botController = {
       problems,
     };
     this._broadcast(BOT_PLAN_BUILD_PROGRESS, { buildId, state: entry.state });
+    this._keepBuild(entry.recentId, buildId, entry.plan, entry.state);
     return { removed, kept, problems };
   },
 
@@ -1848,17 +1976,19 @@ const botController = {
   },
 
   /** A Dash team role's run inside an approved plan build. */
-  async _planAskRole(role, request) {
+  async _planAskRole(role, request, planId = null) {
     const bot = dashTeamBot(this._store.list(), role);
     if (!bot) return { skipped: true, reason: `the ${role} isn't set up` };
     if (this._pause.isPaused(bot.id)) {
       return { skipped: true, reason: `the ${bot.name} is paused` };
     }
     return this._run(bot.id, {
-      prompt: request,
+      prompt: planId ? `${request}\n\n${MEMORY_NOTE}` : request,
       trigger: "ask",
       via: "plan-build",
       approvalPolicy: "allow",
+      // The plan's build memory (4e-1).
+      ...(planId ? { planId: String(planId) } : {}),
     });
   },
 
@@ -2124,7 +2254,7 @@ const botController = {
    * event-triggered bot doesn't silently run without its tools. Start
    * failures are surfaced in the run feed as warnings.
    */
-  async _resolveTools(bot) {
+  async _resolveTools(bot, runOpts = {}) {
     // A team lead gets ONLY its read-only team tools — no providers, no memory
     // writes (bot-teams TEAM-002 AC4). The runner also strips engine built-ins.
     if (isLead(bot)) {
@@ -2139,14 +2269,18 @@ const botController = {
     // A Dash team role gets only its role's tools (CRE-011) — no providers,
     // no memory; the runner limits engine built-ins by role.
     if (isDashTeam(bot)) {
-      const tools = roleToolsFor(bot.role);
+      // Inside a Create plan, its memory too — that plan's bucket only (4e-1).
+      const memory = runOpts && runOpts.planId ? MEMORY_TOOLS : [];
+      const tools = [...roleToolsFor(bot.role), ...memory];
       this._allowedByBot.set(bot.id, {});
       return {
         tools,
         resolveServer: (toolName) =>
-          tools.some((t) => t.name === toolName)
-            ? serverForTool(toolName)
-            : null,
+          memory.some((t) => t.name === toolName)
+            ? MEMORY_SERVER
+            : tools.some((t) => t.name === toolName)
+              ? serverForTool(toolName)
+              : null,
         // build_widget's server: asked about at the gate, not refused.
         servers: tools.some((t) => serverForTool(t.name) === ROLE_BUILD_SERVER)
           ? [ROLE_BUILD_SERVER]
@@ -2208,7 +2342,11 @@ const botController = {
     if (serverName === MEMORY_SERVER) {
       return handleMemoryTool(
         this._memory,
-        { workspaceId: opts.workspaceId, botId: opts.botId },
+        {
+          workspaceId: opts.workspaceId,
+          botId: opts.botId,
+          planId: opts.planId || null,
+        },
         toolName,
         args,
       );

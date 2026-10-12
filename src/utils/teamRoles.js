@@ -32,15 +32,23 @@ export async function findTeamRole(role) {
  * @param {string} role
  * @param {string} prompt
  * @param {{ onText?: (soFar: string) => void, onStart?: (bot) => void,
- *   onEvent?: (event) => void, continueConversation?: boolean }} [opts]
- *   continueConversation resumes the role's last session (a reply).
+ *   onEvent?: (event) => void, continueConversation?: boolean,
+ *   planId?: string }} [opts]
+ *   continueConversation resumes the role's last session (a reply); planId
+ *   runs it inside a Create plan, with that plan's memory (4e-1).
  * @returns {Promise<{ skipped: true, reason: string } |
  *   { status, output, model, usage, cost, error, bot }>}
  */
 export async function runTeamRole(
   role,
   prompt,
-  { onText, onStart, onEvent, continueConversation = false } = {},
+  {
+    onText,
+    onStart,
+    onEvent,
+    continueConversation = false,
+    planId = null,
+  } = {},
 ) {
   const api = bots();
   if (!api || typeof api.run !== "function") {
@@ -68,7 +76,9 @@ export async function runTeamRole(
         })
       : null;
   try {
-    const record = await api.run(bot.id, prompt, !!continueConversation);
+    const record = planId
+      ? await api.run(bot.id, prompt, !!continueConversation, { planId })
+      : await api.run(bot.id, prompt, !!continueConversation);
     if (!record) return { status: "failed", error: "no answer", bot };
     if (record.skipped) {
       return { skipped: true, reason: record.reason || "it didn't run", bot };

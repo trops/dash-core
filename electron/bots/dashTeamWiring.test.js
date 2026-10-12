@@ -81,7 +81,7 @@ describe("botController — role tools (CRE-011, slice 3a)", () => {
   it("team bots get only their role's tools, on an auto-allowed server", () => {
     assert.match(
       ctrl,
-      /if \(isDashTeam\(bot\)\) \{\s*const tools = roleToolsFor\(bot\.role\);/,
+      /const tools = \[\.\.\.roleToolsFor\(bot\.role\), \.\.\.memory\];/,
     );
     assert.match(ctrl, /RESULTS_SERVER,\s*ROLE_SERVER,\s*\]/);
   });

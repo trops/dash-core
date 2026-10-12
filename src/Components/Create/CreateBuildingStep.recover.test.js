@@ -262,3 +262,24 @@ test("nothing to recover from after a clean build", () => {
   });
   expect(screen.queryByTestId("building-recover")).toBeNull();
 });
+
+test("an interrupted build (the app closed) offers Continue building, not step fixes", () => {
+  const onContinue = jest.fn();
+  render(
+    <CreateBuildingStep
+      buildId="b1"
+      initialState={{ ...failed, status: "interrupted" }}
+      onContinue={onContinue}
+      onEditPlan={() => {}}
+    />,
+  );
+  expect(screen.getByTestId("building-status")).toHaveTextContent(
+    "Interrupted — the app closed while it was building",
+  );
+  expect(screen.queryByText("Let Builder fix it")).toBeNull();
+  expect(screen.queryByText("Try again")).toBeNull();
+  expect(screen.getByText("Edit plan")).toBeInTheDocument();
+  expect(screen.getByText("Remove what was built")).toBeInTheDocument();
+  fireEvent.click(screen.getByText("Continue building"));
+  expect(onContinue).toHaveBeenCalled();
+});
