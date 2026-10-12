@@ -28,18 +28,35 @@ export const CREATE_TYPES = [
   },
 ];
 
-const PICKABLE = new Set(
-  CREATE_TYPES.filter((t) => !t.disabled).map((t) => t.value),
-);
+/**
+ * The types on offer. Dashboard opens the Dash team's Planner (phase 4) —
+ * behind the "createDashboardPreview" setting until building from a plan
+ * ships, so nobody gets a plan they can't build yet.
+ */
+export function createTypes({ dashboardPreview = false } = {}) {
+  return CREATE_TYPES.map((t) =>
+    t.value === "dashboard" && dashboardPreview
+      ? {
+          value: "dashboard",
+          label: "Dashboard",
+          description: "Plan a whole dashboard with your Dash team (preview)",
+        }
+      : t,
+  );
+}
 
 /** A type the screen can open on; anything else falls back to Widget. */
-export function normalizeCreateType(type) {
-  return PICKABLE.has(type) ? type : "widget";
+export function normalizeCreateType(type, opts = {}) {
+  const pickable = createTypes(opts)
+    .filter((t) => !t.disabled)
+    .map((t) => t.value);
+  return pickable.includes(type) ? type : "widget";
 }
 
 export const PROMPT_PLACEHOLDER = {
   widget: "Describe the widget — what it shows and where the data comes from",
   bot: "Describe what the bot should do — this becomes its instructions",
+  dashboard: "Describe the dashboard — what it's for and what it should show",
 };
 
 /**
@@ -108,7 +125,8 @@ export function draftAge(updatedAt, now = Date.now()) {
 export function canSend({ type, prompt, aiBackend }) {
   if (!String(prompt || "").trim()) return false;
   if (type === "widget") return !!aiBackend;
-  return type === "bot";
+  // The Planner runs on its own model source (Bots page › Dash team).
+  return type === "bot" || type === "dashboard";
 }
 
 /**
@@ -116,11 +134,15 @@ export function canSend({ type, prompt, aiBackend }) {
  *   widget → open the Widget Builder with the prompt as the first message
  *   bot    → the bot form, the prompt as its instructions (no AI needed to
  *            create it; the bot uses its own AI when it runs)
+ *   dashboard → the Planner, the prompt as the first message (phase 4)
  */
 export function routeCreate({ type, prompt, workspaceId = null }) {
   const text = String(prompt || "").trim();
   if (type === "widget") {
     return { kind: "widget-builder", detail: { prompt: text } };
+  }
+  if (type === "dashboard") {
+    return { kind: "dashboard-plan", detail: { prompt: text } };
   }
   if (type === "bot") {
     return {

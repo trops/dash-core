@@ -1,5 +1,6 @@
 import {
   CREATE_TYPES,
+  createTypes,
   canSend,
   draftAge,
   noAiOptions,
@@ -55,9 +56,10 @@ describe("createRouting (create-entry PRD CRE-001/005)", () => {
     expect(canSend({ type: "bot", prompt: "Summarize", aiBackend: null })).toBe(
       true,
     );
-    expect(
-      canSend({ type: "dashboard", prompt: "x", aiBackend: "claude-code" }),
-    ).toBe(false);
+    // The Planner runs on its own model source (phase 4a).
+    expect(canSend({ type: "dashboard", prompt: "x", aiBackend: null })).toBe(
+      true,
+    );
   });
 
   test("Widget opens the builder with the prompt; Bot opens the form with it as instructions", () => {
@@ -86,5 +88,27 @@ describe("createRouting (create-entry PRD CRE-001/005)", () => {
     expect(draftAge(now - 3 * 3_600_000, now)).toBe("3h ago");
     expect(draftAge(now - 2 * 86_400_000, now)).toBe("2d ago");
     expect(draftAge(undefined, now)).toMatch(/d ago$/);
+  });
+});
+
+describe("Type: Dashboard (phase 4a, preview)", () => {
+  test("hidden unless the preview setting is on", () => {
+    expect(normalizeCreateType("dashboard")).toBe("widget");
+    const on = createTypes({ dashboardPreview: true }).find(
+      (t) => t.value === "dashboard",
+    );
+    expect(on.disabled).toBeFalsy();
+    expect(normalizeCreateType("dashboard", { dashboardPreview: true })).toBe(
+      "dashboard",
+    );
+  });
+
+  test("Send opens the Planner with the prompt", () => {
+    expect(
+      routeCreate({ type: "dashboard", prompt: " A morning brief " }),
+    ).toEqual({
+      kind: "dashboard-plan",
+      detail: { prompt: "A morning brief" },
+    });
   });
 });
