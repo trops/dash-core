@@ -182,3 +182,28 @@ test("no registry sign-in: the review falls back to the registry listing", async
     "(from the registry listing)",
   );
 });
+
+test("a planned bot shows what starts it and its instructions on demand (4d-2)", async () => {
+  const botPlan =
+    '<plan>{"summary":"Ask","pieces":[{"kind":"widget","name":"Ask button","source":"new","events":["askClicked"]},{"kind":"bot","name":"Greeter","source":"new","instructions":"Write a one-line greeting.","on":[{"widget":"Ask button","event":"askClicked"}],"showResults":true}],"checks":["it greets"],"access":["Reads nothing"],"estimate":{"build":"?"}}</plan>';
+  setup();
+  window.mainApi.bots.run.mockImplementation(async (botId) =>
+    botId === "b_scout"
+      ? { status: "completed", output: "<matches>[]</matches>" }
+      : { status: "completed", output: botPlan },
+  );
+  // The first plan may already be in; ask again for the bot plan.
+  await screen.findByTestId("plan-card");
+  const box = screen.getByLabelText("Reply to the Planner");
+  fireEvent.change(box, { target: { value: "add a greeter" } });
+  fireEvent.keyDown(box, { key: "Enter" });
+  const row = await screen.findByTestId("plan-bot");
+  expect(row).toHaveTextContent("Starts when Ask button sends askClicked");
+  expect(row).toHaveTextContent("Uses no providers");
+  expect(row).toHaveTextContent("Shown in a Bot results widget");
+  expect(screen.queryByTestId("plan-bot-instructions")).toBeNull();
+  fireEvent.click(screen.getByText("Show instructions"));
+  expect(screen.getByTestId("plan-bot-instructions")).toHaveTextContent(
+    "Write a one-line greeting.",
+  );
+});

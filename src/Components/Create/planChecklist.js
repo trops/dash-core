@@ -9,6 +9,12 @@
  *
  * Nothing here installs or connects anything.
  */
+import {
+  parseCron,
+  TIME_OPTIONS,
+  DAYS_OF_WEEK,
+  DAYS_OF_MONTH,
+} from "../Settings/details/cronBuilder";
 
 // The Planner's names for provider types → the type ids Dash uses.
 const ALIASES = {
@@ -197,11 +203,99 @@ export function swapPiece(plan, index, match) {
   return { ...plan, pieces };
 }
 
-/** The plan without piece `index`. */
+/**
+ * The plan without piece `index` — and without wiring that named it (a
+ * removed widget no longer starts a bot; a removed bot isn't shown).
+ */
 export function removePiece(plan, index) {
+  const gone = (plan.pieces || [])[index];
+  const name = String((gone && gone.name) || "")
+    .trim()
+    .toLowerCase();
+  const pieces = (plan.pieces || [])
+    .filter((_, i) => i !== index)
+    .map((p) => {
+      if (!p || !gone) return p;
+      if (gone.kind === "widget" && Array.isArray(p.on)) {
+        const on = p.on.filter(
+          (o) =>
+            String((o && o.widget) || "")
+              .trim()
+              .toLowerCase() !== name,
+        );
+        return on.length === p.on.length ? p : { ...p, on };
+      }
+      if (gone.kind === "bot" && Array.isArray(p.listens)) {
+        const listens = p.listens.filter(
+          (l) =>
+            String((l && l.bot) || "")
+              .trim()
+              .toLowerCase() !== name,
+        );
+        return listens.length === p.listens.length ? p : { ...p, listens };
+      }
+      return p;
+    });
+  return { ...plan, pieces };
+}
+
+const labelOf = (list, value) =>
+  (list.find((o) => o.value === value) || {}).label || value;
+
+/** "every day at 8:00 AM" — a cron in words, or the cron itself. */
+export function scheduleLabel(cron) {
+  const p = parseCron(cron);
+  const at = p.time ? ` at ${labelOf(TIME_OPTIONS, p.time)}` : "";
+  switch (p.frequency) {
+    case "hourly":
+      return "every hour";
+    case "daily":
+      return `every day${at}`;
+    case "weekday":
+      return `every weekday${at}`;
+    case "weekly":
+      return `every ${labelOf(DAYS_OF_WEEK, p.dayOfWeek)}${at}`;
+    case "monthly":
+      return `on the ${labelOf(DAYS_OF_MONTH, p.dayOfMonth)} of each month${at}`;
+    case "off":
+      return "";
+    default:
+      return `on the schedule ${cron}`;
+  }
+}
+
+/**
+ * What a planned bot does, for the plan card (phase 4d-2): what starts it,
+ * what it can use, what it shows. Approving the plan saves it as it is.
+ */
+export function botSummary(piece) {
+  const starts = [];
+  for (const o of Array.isArray(piece.on) ? piece.on : []) {
+    if (o && o.widget && o.event)
+      starts.push(`when ${o.widget} sends ${o.event}`);
+  }
+  const sched = piece.schedule && piece.schedule.cron;
+  if (sched) starts.push(scheduleLabel(sched));
+  const uses = (Array.isArray(piece.tools) ? piece.tools : [])
+    .filter((t) => t && t.provider)
+    .map((t) =>
+      t.tools && t.tools.length
+        ? `${t.provider}: ${t.tools.join(", ")}`
+        : t.provider,
+    );
+  const results = (Array.isArray(piece.results) ? piece.results : [])
+    .map((r) => r && (r.label || r.name))
+    .filter(Boolean);
   return {
-    ...plan,
-    pieces: (plan.pieces || []).filter((_, i) => i !== index),
+    starts: starts.length
+      ? `Starts ${starts.join(" or ")}`
+      : "Starts when you run it",
+    uses: uses.length ? `Can use ${uses.join("; ")}` : "Uses no providers",
+    shows: results.length
+      ? `Sends ${results.join(", ")}${piece.showResults ? " to a Bot results widget" : ""}`
+      : piece.showResults
+        ? "Shown in a Bot results widget"
+        : "",
   };
 }
 

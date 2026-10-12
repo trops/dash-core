@@ -190,3 +190,26 @@ describe("botController — building a plan (phase 4d-1)", () => {
     assert.match(ctrl, /approvalPolicy: opts\.approvalPolicy \|\| undefined,/);
   });
 });
+
+describe("botController — bots and wiring in a build (phase 4d-2)", () => {
+  it("saves planned bots (not drafts) and wires both ways", () => {
+    assert.match(ctrl, /saveBot: \(req\) => this\._planSaveBot\(req\)/);
+    assert.match(ctrl, /const definition = planBotDefinition\(piece,/);
+    assert.match(ctrl, /const saved = this\.save\(definition\);/);
+    assert.match(
+      ctrl,
+      /this\.addBotWidget\(dashboardId, \{\s*kind: "results",/,
+    );
+    assert.match(ctrl, /const sub = triggerSubscription\(/);
+    assert.match(
+      ctrl,
+      /addWidgetListener\(\s*ws,\s*widgetId,\s*handler,\s*botEventType\(bot, \`result\.\$\{result\}\`\)/,
+    );
+  });
+  it("refuses wiring a widget doesn't declare", () => {
+    assert.match(ctrl, /the widget doesn't send/);
+    assert.match(ctrl, /the widget has no handler/);
+    assert.match(ctrl, /with api\.publishEvent, which bots can't hear/);
+    assert.match(ctrl, /widgetWiring\(src\.configCode, src\.componentCode\)/);
+  });
+});

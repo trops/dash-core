@@ -243,6 +243,25 @@ describe("Dash team instructions (phase 4a)", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /"access": \[string\]/);
     assert.match(planner.instructions, /short tappable options/);
-    assert.equal(planner.history.length, 2);
+    assert.equal(planner.history.length, 3);
+  });
+});
+
+describe("Dash team instructions (phase 4d-2)", () => {
+  it("the Planner plans bots in full and wires them through widget events", () => {
+    const planner = ROLES.find((r) => r.role === "planner");
+    assert.match(
+      planner.instructions,
+      /"on": \[\{"widget": string, "event": string\}\]/,
+    );
+    assert.match(planner.instructions, /saved exactly as you plan it/);
+    assert.match(
+      planner.instructions,
+      /Widgets start bots only by publishing an event/,
+    );
+    assert.match(planner.instructions, /"showResults": boolean/);
+    // The 4a text is kept so an unedited Planner upgrades.
+    assert.match(planner.history[0], /short tappable options/);
+    assert.doesNotMatch(planner.history[0], /showResults/);
   });
 });

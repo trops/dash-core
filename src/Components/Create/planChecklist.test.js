@@ -9,6 +9,8 @@ import {
   swapPiece,
   removePiece,
   editNote,
+  botSummary,
+  scheduleLabel,
 } from "./planChecklist";
 
 const plan = {
@@ -112,5 +114,49 @@ describe("planChecklist (phase 4b)", () => {
       "(I changed the plan: removed Calendar. Keep these changes.)",
     );
     expect(editNote([])).toBe("");
+  });
+});
+
+describe("planned bots (4d-2)", () => {
+  const bot = {
+    kind: "bot",
+    name: "Greeter",
+    source: "new",
+    instructions: "Greet.",
+    tools: [{ provider: "gmail", tools: ["search_emails"] }],
+    schedule: { cron: "0 8 * * 1-5" },
+    results: [{ name: "greeting", label: "Greeting" }],
+    on: [{ widget: "Ask button", event: "askClicked" }],
+    showResults: true,
+  };
+  test("says what starts it, what it can use and what it sends", () => {
+    expect(botSummary(bot)).toEqual({
+      starts:
+        "Starts when Ask button sends askClicked or every weekday at 8:00 AM",
+      uses: "Can use gmail: search_emails",
+      shows: "Sends Greeting to a Bot results widget",
+    });
+    expect(botSummary({ name: "Bare" })).toEqual({
+      starts: "Starts when you run it",
+      uses: "Uses no providers",
+      shows: "",
+    });
+  });
+  test("schedules in words", () => {
+    expect(scheduleLabel("30 9 * * *")).toBe("every day at 9:30 AM");
+    expect(scheduleLabel("0 * * * *")).toBe("every hour");
+    expect(scheduleLabel("0 7 * * 1")).toBe("every Monday at 7:00 AM");
+    expect(scheduleLabel("*/5 * * * *")).toBe("on the schedule */5 * * * *");
+  });
+  test("removing a piece drops the wiring that named it", () => {
+    const widget = {
+      kind: "widget",
+      name: "Ask button",
+      source: "new",
+      listens: [{ bot: "Greeter", result: "greeting", handler: "show" }],
+    };
+    const plan = { summary: "x", pieces: [widget, bot] };
+    expect(removePiece(plan, 0).pieces[0].on).toEqual([]);
+    expect(removePiece(plan, 1).pieces[0].listens).toEqual([]);
   });
 });
