@@ -129,9 +129,17 @@ const PaletteSwatch = ({ value, label }) => {
   const isHex = isHexColor(value);
   return (
     <div className="flex flex-col items-center gap-1 flex-1 min-h-0">
+      {/* A fixed height: inside the wizard's scrolling pane the flex chain
+          has no height to share, so a flex-1 swatch collapsed to nothing
+          (and the app's Tailwind is !important, so min-h-0 beat any inline
+          min-height). */}
       <div
-        className={`flex-1 min-h-0 w-full rounded ${isHex ? "" : `bg-${value}-500`}`}
-        style={isHex ? { backgroundColor: value } : undefined}
+        className={`w-full rounded ${isHex ? "" : `bg-${value}-500`}`}
+        style={
+          isHex
+            ? { backgroundColor: value, height: "4rem" }
+            : { height: "4rem" }
+        }
       />
       <span className="text-xs opacity-60 truncate w-full text-center">
         {label}
@@ -417,13 +425,21 @@ const MethodCard = ({ icon, title, subtitle, selected, onClick }) => {
  *     same-named outer button so users still see the rerolling
  *     behaviour, but the actual roll happens inside this component.
  */
-const RandomPreview = ({ onCommit }) => {
+const RandomPreview = ({
+  onCommit,
+  // A theme to start from (Create › Type: Theme) instead of a random one.
+  initialSeed = null,
+  label = "Generated Palette",
+  showRegenerate = true,
+}) => {
   const [dH, setDH] = useState(0);
   const [dS, setDS] = useState(0);
   const [dL, setDL] = useState(0);
   // `seed` is the un-nudged random theme — we reroll it on Regenerate
   // and apply the live HSL nudge on top for display + commit.
-  const [seed, setSeed] = useState(() => generateRandomHexTheme());
+  const [seed, setSeed] = useState(
+    () => initialSeed || generateRandomHexTheme(),
+  );
 
   function buildTheme() {
     // Re-derive from the same seed channels, applying current nudge.
@@ -521,14 +537,16 @@ const RandomPreview = ({ onCommit }) => {
 
       {/* Full-width Regenerate CTA so the primary action on this
           screen is unambiguous, followed by the palette result. */}
-      <Button
-        title="↻ Regenerate Colors"
-        onClick={handleRegenerate}
-        block={true}
-      />
+      {showRegenerate ? (
+        <Button
+          title="↻ Regenerate Colors"
+          onClick={handleRegenerate}
+          block={true}
+        />
+      ) : null}
 
       <div className="flex flex-col gap-2 flex-1 min-h-0">
-        <span className="text-xs opacity-50 shrink-0">Generated Palette</span>
+        <span className="text-xs opacity-50 shrink-0">{label}</span>
         {previewTheme && (
           <div className="flex flex-row gap-2 flex-1 min-h-0">
             <PaletteSwatch value={previewTheme.primary} label="Primary" />
@@ -553,6 +571,8 @@ export const ThemeQuickCreate = ({
   onExtract = null,
   onMapToTheme = null,
   initialMethod = null,
+  // With initialMethod "ai": the theme the AI made from a description.
+  seedTheme = null,
 }) => {
   const canCreate = wizardName.trim().length > 0 && wizardTheme !== null;
   const showMethodPicker = initialMethod === null;
@@ -636,6 +656,14 @@ export const ThemeQuickCreate = ({
         )}
         {wizardMethod === "random" && (
           <RandomPreview onCommit={(theme) => setWizardTheme(theme)} />
+        )}
+        {wizardMethod === "ai" && seedTheme && (
+          <RandomPreview
+            initialSeed={seedTheme}
+            label="Made from your description"
+            showRegenerate={false}
+            onCommit={(theme) => setWizardTheme(theme)}
+          />
         )}
         {wizardMethod === "color" && (
           <ColorHarmonyPicker

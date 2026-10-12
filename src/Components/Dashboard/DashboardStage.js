@@ -536,7 +536,7 @@ const DashboardStageInner = ({
     const handler = (e) => {
       const d = (e && e.detail) || {};
       setCreateRequest({
-        type: d.type || "widget",
+        type: d.type || "auto",
         workspaceId: d.workspaceId ?? null,
         recentId: d.recentId || null,
       });
@@ -608,6 +608,8 @@ const DashboardStageInner = ({
   // { type, workspaceId }.
   const [createRequest, setCreateRequest] = useState(null);
   const [themeStartInCreate, setThemeStartInCreate] = useState(false);
+  // A theme Create made from a description, opened unsaved (phase 5c).
+  const [themeInitial, setThemeInitial] = useState(null);
 
   // First-run onboarding (Phase 3A). Tri-state:
   //   null   — status not yet loaded from main; do not render anything
@@ -1260,7 +1262,8 @@ const DashboardStageInner = ({
 
   // ─── Create screen (create-entry PRD CRE-001 / CRE-008) ──────────
 
-  function openCreate(type = "widget", workspaceId = null) {
+  // Auto by default (phase 5c): Create works out what to make.
+  function openCreate(type = "auto", workspaceId = null) {
     setCreateRequest({ type, workspaceId });
   }
 
@@ -2993,14 +2996,17 @@ const DashboardStageInner = ({
               open={isThemeManagerOpen}
               initialThemeKey={themeEditorKey}
               startInCreate={themeStartInCreate}
+              initialTheme={themeInitial}
               setIsOpen={() => {
                 setIsThemeManagerOpen(!isThemeManagerOpen);
                 setThemeStartInCreate(false);
+                setThemeInitial(null);
               }}
               onSave={(themeKey) => {
                 changeCurrentTheme(themeKey);
                 setIsThemeManagerOpen(() => false);
                 setThemeStartInCreate(false);
+                setThemeInitial(null);
               }}
             />
 
@@ -3030,7 +3036,7 @@ const DashboardStageInner = ({
               setIsOpen={(v) => {
                 if (!v) setCreateRequest(null);
               }}
-              initialType={createRequest ? createRequest.type : "widget"}
+              initialType={createRequest ? createRequest.type : "auto"}
               workspaceId={createRequest ? createRequest.workspaceId : null}
               workspaces={workspaceConfig}
               onStartWithoutAi={handleStartWithoutAi}
@@ -3039,6 +3045,12 @@ const DashboardStageInner = ({
               onOpenWidget={handleOpenScoutMatch}
               onOpenDashboard={handleOpenBuiltDashboard}
               initialRecentId={createRequest ? createRequest.recentId : null}
+              onOpenTheme={(theme) => {
+                setThemeEditorKey(null);
+                setThemeStartInCreate(false);
+                setThemeInitial(theme);
+                setIsThemeManagerOpen(true);
+              }}
             />
 
             <DashboardWizardModal
