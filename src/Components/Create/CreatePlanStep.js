@@ -31,6 +31,7 @@ import {
   SwapPicker,
 } from "./PlanChecklistDialogs";
 import { CreateBuildingStep } from "./CreateBuildingStep";
+import { PlanSketch } from "./PlanSketch";
 
 /**
  * The Planner's first question in a conversation reopened from Recent: its
@@ -675,6 +676,9 @@ export const CreatePlanStep = ({
                   </div>
                 );
               })}
+
+              {/* What it will look like, with made-up data (CRE-003 AC6). */}
+              <PlanSketch plan={plan} />
 
               {checklist.length ? (
                 <div className="flex flex-col gap-2" data-testid="plan-before">
