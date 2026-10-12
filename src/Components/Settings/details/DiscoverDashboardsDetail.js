@@ -160,6 +160,8 @@ export const DiscoverDashboardsDetail = ({
       <div className="space-y-1">
         {packages.map((pkg) => {
           const widgetCount = (pkg.widgets || []).length;
+          // Its bots, when it has any (create-entry 5a-2).
+          const botCount = (pkg.team?.members || []).length;
           return (
             <Sidebar.Item
               key={pkg.name}
@@ -170,7 +172,18 @@ export const DiscoverDashboardsDetail = ({
                 />
               }
               onClick={() => setSelectedPackageName(pkg.name)}
-              badge={widgetCount > 0 ? `${widgetCount}` : undefined}
+              badge={
+                widgetCount > 0 || botCount > 0
+                  ? [
+                      widgetCount > 0 ? `${widgetCount}` : null,
+                      botCount > 0
+                        ? `${botCount} bot${botCount === 1 ? "" : "s"}`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : undefined
+              }
             >
               {pkg.displayName || pkg.name}
             </Sidebar.Item>

@@ -8,6 +8,7 @@ import {
   Button2,
   Button3,
   Tag3,
+  Checkbox,
   getStylesForItem,
   themeObjects,
 } from "@trops/dash-react";
@@ -136,6 +137,48 @@ function seedSelections(plan, dashboardVisibility) {
  *   3. Icon — Full icon picker with search
  *   4. Publish — Review summary, publish action, result display
  */
+/**
+ * The dashboard's bots on the publish screen (create-entry 5a-2, US-027
+ * AC2): each with what starts it and the providers it needs, and whether
+ * they go along. They install paused.
+ */
+export const PublishBotsList = ({
+  bots,
+  notIncluded = [],
+  include,
+  onInclude,
+}) => (
+  <div data-testid="publish-bots">
+    <label className="block text-sm font-medium opacity-70 mb-2">Bots</label>
+    <Checkbox
+      label={`Include this dashboard's ${bots.length} bot${
+        bots.length === 1 ? "" : "s"
+      }`}
+      checked={include}
+      onChange={(on) => onInclude(!!on)}
+    />
+    {include ? (
+      <ul className="mt-2 space-y-1 text-sm">
+        {bots.map((b) => (
+          <li key={b.role}>
+            <span className="font-medium">{b.name}</span>
+            <span className="opacity-60">
+              {b.starts.length ? ` — starts ${b.starts.join(", ")}` : ""}
+              {b.providers.length ? ` · uses ${b.providers.join(", ")}` : ""}
+            </span>
+          </li>
+        ))}
+        <li className="opacity-60">
+          Installers get them paused, with the same wiring.
+        </li>
+        {notIncluded.length ? (
+          <li className="opacity-60">Not included: {notIncluded.join("; ")}</li>
+        ) : null}
+      </ul>
+    ) : null}
+  </div>
+);
+
 export const PublishDashboardModal = ({
   isOpen,
   setIsOpen,
@@ -171,8 +214,10 @@ export const PublishDashboardModal = ({
   // Step 3: Icon
   const [icon, setIcon] = useState("grip");
 
-  // Publish preview (widget names)
+  // Publish preview (widget names, and the dashboard's bots)
   const [preview, setPreview] = useState(null);
+  // Its bots go along unless left out (create-entry 5a-2, US-027 AC2).
+  const [includeBots, setIncludeBots] = useState(true);
 
   // Step 4: Dependencies — enriched plan (local + registry state) + per-dep user selections
   const [plan, setPlan] = useState(null);
@@ -537,6 +582,7 @@ export const PublishDashboardModal = ({
         } else if (step.kind === "dashboard") {
           const options = {
             authorName: authorName.trim(),
+            includeBots,
             description: description.trim() || undefined,
             tags: selectedTags,
             icon: icon || undefined,
@@ -808,6 +854,14 @@ export const PublishDashboardModal = ({
                       </div>
                     </div>
                   )}
+                {preview && (preview.bots || []).length > 0 && (
+                  <PublishBotsList
+                    bots={preview.bots}
+                    notIncluded={preview.botsNotIncluded || []}
+                    include={includeBots}
+                    onInclude={setIncludeBots}
+                  />
+                )}
                 <TextArea
                   label="Description"
                   value={description}
@@ -1058,6 +1112,23 @@ export const PublishDashboardModal = ({
                             </div>
                           </div>
                         )}
+                      {preview && (preview.bots || []).length > 0 && (
+                        <div
+                          className="flex gap-2"
+                          data-testid="publish-review-bots"
+                        >
+                          <span className="opacity-50 w-20 flex-shrink-0">
+                            Bots
+                          </span>
+                          <span>
+                            {includeBots
+                              ? `${preview.bots.length} bot${
+                                  preview.bots.length === 1 ? "" : "s"
+                                }, installed paused`
+                              : "Not included"}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </>
                 ) : result?.success ? (

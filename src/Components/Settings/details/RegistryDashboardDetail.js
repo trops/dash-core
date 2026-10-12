@@ -18,6 +18,7 @@ import { StarRating } from "./StarRating";
 import { InstallProgressModal } from "./InstallProgressModal";
 import { RegistryAuthModal } from "../../Registry/RegistryAuthModal";
 import { DashboardInstallOptionsModal } from "./DashboardInstallOptionsModal";
+import { teamLines, installedText } from "./dashboardBots";
 
 /**
  * RegistryDashboardDetail — detail panel for a registry dashboard package.
@@ -192,7 +193,7 @@ export const RegistryDashboardDetail = ({
         setInstallResult({
           status: result?.success ? "success" : "error",
           message: result?.success
-            ? `Dashboard "${result.workspace?.name || pkg.name}" installed successfully.`
+            ? installedText(result, pkg.name)
             : result?.error || "Installation failed.",
         });
         if (result?.success && onInstallComplete) {
@@ -225,7 +226,7 @@ export const RegistryDashboardDetail = ({
       setInstallResult({
         status: result.success ? "success" : "error",
         message: result.success
-          ? `Dashboard "${result.workspace?.name || pkg.name}" installed successfully.`
+          ? installedText(result, pkg.name)
           : result.error || "Installation failed.",
       });
       if (result.success && onInstallComplete) {
@@ -309,6 +310,9 @@ export const RegistryDashboardDetail = ({
     };
   })();
   const wiring = preview?.wiring || [];
+  // Its bots (create-entry 5a-2, US-027 AC3): the registry's summary.
+  const team = teamLines(preview?.team || pkg.team);
+  const botProviders = preview?.providerTypes || pkg.providerTypes || [];
 
   function getCompatIcon(status) {
     if (status === "installed")
@@ -565,6 +569,38 @@ export const RegistryDashboardDetail = ({
                   )}
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Bots */}
+        {team.bots.length > 0 && (
+          <div data-testid="registry-dashboard-bots">
+            <span className="text-xs font-semibold opacity-50 mb-1 block">
+              BOTS ({team.bots.length})
+            </span>
+            <div className="space-y-1">
+              {team.bots.map((name) => (
+                <div
+                  key={name}
+                  className={`text-xs p-2 rounded ${currentTheme["bg-primary-medium"]}`}
+                >
+                  {name}
+                </div>
+              ))}
+              {team.links.map((line) => (
+                <div key={line} className="text-xs opacity-60">
+                  {line}
+                </div>
+              ))}
+              {botProviders.length > 0 && (
+                <div className="text-xs opacity-60">
+                  They use: {botProviders.join(", ")}
+                </div>
+              )}
+              <div className="text-xs opacity-60">
+                Installed with the dashboard, paused until you resume them.
+              </div>
             </div>
           </div>
         )}
