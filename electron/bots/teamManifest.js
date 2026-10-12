@@ -12,6 +12,8 @@
  * import): `triggers` (a widget event starts a role) and `listeners` (a
  * widget handler shows a role's result). Members keep their results
  * (`publishes`), and bot → bot wiring may be on a result (`result.<name>`).
+ * `resultWidgets` (5b): which Bot results widget shows which role — its
+ * bot is a personal setting, stripped on export, so it's rebound on import.
  * Older versions drop these fields, never fail on them.
  *
  * Pure (NFR-006): decisions only; botController reads/writes files and saves
@@ -46,6 +48,7 @@ const LIMITS = {
   results: 20,
   triggers: 100,
   listeners: 100,
+  resultWidgets: 50,
 };
 
 /** A wiring entry, with its note when it has one. */
@@ -61,6 +64,8 @@ const EVENT_RE =
 // A widget's own event name, and a handler it declares.
 const WIDGET_EVENT_RE = /^[A-Za-z0-9_.:-]{1,100}$/;
 const HANDLER_RE = /^[A-Za-z0-9_.:-]{1,100}$/;
+// dash-core's built-in Bot results widget (botController BOT_WIDGETS).
+const BOT_RESULTS_COMPONENT = "dash.bots.BotResults";
 
 function slugify(name) {
   const s = String(name || "")
@@ -273,6 +278,20 @@ function buildTeamManifest({
     }
   }
 
+  // Bot results widgets showing a team bot (5b).
+  const resultWidgets = [];
+  for (const layout of layoutsOf(workspace)) {
+    for (const item of layout) {
+      if (!item || item.component !== BOT_RESULTS_COMPONENT) continue;
+      const botId = item.userPrefs && item.userPrefs.botId;
+      if (!botId || !roleOf.has(botId)) continue;
+      const w = { widget: String(item.id), role: roleOf.get(botId) };
+      if (!resultWidgets.some((x) => x.widget === w.widget)) {
+        resultWidgets.push(w);
+      }
+    }
+  }
+
   return {
     manifest: {
       schemaVersion: SCHEMA_VERSION,
@@ -284,6 +303,7 @@ function buildTeamManifest({
       wiring,
       triggers,
       listeners,
+      resultWidgets,
     },
     notIncluded,
   };
@@ -547,6 +567,20 @@ function validateTeamManifest(input) {
     });
   }
 
+  const resultWidgets = [];
+  const rawResults = input.resultWidgets == null ? [] : input.resultWidgets;
+  if (!Array.isArray(rawResults) || rawResults.length > LIMITS.resultWidgets) {
+    errors.push("resultWidgets must be a list");
+  } else {
+    rawResults.forEach((r, i) => {
+      if (!r || !roles.has(r.role) || !widgetId(r.widget)) {
+        errors.push(`result widget ${i + 1}: needs a widget and a role`);
+        return;
+      }
+      resultWidgets.push({ widget: r.widget, role: r.role });
+    });
+  }
+
   if (errors.length) return { valid: false, errors, manifest: null };
   return {
     valid: true,
@@ -561,6 +595,7 @@ function validateTeamManifest(input) {
       wiring,
       triggers,
       listeners,
+      resultWidgets,
     },
   };
 }
@@ -663,6 +698,9 @@ function planTeamInstall(
     listeners: (manifest.listeners || [])
       .filter((l) => picked.has(l.role))
       .map((l) => ({ ...l })),
+    resultWidgets: (manifest.resultWidgets || [])
+      .filter((r) => picked.has(r.role))
+      .map((r) => ({ ...r })),
     // Picked bots that look like they rely on team memory, when the team is
     // split (their teammates may have been the ones writing it).
     sharedMemory: isPartial

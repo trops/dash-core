@@ -321,3 +321,57 @@ describe("controllers are wired (pins)", () => {
     );
   });
 });
+
+describe("Bot results widgets keep their bot (5b)", () => {
+  const ws = {
+    id: 77,
+    layout: [
+      {
+        id: 6,
+        component: "dash.bots.BotResults",
+        userPrefs: { botId: "bot_greet" },
+      },
+      {
+        id: 7,
+        component: "dash.bots.BotResults",
+        userPrefs: { botId: "bot_other" },
+      },
+    ],
+  };
+  const g = {
+    id: "bot_greet",
+    name: "Greeter",
+    workspaceId: 77,
+    instructions: "Greet.",
+  };
+  it("export names the role a results widget shows; import plans to rebind it", () => {
+    const { manifest } = buildTeamManifest({
+      name: "T",
+      bots: [g],
+      providers: [],
+      dashboardId: 77,
+      workspace: ws,
+    });
+    assert.deepEqual(manifest.resultWidgets, [
+      { widget: "6", role: "greeter" },
+    ]);
+    const v = validateTeamManifest(JSON.parse(JSON.stringify(manifest)));
+    assert.equal(v.valid, true);
+    const plan = planTeamInstall(v.manifest, { workspaceId: 1, providers: [] });
+    assert.deepEqual(plan.resultWidgets, [{ widget: "6", role: "greeter" }]);
+    const bad = JSON.parse(JSON.stringify(manifest));
+    bad.resultWidgets.push({ widget: "9", role: "ghost" });
+    assert.equal(validateTeamManifest(bad).valid, false);
+  });
+  it("the controller rebinds them with setWidgetPrefs", () => {
+    const ctrl = fs.readFileSync(
+      path.join(__dirname, "..", "controller", "botController.js"),
+      "utf8",
+    );
+    assert.match(ctrl, /for \(const r of plan\.resultWidgets \|\| \[\]\)/);
+    assert.match(
+      ctrl,
+      /setWidgetPrefs\(ws, r\.widget, \{ botId: bot\.id \}, BOT_WIDGETS\.results\)/,
+    );
+  });
+});

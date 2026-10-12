@@ -230,6 +230,9 @@ function buildWidgetDependencies(
 
   for (const ref of refs) {
     const name = ref.component;
+    // dash-core's own bot widgets (Bot results, Bot activity) ship with
+    // the app — never a registry dependency (create-entry 5b).
+    if (/^dash\.bots\./.test(String(name || ""))) continue;
     const dedupeKey = `${name}|${ref.packageId || ""}`;
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);

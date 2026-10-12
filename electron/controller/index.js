@@ -63,6 +63,7 @@ const {
   checkDashboardUpdatesForApp,
   getProviderSetupManifest,
   getDashboardPublishPreview,
+  getDashboardPackageConfig,
 } = require("./dashboardConfigController");
 const {
   initiateDeviceFlow,
@@ -175,6 +176,7 @@ module.exports = {
   checkDashboardUpdatesForApp,
   getProviderSetupManifest,
   getDashboardPublishPreview,
+  getDashboardPackageConfig,
   saveDashboardRating,
   getDashboardRating,
   listDashboardRatings,

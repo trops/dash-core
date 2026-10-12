@@ -149,12 +149,15 @@ export const CreatePlanStep = ({
   // ({ recentId, busy }) — the modal folds a plan into the dock by its id,
   // and not while the Planner is answering (that answer would be lost).
   onState = null,
+  // A starter's plan to start from (Remix, 5b): { plan, request, label } —
+  // the plan shows at once; the Planner is asked to adapt it.
+  seed = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const app = useContext(AppContext) || {};
   // [{ who: "you" | "planner" | "note", text, meta? }]
   const [messages, setMessages] = useState(
-    recentId ? [] : [{ who: "you", text: prompt }],
+    recentId ? [] : [{ who: "you", text: seed ? seed.label : prompt }],
   );
   const [busy, setBusy] = useState(true);
   // Recent (4e-1): this conversation's id (its plan memory too); whether
@@ -168,7 +171,7 @@ export const CreatePlanStep = ({
   // Planner's own session may have moved on to other work since.
   const reopened = useRef(false);
   const [soFar, setSoFar] = useState("");
-  const [plan, setPlan] = useState(null);
+  const [plan, setPlan] = useState(seed ? seed.plan : null);
   const [planningTokens, setPlanningTokens] = useState(0);
   const [team, setTeam] = useState([]);
   const [reply, setReply] = useState("");
@@ -278,9 +281,10 @@ export const CreatePlanStep = ({
       } else {
         // Kept in Recent from the start, then the Planner (with this plan's
         // memory) — saving first gives the plan its id.
+        const first = seed ? seed.label : prompt;
         Promise.resolve(
           bots && bots.saveCreateRecent
-            ? bots.saveCreateRecent({ prompt })
+            ? bots.saveCreateRecent({ prompt: first })
             : null,
         )
           .then((res) => {
@@ -290,7 +294,9 @@ export const CreatePlanStep = ({
             }
           })
           .catch(() => {})
-          .then(() => alive.current && ask(prompt, false));
+          .then(
+            () => alive.current && ask(seed ? seed.request : prompt, false),
+          );
       }
       if (window.mainApi?.bots?.listDashTeam) {
         Promise.resolve(window.mainApi.bots.listDashTeam())

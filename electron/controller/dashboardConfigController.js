@@ -930,6 +930,210 @@ function installTeamForImport(workspaceId, team) {
  * @param {Object} widgetRegistry - WidgetRegistry instance
  * @returns {Promise<Object>} Result with success, workspace, and summary
  */
+/**
+ * Download a dashboard package from the registry and check it — the
+ * shared first half of install, also used to read a starter without
+ * installing it (create-entry 5b).
+ * @returns {Promise<{ success: true, registryPkg, dashboardConfig } |
+ *   { success: false, error, authRequired? }>}
+ */
+async function downloadDashboardPackage(
+  packageName,
+  { requireAuth = true } = {},
+) {
+  // 1. Look up the dashboard package in the registry
+  const registryPkg = await getPackage(packageName);
+  if (!registryPkg) {
+    return {
+      success: false,
+      error: `Dashboard package not found in registry: ${packageName}`,
+    };
+  }
+
+  // 2. Construct download URL via /api/packages/.../download endpoint
+  //    (matches theme download flow in themeRegistryController.js)
+  const registryBaseUrl =
+    process.env.DASH_REGISTRY_API_URL ||
+    "https://main.d919rwhuzp7rj.amplifyapp.com";
+  const downloadUrl = `${registryBaseUrl}/api/packages/${encodeURIComponent(registryPkg.scope)}/${encodeURIComponent(registryPkg.name)}/download?version=${encodeURIComponent(registryPkg.version || "1.0.0")}`;
+
+  console.log(
+    `[DashboardConfigController] Fetching dashboard from: ${downloadUrl}`,
+  );
+
+  // Download the ZIP (with auth header when signed in). Reading a public
+  // starter needs no sign-in (5b); installing still does.
+  const auth = getStoredToken();
+  if (!auth && requireAuth) {
+    return {
+      success: false,
+      error: "Not authenticated with registry",
+      authRequired: true,
+    };
+  }
+  const headers = {};
+  if (auth?.token) {
+    headers["Authorization"] = `Bearer ${auth.token}`;
+  }
+  const response = await fetch(downloadUrl, { headers });
+  if (response.status === 401) {
+    clearToken();
+    return {
+      success: false,
+      error: "Authentication expired. Please sign in again.",
+      authRequired: true,
+    };
+  }
+  if (!response.ok) {
+    return {
+      success: false,
+      error: `Failed to download dashboard: ${response.status} ${response.statusText}`,
+    };
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  const arrayBuffer = await response.arrayBuffer();
+  let zipBuffer = Buffer.from(arrayBuffer);
+
+  if (zipBuffer.length === 0) {
+    return {
+      success: false,
+      error: "Download failed: registry returned an empty response.",
+    };
+  }
+
+  if (contentType.includes("text/html")) {
+    return {
+      success: false,
+      error:
+        "Download failed: registry returned an HTML page instead of package data.",
+    };
+  }
+
+  if (contentType.includes("application/json")) {
+    let jsonData;
+    try {
+      jsonData = JSON.parse(zipBuffer.toString("utf-8"));
+    } catch (parseErr) {
+      return {
+        success: false,
+        error: `Download failed: invalid JSON (${parseErr.message}).`,
+      };
+    }
+    if (jsonData.error) {
+      return {
+        success: false,
+        error: `Download failed: ${jsonData.error}`,
+      };
+    }
+    if (jsonData.downloadUrl) {
+      let zipResponse;
+      try {
+        zipResponse = await fetch(jsonData.downloadUrl);
+      } catch (fetchErr) {
+        return {
+          success: false,
+          error: `Download failed: could not fetch ZIP from storage (${fetchErr.message}).`,
+        };
+      }
+      if (!zipResponse.ok) {
+        return {
+          success: false,
+          error: `Download failed: storage returned ${zipResponse.status} ${zipResponse.statusText}`,
+        };
+      }
+      zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
+      if (zipBuffer.length === 0) {
+        return {
+          success: false,
+          error: "Download failed: storage returned an empty ZIP file.",
+        };
+      }
+    }
+  }
+
+  const zip = new AdmZip(zipBuffer);
+
+  // 3. Validate ZIP entries
+  const tempDir = path.join(app.getPath("temp"), "dash-registry-import");
+  const { validateZipEntries } = require("../widgetRegistry");
+  validateZipEntries(zip, tempDir);
+
+  // 4. Find and parse .dashboard.json
+  const entries = zip.getEntries();
+  const configEntry = entries.find((e) =>
+    e.entryName.endsWith(".dashboard.json"),
+  );
+
+  if (!configEntry) {
+    return {
+      success: false,
+      error: "No .dashboard.json file found in downloaded archive",
+    };
+  }
+
+  const configJson = configEntry.getData().toString("utf-8");
+  let dashboardConfig;
+  try {
+    dashboardConfig = JSON.parse(configJson);
+  } catch (parseError) {
+    return {
+      success: false,
+      error: `Invalid JSON in dashboard config: ${parseError.message}`,
+    };
+  }
+
+  // 5. Validate against schema
+  const validation = validateDashboardConfig(dashboardConfig);
+  if (!validation.valid) {
+    return {
+      success: false,
+      error: `Invalid dashboard config: ${validation.errors.join(", ")}`,
+    };
+  }
+
+  dashboardConfig = applyDefaults(dashboardConfig);
+
+  // 5b. Inject theme metadata from registry if config has no theme section
+  if (
+    !dashboardConfig.theme &&
+    registryPkg.theme &&
+    registryPkg.theme.registryPackage
+  ) {
+    dashboardConfig.theme = {
+      key: registryPkg.theme.key || registryPkg.theme.name,
+      registryPackage: registryPkg.theme.registryPackage,
+    };
+  }
+
+  return { success: true, registryPkg, dashboardConfig };
+}
+
+// Configs read without installing, for this session (starters, 5b).
+const packageConfigCache = new Map();
+
+/**
+ * A registry dashboard package's .dashboard.json, checked but not installed
+ * (create-entry 5b: starter thumbnails and Remix). Cached for the session.
+ */
+async function getDashboardPackageConfig(packageName) {
+  if (packageConfigCache.has(packageName)) {
+    return packageConfigCache.get(packageName);
+  }
+  try {
+    const res = await downloadDashboardPackage(packageName, {
+      requireAuth: false,
+    });
+    const out = res.success
+      ? { success: true, config: res.dashboardConfig }
+      : { success: false, error: res.error, authRequired: !!res.authRequired };
+    if (out.success) packageConfigCache.set(packageName, out);
+    return out;
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
 async function installDashboardFromRegistry(
   win,
   appId,
@@ -938,169 +1142,9 @@ async function installDashboardFromRegistry(
   installOptions = {},
 ) {
   try {
-    // 1. Look up the dashboard package in the registry
-    const registryPkg = await getPackage(packageName);
-    if (!registryPkg) {
-      return {
-        success: false,
-        error: `Dashboard package not found in registry: ${packageName}`,
-      };
-    }
-
-    // 2. Construct download URL via /api/packages/.../download endpoint
-    //    (matches theme download flow in themeRegistryController.js)
-    const registryBaseUrl =
-      process.env.DASH_REGISTRY_API_URL ||
-      "https://main.d919rwhuzp7rj.amplifyapp.com";
-    const downloadUrl = `${registryBaseUrl}/api/packages/${encodeURIComponent(registryPkg.scope)}/${encodeURIComponent(registryPkg.name)}/download?version=${encodeURIComponent(registryPkg.version || "1.0.0")}`;
-
-    console.log(
-      `[DashboardConfigController] Fetching dashboard from: ${downloadUrl}`,
-    );
-
-    // Download the ZIP (with auth header)
-    const auth = getStoredToken();
-    if (!auth) {
-      return {
-        success: false,
-        error: "Not authenticated with registry",
-        authRequired: true,
-      };
-    }
-    const headers = {};
-    if (auth?.token) {
-      headers["Authorization"] = `Bearer ${auth.token}`;
-    }
-    const response = await fetch(downloadUrl, { headers });
-    if (response.status === 401) {
-      clearToken();
-      return {
-        success: false,
-        error: "Authentication expired. Please sign in again.",
-        authRequired: true,
-      };
-    }
-    if (!response.ok) {
-      return {
-        success: false,
-        error: `Failed to download dashboard: ${response.status} ${response.statusText}`,
-      };
-    }
-
-    const contentType = response.headers.get("content-type") || "";
-    const arrayBuffer = await response.arrayBuffer();
-    let zipBuffer = Buffer.from(arrayBuffer);
-
-    if (zipBuffer.length === 0) {
-      return {
-        success: false,
-        error: "Download failed: registry returned an empty response.",
-      };
-    }
-
-    if (contentType.includes("text/html")) {
-      return {
-        success: false,
-        error:
-          "Download failed: registry returned an HTML page instead of package data.",
-      };
-    }
-
-    if (contentType.includes("application/json")) {
-      let jsonData;
-      try {
-        jsonData = JSON.parse(zipBuffer.toString("utf-8"));
-      } catch (parseErr) {
-        return {
-          success: false,
-          error: `Download failed: invalid JSON (${parseErr.message}).`,
-        };
-      }
-      if (jsonData.error) {
-        return {
-          success: false,
-          error: `Download failed: ${jsonData.error}`,
-        };
-      }
-      if (jsonData.downloadUrl) {
-        let zipResponse;
-        try {
-          zipResponse = await fetch(jsonData.downloadUrl);
-        } catch (fetchErr) {
-          return {
-            success: false,
-            error: `Download failed: could not fetch ZIP from storage (${fetchErr.message}).`,
-          };
-        }
-        if (!zipResponse.ok) {
-          return {
-            success: false,
-            error: `Download failed: storage returned ${zipResponse.status} ${zipResponse.statusText}`,
-          };
-        }
-        zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
-        if (zipBuffer.length === 0) {
-          return {
-            success: false,
-            error: "Download failed: storage returned an empty ZIP file.",
-          };
-        }
-      }
-    }
-
-    const zip = new AdmZip(zipBuffer);
-
-    // 3. Validate ZIP entries
-    const tempDir = path.join(app.getPath("temp"), "dash-registry-import");
-    const { validateZipEntries } = require("../widgetRegistry");
-    validateZipEntries(zip, tempDir);
-
-    // 4. Find and parse .dashboard.json
-    const entries = zip.getEntries();
-    const configEntry = entries.find((e) =>
-      e.entryName.endsWith(".dashboard.json"),
-    );
-
-    if (!configEntry) {
-      return {
-        success: false,
-        error: "No .dashboard.json file found in downloaded archive",
-      };
-    }
-
-    const configJson = configEntry.getData().toString("utf-8");
-    let dashboardConfig;
-    try {
-      dashboardConfig = JSON.parse(configJson);
-    } catch (parseError) {
-      return {
-        success: false,
-        error: `Invalid JSON in dashboard config: ${parseError.message}`,
-      };
-    }
-
-    // 5. Validate against schema
-    const validation = validateDashboardConfig(dashboardConfig);
-    if (!validation.valid) {
-      return {
-        success: false,
-        error: `Invalid dashboard config: ${validation.errors.join(", ")}`,
-      };
-    }
-
-    dashboardConfig = applyDefaults(dashboardConfig);
-
-    // 5b. Inject theme metadata from registry if config has no theme section
-    if (
-      !dashboardConfig.theme &&
-      registryPkg.theme &&
-      registryPkg.theme.registryPackage
-    ) {
-      dashboardConfig.theme = {
-        key: registryPkg.theme.key || registryPkg.theme.name,
-        registryPackage: registryPkg.theme.registryPackage,
-      };
-    }
+    const downloaded = await downloadDashboardPackage(packageName);
+    if (!downloaded.success) return downloaded;
+    const { registryPkg, dashboardConfig } = downloaded;
 
     // 6. Delegate to shared import pipeline. User overrides (name /
     // menuId from the install-time options modal) are forwarded so
@@ -2127,4 +2171,5 @@ module.exports = {
   checkDashboardUpdatesForApp,
   getProviderSetupManifest,
   getDashboardPublishPreview,
+  getDashboardPackageConfig,
 };

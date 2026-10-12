@@ -1097,6 +1097,23 @@ const botController = {
         unwired.push(`${l.handler} (that widget isn't on the dashboard)`);
       }
     }
+    // Bot results widgets show their new bot (their bot is a personal
+    // setting, so it doesn't travel in the layout — 5b).
+    for (const r of plan.resultWidgets || []) {
+      const bot = created[r.role];
+      const next =
+        ws && bot
+          ? setWidgetPrefs(ws, r.widget, { botId: bot.id }, BOT_WIDGETS.results)
+          : null;
+      if (next) {
+        ws = next;
+        layoutChanged = true;
+      } else if (bot) {
+        unwired.push(
+          `${bot.name}'s results widget (it isn't on the dashboard)`,
+        );
+      }
+    }
     if (layoutChanged) {
       const saved = this._saveWorkspace(ws);
       if (saved && saved.error) unwired.push(`listeners: ${saved.error}`);
