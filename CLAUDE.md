@@ -7,6 +7,12 @@
 
 ---
 
+## Design Guide
+
+UI work follows the dash-react design guide (`docs/design-guide.html` in dash-react): components from `@trops/dash-react` only (add a missing one there first), Aurora color roles instead of palette shades, the 4–24px spacing scale, and the review checklist in dark **and** light before a change is called done. Every component is shown live, with known issues, in dash-react `docs/component-gallery.html`.
+
+---
+
 ## ⚠️ MANDATORY: Before Any Code Changes
 
 These steps are NON-NEGOTIABLE and must happen in this exact order before writing any code:

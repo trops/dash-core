@@ -346,6 +346,7 @@ export const ThemesPage = ({
         <span className={`flex flex-row items-center gap-2 text-xs ${muted}`}>
           <FontAwesomeIcon icon="sun" />
           <Switch
+            ariaLabel="Dark mode"
             checked={themeVariant === "dark"}
             onChange={(isDark) =>
               changeThemeVariant &&
