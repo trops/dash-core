@@ -153,7 +153,7 @@ describe("AskStep", () => {
     fireEvent.change(screen.getByLabelText("Ask a follow-up"), {
       target: { value: "Show that on a widget" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
     fireEvent.click(
       await screen.findByRole("button", { name: "Open as a plan" }),
     );
@@ -183,7 +183,7 @@ describe("AskStep", () => {
     fireEvent.change(screen.getByLabelText("Ask a follow-up"), {
       target: { value: "Which failed?" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
     await waitFor(() => expect(bots.run).toHaveBeenCalled());
     const [, prompt, cont] = bots.run.mock.calls[0];
     expect(cont).toBe(false);

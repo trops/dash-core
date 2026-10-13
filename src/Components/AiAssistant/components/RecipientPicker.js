@@ -69,7 +69,9 @@ export const RecipientPicker = ({ leads, recipient, onChange, disabled }) => {
   ];
 
   return (
-    <div className="flex flex-wrap items-center gap-2 px-3 pt-2">
+    // Inside the message box (ChatInput's `recipientPicker`): the box's own
+    // padding spaces it, so no padding here.
+    <div className="flex flex-wrap items-center gap-2">
       <Caption2>To:</Caption2>
       <SelectInput
         label=""
@@ -78,7 +80,7 @@ export const RecipientPicker = ({ leads, recipient, onChange, disabled }) => {
         options={options}
         disabled={disabled}
         className="flex-1 min-w-0"
-        inputClassName="text-xs py-1"
+        inputClassName="text-sm py-1"
         onChange={(value) => {
           if (value === ASSISTANT_VALUE) {
             onChange(null);
@@ -89,7 +91,7 @@ export const RecipientPicker = ({ leads, recipient, onChange, disabled }) => {
         }}
       />
       {leads.length === 0 && (
-        <Caption2 className="opacity-70">
+        <Caption2>
           No team leads yet — turn one on in a dashboard's Bots view.
         </Caption2>
       )}

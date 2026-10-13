@@ -130,6 +130,20 @@ describe("ChatCore — direct-to-lead (TEAM-013)", () => {
     expect(screen.getByText("Sales Lead · Sales — paused")).toBeInTheDocument();
   });
 
+  test("the To: picker sits inside the message box, above the field", async () => {
+    window.mainApi = makeMainApi();
+    renderChat();
+    const select = await screen.findByRole("combobox");
+    // ChatInput hands the picker to ChatComposer's `above` slot, so the
+    // composer (the field's container) holds both.
+    const composer = input().parentElement;
+    expect(composer.contains(select)).toBe(true);
+    expect(
+      select.compareDocumentPosition(input()) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   test("sends straight to the lead, not the Assistant model, and shows its answer", async () => {
     const api = makeMainApi();
     window.mainApi = api;

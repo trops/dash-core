@@ -201,6 +201,8 @@ export const AskStep = ({
         onSend={() => send(reply)}
         busy={busy}
         placeholder={busy ? "The Planner is looking…" : "Ask a follow-up…"}
+        // Same word as the dock's first question (one label per action).
+        sendLabel="Ask"
         className="flex-shrink-0"
       />
     </div>
