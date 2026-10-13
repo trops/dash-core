@@ -5,7 +5,12 @@
 import React from "react";
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { CreatePlanStep, withoutPlan } from "./CreatePlanStep";
+import {
+  CreatePlanStep,
+  withoutPlan,
+  isTypeItOption,
+  pieceMeta,
+} from "./CreatePlanStep";
 
 // The Providers screen (Connect, phase 4b) pulls in the whole app.
 jest.mock("../Settings/sections/ProvidersSection", () => ({
@@ -117,11 +122,23 @@ test("the plan card: pieces by group and source, before building, access, estima
   setup([thePlan]);
   const card = await screen.findByTestId("plan-card");
   expect(card).toHaveTextContent("Install Algolia Search");
-  expect(screen.getByText("Registry · install")).toBeInTheDocument();
-  expect(screen.getAllByText("New").length).toBe(2);
+  // Source is a coloured pill above each name (design guide rule 12).
+  expect(screen.getByText("From the registry")).toHaveAttribute(
+    "data-state",
+    "info",
+  );
+  // "New" says what it makes.
+  expect(screen.getByText("New widget")).toHaveAttribute(
+    "data-state",
+    "closed",
+  );
+  expect(screen.getByText("New bot")).toHaveAttribute("data-state", "closed");
+  // Titled section cards (design guide rule 3).
+  expect(screen.getByTestId("plan-pieces")).toHaveTextContent("What it makes");
+  expect(screen.getByTestId("plan-expect")).toHaveTextContent("What to expect");
   expect(screen.getByText("Bots")).toBeInTheDocument();
   expect(screen.getByTestId("plan-before")).toHaveTextContent(
-    "Install Algolia Search · @trops/algolia",
+    "Install Algolia Search@trops/algolia",
   );
   expect(screen.getByTestId("plan-before")).toHaveTextContent("Connect Gmail");
   expect(screen.getByTestId("plan-access")).toHaveTextContent(
@@ -197,4 +214,85 @@ test("several questions: taps mark answers, Send answers sends them together", a
   expect(screen.getByTestId("plan-before")).not.toHaveTextContent(
     "Install Install",
   );
+});
+
+// Screen audit (October 2026), 2b: question cards take a typed answer, and an
+// "I'll type it" option puts the cursor there instead of answering.
+const repoQuestion = (options) => ({
+  ...askFirst,
+  output: `One question.<plan>{"summary":"s","questions":[{"question":"Which repository?","options":${JSON.stringify(options)}}],"pieces":[],"estimate":{"build":"?"}}</plan>`,
+});
+
+test("a question without options is answered by typing; Enter sends it", async () => {
+  const api = setup([repoQuestion([]), thePlan]);
+  await screen.findByTestId("plan-questions");
+  const field = screen.getByLabelText("Your answer: Which repository?");
+  expect(field).toHaveAttribute("placeholder", "Type an answer…");
+  fireEvent.change(field, { target: { value: "acme/api" } });
+  fireEvent.keyDown(field, { key: "Enter" });
+  await screen.findByTestId("plan-card");
+  expect(api.run).toHaveBeenLastCalledWith(
+    "b_planner",
+    "Which repository? — acme/api",
+    true,
+  );
+});
+
+test('an "I\'ll type it" option focuses the field instead of answering', async () => {
+  const api = setup([repoQuestion(["acme/web", "I'll type it"]), thePlan]);
+  await screen.findByTestId("plan-questions");
+  fireEvent.click(screen.getByText("I'll type it"));
+  expect(api.run).toHaveBeenCalledTimes(1);
+  expect(document.activeElement).toBe(
+    screen.getByLabelText("Your answer: Which repository?"),
+  );
+});
+
+test("several questions: the tapped option shows as chosen; typed answers count and are sent", async () => {
+  const two = {
+    ...askFirst,
+    output:
+      'Two.<plan>{"summary":"s","questions":[{"question":"Which repo?","options":["acme/web"]},{"question":"When?","options":["9:00","10:00"]}],"pieces":[],"estimate":{"build":"?"}}</plan>',
+  };
+  const api = setup([two, thePlan]);
+  await screen.findByTestId("plan-questions");
+  const nine = screen.getByText("9:00");
+  fireEvent.click(nine);
+  expect(nine).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByText("10:00")).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByText(/1 of 2 answered/)).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Your answer: Which repo?"), {
+    target: { value: "acme/api" },
+  });
+  expect(screen.getByText(/2 of 2 answered/)).toBeInTheDocument();
+  fireEvent.click(screen.getByText("Send answers"));
+  await screen.findByTestId("plan-card");
+  expect(api.run).toHaveBeenLastCalledWith(
+    "b_planner",
+    "Which repo? — acme/api\nWhen? — 9:00",
+    true,
+  );
+});
+
+test("isTypeItOption and pieceMeta", () => {
+  for (const o of [
+    "I'll type it",
+    "Let me type it",
+    "Other",
+    "Something else",
+    "I'll write my own",
+  ])
+    expect(isTypeItOption(o)).toBe(true);
+  for (const o of ["acme/web", "Every weekday", "Typescript", "9:00"])
+    expect(isTypeItOption(o)).toBe(false);
+  expect(pieceMeta({ kind: "layout", name: "PR Review", source: "new" })).toBe(
+    "New dashboard layout",
+  );
+  expect(
+    pieceMeta({
+      kind: "widget",
+      package: "@trops/git-hub",
+      notes: "From the starter",
+    }),
+  ).toBe("@trops/git-hub · From the starter");
 });

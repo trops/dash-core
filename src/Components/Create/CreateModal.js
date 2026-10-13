@@ -5,10 +5,11 @@ import {
   FontAwesomeIcon,
   ButtonIcon,
   Button,
+  Button2,
   Button3,
   Heading2,
+  SubHeading3,
   TextArea,
-  SectionLabel,
   ChoiceMenu,
   getStylesForItem,
   themeObjects,
@@ -26,6 +27,7 @@ import { RecentList } from "./RecentList";
 import { StarterCards } from "./StarterCards";
 import { starterPackages, starterToPlan, remixRequest } from "./starters";
 import { foldCreate } from "./CreateDockPanel";
+import { PlanMenu } from "./PlanMenu";
 import { pickType } from "./autoType";
 import { themeFromPrompt } from "./themeFromPrompt";
 import {
@@ -404,7 +406,7 @@ export const CreateModal = ({
 
   const start = (
     <div className="flex-1 min-h-0 overflow-y-auto">
-      <div className="mx-auto w-full max-w-2xl flex flex-col gap-6 px-6 py-16">
+      <div className="mx-auto w-full max-w-2xl flex flex-col gap-6 px-6 py-10">
         <div className="flex flex-col gap-2">
           <Heading2 title="What do you want to make?" padding={false} />
           <p className={`text-sm ${muted}`}>
@@ -483,23 +485,19 @@ export const CreateModal = ({
           onAllDrafts={() => startWithoutAi("widget-drafts")}
         />
 
-        <div className="flex flex-col gap-2">
-          <SectionLabel>Or start without AI</SectionLabel>
+        <section className="flex flex-col gap-3" data-testid="create-no-ai">
+          <SubHeading3 title="Or start without AI" padding={false} />
           <div className="flex flex-row flex-wrap gap-2">
             {noAiOptions(type).map((o) => (
-              <Button3
-                key={o.key}
-                size="sm"
-                onClick={() => startWithoutAi(o.key)}
-              >
+              <Button2 key={o.key} onClick={() => startWithoutAi(o.key)}>
                 <span className="inline-flex items-center gap-2">
                   <FontAwesomeIcon icon={o.icon} className="h-3.5 w-3.5" />
                   {o.label}
                 </span>
-              </Button3>
+              </Button2>
             ))}
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );
@@ -641,20 +639,21 @@ export const CreateModal = ({
       width="w-11/12"
       height="h-5/6"
     >
+      {/* dr-modal-surface: raised above the dimmed page (design guide rule
+          2); dr-panel-head: the header's icon buttons are quiet, 28px. */}
       <div
-        className={`flex flex-col h-full w-full rounded-lg overflow-clip border ${
+        className={`dr-modal-surface flex flex-col h-full w-full rounded-lg overflow-clip border ${
           panelStyles.backgroundColor || ""
         } ${panelStyles.borderColor || ""} ${panelStyles.textColor || ""}`}
+        data-testid="create-modal"
       >
         <div
-          className={`flex-shrink-0 flex flex-row items-center justify-between px-6 py-3 border-b ${hairline}`}
+          className={`dr-panel-head flex-shrink-0 flex flex-row items-center justify-between px-6 py-3 border-b ${hairline}`}
         >
           <div className={`flex items-center gap-3 ${strong}`}>
             {stepTitle ? (
               <ButtonIcon icon="arrow-left" onClick={back} ariaLabel="Back" />
-            ) : (
-              <FontAwesomeIcon icon="plus" className="h-4 w-4 opacity-70" />
-            )}
+            ) : null}
             {stepTitle ? (
               <nav
                 aria-label="Where you are"
@@ -697,6 +696,14 @@ export const CreateModal = ({
                     ? "Fold after the Planner answers"
                     : "Fold into the sidebar"
                 }
+              />
+            ) : null}
+            {planStep && planInfo && planInfo.recentId ? (
+              <PlanMenu
+                recentId={planInfo.recentId}
+                title={planInfo.title}
+                built={planInfo.built}
+                onRemoved={back}
               />
             ) : null}
             <ButtonIcon icon="xmark" onClick={close} ariaLabel="Close" />

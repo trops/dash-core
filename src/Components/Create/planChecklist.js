@@ -334,6 +334,49 @@ export function botSummary(piece) {
   };
 }
 
+/**
+ * A planned bot as label / value rows for the plan card (screen audit,
+ * October 2026): Runs, Uses, Sends — a labelled list, not loose lines.
+ * @returns {{ label: string, value: string }[]}
+ */
+export function botDetails(piece) {
+  const p = piece || {};
+  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+  const starts = [];
+  for (const o of Array.isArray(p.on) ? p.on : []) {
+    if (o && o.widget && o.event)
+      starts.push(`when ${o.widget} sends ${o.event}`);
+  }
+  const sched = p.schedule && p.schedule.cron;
+  if (sched) starts.push(scheduleLabel(sched));
+  const uses = (Array.isArray(p.tools) ? p.tools : [])
+    .filter((t) => t && t.provider)
+    .map((t) =>
+      t.tools && t.tools.length
+        ? `${t.provider}: ${t.tools.join(", ")}`
+        : t.provider,
+    );
+  const results = (Array.isArray(p.results) ? p.results : [])
+    .map((r) => r && (r.label || r.name))
+    .filter(Boolean);
+  const rows = [
+    {
+      label: "Runs",
+      value: starts.length ? cap(starts.join(" or ")) : "When you run it",
+    },
+    { label: "Uses", value: uses.length ? uses.join("; ") : "No providers" },
+  ];
+  if (results.length || p.showResults) {
+    rows.push({
+      label: "Sends",
+      value: results.length
+        ? `${results.join(", ")}${p.showResults ? " → a Bot results widget" : ""}`
+        : "Its results → a Bot results widget",
+    });
+  }
+  return rows;
+}
+
 /** What the Planner is told about edits made in the panel. */
 export function editNote(edits) {
   if (!edits || !edits.length) return "";

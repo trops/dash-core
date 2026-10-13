@@ -14,6 +14,7 @@ import { CreatePlanStep } from "./CreatePlanStep";
 import { AskStep } from "./AskStep";
 import { recentSections } from "./recentRows";
 import { RecentList } from "./RecentList";
+import { PlanMenu } from "./PlanMenu";
 
 /**
  * CreateDockPanel — Create in the right-hand dock (create-entry PRD CRE-007
@@ -48,6 +49,8 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
   const [asking, setAsking] = useState("");
   const [plans, setPlans] = useState([]);
   const [drafts, setDrafts] = useState([]);
+  // The open plan, as CreatePlanStep reports it (for the "…" menu).
+  const [planInfo, setPlanInfo] = useState(null);
   const { width, handleProps } = useResizableWidth({
     // Same default as the AI Assistant and Bot Activity docks.
     defaultWidth: 384,
@@ -119,6 +122,16 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
       }),
     );
   };
+  // Remove a question or plan from Recent (RecentList asks first).
+  const removeRecent = async (row) => {
+    const bots = window.mainApi && window.mainApi.bots;
+    if (!bots || !bots.removeCreateRecent) return;
+    try {
+      await bots.removeCreateRecent(row.id);
+    } catch (_e) {
+      // It stays listed; try again.
+    }
+  };
   const sections = recentSections(plans, drafts, { conversations: 12 });
   const hasRecent = sections.conversations.length + sections.drafts.length > 0;
   // A secondary button, not a link: it leaves the dock for Create full size.
@@ -176,6 +189,14 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
                 onClick={expand}
               />
             ) : null}
+            {folded && folded.kind !== "question" && folded.recentId ? (
+              <PlanMenu
+                recentId={folded.recentId}
+                title={(planInfo && planInfo.title) || folded.title}
+                built={!!(planInfo && planInfo.built)}
+                onRemoved={() => setFolded(null)}
+              />
+            ) : null}
             {onCollapse ? (
               <ButtonIcon
                 icon="xmark"
@@ -202,6 +223,7 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
             prompt=""
             recentId={folded.recentId}
             compact
+            onState={setPlanInfo}
             onOpenDashboard={(id) =>
               window.dispatchEvent(
                 new CustomEvent("dash:open-built-dashboard", {
@@ -220,6 +242,7 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
             <RecentList
               sections={sections}
               onOpen={openRow}
+              onRemove={removeRecent}
               empty={
                 <EmptyState
                   testId="create-dock-empty"

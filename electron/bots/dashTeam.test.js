@@ -243,7 +243,7 @@ describe("Dash team instructions (phase 4a)", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /"access": \[string\]/);
     assert.match(planner.instructions, /short tappable options/);
-    assert.equal(planner.history.length, 5);
+    assert.equal(planner.history.length, 6);
   });
 });
 
@@ -261,8 +261,8 @@ describe("Dash team instructions (phase 4d-2)", () => {
     );
     assert.match(planner.instructions, /"showResults": boolean/);
     // The 4a text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[2], /short tappable options/);
-    assert.doesNotMatch(planner.history[2], /showResults/);
+    assert.match(planner.history[3], /short tappable options/);
+    assert.doesNotMatch(planner.history[3], /showResults/);
   });
 });
 
@@ -272,8 +272,8 @@ describe("Dash team instructions (phase 5d)", () => {
     assert.match(planner.instructions, /"sample": \[string\]/);
     assert.match(planner.instructions, /never the user's real data/);
     // The 4d-2 text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[1], /"showResults": boolean/);
-    assert.doesNotMatch(planner.history[1], /"sample"/);
+    assert.match(planner.history[2], /"showResults": boolean/);
+    assert.doesNotMatch(planner.history[2], /"sample"/);
   });
 });
 
@@ -287,7 +287,21 @@ describe("Dash team instructions (phase 5e)", () => {
       /When the user asks to make or change something, end every answer with the plan/,
     );
     // The 5d text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[0], /"sample": \[string\]/);
-    assert.doesNotMatch(planner.history[0], /bot_results/);
+    assert.match(planner.history[1], /"sample": \[string\]/);
+    assert.doesNotMatch(planner.history[1], /bot_results/);
+  });
+});
+
+describe("Dash team instructions (screen audit: typed answers)", () => {
+  it("a question only the user can type gets no options, never an 'I'll type it' option", () => {
+    const planner = ROLES.find((r) => r.role === "planner");
+    assert.match(planner.instructions, /give that question no options/);
+    assert.match(
+      planner.instructions,
+      /never offer options like "I'll type it"/,
+    );
+    // The 5e-1 text is kept so an unedited Planner upgrades.
+    assert.match(planner.history[0], /bot_results/);
+    assert.doesNotMatch(planner.history[0], /give that question no options/);
   });
 });

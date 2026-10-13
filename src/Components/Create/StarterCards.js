@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from "react";
-import { Button3, SectionLabel } from "@trops/dash-react";
+import { Card2, SegmentedControl, SubHeading3 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { starterCard, starterCategories, thumbnailGrid } from "./starters";
 
 /**
  * StarterCards — starters under Create's prompt (create-entry PRD CRE-002
- * AC1/AC2, phase 5b): category tabs, and per starter a drawn thumbnail of
- * its layout, its name and line, what it makes and what it needs. Picking
- * one hands its package config to `onPick` — the plan opens; nothing is
- * installed or built here.
+ * AC1/AC2, phase 5b): a category filter, and per starter a card (dash-react
+ * Card2 — a button: Tab, then Enter or Space) with a preview of its layout,
+ * its name and line, what it makes and what it needs. Picking one hands its
+ * package config to `onPick` — the plan opens; nothing is installed or built
+ * here. Laid out to the design guide's Screen layout rules (screen audit,
+ * October 2026): each starter is a contained card; text is 15/14/12px.
  */
 
 const titleCase = (s) =>
@@ -17,40 +19,52 @@ const titleCase = (s) =>
     (_m, sep, c) => (sep ? " " : "") + c.toUpperCase(),
   );
 
-/** The layout drawn small: one box per grid cell, labelled. */
+/**
+ * The layout drawn small, in a recessed well: one shaded tile per grid cell
+ * (shading only, no borders — it is a picture, not cards in a card), each
+ * named at 12px (wrapping; the full name also on hover), so the picture
+ * says what's on the dashboard and where.
+ */
 export const StarterThumbnail = ({ config }) => {
-  const { muted, hairline } = useConfigTokens();
+  const { muted } = useConfigTokens();
+  const well = "w-full rounded-md p-1.5";
+  const wellStyle = {
+    height: "5rem",
+    background: "var(--raised-2, rgba(0,0,0,0.18))",
+  };
   if (!config) {
-    return (
-      <div
-        className={`w-full rounded border ${hairline}`}
-        style={{ height: "3.5rem" }}
-        aria-hidden="true"
-      />
-    );
+    return <div className={well} style={wellStyle} aria-hidden="true" />;
   }
   const { rows, cols, cells } = thumbnailGrid(config);
   return (
-    <div
-      className="w-full gap-1"
-      style={{
-        display: "grid",
-        gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-        gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
-        height: "3.5rem",
-      }}
-      aria-hidden="true"
-      data-testid="starter-thumbnail"
-    >
-      {cells.map((c) => (
-        <div
-          key={c.key}
-          className={`rounded border px-1 overflow-hidden text-xs truncate ${hairline} ${muted}`}
-          style={{ gridRow: c.row, gridColumn: c.col }}
-        >
-          {c.label}
-        </div>
-      ))}
+    <div className={well} style={wellStyle} aria-hidden="true">
+      <div
+        className="w-full h-full gap-1"
+        style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+          gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
+        }}
+        data-testid="starter-thumbnail"
+      >
+        {cells.map((c) => (
+          <div
+            key={c.key}
+            title={c.label || undefined}
+            className={`rounded p-1.5 text-xs leading-snug overflow-hidden ${muted}`}
+            style={{
+              gridRow: c.row,
+              gridColumn: c.col,
+              // One surface step above the well, in both modes.
+              background:
+                "color-mix(in srgb, var(--text, #888) 9%, var(--solid, transparent))",
+              wordBreak: "break-word",
+            }}
+          >
+            {c.label}
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
@@ -93,75 +107,71 @@ export const StarterCards = ({ starters = [], onPick }) => {
   );
 
   return (
-    <div className="flex flex-col gap-2" data-testid="create-starters">
-      <SectionLabel>Start from a starter</SectionLabel>
-      {categories.length > 1 ? (
-        <div className="flex flex-row flex-wrap gap-1">
-          {["all", ...categories].map((c) => (
-            <Button3
-              key={c}
-              size="sm"
-              title={c === "all" ? "All" : titleCase(c)}
-              onClick={() => setTab(c)}
-              disabled={tab === c}
-            />
-          ))}
-        </div>
-      ) : null}
-      {/* Cards side by side, as many as fit (inline: the app's prebuilt CSS
-          has no responsive grid classes). */}
+    <section className="flex flex-col gap-3" data-testid="create-starters">
+      <div className="flex flex-row flex-wrap items-center justify-between gap-3">
+        <SubHeading3 title="Start from a starter" padding={false} />
+        {categories.length > 1 ? (
+          <SegmentedControl
+            ariaLabel="Starter category"
+            size="md"
+            value={tab}
+            onChange={setTab}
+            options={["all", ...categories].map((c) => ({
+              value: c,
+              label: c === "all" ? "All" : titleCase(c),
+            }))}
+          />
+        ) : null}
+      </div>
+      {/* Cards side by side, as many as fit, all the same height (inline:
+          the app's prebuilt CSS has no responsive grid classes). */}
       <div
-        className="gap-2"
+        className="gap-3"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(13rem, 1fr))",
-          alignItems: "start",
+          gridTemplateColumns: "repeat(auto-fill, minmax(15rem, 1fr))",
+          alignItems: "stretch",
         }}
       >
         {shown.map((pkg) => {
           const card = starterCard(pkg);
           const loaded = configs[pkg.name];
+          const ready = !!(loaded && loaded.config);
           return (
-            <Button3
+            <Card2
               key={card.key}
+              testId="starter-card"
+              padding="p-4"
+              rounded="rounded-lg"
+              shadow=""
+              className="flex flex-col gap-2 h-full text-left"
+              ariaLabel={`${card.name}: ${card.line}. Makes ${card.makes}. Needs ${card.needs}.`}
+              disabled={!ready}
               onClick={() =>
-                loaded &&
-                loaded.config &&
-                onPick &&
-                onPick(card, pkg, loaded.config)
+                ready && onPick && onPick(card, pkg, loaded.config)
               }
-              disabled={!loaded || !loaded.config}
             >
-              <span
-                className="flex flex-col items-start gap-1 text-left w-full"
-                // Buttons don't wrap their text; a card must.
-                style={{
-                  whiteSpace: "normal",
-                  minWidth: 0,
-                  overflow: "hidden",
-                }}
-                data-testid="starter-card"
-                aria-label={`${card.name}: ${card.line}. Makes ${card.makes}. Needs ${card.needs}.`}
-              >
-                <StarterThumbnail config={loaded && loaded.config} />
-                <span className={`text-sm font-semibold ${strong}`}>
-                  {card.name}
-                </span>
-                {card.line ? (
-                  <span className={`text-xs ${muted}`}>{card.line}</span>
-                ) : null}
-                <span className={`text-xs ${muted}`}>
-                  Makes {card.makes} · needs {card.needs}
-                </span>
-                {loaded && loaded.error ? (
-                  <span className="text-xs">{loaded.error}</span>
-                ) : null}
+              <StarterThumbnail config={loaded && loaded.config} />
+              <span className={`text-base font-semibold ${strong}`}>
+                {card.name}
               </span>
-            </Button3>
+              {card.line ? (
+                <span className={`text-sm ${muted}`}>{card.line}</span>
+              ) : null}
+              {/* What it makes, then what it needs — each on its own line
+                  so a long provider list never strands a word. */}
+              <span className={`flex flex-col text-xs ${muted}`}>
+                <span>Makes {card.makes}</span>
+                <span>Needs {card.needs}</span>
+              </span>
+              {loaded && loaded.error ? (
+                <span className={`text-sm ${strong}`}>{loaded.error}</span>
+              ) : null}
+            </Card2>
           );
         })}
       </div>
-    </div>
+    </section>
   );
 };
 

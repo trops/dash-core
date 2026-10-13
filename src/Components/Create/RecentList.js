@@ -1,7 +1,28 @@
-import React from "react";
-import { Button3, ButtonIcon, ListRow, SectionLabel } from "@trops/dash-react";
+import React, { useState } from "react";
+import {
+  Button3,
+  ButtonIcon,
+  ConfirmationModal,
+  ListRow,
+  SectionLabel,
+} from "@trops/dash-react";
 import { recentLine } from "./recentRows";
 import { draftAge } from "./createRouting";
+import { planRemoveCopy } from "./PlanMenu";
+
+/** What removing a Recent row says before it happens. */
+export function rowRemoveCopy(row) {
+  if (row.kind === "question") {
+    return {
+      action: "Remove",
+      title: `Remove “${row.title}” from Recent?`,
+      message: "The question and its answer leave Recent.",
+    };
+  }
+  const built = /^Built/.test(String(row.status || ""));
+  const copy = planRemoveCopy({ title: row.title, built });
+  return built ? copy : { ...copy, action: "Discard" };
+}
 
 const ICONS = {
   plan: "table-cells-large",
@@ -37,7 +58,8 @@ const RecentRow = ({ row, onOpen, onRemove }) => (
  * Recent in two labelled sections (dock and Create's start screen):
  * Questions & plans, and Unfinished widgets (Widget Builder drafts — open to
  * carry on in the builder). Empty sections are hidden; `empty` shows when
- * both are.
+ * both are. Removing a question or plan asks first (design guide rule 10);
+ * `onRemove` runs once it's confirmed.
  */
 export const RecentList = ({
   sections,
@@ -46,8 +68,10 @@ export const RecentList = ({
   onAllDrafts = null,
   empty = null,
 }) => {
+  const [confirming, setConfirming] = useState(null);
   const { conversations = [], drafts = [], moreDrafts = 0 } = sections || {};
   if (!conversations.length && !drafts.length) return empty;
+  const copy = confirming ? rowRemoveCopy(confirming) : null;
   return (
     <div className="flex flex-col gap-4" data-testid="create-recent">
       {conversations.length ? (
@@ -58,10 +82,27 @@ export const RecentList = ({
               key={row.key}
               row={row}
               onOpen={onOpen}
-              onRemove={onRemove}
+              onRemove={onRemove ? setConfirming : null}
             />
           ))}
         </div>
+      ) : null}
+      {copy ? (
+        <ConfirmationModal
+          isOpen
+          setIsOpen={(v) => !v && setConfirming(null)}
+          variant="danger"
+          title={copy.title}
+          message={copy.message}
+          confirmLabel={copy.action}
+          cancelLabel="Keep it"
+          onConfirm={() => {
+            const row = confirming;
+            setConfirming(null);
+            onRemove(row);
+          }}
+          onCancel={() => setConfirming(null)}
+        />
       ) : null}
       {drafts.length ? (
         <div className="flex flex-col gap-1" data-testid="recent-drafts">

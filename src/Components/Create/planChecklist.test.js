@@ -10,6 +10,7 @@ import {
   removePiece,
   editNote,
   botSummary,
+  botDetails,
   scheduleLabel,
   isSkipped,
   providerLabel,
@@ -143,6 +144,20 @@ describe("planned bots (4d-2)", () => {
       uses: "Uses no providers",
       shows: "",
     });
+  });
+  test("botDetails: Runs / Uses / Sends rows for the plan card", () => {
+    expect(botDetails(bot)).toEqual([
+      {
+        label: "Runs",
+        value: "When Ask button sends askClicked or every weekday at 8:00 AM",
+      },
+      { label: "Uses", value: "gmail: search_emails" },
+      { label: "Sends", value: "Greeting → a Bot results widget" },
+    ]);
+    expect(botDetails({ name: "Bare" })).toEqual([
+      { label: "Runs", value: "When you run it" },
+      { label: "Uses", value: "No providers" },
+    ]);
   });
   test("schedules in words", () => {
     expect(scheduleLabel("30 9 * * *")).toBe("every day at 9:30 AM");

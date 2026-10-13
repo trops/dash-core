@@ -190,3 +190,36 @@ test("nothing yet: an empty state whose one action is Make something new", async
     screen.getByRole("textbox", { name: "Ask about your dashboards and bots" }),
   ).toBeInTheDocument();
 });
+
+// 2b: questions and plans can be removed from the dock too — asked first.
+test("Recent in the dock: × asks, then removes the plan", async () => {
+  window.mainApi.bots.removeCreateRecent = jest.fn().mockResolvedValue({});
+  render(<CreateDockPanel />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Remove Ask Test from Recent" }),
+  );
+  expect(window.mainApi.bots.removeCreateRecent).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+  await waitFor(() =>
+    expect(window.mainApi.bots.removeCreateRecent).toHaveBeenCalledWith(
+      "plan_1",
+    ),
+  );
+});
+
+test("an open plan in the dock can be discarded from its … menu", async () => {
+  window.mainApi.bots.removeCreateRecent = jest.fn().mockResolvedValue({});
+  render(<CreateDockPanel />);
+  act(() => foldCreate({ recentId: "plan_1", title: "Plan a dashboard" }));
+  await screen.findByText("Here's the plan.");
+  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: /Discard plan/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Discard plan" }));
+  await waitFor(() =>
+    expect(window.mainApi.bots.removeCreateRecent).toHaveBeenCalledWith(
+      "plan_1",
+    ),
+  );
+  // Back on Recent.
+  expect(await screen.findByTestId("create-dock-recent")).toBeInTheDocument();
+});
