@@ -17,7 +17,7 @@ import React from "react";
 import { WidgetCardHeader } from "./WidgetCardHeader";
 import { WidgetCardStatusBar } from "./WidgetCardStatusBar";
 import { ComponentManager } from "../../../../ComponentManager";
-import { FontAwesomeIcon } from "@trops/dash-react";
+import { FontAwesomeIcon, StatusBadge, ThemeContext } from "@trops/dash-react";
 
 /**
  * WidgetCard - Main component with Header/Body/Footer subcomponents
@@ -127,23 +127,26 @@ const WidgetCardFooter = ({
   // Don't render if no children AND no warnings
   if (!children && unconfiguredCount === 0) return null;
 
+  // No border or fill of its own — it sits inside the cell's one frame
+  // (GridCellFrame). The warning is a dash-react StatusBadge, so it reads
+  // in light and dark themes alike.
   return (
-    <div
-      className={`border-t border-gray-700 px-3 py-1.5 bg-transparent ${className}`}
-    >
+    <div className={`px-3 pb-2 pt-1 ${className}`}>
       {children}
       {unconfiguredCount > 0 && (
         <button
           type="button"
           onClick={() => onConfigure && onConfigure(item, "handlers")}
-          className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium border bg-amber-900/20 border-amber-700/50 text-amber-400 hover:bg-amber-900/30 hover:border-amber-600/50 transition-all cursor-pointer"
+          className="inline-flex rounded-full cursor-pointer focus-visible:outline-none focus-visible:ring-2"
           title="Click to configure listeners"
         >
-          <FontAwesomeIcon icon="phone" className="text-[10px]" />
-          <span>
-            {unconfiguredCount} listener
-            {unconfiguredCount > 1 ? "s" : ""} not connected
-          </span>
+          <StatusBadge state="warning">
+            <FontAwesomeIcon icon="tower-broadcast" className="h-3 w-3" />
+            <span>
+              {unconfiguredCount} listener
+              {unconfiguredCount > 1 ? "s" : ""} not connected
+            </span>
+          </StatusBadge>
         </button>
       )}
     </div>
@@ -163,6 +166,7 @@ export const WidgetCard = ({
   // Edit mode: the selected empty cell (phase 1d) — a solid blue border.
   highlighted = false,
 }) => {
+  const { currentTheme = {} } = React.useContext(ThemeContext) || {};
   // In preview mode, render children without wrapper
   if (preview === true) {
     return (
@@ -172,11 +176,16 @@ export const WidgetCard = ({
     );
   }
 
-  // In edit mode, render with wrapper (no padding - Body handles padding)
+  // In edit mode, render with wrapper (no padding - Body handles padding).
+  // Empty / not-found cells: a dashed hairline in the theme's neutral
+  // border; the selected empty cell gets the theme's primary border.
+  const border = highlighted
+    ? `border-2 ${currentTheme["border-primary-medium"] || ""}`
+    : `border border-dashed ${currentTheme["border-neutral-dark"] || ""}`;
   return (
     <WidgetCardContext.Provider value={{ preview }}>
       <div
-        className={`flex flex-col w-full h-full min-h-0 overflow-hidden rounded ${highlighted ? "border-2 border-blue-500" : "border border-dashed border-gray-700"} ${className}`}
+        className={`flex flex-col w-full h-full min-h-0 overflow-hidden rounded-lg ${border} ${className}`}
       >
         {children}
       </div>

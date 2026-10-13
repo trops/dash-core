@@ -17,7 +17,9 @@
 import { useState, useEffect, useCallback, useRef, useContext } from "react";
 import {
   AlertBanner,
+  Button2,
   Button3,
+  FontAwesomeIcon,
   SubHeading2,
   ThemeContext,
   useStatusTokens,
@@ -779,9 +781,9 @@ export function ChatCore({
 
   return (
     <div
-      className={`flex flex-col flex-1 overflow-hidden ${t(
-        "bg-primary-very-dark",
-      )} ${t("text-primary-medium")}`}
+      // No background of its own: the chat sits on its host's surface (dock
+      // panel, builder pane) — one surface, not three (design guide).
+      className={`flex flex-col flex-1 overflow-hidden ${t("text-primary-medium")}`}
     >
       {/* Header — only shown when title is provided */}
       {title ? (
@@ -800,16 +802,22 @@ export function ChatCore({
             )}
           </div>
           <div className="flex items-center gap-1">
-            <Button3 size="sm" onClick={handleNewChat}>
-              New Chat
-            </Button3>
+            <Button2 size="sm" onClick={handleNewChat}>
+              <span className="flex items-center gap-2">
+                <FontAwesomeIcon icon="plus" className="h-3 w-3" />
+                New chat
+              </span>
+            </Button2>
           </div>
         </div>
       ) : (
-        <div className="flex items-center justify-end px-3 py-1 shrink-0">
-          <Button3 size="sm" onClick={handleNewChat}>
-            New Chat
-          </Button3>
+        <div className="flex items-center justify-end px-3 py-2 shrink-0">
+          <Button2 size="sm" onClick={handleNewChat}>
+            <span className="flex items-center gap-2">
+              <FontAwesomeIcon icon="plus" className="h-3 w-3" />
+              New chat
+            </span>
+          </Button2>
         </div>
       )}
 

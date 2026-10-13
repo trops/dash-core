@@ -2,13 +2,16 @@ import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   Button3,
+  ButtonIcon3,
   ConfirmationModal,
   FilterMenu,
   FontAwesomeIcon,
+  ListRow,
   Modal,
   SearchInput,
   SectionLabel,
   SegmentedControl,
+  StatusBadge,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { AppContext } from "../../Context/App/AppContext";
@@ -27,7 +30,13 @@ import { InstallProgressModal } from "../Settings/details/InstallProgressModal";
 import { PublishWidgetModal } from "../Settings/details/PublishWidgetModal";
 import { UpdateAllWidgetsModal } from "../Settings/sections/UpdateAllWidgetsModal";
 import { useWidgetInstall } from "./useWidgetInstall";
-import { filterOrgs, packageLabel, widgetOrgs } from "./widgetSummary";
+import {
+  filterOrgs,
+  packageLabel,
+  widgetOrgs,
+  widgetTitle,
+} from "./widgetSummary";
+import { ListGroupLabel, ManageLayout, OverflowMenu } from "./ManageLayout";
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 // Registered widget config (userConfig defaults for the live preview).
@@ -96,7 +105,7 @@ const UsedOn = ({ usage, workspaces, onOpenWorkspace, muted }) => {
             {ws && onOpenWorkspace ? (
               <Button3
                 title="Open"
-                size="xs"
+                size="sm"
                 onClick={() => onOpenWorkspace(ws)}
               />
             ) : null}
@@ -188,20 +197,26 @@ const PackageDetail = ({
               onClick={() => editInBuilder(first, pkg)}
             />
           ) : null}
-          {!pkg.isBuiltIn && first.path ? (
-            <Button3
-              title="Open in Finder"
-              size="sm"
-              onClick={() => window.mainApi?.shell?.openPath(first.path)}
-            />
-          ) : null}
-          {pkg.isBuiltIn ? null : (
-            <Button3
-              title={pkg.isDraft ? "Delete" : "Uninstall"}
-              size="sm"
-              onClick={() => onRemove(pkg)}
-            />
-          )}
+          {/* Less-used and destructive actions: the … menu (Uninstall
+              and Delete confirm first). */}
+          <OverflowMenu
+            items={[
+              !pkg.isBuiltIn && first.path
+                ? {
+                    label: "Open in Finder",
+                    icon: "folder-open",
+                    onClick: () => window.mainApi?.shell?.openPath(first.path),
+                  }
+                : null,
+              pkg.isBuiltIn
+                ? null
+                : {
+                    label: pkg.isDraft ? "Delete" : "Uninstall",
+                    icon: "trash-can",
+                    onClick: () => onRemove(pkg),
+                  },
+            ]}
+          />
         </div>
       </div>
       {own ? (
@@ -223,32 +238,35 @@ const PackageDetail = ({
           <SectionLabel
             text={`${plural(pkg.widgets.length, "widget")} in this package`}
           />
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col">
             {pkg.widgets.map((w) => {
               const used = (pkg.widgetUsage[w.name] || []).length;
               return (
-                <div
+                <ListRow
                   key={w.name}
-                  className={`rounded-md px-2 py-1.5 border flex flex-row items-center justify-between gap-3 ${hairline}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => onSelectWidget(w.name)}
-                    className="flex-1 min-w-0 text-left text-sm truncate"
-                  >
-                    {w.displayName || w.name}
-                  </button>
-                  <span className={`text-xs flex-shrink-0 ${muted}`}>
-                    {used ? `on ${plural(used, "dashboard")}` : "not used"}
-                  </span>
-                  {pkg.isBuiltIn ? null : (
-                    <Button3
-                      title="Preview"
-                      size="xs"
-                      onClick={() => onSelectWidget(w.name)}
+                  icon={
+                    <FontAwesomeIcon
+                      icon={resolveIcon(w.icon)}
+                      className="h-3.5 w-3.5"
                     />
-                  )}
-                </div>
+                  }
+                  title={widgetTitle(w)}
+                  meta={
+                    used
+                      ? `On ${plural(used, "dashboard")}`
+                      : "Not on a dashboard"
+                  }
+                  onClick={() => onSelectWidget(w.name)}
+                  trailing={
+                    pkg.isBuiltIn ? null : (
+                      <ButtonIcon3
+                        icon="eye"
+                        ariaLabel="Preview"
+                        onClick={() => onSelectWidget(w.name)}
+                      />
+                    )
+                  }
+                />
               );
             })}
           </div>
@@ -292,7 +310,7 @@ const PackageDetail = ({
               <div>
                 <Button3
                   title="Manage permissions"
-                  size="xs"
+                  size="sm"
                   onClick={onOpenPrivacySettings}
                 />
               </div>
@@ -318,7 +336,7 @@ const WidgetDetail = ({
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <Button3 title={`← ${packageLabel(pkg)}`} size="xs" onClick={onBack} />
+        <Button3 title={`← ${packageLabel(pkg)}`} size="sm" onClick={onBack} />
       </div>
       <div className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div className="flex flex-row items-center gap-3 min-w-0">
@@ -329,7 +347,7 @@ const WidgetDetail = ({
           </span>
           <div className="flex flex-col gap-0.5 min-w-0">
             <h3 className={`text-lg font-semibold truncate ${strong}`}>
-              {widget.displayName || widget.name}
+              {widgetTitle(widget)}
             </h3>
             <span className={`text-xs font-mono truncate ${muted}`}>
               {widget.name}
@@ -691,71 +709,71 @@ export const WidgetsPage = ({
   }
 
   return (
-    // The page's base text colour (plain names inherit it); muted text
-    // keeps its own token.
-    <div
-      data-testid="widgets-page"
-      className={`flex flex-col flex-1 min-h-0 gap-3 px-6 pt-4 pb-4 ${strong}`}
-    >
-      {/* Filter bar — fixed; the list and detail scroll on their own. */}
-      <div className="flex-shrink-0 flex flex-row flex-wrap items-center gap-2">
-        <div className="w-72">
-          <SearchInput
-            value={query}
-            onChange={setQuery}
-            placeholder="Search packages or widgets…"
+    <ManageLayout
+      testId="widgets-page"
+      listLabel="Widgets"
+      detailTestId="widget-detail"
+      toolbar={
+        <>
+          <div className="w-72">
+            <SearchInput
+              value={query}
+              onChange={setQuery}
+              placeholder="Search packages or widgets…"
+            />
+          </div>
+          <FilterMenu
+            label="Org"
+            options={orgOptions}
+            selected={orgFilter}
+            onChange={setOrgFilter}
           />
-        </div>
-        <FilterMenu
-          label="Org"
-          options={orgOptions}
-          selected={orgFilter}
-          onChange={setOrgFilter}
-        />
-        <SegmentedControl
-          ariaLabel="Show"
-          options={CHIPS}
-          value={chip}
-          onChange={setChip}
-        />
-        <span className="flex-1" />
-        {isChecking && !packagesWithUpdates.length ? (
-          <span className={`text-xs ${muted}`}>Checking for updates…</span>
-        ) : null}
-        {packagesWithUpdates.length ? (
-          <Button
-            title={`${plural(packagesWithUpdates.length, "update")} · Update all`}
-            size="sm"
-            onClick={() => setUpdateAllOpen(true)}
+          <SegmentedControl
+            ariaLabel="Show"
+            options={CHIPS}
+            value={chip}
+            onChange={setChip}
           />
-        ) : null}
-        {drafts.length ? (
-          <Button3
-            title={`Clean up ${plural(drafts.length, "draft")}`}
-            size="sm"
-            onClick={() => setDraftsTarget(drafts)}
-          />
-        ) : null}
-      </div>
-
-      <div className="flex-1 min-h-0 grid grid-cols-3 gap-4">
-        <div
-          role="list"
-          aria-label="Widgets"
-          className="min-h-0 overflow-y-auto flex flex-col gap-3 pr-2"
-        >
+          <span className="flex-1" />
+          {isChecking && !packagesWithUpdates.length ? (
+            <span className={`text-sm ${muted}`}>Checking for updates…</span>
+          ) : null}
+          {packagesWithUpdates.length ? (
+            <Button
+              title={`${plural(packagesWithUpdates.length, "update")} · Update all`}
+              size="sm"
+              onClick={() => setUpdateAllOpen(true)}
+            />
+          ) : null}
+          {drafts.length ? (
+            <Button3
+              title={`Clean up ${plural(drafts.length, "draft")}`}
+              size="sm"
+              onClick={() => setDraftsTarget(drafts)}
+            />
+          ) : null}
+        </>
+      }
+      list={
+        <>
           {shown.map((org) => (
-            <div key={org.name} className="flex flex-col gap-1">
-              <span data-testid="org-heading" className="px-3">
-                <SectionLabel text={org.name} />
-              </span>
+            <div key={org.name} className="flex flex-col gap-0.5">
+              <ListGroupLabel text={org.name} testId="org-heading" />
               {org.packages.map((pkg) => {
                 const isSel = !mode && selectedPkg && pkg.id === selectedPkg.id;
                 const active = isSel && !selectedWidget;
                 const expanded = isSel || pkg.queryMatchedWidgets;
                 const label = packageLabel(pkg);
                 return (
-                  <div key={pkg.id} className="flex flex-col gap-0.5">
+                  // An open package and its widgets are one group: a
+                  // bordered container with the widgets inside it.
+                  <div
+                    key={pkg.id}
+                    data-testid={expanded ? "package-group" : undefined}
+                    className={`flex flex-col gap-0.5 rounded-lg border ${
+                      expanded ? `${hairline} pb-1` : "border-transparent"
+                    }`}
+                  >
                     <button
                       type="button"
                       data-package={label}
@@ -764,7 +782,7 @@ export const WidgetsPage = ({
                         setMode(null);
                         setSelection({ packageId: pkg.id });
                       }}
-                      className={`w-full text-left rounded-lg px-3 py-2 border flex flex-row items-center gap-3 ${
+                      className={`w-full text-left rounded-lg px-2 py-2 border flex flex-row items-center gap-3 ${
                         active
                           ? `${selectedBg} ${selectedBorder}`
                           : "border-transparent"
@@ -787,25 +805,24 @@ export const WidgetsPage = ({
                         </span>
                       </span>
                       {pkg.update ? (
-                        <span
-                          data-testid="package-update"
-                          title={`Update to v${pkg.update.latestVersion}`}
-                          className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400 flex-shrink-0"
-                        />
+                        <span data-testid="package-update">
+                          <StatusBadge state="info" compact label="Update" />
+                        </span>
                       ) : null}
                     </button>
-                    {expanded
-                      ? // Search results show only the widgets that matched.
-                        pkg.matched.map((w) => {
+                    {expanded ? (
+                      <div className="flex flex-col pl-6 pr-1">
+                        {/* Search results show only the widgets that matched. */}
+                        {pkg.matched.map((w) => {
                           const wActive =
                             isSel &&
                             selectedWidget &&
                             selectedWidget.name === w.name;
                           return (
-                            <button
+                            <ListRow
                               key={w.name}
-                              type="button"
-                              aria-current={wActive ? "true" : undefined}
+                              title={widgetTitle(w)}
+                              selected={!!wActive}
                               onClick={() => {
                                 setMode(null);
                                 setSelection({
@@ -813,34 +830,23 @@ export const WidgetsPage = ({
                                   widgetName: w.name,
                                 });
                               }}
-                              className={`w-full text-left rounded-md pl-10 pr-3 py-1.5 border text-sm truncate ${
-                                wActive
-                                  ? `${selectedBg} ${selectedBorder}`
-                                  : "border-transparent"
-                              }`}
-                            >
-                              {w.displayName || w.name}
-                            </button>
+                            />
                           );
-                        })
-                      : null}
+                        })}
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}
             </div>
           ))}
           {!visible.length && !isLoading ? (
-            <span className={`text-sm px-3 ${muted}`}>No widgets match.</span>
+            <span className={`text-sm px-2 ${muted}`}>No widgets match.</span>
           ) : null}
-        </div>
-        <div
-          data-testid="widget-detail"
-          className={`col-span-2 min-h-0 overflow-y-auto rounded-lg border p-5 ${hairline}`}
-        >
-          {detail}
-        </div>
-      </div>
-
+        </>
+      }
+      detail={detail}
+    >
       <ConfirmationModal
         isOpen={!!removeTarget}
         setIsOpen={() => setRemoveTarget(null)}
@@ -943,7 +949,7 @@ export const WidgetsPage = ({
       </Modal>
       {/* Last, so the sign-in modal stacks above the update modal. */}
       {authGate}
-    </div>
+    </ManageLayout>
   );
 };
 

@@ -143,7 +143,7 @@ export const BotsView = ({
   onDirtyChange = null,
   onOpenSettings = null,
 }) => {
-  const { currentTheme = {} } = useContext(ThemeContext) || {};
+  const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
   const appContext = useContext(AppContext);
   const providers = appContext?.providers || {};
   const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
@@ -506,7 +506,7 @@ export const BotsView = ({
         </button>
         <ButtonIcon
           icon="xmark"
-          size="xs"
+          size="sm"
           ariaLabel={`Discard draft ${name}`}
           onClick={() => setDiscardTarget(d)}
         />
@@ -688,17 +688,17 @@ export const BotsView = ({
   const teamActions = (
     <div className="flex flex-col gap-1">
       <div className="flex flex-row flex-wrap gap-2">
-        <Button3 title="Export team" size="xs" onClick={exportTeam} />
-        <Button3 title="Import team" size="xs" onClick={importTeam} />
-        <Button3 title="Find in registry" size="xs" onClick={openRegistry} />
+        <Button3 title="Export team" size="sm" onClick={exportTeam} />
+        <Button3 title="Import team" size="sm" onClick={importTeam} />
+        <Button3 title="Find in registry" size="sm" onClick={openRegistry} />
         <Button3
           title="Show team activity"
-          size="xs"
+          size="sm"
           onClick={() => showOnDashboard("activity")}
         />
         <Button3
           title="Publish team…"
-          size="xs"
+          size="sm"
           onClick={() => openPublish("team")}
         />
       </div>
@@ -775,11 +775,18 @@ export const BotsView = ({
     );
   };
 
-  const teamLabel = `Team · ${all.length} bot${all.length === 1 ? "" : "s"}`;
+  const teamLabel = (
+    <h3 className={`text-sm font-semibold ${strong}`}>
+      Team{" "}
+      <span className={`font-normal ${muted}`}>
+        · {all.length} bot{all.length === 1 ? "" : "s"}
+      </span>
+    </h3>
+  );
   const viewSwitch = (
     <SegmentedControl
       ariaLabel="Team view"
-      size="xs"
+      size="sm"
       value={mode}
       onChange={(v) => setMode(v === "list" ? "list" : "diagram")}
       options={[
@@ -792,10 +799,10 @@ export const BotsView = ({
   const teamList = (
     <nav
       aria-label="Team"
-      className={`w-72 flex-shrink-0 flex flex-col gap-1 rounded-xl border p-2 ${hairline}`}
+      className={`w-72 flex-shrink-0 dr-card flex flex-col gap-1 rounded-xl border p-2 ${hairline}`}
     >
       <div className="flex flex-row items-center justify-between gap-2 px-2 pt-1 pb-2">
-        <SectionLabel text={teamLabel} />
+        {teamLabel}
         {viewSwitch}
       </div>
       {lead ? (
@@ -805,7 +812,7 @@ export const BotsView = ({
           className={`flex flex-row items-center justify-between px-3 py-2 text-xs ${muted}`}
         >
           <span>Team lead is off</span>
-          <Button3 title="Turn on" size="xs" onClick={turnOnLead} />
+          <Button3 title="Turn on" size="sm" onClick={turnOnLead} />
         </div>
       )}
       <div className={`border-t my-1 ${hairline}`} />
@@ -825,7 +832,7 @@ export const BotsView = ({
       ) : null}
       <div className="flex-1" />
       {teamActions}
-      <Button title="+ Add bot" size="sm" onClick={() => select(NEW_BOT)} />
+      <Button title="Add bot" size="sm" onClick={() => select(NEW_BOT)} />
     </nav>
   );
 
@@ -834,16 +841,16 @@ export const BotsView = ({
   const teamDiagram = (
     <section
       aria-label="Team"
-      className={`flex-1 min-w-0 min-h-0 flex flex-col rounded-xl border ${hairline}`}
+      className={`dr-card flex-1 min-w-0 min-h-0 flex flex-col rounded-xl border ${hairline}`}
     >
       <div
         className={`flex flex-row items-center justify-between gap-3 px-4 py-3 border-b ${hairline}`}
       >
-        <SectionLabel text={teamLabel} />
+        {teamLabel}
         <div className="flex flex-row items-center gap-2">
           {viewSwitch}
           <Button
-            title="+ Add bot"
+            title="Add bot"
             size="sm"
             onClick={() => openBot(NEW_BOT, "settings")}
           />
@@ -855,7 +862,7 @@ export const BotsView = ({
             className={`flex flex-row items-center gap-3 px-3 py-2 text-xs ${muted}`}
           >
             <span>Team lead is off</span>
-            <Button3 title="Turn on" size="xs" onClick={turnOnLead} />
+            <Button3 title="Turn on" size="sm" onClick={turnOnLead} />
           </div>
         )}
         <TeamChart
@@ -1066,29 +1073,29 @@ export const BotsView = ({
                 {isLead ? (
                   <Button3
                     title="Turn off lead"
-                    size="xs"
+                    size="sm"
                     onClick={turnOffLead}
                   />
                 ) : (
                   <>
                     <Button3
                       title="Show on dashboard"
-                      size="xs"
+                      size="sm"
                       onClick={() => showOnDashboard("results", selected)}
                     />
                     <Button3
                       title="Publish bot…"
-                      size="xs"
+                      size="sm"
                       onClick={() => openPublish("bot")}
                     />
                     <Button3
                       title="Remove from team"
-                      size="xs"
+                      size="sm"
                       onClick={removeFromTeam}
                     />
                     <Button3
                       title="Delete"
-                      size="xs"
+                      size="sm"
                       onClick={() => setConfirmDelete(true)}
                     />
                   </>

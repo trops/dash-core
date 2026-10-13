@@ -12,8 +12,9 @@ import {
   DragComponent,
   ConfirmationModal,
   FontAwesomeIcon,
+  ThemeContext,
+  useStatusTokens,
 } from "@trops/dash-react";
-import { WidgetFactory } from "../../../Widget";
 import { LayoutContainer } from "../../../Components/Layout";
 import { GridCellFrame } from "./GridCellFrame";
 import { pickWidgetDisplayName } from "../../../utils/widgetIdentity";
@@ -21,10 +22,7 @@ import { EditSelectionContext } from "../../Dashboard/editSelection";
 import { AppContext } from "../../../Context/App/AppContext";
 
 import { WidgetCard } from "./Enhanced/WidgetCard";
-import {
-  getContainerBorderColor,
-  renderComponent,
-} from "../../../utils/layout";
+import { renderComponent } from "../../../utils/layout";
 import { ComponentManager } from "../../../ComponentManager";
 import { WidgetNotFound } from "../../../Widget/WidgetNotFound";
 import { isContainer, isWorkspace } from "../../../utils/layout";
@@ -326,6 +324,23 @@ export const LayoutGridContainer = memo(
     const editSelection = useContext(EditSelectionContext);
     const workspaceScope = useContext(WorkspaceScopeContext);
 
+    // Edit-mode chrome (grid controls, empty cells) reads theme tokens so it
+    // follows light and dark themes — no fixed palette classes.
+    const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
+    const status = useStatusTokens();
+    const tokens = {
+      muted: currentTheme["text-neutral-medium"] || "",
+      strong: currentTheme["text-neutral-light"] || "",
+      hairline: currentTheme["border-neutral-dark"] || "",
+      surface: currentTheme["bg-neutral-very-dark"] || "",
+      activeBg: currentTheme["bg-neutral-dark"] || "",
+      hoverBg: currentTheme["hover-bg-neutral-very-dark"] || "",
+      hoverText: currentTheme["hover-text-neutral-light"] || "",
+    };
+    // Row / column controls: 28px hit areas, 12px labels, muted until hovered.
+    const gridCtrl = `h-7 w-7 flex-shrink-0 flex items-center justify-center rounded-md text-xs transition-colors ${tokens.muted} ${tokens.hoverBg} ${tokens.hoverText}`;
+    const gridCtrlDelete = `h-7 w-7 flex-shrink-0 flex items-center justify-center rounded-md text-xs transition-colors ${tokens.muted} ${status.error.hoverBg} ${status.error.hoverText}`;
+
     // Phase 1e: a widget being moved without dragging (Move… in the panel).
     // Another cell of the same grid becomes a target: empty takes it, full
     // swaps (DashboardModel.moveWidgetToCell swaps).
@@ -365,8 +380,8 @@ export const LayoutGridContainer = memo(
       hasGrid && (item.type === "grid" || item.grid !== null);
 
     // Gutter layout constants (match main grid's p-4 and gap-5)
-    const GUTTER_WIDTH = 36; // px — width of the left row gutter
-    const GUTTER_HEIGHT = 32; // px — height of the top column gutter
+    const GUTTER_WIDTH = 40; // px — width of the left row gutter
+    const GUTTER_HEIGHT = 36; // px — height of the top column gutter
     const GRID_PAD = 16; // px — matches p-4 (1rem)
     const GRID_GAP = 20; // px — matches gap-5 (1.25rem)
 
@@ -436,25 +451,12 @@ export const LayoutGridContainer = memo(
 
     // Get display label and color for current row sizing
     function getRowSizingDisplay(row) {
+      // The default (1x) is muted; any other sizing reads strong.
       const mode = getRowMode(row);
-      if (mode === "shrink")
-        return {
-          label: "S",
-          color: "text-amber-400",
-          hoverBg: "hover:bg-amber-400/10",
-        };
-      if (mode === "grow")
-        return {
-          label: "G",
-          color: "text-green-400",
-          hoverBg: "hover:bg-green-400/10",
-        };
+      if (mode === "shrink") return { label: "S", changed: true };
+      if (mode === "grow") return { label: "G", changed: true };
       const mult = getRowMultiplier(row);
-      return {
-        label: `${mult}x`,
-        color: mult > 1 ? "text-blue-400" : "text-gray-500",
-        hoverBg: mult > 1 ? "hover:bg-blue-400/10" : "hover:bg-gray-400/10",
-      };
+      return { label: `${mult}x`, changed: mult > 1 };
     }
 
     // Compute column template tracks respecting colModes
@@ -499,43 +501,12 @@ export const LayoutGridContainer = memo(
     }
 
     function getColSizingDisplay(col) {
+      // The default (grow) is muted; any other sizing reads strong.
       const mode = getColMode(col);
-      if (mode === "shrink")
-        return {
-          label: "S",
-          color: "text-amber-400",
-          hoverBg: "hover:bg-amber-400/10",
-        };
-      if (mode === "1/4")
-        return {
-          label: "1/4",
-          color: "text-blue-400",
-          hoverBg: "hover:bg-blue-400/10",
-        };
-      if (mode === "1/3")
-        return {
-          label: "1/3",
-          color: "text-blue-400",
-          hoverBg: "hover:bg-blue-400/10",
-        };
-      if (mode === "1/2")
-        return {
-          label: "1/2",
-          color: "text-blue-400",
-          hoverBg: "hover:bg-blue-400/10",
-        };
-      if (mode === "2/3")
-        return {
-          label: "2/3",
-          color: "text-blue-400",
-          hoverBg: "hover:bg-blue-400/10",
-        };
-      // default: grow
-      return {
-        label: "G",
-        color: "text-green-400",
-        hoverBg: "hover:bg-green-400/10",
-      };
+      if (mode === "shrink") return { label: "S", changed: true };
+      if (["1/4", "1/3", "1/2", "2/3"].includes(mode))
+        return { label: mode, changed: true };
+      return { label: "G", changed: false };
     }
 
     // Sizing popover state
@@ -606,18 +577,6 @@ export const LayoutGridContainer = memo(
       if (onChangeColMode) onChangeColMode(id, col, optionMode);
     }
 
-    function getOptionColor(optionMode, type) {
-      if (type === "row") {
-        if (optionMode === "shrink") return "text-amber-400";
-        if (optionMode === "grow") return "text-green-400";
-        return "text-blue-400";
-      }
-      // col
-      if (optionMode === "grow") return "text-green-400";
-      if (optionMode === "shrink") return "text-amber-400";
-      return "text-blue-400";
-    }
-
     function renderSizingPopover(type, index, triggerEl) {
       if (
         !sizingPopover ||
@@ -634,7 +593,7 @@ export const LayoutGridContainer = memo(
       return (
         <div
           ref={popoverRef}
-          className="absolute z-50 bg-gray-800 border border-gray-600 rounded-lg shadow-xl p-1 flex flex-row gap-0.5"
+          className={`absolute z-50 border rounded-lg shadow-xl p-1 flex flex-row gap-0.5 ${tokens.surface} ${tokens.hairline}`}
           style={
             isRow
               ? {
@@ -653,14 +612,14 @@ export const LayoutGridContainer = memo(
         >
           {options.map((opt) => {
             const isActive = opt.mode === activeMode;
-            const color = getOptionColor(opt.mode, type);
             return (
               <button
                 key={opt.mode}
-                className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold transition-all whitespace-nowrap ${
+                aria-pressed={isActive}
+                className={`h-7 px-2 rounded-md text-xs font-mono font-semibold transition-colors whitespace-nowrap ${
                   isActive
-                    ? `${color} bg-white/20`
-                    : `text-gray-400 hover:text-gray-200 hover:bg-white/10`
+                    ? `${tokens.strong} ${tokens.activeBg}`
+                    : `${tokens.muted} ${tokens.hoverBg} ${tokens.hoverText}`
                 }`}
                 onClick={() => {
                   if (type === "row") handleRowOptionSelect(index, opt.mode);
@@ -944,19 +903,21 @@ export const LayoutGridContainer = memo(
             }
           >
             {hasVisible && (
-              <div className="flex flex-col items-center gap-1 px-1.5 py-2 rounded-lg bg-white/5 group-hover:bg-white/10 transition-colors">
+              <div className="flex flex-col items-center gap-0.5 py-1">
                 <button
-                  className="w-5 h-5 flex items-center justify-center rounded text-[10px] text-gray-600 opacity-40 hover:opacity-100 hover:text-green-400 hover:bg-green-400/10 transition-all"
+                  className={gridCtrl}
                   onClick={() => handleAddRow(row - 1)}
                   title={`Add row above row ${row}`}
                 >
                   <FontAwesomeIcon icon="plus" />
                 </button>
-                <span className="text-[11px] text-gray-400 group-hover:text-gray-200 select-none font-mono font-medium">
+                <span
+                  className={`text-xs select-none font-mono font-medium ${tokens.muted}`}
+                >
                   R{row}
                 </span>
                 {(() => {
-                  const { label, color, hoverBg } = getRowSizingDisplay(row);
+                  const { label, changed } = getRowSizingDisplay(row);
                   return (
                     <div className="relative">
                       <button
@@ -966,12 +927,17 @@ export const LayoutGridContainer = memo(
                             ? popoverTriggerRef
                             : undefined
                         }
-                        className={`w-5 h-5 flex items-center justify-center rounded text-[10px] ${color} ${
+                        aria-expanded={
                           sizingPopover?.type === "row" &&
                           sizingPopover?.index === row
-                            ? "opacity-100"
-                            : "opacity-40"
-                        } hover:opacity-100 ${hoverBg} transition-all font-mono font-bold select-none`}
+                        }
+                        className={`${gridCtrl} font-mono font-semibold select-none ${
+                          changed ||
+                          (sizingPopover?.type === "row" &&
+                            sizingPopover?.index === row)
+                            ? tokens.strong
+                            : ""
+                        }`}
                         onClick={() =>
                           setSizingPopover(
                             sizingPopover?.type === "row" &&
@@ -989,7 +955,7 @@ export const LayoutGridContainer = memo(
                   );
                 })()}
                 <button
-                  className="w-5 h-5 flex items-center justify-center rounded text-[10px] text-gray-600 opacity-40 hover:opacity-100 hover:text-green-400 hover:bg-green-400/10 transition-all"
+                  className={gridCtrl}
                   onClick={() => handleAddRow(row)}
                   title={`Add row below row ${row}`}
                 >
@@ -997,7 +963,7 @@ export const LayoutGridContainer = memo(
                 </button>
                 {visibleRowCount > 1 && (
                   <button
-                    className="w-5 h-5 flex items-center justify-center rounded text-[10px] text-gray-600 opacity-40 hover:opacity-100 hover:text-red-400 hover:bg-red-400/10 transition-all"
+                    className={gridCtrlDelete}
                     onClick={() => handleDeleteRow(row)}
                     title={`Delete row ${row}`}
                   >
@@ -1063,19 +1029,21 @@ export const LayoutGridContainer = memo(
             }
           >
             {hasVisible && (
-              <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 group-hover:bg-white/10 transition-colors">
+              <div className="flex items-center gap-0.5 px-1">
                 <button
-                  className="w-5 h-5 flex items-center justify-center rounded text-[10px] text-gray-600 opacity-40 hover:opacity-100 hover:text-green-400 hover:bg-green-400/10 transition-all"
+                  className={gridCtrl}
                   onClick={() => handleAddColumn(col - 1)}
                   title={`Add column before column ${col}`}
                 >
                   <FontAwesomeIcon icon="plus" />
                 </button>
-                <span className="text-[11px] text-gray-400 group-hover:text-gray-200 select-none font-mono font-medium">
+                <span
+                  className={`text-xs select-none font-mono font-medium ${tokens.muted}`}
+                >
                   C{col}
                 </span>
                 {(() => {
-                  const { label, color, hoverBg } = getColSizingDisplay(col);
+                  const { label, changed } = getColSizingDisplay(col);
                   return (
                     <div className="relative">
                       <button
@@ -1085,12 +1053,17 @@ export const LayoutGridContainer = memo(
                             ? popoverTriggerRef
                             : undefined
                         }
-                        className={`w-5 h-5 flex items-center justify-center rounded text-[10px] ${color} ${
+                        aria-expanded={
                           sizingPopover?.type === "col" &&
                           sizingPopover?.index === col
-                            ? "opacity-100"
-                            : "opacity-40"
-                        } hover:opacity-100 ${hoverBg} transition-all font-mono font-bold select-none`}
+                        }
+                        className={`${gridCtrl} font-mono font-semibold select-none ${
+                          changed ||
+                          (sizingPopover?.type === "col" &&
+                            sizingPopover?.index === col)
+                            ? tokens.strong
+                            : ""
+                        }`}
                         onClick={() =>
                           setSizingPopover(
                             sizingPopover?.type === "col" &&
@@ -1108,7 +1081,7 @@ export const LayoutGridContainer = memo(
                   );
                 })()}
                 <button
-                  className="w-5 h-5 flex items-center justify-center rounded text-[10px] text-gray-600 opacity-40 hover:opacity-100 hover:text-green-400 hover:bg-green-400/10 transition-all"
+                  className={gridCtrl}
                   onClick={() => handleAddColumn(col)}
                   title={`Add column after column ${col}`}
                 >
@@ -1116,7 +1089,7 @@ export const LayoutGridContainer = memo(
                 </button>
                 {visibleColCount > 1 && (
                   <button
-                    className="w-5 h-5 flex items-center justify-center rounded text-[10px] text-gray-600 opacity-40 hover:opacity-100 hover:text-red-400 hover:bg-red-400/10 transition-all"
+                    className={gridCtrlDelete}
                     onClick={() => handleDeleteColumn(col)}
                     title={`Delete column ${col}`}
                   >
@@ -1298,7 +1271,7 @@ export const LayoutGridContainer = memo(
         >
           <button
             type="button"
-            className="flex flex-col items-center cursor-pointer hover:bg-gray-800/50 rounded-lg px-4 py-2 transition-colors"
+            className={`flex flex-col items-center cursor-pointer rounded-lg px-4 py-2 transition-colors ${tokens.muted} ${tokens.hoverBg} ${tokens.hoverText}`}
             onClick={() => {
               const move = moveTarget(cellNumber);
               if (move) return move();
@@ -1318,9 +1291,9 @@ export const LayoutGridContainer = memo(
           >
             <FontAwesomeIcon
               icon={moving ? "arrow-down" : "plus"}
-              className="h-4 w-4 text-gray-600"
+              className="h-4 w-4"
             />
-            <span className="text-xs text-gray-600 mt-1">
+            <span className="text-xs mt-1">
               {moving ? "Move here" : "Add widget"}
             </span>
           </button>
@@ -1336,7 +1309,7 @@ export const LayoutGridContainer = memo(
                 }),
               )
             }
-            className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs text-indigo-400/70 hover:text-indigo-300 hover:bg-indigo-900/20 transition-colors"
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition-colors ${tokens.muted} ${tokens.hoverBg} ${tokens.hoverText}`}
           >
             <FontAwesomeIcon
               icon="wand-magic-sparkles"
@@ -1567,7 +1540,7 @@ export const LayoutGridContainer = memo(
                     (cellDef.span.col && cellDef.span.col > 1))
                 )
               }
-              padding="p-3"
+              padding="px-2 pb-2"
             >
               {renderedWidget}
             </DraggableDroppableCellBody>
@@ -1615,16 +1588,6 @@ export const LayoutGridContainer = memo(
     }
 
     function handleDragItem(item) {}
-
-    function getBorderStyle() {
-      try {
-        return WidgetFactory.workspace(item["component"]) === "layout"
-          ? "border-dashed"
-          : "border-4";
-      } catch (e) {
-        return "";
-      }
-    }
 
     function renderComponentContainer(children) {
       if (!item) return null;
@@ -1706,9 +1669,7 @@ export const LayoutGridContainer = memo(
         scrollable={false}
         className={
           editing
-            ? `rounded overflow-x-clip border-2 rounded ${getContainerBorderColor(
-                item,
-              )} ${getBorderStyle()} min-h-24 z-10`
+            ? `rounded-lg overflow-x-clip border ${currentTheme["border-neutral-dark"] || ""} min-h-24 z-10`
             : ""
         }
         space={false}
@@ -1925,9 +1886,7 @@ export const LayoutGridContainer = memo(
             width={"w-full"}
             height={"h-full"}
             scrollable={false}
-            className={`rounded overflow-x-clip border-2 rounded ${getContainerBorderColor(
-              item,
-            )} ${getBorderStyle()} min-h-24 z-10`}
+            className={`rounded-lg overflow-x-clip border ${currentTheme["border-neutral-dark"] || ""} min-h-24 z-10`}
             space={false}
           >
             <LayoutContainer

@@ -1,11 +1,13 @@
 import React, { useState, useContext, useRef, useEffect } from "react";
 import {
+  Button,
   Checkbox,
   ConfirmationModal,
+  EmptyState,
   FontAwesomeIcon,
   SearchInput,
-  SectionLabel,
   SegmentedControl,
+  StatusBadge,
 } from "@trops/dash-react";
 import { AppContext } from "../../../Context/App/AppContext";
 import { useConfigTokens } from "../../Dashboard/ConfigListRow";
@@ -15,6 +17,7 @@ import {
   useProviderStatus,
 } from "../../AppPages/useProviderStatus";
 import { groupProviders } from "../../AppPages/providerSummary";
+import { ListGroupLabel, ManageLayout } from "../../AppPages/ManageLayout";
 import {
   applyProviderUse,
   planProviderUse,
@@ -32,12 +35,13 @@ import {
   headerTemplateToRows,
 } from "../../../utils/mcpUtils";
 
-// Class chips; values match providerTab ("credentials" is the credential class).
+// Class chips; values match providerTab ("credentials" is the credential
+// class). Plain labels (design audit): what each class is for, not its jargon.
 const CLASS_CHIPS = [
   { value: "all", label: "All" },
-  { value: "credentials", label: "Credentials" },
-  { value: "mcp", label: "MCP" },
-  { value: "websocket", label: "WebSocket" },
+  { value: "credentials", label: "API keys" },
+  { value: "mcp", label: "Tools (MCP)" },
+  { value: "websocket", label: "Live data" },
 ];
 const CLS_OF_TAB = {
   credentials: "credential",
@@ -85,8 +89,7 @@ export const ProvidersSection = ({
   const providers = appContext?.providers || {};
   const refreshProviders = appContext?.refreshProviders;
 
-  const { muted, strong, hairline, selectedBg, selectedBorder } =
-    useConfigTokens();
+  const { muted, strong, selectedBg, selectedBorder } = useConfigTokens();
   // MCP catalog: authCommand / credentialSchema lookups and status.
   const catalog = useMcpCatalog(dashApi);
   const status = useProviderStatus({ providers, workspaces, dashApi, catalog });
@@ -623,16 +626,10 @@ export const ProvidersSection = ({
   };
 
   const listContent = (
-    <div
-      role="list"
-      aria-label="Providers"
-      className="min-h-0 overflow-y-auto flex flex-col gap-3 pr-2"
-    >
+    <>
       {groups.map((g) => (
-        <div key={g.cls} className="flex flex-col gap-1">
-          <span data-testid="provider-group" className="px-3">
-            <SectionLabel text={g.label} />
-          </span>
+        <div key={g.cls} className="flex flex-col gap-0.5">
+          <ListGroupLabel text={g.label} testId="provider-group" />
           {g.items.map(({ name, provider, cls }) => {
             const active = !isFlowOpen && name === shownName;
             const st = status.statusOf(name);
@@ -644,7 +641,7 @@ export const ProvidersSection = ({
                 type="button"
                 aria-current={active ? "true" : undefined}
                 onClick={() => selectProvider(name)}
-                className={`w-full text-left rounded-lg px-3 py-2 border flex flex-row items-center gap-3 ${
+                className={`w-full text-left rounded-lg px-2 py-2 border flex flex-row items-center gap-3 ${
                   active
                     ? `${selectedBg} ${selectedBorder}`
                     : "border-transparent"
@@ -680,13 +677,11 @@ export const ProvidersSection = ({
         </div>
       ))}
       {!visibleNames.length ? (
-        <span className={`text-sm px-3 ${muted}`}>
-          {Object.keys(providers).length
-            ? "No providers match these filters."
-            : "No providers yet."}
+        <span className={`text-sm px-2 ${muted}`}>
+          No providers match these filters.
         </span>
       ) : null}
-    </div>
+    </>
   );
 
   // Closes whichever create-flow detail is open and re-opens the
@@ -837,61 +832,74 @@ export const ProvidersSection = ({
   } else if (!isFlowOpen) {
     detailContent = (
       <span className={`p-5 text-sm ${muted}`}>
-        {Object.keys(providers).length
-          ? "No providers match these filters."
-          : "No providers yet. Add one with New Provider."}
+        No providers match these filters.
       </span>
     );
   }
 
-  return (
-    // The page's base text colour (plain names inherit it); muted text
-    // keeps its own token.
-    <div
-      data-testid="providers-page"
-      className={`flex flex-col flex-1 min-h-0 gap-3 px-6 pt-4 pb-4 ${strong}`}
-    >
-      {/* Filter bar — fixed; the list and detail scroll on their own. */}
-      <div className="flex-shrink-0 flex flex-row flex-wrap items-center gap-2">
-        <div className="w-72">
-          <SearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder="Search providers…"
-          />
-        </div>
-        <SegmentedControl
-          ariaLabel="Class"
-          options={CLASS_CHIPS}
-          value={providerTab}
-          onChange={setProviderTab}
-        />
-        <Checkbox
-          label="Needs setup only"
-          checked={needsSetupOnly}
-          onChange={setNeedsSetupOnly}
-        />
-        <span className="flex-1" />
-        {needsSetupCount ? (
-          <span className="flex flex-row items-center gap-1.5 text-xs text-amber-400">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
-            {plural(needsSetupCount, "provider")} need
-            {needsSetupCount === 1 ? "s" : ""} setup
-          </span>
-        ) : null}
-      </div>
+  // No providers at all (and no create flow open): one empty state instead
+  // of search, filters and two "nothing here" lines.
+  const isEmpty = !Object.keys(providers).length && !isFlowOpen;
 
-      <div className="flex-1 min-h-0 grid grid-cols-3 gap-4">
-        {listContent}
-        {/* The create / edit forms scroll inside themselves (with their own
-            footers), so this pane only clips. */}
-        <div
-          data-testid="provider-detail"
-          className={`col-span-2 min-h-0 flex flex-col overflow-hidden rounded-lg border ${hairline}`}
-        >
-          {detailContent}
-        </div>
-      </div>
+  return (
+    <ManageLayout
+      testId="providers-page"
+      listLabel="Providers"
+      detailTestId="provider-detail"
+      // The create / edit forms scroll inside themselves (with their own
+      // footers), so this pane only clips.
+      detailFlush
+      empty={
+        isEmpty ? (
+          <EmptyState
+            testId="providers-empty"
+            icon={<FontAwesomeIcon icon="plug" className="h-6 w-6" />}
+            title="No providers yet"
+            description="Providers connect your widgets and bots to services like Slack or GitHub — add your first one to get started."
+          >
+            <Button
+              title="New provider"
+              size="sm"
+              onClick={() => startCreate(null, null)}
+            />
+          </EmptyState>
+        ) : null
+      }
+      toolbar={
+        <>
+          <div className="w-72">
+            <SearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search providers…"
+            />
+          </div>
+          <SegmentedControl
+            ariaLabel="Class"
+            options={CLASS_CHIPS}
+            value={providerTab}
+            onChange={setProviderTab}
+          />
+          <Checkbox
+            label="Needs setup only"
+            checked={needsSetupOnly}
+            onChange={setNeedsSetupOnly}
+          />
+          <span className="flex-1" />
+          {needsSetupCount ? (
+            <StatusBadge
+              state="warning"
+              compact
+              label={`${plural(needsSetupCount, "provider")} need${
+                needsSetupCount === 1 ? "s" : ""
+              } setup`}
+            />
+          ) : null}
+        </>
+      }
+      list={listContent}
+      detail={detailContent}
+    >
       <ConfirmationModal
         isOpen={!!deleteTarget}
         setIsOpen={() => setDeleteTarget(null)}
@@ -908,6 +916,6 @@ export const ProvidersSection = ({
         onSave={saveProviderUse}
         onClose={closeChooseWhereToUse}
       />
-    </div>
+    </ManageLayout>
   );
 };

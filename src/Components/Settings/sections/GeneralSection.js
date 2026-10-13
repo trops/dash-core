@@ -1,8 +1,50 @@
 import React, { useContext, useEffect, useState } from "react";
-import { Switch, DataList, SubHeading3, Button } from "@trops/dash-react";
+import {
+  Button2,
+  DataList,
+  StatusBadge,
+  SubHeading3,
+  Switch,
+} from "@trops/dash-react";
 import { AppContext } from "../../../Context/App/AppContext";
+import { useConfigTokens } from "../../Dashboard/ConfigListRow";
+
+/** A titled card around one group of settings (design audit, Oct 2026). */
+const SettingsGroup = ({ title, children }) => {
+  const { hairline } = useConfigTokens();
+  return (
+    <section
+      className={`flex flex-col gap-3 rounded-lg border p-4 ${hairline}`}
+    >
+      <SubHeading3 title={title} padding={false} />
+      {children}
+    </section>
+  );
+};
+
+/**
+ * One setting: its name, a one-line description (text-sm, the muted token,
+ * prose width) and its control on the right.
+ */
+const SettingRow = ({ label, description, extra = null, testId, children }) => {
+  const { muted } = useConfigTokens();
+  return (
+    <div
+      className="flex flex-row items-center justify-between gap-6"
+      data-testid={testId}
+    >
+      <div className="flex flex-col gap-0.5 min-w-0 max-w-prose">
+        <span className="text-sm font-medium">{label}</span>
+        <span className={`text-sm ${muted}`}>{description}</span>
+        {extra}
+      </div>
+      <div className="flex-shrink-0">{children}</div>
+    </div>
+  );
+};
 
 export const GeneralSection = () => {
+  const { muted, hairline, selectedBg: recessed } = useConfigTokens();
   const appContext = useContext(AppContext);
   const debugMode = appContext?.debugMode || false;
   const credentials = appContext?.credentials || {};
@@ -87,113 +129,106 @@ export const GeneralSection = () => {
     });
   }
 
+  const version = credentials.version || null;
+
   return (
-    <div className="flex flex-col space-y-6">
-      <div className="flex flex-col space-y-3">
-        <SubHeading3 title="Preferences" padding={false} />
-        <div className="flex flex-row items-center justify-between py-3">
-          <div className="flex flex-col">
-            <span className="text-sm font-medium">Debug Mode</span>
-            <span className="text-xs opacity-50">
-              Show debug borders and logging information
-            </span>
-          </div>
-          <Switch checked={debugMode} onChange={handleToggleDebug} />
-        </div>
-        <div
-          className="flex flex-row items-center justify-between py-3"
-          data-testid="general-section-check-for-updates-row"
+    <div className="flex flex-col gap-4">
+      <SettingsGroup title="Preferences">
+        <SettingRow
+          label="Debug mode"
+          description="Show debug borders and logging information."
         >
-          <div className="flex flex-col">
-            <span className="text-sm font-medium">
-              Check for updates on launch
-            </span>
-            <span className="text-xs opacity-50">
-              When enabled, the app checks the registry for widget package and
-              dashboard updates on launch and surfaces a one-click upgrade
-              prompt. You can always trigger a manual check from Account → Check
-              for updates.
-            </span>
-          </div>
+          <Switch
+            checked={debugMode}
+            onChange={handleToggleDebug}
+            ariaLabel="Debug mode"
+          />
+        </SettingRow>
+        <SettingRow
+          label="Check for updates on launch"
+          description="The app checks the registry for widget and dashboard updates when it starts and offers a one-click upgrade. You can always check from Account → Check for updates."
+          testId="general-section-check-for-updates-row"
+        >
           <Switch
             checked={checkForUpdatesOnLaunch}
             onChange={handleToggleCheckForUpdates}
+            ariaLabel="Check for updates on launch"
           />
-        </div>
-      </div>
+        </SettingRow>
+      </SettingsGroup>
 
-      <div className="flex flex-col space-y-3">
-        <SubHeading3 title="Data Directory" padding={false} />
-        <div className="flex flex-row items-center justify-between py-3">
-          <div className="flex flex-col">
-            <span className="text-sm font-medium">Application Data</span>
-            <span className="text-xs opacity-50">
-              Open the folder where settings, themes, and workspaces are stored
-            </span>
-            {dataDirectory && (
-              <span className="text-xs opacity-40 mt-1 font-mono">
+      <SettingsGroup title="Data directory">
+        <SettingRow
+          label="Application data"
+          description="The folder where settings, themes and dashboards are stored."
+          extra={
+            dataDirectory ? (
+              <span className={`text-xs font-mono break-all ${muted}`}>
                 {dataDirectory}
               </span>
-            )}
-          </div>
-          <Button title="Open Folder" onClick={handleOpenDataDirectory} />
-        </div>
-      </div>
+            ) : null
+          }
+        >
+          <Button2 title="Open Folder" onClick={handleOpenDataDirectory} />
+        </SettingRow>
+      </SettingsGroup>
 
       {/* Backup — Phase 4A. Bundles workspaces + themes + folders +
           providers (sans credentials) into a single ZIP. The
           credential strip is enforced server-side via the
           exportController allowlist; this button just routes the
           user through the save dialog. */}
-      <div className="flex flex-col space-y-3">
-        <SubHeading3 title="Backup" padding={false} />
-        <div className="flex flex-row items-center justify-between py-3">
-          <div className="flex flex-col">
-            <span className="text-sm font-medium">Export Everything</span>
-            <span className="text-xs opacity-50">
-              Save a ZIP of your workspaces, themes, folders, and provider
-              settings. Credentials are not included.
-            </span>
-            {exportFeedback && (
-              <span
-                className={`text-xs mt-1 ${
-                  exportFeedback.kind === "success"
-                    ? "text-green-400"
-                    : "text-red-400"
-                }`}
-                data-testid="export-feedback"
-              >
-                {exportFeedback.message}
+      <SettingsGroup title="Backup">
+        <SettingRow
+          label="Export everything"
+          description="Save a ZIP of your dashboards, themes, folders and provider settings. Credentials are not included."
+          extra={
+            exportFeedback ? (
+              <span data-testid="export-feedback">
+                <StatusBadge
+                  state={
+                    exportFeedback.kind === "success" ? "success" : "error"
+                  }
+                  compact
+                  label={exportFeedback.message}
+                />
               </span>
-            )}
-          </div>
-          <Button
+            ) : null
+          }
+        >
+          <Button2
             title={isExporting ? "Exporting…" : "Export Everything"}
             onClick={handleExportEverything}
             disabled={isExporting}
-            data-testid="export-everything-button"
+            testId="export-everything-button"
           />
-        </div>
-      </div>
+        </SettingRow>
+      </SettingsGroup>
 
-      <div className="flex flex-col space-y-3">
-        <SubHeading3 title="App Info" padding={false} />
+      <SettingsGroup title="App info">
         <DataList>
-          <DataList.Item label="App ID" value={credentials.appId || "—"} />
           <DataList.Item
-            label="Version"
-            value={credentials.version || "—"}
-            divider={false}
+            label="App ID"
+            value={credentials.appId || "—"}
+            divider={!!version}
           />
+          {/* Shown only when the app passes its version in. */}
+          {version ? (
+            <DataList.Item label="Version" value={version} divider={false} />
+          ) : null}
         </DataList>
-      </div>
-
-      <div className="flex flex-col space-y-3">
-        <SubHeading3 title="Settings File" padding={false} />
-        <pre className="text-xs bg-black/20 rounded p-3 overflow-auto max-h-64">
-          {JSON.stringify(appContext?.settings, null, 2)}
-        </pre>
-      </div>
+        <details className="flex flex-col gap-2">
+          <summary className={`cursor-pointer text-sm font-medium ${muted}`}>
+            Show raw settings
+          </summary>
+          <pre
+            data-testid="raw-settings"
+            className={`mt-2 text-xs rounded-md border p-3 overflow-auto max-h-64 ${hairline} ${recessed}`}
+          >
+            {JSON.stringify(appContext?.settings, null, 2)}
+          </pre>
+        </details>
+      </SettingsGroup>
     </div>
   );
 };

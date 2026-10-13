@@ -1,8 +1,10 @@
 import React, { useContext, useEffect, useState } from "react";
 import {
+  Button,
+  Button2,
   Button3,
   ButtonIcon,
-  ButtonIcon2,
+  FontAwesomeIcon,
   SegmentedControl,
   SubHeading3,
   Tag,
@@ -148,27 +150,23 @@ export const DashboardHeader = ({
               />
             )}
           </nav>
-          <div className="flex flex-row space-x-1 shrink-0 items-center">
+          {/* +Row / +Column stay quiet (ghost); Cancel is secondary; Save
+              is the one primary button. */}
+          <div className="flex flex-row gap-2 shrink-0 items-center">
             {onAddRow && <Button3 title="+ Row" onClick={onAddRow} size="sm" />}
             {onAddColumn && (
               <Button3 title="+ Column" onClick={onAddColumn} size="sm" />
             )}
             {onClickEdit !== null && (
-              <ButtonIcon2
-                icon="xmark"
-                text="Cancel"
-                onClick={onClickEdit}
-                hoverBackgroundColor={"hover:bg-neutral-700"}
-              />
+              <Button2 title="Cancel" onClick={onClickEdit} size="sm" />
             )}
             {onSaveChanges !== null && (
-              <ButtonIcon2
-                icon="check"
-                text="Save"
-                onClick={onSaveChanges}
-                backgroundColor={"bg-green-800"}
-                hoverBackgroundColor={"hover:bg-green-700"}
-              />
+              <Button onClick={onSaveChanges} size="sm">
+                <span className="inline-flex items-center gap-1.5">
+                  <FontAwesomeIcon icon="check" className="h-3 w-3" />
+                  Save
+                </span>
+              </Button>
             )}
           </div>
         </>

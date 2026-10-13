@@ -126,10 +126,10 @@ describe("ThemesPage list (NAV-009 AC1)", () => {
     expect(names()).toEqual(["Coral"]);
   });
 
-  it("the Light / Dark switch changes the app's variant", () => {
+  it("has no app-wide Light / Dark switch (the app's mode is in the account menu)", () => {
     const { ctx } = setup();
-    fireEvent.click(screen.getByRole("switch"));
-    expect(ctx.changeThemeVariant).toHaveBeenCalledWith("light");
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(ctx.changeThemeVariant).not.toHaveBeenCalled();
   });
 
   it("Browse marketplace shows the theme marketplace", () => {
@@ -176,7 +176,10 @@ describe("ThemesPage actions (NAV-009 AC3)", () => {
       within(detail()).queryByRole("button", { name: "Use as app theme" }),
     ).toBeNull();
     expect(within(detail()).getByText("Current app theme")).toBeTruthy();
-    expect(within(detail()).queryByRole("button", { name: "Delete" })).toBe(
+    fireEvent.click(
+      within(detail()).getByRole("button", { name: "More actions" }),
+    );
+    expect(within(detail()).queryByRole("menuitem", { name: "Delete" })).toBe(
       null,
     );
   });
@@ -203,7 +206,10 @@ describe("ThemesPage actions (NAV-009 AC3)", () => {
     const { dashApi, ctx } = setup();
     fireEvent.click(row("Bravo"));
     fireEvent.click(
-      within(detail()).getByRole("button", { name: "Duplicate" }),
+      within(detail()).getByRole("button", { name: "More actions" }),
+    );
+    fireEvent.click(
+      within(detail()).getByRole("menuitem", { name: "Duplicate" }),
     );
     expect(dashApi.saveTheme).toHaveBeenCalledTimes(1);
     const [appId, key, theme] = dashApi.saveTheme.mock.calls[0];
@@ -216,18 +222,29 @@ describe("ThemesPage actions (NAV-009 AC3)", () => {
   it("Publish is offered for your own themes, not registry ones", () => {
     setup();
     fireEvent.click(row("Bravo"));
-    fireEvent.click(within(detail()).getByRole("button", { name: "Publish…" }));
+    fireEvent.click(
+      within(detail()).getByRole("button", { name: "More actions" }),
+    );
+    fireEvent.click(
+      within(detail()).getByRole("menuitem", { name: "Publish…" }),
+    );
     expect(screen.getByTestId("publish")).toHaveTextContent("theme-b");
     fireEvent.click(row("Coral"));
+    fireEvent.click(
+      within(detail()).getByRole("button", { name: "More actions" }),
+    );
     expect(
-      within(detail()).queryByRole("button", { name: "Publish…" }),
+      within(detail()).queryByRole("menuitem", { name: "Publish…" }),
     ).toBeNull();
   });
 
   it("delete asks first (naming the dashboards using it), then deletes", async () => {
     const { dashApi } = setup();
     fireEvent.click(row("Bravo"));
-    fireEvent.click(within(detail()).getByRole("button", { name: "Delete" }));
+    fireEvent.click(
+      within(detail()).getByRole("button", { name: "More actions" }),
+    );
+    fireEvent.click(within(detail()).getByRole("menuitem", { name: "Delete" }));
     const modal = screen.getByTestId("confirmation-modal");
     expect(
       within(modal).getByText(

@@ -64,6 +64,39 @@ export function usageOf(componentNames, workspaces) {
   return out;
 }
 
+// ComponentConfigModel's default `name` — not a real title.
+const DEFAULT_CONFIG_NAME = "My Workspace";
+
+/**
+ * A widget's title in lists: its display name, else its component name
+ * made readable ("trops.slack.ChannelMessages" → "Channel Messages").
+ * The config model's default "My Workspace" never counts as a name.
+ */
+export function widgetTitle(w) {
+  const real = (v) =>
+    typeof v === "string" && v.trim() && v.trim() !== DEFAULT_CONFIG_NAME
+      ? v.trim()
+      : null;
+  const shown = real(w && w.displayName);
+  if (shown) return shown;
+  const component =
+    ((w && w.componentNames) || []).find(
+      (n) => n && !String(n).startsWith("@"),
+    ) ||
+    (w && w.name);
+  const last = real(
+    String(component || "")
+      .split(".")
+      .pop(),
+  );
+  if (!last) return "Widget";
+  return last
+    .replace(/[-_]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .trim();
+}
+
 /** The package's name in the list (its scope is the org heading). */
 export function packageLabel(pkg) {
   if (pkg.isBuiltIn) return pkg.id.replace(/^builtin:/, "");

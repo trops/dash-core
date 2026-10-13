@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Button, SectionLabel } from "@trops/dash-react";
+import { Button, SectionLabel, SegmentedControl } from "@trops/dash-react";
 import { getAppPage } from "../Navigation/appPages";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { DashboardsPage } from "./DashboardsPage";
@@ -173,43 +173,35 @@ export const AppPage = ({
             {page.label}
           </h2>
           <span className={`text-sm ${muted}`}>{page.description}</span>
-          {pageKey === "dashboards" ? (
-            <div role="tablist" className="flex flex-row gap-4 mt-2">
-              {[
-                ["dashboards", "Dashboards"],
-                ["folders", "Folders"],
-              ].map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  role="tab"
-                  aria-selected={sub === key}
-                  onClick={() => setSub(key)}
-                  className={`py-1 text-sm font-medium -mb-px border-b-2 ${
-                    sub === key
-                      ? `border-indigo-400 ${strong}`
-                      : `border-transparent ${muted}`
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          ) : null}
         </div>
-        <Button
-          title={CREATE_LABEL[section]}
-          size="sm"
-          onClick={() =>
-            OPENS_CREATE[section]
-              ? window.dispatchEvent(
-                  new CustomEvent("dash:open-create", {
-                    detail: { type: OPENS_CREATE[section] },
-                  }),
-                )
-              : setCreateRequested(true)
-          }
-        />
+        <div className="flex flex-row items-center gap-3 flex-shrink-0">
+          {/* Dashboards / Folders sit beside the page action, so every
+              Manage header is the same height. */}
+          {pageKey === "dashboards" ? (
+            <SegmentedControl
+              ariaLabel="Show"
+              options={[
+                { value: "dashboards", label: "Dashboards" },
+                { value: "folders", label: "Folders" },
+              ]}
+              value={sub}
+              onChange={setSub}
+            />
+          ) : null}
+          <Button
+            title={CREATE_LABEL[section]}
+            size="sm"
+            onClick={() =>
+              OPENS_CREATE[section]
+                ? window.dispatchEvent(
+                    new CustomEvent("dash:open-create", {
+                      detail: { type: OPENS_CREATE[section] },
+                    }),
+                  )
+                : setCreateRequested(true)
+            }
+          />
+        </div>
       </div>
       <div className="flex flex-col flex-1 min-h-0">{body}</div>
     </div>

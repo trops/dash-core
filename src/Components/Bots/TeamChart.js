@@ -459,7 +459,7 @@ export const TeamChart = ({
           className={`absolute text-sm text-center ${muted}`}
           style={{ left: 0, right: 0, top: layout.lead.y + CARD_H + 40 }}
         >
-          No bots yet — + Add bot.
+          No bots on this dashboard yet. Add one with Add bot.
         </div>
       ) : null}
       {pop && byId.get(pop.from) && byId.get(pop.to) ? (

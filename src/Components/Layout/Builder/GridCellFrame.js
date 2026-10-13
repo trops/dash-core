@@ -1,5 +1,9 @@
-import React, { useState } from "react";
-import { FontAwesomeIcon } from "@trops/dash-react";
+import React, { useContext, useState } from "react";
+import {
+  FontAwesomeIcon,
+  ThemeContext,
+  useStatusTokens,
+} from "@trops/dash-react";
 
 /**
  * GridCellFrame — the frame around an occupied grid cell's widget, in BOTH
@@ -50,20 +54,25 @@ export function GridCellFrame({
         : dimmed
           ? "dimmed"
           : undefined;
-  // Safelisted border colours only (one at a time) — the edit card's border
-  // carries the state; dimmed fades the whole card.
+  const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
+  const status = useStatusTokens();
+  // Edit mode: this frame is the ONE card around the widget — a hairline,
+  // rounded-lg box; the header and footer sit inside it with no borders or
+  // fills of their own. Theme tokens only (they follow light/dark); the
+  // border carries the state, dimmed fades the whole card.
+  const hairline = currentTheme["border-neutral-dark"] || "";
   const borderClass =
     state === "selected"
-      ? "border-2 border-blue-500"
+      ? `border-2 ${currentTheme["border-primary-medium"] || ""}`
       : state === "related"
-        ? "border-2 border-green-500"
-        : "border border-dashed border-gray-700";
+        ? `border-2 ${status.success.accentBorder}`
+        : `border ${hairline}`;
   const fadeClass = state === "dimmed" ? "opacity-50" : "";
   return (
     <div
       className={
         editing
-          ? `flex flex-col w-full h-full min-h-0 overflow-hidden rounded ${borderClass} ${fadeClass}`
+          ? `flex flex-col w-full h-full min-h-0 overflow-hidden rounded-lg ${borderClass} ${fadeClass}`
           : "relative w-full h-full"
       }
       data-state={state}

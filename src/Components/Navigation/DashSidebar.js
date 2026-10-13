@@ -73,6 +73,8 @@ export const DashSidebar = ({
       onCollapsedChange={onCollapsedChange}
       width="w-56"
       collapsedWidth="w-12"
+      // dr-rail: a raised region with a hairline edge (layout rule 1).
+      className="dr-rail"
     >
       <Sidebar.Header>
         <div className="flex items-center justify-between">

@@ -130,7 +130,7 @@ describe("AppPage", () => {
   it("Dashboards switches between Dashboards and Folders", () => {
     render(<AppPage pageKey="dashboards" />);
     expect(screen.getByTestId("section-dashboards")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: "Folders" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Folders" }));
     expect(screen.getByTestId("section-folders")).toBeInTheDocument();
     expect(screen.getByText("New Folder")).toBeInTheDocument();
   });
@@ -252,24 +252,16 @@ describe("AppPage", () => {
     );
   });
 
-  it("the selected Dashboards/Folders tab is readable too", () => {
-    render(
-      <ThemeContext.Provider
-        value={{
-          currentTheme: {
-            "text-neutral-light": "tok-strong",
-            "text-neutral-medium": "tok-muted",
-          },
-        }}
-      >
-        <AppPage pageKey="dashboards" />
-      </ThemeContext.Provider>,
+  it("Dashboards / Folders is a segmented control showing the current view", () => {
+    render(<AppPage pageKey="dashboards" />);
+    expect(screen.getByRole("radio", { name: "Dashboards" })).toHaveAttribute(
+      "aria-checked",
+      "true",
     );
-    expect(screen.getByRole("tab", { name: "Dashboards" })).toHaveClass(
-      "tok-strong",
+    expect(screen.getByRole("radio", { name: "Folders" })).toHaveAttribute(
+      "aria-checked",
+      "false",
     );
-    expect(screen.getByRole("tab", { name: "Folders" })).toHaveClass(
-      "tok-muted",
-    );
+    expect(screen.queryByRole("tab")).toBeNull();
   });
 });

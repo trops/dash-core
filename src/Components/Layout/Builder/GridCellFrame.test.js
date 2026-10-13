@@ -108,3 +108,36 @@ describe("GridCellFrame — select to edit (phase 1c)", () => {
     expect(container.firstChild).not.toHaveAttribute("data-state");
   });
 });
+
+describe("GridCellFrame — one themed card while editing (design audit)", () => {
+  const { ThemeContext } = require("@trops/dash-react");
+  const theme = {
+    "border-neutral-dark": "border-neutral-700",
+    "border-primary-medium": "border-primary-500",
+  };
+  const themed = (editing, extra) => (
+    <ThemeContext.Provider value={{ currentTheme: theme }}>
+      {frame(editing, extra)}
+    </ThemeContext.Provider>
+  );
+
+  test("the edit frame is a rounded hairline card in the theme's neutral border", () => {
+    const { container } = render(themed(true));
+    const cls = container.firstChild.className;
+    expect(cls).toMatch(/rounded-lg/);
+    expect(cls).toMatch(/border-neutral-700/);
+    expect(cls).not.toMatch(/border-dashed|border-gray-|border-blue-/);
+  });
+
+  test("selected uses the theme's primary border", () => {
+    const { container } = render(themed(true, { selected: true }));
+    expect(container.firstChild.className).toMatch(
+      /border-2 border-primary-500/,
+    );
+  });
+
+  test("view mode is untouched", () => {
+    const { container } = render(themed(false));
+    expect(container.firstChild.className).toBe("relative w-full h-full");
+  });
+});

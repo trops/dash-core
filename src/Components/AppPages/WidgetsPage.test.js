@@ -244,6 +244,10 @@ describe("WidgetsPage list (NAV-008 AC1, AC2)", () => {
     fireEvent.click(pkgRow("slack"));
     expect(within(list()).getByText("Channel Messages")).toBeInTheDocument();
     expect(within(list()).getByText("Slack Channels")).toBeInTheDocument();
+    // The widgets sit inside the open package's group container.
+    const group = within(list()).getByTestId("package-group");
+    expect(within(group).getByText("Channel Messages")).toBeInTheDocument();
+    expect(group).toContainElement(pkgRow("slack"));
   });
 
   it("search on a widget shows just that widget under its package", () => {
@@ -303,8 +307,15 @@ describe("WidgetsPage package detail (NAV-008 AC3)", () => {
   it("uninstall asks first (naming the dashboards), then removes the package", async () => {
     setup();
     fireEvent.click(pkgRow("slack"));
+    // Uninstall is in the … menu, not beside Publish.
+    expect(
+      within(detail()).queryByRole("button", { name: "Uninstall" }),
+    ).toBeNull();
     fireEvent.click(
-      within(detail()).getByRole("button", { name: "Uninstall" }),
+      within(detail()).getByRole("button", { name: "More actions" }),
+    );
+    fireEvent.click(
+      within(detail()).getByRole("menuitem", { name: "Uninstall" }),
     );
     const modal = screen.getByTestId("confirmation-modal");
     expect(
@@ -330,7 +341,10 @@ describe("WidgetsPage package detail (NAV-008 AC3)", () => {
     );
     expect(screen.getByTestId("publish")).toHaveTextContent("@trops/slack");
     fireEvent.click(
-      within(detail()).getByRole("button", { name: "Open in Finder" }),
+      within(detail()).getByRole("button", { name: "More actions" }),
+    );
+    fireEvent.click(
+      within(detail()).getByRole("menuitem", { name: "Open in Finder" }),
     );
     expect(window.mainApi.shell.openPath).toHaveBeenCalledWith("/w/slack");
     fireEvent.click(
@@ -354,7 +368,10 @@ describe("WidgetsPage package detail (NAV-008 AC3)", () => {
     expect(screen.getByTestId("publish")).toHaveTextContent(
       "@ai-built/draft-x",
     );
-    fireEvent.click(within(detail()).getByRole("button", { name: "Delete" }));
+    fireEvent.click(
+      within(detail()).getByRole("button", { name: "More actions" }),
+    );
+    fireEvent.click(within(detail()).getByRole("menuitem", { name: "Delete" }));
     fireEvent.click(
       within(screen.getByTestId("confirmation-modal")).getByText("Delete"),
     );
@@ -371,8 +388,11 @@ describe("WidgetsPage package detail (NAV-008 AC3)", () => {
     ]) {
       expect(within(detail()).queryByRole("button", { name })).toBeNull();
     }
+    fireEvent.click(
+      within(detail()).getByRole("button", { name: "More actions" }),
+    );
     expect(
-      within(detail()).getByRole("button", { name: "Uninstall" }),
+      within(detail()).getByRole("menuitem", { name: "Uninstall" }),
     ).toBeInTheDocument();
   });
 
@@ -428,6 +448,10 @@ describe("WidgetsPage package detail (NAV-008 AC3)", () => {
     for (const name of ["Uninstall", "Publish…", "Manage permissions"]) {
       expect(within(detail()).queryByRole("button", { name })).toBeNull();
     }
+    // Nothing to put in a … menu either.
+    expect(
+      within(detail()).queryByRole("button", { name: "More actions" }),
+    ).toBeNull();
   });
 });
 

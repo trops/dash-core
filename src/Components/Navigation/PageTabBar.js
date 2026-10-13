@@ -112,11 +112,11 @@ export const PageTabBar = ({
               onDragOver={(e) => handleDragOver(e, page.id)}
               onDrop={(e) => handleDrop(e, page.id)}
               onDragEnd={handleDragEnd}
-              className={`dr-tab ${isActive ? "dr-tab-active" : ""} group flex items-center gap-1.5 px-3 py-1 text-xs rounded-md whitespace-nowrap transition-all duration-100 cursor-pointer ${
+              className={`dr-tab ${isActive ? "dr-tab-active" : ""} group flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md whitespace-nowrap transition-all duration-100 cursor-pointer ${
                 isActive
-                  ? "bg-white/15 text-white"
-                  : "text-gray-400 hover:bg-white/10 hover:text-gray-200"
-              } ${isDragOver ? "ring-1 ring-blue-400" : ""} ${
+                  ? `${currentTheme["bg-neutral-very-dark"] || ""} ${currentTheme["text-neutral-light"] || ""}`
+                  : `${currentTheme["text-neutral-medium"] || ""} ${currentTheme["hover-bg-neutral-very-dark"] || ""}`
+              } ${isDragOver ? `ring-1 ${currentTheme["ring-primary-medium"] || ""}` : ""} ${
                 editMode ? "cursor-grab active:cursor-grabbing" : ""
               }`}
             >
@@ -131,7 +131,7 @@ export const PageTabBar = ({
                     if (e.key === "Enter") commitRename();
                     if (e.key === "Escape") setEditingId(null);
                   }}
-                  className="bg-transparent border-b border-blue-400 text-xs text-white outline-none w-20"
+                  className={`bg-transparent border-b text-sm outline-none w-24 ${currentTheme["border-primary-medium"] || ""} ${currentTheme["text-neutral-light"] || ""}`}
                   onClick={(e) => e.stopPropagation()}
                 />
               ) : (
@@ -144,7 +144,9 @@ export const PageTabBar = ({
                     e.stopPropagation();
                     onDeletePage && onDeletePage(page.id);
                   }}
-                  className={`flex items-center justify-center h-4 w-4 rounded-sm hover:bg-white/10 ${
+                  aria-label={`Delete ${page.name}`}
+                  role="button"
+                  className={`flex items-center justify-center h-6 w-6 rounded ${currentTheme["hover-bg-neutral-very-dark"] || ""} ${
                     isActive ? "opacity-60" : "opacity-0 group-hover:opacity-60"
                   }`}
                 >
@@ -171,10 +173,10 @@ export const PageTabBar = ({
         <button
           type="button"
           onClick={onAddPage}
-          className="dr-tab flex items-center gap-1 px-2 py-1 text-xs rounded-md text-gray-500 hover:bg-white/10 hover:text-gray-300 transition-colors"
+          className={`dr-tab flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors ${currentTheme["text-neutral-medium"] || ""} ${currentTheme["hover-bg-neutral-very-dark"] || ""}`}
         >
-          <FontAwesomeIcon icon="plus" className="h-2.5 w-2.5" />
-          <span>Add Page</span>
+          <FontAwesomeIcon icon="plus" className="h-3 w-3" />
+          <span>Add page</span>
         </button>
       )}
 

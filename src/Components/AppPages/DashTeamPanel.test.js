@@ -74,6 +74,19 @@ test("shows the role's job, its recommended model first, and no Delete", async (
   expect(screen.queryByText("Delete")).toBeNull();
 });
 
+test("Dash team is a badge, Model is labelled once, Last run is a titled group", async () => {
+  setup();
+  expect(
+    screen.getByText("Dash team").closest("[data-testid='status-badge']"),
+  ).not.toBeNull();
+  await waitFor(() =>
+    expect(screen.getByLabelText("Model").options.length).toBe(3),
+  );
+  // Only the picker's own label — no separate "Model" section label.
+  expect(screen.getAllByText("Model")).toHaveLength(1);
+  expect(screen.getByRole("heading", { name: "Last run" })).toBeInTheDocument();
+});
+
 test("picking a model saves it for this role on this provider", async () => {
   const { onChanged } = setup();
   await waitFor(() =>

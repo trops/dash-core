@@ -32,6 +32,6 @@ describe("ChatCore — End Session button removal", () => {
   });
 
   test("New Chat button still rendered (regression guard)", () => {
-    expect(source).toMatch(/>\s*New Chat\s*</);
+    expect(source).toMatch(/>\s*New chat\s*</);
   });
 });

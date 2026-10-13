@@ -11,16 +11,28 @@
 
 import React, { useContext, useState } from "react";
 import {
-  ButtonIcon2,
+  ButtonIcon3,
   DropdownPanel,
   FontAwesomeIcon,
   MenuItem2,
+  ThemeContext,
+  useStatusTokens,
 } from "@trops/dash-react";
 import { WidgetIcon } from "./WidgetIcon";
 import { ComponentManager } from "../../../../ComponentManager";
 import { getUserConfigurableProviders } from "../../../../utils/providerUtils";
 import { pickWidgetDisplayName } from "../../../../utils/widgetIdentity";
 import { AppContext } from "../../../../Context";
+
+// ComponentConfigModel's fallback `name` for a config that sets none.
+const DEFAULT_CONFIG_NAME = "My Workspace";
+
+// "ComposedWidget3" → "Composed Widget 3", "MCPServer" → "MCP Server".
+const splitWords = (s) =>
+  String(s)
+    .replace(/([a-z])([A-Z0-9])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/([0-9])([A-Za-z])/g, "$1 $2");
 
 export const WidgetCardHeader = ({
   item, // Widget/component item
@@ -66,7 +78,27 @@ export const WidgetCardHeader = ({
   // truth: `pickWidgetDisplayName` so the same widget shows the same
   // name in WidgetsTab, Listeners tab, Providers tab, and the layout
   // footer.
-  const widgetName = pickWidgetDisplayName(widgetItem, widgetConfig);
+  // A widget config without its own `name` gets the model default "My
+  // Workspace" — not the widget's name — so skip it and fall through to
+  // the component name.
+  // A bare component name ("ComposedWidget3") reads as words.
+  const pickedName = pickWidgetDisplayName(
+    widgetItem,
+    widgetConfig && widgetConfig.name === DEFAULT_CONFIG_NAME
+      ? { ...widgetConfig, name: null }
+      : widgetConfig,
+  );
+  const componentTail =
+    typeof widgetItem?.component === "string"
+      ? widgetItem.component.split(".").pop()
+      : "";
+  const widgetName =
+    pickedName && pickedName === componentTail
+      ? splitWords(pickedName)
+      : pickedName;
+
+  const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
+  const status = useStatusTokens();
 
   // Show the full scoped registry id (`scope.package.Component`) as
   // the subtitle. The friendly title on line 1 may be a custom user
@@ -167,7 +199,7 @@ export const WidgetCardHeader = ({
   }
   if (onConfigure) {
     overflowActions.push({
-      icon: "phone",
+      icon: "tower-broadcast",
       label: "Listeners",
       onClick: () => {
         onConfigure(widgetItem, "handlers");
@@ -226,21 +258,27 @@ export const WidgetCardHeader = ({
     });
   }
 
+  // Theme tokens (light + dark). The header has no border or fill of its
+  // own — it sits inside the cell's one frame (GridCellFrame); the merge
+  // selection ring lives on the grid cell.
+  const strong = currentTheme["text-neutral-light"] || "";
+  const muted = currentTheme["text-neutral-medium"] || "";
+  const hairline = currentTheme["border-neutral-dark"] || "";
+  const accentBorder = currentTheme["border-primary-medium"] || "";
+
   return (
-    <div
-      className={`flex items-center gap-3 px-3 py-2.5 bg-transparent border-b border-gray-700 ${
-        isSelected ? "ring-2 ring-blue-500 ring-inset" : ""
-      }`}
-    >
+    <div className="flex items-center gap-3 px-3 py-2">
       {/* Cell selection checkbox */}
       {onToggleSelect && (
         <button
           className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0 ${
             isSelected
-              ? "bg-blue-500 border-blue-500 text-white"
+              ? `${currentTheme["bg-primary-medium"] || ""} ${accentBorder} ${
+                  currentTheme["text-primary-very-light"] || ""
+                }`
               : isSelectable
-                ? "bg-gray-800/80 border-blue-400 animate-pulse"
-                : "bg-gray-800/80 border-gray-500 opacity-30 cursor-not-allowed"
+                ? `bg-transparent ${accentBorder} animate-pulse`
+                : `bg-transparent ${hairline} opacity-30 cursor-not-allowed`
           }`}
           onClick={(e) => {
             e.stopPropagation();
@@ -265,21 +303,21 @@ export const WidgetCardHeader = ({
         <WidgetIcon
           icon={isWidgetMissing ? "triangle-exclamation" : widgetConfig?.icon}
           className={`h-4 w-4 flex-shrink-0 ${
-            isWidgetMissing ? "text-amber-500" : "text-white/60"
+            isWidgetMissing ? status.warning.icon : muted
           }`}
         />
         <div className="flex flex-col min-w-0 leading-tight">
-          <span className="font-medium text-sm text-gray-100 truncate">
+          <span className={`font-medium text-sm truncate ${strong}`}>
             {widgetName || cellNumber || "Empty"}
             {isWidgetMissing && (
-              <span className="text-amber-500/70 font-normal ml-1">
+              <span className={`font-normal ml-1 ${status.warning.icon}`}>
                 (not found)
               </span>
             )}
           </span>
           {packageLabel && (
             <span
-              className="text-[10px] text-gray-500 font-mono truncate"
+              className={`text-xs font-mono truncate ${muted}`}
               title={packageLabel}
             >
               {packageLabel}
@@ -289,22 +327,25 @@ export const WidgetCardHeader = ({
       </div>
 
       {/* One overflow button for the whole header — providers +
-          actions — so the widget title always gets full width.
-          Amber dot indicates any unresolved required provider. */}
+          actions — so the widget title always gets full width. A quiet
+          28px icon button (dr-row-actions keeps it unfilled until
+          hovered); a warning dot marks an unresolved required provider. */}
       {(providerRequirements.length > 0 ||
         overflowActions.length > 0 ||
         onMoreOptions) && (
         <div className="relative flex-shrink-0">
-          <div className="relative inline-flex">
-            <ButtonIcon2
+          <div className="dr-row-actions relative inline-flex">
+            <ButtonIcon3
               icon="ellipsis-vertical"
               onClick={() => setShowOverflowMenu((v) => !v)}
-              title="Providers & actions"
-              theme={false}
+              ariaLabel="Widget options"
+              backgroundColor="bg-transparent"
+              textColor={muted}
+              className="h-7 w-7"
             />
             {hasUnresolvedRequiredProvider && (
               <span
-                className="absolute top-1 right-1 h-2 w-2 rounded-full bg-amber-400 border border-black pointer-events-none"
+                className={`absolute top-1 right-1 h-2 w-2 rounded-full pointer-events-none ${status.warning.solidBg}`}
                 title="Required provider not set"
               />
             )}
@@ -324,11 +365,13 @@ export const WidgetCardHeader = ({
               <MenuItem2 key={action.label} onClick={action.onClick}>
                 <FontAwesomeIcon
                   icon={action.icon}
-                  className="w-4 text-center opacity-60"
+                  className={`w-4 text-center ${muted}`}
                 />
                 <span className="flex-1">{action.label}</span>
                 {action.badge && (
-                  <span className="ml-auto text-[10px] font-bold text-amber-300">
+                  <span
+                    className={`ml-auto text-xs font-bold ${status.warning.icon}`}
+                  >
                     {action.badge}
                   </span>
                 )}

@@ -22,6 +22,9 @@ import {
   ButtonIcon,
   Toast,
   ConfirmationModal,
+  AlertBanner,
+  Button2,
+  ButtonIcon3,
 } from "@trops/dash-react";
 import { LayoutModel, DashboardModel } from "../../Models";
 import { ThemeManagerModal } from "../../Components/Theme";
@@ -2636,35 +2639,38 @@ const DashboardStageInner = ({
                       !dismissedMissingForWorkspace.has(
                         workspaceSelected?.id,
                       ) && (
-                        <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 flex-shrink-0">
-                          <FontAwesomeIcon
-                            icon="triangle-exclamation"
-                            className="h-3.5 w-3.5 text-amber-400 flex-shrink-0"
-                          />
-                          <span className="text-xs text-amber-300/90 flex-1">
-                            {missingComponents.length} widgets are missing from
-                            this dashboard.
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setIsMissingWidgetsModalOpen(true)}
-                            className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium"
-                          >
-                            Resolve
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setDismissedMissingForWorkspace(
-                                (prev) =>
-                                  new Set([...prev, workspaceSelected?.id]),
-                              )
-                            }
-                            className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                          >
-                            <FontAwesomeIcon icon="xmark" className="h-3 w-3" />
-                          </button>
-                        </div>
+                        <AlertBanner
+                          variant="warning"
+                          size="compact"
+                          animate={false}
+                          className="flex-shrink-0 mx-4 mt-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="flex-1 min-w-0">
+                              {missingComponents.length} widgets are missing
+                              from this dashboard.
+                            </span>
+                            <Button2
+                              title="Resolve"
+                              size="sm"
+                              onClick={() => setIsMissingWidgetsModalOpen(true)}
+                            />
+                            <span className="dr-row-actions inline-flex">
+                              <ButtonIcon3
+                                icon="xmark"
+                                ariaLabel="Dismiss"
+                                backgroundColor="bg-transparent"
+                                className="h-7 w-7"
+                                onClick={() =>
+                                  setDismissedMissingForWorkspace(
+                                    (prev) =>
+                                      new Set([...prev, workspaceSelected?.id]),
+                                  )
+                                }
+                              />
+                            </span>
+                          </div>
+                        </AlertBanner>
                       )}
                     {/* Unresolved-config banner — separates providers vs
                       listeners so the message is honest. Clicking
@@ -2675,39 +2681,42 @@ const DashboardStageInner = ({
                       !dismissedUnresolvedForWorkspace.has(
                         workspaceSelected?.id,
                       ) && (
-                        <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 flex-shrink-0">
-                          <FontAwesomeIcon
-                            icon="triangle-exclamation"
-                            className="h-3.5 w-3.5 text-amber-400 flex-shrink-0"
-                          />
-                          <span className="text-xs text-amber-300/90 flex-1">
-                            {[
-                              unresolvedProvidersCount > 0 &&
-                                `${unresolvedProvidersCount} widget${unresolvedProvidersCount === 1 ? "" : "s"} need${unresolvedProvidersCount === 1 ? "s" : ""} a provider`,
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setIsConfigModalOpen(true)}
-                            className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium"
-                          >
-                            Configure
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setDismissedUnresolvedForWorkspace(
-                                (prev) =>
-                                  new Set([...prev, workspaceSelected?.id]),
-                              )
-                            }
-                            className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                          >
-                            <FontAwesomeIcon icon="xmark" className="h-3 w-3" />
-                          </button>
-                        </div>
+                        <AlertBanner
+                          variant="warning"
+                          size="compact"
+                          animate={false}
+                          className="flex-shrink-0 mx-4 mt-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="flex-1 min-w-0">
+                              {[
+                                unresolvedProvidersCount > 0 &&
+                                  `${unresolvedProvidersCount} widget${unresolvedProvidersCount === 1 ? "" : "s"} need${unresolvedProvidersCount === 1 ? "s" : ""} a provider`,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                            <Button2
+                              title="Configure"
+                              size="sm"
+                              onClick={() => setIsConfigModalOpen(true)}
+                            />
+                            <span className="dr-row-actions inline-flex">
+                              <ButtonIcon3
+                                icon="xmark"
+                                ariaLabel="Dismiss"
+                                backgroundColor="bg-transparent"
+                                className="h-7 w-7"
+                                onClick={() =>
+                                  setDismissedUnresolvedForWorkspace(
+                                    (prev) =>
+                                      new Set([...prev, workspaceSelected?.id]),
+                                  )
+                                }
+                              />
+                            </span>
+                          </div>
+                        </AlertBanner>
                       )}
                     {stageMode === "bots" ? (
                       <BotsView

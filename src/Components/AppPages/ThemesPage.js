@@ -7,7 +7,6 @@ import {
   SearchInput,
   SectionLabel,
   SegmentedControl,
-  Switch,
   ThemeContext,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
@@ -18,6 +17,7 @@ import { PublishThemeModal } from "../Settings/details/PublishThemeModal";
 import { ColorSwatchGrid } from "../Theme/ColorSwatchGrid";
 import { ThemePreview } from "./ThemePreview";
 import { duplicateTheme, filterThemes, themeRows } from "./themeSummary";
+import { ManageLayout, OverflowMenu } from "./ManageLayout";
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const CHIPS = [
@@ -84,21 +84,29 @@ const ThemeDetailPanel = ({
             size="sm"
             onClick={() => onEdit(row.key)}
           />
-          <Button3
-            title="Duplicate"
-            size="sm"
-            onClick={() => onDuplicate(row.key)}
+          <OverflowMenu
+            items={[
+              {
+                label: "Duplicate",
+                icon: "clone",
+                onClick: () => onDuplicate(row.key),
+              },
+              canPublish
+                ? {
+                    label: "Publish…",
+                    icon: "cloud-arrow-up",
+                    onClick: () => setPublishOpen(true),
+                  }
+                : null,
+              row.isApp
+                ? null
+                : {
+                    label: "Delete",
+                    icon: "trash-can",
+                    onClick: () => onDelete(row),
+                  },
+            ]}
           />
-          {canPublish ? (
-            <Button3
-              title="Publish…"
-              size="sm"
-              onClick={() => setPublishOpen(true)}
-            />
-          ) : null}
-          {row.isApp ? null : (
-            <Button3 title="Delete" size="sm" onClick={() => onDelete(row)} />
-          )}
         </div>
       </div>
 
@@ -135,7 +143,7 @@ const ThemeDetailPanel = ({
                     {ws && onOpenWorkspace ? (
                       <Button3
                         title="Open"
-                        size="xs"
+                        size="sm"
                         onClick={() => onOpenWorkspace(ws)}
                       />
                     ) : null}
@@ -169,7 +177,7 @@ const ThemeDetailPanel = ({
 /**
  * ThemesPage — every theme as list + detail (app-navigation PRD NAV-009):
  * the app theme first, where each theme is used, search and In use / Not
- * used chips, the app-wide Light / Dark switch; the detail previews the
+ * used chips; the detail previews the
  * theme in its own colours (Dark / Light without changing the app), shows
  * its palette and dashboards, with Use as app theme / Edit theme / Duplicate
  * / Publish / Delete. New Theme opens the creation wizard.
@@ -183,15 +191,13 @@ export const ThemesPage = ({
   createRequested = false,
   onCreateAcknowledged = null,
 }) => {
-  const { muted, strong, hairline, selectedBg, selectedBorder } =
-    useConfigTokens();
+  const { muted, strong, selectedBg, selectedBorder } = useConfigTokens();
   const {
     themes,
     rawThemes,
     themeKey: appThemeKey,
     themeVariant,
     changeCurrentTheme,
-    changeThemeVariant,
     changeThemesForApplication,
   } = useContext(ThemeContext) || {};
   const appId = credentials?.appId;
@@ -319,55 +325,38 @@ export const ThemesPage = ({
   }
 
   return (
-    // The page's base text colour (plain names inherit it); muted text
-    // keeps its own token.
-    <div
-      data-testid="themes-page"
-      className={`flex flex-col flex-1 min-h-0 gap-3 px-6 pt-4 pb-4 ${strong}`}
-    >
-      {/* Filter bar — fixed; the list and detail scroll on their own. */}
-      <div className="flex-shrink-0 flex flex-row flex-wrap items-center gap-2">
-        <div className="w-72">
-          <SearchInput
-            value={query}
-            onChange={setQuery}
-            placeholder="Search themes…"
+    <ManageLayout
+      testId="themes-page"
+      listLabel="Themes"
+      detailTestId="theme-detail"
+      toolbar={
+        <>
+          <div className="w-72">
+            <SearchInput
+              value={query}
+              onChange={setQuery}
+              placeholder="Search themes…"
+            />
+          </div>
+          <SegmentedControl
+            ariaLabel="Show"
+            options={CHIPS}
+            value={chip}
+            onChange={setChip}
           />
-        </div>
-        <SegmentedControl
-          ariaLabel="Show"
-          options={CHIPS}
-          value={chip}
-          onChange={setChip}
-        />
-        <span className="flex-1" />
-        {status ? <span className={`text-xs ${muted}`}>{status}</span> : null}
-        {/* App-wide: every theme has a dark and a light variant. */}
-        <span className={`flex flex-row items-center gap-2 text-xs ${muted}`}>
-          <FontAwesomeIcon icon="sun" />
-          <Switch
-            ariaLabel="Dark mode"
-            checked={themeVariant === "dark"}
-            onChange={(isDark) =>
-              changeThemeVariant &&
-              changeThemeVariant(isDark ? "dark" : "light")
-            }
+          <span className="flex-1" />
+          {status ? <span className={`text-sm ${muted}`}>{status}</span> : null}
+          {/* No app-wide Light / Dark switch here: the app's mode lives in
+              the account menu; the detail's Dark / Light only previews. */}
+          <Button3
+            title="Browse marketplace"
+            size="sm"
+            onClick={() => setMode("marketplace")}
           />
-          <FontAwesomeIcon icon="moon" />
-        </span>
-        <Button3
-          title="Browse marketplace"
-          size="sm"
-          onClick={() => setMode("marketplace")}
-        />
-      </div>
-
-      <div className="flex-1 min-h-0 grid grid-cols-3 gap-4">
-        <div
-          role="list"
-          aria-label="Themes"
-          className="min-h-0 overflow-y-auto flex flex-col gap-1 pr-2"
-        >
+        </>
+      }
+      list={
+        <div className="flex flex-col gap-0.5">
           {shown.map((row) => {
             const active = !mode && selected && row.key === selected.key;
             return (
@@ -379,7 +368,7 @@ export const ThemesPage = ({
                   setMode(null);
                   setSelectedKey(row.key);
                 }}
-                className={`w-full text-left rounded-lg px-3 py-2 border flex flex-row items-center gap-3 ${
+                className={`w-full text-left rounded-lg px-2 py-2 border flex flex-row items-center gap-3 ${
                   active
                     ? `${selectedBg} ${selectedBorder}`
                     : "border-transparent"
@@ -404,17 +393,12 @@ export const ThemesPage = ({
             );
           })}
           {!shown.length ? (
-            <span className={`text-sm px-3 ${muted}`}>No themes match.</span>
+            <span className={`text-sm px-2 ${muted}`}>No themes match.</span>
           ) : null}
         </div>
-        <div
-          data-testid="theme-detail"
-          className={`col-span-2 min-h-0 overflow-y-auto rounded-lg border p-5 ${hairline}`}
-        >
-          {detail}
-        </div>
-      </div>
-
+      }
+      detail={detail}
+    >
       <ConfirmationModal
         isOpen={!!deleteTarget}
         setIsOpen={() => setDeleteTarget(null)}
@@ -434,7 +418,7 @@ export const ThemesPage = ({
         }}
         startInCreate={true}
       />
-    </div>
+    </ManageLayout>
   );
 };
 

@@ -304,11 +304,12 @@ function ButtonIcon({
   ariaLabel,
   ariaPressed = null,
   selected = false,
+  testId,
 }) {
   // Render visible text (from `text`) and a `title` attribute (from
   // `title`) so RTL queries by either work. Either prop is optional.
   // `ariaLabel` → aria-label, `ariaPressed` → aria-pressed, `selected` →
-  // data-selected, as in dash-react ≥1.0.75.
+  // data-selected, `testId` → data-testid, as in dash-react ≥1.0.75.
   return React.createElement(
     "button",
     {
@@ -319,6 +320,7 @@ function ButtonIcon({
       "aria-pressed": ariaPressed === null ? undefined : !!ariaPressed,
       "data-selected": selected ? "true" : undefined,
       "data-icon": icon,
+      "data-testid": testId,
     },
     text || null,
   );
@@ -458,12 +460,14 @@ function Tag3({ text, onClick, className }) {
   );
 }
 
-function Switch({ checked, onChange, disabled }) {
+// Like dash-react: `label` (or `ariaLabel`) names the switch.
+function Switch({ checked, onChange, disabled, label, ariaLabel }) {
   return React.createElement("input", {
     type: "checkbox",
     role: "switch",
     checked: !!checked,
     disabled: disabled,
+    "aria-label": label || ariaLabel || undefined,
     onChange: (e) => onChange && onChange(e.target.checked),
   });
 }
@@ -964,6 +968,8 @@ function ListRow({
   ariaLabel = null,
   testId,
 }) {
+  // A node icon (e.g. a status dot) renders; a string icon name doesn't.
+  const iconNode = icon && typeof icon !== "string" ? icon : null;
   const main = onClick
     ? React.createElement(
         "button",
@@ -973,12 +979,14 @@ function ListRow({
           "aria-current": selected ? "true" : undefined,
           "aria-label": ariaLabel || undefined,
         },
+        iconNode,
         title,
         meta ? React.createElement("span", null, meta) : null,
       )
     : React.createElement(
         "div",
         null,
+        iconNode,
         title,
         meta ? React.createElement("span", null, meta) : null,
       );
@@ -1019,6 +1027,7 @@ module.exports = {
   useResizableWidth,
   Toggle,
   ButtonIcon2: ButtonIcon,
+  ButtonIcon3: ButtonIcon,
   isHexColor,
   deriveShades,
   TAILWIND_PALETTE,
