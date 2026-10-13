@@ -1,10 +1,12 @@
 /**
  * ToolCallBlock
  *
- * Collapsible display of an MCP tool call and its result.
+ * One MCP tool call in a chat, drawn with dash-react's ChatToolCall: status
+ * dot, tool name, where it ran, and a disclosure with the input and result.
  */
-import { useContext, useState } from "react";
-import { Caption2, ThemeContext, useStatusTokens } from "@trops/dash-react";
+import { Caption2, ChatToolCall, useStatusTokens } from "@trops/dash-react";
+
+const pretty = (v) => (typeof v === "string" ? v : JSON.stringify(v, null, 2));
 
 export const ToolCallBlock = ({
   toolName,
@@ -14,77 +16,44 @@ export const ToolCallBlock = ({
   isError,
   isLoading,
 }) => {
-  const [expanded, setExpanded] = useState(false);
-  const { currentTheme } = useContext(ThemeContext) || {};
   const statusTokens = useStatusTokens();
-  const t = (key) => currentTheme?.[key] || "";
-
-  const dotColor = isLoading
-    ? `${statusTokens.warning.solidBg} animate-pulse`
-    : isError
-      ? statusTokens.error.solidBg
-      : statusTokens.success.solidBg;
-  const preBase = "p-1.5 rounded overflow-x-auto overflow-y-auto font-mono";
-  const preNeutral = `${t("bg-primary-very-dark")} ${t("text-primary-medium")}`;
-
+  const status = isLoading ? "running" : isError ? "error" : "done";
+  const hasDetails = input !== undefined || result !== undefined;
+  const pre = "p-1.5 rounded overflow-auto font-mono text-xs";
   return (
-    <div
-      className={`my-1.5 border rounded-md overflow-hidden text-xs ${t(
-        "border-primary-dark",
-      )}`}
+    <ChatToolCall
+      name={toolName}
+      source={serverName ? `via ${serverName}` : null}
+      status={status}
     >
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className={`w-full flex items-center gap-2 px-2.5 py-1.5 transition-colors text-left ${t(
-          "bg-primary-dark",
-        )} ${t("hover-bg-primary-dark")}`}
-      >
-        <span className={`inline-block w-2 h-2 rounded-full ${dotColor}`} />
-        <span className={`font-mono ${t("text-secondary-medium")}`}>
-          {toolName}
-        </span>
-        {serverName && <Caption2>via {serverName}</Caption2>}
-        <Caption2 className="ml-auto">{expanded ? "▲" : "▼"}</Caption2>
-      </button>
-      {expanded && (
-        <div className={`px-2.5 py-2 space-y-2 ${t("bg-primary-dark")}`}>
-          {input && (
+      {hasDetails ? (
+        <div className="space-y-2">
+          {input !== undefined && input !== null && input !== "" ? (
             <div>
               <Caption2 block className="mb-0.5">
                 Input:
               </Caption2>
-              <pre className={`${preBase} max-h-32 ${preNeutral}`}>
-                {typeof input === "string"
-                  ? input
-                  : JSON.stringify(input, null, 2)}
-              </pre>
+              <pre className={`${pre} max-h-32`}>{pretty(input)}</pre>
             </div>
-          )}
-          {result !== undefined && (
+          ) : null}
+          {result !== undefined ? (
             <div>
               <Caption2 block className="mb-0.5">
                 Result:
               </Caption2>
               <pre
-                className={`${preBase} max-h-48 ${
+                className={`${pre} max-h-48 ${
                   isError
                     ? `${statusTokens.error.bg} ${statusTokens.error.text}`
-                    : preNeutral
+                    : ""
                 }`}
               >
-                {typeof result === "string"
-                  ? result
-                  : JSON.stringify(result, null, 2)}
+                {pretty(result)}
               </pre>
             </div>
-          )}
-          {isLoading && (
-            <div className={`italic ${statusTokens.warning.icon}`}>
-              Running...
-            </div>
-          )}
+          ) : null}
         </div>
-      )}
-    </div>
+      ) : null}
+    </ChatToolCall>
   );
 };

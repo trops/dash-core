@@ -1,10 +1,11 @@
 /**
  * ChatInput
  *
- * Input bar with send button. Supports Enter to send, Shift+Enter for newline.
+ * The AI Assistant's message box, on dash-react's ChatComposer: Enter sends,
+ * Shift+Enter is a new line, plus the @-lead menu and queued sends.
  */
-import { useState, useRef, useEffect, useContext } from "react";
-import { Button, Caption2, ThemeContext } from "@trops/dash-react";
+import { useState, useRef, useEffect } from "react";
+import { ChatComposer } from "@trops/dash-react";
 import { LeadMentionMenu } from "./LeadMentionMenu";
 import { filterRecipients } from "../leadMessages";
 
@@ -32,8 +33,6 @@ export const ChatInput = ({
   leads = null,
   onPickRecipient = null,
 }) => {
-  const { currentTheme } = useContext(ThemeContext) || {};
-  const t = (key) => currentTheme?.[key] || "";
   const [input, setInput] = useState("");
   const textareaRef = useRef(null);
 
@@ -138,43 +137,31 @@ export const ChatInput = ({
   };
 
   return (
-    <div
-      className={`flex flex-col gap-1 px-3 py-2 border-t ${t(
-        "border-primary-dark",
-      )}`}
-    >
-      {mentionOpen && (
-        <LeadMentionMenu
-          options={mentionOptions}
-          activeIndex={mentionIndex}
-          onPick={pickMention}
-        />
-      )}
-      <div className="flex items-end gap-2">
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          placeholder="Type a message..."
-          disabled={disabled}
-          rows={1}
-          className={`flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none resize-none disabled:opacity-50 ${t(
-            "bg-primary-dark",
-          )} ${t("border-primary-dark")} ${t("text-primary-medium")}`}
-        />
-        {isLoading ? (
-          <Button title="Stop" danger onClick={onStop} className="shrink-0" />
-        ) : (
-          <Button
-            title="Send"
-            onClick={handleSend}
-            disabled={!input.trim() || disabled}
-            className="shrink-0"
+    <ChatComposer
+      ref={textareaRef}
+      value={input}
+      onChange={(_value, e) => handleChange(e)}
+      onKeyDown={handleKeyDown}
+      onSend={handleSend}
+      onStop={onStop}
+      busy={!!isLoading}
+      disabled={disabled}
+      rows={1}
+      placeholder="Type a message..."
+      hint={
+        queued
+          ? "Sends when the current reply finishes"
+          : "Enter to send · Shift+Enter for a new line"
+      }
+      above={
+        mentionOpen ? (
+          <LeadMentionMenu
+            options={mentionOptions}
+            activeIndex={mentionIndex}
+            onPick={pickMention}
           />
-        )}
-      </div>
-      {queued && <Caption2>Sends when the current reply finishes</Caption2>}
-    </div>
+        ) : null
+      }
+    />
   );
 };

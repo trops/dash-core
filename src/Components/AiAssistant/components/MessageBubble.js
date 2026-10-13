@@ -1,11 +1,11 @@
 /**
  * MessageBubble
  *
- * Renders a single message — user, assistant (with markdown), or tool-use blocks.
- * Includes role labels for clear visual differentiation.
+ * Renders a single message — user, assistant (with markdown), lead answer —
+ * through dash-react's ChatMessage, with tool calls as ChatToolCall rows
+ * (design guide: one chat everywhere).
  */
-import { useContext } from "react";
-import { Caption2, ThemeContext, useStatusTokens } from "@trops/dash-react";
+import { ChatMessage, useStatusTokens } from "@trops/dash-react";
 import { leadLabel } from "../leadMessages";
 import { StreamingText } from "./StreamingText";
 import { ToolCallBlock } from "./ToolCallBlock";
@@ -39,20 +39,7 @@ export const MessageBubble = ({
   codeNote = null,
 }) => {
   const { role, content, toolCalls, hidden } = message;
-  const { currentTheme } = useContext(ThemeContext) || {};
   const statusTokens = useStatusTokens();
-  // Theme-provided colors so the chat follows the active light/dark
-  // theme. No hardcoded fallbacks — they only read correctly on dark.
-  const bubbleBg =
-    currentTheme?.["bg-secondary-dark"] ||
-    currentTheme?.["bg-primary-dark"] ||
-    "";
-  // The user's bubble uses the primary surface so it stands apart from the
-  // Assistant/lead bubbles (secondary). "bg-primary-medium" is a real
-  // ThemeModel key; the old "bg-primary-bright"/"bg-primary" don't exist,
-  // which left the user's text with no bubble at all.
-  const userBubbleBg = currentTheme?.["bg-primary-medium"] || "";
-  const bubbleText = currentTheme?.["text-primary-medium"] || "";
 
   // App-injected priming messages (e.g. widget-builder "Hello…" seed)
   // are kept in state for conversation continuity but suppressed from
@@ -71,21 +58,14 @@ export const MessageBubble = ({
           : "";
 
     return (
-      <div className="flex justify-end mb-4">
-        <div className="max-w-md">
-          <Caption2
-            block
-            className="font-semibold uppercase tracking-wider mb-1 text-right"
-          >
-            {message.to ? `You → ${leadLabel(message.to)}` : "You"}
-          </Caption2>
-          <div
-            className={`px-3 py-2 rounded-lg text-sm whitespace-pre-wrap break-words leading-relaxed ${userBubbleBg} ${bubbleText}`}
-          >
-            {text}
-          </div>
-        </div>
-      </div>
+      <ChatMessage role="you" testId="user-bubble">
+        {message.to ? (
+          <span className="block text-xs opacity-70 mb-0.5">
+            To {leadLabel(message.to)}
+          </span>
+        ) : null}
+        {text}
+      </ChatMessage>
     );
   }
 
@@ -138,34 +118,34 @@ export const MessageBubble = ({
     if (!isStreaming && !text && toolBlocks.length === 0) {
       if (isLast) {
         return (
-          <div className="mb-4">
-            <Caption2
-              block
-              className="font-semibold uppercase tracking-wider mb-1"
-            >
-              Assistant
-            </Caption2>
-            <div
-              className={`text-sm leading-relaxed px-3 py-2 rounded-lg ${bubbleBg}`}
-            >
-              <Caption2 className="italic">Thinking...</Caption2>
-            </div>
-          </div>
+          <ChatMessage role="reply" label="Assistant" streaming>
+            Thinking...
+          </ChatMessage>
         );
       }
       return null;
     }
 
     return (
-      <div className="mb-4">
-        <Caption2 block className="font-semibold uppercase tracking-wider mb-1">
-          Assistant
-        </Caption2>
-        <div
-          className={`text-sm leading-relaxed px-3 py-2 rounded-lg ${bubbleBg} ${bubbleText}`}
-        >
-          {isStreaming && (
-            <div>
+      <div className="flex flex-col gap-2">
+        {toolBlocks.map((block) => (
+          <ToolCallBlock
+            key={block.id}
+            toolName={block.name}
+            serverName={block.serverName}
+            input={block.input}
+            result={block.result}
+            isError={block.isError}
+            isLoading={block.isLoading}
+          />
+        ))}
+        {isStreaming || text ? (
+          <ChatMessage
+            role="reply"
+            label="Assistant"
+            streaming={isStreaming && !streamingText}
+          >
+            {isStreaming ? (
               <StreamingText
                 text={
                   codeNote
@@ -176,25 +156,13 @@ export const MessageBubble = ({
                 }
                 isStreaming={true}
               />
-            </div>
-          )}
-          {!isStreaming && text && (
-            <AssistantTextContent
-              text={codeNote ? collapseCodeBlocks(text, codeNote) : text}
-            />
-          )}
-          {toolBlocks.map((block) => (
-            <ToolCallBlock
-              key={block.id}
-              toolName={block.name}
-              serverName={block.serverName}
-              input={block.input}
-              result={block.result}
-              isError={block.isError}
-              isLoading={block.isLoading}
-            />
-          ))}
-        </div>
+            ) : (
+              <AssistantTextContent
+                text={codeNote ? collapseCodeBlocks(text, codeNote) : text}
+              />
+            )}
+          </ChatMessage>
+        ) : null}
       </div>
     );
   }
@@ -204,24 +172,22 @@ export const MessageBubble = ({
   if (role === "lead") {
     const text = typeof content === "string" ? content : textOfContent(content);
     return (
-      <div className="mb-4" data-testid="lead-bubble">
-        <Caption2 block className="font-semibold uppercase tracking-wider mb-1">
-          {leadLabel(message.from)}
-        </Caption2>
-        <div
-          className={`text-sm leading-relaxed px-3 py-2 rounded-lg ${bubbleBg} ${bubbleText}`}
-        >
-          {message.error ? (
-            <span className={statusTokens.error.icon}>{message.error}</span>
-          ) : text ? (
-            <AssistantTextContent text={text} />
-          ) : (
-            <Caption2 className="italic">
-              {message.streaming ? "Working…" : "No answer."}
-            </Caption2>
-          )}
-        </div>
-      </div>
+      <ChatMessage
+        role="reply"
+        label={leadLabel(message.from)}
+        streaming={!!message.streaming && !text}
+        testId="lead-bubble"
+      >
+        {message.error ? (
+          <span className={statusTokens.error.icon}>{message.error}</span>
+        ) : text ? (
+          <AssistantTextContent text={text} />
+        ) : (
+          <span className="italic">
+            {message.streaming ? "Working…" : "No answer."}
+          </span>
+        )}
+      </ChatMessage>
     );
   }
 

@@ -63,15 +63,14 @@ describe("MessageBubble (user)", () => {
       </ThemeContext.Provider>,
     );
 
-  it("draws the user's message in a themed rounded bubble", () => {
+  it("draws the user's message as dash-react's ChatMessage (yours)", () => {
     const { getByText } = renderUser();
-    const bubble = getByText("whats the latest?");
-    expect(bubble.className).toMatch(/bg-theme-user/);
-    expect(bubble.className).toMatch(/rounded-lg/);
-    expect(bubble.className).toMatch(/text-theme-body/);
+    expect(
+      getByText("whats the latest?").closest('[data-chat-role="you"]'),
+    ).not.toBeNull();
   });
 
-  it("keeps the bubble for messages sent to a team lead", () => {
+  it("a message sent to a team lead says who it went to", () => {
     const { getByText } = renderUser({
       to: {
         botId: "l",
@@ -80,7 +79,11 @@ describe("MessageBubble (user)", () => {
         dashboardLabel: "Algolia Search",
       },
     });
-    expect(getByText("whats the latest?").className).toMatch(/bg-theme-user/);
+    const bubble = getByText("whats the latest?").closest(
+      '[data-chat-role="you"]',
+    );
+    expect(bubble).not.toBeNull();
+    expect(bubble.textContent).toMatch(/^To Algolia Search Lead/);
   });
 });
 

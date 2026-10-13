@@ -4,7 +4,8 @@ import {
   Button3,
   ConfirmationModal,
   SectionLabel,
-  TextArea,
+  ChatComposer,
+  ChatMessage,
 } from "@trops/dash-react";
 import { AppContext } from "../../Context/App/AppContext";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
@@ -32,7 +33,6 @@ import {
 } from "./PlanChecklistDialogs";
 import { CreateBuildingStep } from "./CreateBuildingStep";
 import { PlanSketch } from "./PlanSketch";
-import { YouBubble, TeamBubble } from "./ChatBubbles";
 
 /**
  * The Planner's first question in a conversation reopened from Recent: its
@@ -491,20 +491,32 @@ export const CreatePlanStep = ({
         >
           {messages.map((m, i) =>
             m.who === "you" ? (
-              <YouBubble key={i}>{m.text}</YouBubble>
+              <ChatMessage key={i} role="you">
+                {m.text}
+              </ChatMessage>
             ) : m.who === "note" ? (
-              <span key={i} className={`text-xs ${muted}`}>
+              <ChatMessage key={i} role="note">
                 {m.text}
-              </span>
+              </ChatMessage>
             ) : (
-              <TeamBubble key={i} meta={m.meta} testId="planner-message">
-                {m.text}
-              </TeamBubble>
+              <ChatMessage
+                key={i}
+                role="reply"
+                label="Planner"
+                meta={m.meta}
+                testId="planner-message"
+              >
+                <span className="whitespace-pre-wrap">{m.text}</span>
+              </ChatMessage>
             ),
           )}
 
           {busy ? (
-            <TeamBubble muted>{withoutPlan(soFar) || "Thinking…"}</TeamBubble>
+            <ChatMessage role="reply" label="Planner" streaming>
+              <span className="whitespace-pre-wrap">
+                {withoutPlan(soFar) || "Thinking…"}
+              </span>
+            </ChatMessage>
           ) : null}
 
           {!busy && questions.length ? (
@@ -825,33 +837,18 @@ export const CreatePlanStep = ({
         />
       ) : null}
 
-      <div className={`flex-shrink-0 border-t ${hairline}`}>
-        <div
-          className={`mx-auto w-full max-w-3xl flex flex-row items-end gap-2 ${
-            compact ? "px-3 py-2" : "px-6 py-3"
-          }`}
-        >
-          <div className="flex-1">
-            <TextArea
-              aria-label="Reply to the Planner"
-              value={reply}
-              onChange={(v) => setReply(v)}
-              placeholder={
-                busy ? "The Planner is working…" : "Answer, or ask for changes…"
-              }
-              rows={2}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  answer(reply);
-                }
-              }}
-            />
-          </div>
-          <Button
-            title="Send"
-            onClick={() => answer(reply)}
-            disabled={busy || !reply.trim()}
+      <div className="flex-shrink-0">
+        <div className="mx-auto w-full max-w-3xl">
+          <ChatComposer
+            ariaLabel="Reply to the Planner"
+            value={reply}
+            onChange={(v) => setReply(v)}
+            onSend={() => answer(reply)}
+            busy={busy}
+            placeholder={
+              busy ? "The Planner is working…" : "Answer, or ask for changes…"
+            }
+            className={compact ? "" : "px-6 py-3"}
           />
         </div>
       </div>
