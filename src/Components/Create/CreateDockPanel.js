@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
 import {
-  Button,
-  Button3,
+  Button2,
   ButtonIcon,
+  ChatComposer,
+  EmptyState,
   FontAwesomeIcon,
+  PanelHeader,
   ResizeHandle,
-  TextArea,
   useResizableWidth,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
@@ -20,9 +21,10 @@ import { RecentList } from "./RecentList";
  * (`dash:create-fold` { recentId, title }) carries on here in a compact
  * layout — chat, plan, Before building and the build's live steps — and
  * Expand reopens it full size (`dash:open-create` { type, recentId }). With
- * nothing folded it shows an Ask box (5e — questions go to the Planner, which
- * reads the bots' results) and Recent, where questions and plans share one
- * list (CRE-007 AC4). A question opens here, never full size.
+ * nothing folded it shows Recent, where questions and plans share one list
+ * (CRE-007 AC4), with the Ask box pinned at the bottom like every chat (5e —
+ * questions go to the Planner, which reads the bots' results; design guide
+ * rule 16). A question opens here, never full size.
  *
  * The host's dock decides when it's open (`collapsed`); it stays mounted
  * either way so a fold is never missed.
@@ -39,7 +41,7 @@ export function foldCreate(detail) {
 }
 
 export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
-  const { muted, strong, hairline } = useConfigTokens();
+  const { hairline } = useConfigTokens();
   // { recentId, title, kind?: "question", question? } — the conversation
   // folded here (a new question has no recentId yet), or null (Recent).
   const [folded, setFolded] = useState(null);
@@ -47,7 +49,8 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
   const [plans, setPlans] = useState([]);
   const [drafts, setDrafts] = useState([]);
   const { width, handleProps } = useResizableWidth({
-    defaultWidth: 420,
+    // Same default as the AI Assistant and Bot Activity docks.
+    defaultWidth: 384,
     min: 340,
     max: 720,
     edge: "left",
@@ -117,6 +120,23 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
     );
   };
   const sections = recentSections(plans, drafts, { conversations: 12 });
+  const hasRecent = sections.conversations.length + sections.drafts.length > 0;
+  // A secondary button, not a link: it leaves the dock for Create full size.
+  const makeNew = (
+    <Button2
+      size="sm"
+      onClick={() => openCreate({ type: "dashboard" })}
+      ariaLabel="Make something new — opens Create full size"
+    >
+      <span className="inline-flex items-center gap-2">
+        <FontAwesomeIcon
+          icon="up-right-and-down-left-from-center"
+          className="h-3 w-3"
+        />
+        Make something new…
+      </span>
+    </Button2>
+  );
   const askNow = () => {
     const q = asking.trim();
     if (!q) return;
@@ -137,41 +157,35 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
       aria-label="Create"
     >
       <ResizeHandle {...handleProps} ariaLabel="Resize Create" />
-      <div
-        className={`flex-shrink-0 flex flex-row items-center gap-2 px-3 py-2 border-b ${hairline}`}
-      >
-        {folded ? (
-          <ButtonIcon
-            icon="arrow-left"
-            ariaLabel="Back to Recent"
-            onClick={() => setFolded(null)}
-          />
-        ) : (
-          <FontAwesomeIcon icon="plus" className="h-3.5 w-3.5 opacity-70" />
-        )}
-        <span
-          className={`flex-1 min-w-0 truncate text-sm font-semibold ${strong}`}
-        >
-          {folded
+      <PanelHeader
+        testId="create-dock-header"
+        onBack={folded ? () => setFolded(null) : null}
+        backLabel="Back to Recent"
+        title={
+          folded
             ? folded.title ||
               (folded.kind === "question" ? "Question" : "Plan a dashboard")
-            : "Create"}
-        </span>
-        {folded && folded.kind !== "question" ? (
-          <ButtonIcon
-            icon="up-right-and-down-left-from-center"
-            ariaLabel="Expand"
-            onClick={expand}
-          />
-        ) : null}
-        {onCollapse ? (
-          <ButtonIcon
-            icon="xmark"
-            ariaLabel="Close Create panel"
-            onClick={onCollapse}
-          />
-        ) : null}
-      </div>
+            : "Create"
+        }
+        actions={
+          <>
+            {folded && folded.kind !== "question" ? (
+              <ButtonIcon
+                icon="up-right-and-down-left-from-center"
+                ariaLabel="Expand"
+                onClick={expand}
+              />
+            ) : null}
+            {onCollapse ? (
+              <ButtonIcon
+                icon="xmark"
+                ariaLabel="Close Create panel"
+                onClick={onCollapse}
+              />
+            ) : null}
+          </>
+        }
+      />
       {folded && folded.kind === "question" ? (
         <div className="flex-1 min-h-0 flex flex-col">
           <AskStep
@@ -198,58 +212,35 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
           />
         </div>
       ) : (
-        <div
-          className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2 p-3"
-          data-testid="create-dock-recent"
-        >
-          <div className="flex flex-col gap-2 pb-2" data-testid="ask-box">
-            <TextArea
-              aria-label="Ask about your dashboards and bots"
-              value={asking}
-              onChange={(v) => setAsking(v)}
-              placeholder="Ask about your dashboards and bots — e.g. what did my bots find today?"
-              rows={2}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  askNow();
-                }
-              }}
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div
+            className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-4 p-4"
+            data-testid="create-dock-recent"
+          >
+            <RecentList
+              sections={sections}
+              onOpen={openRow}
+              empty={
+                <EmptyState
+                  testId="create-dock-empty"
+                  className="my-auto"
+                  title="Nothing here yet"
+                  description="Ask about your dashboards and bots below. Questions, plans and unfinished widgets show up here."
+                >
+                  {makeNew}
+                </EmptyState>
+              }
             />
-            <div className="flex flex-row justify-end">
-              <Button
-                size="sm"
-                title="Ask"
-                onClick={askNow}
-                disabled={!asking.trim()}
-              />
-            </div>
+            {hasRecent ? <div>{makeNew}</div> : null}
           </div>
-          <RecentList
-            sections={sections}
-            onOpen={openRow}
-            empty={
-              <span className={`text-sm ${muted}`}>
-                Nothing yet. Questions, plans and unfinished widgets show up
-                here.
-              </span>
-            }
+          <ChatComposer
+            value={asking}
+            onChange={(v) => setAsking(v)}
+            onSend={askNow}
+            ariaLabel="Ask about your dashboards and bots"
+            placeholder="Ask about your dashboards and bots…"
+            sendLabel="Ask"
           />
-          <div className="pt-2">
-            <Button3
-              size="sm"
-              onClick={() => openCreate({ type: "dashboard" })}
-              ariaLabel="Make something new — opens Create full size"
-            >
-              <span className="inline-flex items-center gap-2">
-                <FontAwesomeIcon
-                  icon="up-right-and-down-left-from-center"
-                  className="h-3 w-3"
-                />
-                Make something new…
-              </span>
-            </Button3>
-          </div>
         </div>
       )}
     </aside>

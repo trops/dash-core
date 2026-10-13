@@ -166,11 +166,12 @@ function Checkbox({ label, checked, onChange, disabled }) {
   );
 }
 
-function Button2({ title, onClick, disabled }) {
+function Button2({ title, children, onClick, disabled, ariaLabel }) {
+  // Like dash-react: children win over title; ariaLabel → aria-label.
   return React.createElement(
     "button",
-    { onClick: onClick, disabled: disabled },
-    title,
+    { onClick: onClick, disabled: disabled, "aria-label": ariaLabel },
+    children || title,
   );
 }
 
@@ -449,12 +450,13 @@ function SelectInput({ label, value, onChange, options = [], placeholder }) {
   );
 }
 
-function EmptyState({ icon, title, description }) {
+function EmptyState({ icon, title, description, children, testId }) {
   return React.createElement(
     "div",
-    { "data-testid": "empty-state", "data-icon": icon },
+    { "data-testid": testId || "empty-state", "data-icon": icon },
     React.createElement("span", null, title),
     description ? React.createElement("span", null, description) : null,
+    children || null,
   );
 }
 

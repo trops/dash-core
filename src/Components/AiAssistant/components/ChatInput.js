@@ -32,6 +32,9 @@ export const ChatInput = ({
   // Slack-style @mentions).
   leads = null,
   onPickRecipient = null,
+  // The "To:" picker: part of composing, so it sits inside the message box
+  // above the field, spaced by the box's own padding.
+  recipientPicker = null,
 }) => {
   const [input, setInput] = useState("");
   const textareaRef = useRef(null);
@@ -154,12 +157,17 @@ export const ChatInput = ({
           : "Enter to send · Shift+Enter for a new line"
       }
       above={
-        mentionOpen ? (
-          <LeadMentionMenu
-            options={mentionOptions}
-            activeIndex={mentionIndex}
-            onPick={pickMention}
-          />
+        recipientPicker || mentionOpen ? (
+          <>
+            {recipientPicker}
+            {mentionOpen ? (
+              <LeadMentionMenu
+                options={mentionOptions}
+                activeIndex={mentionIndex}
+                onPick={pickMention}
+              />
+            ) : null}
+          </>
         ) : null
       }
     />

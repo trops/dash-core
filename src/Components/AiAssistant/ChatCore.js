@@ -943,16 +943,7 @@ export function ChatCore({
           />
         </div>
       )}
-      {enableLeadRecipients && (
-        <RecipientPicker
-          leads={leads}
-          recipient={recipient}
-          onChange={handleRecipientChange}
-          disabled={isLoading}
-        />
-      )}
-
-      {/* Input */}
+      {/* Input — the "To:" picker rides inside the message box. */}
       <ChatInput
         onSend={handleSend}
         onStop={handleStop}
@@ -962,6 +953,16 @@ export function ChatCore({
         // elsewhere "@" stays plain text (TEAM-013 AC6).
         leads={enableLeadRecipients ? leads : null}
         onPickRecipient={enableLeadRecipients ? handleRecipientChange : null}
+        recipientPicker={
+          enableLeadRecipients ? (
+            <RecipientPicker
+              leads={leads}
+              recipient={recipient}
+              onChange={handleRecipientChange}
+              disabled={isLoading}
+            />
+          ) : null
+        }
       />
     </div>
   );

@@ -17,6 +17,11 @@ import { CreateDockPanel, foldCreate } from "./CreateDockPanel";
 jest.mock("../Settings/sections/ProvidersSection", () => ({
   ProvidersSection: () => <div data-testid="providers-section" />,
 }));
+// The question thread itself is AskStep's (AskStep.test.js); here only that
+// a question opens in the dock.
+jest.mock("./AskStep", () => ({
+  AskStep: ({ question }) => <div data-testid="ask-step">{question}</div>,
+}));
 
 const PLAN = {
   summary: "Ask and greet",
@@ -127,4 +132,61 @@ test("Recent in two sections; Make something new opens Create full size (fix/rec
   );
   window.removeEventListener("dash:open-create", onOpen);
   expect(onOpen.mock.calls[0][0].detail).toEqual({ type: "dashboard" });
+});
+
+// Screen audit (October 2026), screen 1: the dock's Create panel follows the
+// design guide's Screen layout rules.
+
+test("the Ask box is pinned under Recent, like every chat (guide rule 16)", async () => {
+  render(<CreateDockPanel />);
+  await screen.findByText("Ask Test");
+  const recent = screen.getByTestId("create-dock-recent");
+  const box = screen.getByRole("textbox", {
+    name: "Ask about your dashboards and bots",
+  });
+  expect(recent.contains(box)).toBe(false);
+  expect(
+    recent.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Ask" })).toBeDisabled();
+});
+
+test("asking opens the question here, titled by the question", async () => {
+  render(<CreateDockPanel />);
+  await screen.findByText("Ask Test");
+  const box = screen.getByRole("textbox", {
+    name: "Ask about your dashboards and bots",
+  });
+  fireEvent.change(box, { target: { value: "How many dashboards?" } });
+  fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+  expect(await screen.findByTestId("ask-step")).toHaveTextContent(
+    "How many dashboards?",
+  );
+  expect(screen.getByTestId("create-dock-header")).toHaveTextContent(
+    "How many dashboards?",
+  );
+  expect(
+    screen.getByRole("button", { name: "Back to Recent" }),
+  ).toBeInTheDocument();
+});
+
+test("nothing yet: an empty state whose one action is Make something new", async () => {
+  window.mainApi.bots.listCreateRecent.mockResolvedValue([]);
+  window.mainApi.drafts.list.mockResolvedValue([]);
+  render(<CreateDockPanel />);
+  const empty = await screen.findByTestId("create-dock-empty");
+  expect(empty).toHaveTextContent("Nothing here yet");
+  const onOpen = jest.fn();
+  window.addEventListener("dash:open-create", onOpen);
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Make something new — opens Create full size",
+    }),
+  );
+  window.removeEventListener("dash:open-create", onOpen);
+  expect(onOpen.mock.calls[0][0].detail).toEqual({ type: "dashboard" });
+  // Still askable from an empty dock.
+  expect(
+    screen.getByRole("textbox", { name: "Ask about your dashboards and bots" }),
+  ).toBeInTheDocument();
 });

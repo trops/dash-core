@@ -1,11 +1,5 @@
 import React from "react";
-import {
-  Button3,
-  ButtonIcon,
-  FontAwesomeIcon,
-  SectionLabel,
-} from "@trops/dash-react";
-import { useConfigTokens } from "../Dashboard/ConfigListRow";
+import { Button3, ButtonIcon, ListRow, SectionLabel } from "@trops/dash-react";
 import { recentLine } from "./recentRows";
 import { draftAge } from "./createRouting";
 
@@ -15,42 +9,29 @@ const ICONS = {
   "widget-draft": "pen-to-square",
 };
 
-/** One row: icon, title, then status · age underneath — left-aligned. */
-const RecentRow = ({ row, onOpen, onRemove }) => {
-  const { muted, strong } = useConfigTokens();
-  return (
-    <div className="flex flex-row items-center gap-2" data-testid="recent-row">
-      <div className="flex-1 min-w-0">
-        <Button3 size="sm" block onClick={() => onOpen(row)}>
-          <span
-            className="flex flex-row items-start gap-2 w-full text-left"
-            // Buttons don't wrap or left-align their text; a row must.
-            style={{ whiteSpace: "normal", minWidth: 0 }}
-            aria-label={recentLine(row)}
-          >
-            <FontAwesomeIcon
-              icon={ICONS[row.kind] || "pen-to-square"}
-              className="h-3.5 w-3.5 mt-0.5 flex-shrink-0"
-            />
-            <span className="flex flex-col min-w-0">
-              <span className={`truncate ${strong}`}>{row.title}</span>
-              <span className={`text-xs ${muted}`}>
-                {row.status} · {draftAge(row.updatedAt)}
-              </span>
-            </span>
-          </span>
-        </Button3>
-      </div>
-      {onRemove && row.kind !== "widget-draft" ? (
+/**
+ * One row (dash-react ListRow — design guide "List rows"): icon, title, then
+ * status · age underneath; Remove (×) shows on hover, outside the row button.
+ */
+const RecentRow = ({ row, onOpen, onRemove }) => (
+  <ListRow
+    testId="recent-row"
+    icon={ICONS[row.kind] || "pen-to-square"}
+    title={row.title}
+    meta={`${row.status} · ${draftAge(row.updatedAt)}`}
+    ariaLabel={recentLine(row)}
+    onClick={() => onOpen(row)}
+    trailing={
+      onRemove && row.kind !== "widget-draft" ? (
         <ButtonIcon
           icon="xmark"
           ariaLabel={`Remove ${row.title} from Recent`}
           onClick={() => onRemove(row)}
         />
-      ) : null}
-    </div>
-  );
-};
+      ) : null
+    }
+  />
+);
 
 /**
  * Recent in two labelled sections (dock and Create's start screen):
