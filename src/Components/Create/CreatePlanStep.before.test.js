@@ -74,7 +74,8 @@ test("the counts line and the checklist from the plan", async () => {
   const items = screen
     .getAllByTestId("checklist-item")
     .map((e) => e.textContent);
-  expect(items[0]).toMatch(/Install Gmail Inbox · @trops\/gmail/);
+  // Status pill, then the step, then its package on its own line.
+  expect(items[0]).toMatch(/^To doInstall Gmail Inbox@trops\/gmail/);
   expect(items[1]).toMatch(/Connect Gmail/);
   expect(items.length).toBe(2); // Slack is already connected
 });
@@ -90,7 +91,7 @@ test("Build walks through: review the install, approve, then connect", async () 
   expect(await screen.findByTestId("providers-section")).toHaveTextContent(
     "gmail:mcp",
   );
-  fireEvent.click(screen.getByText("Done"));
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
   await waitFor(() => expect(refreshProviders).toHaveBeenCalled());
   expect(screen.getByText("Connect Gmail & build")).toBeInTheDocument();
 });
@@ -152,7 +153,9 @@ test("Remove and Swap edit the plan, and the next message tells the Planner", as
   expect(screen.getAllByText("Inbox count").length).toBeGreaterThan(0);
   // The Gmail install is gone (Inbox count is already yours).
   expect(screen.queryByText(/Install Gmail Inbox/)).toBeNull();
-  fireEvent.click(screen.getAllByText("Remove")[2]);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Remove Brief from the plan" }),
+  );
   const box = screen.getByRole("textbox", { name: "Reply to the Planner" });
   fireEvent.change(box, { target: { value: "Looks good" } });
   fireEvent.keyDown(box, { key: "Enter" });
@@ -199,9 +202,10 @@ test("a planned bot shows what starts it and its instructions on demand (4d-2)",
   fireEvent.change(box, { target: { value: "add a greeter" } });
   fireEvent.keyDown(box, { key: "Enter" });
   const row = await screen.findByTestId("plan-bot");
-  expect(row).toHaveTextContent("Starts when Ask button sends askClicked");
-  expect(row).toHaveTextContent("Uses no providers");
-  expect(row).toHaveTextContent("Shown in a Bot results widget");
+  // A labelled list: Runs / Uses / Sends.
+  expect(row).toHaveTextContent("RunsWhen Ask button sends askClicked");
+  expect(row).toHaveTextContent("UsesNo providers");
+  expect(row).toHaveTextContent("SendsIts results → a Bot results widget");
   expect(screen.queryByTestId("plan-bot-instructions")).toBeNull();
   fireEvent.click(screen.getByText("Show instructions"));
   expect(screen.getByTestId("plan-bot-instructions")).toHaveTextContent(

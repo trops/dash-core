@@ -27,14 +27,25 @@ Stepper.Step = function StepContent({ label, children }) {
   );
 };
 
-function InputText({ label, value, onChange, placeholder }) {
+function InputText({
+  label,
+  value,
+  onChange,
+  placeholder,
+  id,
+  ariaLabel,
+  onKeyDown,
+}) {
   return React.createElement(
     "label",
     null,
     label,
     React.createElement("input", {
+      id,
+      "aria-label": ariaLabel || undefined,
       value: value,
       onChange: (e) => onChange(e.target.value),
+      onKeyDown,
       placeholder: placeholder,
     }),
   );
@@ -284,10 +295,20 @@ function Code({ children, className = "" }) {
   );
 }
 
-function ButtonIcon({ icon, text, title, onClick, disabled, ariaLabel }) {
+function ButtonIcon({
+  icon,
+  text,
+  title,
+  onClick,
+  disabled,
+  ariaLabel,
+  ariaPressed = null,
+  selected = false,
+}) {
   // Render visible text (from `text`) and a `title` attribute (from
   // `title`) so RTL queries by either work. Either prop is optional.
-  // `ariaLabel` → aria-label, as in dash-react.
+  // `ariaLabel` → aria-label, `ariaPressed` → aria-pressed, `selected` →
+  // data-selected, as in dash-react ≥1.0.75.
   return React.createElement(
     "button",
     {
@@ -295,6 +316,8 @@ function ButtonIcon({ icon, text, title, onClick, disabled, ariaLabel }) {
       disabled: disabled,
       title: title || undefined,
       "aria-label": ariaLabel || undefined,
+      "aria-pressed": ariaPressed === null ? undefined : !!ariaPressed,
+      "data-selected": selected ? "true" : undefined,
       "data-icon": icon,
     },
     text || null,
@@ -359,14 +382,40 @@ Tabs3.Content = function TabsContent({ value, children, _activeTab }) {
   );
 };
 
-function Card2({ children, hover, selected, onClick, className }) {
+// Like dash-react ≥1.0.76: with onClick a card is a button (role, focus,
+// Enter/Space, ariaLabel, disabled); without it, plain content.
+function Card2({
+  children,
+  selected,
+  onClick,
+  className,
+  disabled = false,
+  ariaLabel,
+  testId,
+}) {
+  const clickable = onClick
+    ? {
+        role: "button",
+        tabIndex: disabled ? -1 : 0,
+        "aria-disabled": disabled || undefined,
+        "aria-label": ariaLabel || undefined,
+        onClick: disabled ? undefined : onClick,
+        onKeyDown: disabled
+          ? undefined
+          : (e) => {
+              if (e.key === "Enter" || e.key === " ") onClick(e);
+            },
+      }
+    : {};
+  // Rendered as a <button> (as before) so callers' tests that find a card
+  // with closest("button") keep working.
   return React.createElement(
     "button",
     {
-      "data-testid": "card2",
+      "data-testid": testId || "card2",
       "aria-selected": selected,
-      onClick: onClick,
       className: className,
+      ...clickable,
     },
     children,
   );
@@ -417,6 +466,26 @@ function Switch({ checked, onChange, disabled }) {
     disabled: disabled,
     onChange: (e) => onChange && onChange(e.target.checked),
   });
+}
+
+// StatusBadge: a pill with a word ({ state, label }).
+function StatusBadge({ state = "neutral", label, children }) {
+  return React.createElement(
+    "span",
+    { "data-testid": "status-badge", "data-state": state },
+    label || children,
+  );
+}
+// DropdownPanel: rendered only while open; MenuItem2 is a button.
+function DropdownPanel({ isOpen, children }) {
+  return isOpen ? React.createElement("div", { role: "menu" }, children) : null;
+}
+function MenuItem2({ onClick, children }) {
+  return React.createElement(
+    "button",
+    { type: "button", role: "menuitem", onClick },
+    children,
+  );
 }
 
 function Tag({ text, onClick, className }) {
@@ -989,6 +1058,9 @@ module.exports = {
   SelectInput,
   EmptyState,
   ConfirmationModal,
+  StatusBadge,
+  DropdownPanel,
+  MenuItem2,
   SelectableCard,
   FontAwesomeIcon,
   Tabs3,

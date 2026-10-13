@@ -213,9 +213,14 @@ describe("StarterCards", () => {
     const onPick = jest.fn();
     render(<StarterCards starters={[brief, review]} onPick={onPick} />);
     expect(screen.getAllByTestId("starter-card")).toHaveLength(2);
-    fireEvent.click(screen.getByRole("button", { name: "Engineering" }));
+    // The category filter is a SegmentedControl: the chosen one is checked.
+    fireEvent.click(screen.getByRole("radio", { name: "Engineering" }));
     expect(screen.getAllByTestId("starter-card")).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    expect(screen.getByRole("radio", { name: "Engineering" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "All" }));
     expect(await screen.findByTestId("starter-thumbnail")).toBeInTheDocument();
     expect(await screen.findByText("Not found")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Morning Brief"));
@@ -224,6 +229,19 @@ describe("StarterCards", () => {
       brief,
       config,
     );
+  });
+
+  test("each starter is a card button: named, keyboard-pickable; unreadable ones are disabled", async () => {
+    const onPick = jest.fn();
+    render(<StarterCards starters={[brief, review]} onPick={onPick} />);
+    await screen.findByText("Not found");
+    const ok = screen.getByRole("button", { name: /^Morning Brief:/ });
+    fireEvent.keyDown(ok, { key: "Enter" });
+    expect(onPick).toHaveBeenCalledTimes(1);
+    const broken = screen.getAllByTestId("starter-card").find((c) => c !== ok);
+    expect(broken).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(broken);
+    expect(onPick).toHaveBeenCalledTimes(1);
   });
 });
 

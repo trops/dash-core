@@ -1,8 +1,16 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
 import {
   Button,
+  Button2,
   Button3,
+  ButtonIcon,
+  ButtonIcon2,
+  Card2,
   ConfirmationModal,
+  FontAwesomeIcon,
+  InputText,
+  StatusBadge,
+  useStatusTokens,
   SectionLabel,
   ChatComposer,
   ChatMessage,
@@ -23,7 +31,7 @@ import {
   nextOpen,
   providerTypesOf,
   removePiece,
-  botSummary,
+  botDetails,
   swapPiece,
 } from "./planChecklist";
 import {
@@ -88,18 +96,50 @@ export function removedText(res) {
  * Each reply continues the Planner's session, so it remembers the answers.
  */
 
-const SOURCE_TAG = {
-  yours: "Yours",
-  "ai-built": "AI-built",
-  registry: "Registry · install",
-  new: "New",
-  update: "Update",
+/**
+ * Where each piece comes from, as a coloured pill above its name (design
+ * guide rule 12: status is a word in a badge; screen audit, October 2026).
+ */
+const SOURCE = {
+  yours: { label: "Yours", state: "success" },
+  "ai-built": { label: "AI-built", state: "neutral" },
+  registry: { label: "From the registry", state: "info" },
+  new: { label: "New", state: "closed" },
+  update: { label: "Update", state: "warning" },
+};
+const KIND_ICON = {
+  bot: "robot",
+  widget: "puzzle-piece",
+  layout: "table-cells-large",
 };
 const GROUPS = [
   ["bot", "Bots"],
   ["widget", "Widgets"],
   ["layout", "Layout"],
 ];
+
+/**
+ * An option that means "let me type it" rather than an answer (the Planner
+ * sometimes offers one): it focuses the question's field instead.
+ */
+export function isTypeItOption(option) {
+  return /\b(type|write|enter)\b.*\b(it|my own|myself)\b|^other\b|something else/i.test(
+    String(option || ""),
+  );
+}
+
+/** The line under a piece's name: package · providers · notes, or for a
+ * layout, what it is ("New dashboard layout"). */
+export function pieceMeta(p) {
+  const parts = [p.package, (p.providers || []).join(", "), p.notes].filter(
+    Boolean,
+  );
+  if (parts.length) return parts.join(" · ");
+  if (p.kind === "layout") {
+    return p.source === "new" ? "New dashboard layout" : "Dashboard layout";
+  }
+  return "";
+}
 /** The Planner's words without its <plan> block. */
 export function withoutPlan(text) {
   return String(text || "")
@@ -115,24 +155,56 @@ function isHandoff(event) {
   );
 }
 
-/** A planned bot on the plan card: what starts it, what it can use (4d-2). */
-const BotPlanDetails = ({ piece, muted, open, onToggle }) => {
-  const sum = botSummary(piece);
+/**
+ * A planned bot on the plan card (4d-2): Runs / Uses / Sends as a labelled
+ * list in a recessed panel, and its full instructions behind a real button.
+ */
+const BotPlanDetails = ({ piece, muted, strong, open, onToggle }) => {
+  const rows = botDetails(piece);
   return (
-    <div className="flex flex-col gap-1 ml-6 text-xs" data-testid="plan-bot">
-      <span>{sum.starts}</span>
-      <span className={muted}>{sum.uses}</span>
-      {sum.shows ? <span className={muted}>{sum.shows}</span> : null}
+    <div
+      className="flex flex-col gap-3 ml-7 rounded-md p-3"
+      style={{ background: "var(--raised-2, transparent)" }}
+      data-testid="plan-bot"
+    >
+      <dl
+        className="gap-x-4 gap-y-1 text-sm"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "max-content minmax(0, 1fr)",
+          margin: 0,
+        }}
+      >
+        {rows.map((r) => (
+          <React.Fragment key={r.label}>
+            <dt className={`text-xs pt-0.5 ${muted}`}>{r.label}</dt>
+            <dd
+              className={strong}
+              style={{ margin: 0, wordBreak: "break-word" }}
+            >
+              {r.value}
+            </dd>
+          </React.Fragment>
+        ))}
+      </dl>
       <div>
-        <Button3
-          title={open ? "Hide instructions" : "Show instructions"}
+        <Button2
           size="sm"
           onClick={onToggle}
-        />
+          ariaLabel={open ? "Hide instructions" : "Show instructions"}
+        >
+          <span className="inline-flex items-center gap-2">
+            <FontAwesomeIcon
+              icon={open ? "chevron-up" : "chevron-down"}
+              className="h-3 w-3"
+            />
+            {open ? "Hide instructions" : "Show instructions"}
+          </span>
+        </Button2>
       </div>
       {open ? (
         <span
-          className="whitespace-pre-wrap"
+          className="text-sm whitespace-pre-wrap"
           data-testid="plan-bot-instructions"
         >
           {piece.instructions}
@@ -141,6 +213,34 @@ const BotPlanDetails = ({ piece, muted, open, onToggle }) => {
     </div>
   );
 };
+
+/** A titled group on the plan (design guide rule 3): a Card2 with a 14px title. */
+const PlanSection = ({ title, testId, children }) => {
+  const { strong } = useConfigTokens();
+  // The body takes the normal text color — a card can carry the theme's
+  // accent text color otherwise.
+  return (
+    <Card2
+      padding="p-4"
+      rounded="rounded-lg"
+      shadow=""
+      className="flex flex-col gap-3"
+      testId={testId}
+    >
+      <h3 className={`text-sm font-semibold ${strong}`} style={{ margin: 0 }}>
+        {title}
+      </h3>
+      <div className={`flex flex-col gap-3 text-sm ${strong}`}>{children}</div>
+    </Card2>
+  );
+};
+
+/** A "can't" line in the plan's access list ("None can send email"). */
+export function cannotLine(text) {
+  return /\b(can't|cannot|can not|none can|no bot|won't|never)\b|^none\b|^no\b/i.test(
+    String(text || ""),
+  );
+}
 
 export const CreatePlanStep = ({
   prompt,
@@ -156,6 +256,7 @@ export const CreatePlanStep = ({
   seed = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
+  const statusTokens = useStatusTokens();
   const app = useContext(AppContext) || {};
   // [{ who: "you" | "planner" | "note", text, meta? }]
   const [messages, setMessages] = useState(
@@ -179,6 +280,8 @@ export const CreatePlanStep = ({
   const [reply, setReply] = useState("");
   // Several questions: picks per question, sent together ({ index: option }).
   const [picks, setPicks] = useState({});
+  // Typed answers per question ({ index: text }).
+  const [typed, setTyped] = useState({});
   // Before building: { [item.id]: "approved" | "done" }, panel edits not yet
   // told to the Planner, the open window, the piece being swapped, and
   // whether Build is walking through the open items.
@@ -358,10 +461,29 @@ export const CreatePlanStep = ({
     return () => clearTimeout(t);
   }, [loaded, messages, plan, checks, planningTokens]);
 
+  // What the host needs for Fold and the "…" menu: the plan's id, whether
+  // the Planner is answering, whether a build exists (Discard vs Remove from
+  // Recent) and a short title for the confirm.
+  // The plan's name as Recent shows it: its layout's name, else what was asked.
+  const layoutName =
+    (
+      (plan && Array.isArray(plan.pieces) ? plan.pieces : []).find(
+        (p) => p && p.kind === "layout" && p.name,
+      ) || {}
+    ).name || "";
+  const firstAsk =
+    layoutName || (messages.find((m) => m.who === "you") || {}).text || "";
+  const built = !!build && !removedNote;
   useEffect(() => {
-    if (onState) onState({ recentId: savedId, busy });
+    if (onState)
+      onState({
+        recentId: savedId,
+        busy,
+        built,
+        title: firstAsk.length > 60 ? `${firstAsk.slice(0, 57)}…` : firstAsk,
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy, savedId]);
+  }, [busy, savedId, built, firstAsk]);
 
   const answer = (text) => {
     const t = String(text || "").trim();
@@ -382,13 +504,17 @@ export const CreatePlanStep = ({
     }
     setPicks((p) => ({ ...p, [i]: option }));
   };
-  const sendPicks = (qs) =>
-    answer(
-      qs
-        .map((q, i) => (picks[i] ? `${q.question} — ${picks[i]}` : null))
-        .filter(Boolean)
-        .join("\n"),
-    );
+  // A question's answer: what was typed, else the tapped option.
+  const answerFor = (i) => String(typed[i] || "").trim() || picks[i] || "";
+  const answeredCount = (qs) => qs.filter((_q, i) => answerFor(i)).length;
+  const sendPicks = (qs) => {
+    const text = qs
+      .map((q, i) => (answerFor(i) ? `${q.question} — ${answerFor(i)}` : null))
+      .filter(Boolean)
+      .join("\n");
+    setTyped({});
+    answer(text);
+  };
 
   const questions = (plan && plan.questions) || [];
   const pieces = (plan && plan.pieces) || [];
@@ -521,47 +647,93 @@ export const CreatePlanStep = ({
 
           {!busy && questions.length ? (
             <div className="flex flex-col gap-3" data-testid="plan-questions">
-              {questions.map((q, i) => (
-                <div
-                  key={i}
-                  className={`flex flex-col gap-2 rounded-lg border px-4 py-3 ${hairline}`}
-                >
-                  <span className={`text-sm font-medium ${strong}`}>
-                    {q.question}
-                  </span>
-                  {Array.isArray(q.options) && q.options.length ? (
-                    <div className="flex flex-row flex-wrap gap-2">
-                      {q.options.map((o) =>
-                        picks[i] === o ? (
-                          <Button
-                            key={o}
-                            title={o}
-                            size="sm"
-                            onClick={() => pick(questions, i, o)}
-                          />
-                        ) : (
-                          <Button3
-                            key={o}
-                            title={o}
-                            size="sm"
-                            onClick={() => pick(questions, i, o)}
-                          />
-                        ),
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
+              {questions.map((q, i) => {
+                const options = (
+                  Array.isArray(q.options) ? q.options : []
+                ).filter(Boolean);
+                const fieldId = `plan-question-${i}`;
+                return (
+                  <div
+                    key={i}
+                    className={`flex flex-col gap-3 rounded-lg border px-4 py-3 ${hairline}`}
+                    data-testid="plan-question"
+                  >
+                    <span className={`text-sm font-semibold ${strong}`}>
+                      {q.question}
+                    </span>
+                    {options.length ? (
+                      <div className="flex flex-row flex-wrap gap-2">
+                        {options.map((o) =>
+                          isTypeItOption(o) ? (
+                            // "I'll type it" isn't an answer: it puts the
+                            // cursor in this question's field.
+                            <ButtonIcon2
+                              key={o}
+                              text={o}
+                              ariaPressed={false}
+                              onClick={() => {
+                                const el = document.getElementById(fieldId);
+                                if (el) el.focus();
+                              }}
+                            />
+                          ) : (
+                            <ButtonIcon2
+                              key={o}
+                              text={o}
+                              ariaPressed={picks[i] === o}
+                              selected={picks[i] === o}
+                              onClick={() => pick(questions, i, o)}
+                            />
+                          ),
+                        )}
+                      </div>
+                    ) : null}
+                    <InputText
+                      id={fieldId}
+                      ariaLabel={`Your answer: ${q.question}`}
+                      placeholder={
+                        options.length
+                          ? "Or type an answer…"
+                          : "Type an answer…"
+                      }
+                      value={typed[i] || ""}
+                      onChange={(v) => {
+                        setTyped((t) => ({ ...t, [i]: v }));
+                        // Typing replaces a tapped option for this question.
+                        if (String(v).trim()) {
+                          setPicks((p) => {
+                            const next = { ...p };
+                            delete next[i];
+                            return next;
+                          });
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter" || e.shiftKey) return;
+                        e.preventDefault();
+                        const v = String(typed[i] || "").trim();
+                        if (!v) return;
+                        if (questions.length === 1) {
+                          answer(`${q.question} — ${v}`);
+                          setTyped({});
+                        }
+                      }}
+                    />
+                    {questions.length === 1 ? (
+                      <span className={`text-xs ${muted}`}>Enter to send</span>
+                    ) : null}
+                  </div>
+                );
+              })}
               {questions.length > 1 ? (
                 <div className="flex flex-row items-center gap-3">
                   <Button
                     title="Send answers"
                     onClick={() => sendPicks(questions)}
-                    disabled={!Object.keys(picks).length}
+                    disabled={!answeredCount(questions)}
                   />
-                  <span className={`text-xs ${muted}`}>
-                    {Object.keys(picks).length} of {questions.length} answered —
-                    or type below
+                  <span className={`text-sm ${muted}`}>
+                    {answeredCount(questions)} of {questions.length} answered
                   </span>
                 </div>
               ) : null}
@@ -569,10 +741,7 @@ export const CreatePlanStep = ({
           ) : null}
 
           {plan && pieces.length ? (
-            <div
-              className={`flex flex-col gap-4 rounded-lg border p-5 ${hairline}`}
-              data-testid="plan-card"
-            >
+            <div className="flex flex-col gap-4" data-testid="plan-card">
               <span className={`text-lg font-semibold ${strong}`}>
                 {plan.summary}
               </span>
@@ -580,114 +749,134 @@ export const CreatePlanStep = ({
                 {countsLine(plan)}
               </span>
 
-              {GROUPS.map(([kind, label]) => {
-                const group = pieces.filter((p) => p && p.kind === kind);
-                if (!group.length) return null;
-                return (
-                  <div key={kind} className="flex flex-col gap-2">
-                    <SectionLabel text={label} />
-                    {group.map((p) => {
-                      const index = pieces.indexOf(p);
-                      return (
-                        <div key={index} className="flex flex-col gap-2">
-                          <div className="flex flex-row items-center gap-3 text-sm">
-                            <span
-                              className={`text-xs font-semibold uppercase tracking-wider flex-shrink-0 ${muted}`}
-                            >
-                              {SOURCE_TAG[p.source] || p.source}
-                            </span>
-                            <span className="flex-1 min-w-0 flex flex-col">
-                              <span
-                                className={`font-medium truncate ${strong}`}
-                              >
-                                {p.name}
-                              </span>
-                              <span className={`text-xs truncate ${muted}`}>
-                                {[
-                                  p.package,
-                                  (p.providers || []).join(", "),
-                                  p.notes,
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </span>
-                            </span>
-                            {p.kind === "widget" ? (
-                              <Button3
-                                title="Swap…"
-                                size="sm"
-                                onClick={() => setSwapIndex(index)}
+              <PlanSection title="What it makes" testId="plan-pieces">
+                {GROUPS.map(([kind, label]) => {
+                  const group = pieces.filter((p) => p && p.kind === kind);
+                  if (!group.length) return null;
+                  return (
+                    <div key={kind} className="flex flex-col">
+                      <SectionLabel text={label} />
+                      {group.map((p, gi) => {
+                        const index = pieces.indexOf(p);
+                        const base = SOURCE[p.source] || {
+                          label: p.source,
+                          state: "neutral",
+                        };
+                        const source =
+                          p.source === "new"
+                            ? { ...base, label: `New ${p.kind}` }
+                            : base;
+                        const meta = pieceMeta(p);
+                        return (
+                          <div
+                            key={index}
+                            className={`flex flex-col gap-2 py-3 ${gi ? `border-t ${hairline}` : ""}`}
+                            data-testid="plan-piece"
+                          >
+                            <div className="flex flex-row items-start gap-3">
+                              <FontAwesomeIcon
+                                icon={KIND_ICON[p.kind] || "puzzle-piece"}
+                                className={`h-4 w-4 mt-6 flex-shrink-0 ${muted}`}
+                              />
+                              <div className="flex-1 min-w-0 flex flex-col items-start gap-1">
+                                <StatusBadge
+                                  state={source.state}
+                                  label={source.label}
+                                />
+                                <span
+                                  className={`text-sm font-medium ${strong}`}
+                                >
+                                  {p.name}
+                                </span>
+                                {meta ? (
+                                  <span className={`text-xs ${muted}`}>
+                                    {meta}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="dr-row-actions flex flex-row items-center gap-1 flex-shrink-0 pt-5">
+                                {p.kind === "widget" ? (
+                                  <Button2
+                                    title="Swap…"
+                                    size="sm"
+                                    onClick={() => setSwapIndex(index)}
+                                  />
+                                ) : null}
+                                <ButtonIcon
+                                  icon="xmark"
+                                  ariaLabel={`Remove ${p.name} from the plan`}
+                                  onClick={() =>
+                                    editPlan(
+                                      removePiece(plan, index),
+                                      `removed ${p.name}`,
+                                    )
+                                  }
+                                />
+                              </div>
+                            </div>
+                            {p.kind === "bot" && p.source === "new" ? (
+                              <BotPlanDetails
+                                piece={p}
+                                muted={muted}
+                                strong={strong}
+                                open={openBots.includes(index)}
+                                onToggle={() =>
+                                  setOpenBots((o) =>
+                                    o.includes(index)
+                                      ? o.filter((x) => x !== index)
+                                      : [...o, index],
+                                  )
+                                }
                               />
                             ) : null}
-                            <Button3
-                              title="Remove"
-                              size="sm"
-                              onClick={() =>
-                                editPlan(
-                                  removePiece(plan, index),
-                                  `removed ${p.name}`,
-                                )
-                              }
-                            />
+                            {swapIndex === index ? (
+                              <SwapPicker
+                                piece={p}
+                                onCancel={() => setSwapIndex(null)}
+                                onPick={(m) => {
+                                  setSwapIndex(null);
+                                  editPlan(
+                                    swapPiece(plan, index, m),
+                                    m.source === "New"
+                                      ? `build ${p.name} new`
+                                      : `swapped ${p.name} for ${m.name}`,
+                                  );
+                                }}
+                              />
+                            ) : null}
                           </div>
-                          {p.kind === "bot" && p.source === "new" ? (
-                            <BotPlanDetails
-                              piece={p}
-                              muted={muted}
-                              open={openBots.includes(index)}
-                              onToggle={() =>
-                                setOpenBots((o) =>
-                                  o.includes(index)
-                                    ? o.filter((x) => x !== index)
-                                    : [...o, index],
-                                )
-                              }
-                            />
-                          ) : null}
-                          {swapIndex === index ? (
-                            <SwapPicker
-                              piece={p}
-                              onCancel={() => setSwapIndex(null)}
-                              onPick={(m) => {
-                                setSwapIndex(null);
-                                editPlan(
-                                  swapPiece(plan, index, m),
-                                  m.source === "New"
-                                    ? `build ${p.name} new`
-                                    : `swapped ${p.name} for ${m.name}`,
-                                );
-                              }}
-                            />
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </PlanSection>
 
               {/* What it will look like, with made-up data (CRE-003 AC6). */}
-              <PlanSketch plan={plan} />
+              <PlanSketch plan={plan} compact={compact} />
 
               {checklist.length ? (
-                <div className="flex flex-col gap-2" data-testid="plan-before">
-                  <SectionLabel text="Before building" />
+                <PlanSection title="Before building" testId="plan-before">
                   {checklist.map((it) => {
                     const skipped = isSkipped(it, checks, have);
                     const done = isDone(it, checks, have) && !skipped;
                     return (
                       <div
                         key={it.id}
-                        className="flex flex-row items-center gap-3 text-sm"
+                        className="flex flex-row items-center gap-3 text-sm py-1"
                         data-testid="checklist-item"
                       >
-                        <span className={`flex-1 min-w-0 ${done ? muted : ""}`}>
-                          {done ? "✓ " : ""}
-                          {it.label}
+                        <span className="flex-1 min-w-0 flex flex-col items-start gap-1">
+                          <StatusBadge
+                            state={done ? "success" : "neutral"}
+                            label={done ? "Done" : "To do"}
+                          />
+                          <span className={done ? muted : strong}>
+                            {it.label}
+                          </span>
                           {it.package ? (
                             <span className={`text-xs ${muted}`}>
-                              {" "}
-                              · {it.package}
+                              {it.package}
                             </span>
                           ) : null}
                           {skipped ? (
@@ -701,7 +890,7 @@ export const CreatePlanStep = ({
                           ) : null}
                         </span>
                         {done ? null : (
-                          <Button3
+                          <Button2
                             title={
                               it.kind === "install"
                                 ? "Review & approve"
@@ -720,38 +909,68 @@ export const CreatePlanStep = ({
                       </div>
                     );
                   })}
-                </div>
+                </PlanSection>
               ) : null}
 
-              {(plan.access || []).length ? (
-                <div className="flex flex-col gap-1" data-testid="plan-access">
-                  <SectionLabel text="What it can and can't do" />
-                  {plan.access.map((a, i) => (
-                    <span key={i} className="text-sm">
-                      {a}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-
-              {(plan.checks || []).length ? (
-                <div className="flex flex-col gap-1">
-                  <SectionLabel text="How we'll know it works" />
-                  <span className="text-sm">{plan.checks.join(" · ")}</span>
-                </div>
-              ) : null}
-
-              <div className="flex flex-col gap-1" data-testid="plan-estimate">
-                <SectionLabel text="Estimated cost" />
-                <span className="text-sm">
-                  To build: {describeEstimate(estimate)}
-                </span>
-                {plan.estimate && plan.estimate.running ? (
-                  <span className="text-sm">
-                    To run: {plan.estimate.running}
-                  </span>
+              <PlanSection title="What to expect" testId="plan-expect">
+                {(plan.access || []).length ? (
+                  <div
+                    className="flex flex-col gap-1"
+                    data-testid="plan-access"
+                  >
+                    <SectionLabel text="What it can and can't do" />
+                    {plan.access.map((a, i) => {
+                      const cant = cannotLine(a);
+                      return (
+                        <span
+                          key={i}
+                          className="flex flex-row items-start gap-2 text-sm"
+                        >
+                          <FontAwesomeIcon
+                            icon={cant ? "ban" : "check"}
+                            className={`h-3.5 w-3.5 mt-1 flex-shrink-0 ${cant ? muted : statusTokens.success.icon}`}
+                            aria-label={cant ? "Can't" : "Can"}
+                          />
+                          <span>{a}</span>
+                        </span>
+                      );
+                    })}
+                  </div>
                 ) : null}
-              </div>
+
+                {(plan.checks || []).length ? (
+                  <div className="flex flex-col gap-1">
+                    <SectionLabel text="How we'll know it works" />
+                    <ul
+                      className="flex flex-col gap-1 text-sm"
+                      style={{
+                        margin: 0,
+                        paddingLeft: "1.1rem",
+                        listStyle: "disc",
+                      }}
+                    >
+                      {plan.checks.map((c, i) => (
+                        <li key={i}>{c}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                <div
+                  className="flex flex-col gap-1"
+                  data-testid="plan-estimate"
+                >
+                  <SectionLabel text="Estimated cost" />
+                  <span className="text-sm">
+                    To build: {describeEstimate(estimate)}
+                  </span>
+                  {plan.estimate && plan.estimate.running ? (
+                    <span className="text-sm">
+                      To run: {plan.estimate.running}
+                    </span>
+                  ) : null}
+                </div>
+              </PlanSection>
 
               {check && check.errors.length ? (
                 <span className={`text-xs ${muted}`}>

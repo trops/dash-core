@@ -168,6 +168,19 @@ describe("CreateModal — start screen", () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 
+  test("start screen layout: a raised modal surface, titled sections, quiet header (screen audit)", () => {
+    setup();
+    const modal = screen.getByTestId("create-modal");
+    expect(modal).toHaveClass("dr-modal-surface");
+    expect(modal.firstChild).toHaveClass("dr-panel-head");
+    expect(screen.getByTestId("create-no-ai")).toHaveTextContent(
+      "Or start without AI",
+    );
+    expect(
+      screen.getByRole("button", { name: /Blank dashboard/ }),
+    ).toBeInTheDocument();
+  });
+
   test("the no-AI row hands its choice to the host and closes", () => {
     const { onStartWithoutAi, setIsOpen } = setup();
     fireEvent.click(screen.getByRole("button", { name: /Blank dashboard/ }));
@@ -335,13 +348,23 @@ describe("CreateModal — Recent (2c-2, 4e-1)", () => {
     expect(setIsOpen).toHaveBeenCalledWith(false);
   });
 
-  test("a plan can be removed from Recent; Recent follows changes", async () => {
+  test("a plan can be removed from Recent, after a confirm; Recent follows changes", async () => {
     setup({ recent: PLANS });
     fireEvent.click(
       await screen.findByRole("button", {
         name: "Remove Morning Brief from Recent",
       }),
     );
+    // Asks first (design guide rule 10); Keep it changes nothing.
+    expect(screen.getByTestId("confirmation-modal")).toHaveTextContent(
+      "Discard “Morning Brief”?",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Keep it" }));
+    expect(window.mainApi.bots.removeCreateRecent).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove Morning Brief from Recent" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
     expect(window.mainApi.bots.removeCreateRecent).toHaveBeenCalledWith(
       "plan_1",
     );

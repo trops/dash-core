@@ -76,10 +76,21 @@ describe("PlanSketch", () => {
     expect(screen.getAllByText("Sample")).toHaveLength(3);
     expect(screen.getByText("13:00 1:1 with Alex")).toBeInTheDocument();
     expect(screen.getByText("Unread count")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Hide" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide preview" }));
     expect(screen.queryAllByTestId("plan-preview-box")).toHaveLength(0);
-    fireEvent.click(screen.getByRole("button", { name: "Show" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show preview" }));
     expect(screen.getAllByTestId("plan-preview-box")).toHaveLength(3);
+  });
+
+  test("in the narrow dock the boxes stack in one column", () => {
+    const { container, rerender } = render(<PlanSketch plan={plan} />);
+    const grid = () =>
+      container.querySelector('[data-testid="plan-preview-box"]').parentElement;
+    expect(grid().style.gridTemplateColumns).not.toBe(
+      "repeat(1, minmax(0, 1fr))",
+    );
+    rerender(<PlanSketch plan={plan} compact />);
+    expect(grid().style.gridTemplateColumns).toBe("repeat(1, minmax(0, 1fr))");
   });
 
   test("no samples yet says so; no pieces, no preview", () => {
