@@ -3,6 +3,7 @@
 jest.mock("../../ComponentManager", () => ({ ComponentManager: {} }));
 
 import {
+  widgetTitle,
   BUILT_IN,
   AI_BUILT,
   LOCAL,
@@ -227,5 +228,23 @@ describe("filterOrgs (NAV-008 AC2)", () => {
   it("drops empty orgs", () => {
     const out = filterOrgs(orgs, { query: "zzz" });
     expect(out).toEqual([]);
+  });
+});
+
+describe('widgetTitle (design audit: no "My Workspace" rows)', () => {
+  it("uses the display name", () => {
+    expect(widgetTitle({ displayName: "Slack Channels", name: "x.Y" })).toBe(
+      "Slack Channels",
+    );
+  });
+  it("skips the config model's default name and reads the component", () => {
+    expect(
+      widgetTitle({
+        displayName: "My Workspace",
+        name: "trops.slack.ChannelMessages",
+      }),
+    ).toBe("Channel Messages");
+    expect(widgetTitle({ name: "My Workspace" })).toBe("Widget");
+    expect(widgetTitle({ name: "HTMLViewer" })).toBe("HTML Viewer");
   });
 });

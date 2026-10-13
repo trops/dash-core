@@ -172,6 +172,9 @@ describe("BotsPage list (NAV-006 AC1)", () => {
   it("turns automatic team leads on and off", async () => {
     const { botsApi } = setup();
     const box = await screen.findByLabelText("Create team leads automatically");
+    // A setting under the list, not a filter in the toolbar.
+    expect(screen.getByTestId("auto-leads-setting")).toContainElement(box);
+    expect(box).toHaveAttribute("role", "switch");
     expect(box).toBeChecked();
     fireEvent.click(box);
     expect(botsApi.setSettings).toHaveBeenCalledWith({ autoLeads: false });

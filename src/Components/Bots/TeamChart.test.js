@@ -98,7 +98,9 @@ describe("TeamChart (TEAM-014 slice 1)", () => {
 
   it("a team with only the lead says so", () => {
     setup({ members: [] });
-    expect(screen.getByText(/No bots yet/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/No bots on this dashboard yet/),
+    ).toBeInTheDocument();
   });
 });
 

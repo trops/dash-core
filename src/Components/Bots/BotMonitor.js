@@ -1,5 +1,11 @@
 import React, { useContext, useEffect, useState } from "react";
-import { Button, Button3, ThemeContext } from "@trops/dash-react";
+import {
+  Button,
+  Button3,
+  ListRow,
+  ThemeContext,
+  useStatusTokens,
+} from "@trops/dash-react";
 import { toPlainText } from "./botConversation";
 
 /**
@@ -15,11 +21,11 @@ import { toPlainText } from "./botConversation";
  * @param {(botId: string) => void} [onOpenSettings]  bots on no dashboard
  */
 const EMPTY = [];
-const STATUS_DOT = {
-  completed: "bg-green-400",
-  failed: "bg-red-400",
-  running: "bg-indigo-400",
-  stopped: "bg-gray-500",
+// Which status token colours each run state's dot.
+const STATUS_TONE = {
+  completed: "success",
+  failed: "error",
+  running: "info",
 };
 const TICK_MS = 30000;
 
@@ -60,10 +66,15 @@ export const BotMonitor = ({
   onOpenBotsView = null,
   onOpenSettings = null,
 }) => {
-  const { currentTheme = {} } = useContext(ThemeContext) || {};
+  const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
   const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
   const strong = currentTheme["text-neutral-light"] || "text-gray-200";
   const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
+  const statusTokens = useStatusTokens();
+  const dotClass = (status) =>
+    STATUS_TONE[status]
+      ? statusTokens[STATUS_TONE[status]].solidBg
+      : currentTheme["bg-neutral-medium"] || "";
 
   // Re-render periodically so "5 min ago" / "Running · 3 min" stay true.
   const [now, setNow] = useState(() => Date.now());
@@ -97,7 +108,7 @@ export const BotMonitor = ({
       return (
         <Button3
           title="Open in Bots view"
-          size="xs"
+          size="sm"
           onClick={() => onOpenBotsView(workspaceId, botId, tab)}
         />
       );
@@ -106,7 +117,7 @@ export const BotMonitor = ({
       return (
         <Button3
           title="Open in Settings"
-          size="xs"
+          size="sm"
           onClick={() => onOpenSettings(botId)}
         />
       );
@@ -115,10 +126,12 @@ export const BotMonitor = ({
   };
 
   const sectionHeader = (text, count) => (
-    <div className={`text-xs uppercase tracking-wider font-semibold ${muted}`}>
+    <h3 className={`text-sm font-semibold ${strong}`}>
       {text}
-      {count ? ` · ${count}` : ""}
-    </div>
+      {count ? (
+        <span className={`font-normal ${muted}`}> · {count}</span>
+      ) : null}
+    </h3>
   );
 
   const nothing = !approvals.length && !running.length && !recent.length;
@@ -155,13 +168,13 @@ export const BotMonitor = ({
                 <div className="flex flex-row flex-wrap items-center gap-2">
                   <Button3
                     title="Allow once"
-                    size="xs"
+                    size="sm"
                     onClick={() => monitor.approve(a.id, { allow: true })}
                   />
                   {req.serverName ? (
                     <Button
                       title="Always allow"
-                      size="xs"
+                      size="sm"
                       onClick={() =>
                         monitor.approve(a.id, { allow: true, remember: true })
                       }
@@ -169,7 +182,7 @@ export const BotMonitor = ({
                   ) : null}
                   <Button3
                     title="Deny"
-                    size="xs"
+                    size="sm"
                     onClick={() => monitor.approve(a.id, { allow: false })}
                   />
                   <div className="flex-1" />
@@ -204,7 +217,7 @@ export const BotMonitor = ({
                   <div className="flex-1" />
                   <Button3
                     title="Stop"
-                    size="xs"
+                    size="sm"
                     onClick={() => monitor.stop(r.id)}
                   />
                   {openAction(r.id, ws, "conversation")}
@@ -217,11 +230,10 @@ export const BotMonitor = ({
 
       {recent.length ? (
         <section aria-label="Recent" className="flex flex-col gap-1">
-          {sectionHeader("Recent")}
+          {sectionHeader("Recent runs", recent.length)}
           {recent.map((item, i) => {
             const ws = workspaceOf(item.botId, item.workspaceId);
             const run = item.run || {};
-            const dot = STATUS_DOT[run.status] || "bg-gray-500";
             const canOpen =
               (ws !== null && onOpenBotsView) ||
               (ws === null && onOpenSettings);
@@ -232,32 +244,25 @@ export const BotMonitor = ({
                 onOpenSettings(item.botId);
               }
             };
+            const when = relativeTime(run.endedAt || run.at, now);
+            const result = firstLine(run) || statusLabel(run.status);
             return (
-              <button
+              <ListRow
                 key={`${item.botId}-${i}`}
-                type="button"
-                onClick={open}
-                disabled={!canOpen}
-                className={`w-full text-left flex flex-col gap-0.5 py-2 border-b ${hairline}`}
-              >
-                <span className="flex flex-row items-center gap-2 text-sm">
+                icon={
                   <span
                     role="img"
                     aria-label={statusLabel(run.status)}
                     title={statusLabel(run.status)}
-                    className={`h-2 w-2 rounded-full flex-shrink-0 ${dot}`}
+                    className={`inline-block mt-1 h-2 w-2 rounded-full ${dotClass(run.status)}`}
                   />
-                  <span className="truncate font-medium">
-                    {label(item.botId, item.botName, ws)}
-                  </span>
-                  <span className={`ml-auto text-xs flex-shrink-0 ${muted}`}>
-                    {relativeTime(run.endedAt || run.at, now)}
-                  </span>
-                </span>
-                <span className={`text-xs truncate ${muted}`}>
-                  {firstLine(run)}
-                </span>
-              </button>
+                }
+                title={result}
+                meta={[label(item.botId, item.botName, ws), when]
+                  .filter(Boolean)
+                  .join(" · ")}
+                onClick={canOpen ? open : null}
+              />
             );
           })}
         </section>

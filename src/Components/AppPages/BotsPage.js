@@ -2,12 +2,13 @@ import React, { useContext, useEffect, useRef, useState } from "react";
 import {
   Button,
   Button3,
-  Checkbox,
   ConfirmationModal,
   FilterMenu,
   SearchInput,
   SectionLabel,
   SegmentedControl,
+  StatusBadge,
+  Switch,
 } from "@trops/dash-react";
 import { AppContext } from "../../Context/App/AppContext";
 import { ComponentManager } from "../../ComponentManager";
@@ -20,6 +21,7 @@ import { BotAvatar } from "../Bots/BotAvatar";
 import { useAllBots } from "./useAllBots";
 import { DashTeamPanel } from "./DashTeamPanel";
 import { approvalText, botHandle, botProviders } from "./botSummary";
+import { DetailGroup, ListGroupLabel, ManageLayout } from "./ManageLayout";
 
 // Widget config (declared `events`) by component name — feeds the bot
 // editor's "Run on events" picker.
@@ -123,13 +125,7 @@ const BotDetailPanel = ({
               <h3 className={`text-lg font-semibold truncate ${strong}`}>
                 {bot.name || "Untitled bot"}
               </h3>
-              {isLead ? (
-                <span
-                  className={`text-xs uppercase tracking-wider font-semibold ${muted}`}
-                >
-                  Lead
-                </span>
-              ) : null}
+              {isLead ? <StatusBadge state="neutral" label="Lead" /> : null}
             </span>
             <span className={`text-xs font-mono truncate ${muted}`}>
               {botHandle(bot)}
@@ -219,8 +215,7 @@ const BotDetailPanel = ({
             <span className={`text-sm ${muted}`}>None</span>
           )}
         </div>
-        <div className="flex flex-col gap-2 min-w-0">
-          <SectionLabel text="Last run" />
+        <DetailGroup title="Last run">
           {lastRun ? (
             <div className="flex flex-col gap-1 min-w-0">
               <span className="text-sm">
@@ -238,7 +233,7 @@ const BotDetailPanel = ({
                 </span>
               ) : null}
               {lastRun.error || lastRun.output ? (
-                <span className={`text-xs line-clamp-3 ${muted}`}>
+                <span className={`text-sm line-clamp-3 ${muted}`}>
                   {toPlainText(lastRun.error || lastRun.output)}
                 </span>
               ) : null}
@@ -246,7 +241,7 @@ const BotDetailPanel = ({
           ) : (
             <span className={`text-sm ${muted}`}>Hasn't run yet</span>
           )}
-        </div>
+        </DetailGroup>
       </div>
     </div>
   );
@@ -266,8 +261,7 @@ export const BotsPage = ({
   createRequested = false,
   onCreateAcknowledged = null,
 }) => {
-  const { muted, strong, hairline, selectedBg, selectedBorder } =
-    useConfigTokens();
+  const { muted, strong, selectedBg, selectedBorder } = useConfigTokens();
   const appContext = useContext(AppContext) || {};
   const providers = appContext.providers || {};
   const botsApi = dashApi && dashApi.bots;
@@ -450,52 +444,56 @@ export const BotsPage = ({
   }
 
   return (
-    // The page's base text colour (plain names inherit it); muted text
-    // keeps its own token.
-    <div
-      data-testid="bots-page"
-      className={`flex flex-col flex-1 min-h-0 gap-3 px-6 pt-4 pb-4 ${strong}`}
-    >
-      {/* Filter bar — fixed; the list and detail scroll on their own. */}
-      <div className="flex-shrink-0 flex flex-row flex-wrap items-center gap-2">
-        <div className="w-72">
-          <SearchInput
-            value={query}
-            onChange={setQuery}
-            placeholder="Search bots…"
+    <ManageLayout
+      testId="bots-page"
+      listLabel="Bots"
+      detailTestId="bot-detail"
+      // A bot's details are short: the pane fits them instead of leaving
+      // an empty card below.
+      detailFit
+      toolbar={
+        <>
+          <div className="w-72">
+            <SearchInput
+              value={query}
+              onChange={setQuery}
+              placeholder="Search bots…"
+            />
+          </div>
+          <FilterMenu
+            label="Team"
+            options={teamOptions}
+            selected={teams}
+            onChange={setTeams}
           />
-        </div>
-        <FilterMenu
-          label="Team"
-          options={teamOptions}
-          selected={teams}
-          onChange={setTeams}
-        />
-        <SegmentedControl
-          ariaLabel="Status"
-          options={STATUS_FILTERS}
-          value={statusFilter}
-          onChange={setStatusFilter}
-        />
-        <span className="flex-1" />
-        {autoLeads !== null ? (
-          <Checkbox
-            label="Create team leads automatically"
-            checked={autoLeads}
-            onChange={toggleAutoLeads}
+          <SegmentedControl
+            ariaLabel="Status"
+            options={STATUS_FILTERS}
+            value={statusFilter}
+            onChange={setStatusFilter}
           />
-        ) : null}
-      </div>
-
-      <div className="flex-1 min-h-0 grid grid-cols-3 gap-4">
-        <div
-          role="list"
-          aria-label="Bots"
-          className="min-h-0 overflow-y-auto flex flex-col gap-3 pr-2"
-        >
+        </>
+      }
+      // A setting, not a filter: it sits under the list, not in the toolbar.
+      listFooter={
+        autoLeads !== null ? (
+          <div className="flex flex-col gap-1" data-testid="auto-leads-setting">
+            <Switch
+              label="Create team leads automatically"
+              checked={autoLeads}
+              onChange={toggleAutoLeads}
+            />
+            <span className={`text-xs ${muted}`}>
+              Every dashboard gets an idle lead that plans work for its bots.
+            </span>
+          </div>
+        ) : null
+      }
+      list={
+        <>
           {groups.map((g) => (
-            <div key={teamKey(g)} className="flex flex-col gap-1">
-              <SectionLabel text={g.label} className="px-3" />
+            <div key={teamKey(g)} className="flex flex-col gap-0.5">
+              <ListGroupLabel text={g.label} />
               {g.bots.map((bot) => {
                 const active =
                   mode !== "create" && selected && bot.id === selected.id;
@@ -508,7 +506,7 @@ export const BotsPage = ({
                       setMode(null);
                       setSelectedId(bot.id);
                     }}
-                    className={`w-full text-left rounded-lg px-3 py-2 border flex flex-row items-center gap-3 ${
+                    className={`w-full text-left rounded-lg px-2 py-2 border flex flex-row items-center gap-3 ${
                       active
                         ? `${selectedBg} ${selectedBorder}`
                         : "border-transparent"
@@ -524,11 +522,7 @@ export const BotsPage = ({
                           {bot.name || "Untitled bot"}
                         </span>
                         {bot.role === "lead" ? (
-                          <span
-                            className={`text-xs uppercase tracking-wider font-semibold ${muted}`}
-                          >
-                            Lead
-                          </span>
+                          <StatusBadge state="neutral" label="Lead" />
                         ) : null}
                       </span>
                       <span className={`text-xs truncate ${muted}`}>
@@ -542,17 +536,12 @@ export const BotsPage = ({
             </div>
           ))}
           {!ordered.length ? (
-            <span className={`text-sm px-3 ${muted}`}>No bots match.</span>
+            <span className={`text-sm px-2 ${muted}`}>No bots match.</span>
           ) : null}
-        </div>
-        <div
-          data-testid="bot-detail"
-          className={`col-span-2 min-h-0 overflow-y-auto rounded-lg border p-5 ${hairline}`}
-        >
-          {detail}
-        </div>
-      </div>
-
+        </>
+      }
+      detail={detail}
+    >
       <ConfirmationModal
         isOpen={!!deleteTarget}
         setIsOpen={() => setDeleteTarget(null)}
@@ -563,7 +552,7 @@ export const BotsPage = ({
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-    </div>
+    </ManageLayout>
   );
 };
 

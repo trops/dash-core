@@ -277,24 +277,24 @@ describe("groupProviders", () => {
 
   it("groups by class (MCP, Credentials, WebSocket), A-Z", () => {
     expect(names(groupProviders(providers, { statusOf }))).toEqual([
-      ["MCP servers", ["GitHub", "Slack"]],
-      ["API credentials", ["Algolia", "OpenAI Key"]],
-      ["WebSocket", ["Echo"]],
+      ["Tools (MCP)", ["GitHub", "Slack"]],
+      ["API keys", ["Algolia", "OpenAI Key"]],
+      ["Live data", ["Echo"]],
     ]);
   });
 
   it("filters by class, search (name or type) and needs setup", () => {
     expect(names(groupProviders(providers, { statusOf, cls: "mcp" }))).toEqual([
-      ["MCP servers", ["GitHub", "Slack"]],
+      ["Tools (MCP)", ["GitHub", "Slack"]],
     ]);
     expect(
       names(groupProviders(providers, { statusOf, query: "ALGO" })),
-    ).toEqual([["API credentials", ["Algolia"]]]);
+    ).toEqual([["API keys", ["Algolia"]]]);
     expect(
       names(groupProviders(providers, { statusOf, needsSetupOnly: true })),
     ).toEqual([
-      ["MCP servers", ["Slack"]],
-      ["API credentials", ["OpenAI Key"]],
+      ["Tools (MCP)", ["Slack"]],
+      ["API keys", ["OpenAI Key"]],
     ]);
   });
 });

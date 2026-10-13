@@ -130,7 +130,7 @@ describe("ProvidersSection list (NAV-007 AC1)", () => {
     const headings = within(list())
       .getAllByTestId("provider-group")
       .map((h) => h.textContent);
-    expect(headings).toEqual(["MCP servers", "API credentials", "WebSocket"]);
+    expect(headings).toEqual(["Tools (MCP)", "API keys", "Live data"]);
     expect(names()).toEqual(["GitHub", "Slack", "Algolia", "Echo"]);
     await waitFor(() =>
       expect(within(row("Slack")).getByText("Connected")).toBeInTheDocument(),
@@ -141,7 +141,7 @@ describe("ProvidersSection list (NAV-007 AC1)", () => {
 
   it("filters by class, search and Needs setup", () => {
     setup();
-    fireEvent.click(screen.getByRole("radio", { name: "MCP" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Tools (MCP)" }));
     expect(names()).toEqual(["GitHub", "Slack"]);
     fireEvent.click(screen.getByRole("radio", { name: "All" }));
     fireEvent.change(screen.getByRole("searchbox"), {
@@ -330,5 +330,33 @@ describe("ProvidersSection deep links (NAV-007 AC2)", () => {
     setup({ createRequested: true, onCreateAcknowledged });
     expect(screen.getByTestId("class-chooser")).toBeInTheDocument();
     expect(onCreateAcknowledged).toHaveBeenCalled();
+  });
+});
+
+describe("ProvidersSection empty state (design audit)", () => {
+  it("with no providers at all: one empty state with New provider, no search or filters", () => {
+    setup({ appProviders: {} });
+    const empty = screen.getByTestId("providers-empty");
+    expect(empty).toHaveTextContent("No providers yet");
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(screen.queryByTestId("provider-detail")).toBeNull();
+    fireEvent.click(
+      within(empty).getByRole("button", { name: "New provider" }),
+    );
+    // The class chooser opens in the detail pane.
+    expect(screen.getByTestId("provider-detail")).toBeInTheDocument();
+    expect(screen.getByRole("searchbox")).toBeInTheDocument();
+  });
+
+  it("filtered to nothing: keeps the filters and says no matches", () => {
+    setup();
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "zzz" },
+    });
+    expect(
+      within(list()).getByText("No providers match these filters."),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("providers-empty")).toBeNull();
   });
 });

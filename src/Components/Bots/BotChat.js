@@ -10,9 +10,11 @@ import React, {
 import {
   Button,
   Button3,
+  EmptyState,
   FontAwesomeIcon,
   TextArea,
   ThemeContext,
+  useStatusTokens,
 } from "@trops/dash-react";
 import {
   buildConversation,
@@ -72,9 +74,10 @@ export const BotChat = ({
   drafts = EMPTY,
   onOpenDraft = null,
 }) => {
-  const { currentTheme = {} } = useContext(ThemeContext) || {};
+  const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
   const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
   const strong = currentTheme["text-neutral-light"] || "text-gray-200";
+  const statusTokens = useStatusTokens();
   const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
   const bubble = currentTheme["bg-primary-very-dark"] || "bg-gray-800";
   const bubbleBorder = currentTheme["border-primary-dark"] || "border-gray-600";
@@ -343,7 +346,7 @@ export const BotChat = ({
                   <Button3
                     key={step.action}
                     title={step.label}
-                    size="xs"
+                    size="sm"
                     onClick={() => startRun(t.prompt || "", false)}
                   />
                 ) : step.action === "change-model" ? (
@@ -351,7 +354,7 @@ export const BotChat = ({
                     <Button3
                       key={step.action}
                       title={step.label}
-                      size="xs"
+                      size="sm"
                       onClick={() => onChangeModel()}
                     />
                   ) : null
@@ -359,7 +362,7 @@ export const BotChat = ({
                   <Button3
                     key={step.action}
                     title={step.label}
-                    size="xs"
+                    size="sm"
                     onClick={() => onOpenSettings(step.section)}
                   />
                 ) : null,
@@ -400,7 +403,7 @@ export const BotChat = ({
                 <div key={d.id}>
                   <Button3
                     title={`Review draft: ${d.definition && d.definition.name}`}
-                    size="xs"
+                    size="sm"
                     onClick={() => onOpenDraft(d.id)}
                   />
                 </div>
@@ -424,20 +427,26 @@ export const BotChat = ({
           data-testid="bot-chat-thread"
         >
           {runs !== null && !turns.length ? (
-            <div className={`text-sm ${muted}`}>
-              No conversation yet.{" "}
-              {isLead
-                ? "Ask the lead what the team is doing."
-                : `Send ${bot.name} a message to start a run.`}
-            </div>
+            <EmptyState
+              icon={<FontAwesomeIcon icon="comments" className="h-6 w-6" />}
+              title="No conversation yet"
+              description={
+                isLead
+                  ? "Ask the lead what the team is doing — the box is below."
+                  : `Send ${bot.name} a message below to start a run.`
+              }
+              className="my-auto"
+            />
           ) : null}
           {turns.map(renderTurn)}
           {approvals.map((a) => (
             <div
               key={a.id}
-              className="rounded-md border border-amber-700 px-3 py-3 flex flex-col gap-2"
+              className={`rounded-md border px-3 py-3 flex flex-col gap-2 ${statusTokens.warning.bg} ${statusTokens.warning.border}`}
             >
-              <span className="text-sm font-medium text-amber-300">
+              <span
+                className={`text-sm font-medium ${statusTokens.warning.text}`}
+              >
                 Needs your approval
               </span>
               <span className={`text-xs ${muted}`}>
@@ -451,13 +460,13 @@ export const BotChat = ({
               <div className="flex flex-row flex-wrap gap-2">
                 <Button3
                   title="Allow once"
-                  size="xs"
+                  size="sm"
                   onClick={() => onApprove && onApprove(a.id, { allow: true })}
                 />
                 {a.request && a.request.serverName ? (
                   <Button
                     title="Always allow"
-                    size="xs"
+                    size="sm"
                     onClick={() =>
                       onApprove &&
                       onApprove(a.id, { allow: true, remember: true })
@@ -466,7 +475,7 @@ export const BotChat = ({
                 ) : null}
                 <Button3
                   title="Deny"
-                  size="xs"
+                  size="sm"
                   onClick={() => onApprove && onApprove(a.id, { allow: false })}
                 />
               </div>
@@ -475,7 +484,7 @@ export const BotChat = ({
         </div>
         {unseen ? (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center">
-            <Button3 title="↓ New messages" size="xs" onClick={jumpToNewest} />
+            <Button3 title="↓ New messages" size="sm" onClick={jumpToNewest} />
           </div>
         ) : null}
       </div>
@@ -513,7 +522,7 @@ export const BotChat = ({
           {(runs || EMPTY).length ? (
             <Button3
               title="New conversation"
-              size="xs"
+              size="sm"
               onClick={() => setFreshNext(true)}
             />
           ) : null}

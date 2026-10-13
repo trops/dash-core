@@ -1,7 +1,7 @@
 import React, { useState, useContext } from "react";
 import {
   Button,
-  Sidebar,
+  ListRow,
   SettingsModal,
   SubHeading,
   SubHeading2,
@@ -67,27 +67,21 @@ export const AppSettingsModal = ({
       </SettingsModal.Title>
 
       <SettingsModal.Sidebar>
-        <Sidebar.Content>
-          {SECTIONS.map((section) => {
-            const isActive = activeDef.key === section.key;
-            return (
-              <Sidebar.Item
-                key={section.key}
-                icon={
-                  <FontAwesomeIcon
-                    icon={section.icon}
-                    className="h-3.5 w-3.5"
-                  />
-                }
-                active={isActive}
-                onClick={() => setActiveSection(section.key)}
-                className={isActive ? "bg-white/10 opacity-100" : ""}
-              >
-                {section.label}
-              </Sidebar.Item>
-            );
-          })}
-        </Sidebar.Content>
+        {/* List rows: the selected section gets the theme's selected
+            surface (both modes) and aria-current. */}
+        <nav aria-label="Settings sections" className="flex flex-col gap-0.5">
+          {SECTIONS.map((section) => (
+            <ListRow
+              key={section.key}
+              icon={
+                <FontAwesomeIcon icon={section.icon} className="h-3.5 w-3.5" />
+              }
+              title={section.label}
+              selected={activeDef.key === section.key}
+              onClick={() => setActiveSection(section.key)}
+            />
+          ))}
+        </nav>
       </SettingsModal.Sidebar>
 
       <SettingsModal.Header border={true} padding="px-4 py-3">

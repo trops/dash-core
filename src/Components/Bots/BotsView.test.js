@@ -229,7 +229,7 @@ describe("BotsView — team diagram (TEAM-014 slice 1)", () => {
 
   it("+ Add bot opens the new-bot form beside the diagram", () => {
     setup({ mode: null });
-    fireEvent.click(screen.getByRole("button", { name: "+ Add bot" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add bot" }));
     expect(screen.getByRole("tab", { name: "New bot" })).toBeInTheDocument();
     expect(screen.getByTestId("diagram-card-lead_7")).toBeInTheDocument();
   });
@@ -349,7 +349,7 @@ describe("BotsView — tabs and actions", () => {
 
   it("+ Add bot opens a new bot's form on this team", () => {
     setup();
-    fireEvent.click(screen.getByText("+ Add bot"));
+    fireEvent.click(screen.getByText("Add bot"));
     expect(screen.getByText("Create")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Team" })).toHaveValue("7");
   });
@@ -1249,7 +1249,7 @@ describe("BotsView — show bots on the dashboard (TEAM-012)", () => {
       .mockResolvedValue({ added: true, widgetId: 7 });
     const save = jest.fn().mockResolvedValue({ id: "bot_new", name: "Digest" });
     setup({ apiOver: { addBotWidget, save } });
-    fireEvent.click(within(teamList()).getByText("+ Add bot"));
+    fireEvent.click(within(teamList()).getByText("Add bot"));
     fireEvent.change(await screen.findByPlaceholderText("e.g. PR Digest"), {
       target: { value: "Digest" },
     });

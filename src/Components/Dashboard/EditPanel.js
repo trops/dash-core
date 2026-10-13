@@ -103,16 +103,21 @@ export const EditPanel = ({
       ),
     }));
 
+  // A raised neutral panel with a hairline edge, like the dock panels
+  // (Create, Assistant): neutral tokens, not the saturated primary fill;
+  // `chrome-glass` gives it the Aurora raised-glass surface.
   return (
     <aside
       aria-label="Edit dashboard"
-      className={`flex flex-col w-80 flex-shrink-0 h-full min-h-0 border-l ${
-        currentTheme["border-primary-dark"] || ""
-      } ${currentTheme["bg-primary-very-dark"] || ""}`}
+      className={`chrome-glass flex flex-col w-80 flex-shrink-0 h-full min-h-0 border-l ${
+        currentTheme["border-neutral-dark"] || ""
+      } ${currentTheme["bg-neutral-very-dark"] || ""}`}
     >
       <Tabs3
         value={tab}
         onValueChange={setTab}
+        // The panel is the surface; the tabs wrapper adds no fill of its own.
+        backgroundColor="bg-transparent"
         className="flex flex-col flex-1 min-h-0 border-0"
       >
         <Tabs3.List className="mx-3 mt-3 self-start">
@@ -132,7 +137,7 @@ export const EditPanel = ({
           <div className="flex flex-col flex-1 min-h-0 min-w-0">
             {selection?.kind === "cell" && (
               <span
-                className={`mx-4 mt-3 text-xs ${currentTheme["text-primary-medium"] || ""}`}
+                className={`mx-4 mt-3 text-xs ${currentTheme["text-neutral-medium"] || ""}`}
               >
                 Placing in cell {selection.cellNumber} — click a widget, or drag
                 one onto the dashboard.
@@ -162,7 +167,7 @@ export const EditPanel = ({
                   {selection.label || selection.component}
                 </span>
                 <span
-                  className={`text-xs break-all ${currentTheme["text-primary-medium"] || ""}`}
+                  className={`text-xs break-all ${currentTheme["text-neutral-medium"] || ""}`}
                 >
                   {selection.component}
                 </span>
@@ -171,7 +176,7 @@ export const EditPanel = ({
                 <div className="flex flex-col gap-2">
                   <span
                     role="status"
-                    className={`text-xs ${currentTheme["text-primary-light"] || ""}`}
+                    className={`text-xs ${currentTheme["text-neutral-light"] || ""}`}
                   >
                     Choose a cell in the same grid: click it, or Tab to it and
                     press Enter. An empty cell takes the widget; a full one
@@ -207,7 +212,7 @@ export const EditPanel = ({
             </div>
             {widgetConfig}
             <span
-              className={`px-4 py-2 text-xs ${currentTheme["text-primary-medium"] || ""}`}
+              className={`px-4 py-2 text-xs ${currentTheme["text-neutral-medium"] || ""}`}
             >
               Changes wait for Save. Press Esc or click the dashboard name to go
               back to the dashboard.
@@ -239,7 +244,7 @@ export const EditPanel = ({
             />
 
             <span
-              className={`text-xs ${currentTheme["text-primary-medium"] || ""}`}
+              className={`text-xs ${currentTheme["text-neutral-medium"] || ""}`}
             >
               Opens the Widget Builder. Building right here in the panel comes
               with the Create screen.
@@ -301,7 +306,7 @@ export const EditPanel = ({
               <SectionLabel>Providers, listeners and bots</SectionLabel>
               {configUnresolvedCount > 0 && (
                 <span
-                  className={`text-sm ${currentTheme["text-primary-medium"] || ""}`}
+                  className={`text-sm ${currentTheme["text-neutral-medium"] || ""}`}
                 >
                   {configUnresolvedCount} widget
                   {configUnresolvedCount === 1 ? " needs" : "s need"} a
@@ -330,7 +335,11 @@ export const EditPanel = ({
               options={themeOptions}
             />
           ) : (
-            <span className="text-sm opacity-60">No themes yet.</span>
+            <span
+              className={`text-sm ${currentTheme["text-neutral-medium"] || ""}`}
+            >
+              No themes yet.
+            </span>
           )}
         </Tabs3.Content>
       </Tabs3>

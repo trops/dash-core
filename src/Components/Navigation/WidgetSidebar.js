@@ -8,10 +8,15 @@ import React, {
 } from "react";
 import { useDrag } from "react-dnd";
 import {
+  Button,
+  Button3,
   FontAwesomeIcon,
   SearchInput,
+  SegmentedControl,
   Sidebar,
+  StatusBadge,
   ThemeContext,
+  useStatusTokens,
 } from "@trops/dash-react";
 import { ComponentManager } from "../../ComponentManager";
 import { SIDEBAR_WIDGET_TYPE } from "../../utils/dragTypes";
@@ -23,7 +28,43 @@ import { useRegistrySearch } from "../../hooks/useRegistrySearch";
 import { RegistryAuthModal } from "../Registry/RegistryAuthModal";
 import { InstallProgressModal } from "../Settings/details/InstallProgressModal";
 
+// ComponentConfigModel's fallback `name` for a config that sets none — it
+// isn't the widget's name, so it never titles a row.
+const DEFAULT_CONFIG_NAME = "My Workspace";
+
+// "ComposedWidget3" → "Composed Widget 3", "MCPServer" → "MCP Server".
+const splitWords = (s) =>
+  String(s)
+    .replace(/([a-z])([A-Z0-9])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/([0-9])([A-Za-z])/g, "$1 $2");
+
+/**
+ * The title for a widget row: its displayName, else its own name (unless
+ * that's the model default), else its component name as words.
+ */
+export function widgetTitle(widgetKey, widget = {}) {
+  if (widget && widget.displayName) return widget.displayName;
+  if (widget && widget.name && widget.name !== DEFAULT_CONFIG_NAME)
+    return widget.name;
+  const bare = bareComponentName(widgetKey);
+  return bare ? splitWords(bare) : widgetKey || "Widget";
+}
+
+// Theme tokens shared by the sidebar's rows and controls (light + dark).
+function useSidebarTokens() {
+  const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
+  return {
+    muted: currentTheme["text-neutral-medium"] || "",
+    strong: currentTheme["text-neutral-light"] || "",
+    hairline: currentTheme["border-neutral-dark"] || "",
+    field: currentTheme["bg-neutral-very-dark"] || "",
+    hoverBg: currentTheme["hover-bg-neutral-very-dark"] || "",
+  };
+}
+
 const DraggableWidgetItem = ({ widgetKey, widget, onPick = null }) => {
+  const t = useSidebarTokens();
   const [{ isDragging }, drag] = useDrag(
     () => ({
       type: SIDEBAR_WIDGET_TYPE,
@@ -62,57 +103,41 @@ const DraggableWidgetItem = ({ widgetKey, widget, onPick = null }) => {
             }
           : undefined
       }
-      className={`flex flex-col gap-1 px-3 py-2 rounded-md text-sm cursor-grab
-                bg-white/5 hover:bg-white/10 transition-colors select-none
+      className={`flex flex-col gap-1 px-3 py-2 rounded-md text-sm cursor-grab border transition-colors select-none ${t.hairline} ${t.hoverBg}
                 ${isDragging ? "opacity-30" : ""}`}
     >
-      <div className="flex items-center gap-2">
-        {widget.icon ? (
-          <FontAwesomeIcon
-            icon={widget.icon}
-            className="h-3 w-3 opacity-60 flex-shrink-0"
-          />
-        ) : (
-          <FontAwesomeIcon
-            icon="puzzle-piece"
-            className="h-3 w-3 opacity-40 flex-shrink-0"
-          />
-        )}
-        <span className="truncate font-medium opacity-90">
-          {widget.displayName ||
-            widget.name ||
-            bareComponentName(widgetKey) ||
-            widgetKey}
+      <div className="flex items-center gap-2 min-w-0">
+        <FontAwesomeIcon
+          icon={widget.icon || "puzzle-piece"}
+          className={`h-3 w-3 flex-shrink-0 ${t.muted}`}
+        />
+        <span className={`truncate font-medium ${t.strong}`}>
+          {widgetTitle(widgetKey, widget)}
         </span>
       </div>
+      {widgetKey && (
+        <span
+          className={`text-xs pl-5 font-mono truncate ${t.muted}`}
+          title={widgetKey}
+        >
+          {widgetKey}
+        </span>
+      )}
       {(providerTypes.length > 0 || hasEventInfo) && (
         <div className="flex flex-wrap items-center gap-1 pl-5">
           {providerTypes.map((pType) => (
-            <span
-              key={pType}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300"
-            >
-              {pType}
-            </span>
+            <StatusBadge key={pType} state="info" label={pType} />
           ))}
           {hasEventInfo && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+            <StatusBadge state="success">
               {eventCount > 0 &&
                 `${eventCount} event${eventCount > 1 ? "s" : ""}`}
               {eventCount > 0 && handlerCount > 0 && ", "}
               {handlerCount > 0 &&
                 `${handlerCount} handler${handlerCount > 1 ? "s" : ""}`}
-            </span>
+            </StatusBadge>
           )}
         </div>
-      )}
-      {widgetKey && (
-        <span
-          className="text-[10px] pl-5 opacity-40 font-mono truncate"
-          title={widgetKey}
-        >
-          {widgetKey}
-        </span>
       )}
     </div>
   );
@@ -125,6 +150,8 @@ const SidebarDiscoverContent = ({
   onInstallSuccess,
   installedPackageNames,
 }) => {
+  const t = useSidebarTokens();
+  const status = useStatusTokens();
   const [selectedPackageName, setSelectedPackageName] = useState(null);
   const [pendingInstallPkg, setPendingInstallPkg] = useState(null);
   const [showProgressModal, setShowProgressModal] = useState(false);
@@ -254,31 +281,35 @@ const SidebarDiscoverContent = ({
       <div className="flex flex-col h-full">
         <div className="flex-1 overflow-y-auto px-3 py-2">
           {/* Back button */}
-          <button
-            type="button"
-            onClick={() => setSelectedPackageName(null)}
-            className="flex items-center gap-1.5 text-[11px] opacity-60 hover:opacity-100 transition-opacity mb-3"
-          >
-            <FontAwesomeIcon icon="arrow-left" className="h-2.5 w-2.5" />
-            Back
-          </button>
+          <div className="mb-3">
+            <Button3 size="sm" onClick={() => setSelectedPackageName(null)}>
+              <span className="inline-flex items-center gap-1.5">
+                <FontAwesomeIcon icon="arrow-left" className="h-3 w-3" />
+                Back
+              </span>
+            </Button3>
+          </div>
 
           {/* Package header */}
           <div className="flex items-start gap-2 mb-3">
             <FontAwesomeIcon
               icon="cube"
-              className="h-4 w-4 opacity-60 mt-0.5 flex-shrink-0"
+              className={`h-4 w-4 mt-0.5 flex-shrink-0 ${t.muted}`}
             />
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5 font-medium text-sm">
+              <div
+                className={`flex items-center gap-1.5 font-medium text-sm ${t.strong}`}
+              >
                 <span className="truncate">{pkg.displayName || pkg.name}</span>
                 {isInstalled && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 flex-shrink-0">
-                    Installed
-                  </span>
+                  <StatusBadge
+                    state="success"
+                    label="Installed"
+                    className="flex-shrink-0"
+                  />
                 )}
               </div>
-              <div className="text-[10px] opacity-50">
+              <div className={`text-xs ${t.muted}`}>
                 {pkg.author && <span>{pkg.author} &middot; </span>}v
                 {pkg.version || "0.0.0"}
               </div>
@@ -287,7 +318,7 @@ const SidebarDiscoverContent = ({
 
           {/* Description */}
           {pkg.description && (
-            <p className="text-xs opacity-70 mb-3 line-clamp-3">
+            <p className={`text-xs mb-3 line-clamp-3 ${t.muted}`}>
               {pkg.description}
             </p>
           )}
@@ -296,12 +327,7 @@ const SidebarDiscoverContent = ({
           {pkg.tags?.length > 0 && (
             <div className="flex flex-wrap gap-1 mb-3">
               {pkg.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 opacity-60"
-                >
-                  {tag}
-                </span>
+                <StatusBadge key={tag} state="neutral" label={tag} />
               ))}
             </div>
           )}
@@ -309,27 +335,28 @@ const SidebarDiscoverContent = ({
           {/* Included widgets */}
           {pkg.widgets?.length > 0 && (
             <div className="mb-3">
-              <div className="text-[10px] font-medium opacity-50 uppercase tracking-wider mb-1.5">
+              <div
+                className={`text-xs font-medium uppercase tracking-wider mb-1.5 ${t.muted}`}
+              >
                 Included Widgets
               </div>
               <div className="flex flex-col gap-1">
                 {pkg.widgets.map((w) => (
                   <div
                     key={w.name}
-                    className="flex flex-col gap-0.5 px-2 py-1.5 rounded bg-white/5 text-xs"
+                    className={`flex flex-col gap-1 px-2 py-1.5 rounded-md border text-xs ${t.hairline}`}
                   >
-                    <span className="font-medium opacity-90">
+                    <span className={`font-medium ${t.strong}`}>
                       {w.displayName || w.name}
                     </span>
                     {w.providers?.length > 0 && (
                       <div className="flex flex-wrap gap-1">
                         {w.providers.map((p) => (
-                          <span
+                          <StatusBadge
                             key={p.type}
-                            className="text-[10px] px-1 py-0.5 rounded bg-blue-500/20 text-blue-300"
-                          >
-                            {p.type}
-                          </span>
+                            state="info"
+                            label={p.type}
+                          />
                         ))}
                       </div>
                     )}
@@ -341,7 +368,9 @@ const SidebarDiscoverContent = ({
 
           {/* Install error */}
           {registry.installError && (
-            <div className="text-xs text-red-400 bg-red-500/10 rounded px-2 py-1.5 mb-3">
+            <div
+              className={`text-xs rounded-md px-2 py-1.5 mb-3 ${status.error.bg} ${status.error.text}`}
+            >
               {registry.installError}
             </div>
           )}
@@ -349,18 +378,19 @@ const SidebarDiscoverContent = ({
 
         {/* Install button pinned to bottom */}
         <div className="px-3 py-2 flex-shrink-0">
-          <button
-            type="button"
+          <Button
+            block
+            size="sm"
             onClick={() => handleInstall(pkg)}
             disabled={registry.isInstalling || isInstalled}
-            className="w-full py-1.5 rounded-md text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {isInstalled
-              ? "Installed"
-              : registry.isInstalling
-                ? "Installing..."
-                : "Install Package"}
-          </button>
+            title={
+              isInstalled
+                ? "Installed"
+                : registry.isInstalling
+                  ? "Installing..."
+                  : "Install Package"
+            }
+          />
         </div>
 
         <InstallProgressModal
@@ -393,7 +423,9 @@ const SidebarDiscoverContent = ({
   // Loading state
   if (registry.isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 opacity-50">
+      <div
+        className={`flex flex-col items-center justify-center py-8 ${t.muted}`}
+      >
         <FontAwesomeIcon icon="spinner" spin className="h-4 w-4 mb-2" />
         <span className="text-xs">Loading registry...</span>
       </div>
@@ -404,14 +436,10 @@ const SidebarDiscoverContent = ({
   if (registry.error) {
     return (
       <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
-        <span className="text-xs text-red-400 mb-2">{registry.error}</span>
-        <button
-          type="button"
-          onClick={registry.retry}
-          className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-        >
-          Retry
-        </button>
+        <span className={`text-xs mb-2 ${status.error.icon}`}>
+          {registry.error}
+        </span>
+        <Button3 size="sm" title="Retry" onClick={registry.retry} />
       </div>
     );
   }
@@ -419,8 +447,10 @@ const SidebarDiscoverContent = ({
   // Empty state
   if (registry.packages.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 px-4 text-center opacity-50">
-        <FontAwesomeIcon icon="compass" className="h-5 w-5 mb-2 opacity-40" />
+      <div
+        className={`flex flex-col items-center justify-center py-8 px-4 text-center ${t.muted}`}
+      >
+        <FontAwesomeIcon icon="compass" className="h-5 w-5 mb-2" />
         <span className="text-sm">No packages found</span>
         {registry.searchQuery && (
           <span className="text-xs mt-1">Try a different search term</span>
@@ -446,33 +476,37 @@ const SidebarDiscoverContent = ({
                 key={pkg.name}
                 type="button"
                 onClick={() => setSelectedPackageName(pkg.name)}
-                className={`flex items-start gap-2 px-3 py-2 rounded-md text-left
-                                bg-white/5 hover:bg-white/10 transition-colors w-full${isInstalled ? " opacity-60" : ""}`}
+                className={`flex items-start gap-2 px-3 py-2 rounded-md text-left border transition-colors w-full ${t.hairline} ${t.hoverBg}`}
               >
                 <FontAwesomeIcon
                   icon="cube"
-                  className="h-3 w-3 opacity-40 flex-shrink-0 mt-0.5"
+                  className={`h-3 w-3 flex-shrink-0 mt-1 ${t.muted}`}
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium opacity-90 truncate flex-1 min-w-0">
+                    <span
+                      className={`text-sm font-medium truncate flex-1 min-w-0 ${t.strong}`}
+                    >
                       {pkg.displayName || pkg.name}
                     </span>
                     {isInstalled && (
-                      <span className="text-[10px] text-emerald-400 flex-shrink-0">
-                        Installed
-                      </span>
+                      <StatusBadge
+                        state="success"
+                        label="Installed"
+                        compact
+                        className="flex-shrink-0"
+                      />
                     )}
                   </div>
                   {packageRef && (
                     <div
-                      className="text-[10px] opacity-50 font-mono truncate mt-0.5"
+                      className={`text-xs font-mono truncate mt-0.5 ${t.muted}`}
                       title={packageRef}
                     >
                       {packageRef}
                     </div>
                   )}
-                  <div className="text-[10px] opacity-40 truncate mt-0.5">
+                  <div className={`text-xs truncate mt-0.5 ${t.muted}`}>
                     {pkg.author ? `${pkg.author} · ` : ""}
                     {widgetCount} widget{widgetCount !== 1 ? "s" : ""}
                   </div>
@@ -484,7 +518,7 @@ const SidebarDiscoverContent = ({
       </div>
       {/* Package count footer */}
       <div className="px-3 py-1.5 flex-shrink-0">
-        <span className="text-[10px] opacity-40">
+        <span className={`text-xs ${t.muted}`}>
           {registry.packages.length} package
           {registry.packages.length !== 1 ? "s" : ""}
         </span>
@@ -509,7 +543,8 @@ export const WidgetSidebar = ({
   onPick = null,
 }) => {
   const collapsed = embedded ? false : collapsedProp;
-  const { currentTheme } = useContext(ThemeContext);
+  const t = useSidebarTokens();
+  const status = useStatusTokens();
 
   // Tab state
   const [activeTab, setActiveTab] = useState("installed"); // "installed" | "discover"
@@ -698,11 +733,8 @@ export const WidgetSidebar = ({
 
   const authorNames = Object.keys(filteredGrouped).sort();
 
-  const selectClassName = `w-full px-2 py-1 rounded text-xs bg-transparent border ${
-    currentTheme["border-primary-medium"] || "border-gray-700"
-  } ${
-    currentTheme["text-primary-light"] || "text-gray-300"
-  } focus:outline-none appearance-none cursor-pointer`;
+  // Readable 14px selects on the theme's field surface + hairline.
+  const selectClassName = `w-full min-w-0 px-2 py-1.5 rounded-md text-sm border ${t.field} ${t.hairline} ${t.strong} focus:outline-none cursor-pointer`;
 
   // Install success handler — switch to installed tab + show flash
   const handleInstallSuccess = useCallback((packageName) => {
@@ -724,30 +756,19 @@ export const WidgetSidebar = ({
         <div className="flex items-center justify-between">
           {embedded ? <span /> : <Sidebar.Trigger />}
           {!collapsed && (
-            <div className="flex bg-white/5 rounded-md p-0.5">
-              <button
-                type="button"
-                onClick={() => setActiveTab("installed")}
-                className={`px-2 py-0.5 rounded text-[11px] transition-colors ${
-                  activeTab === "installed"
-                    ? "bg-white/10 font-medium opacity-90"
-                    : "opacity-50 hover:opacity-70"
-                }`}
-              >
-                Installed
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("discover")}
-                className={`px-2 py-0.5 rounded text-[11px] transition-colors ${
-                  activeTab === "discover"
-                    ? "bg-white/10 font-medium opacity-90"
-                    : "opacity-50 hover:opacity-70"
-                }`}
-              >
-                {embedded ? "Registry" : "Discover"}
-              </button>
-            </div>
+            <SegmentedControl
+              ariaLabel="Widget source"
+              size="sm"
+              value={activeTab}
+              onChange={setActiveTab}
+              options={[
+                { value: "installed", label: "Installed" },
+                {
+                  value: "discover",
+                  label: embedded ? "Registry" : "Discover",
+                },
+              ]}
+            />
           )}
         </div>
       </Sidebar.Header>
@@ -759,87 +780,88 @@ export const WidgetSidebar = ({
             value={searchQuery}
             onChange={setSearchQuery}
             placeholder="Search widgets..."
-            inputClassName="py-1.5 text-xs"
           />
 
-          <select
-            aria-label="Show"
-            value={filterSource}
-            onChange={(e) => setFilterSource(e.target.value)}
-            className={selectClassName}
+          {/* Filters, grouped: source first, then package / provider,
+              then events / handlers. */}
+          <div
+            role="group"
+            aria-label="Filters"
+            className="flex flex-col gap-1.5"
           >
-            <option value="all">All widgets</option>
-            <option value="mine">Mine</option>
-            <option value="installed">Installed</option>
-            <option value="builtin">Built in</option>
-          </select>
-
-          <div className="grid grid-cols-2 gap-1.5">
             <select
-              value={filterAuthor}
-              onChange={(e) => setFilterAuthor(e.target.value)}
+              aria-label="Show"
+              value={filterSource}
+              onChange={(e) => setFilterSource(e.target.value)}
               className={selectClassName}
             >
-              <option value="all">All Packages</option>
-              {uniqueAuthors.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
+              <option value="all">All widgets</option>
+              <option value="mine">Mine</option>
+              <option value="installed">Installed</option>
+              <option value="builtin">Built in</option>
             </select>
 
-            <select
-              value={filterProvider}
-              onChange={(e) => setFilterProvider(e.target.value)}
-              className={selectClassName}
-            >
-              <option value="all">All Providers</option>
-              <option value="none">No Providers</option>
-              {uniqueProviders.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <select
+                value={filterAuthor}
+                onChange={(e) => setFilterAuthor(e.target.value)}
+                className={selectClassName}
+              >
+                <option value="all">All Packages</option>
+                {uniqueAuthors.map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+              </select>
 
-          <div className="grid grid-cols-2 gap-1.5">
-            <select
-              value={filterHasEvents}
-              onChange={(e) => setFilterHasEvents(e.target.value)}
-              className={selectClassName}
-            >
-              <option value="all">Events: Any</option>
-              <option value="yes">Has Events</option>
-              <option value="no">No Events</option>
-            </select>
+              <select
+                value={filterProvider}
+                onChange={(e) => setFilterProvider(e.target.value)}
+                className={selectClassName}
+              >
+                <option value="all">All Providers</option>
+                <option value="none">No Providers</option>
+                {uniqueProviders.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-            <select
-              value={filterHasHandlers}
-              onChange={(e) => setFilterHasHandlers(e.target.value)}
-              className={selectClassName}
-            >
-              <option value="all">Handlers: Any</option>
-              <option value="yes">Has Handlers</option>
-              <option value="no">No Handlers</option>
-            </select>
+            <div className="grid grid-cols-2 gap-1.5">
+              <select
+                value={filterHasEvents}
+                onChange={(e) => setFilterHasEvents(e.target.value)}
+                className={selectClassName}
+              >
+                <option value="all">Events: Any</option>
+                <option value="yes">Has Events</option>
+                <option value="no">No Events</option>
+              </select>
+
+              <select
+                value={filterHasHandlers}
+                onChange={(e) => setFilterHasHandlers(e.target.value)}
+                className={selectClassName}
+              >
+                <option value="all">Handlers: Any</option>
+                <option value="yes">Has Handlers</option>
+                <option value="no">No Handlers</option>
+              </select>
+            </div>
           </div>
 
           {/* Result count + clear */}
-          <div className="flex items-center justify-between text-[10px] px-0.5">
-            <span className="opacity-50">
+          <div className="flex items-center justify-between px-0.5">
+            <span className={`text-xs ${t.muted}`}>
               {hasActiveFilters
                 ? `${filteredCount} of ${totalCount} widgets`
                 : `${totalCount} widgets`}
             </span>
             {hasActiveFilters && (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="opacity-60 hover:opacity-100 transition-opacity text-gray-300 hover:bg-white/10 px-1.5 py-0.5 rounded"
-              >
-                Clear
-              </button>
+              <Button3 size="sm" title="Clear" onClick={clearFilters} />
             )}
           </div>
         </div>
@@ -852,7 +874,6 @@ export const WidgetSidebar = ({
             value={registry.searchQuery}
             onChange={registry.setSearchQuery}
             placeholder="Search registry..."
-            inputClassName="py-1.5 text-xs"
           />
         </div>
       )}
@@ -898,16 +919,16 @@ export const WidgetSidebar = ({
               </Sidebar.Group>
             ))
           ) : (
-            <div className="flex flex-col items-center justify-center py-8 px-4 text-center opacity-50">
+            <div
+              className={`flex flex-col items-center justify-center gap-2 py-8 px-4 text-center ${t.muted}`}
+            >
               <span className="text-sm">No widgets match</span>
               {hasActiveFilters && (
-                <button
-                  type="button"
+                <Button3
+                  size="sm"
+                  title="Clear filters"
                   onClick={clearFilters}
-                  className="text-xs mt-2 text-blue-400 hover:text-blue-300 transition-colors"
-                >
-                  Clear filters
-                </button>
+                />
               )}
             </div>
           )
@@ -923,7 +944,9 @@ export const WidgetSidebar = ({
       {/* Footer — only on installed tab, shows install success flash */}
       {!collapsed && activeTab === "installed" && installSuccess && (
         <Sidebar.Footer>
-          <div className="flex items-center gap-2 text-xs text-emerald-400 px-1 py-1">
+          <div
+            className={`flex items-center gap-2 text-xs px-1 py-1 ${status.success.icon}`}
+          >
             <FontAwesomeIcon icon="circle-check" className="h-3 w-3" />
             {installSuccess}
           </div>

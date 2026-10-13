@@ -136,9 +136,9 @@ export function providerUsage(
 }
 
 const GROUPS = [
-  { cls: "mcp", label: "MCP servers" },
-  { cls: "credential", label: "API credentials" },
-  { cls: "websocket", label: "WebSocket" },
+  { cls: "mcp", label: "Tools (MCP)" },
+  { cls: "credential", label: "API keys" },
+  { cls: "websocket", label: "Live data" },
 ];
 
 /**

@@ -33,6 +33,49 @@ const SOURCE = fs.readFileSync(
   "utf8",
 );
 
+// widgetTitle is pure; stub the module's heavier imports so it loads.
+jest.mock("react-dnd", () => ({ useDrag: () => [{}, null] }), {
+  virtual: true,
+});
+jest.mock("../../ComponentManager", () => ({ ComponentManager: {} }));
+jest.mock("../../hooks/useWidgetRegistryVersion", () => ({
+  useWidgetRegistryVersion: () => 0,
+}));
+jest.mock("../../hooks/useRegistrySearch", () => ({
+  useRegistrySearch: () => ({}),
+}));
+jest.mock("../Registry/RegistryAuthModal", () => ({
+  RegistryAuthModal: () => null,
+}));
+jest.mock("../Settings/details/InstallProgressModal", () => ({
+  InstallProgressModal: () => null,
+}));
+
+describe("WidgetSidebar — row titles (design audit)", () => {
+  const { widgetTitle } = require("./WidgetSidebar");
+
+  test("prefers displayName, then the widget's own name", () => {
+    expect(widgetTitle("a.b.Foo", { displayName: "Inbox", name: "X" })).toBe(
+      "Inbox",
+    );
+    expect(widgetTitle("a.b.Foo", { name: "Slack Feed" })).toBe("Slack Feed");
+  });
+
+  test('never titles a row with the model default "My Workspace"', () => {
+    expect(
+      widgetTitle("trops.composed.ComposedWidget3", { name: "My Workspace" }),
+    ).toBe("Composed Widget 3");
+    expect(widgetTitle("MCPServerStatus", {})).toBe("MCP Server Status");
+  });
+
+  test("uses theme tokens and dash-react controls, not palette classes", () => {
+    expect(SOURCE).toMatch(/<SegmentedControl/);
+    expect(SOURCE).not.toMatch(/text-\[\d+px\]/);
+    expect(SOURCE).not.toMatch(/bg-white\/\d+/);
+    expect(SOURCE).not.toMatch(/(bg|text)-(blue|emerald|amber|red)-\d+/);
+  });
+});
+
 describe("WidgetSidebar — provider iteration safety", () => {
   test("imports getUserConfigurableProviders", () => {
     expect(SOURCE).toMatch(

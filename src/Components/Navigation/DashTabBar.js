@@ -20,8 +20,8 @@ export const DashTabBar = ({
   return (
     <div
       className={`dr-tabstrip flex flex-row items-center shrink-0 overflow-x-auto gap-1 px-2 py-2.5 border-t ${
-        currentTheme["border-primary-dark"] || "border-gray-700"
-      } ${currentTheme["bg-primary-dark"] || "bg-gray-900"} scrollbar-none`}
+        currentTheme["border-neutral-dark"] || ""
+      } ${currentTheme["bg-primary-dark"] || ""} scrollbar-none`}
     >
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId;
@@ -35,15 +35,16 @@ export const DashTabBar = ({
             type="button"
             aria-current={isActive ? "true" : undefined}
             onClick={() => onSwitchTab && onSwitchTab(tab.id)}
-            className={`dr-pill ${isActive ? "dr-pill-active" : ""} group flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md whitespace-nowrap transition-all duration-100 cursor-pointer ${
+            className={`dr-pill ${isActive ? "dr-pill-active" : ""} group flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md whitespace-nowrap transition-all duration-100 cursor-pointer ${
               isActive
-                ? "bg-white/15 text-white"
-                : "text-gray-400 hover:bg-white/10 hover:text-gray-200"
+                ? `${currentTheme["bg-neutral-very-dark"] || ""} ${currentTheme["text-neutral-light"] || ""}`
+                : `${currentTheme["text-neutral-medium"] || ""} ${currentTheme["hover-bg-neutral-very-dark"] || ""}`
             }`}
           >
-            {page ? (
-              <FontAwesomeIcon icon={page.icon} className="h-3 w-3" />
-            ) : null}
+            <FontAwesomeIcon
+              icon={page ? page.icon : "table-cells-large"}
+              className="h-3 w-3"
+            />
             <span className="truncate max-w-[140px]">{label}</span>
             <span
               role="button"
@@ -52,7 +53,7 @@ export const DashTabBar = ({
                 e.stopPropagation();
                 onCloseTab && onCloseTab(tab.id);
               }}
-              className={`flex items-center justify-center h-4 w-4 rounded-sm hover:bg-white/10 ${
+              className={`flex items-center justify-center h-6 w-6 rounded ${currentTheme["hover-bg-neutral-very-dark"] || ""} ${
                 isActive ? "opacity-60" : "opacity-0 group-hover:opacity-60"
               }`}
             >

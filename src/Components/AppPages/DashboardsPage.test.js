@@ -167,7 +167,9 @@ describe("DashboardsPage — list", () => {
     expect(within(l).getByText("Uncategorized")).toBeInTheDocument();
     const row = within(l).getByRole("button", { name: /Kitchen Sink/ });
     expect(row).toHaveTextContent("2 pages · 3 widgets");
-    expect(within(row).getByTestId("dashboard-attention")).toBeInTheDocument();
+    expect(within(row).getByTestId("dashboard-attention")).toHaveTextContent(
+      "Needs attention",
+    );
     const salesRow = within(l).getByRole("button", { name: /Sales/ });
     expect(within(salesRow).queryByTestId("dashboard-attention")).toBeNull();
   });
@@ -247,7 +249,7 @@ describe("DashboardsPage — detail", () => {
     fireEvent.click(
       within(detail()).getByRole("button", { name: "More actions" }),
     );
-    fireEvent.click(within(detail()).getByRole("button", { name: "Rename" }));
+    fireEvent.click(within(detail()).getByRole("menuitem", { name: "Rename" }));
     fireEvent.change(within(detail()).getByLabelText("Dashboard name"), {
       target: { value: "Sales 2" },
     });
@@ -261,14 +263,14 @@ describe("DashboardsPage — detail", () => {
       within(detail()).getByRole("button", { name: "More actions" }),
     );
     fireEvent.click(
-      within(detail()).getByRole("button", { name: "Duplicate" }),
+      within(detail()).getByRole("menuitem", { name: "Duplicate" }),
     );
     expect(h.dashApi.saveWorkspace.mock.calls[1][1].name).toBe("Sales (Copy)");
 
     fireEvent.click(
       within(detail()).getByRole("button", { name: "More actions" }),
     );
-    fireEvent.click(within(detail()).getByRole("button", { name: "Delete" }));
+    fireEvent.click(within(detail()).getByRole("menuitem", { name: "Delete" }));
     const confirm = screen.getByTestId("confirmation-modal");
     expect(confirm).toHaveTextContent('Delete "Sales"?');
     fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
@@ -289,6 +291,45 @@ describe("DashboardsPage — detail", () => {
       target: { value: "1" },
     });
     expect(h.dashApi.saveWorkspace.mock.calls[0][1].menuId).toBe(1);
+  });
+
+  it("a dashboard outside every folder shows No folder, and can go back to none", () => {
+    const h = setup();
+    pick("Loose");
+    expect(within(detail()).getByLabelText("Folder")).toHaveValue("none");
+    pick("Sales");
+    fireEvent.change(within(detail()).getByLabelText("Folder"), {
+      target: { value: "none" },
+    });
+    expect(h.dashApi.saveWorkspace.mock.calls[0][1].menuId).toBeNull();
+  });
+
+  it("a page without a grid says so with an empty state", () => {
+    setup();
+    pick("Kitchen Sink");
+    fireEvent.click(within(detail()).getByRole("button", { name: "Notes" }));
+    expect(within(detail()).getByTestId("layout-empty")).toHaveTextContent(
+      "No layout yet",
+    );
+  });
+
+  it("the header has no extra-small buttons: overflow actions live in the … menu", () => {
+    setup();
+    pick("Sales");
+    expect(within(detail()).queryByRole("menuitem")).toBeNull();
+    fireEvent.click(
+      within(detail()).getByRole("button", { name: "More actions" }),
+    );
+    const items = within(detail())
+      .getAllByRole("menuitem")
+      .map((i) => i.textContent);
+    expect(items).toEqual([
+      "Rename",
+      "Duplicate",
+      "Export ZIP",
+      "Publish",
+      "Delete",
+    ]);
   });
 });
 

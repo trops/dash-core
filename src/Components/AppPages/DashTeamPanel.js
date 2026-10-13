@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { Button3, SectionLabel, SelectInput } from "@trops/dash-react";
+import { Button3, SelectInput, StatusBadge } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
+import { DetailGroup } from "./ManageLayout";
 import { BotAvatar } from "../Bots/BotAvatar";
 import { toPlainText } from "../Bots/botConversation";
 import { modelLabel, runCostLabel } from "../../utils/runCostLabel";
@@ -107,14 +108,10 @@ export const DashTeamPanel = ({ bot, status, lastRun, onChanged, onEdit }) => {
               <h3 className={`text-lg font-semibold truncate ${strong}`}>
                 {bot.name}
               </h3>
-              <span
-                className={`text-xs uppercase tracking-wider font-semibold ${muted}`}
-              >
-                Dash team
-              </span>
+              <StatusBadge state="info" label="Dash team" />
             </span>
             <span className={`text-sm ${muted}`}>{bot.summary}</span>
-            <span className={`text-xs ${muted}`}>{status}</span>
+            <span className={`text-sm ${muted}`}>{status}</span>
           </div>
         </div>
         <div className="flex flex-row flex-wrap items-center gap-2">
@@ -135,7 +132,11 @@ export const DashTeamPanel = ({ bot, status, lastRun, onChanged, onEdit }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="flex flex-col gap-2 min-w-0">
-          <SectionLabel text="Model" />
+          {/* The picker carries its own "Model" label; the plain-text
+              cases get the same label as text. */}
+          {options.length && !ownModel ? null : (
+            <span className="text-sm font-medium">Model</span>
+          )}
           {ownModel ? (
             <span className="text-sm">
               {modelLabel(bot.model)} — set on this bot (change it in Edit)
@@ -152,10 +153,9 @@ export const DashTeamPanel = ({ bot, status, lastRun, onChanged, onEdit }) => {
               {bot.runsOn ? modelLabel(bot.runsOn) : "The provider's default"}
             </span>
           )}
-          <span className={`text-xs ${muted}`}>{TIER_TEXT[bot.tier]}</span>
+          <span className={`text-sm ${muted}`}>{TIER_TEXT[bot.tier]}</span>
         </div>
-        <div className="flex flex-col gap-2 min-w-0">
-          <SectionLabel text="Last run" />
+        <DetailGroup title="Last run">
           {lastRun ? (
             <div className="flex flex-col gap-1 min-w-0">
               {runCostLabel(lastRun) ? (
@@ -164,7 +164,7 @@ export const DashTeamPanel = ({ bot, status, lastRun, onChanged, onEdit }) => {
                 </span>
               ) : null}
               {lastRun.error || lastRun.output ? (
-                <span className={`text-xs line-clamp-3 ${muted}`}>
+                <span className={`text-sm line-clamp-3 ${muted}`}>
                   {toPlainText(lastRun.error || lastRun.output)}
                 </span>
               ) : null}
@@ -172,7 +172,7 @@ export const DashTeamPanel = ({ bot, status, lastRun, onChanged, onEdit }) => {
           ) : (
             <span className={`text-sm ${muted}`}>Hasn&apos;t run yet</span>
           )}
-        </div>
+        </DetailGroup>
       </div>
     </div>
   );

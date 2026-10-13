@@ -3,12 +3,16 @@ import {
   Button,
   Button3,
   ConfirmationModal,
+  EmptyState,
   FilterMenu,
+  FontAwesomeIcon,
   InputText,
+  ListRow,
   SearchInput,
   SectionLabel,
   SegmentedControl,
   SelectInput,
+  StatusBadge,
   ThemeContext,
   deepCopy,
 } from "@trops/dash-react";
@@ -17,7 +21,9 @@ import { ComponentManager } from "../../ComponentManager";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { useTeamBots } from "../Bots/useTeamBots";
 import { STATUS_DOT } from "../Bots/teamUtils";
+import { relativeTime } from "../Bots/BotMonitor";
 import { ThemeColorDots } from "../Theme/ThemeColorDots";
+import { ListGroupLabel, ManageLayout, OverflowMenu } from "./ManageLayout";
 import { NewDashboardChooser } from "../Settings/details/NewDashboardChooser";
 import { DiscoverDashboardsDetail } from "../Settings/details/DiscoverDashboardsDetail";
 import { StarRating } from "../Settings/details/StarRating";
@@ -27,6 +33,7 @@ import { useApprovalsByDashboard } from "./useApprovalsByDashboard";
 import { exportedText } from "./exportedText";
 
 const UNCATEGORIZED = "Uncategorized";
+const NO_FOLDER = "none";
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 const getWidgetConfig = (name) =>
@@ -61,20 +68,40 @@ function forSave(ws) {
   return copy;
 }
 
+/** "updated 3 h ago" when the dashboard carries a timestamp, else "". */
+function updatedText(ws) {
+  const raw = ws && (ws.updatedAt || ws.lastModified);
+  if (!raw) return "";
+  const iso =
+    typeof raw === "number" ? new Date(raw).toISOString() : String(raw);
+  const age = relativeTime(iso);
+  return age ? `updated ${age}` : "";
+}
+
 /** A page's grid as a small preview, drawn with theme tokens. */
 const LayoutPreview = ({ grid, hairline, selectedBg }) => {
-  if (!grid) {
+  const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
+  // Cells sit on a raised surface with a visible edge, so the grid reads
+  // against the recessed frame in both modes.
+  const cellSurface = currentTheme["bg-neutral-dark"] || "";
+  const cellEdge = currentTheme["border-neutral-medium"] || hairline;
+  if (!grid || !grid.cells || !grid.cells.length) {
     return (
-      <div
-        className={`flex items-center justify-center h-32 rounded-lg border text-xs opacity-60 ${hairline}`}
-      >
-        No grid on this page
+      <div className={`rounded-lg border ${hairline} ${selectedBg}`}>
+        <EmptyState
+          icon={
+            <FontAwesomeIcon icon="table-cells-large" className="h-6 w-6" />
+          }
+          title="No layout yet"
+          description="This page has no grid. Open the dashboard to lay out its widgets."
+          testId="layout-empty"
+        />
       </div>
     );
   }
   return (
     <div
-      className={`h-48 rounded-lg border p-2 ${hairline}`}
+      className={`h-48 rounded-lg border p-2 ${hairline} ${selectedBg}`}
       style={{
         display: "grid",
         gridTemplateRows: `repeat(${grid.rows}, 1fr)`,
@@ -86,7 +113,7 @@ const LayoutPreview = ({ grid, hairline, selectedBg }) => {
         <div
           key={`${cell.row}.${cell.col}`}
           data-testid="layout-cell"
-          className={`rounded-md border ${hairline} ${selectedBg}`}
+          className={`rounded-md border ${cellEdge} ${cellSurface}`}
           style={{
             gridColumn: cell.colSpan ? `span ${cell.colSpan}` : undefined,
             gridRow: cell.rowSpan ? `span ${cell.rowSpan}` : undefined,
@@ -117,7 +144,6 @@ const DashboardDetailPanel = ({
   const { muted, strong, hairline, selectedBg } = useConfigTokens();
   const team = useTeamBots(ws.id);
   const [pageIndex, setPageIndex] = useState(0);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(ws.name || "");
   const [publishOpen, setPublishOpen] = useState(false);
@@ -146,7 +172,6 @@ const DashboardDetailPanel = ({
   };
 
   const duplicate = () => {
-    setMenuOpen(false);
     save({
       ...deepCopy(ws),
       id: Date.now(),
@@ -158,7 +183,6 @@ const DashboardDetailPanel = ({
   // With its bots by default (create-entry 5a): they come back wired to
   // the imported dashboard's widgets.
   async function exportZip(includeBots = true) {
-    setMenuOpen(false);
     if (!appId) return;
     setExportStatus("Exporting…");
     try {
@@ -225,69 +249,51 @@ const DashboardDetailPanel = ({
             size="sm"
             onClick={() => onOpenDashboardConfig(ws)}
           />
-          <Button3
-            title="⋯"
-            size="sm"
-            ariaLabel="More actions"
-            onClick={() => setMenuOpen((v) => !v)}
+          <OverflowMenu
+            items={[
+              {
+                label: "Rename",
+                icon: "pen",
+                onClick: () => setRenaming(true),
+              },
+              { label: "Duplicate", icon: "clone", onClick: duplicate },
+              {
+                label: (team.members || []).length
+                  ? "Export ZIP with bots"
+                  : "Export ZIP",
+                icon: "file-zipper",
+                onClick: () => exportZip(true),
+              },
+              (team.members || []).length
+                ? {
+                    label: "Export ZIP without bots",
+                    icon: "file-zipper",
+                    onClick: () => exportZip(false),
+                  }
+                : null,
+              isShareable
+                ? {
+                    label: "Publish",
+                    icon: "cloud-arrow-up",
+                    onClick: () => setPublishOpen(true),
+                  }
+                : null,
+              {
+                label: "Delete",
+                icon: "trash-can",
+                onClick: () => onRequestDelete(ws),
+              },
+            ]}
           />
         </div>
       </div>
-      {menuOpen ? (
-        <div className="flex flex-row flex-wrap justify-end gap-2">
-          <Button3
-            title="Rename"
-            size="xs"
-            onClick={() => {
-              setMenuOpen(false);
-              setRenaming(true);
-            }}
-          />
-          <Button3 title="Duplicate" size="xs" onClick={duplicate} />
-          <Button3
-            title={
-              (team.members || []).length
-                ? "Export ZIP with bots"
-                : "Export ZIP"
-            }
-            size="xs"
-            onClick={() => exportZip(true)}
-          />
-          {(team.members || []).length ? (
-            <Button3
-              title="Export ZIP without bots"
-              size="xs"
-              onClick={() => exportZip(false)}
-            />
-          ) : null}
-          {isShareable ? (
-            <Button3
-              title="Publish"
-              size="xs"
-              onClick={() => {
-                setMenuOpen(false);
-                setPublishOpen(true);
-              }}
-            />
-          ) : null}
-          <Button3
-            title="Delete"
-            size="xs"
-            onClick={() => {
-              setMenuOpen(false);
-              onRequestDelete(ws);
-            }}
-          />
-        </div>
-      ) : null}
       {exportStatus ? (
-        <span className={`text-xs ${muted}`}>{exportStatus}</span>
+        <span className={`text-sm ${muted}`}>{exportStatus}</span>
       ) : null}
       {attention ? (
-        <span className="flex flex-row items-center gap-1.5 text-sm text-amber-400">
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
-          {attention}
-        </span>
+        <div>
+          <StatusBadge state="warning" label={attention} />
+        </div>
       ) : null}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -358,11 +364,7 @@ const DashboardDetailPanel = ({
                     <span className="flex flex-row items-center gap-2 min-w-0">
                       <span className="truncate">{b.name}</span>
                       {b.role === "lead" ? (
-                        <span
-                          className={`text-xs uppercase tracking-wider font-semibold ${muted}`}
-                        >
-                          Lead
-                        </span>
+                        <StatusBadge state="neutral" label="Lead" />
                       ) : null}
                     </span>
                     <span
@@ -397,9 +399,13 @@ const DashboardDetailPanel = ({
             <span className={`text-sm ${muted}`}>None</span>
           )}
           {summary.unresolvedProviders > 0 ? (
-            <span className="text-xs text-amber-400">
-              {plural(summary.unresolvedProviders, "required provider")} not set
-              — fix in Dashboard Config.
+            <span className={`text-sm ${muted}`}>
+              <StatusBadge
+                state="warning"
+                compact
+                label={`${plural(summary.unresolvedProviders, "required provider")} not set`}
+              />{" "}
+              Fix in Dashboard Config.
             </span>
           ) : null}
         </div>
@@ -411,9 +417,20 @@ const DashboardDetailPanel = ({
       >
         <SelectInput
           label="Folder"
-          value={String(ws.menuId || "")}
-          onChange={(val) => save({ ...ws, menuId: val ? Number(val) : null })}
-          options={folderOptions}
+          // A dashboard outside every folder (or in a folder that is gone)
+          // shows "No folder", not a blank select.
+          value={
+            menuItems.some((m) => m.id === ws.menuId)
+              ? String(ws.menuId)
+              : NO_FOLDER
+          }
+          onChange={(val) =>
+            save({
+              ...ws,
+              menuId: val && val !== NO_FOLDER ? Number(val) : null,
+            })
+          }
+          options={[{ label: "No folder", value: NO_FOLDER }, ...folderOptions]}
           placeholder="No folder"
         />
         <SelectInput
@@ -472,8 +489,7 @@ export const DashboardsPage = ({
   createRequested = false,
   onCreateAcknowledged = null,
 }) => {
-  const { muted, strong, hairline, selectedBg, selectedBorder } =
-    useConfigTokens();
+  const { muted } = useConfigTokens();
   const themeCtx = useContext(ThemeContext) || {};
   const themes = themeCtx.themes || {};
   const appContext = useContext(AppContext) || {};
@@ -635,111 +651,97 @@ export const DashboardsPage = ({
   }
 
   return (
-    // The page's base text colour (plain names inherit it); muted text
-    // keeps its own token.
-    <div
-      data-testid="dashboards-page"
-      className={`flex flex-col flex-1 min-h-0 gap-3 px-6 pt-4 pb-4 ${strong}`}
-    >
-      {/* Filter bar — fixed; the list and detail scroll on their own. */}
-      <div className="flex-shrink-0 flex flex-row flex-wrap items-center gap-2">
-        <div className="w-72">
-          <SearchInput
-            value={query}
-            onChange={setQuery}
-            placeholder="Search dashboards or widgets…"
+    <ManageLayout
+      testId="dashboards-page"
+      listLabel="Dashboards"
+      detailTestId="dashboard-detail"
+      toolbar={
+        <>
+          <div className="w-72">
+            <SearchInput
+              value={query}
+              onChange={setQuery}
+              placeholder="Search dashboards or widgets…"
+            />
+          </div>
+          <FilterMenu
+            label="Folder"
+            options={folderOptions}
+            selected={folders}
+            onChange={setFolders}
           />
-        </div>
-        <FilterMenu
-          label="Folder"
-          options={folderOptions}
-          selected={folders}
-          onChange={setFolders}
-        />
-        <SegmentedControl
-          ariaLabel="Order"
-          options={[
-            { value: "grouped", label: "Grouped" },
-            { value: "alphabetical", label: "A-Z" },
-          ]}
-          value={view}
-          onChange={setView}
-        />
-      </div>
-
-      <div className="flex-1 min-h-0 grid grid-cols-3 gap-4">
-        <div
-          role="list"
-          aria-label="Dashboards"
-          className="min-h-0 overflow-y-auto flex flex-col gap-3 pr-2"
-        >
+          <SegmentedControl
+            ariaLabel="Order"
+            options={[
+              { value: "grouped", label: "Grouped" },
+              { value: "alphabetical", label: "A-Z" },
+            ]}
+            value={view}
+            onChange={setView}
+          />
+        </>
+      }
+      list={
+        <>
           {groups.map((g) => (
-            <div key={g.name || "all"} className="flex flex-col gap-1">
-              {g.name ? <SectionLabel text={g.name} className="px-3" /> : null}
+            <div key={g.name || "all"} className="flex flex-col gap-0.5">
+              {g.name ? <ListGroupLabel text={g.name} /> : null}
               {g.items.map((ws) => {
                 const s = summaries.get(ws.id);
                 const needs =
                   (s && s.unresolvedProviders > 0) || approvalsFor(ws.id) > 0;
                 const active = !mode && selected && ws.id === selected.id;
                 const theme = ws.themeKey ? themes[ws.themeKey] : null;
+                const meta = [
+                  s
+                    ? `${plural(s.pages.length, "page")} · ${plural(
+                        s.widgets.length,
+                        "widget",
+                      )}`
+                    : "",
+                  updatedText(ws),
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
                 return (
-                  <button
+                  <ListRow
                     key={ws.id}
-                    type="button"
-                    aria-current={active ? "true" : undefined}
+                    icon="table-cells-large"
+                    selected={!!active}
                     onClick={() => {
                       setMode(null);
                       setSelectedId(ws.id);
                     }}
-                    className={`w-full text-left rounded-lg px-3 py-2 border flex flex-row items-center gap-3 ${
-                      active
-                        ? `${selectedBg} ${selectedBorder}`
-                        : "border-transparent"
-                    }`}
-                  >
-                    {theme ? <ThemeColorDots theme={theme} /> : null}
-                    <span className="flex-1 min-w-0 flex flex-col">
-                      <span
-                        data-name
-                        className={`text-sm font-medium truncate ${strong}`}
-                      >
-                        {ws.name || "Untitled"}
+                    title={<span data-name>{ws.name || "Untitled"}</span>}
+                    meta={
+                      <span className="flex flex-row flex-wrap items-center gap-x-2 gap-y-1">
+                        <span>{meta}</span>
+                        {theme ? <ThemeColorDots theme={theme} /> : null}
+                        {needs ? (
+                          <span data-testid="dashboard-attention">
+                            <StatusBadge
+                              state="warning"
+                              compact
+                              label="Needs attention"
+                            />
+                          </span>
+                        ) : null}
                       </span>
-                      <span className={`text-xs ${muted}`}>
-                        {s
-                          ? `${plural(s.pages.length, "page")} · ${plural(
-                              s.widgets.length,
-                              "widget",
-                            )}`
-                          : ""}
-                      </span>
-                    </span>
-                    {needs ? (
-                      <span
-                        data-testid="dashboard-attention"
-                        title="Needs attention"
-                        className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400 flex-shrink-0"
-                      />
-                    ) : null}
-                  </button>
+                    }
+                  />
                 );
               })}
             </div>
           ))}
           {!ordered.length ? (
-            <span className={`text-sm px-3 ${muted}`}>
+            <span className={`text-sm px-2 ${muted}`}>
               No dashboards match.
             </span>
           ) : null}
-        </div>
-        <div
-          data-testid="dashboard-detail"
-          className={`col-span-2 min-h-0 overflow-y-auto rounded-lg border p-5 ${hairline}`}
-        >
-          {detail}
-        </div>
-      </div>
-
+        </>
+      }
+      detail={detail}
+    >
       <ConfirmationModal
         isOpen={!!deleteTarget}
         setIsOpen={() => setDeleteTarget(null)}
@@ -750,7 +752,7 @@ export const DashboardsPage = ({
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-    </div>
+    </ManageLayout>
   );
 };
 
