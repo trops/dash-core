@@ -147,7 +147,7 @@ describe("ChatCore — direct-to-lead (TEAM-013)", () => {
     );
     expect(api.llm.sendMessage).not.toHaveBeenCalled();
     expect(
-      screen.getByText("You → Daily Brief Lead · Daily Brief"),
+      screen.getByText("To Daily Brief Lead · Daily Brief"),
     ).toBeInTheDocument();
     const bubble = await screen.findByTestId("lead-bubble");
     await waitFor(() =>

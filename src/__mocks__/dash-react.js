@@ -762,7 +762,185 @@ function Heading2({ title, children }) {
   );
 }
 
+// ---- Chat, list rows, panel header (dash-react ≥1.0.73) -----------------
+function ChatMessage({
+  role = "reply",
+  label = null,
+  meta = null,
+  footer = null,
+  streaming = false,
+  testId,
+  children,
+}) {
+  if (role === "note") {
+    return React.createElement(
+      "div",
+      { role: "separator", "data-testid": testId },
+      children,
+    );
+  }
+  if (role === "you") {
+    return React.createElement(
+      "div",
+      { "data-chat-role": "you", "data-testid": testId },
+      children,
+    );
+  }
+  return React.createElement(
+    "div",
+    {
+      "data-chat-role": "reply",
+      "data-testid": testId,
+      "aria-busy": streaming || undefined,
+    },
+    label
+      ? React.createElement("span", { "data-chat-label": true }, label)
+      : null,
+    meta ? React.createElement("span", { "data-chat-meta": true }, meta) : null,
+    React.createElement("div", null, children),
+    footer,
+  );
+}
+function ChatToolCall({
+  name,
+  source = null,
+  status = "done",
+  children = null,
+}) {
+  const [open, setOpen] = React.useState(false);
+  const word =
+    { running: "Running", done: "Done", error: "Failed" }[status] || status;
+  const head = [name, source ? " · " + source : "", " " + word];
+  return React.createElement(
+    "div",
+    { "data-tool-status": status },
+    children
+      ? React.createElement(
+          "button",
+          {
+            type: "button",
+            "aria-expanded": open,
+            onClick: () => setOpen((o) => !o),
+          },
+          ...head,
+        )
+      : React.createElement("div", null, ...head),
+    children && open ? React.createElement("div", null, children) : null,
+  );
+}
+const ChatComposer = React.forwardRef(function ChatComposer(
+  {
+    value = "",
+    onChange = () => {},
+    onSend = () => {},
+    onStop = null,
+    busy = false,
+    disabled = false,
+    placeholder = "Type a message…",
+    ariaLabel = null,
+    hint = "Enter to send · Shift+Enter for a new line",
+    sendLabel = "Send",
+    rows = 2,
+    onKeyDown = null,
+    above = null,
+  },
+  ref,
+) {
+  const canSend = !disabled && !busy && String(value).trim() !== "";
+  const send = () => canSend && onSend(value);
+  return React.createElement(
+    "div",
+    null,
+    above,
+    React.createElement("textarea", {
+      ref,
+      value,
+      rows,
+      placeholder,
+      "aria-label": ariaLabel || placeholder || "Message",
+      disabled,
+      onChange: (e) => onChange(e.target.value, e),
+      onKeyDown: (e) => {
+        if (onKeyDown) onKeyDown(e);
+        if (e.defaultPrevented) return;
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          send();
+        }
+      },
+    }),
+    busy && onStop
+      ? React.createElement(
+          "button",
+          { type: "button", onClick: onStop },
+          "Stop",
+        )
+      : React.createElement(
+          "button",
+          { type: "button", onClick: send, disabled: !canSend },
+          sendLabel,
+        ),
+    hint ? React.createElement("span", null, hint) : null,
+  );
+});
+function ListRow({
+  title,
+  meta = null,
+  icon = null,
+  trailing = null,
+  selected = false,
+  onClick = null,
+  ariaLabel = null,
+  testId,
+}) {
+  const main = onClick
+    ? React.createElement(
+        "button",
+        {
+          type: "button",
+          onClick,
+          "aria-current": selected ? "true" : undefined,
+          "aria-label": ariaLabel || undefined,
+        },
+        title,
+        meta ? React.createElement("span", null, meta) : null,
+      )
+    : React.createElement(
+        "div",
+        null,
+        title,
+        meta ? React.createElement("span", null, meta) : null,
+      );
+  return React.createElement("div", { "data-testid": testId }, main, trailing);
+}
+function PanelHeader({
+  title,
+  onBack = null,
+  backLabel = "Back",
+  actions = null,
+  testId,
+}) {
+  return React.createElement(
+    "div",
+    { "data-testid": testId },
+    onBack
+      ? React.createElement("button", {
+          type: "button",
+          "aria-label": backLabel,
+          onClick: onBack,
+        })
+      : null,
+    React.createElement("span", null, title),
+    actions,
+  );
+}
+
 module.exports = {
+  ChatMessage,
+  ChatToolCall,
+  ChatComposer,
+  ListRow,
+  PanelHeader,
   SectionLabel,
   SubHeading3,
   Sidebar,

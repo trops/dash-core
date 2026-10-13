@@ -1,11 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Button, Button3, TextArea } from "@trops/dash-react";
-import { useConfigTokens } from "../Dashboard/ConfigListRow";
+import { Button3, ChatComposer, ChatMessage } from "@trops/dash-react";
 import { runTeamRole } from "../../utils/teamRoles";
 import { extractPlan } from "../../utils/teamPlan";
 import { runCostLabel } from "../../utils/runCostLabel";
 import { withoutPlan } from "./CreatePlanStep";
-import { YouBubble, TeamBubble } from "./ChatBubbles";
 import {
   questionRequest,
   reopenedQuestion,
@@ -27,7 +25,6 @@ export const AskStep = ({
   recentId = null,
   onOpenPlan = null,
 }) => {
-  const { muted, strong, hairline } = useConfigTokens();
   // [{ who: "you" | "planner" | "note", text, meta?, plan? }]
   const [messages, setMessages] = useState(
     recentId ? [] : [{ who: "you", text: question }],
@@ -160,61 +157,52 @@ export const AskStep = ({
         <div className="flex flex-col gap-3 px-3 py-3">
           {messages.map((m, i) =>
             m.who === "you" ? (
-              <YouBubble key={i}>{m.text}</YouBubble>
-            ) : m.who === "note" ? (
-              <span key={i} className={`text-xs ${muted}`}>
+              <ChatMessage key={i} role="you">
                 {m.text}
-              </span>
+              </ChatMessage>
+            ) : m.who === "note" ? (
+              <ChatMessage key={i} role="note">
+                {m.text}
+              </ChatMessage>
             ) : (
-              <TeamBubble
+              <ChatMessage
                 key={i}
+                role="reply"
+                label="Planner"
                 meta={m.meta}
                 testId="ask-answer"
                 footer={
                   m.plan && onOpenPlan ? (
-                    <div>
-                      <Button3
-                        size="sm"
-                        title="Open as a plan"
-                        onClick={() => onOpenPlan(planSeed(m.asked, m.plan))}
-                      />
-                    </div>
+                    <Button3
+                      size="sm"
+                      title="Open as a plan"
+                      onClick={() => onOpenPlan(planSeed(m.asked, m.plan))}
+                    />
                   ) : null
                 }
               >
-                {m.text}
-              </TeamBubble>
+                <span className="whitespace-pre-wrap">{m.text}</span>
+              </ChatMessage>
             ),
           )}
           {busy ? (
-            <TeamBubble muted>{withoutPlan(soFar) || "Looking…"}</TeamBubble>
+            <ChatMessage role="reply" label="Planner" streaming>
+              <span className="whitespace-pre-wrap">
+                {withoutPlan(soFar) || "Looking…"}
+              </span>
+            </ChatMessage>
           ) : null}
         </div>
       </div>
-      <div
-        className={`flex-shrink-0 flex flex-row items-end gap-2 px-3 py-2 border-t ${hairline}`}
-      >
-        <div className="flex-1">
-          <TextArea
-            aria-label="Ask a follow-up"
-            value={reply}
-            onChange={(v) => setReply(v)}
-            placeholder={busy ? "The Planner is looking…" : "Ask a follow-up…"}
-            rows={2}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send(reply);
-              }
-            }}
-          />
-        </div>
-        <Button
-          title="Send"
-          onClick={() => send(reply)}
-          disabled={busy || !reply.trim()}
-        />
-      </div>
+      <ChatComposer
+        ariaLabel="Ask a follow-up"
+        value={reply}
+        onChange={(v) => setReply(v)}
+        onSend={() => send(reply)}
+        busy={busy}
+        placeholder={busy ? "The Planner is looking…" : "Ask a follow-up…"}
+        className="flex-shrink-0"
+      />
     </div>
   );
 };
