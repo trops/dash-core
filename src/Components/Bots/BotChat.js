@@ -19,6 +19,7 @@ import {
 import {
   buildConversation,
   errorNextSteps,
+  skipNotice,
   toPlainText,
 } from "./botConversation";
 import { appendAnswerText } from "../../utils/answerText";
@@ -45,6 +46,11 @@ import { appendAnswerText } from "../../utils/answerText";
  * @param {() => void} [onChangeModel]  "Change AI model" — opens the bot's Settings
  * @param {object[]} [drafts]  a lead's drafts awaiting review (TEAM-005)
  * @param {(draftId: string) => void} [onOpenDraft]
+ * @param {boolean} [paused]  the bot is paused: it says so and the box waits
+ * @param {() => void} [onResume]  Resume, shown with the paused note
+ *
+ * A message the runner skips (paused, busy) stays in the box with why
+ * (TEAM-015) — never silently dropped.
  */
 const EMPTY = [];
 const NEAR_BOTTOM_PX = 32;
@@ -73,6 +79,8 @@ export const BotChat = ({
   onChangeModel = null,
   drafts = EMPTY,
   onOpenDraft = null,
+  paused = false,
+  onResume = null,
 }) => {
   const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
   const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
@@ -88,6 +96,8 @@ export const BotChat = ({
   const [live, setLive] = useState(null);
   const [draft, setDraft] = useState("");
   const [freshNext, setFreshNext] = useState(false);
+  // Why the last message didn't start a run (it's back in the box).
+  const [notice, setNotice] = useState(null);
   const [atBottom, setAtBottom] = useState(true);
   const [unseen, setUnseen] = useState(false);
   const scrollRef = useRef(null);
@@ -108,6 +118,7 @@ export const BotChat = ({
     setRuns(null);
     setLive(null);
     setFreshNext(false);
+    setNotice(null);
     loadRuns();
   }, [loadRuns]);
 
@@ -216,7 +227,7 @@ export const BotChat = ({
   const send = () => {
     const text = draft.trim();
     // Keep the draft while a run is in progress (Enter mid-run).
-    if (!text || liveRef.current) return;
+    if (!text || liveRef.current || paused) return;
     const continueConversation = !freshNext && (runs || EMPTY).length > 0;
     setDraft("");
     setFreshNext(false);
@@ -237,11 +248,15 @@ export const BotChat = ({
     };
     liveRef.current = pending;
     setLive(pending);
+    setNotice(null);
     try {
-      if (isLead) {
-        await bots.askLead(bot.id, text, continueConversation);
-      } else {
-        await bots.run(bot.id, text, continueConversation);
+      const res = isLead
+        ? await bots.askLead(bot.id, text, continueConversation)
+        : await bots.run(bot.id, text, continueConversation);
+      if (res && res.skipped) {
+        // Nothing ran: the message goes back in the box, with why.
+        setDraft((d) => d || text);
+        setNotice(skipNotice(bot.name, res.reason));
       }
     } catch (_e) {
       // The run's error is recorded in history.
@@ -488,9 +503,32 @@ export const BotChat = ({
           </div>
         ) : null}
       </div>
+      {paused ? (
+        <div
+          className={`flex-shrink-0 mx-5 mb-2 rounded-lg border px-3 py-2 flex flex-row items-center gap-3 text-xs ${hairline}`}
+          data-testid="bot-chat-paused"
+        >
+          <FontAwesomeIcon icon="pause" className={`h-3 w-3 ${muted}`} />
+          <span className="flex-1">
+            Paused — it won&apos;t answer until you resume it.
+          </span>
+          {onResume ? (
+            <Button title="Resume" size="sm" onClick={() => onResume()} />
+          ) : null}
+        </div>
+      ) : null}
       <div
         className={`flex-shrink-0 border-t px-5 py-3 flex flex-col gap-2 ${hairline}`}
       >
+        {notice ? (
+          <span
+            role="status"
+            className={`text-xs ${statusTokens.warning.text}`}
+            data-testid="bot-chat-notice"
+          >
+            {notice}
+          </span>
+        ) : null}
         <div className="flex flex-row items-end gap-2">
           <div className="flex-1">
             <TextArea
@@ -498,12 +536,15 @@ export const BotChat = ({
               onChange={setDraft}
               rows={2}
               placeholder={
-                isLead
-                  ? "Ask the lead about this team…"
-                  : (runs || EMPTY).length && !freshNext
-                    ? `Reply to ${bot.name}…`
-                    : `Message ${bot.name}…`
+                paused
+                  ? `Resume ${bot.name} to message it`
+                  : isLead
+                    ? "Ask the lead about this team…"
+                    : (runs || EMPTY).length && !freshNext
+                      ? `Reply to ${bot.name}…`
+                      : `Message ${bot.name}…`
               }
+              disabled={paused}
               aria-label="Message"
               onKeyDown={onKeyDown}
             />
@@ -512,7 +553,7 @@ export const BotChat = ({
             title={isLead ? "Ask" : "Send"}
             size="sm"
             onClick={send}
-            disabled={!draft.trim() || !!live}
+            disabled={!draft.trim() || !!live || paused}
           />
         </div>
         <div

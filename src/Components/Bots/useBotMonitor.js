@@ -131,6 +131,8 @@ export function useBotMonitor() {
     const byId = new Map(bots.map((b) => [b.id, b]));
     return {
       loading,
+      // Every user bot (the Bots dock lists them, TEAM-015).
+      bots,
       approvals,
       running,
       recent,

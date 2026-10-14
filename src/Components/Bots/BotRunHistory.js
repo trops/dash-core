@@ -81,6 +81,8 @@ export const BotRunHistory = ({
   nameOf = undefined,
   onOpenSettings = null,
   onChangeModel = null,
+  // The dock's narrow panel (TEAM-015): each run on two lines.
+  compact = false,
 }) => {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
   const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
@@ -144,23 +146,53 @@ export const BotRunHistory = ({
             type="button"
             data-testid="run-row"
             onClick={() => setOpen(open === i ? null : i)}
-            className="w-full text-left flex flex-row gap-3 items-center py-2.5 text-sm"
+            className={
+              compact
+                ? "w-full text-left flex flex-col gap-1 py-2.5 text-sm"
+                : "w-full text-left flex flex-row gap-3 items-center py-2.5 text-sm"
+            }
             aria-expanded={open === i}
           >
-            <span className={`w-28 flex-shrink-0 ${muted}`}>{when(r)}</span>
-            <span className={`w-20 flex-shrink-0 ${muted}`}>
-              {TRIGGER_LABELS[r.trigger] || statusLabel(r.trigger)}
-            </span>
-            <span className="w-24 flex-shrink-0 flex flex-row items-center gap-1.5 text-xs">
-              <span className={`h-2 w-2 rounded-full ${dotFor(r.status)}`} />
-              {statusLabel(r.status)}
-            </span>
-            <span className="flex-1 min-w-0 truncate">{firstLine(r)}</span>
-            {runCostShort(r) ? (
-              <span className={`flex-shrink-0 text-xs ${muted}`}>
-                {runCostShort(r)}
-              </span>
-            ) : null}
+            {compact ? (
+              <>
+                <span className="flex flex-row items-center gap-1.5 text-xs">
+                  <span
+                    className={`h-2 w-2 rounded-full ${dotFor(r.status)}`}
+                  />
+                  <span>{statusLabel(r.status)}</span>
+                  <span className={muted}>· {when(r)}</span>
+                  <span className="flex-1" />
+                  {runCostShort(r) ? (
+                    <span className={muted}>{runCostShort(r)}</span>
+                  ) : null}
+                </span>
+                <span className="min-w-0 truncate">
+                  <span className={muted}>
+                    {TRIGGER_LABELS[r.trigger] || statusLabel(r.trigger)} ·{" "}
+                  </span>
+                  {firstLine(r)}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className={`w-28 flex-shrink-0 ${muted}`}>{when(r)}</span>
+                <span className={`w-20 flex-shrink-0 ${muted}`}>
+                  {TRIGGER_LABELS[r.trigger] || statusLabel(r.trigger)}
+                </span>
+                <span className="w-24 flex-shrink-0 flex flex-row items-center gap-1.5 text-xs">
+                  <span
+                    className={`h-2 w-2 rounded-full ${dotFor(r.status)}`}
+                  />
+                  {statusLabel(r.status)}
+                </span>
+                <span className="flex-1 min-w-0 truncate">{firstLine(r)}</span>
+                {runCostShort(r) ? (
+                  <span className={`flex-shrink-0 text-xs ${muted}`}>
+                    {runCostShort(r)}
+                  </span>
+                ) : null}
+              </>
+            )}
           </button>
           {open === i ? (
             <div className="flex flex-col gap-2 pb-3 text-sm">

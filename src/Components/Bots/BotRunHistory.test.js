@@ -232,3 +232,20 @@ describe("BotRunHistory — model and cost per run (CRE-012)", () => {
     );
   });
 });
+
+describe("BotRunHistory — compact, for the Bots dock (TEAM-015)", () => {
+  it("each run on two lines: status and when, then trigger and what it said", async () => {
+    window.mainApi = {
+      bots: { getRuns: jest.fn().mockResolvedValue(runs) },
+    };
+    render(<BotRunHistory bot={bot} compact />);
+    const rows = await screen.findAllByTestId("run-row");
+    expect(rows).toHaveLength(3);
+    expect(rows[0].className).toMatch(/flex-col/);
+    expect(rows[0]).toHaveTextContent(/Completed\s*·/);
+    expect(rows[0]).toHaveTextContent(
+      "Reply · Found 2 urgent emails from Acme.",
+    );
+    expect(rows[0]).not.toHaveTextContent("Second line");
+  });
+});

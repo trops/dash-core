@@ -52,6 +52,7 @@ const {
   BOTS_GET_RUNS,
   BOTS_GET_LATEST_RESULT,
   BOTS_LIST_RECENT_RUNS,
+  BOTS_LAST_RUNS,
   BOTS_LIST_DRAFTS,
   BOTS_DISMISS_DRAFT,
   BOTS_EXPORT_TEAM,
@@ -160,6 +161,8 @@ const botApi = {
   /** The latest runs across every bot, newest first (the Bot monitor). */
   listRecentRuns: (limit) =>
     ipcRenderer.invoke(BOTS_LIST_RECENT_RUNS, { limit }),
+  /** Each bot's latest run, by bot id (the Bots dock's contacts). */
+  lastRuns: () => ipcRenderer.invoke(BOTS_LAST_RUNS),
 
   /** Resolve a pending approval. decision: { allow, reason? } */
   approve: (approvalId, decision) =>

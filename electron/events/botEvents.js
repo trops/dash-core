@@ -59,6 +59,8 @@ const CREATE_RECENT_CHANGED = "create-recent-changed";
 const BOTS_GET_RUNS = "bots-get-runs";
 // Bot monitor (TEAM-011 B3): the latest runs across every bot.
 const BOTS_LIST_RECENT_RUNS = "bots-list-recent-runs";
+// Each bot's latest run — the Bots dock's contacts list (TEAM-015).
+const BOTS_LAST_RUNS = "bots-last-runs";
 // Team dashboards (TD-002): the latest result a bot sent, for late widgets.
 const BOTS_GET_LATEST_RESULT = "bots-get-latest-result";
 // Lead drafts (TEAM-005): bots a team lead proposed, awaiting review.
@@ -139,6 +141,7 @@ module.exports = {
   CREATE_RECENT_CHANGED,
   BOTS_GET_RUNS,
   BOTS_LIST_RECENT_RUNS,
+  BOTS_LAST_RUNS,
   BOTS_GET_LATEST_RESULT,
   BOTS_LIST_DRAFTS,
   BOTS_DISMISS_DRAFT,

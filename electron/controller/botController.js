@@ -120,7 +120,7 @@ const {
   aboutDashboard,
   MEMORY_NOTE,
 } = require("../bots/planMemory");
-const { recentRuns } = require("../bots/recentRuns");
+const { recentRuns, lastRuns } = require("../bots/recentRuns");
 const { coalesce } = require("../bots/coalesce");
 const { buildDraft, DraftStore } = require("../bots/botDrafts");
 const { findProviders } = require("../bots/providerDiscovery");
@@ -700,6 +700,14 @@ const botController = {
       bots: this._store.list(),
       getRuns: (id) => this._store.getRuns(id),
       limit,
+    });
+  },
+
+  /** Each user bot's latest run — the Bots dock's contacts (TEAM-015). */
+  lastRuns() {
+    return lastRuns({
+      bots: this._store.list().filter((b) => !isDashTeam(b)),
+      getRuns: (id) => this._store.getRuns(id),
     });
   },
 
