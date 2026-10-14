@@ -742,7 +742,7 @@ _Slice 2 — drag to wire_
 > I want to pick any bot from a list, like a chat app's contacts, and talk to it right there,
 > so that I don't have to open a dashboard's Bots view to ask a bot something or see what it did.
 
-**Priority:** P1 · **Status:** In progress (slice 1, 2026-10-14)
+**Priority:** P1 · **Status:** Implemented (slices 1–2, 2026-10-14)
 
 - [x] AC1: **Contacts.** The right-hand dock's robot panel is called **Bots** and lists every bot you made (not the Dash team's): its avatar with a status dot, its name, a **Lead** tag, what it last did (or "Needs approval · tool", "Running now…", "Paused", "Failed · why", "Hasn't run yet") and how long ago.
 - [x] AC2: **Grouped and sorted.** Grouped under each dashboard's name (bots on no dashboard last, under "No dashboard"), or one list with **By team** off. **Recent** (default) puts bots waiting on you first, then the newest activity; **A–Z** sorts teams and bots by name. Search by name. Sort and grouping are remembered.
@@ -751,7 +751,7 @@ _Slice 2 — drag to wire_
 - [x] AC5: **Open in Bots view.** An icon opens the bot in its dashboard's Bots view on the same tab (Open in Settings for a bot on no dashboard). **Stop** shows while it runs.
 - [x] AC6: **Needs you.** Approvals waiting on you stay at the top of the list ("Inbox Sorter needs you · Wants to use gmail.send" › Review opens that bot's chat), each waiting bot's row says how many, and the rail button keeps its count — the approvals inbox (bot-factory US-014 AC3) lives on here.
 - [x] AC7: **Nothing silently dropped.** A paused bot says so in its chat with **Resume**, and the message box waits. A message the runner skips (paused, busy with another run) goes back into the box with why. (Also in the Bots view's conversation.)
-- [ ] AC8 (slice 2): bot chats use the shared chat components (ChatMessage / ChatComposer), so they look like Create's.
+- [x] AC8 (slice 2): bot chats use the shared chat components (ChatMessage / ChatToolCall / ChatComposer), so they look like Create's: replies labelled with the bot and its model · tokens, run labels as centered dividers, and Stop in the box while the bot answers. Approval and error cards, Review draft (in the reply footer), the paused note and New conversation stay.
 
 **Notes (slice 1):** dash-core `Bots/BotContacts.js` (panel), `useBotContacts.js` (useBotMonitor + latest runs + pause state), `contactsList.js` (pure: rows, groups, sort, search); `bots.lastRuns()` (`BOTS_LAST_RUNS`, `electron/bots/recentRuns.js` `lastRuns`) gives each user bot's latest run — `listRecentRuns` only covers the newest 50 across all bots, so quiet bots had no activity. `BotChat` gains `paused` / `onResume` and keeps a skipped message (`skipNotice`). Known gap: an over-budget bot that isn't a lead can't be told apart yet (its tools are refused during the run).
 

@@ -513,3 +513,40 @@ describe("BotChat — a message that doesn't run is kept (TEAM-015)", () => {
     expect(window.mainApi.bots.run).not.toHaveBeenCalled();
   });
 });
+
+describe("BotChat — the shared chat (TEAM-015 AC8)", () => {
+  it("the reply is labelled with the bot and its model · tokens", async () => {
+    setup({
+      history: [
+        {
+          ...runs[0],
+          model: "claude-sonnet-4-6",
+          usage: { inputTokens: 1500, outputTokens: 600 },
+        },
+      ],
+    });
+    const reply = (await screen.findByText("2 need attention")).closest(
+      '[data-testid="answer-bubble"]',
+    );
+    expect(reply).toHaveTextContent("Inbox Watch");
+    expect(reply).toHaveTextContent(/2\.1k tokens/);
+  });
+
+  it("run labels and breaks are centered dividers", async () => {
+    setup({ history: [{ ...runs[0], trigger: "schedule", prompt: "" }] });
+    await screen.findByText("2 need attention");
+    const notes = screen.getAllByRole("separator");
+    expect(notes.some((n) => /Scheduled run/.test(n.textContent))).toBe(true);
+  });
+
+  it("while the bot answers, Send becomes Stop", async () => {
+    const { api } = setup();
+    api.stop = jest.fn();
+    api.run.mockImplementation(() => new Promise(() => {}));
+    await screen.findByText("Check my inbox");
+    fireEvent.change(composer(), { target: { value: "More?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
+    expect(api.stop).toHaveBeenCalledWith("b1");
+  });
+});

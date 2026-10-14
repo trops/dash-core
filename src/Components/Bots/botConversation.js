@@ -167,6 +167,11 @@ function turnsForRun(
       stale,
     });
   }
+  // Stopped before it answered (Stop in the chat, TEAM-015): say so, so the
+  // question isn't left hanging.
+  if (r.status === "stopped" && !r.output && !pending) {
+    turns.push({ kind: "system", text: "Stopped", at: r.endedAt || at });
+  }
   if (r.outputUnavailable) {
     turns.push({
       kind: "bot",
@@ -180,6 +185,10 @@ function turnsForRun(
       text: r.output || r.text || "",
       pending,
       at: r.endedAt || at,
+      // Shown beside the bot's name: "Sonnet · 2.1k tokens" (TEAM-015 AC8).
+      model: r.model || null,
+      usage: r.usage || null,
+      cost: r.cost || null,
       // The run's window — a lead's drafts made in it are linked here (5b).
       startedAt: r.startedAt || null,
       endedAt: r.endedAt || null,
