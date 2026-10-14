@@ -495,3 +495,38 @@ describe("skipNotice (TEAM-015)", () => {
     );
   });
 });
+
+describe("bot turns carry the run model and usage (TEAM-015 AC8)", () => {
+  it("so the reply can say model · tokens", () => {
+    const turns = buildConversation([
+      run({
+        model: "claude-sonnet-4-6",
+        usage: { inputTokens: 10 },
+        output: "Hi",
+      }),
+    ]);
+    const bot = turns.find((x) => x.kind === "bot");
+    expect(bot).toMatchObject({
+      model: "claude-sonnet-4-6",
+      usage: { inputTokens: 10 },
+    });
+  });
+});
+
+describe("a stopped run (TEAM-015)", () => {
+  it("says Stopped when it ended before answering", () => {
+    const turns = buildConversation([
+      run({ status: "stopped", output: "", prompt: "Count to fifty" }),
+    ]);
+    expect(turns.map((x) => [x.kind, x.text])).toContainEqual([
+      "system",
+      "Stopped",
+    ]);
+  });
+  it("no Stopped note when it had answered", () => {
+    const turns = buildConversation([
+      run({ status: "stopped", output: "1, 2, 3" }),
+    ]);
+    expect(turns.some((x) => x.text === "Stopped")).toBe(false);
+  });
+});
