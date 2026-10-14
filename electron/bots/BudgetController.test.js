@@ -243,3 +243,58 @@ describe("BudgetController — the run cost rule (CRE-012)", () => {
     assert.equal(bc.getSpend()["bot:b2"].planTokens, undefined);
   });
 });
+
+describe("BudgetController.botStatus — the Bots dock (US-019)", () => {
+  it("no limits: ok, not over, with its own spend", () => {
+    const { bc } = make();
+    bc.recordUsage({
+      botId: "b1",
+      workspaceId: "w1",
+      providerId: "anthropic",
+      model: "opus",
+      usage: usage(1_000_000, 0),
+    });
+    const st = bc.botStatus("b1", "w1");
+    assert.equal(st.overall, "ok");
+    assert.equal(st.over, false);
+    assert.equal(st.limit, null);
+    assert.equal(st.spent.usd, 5);
+    assert.equal(st.spent.tokens, 1_000_000);
+  });
+
+  it("over a limit: over, the deciding limit named; kept running clears over", () => {
+    const { bc } = make();
+    bc.setBudget("bot", "b1", 4);
+    bc.setBudget("workspace", "w1", 100);
+    bc.recordUsage({
+      botId: "b1",
+      workspaceId: "w1",
+      providerId: "anthropic",
+      model: "opus",
+      usage: usage(1_000_000, 0),
+    });
+    let st = bc.botStatus("b1", "w1");
+    assert.equal(st.overall, "exceeded");
+    assert.equal(st.over, true);
+    assert.equal(st.limit.scope, "bot:b1");
+    assert.equal(st.limit.budget, 4);
+    bc.resumeOverBudget("b1");
+    st = bc.botStatus("b1", "w1");
+    assert.equal(st.over, false);
+    assert.equal(st.keptRunning, true);
+  });
+
+  it("80%: warn, still runs", () => {
+    const { bc } = make();
+    bc.setBudget("bot", "b1", 6);
+    bc.recordUsage({
+      botId: "b1",
+      providerId: "anthropic",
+      model: "opus",
+      usage: usage(1_000_000, 0),
+    });
+    const st = bc.botStatus("b1", null);
+    assert.equal(st.overall, "warn");
+    assert.equal(st.over, false);
+  });
+});

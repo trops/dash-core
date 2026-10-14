@@ -550,3 +550,49 @@ describe("BotChat — the shared chat (TEAM-015 AC8)", () => {
     expect(api.stop).toHaveBeenCalledWith("b1");
   });
 });
+
+describe("BotChat — over budget (US-019)", () => {
+  it("says which limit, offers Keep running this month, and the box waits", async () => {
+    window.mainApi = {
+      bots: {
+        getRuns: jest.fn().mockResolvedValue(runs),
+        run: jest.fn(),
+        onStream: jest.fn(() => "s1"),
+        removeListener: jest.fn(),
+      },
+    };
+    const onKeepRunning = jest.fn();
+    render(
+      <BotChat
+        bot={bot}
+        overBudget="its $5.00 monthly budget"
+        onKeepRunning={onKeepRunning}
+      />,
+    );
+    await screen.findByText("Check my inbox");
+    expect(screen.getByTestId("bot-chat-over-budget")).toHaveTextContent(
+      "Over its $5.00 monthly budget — it won't run until you keep it running this month or raise the budget.",
+    );
+    expect(composer()).toBeDisabled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Keep running this month" }),
+    );
+    expect(onKeepRunning).toHaveBeenCalled();
+    expect(window.mainApi.bots.run).not.toHaveBeenCalled();
+  });
+
+  it("a run skipped for budget keeps the message and says so", async () => {
+    const { api } = setup();
+    api.run.mockResolvedValue({
+      skipped: true,
+      reason: "this bot is over its budget",
+    });
+    await screen.findByText("Check my inbox");
+    fireEvent.change(composer(), { target: { value: "Go" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByTestId("bot-chat-notice")).toHaveTextContent(
+      "Inbox Watch is over its budget — keep it running this month, then send again.",
+    );
+    expect(composer()).toHaveValue("Go");
+  });
+});

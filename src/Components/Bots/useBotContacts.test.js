@@ -57,3 +57,19 @@ test("a finished run refreshes latest runs; Resume refreshes pause state", async
   expect(api.resumeBot).toHaveBeenCalledWith("b1");
   await waitFor(() => expect(result.current.paused.has("b1")).toBe(false));
 });
+
+test("loads budgets; Keep running this month calls the override and reloads", async () => {
+  const { api } = setup();
+  api.budgetStatus = jest
+    .fn()
+    .mockResolvedValueOnce({ b1: { overall: "exceeded", over: true } })
+    .mockResolvedValue({
+      b1: { overall: "exceeded", over: false, keptRunning: true },
+    });
+  api.resumeBudget = jest.fn().mockResolvedValue(true);
+  const { result } = renderHook(() => useBotContacts());
+  await waitFor(() => expect(result.current.budgets.b1.over).toBe(true));
+  await act(() => result.current.keepRunning("b1"));
+  expect(api.resumeBudget).toHaveBeenCalledWith("b1");
+  await waitFor(() => expect(result.current.budgets.b1.over).toBe(false));
+});

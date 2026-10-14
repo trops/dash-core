@@ -317,9 +317,15 @@ const botController = {
         ROLE_SERVER,
       ],
       resolveRunProfile: (bot) => this._resolveRunProfile(bot),
-      // A paused bot doesn't start at all (CRE-011 AC3).
-      startBlocker: (botId) =>
-        this._pause.isPaused(botId) ? "this bot is paused" : null,
+      // A paused bot doesn't start at all (CRE-011 AC3), and nor does one
+      // over its budget (US-019 AC4) — it would still spend on the model.
+      startBlocker: (botId) => {
+        if (this._pause.isPaused(botId)) return "this bot is paused";
+        const bot = this._store.get(botId) || {};
+        return this._budgets.isOverBudget(botId, bot.workspaceId)
+          ? "this bot is over its budget"
+          : null;
+      },
       resolveTools: (bot) => this._resolveTools(bot),
       callTool: (serverName, toolName, args, o) =>
         this._callTool(serverName, toolName, args, o),
@@ -1509,7 +1515,23 @@ const botController = {
 
   /** Explicit, audited override to keep a budget-exceeded bot running. */
   resumeBudget(botId) {
-    return this._budgets.resumeOverBudget(botId);
+    const ok = this._budgets.resumeOverBudget(botId);
+    // Lists showing "Over budget" refresh.
+    this._broadcast(BOT_LIST_CHANGED, {});
+    return ok;
+  },
+
+  /**
+   * Every user bot's budget picture, by bot id (US-019; the Bots dock shows
+   * "Over budget" / "80% of budget" and the over-budget note).
+   */
+  budgetStatus() {
+    const out = {};
+    for (const bot of this._store.list()) {
+      if (!bot || !bot.id || isDashTeam(bot)) continue;
+      out[bot.id] = this._budgets.botStatus(bot.id, bot.workspaceId);
+    }
+    return out;
   },
 
   // ---- background / pause (US-014, US-018) ---------------------------------

@@ -18,6 +18,8 @@ const BOTS_GET_BUDGETS = "bots-get-budgets";
 const BOTS_SET_BUDGET = "bots-set-budget";
 const BOTS_GET_SPEND = "bots-get-spend";
 const BOTS_RESUME_BUDGET = "bots-resume-budget";
+// Every bot's budget picture (US-019, the Bots dock).
+const BOTS_BUDGET_STATUS = "bots-budget-status";
 const BOTS_LIST_RUNNING = "bots-list-running";
 const BOTS_PAUSE_ALL = "bots-pause-all";
 const BOTS_RESUME_ALL = "bots-resume-all";
@@ -109,6 +111,7 @@ module.exports = {
   BOTS_SET_BUDGET,
   BOTS_GET_SPEND,
   BOTS_RESUME_BUDGET,
+  BOTS_BUDGET_STATUS,
   BOTS_LIST_RUNNING,
   BOTS_PAUSE_ALL,
   BOTS_RESUME_ALL,

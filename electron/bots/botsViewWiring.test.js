@@ -242,3 +242,27 @@ describe("botApi / events — latest result IPC (TD-002)", () => {
     );
   });
 });
+
+describe("botController — budgets stop runs (US-019)", () => {
+  it("an over-budget bot doesn't start (it would still spend on the model)", () => {
+    assert.match(
+      ctrl,
+      /return this\._budgets\.isOverBudget\(botId, bot\.workspaceId\)\s*\? "this bot is over its budget"/,
+    );
+  });
+  it("budgetStatus covers user bots; keeping one running refreshes lists", () => {
+    assert.match(
+      ctrl,
+      /budgetStatus\(\) \{[\s\S]{0,200}isDashTeam\(bot\)[\s\S]{0,120}this\._budgets\.botStatus\(bot\.id, bot\.workspaceId\)/,
+    );
+    assert.match(
+      ctrl,
+      /resumeOverBudget\(botId\);\s*\/\/ Lists showing "Over budget" refresh\.\s*this\._broadcast\(BOT_LIST_CHANGED, \{\}\);/,
+    );
+    assert.equal(events.BOTS_BUDGET_STATUS, "bots-budget-status");
+    assert.match(
+      api,
+      /budgetStatus: \(\) => ipcRenderer\.invoke\(BOTS_BUDGET_STATUS\)/,
+    );
+  });
+});

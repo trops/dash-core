@@ -201,6 +201,41 @@ class BudgetController {
     return true;
   }
 
+  /**
+   * One bot's budget picture for the UI (US-019, Bots dock): its status
+   * across the limits that apply, whether it's stopped for budget (over and
+   * not kept running this month), and its own spend this month.
+   * @returns {{ overall: "ok"|"warn"|"exceeded", over: boolean,
+   *   keptRunning: boolean, scopes: object[], limit: object|null,
+   *   spent: { usd: number, tokens: number, planTokens: number } }}
+   *   limit — the scope that decides (the most used one)
+   */
+  botStatus(botId, workspaceId) {
+    const st = this.status(botId, workspaceId);
+    const d = this._load();
+    const mk = monthKey(this._now());
+    const kept = !!(d.overrides[mk] && d.overrides[mk][botId]);
+    const mine = (d.spend[mk] && d.spend[mk][scopeKey("bot", botId)]) || {};
+    const limit = st.scopes.length
+      ? st.scopes.reduce((a, b) => (b.pct > a.pct ? b : a))
+      : null;
+    return {
+      overall: st.overall,
+      over: st.overall === "exceeded" && !kept,
+      keptRunning: kept && st.overall === "exceeded",
+      scopes: st.scopes,
+      limit,
+      spent: {
+        usd: mine.usd || 0,
+        tokens:
+          (mine.inputTokens || 0) +
+          (mine.outputTokens || 0) +
+          (mine.cacheTokens || 0),
+        planTokens: mine.planTokens || 0,
+      },
+    };
+  }
+
   /** @returns {object} spend buckets for a month (default current) */
   getSpend(mk) {
     const d = this._load();

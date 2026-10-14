@@ -18,6 +18,19 @@ export function useBotContacts() {
   const monitor = useBotMonitor();
   const [lastRuns, setLastRuns] = useState(NO_RUNS);
   const [paused, setPaused] = useState(() => new Set());
+  // { [botId]: botStatus } — over budget / near it (US-019).
+  const [budgets, setBudgets] = useState(NO_RUNS);
+
+  const loadBudgets = useCallback(async () => {
+    const b = api();
+    if (!b || !b.budgetStatus) return;
+    try {
+      const map = await b.budgetStatus();
+      setBudgets(map && typeof map === "object" ? map : NO_RUNS);
+    } catch (_e) {
+      // keep the last good map
+    }
+  }, []);
 
   const loadLastRuns = useCallback(async () => {
     const b = api();
@@ -44,7 +57,8 @@ export function useBotContacts() {
   useEffect(() => {
     loadLastRuns();
     loadPaused();
-  }, [loadLastRuns, loadPaused]);
+    loadBudgets();
+  }, [loadLastRuns, loadPaused, loadBudgets]);
 
   useEffect(() => {
     const b = api();
@@ -54,7 +68,10 @@ export function useBotContacts() {
       ids.push(
         b.onStream(({ event }) => {
           const t = event && event.type;
-          if (t === "done" || t === "error") loadLastRuns();
+          if (t === "done" || t === "error") {
+            loadLastRuns();
+            loadBudgets();
+          }
         }),
       );
     }
@@ -63,13 +80,25 @@ export function useBotContacts() {
         b.onListChanged(() => {
           loadLastRuns();
           loadPaused();
+          loadBudgets();
         }),
       );
     }
+    if (b.onBudgetAlert) ids.push(b.onBudgetAlert(() => loadBudgets()));
     return () => {
       for (const id of ids) if (b.removeListener) b.removeListener(id);
     };
-  }, [loadLastRuns, loadPaused]);
+  }, [loadLastRuns, loadPaused, loadBudgets]);
+
+  // Keep an over-budget bot running for the rest of this month (US-019 AC6).
+  const keepRunning = useCallback(
+    async (botId) => {
+      const b = api();
+      if (b && b.resumeBudget) await b.resumeBudget(botId);
+      loadBudgets();
+    },
+    [loadBudgets],
+  );
 
   const setBotPaused = useCallback(
     async (botId, pause) => {
@@ -83,7 +112,14 @@ export function useBotContacts() {
   );
 
   return useMemo(
-    () => ({ ...monitor, lastRuns, paused, setBotPaused }),
-    [monitor, lastRuns, paused, setBotPaused],
+    () => ({
+      ...monitor,
+      lastRuns,
+      paused,
+      setBotPaused,
+      budgets,
+      keepRunning,
+    }),
+    [monitor, lastRuns, paused, setBotPaused, budgets, keepRunning],
   );
 }
