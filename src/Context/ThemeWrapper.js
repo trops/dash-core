@@ -407,9 +407,12 @@ export const ThemeWrapper = ({
   }, [chosenTheme, themeVariant]);
 
   // Don't render children until theme is loaded AND splash screen minimum time has passed
+  // The splash has no background of its own: the app's (body) shows
+  // through, so the screen is one colour while it loads — a fill of its
+  // own showed as a mismatched block whenever part of it repainted late.
   if (!chosenTheme || !splashDone) {
     return (
-      <div className="flex items-center justify-center w-screen h-screen bg-gray-950">
+      <div className="flex items-center justify-center w-screen h-screen">
         <div className="flex flex-col items-center gap-4">
           <span className="text-white text-2xl font-bold tracking-tight opacity-80">
             Dash.
