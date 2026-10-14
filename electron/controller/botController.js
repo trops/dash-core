@@ -112,6 +112,7 @@ const {
   widgetWiring,
 } = require("../bots/planBuild");
 const { planTarget } = require("../bots/teamPlan");
+const { summarizeSpending } = require("../bots/spending");
 const { resolveWidgetComponent } = require("../bots/widgetComponent");
 const { CreateRecent } = require("../bots/createRecent");
 const {
@@ -1505,7 +1506,10 @@ const botController = {
   },
 
   setBudget(scope, id, monthlyUsd) {
-    return this._budgets.setBudget(scope, id, monthlyUsd);
+    const v = this._budgets.setBudget(scope, id, monthlyUsd);
+    // "Over budget" / "80% of budget" may have changed.
+    this._broadcast(BOT_LIST_CHANGED, {});
+    return v;
   },
 
   /** Current-month (or given month) spend buckets by scope. */
@@ -1519,6 +1523,33 @@ const botController = {
     // Lists showing "Over budget" refresh.
     this._broadcast(BOT_LIST_CHANGED, {});
     return ok;
+  },
+
+  /**
+   * This month's spending by bot, dashboard and AI provider, and overall,
+   * with limits (US-019 AC2/AC5 — the Spending view and budget fields).
+   */
+  spendingSummary() {
+    let workspaces = [];
+    try {
+      workspaces =
+        (
+          require("./workspaceController").listWorkspacesForApplication(
+            this._getMainWindow(),
+            this._appId,
+          ) || {}
+        ).workspaces || [];
+    } catch (_e) {
+      workspaces = [];
+    }
+    return summarizeSpending({
+      month: this._budgets.currentMonth(),
+      spend: this._budgets.getSpend(),
+      budgets: this._budgets.getBudgets(),
+      bots: this._store.list().filter((b) => !isDashTeam(b)),
+      workspaces,
+      isOver: (id, ws) => this._budgets.isOverBudget(id, ws),
+    });
   },
 
   /**

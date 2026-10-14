@@ -298,3 +298,24 @@ describe("BudgetController.botStatus — the Bots dock (US-019)", () => {
     assert.equal(st.over, false);
   });
 });
+
+describe("BudgetController — spending by AI provider (US-019 AC5)", () => {
+  it("each run also counts toward its provider", () => {
+    const { bc } = make();
+    bc.recordUsage({
+      botId: "b1",
+      providerId: "anthropic",
+      model: "opus",
+      usage: usage(1_000_000, 0),
+    });
+    bc.recordUsage({
+      botId: "b2",
+      providerId: "anthropic",
+      model: "opus",
+      usage: usage(1_000_000, 0),
+    });
+    const sp = bc.getSpend();
+    assert.equal(sp["provider:anthropic"].usd, 10);
+    assert.equal(bc.currentMonth(), "2026-09");
+  });
+});

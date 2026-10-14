@@ -12,6 +12,10 @@ export { DraftBanner } from "./DraftBanner";
 export { useBotMonitor } from "./useBotMonitor";
 export { BotContacts } from "./BotContacts";
 export { useBotContacts } from "./useBotContacts";
+export { useSpending } from "./useSpending";
+export { BudgetField } from "./BudgetField";
+export { BotBudgetSection } from "./BotBudgetSection";
+export { TeamBudgetDialog } from "./TeamBudgetDialog";
 export {
   contactSections,
   contactOf,

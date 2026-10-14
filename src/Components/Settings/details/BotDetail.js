@@ -27,6 +27,7 @@ import {
 import { dashboardOptions, offTeamSubscriptions } from "../../Bots/teamUtils";
 import { DraftGaps } from "../../Bots/DraftGaps";
 import { resultNameFor } from "./resultNames";
+import { BotBudgetSection } from "../../Bots/BotBudgetSection";
 
 /**
  * BotDetail — create/edit form for a Bot Factory bot (Settings → Bots).
@@ -951,6 +952,10 @@ export const BotDetail = ({
             />
             {approvalHint ? (
               <span className="text-xs opacity-50">{approvalHint}</span>
+            ) : null}
+            {/* A saved bot's monthly limit and spending (US-019 AC2). */}
+            {!isCreating && bot && bot.id && !isTeamRole ? (
+              <BotBudgetSection bot={bot} />
             ) : null}
           </>
         )}

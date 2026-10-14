@@ -22,6 +22,7 @@ import { useAllBots } from "./useAllBots";
 import { DashTeamPanel } from "./DashTeamPanel";
 import { approvalText, botHandle, botProviders } from "./botSummary";
 import { DetailGroup, ListGroupLabel, ManageLayout } from "./ManageLayout";
+import { SpendingView } from "./SpendingView";
 
 // Widget config (declared `events`) by component name — feeds the bot
 // editor's "Run on events" picker.
@@ -32,6 +33,12 @@ const UNASSIGNED = "unassigned";
 // The Dash team's group key (CRE-011) — listed first, above dashboard teams.
 const DASH_TEAM = "dash-team";
 const isDashTeamBot = (bot) => !!bot && bot.system === "dash-team";
+// The page's two views (bot-factory US-019 AC5: spending by bot, dashboard
+// and provider).
+const PAGE_VIEWS = [
+  { value: "bots", label: "Bots" },
+  { value: "spending", label: "Spending" },
+];
 const STATUS_FILTERS = [
   { value: "all", label: "All" },
   { value: "Needs approval", label: "Needs approval" },
@@ -267,6 +274,7 @@ export const BotsPage = ({
   const botsApi = dashApi && dashApi.bots;
   const all = useAllBots();
 
+  const [pageView, setPageView] = useState("bots");
   const [query, setQuery] = useState("");
   const [teams, setTeams] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -443,6 +451,29 @@ export const BotsPage = ({
     );
   }
 
+  const viewSwitch = (
+    <SegmentedControl
+      ariaLabel="Show"
+      options={PAGE_VIEWS}
+      value={pageView}
+      onChange={setPageView}
+    />
+  );
+
+  if (pageView === "spending") {
+    return (
+      <div
+        data-testid="bots-page"
+        className={`flex flex-col flex-1 min-h-0 gap-3 px-6 pt-4 pb-4 ${strong}`}
+      >
+        <div className="flex-shrink-0 flex flex-row items-center gap-2">
+          {viewSwitch}
+        </div>
+        <SpendingView />
+      </div>
+    );
+  }
+
   return (
     <ManageLayout
       testId="bots-page"
@@ -453,6 +484,7 @@ export const BotsPage = ({
       detailFit
       toolbar={
         <>
+          {viewSwitch}
           <div className="w-72">
             <SearchInput
               value={query}

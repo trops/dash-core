@@ -28,6 +28,7 @@ import { BotDetail } from "../Settings/details/BotDetail";
 import { DraftBanner } from "./DraftBanner";
 import { TeamImportReview } from "./TeamImportReview";
 import { PublishBotDialog } from "./PublishBotDialog";
+import { TeamBudgetDialog } from "./TeamBudgetDialog";
 import { RegistryBrowse } from "./RegistryBrowse";
 import { useRegistryAuthGate } from "../../hooks/useRegistryAuthGate";
 import { AppContext } from "../../Context/App/AppContext";
@@ -678,6 +679,9 @@ export const BotsView = ({
     }
   };
 
+  // Team budget (bot-factory US-019 AC2).
+  const [teamBudgetOpen, setTeamBudgetOpen] = useState(false);
+
   const closePublish = () => {
     setPublishPreview(null);
     setPublishTarget(null);
@@ -688,6 +692,13 @@ export const BotsView = ({
   const teamActions = (
     <div className="flex flex-col gap-1">
       <div className="flex flex-row flex-wrap gap-2">
+        {workspace ? (
+          <Button3
+            title="Team budget…"
+            size="sm"
+            onClick={() => setTeamBudgetOpen(true)}
+          />
+        ) : null}
         <Button3 title="Export team" size="sm" onClick={exportTeam} />
         <Button3 title="Import team" size="sm" onClick={importTeam} />
         <Button3 title="Find in registry" size="sm" onClick={openRegistry} />
@@ -1239,6 +1250,11 @@ export const BotsView = ({
         variant="danger"
         onConfirm={deleteBot}
         onCancel={() => setConfirmDelete(false)}
+      />
+      <TeamBudgetDialog
+        open={teamBudgetOpen}
+        workspace={workspace}
+        onClose={() => setTeamBudgetOpen(false)}
       />
       <PublishBotDialog
         open={!!publishPreview}
