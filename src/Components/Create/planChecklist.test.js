@@ -211,3 +211,57 @@ describe("skipping a sign-in (4d-3, CRE-004 AC5)", () => {
     expect(providerLabel("Google Calendar")).toBe("Google Calendar");
   });
 });
+
+describe("a plan for a dashboard you have (5e-2b)", () => {
+  const clock = {
+    kind: "widget",
+    name: "Clock",
+    source: "yours",
+    package: "@trops/clock",
+  };
+  const bot = {
+    kind: "bot",
+    name: "Pinger",
+    source: "new",
+    instructions: "Ping.",
+  };
+  const theme = { kind: "theme", name: "Nordic Frost", source: "yours" };
+  const target = { id: "17", name: "Slack Pack" };
+
+  test("the counts line says what it adds where", () => {
+    expect(countsLine({ dashboard: target, pieces: [clock, bot] })).toBe(
+      "Adds 1 widget and 1 bot to Slack Pack",
+    );
+    expect(countsLine({ dashboard: target, pieces: [theme] })).toBe(
+      "Applies the Nordic Frost theme to Slack Pack",
+    );
+    expect(
+      countsLine({ dashboard: target, pieces: [clock, clock, theme] }),
+    ).toBe("Adds 2 widgets to Slack Pack and applies the Nordic Frost theme");
+    // A new dashboard names its theme too.
+    expect(countsLine({ pieces: [clock, theme] })).toBe(
+      "1 widget: 1 yours · the Nordic Frost theme",
+    );
+  });
+
+  test("Build says Make these changes", () => {
+    const opts = { targeted: true };
+    expect(buildButtonLabel([], {}, new Set(), opts)).toBe(
+      "Make these changes",
+    );
+    const connect = [
+      {
+        id: "connect:gmail",
+        kind: "connect",
+        label: "Connect Gmail",
+        providerType: "gmail",
+      },
+    ];
+    expect(buildButtonLabel(connect, {}, new Set(), opts)).toBe(
+      "Connect Gmail & make these changes",
+    );
+    expect(buildButtonLabel(connect, {}, new Set())).toBe(
+      "Connect Gmail & build",
+    );
+  });
+});

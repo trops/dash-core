@@ -123,8 +123,12 @@ export const CreateBuildingStep = ({
     status === "interrupted";
   // An interrupted build has no live run: it continues first (4e-1).
   const interrupted = status === "interrupted";
+  // A build on a dashboard the user had (5e-2b) changes it, never owns it.
+  const targeted = !!(built.dashboard && built.dashboard.targeted);
   const anythingBuilt = !!(
-    built.dashboard ||
+    (built.dashboard && !targeted) ||
+    (built.placed || []).length ||
+    built.theme ||
     (built.bots || []).length ||
     (built.widgets || []).length
   );
@@ -211,7 +215,9 @@ export const CreateBuildingStep = ({
       ? "Stopping after this step…"
       : status === "waiting-for-providers"
         ? `Built — waiting for ${andList(waitingFor.map(providerLabel))}`
-        : HEAD[status] || status;
+        : targeted && status === "done"
+          ? `Changes made to ${built.dashboard.name}`
+          : HEAD[status] || status;
 
   return (
     <div
@@ -438,8 +444,20 @@ export const CreateBuildingStep = ({
         <ConfirmationModal
           isOpen
           setIsOpen={(v) => !v && setConfirmRemove(false)}
-          title="Remove what was built?"
-          confirmLabel={removing ? "Removing…" : "Remove"}
+          title={
+            targeted
+              ? `Undo the changes to ${built.dashboard.name}?`
+              : "Remove what was built?"
+          }
+          confirmLabel={
+            removing
+              ? targeted
+                ? "Undoing…"
+                : "Removing…"
+              : targeted
+                ? "Undo changes"
+                : "Remove"
+          }
           variant="danger"
           onConfirm={remove}
           onCancel={() => setConfirmRemove(false)}
@@ -466,12 +484,38 @@ export const CreateBuildingStep = ({
 /** What Remove takes away and what stays (CRE-006 AC7's rule: installs stay). */
 // The modal body sets no text color, so each line takes the theme's.
 export const RemoveSummary = ({ built, muted = "", strong = "" }) => {
+  // A dashboard the user had stays, with its lead and what its team knows.
+  const targeted = !!(built.dashboard && built.dashboard.targeted);
   const goes = [];
-  if (built.dashboard) goes.push(`The "${built.dashboard.name}" dashboard`);
+  if (built.dashboard && !targeted) {
+    goes.push(`The "${built.dashboard.name}" dashboard`);
+  }
+  if (targeted && (built.placed || []).length) {
+    const n = built.placed.length;
+    goes.push(
+      `${n === 1 ? "The widget" : `The ${n} widgets`} it put on ${built.dashboard.name}`,
+    );
+  }
   for (const b of built.bots || []) goes.push(`The ${b.name} bot`);
-  if (built.dashboard) goes.push("The dashboard's team lead, if it has one");
+  if (built.dashboard && !targeted) {
+    goes.push("The dashboard's team lead, if it has one");
+  }
   for (const w of built.widgets || []) goes.push(`The ${w} widget`);
+  if (targeted && built.theme) {
+    goes.push(
+      `The ${built.theme.name} theme — ${
+        built.theme.previous
+          ? `${built.theme.previousName || built.theme.previous} goes back`
+          : "it goes back to the app's theme"
+      }`,
+    );
+  }
   const stays = [
+    ...(targeted
+      ? [
+          `The "${built.dashboard.name}" dashboard, its team lead and everything else on it`,
+        ]
+      : []),
     ...(built.installs || []).map((p) => `${p} — stays installed`),
     ...(built.updated || []).map((p) => `${p} — keeps its changes`),
   ];

@@ -2,7 +2,14 @@
  * Type: Auto and Type: Theme (create-entry PRD CRE-001 AC3, phase 5c).
  */
 import { aiOnce, firstJson, contentText } from "../../utils/aiOnce";
-import { guessType, parseAutoAnswer, pickType, AUTO_SYSTEM } from "./autoType";
+import {
+  guessType,
+  parseAutoAnswer,
+  pickType,
+  AUTO_SYSTEM,
+  autoSystem,
+  namedDashboard,
+} from "./autoType";
 import { parseThemeAnswer, themeFromPrompt } from "./themeFromPrompt";
 
 function fakeLlm({ text = "", error = null } = {}) {
@@ -131,6 +138,40 @@ describe("Auto — what to make", () => {
       by: "guess",
     });
     expect(unused).not.toHaveBeenCalled();
+  });
+});
+
+describe("Auto — a change to a dashboard you have goes to the Planner (5e-2b)", () => {
+  const names = ["Slack Pack", "Sales", "Q3 (draft)"];
+
+  test("a request that names a dashboard is a dashboard change", () => {
+    expect(
+      guessType("switch Slack Pack to the Nordic Frost theme", names),
+    ).toBe("dashboard");
+    expect(guessType("add a clock to sales", names)).toBe("dashboard");
+    expect(namedDashboard("tidy up Q3 (draft) please", names)).toBe(
+      "Q3 (draft)",
+    );
+    // Whole words only; without names the old guess stands.
+    expect(guessType("a salesforce widget", names)).toBe("widget");
+    expect(guessType("switch Slack Pack to a dark theme")).toBe("theme");
+  });
+
+  test("the AI is told the user's dashboards, and that changing one is a dashboard", async () => {
+    expect(AUTO_SYSTEM).toMatch(
+      /any change to a dashboard the user already has/,
+    );
+    expect(autoSystem(names)).toMatch(
+      /The user's dashboards: Slack Pack, Sales, Q3 \(draft\)\.$/,
+    );
+    expect(autoSystem([])).toBe(AUTO_SYSTEM);
+    const ask = jest.fn().mockResolvedValue('{"type":"dashboard","why":"x"}');
+    await pickType("add a clock to Sales", {
+      backend: "claude-code",
+      dashboards: names,
+      ask,
+    });
+    expect(ask.mock.calls[0][0].system).toBe(autoSystem(names));
   });
 });
 

@@ -18,7 +18,7 @@ import {
 import { AppContext } from "../../Context/App/AppContext";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { runTeamRole } from "../../utils/teamRoles";
-import { extractPlan, validatePlan } from "../../utils/teamPlan";
+import { extractPlan, planTarget, validatePlan } from "../../utils/teamPlan";
 import { estimatePlan, describeEstimate } from "../../utils/planEstimate";
 import { runCostLabel, usageTokens } from "../../utils/runCostLabel";
 import {
@@ -58,9 +58,38 @@ export function reopenedRequest(original, plan, text) {
   ].join("\n");
 }
 
-/** "Removed the Ask Test dashboard, 1 bot and 1 widget." (4d-3) */
+/**
+ * "Removed the Ask Test dashboard, 1 bot and 1 widget." (4d-3) — or, on a
+ * dashboard the user had (5e-2b): "Took 1 widget and 1 bot off Slack Pack
+ * and put its theme back."
+ */
 export function removedText(res) {
   const r = (res && res.removed) || {};
+  if (r.from) {
+    const n = (count, one) =>
+      count ? `${count} ${one}${count === 1 ? "" : "s"}` : null;
+    const things = [
+      n(r.placed || 0, "widget"),
+      n((r.bots || []).length, "bot"),
+    ].filter(Boolean);
+    const parts = [];
+    if (things.length) parts.push(`Took ${things.join(" and ")} off ${r.from}`);
+    if (r.theme) {
+      parts.push(
+        parts.length ? "put its theme back" : `Put ${r.from}'s theme back`,
+      );
+    }
+    const problems = (res && res.problems) || [];
+    return (
+      (parts.length
+        ? `${parts.join(" and ")}.`
+        : `Nothing was left to take off ${r.from}.`) +
+      (r.widgets && r.widgets.length
+        ? ` Uninstalled ${r.widgets.length} widget${r.widgets.length === 1 ? "" : "s"} it built.`
+        : "") +
+      (problems.length ? ` Couldn't remove: ${problems.join("; ")}.` : "")
+    );
+  }
   const parts = [];
   if (r.dashboard) parts.push(`the "${r.dashboard}" dashboard`);
   const n = (list, one) =>
@@ -111,12 +140,23 @@ const KIND_ICON = {
   bot: "robot",
   widget: "puzzle-piece",
   layout: "table-cells-large",
+  theme: "palette",
 };
 const GROUPS = [
   ["bot", "Bots"],
   ["widget", "Widgets"],
   ["layout", "Layout"],
+  ["theme", "Theme"],
 ];
+
+/**
+ * The dashboard with unsaved edits in this window, if any (DashboardStage
+ * mirrors it): a plan doesn't change a dashboard mid-edit (5e-2b).
+ */
+function dirtyDashboardId() {
+  const id = typeof globalThis !== "undefined" && globalThis.__dashboardDirtyId;
+  return id === undefined || id === null ? null : String(id);
+}
 
 /**
  * An option that means "let me type it" rather than an answer (the Planner
@@ -138,6 +178,7 @@ export function pieceMeta(p) {
   if (p.kind === "layout") {
     return p.source === "new" ? "New dashboard layout" : "Dashboard layout";
   }
+  if (p.kind === "theme") return "One of your saved themes";
   return "";
 }
 /** The Planner's words without its <plan> block. */
@@ -254,6 +295,9 @@ export const CreatePlanStep = ({
   // A starter's plan to start from (Remix, 5b): { plan, request, label } —
   // the plan shows at once; the Planner is asked to adapt it.
   seed = null,
+  // The dashboard the user is looking at (5e-2b): the Planner is told, so
+  // "this dashboard" means it.
+  openDashboardId = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const statusTokens = useStatusTokens();
@@ -400,7 +444,16 @@ export const CreatePlanStep = ({
           })
           .catch(() => {})
           .then(
-            () => alive.current && ask(seed ? seed.request : prompt, false),
+            () =>
+              alive.current &&
+              ask(
+                seed
+                  ? seed.request
+                  : openDashboardId != null
+                    ? `${prompt}\n\n(The user is looking at the dashboard with id ${openDashboardId}.)`
+                    : prompt,
+                false,
+              ),
           );
       }
       if (window.mainApi?.bots?.listDashTeam) {
@@ -523,12 +576,29 @@ export const CreatePlanStep = ({
     plan && pieces.length ? estimatePlan(plan, { team, planningTokens }) : null;
   const have = providerTypesOf(app.providers);
   const checklist = plan ? buildChecklist(plan, have) : [];
+  // A plan for a dashboard the user has (5e-2b).
+  const target = planTarget(plan);
+  const buildLabel = buildButtonLabel(checklist, checks, have, {
+    targeted: !!target,
+  });
 
   // Nothing open: build it (4d). Approving here is the consent — nothing
   // asks again during the build.
+  // Unsaved edits on the dashboard the plan changes: it waits (two saves at
+  // once would overwrite each other) — checked before anything is walked.
+  const heldByEdits = () => {
+    if (!target || dirtyDashboardId() !== target.id) return false;
+    setReady(false);
+    setBuildError(
+      `Save or cancel your edits to ${target.name} first, then press ${buildLabel} again.`,
+    );
+    return true;
+  };
+
   const startBuild = async (continueFrom = null) => {
-    setReady(true);
     setBuildError(null);
+    if (heldByEdits()) return;
+    setReady(true);
     const bots = window.mainApi && window.mainApi.bots;
     if (!bots || !bots.startPlanBuild) {
       setBuildError("Building from a plan isn't available in this version.");
@@ -562,6 +632,8 @@ export const CreatePlanStep = ({
   };
   // Build walks through what's open, one window at a time (CRE-003 AC3).
   const buildPlan = () => {
+    setBuildError(null);
+    if (heldByEdits()) return;
     setWalking(true);
     openItem(nextOpen(checklist, checks, have));
   };
@@ -640,7 +712,7 @@ export const CreatePlanStep = ({
           {busy ? (
             <ChatMessage role="reply" label="Planner" streaming>
               <span className="whitespace-pre-wrap">
-                {withoutPlan(soFar) || "Thinking…"}
+                {withoutPlan(soFar) || "Drafting a plan for you to review…"}
               </span>
             </ChatMessage>
           ) : null}
@@ -742,6 +814,16 @@ export const CreatePlanStep = ({
 
           {plan && pieces.length ? (
             <div className="flex flex-col gap-4" data-testid="plan-card">
+              {/* Nothing changes until Build (the user approves first). */}
+              <div data-testid="plan-status">
+                <SectionLabel
+                  text={
+                    target
+                      ? `Changes to ${target.name} · not made yet`
+                      : "Plan · not built yet"
+                  }
+                />
+              </div>
               <span className={`text-lg font-semibold ${strong}`}>
                 {plan.summary}
               </span>
@@ -749,7 +831,10 @@ export const CreatePlanStep = ({
                 {countsLine(plan)}
               </span>
 
-              <PlanSection title="What it makes" testId="plan-pieces">
+              <PlanSection
+                title={target ? "What it adds" : "What it makes"}
+                testId="plan-pieces"
+              >
                 {GROUPS.map(([kind, label]) => {
                   const group = pieces.filter((p) => p && p.kind === kind);
                   if (!group.length) return null;
@@ -852,8 +937,9 @@ export const CreatePlanStep = ({
                 })}
               </PlanSection>
 
-              {/* What it will look like, with made-up data (CRE-003 AC6). */}
-              <PlanSketch plan={plan} compact={compact} />
+              {/* What it will look like, with made-up data (CRE-003 AC6) —
+                  a new dashboard's grid; not drawn for one the user has. */}
+              {target ? null : <PlanSketch plan={plan} compact={compact} />}
 
               {checklist.length ? (
                 <PlanSection title="Before building" testId="plan-before">
@@ -978,10 +1064,7 @@ export const CreatePlanStep = ({
                 </span>
               ) : null}
               <div className="flex flex-row flex-wrap items-center gap-3">
-                <Button
-                  title={buildButtonLabel(checklist, checks, have)}
-                  onClick={buildPlan}
-                />
+                <Button title={buildLabel} onClick={buildPlan} />
                 <span className={`text-xs ${muted}`} data-testid="plan-ready">
                   {buildError
                     ? buildError
@@ -990,7 +1073,9 @@ export const CreatePlanStep = ({
                       : resumeFrom
                         ? "What's built is kept — only what's new or changed gets built."
                         : removedNote ||
-                          "Kept in Recent · nothing has been built or installed yet."}
+                          (target
+                            ? `Kept in Recent · nothing on ${target.name} changes until you press this.`
+                            : "Kept in Recent · nothing has been built or installed yet.")}
                 </span>
               </div>
             </div>

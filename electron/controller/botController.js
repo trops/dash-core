@@ -104,10 +104,14 @@ const {
 const { compareConfigs } = require("../bots/configDiff");
 const {
   createPlanBuild,
+  undoOnDashboard,
+  themeChoices,
+  resolveTheme,
   planBotDefinition,
   triggerSubscription,
   widgetWiring,
 } = require("../bots/planBuild");
+const { planTarget } = require("../bots/teamPlan");
 const { resolveWidgetComponent } = require("../bots/widgetComponent");
 const { CreateRecent } = require("../bots/createRecent");
 const {
@@ -632,8 +636,15 @@ const botController = {
     try {
       const entry = this._recent.saveBuild(recentId, { buildId, plan, state });
       this._writePlanMemory(recentId, buildFacts(state, plan));
-      // Finished with a dashboard: its team learns why it exists.
-      if (entry && state && state.dashboard && !isBuildBusy(state)) {
+      // Finished with a dashboard it made: its team learns why it exists.
+      // A dashboard the user had keeps what its team knows (5e-2b).
+      if (
+        entry &&
+        state &&
+        state.dashboard &&
+        !state.dashboard.targeted &&
+        !isBuildBusy(state)
+      ) {
         const about = aboutDashboard(entry, plan, state);
         if (about)
           this._memory.set("workspace", state.dashboard.id, "about", about);
@@ -1387,7 +1398,12 @@ const botController = {
     });
     const saved = this._saveWorkspace(placed.workspace);
     if (saved.error) return saved;
-    return { added: true, widgetId: placed.widgetId, cell: placed.cell };
+    return {
+      added: true,
+      widgetId: placed.widgetId,
+      cell: placed.cell,
+      pageId: placed.pageId,
+    };
   },
 
   /** Link an existing Bot results widget to a bot on its dashboard's team. */
@@ -1704,7 +1720,8 @@ const botController = {
    * each new widget, then everything is placed. Progress goes to every window
    * (BOT_PLAN_BUILD_PROGRESS). Resolves at once with the build's id.
    * `resumeFrom` (Edit plan, 4d-3): an earlier build of this plan whose work
-   * is reused — same dashboard, unchanged pieces kept.
+   * is reused — same dashboard, unchanged pieces kept. A plan that names a
+   * dashboard (plan.dashboard, 5e-2b) adds to that one instead of making one.
    */
   startPlanBuild(
     plan,
@@ -1727,6 +1744,23 @@ const botController = {
       if (earlier.state && earlier.state.status === "removed") {
         return { error: "What the earlier build made was removed." };
       }
+      // An edit can't move the work to another dashboard.
+      const was =
+        earlier.state && earlier.state.dashboard
+          ? earlier.state.dashboard
+          : null;
+      const target = planTarget(plan);
+      if (
+        was &&
+        (target
+          ? !was.targeted || String(was.id) !== target.id
+          : !!was.targeted)
+      ) {
+        return {
+          error:
+            "This plan now changes a different dashboard — start a new plan for it.",
+        };
+      }
       resume = { plan: earlier.plan, state: earlier.state };
       // The new build owns that work now (and removes it, if asked).
       this._builds.delete(resumeFrom);
@@ -1739,6 +1773,8 @@ const botController = {
         installWidget: (pkg, piece) => this._planInstallWidget(pkg, piece),
         createDashboard: (name, count) =>
           this._planCreateDashboard(name, count),
+        useDashboard: (id) => this._planUseDashboard(id),
+        applyTheme: (req) => this._planApplyTheme(req),
         askRole: (role, request) => this._planAskRole(role, request, planId),
         abortRole: (role) => {
           const bot = dashTeamBot(this._store.list(), role);
@@ -1759,7 +1795,11 @@ const botController = {
             botId,
           });
           if (res && res.error) throw new Error(res.error);
-          return { component: BOT_WIDGETS.results, widgetId: res.widgetId };
+          return {
+            component: BOT_WIDGETS.results,
+            widgetId: res.widgetId,
+            pageId: res.pageId,
+          };
         },
         wireTrigger: (req) => this._planWireTrigger(req),
         wireListener: (req) => this._planWireListener(req),
@@ -1859,7 +1899,11 @@ const botController = {
    * Remove what was built (CRE-004 AC4): the dashboard, the bots saved for it
    * (and its lead), and the widgets the Builder made new for it. Registry
    * installs stay installed and updated widgets keep their changes.
-   * → { removed: { dashboard, bots, widgets }, kept: { installs, updated } }
+   * A build on a dashboard the user had (5e-2b) never deletes it, its lead
+   * or what its team knows: the widgets it placed come off, its bots go, and
+   * the theme it replaced goes back.
+   * → { removed: { dashboard, bots, widgets, from?, placed?, theme? },
+   *     kept: { installs, updated } }
    */
   removePlanBuild(buildId) {
     const { entry, error } = this._finishedBuild(buildId);
@@ -1867,10 +1911,12 @@ const botController = {
     const built = (entry.state && entry.state.built) || {};
     const removed = { dashboard: null, bots: [], widgets: [] };
     const problems = [];
+    const targeted = !!(built.dashboard && built.dashboard.targeted);
 
     const dashboardId = built.dashboard ? built.dashboard.id : null;
     const bots = (built.bots || []).slice();
-    const lead = dashboardId ? leadOf(this._store.list(), dashboardId) : null;
+    const lead =
+      dashboardId && !targeted ? leadOf(this._store.list(), dashboardId) : null;
     if (lead && !bots.some((b) => b.id === lead.id)) {
       bots.push({ id: lead.id, name: lead.name });
     }
@@ -1898,7 +1944,9 @@ const botController = {
       }
     }
 
-    if (dashboardId) {
+    if (dashboardId && targeted) {
+      this._undoOnDashboard(built, removed, problems);
+    } else if (dashboardId) {
       const ws = this._loadWorkspace(dashboardId);
       if (ws) {
         const res =
@@ -1937,6 +1985,92 @@ const botController = {
     this._broadcast(BOT_PLAN_BUILD_PROGRESS, { buildId, state: entry.state });
     this._keepBuild(entry.recentId, buildId, entry.plan, entry.state);
     return { removed, kept, problems };
+  },
+
+  /**
+   * Remove on a dashboard the user had (5e-2b): take the widgets the build
+   * placed off it and put back the theme it replaced — only if the theme is
+   * still the one the build applied — in one save.
+   */
+  _undoOnDashboard(built, removed, problems) {
+    const name = built.dashboard.name;
+    removed.from = name;
+    const ws = this._loadWorkspace(built.dashboard.id);
+    if (!ws) {
+      problems.push(`${name}: it isn't there any more`);
+      return;
+    }
+    const undo = undoOnDashboard(ws, built);
+    if (!undo.changed) return;
+    const saved = this._saveWorkspace(undo.workspace);
+    if (saved && saved.error) {
+      problems.push(`${name}: ${saved.error}`);
+      return;
+    }
+    removed.placed = undo.placed;
+    if (undo.theme !== null) removed.theme = undo.theme || "the app's theme";
+  },
+
+  /** A dashboard the user has, for a plan that adds to it (5e-2b). */
+  _planUseDashboard(id) {
+    const ws = this._loadWorkspace(id);
+    if (!ws) {
+      throw new Error(
+        "that dashboard isn't there any more — it may have been deleted",
+      );
+    }
+    return { id: ws.id, name: ws.name || ws.label || String(ws.id) };
+  },
+
+  /**
+   * One of the user's saved themes (by name or id) on a dashboard, as the
+   * Dash MCP's apply_theme does: themeKey (the theme's id) drives it, theme
+   * kept for older readers.
+   * → { key, name, previous, previousName } — previous: the id it had, or
+   *   null for the app's theme.
+   */
+  _planApplyTheme({ dashboardId, theme }) {
+    const themes = this._savedThemes();
+    const hit = resolveTheme(themes, theme);
+    if (hit.error) throw new Error(hit.error);
+    const ws = this._loadWorkspace(dashboardId);
+    if (!ws) throw new Error("the dashboard couldn't be read");
+    const previous = ws.themeKey || null;
+    const was = previous
+      ? themeChoices(themes).find((c) => c.key === previous)
+      : null;
+    const saved = this._saveWorkspace({
+      ...ws,
+      themeKey: hit.key,
+      theme: hit.key,
+    });
+    if (saved && saved.error) throw new Error(saved.error);
+    return {
+      key: hit.key,
+      name: hit.name,
+      previous,
+      previousName: was ? was.name : previous,
+    };
+  },
+
+  /** themes.json: the user's saved themes by id. */
+  _savedThemes() {
+    try {
+      const listed = require("./themeController").listThemesForApplication(
+        this._getMainWindow(),
+        this._appId,
+      );
+      return (listed && !listed.error && listed.themes) || {};
+    } catch (_e) {
+      return {};
+    }
+  },
+
+  /** The user's saved theme names, once each (list_themes). */
+  _themeNames() {
+    return themeChoices(this._savedThemes())
+      .map((c) => c.name)
+      .filter((n, i, all) => all.indexOf(n) === i);
   },
 
   /** A registry widget, installed for a plan build → its component id. */
@@ -2158,6 +2292,7 @@ const botController = {
         : {}),
       compareConfigs,
       listDashboards: () => this._dashboardsWithBots(),
+      listThemes: () => this._themeNames(),
       botResults: () => this._botResultsForTeam(),
       botRuns: () => this._botRunsForTeam(),
       draftBot: (req) => this._teamDraftBot(req),
@@ -2233,6 +2368,9 @@ const botController = {
       workspaces = [];
     }
     const bots = this._store.list();
+    const themeNames = new Map(
+      themeChoices(this._savedThemes()).map((c) => [c.key, c.name]),
+    );
     return workspaces.map((ws) => ({
       id: String(ws.id),
       name: ws.name || ws.label || `Dashboard ${ws.id}`,
@@ -2244,6 +2382,7 @@ const botController = {
             p.id === ws.activePageId ? `${p.name} (shown)` : p.name,
           )
         : [],
+      theme: ws.themeKey ? themeNames.get(ws.themeKey) || ws.themeKey : null,
     }));
   },
 
@@ -2291,6 +2430,7 @@ const botController = {
       component: resolved.component,
       dashboardName: hit.name,
       page: target.page ? target.page.name : null,
+      pageId: placed.pageId,
       cell: placed.cell,
       widgetId: placed.widgetId,
     };

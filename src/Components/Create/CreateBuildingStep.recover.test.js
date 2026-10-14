@@ -283,3 +283,69 @@ test("an interrupted build (the app closed) offers Continue building, not step f
   fireEvent.click(screen.getByText("Continue building"));
   expect(onContinue).toHaveBeenCalled();
 });
+
+describe("a build on a dashboard you have (5e-2b)", () => {
+  const slack = { id: "17", name: "Slack Pack", targeted: true };
+  const targetedFailed = {
+    ...failed,
+    dashboard: slack,
+    built: {
+      dashboard: slack,
+      bots: [{ id: "bot_1", name: "Greeter" }],
+      widgets: [],
+      updated: [],
+      installs: [],
+      placed: [{ widgetId: 5, component: "trops.clock.Clock", pageId: null }],
+      theme: {
+        name: "Nordic Frost",
+        key: "theme-9",
+        previous: "theme-2",
+        previousName: "Dusk",
+      },
+    },
+  };
+
+  test("Remove keeps the dashboard and its lead, takes off what it added, puts the theme back", () => {
+    render(<CreateBuildingStep buildId="b1" initialState={targetedFailed} />);
+    fireEvent.click(screen.getByText("Remove what was built"));
+    expect(
+      screen.getByText("Undo the changes to Slack Pack?"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Undo changes" }),
+    ).toBeInTheDocument();
+    const summary = screen.getByTestId("remove-summary");
+    expect(screen.queryByText('The "Slack Pack" dashboard')).toBeNull();
+    expect(summary).not.toHaveTextContent("team lead, if it has one");
+    expect(summary).toHaveTextContent("The widget it put on Slack Pack");
+    expect(summary).toHaveTextContent("The Greeter bot");
+    expect(summary).toHaveTextContent(
+      "The Nordic Frost theme — Dusk goes back",
+    );
+    expect(summary).toHaveTextContent(
+      'The "Slack Pack" dashboard, its team lead and everything else on it',
+    );
+  });
+
+  test("a clean targeted build says the changes were made", () => {
+    render(
+      <CreateBuildingStep
+        buildId="b1"
+        initialState={{
+          ...targetedFailed,
+          status: "done",
+          steps: [
+            step({
+              id: "dashboard",
+              kind: "dashboard",
+              label: 'Use the "Slack Pack" dashboard',
+            }),
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByTestId("building-status")).toHaveTextContent(
+      "Changes made to Slack Pack",
+    );
+  });
+});

@@ -6,7 +6,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { extractPlan, validatePlan } = require("./teamPlan");
+const { extractPlan, planTarget, validatePlan } = require("./teamPlan");
 
 const PROVIDERS = ["gmail", "github", "slack", "algolia"];
 
@@ -319,6 +319,85 @@ describe("validatePlan — bots and wiring (phase 4d-2)", () => {
     assert.match(
       validatePlan(plan([half, bot])).errors.join(" "),
       /needs a bot, a result and a handler/,
+    );
+  });
+});
+
+describe("validatePlan — changing a dashboard you have (5e-2b)", () => {
+  const clock = {
+    kind: "widget",
+    name: "Clock",
+    source: "yours",
+    package: "@trops/clock",
+  };
+  const targeted = (pieces, dashboard = { id: "17", name: "Slack Pack" }) => ({
+    summary: "Add a clock to Slack Pack",
+    dashboard,
+    pieces,
+    checks: ["The clock shows on Slack Pack"],
+    estimate: { build: "no AI" },
+  });
+
+  it("names the dashboard by id; a number id counts", () => {
+    assert.deepEqual(planTarget(targeted([clock])), {
+      id: "17",
+      name: "Slack Pack",
+    });
+    assert.deepEqual(planTarget(targeted([clock], { id: 17 })), {
+      id: "17",
+      name: "17",
+    });
+    assert.equal(planTarget({ summary: "x" }), null);
+    assert.equal(validatePlan(targeted([clock])).valid, true);
+  });
+
+  it("a dashboard without an id, or one that's gone, is an error", () => {
+    assert.match(
+      validatePlan(targeted([clock], { name: "Slack Pack" })).errors.join(" "),
+      /needs the id/,
+    );
+    assert.match(
+      validatePlan(targeted([clock]), {
+        dashboards: [{ id: "3" }],
+      }).errors.join(" "),
+      /"Slack Pack" dashboard isn't there any more/,
+    );
+    assert.equal(
+      validatePlan(targeted([clock]), { dashboards: [{ id: 17 }] }).valid,
+      true,
+    );
+  });
+
+  it("can't add a layout to a dashboard you have", () => {
+    const layout = { kind: "layout", name: "Grid", source: "new" };
+    assert.match(
+      validatePlan(targeted([clock, layout])).errors.join(" "),
+      /can't add a layout/,
+    );
+  });
+
+  it("a theme is one of your saved themes, one per plan", () => {
+    const theme = { kind: "theme", name: "Nordic Frost", source: "yours" };
+    assert.equal(validatePlan(targeted([theme])).valid, true);
+    assert.equal(
+      validatePlan(targeted([theme]), { themes: ["Nordic Frost"] }).valid,
+      true,
+    );
+    assert.match(
+      validatePlan(targeted([theme]), { themes: ["Dusk"] }).errors.join(" "),
+      /no saved theme called "Nordic Frost"/,
+    );
+    assert.match(
+      validatePlan(targeted([{ ...theme, source: "registry" }])).errors.join(
+        " ",
+      ),
+      /must be one of your saved themes/,
+    );
+    assert.match(
+      validatePlan(targeted([theme, { ...theme, name: "Dusk" }])).errors.join(
+        " ",
+      ),
+      /one theme at most/,
     );
   });
 });

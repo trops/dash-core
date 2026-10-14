@@ -10,6 +10,7 @@ const {
   placeWidget,
   setWidgetPrefs,
   addWidgetListener,
+  removeWidgets,
 } = require("./placeWidget");
 
 function dashboard(cells) {
@@ -247,5 +248,88 @@ describe("addWidgetListener (phase 4d-2)", () => {
       addWidgetListener(dashboard([2, null]), 2, "h", EV, "other.pkg.W"),
       null,
     );
+  });
+});
+
+describe("removeWidgets — Remove on a dashboard you have (5e-2b)", () => {
+  function paged() {
+    const page = dashboard([2, 3]);
+    return {
+      id: 7,
+      layout: JSON.parse(JSON.stringify(page.layout)),
+      pages: [
+        {
+          id: "page-a",
+          name: "Page 1",
+          layout: JSON.parse(JSON.stringify(page.layout)),
+        },
+        {
+          id: "page-b",
+          name: "Page 2",
+          layout: dashboard([null, null]).layout,
+        },
+      ],
+      activePageId: "page-a",
+    };
+  }
+
+  it("takes a placed widget off its page and the mirror, and empties its cell", () => {
+    const placed = placeWidget(paged(), { component: "trops.clock.Clock" });
+    assert.equal(placed.pageId, "page-a");
+    const r = removeWidgets(placed.workspace, [
+      {
+        widgetId: placed.widgetId,
+        component: "trops.clock.Clock",
+        pageId: "page-a",
+      },
+    ]);
+    assert.equal(r.removed, 1);
+    const pageA = r.workspace.pages[0];
+    assert.ok(!pageA.layout.some((i) => i.id === placed.widgetId));
+    assert.ok(!r.workspace.layout.some((i) => i.id === placed.widgetId));
+    const cell = pageA.layout[0].grid[`${placed.cell.row}.${placed.cell.col}`];
+    assert.equal(cell.component, null);
+    // The user's own widgets stay.
+    assert.ok(pageA.layout.some((i) => i.id === 2));
+    assert.ok(pageA.layout.some((i) => i.id === 3));
+  });
+
+  it("only touches the page it was placed on (ids repeat across pages)", () => {
+    const ws = paged();
+    ws.pages[1].layout.push({
+      id: 4,
+      component: "trops.clock.Clock",
+      parent: 1,
+    });
+    const r = removeWidgets(ws, [
+      { widgetId: 4, component: "trops.clock.Clock", pageId: "page-a" },
+    ]);
+    assert.equal(r.removed, 0);
+    assert.ok(r.workspace.pages[1].layout.some((i) => i.id === 4));
+  });
+
+  it("skips a widget that's gone or now holds something else", () => {
+    const r = removeWidgets(dashboard([2, 3]), [
+      { widgetId: 9, component: "trops.clock.Clock", pageId: null },
+      { widgetId: 2, component: "trops.clock.Clock", pageId: null },
+    ]);
+    assert.equal(r.removed, 0);
+    assert.equal(r.workspace.layout.length, 3);
+  });
+
+  it("a dashboard without pages: off the top-level layout", () => {
+    const placed = placeWidget(dashboard([2, null]), {
+      component: "trops.clock.Clock",
+    });
+    assert.equal(placed.pageId, null);
+    const r = removeWidgets(placed.workspace, [
+      {
+        widgetId: placed.widgetId,
+        component: "trops.clock.Clock",
+        pageId: null,
+      },
+    ]);
+    assert.equal(r.removed, 1);
+    assert.equal(r.workspace.layout[0].grid["1.2"].component, null);
   });
 });

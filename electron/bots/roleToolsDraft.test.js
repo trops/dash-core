@@ -76,6 +76,38 @@ describe("list_dashboards", () => {
   });
 });
 
+describe("list_themes and dashboard themes (5e-2b)", () => {
+  it("lists the user's saved themes for the Planner only", async () => {
+    const r = await handleRoleTool(
+      deps({ listThemes: () => ["Nordic Frost", "Dusk"] }),
+      as("planner"),
+      "list_themes",
+    );
+    assert.match(r.text, /<dash_data>\n- Nordic Frost\n- Dusk\n<\/dash_data>/);
+    const none = await handleRoleTool(
+      deps({ listThemes: () => [] }),
+      as("planner"),
+      "list_themes",
+    );
+    assert.match(none.text, /no saved themes/);
+    const builder = await handleRoleTool(deps(), as("builder"), "list_themes");
+    assert.equal(builder.isError, true);
+  });
+
+  it("list_dashboards says each dashboard's theme", async () => {
+    const r = await handleRoleTool(
+      deps({
+        listDashboards: () => [
+          { id: "7", name: "Slack Pack", bots: [], theme: "Dusk" },
+        ],
+      }),
+      as("planner"),
+      "list_dashboards",
+    );
+    assert.match(r.text, /- Slack Pack \(id 7\) — bots: none — theme: Dusk/);
+  });
+});
+
 describe("draft_bot", () => {
   it("drafts onto the named dashboard with its schedule and results, never 'created'", async () => {
     const r = await handleRoleTool(deps(), as("builder"), "draft_bot", {

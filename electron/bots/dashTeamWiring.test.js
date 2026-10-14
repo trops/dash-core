@@ -256,3 +256,29 @@ describe("botController — after a build (phase 4d-3)", () => {
     assert.doesNotMatch(ctrl, /for \(const pkg of built\.installs/);
   });
 });
+
+describe("botController — plans that change a dashboard you have (5e-2b)", () => {
+  it("the build uses the dashboard and applies saved themes", () => {
+    assert.match(ctrl, /useDashboard: \(id\) => this\._planUseDashboard\(id\)/);
+    assert.match(ctrl, /applyTheme: \(req\) => this\._planApplyTheme\(req\)/);
+    assert.match(ctrl, /themeKey: hit\.key,\s*theme: hit\.key,/);
+  });
+  it("Remove never deletes a dashboard the user had, its lead or its notes", () => {
+    assert.match(
+      ctrl,
+      /const targeted = !!\(built\.dashboard && built\.dashboard\.targeted\);/,
+    );
+    assert.match(ctrl, /dashboardId && !targeted\s*\? leadOf\(/);
+    assert.match(
+      ctrl,
+      /if \(dashboardId && targeted\) \{\s*this\._undoOnDashboard\(built, removed, problems\);\s*\} else if \(dashboardId\) \{/,
+    );
+    assert.match(ctrl, /!state\.dashboard\.targeted &&/);
+  });
+  it("an edited plan can't move the work to another dashboard", () => {
+    assert.match(ctrl, /This plan now changes a different dashboard/);
+  });
+  it("the Planner can list the user's themes", () => {
+    assert.match(ctrl, /listThemes: \(\) => this\._themeNames\(\)/);
+  });
+});

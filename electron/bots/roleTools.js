@@ -13,6 +13,7 @@
  *   build_widget    Builder               compile + install into @ai-built/
  *   check_widget    Checker               compile, code checks, scorecard, config
  *   list_dashboards Planner, Builder      the user's dashboards and their bots
+ *   list_themes     Planner               the user's saved themes (5e-2b)
  *   draft_bot       Builder               a bot draft on a dashboard, for review
  *   place_widget    Builder               put an installed widget on a dashboard
  *   bot_results     Planner               the latest result each bot sent (5e)
@@ -216,7 +217,13 @@ const TOOL_DEFS = {
   list_dashboards: {
     name: "list_dashboards",
     description:
-      "List the user's dashboards (name and id) and the bots on each, so a plan or a bot draft names the right dashboard.",
+      "List the user's dashboards (name and id), the bots on each, its pages and its theme, so a plan or a bot draft names the right dashboard.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  list_themes: {
+    name: "list_themes",
+    description:
+      "List the names of the user's saved themes — the only themes a plan can apply to a dashboard.",
     inputSchema: { type: "object", properties: {} },
   },
   draft_bot: {
@@ -316,6 +323,7 @@ const ROLE_TOOL_NAMES = {
     "search_library",
     "list_providers",
     "list_dashboards",
+    "list_themes",
     "ask_role",
     "bot_results",
     "bot_runs",
@@ -619,7 +627,8 @@ function describeCheck(res, compareConfigs) {
  *     the host's widget hooks (dash-electron teamWidgetTools.cjs); absent →
  *     the tools say building isn't available
  *   compareConfigs(old, new): configDiff.compareConfigs
- *   listDashboards(): [{ id, name, bots: [name] }]
+ *   listDashboards(): [{ id, name, bots: [name], pages?: [name], theme? }]
+ *   listThemes(): [name] — the user's saved themes
  *   draftBot({ callerId, dashboard, proposal }): { draft, dashboardName } |
  *     { error } — buildDraft on that dashboard, stored for review
  *   placeWidget({ callerId, dashboard, widget, component, page, row, col,
@@ -804,10 +813,15 @@ async function handleRoleTool(deps, ctx, toolName, args = {}) {
                   d.pages && d.pages.length
                     ? ` — pages: ${d.pages.join(", ")}`
                     : ""
-                }`,
+                }${d.theme ? ` — theme: ${d.theme}` : ""}`,
             )
             .join("\n"),
         );
+      }
+      case "list_themes": {
+        const themes = (deps.listThemes && deps.listThemes()) || [];
+        if (!themes.length) return ok("The user has no saved themes.");
+        return ok(themes.map((t) => `- ${t}`).join("\n"));
       }
       case "draft_bot": {
         if (!deps.draftBot) return fail("Drafting bots isn't available here.");

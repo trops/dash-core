@@ -243,7 +243,7 @@ describe("Dash team instructions (phase 4a)", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /"access": \[string\]/);
     assert.match(planner.instructions, /short tappable options/);
-    assert.equal(planner.history.length, 6);
+    assert.equal(planner.history.length, 7);
   });
 });
 
@@ -261,8 +261,8 @@ describe("Dash team instructions (phase 4d-2)", () => {
     );
     assert.match(planner.instructions, /"showResults": boolean/);
     // The 4a text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[3], /short tappable options/);
-    assert.doesNotMatch(planner.history[3], /showResults/);
+    assert.match(planner.history[4], /short tappable options/);
+    assert.doesNotMatch(planner.history[4], /showResults/);
   });
 });
 
@@ -272,8 +272,8 @@ describe("Dash team instructions (phase 5d)", () => {
     assert.match(planner.instructions, /"sample": \[string\]/);
     assert.match(planner.instructions, /never the user's real data/);
     // The 4d-2 text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[2], /"showResults": boolean/);
-    assert.doesNotMatch(planner.history[2], /"sample"/);
+    assert.match(planner.history[3], /"showResults": boolean/);
+    assert.doesNotMatch(planner.history[3], /"sample"/);
   });
 });
 
@@ -287,8 +287,8 @@ describe("Dash team instructions (phase 5e)", () => {
       /When the user asks to make or change something, end every answer with the plan/,
     );
     // The 5d text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[1], /"sample": \[string\]/);
-    assert.doesNotMatch(planner.history[1], /bot_results/);
+    assert.match(planner.history[2], /"sample": \[string\]/);
+    assert.doesNotMatch(planner.history[2], /bot_results/);
   });
 });
 
@@ -301,7 +301,28 @@ describe("Dash team instructions (screen audit: typed answers)", () => {
       /never offer options like "I'll type it"/,
     );
     // The 5e-1 text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[0], /bot_results/);
-    assert.doesNotMatch(planner.history[0], /give that question no options/);
+    assert.match(planner.history[1], /bot_results/);
+    assert.doesNotMatch(planner.history[1], /give that question no options/);
+  });
+});
+
+describe("Dash team instructions (5e-2b: changing a dashboard you have)", () => {
+  it("the Planner targets a dashboard by id, applies saved themes, and leaves edits to Edit", () => {
+    const planner = ROLES.find((r) => r.role === "planner");
+    assert.match(
+      planner.instructions,
+      /"dashboard": \{"id": string, "name": string\}/,
+    );
+    assert.match(
+      planner.instructions,
+      /"widget" \| "bot" \| "layout" \| "theme"/,
+    );
+    assert.match(planner.instructions, /a name from list_themes/);
+    assert.match(planner.instructions, /has no layout piece/);
+    assert.match(planner.instructions, /Removing, moving or resizing widgets/);
+    assert.match(planner.instructions, /ask which/);
+    // The text before this is upgraded.
+    assert.match(planner.history[0], /give that question no options/);
+    assert.doesNotMatch(planner.history[0], /list_themes/);
   });
 });
