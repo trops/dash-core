@@ -272,3 +272,21 @@ export function attentionCount({ botIds, approvals, lastRunByBot }) {
   ).length;
   return pending + failed;
 }
+
+/**
+ * What to say when a message to a bot didn't start a run (the runner skipped
+ * it): paused, busy, or another reason — the message is kept to send again.
+ */
+export function skipNotice(name, reason) {
+  const who = name || "This bot";
+  const r = String(reason || "").toLowerCase();
+  if (r.includes("paused")) {
+    return `${who} is paused — resume it, then send again.`;
+  }
+  if (r.includes("in progress") || r.includes("busy")) {
+    return `${who} is busy with another run — send again when it finishes.`;
+  }
+  return reason
+    ? `${who} didn't run: ${reason}. Your message is still in the box.`
+    : `${who} didn't run. Your message is still in the box.`;
+}

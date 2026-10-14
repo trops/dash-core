@@ -6,7 +6,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { recentRuns } = require("./recentRuns");
+const { recentRuns, lastRuns } = require("./recentRuns");
 
 const bots = [
   { id: "a", name: "Inbox Watch", workspaceId: "7" },
@@ -68,5 +68,60 @@ describe("recentRuns", () => {
       limit: 10,
     });
     assert.equal(list.length, 3);
+  });
+});
+
+describe("lastRuns — each bot's latest run (Bots dock, TEAM-015)", () => {
+  it("every bot with a run gets its newest one; quiet bots are kept", () => {
+    const many = {
+      a: Array.from({ length: 60 }, (_x, i) => ({
+        status: "completed",
+        endedAt: new Date(Date.UTC(2026, 9, 2, 0, i)).toISOString(),
+        output: `a${i}`,
+      })),
+      quiet: [
+        {
+          status: "failed",
+          trigger: "schedule",
+          endedAt: "2026-01-01T08:00:00.000Z",
+          error: "\n  Gmail isn't connected.\nMore detail",
+        },
+      ],
+    };
+    const out = lastRuns({
+      bots: [{ id: "a" }, { id: "quiet" }, { id: "never" }],
+      getRuns: (id) => many[id] || [],
+    });
+    assert.equal(out.a.text, "a59");
+    assert.equal(out.a.status, "completed");
+    assert.deepEqual(out.quiet, {
+      at: "2026-01-01T08:00:00.000Z",
+      trigger: "schedule",
+      status: "failed",
+      text: "",
+      error: "Gmail isn't connected.",
+    });
+    assert.equal("never" in out, false);
+  });
+
+  it("skips skipped runs, clips long lines, survives an unreadable bot", () => {
+    const out = lastRuns({
+      bots: [{ id: "x" }, { id: "broken" }],
+      getRuns: (id) => {
+        if (id === "broken") throw new Error("bad file");
+        return [
+          {
+            status: "completed",
+            endedAt: "2026-10-02T09:00:00.000Z",
+            output: "y".repeat(400),
+          },
+          { skipped: true, endedAt: "2026-10-03T09:00:00.000Z" },
+        ];
+      },
+    });
+    assert.equal(out.x.text.length, 160);
+    assert.ok(out.x.text.endsWith("…"));
+    assert.equal(out.x.at, "2026-10-02T09:00:00.000Z");
+    assert.equal("broken" in out, false);
   });
 });

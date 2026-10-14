@@ -488,7 +488,7 @@ answers from today's runs.
 - [x] AC6: **Activity tab.** The bot's runs, newest first: when, trigger, status, and the answer's first line; opening a run shows the full answer, its tool calls, approvals, and any error. Answers stored with a key this app can't read show as unavailable.
 - [x] AC7: **Settings tab.** The full bot form (the existing `BotDetail`) inline, with Save / Discard. Switching bots or views with unsaved changes asks first.
 - [x] AC8: **Live.** Statuses, the conversation, and the Activity tab update as runs stream and approvals arrive — no manual refresh.
-- [x] AC9: **Bot Activity side panel → global monitor.** The panel keeps: **Needs you** (approvals across all dashboards, each labelled with its dashboard), **Running now**, and **Recent** results, with **Open in Bots view** (switches that dashboard to Bots with the bot selected). The lead chat and the "Run a bot" form move out of the panel into the Bots view.
+- [x] AC9: **Bot Activity side panel → global monitor.** The panel keeps: **Needs you** (approvals across all dashboards, each labelled with its dashboard), **Running now**, and **Recent** results, with **Open in Bots view** (switches that dashboard to Bots with the bot selected). The lead chat and the "Run a bot" form move out of the panel into the Bots view. _(Superseded 2026-10-14 by TEAM-015: the panel is now a contacts list of bots you can chat with; Needs you stays at its top.)_
 - [x] AC10: **Dashboard Config › Bots** becomes a short summary of the team with **Open in Bots view**.
 - [x] AC11: **Narrow windows.** Below ~900 px the team list collapses into a bot picker above the selected bot.
 
@@ -735,6 +735,25 @@ _Slice 2 — drag to wire_
 - [ ] AC3: Member template versions are pinned by the manifest, so a member template's own update never changes the team silently.
 
 ---
+
+**TEAM-015: The Bots dock — your bots as a contacts list**
+
+> As someone with bots on several dashboards,
+> I want to pick any bot from a list, like a chat app's contacts, and talk to it right there,
+> so that I don't have to open a dashboard's Bots view to ask a bot something or see what it did.
+
+**Priority:** P1 · **Status:** In progress (slice 1, 2026-10-14)
+
+- [x] AC1: **Contacts.** The right-hand dock's robot panel is called **Bots** and lists every bot you made (not the Dash team's): its avatar with a status dot, its name, a **Lead** tag, what it last did (or "Needs approval · tool", "Running now…", "Paused", "Failed · why", "Hasn't run yet") and how long ago.
+- [x] AC2: **Grouped and sorted.** Grouped under each dashboard's name (bots on no dashboard last, under "No dashboard"), or one list with **By team** off. **Recent** (default) puts bots waiting on you first, then the newest activity; **A–Z** sorts teams and bots by name. Search by name. Sort and grouping are remembered.
+- [x] AC3: **Chat from the list.** Picking a bot opens its conversation in the panel (BotChat): send a message (a lead is asked), see the reply stream in, approve or deny its tool requests in the thread. **Back** returns to the list.
+- [x] AC4: **Conversation / Activity.** A switch shows the bot's runs instead (BotRunHistory), with **Run now** and **Pause / Resume**.
+- [x] AC5: **Open in Bots view.** An icon opens the bot in its dashboard's Bots view on the same tab (Open in Settings for a bot on no dashboard). **Stop** shows while it runs.
+- [x] AC6: **Needs you.** Approvals waiting on you stay at the top of the list ("Inbox Sorter needs you · Wants to use gmail.send" › Review opens that bot's chat), each waiting bot's row says how many, and the rail button keeps its count — the approvals inbox (bot-factory US-014 AC3) lives on here.
+- [x] AC7: **Nothing silently dropped.** A paused bot says so in its chat with **Resume**, and the message box waits. A message the runner skips (paused, busy with another run) goes back into the box with why. (Also in the Bots view's conversation.)
+- [ ] AC8 (slice 2): bot chats use the shared chat components (ChatMessage / ChatComposer), so they look like Create's.
+
+**Notes (slice 1):** dash-core `Bots/BotContacts.js` (panel), `useBotContacts.js` (useBotMonitor + latest runs + pause state), `contactsList.js` (pure: rows, groups, sort, search); `bots.lastRuns()` (`BOTS_LAST_RUNS`, `electron/bots/recentRuns.js` `lastRuns`) gives each user bot's latest run — `listRecentRuns` only covers the newest 50 across all bots, so quiet bots had no activity. `BotChat` gains `paused` / `onResume` and keeps a skipped message (`skipNotice`). Known gap: an over-budget bot that isn't a lead can't be told apart yet (its tools are refused during the run).
 
 **TEAM-010: Lead coordination (exploratory)**
 

@@ -470,3 +470,46 @@ describe("BotChat — answers in a chat bubble", () => {
     expect(bubbleOf("Working…")).not.toBeNull();
   });
 });
+
+describe("BotChat — a message that doesn't run is kept (TEAM-015)", () => {
+  it("a busy bot: the message goes back in the box, with why", async () => {
+    const { api } = setup();
+    api.run.mockResolvedValue({
+      botId: "b1",
+      skipped: true,
+      reason: "a run is already in progress",
+    });
+    await screen.findByText("Check my inbox");
+    fireEvent.change(composer(), { target: { value: "Again please" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByTestId("bot-chat-notice")).toHaveTextContent(
+      "Inbox Watch is busy with another run — send again when it finishes.",
+    );
+    expect(composer()).toHaveValue("Again please");
+  });
+
+  it("a paused bot says so, offers Resume, and the box waits", async () => {
+    window.mainApi = {
+      bots: {
+        getRuns: jest.fn().mockResolvedValue(runs),
+        run: jest.fn(),
+        onStream: jest.fn(() => "s1"),
+        removeListener: jest.fn(),
+      },
+    };
+    const onResume = jest.fn();
+    render(<BotChat bot={bot} paused onResume={onResume} />);
+    await screen.findByText("Check my inbox");
+    expect(screen.getByTestId("bot-chat-paused")).toHaveTextContent(
+      "Paused — it won't answer until you resume it.",
+    );
+    expect(composer()).toBeDisabled();
+    expect(composer()).toHaveAttribute(
+      "placeholder",
+      "Resume Inbox Watch to message it",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    expect(onResume).toHaveBeenCalled();
+    expect(window.mainApi.bots.run).not.toHaveBeenCalled();
+  });
+});

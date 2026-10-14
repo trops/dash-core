@@ -1139,6 +1139,8 @@ export const BotsView = ({
                   onOpenDraft={
                     isLead ? (id) => select(DRAFT_PREFIX + id) : null
                   }
+                  paused={status === "Paused"}
+                  onResume={togglePause}
                 />
               ) : null}
               {tab === "activity" && selected ? (

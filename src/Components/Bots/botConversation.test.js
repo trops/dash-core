@@ -5,6 +5,7 @@ import {
   triggerLabel,
   errorNextSteps,
   readableError,
+  skipNotice,
 } from "./botConversation";
 
 const run = (over) => ({
@@ -475,5 +476,22 @@ describe("each run reads as its own run (Bots view conversation)", () => {
       live: { prompt: "go", toolCalls: [{ tool: "search", ok: null }] },
     });
     expect(live.find((t) => t.kind === "tools").live).toBe(true);
+  });
+});
+
+describe("skipNotice (TEAM-015)", () => {
+  it("says paused, busy, or the reason — and that the message is kept", () => {
+    expect(skipNotice("Inbox Watch", "this bot is paused")).toBe(
+      "Inbox Watch is paused — resume it, then send again.",
+    );
+    expect(skipNotice("Inbox Watch", "a run is already in progress")).toBe(
+      "Inbox Watch is busy with another run — send again when it finishes.",
+    );
+    expect(skipNotice("Inbox Watch", "no AI provider")).toBe(
+      "Inbox Watch didn't run: no AI provider. Your message is still in the box.",
+    );
+    expect(skipNotice(null, null)).toBe(
+      "This bot didn't run. Your message is still in the box.",
+    );
   });
 });

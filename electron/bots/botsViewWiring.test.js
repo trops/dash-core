@@ -47,6 +47,17 @@ describe("botController — Bots view backend", () => {
     );
   });
 
+  it("lastRuns() gives each user bot's latest run — not the Dash team's (TEAM-015)", () => {
+    assert.match(
+      ctrl,
+      /const \{ recentRuns, lastRuns \} = require\("\.\.\/bots\/recentRuns"\);/,
+    );
+    assert.match(
+      ctrl,
+      /lastRuns\(\) \{\s*return lastRuns\(\{\s*bots: this\._store\.list\(\)\.filter\(\(b\) => !isDashTeam\(b\)\),/,
+    );
+  });
+
   it("listRunning() reports each run's start and dashboard (B3)", () => {
     assert.match(ctrl, /startedAt: this\._runner\.startedAt\(id\)/);
     assert.match(ctrl, /workspaceId:/);
@@ -73,6 +84,14 @@ describe("botApi / events — Bots view IPC", () => {
     assert.match(
       api,
       /listRecentRuns: \(limit\) =>\s*ipcRenderer\.invoke\(BOTS_LIST_RECENT_RUNS, \{ limit \}\)/,
+    );
+  });
+
+  it("defines and exposes the last-runs channel (TEAM-015)", () => {
+    assert.equal(events.BOTS_LAST_RUNS, "bots-last-runs");
+    assert.match(
+      api,
+      /lastRuns: \(\) => ipcRenderer\.invoke\(BOTS_LAST_RUNS\)/,
     );
   });
 
