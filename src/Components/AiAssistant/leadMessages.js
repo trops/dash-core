@@ -71,9 +71,8 @@ export function buildLlmHistory(messages) {
 }
 
 /**
- * Why this lead can't take a message right now, or null (AC7). Pause and
- * budgets only block tool calls, so running a paused lead would "answer"
- * with its team tools refused — say why instead.
+ * Why this lead can't take a message right now, or null (AC7). A paused or
+ * over-budget lead doesn't start a run (US-019 AC4) — say why instead.
  */
 export function availabilityNotice(lead) {
   if (!lead) return null;
@@ -81,7 +80,7 @@ export function availabilityNotice(lead) {
     return `${lead.leadName} is paused — resume it in the Bots view.`;
   }
   if (lead.overBudget) {
-    return `${lead.leadName} is over its budget — raise it in the Bots view.`;
+    return `${lead.leadName} is over its budget — keep it running this month from the Bots panel.`;
   }
   if (lead.running) {
     return `${lead.leadName} is busy with another run — try again when it finishes.`;

@@ -19,7 +19,12 @@ import { BotAvatar } from "./BotAvatar";
 import { BotChat } from "./BotChat";
 import { BotRunHistory } from "./BotRunHistory";
 import { STATUS_DOT } from "./teamUtils";
-import { contactSections, firstWaiting, shortTime } from "./contactsList";
+import {
+  budgetLimitText,
+  contactSections,
+  needsYouItems,
+  shortTime,
+} from "./contactsList";
 
 /**
  * BotContacts — the Bots dock panel (bot-teams PRD TEAM-015): your bots as a
@@ -60,7 +65,10 @@ function writePref(key, value) {
 }
 
 const ContactAvatar = ({ bot, status }) => {
-  const dot = STATUS_DOT[status] || STATUS_DOT.Idle;
+  // Over budget waits on you, like an approval.
+  const dot =
+    STATUS_DOT[status === "Over budget" ? "Needs approval" : status] ||
+    STATUS_DOT.Idle;
   return (
     <span className="relative inline-flex" aria-hidden="true">
       <BotAvatar bot={bot} />
@@ -108,6 +116,7 @@ export const BotContacts = ({
   const running = c.running || EMPTY;
   const paused = c.paused || NOBODY;
   const lastRuns = c.lastRuns || NO_RUNS;
+  const budgets = c.budgets || NO_RUNS;
 
   const sections = useMemo(
     () =>
@@ -118,6 +127,7 @@ export const BotContacts = ({
         running,
         approvals,
         paused,
+        budgets,
         sort,
         byTeam,
         query,
@@ -130,6 +140,7 @@ export const BotContacts = ({
       running,
       approvals,
       paused,
+      budgets,
       sort,
       byTeam,
       query,
@@ -165,6 +176,8 @@ export const BotContacts = ({
         : String(open.workspaceId);
     const isLead = open.role === "lead";
     const isPaused = paused.has(open.id);
+    const budget = budgets[open.id] || null;
+    const isOver = !!(budget && budget.over);
     const isRunning = running.some((r) => r.id === open.id);
     const canOpen = wsId !== null ? !!onOpenBotsView : !!onOpenSettings;
     const toBotsView = (tab) => {
@@ -187,7 +200,13 @@ export const BotContacts = ({
                 {[
                   isLead ? "Lead" : null,
                   dashboardName(wsId) || "No dashboard",
-                  isPaused ? "paused" : isRunning ? "running" : null,
+                  isPaused
+                    ? "paused"
+                    : isOver
+                      ? "over budget"
+                      : isRunning
+                        ? "running"
+                        : null,
                 ]
                   .filter(Boolean)
                   .join(" · ")}
@@ -241,6 +260,8 @@ export const BotContacts = ({
             onResume={
               c.setBotPaused ? () => c.setBotPaused(open.id, false) : null
             }
+            overBudget={isOver ? budgetLimitText(budget) : null}
+            onKeepRunning={c.keepRunning ? () => c.keepRunning(open.id) : null}
           />
         ) : (
           <div className="flex flex-col flex-1 min-h-0">
@@ -260,7 +281,7 @@ export const BotContacts = ({
               <Button
                 title="Run now"
                 size="sm"
-                disabled={isPaused || isRunning}
+                disabled={isPaused || isRunning || isOver}
                 onClick={() => {
                   const b = window.mainApi && window.mainApi.bots;
                   if (b && b.run) b.run(open.id, "", false);
@@ -280,11 +301,28 @@ export const BotContacts = ({
     );
   }
 
-  const waitingId = firstWaiting(approvals, bots);
-  const waiting = approvals.filter(
-    (a) => a && a.request && bots.some((b) => b.id === a.request.botId),
-  );
-  const waitingBots = new Set(waiting.map((a) => a.request.botId)).size;
+  // Waiting on you: approvals, and bots stopped for budget (US-019).
+  const needs = needsYouItems(approvals, bots, budgets);
+  const waitingId = needs.botIds[0] || null;
+  const waiting = needs.approvals;
+  const waitingBots = needs.botIds.length;
+  const needsLine =
+    waitingBots === 1
+      ? waiting.length === 1
+        ? `Wants to use ${waiting[0].request.toolName || "a tool"}`
+        : waiting.length
+          ? `${waiting.length} approvals waiting`
+          : `Over ${budgetLimitText(budgets[waitingId])}`
+      : [
+          waiting.length
+            ? `${waiting.length} approval${waiting.length === 1 ? "" : "s"}`
+            : null,
+          needs.overBudget.length
+            ? `${needs.overBudget.length} over budget`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
 
   return (
     <div className="flex flex-col flex-1 min-h-0" data-testid="bot-contacts">
@@ -350,11 +388,7 @@ export const BotContacts = ({
                   ? `${nameOf(waitingId)} needs you`
                   : `${waitingBots} bots need you`}
               </span>
-              <span className={`text-xs ${muted}`}>
-                {waiting.length === 1
-                  ? `Wants to use ${waiting[0].request.toolName || "a tool"}`
-                  : `${waiting.length} approvals waiting`}
-              </span>
+              <span className={`text-xs ${muted}`}>{needsLine}</span>
             </span>
             <Button3
               title="Review"
@@ -407,6 +441,19 @@ export const BotContacts = ({
                         <StatusBadge
                           state="warning"
                           label={`${ct.approvals} to approve`}
+                          compact
+                        />
+                      ) : null}
+                      {ct.budget === "over" ? (
+                        <StatusBadge
+                          state="warning"
+                          label="Over budget"
+                          compact
+                        />
+                      ) : ct.budget === "warn" ? (
+                        <StatusBadge
+                          state="neutral"
+                          label="80% of budget"
                           compact
                         />
                       ) : null}

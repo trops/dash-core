@@ -7,6 +7,8 @@ import {
   contactSections,
   firstWaiting,
   shortTime,
+  budgetLimitText,
+  needsYouItems,
 } from "./contactsList";
 
 const NOW = Date.parse("2026-10-14T12:00:00.000Z");
@@ -162,4 +164,60 @@ test("shortTime: now, minutes, hours, then a day", () => {
   expect(shortTime(ago(300), NOW)).toBe("5h");
   expect(shortTime(ago(60 * 24 * 2), NOW)).toMatch(/^[A-Za-z]{3}/);
   expect(shortTime(null, NOW)).toBe("");
+});
+
+describe("budgets on the contacts (US-019)", () => {
+  const over = {
+    overall: "exceeded",
+    over: true,
+    limit: { scope: "bot:q", budget: 5 },
+  };
+  const warn = {
+    overall: "warn",
+    over: false,
+    limit: { scope: "global", budget: 50 },
+  };
+
+  test("an over-budget bot says which limit, and waits on you first", () => {
+    const s = contactSections({
+      bots,
+      workspaces,
+      lastRuns,
+      now: NOW,
+      budgets: { q: over, cs: warn },
+    });
+    const brief = s.find((x) => x.label === "Morning Brief");
+    expect(s[0]).toBe(brief);
+    expect(brief.contacts[0]).toMatchObject({
+      name: "Quiet One",
+      status: "Over budget",
+      line: "Over its $5.00 monthly budget",
+      budget: "over",
+    });
+    const slack = s.find((x) => x.label === "Slack Pack");
+    expect(
+      slack.contacts.find((c) => c.name === "Channel Summarizer").budget,
+    ).toBe("warn");
+  });
+
+  test("budgetLimitText names the limit that decides", () => {
+    expect(budgetLimitText({ limit: { scope: "bot:x", budget: 5 } })).toBe(
+      "its $5.00 monthly budget",
+    );
+    expect(
+      budgetLimitText({ limit: { scope: "workspace:1", budget: 20 } }),
+    ).toBe("the dashboard's $20.00 monthly budget");
+    expect(budgetLimitText({ limit: { scope: "global", budget: 50 } })).toBe(
+      "the $50.00 overall monthly budget",
+    );
+    expect(budgetLimitText(null)).toBe("its budget");
+  });
+
+  test("needsYouItems: approvals first, then over budget, once each", () => {
+    const approvals = [{ request: { botId: "is", toolName: "x" } }];
+    const out = needsYouItems(approvals, bots, { q: over, is: over });
+    expect(out.botIds).toEqual(["is", "q"]);
+    expect(out.overBudget).toEqual(["is", "q"]);
+    expect(out.approvals).toHaveLength(1);
+  });
 });

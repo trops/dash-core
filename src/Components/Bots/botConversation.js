@@ -292,6 +292,9 @@ export function skipNotice(name, reason) {
   if (r.includes("paused")) {
     return `${who} is paused — resume it, then send again.`;
   }
+  if (r.includes("budget")) {
+    return `${who} is over its budget — keep it running this month, then send again.`;
+  }
   if (r.includes("in progress") || r.includes("busy")) {
     return `${who} is busy with another run — send again when it finishes.`;
   }

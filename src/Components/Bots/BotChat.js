@@ -54,6 +54,9 @@ import { runCostLabel } from "../../utils/runCostLabel";
  * @param {(draftId: string) => void} [onOpenDraft]
  * @param {boolean} [paused]  the bot is paused: it says so and the box waits
  * @param {() => void} [onResume]  Resume, shown with the paused note
+ * @param {string} [overBudget]  the limit it's over ("its $5.00 monthly
+ *   budget") — it won't run; the box waits (US-019)
+ * @param {() => void} [onKeepRunning]  Keep running this month
  *
  * A message the runner skips (paused, busy) stays in the box with why
  * (TEAM-015) — never silently dropped.
@@ -87,7 +90,11 @@ export const BotChat = ({
   onOpenDraft = null,
   paused = false,
   onResume = null,
+  overBudget = null,
+  onKeepRunning = null,
 }) => {
+  // The box waits while the bot can't run.
+  const blocked = paused || !!overBudget;
   const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
   const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
   const strong = currentTheme["text-neutral-light"] || "text-gray-200";
@@ -229,7 +236,7 @@ export const BotChat = ({
   const send = () => {
     const text = draft.trim();
     // Keep the draft while a run is in progress (Enter mid-run).
-    if (!text || liveRef.current || paused) return;
+    if (!text || liveRef.current || blocked) return;
     const continueConversation = !freshNext && (runs || EMPTY).length > 0;
     setDraft("");
     setFreshNext(false);
@@ -508,21 +515,49 @@ export const BotChat = ({
         onSend={send}
         onStop={stop}
         busy={!!live}
-        disabled={paused}
+        disabled={blocked}
         ariaLabel="Message"
         sendLabel={isLead ? "Ask" : "Send"}
         placeholder={
           paused
             ? `Resume ${bot.name} to message it`
-            : isLead
-              ? "Ask the lead about this team…"
-              : (runs || EMPTY).length && !freshNext
-                ? `Reply to ${bot.name}…`
-                : `Message ${bot.name}…`
+            : overBudget
+              ? `Keep ${bot.name} running to message it`
+              : isLead
+                ? "Ask the lead about this team…"
+                : (runs || EMPTY).length && !freshNext
+                  ? `Reply to ${bot.name}…`
+                  : `Message ${bot.name}…`
         }
         above={
-          paused || notice ? (
+          paused || overBudget || notice ? (
             <div className="flex flex-col gap-2">
+              {overBudget && !paused ? (
+                <div
+                  className={`rounded-lg border px-3 py-2 flex flex-col gap-2 text-xs ${statusTokens.warning.bg} ${statusTokens.warning.border}`}
+                  data-testid="bot-chat-over-budget"
+                >
+                  <span className="flex flex-row items-start gap-2">
+                    <FontAwesomeIcon
+                      icon="triangle-exclamation"
+                      className={`h-3 w-3 mt-0.5 flex-shrink-0 ${statusTokens.warning.text}`}
+                    />
+                    <span className={statusTokens.warning.text}>
+                      Over {overBudget} — it won&apos;t run until you keep it
+                      running this month or raise the budget.
+                    </span>
+                  </span>
+                  {onKeepRunning ? (
+                    <div>
+                      <Button
+                        title="Keep running this month"
+                        size="sm"
+                        onClick={() => onKeepRunning()}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               {paused ? (
                 <div
                   className={`rounded-lg border px-3 py-2 flex flex-row items-center gap-3 text-xs ${hairline}`}

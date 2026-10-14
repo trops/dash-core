@@ -46,7 +46,7 @@ describe("botController — Dash team (CRE-011)", () => {
     assert.match(ctrl, /new PauseController\(\{\s*persistence: \{/);
     assert.match(
       ctrl,
-      /startBlocker: \(botId\) =>\s*this\._pause\.isPaused\(botId\) \? "this bot is paused" : null/,
+      /startBlocker: \(botId\) => \{\s*if \(this\._pause\.isPaused\(botId\)\) return "this bot is paused";/,
     );
   });
 

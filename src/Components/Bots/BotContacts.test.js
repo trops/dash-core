@@ -188,3 +188,50 @@ test("no bots yet: says where to make one", () => {
   render(<BotContacts contacts={contacts({ bots: [] })} workspaces={[]} />);
   expect(screen.getByText("No bots yet")).toBeInTheDocument();
 });
+
+describe("budgets in the dock (US-019)", () => {
+  const over = {
+    overall: "exceeded",
+    over: true,
+    limit: { scope: "bot:is", budget: 5 },
+  };
+
+  test("Needs you lists an over-budget bot; its chat offers Keep running this month", async () => {
+    const keepRunning = jest.fn();
+    render(
+      <BotContacts
+        contacts={contacts({ budgets: { is: over }, keepRunning })}
+        workspaces={workspaces}
+      />,
+    );
+    expect(screen.getByTestId("bot-contacts-needs-you")).toHaveTextContent(
+      "Inbox Sorter needs you",
+    );
+    expect(screen.getByTestId("bot-contacts-needs-you")).toHaveTextContent(
+      "Over its $5.00 monthly budget",
+    );
+    expect(screen.getAllByText("Over budget").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(await screen.findByTestId("bot-contact-subtitle")).toHaveTextContent(
+      "over budget",
+    );
+    expect(screen.getByTestId("bot-chat-over-budget")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Keep running this month" }),
+    );
+    expect(keepRunning).toHaveBeenCalledWith("is");
+  });
+
+  test("80% of budget is a word on the row", () => {
+    render(
+      <BotContacts
+        contacts={contacts({
+          budgets: { sl: { overall: "warn", over: false, limit: null } },
+        })}
+        workspaces={workspaces}
+      />,
+    );
+    expect(screen.getByText("80% of budget")).toBeInTheDocument();
+    expect(screen.queryByTestId("bot-contacts-needs-you")).toBeNull();
+  });
+});

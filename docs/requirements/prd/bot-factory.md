@@ -480,16 +480,16 @@ This keeps the runner in the Electron main process. It does not run bots when Da
 > so that a busy or misconfigured bot can't run up an unexpected bill.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** In progress — slice A (2026-10-14): over-budget bots stop and say why; slice B next: setting budgets and the spending view.
 
 **Acceptance Criteria:**
 
--   [ ] AC1: Every run records token usage and estimated cost (from provider usage data and pricing metadata).
+-   [x] AC1: Every run records token usage and estimated cost (from provider usage data and pricing metadata).
 -   [ ] AC2: Monthly budgets can be set per bot, per workspace, and globally.
--   [ ] AC3: At 80% of any applicable budget, the Activity Manager and a notification warn the user.
--   [ ] AC4: At 100%, affected bots auto-pause with reason "Budget reached"; in-progress runs stop at their next tool call.
+-   [ ] AC3 (slice A: the dock row says "80% of budget"; notification still to do): At 80% of any applicable budget, the Activity Manager and a notification warn the user.
+-   [x] AC4: At 100%, affected bots auto-pause with reason "Budget reached"; in-progress runs stop at their next tool call. _(Slice A: an over-budget bot no longer starts a run — before, only its tool calls were refused and it still spent on the model. The Bots dock says "Over budget" on its row, lists it under Needs you, and its chat says which limit with Keep running this month.)_
 -   [ ] AC5: The Activity Manager shows spend by bot, workspace, and provider for the current month.
--   [ ] AC6: Raising a budget or resuming a budget-paused bot requires an explicit user action and is audited.
+-   [ ] AC6 (slice A: Keep running this month is an explicit action, recorded in the budget data; the persisted audit log is still to do): Raising a budget or resuming a budget-paused bot requires an explicit user action and is audited.
 
 **Edge Cases:**
 
