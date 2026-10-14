@@ -839,7 +839,7 @@ export function ChatCore({
           <AlertBanner
             variant="warning"
             size="compact"
-            message="Add an Anthropic API key in Settings > AI Assistant to start chatting."
+            message="Add an Anthropic API key in Settings > AI to start chatting."
           />
         </div>
       )}

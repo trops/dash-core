@@ -299,6 +299,23 @@ describe("via the AI Assistant (TEAM-004)", () => {
     expect(turns[2]).toMatchObject({ kind: "bot", text: "No." });
   });
 
+  it("labels a lead question another app asked through Dash's MCP server (5e-2c)", () => {
+    const turns = buildConversation([
+      {
+        trigger: "ask",
+        via: "mcp",
+        status: "completed",
+        prompt: "Anything urgent?",
+        output: "No.",
+      },
+    ]);
+    expect(turns[0]).toMatchObject({
+      kind: "system",
+      text: "Asked through Dash's MCP server",
+    });
+    expect(turns[1]).toMatchObject({ kind: "user", text: "Anything urgent?" });
+  });
+
   it("labels a lead question asked from Create's Ask box (5e-2a)", () => {
     const turns = buildConversation([
       {

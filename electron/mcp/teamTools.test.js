@@ -76,7 +76,7 @@ describe("ask_team_lead", () => {
       question: "Anything urgent?",
     });
     assert.deepEqual(calls, [
-      { id: "lead_ks", q: "Anything urgent?", opts: { via: "assistant" } },
+      { id: "lead_ks", q: "Anything urgent?", opts: { via: "mcp" } },
     ]);
     assert.match(text(r), /^Team: Kitchen Sinkq \(lead: Kitchen Sinkq Lead\)/);
     assert.match(text(r), /2 urgent emails/);
