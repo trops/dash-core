@@ -251,6 +251,8 @@ Want me to draft a bot that follows up on renewals?"
 
 **TEAM-004: The AI Assistant talks to team leads**
 
+> **Update (create-entry 5e-2c, 2026-10-14):** the AI Assistant panel is retired. `list_teams` / `ask_team_lead` stay on Dash's MCP server for outside apps; their lead runs are recorded as `via: "mcp"` and the Bots view says "Asked through Dash's MCP server" (older runs keep "Asked via the AI Assistant"). In the app, Create's Ask box asks the Dash team or a lead (TEAM-013 note below).
+
 > As a team owner,
 > I want to ask the AI Assistant about any of my teams,
 > so that I have one place to ask questions instead of opening each dashboard.
@@ -603,6 +605,7 @@ answers from today's runs.
 - **ChatCore:** messages gain an optional `from: { type: "lead", botId, leadName, dashboardName }`; `MessageBubble` renders lead bubbles (any other role currently renders nothing); `handleSend` routes lead-addressed text to `askLead` (not the LLM) and, when the Assistant is next addressed, folds earlier lead exchanges into its history as labelled user-role context (AC10); ChatInput gains the recipient picker.
 - The Assistant panel in dash-electron uses dash-core's `ChatCore`, so the UI change lands in dash-core; dash-electron only needs the IPC wiring and a dash-core bump.
 - **Create's Ask box (create-entry 5e-2a, 2026-10-14):** the dock's Ask box has the same "To:" picker (`RecipientPicker` with `defaultLabel="Dash team"`, shown only when there are leads). A question to a lead goes straight to it (`utils/leadAsk.js` `askTeamLead` → `askLead(…, via: "create")`), stays with that lead for follow-ups, and is kept in Create's Recent with its recipient (`Answered · <lead>`). The Bots view labels these runs "Asked from Create".
+- **The AI Assistant panel is retired (create-entry 5e-2c, 2026-10-14):** Create's Ask box is now the one place to message a lead. ChatCore keeps its lead-recipient support (`enableLeadRecipients`) as public API, unused in the app.
 - `ask_team_lead`'s fan-out cap (5 per 2 minutes) does not apply here: each direct message is one explicit user action.
 
 **Implementation notes (slice 1, 2026-10-06):**

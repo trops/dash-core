@@ -1,12 +1,13 @@
 /**
- * teamTools.js — the AI Assistant talks to team leads (bot-teams TEAM-004).
+ * teamTools.js — apps connected to Dash's MCP server talk to team leads
+ * (bot-teams TEAM-004; the AI Assistant panel used these until 5e-2c).
  *
  * Dash MCP tools:
  *   list_teams      — dashboards with a team (lead or bots): name, bot count,
  *                     whether it has a lead, last activity.
  *   ask_team_lead   — run a dashboard's lead with a question and return its
  *                     answer, labelled with the team. Recorded on the lead's
- *                     run as "via the AI Assistant".
+ *                     run as via "mcp" ("Asked through Dash's MCP server").
  *
  * A paused or over-budget lead returns that status instead of an answer; a
  * question that fans out to many teams is capped (5 leads per 2 minutes).
@@ -153,7 +154,7 @@ function makeTeamToolHandlers({
       const askedAt = Date.now();
 
       const result = await bots.askLead(lead.id, question, {
-        via: "assistant",
+        via: "mcp",
       });
       if (result && result.skipped) {
         return reply(

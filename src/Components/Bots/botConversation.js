@@ -129,10 +129,17 @@ function turnsForRun(
     // what started the run, not the raw prompt.
     turns.push({ kind: "system", text: label, at });
   } else if (r.prompt) {
-    // Asked on the user's behalf by the AI Assistant (TEAM-004) — say so,
-    // then show the question.
+    // Asked on the user's behalf (TEAM-004) — say by what, then show the
+    // question. "assistant": the AI Assistant panel (retired in 5e-2c; older
+    // runs keep it); "mcp": another app through Dash's MCP server.
     if (r.via === "assistant") {
       turns.push({ kind: "system", text: "Asked via the AI Assistant", at });
+    } else if (r.via === "mcp") {
+      turns.push({
+        kind: "system",
+        text: "Asked through Dash's MCP server",
+        at,
+      });
     } else if (r.via === "create") {
       // From Create's Ask box "To:" (create-entry 5e-2a).
       turns.push({ kind: "system", text: "Asked from Create", at });

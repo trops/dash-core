@@ -239,7 +239,7 @@ export const AiAssistantSection = () => {
           <div className="flex items-center gap-2 text-xs text-green-400">
             <FontAwesomeIcon icon="check-circle" className="h-3.5 w-3.5" />
             <span>
-              AI Assistant ready via{" "}
+              AI ready via{" "}
               {effectiveBackend === "claude-code"
                 ? "Claude Code CLI"
                 : "Anthropic API"}
@@ -252,8 +252,8 @@ export const AiAssistantSection = () => {
               className="h-3.5 w-3.5"
             />
             <span>
-              Install Claude Code CLI or add an Anthropic API key to enable the
-              AI Assistant
+              Install Claude Code CLI or add an Anthropic API key to use AI in
+              Create and the Widget Builder
             </span>
           </div>
         )}
@@ -306,7 +306,7 @@ export const AiAssistantSection = () => {
           <div className="flex flex-col">
             <span className="text-sm font-medium">Model</span>
             <span className="text-xs opacity-50">
-              Model for AI Assistant conversations
+              Model for Create and the Widget Builder
             </span>
           </div>
           <div className="flex items-center gap-2">

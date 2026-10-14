@@ -27,6 +27,11 @@ describe("AppSettingsModal — sections", () => {
     ]);
   });
 
+  it("the AI section is called AI — the Assistant panel is gone (5e-2c)", () => {
+    expect(block[1]).toMatch(/key: "ai-assistant", label: "AI",/);
+    expect(block[1]).not.toMatch(/label: "AI Assistant"/);
+  });
+
   it("no longer renders the sections that became Manage pages", () => {
     for (const name of [
       "DashboardsSection",

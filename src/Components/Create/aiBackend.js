@@ -63,7 +63,7 @@ export function aiBackendOptions({
       : {
           ...b,
           disabled: true,
-          hint: "Add an Anthropic API key in Settings › AI Assistant",
+          hint: "Add an Anthropic API key in Settings › AI",
         };
   });
 }

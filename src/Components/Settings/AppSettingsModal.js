@@ -25,7 +25,10 @@ const SECTIONS = [
   { key: "account", label: "Account", icon: "circle-user" },
   { key: "notifications", label: "Notifications", icon: "bell" },
   { key: "mcp-server", label: "MCP Server", icon: "server" },
-  { key: "ai-assistant", label: "AI Assistant", icon: "wand-magic-sparkles" },
+  // The key stays "ai-assistant" (links open it by key); the panel it was
+  // named for is gone (create-entry 5e-2c) — Create and the Widget Builder
+  // use this AI.
+  { key: "ai-assistant", label: "AI", icon: "wand-magic-sparkles" },
   {
     key: "privacy-security",
     label: "Privacy & Security",
