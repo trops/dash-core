@@ -10,6 +10,7 @@ import { AskStep } from "./AskStep";
 import { CreateDockPanel } from "./CreateDockPanel";
 import {
   questionRequest,
+  leadQuestion,
   reopenedQuestion,
   hasPlan,
   planSeed,
@@ -190,6 +191,172 @@ describe("AskStep", () => {
     expect(prompt).toMatch(
       /^Earlier in this conversation:\nMe: What ran\?\nYou: Two bots\./,
     );
+  });
+});
+
+const LEAD = {
+  botId: "b_lead",
+  leadName: "Daily Brief Lead",
+  dashboardName: "Daily Brief",
+  dashboardLabel: "Daily Brief",
+};
+
+describe("asking a team lead (5e-2a)", () => {
+  const leadApi = (over = {}) =>
+    api({
+      listLeads: jest.fn().mockResolvedValue([LEAD]),
+      onListChanged: jest.fn(() => 4),
+      onRunActive: jest.fn(() => 5),
+      askLead: jest
+        .fn()
+        .mockResolvedValue({ status: "completed", output: "Nothing urgent." }),
+      ...over,
+    });
+
+  test("a lead's words go as typed; a reopened one carries lead turns", () => {
+    expect(leadQuestion(" Anything urgent? ")).toBe("Anything urgent?");
+    expect(
+      reopenedQuestion(
+        [
+          { who: "you", text: "Anything urgent?" },
+          { who: "lead", text: "No." },
+        ],
+        "And tomorrow?",
+        6,
+        leadQuestion,
+      ),
+    ).toBe(
+      "Earlier in this conversation:\nMe: Anything urgent?\nYou: No.\n\nAnd tomorrow?",
+    );
+  });
+
+  test("Recent names the lead", () => {
+    expect(
+      recentStatus({
+        kind: "question",
+        status: "answered",
+        to: "Daily Brief Lead",
+      }),
+    ).toBe("Answered · Daily Brief Lead");
+  });
+
+  test("goes straight to the lead, kept with the conversation; no plan button", async () => {
+    const bots = leadApi();
+    render(
+      <AskStep
+        question="Anything urgent?"
+        recipient={LEAD}
+        onOpenPlan={jest.fn()}
+      />,
+    );
+    expect(await screen.findByTestId("ask-answer")).toHaveTextContent(
+      "Nothing urgent.",
+    );
+    expect(screen.getByText("Daily Brief Lead")).toBeInTheDocument();
+    expect(bots.saveCreateRecent).toHaveBeenNthCalledWith(1, {
+      kind: "question",
+      prompt: "Anything urgent?",
+      conversation: { recipient: LEAD },
+    });
+    expect(bots.askLead).toHaveBeenCalledWith(
+      "b_lead",
+      "Anything urgent?",
+      false,
+      "create",
+    );
+    expect(bots.run).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("To: Daily Brief Lead · Daily Brief"),
+    ).toBeInTheDocument();
+    // A follow-up stays with the lead and continues its session.
+    fireEvent.change(screen.getByLabelText("Ask a follow-up"), {
+      target: { value: "And tomorrow?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() => expect(bots.askLead).toHaveBeenCalledTimes(2));
+    expect(bots.askLead.mock.calls[1]).toEqual([
+      "b_lead",
+      "And tomorrow?",
+      true,
+      "create",
+    ]);
+    expect(screen.queryByRole("button", { name: "Open as a plan" })).toBeNull();
+  });
+
+  test("a paused lead isn't asked; the note says why", async () => {
+    const bots = leadApi();
+    render(<AskStep question="Hi" recipient={{ ...LEAD, paused: true }} />);
+    expect(
+      await screen.findByText(
+        "Daily Brief Lead is paused — resume it in the Bots view.",
+      ),
+    ).toBeInTheDocument();
+    expect(bots.askLead).not.toHaveBeenCalled();
+  });
+
+  test("reopened from Recent: carries on with the same lead", async () => {
+    const bots = leadApi({
+      getCreateRecent: jest.fn().mockResolvedValue({
+        id: "plan_q1",
+        kind: "question",
+        prompt: "Anything urgent?",
+        conversation: {
+          recipient: LEAD,
+          messages: [
+            { who: "you", text: "Anything urgent?" },
+            { who: "lead", text: "No." },
+          ],
+        },
+      }),
+    });
+    render(<AskStep recentId="plan_q1" />);
+    expect(await screen.findByText("No.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Ask a follow-up"), {
+      target: { value: "And tomorrow?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() => expect(bots.askLead).toHaveBeenCalled());
+    const [botId, prompt, cont] = bots.askLead.mock.calls[0];
+    expect(botId).toBe("b_lead");
+    expect(cont).toBe(false);
+    expect(prompt).toMatch(
+      /^Earlier in this conversation:\nMe: Anything urgent\?\nYou: No\./,
+    );
+    expect(bots.run).not.toHaveBeenCalled();
+  });
+
+  test("the dock's To: lists leads; picking one sends the question to it", async () => {
+    const bots = leadApi();
+    render(<CreateDockPanel />);
+    const to = await screen.findByLabelText("Send to");
+    expect([...to.options].map((o) => o.textContent)).toEqual([
+      "Dash team",
+      "Daily Brief Lead · Daily Brief",
+    ]);
+    fireEvent.change(to, { target: { value: "b_lead" } });
+    const box = screen.getByLabelText("Ask about your dashboards and bots");
+    expect(box).toHaveAttribute("placeholder", "Ask Daily Brief Lead…");
+    fireEvent.change(box, { target: { value: "Anything urgent?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    expect(await screen.findByTestId("ask-answer")).toHaveTextContent(
+      "Nothing urgent.",
+    );
+    expect(bots.askLead).toHaveBeenCalledWith(
+      "b_lead",
+      "Anything urgent?",
+      false,
+      "create",
+    );
+    expect(bots.run).not.toHaveBeenCalled();
+  });
+
+  test("no leads → no To: (the Dash team answers)", async () => {
+    api({ listLeads: jest.fn().mockResolvedValue([]) });
+    render(<CreateDockPanel />);
+    await waitFor(() =>
+      expect(window.mainApi.bots.listLeads).toHaveBeenCalled(),
+    );
+    expect(screen.queryByLabelText("Send to")).toBeNull();
   });
 });
 

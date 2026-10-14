@@ -1,11 +1,17 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Button3, ChatComposer, ChatMessage } from "@trops/dash-react";
 import { runTeamRole } from "../../utils/teamRoles";
+import { askTeamLead } from "../../utils/leadAsk";
+import { useTeamLeads } from "../AiAssistant/components/RecipientPicker";
+import { leadLabel } from "../AiAssistant/leadMessages";
+import { readableError } from "../Bots/botConversation";
+import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { extractPlan } from "../../utils/teamPlan";
 import { runCostLabel } from "../../utils/runCostLabel";
 import { withoutPlan } from "./CreatePlanStep";
 import {
   questionRequest,
+  leadQuestion,
   reopenedQuestion,
   hasPlan,
   planSeed,
@@ -18,14 +24,20 @@ import {
  * as a "question". When an answer plans something, Open as a plan starts
  * Create from it (`onOpenPlan(seed)`).
  *
- * New: `question`. Reopened from Recent: `recentId`.
+ * Asked of a team lead instead (5e-2a, the Ask box's "To:"): `recipient` is
+ * the lead ({ botId, leadName, dashboardName, dashboardLabel }); the question
+ * goes straight to it (bots.askLead) and the conversation stays with it,
+ * saved with the conversation so a reopened one carries on with the lead.
+ *
+ * New: `question` (+ `recipient`). Reopened from Recent: `recentId`.
  */
 export const AskStep = ({
   question = "",
   recentId = null,
+  recipient = null,
   onOpenPlan = null,
 }) => {
-  // [{ who: "you" | "planner" | "note", text, meta?, plan? }]
+  // [{ who: "you" | "planner" | "lead" | "note", text, meta?, plan? }]
   const [messages, setMessages] = useState(
     recentId ? [] : [{ who: "you", text: question }],
   );
@@ -38,35 +50,78 @@ export const AskStep = ({
   const started = useRef(false);
   const alive = useRef(true);
   const firstAsked = useRef(question);
+  // The lead this conversation is with (null = the Dash team's Planner).
+  const [lead, setLead] = useState(recipient);
+  const leadRef = useRef(recipient);
+  // Live state (paused / over budget / running) for the availability check.
+  const { leads } = useTeamLeads(!!lead);
+  const leadsRef = useRef(leads);
+  leadsRef.current = leads;
+  const { muted } = useConfigTokens();
+  // The lead's name on its replies; the To: line names the dashboard.
+  const replyLabel = lead ? lead.leadName : "Planner";
+  const replyName = lead ? lead.leadName : "the Planner";
 
   const note = (text) => setMessages((m) => [...m, { who: "note", text }]);
 
   const ask = async (text, continueConversation, history) => {
     setBusy(true);
     setSoFar("");
-    let request = questionRequest(text);
+    const to = leadRef.current;
+    const wrap = to ? leadQuestion : questionRequest;
+    let request = wrap(text);
     let cont = continueConversation;
     if (reopened.current) {
       reopened.current = false;
       cont = false;
-      request = reopenedQuestion(history, text);
+      request = reopenedQuestion(history, text, 6, wrap);
     }
-    const res = await runTeamRole("planner", request, {
-      continueConversation: cont,
-      planId: askId.current,
-      onText: (t) => alive.current && setSoFar(t),
-    });
+    const onText = (t) => alive.current && setSoFar(t);
+    let res;
+    if (to) {
+      // Live state when the lead list has it (it may have been paused).
+      const live =
+        (leadsRef.current || []).find((l) => l.botId === to.botId) || to;
+      res = await askTeamLead(live, request, {
+        continueConversation: cont,
+        onText,
+      });
+    } else {
+      res = await runTeamRole("planner", request, {
+        continueConversation: cont,
+        planId: askId.current,
+        onText,
+      });
+    }
     if (!alive.current) return;
     setBusy(false);
     setSoFar("");
     if (res.skipped) {
       note(
-        `Can't answer right now: ${res.reason}. Resume the Planner on the Bots page › Dash team.`,
+        to
+          ? res.reason
+          : `Can't answer right now: ${res.reason}. Resume the Planner on the Bots page › Dash team.`,
       );
       return;
     }
     if (res.status === "failed") {
-      note(`The Planner couldn't answer: ${res.error || "unknown error"}`);
+      note(
+        to
+          ? readableError(String(res.error || "")) ||
+              `${to.leadName} couldn't answer.`
+          : `The Planner couldn't answer: ${res.error || "unknown error"}`,
+      );
+      return;
+    }
+    if (to) {
+      setMessages((m) => [
+        ...m,
+        {
+          who: "lead",
+          text: res.output || "(no answer)",
+          meta: runCostLabel(res),
+        },
+      ]);
       return;
     }
     const plan = extractPlan(res.output);
@@ -92,6 +147,10 @@ export const AskStep = ({
             if (!alive.current) return;
             const conv = (entry && entry.conversation) || {};
             firstAsked.current = (entry && entry.prompt) || "";
+            if (conv.recipient && conv.recipient.botId) {
+              leadRef.current = conv.recipient;
+              setLead(conv.recipient);
+            }
             setMessages(
               Array.isArray(conv.messages) && conv.messages.length
                 ? conv.messages
@@ -110,7 +169,11 @@ export const AskStep = ({
         // Kept in Recent from the start; its id is the memory scope too.
         Promise.resolve(
           bots && bots.saveCreateRecent
-            ? bots.saveCreateRecent({ kind: "question", prompt: question })
+            ? bots.saveCreateRecent({
+                kind: "question",
+                prompt: question,
+                ...(recipient ? { conversation: { recipient } } : {}),
+              })
             : null,
         )
           .then((res) => {
@@ -168,7 +231,7 @@ export const AskStep = ({
               <ChatMessage
                 key={i}
                 role="reply"
-                label="Planner"
+                label={m.who === "lead" ? replyLabel : "Planner"}
                 meta={m.meta}
                 testId="ask-answer"
                 footer={
@@ -186,9 +249,9 @@ export const AskStep = ({
             ),
           )}
           {busy ? (
-            <ChatMessage role="reply" label="Planner" streaming>
+            <ChatMessage role="reply" label={replyLabel} streaming>
               <span className="whitespace-pre-wrap">
-                {withoutPlan(soFar) || "Looking…"}
+                {(lead ? soFar : withoutPlan(soFar)) || "Looking…"}
               </span>
             </ChatMessage>
           ) : null}
@@ -200,7 +263,20 @@ export const AskStep = ({
         onChange={(v) => setReply(v)}
         onSend={() => send(reply)}
         busy={busy}
-        placeholder={busy ? "The Planner is looking…" : "Ask a follow-up…"}
+        placeholder={
+          busy
+            ? `${replyName.charAt(0).toUpperCase()}${replyName.slice(1)} is looking…`
+            : lead
+              ? `Ask ${lead.leadName} a follow-up…`
+              : "Ask a follow-up…"
+        }
+        above={
+          lead ? (
+            <span className={`text-xs ${muted}`} data-testid="ask-to">
+              To: {leadLabel(lead)}
+            </span>
+          ) : null
+        }
         // Same word as the dock's first question (one label per action).
         sendLabel="Ask"
         className="flex-shrink-0"

@@ -133,6 +133,9 @@ function turnsForRun(
     // then show the question.
     if (r.via === "assistant") {
       turns.push({ kind: "system", text: "Asked via the AI Assistant", at });
+    } else if (r.via === "create") {
+      // From Create's Ask box "To:" (create-entry 5e-2a).
+      turns.push({ kind: "system", text: "Asked from Create", at });
     }
     // Typed by the user: a manual run, a reply, or a question to the lead.
     turns.push({ kind: "user", text: r.prompt, at });
