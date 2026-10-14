@@ -64,8 +64,14 @@ function summarize(entry) {
   if (out.kind === "question") {
     const messages = (entry.conversation && entry.conversation.messages) || [];
     const last = messages[messages.length - 1];
-    // Messages are { who: "you" | "planner" | "note", text }.
-    out.status = last && last.who === "planner" ? "answered" : "asked";
+    // Messages are { who: "you" | "planner" | "lead" | "note", text }.
+    out.status =
+      last && (last.who === "planner" || last.who === "lead")
+        ? "answered"
+        : "asked";
+    // Asked of a team lead (5e-2a): its name, for the row.
+    const to = entry.conversation && entry.conversation.recipient;
+    if (to && to.leadName) out.to = String(to.leadName);
     return out;
   }
   if (!state) return out;

@@ -10,17 +10,34 @@ export function questionRequest(text) {
   ).trim()}`;
 }
 
+/** A question to a team lead (5e-2a): the lead gets the words as typed. */
+export function leadQuestion(text) {
+  return String(text || "").trim();
+}
+
 /**
- * A reopened conversation's next question: the Planner's own session has
- * moved on, so it gets the conversation so far (the last few turns).
+ * A reopened conversation's next question: the Planner's (or lead's) own
+ * session has moved on, so it gets the conversation so far (the last few
+ * turns). `wrap` words the new question (questionRequest for the Planner,
+ * leadQuestion for a lead).
  * @param {{ who: string, text: string }[]} messages
  */
-export function reopenedQuestion(messages, text, keep = 6) {
+export function reopenedQuestion(
+  messages,
+  text,
+  keep = 6,
+  wrap = questionRequest,
+) {
   const turns = (messages || [])
-    .filter((m) => m && (m.who === "you" || m.who === "planner") && m.text)
+    .filter(
+      (m) =>
+        m &&
+        (m.who === "you" || m.who === "planner" || m.who === "lead") &&
+        m.text,
+    )
     .slice(-keep)
     .map((m) => `${m.who === "you" ? "Me" : "You"}: ${m.text}`);
-  const now = questionRequest(text);
+  const now = wrap(text);
   return turns.length
     ? `Earlier in this conversation:\n${turns.join("\n")}\n\n${now}`
     : now;

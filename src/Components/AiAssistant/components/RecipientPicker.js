@@ -58,9 +58,17 @@ export function useTeamLeads(enabled) {
   return { leads, loaded };
 }
 
-export const RecipientPicker = ({ leads, recipient, onChange, disabled }) => {
+// `defaultLabel` names the default recipient: "Assistant" here, "Dash team"
+// in Create's Ask box (5e-2a).
+export const RecipientPicker = ({
+  leads,
+  recipient,
+  onChange,
+  disabled,
+  defaultLabel = "Assistant",
+}) => {
   const options = [
-    { value: ASSISTANT_VALUE, label: "Assistant" },
+    { value: ASSISTANT_VALUE, label: defaultLabel },
     ...leads.map((lead) => ({
       value: lead.botId,
       label: `${leadLabel(lead)}${stateSuffix(lead)}`,

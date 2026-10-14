@@ -15,6 +15,10 @@ import { AskStep } from "./AskStep";
 import { recentSections } from "./recentRows";
 import { RecentList } from "./RecentList";
 import { PlanMenu } from "./PlanMenu";
+import {
+  RecipientPicker,
+  useTeamLeads,
+} from "../AiAssistant/components/RecipientPicker";
 
 /**
  * CreateDockPanel — Create in the right-hand dock (create-entry PRD CRE-007
@@ -25,7 +29,9 @@ import { PlanMenu } from "./PlanMenu";
  * nothing folded it shows Recent, where questions and plans share one list
  * (CRE-007 AC4), with the Ask box pinned at the bottom like every chat (5e —
  * questions go to the Planner, which reads the bots' results; design guide
- * rule 16). A question opens here, never full size.
+ * rule 16). A question opens here, never full size. The box's "To:" sends
+ * it to the Dash team (the Planner) or straight to a dashboard's team lead
+ * (5e-2a), shown only when there are leads.
  *
  * The host's dock decides when it's open (`collapsed`); it stays mounted
  * either way so a fold is never missed.
@@ -47,6 +53,19 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
   // folded here (a new question has no recentId yet), or null (Recent).
   const [folded, setFolded] = useState(null);
   const [asking, setAsking] = useState("");
+  // null = the Dash team (Planner); else a team lead from bots.listLeads.
+  const [recipient, setRecipient] = useState(null);
+  const { leads, loaded: leadsLoaded } = useTeamLeads(!collapsed);
+  // The chosen lead was deleted or turned off → back to the Dash team.
+  useEffect(() => {
+    if (
+      recipient &&
+      leadsLoaded &&
+      !leads.some((l) => l.botId === recipient.botId)
+    ) {
+      setRecipient(null);
+    }
+  }, [recipient, leads, leadsLoaded]);
   const [plans, setPlans] = useState([]);
   const [drafts, setDrafts] = useState([]);
   // The open plan, as CreatePlanStep reports it (for the "…" menu).
@@ -154,7 +173,16 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
     const q = asking.trim();
     if (!q) return;
     setAsking("");
-    setFolded({ recentId: null, title: q, kind: "question", question: q });
+    setFolded({
+      recentId: null,
+      title: q,
+      kind: "question",
+      question: q,
+      // Its latest state (paused / running) from the live list.
+      recipient: recipient
+        ? leads.find((l) => l.botId === recipient.botId) || recipient
+        : null,
+    });
   };
   // Open as a plan: Create (full size) starts from the answer's plan.
   const openPlan = (seed) => {
@@ -213,6 +241,7 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
             key={folded.recentId || `new:${folded.question}`}
             question={folded.question || ""}
             recentId={folded.recentId}
+            recipient={folded.recipient || null}
             onOpenPlan={openPlan}
           />
         </div>
@@ -261,7 +290,21 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
             onChange={(v) => setAsking(v)}
             onSend={askNow}
             ariaLabel="Ask about your dashboards and bots"
-            placeholder="Ask about your dashboards and bots…"
+            placeholder={
+              recipient
+                ? `Ask ${recipient.leadName}…`
+                : "Ask about your dashboards and bots…"
+            }
+            above={
+              leads.length ? (
+                <RecipientPicker
+                  leads={leads}
+                  recipient={recipient}
+                  onChange={setRecipient}
+                  defaultLabel="Dash team"
+                />
+              ) : null
+            }
             sendLabel="Ask"
           />
         </div>

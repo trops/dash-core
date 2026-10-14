@@ -372,6 +372,30 @@ describe("questions in Recent (phase 5e)", () => {
     assert.equal(row.status, "answered");
   });
 
+  it("a question to a team lead: answered by the lead, row names it (5e-2a)", () => {
+    const r = make();
+    const lead = { botId: "b_lead", leadName: "Daily Brief Lead" };
+    const e = r.save({
+      kind: "question",
+      prompt: "Anything urgent?",
+      conversation: { recipient: lead },
+    });
+    r.save({
+      id: e.id,
+      conversation: {
+        messages: [
+          { who: "you", text: "Anything urgent?" },
+          { who: "lead", text: "No." },
+        ],
+      },
+    });
+    const row = r.list()[0];
+    assert.equal(row.status, "answered");
+    assert.equal(row.to, "Daily Brief Lead");
+    // The recipient survives saving the messages.
+    assert.deepEqual(r.get(e.id).conversation.recipient, lead);
+  });
+
   it("an unknown kind is a plan", () => {
     const r = make();
     assert.equal(r.save({ kind: "gadget", prompt: "x" }).kind, "plan");

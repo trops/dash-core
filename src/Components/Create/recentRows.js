@@ -23,7 +23,8 @@ const and = (names) =>
 export function recentStatus(summary) {
   const s = summary || {};
   if (s.kind === "question") {
-    return s.status === "answered" ? "Answered" : "Asked";
+    const word = s.status === "answered" ? "Answered" : "Asked";
+    return s.to ? `${word} · ${s.to}` : word;
   }
   switch (s.status) {
     case "building": {
