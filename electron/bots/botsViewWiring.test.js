@@ -266,3 +266,21 @@ describe("botController — budgets stop runs (US-019)", () => {
     );
   });
 });
+
+describe("botController — spending summary (US-019 slice B)", () => {
+  it("summarizes this month for user bots and dashboards", () => {
+    assert.match(
+      ctrl,
+      /const \{ summarizeSpending \} = require\("\.\.\/bots\/spending"\);/,
+    );
+    assert.match(
+      ctrl,
+      /spendingSummary\(\) \{[\s\S]{0,700}summarizeSpending\(\{[\s\S]{0,300}bots: this\._store\.list\(\)\.filter\(\(b\) => !isDashTeam\(b\)\),/,
+    );
+    assert.equal(events.BOTS_SPENDING_SUMMARY, "bots-spending-summary");
+    assert.match(
+      api,
+      /spendingSummary: \(\) => ipcRenderer\.invoke\(BOTS_SPENDING_SUMMARY\)/,
+    );
+  });
+});

@@ -115,6 +115,8 @@ class BudgetController {
 
     const keys = [scopeKey("bot", botId), scopeKey("global")];
     if (workspaceId) keys.splice(1, 0, scopeKey("workspace", workspaceId));
+    // Spending by AI provider too (the Spending view; no limits on it).
+    if (providerId) keys.push(`provider:${providerId}`);
     for (const key of keys) {
       const bucket = d.spend[mk][key] || {
         usd: 0,
@@ -234,6 +236,11 @@ class BudgetController {
         planTokens: mine.planTokens || 0,
       },
     };
+  }
+
+  /** "2026-10" — the month spending is counted in now. */
+  currentMonth() {
+    return monthKey(this._now());
   }
 
   /** @returns {object} spend buckets for a month (default current) */

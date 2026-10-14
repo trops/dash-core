@@ -299,3 +299,21 @@ describe("BotsPage — last run cost (CRE-012)", () => {
     );
   });
 });
+
+describe("BotsPage — Spending (bot-factory US-019 AC5)", () => {
+  it("Bots | Spending switches the page to this month's spending and back", async () => {
+    setup();
+    window.mainApi.bots.spendingSummary = jest.fn().mockResolvedValue({
+      month: "2026-10",
+      overall: { usd: 0, tokens: 0, planTokens: 0, budget: null, state: "ok" },
+      bots: [],
+      dashboards: [],
+      providers: [],
+    });
+    fireEvent.click(screen.getByRole("radio", { name: "Spending" }));
+    expect(await screen.findByTestId("spending-view")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Bots" })).toBeNull();
+    fireEvent.click(screen.getByRole("radio", { name: "Bots" }));
+    expect(screen.getByRole("list", { name: "Bots" })).toBeInTheDocument();
+  });
+});
