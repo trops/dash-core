@@ -5,6 +5,8 @@
  * Steps, in order:
  *   install     each approved registry widget                 Dash · no AI
  *   dashboard   create the dashboard the widgets go on        Dash · no AI
+ *               (or use the one the plan names — 5e-2b)
+ *   theme       apply one of the user's saved themes          Dash · no AI
  *   build       each new / updated widget                     Builder
  *   check       each widget the Builder built                 Checker
  *   place       each widget, onto the dashboard               Dash · no AI
@@ -34,6 +36,8 @@
 const { buildDraft } = require("./botDrafts");
 const { eventNames } = require("./configDiff");
 const { parseDashConfig } = require("../utils/dashConfigParser");
+const { planTarget } = require("./teamPlan");
+const { removeWidgets } = require("../utils/placeWidget");
 
 const AI_BUILT = /@ai-built\/[a-z0-9][a-z0-9-]*/g;
 
@@ -70,13 +74,37 @@ function planSteps(plan, { dashboardName } = {}) {
       });
     }
   });
-  add({
-    id: "dashboard",
-    kind: "dashboard",
-    role: "dash",
-    label: `Create the "${dashboardName || (layout && layout.name) || "New dashboard"}" dashboard`,
-    name: dashboardName || (layout && layout.name) || "New dashboard",
-  });
+  // A plan that changes a dashboard the user has uses it instead (5e-2b).
+  const target = planTarget(plan);
+  if (target) {
+    add({
+      id: "dashboard",
+      kind: "dashboard",
+      role: "dash",
+      label: `Use the "${target.name}" dashboard`,
+      name: target.name,
+      target: target.id,
+    });
+  } else {
+    add({
+      id: "dashboard",
+      kind: "dashboard",
+      role: "dash",
+      label: `Create the "${dashboardName || (layout && layout.name) || "New dashboard"}" dashboard`,
+      name: dashboardName || (layout && layout.name) || "New dashboard",
+    });
+  }
+  const theme = pieces.find((p) => p.kind === "theme" && p.name);
+  if (theme) {
+    add({
+      id: "theme",
+      kind: "theme",
+      role: "dash",
+      label: `Apply the ${theme.name} theme`,
+      theme: String(theme.name).trim(),
+      needs: ["dashboard"],
+    });
+  }
   widgets.forEach((p, i) => {
     if (p.source === "new" || p.source === "update") {
       add({
@@ -515,6 +543,8 @@ function reuseEarlier(plan, steps, state, earlier) {
       package: made.package || p.package || null,
       // Made by this build (not an update of an earlier widget).
       built: built && p.source === "new",
+      // Where it was placed (Remove on a dashboard you have takes it off).
+      placed: placedOf(made),
     };
   };
 
@@ -524,6 +554,12 @@ function reuseEarlier(plan, steps, state, earlier) {
     dash.status = STATUS.done;
     dash.detail = prev.dashboard.name;
     dash.reused = true;
+  }
+  // The theme it applied, and what was there before (Remove puts it back).
+  if (prev.theme) {
+    state.theme = { ...prev.theme };
+    const t = byId.get("theme");
+    if (t && t.theme === prev.theme.name) keep("theme", "theme");
   }
 
   const wMatch = matchByName(widgets, prevWidgets);
@@ -567,6 +603,7 @@ function reuseEarlier(plan, steps, state, earlier) {
   const prevBots = botPieces(earlier.plan);
   const bMatch = matchByName(bots, prevBots);
   const prevSaved = prev.bots || {};
+  const prevResults = prev.results || {};
   bMatch.forEach((j, i) => {
     const saved = prevSaved[j];
     if (!saved) return;
@@ -578,12 +615,25 @@ function reuseEarlier(plan, steps, state, earlier) {
       const s = byId.get(`bot:${i}`);
       if (s) s.replaces = saved.id;
     }
-    keep(`results:${i}`, `results:${j}`);
+    if (keep(`results:${i}`, `results:${j}`) && prevResults[j]) {
+      state.results[i] = { ...prevResults[j] };
+    }
   });
   const matchedB = new Set(bMatch.values());
   prevBots.forEach((p, j) => {
     if (!matchedB.has(j) && prevSaved[j]) {
       leftovers.push({ kind: "bot", name: p.name, id: prevSaved[j].id });
+    }
+    // A results widget the edited plan no longer shows: still placed.
+    const i = [...bMatch.keys()].find((k) => bMatch.get(k) === j);
+    if (prevResults[j] && !(i !== undefined && state.results[i])) {
+      leftovers.push({
+        kind: "widget",
+        name: `${p.name} results`,
+        package: null,
+        built: false,
+        placed: { ...prevResults[j] },
+      });
     }
   });
 
@@ -607,9 +657,24 @@ function reuseEarlier(plan, steps, state, earlier) {
   state.leftovers = leftovers;
 }
 
+/** Where a widget was placed: { widgetId, component, pageId } or null. */
+function placedOf(made) {
+  return made && made.widgetId != null
+    ? {
+        widgetId: made.widgetId,
+        component: made.component || null,
+        pageId: made.pageId != null ? made.pageId : null,
+      }
+    : null;
+}
+
 /**
  * What a build has made so far, for Remove what was built (4d-3):
- *   dashboard  { id, name } | null — deleted
+ *   dashboard  { id, name, targeted? } | null — deleted, unless targeted
+ *              (a dashboard the user had, 5e-2b): then it stays, and
+ *   placed     [{ widgetId, component, pageId }] — come off it
+ *   theme      { name, key, previous, previousName } | null — previous
+ *              (a saved theme's id; null = the app's theme) goes back
  *   bots       [{ id, name }] — deleted
  *   widgets    [package] — widgets the Builder made new here; uninstalled
  *   updated    [package] — widgets it updated; they keep their changes
@@ -624,13 +689,25 @@ function builtSummary(state, plan) {
     widgets: [],
     updated: [],
     installs: [],
+    placed: [],
+    theme: state.theme ? { ...state.theme } : null,
   };
   const add = (list, v) => v && !list.includes(v) && list.push(v);
+  const addPlaced = (p) =>
+    p &&
+    !out.placed.some(
+      (x) => String(x.widgetId) === String(p.widgetId) && x.pageId === p.pageId,
+    ) &&
+    out.placed.push(p);
   for (const step of state.steps || []) {
     if (step.status !== STATUS.done) continue;
     const piece = step.piece != null ? pieces[step.piece] : null;
     const made = (step.piece != null && state.made[step.piece]) || {};
     if (step.kind === "install") add(out.installs, piece && piece.package);
+    if (step.kind === "place") addPlaced(placedOf(made));
+    if (step.kind === "results") {
+      addPlaced(placedOf((state.results || {})[step.bot]));
+    }
     if (step.kind === "build") {
       add(
         piece && piece.source === "update" ? out.updated : out.widgets,
@@ -646,8 +723,71 @@ function builtSummary(state, plan) {
       out.bots.push({ id: l.id, name: l.name });
     }
     if (l.kind === "widget" && l.built) add(out.widgets, l.package);
+    if (l.kind === "widget") addPlaced(l.placed);
   }
   return out;
+}
+
+/**
+ * The user's saved themes as { key, name } (themes.json is keyed by id; a
+ * theme without a name goes by its id).
+ */
+function themeChoices(themes) {
+  return Object.entries(themes || {}).map(([key, t]) => ({
+    key,
+    name:
+      t && typeof t.name === "string" && t.name.trim() ? t.name.trim() : key,
+  }));
+}
+
+/**
+ * A plan's theme — by name (any case) or id — among the saved themes.
+ * @returns {{ key, name } | { error }}
+ */
+function resolveTheme(themes, want) {
+  const choices = themeChoices(themes);
+  const w = String(want || "").trim();
+  const byKey = choices.find((c) => c.key === w);
+  if (byKey) return byKey;
+  const byName = choices.filter(
+    (c) => c.name.toLowerCase() === w.toLowerCase(),
+  );
+  if (byName.length === 1) return byName[0];
+  if (byName.length > 1) {
+    return {
+      error: `more than one saved theme is called "${w}" — rename one in Themes`,
+    };
+  }
+  return { error: `there's no saved theme called "${w}"` };
+}
+
+/**
+ * Remove what was built on a dashboard the user had (5e-2b): the dashboard
+ * with the build's widgets taken off and the theme it replaced put back —
+ * only while the theme is still the one the build applied (the user may
+ * have changed it since). The dashboard itself always stays.
+ * @param {object} workspace  the dashboard as saved now
+ * @param {object} built      builtSummary
+ * @returns {{ workspace, placed: number, theme: string|null, changed: boolean }}
+ *   theme — what it went back to ("" for the app's theme), null if untouched
+ */
+function undoOnDashboard(workspace, built) {
+  const res = removeWidgets(workspace, (built && built.placed) || []);
+  let next = res.workspace;
+  let theme = null;
+  const t = built && built.theme;
+  if (t && (next.themeKey || null) === (t.key || t.name)) {
+    next = { ...next, themeKey: t.previous || null };
+    if (t.previous) next.theme = t.previous;
+    else delete next.theme;
+    theme = t.previousName || t.previous || "";
+  }
+  return {
+    workspace: next,
+    placed: res.removed,
+    theme,
+    changed: res.removed > 0 || theme !== null,
+  };
 }
 
 /**
@@ -656,12 +796,15 @@ function builtSummary(state, plan) {
  * @param {object} deps
  *   installWidget(pkg, piece) → { component } | throws
  *   createDashboard(name, pieceCount) → { id, name } | throws
+ *   useDashboard(id) → { id, name } | throws — a dashboard the user has
+ *   applyTheme({ dashboardId, theme }) → { key, name, previous,
+ *     previousName } | throws — theme by name; key = the saved theme's id
  *   askRole(role, request) → run record ({ status, output, error, model, usage, cost, skipped, reason })
  *   abortRole(role)
- *   placeWidget({ dashboardId, component|widget }) → { component, widgetId } | throws
+ *   placeWidget({ dashboardId, component|widget }) → { component, widgetId, pageId } | throws
  *   saveBot({ dashboardId, piece, botId? }) → { id, name } | throws (an
  *     error with waitingFor = provider names → the step waits for them)
- *   placeBotResults({ dashboardId, botId }) → { component, widgetId } | throws
+ *   placeBotResults({ dashboardId, botId }) → { component, widgetId, pageId } | throws
  *   wireTrigger({ dashboardId, botId, widgetId, component, event }) | throws
  *   wireListener({ dashboardId, widgetId, component, handler, botId, result }) | throws
  *   emit(state)   progress after every change
@@ -679,13 +822,17 @@ function createPlanBuild(plan, deps, opts = {}) {
     startedAt: null,
     finishedAt: null,
     steps,
-    dashboard: null, // { id, name }
+    dashboard: null, // { id, name, targeted? }
     // piece index → { component?, package?, widgetId? } — what to place
     made: {},
     // bot index → { id, name } — saved bots (offered as Run now at the end)
     bots: {},
     // piece index → how many times the Builder has fixed it
     fixes: {},
+    // bot index → its Bot results widget { component, widgetId, pageId }
+    results: {},
+    // the theme applied { name, key, previous, previousName } (5e-2b)
+    theme: null,
     // what an earlier build made that the edited plan no longer has
     leftovers: [],
     totals: { tokens: 0, usd: 0, includedInPlan: true },
@@ -729,9 +876,38 @@ function createPlanBuild(plan, deps, opts = {}) {
         return;
       }
       case "dashboard": {
-        const ws = await deps.createDashboard(step.name, pieces.length);
-        state.dashboard = { id: String(ws.id), name: ws.name || step.name };
+        if (step.target) {
+          // A dashboard the user has: it's used, never made or deleted.
+          const ws = await deps.useDashboard(step.target);
+          state.dashboard = {
+            id: String(ws.id),
+            name: ws.name || step.name,
+            targeted: true,
+          };
+        } else {
+          const ws = await deps.createDashboard(step.name, pieces.length);
+          state.dashboard = { id: String(ws.id), name: ws.name || step.name };
+        }
         step.detail = state.dashboard.name;
+        return;
+      }
+      case "theme": {
+        const res = await deps.applyTheme({
+          dashboardId: state.dashboard.id,
+          theme: step.theme,
+        });
+        // The first theme it replaced is the one Remove puts back.
+        const first = state.theme || {
+          previous: res && res.previous != null ? res.previous : null,
+          previousName: (res && res.previousName) || null,
+        };
+        state.theme = {
+          name: (res && res.name) || step.theme,
+          key: (res && res.key) || step.theme,
+          previous: first.previous,
+          previousName: first.previousName || null,
+        };
+        step.detail = state.theme.name;
         return;
       }
       case "build": {
@@ -793,6 +969,7 @@ function createPlanBuild(plan, deps, opts = {}) {
           ...made,
           component: (res && res.component) || made.component || null,
           widgetId: res && res.widgetId != null ? res.widgetId : null,
+          pageId: res && res.pageId != null ? res.pageId : null,
         };
         step.detail =
           res && res.component ? res.component : made.package || piece.package;
@@ -813,6 +990,13 @@ function createPlanBuild(plan, deps, opts = {}) {
           dashboardId: state.dashboard.id,
           botId: state.bots[step.bot].id,
         });
+        if (res && res.widgetId != null) {
+          state.results[step.bot] = {
+            component: res.component || null,
+            widgetId: res.widgetId,
+            pageId: res.pageId != null ? res.pageId : null,
+          };
+        }
         step.detail = res && res.component ? res.component : "Bot results";
         return;
       }
@@ -850,7 +1034,14 @@ function createPlanBuild(plan, deps, opts = {}) {
   // fix a widget it made (at most MAX_FIXES times); Dash's own steps can run
   // again. Edit plan and Remove what was built are always there.
   const BUILDER_FIXES = new Set(["build", "check", "trigger", "listen"]);
-  const RETRIES = new Set(["install", "dashboard", "place", "bot", "results"]);
+  const RETRIES = new Set([
+    "install",
+    "dashboard",
+    "theme",
+    "place",
+    "bot",
+    "results",
+  ]);
   function markOptions(step) {
     const piece = step.piece != null ? pieces[step.piece] : null;
     const used = step.piece != null ? state.fixes[step.piece] || 0 : 0;
@@ -1028,6 +1219,9 @@ module.exports = {
   STATUS,
   MAX_FIXES,
   builtSummary,
+  undoOnDashboard,
+  themeChoices,
+  resolveTheme,
   pieceSignature,
   reuseEarlier,
   planSteps,

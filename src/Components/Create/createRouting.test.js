@@ -129,3 +129,15 @@ describe("Type: Dashboard (phase 4a; on for everyone since 4d-3)", () => {
     });
   });
 });
+
+describe("CREATE_HINT (5e-2b)", () => {
+  test("every type says the user looks first; a plan says Build", () => {
+    const { CREATE_HINT } = require("./createRouting");
+    for (const t of ["auto", "dashboard", "widget", "bot", "theme"]) {
+      expect(CREATE_HINT[t]).toMatch(/Nothing|only installed/);
+    }
+    expect(CREATE_HINT.dashboard).toBe(
+      "You'll get a plan to review first. Nothing is made until you press Build.",
+    );
+  });
+});

@@ -10,8 +10,31 @@ export const AUTO_TYPES = ["widget", "bot", "dashboard", "theme"];
 export const AUTO_SYSTEM = `You sort requests in Dash, a desktop dashboard app, into what to make. Answer with JSON only: {"type": "widget" | "bot" | "dashboard" | "theme", "why": "<one short sentence>"}.
 - widget: one panel that shows or does one thing (a chart, a list, a clock, a button).
 - bot: something that works on its own — on a schedule or when something happens — e.g. "every morning summarize my email", "when a PR opens, review it".
-- dashboard: several things together, or widgets plus bots ("a morning brief with my calendar, unread mail and a bot that…").
-- theme: colors or the look of the app.`;
+- dashboard: several things together, or widgets plus bots ("a morning brief with my calendar, unread mail and a bot that…") — and any change to a dashboard the user already has: adding a widget or bot to it, or switching its theme ("add a clock to my Sales dashboard", "switch Sales to the Nordic theme").
+- theme: making a new theme — colors or the look of the app.`;
+
+/** The system prompt, with the user's dashboards named (5e-2b). */
+export function autoSystem(dashboards = []) {
+  const names = (dashboards || []).filter(Boolean);
+  return names.length
+    ? `${AUTO_SYSTEM}\nThe user's dashboards: ${names.join(", ")}.`
+    : AUTO_SYSTEM;
+}
+
+const escapeRe = (t) => String(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** The dashboard a request names, if any (whole words, any case). */
+export function namedDashboard(prompt, dashboards = []) {
+  const p = String(prompt || "");
+  return (
+    (dashboards || [])
+      .filter((n) => n && String(n).trim().length > 1)
+      .sort((a, b) => String(b).length - String(a).length)
+      .find((n) =>
+        new RegExp(`(^|\\W)${escapeRe(String(n).trim())}(\\W|$)`, "i").test(p),
+      ) || null
+  );
+}
 
 const WORDS = {
   theme: /\b(theme|colou?rs?|palette|look and feel|dark mode|light mode)\b/i,
@@ -19,9 +42,13 @@ const WORDS = {
   bot: /\b(bot|every (day|morning|evening|hour|week|monday)|daily|weekly|each (day|morning)|whenever|when .* (arrives|opens|happens|changes)|automatically|remind me)\b/i,
 };
 
-/** A keyword guess: theme, then dashboard, then bot, else widget. */
-export function guessType(prompt) {
+/**
+ * A keyword guess: a change to a dashboard the user names, then theme,
+ * dashboard, bot, else widget.
+ */
+export function guessType(prompt, dashboards = []) {
   const p = String(prompt || "");
+  if (namedDashboard(p, dashboards)) return "dashboard";
   for (const t of ["theme", "dashboard", "bot"]) {
     if (WORDS[t].test(p)) return t;
   }
@@ -45,16 +72,17 @@ export function parseAutoAnswer(text) {
 /**
  * What to make: { type, why, by: "ai" | "guess" }.
  * @param {string} prompt
- * @param {{ backend, providers, ask? }} opts  ask = aiOnce (for tests)
+ * @param {{ backend, providers, dashboards?: string[], ask? }} opts
+ *   dashboards = the user's dashboard names; ask = aiOnce (for tests)
  */
 export async function pickType(
   prompt,
-  { backend, providers, ask = aiOnce } = {},
+  { backend, providers, dashboards = [], ask = aiOnce } = {},
 ) {
   if (backend) {
     try {
       const answer = await ask({
-        system: AUTO_SYSTEM,
+        system: autoSystem(dashboards),
         prompt: String(prompt || ""),
         backend,
         providers,
@@ -65,5 +93,5 @@ export async function pickType(
       // fall through to the guess
     }
   }
-  return { type: guessType(prompt), why: "", by: "guess" };
+  return { type: guessType(prompt, dashboards), why: "", by: "guess" };
 }

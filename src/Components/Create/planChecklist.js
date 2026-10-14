@@ -9,6 +9,7 @@
  *
  * Nothing here installs or connects anything.
  */
+import { planTarget } from "../../utils/teamPlan";
 import {
   parseCron,
   TIME_OPTIONS,
@@ -140,17 +141,24 @@ export function isSkipped(item, state = {}, have = new Set()) {
  * The Build button: names what's still open (CRE-003 AC3).
  *   "Build" · "Connect Gmail & build" · "Approve 2 installs & build" ·
  *   "Connect Gmail, approve 1 install & build"
+ * A plan for a dashboard the user has (5e-2b, `targeted`) makes changes:
+ *   "Make these changes" · "Connect Gmail & make these changes"
  */
-export function buildButtonLabel(items, state = {}, have = new Set()) {
+export function buildButtonLabel(
+  items,
+  state = {},
+  have = new Set(),
+  { targeted = false } = {},
+) {
+  const verb = targeted ? "make these changes" : "build";
   const open = items.filter((it) => !isDone(it, state, have));
   if (!open.length) {
     const skipped = items.filter((it) => isSkipped(it, state, have));
+    const lead = targeted ? "Make these changes" : "Build";
     if (skipped.length === 1) {
-      return `Build without ${providerLabel(skipped[0].providerType)}`;
+      return `${lead} without ${providerLabel(skipped[0].providerType)}`;
     }
-    return skipped.length
-      ? `Build without ${skipped.length} accounts`
-      : "Build";
+    return skipped.length ? `${lead} without ${skipped.length} accounts` : lead;
   }
   const connects = open.filter((it) => it.kind === "connect");
   const installs = open.filter((it) => it.kind === "install");
@@ -172,7 +180,7 @@ export function buildButtonLabel(items, state = {}, have = new Set()) {
       }`,
     );
   }
-  return `${parts.join(", ")} & build`;
+  return `${parts.join(", ")} & ${verb}`;
 }
 
 /** The first open item — what pressing Build walks to next. */
@@ -188,9 +196,41 @@ const SOURCE_WORD = {
   update: "updated",
 };
 
-/** "3 widgets: 1 AI-built, 2 from the registry · 1 new layout" (CRE-009 AC5). */
+/** "1 widget and 1 bot" · "2 widgets" */
+const countWords = (pieces) =>
+  [
+    ["widget", "widget", "widgets"],
+    ["bot", "bot", "bots"],
+  ]
+    .map(([kind, one, many]) => {
+      const n = pieces.filter((p) => p && p.kind === kind).length;
+      return n ? `${n} ${n === 1 ? one : many}` : null;
+    })
+    .filter(Boolean)
+    .join(" and ");
+
+/**
+ * "3 widgets: 1 AI-built, 2 from the registry · 1 new layout" (CRE-009 AC5).
+ * A plan for a dashboard the user has (5e-2b) says what it adds there:
+ * "Adds 1 widget and 1 bot to Slack Pack and applies the Nordic Frost theme".
+ */
 export function countsLine(plan) {
   const pieces = (plan && Array.isArray(plan.pieces) && plan.pieces) || [];
+  const theme = pieces.find((p) => p && p.kind === "theme" && p.name);
+  const target = planTarget(plan);
+  if (target) {
+    const adds = countWords(pieces);
+    const out = [];
+    if (adds) out.push(`Adds ${adds} to ${target.name}`);
+    if (theme) {
+      out.push(
+        adds
+          ? `applies the ${theme.name} theme`
+          : `Applies the ${theme.name} theme to ${target.name}`,
+      );
+    }
+    return out.join(" and ");
+  }
   const parts = [];
   for (const [kind, one, many] of [
     ["bot", "bot", "bots"],
@@ -212,6 +252,7 @@ export function countsLine(plan) {
       );
     }
   }
+  if (theme) parts.push(`the ${theme.name} theme`);
   return parts.join(" · ");
 }
 

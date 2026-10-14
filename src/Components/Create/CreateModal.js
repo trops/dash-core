@@ -33,6 +33,7 @@ import { themeFromPrompt } from "./themeFromPrompt";
 import {
   createTypes,
   PROMPT_PLACEHOLDER,
+  CREATE_HINT,
   canSend,
   noAiOptions,
   normalizeCreateType,
@@ -308,6 +309,8 @@ export const CreateModal = ({
     pickType(text, {
       backend: ai.effective,
       providers: appContext.providers,
+      // A change to one of these goes to the Planner (5e-2b).
+      dashboards: (workspaces || []).map((w) => w && (w.name || w.label)),
     }).then((pick) => {
       if (seq !== askSeq.current) return;
       setAutoStep(null);
@@ -410,48 +413,56 @@ export const CreateModal = ({
         <div className="flex flex-col gap-2">
           <Heading2 title="What do you want to make?" padding={false} />
           <p className={`text-sm ${muted}`}>
-            Describe it and Dash builds it with AI, or start without AI below.
+            Describe it and Dash works it out with you, or start without AI
+            below.
           </p>
         </div>
 
-        <div
-          className={`flex flex-col gap-2 rounded-lg border p-3 ${hairline}`}
-        >
-          <TextArea
-            id="create-prompt"
-            aria-label="What do you want to make?"
-            value={prompt}
-            onChange={(value) => setPrompt(value)}
-            placeholder={PROMPT_PLACEHOLDER[type] || ""}
-            rows={3}
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send();
-              }
-            }}
-          />
-          <div className="flex flex-row flex-wrap items-center gap-2">
-            <ChoiceMenu
-              label="Type"
-              value={type}
-              options={createTypes()}
-              onChange={setType}
+        <div className="flex flex-col gap-2">
+          <div
+            className={`flex flex-col gap-2 rounded-lg border p-3 ${hairline}`}
+          >
+            <TextArea
+              id="create-prompt"
+              aria-label="What do you want to make?"
+              value={prompt}
+              onChange={(value) => setPrompt(value)}
+              placeholder={PROMPT_PLACEHOLDER[type] || ""}
+              rows={3}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
             />
-            <div className="flex-1" />
-            {needsAi && (
+            <div className="flex flex-row flex-wrap items-center gap-2">
               <ChoiceMenu
-                label="AI"
-                value={ai.effective}
-                options={ai.options}
-                onChange={ai.setPreferred}
-                align="right"
-                footer={aiFooter}
+                label="Type"
+                value={type}
+                options={createTypes()}
+                onChange={setType}
               />
-            )}
-            <Button title="Send" onClick={send} disabled={!sendable} />
+              <div className="flex-1" />
+              {needsAi && (
+                <ChoiceMenu
+                  label="AI"
+                  value={ai.effective}
+                  options={ai.options}
+                  onChange={ai.setPreferred}
+                  align="right"
+                  footer={aiFooter}
+                />
+              )}
+              <Button title="Send" onClick={send} disabled={!sendable} />
+            </div>
           </div>
+          {CREATE_HINT[type] ? (
+            <span className={`text-xs ${muted}`} data-testid="create-hint">
+              {CREATE_HINT[type]}
+            </span>
+          ) : null}
         </div>
 
         {noAi && (
@@ -540,6 +551,7 @@ export const CreateModal = ({
       prompt={planStep.prompt}
       recentId={planStep.recentId || null}
       seed={planStep.seed || null}
+      openDashboardId={workspaceId}
       onState={setPlanInfo}
       onOpenDashboard={
         onOpenDashboard

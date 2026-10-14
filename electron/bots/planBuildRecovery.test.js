@@ -325,6 +325,11 @@ describe("Edit plan reuses what was built", () => {
         name: "Calendar",
         package: "@trops/google-calendar",
         built: false,
+        placed: {
+          widgetId: 1,
+          component: "trops.google-calendar.Calendar",
+          pageId: null,
+        },
       },
     ]);
   });
@@ -384,6 +389,21 @@ describe("builtSummary — what Remove what was built takes away", () => {
       widgets: ["@ai-built/askbutton"],
       updated: ["@ai-built/old"],
       installs: ["@trops/google-calendar"],
+      // Where each widget went (the mock gives the two built ones id 2).
+      placed: [
+        {
+          widgetId: 1,
+          component: "trops.google-calendar.Calendar",
+          pageId: null,
+        },
+        {
+          widgetId: 2,
+          component: "ai-built.askbutton.AskButton",
+          pageId: null,
+        },
+        { widgetId: 3, component: "dash.bots.BotResults", pageId: null },
+      ],
+      theme: null,
     });
   });
 
@@ -456,5 +476,232 @@ describe("what the Builder and Checker are told (live 4d-3 findings)", () => {
       checks[1],
       /The Builder just changed it to fix this: Check Ask button: the Checker found problems/,
     );
+  });
+});
+
+describe("a plan that changes a dashboard you have (5e-2b)", () => {
+  const targeted = {
+    summary: "Add a clock to Slack Pack and switch its theme",
+    dashboard: { id: "17", name: "Slack Pack" },
+    pieces: [
+      {
+        kind: "widget",
+        name: "Clock",
+        source: "yours",
+        package: "@trops/clock",
+      },
+      { kind: "theme", name: "Nordic Frost", source: "yours" },
+    ],
+  };
+  const targetDeps = (over = {}) => {
+    const calls = [];
+    return {
+      calls,
+      createDashboard: async () => {
+        calls.push(["create"]);
+        return { id: 99, name: "Nope" };
+      },
+      useDashboard: async (id) => {
+        calls.push(["use", id]);
+        return { id: 17, name: "Slack Pack" };
+      },
+      applyTheme: async (req) => {
+        calls.push(["theme", req.dashboardId, req.theme]);
+        return {
+          key: "theme-9",
+          name: req.theme,
+          previous: "theme-2",
+          previousName: "Dusk",
+        };
+      },
+      placeWidget: async (req) => {
+        calls.push(["place", req.dashboardId]);
+        return { component: "trops.clock.Clock", widgetId: 5, pageId: "p1" };
+      },
+      ...over,
+    };
+  };
+
+  it("uses the dashboard instead of making one, applies the theme, and says where things went", async () => {
+    const d = targetDeps();
+    const state = await createPlanBuild(targeted, d).run();
+    assert.equal(state.status, "done");
+    assert.deepEqual(
+      state.steps.map((s) => s.label),
+      [
+        'Use the "Slack Pack" dashboard',
+        "Apply the Nordic Frost theme",
+        "Place Clock",
+      ],
+    );
+    assert.equal(count(d, "create"), 0);
+    assert.deepEqual(d.calls[0], ["use", "17"]);
+    assert.deepEqual(d.calls[1], ["theme", "17", "Nordic Frost"]);
+    assert.deepEqual(state.built.dashboard, {
+      id: "17",
+      name: "Slack Pack",
+      targeted: true,
+    });
+    assert.deepEqual(state.built.placed, [
+      { widgetId: 5, component: "trops.clock.Clock", pageId: "p1" },
+    ]);
+    assert.deepEqual(state.built.theme, {
+      name: "Nordic Frost",
+      key: "theme-9",
+      previous: "theme-2",
+      previousName: "Dusk",
+    });
+  });
+
+  it("a dashboard that's gone fails the step; nothing is placed on another", async () => {
+    const d = targetDeps({
+      useDashboard: async () => {
+        throw new Error("the dashboard isn't there any more");
+      },
+    });
+    const state = await createPlanBuild(targeted, d).run();
+    const s = Object.fromEntries(state.steps.map((x) => [x.id, x]));
+    assert.equal(s.dashboard.status, "failed");
+    assert.equal(s.dashboard.canRetry, true);
+    assert.equal(s.theme.status, "skipped");
+    assert.equal(s["place:0"].status, "skipped");
+    assert.equal(count(d, "create"), 0);
+    assert.equal(count(d, "place"), 0);
+  });
+
+  it("Edit plan keeps the theme it replaced first, so Remove puts the right one back", async () => {
+    const first = await createPlanBuild(targeted, targetDeps()).run();
+    const edited = {
+      ...targeted,
+      pieces: [targeted.pieces[0], { ...targeted.pieces[1], name: "Dawn" }],
+    };
+    const d = targetDeps({
+      applyTheme: async (req) => {
+        d.calls.push(["theme", req.dashboardId, req.theme]);
+        return {
+          key: "theme-3",
+          name: req.theme,
+          previous: "theme-9",
+          previousName: "Nordic Frost",
+        };
+      },
+    });
+    const state = await createPlanBuild(edited, d, {
+      resume: { plan: targeted, state: first },
+    }).run();
+    assert.deepEqual(state.built.theme, {
+      name: "Dawn",
+      key: "theme-3",
+      previous: "theme-2",
+      previousName: "Dusk",
+    });
+    assert.equal(count(d, "use"), 0);
+    assert.equal(count(d, "place"), 0);
+  });
+});
+
+describe("undoOnDashboard — Remove on a dashboard you have (5e-2b)", () => {
+  const { undoOnDashboard } = require("./planBuild");
+  const ws = () => ({
+    id: 17,
+    name: "Slack Pack",
+    themeKey: "theme-9",
+    theme: "theme-9",
+    layout: [
+      {
+        id: 1,
+        component: "LayoutGridContainer",
+        grid: {
+          rows: 1,
+          cols: 2,
+          1.1: { component: 2 },
+          1.2: { component: 5 },
+        },
+      },
+      { id: 2, component: "trops.slack.Channels", parent: 1 },
+      { id: 5, component: "trops.clock.Clock", parent: 1 },
+    ],
+  });
+  const built = {
+    dashboard: { id: "17", name: "Slack Pack", targeted: true },
+    placed: [{ widgetId: 5, component: "trops.clock.Clock", pageId: null }],
+    theme: {
+      name: "Nordic Frost",
+      key: "theme-9",
+      previous: "theme-2",
+      previousName: "Dusk",
+    },
+  };
+
+  it("takes the build's widget off, keeps the user's, and puts the theme back", () => {
+    const r = undoOnDashboard(ws(), built);
+    assert.equal(r.changed, true);
+    assert.equal(r.placed, 1);
+    assert.equal(r.theme, "Dusk");
+    assert.equal(r.workspace.id, 17);
+    assert.deepEqual(
+      r.workspace.layout.map((i) => i.id),
+      [1, 2],
+    );
+    assert.equal(r.workspace.themeKey, "theme-2");
+    assert.equal(r.workspace.theme, "theme-2");
+  });
+
+  it("no theme before: back to the app's theme", () => {
+    const r = undoOnDashboard(ws(), {
+      ...built,
+      theme: { name: "Nordic Frost", key: "theme-9", previous: null },
+    });
+    assert.equal(r.theme, "");
+    assert.equal(r.workspace.themeKey, null);
+    assert.equal("theme" in r.workspace, false);
+  });
+
+  it("a theme the user changed since stays", () => {
+    const w = { ...ws(), themeKey: "Sunset", theme: "Sunset" };
+    const r = undoOnDashboard(w, built);
+    assert.equal(r.theme, null);
+    assert.equal(r.workspace.themeKey, "Sunset");
+  });
+
+  it("nothing left to undo: unchanged", () => {
+    const w = { ...ws(), themeKey: "Sunset" };
+    w.layout = w.layout.filter((i) => i.id !== 5);
+    assert.equal(undoOnDashboard(w, built).changed, false);
+  });
+});
+
+describe("resolveTheme — saved themes are stored by id (5e-2b)", () => {
+  const { resolveTheme, themeChoices } = require("./planBuild");
+  const themes = {
+    "theme-1": { name: "Default 1" },
+    "theme-9": { name: "Nordic Frost" },
+    "theme-a": { name: "refresh" },
+    "theme-b": { name: "refresh" },
+    "Dracula Night": { downloadUrl: "x" },
+  };
+
+  it("finds a theme by name (any case) or id", () => {
+    assert.deepEqual(resolveTheme(themes, "nordic frost"), {
+      key: "theme-9",
+      name: "Nordic Frost",
+    });
+    assert.deepEqual(resolveTheme(themes, "theme-1"), {
+      key: "theme-1",
+      name: "Default 1",
+    });
+    assert.deepEqual(resolveTheme(themes, "Dracula Night"), {
+      key: "Dracula Night",
+      name: "Dracula Night",
+    });
+  });
+
+  it("two themes with the name, or none: says so", () => {
+    assert.match(resolveTheme(themes, "refresh").error, /more than one/);
+    assert.match(
+      resolveTheme(themes, "Sunset").error,
+      /no saved theme called "Sunset"/,
+    );
+    assert.equal(themeChoices(themes).length, 5);
   });
 });

@@ -134,6 +134,15 @@ describe("CreateModal — start screen", () => {
     );
   });
 
+  test("says what happens after Send, so nothing is made without a look first", async () => {
+    setup();
+    await screen.findByRole("button", { name: /^AI: Claude Code/ });
+    expect(screen.getByTestId("create-hint")).toHaveTextContent(
+      "You'll see it in the Widget Builder first. It's only installed when you press Install.",
+    );
+    expect(screen.queryByText(/Dash builds it with AI/)).toBeNull();
+  });
+
   test("Send is off until there's a prompt", async () => {
     setup();
     await screen.findByRole("button", { name: /^AI: Claude Code/ });

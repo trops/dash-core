@@ -105,6 +105,7 @@ describe("roleToolsFor", () => {
         "search_library",
         "list_providers",
         "list_dashboards",
+        "list_themes",
         "ask_role",
         "bot_results",
         "bot_runs",

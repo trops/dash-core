@@ -10,8 +10,10 @@
  *
  *   {
  *     summary:   "A widget with your unread Gmail count",
+ *     dashboard?: { id, name },   // a dashboard the user has: the plan
+ *                                 // changes it instead of making one (5e-2b)
  *     questions: [{ question, options?: [string] }],       // for the user
- *     pieces:    [{ kind: "widget" | "bot" | "layout",
+ *     pieces:    [{ kind: "widget" | "bot" | "layout" | "theme",
  *                   name,
  *                   source: "yours" | "ai-built" | "registry" | "new" | "update",
  *                   package?,        // yours / ai-built / registry / update
@@ -25,6 +27,7 @@
  *                   on?: [{ widget, event }], showResults?: boolean,
                    // made-up lines for the plan's preview (5d)
                    sample?: [string] }],
+                   // theme: one of the user's saved themes (source "yours")
  *     beforeBuilding: [{ kind: "connect" | "install" | "approve", what }],
  *     checks:    [string],                                 // how to tell it worked
  *     access?:   [string],                                 // what bots can / can't do (CRE-003 AC5)
@@ -34,14 +37,25 @@
  * The Planner ends its answer with the plan as JSON inside <plan></plan>.
  * Pure (NFR-006).
  */
-
-const KINDS = ["widget", "bot", "layout"];
+const KINDS = ["widget", "bot", "layout", "theme"];
 const SOURCES = ["yours", "ai-built", "registry", "new", "update"];
 const BEFORE_KINDS = ["connect", "install", "approve"];
 // Pieces that already exist somewhere and so must say which package.
 const NEEDS_PACKAGE = new Set(["yours", "ai-built", "registry", "update"]);
 
 const isStr = (v) => typeof v === "string" && v.trim().length > 0;
+
+/**
+ * The dashboard a plan changes (5e-2b): { id, name } with the id as a
+ * string, or null when the plan makes a new dashboard.
+ */
+function planTarget(plan) {
+  const d = plan && plan.dashboard;
+  if (!d || typeof d !== "object") return null;
+  const id = typeof d.id === "number" ? String(d.id) : d.id;
+  if (!isStr(id)) return null;
+  return { id: id.trim(), name: isStr(d.name) ? d.name.trim() : id.trim() };
+}
 
 /** The plan inside a Planner answer's <plan>…</plan>, or null. */
 function extractPlan(text) {
@@ -58,8 +72,10 @@ function extractPlan(text) {
 /**
  * Check a plan's shape and its promises.
  * @param {object} plan
- * @param {{ providers?: string[] }} [context]  the user's provider types —
- *   a piece needing one they don't have must list it under beforeBuilding.
+ * @param {{ providers?: string[], dashboards?: [{ id }], themes?: string[] }}
+ *   [context]  the user's provider types — a piece needing one they don't
+ *   have must list it under beforeBuilding — and, when given, their
+ *   dashboards and saved theme names (a target or theme must be one of them).
  * @returns {{ valid: boolean, errors: string[], warnings: string[] }}
  */
 function validatePlan(plan, context = {}) {
@@ -86,6 +102,19 @@ function validatePlan(plan, context = {}) {
   if (!Array.isArray(pieces)) errors.push("pieces must be a list.");
   else if (!pieces.length && !(Array.isArray(questions) && questions.length)) {
     errors.push("A plan needs pieces, or questions to ask first.");
+  }
+
+  // A plan that changes a dashboard the user has (5e-2b).
+  const target = planTarget(plan);
+  if (plan.dashboard !== undefined && plan.dashboard !== null && !target) {
+    errors.push("dashboard needs the id of one of the user's dashboards.");
+  }
+  if (
+    target &&
+    Array.isArray(context.dashboards) &&
+    !context.dashboards.some((d) => d && String(d.id) === target.id)
+  ) {
+    errors.push(`The "${target.name}" dashboard isn't there any more.`);
   }
 
   const before = plan.beforeBuilding === undefined ? [] : plan.beforeBuilding;
@@ -124,6 +153,22 @@ function validatePlan(plan, context = {}) {
       } else if (NEEDS_PACKAGE.has(p.source) && p.kind === "widget") {
         if (!isStr(p.package)) {
           errors.push(`${at} (${p.source}) must say which package.`);
+        }
+      }
+      if (p.kind === "layout" && target) {
+        errors.push(
+          `${at}: a plan that changes a dashboard you have can't add a layout.`,
+        );
+      }
+      if (p.kind === "theme") {
+        if (p.source !== "yours") {
+          errors.push(`${at} (a theme) must be one of your saved themes.`);
+        } else if (
+          isStr(p.name) &&
+          Array.isArray(context.themes) &&
+          !context.themes.includes(p.name.trim())
+        ) {
+          errors.push(`${at}: there's no saved theme called "${p.name}".`);
         }
       }
       if (p.providers !== undefined && !Array.isArray(p.providers)) {
@@ -233,6 +278,13 @@ function validatePlan(plan, context = {}) {
     });
   }
 
+  if (
+    Array.isArray(pieces) &&
+    pieces.filter((p) => p && p.kind === "theme").length > 1
+  ) {
+    errors.push("A plan applies one theme at most.");
+  }
+
   if (plan.checks !== undefined && !Array.isArray(plan.checks)) {
     errors.push("checks must be a list.");
   } else if (
@@ -263,4 +315,4 @@ function validatePlan(plan, context = {}) {
   return { valid: errors.length === 0, errors, warnings };
 }
 
-export { KINDS, SOURCES, BEFORE_KINDS, extractPlan, validatePlan };
+export { KINDS, SOURCES, BEFORE_KINDS, extractPlan, planTarget, validatePlan };

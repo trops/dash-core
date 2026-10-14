@@ -13,7 +13,7 @@
  */
 "use strict";
 
-const { layoutOf, withLayout } = require("./activeLayout");
+const { layoutOf, withLayout, shownPage } = require("./activeLayout");
 
 function clone(v) {
   return JSON.parse(JSON.stringify(v));
@@ -106,7 +106,8 @@ function placeInto(layout, component, userPrefs, at = null) {
  *           row?: number, col?: number }} widget — `page` by name or id
  *   (default: the page shown); `row` + `col` ask for a cell (default: the
  *   next empty one, or a new row)
- * @returns {{ workspace: object, widgetId: number, cell: {row, col}|null }}
+ * @returns {{ workspace: object, widgetId: number, cell: {row, col}|null,
+ *   pageId: string|null }} — pageId: the page it went on (null without pages)
  * @throws on an unknown page, or a cell outside the grid / already taken
  */
 function placeWidget(workspace, { component, userPrefs, page, row, col } = {}) {
@@ -120,7 +121,11 @@ function placeWidget(workspace, { component, userPrefs, page, row, col } = {}) {
   const at = row !== undefined && col !== undefined ? { row, col } : null;
   const placed = placeInto(layout, component, userPrefs, at);
   withLayout(ws, layout, target.page);
-  return { workspace: ws, ...placed };
+  return {
+    workspace: ws,
+    ...placed,
+    pageId: target.page ? target.page.id : null,
+  };
 }
 
 /**
@@ -191,4 +196,58 @@ function addWidgetListener(
   return found ? ws : null;
 }
 
-module.exports = { placeWidget, setWidgetPrefs, addWidgetListener };
+/**
+ * Take widgets a plan build placed off a dashboard (Remove what was built on
+ * a dashboard you have, create-entry 5e-2b): each `{ widgetId, component,
+ * pageId }` comes off the page it was placed on — widget ids repeat across
+ * pages — and off the top-level mirror when that page is shown. Its grid
+ * cell is emptied; rows the build added stay. A widget that's gone (or now
+ * holds another component) is skipped.
+ * @returns {{ workspace: object, removed: number }}
+ */
+function removeWidgets(workspace, placed) {
+  const ws = clone(workspace || {});
+  const pages = Array.isArray(ws.pages) ? ws.pages : [];
+  const shown = shownPage(ws);
+  let removed = 0;
+  const takeOut = (layout, { widgetId, component }) => {
+    if (!Array.isArray(layout)) return false;
+    const at = layout.findIndex(
+      (i) =>
+        i &&
+        String(i.id) === String(widgetId) &&
+        (!component || i.component === component),
+    );
+    if (at < 0) return false;
+    layout.splice(at, 1);
+    for (const node of layout) {
+      if (!node || !node.grid) continue;
+      for (const [key, cell] of Object.entries(node.grid)) {
+        if (cell && String(cell.component) === String(widgetId)) {
+          node.grid[key] = { ...cell, component: null };
+        }
+      }
+    }
+    return true;
+  };
+  for (const p of placed || []) {
+    if (!p || p.widgetId == null) continue;
+    if (pages.length) {
+      const page =
+        pages.find((x) => x && String(x.id) === String(p.pageId)) || null;
+      if (!page) continue;
+      if (takeOut(page.layout, p)) removed++;
+      if (page === shown) takeOut(ws.layout, p);
+    } else if (takeOut(ws.layout, p)) {
+      removed++;
+    }
+  }
+  return { workspace: ws, removed };
+}
+
+module.exports = {
+  placeWidget,
+  setWidgetPrefs,
+  addWidgetListener,
+  removeWidgets,
+};

@@ -277,7 +277,7 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
                   testId="create-dock-empty"
                   className="my-auto"
                   title="Nothing here yet"
-                  description="Ask about your dashboards and bots below. Questions, plans and unfinished widgets show up here."
+                  description="Ask about your dashboards and bots below. Ask for something new and you'll get a plan to review first — nothing is made until you press Build. Questions, plans and unfinished widgets show up here."
                 >
                   {makeNew}
                 </EmptyState>

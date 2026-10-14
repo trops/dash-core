@@ -56,6 +56,21 @@ export const PROMPT_PLACEHOLDER = {
 };
 
 /**
+ * What happens after Send, said before it (create-entry 5e-2b): the user
+ * always gets to look first — nothing is made behind their back.
+ */
+export const CREATE_HINT = {
+  auto: "You'll review what Dash makes first. Nothing is added until you say so.",
+  dashboard:
+    "You'll get a plan to review first. Nothing is made until you press Build.",
+  widget:
+    "You'll see it in the Widget Builder first. It's only installed when you press Install.",
+  bot: "The bot opens in a form for you to check. Nothing is saved until you save it.",
+  theme:
+    "It opens in the theme editor for you to check. Nothing changes until you save it.",
+};
+
+/**
  * Start without AI. Dashboard and theme actions are always offered; each
  * type adds its own.
  */

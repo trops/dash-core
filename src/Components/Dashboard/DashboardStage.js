@@ -737,6 +737,19 @@ const DashboardStageInner = ({
       }
     };
   }, [isDirty]);
+  // Which dashboard has the unsaved edits, so Create doesn't change it
+  // mid-edit (create-entry 5e-2b: two saves would overwrite each other).
+  const dirtyWorkspaceId = isDirty ? (workspaceSelected?.id ?? null) : null;
+  useEffect(() => {
+    if (typeof globalThis !== "undefined") {
+      globalThis.__dashboardDirtyId = dirtyWorkspaceId;
+    }
+    return () => {
+      if (typeof globalThis !== "undefined") {
+        globalThis.__dashboardDirtyId = null;
+      }
+    };
+  }, [dirtyWorkspaceId]);
 
   // ─── First-run onboarding gate (Phase 3A) ────────────────────────
   // Decision fires exactly once per mount after the first workspaces
