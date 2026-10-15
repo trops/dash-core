@@ -64,3 +64,23 @@ describe("resolveWidgetComponent", () => {
     );
   });
 });
+
+describe("resolveWidgetComponent — the piece's name picks the component (Create build fixes)", () => {
+  it("a name matching one component, ignoring spaces and case", () => {
+    assert.equal(
+      resolveWidgetComponent("@trops/algolia", null, installed, {
+        name: "Algolia Rules List",
+      }).component,
+      "trops.algolia.AlgoliaRulesList",
+    );
+  });
+
+  it("a name that matches none still asks which", () => {
+    assert.match(
+      resolveWidgetComponent("@trops/algolia", null, installed, {
+        name: "Rules",
+      }).error,
+      /several widgets/,
+    );
+  });
+});

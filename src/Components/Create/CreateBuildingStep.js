@@ -310,7 +310,9 @@ export const CreateBuildingStep = ({
                   {s.detail}
                 </span>
               ) : null}
-              {s.kind === "check" && s.status === "failed" && s.detail ? (
+              {(s.kind === "check" || s.kind === "build") &&
+              s.status === "failed" &&
+              s.detail ? (
                 <pre
                   className={`text-xs ml-7 whitespace-pre-wrap font-mono ${muted}`}
                   style={{ maxHeight: "10rem", overflowY: "auto" }}

@@ -427,7 +427,7 @@ describe("buildRequest with a fix", () => {
     });
     assert.match(req, /^Build this plan's widget again/);
     assert.match(req, /What went wrong: the Builder didn't build it/);
-    assert.doesNotMatch(req, /update: true/);
+    assert.doesNotMatch(req, /build_widget with update: true/);
   });
 });
 

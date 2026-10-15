@@ -243,7 +243,7 @@ describe("Dash team instructions (phase 4a)", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /"access": \[string\]/);
     assert.match(planner.instructions, /short tappable options/);
-    assert.equal(planner.history.length, 7);
+    assert.equal(planner.history.length, 8);
   });
 });
 
@@ -261,8 +261,8 @@ describe("Dash team instructions (phase 4d-2)", () => {
     );
     assert.match(planner.instructions, /"showResults": boolean/);
     // The 4a text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[4], /short tappable options/);
-    assert.doesNotMatch(planner.history[4], /showResults/);
+    assert.match(planner.history[5], /short tappable options/);
+    assert.doesNotMatch(planner.history[5], /showResults/);
   });
 });
 
@@ -272,8 +272,8 @@ describe("Dash team instructions (phase 5d)", () => {
     assert.match(planner.instructions, /"sample": \[string\]/);
     assert.match(planner.instructions, /never the user's real data/);
     // The 4d-2 text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[3], /"showResults": boolean/);
-    assert.doesNotMatch(planner.history[3], /"sample"/);
+    assert.match(planner.history[4], /"showResults": boolean/);
+    assert.doesNotMatch(planner.history[4], /"sample"/);
   });
 });
 
@@ -287,8 +287,8 @@ describe("Dash team instructions (phase 5e)", () => {
       /When the user asks to make or change something, end every answer with the plan/,
     );
     // The 5d text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[2], /"sample": \[string\]/);
-    assert.doesNotMatch(planner.history[2], /bot_results/);
+    assert.match(planner.history[3], /"sample": \[string\]/);
+    assert.doesNotMatch(planner.history[3], /bot_results/);
   });
 });
 
@@ -301,8 +301,8 @@ describe("Dash team instructions (screen audit: typed answers)", () => {
       /never offer options like "I'll type it"/,
     );
     // The 5e-1 text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[1], /bot_results/);
-    assert.doesNotMatch(planner.history[1], /give that question no options/);
+    assert.match(planner.history[2], /bot_results/);
+    assert.doesNotMatch(planner.history[2], /give that question no options/);
   });
 });
 
@@ -322,7 +322,28 @@ describe("Dash team instructions (5e-2b: changing a dashboard you have)", () => 
     assert.match(planner.instructions, /Removing, moving or resizing widgets/);
     assert.match(planner.instructions, /ask which/);
     // The text before this is upgraded.
-    assert.match(planner.history[0], /give that question no options/);
-    assert.doesNotMatch(planner.history[0], /list_themes/);
+    assert.match(planner.history[1], /give that question no options/);
+    assert.doesNotMatch(planner.history[1], /list_themes/);
+  });
+});
+
+describe("Dash team instructions — which widget of a package (Create build fixes)", () => {
+  const { ROLES } = require("./dashTeam");
+  const planner = ROLES.find((r) => r.role === "planner");
+  it("the Planner names the component for a package with several widgets", () => {
+    assert.match(planner.instructions, /"component": string/);
+    assert.match(
+      planner.instructions,
+      /when its package has several widgets, component — the component name as search_library gave it/,
+    );
+  });
+  it("the earlier Planner text upgrades", () => {
+    assert.ok(
+      planner.history.some(
+        (h) =>
+          h.includes("Reusing beats building") &&
+          !h.includes('"component": string'),
+      ),
+    );
   });
 });

@@ -2198,10 +2198,15 @@ const botController = {
           const bot = dashTeamBot(this._store.list(), role);
           if (bot) this._runner.abort(bot.id);
         },
-        placeWidget: ({ dashboardId, component, widget }) => {
+        placeWidget: ({ dashboardId, component, widget, name }) => {
+          // A full component id (an install's) is placed as it is; otherwise
+          // the package, with the component or the piece's name to pick one.
+          const full = !!component && String(component).split(".").length >= 3;
           const res = this._teamPlaceWidget({
             dashboard: dashboardId,
-            widget: component || widget,
+            widget: full ? component : widget,
+            component: full ? null : component || null,
+            name: name || null,
           });
           if (res && res.error) throw new Error(res.error);
           return res;
@@ -2658,7 +2663,8 @@ const botController = {
     if (this._pause.isPaused(bot.id)) {
       return { skipped: true, reason: `the ${bot.name} is paused` };
     }
-    return this._run(bot.id, {
+    this._takeBuilds(bot.id);
+    const record = await this._run(bot.id, {
       prompt: planId ? `${request}\n\n${MEMORY_NOTE}` : request,
       trigger: "ask",
       via: "plan-build",
@@ -2666,6 +2672,34 @@ const botController = {
       // The plan's build memory (4e-1).
       ...(planId ? { planId: String(planId) } : {}),
     });
+    // What build_widget said during the run — the build step trusts it over
+    // the Builder's answer (Create build fixes).
+    if (record && typeof record === "object") {
+      record.builds = this._takeBuilds(bot.id);
+    }
+    return record;
+  },
+
+  /** Note a Dash team build_widget result for the run in progress. */
+  _noteBuild(botId, result) {
+    if (!this._buildNotes) this._buildNotes = new Map();
+    const list = this._buildNotes.get(botId) || [];
+    const text = String((result && result.text) || "");
+    if (result && !result.isError) {
+      const m = text.match(/@ai-built\/[a-z0-9][a-z0-9-]*/i);
+      list.push({ ok: true, package: m ? m[0].toLowerCase() : null });
+    } else {
+      list.push({ ok: false, error: text.slice(0, 500) });
+    }
+    this._buildNotes.set(botId, list.slice(-10));
+  },
+
+  /** The build_widget results noted for a bot, cleared. */
+  _takeBuilds(botId) {
+    if (!this._buildNotes) return [];
+    const list = this._buildNotes.get(botId) || [];
+    this._buildNotes.delete(botId);
+    return list;
   },
 
   /** What the Dash team's role tools read and run (roleTools.js). */
@@ -2809,7 +2843,16 @@ const botController = {
    * a named one, the next free cell or a given one — then save and refresh
    * open windows (CRE-011, scenarios G4).
    */
-  _teamPlaceWidget({ dashboard, widget, component, page, row, col, settings }) {
+  _teamPlaceWidget({
+    dashboard,
+    widget,
+    component,
+    name = null,
+    page,
+    row,
+    col,
+    settings,
+  }) {
     const dashboards = this._dashboardsWithBots();
     const want = String(dashboard || "").trim();
     const hit =
@@ -2822,8 +2865,11 @@ const botController = {
         }.`,
       };
     }
-    const resolved = resolveWidgetComponent(widget, component, () =>
-      require("../widgetRegistry").getWidgetRegistry().getWidgets(),
+    const resolved = resolveWidgetComponent(
+      widget,
+      component,
+      () => require("../widgetRegistry").getWidgetRegistry().getWidgets(),
+      { name },
     );
     if (resolved.error) return resolved;
     const ws = this._loadWorkspace(hit.id);
@@ -3133,12 +3179,14 @@ const botController = {
       if (serverForTool(toolName) !== serverName) {
         return { text: `"${toolName}" isn't served here.`, isError: true };
       }
-      return handleRoleTool(
+      const result = await handleRoleTool(
         this._roleToolDeps(),
         { botId: caller.id, role: caller.role },
         toolName,
         args,
       );
+      if (toolName === "build_widget") this._noteBuild(caller.id, result);
+      return result;
     }
     const win = this._getMainWindow();
     // The bot's per-provider whitelist (provider limit ∩ bot selection), from

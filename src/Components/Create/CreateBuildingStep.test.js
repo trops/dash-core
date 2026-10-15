@@ -155,6 +155,31 @@ test("progress updates arrive; the end shows problems, cost vs estimate and Go t
   expect(onOpenDashboard).toHaveBeenCalledWith("77");
 });
 
+test("a failed build shows why and the Builder's answer (Create build fixes)", () => {
+  const failedBuild = {
+    ...finished,
+    steps: [
+      {
+        id: "build:1",
+        kind: "build",
+        role: "builder",
+        label: "Build Index Compare",
+        status: "failed",
+        error:
+          "the Builder didn't build it — build_widget said: Line 3: x is not defined",
+        detail: "I tried twice; the import of the config is still wrong.",
+      },
+    ],
+  };
+  render(<CreateBuildingStep buildId="b1" initialState={failedBuild} />);
+  expect(screen.getByTestId("building-step-error")).toHaveTextContent(
+    "build_widget said: Line 3: x is not defined",
+  );
+  expect(
+    screen.getByText(/the import of the config is still wrong/),
+  ).toBeInTheDocument();
+});
+
 test("saved bots are offered as Run now — never run on their own (4d-2)", async () => {
   window.mainApi.bots.run = jest.fn().mockResolvedValue({ runId: "r1" });
   const withBots = {

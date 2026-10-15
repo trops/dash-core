@@ -15,6 +15,7 @@
  *                   name,
  *                   source: "yours" | "ai-built" | "registry" | "new" | "update",
  *                   package?,        // yours / ai-built / registry / update
+ *                   component?,      // which widget, when the package has several
  *                   providers?: [type],
  *                   notes?,
  *                   // widget: events it publishes; bot results it shows
@@ -170,6 +171,9 @@ function validatePlan(plan, context = {}) {
         ) {
           errors.push(`${at}: there's no saved theme called "${p.name}".`);
         }
+      }
+      if (p.component !== undefined && !isStr(p.component)) {
+        errors.push(`${at}.component must be the component's name.`);
       }
       if (p.providers !== undefined && !Array.isArray(p.providers)) {
         errors.push(`${at}.providers must be a list.`);
