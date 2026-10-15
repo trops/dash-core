@@ -31,11 +31,19 @@ const { matchSubscribedBots } = require("../bots/eventMatcher");
 const { EventDispatcher } = require("../bots/EventDispatcher");
 const { normalizeMcpResult } = require("../bots/mcpResult");
 const BotEventPublisher = require("../bots/BotEventPublisher");
+const { PausedQueue, drainBot } = require("../bots/pausedQueue");
 const {
   stopBotRun,
   whenIdle: waitUntilIdle,
   interruptAllRuns,
 } = require("../bots/stopRun");
+
+/** Resolves once the bot has no run in progress (checked every 500ms). */
+async function waitForBotIdle(runner, botId) {
+  while (runner.isRunning(botId)) {
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
 const {
   buildTeamManifest,
   validateTeamManifest,
@@ -258,6 +266,14 @@ const botController = {
         save: (state) => this._store.setPauseState(state),
       },
     });
+    // Events that came in for paused / over-budget bots, kept until they're
+    // resumed (US-011 AC8); sealed and saved with the bots.
+    this._pausedQueue = new PausedQueue({
+      persistence: {
+        load: () => this._store.getPausedQueue(),
+        save: (q) => this._store.setPausedQueue(q),
+      },
+    });
 
     // Budgets: accrue per-run cost, auto-pause bots over their monthly cap.
     this._budgets = new BudgetController({
@@ -399,6 +415,9 @@ const botController = {
     this.ensureDashTeam();
 
     this._ready = true;
+    // Events kept for bots that are no longer held (resumed before Dash
+    // last quit, or a new month for an over-budget bot) run now.
+    setImmediate(() => this._drainQueued());
   },
 
   /**
@@ -445,7 +464,6 @@ const botController = {
       excludeBotId: event.originBotId,
     });
     for (const bot of bots) {
-      if (this._pause.isPaused(bot.id)) continue;
       const loop = checkChain(event, bot.id);
       if (!loop.ok) {
         // Visible in the Activity feed rather than silently dropped.
@@ -458,19 +476,107 @@ const botController = {
         });
         continue;
       }
+      // Paused or over budget (US-011 AC8): keep it for when the bot is
+      // resumed, or log it as skipped — never drop it silently.
+      if (this._isHeld(bot.id)) {
+        this._holdEvent(bot, event);
+        continue;
+      }
       if (!this._dispatcher.shouldDispatch(bot.id)) continue;
       this._dispatcher.note(bot.id);
-      // The owner's note on the trigger that matched (TEAM-014), if any.
-      const sub = (bot.subscriptions || []).find(
-        (s) => s && s.eventType === event.eventType,
-      );
-      this._run(bot.id, {
-        prompt: composeEventPrompt(event, sub && sub.note),
+      this._runEvent(bot, event);
+    }
+  },
+
+  /** Run a bot for an event it subscribes to (live, or kept while paused). */
+  _runEvent(bot, event) {
+    // The owner's note on the trigger that matched (TEAM-014), if any.
+    const sub = (bot.subscriptions || []).find(
+      (s) => s && s.eventType === event.eventType,
+    );
+    return this._run(bot.id, {
+      prompt: composeEventPrompt(event, sub && sub.note),
+      trigger: "event",
+      cause: causeFromEvent(event),
+      source: sourceFromEvent(bot, event),
+    });
+  },
+
+  /** A bot that won't run now: paused, or over its budget. */
+  _isHeld(botId) {
+    const bot = this._store.get(botId) || {};
+    return (
+      this._pause.isPaused(botId) ||
+      this._budgets.isOverBudget(botId, bot.workspaceId)
+    );
+  },
+
+  /**
+   * An event for a held bot, per its `whilePaused` (US-011 AC8): "queue"
+   * (default) keeps the latest per trigger for when it's resumed; "drop"
+   * logs it in Activity as skipped.
+   */
+  _holdEvent(bot, event) {
+    const source = sourceFromEvent(bot, event);
+    if (bot.whilePaused === "drop") {
+      const now = new Date().toISOString();
+      this._store.appendRun(bot.id, {
         trigger: "event",
-        cause: causeFromEvent(event),
-        source: sourceFromEvent(bot, event),
+        status: "skipped",
+        skipped: "paused",
+        startedAt: now,
+        endedAt: now,
+        usage: null,
+        error: null,
+        output: "",
+        prompt: "",
+        toolCalls: [],
+        approvals: [],
+        source,
+      });
+    } else {
+      this._pausedQueue.add(bot.id, event.eventType, {
+        event,
+        label: (source && source.label) || event.eventType,
       });
     }
+    // Lists refresh: "1 event waiting", or the skipped entry.
+    this._notifyListChanged();
+  },
+
+  /**
+   * Run what waited for resumed bots, one after another per bot (US-011
+   * AC8). Bots still held keep theirs. Fire-and-forget.
+   * @param {string[]} [botIds] defaults to every bot with something waiting
+   */
+  _drainQueued(botIds) {
+    const ids = botIds || this._pausedQueue.botIds();
+    for (const botId of ids) {
+      if (!this._pausedQueue.count(botId) || this._isHeld(botId)) continue;
+      drainBot({
+        queue: this._pausedQueue,
+        botId,
+        isHeld: (id) => this._isHeld(id),
+        runOne: (item) => this._runQueued(botId, item),
+      })
+        .then(() => this._notifyListChanged())
+        .catch(() => {});
+      this._notifyListChanged();
+    }
+  },
+
+  /** One waiting event's run — after any run the bot is already doing. */
+  async _runQueued(botId, item) {
+    for (let tries = 0; tries < 3; tries++) {
+      await waitForBotIdle(this._runner, botId);
+      const bot = this._store.get(botId);
+      if (!bot) return null;
+      const rec = await this._runEvent(bot, item.event);
+      if (!(rec && rec.skipped && /in progress/.test(rec.reason || ""))) {
+        return rec;
+      }
+    }
+    return null;
   },
 
   // ---- IPC-facing operations ---------------------------------------------
@@ -574,6 +680,8 @@ const botController = {
     // Its private memory (bots with no dashboard) goes with it; team and
     // global memory are shared and stay.
     this._memory.forgetBot(botId);
+    // Events it was keeping while paused go too.
+    this._pausedQueue.clear(botId);
     return this._store.delete(botId);
   },
 
@@ -1536,6 +1644,8 @@ const botController = {
     const v = this._budgets.setBudget(scope, id, monthlyUsd);
     // "Over budget" / "80% of budget" may have changed.
     this._broadcast(BOT_LIST_CHANGED, {});
+    // A raised limit frees bots — what waited for them runs (US-011 AC8).
+    this._drainQueued();
     return v;
   },
 
@@ -1549,6 +1659,8 @@ const botController = {
     const ok = this._budgets.resumeOverBudget(botId);
     // Lists showing "Over budget" refresh.
     this._broadcast(BOT_LIST_CHANGED, {});
+    // What waited while it was over budget runs now (US-011 AC8).
+    this._drainQueued([botId]);
     return ok;
   },
 
@@ -1617,6 +1729,7 @@ const botController = {
 
   resumeAll() {
     this._pause.resumeAll();
+    this._drainQueued();
     return this._pause.list();
   },
 
@@ -1627,6 +1740,7 @@ const botController = {
 
   resumeBot(botId) {
     this._pause.resumeBot(botId);
+    this._drainQueued([botId]);
     return this._pause.list();
   },
 
@@ -1634,8 +1748,12 @@ const botController = {
     return this._pause.isGloballyPaused();
   },
 
+  /**
+   * Who's paused, and how many events wait for each held bot (US-011 AC8):
+   * { global, bots, queued: { [botId]: n } }.
+   */
   getPauseState() {
-    return this._pause.list();
+    return { ...this._pause.list(), queued: this._pausedQueue.counts() };
   },
 
   // ---- internals ----------------------------------------------------------

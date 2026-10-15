@@ -102,6 +102,12 @@ const APPROVAL_OPTIONS = [
   { value: "allow", label: "Allow without prompting" },
 ];
 
+// Events that arrive while the bot is paused or over budget (US-011 AC8).
+const WHILE_PAUSED_OPTIONS = [
+  { value: "queue", label: "Run them when it's resumed" },
+  { value: "drop", label: "Skip them" },
+];
+
 // "" → derive the engine from the provider (tool-loop). The Claude Agent engine
 // gives the bot native file/shell/code tools.
 const ENGINE_OPTIONS = [
@@ -214,6 +220,10 @@ export const BotDetail = ({
     bot?.approvalPolicy || "ask",
   );
   const approvalHint = APPROVAL_HINTS[approvalPolicy] || null;
+  // Events that arrive while it's paused or over budget (US-011 AC8).
+  const [whilePaused, setWhilePaused] = useState(
+    bot?.whilePaused === "drop" ? "drop" : "queue",
+  );
 
   // --- Providers: the user's Dash MCP providers (Settings → Providers) ---
   const [selectedServers, setSelectedServers] = useState(bot?.mcpServers || []);
@@ -357,6 +367,7 @@ export const BotDetail = ({
     model,
     engine,
     approvalPolicy,
+    whilePaused,
     selectedServers,
     toolSelections,
     frequency,
@@ -649,6 +660,7 @@ export const BotDetail = ({
       ),
       schedules,
       subscriptions,
+      whilePaused,
       // A blank label falls back to the result's name.
       publishes: publishes.map((p) => ({
         ...p,
@@ -1110,6 +1122,14 @@ export const BotDetail = ({
               <span className="text-xs opacity-50">
                 The bot runs automatically when one of these events fires.
               </span>
+              {subscriptions.length ? (
+                <SelectInput
+                  label="While paused"
+                  value={whilePaused}
+                  onChange={setWhilePaused}
+                  options={WHILE_PAUSED_OPTIONS}
+                />
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-2">

@@ -73,3 +73,14 @@ test("loads budgets; Keep running this month calls the override and reloads", as
   expect(api.resumeBudget).toHaveBeenCalledWith("b1");
   await waitFor(() => expect(result.current.budgets.b1.over).toBe(false));
 });
+
+test("knows how many events wait for each held bot (US-011 AC8)", async () => {
+  const { api } = setup();
+  api.getPauseState.mockResolvedValue({
+    global: false,
+    bots: ["b1"],
+    queued: { b1: 2 },
+  });
+  const { result } = renderHook(() => useBotContacts());
+  await waitFor(() => expect(result.current.queued).toEqual({ b1: 2 }));
+});

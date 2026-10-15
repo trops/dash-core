@@ -229,3 +229,28 @@ describe("budgets on the contacts (US-019)", () => {
     expect(out.approvals).toHaveLength(1);
   });
 });
+
+describe("events waiting for held bots (US-011 AC8)", () => {
+  const base = { running: [], approvals: [], now: NOW };
+  test("a paused bot's row says how many wait", () => {
+    expect(
+      contactOf(bots[1], {
+        ...base,
+        last: null,
+        paused: new Set([bots[1].id]),
+        queued: 1,
+      }),
+    ).toMatchObject({ status: "Paused", line: "Paused · 1 event waiting" });
+  });
+  test("an over-budget bot's row too", () => {
+    const c = contactOf(bots[1], {
+      ...base,
+      last: null,
+      paused: new Set(),
+      budget: { over: true, limit: 5, scopes: ["bot"] },
+      queued: 3,
+    });
+    expect(c.status).toBe("Over budget");
+    expect(c.line).toMatch(/· 3 events waiting$/);
+  });
+});

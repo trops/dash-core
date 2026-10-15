@@ -412,3 +412,38 @@ describe("BotStore — latest results", () => {
     assert.deepEqual(store.getResult(bot.id, "emails"), payload(1));
   });
 });
+
+// Events waiting for paused bots (bot-factory US-011 AC8).
+describe("BotStore — paused-bot event queue", () => {
+  const { createSecretBox } = require("./secretBox");
+  const crypto = {
+    isEncryptionAvailable: () => true,
+    encryptString: (s) => Buffer.from("X" + s, "utf8"),
+    decryptString: (b) => b.toString("utf8").slice(1),
+  };
+  const queue = { b1: { A: { key: "A", event: { content: "secret mail" } } } };
+
+  it("saves and reads it back, sealed at rest", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "botstore-test-"));
+    tmpRoots.push(root);
+    const persistence = memPersistence();
+    const store = new BotStore({
+      persistence,
+      paths: { botsRoot: root },
+      secretBox: createSecretBox(crypto),
+    });
+    assert.equal(store.getPausedQueue(), null);
+    store.setPausedQueue(queue);
+    const raw = persistence._blob().pausedQueue;
+    assert.ok(raw.startsWith("enc:v1:"));
+    assert.ok(!raw.includes("secret mail"));
+    assert.deepEqual(store.getPausedQueue(), queue);
+  });
+
+  it("survives a restart", () => {
+    const { store, persistence, root } = freshStore();
+    store.setPausedQueue(queue);
+    const again = new BotStore({ persistence, paths: { botsRoot: root } });
+    assert.deepEqual(again.getPausedQueue(), queue);
+  });
+});

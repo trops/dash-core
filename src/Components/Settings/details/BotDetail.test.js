@@ -1552,3 +1552,34 @@ describe("BotDetail — Dash team role (CRE-011)", () => {
     expect(screen.queryByText("Delete")).toBeNull();
   });
 });
+
+describe("BotDetail — While paused (US-011 AC8)", () => {
+  const withTrigger = {
+    id: "b1",
+    name: "Agenda",
+    instructions: "x",
+    provider: "claude-code",
+    subscriptions: [{ eventType: "Clock[1].tick", label: "Clock · tick" }],
+  };
+
+  it("shows for a bot with triggers, defaults to running them later, and saves", () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(<BotDetail bot={withTrigger} providers={{}} onSave={onSave} />);
+    const select = screen.getByLabelText("While paused");
+    expect(select).toHaveValue("queue");
+    fireEvent.change(select, { target: { value: "drop" } });
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave.mock.calls[0][0].whilePaused).toBe("drop");
+  });
+
+  it("isn't shown for a bot that no event triggers", () => {
+    render(
+      <BotDetail
+        bot={{ ...withTrigger, subscriptions: [] }}
+        providers={{}}
+        onSave={jest.fn()}
+      />,
+    );
+    expect(screen.queryByLabelText("While paused")).toBeNull();
+  });
+});

@@ -28,6 +28,15 @@ export function retryNote(retry) {
   return `${r.reason || "Something went wrong"} — trying again in ${secs}s (${r.attempt} of ${r.of})`;
 }
 
+/**
+ * "2 events waiting" — events kept for a paused / over-budget bot (US-011
+ * AC8), or null when none.
+ */
+export function waitingText(n) {
+  if (!n) return null;
+  return `${n} event${n === 1 ? "" : "s"} waiting`;
+}
+
 /** A run stopped because Dash quit mid-way (US-018 AC6). */
 export const INTERRUPTED_TEXT = "Interrupted when Dash quit";
 
@@ -137,6 +146,18 @@ function turnsForRun(
 ) {
   const turns = [];
   const at = r.startedAt || r.at || null;
+  // An event that came while it was paused, skipped by its "While paused"
+  // setting (US-011 AC8): one line, no conversation.
+  if (r.status === "skipped" && r.skipped === "paused") {
+    const what = r.source && (r.source.label || r.source.eventType);
+    return [
+      {
+        kind: "system",
+        text: `Skipped while paused${what ? ` · ${what}` : ""}`,
+        at,
+      },
+    ];
+  }
   const label = triggerLabel(r, nameOf);
   if (label) {
     // Event prompts are machine-written (and fence untrusted payloads) — show

@@ -297,3 +297,45 @@ describe("botController — quitting with runs in progress (US-018 AC6)", () => 
     );
   });
 });
+
+describe("botController — events for paused bots (US-011 AC8)", () => {
+  it("handleEvent keeps or skips events for held bots instead of dropping them", () => {
+    assert.match(
+      ctrl,
+      /if \(this\._isHeld\(bot\.id\)\) \{\s+this\._holdEvent\(bot, event\);\s+continue;/,
+    );
+    assert.doesNotMatch(
+      ctrl,
+      /if \(this\._pause\.isPaused\(bot\.id\)\) continue;/,
+    );
+    assert.match(ctrl, /bot\.whilePaused === "drop"/);
+    assert.match(ctrl, /this\._pausedQueue\.add\(bot\.id, event\.eventType,/);
+  });
+
+  it("held means paused or over budget", () => {
+    assert.match(
+      ctrl,
+      /this\._pause\.isPaused\(botId\) \|\|\s+this\._budgets\.isOverBudget\(botId, bot\.workspaceId\)/,
+    );
+  });
+
+  it("resuming runs what waited; deleting a bot drops its queue", () => {
+    assert.match(
+      ctrl,
+      /this\._pause\.resumeBot\(botId\);\s+this\._drainQueued\(\[botId\]\);/,
+    );
+    assert.match(
+      ctrl,
+      /this\._pause\.resumeAll\(\);\s+this\._drainQueued\(\);/,
+    );
+    assert.match(
+      ctrl,
+      /resumeOverBudget\(botId\);[\s\S]{0,200}this\._drainQueued\(\[botId\]\);/,
+    );
+    assert.match(
+      ctrl,
+      /this\._pausedQueue\.clear\(botId\);\s+return this\._store\.delete\(botId\);/,
+    );
+    assert.match(ctrl, /queued: this\._pausedQueue\.counts\(\)/);
+  });
+});
