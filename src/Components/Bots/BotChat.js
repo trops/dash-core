@@ -23,6 +23,7 @@ import {
   errorNextSteps,
   skipNotice,
   toPlainText,
+  waitingText,
 } from "./botConversation";
 import { appendAnswerText } from "../../utils/answerText";
 import { runCostLabel } from "../../utils/runCostLabel";
@@ -57,6 +58,8 @@ import { runCostLabel } from "../../utils/runCostLabel";
  * @param {string} [overBudget]  the limit it's over ("its $5.00 monthly
  *   budget") — it won't run; the box waits (US-019)
  * @param {() => void} [onKeepRunning]  Keep running this month
+ * @param {number} [queuedEvents]  events kept for it while it's held — the
+ *   paused / over-budget note says so (US-011 AC8)
  *
  * A message the runner skips (paused, busy) stays in the box with why
  * (TEAM-015) — never silently dropped.
@@ -89,12 +92,15 @@ export const BotChat = ({
   drafts = EMPTY,
   onOpenDraft = null,
   paused = false,
+  queuedEvents = 0,
   onResume = null,
   overBudget = null,
   onKeepRunning = null,
 }) => {
   // The box waits while the bot can't run.
   const blocked = paused || !!overBudget;
+  // "2 events waiting" while it's held (US-011 AC8).
+  const waiting = waitingText(queuedEvents);
   const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
   const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
   const strong = currentTheme["text-neutral-light"] || "text-gray-200";
@@ -561,6 +567,7 @@ export const BotChat = ({
                     <span className={statusTokens.warning.text}>
                       Over {overBudget} — it won&apos;t run until you keep it
                       running this month or raise the budget.
+                      {waiting ? ` ${waiting} — they'll run when it can.` : ""}
                     </span>
                   </span>
                   {onKeepRunning ? (
@@ -585,6 +592,9 @@ export const BotChat = ({
                   />
                   <span className="flex-1">
                     Paused — it won&apos;t answer until you resume it.
+                    {waiting
+                      ? ` ${waiting} — they'll run when you resume.`
+                      : ""}
                   </span>
                   {onResume ? (
                     <Button

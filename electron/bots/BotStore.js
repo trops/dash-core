@@ -314,6 +314,32 @@ class BotStore {
     }
   }
 
+  // ---- Events waiting for paused bots (bot-factory US-011 AC8) ----------
+
+  /**
+   * Save the events kept for paused bots. Event payloads can hold sensitive
+   * text (emails), so the queue is sealed at rest like results.
+   */
+  setPausedQueue(queue) {
+    const data = this._load();
+    const json = JSON.stringify(queue || {});
+    data.pausedQueue = this._box ? this._box.seal(json) : json;
+    this._save(data);
+  }
+
+  /** The saved events for paused bots, or null. */
+  getPausedQueue() {
+    const { pausedQueue } = this._load();
+    if (typeof pausedQueue !== "string") return null;
+    const json = this._box ? this._box.open(pausedQueue) : pausedQueue;
+    if (typeof json !== "string") return null;
+    try {
+      return JSON.parse(json);
+    } catch (_e) {
+      return null;
+    }
+  }
+
   // ---- Team settings (bot-teams TEAM-002) --------------------------------
 
   /** Per-dashboard team settings; defaults { leadEnabled: true }. */

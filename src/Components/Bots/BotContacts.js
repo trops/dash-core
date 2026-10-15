@@ -117,6 +117,7 @@ export const BotContacts = ({
   const paused = c.paused || NOBODY;
   const lastRuns = c.lastRuns || NO_RUNS;
   const budgets = c.budgets || NO_RUNS;
+  const queued = c.queued || NO_RUNS;
 
   const sections = useMemo(
     () =>
@@ -128,6 +129,7 @@ export const BotContacts = ({
         approvals,
         paused,
         budgets,
+        queued,
         sort,
         byTeam,
         query,
@@ -141,6 +143,7 @@ export const BotContacts = ({
       approvals,
       paused,
       budgets,
+      queued,
       sort,
       byTeam,
       query,
@@ -262,6 +265,7 @@ export const BotContacts = ({
             }
             overBudget={isOver ? budgetLimitText(budget) : null}
             onKeepRunning={c.keepRunning ? () => c.keepRunning(open.id) : null}
+            queuedEvents={queued[open.id] || 0}
           />
         ) : (
           <div className="flex flex-col flex-1 min-h-0">

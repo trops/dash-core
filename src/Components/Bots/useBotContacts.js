@@ -18,6 +18,8 @@ export function useBotContacts() {
   const monitor = useBotMonitor();
   const [lastRuns, setLastRuns] = useState(NO_RUNS);
   const [paused, setPaused] = useState(() => new Set());
+  // { [botId]: n } events waiting for paused / over-budget bots (US-011 AC8).
+  const [queued, setQueued] = useState(NO_RUNS);
   // { [botId]: botStatus } — over budget / near it (US-019).
   const [budgets, setBudgets] = useState(NO_RUNS);
 
@@ -49,6 +51,7 @@ export function useBotContacts() {
     try {
       const state = await b.getPauseState();
       setPaused(new Set((state && state.bots) || []));
+      setQueued((state && state.queued) || NO_RUNS);
     } catch (_e) {
       // keep the last good set
     }
@@ -116,10 +119,11 @@ export function useBotContacts() {
       ...monitor,
       lastRuns,
       paused,
+      queued,
       setBotPaused,
       budgets,
       keepRunning,
     }),
-    [monitor, lastRuns, paused, setBotPaused, budgets, keepRunning],
+    [monitor, lastRuns, paused, queued, setBotPaused, budgets, keepRunning],
   );
 }

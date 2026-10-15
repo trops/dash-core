@@ -6,7 +6,7 @@
  * Pure: no React, no IPC.
  */
 import { groupBotsByTeam } from "./teamUtils";
-import { INTERRUPTED_TEXT, toPlainText } from "./botConversation";
+import { INTERRUPTED_TEXT, toPlainText, waitingText } from "./botConversation";
 
 export const SORTS = ["recent", "az"];
 
@@ -53,7 +53,7 @@ export function shortTime(iso, now = Date.now()) {
  */
 export function contactOf(
   bot,
-  { last, running, approvals, paused, budget = null, now },
+  { last, running, approvals, paused, budget = null, queued = 0, now },
 ) {
   const mine = (approvals || []).filter(
     (a) => a && a.request && a.request.botId === bot.id,
@@ -73,9 +73,11 @@ export function contactOf(
       line = toPlainText(last.text || "") || "Done";
     }
   }
+  // Events kept for it while it's held (US-011 AC8).
+  const waiting = waitingText(queued);
   if (isPaused) {
     status = "Paused";
-    line = "Paused";
+    line = waiting ? `Paused · ${waiting}` : "Paused";
   }
   if (run) {
     status = "Running";
@@ -91,7 +93,7 @@ export function contactOf(
         : null;
   if (budgetState === "over") {
     status = "Over budget";
-    line = `Over ${budgetLimitText(budget)}`;
+    line = `Over ${budgetLimitText(budget)}${waiting ? ` · ${waiting}` : ""}`;
   }
   if (mine.length) {
     status = "Needs approval";
@@ -148,6 +150,7 @@ export function contactSections({
   approvals = [],
   paused = new Set(),
   budgets = {},
+  queued = {},
   sort = "recent",
   byTeam = true,
   query = "",
@@ -164,6 +167,7 @@ export function contactSections({
       approvals,
       paused,
       budget: budgets[b.id] || null,
+      queued: queued[b.id] || 0,
       now,
     });
   if (!byTeam) {

@@ -634,3 +634,20 @@ describe("BotChat — retries (US-023)", () => {
     expect(screen.queryByText(/trying again/)).toBeNull();
   });
 });
+
+describe("BotChat — events waiting (US-011 AC8)", () => {
+  it("the paused note says how many events wait for it", async () => {
+    window.mainApi = {
+      bots: {
+        getRuns: jest.fn().mockResolvedValue(runs),
+        onStream: jest.fn(() => "s1"),
+        removeListener: jest.fn(),
+      },
+    };
+    render(<BotChat bot={bot} paused queuedEvents={2} onResume={jest.fn()} />);
+    await screen.findByText("Check my inbox");
+    expect(screen.getByTestId("bot-chat-paused")).toHaveTextContent(
+      "2 events waiting — they'll run when you resume.",
+    );
+  });
+});

@@ -1,5 +1,6 @@
 import {
   retryNote,
+  waitingText,
   buildConversation,
   botStatus,
   attentionCount,
@@ -572,5 +573,28 @@ describe("retries (US-023)", () => {
     expect(turns.map((t) => t.text)).toContain(
       "Overloaded — trying again in 8s (3 of 3)",
     );
+  });
+});
+
+describe("paused bots (US-011 AC8)", () => {
+  it("waitingText", () => {
+    expect(waitingText(0)).toBeNull();
+    expect(waitingText(1)).toBe("1 event waiting");
+    expect(waitingText(4)).toBe("4 events waiting");
+  });
+  it("an event skipped while paused is one line", () => {
+    const turns = buildConversation([
+      run({
+        trigger: "event",
+        status: "skipped",
+        skipped: "paused",
+        prompt: "",
+        output: "",
+        source: { label: "Clock · tick", eventType: "Clock[1].tick" },
+      }),
+    ]);
+    expect(turns.map((t) => [t.kind, t.text])).toEqual([
+      ["system", "Skipped while paused · Clock · tick"],
+    ]);
   });
 });
