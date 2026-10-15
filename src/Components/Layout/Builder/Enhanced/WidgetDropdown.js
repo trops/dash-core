@@ -14,6 +14,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { ComponentManager } from "../../../../ComponentManager";
 import { Panel, InputText, Paragraph } from "@trops/dash-react";
 import { WidgetIcon } from "./WidgetIcon";
+import { isDraftPackage } from "../../../../utils/draftPackage";
 
 export const WidgetDropdown = ({
   isOpen,
@@ -57,14 +58,10 @@ export const WidgetDropdown = ({
           return false;
         }
 
-        // Drafts are in-progress widgets — they live under
-        // `@ai-built/<name>-draft-<shortId>/` and shouldn't appear
-        // in placement pickers. Resume happens via Settings →
-        // Widgets. (Mirrors the kind="draft" filter in the
-        // EnhancedWidgetDropdown but checked at the CM source-
-        // package level since this picker reads from CM directly.)
-        const sourcePackage = widget._sourcePackage || "";
-        if (/-draft-[A-Za-z0-9]+$/.test(sourcePackage)) {
+        // Drafts are in-progress widgets (`@ai-built/draft-<id>/`)
+        // and shouldn't appear in placement pickers. Resume happens
+        // via Manage › Widgets.
+        if (isDraftPackage(widget._sourcePackage)) {
           return false;
         }
 
