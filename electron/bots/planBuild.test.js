@@ -16,6 +16,7 @@ const {
   builtPackage,
   verdictOf,
   createPlanBuild,
+  buildRequest,
 } = require("./planBuild");
 
 const plan = {
@@ -472,5 +473,142 @@ describe("raw api.publishEvent — bots can't hear it (4d-2)", () => {
       /publishEvent from useWidgetEvents \(never api\.publishEvent/,
     );
     assert.match(lines, /action widget: give it a title.*sent status/);
+  });
+});
+
+describe("the build's real outcome (Create build fixes, PR 1)", () => {
+  const byId = (state) => Object.fromEntries(state.steps.map((s) => [s.id, s]));
+
+  it("build_widget's result names the package, whatever the Builder's answer says", async () => {
+    const d = deps({
+      askRole: async (role) =>
+        role === "builder"
+          ? {
+              status: "completed",
+              output: "Done — I built IndexCompare.",
+              builds: [
+                { ok: false, error: "Line 3: x is not defined" },
+                { ok: true, package: "@ai-built/indexcompare" },
+              ],
+            }
+          : { status: "completed", output: "VERDICT: PASSED" },
+    });
+    const state = await createPlanBuild(plan, d).run();
+    const s = byId(state);
+    assert.equal(s["build:1"].status, "done");
+    assert.equal(s["build:1"].detail, "@ai-built/indexcompare");
+    assert.ok(
+      d.calls.some(
+        (c) => c[0] === "place" && c[1] === "@ai-built/indexcompare",
+      ),
+    );
+  });
+
+  it("an answer naming the package in PascalCase still counts", () => {
+    assert.equal(
+      builtPackage("Built @ai-built/IndexCompare."),
+      "@ai-built/indexcompare",
+    );
+  });
+
+  it("a failed build says why: build_widget's last error, and keeps the Builder's answer", async () => {
+    const d = deps({
+      askRole: async () => ({
+        status: "completed",
+        output: "I couldn't get it to build: the config import is wrong.",
+        builds: [
+          {
+            ok: false,
+            error:
+              "@ai-built/indexcompare already exists. Use update: true.\nmore",
+          },
+        ],
+      }),
+    });
+    const state = await createPlanBuild(plan, d).run();
+    const s = byId(state);
+    assert.equal(s["build:1"].status, "failed");
+    assert.match(
+      s["build:1"].error,
+      /didn't build it — build_widget said: @ai-built\/indexcompare already exists\. Use update: true\.$/,
+    );
+    assert.match(s["build:1"].detail, /config import is wrong/);
+    // What waited on it names the cause.
+    assert.match(
+      s["check:1"].error,
+      /Build Hello didn't finish: the Builder didn't build it/,
+    );
+  });
+
+  it("with no build_widget call, the error says so", async () => {
+    const d = deps({
+      askRole: async () => ({ status: "completed", output: "Sorry." }),
+    });
+    const s = byId(await createPlanBuild(plan, d).run());
+    assert.match(
+      s["build:1"].error,
+      /didn't build it — it never called build_widget/,
+    );
+    assert.equal(s["build:1"].detail, "Sorry.");
+  });
+
+  it("a widget you have is placed with its component and name", async () => {
+    const yours = {
+      summary: "Rules",
+      pieces: [
+        {
+          kind: "widget",
+          name: "Algolia Rules List",
+          source: "yours",
+          package: "@trops/algolia",
+          component: "AlgoliaRulesList",
+        },
+        { kind: "layout", name: "Rules", source: "new" },
+      ],
+    };
+    const seen = [];
+    const d = deps({
+      placeWidget: async (req) => {
+        seen.push(req);
+        return { component: "trops.algolia.AlgoliaRulesList" };
+      },
+    });
+    const state = await createPlanBuild(yours, d).run();
+    assert.equal(state.status, "done");
+    assert.equal(seen[0].widget, "@trops/algolia");
+    assert.equal(seen[0].component, "AlgoliaRulesList");
+    assert.equal(seen[0].name, "Algolia Rules List");
+  });
+
+  it("a widget that can't be told apart isn't offered Try again; other place failures are", async () => {
+    const one = (message) =>
+      deps({
+        placeWidget: async (req) => {
+          if (req.widget === "@ai-built/slack-pack") throw new Error(message);
+          return { component: req.component || req.widget };
+        },
+      });
+    let s = byId(
+      await createPlanBuild(
+        plan,
+        one(
+          "@ai-built/slack-pack has several widgets (A, B) — say which with component.",
+        ),
+      ).run(),
+    );
+    assert.equal(s["place:2"].status, "failed");
+    assert.equal(s["place:2"].canRetry, false);
+    s = byId(
+      await createPlanBuild(
+        plan,
+        one("That dashboard couldn't be read."),
+      ).run(),
+    );
+    assert.equal(s["place:2"].canRetry, true);
+  });
+
+  it("the Builder is told to rebuild with update: true when the widget already exists", () => {
+    const req = buildRequest(plan, plan.pieces[1]);
+    assert.match(req, /already exists, build it again with update: true/);
   });
 });

@@ -39,7 +39,15 @@ const { parseDashConfig } = require("../utils/dashConfigParser");
 const { planTarget } = require("./teamPlan");
 const { removeWidgets } = require("../utils/placeWidget");
 
-const AI_BUILT = /@ai-built\/[a-z0-9][a-z0-9-]*/g;
+const AI_BUILT = /@ai-built\/[a-z0-9][a-z0-9-]*/gi;
+
+// Placing failed because the widget couldn't be told apart — trying the same
+// thing again can't help (widgetComponent.js's errors).
+const CANT_TELL_WHICH =
+  /has several widgets|has no component|isn't a widget package/;
+
+// How much of the Builder's answer a failed build keeps.
+const ANSWER_KEPT = 1500;
 
 const STATUS = {
   waiting: "waiting",
@@ -259,6 +267,10 @@ function buildRequest(plan, piece, fix = null) {
       fix && fix.package ? " (keep the same name)" : ""
     }. Read widget_guide first, then build_widget${
       update ? " with update: true" : ""
+    }${
+      update
+        ? ""
+        : " (if it says the widget already exists, build it again with update: true)"
     }. Finish with the widget's package name (@ai-built/…).`,
   ].join("\n");
 }
@@ -445,7 +457,32 @@ function triggerSubscription({ dashboardId, widgetId, component, event }) {
 /** The package the Builder says it built (the last @ai-built/… it names). */
 function builtPackage(output) {
   const hits = String(output || "").match(AI_BUILT);
-  return hits && hits.length ? hits[hits.length - 1] : null;
+  return hits && hits.length ? hits[hits.length - 1].toLowerCase() : null;
+}
+
+/**
+ * What a Builder run built: build_widget's own results (record.builds, noted
+ * by the controller), else the package its answer names. A failure says why.
+ * @returns {{ package: string } | { error: string }}
+ */
+function buildOutcome(record) {
+  const builds = Array.isArray(record && record.builds) ? record.builds : [];
+  const last = (pick) => builds.filter(pick).pop();
+  const built = last((b) => b && b.ok && b.package);
+  const pkg =
+    (built && String(built.package).toLowerCase()) ||
+    builtPackage(record && record.output);
+  if (pkg) return { package: pkg };
+  const failed = last((b) => b && !b.ok);
+  const said =
+    failed && failed.error ? String(failed.error).split("\n")[0].trim() : "";
+  return {
+    error: said
+      ? `the Builder didn't build it — build_widget said: ${said}`
+      : builds.length
+        ? "the Builder didn't build it"
+        : "the Builder didn't build it — it never called build_widget",
+  };
 }
 
 /** "VERDICT: PASSED" / "FAILED" at the end of the Checker's answer. */
@@ -922,8 +959,15 @@ function createPlanBuild(plan, deps, opts = {}) {
           );
         if (record.status === "failed")
           throw new Error(record.error || "the Builder failed");
-        const pkg = builtPackage(record.output);
-        if (!pkg) throw new Error("the Builder didn't build it");
+        const outcome = buildOutcome(record);
+        if (outcome.error) {
+          // The Builder's own account, to read under the step.
+          step.detail = record.output
+            ? String(record.output).slice(-ANSWER_KEPT)
+            : "";
+          throw new Error(outcome.error);
+        }
+        const pkg = outcome.package;
         state.made[step.piece] = {
           ...state.made[step.piece],
           package: pkg,
@@ -962,8 +1006,10 @@ function createPlanBuild(plan, deps, opts = {}) {
         const made = state.made[step.piece] || {};
         const res = await deps.placeWidget({
           dashboardId: state.dashboard.id,
-          component: made.component || null,
+          component: made.component || piece.component || null,
           widget: made.package || piece.package,
+          // Picks the component when the package has several.
+          name: piece.name,
         });
         state.made[step.piece] = {
           ...made,
@@ -1056,7 +1102,9 @@ function createPlanBuild(plan, deps, opts = {}) {
       BUILT.has(piece.source) &&
       BUILDER_FIXES.has(step.kind) &&
       !step.canFix;
-    step.canRetry = RETRIES.has(step.kind);
+    step.canRetry =
+      RETRIES.has(step.kind) &&
+      !(step.kind === "place" && CANT_TELL_WHICH.test(step.error || ""));
   }
 
   function reset(step) {
@@ -1087,7 +1135,10 @@ function createPlanBuild(plan, deps, opts = {}) {
       step.waitingFor = (blocked.waitingFor || []).slice();
     } else {
       step.status = STATUS.skipped;
-      step.error = `${blocked.label} didn't finish`;
+      step.error =
+        blocked.status === STATUS.failed && blocked.error
+          ? `${blocked.label} didn't finish: ${blocked.error}`
+          : `${blocked.label} didn't finish`;
     }
     return true;
   }
@@ -1236,6 +1287,7 @@ module.exports = {
   checkRequest,
   eventsToSend,
   builtPackage,
+  buildOutcome,
   verdictOf,
   createPlanBuild,
 };

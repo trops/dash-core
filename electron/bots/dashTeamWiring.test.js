@@ -169,7 +169,7 @@ describe("botController — Builder drafts are marked (3b-2)", () => {
 describe("botController — place_widget (3c)", () => {
   it("resolves the widget, places it with placeWidget and saves", () => {
     assert.match(ctrl, /placeWidget: \(req\) => this\._teamPlaceWidget\(req\)/);
-    assert.match(ctrl, /resolveWidgetComponent\(widget, component,/);
+    assert.match(ctrl, /resolveWidgetComponent\(\s+widget,\s+component,/);
     assert.match(
       ctrl,
       /const saved = this\._saveWorkspace\(placed\.workspace\);/,
@@ -280,5 +280,29 @@ describe("botController — plans that change a dashboard you have (5e-2b)", () 
   });
   it("the Planner can list the user's themes", () => {
     assert.match(ctrl, /listThemes: \(\) => this\._themeNames\(\)/);
+  });
+});
+
+describe("botController — Create build outcomes (Create build fixes, PR 1)", () => {
+  const src = require("fs").readFileSync(
+    require("path").join(__dirname, "../controller/botController.js"),
+    "utf8",
+  );
+  it("notes each build_widget result for the plan build", () => {
+    assert.match(
+      src,
+      /const result = await handleRoleTool\([\s\S]{0,200}\);\s+if \(toolName === "build_widget"\) this\._noteBuild\(caller\.id, result\);\s+return result;/,
+    );
+    assert.match(src, /record\.builds = this\._takeBuilds\(bot\.id\);/);
+  });
+  it("placing passes the piece's component and name", () => {
+    assert.match(
+      src,
+      /placeWidget: \(\{ dashboardId, component, widget, name \}\) => \{/,
+    );
+    assert.match(
+      src,
+      /resolveWidgetComponent\(\s+widget,\s+component,\s+\(\) =>[\s\S]{0,120}\{ name \},?\s+\);/,
+    );
   });
 });

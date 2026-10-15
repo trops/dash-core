@@ -23,9 +23,12 @@ function scopedId(packageName, componentName) {
  * @param {string} widget     a package ("@scope/pkg") or a dotted component id
  * @param {string|null} component  which component, when the package has several
  * @param {() => object[]} listInstalled  widget registry entries
+ * @param {{ name?: string }} [hint]  the plan's name for the widget: with no
+ *   component, a package with several widgets uses the one it names
+ *   ("Algolia Rules List" → AlgoliaRulesList, ignoring spaces and case)
  * @returns {{ component: string } | { error: string }}
  */
-function resolveWidgetComponent(widget, component, listInstalled) {
+function resolveWidgetComponent(widget, component, listInstalled, hint = {}) {
   const name = String(widget || "").trim();
   if (!name) return { error: "Which widget?" };
   if (!name.includes("/")) {
@@ -56,6 +59,13 @@ function resolveWidgetComponent(widget, component, listInstalled) {
     }
     pick = hit;
   } else if (comps.length > 1) {
+    const squash = (s) =>
+      String(s || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+    const named = hint && hint.name ? squash(hint.name) : "";
+    const hit = named ? comps.find((c) => squash(c) === named) : null;
+    if (hit) return { component: scopedId(pkg.name, hit) };
     return {
       error: `${pkgName} has several widgets (${comps.join(", ")}) — say which with component.`,
     };

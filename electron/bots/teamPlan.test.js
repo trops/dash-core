@@ -401,3 +401,26 @@ describe("validatePlan — changing a dashboard you have (5e-2b)", () => {
     );
   });
 });
+
+describe("validatePlan — a widget's component (Create build fixes)", () => {
+  const base = (component) => ({
+    summary: "x",
+    estimate: { build: "1 min" },
+    pieces: [
+      {
+        kind: "widget",
+        name: "Rules",
+        source: "yours",
+        package: "@trops/algolia",
+        component,
+      },
+    ],
+  });
+  it("component is text when given", () => {
+    assert.equal(validatePlan(base("AlgoliaRulesList")).valid, true);
+    assert.match(
+      validatePlan(base(3)).errors.join(" "),
+      /pieces\[0\]\.component must be the component's name/,
+    );
+  });
+});
