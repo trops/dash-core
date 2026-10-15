@@ -410,31 +410,13 @@ export const ThemeWrapper = ({
   // The splash has no background of its own: the app's (body) shows
   // through, so the screen is one colour while it loads — a fill of its
   // own showed as a mismatched block whenever part of it repainted late.
+  // Just the wordmark — no progress bar.
   if (!chosenTheme || !splashDone) {
     return (
       <div className="flex items-center justify-center w-screen h-screen">
-        <div className="flex flex-col items-center gap-4">
-          <span className="text-white text-2xl font-bold tracking-tight opacity-80">
-            Dash.
-          </span>
-          <div className="w-16 h-0.5 bg-gray-700 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gray-500 rounded-full"
-              style={{
-                width: "100%",
-                transform: "scaleX(0)",
-                transformOrigin: "left",
-                animation: "splashProgress 1.5s ease-out forwards",
-              }}
-            />
-          </div>
-          <style>{`
-                        @keyframes splashProgress {
-                            0% { transform: scaleX(0); }
-                            100% { transform: scaleX(1); }
-                        }
-                    `}</style>
-        </div>
+        <span className="text-white text-2xl font-bold tracking-tight opacity-80">
+          Dash.
+        </span>
       </div>
     );
   }
