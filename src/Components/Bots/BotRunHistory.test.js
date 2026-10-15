@@ -249,3 +249,14 @@ describe("BotRunHistory — compact, for the Bots dock (TEAM-015)", () => {
     expect(rows[0]).not.toHaveTextContent("Second line");
   });
 });
+
+describe("BotRunHistory — retries (US-023)", () => {
+  it("a run that needed more than one attempt says so in its details", async () => {
+    setup([{ ...runs[0], attempts: 2 }]);
+    const rows = await screen.findAllByTestId("run-row");
+    fireEvent.click(rows[0]);
+    expect(await screen.findByTestId("run-attempts")).toHaveTextContent(
+      "Took 2 attempts",
+    );
+  });
+});

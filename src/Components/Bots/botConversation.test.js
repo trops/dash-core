@@ -1,4 +1,5 @@
 import {
+  retryNote,
   buildConversation,
   botStatus,
   attentionCount,
@@ -551,5 +552,25 @@ describe("a run interrupted when Dash quit (US-018 AC6)", () => {
       "system",
       "Interrupted when Dash quit",
     ]);
+  });
+});
+
+describe("retries (US-023)", () => {
+  it("retryNote says why and when", () => {
+    expect(
+      retryNote({ reason: "Rate limited", attempt: 2, of: 3, delayMs: 2000 }),
+    ).toBe("Rate limited — trying again in 2s (2 of 3)");
+  });
+  it("the live run shows the note while it waits", () => {
+    const turns = buildConversation([], {
+      live: {
+        prompt: "Go",
+        text: "",
+        retry: { reason: "Overloaded", attempt: 3, of: 3, delayMs: 8000 },
+      },
+    });
+    expect(turns.map((t) => t.text)).toContain(
+      "Overloaded — trying again in 8s (3 of 3)",
+    );
   });
 });

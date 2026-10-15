@@ -965,8 +965,16 @@ User runs Test; the digest streams in the Test tab; user saves.
 
 **Acceptance Criteria:**
 
--   [ ] AC1: Transient errors (rate limits, timeouts, 5xx) retry with exponential backoff and jitter, up to 3 attempts, honoring provider retry-after headers.
--   [ ] AC2: Non-transient errors (auth, invalid request) fail immediately with a clear message.
+-   [x] AC1: Transient errors (rate limits, timeouts, 5xx) retry with exponential backoff and jitter, up to 3 attempts, honoring provider retry-after headers.
+-   [x] AC2: Non-transient errors (auth, invalid request) fail immediately with a clear message.
+
+**Implementation notes — retries (2026-10-14):**
+
+-   `electron/bots/retryPolicy.js` (pure): `classifyError` — 408/409/429/5xx/529, overloaded, rate limit, timeouts, dropped connections are temporary; 400/401/403/404, bad key, credit/quota, no model, CLI missing are not (checked first, so "exceeded your current quota" isn't a rate limit). `retryDelay` — ~2s then ~8s (±25% jitter, capped at 30s), or the provider's retry-after (capped at 60s).
+-   `BotRunner` runs up to 3 attempts. An attempt's error is held back until it's final; a retry emits `retrying` { reason, attempt, of, delayMs } and starts the answer over. **An attempt that already used a tool is never retried** ("— not retried: it had already used tools"), nor one whose bot became paused or over budget meanwhile. Every attempt's tokens count (budgets). Stop during the wait ends the run as stopped. The record gets `attempts` when > 1; giving up says "(gave up after 3 attempts)".
+-   Engines: the tool-loop engine's errors carry the SDK's `status` and `retryAfterMs`. The Claude Code engine now turns a turn that ended on an API error (synthetic assistant message with `error`, `is_error` result, `api_error_status`) into an error event — before, such a run was recorded as completed with the error text as its answer.
+-   Chat: "Overloaded — trying again in 8s (2 of 3)" while it waits; Activity details: "Took 2 attempts".
+-   Note: the Anthropic/OpenAI SDKs also retry each request twice themselves; the run-level retry covers what they don't (Claude Code runs, mid-stream drops).
 -   [ ] AC3 (P2): A bot may name a fallback provider/model; after retries are exhausted, the run restarts on the fallback with a handover note (US-021), logged prominently.
 -   [ ] AC4 (P2): Fallback runs count against the same budgets.
 

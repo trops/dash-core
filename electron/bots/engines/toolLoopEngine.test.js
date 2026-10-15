@@ -228,6 +228,26 @@ describe("toolLoopEngine (engine contract)", () => {
     assert.match(events[0].message, /kaboom/);
   });
 
+  it("a provider error carries its status and retry-after (US-023)", async () => {
+    const ctx = baseCtx({
+      adapter: {
+        id: "busy",
+        toProviderTools: () => [],
+        runTurn: async () => {
+          const e = new Error("Overloaded");
+          e.status = 529;
+          e.headers = { "retry-after": "3" };
+          throw e;
+        },
+        formatToolResults: () => [],
+      },
+    });
+    const events = await drain(toolLoopEngine.run(ctx));
+    assert.equal(events[0].type, "error");
+    assert.equal(events[0].status, 529);
+    assert.equal(events[0].retryAfterMs, 3000);
+  });
+
   it("executeTool throwing yields an error tool_result, not a crash", async () => {
     const ctx = baseCtx({
       adapter: mockAdapter([

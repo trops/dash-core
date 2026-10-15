@@ -204,6 +204,11 @@ export const BotRunHistory = ({
                   {runCostLabel(r)}
                 </div>
               ) : null}
+              {r.attempts > 1 ? (
+                <div className={`text-xs ${muted}`} data-testid="run-attempts">
+                  {`Took ${r.attempts} attempts — tried again after temporary trouble`}
+                </div>
+              ) : null}
               {triggerLabel(r, nameOf) ? (
                 <div className={`text-xs ${muted}`}>
                   {triggerLabel(r, nameOf)}

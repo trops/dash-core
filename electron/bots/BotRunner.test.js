@@ -791,3 +791,176 @@ describe("BotRunner — a run's approval policy (phase 4d-1)", () => {
     assert.deepEqual(seen, ["allow", "ask"]);
   });
 });
+
+describe("BotRunner — retries (US-023 AC1/AC2)", () => {
+  // An engine whose attempts play the given scripts in turn.
+  function scriptedEngine(scripts) {
+    const engine = {
+      id: "tool-loop",
+      calls: 0,
+      run() {
+        const events = scripts[Math.min(engine.calls, scripts.length - 1)];
+        engine.calls++;
+        return (async function* () {
+          for (const e of events) yield e;
+        })();
+      },
+    };
+    return engine;
+  }
+  const overloaded = {
+    type: "error",
+    message: 'API Error: 529 {"type":"overloaded_error"}',
+    usage: { inputTokens: 5 },
+  };
+  const ok = [
+    { type: "text", text: "All good" },
+    { type: "done", usage: { inputTokens: 10, outputTokens: 2 } },
+  ];
+  const fastDeps = (waits) => ({
+    sleep: async (ms) => waits.push(ms),
+    retry: { random: () => 0.5 },
+  });
+
+  it("retries temporary trouble and completes; failed attempts' text is dropped", async () => {
+    const waits = [];
+    const engine = scriptedEngine([
+      [{ type: "text", text: "Half" }, overloaded],
+      ok,
+    ]);
+    const { runner, runs } = makeRunner(engine, { deps: fastDeps(waits) });
+    const { events, record } = await collectEmit((emit) =>
+      runner.run("bot_1", { emit }),
+    );
+    assert.equal(engine.calls, 2);
+    assert.equal(record.status, "completed");
+    assert.equal(record.output, "All good");
+    assert.equal(record.attempts, 2);
+    assert.equal(record.error, null);
+    // Both attempts' tokens count.
+    assert.deepEqual(record.usage, { inputTokens: 15, outputTokens: 2 });
+    assert.deepEqual(waits, [2000]);
+    const retrying = events.find((e) => e.type === "retrying");
+    assert.deepEqual(
+      { ...retrying, message: undefined },
+      {
+        type: "retrying",
+        reason: "Overloaded",
+        attempt: 2,
+        of: 3,
+        delayMs: 2000,
+        message: undefined,
+      },
+    );
+    // The held-back error never reached the chat.
+    assert.equal(
+      events.some((e) => e.type === "error"),
+      false,
+    );
+    assert.equal(runs.length, 1);
+  });
+
+  it("gives up after three attempts and says so", async () => {
+    const waits = [];
+    const engine = scriptedEngine([[overloaded]]);
+    const { runner } = makeRunner(engine, { deps: fastDeps(waits) });
+    const { events, record } = await collectEmit((emit) =>
+      runner.run("bot_1", { emit }),
+    );
+    assert.equal(engine.calls, 3);
+    assert.equal(record.status, "failed");
+    assert.equal(record.attempts, 3);
+    assert.match(record.error, /gave up after 3 attempts/);
+    assert.deepEqual(waits, [2000, 8000]);
+    const errors = events.filter((e) => e.type === "error");
+    assert.equal(errors.length, 1);
+    assert.match(errors[0].message, /gave up after 3 attempts/);
+  });
+
+  it("never retries an attempt that already used a tool", async () => {
+    const waits = [];
+    const engine = scriptedEngine([
+      [
+        { type: "tool_call", id: "t1", name: "send_email", input: {} },
+        { type: "tool_result", id: "t1", isError: false },
+        overloaded,
+      ],
+      ok,
+    ]);
+    const { runner } = makeRunner(engine, { deps: fastDeps(waits) });
+    const record = await runner.run("bot_1", {});
+    assert.equal(engine.calls, 1);
+    assert.equal(record.status, "failed");
+    assert.match(record.error, /not retried: it had already used tools/);
+    assert.equal(record.attempts, undefined);
+    assert.deepEqual(waits, []);
+  });
+
+  it("fails at once on a problem another try can't fix", async () => {
+    const waits = [];
+    const engine = scriptedEngine([
+      [{ type: "error", message: "401 invalid x-api-key" }],
+      ok,
+    ]);
+    const { runner } = makeRunner(engine, { deps: fastDeps(waits) });
+    const record = await runner.run("bot_1", {});
+    assert.equal(engine.calls, 1);
+    assert.equal(record.status, "failed");
+    assert.equal(record.error, "401 invalid x-api-key");
+    assert.deepEqual(waits, []);
+  });
+
+  it("honors the provider's retry-after", async () => {
+    const waits = [];
+    const engine = scriptedEngine([
+      [
+        {
+          type: "error",
+          message: "Rate limited",
+          status: 429,
+          retryAfterMs: 12000,
+        },
+      ],
+      ok,
+    ]);
+    const { runner } = makeRunner(engine, { deps: fastDeps(waits) });
+    const record = await runner.run("bot_1", {});
+    assert.equal(record.status, "completed");
+    assert.deepEqual(waits, [12000]);
+  });
+
+  it("stops retrying when the bot is paused or over budget meanwhile", async () => {
+    const engine = scriptedEngine([[overloaded], ok]);
+    let blocked = null;
+    const { runner } = makeRunner(engine, {
+      deps: {
+        ...fastDeps([]),
+        startBlocker: () => blocked,
+      },
+    });
+    // Allowed to start, then over budget by the time it would retry.
+    const pending = runner.run("bot_1", {});
+    blocked = "this bot is over its budget";
+    const record = await pending;
+    assert.equal(engine.calls, 1);
+    assert.equal(record.status, "failed");
+    assert.match(record.error, /not retried: this bot is over its budget/);
+  });
+
+  it("Stop during the wait ends the run as stopped", async () => {
+    const engine = scriptedEngine([[overloaded], ok]);
+    let runner;
+    ({ runner } = makeRunner(engine, {
+      deps: {
+        retry: { random: () => 0.5 },
+        sleep: async () => {
+          runner.abort("bot_1");
+        },
+      },
+    }));
+    const record = await runner.run("bot_1", {});
+    assert.equal(engine.calls, 1);
+    assert.equal(record.status, "stopped");
+    assert.equal(record.error, null);
+  });
+});
