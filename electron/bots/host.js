@@ -37,7 +37,8 @@ function createElectronHost() {
   const botsRoot = path.join(app.getPath("userData"), "bots");
 
   return {
-    paths: { botsRoot },
+    // The saved audit log (US-003 AC5) — append-only JSON lines.
+    paths: { botsRoot, auditLog: path.join(botsRoot, "audit.log") },
     clock: { now: () => new Date().toISOString() },
     // Seals sensitive bot data at rest (run answers) with the OS keychain.
     // Falls back to plain text where the keychain isn't available.

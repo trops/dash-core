@@ -241,7 +241,7 @@ final summary appears within the chat, activity log gains one "Completed" entry.
 -   [~] AC2: Pending approvals appear in the Bot Activity Manager's approvals queue (US-014) and in the bot's chat, showing bot, workspace, tool name, and input. _(Partial, 2026-10-14: shown in Needs you and the chat with bot, dashboard, tool and provider; the tool's input isn't shown)_
 -   [~] AC3: Approve resolves the request as allowed; Deny resolves it as denied with the user's message, which is returned to the model as the tool result, and the bot continues or stops accordingly. _(Partial, 2026-10-14: Allow and Deny work and the denial reaches the model; Deny takes no message)_
 -   [x] AC4: Tools outside the bot's granted MCP servers are denied without prompting. _(Built, 2026-10-14: PermissionGate denies tools on servers the bot isn't set up with)_
--   [~] AC5: Every approval decision is recorded in the bot's audit log. _(Partial, 2026-10-14: decisions are kept on each run record; no persisted audit log (the runner's audit hook isn't wired))_
+-   [x] AC5: Every approval decision is recorded in the bot's audit log. _(Built, 2026-10-15: the saved audit log (`electron/bots/AuditLog.js`, `userData/bots/audit.log`) records each ask and how it was answered — Allow, Always allow, Deny, Stop or timeout — for every engine, built-in tools included, plus tools that ran or were refused without asking. Read in Manage › Bots › Log.)_
 
 **Edge Cases:**
 
@@ -406,7 +406,7 @@ UI warns that prior conversation memory will not carry over.
 -   [ ] AC6 (P1): Workspace and project controls pause/resume every bot in scope.
 -   [~] AC7: A global "Pause all bots" kill switch, reachable from the badge, stops new tool calls within 2 seconds. _(Partial, 2026-10-14: Pause all bots only in the tray menu)_
 -   [ ] AC8 (P1): Selecting any item opens its full chain trace (widget → bot → bot → widget), across workspaces, by `chain` IDs.
--   [~] AC9: Every user intervention is itself recorded in the audit log. _(Partial, 2026-10-14: approval decisions on run records only; pause, resume and stop aren't audited)_
+-   [x] AC9: Every user intervention is itself recorded in the audit log. _(Built, 2026-10-15: approvals, Always allow saved or removed, pause and resume (one bot or all), stop, runs interrupted on quit, budget changes and bots created or deleted; Manage › Bots › Log, filtered by bot and kind)_
 
 **Edge Cases:**
 
@@ -489,7 +489,7 @@ This keeps the runner in the Electron main process. It does not run bots when Da
 -   [~] AC3 (slice A: the dock row says "80% of budget"; notification still to do): At 80% of any applicable budget, the Activity Manager and a notification warn the user. _(Partial, 2026-10-14: the 80% warning is computed and shown on rows; no notification is raised)_
 -   [x] AC4: At 100%, affected bots auto-pause with reason "Budget reached"; in-progress runs stop at their next tool call. _(Slice A: an over-budget bot no longer starts a run — before, only its tool calls were refused and it still spent on the model. The Bots dock says "Over budget" on its row, lists it under Needs you, and its chat says which limit with Keep running this month.)_
 -   [x] AC5: The Activity Manager shows spend by bot, workspace, and provider for the current month. _(Manage › Bots › Spending; provider totals count from slice B on. Claude Code runs show as tokens covered by the Claude plan.)_
--   [~] AC6 (slice A: Keep running this month is an explicit action, recorded in the budget data; the persisted audit log is still to do): Raising a budget or resuming a budget-paused bot requires an explicit user action and is audited. _(Partial, 2026-10-14: Keep running this month is an explicit action, but it isn't persisted to an audit log)_
+-   [x] AC6: Raising a budget or resuming a budget-paused bot requires an explicit user action and is audited. _(Built, 2026-10-15: limit set or removed (bot, dashboard, overall) and Keep running this month are written to the saved audit log with the limit they went over)_
 
 **Edge Cases:**
 
@@ -2141,7 +2141,7 @@ These are inherent and documented rather than fixed:
 -   [ ] Model advisor: golden set of bot descriptions → expected tier/reasoning, tier → model mapping per provider, cost estimates, single-model providers
 -   [ ] Built-in widgets: bot binding, empty states, workspace scoping
 -   [ ] Schedules: catch-up policies (`skip` / `once` / `all` capped) on startup and simulated resume
--   [~] Budgets: cost math, 80% warning, auto-pause at cap, audited resume _(BudgetController.test.js; the audit sink isn't wired in production)_
+-   [x] Budgets: cost math, 80% warning, auto-pause at cap, audited resume _(BudgetController.test.js; the audit sink is wired to the saved log — botsViewWiring.test.js, AuditLog.test.js)_
 -   [ ] File tools: path traversal and symlink escape rejected
 -   [ ] Taint: propagation from untrusted input, escalated approvals, trusted-source exceptions
 -   [x] Retries: transient vs non-transient classification, backoff, retry-after _(retryPolicy.test.js, BotRunner.test.js)_

@@ -21,6 +21,7 @@ const BotRunner = require("../bots/BotRunner");
 const BotScheduler = require("../bots/BotScheduler");
 const BudgetController = require("../bots/BudgetController");
 const PauseController = require("../bots/PauseController");
+const { createAuditLog, fromGateEntry } = require("../bots/AuditLog");
 const { BotMemory } = require("../bots/BotMemory");
 const {
   MEMORY_SERVER,
@@ -238,6 +239,14 @@ const botController = {
       secretBox: host.secretBox,
     });
 
+    // The saved audit log (US-003 AC5, US-014 AC9, US-019 AC6): approvals,
+    // tools that ran without asking, access, pause and stop, budgets, and
+    // bots created or deleted. Names only.
+    this._auditLog =
+      host.paths && host.paths.auditLog
+        ? createAuditLog({ file: host.paths.auditLog })
+        : null;
+
     // Wrap the approval registry so a newly-created approval is broadcast to
     // the renderer for the Activity Manager queue (Slice 7 UI).
     const approvals = new ApprovalRegistry();
@@ -251,6 +260,32 @@ const botController = {
       create: (request) => {
         const res = approvals.create(request);
         this._broadcast(BOT_APPROVAL_PENDING, { id: res.id, request });
+        // Every engine's approvals (built-in tools too) are logged here:
+        // the ask, then however it was answered (Allow, Deny, Stop, timeout).
+        const about = {
+          botId: request && request.botId,
+          tool: (request && request.toolName) || null,
+          provider: (request && request.serverName) || null,
+          runStartedAt: (request && request.runStartedAt) || null,
+        };
+        this._logAudit({ type: "approval-asked", ...about });
+        Promise.resolve(res && res.promise)
+          .then((decision) => {
+            this._logAudit(
+              decision && decision.allow
+                ? {
+                    type: "approval-allowed",
+                    ...about,
+                    always: !!decision.remember,
+                  }
+                : {
+                    type: "approval-denied",
+                    ...about,
+                    reason: (decision && decision.reason) || null,
+                  },
+            );
+          })
+          .catch(() => {});
         return res;
       },
     };
@@ -265,6 +300,7 @@ const botController = {
         load: () => this._store.getPauseState(),
         save: (state) => this._store.setPauseState(state),
       },
+      audit: (entry) => this._logAudit(entry),
     });
     // Events that came in for paused / over-budget bots, kept until they're
     // resumed (US-011 AC8); sealed and saved with the bots.
@@ -279,6 +315,9 @@ const botController = {
     this._budgets = new BudgetController({
       persistence: host.budgetPersistence,
       getPricing: pricingFor,
+      // Limit changes and "Keep running this month" (US-019 AC6); per-run
+      // usage isn't logged — it's in Spending.
+      audit: (entry) => this._logBudgetAudit(entry),
     });
 
     // Scoped, durable bot memory (P1: FR-010), served as in-process memory_*
@@ -338,6 +377,11 @@ const botController = {
         ROLE_SERVER,
       ],
       resolveRunProfile: (bot) => this._resolveRunProfile(bot),
+      // Tools that ran (or were refused) without asking.
+      audit: (entry) => {
+        const logged = fromGateEntry(entry);
+        if (logged) this._logAudit(logged);
+      },
       // A paused bot doesn't start at all (CRE-011 AC3), and nor does one
       // over its budget (US-019 AC4) — it would still spend on the model.
       startBlocker: (botId) => {
@@ -654,11 +698,17 @@ const botController = {
       const { system: _s, ...rest } = definition;
       definition = rest;
     }
-    const saved =
-      definition && definition.id && this._store.get(definition.id)
-        ? this._store.update(definition.id, definition)
-        : this._store.create(definition);
+    const isNew = !(
+      definition &&
+      definition.id &&
+      this._store.get(definition.id)
+    );
+    const saved = isNew
+      ? this._store.create(definition)
+      : this._store.update(definition.id, definition);
     this._scheduler.register(saved);
+    if (isNew && saved)
+      this._logAudit({ type: "bot-created", botId: saved.id });
     return saved;
   },
 
@@ -670,6 +720,8 @@ const botController = {
       );
     }
     this._scheduler.unregister(botId);
+    // Logged while its name can still be read.
+    if (bot) this._logAudit({ type: "bot-deleted", botId });
     // A deleted bot's remembered approvals go with it.
     grantStore.revokeGrant(botId);
     // Deleting a lead counts as turning it off for that dashboard, so it isn't
@@ -1558,6 +1610,7 @@ const botController = {
       approvals: this._approvals,
       botId,
     });
+    if (stopped) this._logAudit({ type: "run-stopped", botId });
     return { stopped };
   },
 
@@ -1568,10 +1621,21 @@ const botController = {
    * @returns {Promise<{ interrupted: number, unfinished: number }>}
    */
   interruptAll({ timeoutMs = 5000 } = {}) {
+    // Which bots, read before their runs end.
+    const botIds = this._runner.listActive();
     return interruptAllRuns({
       runner: this._runner,
       approvals: this._approvals,
       timeoutMs,
+    }).then((result) => {
+      if (result && result.interrupted) {
+        this._logAudit({
+          type: "runs-interrupted",
+          count: result.interrupted,
+          botNames: botIds.map((id) => this._botName(id)),
+        });
+      }
+      return result;
     });
   },
 
@@ -1610,6 +1674,14 @@ const botController = {
           { isWriteTool, pathArgKeys: PATH_ARG_KEYS, dirname: path.dirname },
         );
         remembered = grantStore.setGrant(req.botId, next) === true;
+        if (remembered) {
+          this._logAudit({
+            type: "grant-saved",
+            botId: req.botId,
+            tool: req.toolName,
+            provider: req.serverName,
+          });
+        }
       }
     }
     return { ok: this._approvals.resolve(approvalId, decision), remembered };
@@ -1625,9 +1697,84 @@ const botController = {
     const current = grantStore.getGrant(botId);
     if (current) {
       const next = forgetToolGrant(current, serverName, toolName);
-      if (next !== current) grantStore.setGrant(botId, next);
+      if (next !== current) {
+        grantStore.setGrant(botId, next);
+        this._logAudit({
+          type: "grant-revoked",
+          botId,
+          tool: toolName,
+          provider: serverName,
+        });
+      }
     }
     return this.getGrants(botId);
+  },
+
+  // ---- audit log (US-003 AC5, US-014 AC9, US-019 AC6) ---------------------
+
+  /**
+   * The saved audit log, newest first.
+   * @param {{ botIds?: string[], kinds?: string[], before?: string,
+   *   limit?: number }} [filters]
+   * @returns {{ entries: object[], more: boolean }}
+   */
+  auditLog(filters = {}) {
+    if (!this._auditLog) return { entries: [], more: false };
+    return this._auditLog.read(filters || {});
+  },
+
+  /** A bot's name for the log — kept on the entry so it outlives the bot. */
+  _botName(botId) {
+    const bot = botId ? this._store.get(botId) : null;
+    return (bot && bot.name) || null;
+  },
+
+  _logAudit(entry) {
+    if (!this._auditLog || !entry) return;
+    try {
+      const named =
+        entry.botId && !entry.botName
+          ? { ...entry, botName: this._botName(entry.botId) }
+          : entry;
+      this._auditLog.append(named);
+    } catch (err) {
+      console.error("[botController] audit log write failed:", err);
+    }
+  },
+
+  /** BudgetController's audit entries, in the log's shape. */
+  _logBudgetAudit(entry) {
+    if (!entry) return;
+    if (entry.type === "budget-set") {
+      const [scope, ...rest] = String(entry.scope || "").split(":");
+      const id = rest.join(":") || null;
+      const out = { type: "budget-set", scope, monthlyUsd: entry.monthlyUsd };
+      if (scope === "bot") out.botId = id;
+      if (scope === "workspace") {
+        out.workspaceId = id;
+        let ws = null;
+        try {
+          ws = this._loadWorkspace(id);
+        } catch (_e) {
+          ws = null;
+        }
+        out.dashboardName = (ws && ws.name) || null;
+      }
+      this._logAudit(out);
+    } else if (entry.type === "budget-override") {
+      const bot = this._store.get(entry.botId) || {};
+      const st = this._budgets.botStatus(entry.botId, bot.workspaceId);
+      this._logAudit({
+        type: "budget-override",
+        botId: entry.botId,
+        month: entry.month,
+        budgetUsd: (st && st.limit && st.limit.budget) || null,
+        // Whose limit it went over: "bot", "workspace" or "global".
+        budgetScope:
+          (st && st.limit && String(st.limit.scope).split(":")[0]) || null,
+      });
+    }
+    // "usage" (per-run cost) isn't logged — it's in Spending.
   },
 
   listApprovals() {

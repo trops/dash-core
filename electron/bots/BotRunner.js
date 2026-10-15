@@ -212,7 +212,11 @@ class BotRunner {
     // › Activity). Names only — never the tool's input.
     const approvalLog = [];
     const createApproval = (request) => {
-      const pending = this._approvals.create(request);
+      // The run it came from goes with it, for the audit log.
+      const pending = this._approvals.create({
+        ...request,
+        runStartedAt: startedAt,
+      });
       Promise.resolve(pending && pending.promise)
         .then((decision) => {
           approvalLog.push({
@@ -302,7 +306,7 @@ class BotRunner {
               decision: "read-only",
             });
           }
-          this._audit(entry);
+          this._audit({ ...entry, runStartedAt: startedAt });
         },
         isPaused: () => this._isPaused(botId),
         gate: this._gate,
