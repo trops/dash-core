@@ -289,12 +289,65 @@ describe("botController — quitting with runs in progress (US-018 AC6)", () => 
   it("interruptAll stops every run as quit; whenIdle waits for them", () => {
     assert.match(
       ctrl,
-      /interruptAll\(\{ timeoutMs = 5000 \} = \{\}\) \{\s+return interruptAllRuns\(/,
+      /interruptAll\(\{ timeoutMs = 5000 \} = \{\}\) \{[\s\S]{0,120}return interruptAllRuns\(/,
     );
     assert.match(
       ctrl,
       /whenIdle\(\{ timeoutMs = null \} = \{\}\) \{\s+return waitUntilIdle\(/,
     );
+  });
+});
+
+describe("botController — saved audit log (US-003 AC5, US-014 AC9, US-019 AC6)", () => {
+  it("gives the log to the gate (via the runner), pause and budgets", () => {
+    assert.match(ctrl, /createAuditLog\(\{ file: host\.paths\.auditLog \}\)/);
+    assert.match(
+      ctrl,
+      /new PauseController\(\{[\s\S]{0,250}audit: \(entry\) => this\._logAudit\(entry\),/,
+    );
+    assert.match(ctrl, /audit: \(entry\) => this\._logBudgetAudit\(entry\),/);
+    assert.match(
+      ctrl,
+      /const logged = fromGateEntry\(entry\);\s+if \(logged\) this\._logAudit\(logged\);/,
+    );
+  });
+
+  it("logs approvals where they're created, with how they were answered", () => {
+    assert.match(
+      ctrl,
+      /this\._logAudit\(\{ type: "approval-asked", \.\.\.about \}\);/,
+    );
+    assert.match(
+      ctrl,
+      /type: "approval-allowed",\s+\.\.\.about,\s+always: !!decision\.remember,/,
+    );
+    assert.match(ctrl, /type: "approval-denied",/);
+  });
+
+  it("logs stop, quit, access and bots created or deleted", () => {
+    for (const type of [
+      "run-stopped",
+      "runs-interrupted",
+      "grant-saved",
+      "grant-revoked",
+      "bot-created",
+      "bot-deleted",
+    ]) {
+      assert.match(ctrl, new RegExp(`type: "${type}"`), type);
+    }
+  });
+
+  it("never logs per-run usage", () => {
+    assert.doesNotMatch(ctrl, /type: "usage"/);
+  });
+
+  it("reads it over IPC", () => {
+    assert.equal(events.BOTS_AUDIT_LOG, "bots-audit-log");
+    assert.match(
+      api,
+      /auditLog: \(filters\) => ipcRenderer\.invoke\(BOTS_AUDIT_LOG, filters \|\| \{\}\)/,
+    );
+    assert.match(ctrl, /auditLog\(filters = \{\}\) \{/);
   });
 });
 

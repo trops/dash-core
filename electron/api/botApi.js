@@ -21,6 +21,7 @@ const {
   BOTS_RESUME_BUDGET,
   BOTS_BUDGET_STATUS,
   BOTS_SPENDING_SUMMARY,
+  BOTS_AUDIT_LOG,
   BOTS_LIST_RUNNING,
   BOTS_PAUSE_ALL,
   BOTS_RESUME_ALL,
@@ -182,6 +183,9 @@ const botApi = {
   budgetStatus: () => ipcRenderer.invoke(BOTS_BUDGET_STATUS),
   /** This month's spending: { month, overall, bots, dashboards, providers }. */
   spendingSummary: () => ipcRenderer.invoke(BOTS_SPENDING_SUMMARY),
+  /** The audit log, newest first: { botIds?, kinds?, before?, limit? } →
+   *  { entries, more }. */
+  auditLog: (filters) => ipcRenderer.invoke(BOTS_AUDIT_LOG, filters || {}),
 
   // --- Background / pause (US-014, US-018) ---
   listRunning: () => ipcRenderer.invoke(BOTS_LIST_RUNNING),

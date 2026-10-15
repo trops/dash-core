@@ -23,6 +23,7 @@ import { DashTeamPanel } from "./DashTeamPanel";
 import { approvalText, botHandle, botProviders } from "./botSummary";
 import { DetailGroup, ListGroupLabel, ManageLayout } from "./ManageLayout";
 import { SpendingView } from "./SpendingView";
+import { AuditLogView } from "./AuditLogView";
 
 // Widget config (declared `events`) by component name — feeds the bot
 // editor's "Run on events" picker.
@@ -33,11 +34,12 @@ const UNASSIGNED = "unassigned";
 // The Dash team's group key (CRE-011) — listed first, above dashboard teams.
 const DASH_TEAM = "dash-team";
 const isDashTeamBot = (bot) => !!bot && bot.system === "dash-team";
-// The page's two views (bot-factory US-019 AC5: spending by bot, dashboard
-// and provider).
+// The page's views (bot-factory US-019 AC5: spending by bot, dashboard and
+// provider; US-003 AC5 / US-014 AC9: the saved audit log).
 const PAGE_VIEWS = [
   { value: "bots", label: "Bots" },
   { value: "spending", label: "Spending" },
+  { value: "log", label: "Log" },
 ];
 const STATUS_FILTERS = [
   { value: "all", label: "All" },
@@ -104,6 +106,7 @@ const BotDetailPanel = ({
   onRunNow,
   onOpenInBotsView,
   onEdit,
+  onShowLog = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const lastRun = useLastRun(bot.id);
@@ -249,6 +252,15 @@ const BotDetailPanel = ({
           ) : (
             <span className={`text-sm ${muted}`}>Hasn't run yet</span>
           )}
+          {onShowLog ? (
+            <div>
+              <Button3
+                title="See this bot's log"
+                size="sm"
+                onClick={() => onShowLog(bot.id)}
+              />
+            </div>
+          ) : null}
         </DetailGroup>
       </div>
     </div>
@@ -276,6 +288,8 @@ export const BotsPage = ({
   const all = useAllBots();
 
   const [pageView, setPageView] = useState("bots");
+  // The Log's Bot filter — a bot's details open the Log filtered to it.
+  const [logBotIds, setLogBotIds] = useState([]);
   const [query, setQuery] = useState("");
   const [teams, setTeams] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -440,6 +454,10 @@ export const BotsPage = ({
         onRunNow={(id) => botsApi.run(id)}
         onOpenInBotsView={onOpenBotInBotsView}
         onEdit={() => setMode("edit")}
+        onShowLog={(id) => {
+          setLogBotIds([id]);
+          setPageView("log");
+        }}
       />
     );
   } else {
@@ -471,6 +489,24 @@ export const BotsPage = ({
           {viewSwitch}
         </div>
         <SpendingView />
+      </div>
+    );
+  }
+
+  if (pageView === "log") {
+    return (
+      <div
+        data-testid="bots-page"
+        className={`flex flex-col flex-1 min-h-0 gap-3 px-6 pt-4 pb-4 ${strong}`}
+      >
+        <div className="flex-shrink-0 flex flex-row items-center gap-2">
+          {viewSwitch}
+        </div>
+        <AuditLogView
+          bots={all.bots}
+          botIds={logBotIds}
+          onBotIdsChange={setLogBotIds}
+        />
       </div>
     );
   }

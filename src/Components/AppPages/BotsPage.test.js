@@ -317,3 +317,25 @@ describe("BotsPage — Spending (bot-factory US-019 AC5)", () => {
     expect(screen.getByRole("list", { name: "Bots" })).toBeInTheDocument();
   });
 });
+
+describe("BotsPage — Log (bot-factory US-003 AC5, US-014 AC9)", () => {
+  it("a bot's See this bot's log opens the Log filtered to it", async () => {
+    setup();
+    window.mainApi.bots.auditLog = jest
+      .fn()
+      .mockResolvedValue({ entries: [], more: false });
+    fireEvent.click(within(list()).getByText("Inbox Watch"));
+    fireEvent.click(
+      within(detail()).getByRole("button", { name: "See this bot's log" }),
+    );
+    expect(await screen.findByTestId("audit-log-view")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Log" })).toBeChecked();
+    await waitFor(() =>
+      expect(window.mainApi.bots.auditLog).toHaveBeenCalledWith({
+        botIds: ["b1"],
+        kinds: [],
+        limit: 50,
+      }),
+    );
+  });
+});
