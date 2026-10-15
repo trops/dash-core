@@ -22,6 +22,7 @@ const BotScheduler = require("../bots/BotScheduler");
 const BudgetController = require("../bots/BudgetController");
 const PauseController = require("../bots/PauseController");
 const { createAuditLog, fromGateEntry } = require("../bots/AuditLog");
+const { failureNotice, budgetNotice } = require("../bots/botNotices");
 const { BotMemory } = require("../bots/BotMemory");
 const {
   MEMORY_SERVER,
@@ -186,6 +187,7 @@ const {
   BOT_BUDGET_ALERT,
   BOT_RUN_ACTIVE,
   BOT_LIST_CHANGED,
+  BOT_OPEN_REQUEST,
   BOT_DRAFTS_CHANGED,
   BOT_PLAN_BUILD_PROGRESS,
   CREATE_RECENT_CHANGED,
@@ -219,11 +221,15 @@ const botController = {
       mcpController,
       providerController,
       appId,
+      // Sends an OS notification for a bot notice (failed run, budget at
+      // 80% or over — US-018 AC5, US-019 AC3). Optional.
+      notify = null,
       // The host's widget build/check hooks for the Dash team (CRE-011,
       // dash-electron teamWidgetTools.cjs). Optional.
       widgetTools = null,
     } = deps;
     this._widgetTools = widgetTools;
+    this._notify = typeof notify === "function" ? notify : null;
     this._getWindows = getWindows || (() => []);
     this._getMainWindow = getMainWindow || (() => null);
     this._mcp = mcpController;
@@ -407,7 +413,18 @@ const botController = {
         runCost({ providerId, usage, pricing: pricingFor(providerId, model) }),
       // After each run, accrue cost and alert on warn/exceeded.
       onUsage: (u) => {
+        // Before and after, so a run that moves a limit to 80% or over it
+        // notifies once (US-019 AC3).
+        const before = this._budgets.status(u.botId, u.workspaceId);
         const r = this._budgets.recordUsage(u);
+        this._sendNotice(
+          budgetNotice({
+            bot: this._store.get(u.botId),
+            before,
+            after: r.status,
+            dashboardNameOf: (id) => this._dashboardName(id),
+          }),
+        );
         if (r.status.overall !== "ok") {
           this._broadcast(BOT_BUDGET_ALERT, {
             botId: u.botId,
@@ -1710,6 +1727,26 @@ const botController = {
     return this.getGrants(botId);
   },
 
+  // ---- opening a bot from a notification (US-018 AC5) ---------------------
+
+  /**
+   * A notification for this bot was clicked. Kept until the window takes it —
+   * a window just reopened for the click asks once its dock is up; an open
+   * one is told now.
+   */
+  requestOpen(botId) {
+    if (!botId) return;
+    this._openRequest = { botId: String(botId) };
+    this._broadcast(BOT_OPEN_REQUEST, {});
+  },
+
+  /** @returns {{ botId: string } | null} the pending request, cleared */
+  takeOpenRequest() {
+    const req = this._openRequest || null;
+    this._openRequest = null;
+    return req;
+  },
+
   // ---- audit log (US-003 AC5, US-014 AC9, US-019 AC6) ---------------------
 
   /**
@@ -1943,6 +1980,8 @@ const botController = {
         if (!alreadyRunning) {
           this._events.endRun(this._store.get(botId), record);
         }
+        // A failed run notifies (US-018 AC5).
+        this._sendNotice(failureNotice(this._store.get(botId), record));
       })
       .catch(() => {})
       .finally(() => this._broadcastRunActive());
@@ -1979,6 +2018,26 @@ const botController = {
         this._providers.listProviders(win, this._appId) || {};
       const p = providers.find((x) => x && x.name === providerName);
       return (p && p.type) || null;
+    } catch (_e) {
+      return null;
+    }
+  },
+
+  /** Hand a bot notice to the host to send as an OS notification. */
+  _sendNotice(notice) {
+    if (!notice || !this._notify) return;
+    try {
+      this._notify(notice);
+    } catch (err) {
+      console.error("[botController] notification failed:", err);
+    }
+  },
+
+  /** A dashboard's name by id, or null. */
+  _dashboardName(workspaceId) {
+    try {
+      const w = this._loadWorkspace(workspaceId);
+      return (w && w.name) || null;
     } catch (_e) {
       return null;
     }

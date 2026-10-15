@@ -22,6 +22,7 @@ const {
   BOTS_BUDGET_STATUS,
   BOTS_SPENDING_SUMMARY,
   BOTS_AUDIT_LOG,
+  BOTS_TAKE_OPEN_REQUEST,
   BOTS_LIST_RUNNING,
   BOTS_PAUSE_ALL,
   BOTS_RESUME_ALL,
@@ -74,6 +75,7 @@ const {
   BOT_BUDGET_ALERT,
   BOT_RUN_ACTIVE,
   BOT_LIST_CHANGED,
+  BOT_OPEN_REQUEST,
   BOT_DRAFTS_CHANGED,
   BOT_PLAN_BUILD_PROGRESS,
 } = require("../events/botEvents");
@@ -186,6 +188,8 @@ const botApi = {
   /** The audit log, newest first: { botIds?, kinds?, before?, limit? } →
    *  { entries, more }. */
   auditLog: (filters) => ipcRenderer.invoke(BOTS_AUDIT_LOG, filters || {}),
+  /** The bot a notification click asked to open ({ botId } or null), once. */
+  takeOpenRequest: () => ipcRenderer.invoke(BOTS_TAKE_OPEN_REQUEST),
 
   // --- Background / pause (US-014, US-018) ---
   listRunning: () => ipcRenderer.invoke(BOTS_LIST_RUNNING),
@@ -287,6 +291,8 @@ const botApi = {
   onRunActive: (callback) => _addListener(BOT_RUN_ACTIVE, callback),
   /** A bot was created, edited or deleted anywhere — refresh lists. */
   onListChanged: (callback) => _addListener(BOT_LIST_CHANGED, callback),
+  /** A notification asked to open a bot — call takeOpenRequest(). */
+  onOpenRequest: (callback) => _addListener(BOT_OPEN_REQUEST, callback),
   /** A lead drafted a bot, or a draft was saved/discarded. */
   onDraftsChanged: (callback) => _addListener(BOT_DRAFTS_CHANGED, callback),
   /** A plan build's progress: ({ buildId, state }) after every change. */

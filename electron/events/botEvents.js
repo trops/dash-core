@@ -24,6 +24,8 @@ const BOTS_BUDGET_STATUS = "bots-budget-status";
 const BOTS_SPENDING_SUMMARY = "bots-spending-summary";
 // The saved audit log, newest first (US-003 AC5, US-014 AC9, US-019 AC6).
 const BOTS_AUDIT_LOG = "bots-audit-log";
+// The bot a notification click asked to open, taken once (US-018 AC5).
+const BOTS_TAKE_OPEN_REQUEST = "bots-take-open-request";
 const BOTS_LIST_RUNNING = "bots-list-running";
 const BOTS_PAUSE_ALL = "bots-pause-all";
 const BOTS_RESUME_ALL = "bots-resume-all";
@@ -98,6 +100,8 @@ const BOT_BUDGET_ALERT = "bot-budget-alert"; // { botId, cost, estimated, status
 const BOT_RUN_ACTIVE = "bot-run-active"; // { count, running: string[] }
 // A bot was created, edited or deleted (anywhere) — refresh team lists.
 const BOT_LIST_CHANGED = "bot-list-changed"; // {}
+// A notification was clicked: open its bot — take it with takeOpenRequest.
+const BOT_OPEN_REQUEST = "bot-open-request"; // {}
 // A lead drafted a bot, or a draft was saved/discarded.
 const BOT_DRAFTS_CHANGED = "bot-drafts-changed"; // {}
 const BOT_PLAN_BUILD_PROGRESS = "bot-plan-build-progress"; // { buildId, state }
@@ -118,6 +122,7 @@ module.exports = {
   BOTS_BUDGET_STATUS,
   BOTS_SPENDING_SUMMARY,
   BOTS_AUDIT_LOG,
+  BOTS_TAKE_OPEN_REQUEST,
   BOTS_LIST_RUNNING,
   BOTS_PAUSE_ALL,
   BOTS_RESUME_ALL,
@@ -170,6 +175,7 @@ module.exports = {
   BOT_BUDGET_ALERT,
   BOT_RUN_ACTIVE,
   BOT_LIST_CHANGED,
+  BOT_OPEN_REQUEST,
   BOT_DRAFTS_CHANGED,
   BOT_PLAN_BUILD_PROGRESS,
 };

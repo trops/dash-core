@@ -392,3 +392,57 @@ describe("botController — events for paused bots (US-011 AC8)", () => {
     assert.match(ctrl, /queued: this\._pausedQueue\.counts\(\)/);
   });
 });
+
+describe("botController — bot notifications (US-019 AC3, US-018 AC5)", () => {
+  it("takes the host's notify hook", () => {
+    assert.match(ctrl, /notify = null,[\s\S]{0,200}\} = deps;/);
+    assert.match(
+      ctrl,
+      /this\._notify = typeof notify === "function" \? notify : null;/,
+    );
+  });
+
+  it("budget notices compare the status before and after the run's usage", () => {
+    assert.match(
+      ctrl,
+      /const before = this\._budgets\.status\(u\.botId, u\.workspaceId\);\s+const r = this\._budgets\.recordUsage\(u\);\s+this\._sendNotice\(\s+budgetNotice\(\{/,
+    );
+  });
+
+  it("a failed run notifies when it ends", () => {
+    assert.match(
+      ctrl,
+      /this\._sendNotice\(failureNotice\(this\._store\.get\(botId\), record\)\);/,
+    );
+  });
+
+  it("a notify failure never breaks the run", () => {
+    assert.match(
+      ctrl,
+      /_sendNotice\(notice\) \{\s+if \(!notice \|\| !this\._notify\) return;\s+try \{/,
+    );
+  });
+});
+
+describe("botController — opening a bot from a notification (US-018 AC5)", () => {
+  it("keeps the request until a window takes it, and tells open windows", () => {
+    assert.match(
+      ctrl,
+      /requestOpen\(botId\) \{[\s\S]{0,120}this\._openRequest = \{ botId: String\(botId\) \};\s+this\._broadcast\(BOT_OPEN_REQUEST, \{\}\);/,
+    );
+    assert.match(
+      ctrl,
+      /takeOpenRequest\(\) \{\s+const req = this\._openRequest \|\| null;\s+this\._openRequest = null;\s+return req;/,
+    );
+    assert.equal(events.BOTS_TAKE_OPEN_REQUEST, "bots-take-open-request");
+    assert.equal(events.BOT_OPEN_REQUEST, "bot-open-request");
+    assert.match(
+      api,
+      /takeOpenRequest: \(\) => ipcRenderer\.invoke\(BOTS_TAKE_OPEN_REQUEST\)/,
+    );
+    assert.match(
+      api,
+      /onOpenRequest: \(callback\) => _addListener\(BOT_OPEN_REQUEST, callback\)/,
+    );
+  });
+});

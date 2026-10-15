@@ -75,3 +75,10 @@ test("setPreferences body never reaches a non-widget-keyed write", () => {
     );
   }
 });
+
+test("a payload's onClick handles the click in the main process (bot notifications reopen Dash)", () => {
+  assert.match(
+    SRC,
+    /notification\.on\("click", \(\) => \{\s+if \(typeof onClick === "function"\) \{\s+try \{\s+onClick\(\);/,
+  );
+});
