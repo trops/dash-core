@@ -424,11 +424,22 @@ describe("botController — bot notifications (US-019 AC3, US-018 AC5)", () => {
   });
 });
 
+describe("botController — background-mode settings (US-018 AC1-AC4)", () => {
+  it("setBotSettings takes background, startAtLogin and keepAwake as booleans", () => {
+    for (const key of ["background", "startAtLogin", "keepAwake"]) {
+      assert.match(
+        ctrl,
+        new RegExp(`if \\(${key} !== undefined\\) next\\.${key} = !!${key};`),
+      );
+    }
+  });
+});
+
 describe("botController — opening a bot from a notification (US-018 AC5)", () => {
   it("keeps the request until a window takes it, and tells open windows", () => {
     assert.match(
       ctrl,
-      /requestOpen\(botId\) \{[\s\S]{0,120}this\._openRequest = \{ botId: String\(botId\) \};\s+this\._broadcast\(BOT_OPEN_REQUEST, \{\}\);/,
+      /requestOpen\(botId = null\) \{\s+this\._openRequest = \{ botId: botId \? String\(botId\) : null \};\s+this\._broadcast\(BOT_OPEN_REQUEST, \{\}\);/,
     );
     assert.match(
       ctrl,

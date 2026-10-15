@@ -472,6 +472,19 @@ function Switch({ checked, onChange, disabled, label, ariaLabel }) {
   });
 }
 
+// DataList: label/value rows (DataList.Item).
+function DataList({ children }) {
+  return React.createElement("dl", null, children);
+}
+DataList.Item = function DataListItem({ label, value }) {
+  return React.createElement(
+    "div",
+    null,
+    React.createElement("dt", null, label),
+    React.createElement("dd", null, value),
+  );
+};
+
 // StatusBadge: a pill with a word ({ state, label }).
 function StatusBadge({ state = "neutral", label, children }) {
   return React.createElement(
@@ -1062,6 +1075,7 @@ module.exports = {
   Card3,
   Tag,
   Switch,
+  DataList,
   Tag2,
   Tag3,
   SelectInput,

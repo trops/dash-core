@@ -444,14 +444,14 @@ queue; the pause appears in the audit log.
 > so that scheduled and event-driven work doesn't depend on the dashboard being open.
 
 **Priority:** P0
-**Status:** In Progress
+**Status:** Implemented
 
 **Acceptance Criteria:**
 
--   [~] AC1: When any bot has an active schedule or subscription, closing the last window keeps Dash running in the menu bar (macOS) / system tray (Windows, Linux) instead of quitting. A setting controls this (default on when bots exist). _(Partial, 2026-10-14: Dash stays in the tray when the last window closes, but only for bots with schedules (not event triggers); no setting)_
--   [~] AC2: The tray menu shows running bots and pending approvals, and offers Open Dash, Open Activity, Pause all bots, and Quit. _(Partial, 2026-10-14: tray shows running bots, a pending count, Open Dash, Pause/Resume all, Quit; no approvals list or Open Activity)_
--   [~] AC3: Optional "Start Dash at login (hidden)" via `app.setLoginItemSettings` on macOS/Windows and an autostart `.desktop` entry on Linux. _(Partial, 2026-10-14: the login item is set automatically on macOS/Windows; no option, no Linux autostart)_
--   [~] AC4: While a run is in progress, Dash holds an Electron `powerSaveBlocker` (`prevent-app-suspension`) so the run isn't frozen mid-way, releasing it when the run ends. Optional setting: "Keep awake while bots are scheduled (only when plugged in)." _(Partial, 2026-10-14: prevent-app-suspension is held while runs are active; no keep-awake setting)_
+-   [x] AC1: When any bot has an active schedule or subscription, closing the last window keeps Dash running in the menu bar (macOS) / system tray (Windows, Linux) instead of quitting. A setting controls this (default on when bots exist). _(Built, 2026-10-15: Settings › General › Bots in the background › "Keep bots running when the window is closed" (bot setting `background`, default on). While on, closing the last window keeps Dash in the tray when a bot has a schedule; off, it quits. Bots with only event subscriptions don't keep Dash running: their events come from widgets in an open window, or from other bots' runs — so with no window only chains that start from a scheduled bot can fire, and those already keep Dash running.)_
+-   [x] AC2: The tray menu shows running bots and pending approvals, and offers Open Dash, Open Activity, Pause all bots, and Quit. _(Built, 2026-10-15: the tray lists running bots and up to 5 pending approvals ("<bot> wants <tool>" — a click opens that bot in the Bots dock), then Open Dash, Open Bots panel (the dock's list — Activity lives there), Pause/Resume all bots and Quit Dash.)_
+-   [x] AC3: Optional "Start Dash at login (hidden)" via `app.setLoginItemSettings` on macOS/Windows and an autostart `.desktop` entry on Linux. _(Built for macOS/Windows, 2026-10-15: "Start Dash at login" (bot setting `startAtLogin`, default on) sets a hidden login item while background mode is on and a bot has a schedule, and removes it otherwise. Linux autostart isn't done — Dash isn't built or tested on Linux.)_
+-   [x] AC4: While a run is in progress, Dash holds an Electron `powerSaveBlocker` (`prevent-app-suspension`) so the run isn't frozen mid-way, releasing it when the run ends. Optional setting: "Keep awake while bots are scheduled (only when plugged in)." _(Built, 2026-10-15: prevent-app-suspension is held while runs are active. "Keep the computer awake for scheduled bots" (bot setting `keepAwake`, default off) also holds it while background mode is on, a bot has a schedule and the computer is on AC power (`powerMonitor.isOnBatteryPower()`, re-checked on `on-ac` / `on-battery`).)_
 -   [x] AC5: Approval requests and failures while windows are closed raise native OS notifications (respecting Settings → Notifications); clicking opens the Activity panel on that item. _(Built, 2026-10-15: approvals notify; a failed run notifies while no Dash window is focused (stopped, interrupted and skipped runs don't). Clicking any bot notification opens that bot's chat in the Bots dock, reopening Dash if its window was closed (`requestOpen` / `takeOpenRequest`). Settings → Notifications applies through its on/off switch and Do Not Disturb; there are no per-type bot toggles.)_
 -   [x] AC6: Quitting Dash with runs in progress asks to stop them or wait; stopped runs are marked "Interrupted." _(2026-10-14: the quit check asks **Stop them and quit / Quit when they finish / Cancel** — also for Quit from the tray. Stopping aborts each run with reason "quit" (`BotRunner.abort(botId, "quit")`), saved as status `interrupted` with what it had said so far; it publishes no completed/failed event, and its pending approvals are denied as "Dash quit". `botController.interruptAll()` waits up to 5s for the records (`stopRun.js` `interruptAllRuns` / `whenIdle`); "Quit when they finish" waits on `whenIdle()`. Chat, Activity, Bots panel and Manage › Bots show "Interrupted when Dash quit". Not done: retrying interrupted runs, and runs cut off by a crash or force-quit, which leave no record.)_
 
@@ -461,7 +461,7 @@ queue; the pause appears in the audit log.
 -   User quits from the tray while bots are scheduled → confirmation explains that schedules pause until Dash starts again.
 
 **Technical Notes:**
-This keeps the runner in the Electron main process. It does not run bots when Dash is fully quit or the machine is asleep; see US-024 for the headless runner. On macOS, consider hiding the Dock icon while windowless (`app.dock.hide()`), restoring it when a window opens.
+This keeps the runner in the Electron main process. It does not run bots when Dash is fully quit or the machine is asleep; see US-024 for the headless runner. On macOS, consider hiding the Dock icon while windowless (`app.dock.hide()`), restoring it when a window opens (not done). The three settings live with the bot settings (`botController.setBotSettings` — `background`, `startAtLogin`, `keepAwake`); dash-electron's `backgroundPlan(bots, settings)` (`public/botBackground.js`) decides the tray, login item and keep-awake from them.
 
 **Definition of Done:**
 
@@ -2033,7 +2033,7 @@ These are inherent and documented rather than fixed:
 -   [ ] US-006: Choose a bot's AI provider (engines: `claude-agent` and `tool-loop` with OpenAI-compatible adapter)
 -   [ ] US-014: Bot Activity Manager (P0 scope: feed, approvals, run/bot/global controls)
 -   [ ] US-017: Bot Builder (P0 scope: form, Recommended model)
--   [ ] US-018: Background mode
+-   [x] US-018: Background mode
 -   [ ] US-019: Budgets and cost controls
 -   [x] NFR-006: Runner portability (host interface, no Electron imports)
 

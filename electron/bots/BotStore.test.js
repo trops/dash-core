@@ -302,6 +302,18 @@ describe("BotStore — team settings", () => {
     assert.equal(store.getTeamSettings("9").leadEnabled, true);
   });
 
+  it("background mode defaults: stay in the tray, start at login, don't keep awake (US-018)", () => {
+    const { store } = freshStore();
+    const s = store.getSettings();
+    assert.equal(s.background, true);
+    assert.equal(s.startAtLogin, true);
+    assert.equal(s.keepAwake, false);
+    store.setSettings({ keepAwake: true, background: false });
+    assert.equal(store.getSettings().keepAwake, true);
+    assert.equal(store.getSettings().background, false);
+    assert.equal(store.getSettings().startAtLogin, true);
+  });
+
   it("stores the global auto-lead switch", () => {
     const { store } = freshStore();
     store.setSettings({ autoLeads: false });

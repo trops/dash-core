@@ -358,10 +358,19 @@ class BotStore {
     return data.teams[key];
   }
 
-  /** Global bot settings; defaults { autoLeads: true }. */
+  /**
+   * Global bot settings. Defaults: autoLeads on; background mode (US-018) —
+   * keep running with the window closed, start at login, don't keep awake.
+   */
   getSettings() {
     const { settings } = this._load();
-    return { autoLeads: true, ...(settings || {}) };
+    return {
+      autoLeads: true,
+      background: true,
+      startAtLogin: true,
+      keepAwake: false,
+      ...(settings || {}),
+    };
   }
 
   setSettings(patch) {
