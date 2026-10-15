@@ -962,15 +962,22 @@ const botController = {
     return this._store.setTeamSettings(workspaceId, { introDismissed: true });
   },
 
-  /** Global bot settings: { autoLeads, dashTeam: { models } }. */
+  /**
+   * Global bot settings: { autoLeads, dashTeam: { models }, background,
+   * startAtLogin, keepAwake } (background mode — US-018 AC1-AC4).
+   */
   getBotSettings() {
     return this._store.getSettings();
   },
 
   setBotSettings(patch) {
-    const { autoLeads, dashTeam } = patch || {};
+    const { autoLeads, dashTeam, background, startAtLogin, keepAwake } =
+      patch || {};
     const next = {};
     if (autoLeads !== undefined) next.autoLeads = !!autoLeads;
+    if (background !== undefined) next.background = !!background;
+    if (startAtLogin !== undefined) next.startAtLogin = !!startAtLogin;
+    if (keepAwake !== undefined) next.keepAwake = !!keepAwake;
     if (dashTeam !== undefined) {
       next.dashTeam = mergeDashTeamSettings(
         this._store.getSettings().dashTeam,
@@ -1732,15 +1739,14 @@ const botController = {
   /**
    * A notification for this bot was clicked. Kept until the window takes it —
    * a window just reopened for the click asks once its dock is up; an open
-   * one is told now.
+   * one is told now. No bot (the tray's Open Bots panel) opens the list.
    */
-  requestOpen(botId) {
-    if (!botId) return;
-    this._openRequest = { botId: String(botId) };
+  requestOpen(botId = null) {
+    this._openRequest = { botId: botId ? String(botId) : null };
     this._broadcast(BOT_OPEN_REQUEST, {});
   },
 
-  /** @returns {{ botId: string } | null} the pending request, cleared */
+  /** @returns {{ botId: (string|null) } | null} the pending request, cleared */
   takeOpenRequest() {
     const req = this._openRequest || null;
     this._openRequest = null;

@@ -107,10 +107,10 @@ export const BotContacts = ({
   const [openId, setOpenId] = useState(null);
   const [view, setView] = useState("conversation");
   useEffect(() => {
-    if (openRequest && openRequest.botId) {
-      setOpenId(openRequest.botId);
-      setView("conversation");
-    }
+    if (!openRequest) return;
+    // No bot (the tray's Open Bots panel): the list.
+    setOpenId(openRequest.botId || null);
+    if (openRequest.botId) setView("conversation");
   }, [openRequest]);
 
   const [now, setNow] = useState(() => Date.now());

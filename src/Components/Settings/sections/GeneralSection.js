@@ -43,6 +43,56 @@ const SettingRow = ({ label, description, extra = null, testId, children }) => {
   );
 };
 
+// Bots in the background (bot-factory US-018 AC1-AC4). Saved with the bot
+// settings; dash-electron applies them to the tray, login item and power.
+const BACKGROUND_ROWS = [
+  {
+    key: "background",
+    label: "Keep bots running when the window is closed",
+    description:
+      "Dash stays in the menu bar while a bot has a schedule, so scheduled runs still happen. Off: scheduled bots stop when you close the window.",
+  },
+  {
+    key: "startAtLogin",
+    label: "Start Dash at login",
+    description:
+      "Opens Dash hidden when you log in, while a bot has a schedule.",
+  },
+  {
+    key: "keepAwake",
+    label: "Keep the computer awake for scheduled bots",
+    description:
+      "Stops the computer sleeping while a bot has a schedule, only when it's plugged in.",
+  },
+];
+
+/** The bot settings that run bots in the background, or null without bots. */
+function useBackgroundSettings() {
+  const botsApi = typeof window !== "undefined" ? window.mainApi?.bots : null;
+  const [settings, setSettings] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    if (!botsApi || typeof botsApi.getSettings !== "function") return undefined;
+    Promise.resolve(botsApi.getSettings())
+      .then((s) => {
+        if (alive) setSettings(s || {});
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [botsApi]);
+  const change = async (key, value) => {
+    setSettings((prev) => ({ ...prev, [key]: value }));
+    try {
+      await botsApi.setSettings({ [key]: value });
+    } catch (_e) {
+      setSettings((prev) => ({ ...prev, [key]: !value }));
+    }
+  };
+  return [settings, change];
+}
+
 export const GeneralSection = () => {
   const { muted, hairline, selectedBg: recessed } = useConfigTokens();
   const appContext = useContext(AppContext);
@@ -130,6 +180,8 @@ export const GeneralSection = () => {
   }
 
   const version = credentials.version || null;
+  const [botSettings, changeBotSetting] = useBackgroundSettings();
+  const background = botSettings ? botSettings.background !== false : true;
 
   return (
     <div className="flex flex-col gap-4">
@@ -156,6 +208,31 @@ export const GeneralSection = () => {
           />
         </SettingRow>
       </SettingsGroup>
+
+      {botSettings ? (
+        <SettingsGroup title="Bots in the background">
+          {BACKGROUND_ROWS.filter(
+            (row) => row.key === "background" || background,
+          ).map((row) => (
+            <SettingRow
+              key={row.key}
+              label={row.label}
+              description={row.description}
+              testId={`general-section-bots-${row.key}-row`}
+            >
+              <Switch
+                checked={
+                  row.key === "keepAwake"
+                    ? botSettings.keepAwake === true
+                    : botSettings[row.key] !== false
+                }
+                onChange={(value) => changeBotSetting(row.key, value)}
+                ariaLabel={row.label}
+              />
+            </SettingRow>
+          ))}
+        </SettingsGroup>
+      ) : null}
 
       <SettingsGroup title="Data directory">
         <SettingRow

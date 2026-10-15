@@ -184,6 +184,25 @@ test("a clicked notification opens that bot's chat, again for a later click (US-
   );
 });
 
+test("an open request with no bot (tray: Open Bots panel) shows the list", async () => {
+  const { rerender } = render(
+    <BotContacts
+      contacts={contacts()}
+      workspaces={workspaces}
+      openRequest={{ botId: "is" }}
+    />,
+  );
+  expect(await screen.findByTestId("bot-contact-subtitle")).toBeInTheDocument();
+  rerender(
+    <BotContacts
+      contacts={contacts()}
+      workspaces={workspaces}
+      openRequest={{ botId: null }}
+    />,
+  );
+  expect(await screen.findByTestId("bot-contacts")).toBeInTheDocument();
+});
+
 test("a paused bot: Resume from its chat", async () => {
   const c = contacts({ paused: new Set(["is"]) });
   render(<BotContacts contacts={c} workspaces={workspaces} />);
