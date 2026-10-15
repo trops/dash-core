@@ -284,3 +284,16 @@ describe("botController — spending summary (US-019 slice B)", () => {
     );
   });
 });
+
+describe("botController — quitting with runs in progress (US-018 AC6)", () => {
+  it("interruptAll stops every run as quit; whenIdle waits for them", () => {
+    assert.match(
+      ctrl,
+      /interruptAll\(\{ timeoutMs = 5000 \} = \{\}\) \{\s+return interruptAllRuns\(/,
+    );
+    assert.match(
+      ctrl,
+      /whenIdle\(\{ timeoutMs = null \} = \{\}\) \{\s+return waitUntilIdle\(/,
+    );
+  });
+});

@@ -530,3 +530,26 @@ describe("a stopped run (TEAM-015)", () => {
     expect(turns.some((x) => x.text === "Stopped")).toBe(false);
   });
 });
+
+describe("a run interrupted when Dash quit (US-018 AC6)", () => {
+  it("says so after whatever it had said", () => {
+    const turns = buildConversation([
+      run({ status: "interrupted", output: "Checked 3 of 10" }),
+    ]);
+    const kinds = turns.map((x) => [x.kind, x.text]);
+    expect(kinds).toContainEqual(["system", "Interrupted when Dash quit"]);
+    const bot = kinds.findIndex((k) => k[0] === "bot");
+    const note = kinds.findIndex((k) => k[1] === "Interrupted when Dash quit");
+    expect(bot).toBeGreaterThanOrEqual(0);
+    expect(note).toBeGreaterThan(bot);
+  });
+  it("says so when it hadn't answered yet", () => {
+    const turns = buildConversation([
+      run({ status: "interrupted", output: "" }),
+    ]);
+    expect(turns.map((x) => [x.kind, x.text])).toContainEqual([
+      "system",
+      "Interrupted when Dash quit",
+    ]);
+  });
+});

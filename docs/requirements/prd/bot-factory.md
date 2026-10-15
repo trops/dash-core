@@ -453,7 +453,7 @@ queue; the pause appears in the audit log.
 -   [ ] AC3: Optional "Start Dash at login (hidden)" via `app.setLoginItemSettings` on macOS/Windows and an autostart `.desktop` entry on Linux.
 -   [ ] AC4: While a run is in progress, Dash holds an Electron `powerSaveBlocker` (`prevent-app-suspension`) so the run isn't frozen mid-way, releasing it when the run ends. Optional setting: "Keep awake while bots are scheduled (only when plugged in)."
 -   [ ] AC5: Approval requests and failures while windows are closed raise native OS notifications (respecting Settings → Notifications); clicking opens the Activity panel on that item.
--   [ ] AC6: Quitting Dash with runs in progress asks to stop them or wait; stopped runs are marked "Interrupted."
+-   [x] AC6: Quitting Dash with runs in progress asks to stop them or wait; stopped runs are marked "Interrupted." _(2026-10-14: the quit check asks **Stop them and quit / Quit when they finish / Cancel** — also for Quit from the tray. Stopping aborts each run with reason "quit" (`BotRunner.abort(botId, "quit")`), saved as status `interrupted` with what it had said so far; it publishes no completed/failed event, and its pending approvals are denied as "Dash quit". `botController.interruptAll()` waits up to 5s for the records (`stopRun.js` `interruptAllRuns` / `whenIdle`); "Quit when they finish" waits on `whenIdle()`. Chat, Activity, Bots panel and Manage › Bots show "Interrupted when Dash quit". Not done: retrying interrupted runs, and runs cut off by a crash or force-quit, which leave no record.)_
 
 **Edge Cases:**
 

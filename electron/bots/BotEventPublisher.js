@@ -82,9 +82,9 @@ class BotEventPublisher {
     if (!bot || !record || record.skipped) return;
     const run = this._runs.get(bot.id);
     const output = run ? run.text : "";
-    if (record.status === "stopped") {
-      // Stopped by the user: neither finished nor failed, so nothing
-      // downstream should start.
+    if (record.status === "stopped" || record.status === "interrupted") {
+      // Stopped by the user, or because Dash quit: neither finished nor
+      // failed, so nothing downstream should start.
     } else if (record.status === "failed") {
       this._send(
         bot,

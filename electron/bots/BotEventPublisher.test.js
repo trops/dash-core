@@ -73,6 +73,13 @@ describe("BotEventPublisher", () => {
     assert.equal(published[0].content.output, "");
   });
 
+  it("publishes nothing for a run interrupted when Dash quit (US-018 AC6)", () => {
+    const { pub, published } = setup();
+    pub.startRun(bot.id);
+    pub.endRun(bot, { trigger: "schedule", status: "interrupted" });
+    assert.equal(published.length, 0);
+  });
+
   it("publishes nothing for a skipped run", () => {
     const { pub, published } = setup();
     pub.endRun(bot, { skipped: true });

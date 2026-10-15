@@ -50,6 +50,7 @@ const RUN_STATUS = {
   failed: "Failed",
   cancelled: "Cancelled",
   stopped: "Stopped",
+  interrupted: "Interrupted",
   skipped: "Skipped",
 };
 

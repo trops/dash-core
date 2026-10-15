@@ -31,7 +31,11 @@ const { matchSubscribedBots } = require("../bots/eventMatcher");
 const { EventDispatcher } = require("../bots/EventDispatcher");
 const { normalizeMcpResult } = require("../bots/mcpResult");
 const BotEventPublisher = require("../bots/BotEventPublisher");
-const { stopBotRun } = require("../bots/stopRun");
+const {
+  stopBotRun,
+  whenIdle: waitUntilIdle,
+  interruptAllRuns,
+} = require("../bots/stopRun");
 const {
   buildTeamManifest,
   validateTeamManifest,
@@ -1447,6 +1451,29 @@ const botController = {
       botId,
     });
     return { stopped };
+  },
+
+  /**
+   * Dash is quitting with runs in progress and the user chose to stop them
+   * (US-018 AC6): stop every run — each is saved as "interrupted" — and
+   * resolve once their records are written, or after `timeoutMs`.
+   * @returns {Promise<{ interrupted: number, unfinished: number }>}
+   */
+  interruptAll({ timeoutMs = 5000 } = {}) {
+    return interruptAllRuns({
+      runner: this._runner,
+      approvals: this._approvals,
+      timeoutMs,
+    });
+  },
+
+  /**
+   * Resolves when no bot is running ("Quit when they finish", US-018 AC6) —
+   * or after `timeoutMs`, when given.
+   * @returns {Promise<boolean>} true when idle, false on timeout
+   */
+  whenIdle({ timeoutMs = null } = {}) {
+    return waitUntilIdle({ runner: this._runner, timeoutMs });
   },
 
   /**
