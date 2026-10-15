@@ -16,4 +16,13 @@ describe("ThemeWrapper splash", () => {
     expect(outer[1]).toBe("flex items-center justify-center w-screen h-screen");
     expect(outer[1]).not.toMatch(/\bbg-/);
   });
+
+  it("is just the wordmark — no progress bar", () => {
+    const splash = src.slice(
+      src.indexOf("if (!chosenTheme || !splashDone)"),
+      src.indexOf("<ThemeContext.Provider"),
+    );
+    expect(splash).toMatch(/Dash\./);
+    expect(splash).not.toMatch(/splashProgress|bg-gray-700|bg-gray-500/);
+  });
 });
