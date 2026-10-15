@@ -27,6 +27,7 @@ import { useWidgetRegistryVersion } from "../../hooks/useWidgetRegistryVersion";
 import { useRegistrySearch } from "../../hooks/useRegistrySearch";
 import { RegistryAuthModal } from "../Registry/RegistryAuthModal";
 import { InstallProgressModal } from "../Settings/details/InstallProgressModal";
+import { isDraftPackage } from "../../utils/draftPackage";
 
 // ComponentConfigModel's fallback `name` for a config that sets none — it
 // isn't the widget's name, so it never titles a row.
@@ -38,6 +39,23 @@ const splitWords = (s) =>
     .replace(/([a-z])([A-Z0-9])/g, "$1 $2")
     .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
     .replace(/([0-9])([A-Za-z])/g, "$1 $2");
+
+/**
+ * The sidebar's widgets: every widget component, by key — not Widget Builder
+ * drafts, which live in Manage › Widgets.
+ */
+export function sidebarWidgets(componentMap) {
+  const map = componentMap || {};
+  return Object.keys(map)
+    .sort()
+    .filter(
+      (key) =>
+        map[key] &&
+        map[key].type === "widget" &&
+        !isDraftPackage(map[key]._sourcePackage),
+    )
+    .map((key) => ({ key, widget: map[key] }));
+}
 
 /**
  * The title for a widget row: its displayName, else its own name (unless
@@ -567,13 +585,10 @@ export const WidgetSidebar = ({
   const widgetVersion = useWidgetRegistryVersion();
 
   // Flat list of all widgets
-  const allWidgets = useMemo(() => {
-    const componentMap = ComponentManager.map();
-    return Object.keys(componentMap)
-      .sort()
-      .filter((key) => componentMap[key].type === "widget")
-      .map((key) => ({ key, widget: componentMap[key] }));
-  }, [widgetVersion]);
+  const allWidgets = useMemo(
+    () => sidebarWidgets(ComponentManager.map()),
+    [widgetVersion],
+  );
 
   // Set of installed package identifiers for "Installed" badge in Discover tab.
   // Stores folder names, package names, and "author/name" keys for matching.

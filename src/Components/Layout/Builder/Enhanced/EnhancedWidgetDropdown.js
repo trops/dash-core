@@ -47,6 +47,7 @@ import { RegistryAuthModal } from "../../../Registry/RegistryAuthModal";
 import { InstallProgressModal } from "../../../Settings/details/InstallProgressModal";
 import { cleanIpcError } from "../../../../utils/errorUtils";
 import { useWidgetRegistryVersion } from "../../../../hooks/useWidgetRegistryVersion";
+import { isDraftPackage } from "../../../../utils/draftPackage";
 
 export const EnhancedWidgetDropdown = ({
   isOpen,
@@ -315,19 +316,11 @@ export const EnhancedWidgetDropdown = ({
   // Filter widgets based on search, author, and provider
   const getFilteredWidgets = () => {
     const filtered = widgets.filter((widget) => {
-      // Drafts are in-progress widgets — they live under
-      // `@ai-built/<name>-draft-<shortId>/` on disk and shouldn't
-      // appear in the placement picker. EnhancedWidgetDropdown
-      // reads from ComponentManager directly, so we detect drafts
-      // via the `_sourcePackage` name pattern (mirrors the
-      // matching backstop in useInstalledWidgets#classifyWidget).
-      // useInstalledWidgets sets `widget.kind` for consumers that
-      // go through that hook; check it too for forward-compat.
-      const sourcePackage = widget._sourcePackage || "";
-      if (
-        widget.kind === "draft" ||
-        /-draft-[A-Za-z0-9]+$/.test(sourcePackage)
-      ) {
+      // Drafts are in-progress widgets (`@ai-built/draft-<id>/`) and
+      // shouldn't appear in the placement picker. This picker reads
+      // ComponentManager, so drafts are found by their source package;
+      // useInstalledWidgets' `kind` is checked too.
+      if (widget.kind === "draft" || isDraftPackage(widget._sourcePackage)) {
         return false;
       }
 

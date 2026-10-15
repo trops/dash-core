@@ -76,6 +76,27 @@ describe("WidgetSidebar — row titles (design audit)", () => {
   });
 });
 
+describe("WidgetSidebar — drafts stay out of the list", () => {
+  const { sidebarWidgets } = require("./WidgetSidebar");
+
+  test("lists widgets, not Widget Builder drafts", () => {
+    const map = {
+      "trops.algolia.AlgoliaRulesList": {
+        type: "widget",
+        _sourcePackage: "@trops/algolia",
+      },
+      "ai-built.draft-1782438308083-2ohecu.ComposedWidget6": {
+        type: "widget",
+        _sourcePackage: "@ai-built/draft-1782438308083-2ohecu",
+      },
+      "dash.layout.Grid": { type: "workspace" },
+    };
+    expect(sidebarWidgets(map).map((w) => w.key)).toEqual([
+      "trops.algolia.AlgoliaRulesList",
+    ]);
+  });
+});
+
 describe("WidgetSidebar — provider iteration safety", () => {
   test("imports getUserConfigurableProviders", () => {
     expect(SOURCE).toMatch(

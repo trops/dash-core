@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { ComponentManager } from "../ComponentManager";
 import { useWidgetRegistryVersion } from "./useWidgetRegistryVersion";
+import { isDraftPackage, draftIdOf } from "../utils/draftPackage";
 
 /**
  * Walk a workspace layout and collect widget component keys that are
@@ -157,12 +158,15 @@ export const useInstalledWidgets = () => {
         if (path && draftsByPackageDir.has(path)) {
           return { kind: "draft", draftId: draftsByPackageDir.get(path).id };
         }
-        // 2. Fallback: the dir name follows `<base>-draft-<shortId>`;
-        //    pluck the shortId and look it up in the drafts list.
-        const m = String(name).match(/-draft-([A-Za-z0-9]+)$/);
-        if (m) {
-          const shortId = m[1].slice(0, 8);
-          const draftId = draftShortIdToId.get(shortId) || null;
+        // 2. Fallback: a draft folder by name — today's `draft-<id>`
+        //    is the draft's id; an older `<base>-draft-<shortId>` is
+        //    looked up by its shortId.
+        if (isDraftPackage(name)) {
+          const id = draftIdOf(name);
+          const m = String(name).match(/-draft-([A-Za-z0-9]+)$/);
+          const draftId = id
+            ? id
+            : (m && draftShortIdToId.get(m[1].slice(0, 8))) || null;
           return { kind: "draft", draftId };
         }
         return { kind: "installed", draftId: null };
