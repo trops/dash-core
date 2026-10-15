@@ -1,7 +1,7 @@
 # PRD: Bot Teams — Dashboard Teams, Team Leads, and Installable Teams
 
-**Status:** Draft
-**Last Updated:** 2026-10-06
+**Status:** In Progress
+**Last Updated:** 2026-10-14 (reconciled with the code — story statuses and boxes say what is built; `[~]` marks partly built, with what's missing)
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; team UI consumed by dash-electron)
 **Related PRDs:** [bot-factory.md](./bot-factory.md) (bots, events, memory, templates, access review), [dashboard-marketplace.md](./dashboard-marketplace.md), [mcp-providers.md](./mcp-providers.md), dash-electron `docs/requirements/prd/ai-assistant.md`
@@ -138,7 +138,7 @@ Bots stay a power-user feature. Multi-bot workflows remain hand-assembled and un
 > so that I can see and change the automation for a dashboard where I'm working.
 
 **Priority:** P0
-**Status:** In Progress (slice 1 — everything except the lead, which is TEAM-002)
+**Status:** Implemented
 
 **Acceptance Criteria:**
 
@@ -146,7 +146,7 @@ Bots stay a power-user feature. Multi-bot workflows remain hand-assembled and un
 - [x] AC2: Dashboard Config gains a **Bots** tab listing the team: the lead pinned first, then members with status (idle, running, needs setup, paused), last run, and trigger summary. _(Slice 1: members with status and trigger summary. The pinned lead arrives with TEAM-002; "last run" waits for a run-history API.)_
 - [x] AC3: **+ Add bot** in the Bots tab opens the existing bot form with `workspaceId` preset; the event picker opens on this dashboard's widgets.
 - [x] AC4: An unassigned bot can be **moved into** a team (sets `workspaceId`), and a member can be moved out. Moving warns that event subscriptions scoped to another dashboard won't fire from this one.
-- [x] AC5: The Bot Activity panel gains **+ New bot** (scoped to the current dashboard) and can filter/group its feed by team.
+- [~] AC5: The Bot Activity panel gains **+ New bot** (scoped to the current dashboard) and can filter/group its feed by team. _(Partial, 2026-10-14: the Bots panel groups bots by team (contacts list, TEAM-015); its "+ New bot" went with the old panel — new bots start from Create or the Bots view)_
 - [x] AC6: Settings › Bots stays the all-bots view, grouped by team (dashboard) with an Unassigned group.
 
 **Edge Cases:**
@@ -347,15 +347,15 @@ Want me to draft a bot that follows up on renewals?"
 > so that others can install the whole team instead of rebuilding it.
 
 **Priority:** P1
-**Status:** In Progress (slice 1 local export ✓, slice 2 registry types ✓ in dash-registry 1.6.0, slice 3a registry publish ✓; 3b find & install next)
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
-- [x] AC1: A `.team.json` manifest schema is defined (see Team Manifest Schema): metadata, shared install variables, the lead's brief, members by **role**, wiring between roles, memory keys, and a suggested budget.
-- [ ] AC2: Members are referenced as registry bot templates (`{ ref, version }`, bot-factory US-026) or embedded templates. Roles are team-local names (`planner`, `tracker`, `reporter`) and are the only way members refer to each other.
+- [~] AC1: A `.team.json` manifest schema is defined (see Team Manifest Schema): metadata, shared install variables, the lead's brief, members by **role**, wiring between roles, memory keys, and a suggested budget. _(Partial, 2026-10-14: validateTeamManifest covers metadata, members by role and wiring; no variables, lead brief, memory keys, budget or shareable)_
+- [~] AC2: Members are referenced as registry bot templates (`{ ref, version }`, bot-factory US-026) or embedded templates. Roles are team-local names (`planner`, `tracker`, `reporter`) and are the only way members refer to each other. _(Partial, 2026-10-14: members are embedded and named by role; registry {ref, version} members aren't supported)_
 - [x] AC3: Wiring is expressed between roles and portable events: `{ role: "tracker", on: { role: "planner", event: "completed" } }`, `{ on: { role: "watcher", event: "tool.gmail.search_emails" } }`, or a widget event by package and widget name. It never contains bot ids, dashboard ids, or provider names.
-- [ ] AC4: **Export team** in the Bots tab builds the manifest from the current team, converting each member to a template (bot-factory US-026) and each bot-event subscription between members into role wiring, using the `source.ref` and `source.event` the event picker already stores. Install variables are suggested for values like project keys and channels.
-- [ ] AC5: Teams publish with `type: "bot-team"` through the existing publish workflow, gated by `shareable`. Publishing validates the manifest and flags high-risk combinations per member (bot-factory US-026 AC5).
+- [~] AC4: **Export team** in the Bots tab builds the manifest from the current team, converting each member to a template (bot-factory US-026) and each bot-event subscription between members into role wiring, using the `source.ref` and `source.event` the event picker already stores. Install variables are suggested for values like project keys and channels. _(Partial, 2026-10-14: Export team exists; no install-variable suggestions)_
+- [~] AC5: Teams publish with `type: "bot-team"` through the existing publish workflow, gated by `shareable`. Publishing validates the manifest and flags high-risk combinations per member (bot-factory US-026 AC5). _(Partial, 2026-10-14: publishes as bot-team; no shareable gate or high-risk flags)_
 - [ ] AC6: A manifest never contains credentials, sessions, memory values, run history, grants, or local ids.
 
 **Definition of Done:**
@@ -375,17 +375,17 @@ Want me to draft a bot that follows up on renewals?"
 > so that I get a working team without configuring each bot.
 
 **Priority:** P1
-**Status:** Implemented for v1 (slices 1 + 3b, 2026-10-05) — local import and registry install, with per-bot picking. Deferred: AC1 "new dashboard named after the team", AC3 install variables, AC4 grouped access review, AC6 lead brief, AC7 setup checklist.
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
-- [ ] AC1: Installing a team targets a dashboard: an existing one, or a new empty dashboard named after the team.
-- [ ] AC2: One **review screen** shows the team: each role with its bot's instructions, tier, schedules and triggers, the wiring as a simple diagram ("Planner → Tracker → Reporter"), providers needed, and estimated monthly cost.
+- [~] AC1: Installing a team targets a dashboard: an existing one, or a new empty dashboard named after the team. _(Partial, 2026-10-14: installs into the open dashboard; no "new dashboard named after the team")_
+- [~] AC2: One **review screen** shows the team: each role with its bot's instructions, tier, schedules and triggers, the wiring as a simple diagram ("Planner → Tracker → Reporter"), providers needed, and estimated monthly cost. _(Partial, 2026-10-14: TeamImportReview shows instructions, schedules, wiring and providers; no tier or monthly cost estimate)_
 - [ ] AC3: Shared install variables are asked **once** for the whole team and substituted into every member.
 - [ ] AC4: One **access review**, grouped by member (bot-factory US-029): the user checks tools per bot, and grants stay per bot. Unchecking a required tool marks that member Limited or not runnable without blocking the rest.
 - [x] AC5 (create-entry 5a-1, dash-core teamManifest `triggers`/`listeners` + `wireWidgets`, botController `_installTeamPlan`): On install, each role becomes a **new, unique bot** (new id; `ref` = the member template's registry id) in the dashboard's team, **in setup state**. Wiring is resolved from roles to the new bots' event names (`bot:<ref>[<newBotId>].<event>`) and to this dashboard's widget instances. Widget triggers and result listeners travel by layout widget id (kept on import) and are re-pointed to the new dashboard; a widget that isn't there is reported as not wired.
 - [ ] AC6: The team's lead brief is applied to the dashboard's lead (created if needed). An installed team never replaces an existing lead's settings without asking.
-- [x] AC7: A setup checklist (bot-factory US-027 AC5) completes setup. Members activate individually or all at once.
+- [~] AC7: A setup checklist (bot-factory US-027 AC5) completes setup. Members activate individually or all at once. _(Partial, 2026-10-14: bots install paused with a "Resume them when you're ready" notice; no setup checklist or "activate all")_
 - [x] AC8: The installed team records its source (`teamRef`, version) and which bot fills which role.
 
 **Edge Cases:**
@@ -449,14 +449,14 @@ answers from today's runs.
 > so that I can manage it without touching each bot.
 
 **Priority:** P1
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
 - [ ] AC1: **Pause team / Resume team** pauses or resumes every member and the lead (enforced at the permission gate, like per-bot pause).
-- [ ] AC2: An optional **team budget** caps the combined monthly spend of the team's bots, on top of per-bot and global budgets; reaching it auto-pauses the team.
+- [x] AC2: An optional **team budget** caps the combined monthly spend of the team's bots, on top of per-bot and global budgets; reaching it auto-pauses the team. _(Built, 2026-10-14: dashboard (workspace) budget — BudgetController, Team budget… in the Bots view)_
 - [ ] AC3: **Remove team** offers: remove the installed members (and their grants and remembered approvals), or keep them as ordinary bots on the dashboard.
-- [ ] AC4: The Activity feed groups runs by team and can show one team's chain of events ("Planner completed → Tracker ran → Reporter awaiting approval").
+- [~] AC4: The Activity feed groups runs by team and can show one team's chain of events ("Planner completed → Tracker ran → Reporter awaiting approval"). _(Partial, 2026-10-14: the contacts list groups bots by team and conversations show trigger chains; no per-team chain view)_
 
 **Definition of Done:**
 
@@ -550,7 +550,7 @@ answers from today's runs.
 > so that I see what they found without opening the Bots view.
 
 **Priority:** P1
-**Status:** In Progress (slice 1, 2026-10-05)
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
@@ -558,7 +558,7 @@ answers from today's runs.
 - [x] AC2: A built-in **Bot activity** widget (`dash.bots.BotActivity`) lists the latest runs of **this dashboard's** bots only (decided 2026-10-05), newest first, with approvals waiting on top; a row opens its bot in the Bots view.
 - [x] AC3: **Show on dashboard** (a bot's … menu) and **Show team activity** (team list) place the widget in the grid's next empty cell — adding a row when the grid is full — and the open dashboard reloads.
 - [x] AC4: The New bot form (in a dashboard's Bots view) has **Show results on this dashboard**, ticked by default (decided 2026-10-05).
-- [ ] AC5 (next): structured results — a bot can return items (title, subtitle, link) the widget renders as a list.
+- [~] AC5 (next): structured results — a bot can return items (title, subtitle, link) the widget renders as a list. _(Partial, 2026-10-14: bots send items with send_result (team-dashboards TD-001); the Bot results widget doesn't list them)_
 - [x] AC6: One **"Runs when…"** picker on the bot form replaces From › Dashboard › Widget › Event (decided 2026-10-05): grouped "Widgets on <dashboard>" (`Upcoming Events › eventSelected`) and "Bots on this team" (`Agenda › Completed`, `Inbox › uses search_emails (Gmail 3)`); a team bot is only offered what can fire for it (its dashboard's widgets, its teammates); an unassigned bot gets every dashboard and bot. Triggers already added are left out; copies of a widget are numbered; Add trigger reminds to Save. Uses dash-react `SelectInput` option groups (dash-react 1.0.61).
 - [x] AC7: **Widgets can listen to bots** — Dashboard Config › Listeners lists this dashboard's bots as sources (Completed, Failed, tool events); a wired handler stores `bot:<ref>[<botId>].<event>`, which the runtime already delivers (bots publish on `widget-event:broadcast`). Bot sources are never pruned on load; a bot that's gone shows "The bot was deleted or moved to another dashboard." A widget's own **Configure › Listeners** lists the same sources under "Bots on this dashboard" (shared `useBotEmitters` hook), and shows bot listeners wired from either place (2026-10-08).
 
@@ -573,7 +573,7 @@ answers from today's runs.
 > so that I can talk to any team without remembering lead names or which dashboard they belong to.
 
 **Priority:** P1
-**Status:** Implemented (slice 1 + slice 2, 2026-10-06)
+**Status:** Retired (create-entry 5e-2c removed the AI Assistant panel; asking a lead now happens in Create's Ask box with To:, 5e-2a)
 
 **Context:** TEAM-004 already lets the Assistant reach leads, but only through the model: the user names a dashboard in prose, the Assistant calls `list_teams` / `ask_team_lead`, rewords the question, and relays (summarises) the answer. TEAM-013 adds an explicit recipient: messages to a selected lead go **directly** to the lead (decided 2026-10-06), as the Bots view's lead chat already does.
 
@@ -738,6 +738,8 @@ _Slice 2 — drag to wire_
 
 **TEAM-015: The Bots dock — your bots as a contacts list**
 
+**Status:** Implemented
+
 > As someone with bots on several dashboards,
 > I want to pick any bot from a list, like a chat app's contacts, and talk to it right there,
 > so that I don't have to open a dashboard's Bots view to ask a bot something or see what it did.
@@ -762,12 +764,12 @@ _Slice 2 — drag to wire_
 > so that I can treat the team as one assistant.
 
 **Priority:** P2
-**Status:** Backlog (exploratory; v1 leads answer and propose only)
+**Status:** Backlog
 
 **Acceptance Criteria:**
 
 - [ ] AC1: With the user's opt-in per team, the lead may **ask a member to run** (`team_run_bot(role, prompt)`), which goes through the member's own grants, approvals, budget, and the chain/depth loop guard.
-- [ ] AC2: The lead can never change a member's settings or grants; it can only propose changes (TEAM-005).
+- [x] AC2: The lead can never change a member's settings or grants; it can only propose changes (TEAM-005). _(Built, 2026-10-14: a lead has only read-only team tools plus propose_bot)_
 
 ---
 

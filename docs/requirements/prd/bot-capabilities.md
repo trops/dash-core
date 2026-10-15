@@ -196,7 +196,7 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 > so that bots can use web content without shell access or scripts.
 
 **Priority:** P0
-**Status:** Implemented (AC5b partly — see notes)
+**Status:** In Progress (all but AC5b — a provider's settings are read when it starts, so running bots keep the old values until it restarts)
 
 **Acceptance Criteria:**
 
@@ -222,7 +222,7 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
   Out-of-range values are refused when saving, with the allowed range shown. A provider saved before a setting existed uses that setting's default.
 
 - [x] AC5a: The user can add **more than one** Web Fetch provider, each with its own name and settings (e.g. "Web Fetch — product images" limited to the product CDN, and an unrestricted "Web Fetch — research"). Each bot only uses the copies granted to it, and the lead sees each copy by name in `team_providers`.
-- [ ] AC5b: Settings take effect on the next tool call; no restart or reconnect is needed. _(Partly: saving restarts the copy Settings runs, but bots' per-dashboard copies keep the old settings until they restart (e.g. app restart) — the same as any provider's credentials today. See Open Question 7.)_
+- [~] AC5b: Settings take effect on the next tool call; no restart or reconnect is needed. _(Partly: saving restarts the copy Settings runs, but bots' per-dashboard copies keep the old settings until they restart (e.g. app restart) — the same as any provider's credentials today. See Open Question 7.)_
 - [x] AC6: Calls go through the normal bot permission gate: granting the provider to a bot, choosing its tools, approvals, and "Always allow" all work as for other providers.
 - [x] AC7: The provider shows up in `team_providers`, so leads can propose bots that use it.
 - [x] AC8: Errors are plain and specific, and name the setting when one applies ("Not an image: text/html", "Blocked: private network address", "Too large: 14 MB; this provider's limit is 10 MB (Settings › Providers › Web Fetch)", "Not in this provider's allowed sites: example.org").
@@ -346,7 +346,7 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 > so that a Claude Code bot can only use the providers I grant it.
 
 **Priority:** P2
-**Status:** Not Started
+**Status:** Backlog
 
 **Acceptance Criteria:**
 
@@ -363,7 +363,7 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 > so that the vetted tier keeps up with the ecosystem.
 
 **Priority:** P2
-**Status:** Not Started
+**Status:** Backlog
 
 **Acceptance Criteria:**
 

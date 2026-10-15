@@ -1,7 +1,7 @@
 # PRD: Bot Factory — Persistent, Provider-Agnostic AI Bots
 
-**Status:** Draft
-**Last Updated:** 2026-09-27
+**Status:** In Progress
+**Last Updated:** 2026-10-14 (reconciled with the code — each story's Status and its acceptance criteria now say what is built; `[~]` marks partly built, with what's missing)
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; Bots UI consumed by dash-electron)
 **Related PRDs:** [mcp-providers.md](./mcp-providers.md), [dashboard-marketplace.md](./dashboard-marketplace.md), [bot-factory-use-cases.md](./bot-factory-use-cases.md), [bot-teams.md](./bot-teams.md) (dashboard teams, team leads, installable teams), dash-electron `docs/requirements/prd/ai-assistant.md`
@@ -147,15 +147,15 @@ Automation stays outside Dash in ad-hoc scripts, the MCP server remains underuse
 > so that I can delegate a specific job to it.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
--   [ ] AC1: Given Settings → Bots, when I click "New Bot," then the NewBotPicker offers templates or blank, followed by the Bot Builder (US-017) whose form covers name, role/instructions, provider/model (with recommendation, US-016), MCP servers, allowed tools, and approval policy.
--   [ ] AC2: Saving persists a bot definition matching the Bot Schema (see Architecture) and the bot appears in the roster.
--   [ ] AC3: A bot's private working directory is created under `app.getPath("userData")/bots/<botId>/files` (distinct from the Dash workspace it belongs to).
--   [ ] AC3a: Every bot belongs to exactly one Dash workspace, defaulting to the workspace the user is in when creating it.
--   [ ] AC4: Editing a bot updates its definition without discarding its session history.
+-   [~] AC1: Given Settings → Bots, when I click "New Bot," then the NewBotPicker offers templates or blank, followed by the Bot Builder (US-017) whose form covers name, role/instructions, provider/model (with recommendation, US-016), MCP servers, allowed tools, and approval policy. _(Partial, 2026-10-14: New Bot opens the bot form (BotDetail) — name, instructions, team, provider/model with Recommended, providers and tools, approval policy. No NewBotPicker or templates; no allowedTools field (approval policy + Always allow cover it))_
+-   [x] AC2: Saving persists a bot definition matching the Bot Schema (see Architecture) and the bot appears in the roster. _(Built, 2026-10-14: BotStore.create + validateBotDefinition; listed in Manage › Bots)_
+-   [x] AC3: A bot's private working directory is created under `app.getPath("userData")/bots/<botId>/files` (distinct from the Dash workspace it belongs to). _(Built, 2026-10-14: BotStore.workingDir under userData/bots)_
+-   [~] AC3a: Every bot belongs to exactly one Dash workspace, defaulting to the workspace the user is in when creating it. _(Partial, 2026-10-14: defaults to the open dashboard; a bot can also be unassigned (no dashboard))_
+-   [x] AC4: Editing a bot updates its definition without discarding its session history. _(Built, 2026-10-14: BotStore.update keeps session and ref out of the patch)_
 
 **Edge Cases:**
 
@@ -191,14 +191,14 @@ Expected: Bot appears in roster with status "Idle", workspace folder exists.
 > so that I can trust what it's doing.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** Implemented
 
 **Acceptance Criteria:**
 
--   [ ] AC1: Given a bot, when I send it a message, then the runner starts the bot's engine with its config and streams normalized `BotEvent`s to the bot's chat view over IPC.
--   [ ] AC2: Tool calls and results render inline, reusing the Chat widget tool-use rendering.
--   [ ] AC3: I can stop a running bot; the runner aborts via `AbortController` and the bot returns to "Idle."
--   [ ] AC4: Each run is appended to the bot's activity log with start time, trigger, status, and a result summary.
+-   [x] AC1: Given a bot, when I send it a message, then the runner starts the bot's engine with its config and streams normalized `BotEvent`s to the bot's chat view over IPC. _(Built, 2026-10-14: BOT_STREAM events → BotChat onStream)_
+-   [x] AC2: Tool calls and results render inline, reusing the Chat widget tool-use rendering. _(Built, 2026-10-14: tool calls inline (dash-react ChatToolCall))_
+-   [x] AC3: I can stop a running bot; the runner aborts via `AbortController` and the bot returns to "Idle." _(Built, 2026-10-14: BotRunner.abort; saved as stopped)_
+-   [x] AC4: Each run is appended to the bot's activity log with start time, trigger, status, and a result summary. _(Built, 2026-10-14: BotRunner appendRun (trigger, status, times, output))_
 
 **Edge Cases:**
 
@@ -233,15 +233,15 @@ final summary appears within the chat, activity log gains one "Completed" entry.
 > so that nothing happens in external systems without my say-so.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
--   [ ] AC1: Tool calls not covered by the bot's `allowedTools` route through `requestPermission` (the Claude Agent SDK's `canUseTool` callback for `claude-agent`; before each tool execution for `tool-loop`), which creates a pending approval.
--   [ ] AC2: Pending approvals appear in the Bot Activity Manager's approvals queue (US-014) and in the bot's chat, showing bot, workspace, tool name, and input.
--   [ ] AC3: Approve resolves the request as allowed; Deny resolves it as denied with the user's message, which is returned to the model as the tool result, and the bot continues or stops accordingly.
--   [ ] AC4: Tools outside the bot's granted MCP servers are denied without prompting.
--   [ ] AC5: Every approval decision is recorded in the bot's audit log.
+-   [x] AC1: Tool calls not covered by the bot's `allowedTools` route through `requestPermission` (the Claude Agent SDK's `canUseTool` callback for `claude-agent`; before each tool execution for `tool-loop`), which creates a pending approval. _(Built, 2026-10-14: PermissionGate pending approval; tool-loop and Claude Code canUseTool)_
+-   [~] AC2: Pending approvals appear in the Bot Activity Manager's approvals queue (US-014) and in the bot's chat, showing bot, workspace, tool name, and input. _(Partial, 2026-10-14: shown in Needs you and the chat with bot, dashboard, tool and provider; the tool's input isn't shown)_
+-   [~] AC3: Approve resolves the request as allowed; Deny resolves it as denied with the user's message, which is returned to the model as the tool result, and the bot continues or stops accordingly. _(Partial, 2026-10-14: Allow and Deny work and the denial reaches the model; Deny takes no message)_
+-   [x] AC4: Tools outside the bot's granted MCP servers are denied without prompting. _(Built, 2026-10-14: PermissionGate denies tools on servers the bot isn't set up with)_
+-   [~] AC5: Every approval decision is recorded in the bot's audit log. _(Partial, 2026-10-14: decisions are kept on each run record; no persisted audit log (the runner's audit hook isn't wired))_
 
 **Edge Cases:**
 
@@ -276,16 +276,16 @@ with the message body. User approves; message posts; audit log records the appro
 > so that recurring work happens without me starting it.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
--   [ ] AC1: A bot can have zero or more schedules, each a cron expression plus a task prompt.
--   [ ] AC2: The runner registers schedules with `croner` on app start and when a bot is saved.
--   [ ] AC3: Scheduled runs appear in the activity log with trigger "schedule."
--   [ ] AC4: A schedule that fires while the same bot is already running is skipped and logged, not queued.
--   [ ] AC5: Each schedule has a **catch-up policy** for occurrences missed while Dash was closed or the machine slept: `skip`, `once` (default: run once on next start/wake), or `all` (run each missed occurrence, capped at 5).
--   [ ] AC6: The runner records each schedule's last fire time and evaluates missed occurrences on startup and on system resume (Electron `powerMonitor` `resume`).
+-   [~] AC1: A bot can have zero or more schedules, each a cron expression plus a task prompt. _(Partial, 2026-10-14: the scheduler takes any number of schedules; the form edits only the first)_
+-   [x] AC2: The runner registers schedules with `croner` on app start and when a bot is saved. _(Built, 2026-10-14: registerAll at start, register on save)_
+-   [x] AC3: Scheduled runs appear in the activity log with trigger "schedule." _(Built, 2026-10-14: trigger "schedule")_
+-   [~] AC4: A schedule that fires while the same bot is already running is skipped and logged, not queued. _(Partial, 2026-10-14: an overlapping run is skipped but only streamed, not logged)_
+-   [~] AC5: Each schedule has a **catch-up policy** for occurrences missed while Dash was closed or the machine slept: `skip`, `once` (default: run once on next start/wake), or `all` (run each missed occurrence, capped at 5). _(Partial, 2026-10-14: skip / once catch-up; "all" runs once; no form setting; missed runs aren't logged)_
+-   [~] AC6: The runner records each schedule's last fire time and evaluates missed occurrences on startup and on system resume (Electron `powerMonitor` `resume`). _(Partial, 2026-10-14: checked at start and on resume, against the bot's last run rather than each schedule's last fire)_
 
 **Edge Cases:**
 
@@ -319,13 +319,13 @@ Expected: At 7:00 on weekdays, bot runs; activity log shows trigger "schedule".
 > so that it builds on previous runs instead of starting cold.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
--   [ ] AC1: After each run, the runner stores the engine's session state on the bot record (Claude Agent SDK session ID for `claude-agent`; message history for `tool-loop`).
--   [ ] AC2: The next run passes that state back to the same engine, including after an app restart.
--   [ ] AC3: The user can "Reset memory," which clears the stored session ID (working-directory files remain unless also cleared).
+-   [x] AC1: After each run, the runner stores the engine's session state on the bot record (Claude Agent SDK session ID for `claude-agent`; message history for `tool-loop`). _(Built, 2026-10-14: saveSession on the engine's session event (both engines))_
+-   [~] AC2: The next run passes that state back to the same engine, including after an app restart. _(Partial, 2026-10-14: the session is kept, but only replies resume it — runs start fresh by design)_
+-   [~] AC3: The user can "Reset memory," which clears the stored session ID (working-directory files remain unless also cleared). _(Partial, 2026-10-14: BotStore.resetSession exists; nothing in the UI calls it)_
 
 **Edge Cases:**
 
@@ -348,15 +348,15 @@ Expected: At 7:00 on weekdays, bot runs; activity log shows trigger "schedule".
 > so that I can use the subscriptions and models I already have.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
--   [ ] AC1: The bot form lists only providers the user has configured credentials for (Anthropic, OpenAI, xAI at launch), with models from `modelProviders.listModels()`.
--   [ ] AC2: A new bot defaults to the user's designated default AI provider, with its model set to "Recommended" (US-016).
--   [ ] AC3: The same bot definition (instructions, grants, schedules, approval policy) runs on any supported provider; changing provider does not require re-creating the bot.
--   [ ] AC4: The form shows the selected engine's capabilities (e.g. "Built-in file & shell tools: Claude Agent engine only") so the user knows what changes between providers.
--   [ ] AC5: MCP tools and the approval gate behave identically on every engine.
+-   [x] AC1: The bot form lists only providers the user has configured credentials for (Anthropic, OpenAI, xAI at launch), with models from `modelProviders.listModels()`. _(Built, 2026-10-14: configured providers + Claude Code; models from llm.listModels)_
+-   [~] AC2: A new bot defaults to the user's designated default AI provider, with its model set to "Recommended" (US-016). _(Partial, 2026-10-14: model defaults to Recommended; provider defaults to Claude Code, not the user's default provider)_
+-   [x] AC3: The same bot definition (instructions, grants, schedules, approval policy) runs on any supported provider; changing provider does not require re-creating the bot. _(Built, 2026-10-14: provider read at run time (_resolveRunProfile))_
+-   [~] AC4: The form shows the selected engine's capabilities (e.g. "Built-in file & shell tools: Claude Agent engine only") so the user knows what changes between providers. _(Partial, 2026-10-14: only the engine option's label; no per-engine capability summary)_
+-   [x] AC5: MCP tools and the approval gate behave identically on every engine. _(Built, 2026-10-14: both engines share requestPermission and the MCP tool path)_
 
 **Edge Cases:**
 
@@ -394,19 +394,19 @@ UI warns that prior conversation memory will not carry over.
 > so that I stay in control as the number of bots grows.
 
 **Priority:** P0 (core feed, approvals, run/bot/global controls); P1 (chain traces, workspace/project controls)
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
--   [ ] AC1: A universal Activity Manager view in dash-core (also available as a widget) shows a live feed of runs, tool calls, events, memory writes, and approvals from every workspace.
--   [ ] AC2: The feed is filterable by workspace, project, bot, provider, status, and event name; each item shows which bot, in which workspace, did what, triggered by what.
--   [ ] AC3: It replaces the standalone approvals inbox: pending approvals are listed here with approve/deny, and a badge is visible from anywhere in Dash.
--   [ ] AC4: Run controls: stop (abort now) and pause/resume (halt at the next tool call, resume from the saved session).
--   [ ] AC5: Bot controls: pause/resume. A paused bot's schedules are skipped and its events follow its `whilePaused` policy.
+-   [~] AC1: A universal Activity Manager view in dash-core (also available as a widget) shows a live feed of runs, tool calls, events, memory writes, and approvals from every workspace. _(Partial, 2026-10-14: the Bots panel (Needs you, Running, Recent) and the Bot activity widget; events and memory writes aren't in a feed)_
+-   [~] AC2: The feed is filterable by workspace, project, bot, provider, status, and event name; each item shows which bot, in which workspace, did what, triggered by what. _(Partial, 2026-10-14: Manage › Bots filters by team and status; no project, provider or event filters)_
+-   [x] AC3: It replaces the standalone approvals inbox: pending approvals are listed here with approve/deny, and a badge is visible from anywhere in Dash. _(Built, 2026-10-14: Needs you with Allow/Deny and a rail badge)_
+-   [~] AC4: Run controls: stop (abort now) and pause/resume (halt at the next tool call, resume from the saved session). _(Partial, 2026-10-14: Stop works; no pause/resume of a single run)_
+-   [x] AC5: Bot controls: pause/resume. A paused bot's schedules are skipped and its events follow its `whilePaused` policy. _(Built, 2026-10-14: pauseBot / resumeBot; paused bots don't start; whilePaused applies)_
 -   [ ] AC6 (P1): Workspace and project controls pause/resume every bot in scope.
--   [ ] AC7: A global "Pause all bots" kill switch, reachable from the badge, stops new tool calls within 2 seconds.
+-   [~] AC7: A global "Pause all bots" kill switch, reachable from the badge, stops new tool calls within 2 seconds. _(Partial, 2026-10-14: Pause all bots only in the tray menu)_
 -   [ ] AC8 (P1): Selecting any item opens its full chain trace (widget → bot → bot → widget), across workspaces, by `chain` IDs.
--   [ ] AC9: Every user intervention is itself recorded in the audit log.
+-   [~] AC9: Every user intervention is itself recorded in the audit log. _(Partial, 2026-10-14: approval decisions on run records only; pause, resume and stop aren't audited)_
 
 **Edge Cases:**
 
@@ -444,15 +444,15 @@ queue; the pause appears in the audit log.
 > so that scheduled and event-driven work doesn't depend on the dashboard being open.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
--   [ ] AC1: When any bot has an active schedule or subscription, closing the last window keeps Dash running in the menu bar (macOS) / system tray (Windows, Linux) instead of quitting. A setting controls this (default on when bots exist).
--   [ ] AC2: The tray menu shows running bots and pending approvals, and offers Open Dash, Open Activity, Pause all bots, and Quit.
--   [ ] AC3: Optional "Start Dash at login (hidden)" via `app.setLoginItemSettings` on macOS/Windows and an autostart `.desktop` entry on Linux.
--   [ ] AC4: While a run is in progress, Dash holds an Electron `powerSaveBlocker` (`prevent-app-suspension`) so the run isn't frozen mid-way, releasing it when the run ends. Optional setting: "Keep awake while bots are scheduled (only when plugged in)."
--   [ ] AC5: Approval requests and failures while windows are closed raise native OS notifications (respecting Settings → Notifications); clicking opens the Activity panel on that item.
+-   [~] AC1: When any bot has an active schedule or subscription, closing the last window keeps Dash running in the menu bar (macOS) / system tray (Windows, Linux) instead of quitting. A setting controls this (default on when bots exist). _(Partial, 2026-10-14: Dash stays in the tray when the last window closes, but only for bots with schedules (not event triggers); no setting)_
+-   [~] AC2: The tray menu shows running bots and pending approvals, and offers Open Dash, Open Activity, Pause all bots, and Quit. _(Partial, 2026-10-14: tray shows running bots, a pending count, Open Dash, Pause/Resume all, Quit; no approvals list or Open Activity)_
+-   [~] AC3: Optional "Start Dash at login (hidden)" via `app.setLoginItemSettings` on macOS/Windows and an autostart `.desktop` entry on Linux. _(Partial, 2026-10-14: the login item is set automatically on macOS/Windows; no option, no Linux autostart)_
+-   [~] AC4: While a run is in progress, Dash holds an Electron `powerSaveBlocker` (`prevent-app-suspension`) so the run isn't frozen mid-way, releasing it when the run ends. Optional setting: "Keep awake while bots are scheduled (only when plugged in)." _(Partial, 2026-10-14: prevent-app-suspension is held while runs are active; no keep-awake setting)_
+-   [~] AC5: Approval requests and failures while windows are closed raise native OS notifications (respecting Settings → Notifications); clicking opens the Activity panel on that item. _(Partial, 2026-10-14: approvals raise OS notifications; failures don't, and clicking one with no window open does nothing)_
 -   [x] AC6: Quitting Dash with runs in progress asks to stop them or wait; stopped runs are marked "Interrupted." _(2026-10-14: the quit check asks **Stop them and quit / Quit when they finish / Cancel** — also for Quit from the tray. Stopping aborts each run with reason "quit" (`BotRunner.abort(botId, "quit")`), saved as status `interrupted` with what it had said so far; it publishes no completed/failed event, and its pending approvals are denied as "Dash quit". `botController.interruptAll()` waits up to 5s for the records (`stopRun.js` `interruptAllRuns` / `whenIdle`); "Quit when they finish" waits on `whenIdle()`. Chat, Activity, Bots panel and Manage › Bots show "Interrupted when Dash quit". Not done: retrying interrupted runs, and runs cut off by a crash or force-quit, which leave no record.)_
 
 **Edge Cases:**
@@ -480,16 +480,16 @@ This keeps the runner in the Electron main process. It does not run bots when Da
 > so that a busy or misconfigured bot can't run up an unexpected bill.
 
 **Priority:** P0
-**Status:** In progress — slice A (2026-10-14): over-budget bots stop and say why; slice B (2026-10-14): budgets set per bot (bot form › Monthly budget), per dashboard (Bots view › Team budget…) and overall (Manage › Bots › Spending), and this month's spending by bot, dashboard and AI provider. Left: the 80% notification and a persisted audit log.
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
 -   [x] AC1: Every run records token usage and estimated cost (from provider usage data and pricing metadata).
 -   [x] AC2: Monthly budgets can be set per bot, per workspace, and globally.
--   [ ] AC3 (slice A: the dock row says "80% of budget"; notification still to do): At 80% of any applicable budget, the Activity Manager and a notification warn the user.
+-   [~] AC3 (slice A: the dock row says "80% of budget"; notification still to do): At 80% of any applicable budget, the Activity Manager and a notification warn the user. _(Partial, 2026-10-14: the 80% warning is computed and shown on rows; no notification is raised)_
 -   [x] AC4: At 100%, affected bots auto-pause with reason "Budget reached"; in-progress runs stop at their next tool call. _(Slice A: an over-budget bot no longer starts a run — before, only its tool calls were refused and it still spent on the model. The Bots dock says "Over budget" on its row, lists it under Needs you, and its chat says which limit with Keep running this month.)_
 -   [x] AC5: The Activity Manager shows spend by bot, workspace, and provider for the current month. _(Manage › Bots › Spending; provider totals count from slice B on. Claude Code runs show as tokens covered by the Claude plan.)_
--   [ ] AC6 (slice A: Keep running this month is an explicit action, recorded in the budget data; the persisted audit log is still to do): Raising a budget or resuming a budget-paused bot requires an explicit user action and is audited.
+-   [~] AC6 (slice A: Keep running this month is an explicit action, recorded in the budget data; the persisted audit log is still to do): Raising a budget or resuming a budget-paused bot requires an explicit user action and is audited. _(Partial, 2026-10-14: Keep running this month is an explicit action, but it isn't persisted to an audit log)_
 
 **Edge Cases:**
 
@@ -515,15 +515,15 @@ This keeps the runner in the Electron main process. It does not run bots when Da
 > so that I can put bot output, status, or chat where I already look, or leave my dashboard clean.
 
 **Priority:** P1
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
--   [ ] AC1: dash-core ships built-in widgets: **Bot Output** (latest result, or a memory key, rendered as Markdown), **Bot Status** (state, last/next run, run/pause controls), **Bot Chat** (the bot's chat view), and **Activity Feed** (the Activity Manager feed, filterable, defaulting to the current workspace).
--   [ ] AC2: Each widget selects its bot the way widgets select providers today: a dropdown of bots in the widget's workspace.
--   [ ] AC3: Widgets are optional views. Adding or removing one never changes the bot's configuration or whether it runs.
--   [ ] AC4: Widgets respect workspace scope: they cannot bind to bots in other workspaces.
--   [ ] AC5: Bots granted the Dash MCP server can still update dashboards via existing tools.
+-   [~] AC1: dash-core ships built-in widgets: **Bot Output** (latest result, or a memory key, rendered as Markdown), **Bot Status** (state, last/next run, run/pause controls), **Bot Chat** (the bot's chat view), and **Activity Feed** (the Activity Manager feed, filterable, defaulting to the current workspace). _(Partial, 2026-10-14: Bot results and Bot activity widgets ship; no Bot Chat widget, memory source, Markdown, pause/resume or next-run time)_
+-   [x] AC2: Each widget selects its bot the way widgets select providers today: a dropdown of bots in the widget's workspace. _(Built, 2026-10-14: "Choose a bot…" list of the dashboard's bots)_
+-   [x] AC3: Widgets are optional views. Adding or removing one never changes the bot's configuration or whether it runs. _(Built, 2026-10-14: the widget only stores botId)_
+-   [x] AC4: Widgets respect workspace scope: they cannot bind to bots in other workspaces. _(Built, 2026-10-14: isOnTeam check before linking)_
+-   [~] AC5: Bots granted the Dash MCP server can still update dashboards via existing tools. _(Partial, 2026-10-14: not confirmed — bots use the user's MCP providers; no specific grant of Dash's own MCP server)_
 
 **Edge Cases:**
 
@@ -547,14 +547,14 @@ This keeps the runner in the Electron main process. It does not run bots when Da
 > so that I don't have to write instructions from scratch.
 
 **Priority:** P1
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
--   [ ] AC1: The NewBotPicker offers templates from three sources: built-in (shipped with dash-core), installed (from registry packages), and a "Browse registry" tab listing `type: "bot"` packages.
+-   [~] AC1: The NewBotPicker offers templates from three sources: built-in (shipped with dash-core), installed (from registry packages), and a "Browse registry" tab listing `type: "bot"` packages. _(Partial, 2026-10-14: registry browse and install in the Bots view; no NewBotPicker, built-in or installed template sources)_
 -   [ ] AC2: Choosing a template opens the Bot Builder pre-filled from the template, with its install variables (US-026) shown as required fields.
 -   [ ] AC3: A launch set of priority templates ships built in, drawn from [bot-factory-use-cases.md](./bot-factory-use-cases.md): PR Digest, PR Summarizer, Security Reviewer, Inbox Triage, Meeting Prep, Daily Brief, Error Watch, and Demo Check.
--   [ ] AC4: Any bot can be exported as a `.bot.json` template from BotDetail (secrets, sessions, memory values, and activity excluded).
+-   [~] AC4: Any bot can be exported as a `.bot.json` template from BotDetail (secrets, sessions, memory values, and activity excluded). _(Partial, 2026-10-14: a bot publishes to the registry as bot.json and a team exports as team.json; no .bot.json export from the form)_
 
 **Definition of Done:**
 
@@ -573,12 +573,12 @@ This keeps the runner in the Electron main process. It does not run bots when Da
 > so that they react to work as it arrives.
 
 **Priority:** P1
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
 -   [ ] AC1: A bot can expose a local webhook endpoint that triggers a run with the request payload as context.
--   [ ] AC2: Event-triggered runs are logged with trigger type and source.
+-   [x] AC2: Event-triggered runs are logged with trigger type and source. _(Built, 2026-10-14: event runs logged with trigger "event" and a source)_
 
 ---
 
@@ -589,16 +589,16 @@ This keeps the runner in the Electron main process. It does not run bots when Da
 > so that widgets and bots in that workspace can react without affecting other workspaces.
 
 **Priority:** P1
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
--   [ ] AC1: Every bot has a built-in `publish_event` tool on every engine (served from Bot Factory's in-process MCP server).
+-   [~] AC1: Every bot has a built-in `publish_event` tool on every engine (served from Bot Factory's in-process MCP server). _(Partial, 2026-10-14: no publish_event — send_result for declared results, plus automatic completed / failed / tool events)_
 -   [x] AC2: Events are namespaced `bot:<ref>[<botId>].<eventName>`, matching the widget convention (`Component[itemId].event`), and delivered through the existing `widget-event:broadcast` relay. `ref` is the bot's **stable identity**, never its display name: the template's registry id when installed from a template (e.g. `@trops/inbox-tools/InboxTriage`), otherwise `local/<slug>` fixed at creation, so renames and multiple installs of one template don't break subscriptions. Tool-call events use portable names, `tool.<catalogType>.<toolName>` (e.g. `tool.gmail.search_emails`), never the user's provider name; run events are `completed` / `failed`.
 -   [x] AC3: Every widget event is automatically stamped with `workspaceId`; widgets need no code changes because the publish helpers add it from the widget's context. (Bot-originated events: with US-010's emit work.)
 -   [ ] AC4: A bot publishes to its own workspace by default. It may publish to a project channel (`channel: "project:<id>"`) only for projects it has write membership in, and to `global` only if granted.
--   [ ] AC5: A bot may only publish event names declared in its `publishes` list; payloads are validated against the declared schema.
--   [ ] AC6: Every event carries metadata: `source`, `runId`, `workspaceId`, `channel`, `chain` (causation IDs), and `depth`.
+-   [~] AC5: A bot may only publish event names declared in its `publishes` list; payloads are validated against the declared schema. _(Partial, 2026-10-14: declared names and a 64 KB cap; payloads aren't checked against a schema)_
+-   [~] AC6: Every event carries metadata: `source`, `runId`, `workspaceId`, `channel`, `chain` (causation IDs), and `depth`. _(Partial, 2026-10-14: events carry chain, depth, origin and dashboard; no runId or channel)_
 -   [ ] AC7: Every event, regardless of channel, is mirrored to the global observation stream (US-014).
 
 **Edge Cases:**
@@ -633,17 +633,17 @@ Manager tagged "Work".
 > so that bots can work as a team without a central orchestrator.
 
 **Priority:** P1
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
--   [ ] AC1: A bot definition can list `subscriptions`, each an event name (widget or bot), a task prompt, and a `scope`; matching events start a run with trigger "event."
--   [ ] AC2: `scope` defaults to `"workspace"` (the bot's own workspace). `"project:<id>"` matches that project's channel and requires project membership. `"workspaces:[ids]"` or `"global"` match events from other workspaces and require an explicit cross-workspace grant.
--   [ ] AC3: The main process subscribes on the bots' behalf by tapping the existing `widget-event` relay, so bots hear events whether or not their dashboard is open.
+-   [~] AC1: A bot definition can list `subscriptions`, each an event name (widget or bot), a task prompt, and a `scope`; matching events start a run with trigger "event." _(Partial, 2026-10-14: subscriptions have eventType, a note (task prompt) and source dashboard; no scope field)_
+-   [~] AC2: `scope` defaults to `"workspace"` (the bot's own workspace). `"project:<id>"` matches that project's channel and requires project membership. `"workspaces:[ids]"` or `"global"` match events from other workspaces and require an explicit cross-workspace grant. _(Partial, 2026-10-14: same-dashboard matching only; no project / workspaces / global scope or cross-workspace grant)_
+-   [x] AC3: The main process subscribes on the bots' behalf by tapping the existing `widget-event` relay, so bots hear events whether or not their dashboard is open. _(Built, 2026-10-14: the main process's widget-event relay calls handleEvent)_
 -   [x] AC4: The event payload is passed to the model as clearly labeled, untrusted data, never merged into the bot's instructions.
--   [ ] AC5: Cached/replayed events never trigger runs; only live events do.
+-   [x] AC5: Cached/replayed events never trigger runs; only live events do. _(Built, 2026-10-14: only live publishes reach handleEvent; the replay cache is served separately)_
 -   [x] AC6: Loop prevention across workspaces: runs are refused when `depth` exceeds the max chain depth (default 5) or when the bot already appears in the event's `chain`.
--   [ ] AC7: Per-subscription debounce (default 2s, coalescing to the latest payload) and a per-bot rate limit (default 20 event-triggered runs/hour).
+-   [~] AC7: Per-subscription debounce (default 2s, coalescing to the latest payload) and a per-bot rate limit (default 20 event-triggered runs/hour). _(Partial, 2026-10-14: a 10s per-bot cooldown only; no per-subscription debounce or hourly cap)_
 -   [x] AC8: Events for a paused bot follow its `whilePaused` policy: `"queue"` (default, delivered on resume, coalesced per subscription) or `"drop"` (logged as skipped). _(2026-10-14: "paused" also covers over budget. `electron/bots/pausedQueue.js` keeps the latest event per subscription (oldest trigger first, max 50 per bot), sealed and saved in the bot store (`pausedQueue`) so it survives a restart. `handleEvent` holds instead of dropping; Resume, Resume all, Keep running this month and a raised budget run what waited, one after another per bot (`drainBot`; the rest go back if it's paused again; a run already in progress finishes first). "drop" appends a run record `{ status: "skipped", skipped: "paused" }` shown as "Skipped while paused · <trigger>". Bot form: "While paused" (shown when it has triggers). Bots panel: "Paused · 2 events waiting" and the paused / over-budget note says so. A deleted bot's queue goes with it.)_
 -   [x] AC9: The bot form lists subscribable events for the chosen scope, built from widgets' declared `events` and other bots' `publishes`. _(Bots' events are derived from their providers + tools rather than a hand-declared `publishes` list — see notes below.)_
 
@@ -696,13 +696,13 @@ Expected: One chain, depth 0 → 2, traceable in the Activity Manager.
 > so that they can build on each other's work instead of redoing it.
 
 **Priority:** P1
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
--   [ ] AC1: Every bot keeps private memory (its session and working directory, unchanged) and has read/write access to its workspace's memory.
--   [ ] AC2: Built-in tools on every engine: `memory_get`, `memory_put`, `memory_list` (by key prefix/tag), and `memory_delete`, each taking a `scope` (`"workspace"` default, or `"project:<id>"` per US-015).
--   [ ] AC3: Entries are `{ scope, key, value (JSON), tags, author botId, sourceWorkspaceId, runId, version, updatedAt, expiresAt? }`.
+-   [x] AC1: Every bot keeps private memory (its session and working directory, unchanged) and has read/write access to its workspace's memory. _(Built, 2026-10-14: team memory per dashboard; bots with no team get a private bucket)_
+-   [~] AC2: Built-in tools on every engine: `memory_get`, `memory_put`, `memory_list` (by key prefix/tag), and `memory_delete`, each taking a `scope` (`"workspace"` default, or `"project:<id>"` per US-015). _(Partial, 2026-10-14: memory_set / get / list (prefix) / delete; workspace and global only, no tags or project scope)_
+-   [~] AC3: Entries are `{ scope, key, value (JSON), tags, author botId, sourceWorkspaceId, runId, version, updatedAt, expiresAt? }`. _(Partial, 2026-10-14: entries hold value, version and updatedAt only)_
 -   [ ] AC4: Writes to an existing key require the current `version` (optimistic concurrency); a stale write fails and returns the current value.
 -   [ ] AC5: Every write and delete is recorded in the scope's audit log with author, workspace, and run, and surfaced in the Activity Manager.
 -   [ ] AC6: A Memory view lets the user browse, edit, and delete entries by scope; widgets can read their workspace's memory through `window.dashApi`.
@@ -780,14 +780,14 @@ under the project in the Activity Manager.
 > so that my bots are capable enough for the job without paying for more than they need.
 
 **Priority:** P1 (recommend at creation); P2 (usage-based tuning, escalation)
-**Status:** Backlog
+**Status:** Backlog (groundwork only)
 
 **Acceptance Criteria:**
 
--   [ ] AC1: The model picker defaults to **"Recommended"**. The advisor re-evaluates when advice-relevant fields change (see US-017 AC6) and once on save; it analyzes the bot's instructions, tools, triggers, and expected frequency and proposes a **tier** (fast / balanced / deep) plus a **reasoning level** (low / medium / high).
--   [ ] AC2: The advisor maps the tier to a concrete model on the bot's own provider using tier metadata in the provider registry (e.g. for Anthropic: Haiku → fast, Sonnet → balanced, Opus → deep), so recommendations work for any provider.
+-   [~] AC1: The model picker defaults to **"Recommended"**. The advisor re-evaluates when advice-relevant fields change (see US-017 AC6) and once on save; it analyzes the bot's instructions, tools, triggers, and expected frequency and proposes a **tier** (fast / balanced / deep) plus a **reasoning level** (low / medium / high). _(Partial, 2026-10-14: the model picker defaults to Recommended, which just means no model chosen; no advisor)_
+-   [~] AC2: The advisor maps the tier to a concrete model on the bot's own provider using tier metadata in the provider registry (e.g. for Anthropic: Haiku → fast, Sonnet → balanced, Opus → deep), so recommendations work for any provider. _(Partial, 2026-10-14: tier metadata and tierModel() exist, used only for the Dash team's roles)_
 -   [ ] AC3: The recommendation shows a one-sentence plain-language rationale and an estimated cost per run and per month at the configured schedule.
--   [ ] AC4: The user can accept or override; the chosen model, reasoning level, and whether it was recommended are stored on the bot.
+-   [~] AC4: The user can accept or override; the chosen model, reasoning level, and whether it was recommended are stored on the bot. _(Partial, 2026-10-14: the schema default modelSelection is never updated; no reasoning level stored)_
 -   [ ] AC5: The advisor itself runs on a fast-tier model of the user's default provider, and never runs without a configured provider.
 -   [ ] AC6 (P2): After a bot has at least 10 runs, the advisor reviews actual usage (turns, tool calls, failures, approvals denied, cost) and suggests a change, e.g. "All 14 runs finished in 2 turns with no errors; a fast-tier model would cut cost about 70%." Suggestions appear in the Activity Manager and BotDetail; nothing changes without the user's confirmation.
 -   [ ] AC7 (P2): Optional **escalation**: a bot can run on a fast model and retry once on the next tier up if the run fails or the bot calls a built-in `escalate` tool, with the escalation logged.
@@ -829,12 +829,12 @@ Expected: Recommended → deep tier (Anthropic: Opus), high reasoning,
 > so that I can build a good bot without knowing how bots are configured.
 
 **Priority:** P0 (form, Recommended model); P1 (chat co-pilot, Test tab)
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
--   [ ] AC1: Creating or editing a bot opens the **Bot Builder** modal: the form on the left, an optional collapsible right pane with **Chat** and **Test** tabs (modeled on `WidgetBuilderModal`).
--   [ ] AC2: The form is the source of truth. A bot can be built entirely from the form with the right pane closed; saving always saves the form.
+-   [~] AC1: Creating or editing a bot opens the **Bot Builder** modal: the form on the left, an optional collapsible right pane with **Chat** and **Test** tabs (modeled on `WidgetBuilderModal`). _(Partial, 2026-10-14: the form opens in a modal (BotEditorModal); no right pane, Chat or Test tabs)_
+-   [x] AC2: The form is the source of truth. A bot can be built entirely from the form with the right pane closed; saving always saves the form. _(Built, 2026-10-14: the form is the one editor; Save saves the form)_
 -   [ ] AC3 (P1): Chat proposes form changes as structured field patches. Changed fields highlight, with per-field undo and "Undo all from this message."
 -   [ ] AC4 (P1): Each chat turn receives the current form state, so manual edits are respected and never silently overwritten.
 -   [ ] AC5 (P1): Chat cannot change permissions on its own. Proposed changes to tools, MCP servers, grants, project membership, or cross-workspace subscriptions appear as pending suggestions the user must accept individually.
@@ -878,14 +878,14 @@ User runs Test; the digest streams in the Test tab; user saves.
 > so that choosing OpenAI or Grok doesn't leave a bot without basic capabilities.
 
 **Priority:** P1
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
 -   [ ] AC1: Bot Factory's MCP server provides `file_read`, `file_write`, `file_list`, and `file_search` to every engine, confined to the bot's working directory.
 -   [ ] AC2: Paths are resolved and checked against the working directory; traversal and symlink escapes are rejected.
--   [ ] AC3: Shell execution is not part of the shared set; it is available only with explicit approval policy or inside a container (US-013).
--   [ ] AC4: The `claude-agent` engine may still use its native file tools, restricted to the same directory; the BotDetail capability summary reflects the effective toolset per engine.
+-   [x] AC3: Shell execution is not part of the shared set; it is available only with explicit approval policy or inside a container (US-013). _(Built, 2026-10-14: no shell in the shared / tool-loop set; Claude Code's built-ins ask every time)_
+-   [~] AC4: The `claude-agent` engine may still use its native file tools, restricted to the same directory; the BotDetail capability summary reflects the effective toolset per engine. _(Partial, 2026-10-14: Claude Code's tools run in the bot's files folder (cwd), which isn't confinement; the form doesn't show the toolset)_
 
 **Definition of Done:**
 
@@ -961,7 +961,7 @@ User runs Test; the digest streams in the Test tab; user saves.
 > so that a brief outage or rate limit doesn't lose scheduled work.
 
 **Priority:** P1 (retries); P2 (fallback provider)
-**Status:** Backlog
+**Status:** In Progress (P1 retries implemented; P2 fallback not started)
 
 **Acceptance Criteria:**
 
@@ -995,27 +995,27 @@ User runs Test; the digest streams in the Test tab; user saves.
 > so that I can extend my bots safely without knowing how MCP servers are installed.
 
 **Priority:** P1 (detection, grant, curated catalog, custom server); P2 (MCP Registry, sandboxing)
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
 *Detection*
 
--   [ ] AC1: While building, the Bot Builder chat identifies needed capabilities that no granted server provides and raises them before save.
+-   [~] AC1: While building, the Bot Builder chat identifies needed capabilities that no granted server provides and raises them before save. _(Partial, 2026-10-14: leads' find_providers and draft gaps raise missing capabilities before approval (bot-capabilities CAP-003/004); no Bot Builder chat)_
 -   [ ] AC2: Every bot has a built-in `request_capability` tool (description + reason). It creates a **capability request** in the Activity Manager; it never installs or grants anything. The run continues without the capability or pauses, per the bot's `onMissingCapability` setting (`continue` default, or `pause`).
 
 *Resolution ladder* (offered in this order, most trusted first)
 
--   [ ] AC3: **Installed but not granted** → propose a grant for this bot as a pending suggestion.
--   [ ] AC4: **In the curated catalog** (`mcpServerCatalog.json` / `knownExternalMcpServers.json`) → use the existing `install_known_mcp_server` flow and `InstallExternalMcpModal` (package, command, credential fields; user confirms).
--   [ ] AC5 (P2): **In the official MCP Registry** (mcp-providers PRD Phase 5) → show publisher, source repository, version, transport, required credentials, and verified-namespace status, with a "not curated by Dash" warning. Remote (HTTP/OAuth) servers are preferred over local stdio servers when both exist.
--   [ ] AC6: **User-supplied server** → existing `CustomMcpServerForm`, including OAuth.
--   [ ] AC7: **Nothing suitable** → say so plainly and suggest alternatives (webhook trigger, generic fetch server, different approach). Generating a custom MCP server is out of scope for this story.
+-   [~] AC3: **Installed but not granted** → propose a grant for this bot as a pending suggestion. _(Partial, 2026-10-14: draft review has Use for an installed provider; not at run time)_
+-   [~] AC4: **In the curated catalog** (`mcpServerCatalog.json` / `knownExternalMcpServers.json`) → use the existing `install_known_mcp_server` flow and `InstallExternalMcpModal` (package, command, credential fields; user confirms). _(Partial, 2026-10-14: vetted entries install through the usual confirmation, from draft review only)_
+-   [~] AC5 (P2): **In the official MCP Registry** (mcp-providers PRD Phase 5) → show publisher, source repository, version, transport, required credentials, and verified-namespace status, with a "not curated by Dash" warning. Remote (HTTP/OAuth) servers are preferred over local stdio servers when both exist. _(Partial, 2026-10-14: community results show Unverified and the source repo; no verified namespace, version or transport, no remote preference)_
+-   [x] AC6: **User-supplied server** → existing `CustomMcpServerForm`, including OAuth. _(Built, 2026-10-14: AddProviderDialog → the custom server form, pre-filled)_
+-   [~] AC7: **Nothing suitable** → say so plainly and suggest alternatives (webhook trigger, generic fetch server, different approach). Generating a custom MCP server is out of scope for this story. _(Partial, 2026-10-14: the lead says nothing matched and keeps the gap; no alternatives)_
 
 *Installation guardrails*
 
--   [ ] AC8: Installs only ever use an exact catalog or registry entry selected by the user. Package names or commands appearing in model output are never installed directly.
--   [ ] AC9: Installed servers are pinned to a specific version with source and version recorded; `@latest` or unpinned commands are rejected for registry installs.
+-   [x] AC8: Installs only ever use an exact catalog or registry entry selected by the user. Package names or commands appearing in model output are never installed directly. _(Built, 2026-10-14: suggestions find_providers didn't return are dropped; installing needs a click)_
+-   [~] AC9: Installed servers are pinned to a specific version with source and version recorded; `@latest` or unpinned commands are rejected for registry installs. _(Partial, 2026-10-14: registry installs pin a version when known; unpinned entries aren't refused, source/version not recorded)_
 -   [ ] AC10: After install, Dash starts the server, lists its actual tools, and shows them for selection. The server begins with zero grants; read-only tools are preselected and write/external-effect tools are unchecked.
 -   [ ] AC11: If the server fails to start or list tools, the install is rolled back and logs are shown.
 -   [ ] AC12: Newly installed servers are classified as untrusted input by default for taint-aware approvals (US-022) until the user marks them trusted.
@@ -1060,16 +1060,16 @@ accepted suggestion in the form; the audit log records the install and grant.
 > so that others can install a proven bot instead of building it from scratch.
 
 **Priority:** P1
-**Status:** In Progress — a bot publishes to the registry as `type: "bot"` (bot-teams TEAM-006 slice 3a, 2026-10-05): portable definition, providers by type, never credentials/sessions/memory/ids. Not yet: model tiers, install variables, required/optional tools with purposes, high-risk flags, update diffs.
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
--   [ ] AC1: A `.bot.json` template schema is defined (see Bot Template Schema): portable bot definition, install variables, declared requirements, and metadata. It never contains credentials, engine sessions, memory values, activity, or local IDs.
--   [ ] AC2: Requirements are declared, not granted: AI capability as a model **tier** and reasoning level (never a vendor model ID), MCP servers by catalog ID with version and the specific tools requested (each marked `required` or `optional`, with a plain-language `purpose` and, for optional tools, the feature lost without it), events published and subscribed (widget events referenced by package and widget name), and memory keys used.
+-   [~] AC1: A `.bot.json` template schema is defined (see Bot Template Schema): portable bot definition, install variables, declared requirements, and metadata. It never contains credentials, engine sessions, memory values, activity, or local IDs. _(Partial, 2026-10-14: bot.json leaves out credentials, sessions and ids; no install variables or requirement metadata)_
+-   [~] AC2: Requirements are declared, not granted: AI capability as a model **tier** and reasoning level (never a vendor model ID), MCP servers by catalog ID with version and the specific tools requested (each marked `required` or `optional`, with a plain-language `purpose` and, for optional tools, the feature lost without it), events published and subscribed (widget events referenced by package and widget name), and memory keys used. _(Partial, 2026-10-14: providers by type with their tools; the vendor model id is exported, no tiers or purposes)_
 -   [ ] AC3: **Install variables** (e.g. `{repo}`, `{slackChannel}`) are declared with type, label, and description, and substituted into instructions, triggers, and tool arguments at install.
--   [ ] AC4: Templates publish to the registry with `type: "bot"` through the existing publish workflow; a `shareable` flag gates publishing, as for dashboards.
--   [ ] AC5: Publishing validates the schema and flags high-risk combinations for the publisher and installer (e.g. reads untrusted input and sends external messages; requests shell access).
--   [ ] AC6: Installed bots record their source template and version. Template updates show a diff of instructions, triggers, and requested tools; newly requested tools require re-consent, and local edits are preserved or shown as conflicts.
+-   [~] AC4: Templates publish to the registry with `type: "bot"` through the existing publish workflow; a `shareable` flag gates publishing, as for dashboards. _(Partial, 2026-10-14: publishes as type bot; no shareable gate)_
+-   [~] AC5: Publishing validates the schema and flags high-risk combinations for the publisher and installer (e.g. reads untrusted input and sends external messages; requests shell access). _(Partial, 2026-10-14: schema and metadata validated; no high-risk flags)_
+-   [~] AC6: Installed bots record their source template and version. Template updates show a diff of instructions, triggers, and requested tools; newly requested tools require re-consent, and local edits are preserved or shown as conflicts. _(Partial, 2026-10-14: installedFrom is recorded; no update diff or re-consent)_
 
 **Edge Cases:**
 
@@ -1094,12 +1094,12 @@ accepted suggestion in the form; the audit log records the install and grant.
 > so that I get a working team of bots without configuring each piece myself.
 
 **Priority:** P1
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
 -   [~] AC1 (create-entry 5a-1 + 5a-2 — publishing to the registry carries it too, and manifest.json gets a team summary and providerTypes; an optional `team` block — the bot-team manifest — with embedded bots, their results, bot↔bot wiring and bot↔widget `triggers`/`listeners` by layout-local widget id; Export ZIP includes it by default, "Export ZIP without bots" leaves it out; registry references and `project` not yet): `.dashboard.json` (dashboard-marketplace PRD) gains a `bots` array holding embedded bot templates or registry references, plus bot↔widget wiring expressed with the dashboard's layout-local widget IDs, and an optional `project` block.
--   [x] AC2 (create-entry 5a-2: one **Include this dashboard's N bots** checkbox, on by default, listing each bot with what starts it and the providers it uses, and what can't travel; per-bot choice and install variables not yet — US-026): PublishDashboardModal gains an "Include bots" section listing the workspace's bots with checkboxes; included bots are exported as templates per US-026 (install variables suggested automatically for values like repo names and channels).
+-   [~] AC2 (create-entry 5a-2: one **Include this dashboard's N bots** checkbox, on by default, listing each bot with what starts it and the providers it uses, and what can't travel; per-bot choice and install variables not yet — US-026): PublishDashboardModal gains an "Include bots" section listing the workspace's bots with checkboxes; included bots are exported as templates per US-026 (install variables suggested automatically for values like repo names and channels). _(Partial, 2026-10-14: one all-or-nothing "Include this dashboard's bots" checkbox; no per-bot boxes or install variables)_
 -   [~] AC3 (create-entry 5a-2: the registry dashboard page lists its bots, how they work together, the providers they use, and that they install paused; instructions, schedules and the cost estimate not yet): Before import, a single **review screen** shows everything the package will add: widgets, bots (instructions, tier, schedules, subscriptions), MCP servers and requested tools per bot, providers needed, and an estimated monthly cost at the declared schedules.
 -   [x] AC4 (create-entry 5a-1: import from file; registry install is 5a-2): On import, the workspace is created, widgets installed, and bots created **in setup state**: not running, schedules and subscriptions inactive.
 -   [ ] AC5: A **setup checklist** in the new workspace walks through what remains: fill install variables, configure the AI provider, connect MCP servers (via US-025), review each bot's requested access (US-029), and set budgets (defaulting to the package's suggestion, capped by the user's global budget).
@@ -1168,19 +1168,19 @@ awaiting approval.
 > so that I stay in control even if that means the bot does less.
 
 **Priority:** P1
-**Status:** Backlog
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
--   [ ] AC1: Installing a bot (from a template, a dashboard package, or a widget's companion list) shows an access review built on the existing widget preflight consent pattern (`WidgetPreflightReview`, declared vs granted in `grantedPermissions.js`), with one section per bot.
+-   [~] AC1: Installing a bot (from a template, a dashboard package, or a widget's companion list) shows an access review built on the existing widget preflight consent pattern (`WidgetPreflightReview`, declared vs granted in `grantedPermissions.js`), with one section per bot. _(Partial, 2026-10-14: TeamImportReview has a section per bot, matched per provider; not a per-tool preflight)_
 -   [ ] AC2: Each requested tool is a line with a checkbox, grouped by MCP server, showing the tool name, the publisher's `purpose`, whether it is read-only or has external effects, and for optional tools the feature lost if unchecked.
 -   [ ] AC3: Defaults: all **required** tools are checked, including write/external-effect tools; **optional** tools are unchecked. The user can uncheck any tool. Write/external-effect tools are visually marked, and high-risk combinations flagged at publish (US-026 AC5) are highlighted again here.
--   [ ] AC3a: Checking a write/external-effect tool grants access to it, not unreviewed use: the bot's approval policy still applies at runtime (default `ask`), so external actions pause for approval unless the user later pre-approves them.
--   [ ] AC4: The user can **Install with selected access**, **Skip this bot** (in a package), or **Cancel**. Unchecking a required tool shows that the bot can't run without it and disables its activation, while still allowing the rest of the package to install.
--   [ ] AC5: Only checked tools are written to the bot's grants. Nothing is granted implicitly by the template, the package, or later updates.
+-   [x] AC3a: Checking a write/external-effect tool grants access to it, not unreviewed use: the bot's approval policy still applies at runtime (default `ask`), so external actions pause for approval unless the user later pre-approves them. _(Built, 2026-10-14: imported bots are forced to approval policy "ask")_
+-   [~] AC4: The user can **Install with selected access**, **Skip this bot** (in a package), or **Cancel**. Unchecking a required tool shows that the bot can't run without it and disables its activation, while still allowing the rest of the package to install. _(Partial, 2026-10-14: Install / Cancel and per-member skip; nothing blocks activation when a required tool is unchecked)_
+-   [~] AC5: Only checked tools are written to the bot's grants. Nothing is granted implicitly by the template, the package, or later updates. _(Partial, 2026-10-14: a provider is picked per need, but the template's tool list is copied without per-tool consent)_
 -   [ ] AC6: A bot installed with partial access is labeled **Limited** in the bot list and BotDetail, with a list of disabled features, and its capability summary is added to the run context so the model plans around unavailable tools instead of attempting them.
--   [ ] AC7: If a limited bot still calls a denied tool, the permission gate denies it without prompting, the model receives "tool not granted," and the Activity Manager logs it. A pattern of repeated attempts surfaces as a single capability request (US-025), never a repeated prompt.
--   [ ] AC8: The user can revisit access at any time in BotDetail → Tools & Grants, granting or revoking individual tools; changes take effect on the next tool call.
+-   [~] AC7: If a limited bot still calls a denied tool, the permission gate denies it without prompting, the model receives "tool not granted," and the Activity Manager logs it. A pattern of repeated attempts surfaces as a single capability request (US-025), never a repeated prompt. _(Partial, 2026-10-14: the tool list is enforced without prompting; not logged in Activity)_
+-   [~] AC8: The user can revisit access at any time in BotDetail → Tools & Grants, granting or revoking individual tools; changes take effect on the next tool call. _(Partial, 2026-10-14: per-tool grant / revoke in the bot form; applies from the next run)_
 -   [ ] AC9: The same review appears when a template update requests new tools (US-026 AC6), showing only the new requests.
 
 **Edge Cases:**
@@ -1234,11 +1234,11 @@ Notifier posts to Slack after approval but never reacts to threads.
 > so that my bots are genuinely always on.
 
 **Priority:** P2
-**Status:** Backlog
+**Status:** Backlog (portability groundwork only)
 
 **Acceptance Criteria:**
 
--   [ ] AC1: The runner, engines, stores, scheduler, and event bridge can run as a standalone Node process (`dash-bot-runner`) with no Electron dependency.
+-   [~] AC1: The runner, engines, stores, scheduler, and event bridge can run as a standalone Node process (`dash-bot-runner`) with no Electron dependency. _(Partial, 2026-10-14: the core modules load in plain Node (portability.test.js); no runner entry point)_
 -   [ ] AC2: Dash can install and remove an OS-level supervisor for it, per platform: a per-user **launchd LaunchAgent** on macOS (`RunAtLoad`, `KeepAlive`), a **systemd user service** on Linux (`Restart=always`, optional `loginctl enable-linger`), and a **Task Scheduler** task at logon with restart-on-failure on Windows.
 -   [ ] AC3: Scheduling stays in the runner (`croner`); the OS supervisor only keeps the runner alive. OS-native scheduling is not used, so schedules have one source of truth on every platform.
 -   [ ] AC4: Only one runner is active: Dash first discovers a running headless runner (lock file + local socket) and connects to it as a client; otherwise it hosts the runner in-process.
@@ -2035,7 +2035,7 @@ These are inherent and documented rather than fixed:
 -   [ ] US-017: Bot Builder (P0 scope: form, Recommended model)
 -   [ ] US-018: Background mode
 -   [ ] US-019: Budgets and cost controls
--   [ ] NFR-006: Runner portability (host interface, no Electron imports)
+-   [x] NFR-006: Runner portability (host interface, no Electron imports)
 
 **Success Criteria:** A user can create, schedule, run, approve, and resume a bot end to end on Anthropic, OpenAI, and xAI, with all P0 tests and the engine contract suite passing under `npm run ci`.
 
@@ -2062,7 +2062,7 @@ These are inherent and documented rather than fixed:
 -   [ ] US-020: Shared built-in file tools
 -   [ ] US-021: Run summaries and provider handover
 -   [ ] US-022: Taint-aware approvals
--   [ ] US-023: Resilience (P1 scope: retries)
+-   [x] US-023: Resilience (P1 scope: retries)
 -   [ ] US-025: Capability requests (P1 scope: detection, grants, curated catalog, custom servers)
 -   [ ] US-008: Start from a template (built-in launch set + registry browsing)
 -   [ ] US-026: Bot templates as registry assets
@@ -2141,11 +2141,11 @@ These are inherent and documented rather than fixed:
 -   [ ] Model advisor: golden set of bot descriptions → expected tier/reasoning, tier → model mapping per provider, cost estimates, single-model providers
 -   [ ] Built-in widgets: bot binding, empty states, workspace scoping
 -   [ ] Schedules: catch-up policies (`skip` / `once` / `all` capped) on startup and simulated resume
--   [ ] Budgets: cost math, 80% warning, auto-pause at cap, audited resume
+-   [~] Budgets: cost math, 80% warning, auto-pause at cap, audited resume _(BudgetController.test.js; the audit sink isn't wired in production)_
 -   [ ] File tools: path traversal and symlink escape rejected
 -   [ ] Taint: propagation from untrusted input, escalated approvals, trusted-source exceptions
--   [ ] Retries: transient vs non-transient classification, backoff, retry-after
--   [ ] Portability: runner package loads and runs a mocked bot in plain Node with no Electron
+-   [x] Retries: transient vs non-transient classification, backoff, retry-after _(retryPolicy.test.js, BotRunner.test.js)_
+-   [x] Portability: runner package loads and runs a mocked bot in plain Node with no Electron _(portability.test.js)_
 -   [ ] Capability requests: `request_capability` never installs or grants; model-supplied package names are rejected by the installer; dedupe of repeated requests
 -   [ ] Installs: version pinning enforced, zero grants after install, read-only preselection, rollback when server fails to list tools, re-consent on tool-list change
 -   [ ] Templates: export never includes credentials, model IDs, sessions, memory values, activity, grants, or local IDs; variable substitution; tier → model mapping on install; high-risk combination flags

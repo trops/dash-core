@@ -133,12 +133,16 @@ describe("BotBudgetSection", () => {
   test("shows this month and the limit; Set limit saves for this bot", async () => {
     const api = mockApi();
     render(<BotBudgetSection bot={{ id: "a", name: "Inbox Sorter" }} />);
-    expect(await screen.findByTestId("bot-budget-spent")).toHaveTextContent(
-      "This month: $4.50 · 14.2k tokens · limit $5.00",
+    await waitFor(() =>
+      expect(screen.getByTestId("bot-budget-spent")).toHaveTextContent(
+        "This month: $4.50 · 14.2k tokens · limit $5.00",
+      ),
     );
-    fireEvent.change(screen.getByPlaceholderText("No limit"), {
-      target: { value: "8" },
-    });
+    // The loaded limit fills the box first — typing before it lands would be
+    // overwritten (the test was flaky under load).
+    const input = screen.getByPlaceholderText("No limit");
+    await waitFor(() => expect(input).toHaveValue("5"));
+    fireEvent.change(input, { target: { value: "8" } });
     fireEvent.click(screen.getByRole("button", { name: "Set limit" }));
     await waitFor(() =>
       expect(api.setBudget).toHaveBeenCalledWith("bot", "a", 8),
