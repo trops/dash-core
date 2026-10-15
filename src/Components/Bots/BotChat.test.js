@@ -596,3 +596,41 @@ describe("BotChat — over budget (US-019)", () => {
     expect(composer()).toHaveValue("Go");
   });
 });
+
+describe("BotChat — retries (US-023)", () => {
+  it("drops the failed attempt's words and says when it tries again", async () => {
+    const { listeners } = setup();
+    await screen.findByText("Check my inbox");
+    act(() => {
+      listeners.stream({
+        botId: "b1",
+        event: { type: "text", text: "Half an answ" },
+      });
+    });
+    expect(screen.getByText("Half an answ")).toBeInTheDocument();
+    act(() => {
+      listeners.stream({
+        botId: "b1",
+        event: {
+          type: "retrying",
+          reason: "Overloaded",
+          attempt: 2,
+          of: 3,
+          delayMs: 8000,
+        },
+      });
+    });
+    expect(screen.queryByText("Half an answ")).toBeNull();
+    expect(
+      screen.getByText("Overloaded — trying again in 8s (2 of 3)"),
+    ).toBeInTheDocument();
+    act(() => {
+      listeners.stream({
+        botId: "b1",
+        event: { type: "text", text: "Fresh answer" },
+      });
+    });
+    expect(screen.getByText("Fresh answer")).toBeInTheDocument();
+    expect(screen.queryByText(/trying again/)).toBeNull();
+  });
+});

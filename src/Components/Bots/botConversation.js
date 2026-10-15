@@ -17,6 +17,17 @@
 
 const sameId = (id) => id;
 
+/**
+ * The note while a run waits to try again (US-023): "Overloaded — trying
+ * again in 8s (2 of 3)".
+ * @param {{ reason?: string, attempt: number, of: number, delayMs?: number }} retry
+ */
+export function retryNote(retry) {
+  const r = retry || {};
+  const secs = Math.max(1, Math.round((r.delayMs || 0) / 1000));
+  return `${r.reason || "Something went wrong"} — trying again in ${secs}s (${r.attempt} of ${r.of})`;
+}
+
 /** A run stopped because Dash quit mid-way (US-018 AC6). */
 export const INTERRUPTED_TEXT = "Interrupted when Dash quit";
 
@@ -175,6 +186,10 @@ function turnsForRun(
   if (r.status === "stopped" && !r.output && !pending) {
     turns.push({ kind: "system", text: "Stopped", at: r.endedAt || at });
   }
+  // Trying again after temporary trouble (US-023), while it waits.
+  if (pending && r.retry) {
+    turns.push({ kind: "system", text: retryNote(r.retry), at });
+  }
   if (r.outputUnavailable) {
     turns.push({
       kind: "bot",
@@ -235,6 +250,7 @@ export function buildConversation(runs, { live = null, nameOf = sameId } = {}) {
           prompt: live.prompt || "",
           toolCalls: live.toolCalls || [],
           text: live.text || "",
+          retry: live.retry || null,
         },
         { pending: true, nameOf },
       ),

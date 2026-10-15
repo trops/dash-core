@@ -475,3 +475,81 @@ describe("claudeAgentEngine — read-only built-ins (CRE-011)", () => {
     assert.equal(read.behavior, "allow");
   });
 });
+
+describe("claudeAgentEngine — a turn that ends on an API error (US-023)", () => {
+  it("is an error event with its status, not an answer", async () => {
+    stubQuery([
+      { type: "system", subtype: "init", session_id: "s1" },
+      {
+        type: "assistant",
+        error: "overloaded",
+        session_id: "s1",
+        message: {
+          content: [
+            {
+              type: "text",
+              text: 'API Error: 529 {"type":"overloaded_error"}',
+            },
+          ],
+        },
+      },
+      {
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        api_error_status: 529,
+        result: 'API Error: 529 {"type":"overloaded_error"}',
+        session_id: "s1",
+        usage: { input_tokens: 4, output_tokens: 0 },
+      },
+    ]);
+    const events = await collect(claudeAgentEngine.run(ctx()));
+    assert.equal(
+      events.some((e) => e.type === "text"),
+      false,
+    );
+    assert.equal(
+      events.some((e) => e.type === "done"),
+      false,
+    );
+    const err = events.find((e) => e.type === "error");
+    assert.equal(err.status, 529);
+    assert.equal(err.code, "CLAUDE_API_ERROR");
+    assert.match(err.message, /529/);
+    assert.equal(err.usage.inputTokens, 4);
+  });
+
+  it("takes the status from the error kind when the result has none", async () => {
+    stubQuery([
+      {
+        type: "assistant",
+        error: "rate_limit",
+        message: { content: [{ type: "text", text: "Rate limited" }] },
+      },
+      {
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        result: "Rate limited",
+      },
+    ]);
+    const events = await collect(claudeAgentEngine.run(ctx()));
+    assert.equal(events.find((e) => e.type === "error").status, 429);
+  });
+
+  it("a normal turn still ends with done", async () => {
+    stubQuery([
+      {
+        type: "assistant",
+        message: { content: [{ type: "text", text: "Hi" }] },
+      },
+      { type: "result", subtype: "success", is_error: false, result: "Hi" },
+    ]);
+    const events = await collect(claudeAgentEngine.run(ctx()));
+    assert.equal(
+      events.some((e) => e.type === "error"),
+      false,
+    );
+    assert.equal(events[events.length - 1].type, "done");
+  });
+});

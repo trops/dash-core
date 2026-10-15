@@ -149,6 +149,8 @@ export const BotChat = ({
       if (event.type === "text") {
         next = {
           ...cur,
+          // The next attempt is answering: the retry note goes.
+          retry: null,
           text: appendAnswerText(cur.text, event.text, {
             afterTool: cur.afterTool,
           }),
@@ -178,6 +180,20 @@ export const BotChat = ({
           toolCalls: cur.toolCalls.map((c) =>
             c.id === event.id ? { ...c, ok: !event.isError } : c,
           ),
+        };
+      } else if (event.type === "retrying") {
+        // Trying again after temporary trouble (US-023): the failed
+        // attempt's words go; the note says when the next try starts.
+        next = {
+          ...cur,
+          text: "",
+          afterTool: false,
+          retry: {
+            reason: event.reason,
+            attempt: event.attempt,
+            of: event.of,
+            delayMs: event.delayMs,
+          },
         };
       } else if (
         event.type === "done" ||

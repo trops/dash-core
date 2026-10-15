@@ -18,6 +18,8 @@
  */
 "use strict";
 
+const { errorDetails } = require("../retryPolicy");
+
 const { addUsage } = require("../runCost");
 
 const { createEventStream } = require("./eventStream");
@@ -200,6 +202,8 @@ const toolLoopEngine = {
           type: "error",
           message: imageMessage || err.message || "Engine error",
           code: imageMessage ? "MODEL_NO_IMAGES" : err.code || "ENGINE_ERROR",
+          // The provider's HTTP status and retry-after, for retries (US-023).
+          ...(imageMessage ? {} : errorDetails(err)),
         });
       } finally {
         stream.end();

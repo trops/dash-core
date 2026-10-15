@@ -19,6 +19,19 @@
  */
 "use strict";
 
+// Claude Code's API error kinds as HTTP statuses, for when its result
+// doesn't carry one (retries, US-023).
+const API_ERROR_STATUS = {
+  overloaded: 529,
+  rate_limit: 429,
+  server_error: 500,
+  authentication_failed: 401,
+  oauth_org_not_allowed: 403,
+  billing_error: 402,
+  invalid_request: 400,
+  model_not_found: 404,
+};
+
 const { createEventStream } = require("./eventStream");
 const { BOT_MCP_SERVER, buildBotMcpServer } = require("./agentToolBridge");
 const { imagePlaceholder } = require("../toolImages");
@@ -274,11 +287,18 @@ async function _runAgent(ctx, stream) {
   let sessionId = null;
   let usage = null;
   let stopReason = "end";
+  // The turn ended on an API error (US-023): Claude Code sends it as a
+  // synthetic assistant message (`error` set) and an `is_error` result.
+  let apiErrorKind = null;
+  let failure = null;
   try {
     for await (const msg of q) {
       if (msg && msg.session_id) sessionId = msg.session_id;
       if (!msg) continue;
-      if (msg.type === "assistant") {
+      if (msg.type === "assistant" && msg.error) {
+        // Its text is the error, not the bot's answer.
+        apiErrorKind = msg.error;
+      } else if (msg.type === "assistant") {
         for (const ev of _fromAssistant(msg.message)) stream.push(ev);
       } else if (msg.type === "user") {
         for (const ev of _fromUser(msg.message)) stream.push(ev);
@@ -296,6 +316,15 @@ async function _runAgent(ctx, stream) {
             ? { reportedUsd: msg.total_cost_usd }
             : {}),
         };
+        if (msg.is_error) {
+          failure = {
+            message: msg.result || `Claude Code stopped (${stopReason})`,
+            status:
+              typeof msg.api_error_status === "number"
+                ? msg.api_error_status
+                : API_ERROR_STATUS[apiErrorKind],
+          };
+        }
       }
       if (ctx.signal && ctx.signal.aborted) break;
     }
@@ -310,6 +339,16 @@ async function _runAgent(ctx, stream) {
   }
 
   if (sessionId) stream.push({ type: "session", session: { id: sessionId } });
+  if (failure) {
+    stream.push({
+      type: "error",
+      message: failure.message,
+      code: "CLAUDE_API_ERROR",
+      ...(typeof failure.status === "number" ? { status: failure.status } : {}),
+      usage,
+    });
+    return;
+  }
   stream.push({ type: "done", stopReason, usage });
 }
 

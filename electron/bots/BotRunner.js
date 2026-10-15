@@ -29,7 +29,38 @@ const { createRequestPermission } = require("./PermissionGate");
 const { truncateText } = require("./botEvents");
 const { appendAnswerText } = require("./answerText");
 
+const { MAX_ATTEMPTS, classifyError, retryDelay } = require("./retryPolicy");
+
 const QUIT = Symbol("quit");
+
+/** Wait `ms`, or less if the run is stopped meanwhile. */
+function abortableSleep(ms, signal) {
+  return new Promise((resolve) => {
+    if (signal && signal.aborted) return resolve();
+    const done = () => {
+      clearTimeout(timer);
+      if (signal) signal.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    if (signal) signal.addEventListener("abort", done, { once: true });
+  });
+}
+
+/**
+ * Two attempts' token usage added together (either may be null). Sums every
+ * numeric field, so Claude Code's reportedUsd carries through (runCost's
+ * addUsage keeps only the token counts).
+ */
+function sumUsage(a, b) {
+  if (!b) return a || null;
+  if (!a) return { ...b };
+  const out = { ...a };
+  for (const [k, v] of Object.entries(b)) {
+    out[k] = typeof v === "number" ? (out[k] || 0) + v : v;
+  }
+  return out;
+}
 
 /**
  * The engine's events — until Dash quits mid-run (US-018 AC6). Then stop
@@ -105,6 +136,14 @@ class BotRunner {
     // ({ providerId, model, usage }) → { usd, includedInPlan, estimated,
     // equivalentUsd } — the run's cost on its record (CRE-012).
     this._costOf = deps.costOf || null;
+    // Retries (US-023): attempts and jitter source; `sleep(ms, signal)`
+    // waits between attempts and ends early when the run is stopped.
+    this._retry = {
+      maxAttempts: MAX_ATTEMPTS,
+      random: Math.random,
+      ...(deps.retry || {}),
+    };
+    this._sleep = deps.sleep || abortableSleep;
     /** @type {Map<string, AbortController>} */
     this._active = new Map();
     /** @type {Map<string, string>} botId → ISO start of its in-flight run */
@@ -207,6 +246,7 @@ class BotRunner {
     const toolCalls = [];
     const callIndex = new Map();
     let providerOf = () => null;
+    let attempts = 0;
 
     try {
       const profile = await this._resolveRunProfile(bot);
@@ -321,34 +361,89 @@ class BotRunner {
       if (bot.role === "lead") ctx.builtinTools = "none";
       else if (profile.builtinTools) ctx.builtinTools = profile.builtinTools;
 
-      for await (const event of untilQuit(engine.run(ctx), controller.signal)) {
-        emit(event);
-        if (event.type === "text" && event.text) {
-          answer = appendAnswerText(answer, event.text, { afterTool });
-          afterTool = false;
+      // Attempts (US-023 AC1): a run that fails on temporary trouble — before
+      // it used any tool — is tried again after a growing wait. An attempt's
+      // error is held back until we know it's final.
+      for (;;) {
+        attempts++;
+        let failure = null;
+        let usedTool = false;
+        for await (const event of untilQuit(
+          engine.run(ctx),
+          controller.signal,
+        )) {
+          if (event.type === "error") {
+            failure = event;
+            // A failed attempt still used tokens.
+            if (event.usage) usage = sumUsage(usage, event.usage);
+            continue;
+          }
+          emit(event);
+          if (event.type === "text" && event.text) {
+            answer = appendAnswerText(answer, event.text, { afterTool });
+            afterTool = false;
+          }
+          if (event.type === "tool_call") {
+            afterTool = true;
+            usedTool = true;
+          }
+          if (event.type === "tool_call" && event.name) {
+            // Bridged tools arrive as "mcp__bot-mcp__<tool>" on the agent engine.
+            const tool = String(event.name).replace(
+              /^mcp__[^_]+(?:-[^_]+)*__/,
+              "",
+            );
+            callIndex.set(event.id, toolCalls.length);
+            toolCalls.push({ tool, provider: providerOf(tool), ok: null });
+          } else if (event.type === "tool_result" && callIndex.has(event.id)) {
+            toolCalls[callIndex.get(event.id)].ok = !event.isError;
+          }
+          if (event.type === "session") {
+            this._store.saveSession(botId, engine.id, event.session);
+          } else if (event.type === "done") {
+            usage = sumUsage(usage, event.usage);
+          }
         }
-        if (event.type === "tool_call") afterTool = true;
-        if (event.type === "tool_call" && event.name) {
-          // Bridged tools arrive as "mcp__bot-mcp__<tool>" on the agent engine.
-          const tool = String(event.name).replace(
-            /^mcp__[^_]+(?:-[^_]+)*__/,
-            "",
-          );
-          callIndex.set(event.id, toolCalls.length);
-          toolCalls.push({ tool, provider: providerOf(tool), ok: null });
-        } else if (event.type === "tool_result" && callIndex.has(event.id)) {
-          toolCalls[callIndex.get(event.id)].ok = !event.isError;
-        }
-        if (event.type === "session") {
-          this._store.saveSession(botId, engine.id, event.session);
-        } else if (event.type === "done") {
-          usage = event.usage || null;
-        } else if (event.type === "error") {
+        if (!failure || controller.signal.aborted) break;
+
+        const { transient, label } = classifyError(failure);
+        const blocked = transient ? this._startBlocker(botId) : null;
+        const retry =
+          transient &&
+          !usedTool &&
+          !blocked &&
+          attempts < this._retry.maxAttempts;
+        if (!retry) {
           status = "failed";
-          errorMessage = event.message;
-          // A failed run still used tokens.
-          if (event.usage) usage = event.usage;
+          errorMessage = failure.message || "The run failed";
+          if (transient && usedTool) {
+            errorMessage += " — not retried: it had already used tools";
+          } else if (transient && blocked) {
+            errorMessage += ` — not retried: ${blocked}`;
+          } else if (transient && attempts > 1) {
+            errorMessage += ` (gave up after ${attempts} attempts)`;
+          }
+          emit({ ...failure, message: errorMessage });
+          break;
         }
+        const delayMs = retryDelay(
+          attempts,
+          failure.retryAfterMs,
+          this._retry.random,
+        );
+        // The next attempt starts the answer over.
+        answer = "";
+        afterTool = false;
+        emit({
+          type: "retrying",
+          reason: label,
+          attempt: attempts + 1,
+          of: this._retry.maxAttempts,
+          delayMs,
+          message: failure.message || "",
+        });
+        await this._sleep(delayMs, controller.signal);
+        if (controller.signal.aborted) break;
       }
     } catch (err) {
       status = "failed";
@@ -396,6 +491,8 @@ class BotRunner {
       toolCalls,
       approvals: approvalLog,
     };
+    // Tried more than once (US-023): how many attempts it took.
+    if (attempts > 1) runRecord.attempts = attempts;
     // What triggered an event run (event label, publishing bot, chain).
     if (opts.source) runRecord.source = opts.source;
     // Who asked, when not the user directly (e.g. "assistant" — TEAM-004).
