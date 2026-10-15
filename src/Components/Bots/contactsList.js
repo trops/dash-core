@@ -6,7 +6,7 @@
  * Pure: no React, no IPC.
  */
 import { groupBotsByTeam } from "./teamUtils";
-import { toPlainText } from "./botConversation";
+import { INTERRUPTED_TEXT, toPlainText } from "./botConversation";
 
 export const SORTS = ["recent", "az"];
 
@@ -67,6 +67,8 @@ export function contactOf(
     if (last.status === "failed") {
       status = "Failed";
       line = `Failed · ${last.error || "see Activity"}`;
+    } else if (last.status === "interrupted" && !last.text) {
+      line = INTERRUPTED_TEXT;
     } else {
       line = toPlainText(last.text || "") || "Done";
     }

@@ -29,6 +29,46 @@ const { createRequestPermission } = require("./PermissionGate");
 const { truncateText } = require("./botEvents");
 const { appendAnswerText } = require("./answerText");
 
+const QUIT = Symbol("quit");
+
+/**
+ * The engine's events — until Dash quits mid-run (US-018 AC6). Then stop
+ * waiting for the engine to wind down: it can take longer than Dash has
+ * left, and the run's record must be written before Dash exits. A run the
+ * user stops still waits, so the engine can report what it used.
+ */
+async function* untilQuit(events, signal) {
+  const it = events[Symbol.asyncIterator]();
+  let onAbort = null;
+  const quit = new Promise((resolve) => {
+    if (signal.aborted) {
+      if (signal.reason === "quit") resolve(QUIT);
+      return;
+    }
+    onAbort = () => {
+      if (signal.reason === "quit") resolve(QUIT);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    for (;;) {
+      const next = it.next();
+      // Lost the race to a quit: its later failure is nobody's concern.
+      next.catch(() => {});
+      const result = await Promise.race([next, quit]);
+      if (result === QUIT || result.done) return;
+      yield result.value;
+    }
+  } finally {
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+    if (typeof it.return === "function") {
+      Promise.resolve()
+        .then(() => it.return())
+        .catch(() => {});
+    }
+  }
+}
+
 class BotRunner {
   constructor(deps = {}) {
     for (const req of [
@@ -84,11 +124,15 @@ class BotRunner {
     return this._startedAt.get(botId) || null;
   }
 
-  /** Abort an in-flight run. @returns {boolean} whether a run was aborted */
-  abort(botId) {
+  /**
+   * Abort an in-flight run. `reason` "quit" (Dash is quitting, US-018 AC6)
+   * records it as "interrupted"; otherwise it was stopped by the user.
+   * @returns {boolean} whether a run was aborted
+   */
+  abort(botId, reason) {
     const controller = this._active.get(botId);
     if (!controller) return false;
-    controller.abort();
+    controller.abort(reason === "quit" ? "quit" : "stop");
     return true;
   }
 
@@ -277,7 +321,7 @@ class BotRunner {
       if (bot.role === "lead") ctx.builtinTools = "none";
       else if (profile.builtinTools) ctx.builtinTools = profile.builtinTools;
 
-      for await (const event of engine.run(ctx)) {
+      for await (const event of untilQuit(engine.run(ctx), controller.signal)) {
         emit(event);
         if (event.type === "text" && event.text) {
           answer = appendAnswerText(answer, event.text, { afterTool });
@@ -319,9 +363,10 @@ class BotRunner {
       this._startedAt.delete(botId);
     }
     // Stopped by the user (abort): neither completed nor failed — even when
-    // the engine threw on its way out.
+    // the engine threw on its way out. Stopped because Dash quit:
+    // "interrupted" (US-018 AC6).
     if (controller.signal.aborted) {
-      status = "stopped";
+      status = controller.signal.reason === "quit" ? "interrupted" : "stopped";
       errorMessage = null;
     }
 

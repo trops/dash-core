@@ -1,6 +1,7 @@
 import React, { useCallback, useContext, useEffect, useState } from "react";
 import { Button3, ThemeContext } from "@trops/dash-react";
 import {
+  INTERRUPTED_TEXT,
   errorNextSteps,
   readableError,
   toPlainText,
@@ -36,6 +37,7 @@ const STATUS_DOT = {
   running: "bg-indigo-400",
   skipped: "bg-gray-500",
   stopped: "bg-gray-500",
+  interrupted: "bg-gray-500",
 };
 
 const TRIGGER_LABELS = {
@@ -72,6 +74,7 @@ function dotFor(status) {
 function firstLine(run) {
   if (run.status === "failed" && run.error) return readableError(run.error);
   if (run.outputUnavailable) return "Answer unavailable";
+  if (run.status === "interrupted" && !run.output) return INTERRUPTED_TEXT;
   return toPlainText(run.output || "").split("\n")[0];
 }
 

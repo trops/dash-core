@@ -63,6 +63,14 @@ describe("contactOf — what a row says", () => {
     });
   });
 
+  test("a run cut off when Dash quit says so (US-018 AC6)", () => {
+    const last = { status: "interrupted", text: "", error: null, at: ago(5) };
+    expect(contactOf(bots[1], { ...base, last })).toMatchObject({
+      status: "Idle",
+      line: "Interrupted when Dash quit",
+    });
+  });
+
   test("needs approval beats running beats paused", () => {
     const approvals = [
       {

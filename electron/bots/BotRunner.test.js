@@ -600,6 +600,45 @@ describe("BotRunner.run — stopped runs", () => {
       assert.equal(runs[0].run.output, "partial");
     });
   }
+
+  it(`records "interrupted" when stopped because Dash is quitting (US-018 AC6)`, async () => {
+    const { runner, runs } = makeRunner(
+      stoppableEngine({ throwOnAbort: true }),
+    );
+    const pending = runner.run("bot_1", {});
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(runner.abort("bot_1", "quit"), true);
+    const record = await pending;
+    assert.equal(record.status, "interrupted");
+    assert.equal(record.error, null);
+    assert.equal(runs[0].run.output, "partial");
+    assert.deepEqual(runner.listActive(), []);
+  });
+
+  it("is saved straight away on quit even when the engine never winds down", async () => {
+    // An engine that ignores the abort entirely (a CLI still shutting down).
+    const stuck = {
+      id: "tool-loop",
+      run() {
+        return (async function* () {
+          yield { type: "text", text: "working" };
+          await new Promise(() => {});
+        })();
+      },
+    };
+    const { runner, runs } = makeRunner(stuck);
+    const pending = runner.run("bot_1", {});
+    await new Promise((r) => setTimeout(r, 10));
+    runner.abort("bot_1", "quit");
+    const record = await Promise.race([
+      pending,
+      new Promise((r) => setTimeout(() => r("timed out"), 500)),
+    ]);
+    assert.notEqual(record, "timed out");
+    assert.equal(record.status, "interrupted");
+    assert.equal(runs[0].run.output, "working");
+    assert.deepEqual(runner.listActive(), []);
+  });
 });
 
 describe("BotRunner — model, provider and cost on the run (CRE-012)", () => {

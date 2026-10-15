@@ -6,7 +6,7 @@ import {
   ThemeContext,
   useStatusTokens,
 } from "@trops/dash-react";
-import { toPlainText } from "./botConversation";
+import { INTERRUPTED_TEXT, toPlainText } from "./botConversation";
 
 /**
  * BotMonitor — the Bot Activity side panel's body (bot-teams PRD TEAM-011
@@ -57,6 +57,7 @@ function statusLabel(s) {
 function firstLine(run) {
   if (run.status === "failed" && run.error) return run.error;
   if (run.outputUnavailable) return "Answer unavailable";
+  if (run.status === "interrupted" && !run.output) return INTERRUPTED_TEXT;
   return toPlainText(run.output || "").split("\n")[0];
 }
 

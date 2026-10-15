@@ -17,6 +17,9 @@
 
 const sameId = (id) => id;
 
+/** A run stopped because Dash quit mid-way (US-018 AC6). */
+export const INTERRUPTED_TEXT = "Interrupted when Dash quit";
+
 /**
  * What started a run nobody typed, or null for typed runs. Event runs name
  * their event (the bot's subscription label) and, for bot events, the chain
@@ -193,6 +196,10 @@ function turnsForRun(
       startedAt: r.startedAt || null,
       endedAt: r.endedAt || null,
     });
+  }
+  // Cut off when Dash quit (US-018 AC6): after whatever it had said.
+  if (r.status === "interrupted" && !pending) {
+    turns.push({ kind: "system", text: INTERRUPTED_TEXT, at: r.endedAt || at });
   }
   return turns;
 }
