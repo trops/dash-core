@@ -159,6 +159,31 @@ test("a bot opens on its conversation; Activity, Open in Bots view and back", as
   expect(screen.getByTestId("bot-contacts")).toBeInTheDocument();
 });
 
+test("a clicked notification opens that bot's chat, again for a later click (US-018 AC5)", async () => {
+  const { rerender } = render(
+    <BotContacts
+      contacts={contacts()}
+      workspaces={workspaces}
+      openRequest={{ botId: "is" }}
+    />,
+  );
+  expect(await screen.findByTestId("bot-contact-subtitle")).toHaveTextContent(
+    "Morning Brief",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "All bots" }));
+  expect(screen.getByTestId("bot-contacts")).toBeInTheDocument();
+  rerender(
+    <BotContacts
+      contacts={contacts()}
+      workspaces={workspaces}
+      openRequest={{ botId: "is" }}
+    />,
+  );
+  expect(await screen.findByTestId("bot-contact-subtitle")).toHaveTextContent(
+    "Morning Brief",
+  );
+});
+
 test("a paused bot: Resume from its chat", async () => {
   const c = contacts({ paused: new Set(["is"]) });
   render(<BotContacts contacts={c} workspaces={workspaces} />);

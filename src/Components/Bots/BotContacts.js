@@ -86,6 +86,9 @@ export const BotContacts = ({
   onOpenBotsView = null,
   onOpenSettings = null,
   onCollapse = null,
+  // { botId } — open this bot's conversation (a clicked notification,
+  // US-018 AC5). A new object each time, so the same bot can be asked again.
+  openRequest = null,
 }) => {
   const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
   const muted = currentTheme["text-neutral-medium"] || "";
@@ -103,6 +106,12 @@ export const BotContacts = ({
   // The open bot, and which of its views.
   const [openId, setOpenId] = useState(null);
   const [view, setView] = useState("conversation");
+  useEffect(() => {
+    if (openRequest && openRequest.botId) {
+      setOpenId(openRequest.botId);
+      setView("conversation");
+    }
+  }, [openRequest]);
 
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {

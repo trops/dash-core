@@ -76,6 +76,9 @@ const notificationController = {
    * @param {Object} [payload.data] - arbitrary data returned on click
    * @param {boolean} [payload.silent] - suppress sound
    * @param {string} [payload.urgency] - "low" | "normal" | "critical"
+   * @param {Function} [payload.onClick] - main-process click handler; used
+   *   instead of routing the click to `win` (which may be closed — e.g. bot
+   *   notifications that reopen Dash)
    * @returns {{ success: boolean, reason?: string }}
    */
   send: (win, payload) => {
@@ -90,6 +93,7 @@ const notificationController = {
         data,
         silent,
         urgency,
+        onClick,
       } = payload;
 
       // 1. Check globalEnabled
@@ -130,6 +134,14 @@ const notificationController = {
       });
 
       notification.on("click", () => {
+        if (typeof onClick === "function") {
+          try {
+            onClick();
+          } catch (err) {
+            console.error("[notificationController] onClick failed:", err);
+          }
+          return;
+        }
         if (win && !win.isDestroyed()) {
           win.show();
           win.focus();
