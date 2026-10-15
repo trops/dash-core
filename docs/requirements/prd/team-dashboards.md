@@ -53,6 +53,8 @@ Nothing plans the three pieces together, so the user has to design the wiring th
 
 ### TD-001: Bots send results (P0) — Release 1
 
+**Status:** Implemented
+
 **As a** user building a bot, **I want** my bot to send named, structured results **so that** widgets can show them as real data.
 
 **Acceptance Criteria:**
@@ -65,6 +67,8 @@ Nothing plans the three pieces together, so the user has to design the wiring th
 
 ### TD-002: Widgets opened later show the latest result (P0) — Release 1
 
+**Status:** Implemented
+
 **As a** user, **I want** a results widget to show the latest result even if its dashboard wasn't open when the bot ran **so that** the dashboard is useful as soon as I open it.
 
 **Acceptance Criteria:**
@@ -75,6 +79,8 @@ Nothing plans the three pieces together, so the user has to design the wiring th
 
 ### TD-003: The Widget Builder builds results widgets (P0) — Release 1
 
+**Status:** Implemented
+
 **As a** user, **I want** to ask the Widget Builder for "a widget that lists the important emails my triage bot finds" **so that** I get a widget made for the task.
 
 **Acceptance Criteria:**
@@ -84,44 +90,54 @@ Nothing plans the three pieces together, so the user has to design the wiring th
 
 ### TD-004: Action widgets start bots (P0) — Release 2
 
+**Status:** Implemented
+
 **As a** user, **I want** a "Check email" button on my dashboard that starts my email bot **so that** I can run it when I want, from the dashboard.
 
 **Acceptance Criteria:**
 
-- [ ] AC1: The Widget Builder guidance documents action widgets: declare the event in `events`, publish it on click, and tell the user to wire the bot with "Runs when…".
-- [ ] AC2: The widget shows that the run started and when it finished (by listening to the bot's `completed`/`failed`).
+- [x] AC1: The Widget Builder guidance documents action widgets: declare the event in `events`, publish it on click, and tell the user to wire the bot with "Runs when…". _(Built, 2026-10-14: Widget Builder skill: "Action widgets")_
+- [x] AC2: The widget shows that the run started and when it finished (by listening to the bot's `completed`/`failed`). _(Built, 2026-10-14: the skill's action widgets listen for completed / failed and show status)_
 
 ### TD-005: Only wired events start bots (P0) — Release 2
+
+**Status:** Implemented
 
 **As a** user, **I want** widgets to start only the bots I connected them to **so that** an installed widget can't run my bots on its own.
 
 **Acceptance Criteria:**
 
-- [ ] AC1: Widget code can't call `mainApi.bots` run/ask methods directly. Dash's own bot widgets keep their Run now.
-- [ ] AC2: The AI widget validator rejects generated code that calls `mainApi.bots`.
+- [x] AC1: Widget code can't call `mainApi.bots` run/ask methods directly. Dash's own bot widgets keep their Run now. _(Built, 2026-10-14: scanWidgetBotCalls at widget install/load (a name built at run time can still get through))_
+- [x] AC2: The AI widget validator rejects generated code that calls `mainApi.bots`. _(Built, 2026-10-14: validateNoBotCalls in the Widget Builder)_
 
 ### TD-006: The lead's drafts can run on widget events (P1) — Release 2
+
+**Status:** In Progress
 
 **Acceptance Criteria:**
 
 - [ ] AC1: `propose_bot` accepts triggers on widgets of the lead's own dashboard, validated against the dashboard's widget event catalog. (Plan builds do this — create-entry 4d-2: a planned bot's `on` becomes a subscription to the placed widget's exact event, checked against its .dash.js; the lead's `propose_bot` itself is still open.)
-- [ ] AC2: `propose_bot` accepts declared results (TD-001).
+- [~] AC2: `propose_bot` accepts declared results (TD-001). _(Partial, 2026-10-14: drafts support publishes and the Dash team's draft tool sets it; the lead's propose_bot can't)_
 
 ### TD-007: One plan from a goal (P1) — Release 3
+
+**Status:** Implemented
 
 **As a** user, **I want** to describe a goal and get one plan for the bots, widgets, layout and wiring **so that** I approve it once instead of designing it myself.
 
 **Acceptance Criteria:**
 
-- [ ] AC1: The plan lists each bot (purpose, providers, triggers, results), each widget (what it shows, what it listens to, what it sends), the layout and a setup checklist (providers the user must add).
-- [ ] AC2: The user reviews the plan on one screen and can drop or change parts before building.
+- [x] AC1: The plan lists each bot (purpose, providers, triggers, results), each widget (what it shows, what it listens to, what it sends), the layout and a setup checklist (providers the user must add). _(Built, 2026-10-14: teamPlan.js — bot, widget and layout pieces plus Before building)_
+- [x] AC2: The user reviews the plan on one screen and can drop or change parts before building. _(Built, 2026-10-14: Create's plan step: remove a piece, edit a note)_
 
 ### TD-008: Build from the plan (P1) — Release 3
+
+**Status:** Implemented
 
 **Acceptance Criteria:**
 
 - [x] AC1 (create-entry 4d-1 + 4d-2, dash-core electron/bots/planBuild.js): Approving the plan saves the bots, generates the widgets, places them on the dashboard and wires listeners and triggers. Bots are saved as planned (not drafts) after a draft-style check; a provider that isn't connected fails that step. Wiring is checked against the widget's .dash.js, and a widget publishing with the raw `api.publishEvent` (unprefixed, so nothing hears it) fails the step — the Widget Builder and `build_widget` reject it earlier.
-- [ ] AC2: Anything that needs the user (provider sign-in, grants) is listed, never done for them.
+- [x] AC2: Anything that needs the user (provider sign-in, grants) is listed, never done for them. _(Built, 2026-10-14: Before building (connect / install / approve) in Create's checklist; an unconnected provider fails its step)_
 - [x] AC3 (create-entry 4d-1): Widget generation runs without opening the Widget Builder window, with progress shown.
 
 ---
