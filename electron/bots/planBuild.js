@@ -309,6 +309,8 @@ function eventsToSend(plan, piece) {
   ].filter((e, i, all) => e && all.indexOf(e) === i);
 }
 
+const isStr = (v) => typeof v === "string";
+
 /**
  * The Checker's request for one widget. A widget made new in this build has
  * no users yet, so a config that changed since its first version isn't a
@@ -319,9 +321,36 @@ function checkRequest(plan, piece, made = {}) {
   const lines = [
     `Check ${made.package}. Run check_widget, read the code if you need to, and end with VERDICT: PASSED or VERDICT: FAILED.`,
   ];
+  if (isStr(piece.notes) && piece.notes.trim()) {
+    lines.push(`What the plan says it does: ${piece.notes.trim()}`);
+  }
+  const connections = Object.entries(
+    piece.provider && typeof piece.provider === "object" ? piece.provider : {},
+  ).filter(([type, name]) => type && isStr(name) && name.trim());
+  for (const [type, name] of connections) {
+    lines.push(
+      `It must use the user's ${type} connection "${name.trim()}": a widget that asks for keys in its settings or calls ${type} itself with fetch fails.`,
+    );
+  }
+  const settings = Object.keys(
+    piece.settings && typeof piece.settings === "object" ? piece.settings : {},
+  );
+  if (settings.length) {
+    lines.push(`The plan sets these settings: ${settings.join(", ")}.`);
+  }
   const sends = eventsToSend(plan, piece);
   if (sends.length) {
     lines.push(`The plan needs it to send: ${sends.join(", ")}.`);
+  }
+  const checks = (Array.isArray(plan.checks) ? plan.checks : []).filter(
+    (c) => isStr(c) && c.trim(),
+  );
+  if (checks.length) {
+    lines.push(
+      `The plan's checks — say for each whether the code does it (some need the running widget: say so):\n${checks
+        .map((c) => `- ${c.trim()}`)
+        .join("\n")}`,
+    );
   }
   if (piece.source === "new") {
     lines.push(

@@ -384,3 +384,23 @@ describe("Dash team instructions — pages, connections and answers (Create buil
     assert.doesNotMatch(planner.history[0], /"pages"/);
   });
 });
+
+describe("Dash team instructions (Create build fixes 3)", () => {
+  it("the Checker judges against the plan and fails a widget that asks for keys", () => {
+    const checker = ROLES.find((r) => r.role === "checker");
+    assert.match(checker.instructions, /the plan's checks/);
+    assert.match(
+      checker.instructions,
+      /asks the user for API keys or calls the service with fetch/,
+    );
+    assert.match(checker.instructions, /must-fix/);
+    assert.equal(checker.history.length, 2);
+    const bots = ROLE_IDS.map((r) => teamBot(r));
+    bots[3].instructions = checker.history[0];
+    const plan = planEnsureDashTeam(bots);
+    assert.deepEqual(
+      plan.map((p) => [p.action, p.role]),
+      [["upgrade", "checker"]],
+    );
+  });
+});

@@ -229,6 +229,44 @@ describe("check_widget", () => {
     assert.match(r.text, /VERDICT: FAILED/);
   });
 
+  it("a missed must-fix checklist item fails; the rest stay notes (Create build fixes 3)", async () => {
+    const r = await handleRoleTool(
+      deps({
+        checkWidget: async ({ name }) => ({
+          success: true,
+          widgetName: name,
+          compile: { ok: true },
+          problems: [],
+          scorecard: {
+            failed: [
+              {
+                item: "Error state rendered when the provider call fails",
+                mustFix: true,
+              },
+              { item: "Title uses SubHeading2", mustFix: false },
+            ],
+            passed: 7,
+          },
+          configCode: CONFIG,
+          previousConfigCode: null,
+        }),
+      }),
+      as("checker"),
+      "check_widget",
+      { name: "@ai-built/hello" },
+    );
+    assert.match(
+      r.text,
+      /FAIL acceptance checklist — must fix:\n {2}- Error state rendered/,
+    );
+    assert.match(
+      r.text,
+      /NOTE acceptance checklist: 7 passed, 1 to improve:\n {2}- Title uses SubHeading2/,
+    );
+    assert.doesNotMatch(r.text, /to improve:[\s\S]*Error state/);
+    assert.match(r.text, /VERDICT: FAILED/);
+  });
+
   it("an update that drops a setting or an event fails", async () => {
     const r = await handleRoleTool(
       deps({
