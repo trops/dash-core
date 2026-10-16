@@ -127,7 +127,9 @@ const widgetApi = {
    * Each subfolder is treated as a separate widget
    *
    * @param {string} folderPath - Path to folder containing widget subdirectories
-   * @returns {Promise<Array>} Array of loaded widget configurations
+   * @returns {Promise<{ widgets: Array, skipped: number, refused: string[],
+   *   refusedReasons: Object<string, string> }>} the loaded widgets, how many
+   *   folders were skipped, and the packages refused (with why)
    *
    * @example
    * // Load all widgets from a folder
@@ -140,7 +142,9 @@ const widgetApi = {
         "widget:load-folder",
         folderPath,
       );
-      console.log(`[WidgetApi] ✓ Loaded ${results.length} widgets from folder`);
+      console.log(
+        `[WidgetApi] ✓ Loaded ${(results?.widgets || []).length} widgets from folder`,
+      );
       return results;
     } catch (error) {
       console.error(`[WidgetApi] Error loading widgets from folder:`, error);

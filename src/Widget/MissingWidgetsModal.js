@@ -13,6 +13,7 @@ import {
   getWidgetSearchQuery,
   packageToFlatWidget,
 } from "../utils/registryUtils";
+import { cleanIpcError } from "../utils/errorUtils";
 
 /**
  * MissingWidgetsModal — batch lookup and install for multiple missing widgets.
@@ -164,7 +165,7 @@ export const MissingWidgetsModal = ({
           next[i] = {
             ...next[i],
             status: "failed",
-            error: err.message || "Install failed",
+            error: cleanIpcError(err.message) || "Install failed",
           };
           return next;
         });

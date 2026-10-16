@@ -33,7 +33,11 @@ function methodBody(name) {
 for (const method of ["downloadWidget", "installFromLocalPath"]) {
   test(`${method}: scans permissions after extracting, before loading config`, () => {
     const body = methodBody(method);
-    const extract = body.lastIndexOf("extractAllTo(widgetPath");
+    // Extraction happens in stageInstall (staged + checked, then moved into
+    // widgetPath — install gate, Phase 1a).
+    const extract = body.lastIndexOf(
+      "await stageInstall(widgetName, widgetPath",
+    );
     const scan = body.indexOf("applyScanToPackageJson(widgetPath)");
     const load = body.indexOf("this.loadWidgetConfig(");
     assert.ok(extract >= 0, "extract missing");

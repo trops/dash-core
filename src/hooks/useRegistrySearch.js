@@ -128,7 +128,7 @@ export const useRegistrySearch = ({ filterByCapabilities = true } = {}) => {
         setFlatWidgets(widgets);
       } catch (err) {
         console.error("[useRegistrySearch] Registry error:", err);
-        setError(err.message || "Failed to load registry");
+        setError(cleanIpcError(err.message) || "Failed to load registry");
         setPackages([]);
         setFlatWidgets([]);
       } finally {

@@ -12,7 +12,7 @@
 export function cleanIpcError(message) {
   if (!message || typeof message !== "string") return message;
   const match = message.match(
-    /Error invoking remote method '[^']+': (?:Error: )?(.*)/,
+    /Error invoking remote method '[^']+': (?:Error: )?([\s\S]*)/,
   );
   return match ? match[1] : message;
 }

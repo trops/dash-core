@@ -175,6 +175,82 @@ function initializeRegistry(customPath = null) {
   console.log(`[WidgetRegistry] Using storage path: ${WIDGETS_CACHE_DIR}`);
 }
 
+// The app's install gate: async (stagedDir, { widgetName }) →
+// { ok, problems: [string] }. Every install runs it on the staged package
+// before the installed one is touched (consolidation Phase 1a). null = no
+// gate (tests, hosts without checks).
+let installGate = null;
+function setInstallGate(gate) {
+  installGate = typeof gate === "function" ? gate : null;
+}
+
+function checksFailed(widgetName, problems, done = "installed") {
+  const list = problems.map((p) => `- ${p}`).join("\n");
+  const err = new Error(
+    `${widgetName} wasn't ${done} — it didn't pass its checks:\n${list}`,
+  );
+  err.code = "WIDGET_CHECKS_FAILED";
+  err.problems = problems;
+  return err;
+}
+
+/**
+ * A package's checks, run where it sits: no direct bot calls, it builds
+ * when it ships no bundle (the build is kept), and it passes the app's
+ * gate. Throws a plain-language error when it doesn't.
+ */
+async function checkPackage(widgetName, dir, done = "installed") {
+  // Widgets may not start bots directly — only by events the user
+  // wires a bot to (TD-005).
+  require("./utils/scanWidgetBotCalls").assertNoBotCalls(widgetName, dir);
+
+  if (!findBundlePath(dir)) {
+    try {
+      await compileWidget(dir);
+    } catch (e) {
+      throw checksFailed(
+        widgetName,
+        [(e && e.message) || "The widget didn't build."],
+        done,
+      );
+    }
+  }
+
+  if (installGate) {
+    const verdict = (await installGate(dir, { widgetName })) || {};
+    if (!verdict.ok) {
+      const problems =
+        Array.isArray(verdict.problems) && verdict.problems.length
+          ? verdict.problems.map(String)
+          : ["The checks couldn't run."];
+      throw checksFailed(widgetName, problems, done);
+    }
+  }
+}
+
+/**
+ * Put a package in place only after it passes: `fill(dir)` writes it into
+ * a staging folder, where checkPackage runs. Only then does it replace the
+ * installed folder — a refusal leaves the installed version as it was.
+ */
+async function stageInstall(widgetName, widgetPath, fill) {
+  const stagingRoot = path.join(WIDGETS_CACHE_DIR, ".staging");
+  fs.mkdirSync(stagingRoot, { recursive: true });
+  const staged = fs.mkdtempSync(path.join(stagingRoot, "pkg-"));
+  try {
+    await fill(staged);
+    await checkPackage(widgetName, staged);
+
+    if (fs.existsSync(widgetPath)) {
+      fs.rmSync(widgetPath, { recursive: true });
+    }
+    fs.mkdirSync(path.dirname(widgetPath), { recursive: true });
+    fs.renameSync(staged, widgetPath);
+  } finally {
+    fs.rmSync(staged, { recursive: true, force: true });
+  }
+}
+
 class WidgetRegistry {
   constructor(componentManager = null, customPath = null) {
     if (!WIDGETS_CACHE_DIR) {
@@ -365,7 +441,10 @@ class WidgetRegistry {
               reconciled = true;
             }
           }
-        } else if (entry.name !== "registry.json") {
+        } else if (
+          entry.name !== "registry.json" &&
+          !entry.name.startsWith(".")
+        ) {
           // Bare-name packages
           const pkgPath = path.join(WIDGETS_CACHE_DIR, entry.name);
           if (!registeredPaths.has(pkgPath) && !this.widgets.has(entry.name)) {
@@ -551,11 +630,10 @@ class WidgetRegistry {
       // Scoped names (e.g. "@trops/slack") get nested dirs: widgets/@trops/slack/
       const widgetPath = path.join(WIDGETS_CACHE_DIR, ...widgetName.split("/"));
 
-      if (fs.existsSync(widgetPath)) {
-        fs.rmSync(widgetPath, { recursive: true });
-      }
-
       const isDirectory = fs.statSync(resolvedPath).isDirectory();
+      if (!isDirectory && !resolvedPath.endsWith(".zip")) {
+        throw new Error(`Unsupported local source type: ${resolvedPath}`);
+      }
       if (isDirectory) {
         // Phase 5B (P1 #11): require a structured manifest + reject
         // symlink-escape sources. The ZIP path is already covered by
@@ -574,14 +652,16 @@ class WidgetRegistry {
             console.warn(w);
           }
         }
-        fs.cpSync(resolvedPath, widgetPath, { recursive: true });
-      } else if (resolvedPath.endsWith(".zip")) {
-        const zip = new AdmZip(resolvedPath);
-        validateZipEntries(zip, widgetPath);
-        zip.extractAllTo(widgetPath, true);
-      } else {
-        throw new Error(`Unsupported local source type: ${resolvedPath}`);
       }
+      await stageInstall(widgetName, widgetPath, (staged) => {
+        if (isDirectory) {
+          fs.cpSync(resolvedPath, staged, { recursive: true });
+        } else {
+          const zip = new AdmZip(resolvedPath);
+          validateZipEntries(zip, staged);
+          zip.extractAllTo(staged, true);
+        }
+      });
 
       // Slice 13a: scan the freshly-installed widget for MCP usage and
       // update the package.json's `dash.permissions.mcp` block. Always
@@ -599,13 +679,6 @@ class WidgetRegistry {
         );
         // Non-fatal — the gate's runtime JIT still backs us up.
       }
-
-      // Widgets may not start bots directly — only by events the user
-      // wires a bot to (TD-005). Refused here, before it's registered.
-      require("./utils/scanWidgetBotCalls").assertNoBotCalls(
-        widgetName,
-        widgetPath,
-      );
 
       let config = await this.loadWidgetConfig(widgetName, widgetPath);
 
@@ -702,6 +775,7 @@ class WidgetRegistry {
       const results = [];
       let skipped = 0;
       const refused = [];
+      const refusedReasons = {};
 
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
@@ -719,17 +793,14 @@ class WidgetRegistry {
           continue;
         }
 
-        // Widgets that start bots directly aren't loaded (TD-005).
-        const botScan =
-          require("./utils/scanWidgetBotCalls").scanWidgetBotCalls(widgetPath);
-        if (!botScan.ok) {
-          console.warn(
-            require("./utils/scanWidgetBotCalls").botCallsMessage(
-              entry.name,
-              botScan.files,
-            ),
-          );
+        // Loaded in place, so checked in place: bot calls (TD-005), the
+        // build, the app's gate. A refusal is listed with its reason.
+        try {
+          await checkPackage(entry.name, widgetPath, "loaded");
+        } catch (e) {
+          console.warn(`[WidgetRegistry] ${e.message}`);
           refused.push(entry.name);
+          refusedReasons[entry.name] = e.message;
           skipped++;
           continue;
         }
@@ -751,6 +822,7 @@ class WidgetRegistry {
       // Attach skipped count as metadata on the array
       results.skipped = skipped;
       results.refused = refused;
+      results.refusedReasons = refusedReasons;
       return results;
     } catch (error) {
       console.error(
@@ -927,12 +999,10 @@ class WidgetRegistry {
       // Scoped names (e.g. "@trops/slack") get nested dirs: widgets/@trops/slack/
       const widgetPath = path.join(WIDGETS_CACHE_DIR, ...widgetName.split("/"));
 
-      if (fs.existsSync(widgetPath)) {
-        fs.rmSync(widgetPath, { recursive: true });
-      }
-
-      validateZipEntries(zip, widgetPath);
-      zip.extractAllTo(widgetPath, true);
+      await stageInstall(widgetName, widgetPath, (staged) => {
+        validateZipEntries(zip, staged);
+        zip.extractAllTo(staged, true);
+      });
       console.log(`[WidgetRegistry] Extracted widget to: ${widgetPath}`);
 
       // Same scan as installFromLocalPath: record which MCP tools the
@@ -950,13 +1020,6 @@ class WidgetRegistry {
           `[WidgetRegistry] Permission scan failed for ${widgetName}: ${e.message}`,
         );
       }
-
-      // Widgets may not start bots directly — only by events the user
-      // wires a bot to (TD-005). Refused here, before it's registered.
-      require("./utils/scanWidgetBotCalls").assertNoBotCalls(
-        widgetName,
-        widgetPath,
-      );
 
       let config = await this.loadWidgetConfig(widgetName, widgetPath);
 
@@ -1525,11 +1588,18 @@ function setupWidgetRegistryHandlers() {
     BrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send("widgets:loaded", {
         count: results.length,
-        widgets: results,
+        widgets: [...results],
       });
     });
 
-    return results;
+    // A plain object: IPC copies an array without its extra properties,
+    // so the skipped count and the refusals (with why) wouldn't arrive.
+    return {
+      widgets: [...results],
+      skipped: results.skipped || 0,
+      refused: results.refused || [],
+      refusedReasons: results.refusedReasons || {},
+    };
   });
 
   ipcMain.handle("widget:uninstall", (event, widgetName) => {
@@ -1724,3 +1794,5 @@ Object.defineProperty(module.exports, "widgetRegistry", {
 });
 module.exports.setupWidgetRegistryHandlers = setupWidgetRegistryHandlers;
 module.exports.validateZipEntries = validateZipEntries;
+module.exports.setInstallGate = setInstallGate;
+module.exports.checkPackage = checkPackage;

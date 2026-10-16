@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { cleanIpcError } from "../../utils/errorUtils";
 
 /**
  * useWidgetInstall — install a widget from a ZIP or load a folder of widgets,
@@ -15,7 +16,7 @@ const failAll = (prev, err) => ({
   widgets: prev.widgets.map((w) => ({
     ...w,
     status: "failed",
-    error: err.message,
+    error: cleanIpcError(err.message),
   })),
 });
 
@@ -54,7 +55,8 @@ export function useWidgetInstall(refresh) {
       setProgress((prev) => failAll(prev, err));
       setResult({
         status: "error",
-        message: err.message || "Failed to install widget from ZIP.",
+        message:
+          cleanIpcError(err.message) || "Failed to install widget from ZIP.",
       });
     }
   }, [refresh]);
@@ -76,22 +78,43 @@ export function useWidgetInstall(refresh) {
           },
         ],
       });
-      const results = await api.widgets.loadFolder(folderPath);
+      const loaded = await api.widgets.loadFolder(folderPath);
+      // { widgets, skipped, refused, refusedReasons } over IPC (an array
+      // with those properties from older builds and tests).
+      const results = Array.isArray(loaded)
+        ? loaded
+        : Object.assign([...((loaded && loaded.widgets) || [])], {
+            skipped: (loaded && loaded.skipped) || 0,
+            refused: (loaded && loaded.refused) || [],
+            refusedReasons: (loaded && loaded.refusedReasons) || {},
+          });
       if (refresh) await refresh();
 
       const count = Array.isArray(results) ? results.length : 0;
       const isSingle = count === 1 && results[0]?.mode === "single";
-      const skipped = results?.skipped || 0;
+      // Packages that didn't pass the install gate, with the reason.
+      const refused = Array.isArray(results?.refused) ? results.refused : [];
+      const reasons = results?.refusedReasons || {};
+      const skipped = Math.max(0, (results?.skipped || 0) - refused.length);
+      const refusedRows = refused.map((name) => ({
+        packageName: name,
+        displayName: name,
+        status: "failed",
+        error: reasons[name] || "It didn't pass its checks.",
+      }));
       setProgress({
         open: true,
         complete: true,
         widgets:
-          count > 0
-            ? results.map((r) => ({
-                packageName: r.name || "widget",
-                displayName: r.displayName || r.name || "Widget",
-                status: "installed",
-              }))
+          count > 0 || refusedRows.length
+            ? [
+                ...results.map((r) => ({
+                  packageName: r.name || "widget",
+                  displayName: r.displayName || r.name || "Widget",
+                  status: "installed",
+                })),
+                ...refusedRows,
+              ]
             : [
                 {
                   packageName: "folder",
@@ -112,6 +135,13 @@ export function useWidgetInstall(refresh) {
             skipped !== 1 ? "s" : ""
           } skipped)`;
         }
+        if (refused.length) {
+          message += ` ${refused.length} didn't pass ${refused.length !== 1 ? "their" : "its"} checks — see why above.`;
+        }
+      } else if (refused.length) {
+        message = `Nothing was loaded — ${refused.length} package${
+          refused.length !== 1 ? "s" : ""
+        } didn't pass ${refused.length !== 1 ? "their" : "its"} checks. See why above.`;
       } else {
         message =
           "No widgets found in the selected folder. Expected a folder containing widget subdirectories, each with a package.json or widgets/ directory.";
@@ -125,7 +155,8 @@ export function useWidgetInstall(refresh) {
       setProgress((prev) => failAll(prev, err));
       setResult({
         status: "error",
-        message: err.message || "Failed to load widgets from folder.",
+        message:
+          cleanIpcError(err.message) || "Failed to load widgets from folder.",
       });
     }
   }, [refresh]);

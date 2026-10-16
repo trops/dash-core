@@ -38,6 +38,15 @@ export const InstallProgressModal = ({
       w.status === "failed",
   ).length;
 
+  // What happened, once it's done: a refusal isn't "complete".
+  const failedCount = widgets.filter((w) => w.status === "failed").length;
+  const finishedTitle =
+    failedCount === 0
+      ? "Installation Complete"
+      : failedCount === widgets.length
+        ? "Not installed"
+        : `Installed ${widgets.length - failedCount} of ${widgets.length}`;
+
   function statusIcon(status, item) {
     switch (status) {
       case "downloading":
@@ -84,7 +93,7 @@ export const InstallProgressModal = ({
         <div className="px-5 pt-5 pb-3">
           <h3 className="text-sm font-semibold">
             {isComplete
-              ? "Installation Complete"
+              ? finishedTitle
               : `Installing ${doneCount + 1} of ${widgets.length}...`}
           </h3>
         </div>
@@ -111,7 +120,7 @@ export const InstallProgressModal = ({
                 </span>
               </div>
               {w.status === "failed" && w.error && (
-                <p className="text-[10px] text-red-400/80 mt-0.5 ml-7 truncate">
+                <p className="text-xs text-red-500 mt-1 ml-7 whitespace-pre-wrap">
                   {w.error}
                 </p>
               )}

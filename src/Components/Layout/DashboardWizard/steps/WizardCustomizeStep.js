@@ -21,6 +21,7 @@ import {
 import { FOLDER_ICONS } from "../../../Settings/details/FolderDetail";
 import { resolveIcon } from "../../../../utils/resolveIcon";
 import { WizardThemePreview } from "./WizardThemePreview";
+import { cleanIpcError } from "../../../../utils/errorUtils";
 
 /**
  * WizardCustomizeStep
@@ -249,7 +250,7 @@ export const WizardCustomizeStep = ({
       }
     } catch (err) {
       console.error("[WizardCustomizeStep] Create error:", err);
-      setError(err.message || "Failed to create dashboard.");
+      setError(cleanIpcError(err.message) || "Failed to create dashboard.");
     } finally {
       setCreating(false);
     }
@@ -494,7 +495,9 @@ export const WizardCustomizeStep = ({
             icon="circle-exclamation"
             className="text-red-400 mt-0.5 flex-shrink-0"
           />
-          <span className="text-sm text-red-200">{error}</span>
+          <span className="text-sm text-red-200 whitespace-pre-wrap">
+            {error}
+          </span>
         </div>
       )}
 
@@ -813,7 +816,7 @@ export const WizardCustomizeStep = ({
         {error && (
           <div className="flex items-center gap-2 text-red-400 py-2">
             <FontAwesomeIcon icon="triangle-exclamation" />
-            <span>{error}</span>
+            <span className="whitespace-pre-wrap">{error}</span>
           </div>
         )}
       </div>

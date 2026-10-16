@@ -612,6 +612,23 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
       }
     }
 
+    // 3.6 The same checks as an install (consolidation Phase 1a): it
+    //     builds, starts no bots, and passes the app's code checks —
+    //     before the version is bumped or anything is sent.
+    try {
+      await widgetRegistryModule.checkPackage(
+        packageId,
+        widget.path,
+        "published",
+      );
+    } catch (e) {
+      return {
+        success: false,
+        error: e.message,
+        problems: e.problems || null,
+      };
+    }
+
     // 4. Compute + persist new version
     const previousVersion = pkgJson.version || "1.0.0";
     const newVersion = resolveNextVersion(previousVersion, options);
