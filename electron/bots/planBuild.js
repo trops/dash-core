@@ -929,7 +929,8 @@ function undoOnDashboard(workspace, built) {
  *   abortRole(role)
  *   placeWidget({ dashboardId, component|widget, name, page, provider,
  *     settings }) → { component, widgetId, pageId, dropped? } | throws —
- *     page: the page's name (null: the page shown); dropped: what of the
+ *     page: the page's name (null: the page shown); row / col: its planned
+ *     cell (null: the next free one); dropped: what of the
  *     connection and settings it couldn't use, said under the step
  *   saveBot({ dashboardId, piece, botId? }) → { id, name } | throws (an
  *     error with waitingFor = provider names → the step waits for them)
@@ -980,6 +981,14 @@ function createPlanBuild(plan, deps, opts = {}) {
     const page = pages.find((p) => p.widgets.includes(i));
     return page ? page.name : null;
   };
+  // Its planned cell ({ row, col }), or null: the next free one.
+  const cellOf = (i) => {
+    for (const p of pages) {
+      const c = p.grid && p.grid.cells.find((x) => x.piece === i);
+      if (c) return { row: c.row, col: c.col };
+    }
+    return null;
+  };
   const emit = () => {
     state.built = builtSummary(state, plan);
     if (deps.emit) deps.emit(JSON.parse(JSON.stringify(state)));
@@ -1025,7 +1034,11 @@ function createPlanBuild(plan, deps, opts = {}) {
           const ws = await deps.createDashboard(
             step.name,
             pieces.length,
-            pages.map((p) => ({ name: p.name, widgets: p.widgets.length })),
+            pages.map((p) => ({
+              name: p.name,
+              widgets: p.widgets.length,
+              ...(p.grid ? { grid: p.grid } : {}),
+            })),
           );
           state.dashboard = { id: String(ws.id), name: ws.name || step.name };
         }
@@ -1117,6 +1130,13 @@ function createPlanBuild(plan, deps, opts = {}) {
           // The user's answers: its page, connection and settings. A
           // dashboard the user had keeps its pages (the page shown).
           page: state.dashboard.targeted ? null : pageOf(step.piece),
+          // Its planned cell on a new dashboard (plan grids).
+          row: state.dashboard.targeted
+            ? null
+            : (cellOf(step.piece) || {}).row || null,
+          col: state.dashboard.targeted
+            ? null
+            : (cellOf(step.piece) || {}).col || null,
           provider: piece.provider || null,
           settings: piece.settings || null,
         });

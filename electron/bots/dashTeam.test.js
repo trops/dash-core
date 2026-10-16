@@ -173,7 +173,7 @@ describe("Dash team instructions (slice 3a)", () => {
     assert.match(planner.instructions, /<plan><\/plan>/);
     assert.ok(planner.history.length >= 1);
     const bots = ROLE_IDS.map((r) => teamBot(r));
-    bots[0].instructions = planner.history[1];
+    bots[0].instructions = planner.history[3];
     const plan = planEnsureDashTeam(bots);
     assert.equal(plan[0].action, "upgrade");
     assert.equal(plan[0].role, "planner");
@@ -243,7 +243,7 @@ describe("Dash team instructions (phase 4a)", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /"access": \[string\]/);
     assert.match(planner.instructions, /short tappable options/);
-    assert.equal(planner.history.length, 9);
+    assert.equal(planner.history.length, 11);
   });
 });
 
@@ -261,8 +261,8 @@ describe("Dash team instructions (phase 4d-2)", () => {
     );
     assert.match(planner.instructions, /"showResults": boolean/);
     // The 4a text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[6], /short tappable options/);
-    assert.doesNotMatch(planner.history[6], /showResults/);
+    assert.match(planner.history[8], /short tappable options/);
+    assert.doesNotMatch(planner.history[8], /showResults/);
   });
 });
 
@@ -272,8 +272,8 @@ describe("Dash team instructions (phase 5d)", () => {
     assert.match(planner.instructions, /"sample": \[string\]/);
     assert.match(planner.instructions, /never the user's real data/);
     // The 4d-2 text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[5], /"showResults": boolean/);
-    assert.doesNotMatch(planner.history[5], /"sample"/);
+    assert.match(planner.history[7], /"showResults": boolean/);
+    assert.doesNotMatch(planner.history[7], /"sample"/);
   });
 });
 
@@ -287,8 +287,8 @@ describe("Dash team instructions (phase 5e)", () => {
       /When the user asks to make or change something, end every answer with the plan/,
     );
     // The 5d text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[4], /"sample": \[string\]/);
-    assert.doesNotMatch(planner.history[4], /bot_results/);
+    assert.match(planner.history[6], /"sample": \[string\]/);
+    assert.doesNotMatch(planner.history[6], /bot_results/);
   });
 });
 
@@ -301,8 +301,8 @@ describe("Dash team instructions (screen audit: typed answers)", () => {
       /never offer options like "I'll type it"/,
     );
     // The 5e-1 text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[3], /bot_results/);
-    assert.doesNotMatch(planner.history[3], /give that question no options/);
+    assert.match(planner.history[5], /bot_results/);
+    assert.doesNotMatch(planner.history[5], /give that question no options/);
   });
 });
 
@@ -322,8 +322,8 @@ describe("Dash team instructions (5e-2b: changing a dashboard you have)", () => 
     assert.match(planner.instructions, /Removing, moving or resizing widgets/);
     assert.match(planner.instructions, /ask which/);
     // The text before this is upgraded.
-    assert.match(planner.history[2], /give that question no options/);
-    assert.doesNotMatch(planner.history[2], /list_themes/);
+    assert.match(planner.history[4], /give that question no options/);
+    assert.doesNotMatch(planner.history[4], /list_themes/);
   });
 });
 
@@ -354,7 +354,7 @@ describe("Dash team instructions — pages, connections and answers (Create buil
   it("the plan can carry pages, a widget's connection and its settings", () => {
     assert.match(
       planner.instructions,
-      /"pages": \[\{"name": string, "widgets": \[string\]\}\]/,
+      /"pages": \[\{"name": string, "widgets": \[string\], "grid": \{/,
     );
     assert.match(planner.instructions, /"provider": \{"<type>": string\}/);
     assert.match(
@@ -380,8 +380,8 @@ describe("Dash team instructions — pages, connections and answers (Create buil
     assert.match(planner.instructions, /never "… layout"/);
   });
   it("the earlier Planner text upgrades", () => {
-    assert.match(planner.history[0], /"component": string/);
-    assert.doesNotMatch(planner.history[0], /"pages"/);
+    assert.match(planner.history[2], /"component": string/);
+    assert.doesNotMatch(planner.history[2], /"pages"/);
   });
 });
 
@@ -402,5 +402,55 @@ describe("Dash team instructions (Create build fixes 3)", () => {
       plan.map((p) => [p.action, p.role]),
       [["upgrade", "checker"]],
     );
+  });
+});
+
+describe("Dash team instructions (plan grids)", () => {
+  it("the Planner puts positions in the page's grid, not in notes", () => {
+    const planner = ROLES.find((r) => r.role === "planner");
+    assert.match(planner.instructions, /"grid": \{"cols": number/);
+    assert.match(planner.instructions, /colSpan/);
+    assert.match(planner.instructions, /never only in notes/);
+    assert.match(planner.instructions, /one filter per row/);
+    const bots = ROLE_IDS.map((r) => teamBot(r));
+    bots[0].instructions = planner.history[0];
+    const plan = planEnsureDashTeam(bots);
+    assert.deepEqual(
+      plan.map((p) => [p.action, p.role]),
+      [["upgrade", "planner"]],
+    );
+  });
+});
+
+describe("Dash team instructions (dashboards can be apps)", () => {
+  it("the Planner reuses what fits the experience and offers one new widget for an app-like request", () => {
+    const planner = ROLES.find((r) => r.role === "planner");
+    assert.match(planner.instructions, /A dashboard can be a whole small app/);
+    assert.match(
+      planner.instructions,
+      /reuse a widget when it fits the experience the user described, not because it exists/,
+    );
+    assert.match(planner.instructions, /one new widget that does it all/);
+    assert.match(planner.instructions, /assemble existing widgets/);
+    assert.doesNotMatch(
+      planner.instructions,
+      /Before planning anything new, find what exists/,
+    );
+    // The grid-only text a dev build ran upgrades, as does the text before
+    // plan grids.
+    assert.match(planner.history[0], /"grid": \{"cols"/);
+    assert.doesNotMatch(
+      planner.history[0],
+      /A dashboard can be a whole small app/,
+    );
+    assert.doesNotMatch(planner.history[1], /"grid"/);
+    for (const old of [planner.history[0], planner.history[1]]) {
+      const bots = ROLE_IDS.map((r) => teamBot(r));
+      bots[0].instructions = old;
+      assert.deepEqual(
+        planEnsureDashTeam(bots).map((p) => [p.action, p.role]),
+        [["upgrade", "planner"]],
+      );
+    }
   });
 });

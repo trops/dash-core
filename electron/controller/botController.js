@@ -2519,7 +2519,7 @@ const botController = {
   /**
    * Place one of a plan's widgets (CRE-004): a full component id (an
    * install's) as it is, otherwise the package with the component or the
-   * piece's name to pick one — on its planned page, with the connection and
+   * piece's name to pick one — on its planned page and cell, with the connection and
    * settings the user chose. What it couldn't use (a connection they don't
    * have, a setting the widget doesn't have) comes back as `dropped`.
    */
@@ -2529,6 +2529,8 @@ const botController = {
     widget,
     name,
     page = null,
+    row = null,
+    col = null,
     provider = null,
     settings = null,
   }) {
@@ -2568,6 +2570,8 @@ const botController = {
       dashboard: dashboardId,
       widget: resolved.component,
       page: page || undefined,
+      row,
+      col,
       settings: choices.userPrefs,
       selectedProviders: choices.selectedProviders,
     });

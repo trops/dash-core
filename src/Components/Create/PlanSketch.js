@@ -5,6 +5,7 @@ import { previewBoxes, hasSamples } from "./planPreview";
 
 /**
  * PlanSketch — the plan's dashboard sketched with made-up sample data
+ * (boxes in their planned grid cells when the plan gives a grid)
  * (create-entry PRD CRE-003 AC6, phase 5d). Boxes sit where the build will
  * put them; every box carries a "Sample" pill so nothing reads as live. In
  * the narrow dock (`compact`) the boxes stack in one column. A titled card
@@ -46,19 +47,29 @@ export const PlanSketch = ({ plan, compact = false }) => {
             className="gap-2"
             style={{
               display: "grid",
-              gridTemplateColumns: `repeat(${compact ? 1 : preview.cols}, minmax(0, 1fr))`,
+              gridTemplateColumns:
+                !compact && preview.template
+                  ? preview.template
+                  : `repeat(${compact ? 1 : preview.cols}, minmax(0, 1fr))`,
             }}
           >
             {preview.boxes.map((b) => (
               <div
                 key={b.key}
                 className="flex flex-col gap-1 rounded-md px-3 py-2"
-                style={{ background: "var(--raised-2, rgba(127,127,127,.08))" }}
+                style={{
+                  background: "var(--raised-2, rgba(127,127,127,.08))",
+                  // Its planned cell (plan grids); the dock stacks them.
+                  ...(!compact && b.area ? b.area : {}),
+                }}
                 data-testid="plan-preview-box"
               >
-                <div className="flex flex-row items-center gap-2">
+                {/* Wraps: in a narrow planned column the pill drops under
+                    the title instead of cutting it short. */}
+                <div className="flex flex-row flex-wrap items-center gap-2">
                   <span
-                    className={`flex-1 min-w-0 truncate text-sm font-semibold ${strong}`}
+                    className={`flex-1 truncate text-sm font-semibold ${strong}`}
+                    style={{ minWidth: "6rem" }}
                   >
                     {b.title}
                   </span>

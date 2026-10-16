@@ -963,3 +963,129 @@ describe("the Checker is told what the plan wants (Create build fixes 3)", () =>
     );
   });
 });
+
+describe("plan grids — the build follows the plan's grid", () => {
+  const store = () => ({
+    summary: "Storefront",
+    pieces: [
+      {
+        kind: "layout",
+        name: "Algolia Storefront",
+        source: "new",
+        pages: [
+          {
+            name: "Search",
+            widgets: [
+              "Search Box",
+              "Brand Filter",
+              "Category Filter",
+              "Hits",
+              "Pagination",
+            ],
+            grid: {
+              cols: 2,
+              rows: 4,
+              colWidths: { 1: "1/4" },
+              rowHeights: { 1: "shrink", 4: "shrink" },
+              cells: [
+                { widget: "Search Box", row: 1, col: 1, colSpan: 2 },
+                { widget: "Brand Filter", row: 2, col: 1 },
+                { widget: "Category Filter", row: 3, col: 1 },
+                { widget: "Hits", row: 2, col: 2, rowSpan: 2 },
+                { widget: "Pagination", row: 4, col: 1, colSpan: 2 },
+              ],
+            },
+          },
+        ],
+      },
+      {
+        kind: "widget",
+        name: "Search Box",
+        source: "yours",
+        package: "@trops/algolia-search",
+        component: "AlgoliaSearchBox",
+      },
+      {
+        kind: "widget",
+        name: "Brand Filter",
+        source: "yours",
+        package: "@trops/algolia-search",
+        component: "AlgoliaRefinementList",
+      },
+      {
+        kind: "widget",
+        name: "Category Filter",
+        source: "yours",
+        package: "@trops/algolia-search",
+        component: "AlgoliaRefinementList",
+      },
+      {
+        kind: "widget",
+        name: "Hits",
+        source: "yours",
+        package: "@trops/algolia-search",
+        component: "AlgoliaHits",
+      },
+      {
+        kind: "widget",
+        name: "Pagination",
+        source: "yours",
+        package: "@trops/algolia-search",
+        component: "AlgoliaPagination",
+      },
+    ],
+    checks: ["Search and see hits"],
+    estimate: { build: "small" },
+  });
+
+  it("the dashboard gets the planned grid and each widget goes in its cell", async () => {
+    const places = [];
+    let made;
+    const d = deps({
+      createDashboard: async (name, n, pages) => {
+        made = { name, n, pages };
+        return { id: 9, name };
+      },
+      placeWidget: async (req) => {
+        places.push(req);
+        return {
+          component: req.component || req.widget,
+          widgetId: places.length,
+        };
+      },
+    });
+    const state = await createPlanBuild(store(), d).run();
+    assert.equal(state.status, "done");
+    assert.equal(made.pages.length, 1);
+    assert.equal(made.pages[0].name, "Search");
+    assert.equal(made.pages[0].widgets, 5);
+    assert.equal(made.pages[0].grid.rows, 4);
+    assert.deepEqual(
+      places.map((p) => [p.name, p.page, p.row, p.col]),
+      [
+        ["Search Box", "Search", 1, 1],
+        ["Brand Filter", "Search", 2, 1],
+        ["Category Filter", "Search", 3, 1],
+        ["Hits", "Search", 2, 2],
+        ["Pagination", "Search", 4, 1],
+      ],
+    );
+  });
+
+  it("a widget without a cell gets the first free cell no other widget is planned for", async () => {
+    const plan = store();
+    plan.pieces[0].pages[0].grid.cells.pop();
+    const places = [];
+    const d = deps({
+      placeWidget: async (req) => {
+        places.push(req);
+        return { component: req.component || req.widget };
+      },
+    });
+    await createPlanBuild(plan, d).run();
+    const last = places.find((p) => p.name === "Pagination");
+    // 4.2 was covered by its span; without it, row 4 is free from column 1.
+    assert.equal(last.row, 4);
+    assert.equal(last.col, 1);
+  });
+});

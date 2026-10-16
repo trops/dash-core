@@ -536,9 +536,11 @@ describe("planPages — the pages a new dashboard gets", () => {
     );
   });
 
-  it("no pages, one page or bad pages: none", () => {
+  it("no pages or bad pages: none; one page keeps its name (plan grids)", () => {
     assert.deepEqual(planPages(p(undefined)), []);
-    assert.deepEqual(planPages(p([{ name: "Only", widgets: ["Rules"] }])), []);
+    assert.deepEqual(planPages(p([{ name: "Only", widgets: ["Rules"] }])), [
+      { name: "Only", widgets: [0, 1, 2] },
+    ]);
     assert.deepEqual(planPages(p("x")), []);
     assert.deepEqual(planPages({ pieces: [] }), []);
   });
@@ -574,5 +576,164 @@ describe("validatePlan — a layout is always new", () => {
     const errs = validatePlan(plan).errors.join(" ");
     assert.doesNotMatch(errs, /pieces\[0\]\.source/);
     assert.match(errs, /pieces\[1\]\.source must be one of/);
+  });
+});
+
+describe("plan grids — where each widget goes", () => {
+  const store = () => ({
+    summary: "Storefront",
+    pieces: [
+      {
+        kind: "layout",
+        name: "Algolia Storefront",
+        source: "new",
+        pages: [
+          {
+            name: "Search",
+            widgets: [
+              "Search Box",
+              "Brand Filter",
+              "Category Filter",
+              "Hits",
+              "Pagination",
+            ],
+            grid: {
+              cols: 2,
+              rows: 4,
+              colWidths: { 1: "1/4" },
+              rowHeights: { 1: "shrink", 4: "shrink" },
+              cells: [
+                { widget: "Search Box", row: 1, col: 1, colSpan: 2 },
+                { widget: "Brand Filter", row: 2, col: 1 },
+                { widget: "Category Filter", row: 3, col: 1 },
+                { widget: "Hits", row: 2, col: 2, rowSpan: 2 },
+                { widget: "Pagination", row: 4, col: 1, colSpan: 2 },
+              ],
+            },
+          },
+        ],
+      },
+      {
+        kind: "widget",
+        name: "Search Box",
+        source: "yours",
+        package: "@trops/algolia-search",
+        component: "AlgoliaSearchBox",
+      },
+      {
+        kind: "widget",
+        name: "Brand Filter",
+        source: "yours",
+        package: "@trops/algolia-search",
+        component: "AlgoliaRefinementList",
+      },
+      {
+        kind: "widget",
+        name: "Category Filter",
+        source: "yours",
+        package: "@trops/algolia-search",
+        component: "AlgoliaRefinementList",
+      },
+      {
+        kind: "widget",
+        name: "Hits",
+        source: "yours",
+        package: "@trops/algolia-search",
+        component: "AlgoliaHits",
+      },
+      {
+        kind: "widget",
+        name: "Pagination",
+        source: "yours",
+        package: "@trops/algolia-search",
+        component: "AlgoliaPagination",
+      },
+    ],
+    checks: ["Search and see hits"],
+    estimate: { build: "small" },
+  });
+
+  it("planPages carries the page's grid: sizes, and each widget's cell", () => {
+    const pages = planPages(store());
+    assert.equal(pages.length, 1);
+    assert.equal(pages[0].name, "Search");
+    assert.deepEqual(pages[0].widgets, [0, 1, 2, 3, 4]);
+    assert.deepEqual(pages[0].grid, {
+      cols: 2,
+      rows: 4,
+      colModes: { 1: "1/4" },
+      rowModes: { 1: "shrink", 2: "grow", 3: "grow", 4: "shrink" },
+      cells: [
+        { piece: 0, row: 1, col: 1, rowSpan: 1, colSpan: 2 },
+        { piece: 1, row: 2, col: 1, rowSpan: 1, colSpan: 1 },
+        { piece: 2, row: 3, col: 1, rowSpan: 1, colSpan: 1 },
+        { piece: 3, row: 2, col: 2, rowSpan: 2, colSpan: 1 },
+        { piece: 4, row: 4, col: 1, rowSpan: 1, colSpan: 2 },
+      ],
+    });
+  });
+
+  it("a widget given a cell goes on that page even if the page didn't list it", () => {
+    const plan = store();
+    plan.pieces[0].pages[0].widgets = ["Search Box"];
+    assert.deepEqual(planPages(plan)[0].widgets, [0, 1, 2, 3, 4]);
+  });
+
+  it("a good grid passes", () => {
+    const r = validatePlan(store());
+    assert.deepEqual(r.errors, []);
+  });
+
+  it("cells outside the grid, overlapping, or twice for one widget are errors", () => {
+    const plan = store();
+    const cells = plan.pieces[0].pages[0].grid.cells;
+    cells[4].row = 5; // Pagination below the 4 rows
+    cells[2].row = 2; // Category on Brand's cell
+    cells.push({ widget: "Hits", row: 3, col: 2 }); // Hits twice
+    const { errors } = validatePlan(plan);
+    assert.ok(
+      errors.some((e) => /Pagination.*outside the 4×2 grid/.test(e)),
+      errors.join("\n"),
+    );
+    assert.ok(
+      errors.some((e) => /Category Filter.*overlaps Brand Filter/.test(e)),
+      errors.join("\n"),
+    );
+    assert.ok(
+      errors.some((e) => /Hits has more than one cell/.test(e)),
+      errors.join("\n"),
+    );
+  });
+
+  it("unknown sizes are errors; an unknown widget is a warning", () => {
+    const plan = store();
+    const grid = plan.pieces[0].pages[0].grid;
+    grid.colWidths = { 1: "1/5" };
+    grid.rowHeights = { 2: "tall" };
+    grid.cells.push({ widget: "Nope", row: 3, col: 2 });
+    grid.cells[3].rowSpan = 1;
+    const { errors, warnings } = validatePlan(plan);
+    assert.ok(
+      errors.some((e) => /colWidths.*1\/5/.test(e)),
+      errors.join("\n"),
+    );
+    assert.ok(
+      errors.some((e) => /rowHeights.*tall/.test(e)),
+      errors.join("\n"),
+    );
+    assert.ok(
+      warnings.some((w) => /"Nope", which isn't a widget in the plan/.test(w)),
+      warnings.join("\n"),
+    );
+  });
+
+  it("a grid needs whole numbers of columns and rows", () => {
+    const plan = store();
+    plan.pieces[0].pages[0].grid.cols = 0;
+    const { errors } = validatePlan(plan);
+    assert.ok(
+      errors.some((e) => /grid needs cols \(1–6\) and rows \(1–12\)/.test(e)),
+      errors.join("\n"),
+    );
   });
 });

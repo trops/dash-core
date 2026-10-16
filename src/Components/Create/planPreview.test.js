@@ -108,3 +108,109 @@ describe("PlanSketch", () => {
     expect(screen.queryByTestId("plan-preview")).toBeNull();
   });
 });
+
+describe("previewBoxes — a planned grid (plan grids)", () => {
+  const store = () => ({
+    summary: "Storefront",
+    pieces: [
+      {
+        kind: "layout",
+        name: "Algolia Storefront",
+        source: "new",
+        pages: [
+          {
+            name: "Search",
+            widgets: [
+              "Search Box",
+              "Brand Filter",
+              "Category Filter",
+              "Hits",
+              "Pagination",
+            ],
+            grid: {
+              cols: 2,
+              rows: 4,
+              colWidths: { 1: "1/4" },
+              rowHeights: { 1: "shrink", 4: "shrink" },
+              cells: [
+                { widget: "Search Box", row: 1, col: 1, colSpan: 2 },
+                { widget: "Brand Filter", row: 2, col: 1 },
+                { widget: "Category Filter", row: 3, col: 1 },
+                { widget: "Hits", row: 2, col: 2, rowSpan: 2 },
+                { widget: "Pagination", row: 4, col: 1, colSpan: 2 },
+              ],
+            },
+          },
+        ],
+      },
+      {
+        kind: "widget",
+        name: "Search Box",
+        source: "yours",
+        package: "@trops/algolia-search",
+        component: "AlgoliaSearchBox",
+      },
+      {
+        kind: "widget",
+        name: "Brand Filter",
+        source: "yours",
+        package: "@trops/algolia-search",
+        component: "AlgoliaRefinementList",
+      },
+      {
+        kind: "widget",
+        name: "Category Filter",
+        source: "yours",
+        package: "@trops/algolia-search",
+        component: "AlgoliaRefinementList",
+      },
+      {
+        kind: "widget",
+        name: "Hits",
+        source: "yours",
+        package: "@trops/algolia-search",
+        component: "AlgoliaHits",
+      },
+      {
+        kind: "widget",
+        name: "Pagination",
+        source: "yours",
+        package: "@trops/algolia-search",
+        component: "AlgoliaPagination",
+      },
+    ],
+    checks: ["Search and see hits"],
+    estimate: { build: "small" },
+  });
+
+  it("boxes sit in their planned cells, with the planned column widths", () => {
+    const pre = previewBoxes(store());
+    assert_cols(pre);
+    const at = (title) => pre.boxes.find((b) => b.title === title).area;
+    expect(at("Search Box")).toEqual({
+      gridRow: "1 / span 1",
+      gridColumn: "1 / span 2",
+    });
+    expect(at("Hits")).toEqual({
+      gridRow: "2 / span 2",
+      gridColumn: "2 / span 1",
+    });
+    expect(at("Pagination")).toEqual({
+      gridRow: "4 / span 1",
+      gridColumn: "1 / span 2",
+    });
+  });
+
+  it("without a grid, boxes flow as before", () => {
+    const plan = store();
+    delete plan.pieces[0].pages[0].grid;
+    const pre = previewBoxes(plan);
+    expect(pre.template).toBeNull();
+    expect(pre.boxes.every((b) => !b.area)).toBe(true);
+  });
+
+  function assert_cols(pre) {
+    expect(pre.cols).toBe(2);
+    expect(pre.template).toBe("25% minmax(0, 1fr)");
+  }
+});

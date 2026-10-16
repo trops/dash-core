@@ -282,10 +282,48 @@ function gridLayout(n) {
 }
 
 /**
+ * A planned grid (teamPlan planPages): its size, column widths and row
+ * heights, and a span on each cell a widget spans — the cells a span covers
+ * hidden, as the grid editor leaves them.
+ */
+function plannedGridLayout(planned) {
+  const [node] = gridLayout(1);
+  const grid = { rows: planned.rows, cols: planned.cols, gap: "gap-2" };
+  for (let r = 1; r <= grid.rows; r++) {
+    for (let c = 1; c <= grid.cols; c++) {
+      grid[`${r}.${c}`] = { component: null, hide: false };
+    }
+  }
+  for (const cell of planned.cells || []) {
+    const rowSpan = cell.rowSpan || 1;
+    const colSpan = cell.colSpan || 1;
+    if (rowSpan === 1 && colSpan === 1) continue;
+    for (let r = cell.row; r < cell.row + rowSpan; r++) {
+      for (let c = cell.col; c < cell.col + colSpan; c++) {
+        grid[`${r}.${c}`] = { component: null, hide: true };
+      }
+    }
+    grid[`${cell.row}.${cell.col}`] = {
+      component: null,
+      hide: false,
+      span: { row: rowSpan, col: colSpan },
+    };
+  }
+  if (planned.colModes && Object.keys(planned.colModes).length) {
+    grid.colModes = { ...planned.colModes };
+  }
+  if (planned.rowModes && Object.keys(planned.rowModes).length) {
+    grid.rowModes = { ...planned.rowModes };
+  }
+  return [{ ...node, grid }];
+}
+
+/**
  * A plan's new, empty dashboard (create-entry CRE-004): one grid sized for
- * `count` widgets, or — with two or more planned `pages` ([{ name,
- * widgets: count }]) — a page each, the first shown, the top-level layout
- * its mirror (as src/Models/DashboardModel.createPage makes pages).
+ * `count` widgets, or — with planned `pages` ([{ name, widgets: count,
+ * grid? }]) — a page each (one page keeps its name), the first shown, the
+ * top-level layout its mirror (as src/Models/DashboardModel.createPage
+ * makes pages). A page with a planned grid gets that grid.
  */
 function blankDashboard({ id, name, count, pages = [] }) {
   const label = String(name || "New dashboard").trim();
@@ -298,12 +336,12 @@ function blankDashboard({ id, name, count, pages = [] }) {
     menuId: 1,
     layout: gridLayout(count),
   };
-  if (Array.isArray(pages) && pages.length >= 2) {
+  if (Array.isArray(pages) && pages.length >= 1) {
     ws.pages = pages.map((p, i) => ({
       id: `page-${id}-${i + 1}`,
       name: String(p.name),
       order: i,
-      layout: gridLayout(p.widgets),
+      layout: p.grid ? plannedGridLayout(p.grid) : gridLayout(p.widgets),
     }));
     ws.activePageId = ws.pages[0].id;
     ws.layout = clone(ws.pages[0].layout);
