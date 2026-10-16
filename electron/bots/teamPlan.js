@@ -17,6 +17,11 @@
  *                   package?,        // yours / ai-built / registry / update
  *                   component?,      // which widget, when the package has several
  *                   providers?: [type],
+ *                   // widget: which connection per type, and its settings
+ *                   provider?: { [type]: connection name },
+ *                   settings?: { [userConfig key]: value },
+ *                   // layout: the new dashboard's pages (planPages)
+ *                   pages?: [{ name, widgets: [widget name] }],
  *                   notes?,
  *                   // widget: events it publishes; bot results it shows
  *                   events?: [string], listens?: [{ bot, result, handler }],
@@ -45,6 +50,42 @@ const BEFORE_KINDS = ["connect", "install", "approve"];
 const NEEDS_PACKAGE = new Set(["yours", "ai-built", "registry", "update"]);
 
 const isStr = (v) => typeof v === "string" && v.trim().length > 0;
+const isObject = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+
+/**
+ * The pages a new dashboard gets from its layout piece: [{ name, widgets:
+ * [widget piece index] }] — each widget on the first page that names it
+ * (any case), widgets no page names on the first page; pages with the same
+ * name are merged, blank ones dropped. Fewer than two pages: [] (one page
+ * needs no tabs).
+ */
+function planPages(plan) {
+  const pieces = ((plan && plan.pieces) || []).filter(Boolean);
+  const layout = pieces.find((p) => p.kind === "layout");
+  if (!layout || !Array.isArray(layout.pages)) return [];
+  const widgets = pieces.filter((p) => p.kind === "widget");
+  const key = (v) =>
+    String(v || "")
+      .trim()
+      .toLowerCase();
+  const pages = [];
+  for (const pg of layout.pages) {
+    if (!pg || !isStr(pg.name)) continue;
+    let page = pages.find((x) => key(x.name) === key(pg.name));
+    if (!page) {
+      page = { name: pg.name.trim(), names: [] };
+      pages.push(page);
+    }
+    if (Array.isArray(pg.widgets)) page.names.push(...pg.widgets.map(key));
+  }
+  if (pages.length < 2) return [];
+  const out = pages.map((p) => ({ name: p.name, widgets: [] }));
+  widgets.forEach((w, i) => {
+    const at = pages.findIndex((p) => p.names.includes(key(w.name)));
+    out[at < 0 ? 0 : at].widgets.push(i);
+  });
+  return out;
+}
 
 /**
  * The dashboard a plan changes (5e-2b): { id, name } with the id as a
@@ -149,7 +190,9 @@ function validatePlan(plan, context = {}) {
         errors.push(`${at}.kind must be one of ${KINDS.join(", ")}.`);
       }
       if (!isStr(p.name)) errors.push(`${at} has no name.`);
-      if (!SOURCES.includes(p.source)) {
+      // A layout is always new, so the Planner may leave its source out.
+      const layoutAsNew = p.kind === "layout" && p.source === undefined;
+      if (!layoutAsNew && !SOURCES.includes(p.source)) {
         errors.push(`${at}.source must be one of ${SOURCES.join(", ")}.`);
       } else if (NEEDS_PACKAGE.has(p.source) && p.kind === "widget") {
         if (!isStr(p.package)) {
@@ -177,6 +220,44 @@ function validatePlan(plan, context = {}) {
       }
       if (p.providers !== undefined && !Array.isArray(p.providers)) {
         errors.push(`${at}.providers must be a list.`);
+      }
+      // Which of the user's connections a widget uses, and its settings —
+      // the user's answers, applied when it's placed (build fixes 2).
+      if (
+        p.provider !== undefined &&
+        !(isObject(p.provider) && Object.values(p.provider).every(isStr))
+      ) {
+        errors.push(
+          `${at}.provider must map a provider type to a connection name.`,
+        );
+      }
+      if (p.settings !== undefined && !isObject(p.settings)) {
+        errors.push(`${at}.settings must be an object.`);
+      }
+      if (p.kind === "layout" && p.pages !== undefined) {
+        if (!Array.isArray(p.pages)) errors.push(`${at}.pages must be a list.`);
+        else {
+          const names = new Set(
+            pieces
+              .filter((x) => x && x.kind === "widget" && isStr(x.name))
+              .map((x) => x.name.trim().toLowerCase()),
+          );
+          p.pages.forEach((pg, j) => {
+            if (!pg || !isStr(pg.name) || !Array.isArray(pg.widgets)) {
+              errors.push(
+                `${at}.pages[${j}] needs a name and a list of widgets.`,
+              );
+              return;
+            }
+            for (const w of pg.widgets) {
+              if (!names.has(String(w).trim().toLowerCase())) {
+                warnings.push(
+                  `${at}.pages[${j}] names "${w}", which isn't a widget in the plan.`,
+                );
+              }
+            }
+          });
+        }
       }
       // Made-up preview data (5d): never blocks building — the preview
       // only shows short text lines.
@@ -324,6 +405,7 @@ module.exports = {
   SOURCES,
   BEFORE_KINDS,
   extractPlan,
+  planPages,
   planTarget,
   validatePlan,
 };

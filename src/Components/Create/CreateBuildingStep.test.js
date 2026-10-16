@@ -228,3 +228,98 @@ test("no Run now while building", () => {
   );
   expect(screen.queryByText("Run Greeter now")).toBeNull();
 });
+
+test("an automatic fix says which try it is, then that it was fixed (Create build fixes 2)", () => {
+  const fixing = {
+    status: "running",
+    steps: [
+      {
+        id: "build:1",
+        kind: "build",
+        role: "builder",
+        label: "Build Hello",
+        status: "running",
+        fixTry: 1,
+      },
+      {
+        id: "check:1",
+        kind: "check",
+        role: "checker",
+        label: "Check Hello",
+        status: "waiting",
+      },
+    ],
+    totals: { tokens: 0, includedInPlan: true },
+  };
+  const { unmount } = render(
+    <CreateBuildingStep buildId="b1" initialState={fixing} />,
+  );
+  expect(screen.getByTestId("building-step-fixing")).toHaveTextContent(
+    "Fixing what went wrong · try 1 of 2",
+  );
+  unmount();
+  const fixed = {
+    ...fixing,
+    status: "done",
+    steps: [
+      {
+        ...fixing.steps[0],
+        status: "done",
+        fixTry: 2,
+        detail: "@ai-built/hello",
+      },
+    ],
+  };
+  render(<CreateBuildingStep buildId="b1" initialState={fixed} />);
+  expect(
+    screen.getByText(/fixed by the Builder after 2 tries · @ai-built\/hello/),
+  ).toBeInTheDocument();
+});
+
+describe("readable steps (Create build fixes 2)", () => {
+  test("the steps use the theme's main text colour; details stay muted", () => {
+    render(
+      <CreateBuildingStep
+        buildId="b1"
+        initialState={finished}
+        estimate={null}
+      />,
+    );
+    // No theme in tests → the fallbacks: main text-gray-200, muted text-gray-400.
+    expect(screen.getByTestId("create-building")).toHaveClass("text-gray-200");
+    expect(screen.getAllByTestId("building-step-usage")[0]).toHaveClass(
+      "text-gray-400",
+    );
+  });
+
+  test("full size, who did it and the AI used share the step's line", () => {
+    render(
+      <CreateBuildingStep
+        buildId="b1"
+        initialState={finished}
+        estimate={null}
+      />,
+    );
+    const head = screen.getAllByTestId("building-step-head")[1];
+    expect(head).toHaveTextContent("Build Hello");
+    expect(head).toContainElement(
+      screen.getAllByTestId("building-step-usage")[1],
+    );
+  });
+
+  test("in the dock, the AI used goes on its own line so the step name has room", () => {
+    render(
+      <CreateBuildingStep
+        buildId="b1"
+        initialState={finished}
+        estimate={null}
+        compact
+      />,
+    );
+    const head = screen.getAllByTestId("building-step-head")[1];
+    const usage = screen.getAllByTestId("building-step-usage")[1];
+    expect(head).toHaveTextContent("Build Hello");
+    expect(head).not.toContainElement(usage);
+    expect(usage).toHaveTextContent(/Sonnet · 18\.4k tokens/);
+  });
+});

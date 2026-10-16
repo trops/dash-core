@@ -581,6 +581,9 @@ export const CreatePlanStep = ({
   const buildLabel = buildButtonLabel(checklist, checks, have, {
     targeted: !!target,
   });
+  // Open questions: the answers change the plan (a connection, an index,
+  // which pages), so it isn't built until they're answered.
+  const unanswered = questions.length > 0;
 
   // Nothing open: build it (4d). Approving here is the consent — nothing
   // asks again during the build.
@@ -655,6 +658,14 @@ export const CreatePlanStep = ({
     setReady(false);
   };
 
+  // The chat follows the conversation to its latest message (its own column
+  // full size; the one column in the dock).
+  const chatScroll = useRef(null);
+  useEffect(() => {
+    const el = chatScroll.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages.length, busy, soFar, questions.length]);
+
   if (build) {
     return (
       <CreateBuildingStep
@@ -679,410 +690,397 @@ export const CreatePlanStep = ({
     );
   }
 
-  return (
-    <div className="flex-1 min-h-0 flex flex-col" data-testid="create-plan">
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        <div
-          className={`mx-auto w-full max-w-3xl flex flex-col ${
-            compact ? "gap-3 px-3 py-3" : "gap-4 px-6 py-8"
-          }`}
-        >
-          {messages.map((m, i) =>
-            m.who === "you" ? (
-              <ChatMessage key={i} role="you">
-                {m.text}
-              </ChatMessage>
-            ) : m.who === "note" ? (
-              <ChatMessage key={i} role="note">
-                {m.text}
-              </ChatMessage>
-            ) : (
-              <ChatMessage
-                key={i}
-                role="reply"
-                label="Planner"
-                meta={m.meta}
-                testId="planner-message"
-              >
-                <span className="whitespace-pre-wrap">{m.text}</span>
-              </ChatMessage>
-            ),
-          )}
+  // Full size with a plan: the plan on the left, the conversation on the
+  // right, so the plan stays in view while the user talks to the Planner.
+  // Before a plan, and in the dock, it's one column.
+  const split = !compact && !!plan && pieces.length > 0;
+  const chatMessages = (
+    <>
+      {messages.map((m, i) =>
+        m.who === "you" ? (
+          <ChatMessage key={i} role="you">
+            {m.text}
+          </ChatMessage>
+        ) : m.who === "note" ? (
+          <ChatMessage key={i} role="note">
+            {m.text}
+          </ChatMessage>
+        ) : (
+          <ChatMessage
+            key={i}
+            role="reply"
+            label="Planner"
+            meta={m.meta}
+            testId="planner-message"
+          >
+            <span className="whitespace-pre-wrap">{m.text}</span>
+          </ChatMessage>
+        ),
+      )}
 
-          {busy ? (
-            <ChatMessage role="reply" label="Planner" streaming>
-              <span className="whitespace-pre-wrap">
-                {withoutPlan(soFar) || "Drafting a plan for you to review…"}
+      {busy ? (
+        <ChatMessage role="reply" label="Planner" streaming>
+          <span className="whitespace-pre-wrap">
+            {withoutPlan(soFar) || "Drafting a plan for you to review…"}
+          </span>
+        </ChatMessage>
+      ) : null}
+    </>
+  );
+  const questionsBlock =
+    !busy && questions.length ? (
+      <div className="flex flex-col gap-3" data-testid="plan-questions">
+        {questions.map((q, i) => {
+          const options = (Array.isArray(q.options) ? q.options : []).filter(
+            Boolean,
+          );
+          const fieldId = `plan-question-${i}`;
+          return (
+            <div
+              key={i}
+              className={`flex flex-col gap-3 rounded-lg border px-4 py-3 ${hairline}`}
+              data-testid="plan-question"
+            >
+              <span className={`text-sm font-semibold ${strong}`}>
+                {q.question}
               </span>
-            </ChatMessage>
-          ) : null}
-
-          {!busy && questions.length ? (
-            <div className="flex flex-col gap-3" data-testid="plan-questions">
-              {questions.map((q, i) => {
-                const options = (
-                  Array.isArray(q.options) ? q.options : []
-                ).filter(Boolean);
-                const fieldId = `plan-question-${i}`;
-                return (
-                  <div
-                    key={i}
-                    className={`flex flex-col gap-3 rounded-lg border px-4 py-3 ${hairline}`}
-                    data-testid="plan-question"
-                  >
-                    <span className={`text-sm font-semibold ${strong}`}>
-                      {q.question}
-                    </span>
-                    {options.length ? (
-                      <div className="flex flex-row flex-wrap gap-2">
-                        {options.map((o) =>
-                          isTypeItOption(o) ? (
-                            // "I'll type it" isn't an answer: it puts the
-                            // cursor in this question's field.
-                            <ButtonIcon2
-                              key={o}
-                              text={o}
-                              ariaPressed={false}
-                              onClick={() => {
-                                const el = document.getElementById(fieldId);
-                                if (el) el.focus();
-                              }}
-                            />
-                          ) : (
-                            <ButtonIcon2
-                              key={o}
-                              text={o}
-                              ariaPressed={picks[i] === o}
-                              selected={picks[i] === o}
-                              onClick={() => pick(questions, i, o)}
-                            />
-                          ),
-                        )}
-                      </div>
-                    ) : null}
-                    <InputText
-                      id={fieldId}
-                      ariaLabel={`Your answer: ${q.question}`}
-                      placeholder={
-                        options.length
-                          ? "Or type an answer…"
-                          : "Type an answer…"
-                      }
-                      value={typed[i] || ""}
-                      onChange={(v) => {
-                        setTyped((t) => ({ ...t, [i]: v }));
-                        // Typing replaces a tapped option for this question.
-                        if (String(v).trim()) {
-                          setPicks((p) => {
-                            const next = { ...p };
-                            delete next[i];
-                            return next;
-                          });
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key !== "Enter" || e.shiftKey) return;
-                        e.preventDefault();
-                        const v = String(typed[i] || "").trim();
-                        if (!v) return;
-                        if (questions.length === 1) {
-                          answer(`${q.question} — ${v}`);
-                          setTyped({});
-                        }
-                      }}
-                    />
-                    {questions.length === 1 ? (
-                      <span className={`text-xs ${muted}`}>Enter to send</span>
-                    ) : null}
-                  </div>
-                );
-              })}
-              {questions.length > 1 ? (
-                <div className="flex flex-row items-center gap-3">
-                  <Button
-                    title="Send answers"
-                    onClick={() => sendPicks(questions)}
-                    disabled={!answeredCount(questions)}
-                  />
-                  <span className={`text-sm ${muted}`}>
-                    {answeredCount(questions)} of {questions.length} answered
-                  </span>
+              {options.length ? (
+                <div className="flex flex-row flex-wrap gap-2">
+                  {options.map((o) =>
+                    isTypeItOption(o) ? (
+                      // "I'll type it" isn't an answer: it puts the
+                      // cursor in this question's field.
+                      <ButtonIcon2
+                        key={o}
+                        text={o}
+                        ariaPressed={false}
+                        onClick={() => {
+                          const el = document.getElementById(fieldId);
+                          if (el) el.focus();
+                        }}
+                      />
+                    ) : (
+                      <ButtonIcon2
+                        key={o}
+                        text={o}
+                        ariaPressed={picks[i] === o}
+                        selected={picks[i] === o}
+                        onClick={() => pick(questions, i, o)}
+                      />
+                    ),
+                  )}
                 </div>
               ) : null}
-            </div>
-          ) : null}
-
-          {plan && pieces.length ? (
-            <div className="flex flex-col gap-4" data-testid="plan-card">
-              {/* Nothing changes until Build (the user approves first). */}
-              <div data-testid="plan-status">
-                <SectionLabel
-                  text={
-                    target
-                      ? `Changes to ${target.name} · not made yet`
-                      : "Plan · not built yet"
+              <InputText
+                id={fieldId}
+                ariaLabel={`Your answer: ${q.question}`}
+                placeholder={
+                  options.length ? "Or type an answer…" : "Type an answer…"
+                }
+                value={typed[i] || ""}
+                onChange={(v) => {
+                  setTyped((t) => ({ ...t, [i]: v }));
+                  // Typing replaces a tapped option for this question.
+                  if (String(v).trim()) {
+                    setPicks((p) => {
+                      const next = { ...p };
+                      delete next[i];
+                      return next;
+                    });
                   }
-                />
-              </div>
-              <span className={`text-lg font-semibold ${strong}`}>
-                {plan.summary}
-              </span>
-              <span className={`text-sm ${muted}`} data-testid="plan-counts">
-                {countsLine(plan)}
-              </span>
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" || e.shiftKey) return;
+                  e.preventDefault();
+                  const v = String(typed[i] || "").trim();
+                  if (!v) return;
+                  if (questions.length === 1) {
+                    answer(`${q.question} — ${v}`);
+                    setTyped({});
+                  }
+                }}
+              />
+              {questions.length === 1 ? (
+                <span className={`text-xs ${muted}`}>Enter to send</span>
+              ) : null}
+            </div>
+          );
+        })}
+        {questions.length > 1 ? (
+          <div className="flex flex-row items-center gap-3">
+            <Button
+              title="Send answers"
+              onClick={() => sendPicks(questions)}
+              disabled={!answeredCount(questions)}
+            />
+            <span className={`text-sm ${muted}`}>
+              {answeredCount(questions)} of {questions.length} answered
+            </span>
+          </div>
+        ) : null}
+      </div>
+    ) : null;
+  const planCard =
+    plan && pieces.length ? (
+      <div className="flex flex-col gap-4" data-testid="plan-card">
+        {/* Nothing changes until Build (the user approves first). */}
+        <div data-testid="plan-status">
+          <SectionLabel
+            text={
+              target
+                ? `Changes to ${target.name} · not made yet`
+                : "Plan · not built yet"
+            }
+          />
+        </div>
+        <span className={`text-lg font-semibold ${strong}`}>
+          {plan.summary}
+        </span>
+        <span className={`text-sm ${muted}`} data-testid="plan-counts">
+          {countsLine(plan)}
+        </span>
 
-              <PlanSection
-                title={target ? "What it adds" : "What it makes"}
-                testId="plan-pieces"
-              >
-                {GROUPS.map(([kind, label]) => {
-                  const group = pieces.filter((p) => p && p.kind === kind);
-                  if (!group.length) return null;
+        <PlanSection
+          title={target ? "What it adds" : "What it makes"}
+          testId="plan-pieces"
+        >
+          {GROUPS.map(([kind, label]) => {
+            const group = pieces.filter((p) => p && p.kind === kind);
+            if (!group.length) return null;
+            return (
+              <div key={kind} className="flex flex-col">
+                <SectionLabel text={label} />
+                {group.map((p, gi) => {
+                  const index = pieces.indexOf(p);
+                  const base = SOURCE[p.source] || {
+                    label: p.source,
+                    state: "neutral",
+                  };
+                  const source =
+                    p.source === "new"
+                      ? { ...base, label: `New ${p.kind}` }
+                      : base;
+                  const meta = pieceMeta(p);
                   return (
-                    <div key={kind} className="flex flex-col">
-                      <SectionLabel text={label} />
-                      {group.map((p, gi) => {
-                        const index = pieces.indexOf(p);
-                        const base = SOURCE[p.source] || {
-                          label: p.source,
-                          state: "neutral",
-                        };
-                        const source =
-                          p.source === "new"
-                            ? { ...base, label: `New ${p.kind}` }
-                            : base;
-                        const meta = pieceMeta(p);
-                        return (
-                          <div
-                            key={index}
-                            className={`flex flex-col gap-2 py-3 ${gi ? `border-t ${hairline}` : ""}`}
-                            data-testid="plan-piece"
-                          >
-                            <div className="flex flex-row items-start gap-3">
-                              <FontAwesomeIcon
-                                icon={KIND_ICON[p.kind] || "puzzle-piece"}
-                                className={`h-4 w-4 mt-6 flex-shrink-0 ${muted}`}
-                              />
-                              <div className="flex-1 min-w-0 flex flex-col items-start gap-1">
-                                <StatusBadge
-                                  state={source.state}
-                                  label={source.label}
-                                />
-                                <span
-                                  className={`text-sm font-medium ${strong}`}
-                                >
-                                  {p.name}
-                                </span>
-                                {meta ? (
-                                  <span className={`text-xs ${muted}`}>
-                                    {meta}
-                                  </span>
-                                ) : null}
-                              </div>
-                              <div className="dr-row-actions flex flex-row items-center gap-1 flex-shrink-0 pt-5">
-                                {p.kind === "widget" ? (
-                                  <Button2
-                                    title="Swap…"
-                                    size="sm"
-                                    onClick={() => setSwapIndex(index)}
-                                  />
-                                ) : null}
-                                <ButtonIcon
-                                  icon="xmark"
-                                  ariaLabel={`Remove ${p.name} from the plan`}
-                                  onClick={() =>
-                                    editPlan(
-                                      removePiece(plan, index),
-                                      `removed ${p.name}`,
-                                    )
-                                  }
-                                />
-                              </div>
-                            </div>
-                            {p.kind === "bot" && p.source === "new" ? (
-                              <BotPlanDetails
-                                piece={p}
-                                muted={muted}
-                                strong={strong}
-                                open={openBots.includes(index)}
-                                onToggle={() =>
-                                  setOpenBots((o) =>
-                                    o.includes(index)
-                                      ? o.filter((x) => x !== index)
-                                      : [...o, index],
-                                  )
-                                }
-                              />
-                            ) : null}
-                            {swapIndex === index ? (
-                              <SwapPicker
-                                piece={p}
-                                onCancel={() => setSwapIndex(null)}
-                                onPick={(m) => {
-                                  setSwapIndex(null);
-                                  editPlan(
-                                    swapPiece(plan, index, m),
-                                    m.source === "New"
-                                      ? `build ${p.name} new`
-                                      : `swapped ${p.name} for ${m.name}`,
-                                  );
-                                }}
-                              />
-                            ) : null}
-                          </div>
-                        );
-                      })}
+                    <div
+                      key={index}
+                      className={`flex flex-col gap-2 py-3 ${gi ? `border-t ${hairline}` : ""}`}
+                      data-testid="plan-piece"
+                    >
+                      <div className="flex flex-row items-start gap-3">
+                        <FontAwesomeIcon
+                          icon={KIND_ICON[p.kind] || "puzzle-piece"}
+                          className={`h-4 w-4 mt-6 flex-shrink-0 ${muted}`}
+                        />
+                        <div className="flex-1 min-w-0 flex flex-col items-start gap-1">
+                          <StatusBadge
+                            state={source.state}
+                            label={source.label}
+                          />
+                          <span className={`text-sm font-medium ${strong}`}>
+                            {p.name}
+                          </span>
+                          {meta ? (
+                            <span className={`text-xs ${muted}`}>{meta}</span>
+                          ) : null}
+                        </div>
+                        <div className="dr-row-actions flex flex-row items-center gap-1 flex-shrink-0 pt-5">
+                          {p.kind === "widget" ? (
+                            <Button2
+                              title="Swap…"
+                              size="sm"
+                              onClick={() => setSwapIndex(index)}
+                            />
+                          ) : null}
+                          <ButtonIcon
+                            icon="xmark"
+                            ariaLabel={`Remove ${p.name} from the plan`}
+                            onClick={() =>
+                              editPlan(
+                                removePiece(plan, index),
+                                `removed ${p.name}`,
+                              )
+                            }
+                          />
+                        </div>
+                      </div>
+                      {p.kind === "bot" && p.source === "new" ? (
+                        <BotPlanDetails
+                          piece={p}
+                          muted={muted}
+                          strong={strong}
+                          open={openBots.includes(index)}
+                          onToggle={() =>
+                            setOpenBots((o) =>
+                              o.includes(index)
+                                ? o.filter((x) => x !== index)
+                                : [...o, index],
+                            )
+                          }
+                        />
+                      ) : null}
+                      {swapIndex === index ? (
+                        <SwapPicker
+                          piece={p}
+                          onCancel={() => setSwapIndex(null)}
+                          onPick={(m) => {
+                            setSwapIndex(null);
+                            editPlan(
+                              swapPiece(plan, index, m),
+                              m.source === "New"
+                                ? `build ${p.name} new`
+                                : `swapped ${p.name} for ${m.name}`,
+                            );
+                          }}
+                        />
+                      ) : null}
                     </div>
                   );
                 })}
-              </PlanSection>
-
-              {/* What it will look like, with made-up data (CRE-003 AC6) —
-                  a new dashboard's grid; not drawn for one the user has. */}
-              {target ? null : <PlanSketch plan={plan} compact={compact} />}
-
-              {checklist.length ? (
-                <PlanSection title="Before building" testId="plan-before">
-                  {checklist.map((it) => {
-                    const skipped = isSkipped(it, checks, have);
-                    const done = isDone(it, checks, have) && !skipped;
-                    return (
-                      <div
-                        key={it.id}
-                        className="flex flex-row items-center gap-3 text-sm py-1"
-                        data-testid="checklist-item"
-                      >
-                        <span className="flex-1 min-w-0 flex flex-col items-start gap-1">
-                          <StatusBadge
-                            state={done ? "success" : "neutral"}
-                            label={done ? "Done" : "To do"}
-                          />
-                          <span className={done ? muted : strong}>
-                            {it.label}
-                          </span>
-                          {it.package ? (
-                            <span className={`text-xs ${muted}`}>
-                              {it.package}
-                            </span>
-                          ) : null}
-                          {skipped ? (
-                            <span
-                              className={`text-xs ${muted}`}
-                              data-testid="checklist-skipped"
-                            >
-                              {" "}
-                              · skipped — what needs it waits
-                            </span>
-                          ) : null}
-                        </span>
-                        {done ? null : (
-                          <Button2
-                            title={
-                              it.kind === "install"
-                                ? "Review & approve"
-                                : it.kind === "connect"
-                                  ? "Connect"
-                                  : "OK"
-                            }
-                            size="sm"
-                            onClick={() =>
-                              it.kind === "approve"
-                                ? finish(it, "done")
-                                : openItem(it)
-                            }
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-                </PlanSection>
-              ) : null}
-
-              <PlanSection title="What to expect" testId="plan-expect">
-                {(plan.access || []).length ? (
-                  <div
-                    className="flex flex-col gap-1"
-                    data-testid="plan-access"
-                  >
-                    <SectionLabel text="What it can and can't do" />
-                    {plan.access.map((a, i) => {
-                      const cant = cannotLine(a);
-                      return (
-                        <span
-                          key={i}
-                          className="flex flex-row items-start gap-2 text-sm"
-                        >
-                          <FontAwesomeIcon
-                            icon={cant ? "ban" : "check"}
-                            className={`h-3.5 w-3.5 mt-1 flex-shrink-0 ${cant ? muted : statusTokens.success.icon}`}
-                            aria-label={cant ? "Can't" : "Can"}
-                          />
-                          <span>{a}</span>
-                        </span>
-                      );
-                    })}
-                  </div>
-                ) : null}
-
-                {(plan.checks || []).length ? (
-                  <div className="flex flex-col gap-1">
-                    <SectionLabel text="How we'll know it works" />
-                    <ul
-                      className="flex flex-col gap-1 text-sm"
-                      style={{
-                        margin: 0,
-                        paddingLeft: "1.1rem",
-                        listStyle: "disc",
-                      }}
-                    >
-                      {plan.checks.map((c, i) => (
-                        <li key={i}>{c}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-
-                <div
-                  className="flex flex-col gap-1"
-                  data-testid="plan-estimate"
-                >
-                  <SectionLabel text="Estimated cost" />
-                  <span className="text-sm">
-                    To build: {describeEstimate(estimate)}
-                  </span>
-                  {plan.estimate && plan.estimate.running ? (
-                    <span className="text-sm">
-                      To run: {plan.estimate.running}
-                    </span>
-                  ) : null}
-                </div>
-              </PlanSection>
-
-              {check && check.errors.length ? (
-                <span className={`text-xs ${muted}`}>
-                  The plan isn't complete yet: {check.errors.join(" ")}
-                </span>
-              ) : null}
-              <div className="flex flex-row flex-wrap items-center gap-3">
-                <Button title={buildLabel} onClick={buildPlan} />
-                <span className={`text-xs ${muted}`} data-testid="plan-ready">
-                  {buildError
-                    ? buildError
-                    : ready
-                      ? "Starting the build…"
-                      : resumeFrom
-                        ? "What's built is kept — only what's new or changed gets built."
-                        : removedNote ||
-                          (target
-                            ? `Kept in Recent · nothing on ${target.name} changes until you press this.`
-                            : "Kept in Recent · nothing has been built or installed yet.")}
-                </span>
               </div>
+            );
+          })}
+        </PlanSection>
+
+        {/* What it will look like, with made-up data (CRE-003 AC6) —
+                  a new dashboard's grid; not drawn for one the user has. */}
+        {target ? null : <PlanSketch plan={plan} compact={compact} />}
+
+        {checklist.length ? (
+          <PlanSection title="Before building" testId="plan-before">
+            {checklist.map((it) => {
+              const skipped = isSkipped(it, checks, have);
+              const done = isDone(it, checks, have) && !skipped;
+              return (
+                <div
+                  key={it.id}
+                  className="flex flex-row items-center gap-3 text-sm py-1"
+                  data-testid="checklist-item"
+                >
+                  <span className="flex-1 min-w-0 flex flex-col items-start gap-1">
+                    <StatusBadge
+                      state={done ? "success" : "neutral"}
+                      label={done ? "Done" : "To do"}
+                    />
+                    <span className={done ? muted : strong}>{it.label}</span>
+                    {it.package ? (
+                      <span className={`text-xs ${muted}`}>{it.package}</span>
+                    ) : null}
+                    {skipped ? (
+                      <span
+                        className={`text-xs ${muted}`}
+                        data-testid="checklist-skipped"
+                      >
+                        {" "}
+                        · skipped — what needs it waits
+                      </span>
+                    ) : null}
+                  </span>
+                  {done ? null : (
+                    <Button2
+                      title={
+                        it.kind === "install"
+                          ? "Review & approve"
+                          : it.kind === "connect"
+                            ? "Connect"
+                            : "OK"
+                      }
+                      size="sm"
+                      onClick={() =>
+                        it.kind === "approve"
+                          ? finish(it, "done")
+                          : openItem(it)
+                      }
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </PlanSection>
+        ) : null}
+
+        <PlanSection title="What to expect" testId="plan-expect">
+          {(plan.access || []).length ? (
+            <div className="flex flex-col gap-1" data-testid="plan-access">
+              <SectionLabel text="What it can and can't do" />
+              {plan.access.map((a, i) => {
+                const cant = cannotLine(a);
+                return (
+                  <span
+                    key={i}
+                    className="flex flex-row items-start gap-2 text-sm"
+                  >
+                    <FontAwesomeIcon
+                      icon={cant ? "ban" : "check"}
+                      className={`h-3.5 w-3.5 mt-1 flex-shrink-0 ${cant ? muted : statusTokens.success.icon}`}
+                      aria-label={cant ? "Can't" : "Can"}
+                    />
+                    <span>{a}</span>
+                  </span>
+                );
+              })}
             </div>
           ) : null}
+
+          {(plan.checks || []).length ? (
+            <div className="flex flex-col gap-1">
+              <SectionLabel text="How we'll know it works" />
+              <ul
+                className="flex flex-col gap-1 text-sm"
+                style={{
+                  margin: 0,
+                  paddingLeft: "1.1rem",
+                  listStyle: "disc",
+                }}
+              >
+                {plan.checks.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          <div className="flex flex-col gap-1" data-testid="plan-estimate">
+            <SectionLabel text="Estimated cost" />
+            <span className="text-sm">
+              To build: {describeEstimate(estimate)}
+            </span>
+            {plan.estimate && plan.estimate.running ? (
+              <span className="text-sm">To run: {plan.estimate.running}</span>
+            ) : null}
+          </div>
+        </PlanSection>
+
+        {check && check.errors.length ? (
+          <span className={`text-xs ${muted}`}>
+            The plan isn't complete yet: {check.errors.join(" ")}
+          </span>
+        ) : null}
+        <div className="flex flex-row flex-wrap items-center gap-3">
+          <Button
+            title={buildLabel}
+            onClick={buildPlan}
+            disabled={unanswered}
+          />
+          <span className={`text-xs ${muted}`} data-testid="plan-ready">
+            {buildError
+              ? buildError
+              : unanswered
+                ? "Answer the Planner's questions first."
+                : ready
+                  ? "Starting the build…"
+                  : resumeFrom
+                    ? "What's built is kept — only what's new or changed gets built."
+                    : removedNote ||
+                      (target
+                        ? `Kept in Recent · nothing on ${target.name} changes until you press this.`
+                        : "Kept in Recent · nothing has been built or installed yet.")}
+          </span>
         </div>
       </div>
-
+    ) : null;
+  const dialogs = (
+    <>
       {dialog && dialog.kind === "install" ? (
         <InstallReviewDialog
           item={dialog.item}
@@ -1140,22 +1138,80 @@ export const CreatePlanStep = ({
           }}
         />
       ) : null}
+    </>
+  );
+  // One scroll area: the Planner's questions end the conversation, and the
+  // chat opens at its end, so what's asked sits just above the reply box and
+  // scrolls out of the way with everything else.
+  const foot = (
+    <div className="flex-shrink-0 flex flex-col" data-testid="chat-foot">
+      <div className={split || compact ? "" : "mx-auto w-full max-w-3xl"}>
+        <ChatComposer
+          ariaLabel="Reply to the Planner"
+          value={reply}
+          onChange={(v) => setReply(v)}
+          onSend={() => answer(reply)}
+          busy={busy}
+          placeholder={
+            busy ? "The Planner is working…" : "Answer, or ask for changes…"
+          }
+          className={compact ? "" : split ? "px-4 py-3" : "px-6 py-3"}
+        />
+      </div>
+    </div>
+  );
 
-      <div className="flex-shrink-0">
-        <div className="mx-auto w-full max-w-3xl">
-          <ChatComposer
-            ariaLabel="Reply to the Planner"
-            value={reply}
-            onChange={(v) => setReply(v)}
-            onSend={() => answer(reply)}
-            busy={busy}
-            placeholder={
-              busy ? "The Planner is working…" : "Answer, or ask for changes…"
-            }
-            className={compact ? "" : "px-6 py-3"}
-          />
+  if (split) {
+    return (
+      <div className="flex-1 min-h-0 flex flex-row" data-testid="create-plan">
+        <div
+          className="flex-1 min-w-0 overflow-y-auto"
+          data-testid="plan-column"
+        >
+          <div className="mx-auto w-full max-w-3xl flex flex-col gap-4 px-6 py-8">
+            {planCard}
+          </div>
+        </div>
+        <div
+          className={`flex-1 min-w-0 min-h-0 flex flex-col border-l ${hairline}`}
+          data-testid="chat-column"
+        >
+          <div
+            ref={chatScroll}
+            className="flex-1 min-h-0 overflow-y-auto"
+            data-testid="chat-scroll"
+          >
+            <div className="flex flex-col gap-4 px-4 py-6">
+              {chatMessages}
+              {questionsBlock}
+            </div>
+          </div>
+          {foot}
+        </div>
+        {dialogs}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 min-h-0 flex flex-col" data-testid="create-plan">
+      <div
+        ref={chatScroll}
+        className="flex-1 min-h-0 overflow-y-auto"
+        data-testid="chat-scroll"
+      >
+        <div
+          className={`mx-auto w-full max-w-3xl flex flex-col ${
+            compact ? "gap-3 px-3 py-3" : "gap-4 px-6 py-8"
+          }`}
+        >
+          {chatMessages}
+          {planCard}
+          {questionsBlock}
         </div>
       </div>
+      {dialogs}
+      {foot}
     </div>
   );
 };

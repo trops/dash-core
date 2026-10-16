@@ -26,6 +26,9 @@ import { ConnectDialog } from "./PlanChecklistDialogs";
  */
 
 const ROLE = { builder: "Builder", checker: "Checker", dash: "Dash" };
+// How many times the Builder fixes one widget by itself (planBuild MAX_FIXES).
+const MAX_FIXES = 2;
+const tries = (n) => (n === 1 ? "1 try" : `${n} tries`);
 const MARK = {
   waiting: "·",
   running: "…",
@@ -210,6 +213,26 @@ export const CreateBuildingStep = ({
     }
   };
 
+  // The AI a step used — beside it full size; its own line in the dock, so
+  // the step's name has the width.
+  const usageOf = (s) => {
+    const text =
+      s.role === "dash"
+        ? "no AI"
+        : s.tokens
+          ? `${modelLabel(s.model) || ""} · ${formatTokens(s.tokens)} tokens`
+          : "";
+    if (compact && !text) return null;
+    return (
+      <span
+        className={`text-xs ${compact ? "ml-7" : "flex-shrink-0"} ${muted}`}
+        data-testid="building-step-usage"
+      >
+        {text}
+      </span>
+    );
+  };
+
   const heading =
     stopping && running
       ? "Stopping after this step…"
@@ -221,7 +244,7 @@ export const CreateBuildingStep = ({
 
   return (
     <div
-      className="flex-1 min-h-0 overflow-y-auto"
+      className={`flex-1 min-h-0 overflow-y-auto ${strong}`}
       data-testid="create-building"
     >
       <div
@@ -267,7 +290,10 @@ export const CreateBuildingStep = ({
               data-testid="building-step"
               className={`flex flex-col gap-1 rounded-lg border px-4 py-3 ${hairline}`}
             >
-              <div className="flex flex-row items-center gap-3 text-sm">
+              <div
+                className="flex flex-row items-center gap-3 text-sm"
+                data-testid="building-step-head"
+              >
                 <span className="w-4 text-center" aria-label={s.status}>
                   {MARK[s.status] || "·"}
                 </span>
@@ -279,14 +305,17 @@ export const CreateBuildingStep = ({
                 >
                   {s.label}
                 </span>
-                <span className={`text-xs flex-shrink-0 ${muted}`}>
-                  {s.role === "dash"
-                    ? "no AI"
-                    : s.tokens
-                      ? `${modelLabel(s.model) || ""} · ${formatTokens(s.tokens)} tokens`
-                      : ""}
-                </span>
+                {compact ? null : usageOf(s)}
               </div>
+              {compact ? usageOf(s) : null}
+              {s.kind === "build" && s.fixTry && s.status === "running" ? (
+                <span
+                  className={`text-xs ml-7 ${muted}`}
+                  data-testid="building-step-fixing"
+                >
+                  Fixing what went wrong · try {s.fixTry} of {MAX_FIXES}
+                </span>
+              ) : null}
               {s.status === "needs-provider" ? (
                 <span
                   className={`text-xs ml-7 ${muted}`}
@@ -307,6 +336,9 @@ export const CreateBuildingStep = ({
               ) : s.status === "done" && s.detail && s.kind !== "check" ? (
                 <span className={`text-xs ml-7 ${muted}`}>
                   {s.reused ? "kept from before · " : ""}
+                  {s.kind === "build" && s.fixTry
+                    ? `fixed by the Builder after ${tries(s.fixTry)} · `
+                    : ""}
                   {s.detail}
                 </span>
               ) : null}

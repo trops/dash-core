@@ -6,7 +6,12 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { extractPlan, planTarget, validatePlan } = require("./teamPlan");
+const {
+  extractPlan,
+  planPages,
+  planTarget,
+  validatePlan,
+} = require("./teamPlan");
 
 const PROVIDERS = ["gmail", "github", "slack", "algolia"];
 
@@ -422,5 +427,152 @@ describe("validatePlan — a widget's component (Create build fixes)", () => {
       validatePlan(base(3)).errors.join(" "),
       /pieces\[0\]\.component must be the component's name/,
     );
+  });
+});
+
+describe("validatePlan — pages, connections and settings (Create build fixes 2)", () => {
+  const widget = (name, extra = {}) => ({
+    kind: "widget",
+    name,
+    source: "yours",
+    package: "@trops/algolia",
+    providers: ["algolia"],
+    ...extra,
+  });
+  const plan = (layout, widgets = [widget("Rules"), widget("Ranking")]) => ({
+    summary: "x",
+    estimate: { build: "1 min" },
+    pieces: [
+      { kind: "layout", name: "Merch", source: "new", ...layout },
+      ...widgets,
+    ],
+  });
+
+  it("a layout's pages name their widgets", () => {
+    const ok = plan({
+      pages: [
+        { name: "Curate", widgets: ["Rules"] },
+        { name: "Rank", widgets: ["Ranking"] },
+      ],
+    });
+    assert.equal(validatePlan(ok, { providers: PROVIDERS }).valid, true);
+    assert.match(
+      validatePlan(plan({ pages: "Curate" })).errors.join(" "),
+      /pieces\[0\]\.pages must be a list/,
+    );
+    assert.match(
+      validatePlan(plan({ pages: [{ widgets: [] }] })).errors.join(" "),
+      /pieces\[0\]\.pages\[0\] needs a name and a list of widgets/,
+    );
+  });
+
+  it("a page naming a widget the plan doesn't have is a warning", () => {
+    const res = validatePlan(
+      plan({ pages: [{ name: "A", widgets: ["Rules", "Nope"] }] }),
+      { providers: PROVIDERS },
+    );
+    assert.equal(res.valid, true);
+    assert.match(
+      res.warnings.join(" "),
+      /names "Nope", which isn't a widget in the plan/,
+    );
+  });
+
+  it("a widget's connection and settings are objects", () => {
+    const good = plan({}, [
+      widget("Rules", {
+        provider: { algolia: "Algolia John G Demos" },
+        settings: { indexName: "products" },
+      }),
+    ]);
+    assert.equal(validatePlan(good, { providers: PROVIDERS }).valid, true);
+    const bad = plan({}, [
+      widget("Rules", { provider: "Algolia", settings: [1] }),
+    ]);
+    const errs = validatePlan(bad).errors.join(" ");
+    assert.match(
+      errs,
+      /pieces\[1\]\.provider must map a provider type to a connection name/,
+    );
+    assert.match(errs, /pieces\[1\]\.settings must be an object/);
+  });
+});
+
+describe("planPages — the pages a new dashboard gets", () => {
+  const p = (pages) => ({
+    pieces: [
+      { kind: "layout", name: "L", source: "new", pages },
+      { kind: "widget", name: "Rules", source: "new" },
+      { kind: "widget", name: "Ranking", source: "new" },
+      { kind: "widget", name: "Compare", source: "new" },
+    ],
+  });
+
+  it("each widget goes on the first page that names it (any case)", () => {
+    const pages = planPages(
+      p([
+        { name: "Curate", widgets: ["rules", "Compare"] },
+        { name: "Rank", widgets: ["Ranking", "Rules"] },
+      ]),
+    );
+    assert.deepEqual(pages, [
+      { name: "Curate", widgets: [0, 2] },
+      { name: "Rank", widgets: [1] },
+    ]);
+  });
+
+  it("widgets no page names go on the first page", () => {
+    assert.deepEqual(
+      planPages(
+        p([
+          { name: "A", widgets: ["Rules"] },
+          { name: "B", widgets: ["Ranking"] },
+        ]),
+      ),
+      [
+        { name: "A", widgets: [0, 2] },
+        { name: "B", widgets: [1] },
+      ],
+    );
+  });
+
+  it("no pages, one page or bad pages: none", () => {
+    assert.deepEqual(planPages(p(undefined)), []);
+    assert.deepEqual(planPages(p([{ name: "Only", widgets: ["Rules"] }])), []);
+    assert.deepEqual(planPages(p("x")), []);
+    assert.deepEqual(planPages({ pieces: [] }), []);
+  });
+
+  it("pages with the same name, or blank names, are merged or dropped", () => {
+    assert.deepEqual(
+      planPages(
+        p([
+          { name: "A", widgets: ["Rules"] },
+          { name: " ", widgets: ["Ranking"] },
+          { name: "a", widgets: ["Compare"] },
+          { name: "B", widgets: ["Ranking"] },
+        ]),
+      ),
+      [
+        { name: "A", widgets: [0, 2] },
+        { name: "B", widgets: [1] },
+      ],
+    );
+  });
+});
+
+describe("validatePlan — a layout is always new", () => {
+  it("a layout piece without source is fine; a widget without one isn't", () => {
+    const plan = {
+      summary: "x",
+      estimate: { build: "1 min" },
+      pieces: [
+        { kind: "layout", name: "Notes & Counts" },
+        { kind: "widget", name: "Counter" },
+      ],
+    };
+    const errs = validatePlan(plan).errors.join(" ");
+    assert.doesNotMatch(errs, /pieces\[0\]\.source/);
+    assert.match(errs, /pieces\[1\]\.source must be one of/);
   });
 });

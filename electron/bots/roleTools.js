@@ -6,7 +6,7 @@
  * tools. Each role gets only the tools its job needs:
  *
  *   search_library  Scout, Planner        your widgets, AI-built, registry
- *   read_widget     Scout, Builder, Checker an installed widget's source
+ *   read_widget     all four roles        an installed widget's source
  *   list_providers  every role            each tool marked can read / can change
  *   ask_role        Planner               hand a request to another role
  *   widget_guide    Builder               the widget rules + provider tool names
@@ -321,6 +321,7 @@ const TOOL_DEFS = {
 const ROLE_TOOL_NAMES = {
   planner: [
     "search_library",
+    "read_widget",
     "list_providers",
     "list_dashboards",
     "list_themes",

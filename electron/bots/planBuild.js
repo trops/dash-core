@@ -24,6 +24,8 @@
  * After it finishes (4d-3, CRE-004 AC4/AC5):
  *   fix(stepId)    the Builder fixes the widget a failed step is about (at
  *                  most twice per widget), then what depends on it runs again
+ *   opts.autoFix   a failed build or check is fixed that way by itself, as
+ *                  soon as it fails — the user only sees what's left after
  *   retry(stepId)  a failed Dash step runs again
  *   resume()       steps waiting for a provider that wasn't connected run
  *   opts.resume    an edited plan reuses what an earlier build already made
@@ -34,9 +36,9 @@
 "use strict";
 
 const { buildDraft } = require("./botDrafts");
-const { eventNames } = require("./configDiff");
+const { eventNames, settingsOf } = require("./configDiff");
 const { parseDashConfig } = require("../utils/dashConfigParser");
-const { planTarget } = require("./teamPlan");
+const { planPages, planTarget } = require("./teamPlan");
 const { removeWidgets } = require("../utils/placeWidget");
 
 const AI_BUILT = /@ai-built\/[a-z0-9][a-z0-9-]*/gi;
@@ -62,6 +64,16 @@ const STATUS = {
 
 // How many times the Builder may fix one widget before it's over to the user.
 const MAX_FIXES = 2;
+
+/**
+ * The new dashboard's name: the layout piece's, without a trailing
+ * "layout" (the Planner sometimes names the piece "Sales layout").
+ */
+function dashboardNameOf(layout) {
+  const name = String((layout && layout.name) || "").trim();
+  const bare = name.replace(/\s+layout$/i, "").trim();
+  return bare || name || "New dashboard";
+}
 
 /** The steps for a plan, all waiting. */
 function planSteps(plan, { dashboardName } = {}) {
@@ -98,8 +110,8 @@ function planSteps(plan, { dashboardName } = {}) {
       id: "dashboard",
       kind: "dashboard",
       role: "dash",
-      label: `Create the "${dashboardName || (layout && layout.name) || "New dashboard"}" dashboard`,
-      name: dashboardName || (layout && layout.name) || "New dashboard",
+      label: `Create the "${dashboardName || dashboardNameOf(layout)}" dashboard`,
+      name: dashboardName || dashboardNameOf(layout),
     });
   }
   const theme = pieces.find((p) => p.kind === "theme" && p.name);
@@ -221,6 +233,13 @@ function indexByName(list) {
     if (!out.has(lower(p.name))) out.set(lower(p.name), i);
   });
   return out;
+}
+
+/** An error a Builder fix can't help with (the role didn't run, or broke). */
+function notFixable(message) {
+  const err = new Error(message);
+  err.notFixable = true;
+  return err;
 }
 
 /** What a widget piece needs to have happened before it can be placed. */
@@ -437,6 +456,46 @@ function widgetWiring(configCode, componentCode = "") {
     handlers,
     rawPublish: publishesRaw(componentCode),
   };
+}
+
+/** A widget's setting names (its userConfig keys), or null when unreadable. */
+function settingKeys(configCode) {
+  if (!configCode) return null;
+  let parsed;
+  try {
+    parsed = parseDashConfig(configCode);
+  } catch (_e) {
+    return null;
+  }
+  if (!parsed || !parsed.ok || !parsed.config) return null;
+  return Object.keys(settingsOf(parsed.config));
+}
+
+/**
+ * A planned widget's connection and settings, checked before it's placed:
+ * a connection the user has of that type (any case; its saved name kept),
+ * settings the widget has (all kept when its settings can't be read).
+ * @param {{ provider?, settings? }} piece
+ * @param {{ connections: [{ name, type }], settingKeys: string[]|null }} ctx
+ * @returns {{ selectedProviders, userPrefs, dropped: string[] }}
+ */
+function placeChoices(piece, { connections = [], settingKeys: keys = null }) {
+  const out = { selectedProviders: {}, userPrefs: {}, dropped: [] };
+  const provider = (piece && piece.provider) || {};
+  for (const [type, name] of Object.entries(provider)) {
+    const hit = (connections || []).find(
+      (c) =>
+        c && lower(c.type) === lower(type) && lower(c.name) === lower(name),
+    );
+    if (hit) out.selectedProviders[hit.type] = hit.name;
+    else out.dropped.push(`connection "${name}"`);
+  }
+  const settings = (piece && piece.settings) || {};
+  for (const [key, value] of Object.entries(settings)) {
+    if (!keys || keys.includes(key)) out.userPrefs[key] = value;
+    else out.dropped.push(`setting "${key}"`);
+  }
+  return out;
 }
 
 /** A bot's subscription to one placed widget's event (TD-006). */
@@ -832,13 +891,17 @@ function undoOnDashboard(workspace, built) {
  * @param {object} plan  the approved plan
  * @param {object} deps
  *   installWidget(pkg, piece) → { component } | throws
- *   createDashboard(name, pieceCount) → { id, name } | throws
+ *   createDashboard(name, pieceCount, pages) → { id, name } | throws —
+ *     pages: [{ name, widgets: count }], [] for one page
  *   useDashboard(id) → { id, name } | throws — a dashboard the user has
  *   applyTheme({ dashboardId, theme }) → { key, name, previous,
  *     previousName } | throws — theme by name; key = the saved theme's id
  *   askRole(role, request) → run record ({ status, output, error, model, usage, cost, skipped, reason })
  *   abortRole(role)
- *   placeWidget({ dashboardId, component|widget }) → { component, widgetId, pageId } | throws
+ *   placeWidget({ dashboardId, component|widget, name, page, provider,
+ *     settings }) → { component, widgetId, pageId, dropped? } | throws —
+ *     page: the page's name (null: the page shown); dropped: what of the
+ *     connection and settings it couldn't use, said under the step
  *   saveBot({ dashboardId, piece, botId? }) → { id, name } | throws (an
  *     error with waitingFor = provider names → the step waits for them)
  *   placeBotResults({ dashboardId, botId }) → { component, widgetId, pageId } | throws
@@ -846,8 +909,10 @@ function undoOnDashboard(workspace, built) {
  *   wireListener({ dashboardId, widgetId, component, handler, botId, result }) | throws
  *   emit(state)   progress after every change
  *   now()
- * @param {{ dashboardName?: string, resume?: { plan, state } }} [opts]
+ * @param {{ dashboardName?: string, resume?: { plan, state },
+ *           autoFix?: boolean }} [opts]
  *   resume — an earlier build of this plan whose work is reused (Edit plan)
+ *   autoFix — a failed build or check is fixed by the Builder by itself
  * @returns {{ state, run, stop, fix, retry, resume }} — run/fix/retry/resume
  *   resolve with the state when that pass ends, or { error }
  */
@@ -880,6 +945,12 @@ function createPlanBuild(plan, deps, opts = {}) {
   let busy = false;
   const pieces = widgetPieces(plan);
   const bots = botPieces(plan);
+  // The new dashboard's pages, and which one each widget goes on.
+  const pages = planPages(plan);
+  const pageOf = (i) => {
+    const page = pages.find((p) => p.widgets.includes(i));
+    return page ? page.name : null;
+  };
   const emit = () => {
     state.built = builtSummary(state, plan);
     if (deps.emit) deps.emit(JSON.parse(JSON.stringify(state)));
@@ -922,7 +993,11 @@ function createPlanBuild(plan, deps, opts = {}) {
             targeted: true,
           };
         } else {
-          const ws = await deps.createDashboard(step.name, pieces.length);
+          const ws = await deps.createDashboard(
+            step.name,
+            pieces.length,
+            pages.map((p) => ({ name: p.name, widgets: p.widgets.length })),
+          );
           state.dashboard = { id: String(ws.id), name: ws.name || step.name };
         }
         step.detail = state.dashboard.name;
@@ -954,11 +1029,11 @@ function createPlanBuild(plan, deps, opts = {}) {
         );
         account(step, record);
         if (!record || record.skipped)
-          throw new Error(
+          throw notFixable(
             `the Builder didn't run: ${(record && record.reason) || "unknown"}`,
           );
         if (record.status === "failed")
-          throw new Error(record.error || "the Builder failed");
+          throw notFixable(record.error || "the Builder failed");
         const outcome = buildOutcome(record);
         if (outcome.error) {
           // The Builder's own account, to read under the step.
@@ -986,11 +1061,11 @@ function createPlanBuild(plan, deps, opts = {}) {
         );
         account(step, record);
         if (!record || record.skipped)
-          throw new Error(
+          throw notFixable(
             `the Checker didn't run: ${(record && record.reason) || "unknown"}`,
           );
         if (record.status === "failed")
-          throw new Error(record.error || "the Checker failed");
+          throw notFixable(record.error || "the Checker failed");
         const verdict = verdictOf(record.output);
         step.detail = record.output ? String(record.output).slice(-1500) : "";
         if (verdict !== "PASSED") {
@@ -1010,6 +1085,11 @@ function createPlanBuild(plan, deps, opts = {}) {
           widget: made.package || piece.package,
           // Picks the component when the package has several.
           name: piece.name,
+          // The user's answers: its page, connection and settings. A
+          // dashboard the user had keeps its pages (the page shown).
+          page: state.dashboard.targeted ? null : pageOf(step.piece),
+          provider: piece.provider || null,
+          settings: piece.settings || null,
         });
         state.made[step.piece] = {
           ...made,
@@ -1019,6 +1099,9 @@ function createPlanBuild(plan, deps, opts = {}) {
         };
         step.detail =
           res && res.component ? res.component : made.package || piece.package;
+        if (res && Array.isArray(res.dropped) && res.dropped.length) {
+          step.detail += ` · left out: ${res.dropped.join(", ")}`;
+        }
         return;
       }
       case "bot": {
@@ -1151,7 +1234,8 @@ function createPlanBuild(plan, deps, opts = {}) {
     state.startedAt = state.startedAt || now();
     state.finishedAt = null;
     emit();
-    for (const step of steps) {
+    for (let k = 0; k < steps.length; k++) {
+      const step = steps[k];
       if (step.status !== STATUS.waiting) continue;
       if (stopping) {
         step.status = STATUS.stopped;
@@ -1178,10 +1262,26 @@ function createPlanBuild(plan, deps, opts = {}) {
           step.status = stopping ? STATUS.stopped : STATUS.failed;
           step.error = (err && err.message) || String(err);
           if (step.status === STATUS.failed) markOptions(step);
+          step.autoFixable = !(err && err.notFixable);
         }
       }
       step.finishedAt = now();
       current = null;
+      // Fixed by itself (opts.autoFix): the Builder fixes it, then its build
+      // and check run again — at most MAX_FIXES times, then it's the user's.
+      if (
+        opts.autoFix &&
+        !stopping &&
+        step.status === STATUS.failed &&
+        step.canFix &&
+        step.autoFixable &&
+        (step.kind === "build" || step.kind === "check")
+      ) {
+        prepareFix(step);
+        const at = steps.findIndex((s) => s.id === `build:${step.piece}`);
+        k = (at < 0 ? k : at) - 1;
+      }
+      delete step.autoFixable;
       emit();
     }
     state.status = stopping
@@ -1211,6 +1311,13 @@ function createPlanBuild(plan, deps, opts = {}) {
     if (!step || step.status !== STATUS.failed || !step.canFix) {
       return Promise.resolve({ error: "The Builder can't fix that step." });
     }
+    prepareFix(step);
+    resetSkipped();
+    return run();
+  }
+
+  /** Hand a failed step's widget to the Builder: its build and check wait. */
+  function prepareFix(step) {
     const w = step.piece;
     state.fixes[w] = (state.fixes[w] || 0) + 1;
     const made = state.made[w] || {};
@@ -1227,11 +1334,11 @@ function createPlanBuild(plan, deps, opts = {}) {
     if (build) {
       reset(build);
       build.fix = { package: made.package || null, problem };
+      // Which try this is ("fixing, try 1 of 2").
+      build.fixTry = state.fixes[w];
     }
     if (check) reset(check);
     reset(step);
-    resetSkipped();
-    return run();
   }
 
   /** Try again: one of Dash's own steps runs again. */
@@ -1283,6 +1390,8 @@ module.exports = {
   triggerSubscription,
   widgetWiring,
   publishesRaw,
+  placeChoices,
+  settingKeys,
   buildRequest,
   checkRequest,
   eventsToSend,

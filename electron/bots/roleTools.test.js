@@ -103,6 +103,7 @@ describe("roleToolsFor", () => {
       roleToolsFor("planner").map((t) => t.name),
       [
         "search_library",
+        "read_widget",
         "list_providers",
         "list_dashboards",
         "list_themes",

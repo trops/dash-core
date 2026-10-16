@@ -40,7 +40,7 @@ function findNextEmptyCell(grid) {
  * Place into one layout array (mutates it). `at` ({ row, col }) asks for a
  * cell; it must exist in the grid and be empty.
  */
-function placeInto(layout, component, userPrefs, at = null) {
+function placeInto(layout, component, userPrefs, at = null, selectedProviders) {
   const gridNode = layout.find(
     (i) => i && i.component === "LayoutGridContainer" && i.grid,
   );
@@ -88,6 +88,11 @@ function placeInto(layout, component, userPrefs, at = null) {
     parent: gridNode ? gridNode.id : container ? container.id : 0,
     config: {},
     userPrefs: { ...(userPrefs || {}) },
+    // Which connection per provider type — read before the dashboard's own
+    // bindings (utils/providerResolution.js).
+    ...(selectedProviders && Object.keys(selectedProviders).length
+      ? { selectedProviders: { ...selectedProviders } }
+      : {}),
   });
   if (gridNode && cell) {
     const key = `${cell.row}.${cell.col}`;
@@ -103,14 +108,17 @@ function placeInto(layout, component, userPrefs, at = null) {
 /**
  * @param {object} workspace
  * @param {{ component: string, userPrefs?: object, page?: string,
- *           row?: number, col?: number }} widget — `page` by name or id
+ *           row?: number, col?: number, selectedProviders?: object }} widget — `page` by name or id
  *   (default: the page shown); `row` + `col` ask for a cell (default: the
  *   next empty one, or a new row)
  * @returns {{ workspace: object, widgetId: number, cell: {row, col}|null,
  *   pageId: string|null }} — pageId: the page it went on (null without pages)
  * @throws on an unknown page, or a cell outside the grid / already taken
  */
-function placeWidget(workspace, { component, userPrefs, page, row, col } = {}) {
+function placeWidget(
+  workspace,
+  { component, userPrefs, page, row, col, selectedProviders } = {},
+) {
   if (!component || typeof component !== "string") {
     throw new Error("placeWidget: component is required");
   }
@@ -119,7 +127,7 @@ function placeWidget(workspace, { component, userPrefs, page, row, col } = {}) {
   if (target.error) throw new Error(target.error);
   const layout = target.layout;
   const at = row !== undefined && col !== undefined ? { row, col } : null;
-  const placed = placeInto(layout, component, userPrefs, at);
+  const placed = placeInto(layout, component, userPrefs, at, selectedProviders);
   withLayout(ws, layout, target.page);
   return {
     workspace: ws,
@@ -245,7 +253,66 @@ function removeWidgets(workspace, placed) {
   return { workspace: ws, removed };
 }
 
+/** A layout with one empty grid for n widgets (two columns from two). */
+function gridLayout(n) {
+  const count = Math.max(1, Number(n) || 1);
+  const cols = count > 1 ? 2 : 1;
+  const rows = Math.ceil(count / cols);
+  const grid = { rows, cols, gap: "gap-2" };
+  for (let r = 1; r <= rows; r++) {
+    for (let c = 1; c <= cols; c++) {
+      grid[`${r}.${c}`] = { component: null, hide: false };
+    }
+  }
+  return [
+    {
+      id: 1,
+      order: 1,
+      component: "LayoutGridContainer",
+      type: "grid",
+      parent: 0,
+      hasChildren: 1,
+      scrollable: false,
+      width: "w-full",
+      height: "h-full",
+      workspace: "layout",
+      grid,
+    },
+  ];
+}
+
+/**
+ * A plan's new, empty dashboard (create-entry CRE-004): one grid sized for
+ * `count` widgets, or — with two or more planned `pages` ([{ name,
+ * widgets: count }]) — a page each, the first shown, the top-level layout
+ * its mirror (as src/Models/DashboardModel.createPage makes pages).
+ */
+function blankDashboard({ id, name, count, pages = [] }) {
+  const label = String(name || "New dashboard").trim();
+  const ws = {
+    id,
+    name: label,
+    label,
+    type: "workspace",
+    version: 1,
+    menuId: 1,
+    layout: gridLayout(count),
+  };
+  if (Array.isArray(pages) && pages.length >= 2) {
+    ws.pages = pages.map((p, i) => ({
+      id: `page-${id}-${i + 1}`,
+      name: String(p.name),
+      order: i,
+      layout: gridLayout(p.widgets),
+    }));
+    ws.activePageId = ws.pages[0].id;
+    ws.layout = clone(ws.pages[0].layout);
+  }
+  return ws;
+}
+
 module.exports = {
+  blankDashboard,
   placeWidget,
   setWidgetPrefs,
   addWidgetListener,

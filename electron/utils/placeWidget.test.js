@@ -11,6 +11,7 @@ const {
   setWidgetPrefs,
   addWidgetListener,
   removeWidgets,
+  blankDashboard,
 } = require("./placeWidget");
 
 function dashboard(cells) {
@@ -331,5 +332,77 @@ describe("removeWidgets — Remove on a dashboard you have (5e-2b)", () => {
     ]);
     assert.equal(r.removed, 1);
     assert.equal(r.workspace.layout[0].grid["1.2"].component, null);
+  });
+});
+
+describe("placeWidget — a widget's connection (Create build fixes 2)", () => {
+  it("selectedProviders goes on the placed widget", () => {
+    const r = placeWidget(dashboard([null]), {
+      component: "trops.algolia.AlgoliaRulesList",
+      userPrefs: { indexName: "products" },
+      selectedProviders: { algolia: "Algolia Demos" },
+    });
+    const item = r.workspace.layout.find((i) => i.id === r.widgetId);
+    assert.deepEqual(item.selectedProviders, { algolia: "Algolia Demos" });
+    assert.deepEqual(item.userPrefs, { indexName: "products" });
+  });
+  it("without one, the widget has none", () => {
+    const r = placeWidget(dashboard([null]), { component: "a.b.C" });
+    const item = r.workspace.layout.find((i) => i.id === r.widgetId);
+    assert.equal("selectedProviders" in item, false);
+  });
+});
+
+describe("blankDashboard — a plan's new dashboard (Create build fixes 2)", () => {
+  const gridOf = (layout) => layout[0].grid;
+  it("one page: a grid sized for its widgets, two columns", () => {
+    const ws = blankDashboard({ id: 5, name: "Brief", count: 3 });
+    assert.equal(ws.name, "Brief");
+    assert.equal("pages" in ws, false);
+    assert.equal(gridOf(ws.layout).rows, 2);
+    assert.equal(gridOf(ws.layout).cols, 2);
+    assert.deepEqual(gridOf(ws.layout)["2.2"], {
+      component: null,
+      hide: false,
+    });
+  });
+  it("planned pages: one per page, each sized for its widgets, the first shown", () => {
+    const ws = blankDashboard({
+      id: 5,
+      name: "Merch",
+      count: 3,
+      pages: [
+        { name: "Curate", widgets: 1 },
+        { name: "Rank", widgets: 2 },
+      ],
+    });
+    assert.deepEqual(
+      ws.pages.map((p) => [p.id, p.name, p.order]),
+      [
+        ["page-5-1", "Curate", 0],
+        ["page-5-2", "Rank", 1],
+      ],
+    );
+    assert.equal(ws.activePageId, "page-5-1");
+    assert.equal(gridOf(ws.pages[0].layout).cols, 1);
+    assert.equal(gridOf(ws.pages[1].layout).cols, 2);
+    // The top-level layout mirrors the page shown.
+    assert.deepEqual(ws.layout, ws.pages[0].layout);
+    assert.notEqual(ws.layout, ws.pages[0].layout);
+  });
+  it("places onto a named page", () => {
+    const ws = blankDashboard({
+      id: 5,
+      name: "Merch",
+      count: 2,
+      pages: [
+        { name: "Curate", widgets: 1 },
+        { name: "Rank", widgets: 1 },
+      ],
+    });
+    const r = placeWidget(ws, { component: "a.b.C", page: "Rank" });
+    assert.equal(r.pageId, "page-5-2");
+    assert.equal(r.workspace.pages[1].layout.length, 2);
+    assert.equal(r.workspace.pages[0].layout.length, 1);
   });
 });

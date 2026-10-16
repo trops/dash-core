@@ -17,6 +17,9 @@ const {
   verdictOf,
   createPlanBuild,
   buildRequest,
+  MAX_FIXES,
+  placeChoices,
+  settingKeys,
 } = require("./planBuild");
 
 const plan = {
@@ -610,5 +613,305 @@ describe("the build's real outcome (Create build fixes, PR 1)", () => {
   it("the Builder is told to rebuild with update: true when the widget already exists", () => {
     const req = buildRequest(plan, plan.pieces[1]);
     assert.match(req, /already exists, build it again with update: true/);
+  });
+});
+
+describe("pages, connections and settings (Create build fixes 2)", () => {
+  const merch = {
+    summary: "Merch",
+    pieces: [
+      {
+        kind: "layout",
+        name: "Merchandiser Command Center layout",
+        source: "new",
+        pages: [
+          { name: "Curate", widgets: ["Rules"] },
+          { name: "Rank", widgets: ["Ranking", "Compare"] },
+        ],
+      },
+      {
+        kind: "widget",
+        name: "Rules",
+        source: "yours",
+        package: "@trops/algolia",
+        component: "AlgoliaRulesList",
+        provider: { algolia: "Algolia Demos" },
+        settings: { indexName: "products" },
+      },
+      {
+        kind: "widget",
+        name: "Ranking",
+        source: "yours",
+        package: "@trops/algolia",
+        component: "AlgoliaCustomRankingWidget",
+      },
+      {
+        kind: "widget",
+        name: "Compare",
+        source: "ai-built",
+        package: "@ai-built/indexcompare",
+      },
+    ],
+  };
+
+  it("the dashboard isn't called '… layout'", () => {
+    const dash = planSteps(merch).find((s) => s.id === "dashboard");
+    assert.equal(dash.name, "Merchandiser Command Center");
+    assert.match(
+      dash.label,
+      /Create the "Merchandiser Command Center" dashboard/,
+    );
+    const one = { pieces: [{ kind: "layout", name: "Layout", source: "new" }] };
+    assert.equal(
+      planSteps(one).find((s) => s.id === "dashboard").name,
+      "Layout",
+    );
+  });
+
+  it("the dashboard is made with the planned pages, and each widget goes on its page", async () => {
+    const places = [];
+    let made;
+    const d = deps({
+      createDashboard: async (name, n, pages) => {
+        made = { name, n, pages };
+        return { id: 9, name };
+      },
+      placeWidget: async (req) => {
+        places.push(req);
+        return {
+          component: req.component || req.widget,
+          widgetId: places.length,
+          pageId: req.page,
+        };
+      },
+    });
+    const state = await createPlanBuild(merch, d).run();
+    assert.equal(state.status, "done");
+    assert.deepEqual(made.pages, [
+      { name: "Curate", widgets: 1 },
+      { name: "Rank", widgets: 2 },
+    ]);
+    assert.deepEqual(
+      places.map((p) => [p.name, p.page]),
+      [
+        ["Rules", "Curate"],
+        ["Ranking", "Rank"],
+        ["Compare", "Rank"],
+      ],
+    );
+    assert.equal(state.made[1].pageId, "Rank");
+  });
+
+  it("a widget is placed with its connection and settings", async () => {
+    const places = [];
+    const d = deps({
+      placeWidget: async (req) => {
+        places.push(req);
+        return { component: req.component || req.widget };
+      },
+    });
+    await createPlanBuild(merch, d).run();
+    assert.deepEqual(places[0].provider, { algolia: "Algolia Demos" });
+    assert.deepEqual(places[0].settings, { indexName: "products" });
+    assert.equal(places[1].provider, null);
+    assert.equal(places[1].settings, null);
+  });
+
+  it("what the place step left out is said under it", async () => {
+    const d = deps({
+      placeWidget: async (req) => ({
+        component: "trops.algolia.AlgoliaRulesList",
+        dropped: ["setting colour", "connection Algolia Nope"],
+      }),
+    });
+    const state = await createPlanBuild(merch, d).run();
+    const step = state.steps.find((s) => s.id === "place:0");
+    assert.equal(step.status, "done");
+    assert.equal(
+      step.detail,
+      "trops.algolia.AlgoliaRulesList · left out: setting colour, connection Algolia Nope",
+    );
+  });
+
+  it("without pages, no page is asked for", async () => {
+    const places = [];
+    let pagesArg = "unset";
+    const d = deps({
+      createDashboard: async (name, n, pages) => {
+        pagesArg = pages;
+        return { id: 1, name };
+      },
+      placeWidget: async (req) => {
+        places.push(req);
+        return { component: req.component || req.widget };
+      },
+    });
+    await createPlanBuild(plan, d).run();
+    assert.deepEqual(pagesArg, []);
+    assert.ok(places.every((p) => p.page === null));
+  });
+});
+
+describe("automatic fixes (Create build fixes 2)", () => {
+  const one = {
+    summary: "x",
+    pieces: [
+      { kind: "widget", name: "Hello", source: "new" },
+      { kind: "layout", name: "D", source: "new" },
+    ],
+  };
+  const scripted = (verdicts, builds = []) => {
+    const requests = [];
+    return {
+      requests,
+      d: deps({
+        askRole: async (role, request) => {
+          requests.push([role, request]);
+          if (role === "builder") {
+            const out = builds.length
+              ? builds.shift()
+              : "Built @ai-built/hello.";
+            return { status: "completed", output: out };
+          }
+          return {
+            status: "completed",
+            output: `notes\nVERDICT: ${verdicts.shift() || "PASSED"}`,
+          };
+        },
+      }),
+    };
+  };
+
+  it("a failed check is fixed by the Builder and checked again, by itself", async () => {
+    const { d, requests } = scripted(["FAILED", "PASSED"]);
+    const state = await createPlanBuild(one, d, { autoFix: true }).run();
+    assert.equal(state.status, "done");
+    assert.deepEqual(
+      requests.map((r) => r[0]),
+      ["builder", "checker", "builder", "checker"],
+    );
+    assert.match(requests[2][1], /Fix the widget @ai-built\/hello you built/);
+    assert.match(requests[2][1], /with update: true/);
+    assert.match(requests[2][1], /The Checker said:\nnotes\nVERDICT: FAILED/);
+    const build = state.steps.find((s) => s.id === "build:0");
+    assert.equal(build.fixTry, 1);
+    assert.equal(state.fixes[0], 1);
+    assert.equal(state.steps.find((s) => s.id === "place:0").status, "done");
+  });
+
+  it("a build that didn't build is tried again by itself", async () => {
+    const { d, requests } = scripted(
+      [],
+      ["I couldn't.", "Built @ai-built/hello."],
+    );
+    const state = await createPlanBuild(one, d, { autoFix: true }).run();
+    assert.equal(state.status, "done");
+    assert.match(requests[1][1], /Build this plan's widget again/);
+  });
+
+  it(`stops after ${MAX_FIXES} fixes and hands it to the user`, async () => {
+    const { d, requests } = scripted(["FAILED", "FAILED", "FAILED", "FAILED"]);
+    const state = await createPlanBuild(one, d, { autoFix: true }).run();
+    assert.equal(
+      requests.filter((r) => r[0] === "builder").length,
+      1 + MAX_FIXES,
+    );
+    const check = state.steps.find((s) => s.id === "check:0");
+    assert.equal(check.status, "failed");
+    assert.equal(check.canFix, false);
+    assert.equal(check.fixesUsedUp, true);
+    assert.equal(state.steps.find((s) => s.id === "place:0").status, "skipped");
+    assert.equal(state.status, "finished-with-problems");
+  });
+
+  it("a role that didn't run isn't retried", async () => {
+    const requests = [];
+    const d = deps({
+      askRole: async (role, r) => {
+        requests.push(role);
+        return { skipped: true, reason: "no AI" };
+      },
+    });
+    const state = await createPlanBuild(one, d, { autoFix: true }).run();
+    assert.deepEqual(requests, ["builder"]);
+    assert.equal(state.steps.find((s) => s.id === "build:0").status, "failed");
+  });
+
+  it("without autoFix a failed check waits for Let Builder fix it", async () => {
+    const { d, requests } = scripted(["FAILED"]);
+    const state = await createPlanBuild(one, d).run();
+    assert.equal(requests.length, 2);
+    assert.equal(state.steps.find((s) => s.id === "check:0").canFix, true);
+  });
+});
+
+describe("placeChoices — a widget's connection and settings, checked", () => {
+  const connections = [
+    { name: "Algolia John G Demos", type: "algolia" },
+    { name: "Work Slack", type: "slack" },
+  ];
+  it("keeps a connection the user has (any case), with its saved name", () => {
+    const out = placeChoices(
+      { provider: { Algolia: "algolia john g demos" } },
+      { connections, settingKeys: null },
+    );
+    assert.deepEqual(out.selectedProviders, {
+      algolia: "Algolia John G Demos",
+    });
+    assert.deepEqual(out.dropped, []);
+  });
+  it("leaves out a connection they don't have, or of another type", () => {
+    const out = placeChoices(
+      { provider: { algolia: "Algolia Nope", github: "Work Slack" } },
+      { connections, settingKeys: null },
+    );
+    assert.deepEqual(out.selectedProviders, {});
+    assert.deepEqual(out.dropped, [
+      'connection "Algolia Nope"',
+      'connection "Work Slack"',
+    ]);
+  });
+  it("keeps only the settings the widget has", () => {
+    const out = placeChoices(
+      { settings: { indexName: "products", colour: "red" } },
+      { connections, settingKeys: ["indexName", "title"] },
+    );
+    assert.deepEqual(out.userPrefs, { indexName: "products" });
+    assert.deepEqual(out.dropped, ['setting "colour"']);
+  });
+  it("its settings unknown (config unreadable): all are kept", () => {
+    const out = placeChoices(
+      { settings: { indexName: "products" } },
+      { connections, settingKeys: null },
+    );
+    assert.deepEqual(out.userPrefs, { indexName: "products" });
+  });
+  it("nothing asked: nothing set", () => {
+    assert.deepEqual(placeChoices({}, { connections, settingKeys: [] }), {
+      selectedProviders: {},
+      userPrefs: {},
+      dropped: [],
+    });
+  });
+});
+
+describe("settingKeys — a widget's setting names from its .dash.js", () => {
+  it("reads userConfig as an object or a list", () => {
+    assert.deepEqual(
+      settingKeys(
+        'export default { name: "A", userConfig: { indexName: { type: "text" }, title: { type: "text" } } };',
+      ),
+      ["indexName", "title"],
+    );
+    assert.deepEqual(
+      settingKeys(
+        'export default { name: "A", userConfig: [{ key: "indexName" }] };',
+      ),
+      ["indexName"],
+    );
+  });
+  it("unreadable: null", () => {
+    assert.equal(settingKeys(""), null);
+    assert.equal(settingKeys("not js {"), null);
   });
 });

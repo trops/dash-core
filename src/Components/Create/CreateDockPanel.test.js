@@ -71,8 +71,9 @@ afterEach(() => {
   delete window.mainApi;
 });
 
-test("nothing folded: Recent, newest first; a plan opens here, a draft in the Widget Builder", async () => {
-  render(<CreateDockPanel />);
+test("nothing folded: Recent, newest first; a plan opens full size, a draft in the Widget Builder", async () => {
+  const onCollapse = jest.fn();
+  render(<CreateDockPanel onCollapse={onCollapse} />);
   const plan = await screen.findByText("Ask Test");
   expect(screen.getByText("Clock")).toBeInTheDocument();
   const onBuilder = jest.fn();
@@ -80,9 +81,38 @@ test("nothing folded: Recent, newest first; a plan opens here, a draft in the Wi
   fireEvent.click(screen.getByText("Clock"));
   window.removeEventListener("dash:open-widget-builder", onBuilder);
   expect(onBuilder.mock.calls[0][0].detail).toEqual({ resumeDraftId: "d1" });
+  // A plan has a lot to review: it opens in Create full size, not here.
+  const onOpen = jest.fn();
+  window.addEventListener("dash:open-create", onOpen);
   fireEvent.click(plan);
-  expect(await screen.findByTestId("plan-card")).toBeInTheDocument();
-  expect(window.mainApi.bots.getCreateRecent).toHaveBeenCalledWith("plan_1");
+  window.removeEventListener("dash:open-create", onOpen);
+  expect(onOpen.mock.calls[0][0].detail).toEqual({
+    type: "dashboard",
+    recentId: "plan_1",
+  });
+  expect(onCollapse).toHaveBeenCalled();
+  expect(screen.queryByTestId("plan-card")).toBeNull();
+});
+
+test("a question from Recent still opens here", async () => {
+  window.mainApi.bots.listCreateRecent.mockResolvedValue([
+    {
+      id: "q_1",
+      kind: "question",
+      title: "What ran today?",
+      status: "answered",
+      updatedAt: new Date().toISOString(),
+    },
+  ]);
+  const onCollapse = jest.fn();
+  render(<CreateDockPanel onCollapse={onCollapse} />);
+  const onOpen = jest.fn();
+  window.addEventListener("dash:open-create", onOpen);
+  fireEvent.click(await screen.findByText("What ran today?"));
+  window.removeEventListener("dash:open-create", onOpen);
+  expect(await screen.findByTestId("ask-step")).toBeInTheDocument();
+  expect(onOpen).not.toHaveBeenCalled();
+  expect(onCollapse).not.toHaveBeenCalled();
 });
 
 test("a fold lands here as the conversation; Expand reopens it in Create", async () => {
