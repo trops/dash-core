@@ -566,9 +566,10 @@ const NO_BUILDING = "Building and checking widgets isn't available here.";
 
 /**
  * A check result (teamWidgetTools.check) in words, ending with a verdict.
- * It fails on a compile error, a failed code check, or a config update that
- * would lose users' settings or silence listeners; scorecard misses are
- * things to improve, not failures.
+ * It fails on a compile error, a failed code check, a missed must-fix
+ * checklist item (a data widget's loading and error states — the host marks
+ * them mustFix), or a config update that would lose users' settings or
+ * silence listeners; other scorecard misses are things to improve.
  */
 function describeCheck(res, compareConfigs) {
   const lines = [
@@ -590,11 +591,19 @@ function describeCheck(res, compareConfigs) {
     for (const p of res.problems) lines.push(`  - ${p}`);
   }
   const sc = res.scorecard || {};
-  const misses = sc.failed || [];
+  const mustFix = (sc.failed || []).filter((m) => m && m.mustFix);
+  const misses = (sc.failed || []).filter((m) => m && !m.mustFix);
+  if (mustFix.length) {
+    failed = true;
+    lines.push("FAIL acceptance checklist — must fix:");
+    for (const m of mustFix) lines.push(`  - ${m.item}`);
+  }
   lines.push(
     misses.length
       ? `NOTE acceptance checklist: ${sc.passed || 0} passed, ${misses.length} to improve:`
-      : `PASS acceptance checklist (${sc.passed || 0} passed, ${sc.notCheckable || 0} not checkable)`,
+      : mustFix.length
+        ? `NOTE acceptance checklist: ${sc.passed || 0} passed, nothing else to improve`
+        : `PASS acceptance checklist (${sc.passed || 0} passed, ${sc.notCheckable || 0} not checkable)`,
   );
   for (const m of misses) lines.push(`  - ${m.item}`);
   if (res.previousConfigCode != null && typeof compareConfigs === "function") {

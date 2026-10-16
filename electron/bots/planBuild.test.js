@@ -20,6 +20,7 @@ const {
   MAX_FIXES,
   placeChoices,
   settingKeys,
+  checkRequest,
 } = require("./planBuild");
 
 const plan = {
@@ -913,5 +914,52 @@ describe("settingKeys — a widget's setting names from its .dash.js", () => {
   it("unreadable: null", () => {
     assert.equal(settingKeys(""), null);
     assert.equal(settingKeys("not js {"), null);
+  });
+});
+
+describe("the Checker is told what the plan wants (Create build fixes 3)", () => {
+  const piece = {
+    kind: "widget",
+    name: "Attribute Boost",
+    source: "new",
+    notes: "Boost or bury by brand on the working index.",
+    provider: { algolia: "Algolia John G Demos" },
+    settings: { workingIndexName: "products_copy", title: "Boost" },
+  };
+  const plan = {
+    summary: "s",
+    pieces: [piece],
+    checks: [
+      "Boost a brand and see it rise in the working index.",
+      "Production is never edited.",
+    ],
+  };
+
+  it("names what it does, its connection, its settings and the plan's checks", () => {
+    const text = checkRequest(plan, piece, {
+      package: "@ai-built/attributeboost",
+    });
+    assert.match(text, /^Check @ai-built\/attributeboost\./);
+    assert.match(text, /What the plan says it does: Boost or bury by brand/);
+    assert.match(
+      text,
+      /must use the user's algolia connection "Algolia John G Demos"[^\n]*asks for keys[^\n]*fails/,
+    );
+    assert.match(text, /settings: workingIndexName, title/);
+    assert.match(
+      text,
+      /The plan's checks[^\n]*\n- Boost a brand and see it rise in the working index\.\n- Production is never edited\./,
+    );
+  });
+
+  it("says nothing extra when the plan has none of it", () => {
+    const bare = { kind: "widget", name: "Clock", source: "new" };
+    const text = checkRequest({ pieces: [bare] }, bare, {
+      package: "@ai-built/clock",
+    });
+    assert.doesNotMatch(
+      text,
+      /What the plan says|connection|settings:|The plan's checks/,
+    );
   });
 });
