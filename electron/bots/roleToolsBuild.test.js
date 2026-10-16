@@ -267,6 +267,34 @@ describe("check_widget", () => {
     assert.match(r.text, /VERDICT: FAILED/);
   });
 
+  it("a draft (the Widget Builder's unsaved code) comes with its code, so the Checker can judge it", async () => {
+    const r = await handleRoleTool(
+      deps({
+        checkWidget: async ({ name }) => ({
+          success: true,
+          widgetName: name,
+          componentName: "Hello",
+          compile: { ok: true },
+          problems: [],
+          scorecard: { failed: [], passed: 9 },
+          componentCode: "export default function Hello() { return null; }",
+          configCode: CONFIG,
+          previousConfigCode: null,
+        }),
+      }),
+      as("checker"),
+      "check_widget",
+      { name: "draft:Hello" },
+    );
+    assert.match(r.text, /Code \(not installed yet\):/);
+    assert.match(r.text, /export default function Hello\(\)/);
+    // The code comes before the verdict line.
+    assert.ok(
+      r.text.indexOf("export default function Hello") <
+        r.text.indexOf("VERDICT: PASSED"),
+    );
+  });
+
   it("an update that drops a setting or an event fails", async () => {
     const r = await handleRoleTool(
       deps({

@@ -11,6 +11,182 @@
 const fs = require("fs");
 const path = require("path");
 
+// Provided by the host app via MODULE_MAP in widgetBundleLoader.js — never
+// bundled.
+const HOST_PROVIDED = [
+  "react",
+  "react-dom",
+  "@trops/dash-react",
+  "@trops/dash-core",
+  "react/jsx-runtime",
+  "prop-types",
+];
+
+const isHostProvided = (spec) =>
+  HOST_PROVIDED.some((h) => spec === h || spec.startsWith(`${h}/`));
+
+/**
+ * Every node_modules folder above `dir`, nearest first — where Node would
+ * look from a file there. A package built in a temp folder (the Widget
+ * Builder's) has none of its own; these are the app's libraries, so a
+ * registry package's npm imports (algoliasearch, mustache, …) still
+ * resolve when it is rebuilt.
+ */
+function hostLibraryPaths(dir = __dirname) {
+  const out = [];
+  let at = path.resolve(dir);
+  for (;;) {
+    if (path.basename(at) !== "node_modules") {
+      const candidate = path.join(at, "node_modules");
+      if (fs.existsSync(candidate)) out.push(candidate);
+    }
+    const up = path.dirname(at);
+    if (up === at) break;
+    at = up;
+  }
+  return out;
+}
+
+/** A library's package name: "@scope/name" or "name" from an import. */
+function packageNameOf(spec) {
+  const parts = String(spec).split("/");
+  return spec.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
+}
+
+/** Copy a folder with plain reads and writes (works out of an asar). */
+function copyDir(from, to) {
+  fs.mkdirSync(to, { recursive: true });
+  for (const name of fs.readdirSync(from)) {
+    const src = path.join(from, name);
+    const dest = path.join(to, name);
+    if (fs.statSync(src).isDirectory()) copyDir(src, dest);
+    else fs.writeFileSync(dest, fs.readFileSync(src));
+  }
+}
+
+/**
+ * A packaged app's libraries sit inside app.asar, which Electron can read
+ * and esbuild (a native binary) can't. Copy the library an import names
+ * into `toDir` (once) so esbuild finds it there. → whether it's there.
+ */
+function mirrorLibrary(spec, fromPaths, toDir) {
+  const name = packageNameOf(spec);
+  const dest = path.join(toDir, ...name.split("/"));
+  if (fs.existsSync(dest)) return true;
+  for (const from of fromPaths) {
+    const src = path.join(from, ...name.split("/"));
+    if (fs.existsSync(src)) {
+      copyDir(src, dest);
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Where to look for npm libraries: every node_modules above `dir`, then
+ * the app's own (`appPath`/node_modules) — dash-core may be linked from
+ * elsewhere in development, so its location alone isn't enough.
+ */
+function libraryPaths(dir = __dirname, appPath = appFolder()) {
+  const paths = hostLibraryPaths(dir);
+  // At and above the app folder (Electron may be started from a
+  // subfolder, e.g. public/electron.js).
+  for (const own of appPath ? hostLibraryPaths(appPath) : []) {
+    if (!paths.includes(own)) paths.push(own);
+  }
+  return paths;
+}
+
+/** The running app's folder (app.asar when packaged), or null. */
+function appFolder() {
+  try {
+    return require("electron").app.getAppPath() || null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+/**
+ * Where esbuild looks for npm libraries, and the esbuild plugin that
+ * mirrors them out of an asar when the app is packaged.
+ */
+function libraryResolution(dir = __dirname) {
+  const paths = libraryPaths(dir);
+  const inAsar = paths.filter((p) => p.includes(`.asar${path.sep}`));
+  if (!inAsar.length) return { nodePaths: paths, plugins: [] };
+  let cache;
+  try {
+    const { app } = require("electron");
+    cache = path.join(
+      app.getPath("userData"),
+      "widget-build-libraries",
+      app.getVersion(),
+      "node_modules",
+    );
+  } catch (_e) {
+    cache = path.join(
+      require("os").tmpdir(),
+      "dash-widget-build-libraries",
+      "node_modules",
+    );
+  }
+  fs.mkdirSync(cache, { recursive: true });
+  return {
+    nodePaths: [cache, ...paths.filter((p) => !inAsar.includes(p))],
+    plugins: [
+      {
+        name: "dash-app-libraries",
+        setup(build) {
+          build.onResolve({ filter: /^[^./]/ }, (args) => {
+            if (!isHostProvided(args.path)) {
+              mirrorLibrary(args.path, inAsar, cache);
+            }
+            return undefined; // esbuild resolves it, now from the cache
+          });
+        },
+      },
+    ],
+  };
+}
+
+/** A file in esbuild's error, short: "widgets/A.js", else its name. */
+function shortFile(file) {
+  const f = String(file || "")
+    .split(path.sep)
+    .join("/");
+  return f.includes("/widgets/")
+    ? `widgets/${f.split("/widgets/").pop()}`
+    : f.startsWith("widgets/")
+      ? f
+      : path.basename(f);
+}
+
+/**
+ * esbuild's errors as sentences: a library the app doesn't have, a file
+ * the package doesn't have, else "file:line: message".
+ */
+function friendlyCompileError(error) {
+  const errors = Array.isArray(error && error.errors) ? error.errors : [];
+  if (!errors.length) return (error && error.message) || String(error);
+  const lines = errors.map((e) => {
+    const loc = e.location || {};
+    const missing = /^Could not resolve "(.+)"/.exec(e.text || "");
+    if (missing && /^[./]/.test(missing[1])) {
+      return `${path.basename(String(loc.file || "a file"))} imports "${missing[1]}", which isn't in the package.`;
+    }
+    if (missing) {
+      return `This widget needs the library "${packageNameOf(missing[1])}", which this app doesn't include.`;
+    }
+    const where = loc.file
+      ? `${shortFile(loc.file)}${loc.line ? `:${loc.line}` : ""}: `
+      : "";
+    return `${where}${e.text}`;
+  });
+  const unique = lines.filter((l, i) => lines.indexOf(l) === i);
+  return `The widget didn't build:\n${unique.map((l) => `- ${l}`).join("\n")}`;
+}
+
 /**
  * Structured error thrown by compileWidget() when the underlying
  * esbuild spawn fails (typically ENOENT — the native helper binary is
@@ -245,6 +421,9 @@ async function compileWidget(widgetPath) {
     // Lazy-require esbuild so the module doesn't fail to load if
     // esbuild is not yet installed (e.g., during first npm install)
     const esbuild = require("esbuild");
+    // npm libraries the package imports come from the app's own
+    // libraries when the package has none of its own (a temp build).
+    const libraries = libraryResolution();
 
     await esbuild.build({
       entryPoints: [entryPath],
@@ -253,14 +432,9 @@ async function compileWidget(widgetPath) {
       outfile: outPath,
       // These modules are provided by the host app via MODULE_MAP
       // in widgetBundleLoader.js — do NOT bundle them
-      external: [
-        "react",
-        "react-dom",
-        "@trops/dash-react",
-        "@trops/dash-core",
-        "react/jsx-runtime",
-        "prop-types",
-      ],
+      external: HOST_PROVIDED,
+      nodePaths: libraries.nodePaths,
+      plugins: libraries.plugins,
       // Treat .js files as JSX (widget sources use JSX in .js files)
       loader: { ".js": "jsx" },
       // Use automatic JSX runtime (React 17+) so sources don't need
@@ -288,6 +462,11 @@ async function compileWidget(widgetPath) {
         getEsbuildDiagnostics(),
       );
     }
+    // Missing libraries and files named plainly (esbuild's own text
+    // otherwise).
+    if (Array.isArray(error && error.errors) && error.errors.length) {
+      error.message = friendlyCompileError(error);
+    }
     throw error;
   } finally {
     // Clean up temporary entry file
@@ -311,4 +490,8 @@ module.exports = {
   healthCheck,
   getEsbuildDiagnostics,
   WidgetCompileError,
+  hostLibraryPaths,
+  libraryPaths,
+  mirrorLibrary,
+  friendlyCompileError,
 };

@@ -618,6 +618,16 @@ function describeCheck(res, compareConfigs) {
     }
     for (const n of diff.notes || []) lines.push(`  note: ${n}`);
   }
+  // A draft (the Widget Builder's unsaved code) can't be read with
+  // read_widget: its code comes with the check.
+  if (String(res.widgetName || "").startsWith("draft:") && res.componentCode) {
+    lines.push("Code (not installed yet):");
+    lines.push("```jsx", res.componentCode, "```");
+    if (res.configCode) {
+      lines.push("Config (.dash.js):");
+      lines.push("```javascript", res.configCode, "```");
+    }
+  }
   lines.push(failed ? "VERDICT: FAILED" : "VERDICT: PASSED");
   return lines.join("\n");
 }
