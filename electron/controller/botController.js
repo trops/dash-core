@@ -67,6 +67,7 @@ const {
 } = require("../bots/botPackage");
 const { downloadBotPackage } = require("./botRegistryInstall");
 const {
+  blankDashboard,
   placeWidget,
   setWidgetPrefs,
   addWidgetListener,
@@ -124,6 +125,8 @@ const {
   planBotDefinition,
   triggerSubscription,
   widgetWiring,
+  placeChoices,
+  settingKeys,
 } = require("../bots/planBuild");
 const { planTarget } = require("../bots/teamPlan");
 const { summarizeSpending } = require("../bots/spending");
@@ -2189,8 +2192,8 @@ const botController = {
       plan,
       {
         installWidget: (pkg, piece) => this._planInstallWidget(pkg, piece),
-        createDashboard: (name, count) =>
-          this._planCreateDashboard(name, count),
+        createDashboard: (name, count, pages) =>
+          this._planCreateDashboard(name, count, pages),
         useDashboard: (id) => this._planUseDashboard(id),
         applyTheme: (req) => this._planApplyTheme(req),
         askRole: (role, request) => this._planAskRole(role, request, planId),
@@ -2198,19 +2201,7 @@ const botController = {
           const bot = dashTeamBot(this._store.list(), role);
           if (bot) this._runner.abort(bot.id);
         },
-        placeWidget: ({ dashboardId, component, widget, name }) => {
-          // A full component id (an install's) is placed as it is; otherwise
-          // the package, with the component or the piece's name to pick one.
-          const full = !!component && String(component).split(".").length >= 3;
-          const res = this._teamPlaceWidget({
-            dashboard: dashboardId,
-            widget: full ? component : widget,
-            component: full ? null : component || null,
-            name: name || null,
-          });
-          if (res && res.error) throw new Error(res.error);
-          return res;
-        },
+        placeWidget: (req) => this._planPlaceWidget(req),
         saveBot: (req) => this._planSaveBot(req),
         placeBotResults: ({ dashboardId, botId }) => {
           const res = this.addBotWidget(dashboardId, {
@@ -2232,7 +2223,7 @@ const botController = {
           this._keepBuild(planId, buildId, plan, state);
         },
       },
-      { dashboardName, resume },
+      { dashboardName, resume, autoFix: true },
     );
     entry.build = build;
     entry.state = JSON.parse(JSON.stringify(build.state));
@@ -2518,42 +2509,70 @@ const botController = {
   },
 
   /** A new dashboard with an empty grid for the plan's widgets. */
-  _planCreateDashboard(name, count) {
-    const n = Math.max(1, Number(count) || 1);
-    const cols = n > 1 ? 2 : 1;
-    const rows = Math.ceil(n / cols);
-    const grid = { rows, cols, gap: "gap-2" };
-    for (let r = 1; r <= rows; r++) {
-      for (let c = 1; c <= cols; c++) {
-        grid[`${r}.${c}`] = { component: null, hide: false };
-      }
-    }
-    const ws = {
-      id: Date.now(),
-      name: String(name || "New dashboard").trim(),
-      label: String(name || "New dashboard").trim(),
-      type: "workspace",
-      version: 1,
-      menuId: 1,
-      layout: [
-        {
-          id: 1,
-          order: 1,
-          component: "LayoutGridContainer",
-          type: "grid",
-          parent: 0,
-          hasChildren: 1,
-          scrollable: false,
-          width: "w-full",
-          height: "h-full",
-          workspace: "layout",
-          grid,
-        },
-      ],
-    };
+  _planCreateDashboard(name, count, pages = []) {
+    const ws = blankDashboard({ id: Date.now(), name, count, pages });
     const saved = this._saveWorkspace(ws);
     if (saved && saved.error) throw new Error(saved.error);
     return { id: ws.id, name: ws.name };
+  },
+
+  /**
+   * Place one of a plan's widgets (CRE-004): a full component id (an
+   * install's) as it is, otherwise the package with the component or the
+   * piece's name to pick one — on its planned page, with the connection and
+   * settings the user chose. What it couldn't use (a connection they don't
+   * have, a setting the widget doesn't have) comes back as `dropped`.
+   */
+  async _planPlaceWidget({
+    dashboardId,
+    component,
+    widget,
+    name,
+    page = null,
+    provider = null,
+    settings = null,
+  }) {
+    const full = !!component && String(component).split(".").length >= 3;
+    const resolved = resolveWidgetComponent(
+      full ? component : widget,
+      full ? null : component || null,
+      () => require("../widgetRegistry").getWidgetRegistry().getWidgets(),
+      { name },
+    );
+    if (resolved.error) throw new Error(resolved.error);
+    let choices = { selectedProviders: {}, userPrefs: {}, dropped: [] };
+    if (provider || settings) {
+      let keys = null;
+      if (settings) {
+        const parts = resolved.component.split(".");
+        const src = await require("../widgetRegistry").readWidgetSources({
+          widgetName: `@${parts[0]}/${parts[1]}`,
+          componentName: resolved.component,
+        });
+        keys = src && src.success ? settingKeys(src.configCode) : null;
+      }
+      let connections = [];
+      try {
+        ({ providers: connections = [] } =
+          this._providers.listProviders(this._getMainWindow(), this._appId) ||
+          {});
+      } catch (_e) {
+        connections = [];
+      }
+      choices = placeChoices(
+        { provider, settings },
+        { connections, settingKeys: keys },
+      );
+    }
+    const res = this._teamPlaceWidget({
+      dashboard: dashboardId,
+      widget: resolved.component,
+      page: page || undefined,
+      settings: choices.userPrefs,
+      selectedProviders: choices.selectedProviders,
+    });
+    if (res && res.error) throw new Error(res.error);
+    return { ...res, dropped: choices.dropped };
   },
 
   /**
@@ -2852,6 +2871,7 @@ const botController = {
     row,
     col,
     settings,
+    selectedProviders,
   }) {
     const dashboards = this._dashboardsWithBots();
     const want = String(dashboard || "").trim();
@@ -2879,6 +2899,7 @@ const botController = {
       placed = placeWidget(ws, {
         component: resolved.component,
         userPrefs: settings || {},
+        selectedProviders,
         page: page || undefined,
         row: row === undefined || row === null ? undefined : row,
         col: col === undefined || col === null ? undefined : col,

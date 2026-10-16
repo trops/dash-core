@@ -173,7 +173,7 @@ describe("Dash team instructions (slice 3a)", () => {
     assert.match(planner.instructions, /<plan><\/plan>/);
     assert.ok(planner.history.length >= 1);
     const bots = ROLE_IDS.map((r) => teamBot(r));
-    bots[0].instructions = planner.history[0];
+    bots[0].instructions = planner.history[1];
     const plan = planEnsureDashTeam(bots);
     assert.equal(plan[0].action, "upgrade");
     assert.equal(plan[0].role, "planner");
@@ -243,7 +243,7 @@ describe("Dash team instructions (phase 4a)", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /"access": \[string\]/);
     assert.match(planner.instructions, /short tappable options/);
-    assert.equal(planner.history.length, 8);
+    assert.equal(planner.history.length, 9);
   });
 });
 
@@ -261,8 +261,8 @@ describe("Dash team instructions (phase 4d-2)", () => {
     );
     assert.match(planner.instructions, /"showResults": boolean/);
     // The 4a text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[5], /short tappable options/);
-    assert.doesNotMatch(planner.history[5], /showResults/);
+    assert.match(planner.history[6], /short tappable options/);
+    assert.doesNotMatch(planner.history[6], /showResults/);
   });
 });
 
@@ -272,8 +272,8 @@ describe("Dash team instructions (phase 5d)", () => {
     assert.match(planner.instructions, /"sample": \[string\]/);
     assert.match(planner.instructions, /never the user's real data/);
     // The 4d-2 text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[4], /"showResults": boolean/);
-    assert.doesNotMatch(planner.history[4], /"sample"/);
+    assert.match(planner.history[5], /"showResults": boolean/);
+    assert.doesNotMatch(planner.history[5], /"sample"/);
   });
 });
 
@@ -287,8 +287,8 @@ describe("Dash team instructions (phase 5e)", () => {
       /When the user asks to make or change something, end every answer with the plan/,
     );
     // The 5d text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[3], /"sample": \[string\]/);
-    assert.doesNotMatch(planner.history[3], /bot_results/);
+    assert.match(planner.history[4], /"sample": \[string\]/);
+    assert.doesNotMatch(planner.history[4], /bot_results/);
   });
 });
 
@@ -301,8 +301,8 @@ describe("Dash team instructions (screen audit: typed answers)", () => {
       /never offer options like "I'll type it"/,
     );
     // The 5e-1 text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[2], /bot_results/);
-    assert.doesNotMatch(planner.history[2], /give that question no options/);
+    assert.match(planner.history[3], /bot_results/);
+    assert.doesNotMatch(planner.history[3], /give that question no options/);
   });
 });
 
@@ -322,8 +322,8 @@ describe("Dash team instructions (5e-2b: changing a dashboard you have)", () => 
     assert.match(planner.instructions, /Removing, moving or resizing widgets/);
     assert.match(planner.instructions, /ask which/);
     // The text before this is upgraded.
-    assert.match(planner.history[1], /give that question no options/);
-    assert.doesNotMatch(planner.history[1], /list_themes/);
+    assert.match(planner.history[2], /give that question no options/);
+    assert.doesNotMatch(planner.history[2], /list_themes/);
   });
 });
 
@@ -345,5 +345,42 @@ describe("Dash team instructions — which widget of a package (Create build fix
           !h.includes('"component": string'),
       ),
     );
+  });
+});
+
+describe("Dash team instructions — pages, connections and answers (Create build fixes 2)", () => {
+  const { ROLES } = require("./dashTeam");
+  const planner = ROLES.find((r) => r.role === "planner");
+  it("the plan can carry pages, a widget's connection and its settings", () => {
+    assert.match(
+      planner.instructions,
+      /"pages": \[\{"name": string, "widgets": \[string\]\}\]/,
+    );
+    assert.match(planner.instructions, /"provider": \{"<type>": string\}/);
+    assert.match(
+      planner.instructions,
+      /"settings": \{"<setting>": string \| number \| boolean\}/,
+    );
+  });
+  it("answers go into the pieces and answered questions are dropped", () => {
+    assert.match(
+      planner.instructions,
+      /the connection name list_providers gives/,
+    );
+    assert.match(
+      planner.instructions,
+      /setting names in the widget's \.dash\.js userConfig \(read_widget\)/,
+    );
+    assert.match(
+      planner.instructions,
+      /Once a question is answered, leave it out of questions/,
+    );
+  });
+  it("the layout is named like the dashboard", () => {
+    assert.match(planner.instructions, /never "… layout"/);
+  });
+  it("the earlier Planner text upgrades", () => {
+    assert.match(planner.history[0], /"component": string/);
+    assert.doesNotMatch(planner.history[0], /"pages"/);
   });
 });

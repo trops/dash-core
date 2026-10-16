@@ -130,8 +130,15 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
     openCreate({ type: "dashboard", recentId });
   };
   const openRow = (row) => {
-    if (row.kind === "plan" || row.kind === "question") {
+    // A question is a short chat: it opens here.
+    if (row.kind === "question") {
       setFolded({ recentId: row.id, title: row.title, kind: row.kind });
+      return;
+    }
+    // A plan has a lot to review: Create full size, like Expand.
+    if (row.kind === "plan") {
+      if (onCollapse) onCollapse();
+      openCreate({ type: "dashboard", recentId: row.id });
       return;
     }
     // A widget draft opens in the Widget Builder (full size).

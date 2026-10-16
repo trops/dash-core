@@ -62,7 +62,7 @@ const thePlan = {
 <plan>{"summary":"Install Algolia Search","pieces":[{"kind":"widget","name":"Algolia Search","source":"registry","package":"@trops/algolia","providers":["algolia"]},{"kind":"widget","name":"Hits chart","source":"new"},{"kind":"bot","name":"Digest","source":"new","providers":["gmail"]}],"beforeBuilding":[{"kind":"install","what":"@trops/algolia"},{"kind":"connect","what":"Gmail"}],"checks":["Search returns results"],"access":["Bots can read Gmail","None can send email"],"estimate":{"build":"small","running":"about $0.04 per run"}}</plan>`,
 };
 
-function setup(records) {
+function setup(records, props = {}) {
   const queue = [...records];
   const listeners = [];
   window.mainApi = {
@@ -89,7 +89,7 @@ function setup(records) {
       }),
     },
   };
-  render(<CreatePlanStep prompt="an Algolia search widget" />);
+  render(<CreatePlanStep prompt="an Algolia search widget" {...props} />);
   return window.mainApi.bots;
 }
 
@@ -295,4 +295,109 @@ test("isTypeItOption and pieceMeta", () => {
       notes: "From the starter",
     }),
   ).toBe("@trops/git-hub · From the starter");
+});
+
+test("Build waits until the Planner's questions are answered (Create build fixes 2)", async () => {
+  const both = {
+    ...thePlan,
+    output:
+      'Almost.<plan>{"summary":"s","questions":[{"question":"Which index?","options":["products"]}],"pieces":[{"kind":"widget","name":"Rules","source":"yours","package":"@trops/algolia"}],"estimate":{"build":"small"}}</plan>',
+  };
+  setup([both]);
+  const note = await screen.findByTestId("plan-ready");
+  expect(note).toHaveTextContent("Answer the Planner's questions first.");
+  expect(note.parentElement.querySelector("button")).toBeDisabled();
+});
+
+test("with no questions left, Build is ready", async () => {
+  setup([thePlan]);
+  const note = await screen.findByTestId("plan-ready");
+  expect(note.parentElement.querySelector("button")).not.toBeDisabled();
+});
+
+describe("plan on the left, chat on the right (Create build fixes 2)", () => {
+  const both = {
+    ...thePlan,
+    output:
+      'Almost.<plan>{"summary":"s","questions":[{"question":"Which index?","options":["products"]}],"pieces":[{"kind":"widget","name":"Rules","source":"yours","package":"@trops/algolia"}],"estimate":{"build":"small"}}</plan>',
+  };
+
+  test("once there's a plan, it has its own column beside the chat", async () => {
+    setup([thePlan]);
+    const planCol = await screen.findByTestId("plan-column");
+    const chatCol = screen.getByTestId("chat-column");
+    expect(planCol).toContainElement(screen.getByTestId("plan-card"));
+    expect(chatCol).toContainElement(screen.getByTestId("planner-message"));
+    expect(chatCol).toContainElement(
+      screen.getByRole("textbox", { name: "Reply to the Planner" }),
+    );
+    expect(planCol).not.toContainElement(screen.getByTestId("planner-message"));
+  });
+
+  test("before a plan, the chat is one column", async () => {
+    setup([askFirst]);
+    await screen.findByTestId("plan-questions");
+    expect(screen.queryByTestId("plan-column")).toBeNull();
+  });
+
+  test("the Planner's questions end the chat's one scroll area, above the reply box", async () => {
+    setup([both]);
+    const qs = await screen.findByTestId("plan-questions");
+    const foot = screen.getByTestId("chat-foot");
+    const scroller = screen.getByTestId("chat-scroll");
+    expect(screen.getByTestId("chat-column")).toContainElement(scroller);
+    expect(scroller).toContainElement(qs);
+    expect(scroller.textContent.trim().endsWith(qs.textContent.trim())).toBe(
+      true,
+    );
+    expect(foot).not.toContainElement(qs);
+    expect(foot).toContainElement(
+      screen.getByRole("textbox", { name: "Reply to the Planner" }),
+    );
+    expect(screen.getByTestId("plan-column")).not.toContainElement(qs);
+  });
+
+  test("the plan and the chat get equal widths", async () => {
+    setup([thePlan]);
+    const planCol = await screen.findByTestId("plan-column");
+    const chatCol = screen.getByTestId("chat-column");
+    for (const col of [planCol, chatCol]) {
+      expect(col).toHaveClass("flex-1");
+      expect(col).toHaveClass("min-w-0");
+      expect(col.style.width).toBe("");
+    }
+  });
+
+  test("in the dock, the chat opens on its newest message", async () => {
+    const set = jest.spyOn(Element.prototype, "scrollTop", "set");
+    const tall = jest
+      .spyOn(Element.prototype, "scrollHeight", "get")
+      .mockReturnValue(900);
+    try {
+      setup([both], { compact: true });
+      await screen.findByTestId("chat-foot");
+      const scroller = screen.getByTestId("chat-scroll");
+      expect(
+        set.mock.contexts.some((el) => el === scroller) &&
+          set.mock.calls.some(([v]) => v === 900),
+      ).toBe(true);
+    } finally {
+      set.mockRestore();
+      tall.mockRestore();
+    }
+  });
+
+  test("the dock stays one column, one scroll area, the questions at its end", async () => {
+    setup([both], { compact: true });
+    const qs = await screen.findByTestId("plan-questions");
+    const foot = screen.getByTestId("chat-foot");
+    const scroller = screen.getByTestId("chat-scroll");
+    expect(screen.queryByTestId("plan-column")).toBeNull();
+    expect(scroller).toContainElement(qs);
+    expect(scroller).toContainElement(screen.getByTestId("plan-card"));
+    expect(scroller.textContent.trim().endsWith(qs.textContent.trim())).toBe(
+      true,
+    );
+    expect(foot).not.toContainElement(qs);
+  });
 });

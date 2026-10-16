@@ -112,4 +112,4 @@ function compareConfigs(oldSource, newSource) {
   return { ok: breaking.length === 0, breaking, notes };
 }
 
-module.exports = { compareConfigs, eventNames };
+module.exports = { compareConfigs, eventNames, settingsOf };

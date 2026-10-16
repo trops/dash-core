@@ -247,7 +247,7 @@ describe("botController — after a build (phase 4d-3)", () => {
       ctrl,
       /resume = \{ plan: earlier\.plan, state: earlier\.state \};/,
     );
-    assert.match(ctrl, /\{ dashboardName, resume \},/);
+    assert.match(ctrl, /\{ dashboardName, resume, autoFix: true \},/);
   });
   it("Remove deletes the dashboard, its bots and lead, and new widgets — not installs", () => {
     assert.match(ctrl, /leadOf\(this\._store\.list\(\), dashboardId\)/);
@@ -284,8 +284,8 @@ describe("botController — plans that change a dashboard you have (5e-2b)", () 
 });
 
 describe("botController — Create build outcomes (Create build fixes, PR 1)", () => {
-  const src = require("fs").readFileSync(
-    require("path").join(__dirname, "../controller/botController.js"),
+  const src = fs.readFileSync(
+    path.join(__dirname, "../controller/botController.js"),
     "utf8",
   );
   it("notes each build_widget result for the plan build", () => {
@@ -296,13 +296,39 @@ describe("botController — Create build outcomes (Create build fixes, PR 1)", (
     assert.match(src, /record\.builds = this\._takeBuilds\(bot\.id\);/);
   });
   it("placing passes the piece's component and name", () => {
+    assert.match(src, /placeWidget: \(req\) => this\._planPlaceWidget\(req\)/);
     assert.match(
       src,
-      /placeWidget: \(\{ dashboardId, component, widget, name \}\) => \{/,
+      /resolveWidgetComponent\(\s+full \? component : widget,\s+full \? null : component \|\| null,\s+\(\) =>[\s\S]{0,120}\{ name \},?\s+\);/,
+    );
+  });
+});
+
+describe("botController — pages, connections and automatic fixes (Create build fixes 2)", () => {
+  const src = require("fs").readFileSync(
+    require("path").join(__dirname, "../controller/botController.js"),
+    "utf8",
+  );
+  it("a new dashboard gets the planned pages", () => {
+    assert.match(
+      src,
+      /createDashboard: \(name, count, pages\) =>\s+this\._planCreateDashboard\(name, count, pages\)/,
     );
     assert.match(
       src,
-      /resolveWidgetComponent\(\s+widget,\s+component,\s+\(\) =>[\s\S]{0,120}\{ name \},?\s+\);/,
+      /blankDashboard\(\{ id: Date\.now\(\), name, count, pages \}\)/,
     );
+  });
+  it("a widget is placed on its page with the connection and settings that check out", () => {
+    assert.match(
+      src,
+      /placeChoices\(\s+\{ provider, settings \},\s+\{ connections, settingKeys: keys \},?\s+\)/,
+    );
+    assert.match(
+      src,
+      /settings: choices\.userPrefs,\s+selectedProviders: choices\.selectedProviders,/,
+    );
+    assert.match(src, /return \{ \.\.\.res, dropped: choices\.dropped \};/);
+    assert.match(src, /userPrefs: settings \|\| \{\},\s+selectedProviders,/);
   });
 });
