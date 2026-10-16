@@ -1261,7 +1261,9 @@ export const EnhancedWidgetDropdown = ({
         {/* Install Error */}
         {installError && (
           <div className="mt-3 p-2 rounded bg-red-900/30 border border-red-700">
-            <p className="text-xs text-red-400">{installError}</p>
+            <p className="text-xs text-red-400 whitespace-pre-wrap">
+              {installError}
+            </p>
           </div>
         )}
       </div>

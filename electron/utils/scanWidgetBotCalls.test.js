@@ -93,13 +93,26 @@ describe("every install path runs the scan (TD-005)", () => {
     path.join(__dirname, "..", "widgetRegistry.js"),
     "utf8",
   );
-  it("installFromLocalPath and downloadWidget refuse before registering", () => {
-    const hits =
-      reg.match(/assertNoBotCalls\(\s*widgetName,\s*widgetPath,?\s*\)/g) || [];
-    assert.equal(hits.length, 2);
+  // One check for every path (checkPackage, install gate — Phase 1a): the
+  // scan runs on the staged package before anything is registered.
+  it("checkPackage runs the scan, and every install path runs checkPackage", () => {
+    assert.match(
+      reg,
+      /async function checkPackage\(widgetName, dir, done = "installed"\) \{[\s\S]{0,300}assertNoBotCalls\(widgetName, dir\)/,
+    );
+    // stageInstall (installFromLocalPath, downloadWidget) and the folder loop.
+    assert.match(reg, /await checkPackage\(widgetName, staged\);/);
+    assert.equal(
+      (reg.match(/await stageInstall\(widgetName, widgetPath/g) || []).length,
+      2,
+    );
   });
-  it("the folder loop skips (never deletes) a widget that calls bots", () => {
-    assert.match(reg, /scanWidgetBotCalls\(widgetPath\)/);
+  it("the folder loop skips (never deletes) a widget that fails, saying why", () => {
+    assert.match(
+      reg,
+      /await checkPackage\(entry\.name, widgetPath, "loaded"\);/,
+    );
     assert.match(reg, /refused\.push\(entry\.name\);/);
+    assert.match(reg, /refusedReasons\[entry\.name\] = e\.message;/);
   });
 });

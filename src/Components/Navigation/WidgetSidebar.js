@@ -387,7 +387,7 @@ const SidebarDiscoverContent = ({
           {/* Install error */}
           {registry.installError && (
             <div
-              className={`text-xs rounded-md px-2 py-1.5 mb-3 ${status.error.bg} ${status.error.text}`}
+              className={`text-xs rounded-md px-2 py-1.5 mb-3 whitespace-pre-wrap ${status.error.bg} ${status.error.text}`}
             >
               {registry.installError}
             </div>

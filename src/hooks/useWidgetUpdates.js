@@ -8,6 +8,7 @@ import {
 } from "react";
 import { AppContext } from "../Context/App/AppContext";
 import { normalizeGrantsByProviderType } from "../utils/normalizeGrantsByProviderType";
+import { cleanIpcError } from "../utils/errorUtils";
 
 // --- Preflight helpers ---
 //
@@ -449,7 +450,7 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
           name,
           message: err?.message || String(err),
         });
-        setUpdateError(err.message || "Update failed");
+        setUpdateError(cleanIpcError(err.message) || "Update failed");
         if (throwOnError) {
           // Re-throw so the batch caller can mark this row failed.
           // Single-update callers leave throwOnError as false and
@@ -789,7 +790,7 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
             });
             succeeded.push(pkgName);
           } catch (err) {
-            const msg = (err && err.message) || "Update failed";
+            const msg = cleanIpcError(err && err.message) || "Update failed";
             setBatchStatus((prev) => {
               const next = new Map(prev);
               next.set(pkgName, { status: "failed", error: msg });

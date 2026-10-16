@@ -6,6 +6,7 @@ import {
   getWidgetSearchQuery,
   packageToFlatWidget,
 } from "../utils/registryUtils";
+import { cleanIpcError } from "../utils/errorUtils";
 
 /**
  * WidgetNotFound — rendered in place of an unresolvable widget.
@@ -98,7 +99,7 @@ export const WidgetNotFound = ({ component }) => {
       await window.mainApi.widgets.install(scopedId, resolvedUrl);
       setShowModal(false);
     } catch (err) {
-      const msg = err.message || "Failed to install package";
+      const msg = cleanIpcError(err.message) || "Failed to install package";
       if (msg.toLowerCase().includes("unauthorized")) {
         setNeedsAuth(true);
       } else {

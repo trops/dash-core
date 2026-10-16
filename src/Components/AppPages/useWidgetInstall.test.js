@@ -85,6 +85,79 @@ describe("useWidgetInstall (app-navigation NAV-008)", () => {
     expect(result.current.result.message).toMatch(/^No widgets found/);
   });
 
+  // Install gate (consolidation Phase 1a): a refusal says why, plainly.
+  it("shows a refused ZIP's reason without the IPC wrapper", async () => {
+    const { result, widgets } = setup({ zip: "/tmp/x.zip" });
+    widgets.installLocal.mockRejectedValue(
+      new Error(
+        "Error invoking remote method 'widget:install-local': Error: x wasn't installed — it didn't pass its checks:\n- Hello: one",
+      ),
+    );
+    await act(async () => result.current.installFromZip());
+    const reason =
+      "x wasn't installed — it didn't pass its checks:\n- Hello: one";
+    expect(result.current.result).toEqual({ status: "error", message: reason });
+    expect(result.current.progress.widgets[0].error).toBe(reason);
+  });
+
+  it("lists each package a folder load refused, with its reason", async () => {
+    const results = [{ name: "good", displayName: "Good" }];
+    results.skipped = 2; // one non-widget folder + one refused
+    results.refused = ["bad"];
+    results.refusedReasons = {
+      bad: "bad wasn't installed — it didn't pass its checks:\n- Hello: two",
+    };
+    const { result } = setup({ folder: "/tmp/w", results });
+    await act(async () => result.current.loadFolder());
+    expect(result.current.progress.widgets).toEqual([
+      { packageName: "good", displayName: "Good", status: "installed" },
+      {
+        packageName: "bad",
+        displayName: "bad",
+        status: "failed",
+        error:
+          "bad wasn't installed — it didn't pass its checks:\n- Hello: two",
+      },
+    ]);
+    expect(result.current.result.message).toBe(
+      "Loaded 1 widget from folder. (1 non-widget folder skipped) 1 didn't pass its checks — see why above.",
+    );
+  });
+
+  it("reads the folder load's object form (as it arrives over IPC)", async () => {
+    const results = {
+      widgets: [{ name: "good", displayName: "Good" }],
+      skipped: 1,
+      refused: ["bad"],
+      refusedReasons: { bad: "bad wasn't installed" },
+    };
+    const { result } = setup({ folder: "/tmp/w", results });
+    await act(async () => result.current.loadFolder());
+    expect(result.current.progress.widgets.map((w) => w.status)).toEqual([
+      "installed",
+      "failed",
+    ]);
+    expect(result.current.result.message).toBe(
+      "Loaded 1 widget from folder. 1 didn't pass its checks — see why above.",
+    );
+  });
+
+  it("says so when every package in a folder was refused", async () => {
+    const results = [];
+    results.skipped = 1;
+    results.refused = ["bad"];
+    results.refusedReasons = { bad: "bad wasn't installed" };
+    const { result } = setup({ folder: "/tmp/w", results });
+    await act(async () => result.current.loadFolder());
+    expect(result.current.result.status).toBe("error");
+    expect(result.current.result.message).toBe(
+      "Nothing was loaded — 1 package didn't pass its checks. See why above.",
+    );
+    expect(result.current.progress.widgets[0].error).toBe(
+      "bad wasn't installed",
+    );
+  });
+
   it("closes the progress modal and clears the result", async () => {
     const { result } = setup({ zip: "/tmp/weather.zip" });
     await act(async () => result.current.installFromZip());
