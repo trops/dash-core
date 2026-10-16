@@ -406,3 +406,93 @@ describe("blankDashboard — a plan's new dashboard (Create build fixes 2)", () 
     assert.equal(r.workspace.pages[0].layout.length, 1);
   });
 });
+
+describe("blankDashboard — a planned grid (plan grids)", () => {
+  const grid = {
+    cols: 2,
+    rows: 4,
+    colModes: { 1: "1/4" },
+    rowModes: { 1: "shrink", 2: "grow", 3: "grow", 4: "shrink" },
+    cells: [
+      { row: 1, col: 1, rowSpan: 1, colSpan: 2 },
+      { row: 2, col: 1, rowSpan: 1, colSpan: 1 },
+      { row: 3, col: 1, rowSpan: 1, colSpan: 1 },
+      { row: 2, col: 2, rowSpan: 2, colSpan: 1 },
+      { row: 4, col: 1, rowSpan: 1, colSpan: 2 },
+    ],
+  };
+
+  it("one named page with the planned sizes and spans; covered cells hidden", () => {
+    const ws = blankDashboard({
+      id: 7,
+      name: "Algolia Storefront",
+      count: 5,
+      pages: [{ name: "Search", widgets: 5, grid }],
+    });
+    assert.deepEqual(
+      ws.pages.map((p) => p.name),
+      ["Search"],
+    );
+    assert.equal(ws.activePageId, "page-7-1");
+    const g = ws.pages[0].layout[0].grid;
+    assert.equal(g.cols, 2);
+    assert.equal(g.rows, 4);
+    assert.deepEqual(g.colModes, { 1: "1/4" });
+    assert.deepEqual(g.rowModes, {
+      1: "shrink",
+      2: "grow",
+      3: "grow",
+      4: "shrink",
+    });
+    assert.deepEqual(g["1.1"], {
+      component: null,
+      hide: false,
+      span: { row: 1, col: 2 },
+    });
+    assert.deepEqual(g["1.2"], { component: null, hide: true });
+    assert.deepEqual(g["2.2"], {
+      component: null,
+      hide: false,
+      span: { row: 2, col: 1 },
+    });
+    assert.deepEqual(g["3.2"], { component: null, hide: true });
+    assert.deepEqual(g["4.2"], { component: null, hide: true });
+    assert.deepEqual(g["2.1"], { component: null, hide: false });
+    assert.deepEqual(ws.layout, ws.pages[0].layout);
+  });
+
+  it("a widget placed in a spanning cell keeps the span", () => {
+    const ws = blankDashboard({
+      id: 7,
+      name: "S",
+      count: 5,
+      pages: [{ name: "Search", widgets: 5, grid }],
+    });
+    const r = placeWidget(ws, {
+      component: "a.b.Hits",
+      page: "Search",
+      row: 2,
+      col: 2,
+    });
+    const g = r.workspace.pages[0].layout[0].grid;
+    assert.deepEqual(g["2.2"], {
+      component: r.widgetId,
+      hide: false,
+      span: { row: 2, col: 1 },
+    });
+  });
+
+  it("a single page without a grid keeps its name", () => {
+    const ws = blankDashboard({
+      id: 7,
+      name: "S",
+      count: 3,
+      pages: [{ name: "Only", widgets: 3 }],
+    });
+    assert.deepEqual(
+      ws.pages.map((p) => p.name),
+      ["Only"],
+    );
+    assert.equal(ws.pages[0].layout[0].grid.cols, 2);
+  });
+});
