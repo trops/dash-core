@@ -1,4 +1,10 @@
-import React, { useContext, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   Modal,
   ThemeContext,
@@ -116,6 +122,12 @@ export const CreateModal = ({
   // null = not building; { initialPrompt, resumeDraftId, title } = the Widget
   // Builder inside Create.
   const [builderStep, setBuilderStep] = useState(null);
+  // The Builder step's say on leaving (unsaved work): a function → true |
+  // false | Promise of either, registered by the Builder (setLeaveGuard).
+  const leaveGuardRef = useRef(null);
+  const setLeaveGuard = useCallback((fn) => {
+    leaveGuardRef.current = typeof fn === "function" ? fn : null;
+  }, []);
   // null = no search; { prompt, detail } = the Scout looking first (slice 4).
   const [scoutStep, setScoutStep] = useState(null);
   // null = no plan; { prompt } = planning a dashboard with the Planner (4a).
@@ -255,6 +267,21 @@ export const CreateModal = ({
     ai.cliAvailable !== null;
 
   const Builder = getWidgetBuilderRenderer();
+  // Leave the Builder step only when it agrees (it asks about unsaved
+  // work); every other step leaves at once.
+  const leaving = (action) => () => {
+    const guard = builderStep && leaveGuardRef.current;
+    if (!guard) {
+      action();
+      return;
+    }
+    Promise.resolve(guard()).then((ok) => {
+      if (ok) {
+        leaveGuardRef.current = null;
+        action();
+      }
+    });
+  };
 
   // The Widget Builder: inside Create when the host registered one, else its
   // own window (the old event).
@@ -571,6 +598,7 @@ export const CreateModal = ({
         initialPrompt={builderStep.initialPrompt}
         resumeDraftId={builderStep.resumeDraftId}
         onClose={close}
+        setLeaveGuard={setLeaveGuard}
         onTitle={(title) =>
           title && setBuilderStep((step) => (step ? { ...step, title } : step))
         }
@@ -647,7 +675,7 @@ export const CreateModal = ({
   return (
     <Modal
       isOpen={open}
-      setIsOpen={(v) => (v ? setIsOpen(true) : close())}
+      setIsOpen={(v) => (v ? setIsOpen(true) : leaving(close)())}
       width="w-11/12"
       height="h-5/6"
     >
@@ -664,7 +692,11 @@ export const CreateModal = ({
         >
           <div className={`flex items-center gap-3 ${strong}`}>
             {stepTitle ? (
-              <ButtonIcon icon="arrow-left" onClick={back} ariaLabel="Back" />
+              <ButtonIcon
+                icon="arrow-left"
+                onClick={leaving(back)}
+                ariaLabel="Back"
+              />
             ) : null}
             {stepTitle ? (
               <nav
@@ -718,7 +750,11 @@ export const CreateModal = ({
                 onRemoved={back}
               />
             ) : null}
-            <ButtonIcon icon="xmark" onClick={close} ariaLabel="Close" />
+            <ButtonIcon
+              icon="xmark"
+              onClick={leaving(close)}
+              ariaLabel="Close"
+            />
           </div>
         </div>
         {builder || planner || scout || waiting || (botForm ? form : start)}

@@ -610,3 +610,49 @@ describe("CreateModal — Fold into the dock (4e-2)", () => {
     ).toBeNull();
   });
 });
+
+describe("CreateModal — the Builder can hold Back and Close for unsaved work (Widget Builder edit fixes)", () => {
+  let answer;
+  const Builder = jest.fn(({ setLeaveGuard }) => {
+    React.useEffect(() => {
+      if (setLeaveGuard) setLeaveGuard(() => answer);
+    }, [setLeaveGuard]);
+    return <div data-testid="builder">builder</div>;
+  });
+  beforeEach(() => {
+    Builder.mockClear();
+    setWidgetBuilderRenderer(Builder);
+  });
+  afterEach(() => setWidgetBuilderRenderer(null));
+
+  const openBuilder = async () => {
+    await screen.findByRole("button", { name: /^AI: Claude Code/ });
+    fireEvent.change(promptBox(), { target: { value: "A clock" } });
+    fireEvent.click(sendButton());
+    await screen.findByTestId("builder");
+  };
+
+  test("Back waits for the Builder: kept when it says no, left when it says yes", async () => {
+    setup();
+    await openBuilder();
+    answer = Promise.resolve(false);
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await act(async () => {});
+    expect(screen.getByTestId("builder")).toBeInTheDocument();
+    answer = Promise.resolve(true);
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await waitFor(() => expect(screen.queryByTestId("builder")).toBeNull());
+  });
+
+  test("Close waits for the Builder too", async () => {
+    const { setIsOpen } = setup();
+    await openBuilder();
+    answer = Promise.resolve(false);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await act(async () => {});
+    expect(setIsOpen).not.toHaveBeenCalledWith(false);
+    answer = true;
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(setIsOpen).toHaveBeenCalledWith(false));
+  });
+});

@@ -127,6 +127,10 @@ node --test electron/utils/safeJsExecutor.test.js
 step "Running safePath containment tests"
 node --test electron/utils/safePath.test.js electron/utils/scanWidgetBotCalls.test.js
 
+# 6c2a. Widget compiler: npm libraries from the app, plain build errors
+step "Running widget compiler tests"
+node --test electron/widgetCompiler.test.js
+
 # 6c2b. Phase 5D — install-time manifest-signature verifier
 step "Running install-time manifest-signature verifier tests (Phase 5D)"
 node --test electron/security/verifyDownloadManifest.test.js
