@@ -128,7 +128,7 @@ const {
   placeChoices,
   settingKeys,
 } = require("../bots/planBuild");
-const { planTarget } = require("../bots/teamPlan");
+const { planTarget, validatePlan } = require("../bots/teamPlan");
 const { summarizeSpending } = require("../bots/spending");
 const { resolveWidgetComponent } = require("../bots/widgetComponent");
 const { CreateRecent } = require("../bots/createRecent");
@@ -2151,6 +2151,17 @@ const botController = {
     if (!plan || !Array.isArray(plan.pieces) || !plan.pieces.length) {
       return { error: "The plan has nothing to build." };
     }
+    // Checked against the user's own dashboards and themes (consolidation
+    // Phase 1b): a plan with errors isn't built.
+    const checked = validatePlan(plan, {
+      dashboards: this._dashboardsWithBots(),
+      themes: this._themeNames(),
+    });
+    if (checked.errors.length) {
+      return {
+        error: `The plan can't be built yet: ${checked.errors.join(" ")}`,
+      };
+    }
     if (!this._builds) this._builds = new Map();
     // Its conversation in Recent (4e-1) — a build without one isn't kept.
     const planId = recentId && this._recent.get(recentId) ? recentId : null;
@@ -2202,6 +2213,11 @@ const botController = {
           if (bot) this._runner.abort(bot.id);
         },
         placeWidget: (req) => this._planPlaceWidget(req),
+        // The Install step: the draft the Checker passed (Phase 1b).
+        installBuilt: (draft) =>
+          this._widgetTools && this._widgetTools.installDraft
+            ? this._widgetTools.installDraft({ name: draft })
+            : { success: false, error: "installing isn't available here" },
         saveBot: (req) => this._planSaveBot(req),
         placeBotResults: ({ dashboardId, botId }) => {
           const res = this.addBotWidget(dashboardId, {
@@ -2687,20 +2703,35 @@ const botController = {
       return { skipped: true, reason: `the ${bot.name} is paused` };
     }
     this._takeBuilds(bot.id);
-    const record = await this._run(bot.id, {
-      prompt: planId ? `${request}\n\n${MEMORY_NOTE}` : request,
-      trigger: "ask",
-      via: "plan-build",
-      approvalPolicy: "allow",
-      // The plan's build memory (4e-1).
-      ...(planId ? { planId: String(planId) } : {}),
-    });
+    const record = await this._reviewedRun(bot, request, () =>
+      this._run(bot.id, {
+        prompt: planId ? `${request}\n\n${MEMORY_NOTE}` : request,
+        trigger: "ask",
+        via: "plan-build",
+        approvalPolicy: "allow",
+        // The plan's build memory (4e-1).
+        ...(planId ? { planId: String(planId) } : {}),
+      }),
+    );
     // What build_widget said during the run — the build step trusts it over
     // the Builder's answer (Create build fixes).
     if (record && typeof record === "object") {
       record.builds = this._takeBuilds(bot.id);
     }
     return record;
+  },
+
+  /**
+   * A Dash team run; the Checker's verdict on a draft it checked is recorded
+   * on that draft — only a PASSED draft can be installed (Phase 1b).
+   */
+  _reviewedRun(bot, request, run) {
+    return bot &&
+      bot.role === "checker" &&
+      this._widgetTools &&
+      this._widgetTools.reviewRun
+      ? this._widgetTools.reviewRun(request, run)
+      : run();
   },
 
   /** Note a Dash team build_widget result for the run in progress. */
@@ -2710,7 +2741,13 @@ const botController = {
     const text = String((result && result.text) || "");
     if (result && !result.isError) {
       const m = text.match(/@ai-built\/[a-z0-9][a-z0-9-]*/i);
-      list.push({ ok: true, package: m ? m[0].toLowerCase() : null });
+      // The draft it wrote (draft:<Name>) — checked, then installed.
+      const d = text.match(/draft:[A-Z][A-Za-z0-9]*/);
+      list.push({
+        ok: true,
+        package: m ? m[0].toLowerCase() : null,
+        draft: d ? d[0] : null,
+      });
     } else {
       list.push({ ok: false, error: text.slice(0, 500) });
     }
@@ -2772,6 +2809,10 @@ const botController = {
       botRuns: () => this._botRunsForTeam(),
       draftBot: (req) => this._teamDraftBot(req),
       placeWidget: (req) => this._teamPlaceWidget(req),
+      // place_widget with a draft the Checker passed (Phase 1b).
+      ...(this._widgetTools && this._widgetTools.installDraft
+        ? { installDraft: (req) => this._widgetTools.installDraft(req) }
+        : {}),
     };
   },
 
@@ -3027,11 +3068,13 @@ const botController = {
       return fail(`The ${target.name} is busy with another request.`);
     }
     const caller = this._store.get(callerId);
-    const record = await this._run(target.id, {
-      prompt: request,
-      trigger: "ask",
-      via: `dash-team:${(caller && caller.role) || "planner"}`,
-    });
+    const record = await this._reviewedRun(target, request, () =>
+      this._run(target.id, {
+        prompt: request,
+        trigger: "ask",
+        via: `dash-team:${(caller && caller.role) || "planner"}`,
+      }),
+    );
     if (!record || record.skipped) {
       return fail(
         `The ${target.name} didn't run: ${(record && record.reason) || "unknown reason"}.`,

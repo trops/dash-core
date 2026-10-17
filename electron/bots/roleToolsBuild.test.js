@@ -50,7 +50,11 @@ function deps(over = {}) {
               "The code didn't pass the widget checks; fix these and build again.",
             problems: ["line 3: <Modal> isn't allowed in a widget"],
           }
-        : { success: true, widgetName: `@ai-built/${req.name.toLowerCase()}` },
+        : {
+            success: true,
+            widgetName: `draft:${req.name}`,
+            package: `@ai-built/${req.name.toLowerCase()}`,
+          },
     checkWidget: async ({ name }) => ({
       success: true,
       widgetName: name,
@@ -145,14 +149,19 @@ describe("widget_guide — no rules", () => {
 });
 
 describe("build_widget", () => {
-  it("installs and points to the Checker", async () => {
+  // Phase 1b: build_widget writes a draft — nothing is installed until
+  // the Checker passes it.
+  it("writes a draft, installs nothing, and points to the Checker", async () => {
     const r = await handleRoleTool(deps(), as("builder"), "build_widget", {
       name: "Hello",
       componentCode: "export default function Hello() {}",
       configCode: CONFIG,
     });
     assert.equal(r.isError, false);
-    assert.match(r.text, /Built and installed @ai-built\/hello/);
+    assert.match(r.text, /Wrote draft:Hello — not installed/);
+    assert.match(r.text, /check draft:Hello/);
+    assert.match(r.text, /@ai-built\/hello/);
+    assert.doesNotMatch(r.text, /Built and installed/);
   });
 
   it("hands back the problems to fix", async () => {
@@ -316,5 +325,65 @@ describe("check_widget", () => {
     assert.match(r.text, /setting "title" was removed/);
     assert.match(r.text, /event "picked" is no longer published/);
     assert.match(r.text, /VERDICT: FAILED/);
+  });
+});
+
+// Phase 1b: a draft is placed only once the Checker passed it — it's
+// installed then, exactly as checked.
+describe("place_widget with a draft", () => {
+  const placeArgs = { dashboard: "Brief", widget: "draft:Hello" };
+  it("a draft the Checker passed is installed, then placed", async () => {
+    const seen = [];
+    const r = await handleRoleTool(
+      deps({
+        installDraft: async ({ name }) => {
+          seen.push(["install", name]);
+          return { success: true, widgetName: "@ai-built/hello" };
+        },
+        placeWidget: async (req) => {
+          seen.push(["place", req.widget]);
+          return { component: "ai-built.hello.Hello", dashboardName: "Brief" };
+        },
+      }),
+      as("builder"),
+      "place_widget",
+      placeArgs,
+    );
+    assert.equal(r.isError, false);
+    assert.deepEqual(seen, [
+      ["install", "draft:Hello"],
+      ["place", "@ai-built/hello"],
+    ]);
+  });
+  it("a draft that hasn't passed is refused, and nothing is placed", async () => {
+    let placed = false;
+    const r = await handleRoleTool(
+      deps({
+        installDraft: async () => ({
+          success: false,
+          error:
+            "draft:Hello hasn't passed the Checker yet — ask the Checker to check draft:Hello.",
+        }),
+        placeWidget: async () => {
+          placed = true;
+          return {};
+        },
+      }),
+      as("builder"),
+      "place_widget",
+      placeArgs,
+    );
+    assert.equal(r.isError, true);
+    assert.match(r.text, /hasn't passed the Checker/);
+    assert.equal(placed, false);
+  });
+  it("the tools say so", () => {
+    const src = require("fs").readFileSync(
+      require("path").join(__dirname, "roleTools.js"),
+      "utf8",
+    );
+    assert.match(src, /build_widget[\s\S]{0,600}draft/);
+    assert.match(src, /check_widget[\s\S]{0,400}draft:/);
+    assert.match(src, /place_widget[\s\S]{0,800}draft:/);
   });
 });

@@ -584,6 +584,9 @@ export const CreatePlanStep = ({
   // Open questions: the answers change the plan (a connection, an index,
   // which pages), so it isn't built until they're answered.
   const unanswered = questions.length > 0;
+  // A plan with errors isn't built — the main process refuses it too
+  // (consolidation Phase 1b).
+  const broken = !!(check && check.errors.length);
 
   // Nothing open: build it (4d). Approving here is the consent — nothing
   // asks again during the build.
@@ -1051,8 +1054,11 @@ export const CreatePlanStep = ({
           </div>
         </PlanSection>
 
-        {check && check.errors.length ? (
-          <span className={`text-xs ${muted}`}>
+        {broken ? (
+          <span
+            className="text-xs text-red-500 whitespace-pre-wrap"
+            data-testid="plan-errors"
+          >
             The plan isn't complete yet: {check.errors.join(" ")}
           </span>
         ) : null}
@@ -1060,21 +1066,39 @@ export const CreatePlanStep = ({
           <Button
             title={buildLabel}
             onClick={buildPlan}
-            disabled={unanswered}
+            disabled={unanswered || broken}
           />
-          <span className={`text-xs ${muted}`} data-testid="plan-ready">
+          {broken ? (
+            <Button3
+              title="Ask the Planner to fix it"
+              size="sm"
+              onClick={() =>
+                answer(
+                  `Please fix these problems in the plan:\n${check.errors
+                    .map((e) => `- ${e}`)
+                    .join("\n")}`,
+                )
+              }
+            />
+          ) : null}
+          <span
+            className={`text-xs ${buildError ? "text-red-500" : muted}`}
+            data-testid="plan-ready"
+          >
             {buildError
               ? buildError
               : unanswered
                 ? "Answer the Planner's questions first."
-                : ready
-                  ? "Starting the build…"
-                  : resumeFrom
-                    ? "What's built is kept — only what's new or changed gets built."
-                    : removedNote ||
-                      (target
-                        ? `Kept in Recent · nothing on ${target.name} changes until you press this.`
-                        : "Kept in Recent · nothing has been built or installed yet.")}
+                : broken
+                  ? "Ask the Planner to fix the plan first."
+                  : ready
+                    ? "Starting the build…"
+                    : resumeFrom
+                      ? "What's built is kept — only what's new or changed gets built."
+                      : removedNote ||
+                        (target
+                          ? `Kept in Recent · nothing on ${target.name} changes until you press this.`
+                          : "Kept in Recent · nothing has been built or installed yet.")}
           </span>
         </div>
       </div>

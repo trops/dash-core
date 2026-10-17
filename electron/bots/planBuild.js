@@ -142,6 +142,14 @@ function planSteps(plan, { dashboardName } = {}) {
         role: "checker",
         label: `Check ${p.name}`,
       });
+      // Installed only once the Checker passed it (consolidation 1b).
+      add({
+        id: `save:${i}`,
+        kind: "save",
+        piece: i,
+        role: "dash",
+        label: `Install ${p.name}`,
+      });
     }
   });
   widgets.forEach((p, i) => {
@@ -249,13 +257,18 @@ function blockersFor(step, steps) {
   }
   if (step.kind === "check")
     return steps.filter((s) => s.id === `build:${step.piece}`);
+  if (step.kind === "save")
+    return steps.filter(
+      (s) => s.id === `build:${step.piece}` || s.id === `check:${step.piece}`,
+    );
   if (step.kind === "place") {
     return steps.filter(
       (s) =>
         s.id === "dashboard" ||
         s.id === `install:${step.piece}` ||
         s.id === `build:${step.piece}` ||
-        s.id === `check:${step.piece}`,
+        s.id === `check:${step.piece}` ||
+        s.id === `save:${step.piece}`,
     );
   }
   return [];
@@ -267,11 +280,13 @@ function blockersFor(step, steps) {
  */
 function buildRequest(plan, piece, fix = null) {
   const providers = (piece.providers || []).join(", ") || "none";
-  const update = piece.source === "update" || !!(fix && fix.package);
+  const update = piece.source === "update" || !!(fix && fix.installed);
   const first = fix
-    ? fix.package
-      ? `Fix the widget ${fix.package} you built for this plan.`
-      : `Build this plan's widget again — the last try didn't work.`
+    ? fix.draft
+      ? `Fix the widget you wrote for this plan (${fix.draft}).`
+      : fix.package
+        ? `Fix the widget ${fix.package} you built for this plan.`
+        : `Build this plan's widget again — the last try didn't work.`
     : piece.source === "update"
       ? `Update the widget ${piece.package || piece.name} for this plan.`
       : `Build a new widget for this plan.`;
@@ -283,14 +298,14 @@ function buildRequest(plan, piece, fix = null) {
     `Providers: ${providers}`,
     ...wiringLines(plan, piece),
     `Use a PascalCase name based on "${piece.name}"${
-      fix && fix.package ? " (keep the same name)" : ""
+      fix && (fix.package || fix.draft) ? " (keep the same name)" : ""
     }. Read widget_guide first, then build_widget${
       update ? " with update: true" : ""
     }${
-      update
+      update || fix
         ? ""
         : " (if it says the widget already exists, build it again with update: true)"
-    }. Finish with the widget's package name (@ai-built/…).`,
+    }. It writes a draft (draft:<Name>) — the Checker checks it, then it's installed. Finish with the draft's name.`,
   ].join("\n");
 }
 
@@ -319,7 +334,7 @@ const isStr = (v) => typeof v === "string";
  */
 function checkRequest(plan, piece, made = {}) {
   const lines = [
-    `Check ${made.package}. Run check_widget, read the code if you need to, and end with VERDICT: PASSED or VERDICT: FAILED.`,
+    `Check ${made.draft || made.package}. Run check_widget on ${made.draft || made.package}, read the code if you need to, and end with VERDICT: PASSED or VERDICT: FAILED.`,
   ];
   if (isStr(piece.notes) && piece.notes.trim()) {
     lines.push(`What the plan says it does: ${piece.notes.trim()}`);
@@ -560,7 +575,7 @@ function buildOutcome(record) {
   const pkg =
     (built && String(built.package).toLowerCase()) ||
     builtPackage(record && record.output);
-  if (pkg) return { package: pkg };
+  if (pkg) return { package: pkg, draft: (built && built.draft) || null };
   const failed = last((b) => b && !b.ok);
   const said =
     failed && failed.error ? String(failed.error).split("\n")[0].trim() : "";
@@ -587,6 +602,18 @@ function tokensOf(usage) {
     (Number(u.cacheReadTokens) || 0) +
     (Number(u.cacheWriteTokens) || 0)
   );
+}
+
+/**
+ * Was the Builder's widget for piece `j` installed in this build state? Its
+ * Install step finished — or, in a build from before the Install step
+ * (Phase 1b), its build step did (it installed then).
+ */
+function installedIn(state, j) {
+  const steps = (state && state.steps) || [];
+  const save = steps.find((x) => x.id === `save:${j}`);
+  if (save) return save.status === STATUS.done;
+  return steps.some((x) => x.id === `build:${j}` && x.status === STATUS.done);
 }
 
 const widgetPieces = (plan) =>
@@ -659,9 +686,8 @@ function reuseEarlier(plan, steps, state, earlier) {
   const widgetLeftover = (j) => {
     const p = prevWidgets[j];
     const made = prevMade[j] || {};
-    const built = (prev.steps || []).some(
-      (x) => x.id === `build:${j}` && x.status === STATUS.done,
-    );
+    // Never installed (it didn't pass) — nothing to uninstall.
+    const built = installedIn(prev, j);
     return {
       kind: "widget",
       name: p.name,
@@ -692,9 +718,22 @@ function reuseEarlier(plan, steps, state, earlier) {
     const same = pieceSignature(widgets[i]) === pieceSignature(prevWidgets[j]);
     const made = prevMade[j] || {};
     if (same) {
-      ["install", "build", "check", "place"].forEach((k) =>
-        keep(`${k}:${i}`, `${k}:${j}`),
-      );
+      const builtHere = BUILT.has(widgets[i].source);
+      const installed = builtHere && installedIn(prev, j);
+      // Checked but never installed: built and checked again (its draft
+      // may be gone — drafts aren't kept across restarts).
+      (builtHere && !installed
+        ? ["install"]
+        : ["install", "build", "check", "place"]
+      ).forEach((k) => keep(`${k}:${i}`, `${k}:${j}`));
+      if (installed) {
+        const save = byId.get(`save:${i}`);
+        if (save) {
+          save.status = STATUS.done;
+          save.detail = made.package || null;
+          save.reused = true;
+        }
+      }
       state.made[i] = { ...made };
     } else if (
       BUILT.has(widgets[i].source) &&
@@ -706,6 +745,8 @@ function reuseEarlier(plan, steps, state, earlier) {
       if (b) {
         b.fix = {
           package: made.package,
+          // Installed already: the change is an update of it.
+          installed: installedIn(prev, j),
           problem: "the plan for this widget changed — make it match the plan",
         };
       }
@@ -833,7 +874,12 @@ function builtSummary(state, plan) {
     if (step.kind === "results") {
       addPlaced(placedOf((state.results || {})[step.bot]));
     }
-    if (step.kind === "build") {
+    if (
+      step.kind === "save" ||
+      // A build from before the Install step installed at its build step.
+      (step.kind === "build" &&
+        !(state.steps || []).some((x) => x.id === `save:${step.piece}`))
+    ) {
       add(
         piece && piece.source === "update" ? out.updated : out.widgets,
         made.package,
@@ -1088,10 +1134,12 @@ function createPlanBuild(plan, deps, opts = {}) {
         state.made[step.piece] = {
           ...state.made[step.piece],
           package: pkg,
+          // The draft build_widget wrote — checked, then installed (1b).
+          draft: outcome.draft,
           // What this pass fixed — the Checker judges the change by it.
           fixedFor: step.fix ? step.fix.problem : null,
         };
-        step.detail = pkg;
+        step.detail = outcome.draft || pkg;
         step.fix = null;
         return;
       }
@@ -1117,6 +1165,24 @@ function createPlanBuild(plan, deps, opts = {}) {
               : "the Checker gave no verdict",
           );
         }
+        return;
+      }
+      case "save": {
+        // The checked draft, installed exactly as the Checker passed it.
+        const made = state.made[step.piece] || {};
+        if (!made.draft) {
+          throw new Error(
+            "the Builder didn't write a draft with build_widget, so there's nothing checked to install",
+          );
+        }
+        const res = deps.installBuilt
+          ? await deps.installBuilt(made.draft)
+          : { success: false, error: "installing isn't available here" };
+        if (!res || !res.success) {
+          throw new Error((res && res.error) || "it wasn't installed");
+        }
+        if (res.widgetName) made.package = String(res.widgetName).toLowerCase();
+        step.detail = made.package;
         return;
       }
       case "place": {
@@ -1211,7 +1277,13 @@ function createPlanBuild(plan, deps, opts = {}) {
   // What the user can do about a failed step (CRE-004 AC4): the Builder can
   // fix a widget it made (at most MAX_FIXES times); Dash's own steps can run
   // again. Edit plan and Remove what was built are always there.
-  const BUILDER_FIXES = new Set(["build", "check", "trigger", "listen"]);
+  const BUILDER_FIXES = new Set([
+    "build",
+    "check",
+    "save",
+    "trigger",
+    "listen",
+  ]);
   const RETRIES = new Set([
     "install",
     "dashboard",
@@ -1220,23 +1292,28 @@ function createPlanBuild(plan, deps, opts = {}) {
     "bot",
     "results",
   ]);
+  // An Install step the Builder can help with: its draft is missing or
+  // didn't pass — not a disk or network problem.
+  const DRAFT_PROBLEM =
+    /draft|hasn't passed the Checker|didn't pass its checks/i;
   function markOptions(step) {
     const piece = step.piece != null ? pieces[step.piece] : null;
     const used = step.piece != null ? state.fixes[step.piece] || 0 : 0;
+    const builderFixes =
+      BUILDER_FIXES.has(step.kind) &&
+      (step.kind !== "save" || DRAFT_PROBLEM.test(step.error || ""));
     step.fixesLeft =
-      piece && BUILT.has(piece.source) && BUILDER_FIXES.has(step.kind)
+      piece && BUILT.has(piece.source) && builderFixes
         ? Math.max(0, MAX_FIXES - used)
         : 0;
     step.canFix = step.fixesLeft > 0;
     // The Builder's tries are used up — over to the user.
     step.fixesUsedUp =
-      !!piece &&
-      BUILT.has(piece.source) &&
-      BUILDER_FIXES.has(step.kind) &&
-      !step.canFix;
+      !!piece && BUILT.has(piece.source) && builderFixes && !step.canFix;
     step.canRetry =
-      RETRIES.has(step.kind) &&
-      !(step.kind === "place" && CANT_TELL_WHICH.test(step.error || ""));
+      (RETRIES.has(step.kind) &&
+        !(step.kind === "place" && CANT_TELL_WHICH.test(step.error || ""))) ||
+      (step.kind === "save" && !builderFixes);
   }
 
   function reset(step) {
@@ -1380,13 +1457,22 @@ function createPlanBuild(plan, deps, opts = {}) {
     ]
       .filter(Boolean)
       .join("\n");
+    const saveStep = steps.find((s) => s.id === `save:${w}`);
+    const installed = !!saveStep && saveStep.status === STATUS.done;
     if (build) {
       reset(build);
-      build.fix = { package: made.package || null, problem };
+      build.fix = {
+        package: made.package || null,
+        draft: made.draft || null,
+        installed,
+        problem,
+      };
       // Which try this is ("fixing, try 1 of 2").
       build.fixTry = state.fixes[w];
     }
     if (check) reset(check);
+    const save = steps.find((s) => s.id === `save:${w}`);
+    if (save) reset(save);
     reset(step);
   }
 
