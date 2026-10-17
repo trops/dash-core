@@ -13,6 +13,7 @@ const CLOSED = { open: false, complete: false, widgets: [] };
 const failAll = (prev, err) => ({
   open: true,
   complete: true,
+  action: prev.action,
   widgets: prev.widgets.map((w) => ({
     ...w,
     status: "failed",
@@ -23,43 +24,100 @@ const failAll = (prev, err) => ({
 export function useWidgetInstall(refresh) {
   const [progress, setProgress] = useState(CLOSED);
   const [result, setResult] = useState(null);
+  // A ZIP whose package is installed already: { name, filepath } until the
+  // user says whether to replace it (consolidation Phase 1a-2).
+  const [replace, setReplace] = useState(null);
+
+  const install = useCallback(
+    async (name, filepath) => {
+      const api = window.mainApi;
+      let widgetName = name;
+      const item = { packageName: name, displayName: name };
+      try {
+        setProgress({
+          open: true,
+          complete: false,
+          widgets: [{ ...item, status: "downloading" }],
+        });
+        const installed = await api.widgets.installLocal(name, filepath);
+        if (installed && typeof installed.installedAs === "string") {
+          widgetName = installed.installedAs;
+        }
+        if (refresh) await refresh();
+        setProgress({
+          open: true,
+          complete: true,
+          widgets: [
+            {
+              packageName: widgetName,
+              displayName: widgetName,
+              status: "installed",
+            },
+          ],
+        });
+        setResult({
+          status: "success",
+          message: `Widget "${widgetName}" installed successfully.`,
+        });
+      } catch (err) {
+        setProgress((prev) => failAll(prev, err));
+        setResult({
+          status: "error",
+          message:
+            cleanIpcError(err.message) || "Failed to install widget from ZIP.",
+        });
+      }
+    },
+    [refresh],
+  );
 
   const installFromZip = useCallback(async () => {
     const api = window.mainApi;
     if (!api || !api.dialog) return;
-    let widgetName = null;
+    let filepath = null;
     try {
-      const filepath = await api.dialog.chooseFile(true, ["zip"]);
+      filepath = await api.dialog.chooseFile(true, ["zip"]);
       if (!filepath) return;
-      // "weather.zip" → "weather"
+      // The package names itself (dash.json / package.json), the file's
+      // name only as a fallback.
       const filename = filepath.split("/").pop() || filepath;
-      widgetName = filename.replace(/\.zip$/i, "");
-      const item = { packageName: widgetName, displayName: widgetName };
-      setProgress({
-        open: true,
-        complete: false,
-        widgets: [{ ...item, status: "downloading" }],
-      });
-      await api.widgets.installLocal(widgetName, filepath);
-      if (refresh) await refresh();
+      const seen = api.widgets.inspectLocal
+        ? await api.widgets.inspectLocal(filepath)
+        : { name: filename.replace(/\.zip$/i, ""), installed: false };
+      if (seen.installed) {
+        setReplace({ name: seen.name, filepath });
+        return;
+      }
+      await install(seen.name, filepath);
+    } catch (err) {
+      const name = (filepath || "").split("/").pop() || "Widget";
       setProgress({
         open: true,
         complete: true,
-        widgets: [{ ...item, status: "installed" }],
+        widgets: [
+          {
+            packageName: name,
+            displayName: name,
+            status: "failed",
+            error: cleanIpcError(err.message),
+          },
+        ],
       });
-      setResult({
-        status: "success",
-        message: `Widget "${widgetName}" installed successfully.`,
-      });
-    } catch (err) {
-      setProgress((prev) => failAll(prev, err));
       setResult({
         status: "error",
         message:
           cleanIpcError(err.message) || "Failed to install widget from ZIP.",
       });
     }
-  }, [refresh]);
+  }, [install]);
+
+  const confirmReplace = useCallback(async () => {
+    const pending = replace;
+    setReplace(null);
+    if (pending) await install(pending.name, pending.filepath);
+  }, [replace, install]);
+
+  const cancelReplace = useCallback(() => setReplace(null), []);
 
   const loadFolder = useCallback(async () => {
     const api = window.mainApi;
@@ -70,6 +128,7 @@ export function useWidgetInstall(refresh) {
       setProgress({
         open: true,
         complete: false,
+        action: "load",
         widgets: [
           {
             packageName: "folder",
@@ -105,6 +164,7 @@ export function useWidgetInstall(refresh) {
       setProgress({
         open: true,
         complete: true,
+        action: "load",
         widgets:
           count > 0 || refusedRows.length
             ? [
@@ -164,6 +224,9 @@ export function useWidgetInstall(refresh) {
   return {
     progress,
     result,
+    replace,
+    confirmReplace,
+    cancelReplace,
     installFromZip,
     loadFolder,
     closeProgress: useCallback(() => setProgress(CLOSED), []),

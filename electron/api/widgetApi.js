@@ -85,10 +85,13 @@ const widgetApi = {
   /**
    * Install a widget from a local ZIP file or folder
    *
-   * @param {string} widgetName - Name of the widget
+   * @param {string|null} widgetName - Name of the widget; null for a ZIP
+   *   takes the package's own name (dash.json scope + name, then
+   *   package.json), then the file's
    * @param {string} localPath - Path to ZIP file or widget folder
    * @param {string} dashConfigPath - Optional: path to dash.json metadata
-   * @returns {Promise<Object>} Widget configuration
+   * @returns {Promise<Object>} Widget configuration, with `installedAs`:
+   *   the name it was installed under
    *
    * @example
    * // Install from ZIP
@@ -100,6 +103,15 @@ const widgetApi = {
    * // Install from file:// URL
    * await mainApi.widgets.installLocal('Weather', 'file:///Users/me/weather-widget.zip')
    */
+  /**
+   * What a local ZIP or folder would be installed as, and whether that's
+   * installed already (the screen asks before replacing it).
+   * @param {string} localPath
+   * @returns {Promise<{ name: string, installed: boolean }>}
+   */
+  inspectLocal: (localPath) =>
+    ipcRenderer.invoke("widget:inspect-local", localPath),
+
   installLocal: async (widgetName, localPath, dashConfigPath = null) => {
     try {
       console.log(

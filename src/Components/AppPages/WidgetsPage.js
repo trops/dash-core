@@ -116,6 +116,48 @@ const UsedOn = ({ usage, workspaces, onOpenWorkspace, muted }) => {
   );
 };
 
+/** True when an installed package didn't pass its checks (Phase 1a-2). */
+const failedChecks = (pkg) =>
+  !pkg.isBuiltIn && !pkg.isDraft && !!pkg.checks && pkg.checks.ok === false;
+
+/**
+ * What was checked (consolidation Phase 1a-2): a package that didn't pass
+ * is flagged with every reason — it still works — and a package that
+ * ships its own build says Dash checked its source, not that build.
+ */
+const PackageChecks = ({ pkg, installed }) => {
+  const { muted } = useConfigTokens();
+  const problems = (pkg.checks && pkg.checks.problems) || [];
+  return (
+    <>
+      {failedChecks(pkg) ? (
+        <div data-testid="package-checks" className="flex flex-col gap-1">
+          <span>
+            <StatusBadge state="warning" label="Didn't pass its checks" />
+          </span>
+          <span className={`text-xs ${muted}`}>
+            It still works, but these need fixing:
+          </span>
+          <ul className="flex flex-col gap-0.5">
+            {problems.map((p, i) => (
+              <li key={i} className="text-xs whitespace-pre-wrap">
+                {p}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {installed && pkg.build === "developer" ? (
+        <span className={`text-xs ${muted}`}>
+          {pkg.checks && pkg.checks.sourceChecked === false
+            ? "Runs the code its developer packaged — it came without its source, so Dash couldn't check it."
+            : "Runs the code its developer packaged — Dash checked the source that came with it."}
+        </span>
+      ) : null}
+    </>
+  );
+};
+
 /** A package's details (the right-hand panel). */
 const PackageDetail = ({
   pkg,
@@ -231,6 +273,7 @@ const PackageDetail = ({
       {updateError && installed && pkg.update ? (
         <span className="text-xs text-red-400">{updateError}</span>
       ) : null}
+      <PackageChecks pkg={pkg} installed={installed} />
       {pkg.description ? <p className="text-sm">{pkg.description}</p> : null}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -557,18 +600,27 @@ export const WidgetsPage = ({
   };
 
   // The Create screen's start-without-AI row: browse the registry, install
-  // from a zip or load a folder, right here.
+  // from a zip or load a folder, right here. Each request runs once — the
+  // widget list changes when it installs, and that mustn't run it again
+  // (Phase 1a-2: the file picker opened twice). Only "select" waits for
+  // the list, until its package is in it.
+  const handledRequest = useRef(null);
   useEffect(() => {
     if (!installRequest || !installRequest.action) return;
+    if (handledRequest.current === installRequest.nonce) return;
     if (installRequest.action === "select") {
       const want = String(installRequest.package || "").toLowerCase();
       const pkg = orgs
         .flatMap((o) => o.packages)
         .find((p) => String(p.id).toLowerCase() === want);
       setMode(null);
-      if (pkg) setSelection({ packageId: pkg.id });
+      if (pkg) {
+        setSelection({ packageId: pkg.id });
+        handledRequest.current = installRequest.nonce;
+      }
       return;
     }
+    handledRequest.current = installRequest.nonce;
     pick(installRequest.action);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [installRequest && installRequest.nonce, widgets.length]);
@@ -809,6 +861,15 @@ export const WidgetsPage = ({
                           <StatusBadge state="info" compact label="Update" />
                         </span>
                       ) : null}
+                      {failedChecks(pkg) ? (
+                        <span data-testid="package-checks-failed">
+                          <StatusBadge
+                            state="warning"
+                            compact
+                            label="Didn't pass checks"
+                          />
+                        </span>
+                      ) : null}
                     </button>
                     {expanded ? (
                       <div className="flex flex-col pl-6 pr-1">
@@ -899,7 +960,24 @@ export const WidgetsPage = ({
         }}
         widgets={install.progress.widgets}
         isComplete={install.progress.complete}
+        action={install.progress.action}
         onDone={install.closeProgress}
+      />
+      {/* A ZIP whose package is installed already (Phase 1a-2). */}
+      <ConfirmationModal
+        isOpen={!!install.replace}
+        setIsOpen={(open) => {
+          if (!open) install.cancelReplace();
+        }}
+        title="Replace the installed package?"
+        message={
+          install.replace
+            ? `${install.replace.name} is already installed. Replace it with the one in this file? Its widgets on your dashboards will use the new code.`
+            : ""
+        }
+        confirmLabel="Replace it"
+        onConfirm={install.confirmReplace}
+        onCancel={install.cancelReplace}
       />
       {publishWidget ? (
         <PublishWidgetModal

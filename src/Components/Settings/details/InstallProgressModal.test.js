@@ -32,6 +32,29 @@ test("a failed install shows its whole reason", () => {
   expect(shown).toHaveClass("text-red-500");
 });
 
+// A folder load says what happened in its own words (Phase 1a-2).
+test.each([
+  [["failed"], "Not loaded"],
+  [["installed", "failed"], "Loaded 1 of 2"],
+  [["installed"], "Loaded"],
+])("a folder load's title (%j)", (statuses, title) => {
+  render(
+    <InstallProgressModal
+      isOpen
+      setIsOpen={() => {}}
+      isComplete
+      action="load"
+      onDone={() => {}}
+      widgets={statuses.map((status, i) => ({
+        packageName: `p${i}`,
+        displayName: `P${i}`,
+        status,
+      }))}
+    />,
+  );
+  expect(screen.getByText(title)).toBeInTheDocument();
+});
+
 test.each([
   [["failed"], "Not installed"],
   [["installed", "failed"], "Installed 1 of 2"],

@@ -90,18 +90,16 @@ function botCallsMessage(widgetName, files) {
 }
 
 /**
- * Throw (after removing the package folder) when it calls bots.
+ * Throw when it calls bots. Never deletes the folder: it may be a
+ * developer's own folder (Load a widget from a folder) or the installed
+ * package (the publish check); an install's staged copy is removed by the
+ * install itself (consolidation Phase 1a-2).
  * @param {string} widgetName
  * @param {string} packageDir
  */
 function assertNoBotCalls(widgetName, packageDir) {
   const res = scanWidgetBotCalls(packageDir);
   if (res.ok) return;
-  try {
-    fs.rmSync(packageDir, { recursive: true, force: true });
-  } catch (_e) {
-    // leave it; it isn't registered either way
-  }
   const err = new Error(botCallsMessage(widgetName, res.files));
   err.code = "WIDGET_CALLS_BOTS";
   throw err;

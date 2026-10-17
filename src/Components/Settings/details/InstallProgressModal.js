@@ -17,6 +17,7 @@ import {
  *   widgets      — array of { packageName, displayName, status, error? }
  *   isComplete   — true when all widgets have a terminal status
  *   onDone       — called when user clicks Done
+ *   action       — "install" (default) or "load" (a folder loaded in place)
  */
 export const InstallProgressModal = ({
   isOpen,
@@ -25,6 +26,7 @@ export const InstallProgressModal = ({
   isComplete = false,
   onDone,
   onCancel = null,
+  action = "install",
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
@@ -40,12 +42,17 @@ export const InstallProgressModal = ({
 
   // What happened, once it's done: a refusal isn't "complete".
   const failedCount = widgets.filter((w) => w.status === "failed").length;
+  const loading = action === "load";
   const finishedTitle =
     failedCount === 0
-      ? "Installation Complete"
+      ? loading
+        ? "Loaded"
+        : "Installation Complete"
       : failedCount === widgets.length
-        ? "Not installed"
-        : `Installed ${widgets.length - failedCount} of ${widgets.length}`;
+        ? loading
+          ? "Not loaded"
+          : "Not installed"
+        : `${loading ? "Loaded" : "Installed"} ${widgets.length - failedCount} of ${widgets.length}`;
 
   function statusIcon(status, item) {
     switch (status) {

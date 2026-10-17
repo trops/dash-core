@@ -248,3 +248,43 @@ describe('widgetTitle (design audit: no "My Workspace" rows)', () => {
     expect(widgetTitle({ name: "HTMLViewer" })).toBe("HTML Viewer");
   });
 });
+
+// Consolidation Phase 1a-2: a package carries who built it and its checks.
+describe("widgetOrgs — build and checks", () => {
+  it("takes them from the package's widgets", () => {
+    const checks = { ok: false, problems: ["Hi: nope"] };
+    const orgs = widgetOrgs([
+      {
+        name: "a.b.Hi",
+        packageId: "@a/b",
+        source: "installed",
+        kind: "installed",
+        build: "developer",
+        checks,
+        providers: [],
+        componentNames: [],
+      },
+    ]);
+    const pkg = orgs[0].packages[0];
+    expect(pkg.build).toBe("developer");
+    expect(pkg.checks).toEqual(checks);
+  });
+  it("useInstalledWidgets passes them through from the registry", () => {
+    const src = require("fs").readFileSync(
+      require("path").join(
+        __dirname,
+        "..",
+        "..",
+        "hooks",
+        "useInstalledWidgets.js",
+      ),
+      "utf8",
+    );
+    expect(src).toMatch(
+      /build: reg\.build \|\| null,\s*checks: reg\.checks \|\| null,/,
+    );
+    expect(src).toMatch(
+      /build: w\.build \|\| null,\s*checks: w\.checks \|\| null,/,
+    );
+  });
+});

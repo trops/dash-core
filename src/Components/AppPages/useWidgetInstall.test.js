@@ -1,11 +1,14 @@
 import { renderHook, act } from "@testing-library/react";
 import { useWidgetInstall } from "./useWidgetInstall";
 
-function setup({ zip, folder, results, fail } = {}) {
+function setup({ zip, folder, results, fail, installed, inspect } = {}) {
   const widgets = {
+    inspectLocal: jest
+      .fn()
+      .mockResolvedValue(inspect || { name: "weather", installed: false }),
     installLocal: fail
       ? jest.fn().mockRejectedValue(new Error("bad zip"))
-      : jest.fn().mockResolvedValue(true),
+      : jest.fn().mockResolvedValue(installed || true),
     loadFolder: jest.fn().mockResolvedValue(results || []),
   };
   window.mainApi = {
@@ -29,6 +32,8 @@ describe("useWidgetInstall (app-navigation NAV-008)", () => {
   it("installs a ZIP and reports success", async () => {
     const { result, widgets, refresh } = setup({ zip: "/tmp/weather.zip" });
     await act(async () => result.current.installFromZip());
+    // The package names itself (Phase 1a-2) — main says what as.
+    expect(widgets.inspectLocal).toHaveBeenCalledWith("/tmp/weather.zip");
     expect(widgets.installLocal).toHaveBeenCalledWith(
       "weather",
       "/tmp/weather.zip",
@@ -41,6 +46,60 @@ describe("useWidgetInstall (app-navigation NAV-008)", () => {
     expect(result.current.progress.open).toBe(true);
     expect(result.current.progress.complete).toBe(true);
     expect(result.current.progress.widgets[0].status).toBe("installed");
+  });
+
+  it("names the installed package as the package names itself", async () => {
+    const { result } = setup({
+      zip: "/tmp/widgets-weather-v1.zip",
+      inspect: { name: "@zz/weather", installed: false },
+      installed: { installedAs: "@zz/weather" },
+    });
+    await act(async () => result.current.installFromZip());
+    expect(result.current.result.message).toBe(
+      'Widget "@zz/weather" installed successfully.',
+    );
+    expect(result.current.progress.widgets[0]).toMatchObject({
+      packageName: "@zz/weather",
+      status: "installed",
+    });
+  });
+
+  it("asks before replacing a package that's already installed", async () => {
+    const { result, widgets } = setup({
+      zip: "/tmp/slack.zip",
+      inspect: { name: "@trops/slack", installed: true },
+    });
+    await act(async () => result.current.installFromZip());
+    expect(widgets.installLocal).not.toHaveBeenCalled();
+    expect(result.current.replace).toEqual({
+      name: "@trops/slack",
+      filepath: "/tmp/slack.zip",
+    });
+    await act(async () => result.current.confirmReplace());
+    expect(widgets.installLocal).toHaveBeenCalledWith(
+      "@trops/slack",
+      "/tmp/slack.zip",
+    );
+    expect(result.current.replace).toBeNull();
+  });
+
+  it("keeping the installed package installs nothing", async () => {
+    const { result, widgets } = setup({
+      zip: "/tmp/slack.zip",
+      inspect: { name: "@trops/slack", installed: true },
+    });
+    await act(async () => result.current.installFromZip());
+    await act(async () => result.current.cancelReplace());
+    expect(widgets.installLocal).not.toHaveBeenCalled();
+    expect(result.current.replace).toBeNull();
+    expect(result.current.progress.open).toBe(false);
+  });
+
+  it("a folder load's progress says loaded, not installed", async () => {
+    const results = [{ name: "a", displayName: "A" }];
+    const { result } = setup({ folder: "/tmp/w", results });
+    await act(async () => result.current.loadFolder());
+    expect(result.current.progress.action).toBe("load");
   });
 
   it("reports a failed ZIP install", async () => {

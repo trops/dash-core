@@ -195,16 +195,109 @@ function checksFailed(widgetName, problems, done = "installed") {
 }
 
 /**
+ * Widgets may not start bots directly — only by events the user wires a
+ * bot to (TD-005). The whole package is scanned, bundle included.
+ * → [problem] or null.
+ */
+function botCallProblems(dir) {
+  const res = require("./utils/scanWidgetBotCalls").scanWidgetBotCalls(dir);
+  if (res.ok) return null;
+  return [
+    `It starts your bots directly (${res.files.slice(0, 3).join(", ")}). Widgets may only send events that you wire a bot to, under the bot's "Run on events".`,
+  ];
+}
+
+/**
+ * The app's gate → { problems (null when it passes, or there's no gate),
+ * sourceChecked (false when it found no source to check; undefined
+ * without a gate) }.
+ */
+async function runGate(widgetName, dir) {
+  if (!installGate) return { problems: null, sourceChecked: undefined };
+  const verdict = (await installGate(dir, { widgetName })) || {};
+  // No source beside a shipped build: Dash couldn't check its code.
+  const sourceChecked =
+    verdict.sourceFiles === 0 && findBundlePath(dir) ? false : true;
+  if (verdict.ok) return { problems: null, sourceChecked };
+  return {
+    problems:
+      Array.isArray(verdict.problems) && verdict.problems.length
+        ? verdict.problems.map(String)
+        : ["The checks couldn't run."],
+    sourceChecked,
+  };
+}
+
+// Marks a build Dash made (dist/.dash-build): it's rebuilt from the
+// current source each time, unlike a developer's own build.
+const DASH_BUILD_MARK = ".dash-build";
+function builtByDash(dir) {
+  return fs.existsSync(path.join(dir, "dist", DASH_BUILD_MARK));
+}
+
+/**
+ * A fingerprint of a package's files — every path with its size and date,
+ * nothing read (package.json and dash.json aside: the app writes to them).
+ * The startup check re-checks a package only when this changes.
+ */
+const NOT_FINGERPRINTED = new Set(["package.json", "dash.json"]);
+function codeFingerprint(dir) {
+  const hash = require("crypto").createHash("sha256");
+  const add = (abs, rel) => {
+    let names;
+    try {
+      names = fs.readdirSync(abs, { withFileTypes: true });
+    } catch (_e) {
+      return;
+    }
+    for (const e of names.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      if (e.name === "node_modules" || e.name.startsWith(".")) continue;
+      const childRel = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) {
+        add(path.join(abs, e.name), childRel);
+      } else if (!(rel === "" && NOT_FINGERPRINTED.has(e.name))) {
+        try {
+          const st = fs.statSync(path.join(abs, e.name));
+          hash.update(`${childRel}|${st.size}|${st.mtimeMs}\n`);
+        } catch (_e) {
+          // vanished mid-walk — the next start sees the change
+        }
+      }
+    }
+  };
+  add(dir, "");
+  return hash.digest("hex").slice(0, 32);
+}
+
+/** What an install records: who built the code that runs, and its checks. */
+function checkRecord(dir, { build, sourceChecked }) {
+  const checks = {
+    ok: true,
+    problems: [],
+    checkedAt: new Date().toISOString(),
+    fingerprint: codeFingerprint(dir),
+  };
+  if (sourceChecked !== undefined) checks.sourceChecked = sourceChecked;
+  return { build, checks };
+}
+
+/**
  * A package's checks, run where it sits: no direct bot calls, it builds
  * when it ships no bundle (the build is kept), and it passes the app's
- * gate. Throws a plain-language error when it doesn't.
+ * gate. Throws a plain-language error when it doesn't. Returns who built
+ * the code that runs: "dash" when it was built here from the checked
+ * source, "developer" when the package ships its own build (Dash checked
+ * its source, not its build — consolidation Phase 1a-2).
  */
 async function checkPackage(widgetName, dir, done = "installed") {
-  // Widgets may not start bots directly — only by events the user
-  // wires a bot to (TD-005).
-  require("./utils/scanWidgetBotCalls").assertNoBotCalls(widgetName, dir);
+  const botCalls = botCallProblems(dir);
+  if (botCalls) throw checksFailed(widgetName, botCalls, done);
 
-  if (!findBundlePath(dir)) {
+  // A package that ships no build is built here, and so is one whose
+  // build Dash made (a folder loaded again after its source changed) — a
+  // developer's own build is kept (it may bundle its own libraries).
+  let build = "developer";
+  if (!findBundlePath(dir) || builtByDash(dir)) {
     try {
       await compileWidget(dir);
     } catch (e) {
@@ -214,41 +307,137 @@ async function checkPackage(widgetName, dir, done = "installed") {
         done,
       );
     }
+    try {
+      fs.mkdirSync(path.join(dir, "dist"), { recursive: true });
+      fs.writeFileSync(path.join(dir, "dist", DASH_BUILD_MARK), "");
+    } catch (_e) {
+      // unmarked: it's kept like a developer's build next time
+    }
+    build = "dash";
   }
 
-  if (installGate) {
-    const verdict = (await installGate(dir, { widgetName })) || {};
-    if (!verdict.ok) {
-      const problems =
-        Array.isArray(verdict.problems) && verdict.problems.length
-          ? verdict.problems.map(String)
-          : ["The checks couldn't run."];
-      throw checksFailed(widgetName, problems, done);
-    }
+  const { problems, sourceChecked } = await runGate(widgetName, dir);
+  if (problems) throw checksFailed(widgetName, problems, done);
+  return { build, sourceChecked };
+}
+
+/**
+ * The startup check of an installed package: the same checks, nothing
+ * built or thrown → { ok, problems }.
+ */
+async function reviewPackage(widgetName, dir) {
+  const botCalls = botCallProblems(dir);
+  if (botCalls) return { ok: false, problems: botCalls };
+  try {
+    const { problems, sourceChecked } = await runGate(widgetName, dir);
+    const result = problems
+      ? { ok: false, problems }
+      : { ok: true, problems: [] };
+    if (sourceChecked !== undefined) result.sourceChecked = sourceChecked;
+    return result;
+  } catch (e) {
+    return {
+      ok: false,
+      problems: [`The checks couldn't run: ${(e && e.message) || e}`],
+    };
   }
 }
 
 /**
  * Put a package in place only after it passes: `fill(dir)` writes it into
  * a staging folder, where checkPackage runs. Only then does it replace the
- * installed folder — a refusal leaves the installed version as it was.
+ * installed folder — a refusal leaves the installed version as it was. The
+ * old folder is moved aside first and put back if the new one can't be
+ * moved in, so a failure never leaves nothing installed.
+ * → what the install records (checkRecord).
  */
 async function stageInstall(widgetName, widgetPath, fill) {
   const stagingRoot = path.join(WIDGETS_CACHE_DIR, ".staging");
   fs.mkdirSync(stagingRoot, { recursive: true });
   const staged = fs.mkdtempSync(path.join(stagingRoot, "pkg-"));
+  const aside = `${staged}-old`;
   try {
     await fill(staged);
-    await checkPackage(widgetName, staged);
+    const record = checkRecord(staged, await checkPackage(widgetName, staged));
 
-    if (fs.existsSync(widgetPath)) {
-      fs.rmSync(widgetPath, { recursive: true });
-    }
     fs.mkdirSync(path.dirname(widgetPath), { recursive: true });
-    fs.renameSync(staged, widgetPath);
+    const hadOld = fs.existsSync(widgetPath);
+    if (hadOld) fs.renameSync(widgetPath, aside);
+    try {
+      fs.renameSync(staged, widgetPath);
+    } catch (e) {
+      if (hadOld) fs.renameSync(aside, widgetPath);
+      throw e;
+    }
+    return record;
   } finally {
     fs.rmSync(staged, { recursive: true, force: true });
+    fs.rmSync(aside, { recursive: true, force: true });
   }
+}
+
+/** A widget draft (Widget Builder) — not an installed widget. */
+function isDraftFolder(pkgPath) {
+  if (/[\\/]@ai-built[\\/]draft-[^\\/]+$/.test(pkgPath)) return true;
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(pkgPath, "package.json"), "utf8"),
+    );
+    return !!(pkg && pkg.dash && pkg.dash.draft);
+  } catch (_e) {
+    return false;
+  }
+}
+
+/**
+ * The name a ZIP's package gives itself: dash.json's scope + name, then
+ * package.json's name, then dash.json's name; null when it names itself
+ * nowhere.
+ */
+function packageNameInZip(zip) {
+  const read = (file) => {
+    try {
+      const entry = zip.getEntry(file);
+      return entry ? JSON.parse(entry.getData().toString("utf8")) : null;
+    } catch (_e) {
+      return null;
+    }
+  };
+  // A file can't claim the AI-built scope (the user's own, never checked
+  // as drafts), or a name made of dots.
+  const valid = (n) =>
+    typeof n === "string" &&
+    /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/i.test(n) &&
+    !/^@ai-built\//i.test(n)
+      ? n
+      : null;
+  const dash = read("dash.json") || {};
+  const pkg = read("package.json") || {};
+  if (dash.scope && dash.name && !String(dash.name).startsWith("@")) {
+    const scoped = valid(
+      `@${String(dash.scope).replace(/^@/, "")}/${dash.name}`,
+    );
+    if (scoped) return scoped;
+  }
+  return valid(pkg.name) || valid(dash.name) || null;
+}
+
+/**
+ * The name a local package installs under when none is given: a ZIP's
+ * own name (packageNameInZip), else the file's or folder's name.
+ */
+function localPackageName(resolvedPath) {
+  const own = resolvedPath.endsWith(".zip")
+    ? packageNameInZip(new AdmZip(resolvedPath))
+    : null;
+  if (own) return own;
+  const base = path.basename(resolvedPath).replace(/\.zip$/i, "");
+  if (!base || base.startsWith(".")) {
+    throw new Error(
+      `Can't tell what ${path.basename(resolvedPath)} is called.`,
+    );
+  }
+  return base;
 }
 
 class WidgetRegistry {
@@ -477,6 +666,18 @@ class WidgetRegistry {
    * empty `componentNames` array and silently fail.
    */
   _reregisterOrphan(pkgId, pkgPath) {
+    // A package found on disk is registered only after it passes its
+    // checks (checkInstalled, consolidation Phase 1a-2). Drafts aren't
+    // installed widgets: they're registered as before and never checked.
+    if (!isDraftFolder(pkgPath)) {
+      this.pendingOrphans = this.pendingOrphans || new Map();
+      this.pendingOrphans.set(pkgId, pkgPath);
+      return;
+    }
+    this._registerOrphanEntry(pkgId, pkgPath);
+  }
+
+  _registerOrphanEntry(pkgId, pkgPath, extra = {}) {
     console.log(`[WidgetRegistry] Re-registering orphaned widget: ${pkgId}`);
     const { scope } = parsePackageId(pkgId);
     const entry = {
@@ -486,9 +687,85 @@ class WidgetRegistry {
       path: pkgPath,
       version: null,
       orphaned: true,
+      ...extra,
     };
     enrichEntryFromDisk(entry, pkgPath);
     this.widgets.set(pkgId, entry);
+  }
+
+  /**
+   * Check every installed package once, and again whenever its code
+   * changes (consolidation Phase 1a-2). A package that fails is flagged
+   * with its reasons (entry.checks) and keeps working; a package found on
+   * disk that isn't registered is registered only if it passes. Drafts
+   * aren't checked. The host MUST call this after setInstallGate:
+   * packages found on disk are registered only here. Returns the names
+   * it registered, so the host can tell the screen.
+   * → { checked, failed, registered, refused }
+   */
+  async checkInstalled() {
+    const summary = { checked: [], failed: [], registered: [], refused: [] };
+    let changed = false;
+    for (const [name, entry] of Array.from(this.widgets.entries())) {
+      if (!entry || !entry.path || !fs.existsSync(entry.path)) continue;
+      if (isDraftFolder(entry.path)) continue;
+      const fingerprint = codeFingerprint(entry.path);
+      if (!entry.build) {
+        // Recorded before builds were: AI-built packages are built here;
+        // a package with no build (a dashboard package) has none.
+        entry.build = !findBundlePath(entry.path)
+          ? "none"
+          : name.startsWith("@ai-built/")
+            ? "dash"
+            : "developer";
+        changed = true;
+      }
+      if (entry.checks && entry.checks.fingerprint === fingerprint) continue;
+      const result = await reviewPackage(name, entry.path);
+      entry.checks = {
+        ...result,
+        checkedAt: new Date().toISOString(),
+        fingerprint,
+      };
+      changed = true;
+      summary.checked.push(name);
+      if (!result.ok) {
+        summary.failed.push(name);
+        console.warn(
+          `[WidgetRegistry] ${name} didn't pass its checks (it still works):\n${result.problems
+            .map((p) => `- ${p}`)
+            .join("\n")}`,
+        );
+      }
+    }
+    for (const [pkgId, pkgPath] of Array.from(
+      (this.pendingOrphans || new Map()).entries(),
+    )) {
+      this.pendingOrphans.delete(pkgId);
+      if (this.widgets.has(pkgId) || !fs.existsSync(pkgPath)) continue;
+      const result = await reviewPackage(pkgId, pkgPath);
+      if (!result.ok) {
+        summary.refused.push(pkgId);
+        console.warn(
+          `[WidgetRegistry] ${pkgId} was found in the widgets folder but wasn't loaded — it didn't pass its checks:\n${result.problems
+            .map((p) => `- ${p}`)
+            .join("\n")}`,
+        );
+        continue;
+      }
+      this._registerOrphanEntry(pkgId, pkgPath, {
+        build: pkgId.startsWith("@ai-built/") ? "dash" : "developer",
+        checks: {
+          ...result,
+          checkedAt: new Date().toISOString(),
+          fingerprint: codeFingerprint(pkgPath),
+        },
+      });
+      summary.registered.push(pkgId);
+      changed = true;
+    }
+    if (changed) this.saveRegistry();
+    return summary;
   }
 
   /**
@@ -607,6 +884,21 @@ class WidgetRegistry {
   }
 
   /**
+   * What a local ZIP or folder would be installed as, and whether a
+   * package by that name is installed already — the screen asks before
+   * replacing one (consolidation Phase 1a-2).
+   * @returns {{ name: string, installed: boolean }}
+   */
+  inspectLocalPath(localPath) {
+    const resolvedPath = this.resolveLocalPath(localPath);
+    if (!fs.existsSync(resolvedPath)) {
+      throw new Error(`Local path not found: ${resolvedPath}`);
+    }
+    const name = localPackageName(resolvedPath);
+    return { name, installed: this.widgets.has(name) };
+  }
+
+  /**
    * Install a widget from a local ZIP file or folder path
    * @param {string} widgetName - Name of the widget
    * @param {string} localPath - Path to ZIP file or widget folder
@@ -626,6 +918,10 @@ class WidgetRegistry {
       if (!fs.existsSync(resolvedPath)) {
         throw new Error(`Local path not found: ${resolvedPath}`);
       }
+
+      // No name given (Install a widget from file): the package's own,
+      // then the file's (consolidation Phase 1a-2).
+      if (!widgetName) widgetName = localPackageName(resolvedPath);
 
       // Scoped names (e.g. "@trops/slack") get nested dirs: widgets/@trops/slack/
       const widgetPath = path.join(WIDGETS_CACHE_DIR, ...widgetName.split("/"));
@@ -653,7 +949,7 @@ class WidgetRegistry {
           }
         }
       }
-      await stageInstall(widgetName, widgetPath, (staged) => {
+      const record = await stageInstall(widgetName, widgetPath, (staged) => {
         if (isDirectory) {
           fs.cpSync(resolvedPath, staged, { recursive: true });
         } else {
@@ -690,13 +986,18 @@ class WidgetRegistry {
         }
       }
 
-      this.registerWidget(widgetName, config, widgetPath, false);
+      this.registerWidget(
+        widgetName,
+        { ...config, ...record },
+        widgetPath,
+        false,
+      );
 
       if (autoRegister) {
         await this.loadWidgetComponents(widgetName, widgetPath);
       }
 
-      return config;
+      return { ...config, installedAs: widgetName };
     } catch (error) {
       console.error(
         `[WidgetRegistry] Error installing local widget ${widgetName}:`,
@@ -795,8 +1096,12 @@ class WidgetRegistry {
 
         // Loaded in place, so checked in place: bot calls (TD-005), the
         // build, the app's gate. A refusal is listed with its reason.
+        let record;
         try {
-          await checkPackage(entry.name, widgetPath, "loaded");
+          record = checkRecord(
+            widgetPath,
+            await checkPackage(entry.name, widgetPath, "loaded"),
+          );
         } catch (e) {
           console.warn(`[WidgetRegistry] ${e.message}`);
           refused.push(entry.name);
@@ -806,7 +1111,12 @@ class WidgetRegistry {
         }
 
         const config = await this.loadWidgetConfig(entry.name, widgetPath);
-        this.registerWidget(entry.name, config, widgetPath, false);
+        this.registerWidget(
+          entry.name,
+          { ...config, ...record },
+          widgetPath,
+          false,
+        );
 
         if (autoRegister) {
           await this.loadWidgetComponents(entry.name, widgetPath);
@@ -999,7 +1309,7 @@ class WidgetRegistry {
       // Scoped names (e.g. "@trops/slack") get nested dirs: widgets/@trops/slack/
       const widgetPath = path.join(WIDGETS_CACHE_DIR, ...widgetName.split("/"));
 
-      await stageInstall(widgetName, widgetPath, (staged) => {
+      const record = await stageInstall(widgetName, widgetPath, (staged) => {
         validateZipEntries(zip, staged);
         zip.extractAllTo(staged, true);
       });
@@ -1028,7 +1338,12 @@ class WidgetRegistry {
         config = { ...config, ...dashConfig };
       }
 
-      this.registerWidget(widgetName, config, widgetPath, false);
+      this.registerWidget(
+        widgetName,
+        { ...config, ...record },
+        widgetPath,
+        false,
+      );
 
       if (autoRegister) {
         await this.loadWidgetComponents(widgetName, widgetPath);
@@ -1556,15 +1871,20 @@ function setupWidgetRegistryHandlers() {
     },
   );
 
+  ipcMain.handle("widget:inspect-local", (event, localPath) =>
+    getWidgetRegistry().inspectLocalPath(localPath),
+  );
+
   ipcMain.handle(
     "widget:install-local",
-    async (event, widgetName, localPath, dashConfigPath) => {
+    async (event, requestedName, localPath, dashConfigPath) => {
       const config = await getWidgetRegistry().installFromLocalPath(
-        widgetName,
+        requestedName,
         localPath,
         true,
         dashConfigPath,
       );
+      const widgetName = config.installedAs || requestedName;
 
       BrowserWindow.getAllWindows().forEach((win) => {
         win.webContents.send("widget:installed", {

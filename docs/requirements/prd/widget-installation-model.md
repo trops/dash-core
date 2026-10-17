@@ -276,6 +276,56 @@ All ZIP extractions (registry download, local install, dashboard import) pass th
 -   Registry downloads enforce HTTPS-only URLs
 -   OAuth device flow for registry publishing (no stored credentials)
 
+### Install Gate (consolidation Phase 1a, 1a-2 — 2026-10-16)
+
+Nothing is installed, loaded or published unchecked.
+
+-   **Every install is staged and checked first** (`stageInstall` →
+    `checkPackage` in `electron/widgetRegistry.js`): registry downloads and
+    updates, Install a widget from file, the Widget Builder. The package is
+    extracted into `widgets/.staging/`, and only a pass replaces the installed
+    folder. The old folder is moved aside and put back if the new one can't be
+    moved in, so a refusal or a failure keeps the installed version.
+-   **The checks:** no direct bot calls (TD-005, the whole package, bundle
+    included); a package that ships no build must build here; and the app's
+    gate (`setInstallGate` — dash-electron's `installGate.cjs`), which runs
+    the Widget Builder's code checks on the whole package's source at any
+    depth: every widget and every other .js/.jsx file (shared `utils/`,
+    `hooks/`, `contexts/` included). Builds (`dist/`, the root bundle) and
+    `node_modules` aren't source; tests and stories are skipped unless
+    something imports them.
+-   **Load a widget from a folder** and **Publish** run the same checks in
+    place. A check never deletes the folder it checks. A folder with no build
+    is built in place, and that build is marked (`dist/.dash-build`) so it's
+    rebuilt from the current source on every load; a developer's own build
+    is left alone.
+-   **A refusal lists every reason**, worded for what was refused ("wasn't
+    installed / loaded / published — it didn't pass its checks: …").
+-   **Who built the code that runs** is recorded on each registry entry
+    (`build`): `"dash"` when the app built it from the checked source, or
+    `"developer"` when the package ships its own build. A widget package may
+    bundle any libraries its developer chose, so its build is kept. The
+    Widgets page then says "Built by its developer — Dash checked its source,
+    not its build." Building such packages here with their own libraries is
+    Phase 1a-3, and needs publishing to record the libraries a package uses.
+    A package with a build but no source says Dash couldn't check its code
+    (`checks.sourceChecked: false`); one with no code at all (a dashboard
+    package) records `build: "none"` and shows no note.
+-   **Installed packages are checked at startup** (`checkInstalled`, called by
+    the host after `setInstallGate`), once and again whenever their code
+    changes (`checks.fingerprint`: each file's path, size and date — nothing
+    is read). A package that fails is flagged on the
+    Widgets page with its reasons and keeps working. A package found on disk
+    that isn't in the registry is registered only if it passes (the host then
+    announces it with `widget:installed`); its files are left in place either
+    way. The host must call `checkInstalled`. Widget drafts (`@ai-built/draft-*`,
+    `dash.draft`) aren't checked.
+-   **A ZIP installed without a name** takes the package's own name (dash.json
+    scope + name, then package.json, then dash.json), and the file's name
+    only as a fallback. A file can't claim the `@ai-built` scope or a name
+    made of dots. When a package by that name is installed already, the
+    screen asks before replacing it (`inspectLocalPath` / `widget:inspect-local`).
+
 ---
 
 ## First-Run Experience
@@ -302,6 +352,9 @@ The previous "Welcome Prompt" (Kitchen Sink sample workspace) has been removed. 
 | 2026-03-20 | Wizard auto-installs widgets before layout creation | Prevents broken layout references to uninstalled widgets            |
 | 2026-04-24 | Layout items record `packageId` at widget-add time  | Lets publish attribute each instance to the exact source package — no guessing when two installed packages both declare the same component (see `LayoutModel.js`, `handleDropWidgetFromSidebar`, `dash:place-widget-in-cell`, `dash:swap-widget-in-cell`) |
 | 2026-04-24 | Registry re-enriches `componentNames` on every startup | `backfillMetadataFromDisk` always runs against each installed entry. Previously it skipped entries whose cache looked populated, so a package that gained widgets after first install never advertised them — publish attribution fell through to singletons |
+| 2026-10-16 | Every install, folder load and publish is checked first; a refusal keeps the installed version | One gate for every way in (consolidation roadmap Phase 1a) |
+| 2026-10-16 | A package's own build is kept, and recorded as the developer's | Widget packages may bundle any library; rebuilding with only the app's libraries would break that (Phase 1a-2; building with the package's own libraries is 1a-3) |
+| 2026-10-16 | Installed widgets that fail the checks are flagged, not disabled | Nothing the user relies on stops working without warning (Phase 1a-2) |
 | 2026-04-24 | Publish-side + install-side sanitize `providers` arrays | `generateWidgetRegistryManifest` and `enrichEntryFromDisk` drop falsy/non-object entries. Consumers (`getUserConfigurableProviders`, `useMemo` flatMaps) ALSO null-guard — three layers so a single sparse array never takes the renderer down |
 
 ---
@@ -323,6 +376,10 @@ and `electron/schema/dashboardConfigUtils.test.js` lock them in.
     cached list (enrichEntryFromDisk only overwrites when the new
     list is longer), so NEW widgets surface; deletions require a
     reinstall.
+-   **A check never deletes what it checks.** A folder loaded in place is
+    the developer's own, and the publish check runs on the installed package.
+    Only an install's staged copy is removed, by the install itself
+    (`electron/widgetRegistryChecks.test.js`).
 -   **`providers` arrays can contain `null` entries.** Older or
     author-malformed packages occasionally do. Every walker must
     filter before reading per-entry properties.
@@ -335,3 +392,4 @@ and `electron/schema/dashboardConfigUtils.test.js` lock them in.
 | ------- | ---------- | --------- | --------------------------------------------------------------------------------------------- |
 | 1.0     | 2026-03-20 | Core Team | Initial version -- documents registry-first model, scoped identity, three installation tracks |
 | 1.1     | 2026-04-24 | Core Team | Adds `packageId` on layout items, registry cache refresh-on-startup, and three-layer sparse-providers sanitization. See dash-core v0.1.425–v0.1.427. |
+| 1.2     | 2026-10-16 | Core Team | Install gate: staged + checked installs, folder loads and publishes (v0.1.785); who built it, startup checks, every file checked, safe swap, ZIPs named by their package, checks never delete (Phase 1a-2). |
