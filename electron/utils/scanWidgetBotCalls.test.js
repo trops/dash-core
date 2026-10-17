@@ -100,12 +100,13 @@ describe("every install path runs the scan (TD-005)", () => {
   it("checkPackage runs the scan, and every install path runs checkPackage", () => {
     assert.match(
       reg,
-      /async function checkPackage\(widgetName, dir, done = "installed"\) \{[\s\S]{0,300}botCallProblems\(dir\)/,
+      /async function checkPackage\([\s\S]{0,200}?\) \{[\s\S]{0,300}botCallProblems\(dir\)/,
     );
     // stageInstall (installFromLocalPath, downloadWidget) and the folder loop.
-    assert.match(reg, /await checkPackage\(widgetName, staged\)/);
+    assert.match(reg, /await checkPackage\(widgetName, staged[,)]/);
     assert.equal(
-      (reg.match(/await stageInstall\(widgetName, widgetPath/g) || []).length,
+      (reg.match(/await stageInstall\(\s*widgetName,\s*widgetPath/g) || [])
+        .length,
       2,
     );
   });

@@ -612,7 +612,40 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
       }
     }
 
-    // 3.6 The same checks as an install (consolidation Phase 1a): it
+    // 3.6 Record the libraries its source imports, with versions, in its
+    //     package.json — installers download them and build the checked
+    //     source with them (consolidation Phase 1a-3). A library that isn't
+    //     installed here can't be recorded, so it isn't published. Before
+    //     the checks, so they build with the recorded libraries.
+    {
+      const { libraryDependencies } = require("../utils/libraryImports");
+      const { libraryPaths } = require("../widgetCompiler");
+      const libs = libraryDependencies(widget.path, libraryPaths(widget.path));
+      if (libs.missing.length) {
+        const many = libs.missing.length > 1;
+        return {
+          success: false,
+          error: `${packageId} wasn't published — it uses ${libs.missing
+            .map((n) => `"${n}"`)
+            .join(
+              ", ",
+            )}, which ${many ? "aren't" : "isn't"} installed here, so Dash can't record ${many ? "them" : "it"} for the people who install it. Remove ${many ? "those imports" : "that import"}, or publish from where the package is developed (with ${many ? "them" : "it"} installed).`,
+        };
+      }
+      if (Object.keys(libs.dependencies).length) {
+        pkgJson.dependencies = libs.dependencies;
+        let onDisk = {};
+        try {
+          onDisk = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
+        } catch (_e) {
+          onDisk = { ...pkgJson };
+        }
+        onDisk.dependencies = libs.dependencies;
+        fs.writeFileSync(pkgJsonPath, JSON.stringify(onDisk, null, 2) + "\n");
+      }
+    }
+
+    // 3.7 The same checks as an install (consolidation Phase 1a): it
     //     builds, starts no bots, and passes the app's code checks —
     //     before the version is bumped or anything is sent.
     try {
@@ -755,9 +788,21 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
       try {
         await compileWidget(sourceDir);
       } catch (compileErr) {
+        // Nothing was sent: put the version back.
+        if (newVersion !== previousVersion) {
+          pkgJson.version = previousVersion;
+          writeWidgetMetadataVersion(
+            pkgJsonPath,
+            dashJsonPath,
+            previousVersion,
+          );
+        }
+        const message = (compileErr && compileErr.message) || "";
         return {
           success: false,
-          error: `Widget compilation failed: ${compileErr.message}. Fix the source error and republish; otherwise installers won't be able to load the widget.`,
+          error: /Couldn't (?:reach|download)|took too long/.test(message)
+            ? `It wasn't published — publishing builds it with its libraries, which needs the internet: ${message}`
+            : `Widget compilation failed: ${message}. Fix the source error and republish; otherwise installers won't be able to load the widget.`,
           manifest,
         };
       }

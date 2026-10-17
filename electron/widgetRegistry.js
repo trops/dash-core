@@ -270,7 +270,7 @@ function codeFingerprint(dir) {
 }
 
 /** What an install records: who built the code that runs, and its checks. */
-function checkRecord(dir, { build, sourceChecked }) {
+function checkRecord(dir, { build, sourceChecked, rebuildError }) {
   const checks = {
     ok: true,
     problems: [],
@@ -278,6 +278,7 @@ function checkRecord(dir, { build, sourceChecked }) {
     fingerprint: codeFingerprint(dir),
   };
   if (sourceChecked !== undefined) checks.sourceChecked = sourceChecked;
+  if (rebuildError) checks.rebuildError = rebuildError;
   return { build, checks };
 }
 
@@ -288,8 +289,18 @@ function checkRecord(dir, { build, sourceChecked }) {
  * the code that runs: "dash" when it was built here from the checked
  * source, "developer" when the package ships its own build (Dash checked
  * its source, not its build — consolidation Phase 1a-2).
+ *
+ * rebuild (registry installs, Phase 1a-3): a package that ships its own
+ * build is built here too, from the checked source with its own listed
+ * libraries; if that fails its developer's build is kept and the reason
+ * returned as rebuildError.
  */
-async function checkPackage(widgetName, dir, done = "installed") {
+async function checkPackage(
+  widgetName,
+  dir,
+  done = "installed",
+  { rebuild = false } = {},
+) {
   const botCalls = botCallProblems(dir);
   if (botCalls) throw checksFailed(widgetName, botCalls, done);
 
@@ -297,6 +308,15 @@ async function checkPackage(widgetName, dir, done = "installed") {
   // build Dash made (a folder loaded again after its source changed) — a
   // developer's own build is kept (it may bundle its own libraries).
   let build = "developer";
+  let rebuildError = null;
+  const markDashBuild = () => {
+    try {
+      fs.mkdirSync(path.join(dir, "dist"), { recursive: true });
+      fs.writeFileSync(path.join(dir, "dist", DASH_BUILD_MARK), "");
+    } catch (_e) {
+      // unmarked: it's kept like a developer's build next time
+    }
+  };
   if (!findBundlePath(dir) || builtByDash(dir)) {
     try {
       await compileWidget(dir);
@@ -307,18 +327,34 @@ async function checkPackage(widgetName, dir, done = "installed") {
         done,
       );
     }
-    try {
-      fs.mkdirSync(path.join(dir, "dist"), { recursive: true });
-      fs.writeFileSync(path.join(dir, "dist", DASH_BUILD_MARK), "");
-    } catch (_e) {
-      // unmarked: it's kept like a developer's build next time
-    }
+    markDashBuild();
     build = "dash";
+  } else if (rebuild) {
+    // Only with the libraries it lists, never the app's copies: a
+    // package that uses libraries without listing them keeps its
+    // developer's build until it's republished.
+    const { listedLibraries } = require("./widgetLibraries");
+    const { findLibraryImports } = require("./utils/libraryImports");
+    const imports = listedLibraries(dir) ? [] : findLibraryImports(dir);
+    if (imports.length) {
+      rebuildError = `It doesn't list the libraries it uses (${imports.join(", ")}).`;
+    } else {
+      try {
+        if (await compileWidget(dir, { ownLibrariesOnly: true })) {
+          markDashBuild();
+          build = "dash";
+        }
+      } catch (e) {
+        rebuildError = (e && e.message) || "It didn't build here.";
+      }
+    }
   }
 
   const { problems, sourceChecked } = await runGate(widgetName, dir);
   if (problems) throw checksFailed(widgetName, problems, done);
-  return { build, sourceChecked };
+  return rebuildError
+    ? { build, sourceChecked, rebuildError }
+    : { build, sourceChecked };
 }
 
 /**
@@ -351,14 +387,17 @@ async function reviewPackage(widgetName, dir) {
  * moved in, so a failure never leaves nothing installed.
  * → what the install records (checkRecord).
  */
-async function stageInstall(widgetName, widgetPath, fill) {
+async function stageInstall(widgetName, widgetPath, fill, options = {}) {
   const stagingRoot = path.join(WIDGETS_CACHE_DIR, ".staging");
   fs.mkdirSync(stagingRoot, { recursive: true });
   const staged = fs.mkdtempSync(path.join(stagingRoot, "pkg-"));
   const aside = `${staged}-old`;
   try {
     await fill(staged);
-    const record = checkRecord(staged, await checkPackage(widgetName, staged));
+    const record = checkRecord(
+      staged,
+      await checkPackage(widgetName, staged, "installed", options),
+    );
 
     fs.mkdirSync(path.dirname(widgetPath), { recursive: true });
     const hadOld = fs.existsSync(widgetPath);
@@ -1309,10 +1348,17 @@ class WidgetRegistry {
       // Scoped names (e.g. "@trops/slack") get nested dirs: widgets/@trops/slack/
       const widgetPath = path.join(WIDGETS_CACHE_DIR, ...widgetName.split("/"));
 
-      const record = await stageInstall(widgetName, widgetPath, (staged) => {
-        validateZipEntries(zip, staged);
-        zip.extractAllTo(staged, true);
-      });
+      // A registry package is built here from its checked source, with
+      // its own listed libraries (consolidation Phase 1a-3).
+      const record = await stageInstall(
+        widgetName,
+        widgetPath,
+        (staged) => {
+          validateZipEntries(zip, staged);
+          zip.extractAllTo(staged, true);
+        },
+        { rebuild: true },
+      );
       console.log(`[WidgetRegistry] Extracted widget to: ${widgetPath}`);
 
       // Same scan as installFromLocalPath: record which MCP tools the

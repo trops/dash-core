@@ -35,8 +35,8 @@ for (const method of ["downloadWidget", "installFromLocalPath"]) {
     const body = methodBody(method);
     // Extraction happens in stageInstall (staged + checked, then moved into
     // widgetPath — install gate, Phase 1a).
-    const extract = body.lastIndexOf(
-      "await stageInstall(widgetName, widgetPath",
+    const extract = body.search(
+      /await stageInstall\(\s*widgetName,\s*widgetPath/,
     );
     const scan = body.indexOf("applyScanToPackageJson(widgetPath)");
     const load = body.indexOf("this.loadWidgetConfig(");

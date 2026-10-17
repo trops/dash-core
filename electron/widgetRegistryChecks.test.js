@@ -533,4 +533,105 @@ describe("what was checked is recorded honestly", () => {
   });
 });
 
+// Registry installs build from the checked source (consolidation 1a-3);
+// a package that can't be built here keeps its developer's build.
+describe("a registry install builds from source", () => {
+  beforeEach(passAll);
+  after(() => setInstallGate(null));
+  const { checkPackage } = require("./widgetRegistry");
+
+  it("a package that ships a build and builds here runs Dash's build", async () => {
+    const dir = makePackage("from-source");
+    const res = await checkPackage("@zz/rebuilt", dir, "installed", {
+      rebuild: true,
+    });
+    assert.equal(res.build, "dash");
+    assert.match(
+      fs.readFileSync(path.join(dir, "dist", "index.cjs.js"), "utf8"),
+      /from-source/,
+    );
+  });
+
+  it("one that can't be built here keeps its developer's build, saying why", async () => {
+    const dir = makePackage("x");
+    fs.writeFileSync(
+      path.join(dir, "widgets", "Hello.js"),
+      'import thing from "zz-no-such-library";\nexport default function Hello() { return thing; }',
+    );
+    const res = await checkPackage("@zz/kept", dir, "installed", {
+      rebuild: true,
+    });
+    assert.equal(res.build, "developer");
+    assert.match(res.rebuildError, /zz-no-such-library/);
+    assert.equal(
+      fs.readFileSync(path.join(dir, "index.cjs.js"), "utf8"),
+      "module.exports = {};",
+    );
+    assert.equal(fs.existsSync(path.join(dir, "dist", "index.cjs.js")), false);
+  });
+
+  it("one that doesn't list its libraries isn't rebuilt with the app's — its developer's build is kept", async () => {
+    const dir = makePackage("x");
+    // adm-zip is one of the app's own libraries.
+    fs.writeFileSync(
+      path.join(dir, "widgets", "Hello.js"),
+      'import Z from "adm-zip";\nexport default function Hello() { return Z; }',
+    );
+    const res = await checkPackage("@zz/unlisted", dir, "installed", {
+      rebuild: true,
+    });
+    assert.equal(res.build, "developer");
+    assert.match(
+      res.rebuildError,
+      /doesn't list the libraries it uses \(adm-zip\)/,
+    );
+    assert.equal(fs.existsSync(path.join(dir, "dist", "index.cjs.js")), false);
+  });
+
+  it("one whose listed libraries can't be fetched keeps its developer's build", async () => {
+    const dir = makePackage("x");
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({
+        name: "@zz/l",
+        dependencies: { "zz-git": "git+https://example.com/x.git" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(dir, "widgets", "Hello.js"),
+      'import G from "zz-git";\nexport default function Hello() { return G; }',
+    );
+    const res = await checkPackage("@zz/listed", dir, "installed", {
+      rebuild: true,
+    });
+    assert.equal(res.build, "developer");
+    assert.match(res.rebuildError, /can't be downloaded/);
+  });
+
+  it("what couldn't be built is recorded with the install", () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, "widgetRegistry.js"),
+      "utf8",
+    );
+    assert.match(
+      src,
+      /if \(rebuildError\) checks\.rebuildError = rebuildError;/,
+    );
+  });
+
+  it("registry downloads ask for it; file and folder installs don't", () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, "widgetRegistry.js"),
+      "utf8",
+    );
+    const dl = src.slice(src.indexOf("async downloadWidget("));
+    assert.match(dl, /stageInstall\([\s\S]{0,300}\{ rebuild: true \}/);
+    const local = src.slice(
+      src.indexOf("async installFromLocalPath("),
+      src.indexOf("isWidgetFolder(dirPath)"),
+    );
+    assert.doesNotMatch(local, /rebuild: true/);
+  });
+});
+
 after(() => fs.rmSync(root, { recursive: true, force: true }));
