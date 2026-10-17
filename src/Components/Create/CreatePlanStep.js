@@ -381,7 +381,7 @@ export const CreatePlanStep = ({
         ...m,
         {
           who: "note",
-          text: `Can't plan right now: ${res.reason}. Resume the Planner on the Bots page › Dash team.`,
+          text: `Can't plan right now: ${res.reason}. Turn the Planner on in the Bots page › Dash team.`,
         },
       ]);
       return;

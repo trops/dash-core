@@ -254,7 +254,7 @@ export const TeamImportReview = ({
       >
         <span className={`text-xs ${muted}`}>
           {error ||
-            "Bots are added paused — nothing runs until you resume them."}
+            "Bots are added paused — nothing runs until you turn them on."}
         </span>
         <div className="flex flex-row gap-2">
           <Button3 title="Cancel" size="sm" onClick={onCancel} />

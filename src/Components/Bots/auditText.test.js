@@ -70,7 +70,7 @@ test("access, pause and stop", () => {
     "Writer has to ask before using send_email on Gmail again",
   );
   expect(auditSentence({ type: "pause-bot", ...bot })).toBe("Paused Writer");
-  expect(auditSentence({ type: "resume-all" })).toBe("Resumed all bots");
+  expect(auditSentence({ type: "resume-all" })).toBe("Turned all bots back on");
   expect(auditSentence({ type: "run-stopped", ...bot })).toBe(
     "Stopped Writer's run",
   );

@@ -86,11 +86,11 @@ function sentence(entry) {
     case "pause-bot":
       return `Paused ${botOf(e)}`;
     case "resume-bot":
-      return `Resumed ${botOf(e)}`;
+      return `Turned on ${botOf(e)}`;
     case "pause-all":
       return "Paused all bots";
     case "resume-all":
-      return "Resumed all bots";
+      return "Turned all bots back on";
     case "run-stopped":
       return `Stopped ${possessive(botOf(e))} run`;
     case "runs-interrupted": {

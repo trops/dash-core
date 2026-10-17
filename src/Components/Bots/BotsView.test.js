@@ -903,7 +903,7 @@ describe("BotsView — team export/import (TEAM-006/007 slice 1)", () => {
     );
     expect(
       await screen.findByText(
-        "Added 1 paused bot from Daily Brief. Resume it when you're ready.",
+        "Added 1 paused bot from Daily Brief. Turn it on when you're ready.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText("Import team: Daily Brief")).toBeNull();
@@ -1156,7 +1156,7 @@ describe("BotsView — install from the registry (TEAM-007 slice 3b)", () => {
     expect(installTeam).not.toHaveBeenCalled();
     expect(
       await screen.findByText(
-        "Added 1 paused bot from Daily Brief (test). Resume it when you're ready.",
+        "Added 1 paused bot from Daily Brief (test). Turn it on when you're ready.",
       ),
     ).toBeInTheDocument();
     expect(team.refresh).toHaveBeenCalled();
@@ -1263,5 +1263,50 @@ describe("BotsView — show bots on the dashboard (TEAM-012)", () => {
         botId: "bot_new",
       }),
     );
+  });
+});
+
+// Consolidation Phase 1d: a paused bot is turned on with Turn on; Run now
+// on it is a test run that ends with "It worked — turn it on?".
+describe("BotsView — a paused bot (Phase 1d)", () => {
+  const pausedTeam = () =>
+    makeTeam({
+      statusOf: (id) => (id === "b2" ? "Paused" : "Idle"),
+    });
+  it("Turn on, not Resume", async () => {
+    const { api } = setup({ team: pausedTeam() });
+    fireEvent.click(within(teamList()).getByText("CRM Sync"));
+    // The header's (the chat's paused note has one too).
+    fireEvent.click(screen.getAllByRole("button", { name: "Turn on" })[0]);
+    await waitFor(() => expect(api.resumeBot).toHaveBeenCalledWith("b2"));
+    expect(screen.queryByRole("button", { name: "Resume" })).toBeNull();
+  });
+  it("Run now on a paused bot is a test run — a pass offers Turn on", async () => {
+    const { api } = setup({ team: pausedTeam() });
+    fireEvent.click(within(teamList()).getByText("CRM Sync"));
+    fireEvent.click(screen.getByText("Run now"));
+    const note = await screen.findByTestId("bot-test-run");
+    expect(note).toHaveTextContent(
+      "It worked. CRM Sync is still paused — turn it on?",
+    );
+    fireEvent.click(within(note).getByRole("button", { name: "Turn on" }));
+    await waitFor(() => expect(api.resumeBot).toHaveBeenCalledWith("b2"));
+  });
+  it("a test run that fails says so, and it stays paused", async () => {
+    setup({
+      team: pausedTeam(),
+      apiOver: {
+        run: jest
+          .fn()
+          .mockResolvedValue({ status: "failed", error: "no tools" }),
+      },
+    });
+    fireEvent.click(within(teamList()).getByText("CRM Sync"));
+    fireEvent.click(screen.getByText("Run now"));
+    const note = await screen.findByTestId("bot-test-run");
+    expect(note).toHaveTextContent(
+      "The test run failed: no tools. CRM Sync stays paused.",
+    );
+    expect(within(note).queryByRole("button", { name: "Turn on" })).toBeNull();
   });
 });

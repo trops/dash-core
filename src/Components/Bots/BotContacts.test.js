@@ -203,12 +203,12 @@ test("an open request with no bot (tray: Open Bots panel) shows the list", async
   expect(await screen.findByTestId("bot-contacts")).toBeInTheDocument();
 });
 
-test("a paused bot: Resume from its chat", async () => {
+test("a paused bot: Turn on from its chat", async () => {
   const c = contacts({ paused: new Set(["is"]) });
   render(<BotContacts contacts={c} workspaces={workspaces} />);
   fireEvent.click(screen.getByRole("button", { name: /^Inbox Sorter:/ }));
   expect(await screen.findByTestId("bot-chat-paused")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+  fireEvent.click(screen.getByRole("button", { name: "Turn on" }));
   expect(c.setBotPaused).toHaveBeenCalledWith("is", false);
 });
 

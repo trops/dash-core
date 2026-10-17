@@ -100,7 +100,7 @@ export const AskStep = ({
       note(
         to
           ? res.reason
-          : `Can't answer right now: ${res.reason}. Resume the Planner on the Bots page › Dash team.`,
+          : `Can't answer right now: ${res.reason}. Turn the Planner on in the Bots page › Dash team.`,
       );
       return;
     }

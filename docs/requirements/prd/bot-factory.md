@@ -1990,6 +1990,13 @@ for await (const event of engine.run({
 
 ---
 
+## Saving and turning on a bot (consolidation Phase 1d, 2026-10-16)
+
+-   **One check for every save, before anything is written** (`electron/bots/checkBot.js`, run in `botController.save` — which the Create bot form, the Bots view, Manage › Bots, accepted lead drafts, plan builds and team imports all use): the bot's shape; each schedule is a valid cron (a bad one used to be saved and then fail to schedule); each connection it uses is one the user has (one that isn't running is fine); a chosen AI provider is one the app knows; a widget trigger names a widget on that dashboard (whether it sends the event is checked where triggers are made — plan builds and the trigger picker); a bot trigger names a bot that exists. Only what's new or changed is held to it — an old dead trigger or removed connection warns, so the bot can still be edited. A refusal lists every reason.
+-   **Every new bot starts paused** until the user turns it on — imports already did. The Dash team and leads are the app's own and aren't saved this way. "Resume" reads **Turn on**.
+-   **Run now on a paused bot is a test run:** it runs (tools and all) and the bot stays paused; a pass offers **Turn on** (Bots view, Manage › Bots, the plan-build end screen). Not while everything is paused. Manage › Bots has Turn on / Pause, and every Run now says what happened.
+-   A schedule saved before this that isn't valid can't stop the app from starting: that bot's schedule is skipped and logged.
+
 ## Known Limitations
 
 These are inherent and documented rather than fixed:
@@ -2225,3 +2232,4 @@ These are inherent and documented rather than fixed:
 | 1.9     | 2026-09-27 | John   | Bot templates as registry assets; dashboard packages include bots; widget companion bots; launch template set |
 | 1.10    | 2026-09-27 | John   | Install-time access review with partial grants and Limited bots; required/optional tools with purpose in templates |
 | 1.11    | 2026-09-27 | John   | Required tools checked by default at install; optional unchecked |
+| 1.12    | 2026-10-16 | John   | Phase 1d: one checkBot for every save (cron, connections, AI provider, triggers) before anything is written; new bots start paused; Run now on a paused bot is a test run; Turn on |

@@ -1383,7 +1383,7 @@ const DashboardStageInner = ({
       new CustomEvent("dash:notify", {
         detail: {
           type: "success",
-          message: `Created ${(saved && saved.name) || "the bot"}.`,
+          message: `Created ${(saved && saved.name) || "the bot"}. It's paused until you turn it on.`,
         },
       }),
     );

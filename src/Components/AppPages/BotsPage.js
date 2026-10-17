@@ -74,8 +74,8 @@ const StatusLabel = ({ status, muted }) => {
   );
 };
 
-/** The bot's latest run, fetched when it's selected. */
-function useLastRun(botId) {
+/** The bot's latest run, fetched when it's selected — and again after a run here. */
+function useLastRun(botId, refreshKey = 0) {
   const [run, setRun] = useState(null);
   useEffect(() => {
     let alive = true;
@@ -92,7 +92,7 @@ function useLastRun(botId) {
     return () => {
       alive = false;
     };
-  }, [botId]);
+  }, [botId, refreshKey]);
   return run;
 }
 
@@ -104,25 +104,40 @@ const BotDetailPanel = ({
   approvals,
   onApprove,
   onRunNow,
+  onTogglePause = null,
   onOpenInBotsView,
   onEdit,
   onShowLog = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
-  const lastRun = useLastRun(bot.id);
+  const [runs, setRuns] = useState(0);
+  const lastRun = useLastRun(bot.id, runs);
   const isLead = bot.role === "lead";
   const providers = botProviders(bot);
   const [runStatus, setRunStatus] = useState(null);
 
+  // What actually happened (Phase 1d): a paused bot's Run now is a test run
+  // — a pass offers Turn on; a skipped or failed run says why.
   const runNow = async () => {
-    setRunStatus("Starting…");
+    const wasPaused = status === "Paused";
+    setRunStatus("Running…");
     try {
-      await onRunNow(bot.id);
-      setRunStatus("Started.");
+      const res = await onRunNow(bot.id);
+      if (res && res.skipped) {
+        setRunStatus(`It didn't run: ${res.reason || "it was skipped"}.`);
+      } else if (res && res.status === "failed") {
+        setRunStatus(`The run failed: ${res.error || "no details"}.`);
+      } else {
+        setRunStatus(
+          wasPaused
+            ? `It worked. ${bot.name} is still paused — turn it on?`
+            : "It worked.",
+        );
+      }
     } catch (err) {
       setRunStatus((err && err.message) || "Couldn't start the bot.");
     }
-    setTimeout(() => setRunStatus(null), 3000);
+    setRuns((n) => n + 1);
   };
 
   return (
@@ -154,6 +169,16 @@ const BotDetailPanel = ({
           ) : null}
           {isLead ? null : (
             <Button3 title="Run now" size="sm" onClick={runNow} />
+          )}
+          {isLead || !onTogglePause ? null : (
+            <Button3
+              title={status === "Paused" ? "Turn on" : "Pause"}
+              size="sm"
+              onClick={async () => {
+                await onTogglePause(bot.id, status === "Paused");
+                setRunStatus(null);
+              }}
+            />
           )}
           <Button3 title="Edit" size="sm" onClick={onEdit} />
         </div>
@@ -452,6 +477,11 @@ export const BotsPage = ({
         approvals={all.approvalsFor(selected.id)}
         onApprove={all.approve}
         onRunNow={(id) => botsApi.run(id)}
+        onTogglePause={async (id, paused) => {
+          if (paused) await botsApi.resumeBot(id);
+          else await botsApi.pauseBot(id);
+          await all.refresh();
+        }}
         onOpenInBotsView={onOpenBotInBotsView}
         onEdit={() => setMode("edit")}
         onShowLog={(id) => {

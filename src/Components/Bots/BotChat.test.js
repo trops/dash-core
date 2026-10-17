@@ -488,7 +488,7 @@ describe("BotChat — a message that doesn't run is kept (TEAM-015)", () => {
     expect(composer()).toHaveValue("Again please");
   });
 
-  it("a paused bot says so, offers Resume, and the box waits", async () => {
+  it("a paused bot says so, offers Turn on, and the box waits", async () => {
     window.mainApi = {
       bots: {
         getRuns: jest.fn().mockResolvedValue(runs),
@@ -501,14 +501,14 @@ describe("BotChat — a message that doesn't run is kept (TEAM-015)", () => {
     render(<BotChat bot={bot} paused onResume={onResume} />);
     await screen.findByText("Check my inbox");
     expect(screen.getByTestId("bot-chat-paused")).toHaveTextContent(
-      "Paused — it won't answer until you resume it.",
+      "Paused — it won't answer until you turn it on.",
     );
     expect(composer()).toBeDisabled();
     expect(composer()).toHaveAttribute(
       "placeholder",
-      "Resume Inbox Watch to message it",
+      "Turn on Inbox Watch to message it",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    fireEvent.click(screen.getByRole("button", { name: "Turn on" }));
     expect(onResume).toHaveBeenCalled();
     expect(window.mainApi.bots.run).not.toHaveBeenCalled();
   });
@@ -647,7 +647,7 @@ describe("BotChat — events waiting (US-011 AC8)", () => {
     render(<BotChat bot={bot} paused queuedEvents={2} onResume={jest.fn()} />);
     await screen.findByText("Check my inbox");
     expect(screen.getByTestId("bot-chat-paused")).toHaveTextContent(
-      "2 events waiting — they'll run when you resume.",
+      "2 events waiting — they'll run when you turn it on.",
     );
   });
 });

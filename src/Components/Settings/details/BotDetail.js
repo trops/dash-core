@@ -28,6 +28,7 @@ import { dashboardOptions, offTeamSubscriptions } from "../../Bots/teamUtils";
 import { DraftGaps } from "../../Bots/DraftGaps";
 import { resultNameFor } from "./resultNames";
 import { BotBudgetSection } from "../../Bots/BotBudgetSection";
+import { cleanIpcError } from "../../../utils/errorUtils";
 
 /**
  * BotDetail — create/edit form for a Bot Factory bot (Settings → Bots).
@@ -630,7 +631,8 @@ export const BotDetail = ({
       setBaseline(snapshot);
       setJustSaved(true);
     } catch (e) {
-      setError((e && e.message) || "Failed to save bot");
+      // The check's reasons (Phase 1d), without the IPC prefix.
+      setError(cleanIpcError(e && e.message) || "Failed to save bot");
     } finally {
       setSaving(false);
     }
@@ -1204,7 +1206,9 @@ export const BotDetail = ({
           </div>
           <div className="flex flex-row items-center gap-2">
             {error ? (
-              <span className="text-sm text-red-400">{error}</span>
+              <span className="text-sm text-red-500 whitespace-pre-line">
+                {error}
+              </span>
             ) : justSaved ? (
               <span className="text-sm opacity-70">Saved</span>
             ) : null}

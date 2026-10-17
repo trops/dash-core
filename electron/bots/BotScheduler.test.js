@@ -120,3 +120,24 @@ describe("BotScheduler catch-up", () => {
     assert.equal(calls.length, 0);
   });
 });
+
+// Consolidation Phase 1d: a schedule saved before it was checked can't stop
+// the app from starting — that bot's schedule is skipped, the rest register.
+describe("registerAll with a schedule that isn't valid", () => {
+  it("skips that bot's schedule and registers the others", () => {
+    class PickyCron extends FakeCron {
+      constructor(expr, fn) {
+        if (expr === "every morning") throw new Error("bad cron");
+        super(expr, fn);
+      }
+    }
+    const s = new BotScheduler({ Cron: PickyCron, runBot: () => {} });
+    assert.doesNotThrow(() =>
+      s.registerAll([
+        { id: "bad", schedules: [{ cron: "every morning" }] },
+        { id: "good", schedules: [{ cron: "0 8 * * *" }] },
+      ]),
+    );
+    assert.deepEqual(s.list(), ["good"]);
+  });
+});

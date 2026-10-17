@@ -339,3 +339,22 @@ describe("BotsPage — Log (bot-factory US-003 AC5, US-014 AC9)", () => {
     );
   });
 });
+
+// Consolidation Phase 1d: Manage › Bots can turn a bot on or pause it, and
+// Run now says what happened.
+describe("BotsPage — Turn on and honest Run now (Phase 1d)", () => {
+  const src = require("fs").readFileSync(
+    require("path").join(__dirname, "BotsPage.js"),
+    "utf8",
+  );
+  it("the detail has Turn on / Pause", () => {
+    assert1d(src, /status === "Paused" \? "Turn on" : "Pause"/);
+  });
+  it('Run now reports a skipped or failed run, not "Started."', () => {
+    assert1d(src, /res && res\.skipped/);
+    assert1d(src, /It worked/);
+  });
+  function assert1d(text, re) {
+    expect(text).toMatch(re);
+  }
+});

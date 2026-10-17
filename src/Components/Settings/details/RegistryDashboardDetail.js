@@ -599,7 +599,7 @@ export const RegistryDashboardDetail = ({
                 </div>
               )}
               <div className="text-xs opacity-60">
-                Installed with the dashboard, paused until you resume them.
+                Installed with the dashboard, paused until you turn them on.
               </div>
             </div>
           </div>

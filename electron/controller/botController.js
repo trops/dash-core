@@ -95,6 +95,30 @@ const layoutItems = (ws) =>
   ]
     .filter(Array.isArray)
     .flat();
+// Every widget on a dashboard, inside grid containers too — the walk and
+// id rule the trigger picker uses (src/utils/providerResolution.js
+// forEachWidget, listenerResolution.js itemIdOf).
+const itemIdOf = (item) =>
+  item == null
+    ? null
+    : item.id !== undefined && item.id !== null
+      ? String(item.id)
+      : item.uuidString || item.uuid || null;
+const allWidgetItems = (ws) => {
+  const out = [];
+  const seen = new Set();
+  const walk = (items) => {
+    for (const item of Array.isArray(items) ? items : []) {
+      if (!item || typeof item !== "object" || seen.has(item)) continue;
+      seen.add(item);
+      if (item.component) out.push(item);
+      walk(item.items);
+      walk(item.layout);
+    }
+  };
+  walk(layoutItems(ws));
+  return out;
+};
 // A plan build that's still going (fix / retry / resume / remove wait).
 const isBuildBusy = (state) =>
   !state || state.status === "running" || state.status === "waiting";
@@ -129,6 +153,7 @@ const {
   settingKeys,
 } = require("../bots/planBuild");
 const { planTarget, validatePlan } = require("../bots/teamPlan");
+const { checkBot } = require("../bots/checkBot");
 const { summarizeSpending } = require("../bots/spending");
 const { resolveWidgetComponent } = require("../bots/widgetComponent");
 const { CreateRecent } = require("../bots/createRecent");
@@ -174,6 +199,7 @@ const {
 const grantStore = require("../mcp/grantedPermissions");
 const { isWriteTool, PATH_ARG_KEYS } = require("../mcp/permissionGate");
 const {
+  PROVIDERS: AI_PROVIDERS,
   getProvider,
   getDefaultModel,
   getCuratedModels,
@@ -394,7 +420,15 @@ const botController = {
       // A paused bot doesn't start at all (CRE-011 AC3), and nor does one
       // over its budget (US-019 AC4) — it would still spend on the model.
       startBlocker: (botId) => {
-        if (this._pause.isPaused(botId)) return "this bot is paused";
+        // A test run the user started goes ahead (Phase 1d) — not while
+        // everything is paused.
+        const testRun =
+          !!this._testRuns &&
+          this._testRuns.has(botId) &&
+          !this._pause.isGloballyPaused();
+        if (this._pause.isGloballyPaused()) return "all bots are paused";
+        if (this._pause.isPaused(botId) && !testRun)
+          return "this bot is paused";
         const bot = this._store.get(botId) || {};
         return this._budgets.isOverBudget(botId, bot.workspaceId)
           ? "this bot is over its budget"
@@ -406,7 +440,12 @@ const botController = {
       // Paused at the permission gate when: globally/individually paused, or
       // over any applicable budget.
       isPaused: (botId) =>
-        this._pause.isPaused(botId) ||
+        (this._pause.isPaused(botId) &&
+          !(
+            this._testRuns &&
+            this._testRuns.has(botId) &&
+            !this._pause.isGloballyPaused()
+          )) ||
         this._budgets.isOverBudget(
           botId,
           (this._store.get(botId) || {}).workspaceId,
@@ -723,13 +762,79 @@ const botController = {
       definition.id &&
       this._store.get(definition.id)
     );
+    // One check for every save, before anything is written (consolidation
+    // Phase 1d): the whole bot it makes — a partial save merged onto it.
+    const current = isNew ? null : this._store.get(definition.id);
+    const whole = isNew ? definition : { ...current, ...definition };
+    const { errors } = checkBot(whole, this._botCheckContext(current));
+    if (errors.length) {
+      throw new Error(
+        `${(whole && whole.name) || "The bot"} wasn't saved:\n${errors
+          .map((e) => `- ${e}`)
+          .join("\n")}`,
+      );
+    }
     const saved = isNew
       ? this._store.create(definition)
       : this._store.update(definition.id, definition);
+    // Every new bot starts paused until the user turns it on (Phase 1d) —
+    // the Dash team and leads are the app's own and aren't saved here.
+    if (isNew && saved && !isDashTeam(saved) && saved.role !== "lead") {
+      // PauseController logs it (pause-bot).
+      this._pause.pauseBot(saved.id);
+    }
     this._scheduler.register(saved);
     if (isNew && saved)
       this._logAudit({ type: "bot-created", botId: saved.id });
     return saved;
+  },
+
+  /** What checkBot checks a save against: the user's real setup. */
+  _botCheckContext(existing) {
+    // The user's connections: none is an empty list (still checked); only
+    // when they can't be listed is the check skipped.
+    let connections = null;
+    try {
+      const listed = this._providers.listProviders(
+        this._getMainWindow(),
+        this._appId,
+      );
+      if (listed && Array.isArray(listed.providers)) {
+        connections = listed.providers.map((p) => p && p.name).filter(Boolean);
+      }
+    } catch (_e) {
+      connections = null;
+    }
+    return {
+      existing,
+      connections,
+      // The registry itself — getProvider falls back to a default.
+      knownAiProvider: (id) =>
+        Object.prototype.hasOwnProperty.call(AI_PROVIDERS, id),
+      cronValid: (expr) => {
+        try {
+          new Cron(expr, { paused: true }).stop();
+          return true;
+        } catch (_e) {
+          return false;
+        }
+      },
+      widgetOnDashboard: (workspaceId, widgetId, component) => {
+        let ws = null;
+        try {
+          ws = this._loadWorkspace(workspaceId);
+        } catch (_e) {
+          return null;
+        }
+        if (!ws) return false;
+        return allWidgetItems(ws).some(
+          (i) =>
+            itemIdOf(i) === String(widgetId) &&
+            (!component || i.component === component),
+        );
+      },
+      botExists: (id) => !!this._store.get(id),
+    };
   },
 
   delete(botId) {
@@ -765,12 +870,45 @@ const botController = {
     // Only the Dash team works inside a plan (and so sees its memory).
     const inPlan =
       planId && isDashTeam(this._store.get(botId)) && this._recent.get(planId);
-    return this._run(botId, {
-      prompt: inPlan ? `${prompt}\n\n${MEMORY_NOTE}` : prompt,
-      trigger: continueConversation ? "reply" : "manual",
-      continueSession: !!continueConversation,
-      ...(inPlan ? { planId: String(planId) } : {}),
-    });
+    // A run the user starts on a paused bot is a test run (Phase 1d): it
+    // goes ahead — tools and all — and the bot stays paused. Not while
+    // everything is paused.
+    // Counted per bot: a second Run now (skipped — one run at a time) can't
+    // end the first test run's exemption.
+    const testRun =
+      this._pause.isPaused(botId) && !this._pause.isGloballyPaused();
+    if (!this._testRuns) this._testRuns = new Map();
+    if (testRun) {
+      this._testRuns.set(botId, (this._testRuns.get(botId) || 0) + 1);
+    }
+    const done = () => {
+      if (!testRun) return;
+      const left = (this._testRuns.get(botId) || 1) - 1;
+      if (left > 0) this._testRuns.set(botId, left);
+      else this._testRuns.delete(botId);
+    };
+    let started;
+    try {
+      started = this._run(botId, {
+        prompt: inPlan ? `${prompt}\n\n${MEMORY_NOTE}` : prompt,
+        trigger: continueConversation ? "reply" : "manual",
+        continueSession: !!continueConversation,
+        ...(inPlan ? { planId: String(planId) } : {}),
+      });
+    } catch (err) {
+      done();
+      throw err;
+    }
+    return Promise.resolve(started).then(
+      (record) => {
+        done();
+        return record;
+      },
+      (err) => {
+        done();
+        throw err;
+      },
+    );
   },
 
   // ── Create's Recent (create-entry CRE-007 AC2, phase 4e-1) ──────────────
@@ -1260,6 +1398,24 @@ const botController = {
   _installTeamPlan(plan, source) {
     if (!plan.members.length)
       return { error: "Pick at least one bot to install." };
+    // Every member checked before any is created (Phase 1d) — a bad one
+    // can't leave half a team installed.
+    const problems = [];
+    for (const member of plan.members) {
+      const { errors } = checkBot(
+        member.definition,
+        this._botCheckContext(null),
+      );
+      for (const e of errors) {
+        problems.push(`${member.definition.name || member.role}: ${e}`);
+      }
+    }
+    if (problems.length) {
+      return {
+        error: `The team wasn't installed:\n${problems.map((p) => `- ${p}`).join("\n")}`,
+        errors: problems,
+      };
+    }
     const created = {};
     for (const member of plan.members) {
       const bot = this.save(
