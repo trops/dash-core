@@ -332,3 +332,37 @@ describe("botController — pages, connections and automatic fixes (Create build
     assert.match(src, /userPrefs: settings \|\| \{\},\s+selectedProviders,/);
   });
 });
+
+// Phase 1b: plan builds install only what the Checker passed.
+describe("botController — checked plan builds (Phase 1b)", () => {
+  const src = require("fs").readFileSync(
+    require("path").join(__dirname, "..", "controller", "botController.js"),
+    "utf8",
+  );
+  const body = (name) => {
+    const at = src.indexOf(name);
+    return src.slice(at, src.indexOf("\n  },\n", at));
+  };
+  it("build_widget's draft is noted for the build step", () => {
+    assert.match(body("  _noteBuild("), /draft:/);
+  });
+  it("every Checker run records its verdict on the draft it checked", () => {
+    assert.match(body("  async _planAskRole("), /_reviewedRun\(/);
+    assert.match(body("  async _askRole("), /_reviewedRun\(/);
+    assert.match(body("  _reviewedRun("), /reviewRun\(/);
+  });
+  it("the Install step installs the checked draft", () => {
+    assert.match(src, /installBuilt: \(draft\) =>[\s\S]{0,200}installDraft\(/);
+  });
+  it("place_widget can install a draft that passed", () => {
+    assert.match(body("  _roleToolDeps("), /installDraft:/);
+  });
+  it("a plan with errors doesn't start — checked against the user's dashboards and themes", () => {
+    const start = body("  startPlanBuild(");
+    assert.match(
+      start,
+      /validatePlan\(plan, \{[\s\S]{0,200}dashboards[\s\S]{0,200}themes/,
+    );
+    assert.match(start, /The plan can't be built yet/);
+  });
+});

@@ -59,7 +59,7 @@ const thePlan = {
   usage: { inputTokens: 2000, outputTokens: 300 },
   cost: { usd: 0, includedInPlan: true, estimated: false },
   output: `Here's the plan.
-<plan>{"summary":"Install Algolia Search","pieces":[{"kind":"widget","name":"Algolia Search","source":"registry","package":"@trops/algolia","providers":["algolia"]},{"kind":"widget","name":"Hits chart","source":"new"},{"kind":"bot","name":"Digest","source":"new","providers":["gmail"]}],"beforeBuilding":[{"kind":"install","what":"@trops/algolia"},{"kind":"connect","what":"Gmail"}],"checks":["Search returns results"],"access":["Bots can read Gmail","None can send email"],"estimate":{"build":"small","running":"about $0.04 per run"}}</plan>`,
+<plan>{"summary":"Install Algolia Search","pieces":[{"kind":"widget","name":"Algolia Search","source":"registry","package":"@trops/algolia","providers":["algolia"]},{"kind":"widget","name":"Hits chart","source":"new"},{"kind":"bot","name":"Digest","source":"new","providers":["gmail"],"instructions":"Email me a digest of new hits."}],"beforeBuilding":[{"kind":"install","what":"@trops/algolia"},{"kind":"connect","what":"Gmail"}],"checks":["Search returns results"],"access":["Bots can read Gmail","None can send email"],"estimate":{"build":"small","running":"about $0.04 per run"}}</plan>`,
 };
 
 function setup(records, props = {}) {
@@ -313,6 +313,62 @@ test("with no questions left, Build is ready", async () => {
   setup([thePlan]);
   const note = await screen.findByTestId("plan-ready");
   expect(note.parentElement.querySelector("button")).not.toBeDisabled();
+});
+
+// Phase 1b: a plan with errors can't be built — they're shown, not grey.
+test("a plan with errors can't be built; the errors are shown", async () => {
+  const broken = {
+    ...thePlan,
+    output:
+      'Here.<plan>{"summary":"s","pieces":[{"kind":"widget","name":"Rules","source":"yours"}],"estimate":{"build":"small"}}</plan>',
+  };
+  setup([broken]);
+  const note = await screen.findByTestId("plan-ready");
+  expect(note.parentElement.querySelector("button")).toBeDisabled();
+  expect(note).toHaveTextContent("Ask the Planner to fix the plan first.");
+  const errors = screen.getByTestId("plan-errors");
+  expect(errors).toHaveTextContent(/must say which package/);
+  expect(errors).toHaveClass("text-red-500");
+});
+
+test("Ask the Planner to fix it sends it the plan's errors", async () => {
+  const broken = {
+    ...thePlan,
+    output:
+      'Here.<plan>{"summary":"s","pieces":[{"kind":"widget","name":"Rules","source":"yours"}],"estimate":{"build":"small"}}</plan>',
+  };
+  const api = setup([broken, thePlan]);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Ask the Planner to fix it" }),
+  );
+  await waitFor(() =>
+    expect(api.run).toHaveBeenLastCalledWith(
+      "b_planner",
+      expect.stringMatching(/fix these problems[\s\S]*must say which package/),
+      true,
+    ),
+  );
+});
+
+test("a plan the app refuses to build shows why, in red", async () => {
+  const simple = {
+    ...thePlan,
+    output:
+      'Here.<plan>{"summary":"s","pieces":[{"kind":"widget","name":"Rules","source":"yours","package":"@trops/algolia"}],"estimate":{"build":"small"}}</plan>',
+  };
+  const api = setup([simple]);
+  api.startPlanBuild = jest.fn().mockResolvedValue({
+    error:
+      "The plan can't be built yet: The \"Sales\" dashboard isn't there any more.",
+  });
+  const note = await screen.findByTestId("plan-ready");
+  fireEvent.click(note.parentElement.querySelector("button"));
+  await waitFor(() =>
+    expect(screen.getByTestId("plan-ready")).toHaveTextContent(
+      /isn't there any more/,
+    ),
+  );
+  expect(screen.getByTestId("plan-ready")).toHaveClass("text-red-500");
 });
 
 describe("plan on the left, chat on the right (Create build fixes 2)", () => {

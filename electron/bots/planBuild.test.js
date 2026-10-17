@@ -43,7 +43,7 @@ const plan = {
   ],
 };
 
-function deps(over = {}) {
+function rawDeps(over = {}) {
   const calls = [];
   const states = [];
   const usage = { inputTokens: 1000, outputTokens: 200 };
@@ -87,6 +87,39 @@ function deps(over = {}) {
   };
 }
 
+// Since Phase 1b build_widget writes a draft, and the Install step installs
+// it once the Checker passes it: the fake Builder writes a draft for the
+// package it names, and the fake install installs it.
+function withDrafts(d) {
+  const ask = d.askRole;
+  d.askRole = async (role, request) => {
+    const r = await ask(role, request);
+    if (role !== "builder" || !r || typeof r !== "object") return r;
+    if (Array.isArray(r.builds)) {
+      r.builds = r.builds.map((b) =>
+        b && b.ok && b.package && !b.draft
+          ? { ...b, draft: `draft:${b.package}` }
+          : b,
+      );
+    } else {
+      const m = /@ai-built\/[a-z0-9][a-z0-9-]*/i.exec(String(r.output || ""));
+      if (m) {
+        const pkg = m[0].toLowerCase();
+        r.builds = [{ ok: true, package: pkg, draft: `draft:${pkg}` }];
+      }
+    }
+    return r;
+  };
+  if (!d.installBuilt) {
+    d.installBuilt = async (draft) => ({
+      success: true,
+      widgetName: String(draft).replace(/^draft:/, ""),
+    });
+  }
+  return d;
+}
+const deps = (over) => withDrafts(rawDeps(over));
+
 describe("planSteps", () => {
   it("install → dashboard → build/check → place, from the plan", () => {
     assert.deepEqual(
@@ -96,6 +129,7 @@ describe("planSteps", () => {
         "dashboard",
         "build:1",
         "check:1",
+        "save:1",
         "place:0",
         "place:1",
         "place:2",
@@ -257,6 +291,7 @@ describe("bots and wiring (phase 4d-2)", () => {
         "dashboard",
         "build:0",
         "check:0",
+        "save:0",
         "place:0",
         "bot:0",
         "results:0",
@@ -500,7 +535,9 @@ describe("the build's real outcome (Create build fixes, PR 1)", () => {
     const state = await createPlanBuild(plan, d).run();
     const s = byId(state);
     assert.equal(s["build:1"].status, "done");
-    assert.equal(s["build:1"].detail, "@ai-built/indexcompare");
+    // The package is what the Install step installed (Phase 1b: the build
+    // step shows the draft).
+    assert.equal(s["save:1"].detail, "@ai-built/indexcompare");
     assert.ok(
       d.calls.some(
         (c) => c[0] === "place" && c[1] === "@ai-built/indexcompare",
@@ -791,8 +828,13 @@ describe("automatic fixes (Create build fixes 2)", () => {
       requests.map((r) => r[0]),
       ["builder", "checker", "builder", "checker"],
     );
-    assert.match(requests[2][1], /Fix the widget @ai-built\/hello you built/);
-    assert.match(requests[2][1], /with update: true/);
+    // The fix rewrites the draft (Phase 1b) — a new widget isn't installed
+    // yet, so it isn't an update.
+    assert.match(
+      requests[2][1],
+      /Fix the widget you wrote for this plan \(draft:@ai-built\/hello\)/,
+    );
+    assert.doesNotMatch(requests[2][1], /with update: true/);
     assert.match(requests[2][1], /The Checker said:\nnotes\nVERDICT: FAILED/);
     const build = state.steps.find((s) => s.id === "build:0");
     assert.equal(build.fixTry, 1);

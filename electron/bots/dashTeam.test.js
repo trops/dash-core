@@ -215,11 +215,17 @@ describe("Dash team instructions (slice 3b-2)", () => {
 describe("Dash team instructions (slice 3c)", () => {
   it("the Builder places widgets only after the Checker passes them", () => {
     const builder = ROLES.find((r) => r.role === "builder");
+    // Phase 1b: build_widget writes a draft; place_widget installs a draft
+    // the Checker passed.
     assert.match(
       builder.instructions,
-      /place_widget only after the Checker passed it/,
+      /place_widget once the Checker passed it/,
     );
-    assert.equal(builder.history.length, 3);
+    assert.match(
+      builder.instructions,
+      /nothing is installed until the Checker passes it/,
+    );
+    assert.equal(builder.history.length, 4);
   });
 });
 
@@ -394,7 +400,8 @@ describe("Dash team instructions (Create build fixes 3)", () => {
       /asks the user for API keys or calls the service with fetch/,
     );
     assert.match(checker.instructions, /must-fix/);
-    assert.equal(checker.history.length, 2);
+    assert.match(checker.instructions, /installed only if you pass it/);
+    assert.equal(checker.history.length, 3);
     const bots = ROLE_IDS.map((r) => teamBot(r));
     bots[3].instructions = checker.history[0];
     const plan = planEnsureDashTeam(bots);

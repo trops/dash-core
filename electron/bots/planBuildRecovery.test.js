@@ -43,7 +43,7 @@ const plan = {
 
 const by = (state) => Object.fromEntries(state.steps.map((s) => [s.id, s]));
 
-function deps(over = {}) {
+function rawDeps(over = {}) {
   const calls = [];
   const d = {
     calls,
@@ -95,6 +95,39 @@ function deps(over = {}) {
   return d;
 }
 
+// Since Phase 1b build_widget writes a draft, and the Install step installs
+// it once the Checker passes it: the fake Builder writes a draft for the
+// package it names, and the fake install installs it.
+function withDrafts(d) {
+  const ask = d.askRole;
+  d.askRole = async (role, request) => {
+    const r = await ask(role, request);
+    if (role !== "builder" || !r || typeof r !== "object") return r;
+    if (Array.isArray(r.builds)) {
+      r.builds = r.builds.map((b) =>
+        b && b.ok && b.package && !b.draft
+          ? { ...b, draft: `draft:${b.package}` }
+          : b,
+      );
+    } else {
+      const m = /@ai-built\/[a-z0-9][a-z0-9-]*/i.exec(String(r.output || ""));
+      if (m) {
+        const pkg = m[0].toLowerCase();
+        r.builds = [{ ok: true, package: pkg, draft: `draft:${pkg}` }];
+      }
+    }
+    return r;
+  };
+  if (!d.installBuilt) {
+    d.installBuilt = async (draft) => ({
+      success: true,
+      widgetName: String(draft).replace(/^draft:/, ""),
+    });
+  }
+  return d;
+}
+const deps = (over) => withDrafts(rawDeps(over));
+
 const count = (d, kind) => d.calls.filter((c) => c[0] === kind).length;
 
 describe("Let Builder fix it (CRE-004 AC4)", () => {
@@ -113,9 +146,13 @@ describe("Let Builder fix it (CRE-004 AC4)", () => {
     s = by(state);
     assert.equal(state.status, "done");
     const fixReq = d.calls.filter((c) => c[0] === "builder")[1][1];
-    assert.match(fixReq, /^Fix the widget @ai-built\/askbutton you built/);
+    // The fix rewrites the draft (Phase 1b) — a new widget isn't an update.
+    assert.match(
+      fixReq,
+      /^Fix the widget you wrote for this plan \(draft:@ai-built\/askbutton\)/,
+    );
     assert.match(fixReq, /The Checker said:\nnotes\nVERDICT: FAILED/);
-    assert.match(fixReq, /build_widget with update: true/);
+    assert.doesNotMatch(fixReq, /build_widget with update: true/);
     assert.equal(state.fixes[1], 1);
     // Finished steps aren't run again.
     assert.equal(count(d, "install"), 1);

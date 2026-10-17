@@ -344,7 +344,10 @@ function validatePlan(plan, context = {}) {
   if (!plan || typeof plan !== "object" || Array.isArray(plan)) {
     return { valid: false, errors: ["The plan isn't an object."], warnings };
   }
-  if (!isStr(plan.summary)) errors.push("summary is missing.");
+  // What it says about itself (summary, checks, access, estimate) is
+  // shown, not built: a slip there is a warning — only what the build needs
+  // stops it (consolidation Phase 1b, the main process refuses errors).
+  if (!isStr(plan.summary)) warnings.push("summary is missing.");
 
   const questions = plan.questions === undefined ? [] : plan.questions;
   if (!Array.isArray(questions)) errors.push("questions must be a list.");
@@ -475,11 +478,13 @@ function validatePlan(plan, context = {}) {
               }
             }
             if (pg.grid !== undefined) {
+              // A layout slip is a warning: cells that don't fit are
+              // skipped when it's placed (planPages), so it still builds.
               checkGrid(
                 pg.grid,
                 `${at}.pages[${j}].grid`,
                 names,
-                errors,
+                warnings,
                 warnings,
               );
             }
@@ -509,12 +514,13 @@ function validatePlan(plan, context = {}) {
           `${at} comes from the registry, but beforeBuilding doesn't list installing it.`,
         );
       }
-      // Providers the user doesn't have must be connected first.
+      // A provider the user doesn't have: the build waits on that step
+      // ("needs a provider", CRE-004 AC5) — a warning, not an error.
       if (have.size && Array.isArray(p.providers)) {
         for (const type of p.providers) {
           const t = String(type).toLowerCase();
           if (!have.has(t) && !beforeText.includes(t)) {
-            errors.push(
+            warnings.push(
               `${at} needs ${type}, which isn't connected — add it to beforeBuilding.`,
             );
           }
@@ -598,7 +604,7 @@ function validatePlan(plan, context = {}) {
   }
 
   if (plan.checks !== undefined && !Array.isArray(plan.checks)) {
-    errors.push("checks must be a list.");
+    warnings.push("checks must be a list.");
   } else if (
     Array.isArray(pieces) &&
     pieces.some((p) => p && ["new", "update"].includes(p.source)) &&
@@ -609,7 +615,7 @@ function validatePlan(plan, context = {}) {
 
   if (plan.access !== undefined) {
     if (!Array.isArray(plan.access) || plan.access.some((a) => !isStr(a))) {
-      errors.push("access must be a list of sentences.");
+      warnings.push("access must be a list of sentences.");
     }
   } else if (
     Array.isArray(pieces) &&
@@ -621,7 +627,7 @@ function validatePlan(plan, context = {}) {
   }
 
   if (!plan.estimate || !isStr(plan.estimate.build)) {
-    errors.push("estimate.build is missing.");
+    warnings.push("estimate.build is missing.");
   }
 
   return { valid: errors.length === 0, errors, warnings };

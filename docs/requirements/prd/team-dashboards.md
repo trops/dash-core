@@ -136,7 +136,7 @@ Nothing plans the three pieces together, so the user has to design the wiring th
 
 **Acceptance Criteria:**
 
-- [x] AC1 (create-entry 4d-1 + 4d-2, dash-core electron/bots/planBuild.js): Approving the plan saves the bots, generates the widgets, places them on the dashboard and wires listeners and triggers. Bots are saved as planned (not drafts) after a draft-style check; a provider that isn't connected fails that step. Wiring is checked against the widget's .dash.js, and a widget publishing with the raw `api.publishEvent` (unprefixed, so nothing hears it) fails the step — the Widget Builder and `build_widget` reject it earlier.
+- [x] AC1 (create-entry 4d-1 + 4d-2, dash-core electron/bots/planBuild.js): Approving the plan saves the bots, generates the widgets, places them on the dashboard and wires listeners and triggers. Bots are saved as planned (not drafts) after a draft-style check; a bot whose provider isn't connected waits ("needs a provider", create-entry CRE-004 AC5 — this replaces "fails that step"). Widgets the Builder makes are drafts until the Checker passes them; only then are they installed and placed (consolidation Phase 1b, create-entry CRE-004). Wiring is checked against the widget's .dash.js, and a widget publishing with the raw `api.publishEvent` (unprefixed, so nothing hears it) fails the step — the Widget Builder and `build_widget` reject it earlier.
 - [x] AC2: Anything that needs the user (provider sign-in, grants) is listed, never done for them. _(Built, 2026-10-14: Before building (connect / install / approve) in Create's checklist; an unconnected provider fails its step)_
 - [x] AC3 (create-entry 4d-1): Widget generation runs without opening the Widget Builder window, with progress shown.
 

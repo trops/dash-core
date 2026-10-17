@@ -109,7 +109,7 @@ const TOOL_DEFS = {
   build_widget: {
     name: "build_widget",
     description:
-      "Compile and install a widget into the user's AI-built widgets (@ai-built/<name>). The code must pass the Widget Builder's checks first; if it doesn't, you get the problems to fix. The user approves each build. To change a widget the AI built earlier, pass update: true with the same name.",
+      "Write a widget as a draft (draft:<Name>): it's compiled and must pass the Widget Builder's checks — if it doesn't, you get the problems to fix. Nothing is installed: the Checker checks the draft, and only a pass installs it into the user's AI-built widgets (@ai-built/<name>). The user approves each build. To change a widget the AI built earlier, pass update: true with the same name — the installed one stays as it is until the change passes.",
     inputSchema: {
       type: "object",
       properties: {
@@ -146,13 +146,14 @@ const TOOL_DEFS = {
   check_widget: {
     name: "check_widget",
     description:
-      "Check an installed widget: does it compile, does its code pass the Widget Builder's checks, how it scores on the acceptance checklist, and — after an update — whether the new config drops settings or events the old one had.",
+      "Check a widget — a draft the Builder wrote (draft:<Name>) or an installed one: does it compile, does its code pass the Widget Builder's checks, how it scores on the acceptance checklist, and — for an update — whether the new config drops settings or events the old one had. Your verdict decides whether a draft is installed.",
     inputSchema: {
       type: "object",
       properties: {
         name: {
           type: "string",
-          description: "The widget package, e.g. @ai-built/gmailunreadcount.",
+          description:
+            "The draft (e.g. draft:GmailUnreadCount) or the widget package (e.g. @ai-built/gmailunreadcount).",
         },
       },
       required: ["name"],
@@ -161,7 +162,7 @@ const TOOL_DEFS = {
   place_widget: {
     name: "place_widget",
     description:
-      "Put an installed widget on one of the user's dashboards (the user approves each placement). Dashboards with pages: it goes on the page the user is looking at unless you name one. Without a cell it takes the next free one (adding a row when the grid is full). Place a widget only after the Checker passed it.",
+      "Put a widget on one of the user's dashboards (the user approves each placement): an installed widget, or a draft the Checker passed (draft:<Name>), which is installed first. A draft the Checker hasn't passed is refused. Dashboards with pages: it goes on the page the user is looking at unless you name one. Without a cell it takes the next free one (adding a row when the grid is full).",
     inputSchema: {
       type: "object",
       properties: {
@@ -172,7 +173,7 @@ const TOOL_DEFS = {
         widget: {
           type: "string",
           description:
-            "The widget: its package as search_library or build_widget gave it (e.g. @ai-built/gmailunreadcount), or a full component id (e.g. dash.bots.BotResults).",
+            "The widget: its package as search_library gave it (e.g. @ai-built/gmailunreadcount), a draft the Checker passed (e.g. draft:GmailUnreadCount), or a full component id (e.g. dash.bots.BotResults).",
         },
         component: {
           type: "string",
@@ -794,8 +795,9 @@ async function handleRoleTool(deps, ctx, toolName, args = {}) {
             `${(res && res.error) || "The build failed."}${problems}`,
           );
         }
+        const draft = res.widgetName;
         return ok(
-          `Built and installed ${res.widgetName}. Ask the Checker to check it.`,
+          `Wrote ${draft} — not installed. Ask the Checker to check ${draft}; once it passes, it's installed as ${res.package || "an AI-built widget"}.`,
         );
       }
       case "check_widget": {
@@ -884,10 +886,26 @@ async function handleRoleTool(deps, ctx, toolName, args = {}) {
         if ((a.row === undefined) !== (a.col === undefined)) {
           return fail("Give both row and col, or neither.");
         }
+        // A draft goes on only once the Checker passed it — installed then,
+        // exactly as checked (consolidation Phase 1b).
+        let placing = widget;
+        if (/^draft:/i.test(widget)) {
+          if (!deps.installDraft) {
+            return fail("Installing a draft isn't available here.");
+          }
+          const installed = await deps.installDraft({ name: widget });
+          if (!installed || !installed.success) {
+            return fail(
+              (installed && installed.error) ||
+                `${widget} hasn't passed the Checker yet — ask the Checker to check ${widget}.`,
+            );
+          }
+          placing = installed.widgetName;
+        }
         const res = await deps.placeWidget({
           callerId: ctx.botId,
           dashboard,
-          widget,
+          widget: placing,
           component: a.component || null,
           page: a.page || null,
           row: a.row,

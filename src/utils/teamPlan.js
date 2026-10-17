@@ -17,7 +17,18 @@
  *                   name,
  *                   source: "yours" | "ai-built" | "registry" | "new" | "update",
  *                   package?,        // yours / ai-built / registry / update
+ *                   component?,      // which widget, when the package has several
  *                   providers?: [type],
+ *                   // widget: which connection per type, and its settings
+ *                   provider?: { [type]: connection name },
+ *                   settings?: { [userConfig key]: value },
+ *                   // layout: the new dashboard's pages (planPages), each
+ *                   // with an optional grid: where every widget goes
+ *                   pages?: [{ name, widgets: [widget name],
+ *                              grid?: { cols, rows,
+ *                                colWidths?: { [col]: "1/4"|"1/3"|"1/2"|"2/3"|"shrink"|"grow" },
+ *                                rowHeights?: { [row]: "shrink"|"grow" },
+ *                                cells: [{ widget, row, col, rowSpan?, colSpan? }] } }],
  *                   notes?,
  *                   // widget: events it publishes; bot results it shows
  *                   events?: [string], listens?: [{ bot, result, handler }],
@@ -44,6 +55,255 @@ const BEFORE_KINDS = ["connect", "install", "approve"];
 const NEEDS_PACKAGE = new Set(["yours", "ai-built", "registry", "update"]);
 
 const isStr = (v) => typeof v === "string" && v.trim().length > 0;
+const isObject = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+
+// What a planned grid may ask for — what the dashboard grid draws
+// (LayoutGridContainer colModes / rowModes).
+const COL_WIDTHS = ["1/4", "1/3", "1/2", "2/3", "shrink", "grow"];
+const ROW_HEIGHTS = ["shrink", "grow"];
+const MAX_COLS = 6;
+const MAX_ROWS = 12;
+const isWhole = (v, min, max) =>
+  Number.isInteger(v) && v >= min && (max === undefined || v <= max);
+const nameKey = (v) =>
+  String(v || "")
+    .trim()
+    .toLowerCase();
+
+/**
+ * A planned grid's cells that fit: [{ widget, row, col, rowSpan, colSpan }]
+ * in order, and the problems with the rest — outside the grid, on top of
+ * another cell, or a second cell for the same widget.
+ */
+function gridCells(grid) {
+  const fits = [];
+  const problems = [];
+  const taken = new Map(); // "r.c" → widget
+  const seen = new Set();
+  for (const c of Array.isArray(grid.cells) ? grid.cells : []) {
+    if (!c || !isStr(c.widget)) {
+      problems.push("each cell needs a widget name.");
+      continue;
+    }
+    const cell = {
+      widget: c.widget.trim(),
+      row: c.row,
+      col: c.col,
+      rowSpan: c.rowSpan === undefined ? 1 : c.rowSpan,
+      colSpan: c.colSpan === undefined ? 1 : c.colSpan,
+    };
+    if (
+      ![cell.row, cell.col, cell.rowSpan, cell.colSpan].every((n) =>
+        isWhole(n, 1),
+      )
+    ) {
+      problems.push(
+        `${cell.widget} needs a row and col (whole numbers from 1).`,
+      );
+      continue;
+    }
+    if (
+      cell.row + cell.rowSpan - 1 > grid.rows ||
+      cell.col + cell.colSpan - 1 > grid.cols
+    ) {
+      problems.push(
+        `${cell.widget} is outside the ${grid.rows}×${grid.cols} grid.`,
+      );
+      continue;
+    }
+    if (seen.has(nameKey(cell.widget))) {
+      problems.push(`${cell.widget} has more than one cell.`);
+      continue;
+    }
+    let clash = null;
+    for (let r = cell.row; r < cell.row + cell.rowSpan && !clash; r++) {
+      for (let k = cell.col; k < cell.col + cell.colSpan && !clash; k++) {
+        clash = taken.get(`${r}.${k}`) || null;
+      }
+    }
+    if (clash) {
+      problems.push(`${cell.widget} overlaps ${clash}.`);
+      continue;
+    }
+    for (let r = cell.row; r < cell.row + cell.rowSpan; r++) {
+      for (let k = cell.col; k < cell.col + cell.colSpan; k++) {
+        taken.set(`${r}.${k}`, cell.widget);
+      }
+    }
+    seen.add(nameKey(cell.widget));
+    fits.push(cell);
+  }
+  return { fits, problems, taken };
+}
+
+/** Whether a planned grid has a usable size. */
+function gridSized(grid) {
+  return (
+    isObject(grid) &&
+    isWhole(grid.cols, 1, MAX_COLS) &&
+    isWhole(grid.rows, 1, MAX_ROWS)
+  );
+}
+
+/**
+ * The pages a new dashboard gets from its layout piece: [{ name, widgets:
+ * [widget piece index], grid? }] — each widget on the first page that names
+ * it (in its list or a grid cell, any case), widgets no page names on the
+ * first page; pages with the same name are merged, blank ones dropped. No
+ * named page: [] (a single page keeps its name — plan grids).
+ *
+ * A page with a usable grid gets `grid`: { cols, rows, colModes, rowModes
+ * (every row, "grow" unless planned), cells: [{ piece, row, col, rowSpan,
+ * colSpan }] }. Cells that don't fit are left out, and a widget on the page
+ * without a cell gets the first free cell no other widget is planned for
+ * (none left: no cell, and the build adds a row).
+ */
+function planPages(plan) {
+  const pieces = ((plan && plan.pieces) || []).filter(Boolean);
+  const layout = pieces.find((p) => p.kind === "layout");
+  if (!layout || !Array.isArray(layout.pages)) return [];
+  const widgets = pieces.filter((p) => p.kind === "widget");
+  const key = (v) =>
+    String(v || "")
+      .trim()
+      .toLowerCase();
+  const pages = [];
+  for (const pg of layout.pages) {
+    if (!pg || !isStr(pg.name)) continue;
+    let page = pages.find((x) => key(x.name) === key(pg.name));
+    if (!page) {
+      page = { name: pg.name.trim(), names: [], grid: null };
+      pages.push(page);
+    }
+    if (Array.isArray(pg.widgets)) page.names.push(...pg.widgets.map(key));
+    if (!page.grid && gridSized(pg.grid)) {
+      page.grid = pg.grid;
+      const { fits } = gridCells(pg.grid);
+      page.names.push(...fits.map((c) => key(c.widget)));
+    }
+  }
+  if (!pages.length) return [];
+  const out = pages.map((p) => ({ name: p.name, widgets: [] }));
+  widgets.forEach((w, i) => {
+    const at = pages.findIndex((p) => p.names.includes(key(w.name)));
+    out[at < 0 ? 0 : at].widgets.push(i);
+  });
+  pages.forEach((p, n) => {
+    if (p.grid) out[n].grid = pageGrid(p.grid, out[n].widgets, widgets);
+  });
+  return out;
+}
+
+/** A page's planned grid for the build (see planPages). */
+function pageGrid(grid, onPage, widgets) {
+  const colModes = {};
+  for (const [c, v] of Object.entries(
+    isObject(grid.colWidths) ? grid.colWidths : {},
+  )) {
+    if (COL_WIDTHS.includes(v) && isWhole(Number(c), 1, grid.cols)) {
+      colModes[String(Number(c))] = v;
+    }
+  }
+  const rowModes = {};
+  const heights = isObject(grid.rowHeights) ? grid.rowHeights : {};
+  for (let r = 1; r <= grid.rows; r++) {
+    rowModes[String(r)] = ROW_HEIGHTS.includes(heights[r])
+      ? heights[r]
+      : "grow";
+  }
+  const { fits, taken } = gridCells(grid);
+  const cells = [];
+  const placed = new Set();
+  for (const c of fits) {
+    const piece = onPage.find(
+      (i) => !placed.has(i) && nameKey(widgets[i].name) === nameKey(c.widget),
+    );
+    if (piece === undefined) continue;
+    placed.add(piece);
+    cells.push({
+      piece,
+      row: c.row,
+      col: c.col,
+      rowSpan: c.rowSpan,
+      colSpan: c.colSpan,
+    });
+  }
+  // Widgets on the page with no cell: the first free cells, in reading order.
+  for (const piece of onPage) {
+    if (placed.has(piece)) continue;
+    let free = null;
+    for (let r = 1; r <= grid.rows && !free; r++) {
+      for (let k = 1; k <= grid.cols && !free; k++) {
+        if (!taken.has(`${r}.${k}`)) free = { row: r, col: k };
+      }
+    }
+    if (!free) continue;
+    taken.set(`${free.row}.${free.col}`, widgets[piece].name);
+    placed.add(piece);
+    cells.push({ piece, ...free, rowSpan: 1, colSpan: 1 });
+  }
+  cells.sort((a, b) => a.piece - b.piece);
+  return {
+    cols: grid.cols,
+    rows: grid.rows,
+    colModes,
+    rowModes,
+    cells,
+  };
+}
+
+/** A layout page's planned grid → problems into errors / warnings. */
+function checkGrid(grid, at, names, errors, warnings) {
+  if (!gridSized(grid)) {
+    errors.push(
+      `${at} needs cols (1–${MAX_COLS}) and rows (1–${MAX_ROWS}) as whole numbers.`,
+    );
+    return;
+  }
+  if (grid.colWidths !== undefined) {
+    if (!isObject(grid.colWidths))
+      errors.push(`${at}.colWidths must be an object.`);
+    else {
+      for (const [c, v] of Object.entries(grid.colWidths)) {
+        if (!isWhole(Number(c), 1, grid.cols)) {
+          errors.push(`${at}.colWidths names column ${c}, outside the grid.`);
+        } else if (!COL_WIDTHS.includes(v)) {
+          errors.push(
+            `${at}.colWidths: "${v}" isn't one of ${COL_WIDTHS.join(", ")}.`,
+          );
+        }
+      }
+    }
+  }
+  if (grid.rowHeights !== undefined) {
+    if (!isObject(grid.rowHeights))
+      errors.push(`${at}.rowHeights must be an object.`);
+    else {
+      for (const [r, v] of Object.entries(grid.rowHeights)) {
+        if (!isWhole(Number(r), 1, grid.rows)) {
+          errors.push(`${at}.rowHeights names row ${r}, outside the grid.`);
+        } else if (!ROW_HEIGHTS.includes(v)) {
+          errors.push(
+            `${at}.rowHeights: "${v}" isn't one of ${ROW_HEIGHTS.join(", ")}.`,
+          );
+        }
+      }
+    }
+  }
+  if (!Array.isArray(grid.cells)) {
+    errors.push(`${at}.cells must be a list.`);
+    return;
+  }
+  const { fits, problems } = gridCells(grid);
+  for (const p of problems) errors.push(`${at}: ${p}`);
+  for (const c of fits) {
+    if (!names.has(nameKey(c.widget))) {
+      warnings.push(
+        `${at} names "${c.widget}", which isn't a widget in the plan.`,
+      );
+    }
+  }
+}
 
 /**
  * The dashboard a plan changes (5e-2b): { id, name } with the id as a
@@ -84,7 +344,10 @@ function validatePlan(plan, context = {}) {
   if (!plan || typeof plan !== "object" || Array.isArray(plan)) {
     return { valid: false, errors: ["The plan isn't an object."], warnings };
   }
-  if (!isStr(plan.summary)) errors.push("summary is missing.");
+  // What it says about itself (summary, checks, access, estimate) is
+  // shown, not built: a slip there is a warning — only what the build needs
+  // stops it (consolidation Phase 1b, the main process refuses errors).
+  if (!isStr(plan.summary)) warnings.push("summary is missing.");
 
   const questions = plan.questions === undefined ? [] : plan.questions;
   if (!Array.isArray(questions)) errors.push("questions must be a list.");
@@ -148,7 +411,9 @@ function validatePlan(plan, context = {}) {
         errors.push(`${at}.kind must be one of ${KINDS.join(", ")}.`);
       }
       if (!isStr(p.name)) errors.push(`${at} has no name.`);
-      if (!SOURCES.includes(p.source)) {
+      // A layout is always new, so the Planner may leave its source out.
+      const layoutAsNew = p.kind === "layout" && p.source === undefined;
+      if (!layoutAsNew && !SOURCES.includes(p.source)) {
         errors.push(`${at}.source must be one of ${SOURCES.join(", ")}.`);
       } else if (NEEDS_PACKAGE.has(p.source) && p.kind === "widget") {
         if (!isStr(p.package)) {
@@ -171,8 +436,60 @@ function validatePlan(plan, context = {}) {
           errors.push(`${at}: there's no saved theme called "${p.name}".`);
         }
       }
+      if (p.component !== undefined && !isStr(p.component)) {
+        errors.push(`${at}.component must be the component's name.`);
+      }
       if (p.providers !== undefined && !Array.isArray(p.providers)) {
         errors.push(`${at}.providers must be a list.`);
+      }
+      // Which of the user's connections a widget uses, and its settings —
+      // the user's answers, applied when it's placed (build fixes 2).
+      if (
+        p.provider !== undefined &&
+        !(isObject(p.provider) && Object.values(p.provider).every(isStr))
+      ) {
+        errors.push(
+          `${at}.provider must map a provider type to a connection name.`,
+        );
+      }
+      if (p.settings !== undefined && !isObject(p.settings)) {
+        errors.push(`${at}.settings must be an object.`);
+      }
+      if (p.kind === "layout" && p.pages !== undefined) {
+        if (!Array.isArray(p.pages)) errors.push(`${at}.pages must be a list.`);
+        else {
+          const names = new Set(
+            pieces
+              .filter((x) => x && x.kind === "widget" && isStr(x.name))
+              .map((x) => x.name.trim().toLowerCase()),
+          );
+          p.pages.forEach((pg, j) => {
+            if (!pg || !isStr(pg.name) || !Array.isArray(pg.widgets)) {
+              errors.push(
+                `${at}.pages[${j}] needs a name and a list of widgets.`,
+              );
+              return;
+            }
+            for (const w of pg.widgets) {
+              if (!names.has(String(w).trim().toLowerCase())) {
+                warnings.push(
+                  `${at}.pages[${j}] names "${w}", which isn't a widget in the plan.`,
+                );
+              }
+            }
+            if (pg.grid !== undefined) {
+              // A layout slip is a warning: cells that don't fit are
+              // skipped when it's placed (planPages), so it still builds.
+              checkGrid(
+                pg.grid,
+                `${at}.pages[${j}].grid`,
+                names,
+                warnings,
+                warnings,
+              );
+            }
+          });
+        }
       }
       // Made-up preview data (5d): never blocks building — the preview
       // only shows short text lines.
@@ -197,12 +514,13 @@ function validatePlan(plan, context = {}) {
           `${at} comes from the registry, but beforeBuilding doesn't list installing it.`,
         );
       }
-      // Providers the user doesn't have must be connected first.
+      // A provider the user doesn't have: the build waits on that step
+      // ("needs a provider", CRE-004 AC5) — a warning, not an error.
       if (have.size && Array.isArray(p.providers)) {
         for (const type of p.providers) {
           const t = String(type).toLowerCase();
           if (!have.has(t) && !beforeText.includes(t)) {
-            errors.push(
+            warnings.push(
               `${at} needs ${type}, which isn't connected — add it to beforeBuilding.`,
             );
           }
@@ -286,7 +604,7 @@ function validatePlan(plan, context = {}) {
   }
 
   if (plan.checks !== undefined && !Array.isArray(plan.checks)) {
-    errors.push("checks must be a list.");
+    warnings.push("checks must be a list.");
   } else if (
     Array.isArray(pieces) &&
     pieces.some((p) => p && ["new", "update"].includes(p.source)) &&
@@ -297,7 +615,7 @@ function validatePlan(plan, context = {}) {
 
   if (plan.access !== undefined) {
     if (!Array.isArray(plan.access) || plan.access.some((a) => !isStr(a))) {
-      errors.push("access must be a list of sentences.");
+      warnings.push("access must be a list of sentences.");
     }
   } else if (
     Array.isArray(pieces) &&
@@ -309,10 +627,18 @@ function validatePlan(plan, context = {}) {
   }
 
   if (!plan.estimate || !isStr(plan.estimate.build)) {
-    errors.push("estimate.build is missing.");
+    warnings.push("estimate.build is missing.");
   }
 
   return { valid: errors.length === 0, errors, warnings };
 }
 
-export { KINDS, SOURCES, BEFORE_KINDS, extractPlan, planTarget, validatePlan };
+export {
+  KINDS,
+  SOURCES,
+  BEFORE_KINDS,
+  extractPlan,
+  planPages,
+  planTarget,
+  validatePlan,
+};

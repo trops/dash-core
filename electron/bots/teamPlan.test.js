@@ -176,7 +176,9 @@ describe("validatePlan — what it catches", () => {
     assert.match(all, /pieces\[2\] \(yours\) must say which package/);
   });
 
-  it("a provider the user hasn't connected must be in beforeBuilding", () => {
+  // Not an error (Phase 1b): the build waits on that step ("needs a
+  // provider", CRE-004 AC5) — the plan can still be built.
+  it("a provider the user hasn't connected is a warning, not an error", () => {
     const res = validatePlan(
       {
         summary: "x",
@@ -188,7 +190,8 @@ describe("validatePlan — what it catches", () => {
       },
       { providers: PROVIDERS },
     );
-    assert.match(res.errors.join(" "), /needs notion, which isn't connected/);
+    assert.match(res.warnings.join(" "), /needs notion, which isn't connected/);
+    assert.equal(res.valid, true);
   });
 
   it("warns about a registry widget with no install step, and builds with no checks", () => {
@@ -204,12 +207,15 @@ describe("validatePlan — what it catches", () => {
     assert.equal(res.warnings.length, 2);
   });
 
-  it("needs a summary and an estimate", () => {
+  // Shown, not built (Phase 1b): a missing summary or estimate is a
+  // warning — the build doesn't need them.
+  it("a missing summary or estimate is a warning", () => {
     const res = validatePlan({
       pieces: [{ kind: "layout", name: "l", source: "new" }],
     });
-    assert.match(res.errors.join(" "), /summary is missing/);
-    assert.match(res.errors.join(" "), /estimate\.build is missing/);
+    assert.match(res.warnings.join(" "), /summary is missing/);
+    assert.match(res.warnings.join(" "), /estimate\.build is missing/);
+    assert.equal(res.valid, true);
     assert.equal(validatePlan(null).valid, false);
   });
 });
@@ -251,9 +257,9 @@ describe("validatePlan — access (phase 4a, CRE-003 AC5)", () => {
     assert.ok(!ok.warnings.some((w) => /can and can't/.test(w)));
     assert.match(validatePlan(base).warnings.join(" "), /can and can't do/);
   });
-  it("rejects access that isn't a list of sentences", () => {
+  it("access that isn't a list of sentences is a warning", () => {
     assert.match(
-      validatePlan({ ...base, access: "read" }).errors.join(" "),
+      validatePlan({ ...base, access: "read" }).warnings.join(" "),
       /access must be a list/,
     );
   });
@@ -684,13 +690,15 @@ describe("plan grids — where each widget goes", () => {
     assert.deepEqual(r.errors, []);
   });
 
-  it("cells outside the grid, overlapping, or twice for one widget are errors", () => {
+  // Warnings, not errors (Phase 1b): cells that don't fit are skipped when
+  // it's placed, so the plan still builds.
+  it("cells outside the grid, overlapping, or twice for one widget are warnings", () => {
     const plan = store();
     const cells = plan.pieces[0].pages[0].grid.cells;
     cells[4].row = 5; // Pagination below the 4 rows
     cells[2].row = 2; // Category on Brand's cell
     cells.push({ widget: "Hits", row: 3, col: 2 }); // Hits twice
-    const { errors } = validatePlan(plan);
+    const { warnings: errors } = validatePlan(plan);
     assert.ok(
       errors.some((e) => /Pagination.*outside the 4×2 grid/.test(e)),
       errors.join("\n"),
@@ -705,14 +713,15 @@ describe("plan grids — where each widget goes", () => {
     );
   });
 
-  it("unknown sizes are errors; an unknown widget is a warning", () => {
+  it("unknown sizes and an unknown widget are warnings", () => {
     const plan = store();
     const grid = plan.pieces[0].pages[0].grid;
     grid.colWidths = { 1: "1/5" };
     grid.rowHeights = { 2: "tall" };
     grid.cells.push({ widget: "Nope", row: 3, col: 2 });
     grid.cells[3].rowSpan = 1;
-    const { errors, warnings } = validatePlan(plan);
+    const { warnings } = validatePlan(plan);
+    const errors = warnings;
     assert.ok(
       errors.some((e) => /colWidths.*1\/5/.test(e)),
       errors.join("\n"),
@@ -727,10 +736,10 @@ describe("plan grids — where each widget goes", () => {
     );
   });
 
-  it("a grid needs whole numbers of columns and rows", () => {
+  it("a grid needs whole numbers of columns and rows (a warning)", () => {
     const plan = store();
     plan.pieces[0].pages[0].grid.cols = 0;
-    const { errors } = validatePlan(plan);
+    const { warnings: errors } = validatePlan(plan);
     assert.ok(
       errors.some((e) => /grid needs cols \(1–6\) and rows \(1–12\)/.test(e)),
       errors.join("\n"),
