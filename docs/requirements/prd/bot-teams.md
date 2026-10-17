@@ -1016,6 +1016,10 @@ The six questions raised in the first draft were resolved on 2026-10-01 (see the
 
 ---
 
+## Accepting a lead's draft (consolidation Phase 1d, 2026-10-16)
+
+A draft (TEAM-005) is checked when it's drafted and checked again when it's accepted — accepting goes through the same save check as every bot (bot-factory: "Saving and turning on a bot"), so an edit made after drafting can't skip it. The accepted bot starts paused until the user turns it on.
+
 ## Out of Scope
 
 - Multi-user, shared, or cloud-hosted teams

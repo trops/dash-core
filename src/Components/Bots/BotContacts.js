@@ -302,7 +302,7 @@ export const BotContacts = ({
               />
               {c.setBotPaused ? (
                 <Button3
-                  title={isPaused ? "Resume" : "Pause"}
+                  title={isPaused ? "Turn on" : "Pause"}
                   size="sm"
                   onClick={() => c.setBotPaused(open.id, !isPaused)}
                 />

@@ -126,9 +126,9 @@ test("Pause and Resume", async () => {
   await waitFor(() => expect(botsApi.pauseBot).toHaveBeenCalledWith("b_scout"));
 });
 
-test("a paused role offers Resume", async () => {
+test("a paused role offers Turn on", async () => {
   setup({ ...scout, paused: true });
-  fireEvent.click(screen.getByText("Resume"));
+  fireEvent.click(screen.getByText("Turn on"));
   await waitFor(() =>
     expect(botsApi.resumeBot).toHaveBeenCalledWith("b_scout"),
   );

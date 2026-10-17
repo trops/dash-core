@@ -542,7 +542,7 @@ export const BotChat = ({
         sendLabel={isLead ? "Ask" : "Send"}
         placeholder={
           paused
-            ? `Resume ${bot.name} to message it`
+            ? `Turn on ${bot.name} to message it`
             : overBudget
               ? `Keep ${bot.name} running to message it`
               : isLead
@@ -591,14 +591,14 @@ export const BotChat = ({
                     className={`h-3 w-3 ${muted}`}
                   />
                   <span className="flex-1">
-                    Paused — it won&apos;t answer until you resume it.
+                    Paused — it won&apos;t answer until you turn it on.
                     {waiting
-                      ? ` ${waiting} — they'll run when you resume.`
+                      ? ` ${waiting} — they'll run when you turn it on.`
                       : ""}
                   </span>
                   {onResume ? (
                     <Button
-                      title="Resume"
+                      title="Turn on"
                       size="sm"
                       onClick={() => onResume()}
                     />

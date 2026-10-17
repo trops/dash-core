@@ -139,13 +139,36 @@ export const CreateBuildingStep = ({
   const savedBots = Object.values((state && state.bots) || {}).filter(
     (b) => b && b.id,
   );
+  // Which of them are paused — Turn on is offered only for those.
+  const [pausedBots, setPausedBots] = useState([]);
+  const savedIds = savedBots.map((b) => b.id).join(",");
+  useEffect(() => {
+    const bots = window.mainApi && window.mainApi.bots;
+    if (!savedIds || !bots || !bots.getPauseState) return undefined;
+    let alive = true;
+    Promise.resolve(bots.getPauseState())
+      .then((p) => {
+        if (alive) setPausedBots((p && p.bots) || []);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [savedIds]);
+  // The bots a build saves start paused (Phase 1d): trying one is a test
+  // run, and a pass offers Turn on.
   const runBot = async (bot) => {
     setRuns((r) => ({ ...r, [bot.id]: "starting" }));
     try {
       const res = await window.mainApi.bots.run(bot.id);
       setRuns((r) => ({
         ...r,
-        [bot.id]: res && res.error ? String(res.error) : "started",
+        [bot.id]:
+          res && res.skipped
+            ? `It didn't run: ${res.reason || "it was skipped"}.`
+            : res && (res.error || res.status === "failed")
+              ? String(res.error || "The run failed.")
+              : "passed",
       }));
     } catch (err) {
       setRuns((r) => ({
@@ -437,6 +460,9 @@ export const CreateBuildingStep = ({
         {finished && status !== "removed" && savedBots.length ? (
           <div className="flex flex-col gap-2" data-testid="building-run-bots">
             <SectionLabel text="Try the bots" />
+            <span className={`text-xs ${muted}`}>
+              New bots start paused — try one, then turn it on.
+            </span>
             {savedBots.map((b) => {
               const run = runs[b.id];
               return (
@@ -444,15 +470,33 @@ export const CreateBuildingStep = ({
                   <Button3
                     title={`Run ${b.name} now`}
                     onClick={() => runBot(b)}
-                    disabled={run === "starting" || run === "started"}
+                    disabled={run === "starting"}
                   />
                   <span className={`text-xs ${muted}`}>
-                    {run === "started"
-                      ? "Running — its result shows on the dashboard."
-                      : run && run !== "starting"
-                        ? run
-                        : ""}
+                    {run === "starting"
+                      ? "Running…"
+                      : run === "passed"
+                        ? "It worked — turn it on?"
+                        : run === "on"
+                          ? `${b.name} is on.`
+                          : run || ""}
                   </span>
+                  {pausedBots.includes(b.id) && run !== "on" ? (
+                    <Button3
+                      title={`Turn ${b.name} on`}
+                      onClick={async () => {
+                        try {
+                          await window.mainApi.bots.resumeBot(b.id);
+                          setRuns((r) => ({ ...r, [b.id]: "on" }));
+                        } catch (err) {
+                          setRuns((r) => ({
+                            ...r,
+                            [b.id]: `Couldn't turn it on: ${(err && err.message) || "unknown error"}`,
+                          }));
+                        }
+                      }}
+                    />
+                  ) : null}
                 </div>
               );
             })}

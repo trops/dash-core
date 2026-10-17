@@ -58,8 +58,22 @@ class BotScheduler {
     this._jobs.delete(botId);
   }
 
+  /**
+   * Register every bot's schedules. A schedule saved before schedules were
+   * checked (consolidation Phase 1d) can't stop the rest — or the app's start:
+   * that bot's schedules are skipped and logged.
+   */
   registerAll(bots) {
-    for (const bot of bots || []) this.register(bot);
+    for (const bot of bots || []) {
+      try {
+        this.register(bot);
+      } catch (err) {
+        this.unregister(bot.id);
+        console.warn(
+          `[BotScheduler] ${bot.name || bot.id}'s schedule isn't valid, so it won't run on its own: ${err.message}`,
+        );
+      }
+    }
   }
 
   /** @returns {string[]} bot ids with active schedules */

@@ -211,8 +211,9 @@ test("saved bots are offered as Run now — never run on their own (4d-2)", asyn
   );
   fireEvent.click(screen.getByText("Run Greeter now"));
   expect(window.mainApi.bots.run).toHaveBeenCalledWith("bot_9");
+  // Bots a build saves start paused (Phase 1d): a pass offers Turn on.
   expect(
-    await screen.findByText("Running — its result shows on the dashboard."),
+    await screen.findByText("It worked — turn it on?"),
   ).toBeInTheDocument();
 });
 
@@ -321,5 +322,20 @@ describe("readable steps (Create build fixes 2)", () => {
     expect(head).toHaveTextContent("Build Hello");
     expect(head).not.toContainElement(usage);
     expect(usage).toHaveTextContent(/Sonnet · 18\.4k tokens/);
+  });
+});
+
+// Consolidation Phase 1d: bots a build saves start paused; trying one is a
+// test run, and a pass offers Turn on.
+describe("Try the bots — paused bots (Phase 1d)", () => {
+  const src = require("fs").readFileSync(
+    require("path").join(__dirname, "CreateBuildingStep.js"),
+    "utf8",
+  );
+  it("a skipped run says why; a pass offers Turn on", () => {
+    expect(src).toMatch(/res && res\.skipped/);
+    expect(src).toMatch(/It worked — turn it on\?/);
+    expect(src).toMatch(/resumeBot\(/);
+    expect(src).toMatch(/start paused/);
   });
 });

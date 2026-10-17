@@ -116,7 +116,7 @@ export const DashTeamPanel = ({ bot, status, lastRun, onChanged, onEdit }) => {
         </div>
         <div className="flex flex-row flex-wrap items-center gap-2">
           <Button3
-            title={paused ? "Resume" : "Pause"}
+            title={paused ? "Turn on" : "Pause"}
             size="sm"
             onClick={togglePause}
           />

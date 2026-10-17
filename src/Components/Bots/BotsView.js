@@ -359,9 +359,27 @@ export const BotsView = ({
 
   const afterChange = () => team && team.refresh && team.refresh();
 
-  const runNow = () => {
+  // Run now on a paused bot is a test run (Phase 1d): it stays paused, and
+  // a pass offers Turn on.
+  const [testRun, setTestRun] = useState(null);
+  const runNow = async () => {
     const bots = api();
-    if (bots && selected) bots.run(selected.id, "", false);
+    if (!bots || !selected) return;
+    const bot = selected;
+    const wasPaused = status === "Paused";
+    setTestRun(null);
+    const res = await Promise.resolve(bots.run(bot.id, "", false)).catch(
+      (err) => ({ status: "failed", error: (err && err.message) || "" }),
+    );
+    if (!wasPaused) return;
+    setTestRun({
+      botId: bot.id,
+      name: bot.name,
+      ok: !!res && !res.skipped && res.status === "completed",
+      why:
+        (res && (res.error || (res.skipped && res.reason))) ||
+        "it didn't finish",
+    });
   };
 
   // Diagram wiring (TEAM-014 slice 2): a trigger is a subscription on the
@@ -417,6 +435,7 @@ export const BotsView = ({
     if (!bots || !selected) return;
     if (status === "Paused") await bots.resumeBot(selected.id);
     else await bots.pauseBot(selected.id);
+    setTestRun(null);
     afterChange();
   };
 
@@ -627,7 +646,7 @@ export const BotsView = ({
       }
       const n = (r.installed || []).length;
       setTeamNote({
-        text: `Added ${n} paused bot${n === 1 ? "" : "s"} from ${importPreview.manifest.name}. Resume ${n === 1 ? "it" : "them"} when you're ready.`,
+        text: `Added ${n} paused bot${n === 1 ? "" : "s"} from ${importPreview.manifest.name}. Turn ${n === 1 ? "it" : "them"} on when you're ready.`,
       });
       setImportPreview(null);
       afterChange();
@@ -1050,7 +1069,7 @@ export const BotsView = ({
                   ) : null}
                   {!isLead ? (
                     <Button3
-                      title={status === "Paused" ? "Resume" : "Pause"}
+                      title={status === "Paused" ? "Turn on" : "Pause"}
                       size="sm"
                       onClick={togglePause}
                     />
@@ -1079,6 +1098,26 @@ export const BotsView = ({
                 />
               ) : null}
             </div>
+            {testRun &&
+            selected &&
+            testRun.botId === selected.id &&
+            (!testRun.ok || status === "Paused") ? (
+              <div
+                data-testid="bot-test-run"
+                className={`flex flex-row flex-wrap items-center gap-2 px-5 pt-2 text-xs ${
+                  testRun.ok ? "" : "text-red-500"
+                }`}
+              >
+                <span>
+                  {testRun.ok
+                    ? `It worked. ${testRun.name} is still paused — turn it on?`
+                    : `The test run failed: ${testRun.why}. ${testRun.name} stays paused.`}
+                </span>
+                {testRun.ok ? (
+                  <Button2 title="Turn on" size="sm" onClick={togglePause} />
+                ) : null}
+              </div>
+            ) : null}
             {menuOpen && selected ? (
               <div className="flex flex-row justify-end gap-2 px-5 pt-2">
                 {isLead ? (
