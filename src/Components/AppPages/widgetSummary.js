@@ -115,7 +115,7 @@ const ORG_RANK = (name) =>
  * AI-built, Local, Built-in.
  * @returns {Array<{ name, packages: Array<{ id, org, version, source,
  *   isBuiltIn, isDraft, mine, update, providers, description, widgets,
- *   usedOn, widgetUsage }> }>}
+ *   usedOn, widgetUsage, build, checks }> }>}
  */
 export function widgetOrgs(
   widgets,
@@ -147,12 +147,18 @@ export function widgetOrgs(
         description: null,
         providers: [],
         widgets: [],
+        // "dash" (built here from its checked source) or "developer"
+        // (its own build), and its checks (consolidation Phase 1a-2).
+        build: w.build || null,
+        checks: w.checks || null,
       };
       packages.set(id, pkg);
     }
     pkg.widgets.push(w);
     if (!pkg.version && w.version) pkg.version = w.version;
     if (!pkg.description && w.description) pkg.description = w.description;
+    if (!pkg.build && w.build) pkg.build = w.build;
+    if (!pkg.checks && w.checks) pkg.checks = w.checks;
     if (!pkg.update && updates && updates.get) {
       pkg.update = updates.get(w.name) || null;
     }

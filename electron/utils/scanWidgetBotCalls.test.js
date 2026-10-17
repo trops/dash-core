@@ -67,7 +67,9 @@ describe("scanWidgetBotCalls", () => {
 });
 
 describe("assertNoBotCalls", () => {
-  it("throws a plain refusal and removes the package folder", () => {
+  // It never deletes what it checks: a folder loaded in place is the
+  // developer's own, and publish checks the installed package (Phase 1a-2).
+  it("throws a plain refusal and leaves the package folder alone", () => {
     const dir = pkg({ "dist/index.cjs.js": "mainApi.bots.run()" });
     assert.throws(
       () => assertNoBotCalls("@acme/runner", dir),
@@ -78,7 +80,7 @@ describe("assertNoBotCalls", () => {
         ) &&
         /Run on events/.test(err.message),
     );
-    assert.equal(fs.existsSync(dir), false);
+    assert.equal(fs.existsSync(dir), true);
   });
 
   it("does nothing for a clean package", () => {
@@ -98,10 +100,10 @@ describe("every install path runs the scan (TD-005)", () => {
   it("checkPackage runs the scan, and every install path runs checkPackage", () => {
     assert.match(
       reg,
-      /async function checkPackage\(widgetName, dir, done = "installed"\) \{[\s\S]{0,300}assertNoBotCalls\(widgetName, dir\)/,
+      /async function checkPackage\(widgetName, dir, done = "installed"\) \{[\s\S]{0,300}botCallProblems\(dir\)/,
     );
     // stageInstall (installFromLocalPath, downloadWidget) and the folder loop.
-    assert.match(reg, /await checkPackage\(widgetName, staged\);/);
+    assert.match(reg, /await checkPackage\(widgetName, staged\)/);
     assert.equal(
       (reg.match(/await stageInstall\(widgetName, widgetPath/g) || []).length,
       2,
@@ -110,7 +112,7 @@ describe("every install path runs the scan (TD-005)", () => {
   it("the folder loop skips (never deletes) a widget that fails, saying why", () => {
     assert.match(
       reg,
-      /await checkPackage\(entry\.name, widgetPath, "loaded"\);/,
+      /await checkPackage\(\s*entry\.name,\s*widgetPath,\s*"loaded",?\s*\)/,
     );
     assert.match(reg, /refused\.push\(entry\.name\);/);
     assert.match(reg, /refusedReasons\[entry\.name\] = e\.message;/);

@@ -209,6 +209,9 @@ export const useInstalledWidgets = () => {
             componentNames: [key],
             packageId: reg.packageId || config._sourcePackage,
             scopedId: key,
+            // Who built the code that runs, and its checks (Phase 1a-2).
+            build: reg.build || null,
+            checks: reg.checks || null,
           };
         });
 
@@ -240,6 +243,8 @@ export const useInstalledWidgets = () => {
             componentNames: w.componentNames || [],
             packageId: w.packageId || w.name,
             scopedId: w.name,
+            build: w.build || null,
+            checks: w.checks || null,
           };
         });
 

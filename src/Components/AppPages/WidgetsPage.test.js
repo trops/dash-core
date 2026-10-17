@@ -29,8 +29,11 @@ jest.mock("../../hooks/useInstalledWidgets", () => {
     }),
   };
 });
+let mockSlackChecks = { ok: true, problems: [] };
+let mockExtraWidgets = [];
 function mockWidgets() {
   return [
+    ...mockExtraWidgets,
     {
       name: "trops.slack.Channels",
       displayName: "Slack Channels",
@@ -39,6 +42,8 @@ function mockWidgets() {
       source: "installed",
       kind: "installed",
       path: "/w/slack",
+      build: "developer",
+      checks: mockSlackChecks,
       providers: [
         { type: "slack", requiredTools: ["list_channels"], required: true },
       ],
@@ -62,6 +67,11 @@ function mockWidgets() {
       version: "0.3.1",
       source: "installed",
       kind: "installed",
+      build: "dash",
+      checks: {
+        ok: false,
+        problems: ["Bar: line 3: <Modal> isn't allowed in a widget"],
+      },
       providers: [],
       componentNames: ["acme.chart.Bar"],
     },
@@ -161,8 +171,14 @@ jest.mock("./WidgetPreview", () => ({
     </div>
   ),
 }));
+let mockReplace = null;
+const mockConfirmReplace = jest.fn();
+const mockCancelReplace = jest.fn();
 jest.mock("./useWidgetInstall", () => ({
   useWidgetInstall: () => ({
+    replace: mockReplace,
+    confirmReplace: mockConfirmReplace,
+    cancelReplace: mockCancelReplace,
     progress: { open: false, complete: false, widgets: [] },
     result: { status: "success", message: 'Widget "weather" installed.' },
     installFromZip: mockInstallFromZip,
@@ -455,6 +471,71 @@ describe("WidgetsPage package detail (NAV-008 AC3)", () => {
   });
 });
 
+// What was checked (consolidation Phase 1a-2): who built the code that
+// runs, and a package that didn't pass its checks is flagged — it still
+// works.
+describe("WidgetsPage checks", () => {
+  it("a package that ships its own build says Dash checked its source, not its build", () => {
+    setup();
+    fireEvent.click(pkgRow("slack"));
+    expect(
+      within(detail()).getByText(
+        "Runs the code its developer packaged — Dash checked the source that came with it.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("a package the app built from its checked source has no such note", () => {
+    setup();
+    fireEvent.click(pkgRow("charts"));
+    expect(within(detail()).queryByText(/its developer packaged/)).toBeNull();
+  });
+
+  it("a package that didn't pass is flagged in the list and lists why", () => {
+    setup();
+    expect(
+      within(pkgRow("charts")).getByTestId("package-checks-failed"),
+    ).toBeInTheDocument();
+    expect(
+      within(pkgRow("slack")).queryByTestId("package-checks-failed"),
+    ).toBeNull();
+    fireEvent.click(pkgRow("charts"));
+    const flagged = within(detail()).getByTestId("package-checks");
+    expect(within(flagged).getByText("Didn't pass its checks")).toBeTruthy();
+    expect(
+      within(flagged).getByText(
+        "Bar: line 3: <Modal> isn't allowed in a widget",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(flagged).getByText("It still works, but these need fixing:"),
+    ).toBeInTheDocument();
+  });
+
+  it("a package whose source couldn't be checked says so", () => {
+    mockSlackChecks = { ok: true, problems: [], sourceChecked: false };
+    setup();
+    fireEvent.click(pkgRow("slack"));
+    expect(
+      within(detail()).getByText(
+        "Runs the code its developer packaged — it came without its source, so Dash couldn't check it.",
+      ),
+    ).toBeInTheDocument();
+    mockSlackChecks = { ok: true, problems: [] };
+  });
+
+  it("installing a ZIP over an installed package asks first", () => {
+    mockReplace = { name: "@trops/slack", filepath: "/tmp/slack.zip" };
+    setup();
+    expect(
+      screen.getByText(/@trops\/slack is already installed/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Replace it" }));
+    expect(mockConfirmReplace).toHaveBeenCalled();
+    mockReplace = null;
+  });
+});
+
 describe("WidgetsPage widget detail (NAV-008 AC4)", () => {
   it("shows the widget with a link back to its package", () => {
     setup();
@@ -541,6 +622,34 @@ describe("WidgetsPage page actions", () => {
     expect(
       await screen.findByText('Widget "weather" installed.'),
     ).toBeInTheDocument();
+  });
+
+  // Found in Phase 1a-2: the request ran again when the widget list
+  // changed — i.e. right after the install — opening the file picker twice.
+  it("an install request runs once, even when the install changes the widget list", async () => {
+    const props = {
+      workspaces,
+      credentials: { appId: "app" },
+      installRequest: { action: "zip", nonce: 7 },
+    };
+    window.mainApi = { drafts: {}, shell: { openPath: jest.fn() } };
+    const { rerender } = render(<WidgetsPage {...props} />);
+    await waitFor(() => expect(mockInstallFromZip).toHaveBeenCalledTimes(1));
+    mockExtraWidgets = [
+      {
+        name: "zz.new.Thing",
+        displayName: "Thing",
+        packageId: "@zz/new",
+        source: "installed",
+        kind: "installed",
+        providers: [],
+        componentNames: ["zz.new.Thing"],
+      },
+    ];
+    rerender(<WidgetsPage {...props} />);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mockInstallFromZip).toHaveBeenCalledTimes(1);
+    mockExtraWidgets = [];
   });
 
   it("a browse request from the Create screen opens the registry search", () => {
