@@ -53,6 +53,8 @@ const EXTERNAL = [
     "objects-to-csv",
     "openai",
     "quickjs-emscripten",
+    "semver",
+    "tar",
     "ws",
     "xml2js",
     "xtreamer",

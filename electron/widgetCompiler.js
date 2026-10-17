@@ -12,18 +12,12 @@ const fs = require("fs");
 const path = require("path");
 
 // Provided by the host app via MODULE_MAP in widgetBundleLoader.js — never
-// bundled.
-const HOST_PROVIDED = [
-  "react",
-  "react-dom",
-  "@trops/dash-react",
-  "@trops/dash-core",
-  "react/jsx-runtime",
-  "prop-types",
-];
-
-const isHostProvided = (spec) =>
-  HOST_PROVIDED.some((h) => spec === h || spec.startsWith(`${h}/`));
+// bundled (utils/libraryImports.js).
+const {
+  HOST_PROVIDED,
+  isHostProvided,
+  packageNameOf,
+} = require("./utils/libraryImports");
 
 /**
  * Every node_modules folder above `dir`, nearest first — where Node would
@@ -45,12 +39,6 @@ function hostLibraryPaths(dir = __dirname) {
     at = up;
   }
   return out;
-}
-
-/** A library's package name: "@scope/name" or "name" from an import. */
-function packageNameOf(spec) {
-  const parts = String(spec).split("/");
-  return spec.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
 }
 
 /** Copy a folder with plain reads and writes (works out of an asar). */
@@ -335,9 +323,11 @@ function findWidgetsDir(widgetPath) {
  * extractWidgetConfigs() in widgetBundleLoader.js expects.
  *
  * @param {string} widgetPath - Absolute path to the widget directory
+ * @param {{ ownLibrariesOnly?: boolean }} [options] - build only with the
+ *   package's listed libraries, never the app's (registry rebuilds)
  * @returns {Promise<string|null>} Path to the compiled bundle, or null if nothing to compile
  */
-async function compileWidget(widgetPath) {
+async function compileWidget(widgetPath, { ownLibrariesOnly = false } = {}) {
   const widgetsDir = findWidgetsDir(widgetPath);
 
   if (!widgetsDir) {
@@ -405,6 +395,9 @@ async function compileWidget(widgetPath) {
   const entryPath = path.join(widgetPath, "__compile_entry.js");
   const distDir = path.join(widgetPath, "dist");
   const outPath = path.join(distDir, "index.cjs.js");
+  // The package's own libraries (package.json dependencies), downloaded
+  // into a temp folder for this build (consolidation Phase 1a-3).
+  let own = null;
 
   try {
     // Ensure dist/ directory exists
@@ -424,6 +417,9 @@ async function compileWidget(widgetPath) {
     // npm libraries the package imports come from the app's own
     // libraries when the package has none of its own (a temp build).
     const libraries = libraryResolution();
+    const { installLibraries, listedLibraries } = require("./widgetLibraries");
+    const listed = listedLibraries(widgetPath);
+    if (listed) own = await installLibraries(listed);
 
     await esbuild.build({
       entryPoints: [entryPath],
@@ -433,8 +429,15 @@ async function compileWidget(widgetPath) {
       // These modules are provided by the host app via MODULE_MAP
       // in widgetBundleLoader.js — do NOT bundle them
       external: HOST_PROVIDED,
-      nodePaths: libraries.nodePaths,
-      plugins: libraries.plugins,
+      // The package's own libraries first, then the app's — or only its
+      // own (ownLibrariesOnly: a registry rebuild, where another version
+      // of a library could behave differently from the developer's build).
+      nodePaths: own
+        ? ownLibrariesOnly
+          ? [own.nodeModules]
+          : [own.nodeModules, ...libraries.nodePaths]
+        : libraries.nodePaths,
+      plugins: own && ownLibrariesOnly ? [] : libraries.plugins,
       // Treat .js files as JSX (widget sources use JSX in .js files)
       loader: { ".js": "jsx" },
       // Use automatic JSX runtime (React 17+) so sources don't need
@@ -469,6 +472,7 @@ async function compileWidget(widgetPath) {
     }
     throw error;
   } finally {
+    if (own) own.cleanup();
     // Clean up temporary entry file
     try {
       if (fs.existsSync(entryPath)) {

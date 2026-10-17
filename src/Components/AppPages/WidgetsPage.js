@@ -151,7 +151,17 @@ const PackageChecks = ({ pkg, installed }) => {
         <span className={`text-xs ${muted}`}>
           {pkg.checks && pkg.checks.sourceChecked === false
             ? "Runs the code its developer packaged — it came without its source, so Dash couldn't check it."
-            : "Runs the code its developer packaged — Dash checked the source that came with it."}
+            : pkg.checks && pkg.checks.rebuildError
+              ? "Runs the code its developer packaged — Dash checked its source but couldn't build it here. Its developer can republish it so Dash can build it."
+              : "Runs the code its developer packaged — Dash checked the source that came with it."}
+        </span>
+      ) : null}
+      {installed &&
+      pkg.build === "developer" &&
+      pkg.checks &&
+      pkg.checks.rebuildError ? (
+        <span className={`text-xs whitespace-pre-wrap ${muted}`}>
+          Why: {pkg.checks.rebuildError}
         </span>
       ) : null}
     </>

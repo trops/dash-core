@@ -305,9 +305,41 @@ Nothing is installed, loaded or published unchecked.
     (`build`): `"dash"` when the app built it from the checked source, or
     `"developer"` when the package ships its own build. A widget package may
     bundle any libraries its developer chose, so its build is kept. The
-    Widgets page then says "Built by its developer — Dash checked its source,
-    not its build." Building such packages here with their own libraries is
-    Phase 1a-3, and needs publishing to record the libraries a package uses.
+    Widgets page then says "Runs the code its developer packaged — Dash checked
+    the source that came with it."
+-   **A package's own libraries (Phase 1a-3).** Publishing records the npm
+    libraries a package's source imports, with versions, in its package.json
+    `dependencies` (`utils/libraryImports.js`; dash-electron's
+    `scripts/packageZip.js` uses its twin). A library that isn't installed
+    where it's published stops the publish. The compiler downloads a package's
+    listed libraries from npm into a temp folder for each build
+    (`widgetLibraries.js`), with the libraries they depend on and the ones
+    they expect beside them (peers). Files come over HTTPS from npm's own
+    server only, each checked against npm's fingerprint (the verified bytes
+    are what's unpacked); plain files only; library names checked; nothing a
+    library ships is run; the app's own libraries are never downloaded;
+    downloads (250 MB), unpacked size and package count are capped, and every
+    request times out. Downloads and npm's answers are cached in
+    `userData/widget-libraries` (answers fresh for a day, used past that
+    offline; the download cache is trimmed past 1 GB), so a package builds
+    offline once its libraries were downloaded. Nothing is written into the
+    package. Only real import statements count (not text that looks like
+    one).
+-   **Registry installs build from the checked source** (`checkPackage`
+    `rebuild`), even when it ships a build — recorded `build: "dash"` — but
+    only with the libraries it lists (`compileWidget` `ownLibrariesOnly`),
+    never the app's copies, which may be other versions. A package that uses
+    libraries without listing them (everything published before this) keeps
+    its developer's build until it's republished; so does one whose build
+    fails here or whose libraries can't be fetched. The reason is recorded
+    (`checks.rebuildError`) and the Widgets page says its developer can
+    republish it so Dash can build it, and why. File and folder installs keep
+    a developer's own build. Elsewhere (Widget Builder checks, installs from
+    file, publish) a package's listed libraries come first and the app's fill
+    in.
+-   **Publish** records the libraries before its checks build the package; a
+    publish whose build fails puts the version back, and a network problem
+    is worded as one.
     A package with a build but no source says Dash couldn't check its code
     (`checks.sourceChecked: false`); one with no code at all (a dashboard
     package) records `build: "none"` and shows no note.
@@ -393,3 +425,4 @@ and `electron/schema/dashboardConfigUtils.test.js` lock them in.
 | 1.0     | 2026-03-20 | Core Team | Initial version -- documents registry-first model, scoped identity, three installation tracks |
 | 1.1     | 2026-04-24 | Core Team | Adds `packageId` on layout items, registry cache refresh-on-startup, and three-layer sparse-providers sanitization. See dash-core v0.1.425–v0.1.427. |
 | 1.2     | 2026-10-16 | Core Team | Install gate: staged + checked installs, folder loads and publishes (v0.1.785); who built it, startup checks, every file checked, safe swap, ZIPs named by their package, checks never delete (Phase 1a-2). |
+| 1.3     | 2026-10-16 | Core Team | A package's own libraries: recorded at publish, downloaded at install; registry installs build from the checked source, keeping the developer's build when they can't (Phase 1a-3). |

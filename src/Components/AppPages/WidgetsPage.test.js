@@ -524,6 +524,29 @@ describe("WidgetsPage checks", () => {
     mockSlackChecks = { ok: true, problems: [] };
   });
 
+  it("a registry package Dash couldn't build here says its developer can republish it", () => {
+    mockSlackChecks = {
+      ok: true,
+      problems: [],
+      rebuildError:
+        'This widget needs the library "mustache", which this app doesn\'t include.',
+    };
+    setup();
+    fireEvent.click(pkgRow("slack"));
+    expect(
+      within(detail()).getByText(
+        "Runs the code its developer packaged — Dash checked its source but couldn't build it here. Its developer can republish it so Dash can build it.",
+      ),
+    ).toBeInTheDocument();
+    // …and why.
+    expect(
+      within(detail()).getByText(
+        /Why: This widget needs the library "mustache"/,
+      ),
+    ).toBeInTheDocument();
+    mockSlackChecks = { ok: true, problems: [] };
+  });
+
   it("installing a ZIP over an installed package asks first", () => {
     mockReplace = { name: "@trops/slack", filepath: "/tmp/slack.zip" };
     setup();
