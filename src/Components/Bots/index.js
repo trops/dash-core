@@ -11,6 +11,8 @@ export { BotMonitor, relativeTime } from "./BotMonitor";
 export { DraftBanner } from "./DraftBanner";
 export { useBotMonitor } from "./useBotMonitor";
 export { BotContacts } from "./BotContacts";
+export { BotPage, BOT_PAGE_TABS } from "./BotPage";
+export { BotSpending } from "./BotSpending";
 export { useBotContacts } from "./useBotContacts";
 export { useSpending } from "./useSpending";
 export { BudgetField } from "./BudgetField";

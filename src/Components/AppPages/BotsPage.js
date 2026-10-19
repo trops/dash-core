@@ -1,11 +1,9 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
 import {
-  Button,
   Button3,
   ConfirmationModal,
   FilterMenu,
   SearchInput,
-  SectionLabel,
   SegmentedControl,
   StatusBadge,
   Switch,
@@ -15,15 +13,14 @@ import { ComponentManager } from "../../ComponentManager";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { BotDetail } from "../Settings/details/BotDetail";
 import { STATUS_DOT, groupBotsByTeam, triggerSummary } from "../Bots/teamUtils";
-import { toPlainText } from "../Bots/botConversation";
-import { runCostLabel } from "../../utils/runCostLabel";
 import { BotAvatar } from "../Bots/BotAvatar";
 import { useAllBots } from "./useAllBots";
 import { DashTeamPanel } from "./DashTeamPanel";
-import { approvalText, botHandle, botProviders } from "./botSummary";
-import { DetailGroup, ListGroupLabel, ManageLayout } from "./ManageLayout";
+import { botHandle } from "./botSummary";
+import { ListGroupLabel, ManageLayout } from "./ManageLayout";
 import { SpendingView } from "./SpendingView";
 import { AuditLogView } from "./AuditLogView";
+import { BotPage } from "../Bots/BotPage";
 
 // Widget config (declared `events`) by component name — feeds the bot
 // editor's "Run on events" picker.
@@ -47,15 +44,6 @@ const STATUS_FILTERS = [
   { value: "Running", label: "Running" },
   { value: "Paused", label: "Paused" },
 ];
-const RUN_STATUS = {
-  completed: "Completed",
-  failed: "Failed",
-  cancelled: "Cancelled",
-  stopped: "Stopped",
-  interrupted: "Interrupted",
-  skipped: "Skipped",
-};
-
 const teamKey = (group) => group.workspaceId || UNASSIGNED;
 
 // Under a bot's name in the list: a Dash team role's job, else how it starts.
@@ -74,230 +62,11 @@ const StatusLabel = ({ status, muted }) => {
   );
 };
 
-/** The bot's latest run, fetched when it's selected — and again after a run here. */
-function useLastRun(botId, refreshKey = 0) {
-  const [run, setRun] = useState(null);
-  useEffect(() => {
-    let alive = true;
-    setRun(null);
-    const b = window.mainApi && window.mainApi.bots;
-    if (!b || !b.getRuns) return undefined;
-    Promise.resolve(b.getRuns(botId, 1))
-      .then((runs) => {
-        if (alive && Array.isArray(runs) && runs.length) {
-          setRun(runs[runs.length - 1]);
-        }
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [botId, refreshKey]);
-  return run;
-}
-
-/** One bot's details (the right-hand panel, view mode). */
-const BotDetailPanel = ({
-  bot,
-  team,
-  status,
-  approvals,
-  onApprove,
-  onRunNow,
-  onTogglePause = null,
-  onOpenInBotsView,
-  onEdit,
-  onShowLog = null,
-}) => {
-  const { muted, strong, hairline } = useConfigTokens();
-  const [runs, setRuns] = useState(0);
-  const lastRun = useLastRun(bot.id, runs);
-  const isLead = bot.role === "lead";
-  const providers = botProviders(bot);
-  const [runStatus, setRunStatus] = useState(null);
-
-  // What actually happened (Phase 1d): a paused bot's Run now is a test run
-  // — a pass offers Turn on; a skipped or failed run says why.
-  const runNow = async () => {
-    const wasPaused = status === "Paused";
-    setRunStatus("Running…");
-    try {
-      const res = await onRunNow(bot.id);
-      if (res && res.skipped) {
-        setRunStatus(`It didn't run: ${res.reason || "it was skipped"}.`);
-      } else if (res && res.status === "failed") {
-        setRunStatus(`The run failed: ${res.error || "no details"}.`);
-      } else {
-        setRunStatus(
-          wasPaused
-            ? `It worked. ${bot.name} is still paused — turn it on?`
-            : "It worked.",
-        );
-      }
-    } catch (err) {
-      setRunStatus((err && err.message) || "Couldn't start the bot.");
-    }
-    setRuns((n) => n + 1);
-  };
-
-  return (
-    <div className="flex flex-col gap-5">
-      {/* Header */}
-      <div className="flex flex-row flex-wrap items-start justify-between gap-3">
-        <div className="flex flex-row items-center gap-3 min-w-0">
-          <BotAvatar bot={bot} large />
-          <div className="flex flex-col gap-0.5 min-w-0">
-            <span className="flex flex-row items-center gap-2 min-w-0">
-              <h3 className={`text-lg font-semibold truncate ${strong}`}>
-                {bot.name || "Untitled bot"}
-              </h3>
-              {isLead ? <StatusBadge state="neutral" label="Lead" /> : null}
-            </span>
-            <span className={`text-xs font-mono truncate ${muted}`}>
-              {botHandle(bot)}
-            </span>
-            <StatusLabel status={status} muted={muted} />
-          </div>
-        </div>
-        <div className="flex flex-row flex-wrap items-center gap-2">
-          {team.workspace ? (
-            <Button
-              title={`Open in ${team.label}'s Bots view`}
-              size="sm"
-              onClick={() => onOpenInBotsView(team.workspace, bot.id)}
-            />
-          ) : null}
-          {isLead ? null : (
-            <Button3 title="Run now" size="sm" onClick={runNow} />
-          )}
-          {isLead || !onTogglePause ? null : (
-            <Button3
-              title={status === "Paused" ? "Turn on" : "Pause"}
-              size="sm"
-              onClick={async () => {
-                await onTogglePause(bot.id, status === "Paused");
-                setRunStatus(null);
-              }}
-            />
-          )}
-          <Button3 title="Edit" size="sm" onClick={onEdit} />
-        </div>
-      </div>
-      {runStatus ? (
-        <span className={`text-xs ${muted}`}>{runStatus}</span>
-      ) : null}
-
-      {/* Waiting approvals, answered inline */}
-      {approvals.map((a) => (
-        <div
-          key={a.id}
-          className="flex flex-row flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-400 px-4 py-3"
-        >
-          <span className="flex flex-row items-center gap-2 text-sm">
-            <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />
-            {approvalText(a)}
-          </span>
-          <span className="flex flex-row gap-2">
-            <Button
-              title="Allow"
-              size="sm"
-              onClick={() => onApprove(a.id, { allow: true })}
-            />
-            <Button3
-              title="Deny"
-              size="sm"
-              onClick={() => onApprove(a.id, { allow: false })}
-            />
-          </span>
-        </div>
-      ))}
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="flex flex-col gap-2 min-w-0">
-          <SectionLabel text="Team" />
-          <span className="text-sm truncate">{team.label}</span>
-        </div>
-        <div className="flex flex-col gap-2 min-w-0">
-          <SectionLabel text="Runs" />
-          <span className="text-sm">{triggerSummary(bot)}</span>
-        </div>
-        <div className="flex flex-col gap-2 min-w-0">
-          <SectionLabel text="Providers" />
-          {isLead ? (
-            <span className={`text-sm ${muted}`}>Team tools only</span>
-          ) : providers.length ? (
-            <div className="flex flex-col gap-2">
-              {providers.map((p) => (
-                <div key={p.name} className="flex flex-col gap-1 min-w-0">
-                  <span className="text-sm truncate">{p.name}</span>
-                  <span className="flex flex-row flex-wrap gap-1.5">
-                    {p.tools.length ? (
-                      p.tools.map((t) => (
-                        <span
-                          key={t}
-                          className={`px-1.5 py-0.5 rounded border text-xs font-mono ${hairline} ${muted}`}
-                        >
-                          {t}
-                        </span>
-                      ))
-                    ) : (
-                      <span className={`text-xs ${muted}`}>All tools</span>
-                    )}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <span className={`text-sm ${muted}`}>None</span>
-          )}
-        </div>
-        <DetailGroup title="Last run">
-          {lastRun ? (
-            <div className="flex flex-col gap-1 min-w-0">
-              <span className="text-sm">
-                {RUN_STATUS[lastRun.status] || lastRun.status || "Run"}
-                {lastRun.endedAt
-                  ? ` · ${new Date(lastRun.endedAt).toLocaleString()}`
-                  : ""}
-              </span>
-              {runCostLabel(lastRun) ? (
-                <span
-                  className={`text-xs ${muted}`}
-                  data-testid="last-run-cost"
-                >
-                  {runCostLabel(lastRun)}
-                </span>
-              ) : null}
-              {lastRun.error || lastRun.output ? (
-                <span className={`text-sm line-clamp-3 ${muted}`}>
-                  {toPlainText(lastRun.error || lastRun.output)}
-                </span>
-              ) : null}
-            </div>
-          ) : (
-            <span className={`text-sm ${muted}`}>Hasn't run yet</span>
-          )}
-          {onShowLog ? (
-            <div>
-              <Button3
-                title="See this bot's log"
-                size="sm"
-                onClick={() => onShowLog(bot.id)}
-              />
-            </div>
-          ) : null}
-        </DetailGroup>
-      </div>
-    </div>
-  );
-};
-
 /**
  * BotsPage — every bot as list + detail (app-navigation PRD NAV-006):
- * grouped by team, with search, a Team filter and status chips; the detail
- * shows the bot's status, waiting approvals (Allow / Deny), team, triggers,
- * providers + tools and last run, with Open in Bots view / Run now / Edit.
- * Edit and New Bot use the bot editor in the detail panel.
+ * grouped by team, with search, a Team filter and status chips; the detail is
+ * the bot's page (NAV-016 — conversation, activity, log, spending, settings).
+ * The Dash team keeps its own panel; New Bot opens the editor in the detail.
  */
 export const BotsPage = ({
   workspaces = [],
@@ -321,7 +90,9 @@ export const BotsPage = ({
   const [selectedId, setSelectedId] = useState(null);
   // null | "edit" | "create"
   const [mode, setMode] = useState(null);
-  const [deleteTarget, setDeleteTarget] = useState(null);
+  // The bot page has unsaved Settings edits: leaving it asks first.
+  const [pageDirty, setPageDirty] = useState(false);
+  const [pendingLeave, setPendingLeave] = useState(null);
   // Global switch: give every dashboard an idle team lead (TEAM-002).
   const [autoLeads, setAutoLeads] = useState(null);
 
@@ -350,7 +121,7 @@ export const BotsPage = ({
   // The header's New Bot opens a blank editor in the detail panel.
   const prevCreate = useRef(false);
   useEffect(() => {
-    if (createRequested && !prevCreate.current) setMode("create");
+    if (createRequested && !prevCreate.current) guard(() => setMode("create"));
     prevCreate.current = createRequested;
     if (createRequested && onCreateAcknowledged) onCreateAcknowledged();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -378,11 +149,13 @@ export const BotsPage = ({
     .map((g) => ({ ...g, bots: g.bots.filter(matches) }))
     .filter((g) => g.bots.length);
   const ordered = groups.flatMap((g) => g.bots);
+  // A bot with unsaved edits stays shown even if a filter would hide it.
+  const pinned =
+    pageDirty && selectedId
+      ? all.bots.find((b) => b.id === selectedId) || null
+      : null;
   const selected =
-    ordered.find((b) => b.id === selectedId) || ordered[0] || null;
-  const selectedGroup = selected
-    ? groups.find((g) => g.bots.includes(selected))
-    : null;
+    ordered.find((b) => b.id === selectedId) || pinned || ordered[0] || null;
   const teamOptions = allGroups.map((g) => ({
     value: teamKey(g),
     label: g.label,
@@ -397,20 +170,19 @@ export const BotsPage = ({
     return saved;
   };
 
-  const confirmDelete = async () => {
-    const id = deleteTarget;
-    setDeleteTarget(null);
-    if (!id || !botsApi) return;
-    try {
-      await botsApi.delete(id);
-      setMode(null);
-      if (selectedId === id) setSelectedId(null);
-      await all.refresh();
-    } catch (err) {
-      console.error("Delete bot error:", err);
-    }
-  };
+  // Leaving a bot page with unsaved edits asks first (NAV-016 AC3).
+  function guard(leave) {
+    if (pageDirty) setPendingLeave(() => leave);
+    else leave();
+  }
+  function discardAndLeave() {
+    const leave = pendingLeave;
+    setPendingLeave(null);
+    setPageDirty(false);
+    if (leave) leave();
+  }
 
+  const showsBotPage = !mode && !!selected && !isDashTeamBot(selected);
   let detail;
   if (mode === "create") {
     detail = (
@@ -445,11 +217,6 @@ export const BotsPage = ({
           bots={all.bots}
           onSave={handleSave}
           onCancel={() => setMode(null)}
-          onDelete={
-            isDashTeamBot(selected)
-              ? undefined
-              : () => setDeleteTarget(selected.id)
-          }
         />
       </div>
     );
@@ -465,28 +232,23 @@ export const BotsPage = ({
       />
     );
   } else if (selected) {
-    const ws = selectedGroup.workspaceId
-      ? workspaces.find((w) => String(w.id) === selectedGroup.workspaceId)
-      : null;
+    // Everything about the bot in one place (NAV-016).
     detail = (
-      <BotDetailPanel
+      <BotPage
         key={selected.id}
-        bot={selected}
-        team={{ label: selectedGroup.label, workspace: ws || null }}
-        status={all.statusOf(selected.id)}
-        approvals={all.approvalsFor(selected.id)}
-        onApprove={all.approve}
-        onRunNow={(id) => botsApi.run(id)}
-        onTogglePause={async (id, paused) => {
-          if (paused) await botsApi.resumeBot(id);
-          else await botsApi.pauseBot(id);
-          await all.refresh();
-        }}
+        botId={selected.id}
+        workspaces={workspaces}
         onOpenInBotsView={onOpenBotInBotsView}
-        onEdit={() => setMode("edit")}
-        onShowLog={(id) => {
-          setLogBotIds([id]);
-          setPageView("log");
+        onChanged={all.refresh}
+        onDirtyChange={(dirty) => {
+          setPageDirty(dirty);
+          // Pin it: the first bot is shown without being picked.
+          if (dirty) setSelectedId(selected.id);
+        }}
+        onDeleted={() => {
+          setPageDirty(false);
+          setSelectedId(null);
+          all.refresh();
         }}
       />
     );
@@ -505,7 +267,7 @@ export const BotsPage = ({
       ariaLabel="Show"
       options={PAGE_VIEWS}
       value={pageView}
-      onChange={setPageView}
+      onChange={(v) => guard(() => setPageView(v))}
     />
   );
 
@@ -546,9 +308,10 @@ export const BotsPage = ({
       testId="bots-page"
       listLabel="Bots"
       detailTestId="bot-detail"
-      // A bot's details are short: the pane fits them instead of leaving
-      // an empty card below.
-      detailFit
+      // A bot's page fills the pane and scrolls itself; the Dash team panel
+      // and the new-bot form fit their content.
+      detailFlush={showsBotPage}
+      detailFit={!showsBotPage}
       toolbar={
         <>
           {viewSwitch}
@@ -602,8 +365,11 @@ export const BotsPage = ({
                     type="button"
                     aria-current={active ? "true" : undefined}
                     onClick={() => {
-                      setMode(null);
-                      setSelectedId(bot.id);
+                      if (bot.id === (selected && selected.id) && !mode) return;
+                      guard(() => {
+                        setMode(null);
+                        setSelectedId(bot.id);
+                      });
                     }}
                     className={`w-full text-left rounded-lg px-2 py-2 border flex flex-row items-center gap-3 ${
                       active
@@ -642,14 +408,14 @@ export const BotsPage = ({
       detail={detail}
     >
       <ConfirmationModal
-        isOpen={!!deleteTarget}
-        setIsOpen={() => setDeleteTarget(null)}
-        title="Delete bot?"
-        message="This removes the bot, its run history, and its working directory."
-        confirmLabel="Delete"
+        isOpen={!!pendingLeave}
+        setIsOpen={() => setPendingLeave(null)}
+        title="Discard unsaved changes?"
+        message="Your changes to this bot haven't been saved."
+        confirmLabel="Discard"
         variant="danger"
-        onConfirm={confirmDelete}
-        onCancel={() => setDeleteTarget(null)}
+        onConfirm={discardAndLeave}
+        onCancel={() => setPendingLeave(null)}
       />
     </ManageLayout>
   );

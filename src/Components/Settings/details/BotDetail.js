@@ -197,6 +197,8 @@ export const BotDetail = ({
   // Save, which merges it over the latest copy (keepLatest).
   stageChanges = false,
   onChange = null,
+  // The bot page shows the budget on its Spending tab instead (NAV-016).
+  showBudget = true,
 }) => {
   const showInstructions = !section || section === "instructions";
   const showAccess = !section || section === "access";
@@ -968,7 +970,7 @@ export const BotDetail = ({
               <span className="text-xs opacity-50">{approvalHint}</span>
             ) : null}
             {/* A saved bot's monthly limit and spending (US-019 AC2). */}
-            {!isCreating && bot && bot.id && !isTeamRole ? (
+            {showBudget && !isCreating && bot && bot.id && !isTeamRole ? (
               <BotBudgetSection bot={bot} />
             ) : null}
           </>
