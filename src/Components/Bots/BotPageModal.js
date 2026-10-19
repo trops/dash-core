@@ -23,12 +23,14 @@ const EMPTY = [];
  * @param {() => void} onClose
  * @param {object[]} [workspaces]
  * @param {(workspace, botId) => void} [onOpenInBotsView]
+ * @param {(section: string) => void} [onOpenSettings]  the app's settings
  */
 export const BotPageModal = ({
   request = null,
   onClose,
   workspaces = EMPTY,
   onOpenInBotsView = null,
+  onOpenSettings = null,
 }) => {
   const { currentTheme } = useContext(ThemeContext) || {};
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
@@ -89,6 +91,14 @@ export const BotPageModal = ({
               ? (ws, botId) => {
                   close();
                   onOpenInBotsView(ws, botId);
+                }
+              : null
+          }
+          onOpenSettings={
+            onOpenSettings
+              ? (section) => {
+                  close();
+                  onOpenSettings(section);
                 }
               : null
           }

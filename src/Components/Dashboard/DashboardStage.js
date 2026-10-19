@@ -2804,6 +2804,7 @@ const DashboardStageInner = ({
                   onOpenBotsView={handleOpenDashboardBotsView}
                   onOpenDashboardConfig={handleOpenDashboardConfig}
                   onOpenBotInBotsView={handleOpenBotInBotsView}
+                  onOpenAppSettings={(section) => openAppSettings(section)}
                   onOpenPrivacySettings={() =>
                     openAppSettings("privacy-security")
                   }
@@ -2994,6 +2995,7 @@ const DashboardStageInner = ({
               onClose={() => setBotPageRequest(null)}
               workspaces={workspaceConfig}
               onOpenInBotsView={handleOpenBotInBotsView}
+              onOpenSettings={(section) => openAppSettings(section)}
             />
             <AppSettingsModal
               isOpen={isAppSettingsOpen}

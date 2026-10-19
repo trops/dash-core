@@ -72,6 +72,7 @@ export const BotsPage = ({
   workspaces = [],
   dashApi = null,
   onOpenBotInBotsView = () => {},
+  onOpenAppSettings = null,
   createRequested = false,
   onCreateAcknowledged = null,
 }) => {
@@ -239,6 +240,7 @@ export const BotsPage = ({
         botId={selected.id}
         workspaces={workspaces}
         onOpenInBotsView={onOpenBotInBotsView}
+        onOpenSettings={onOpenAppSettings}
         onChanged={all.refresh}
         onDirtyChange={(dirty) => {
           setPageDirty(dirty);

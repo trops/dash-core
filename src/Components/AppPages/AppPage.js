@@ -57,6 +57,8 @@ export const AppPage = ({
   onOpenDashboardConfig = null,
   // Bots page: open a bot in its team's Bots view (workspace, botId).
   onOpenBotInBotsView = null,
+  // Bots page: an error's next step ("Open Settings › Providers").
+  onOpenAppSettings = null,
   // Widgets page: Settings › Privacy & Security (widget permissions).
   onOpenPrivacySettings = null,
 }) => {
@@ -116,6 +118,7 @@ export const AppPage = ({
         workspaces={workspaces}
         dashApi={dashApi}
         onOpenBotInBotsView={onOpenBotInBotsView}
+        onOpenAppSettings={onOpenAppSettings}
         {...createProps}
       />
     );
