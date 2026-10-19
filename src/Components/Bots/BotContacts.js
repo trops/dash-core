@@ -1,6 +1,5 @@
 import React, { useContext, useEffect, useMemo, useState } from "react";
 import {
-  Button,
   Button3,
   ButtonIcon3,
   EmptyState,
@@ -16,8 +15,6 @@ import {
   useStatusTokens,
 } from "@trops/dash-react";
 import { BotAvatar } from "./BotAvatar";
-import { BotChat } from "./BotChat";
-import { BotRunHistory } from "./BotRunHistory";
 import { STATUS_DOT } from "./teamUtils";
 import {
   budgetLimitText,
@@ -30,14 +27,13 @@ import {
  * BotContacts — the Bots dock panel (bot-teams PRD TEAM-015): your bots as a
  * contacts list, like a chat app. Grouped by dashboard (or one list), newest
  * activity first or A–Z, each row saying what the bot last did. Pick a bot to
- * chat with it, or switch to its Activity; open it in the Bots view from
- * there. Approvals waiting on you stay at the top ("Needs you") and inside
- * the bot's chat.
+ * open its bot page in a large modal (app-navigation NAV-016 AC5) — a
+ * `dash:open-bot` event the host answers, unless `onOpenBot` is given.
+ * Approvals waiting on you stay at the top ("Needs you").
  *
  * @param {object} contacts  useBotContacts()
  * @param {object[]} workspaces  all dashboards (group names)
- * @param {(workspaceId, botId, tab) => void} [onOpenBotsView]
- * @param {(botId: string) => void} [onOpenSettings]  bots on no dashboard
+ * @param {(botId: string, tab: string) => void} [onOpenBot]
  * @param {() => void} [onCollapse]
  */
 const EMPTY = [];
@@ -46,6 +42,8 @@ const NOBODY = new Set();
 const TICK_MS = 30000;
 const SORT_KEY = "dash:bot-contacts:sort";
 const TEAM_KEY = "dash:bot-contacts:by-team";
+// The last openRequest acted on (see the effect in BotContacts).
+let handledRequest = null;
 
 function readPref(key, fallback) {
   try {
@@ -83,17 +81,15 @@ const ContactAvatar = ({ bot, status }) => {
 export const BotContacts = ({
   contacts,
   workspaces = EMPTY,
-  onOpenBotsView = null,
-  onOpenSettings = null,
+  onOpenBot = null,
   onCollapse = null,
-  // { botId } — open this bot's conversation (a clicked notification,
-  // US-018 AC5). A new object each time, so the same bot can be asked again.
+  // { botId } — open this bot (a clicked notification, US-018 AC5). A new
+  // object each time, so the same bot can be asked again.
   openRequest = null,
 }) => {
   const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
   const muted = currentTheme["text-neutral-medium"] || "";
   const strong = currentTheme["text-neutral-light"] || "";
-  const hairline = currentTheme["border-neutral-dark"] || "";
   const statusTokens = useStatusTokens();
 
   const [query, setQuery] = useState("");
@@ -103,14 +99,21 @@ export const BotContacts = ({
   const [byTeam, setByTeam] = useState(
     () => readPref(TEAM_KEY, "true") !== "false",
   );
-  // The open bot, and which of its views.
-  const [openId, setOpenId] = useState(null);
-  const [view, setView] = useState("conversation");
+  const openBot = (botId, tab = "conversation") => {
+    if (onOpenBot) onOpenBot(botId, tab);
+    else
+      window.dispatchEvent(
+        new CustomEvent("dash:open-bot", { detail: { botId, tab } }),
+      );
+  };
+  // A clicked notification opens its bot — once. The host keeps the request
+  // and the panel remounts on every expand, so remember it module-wide (a
+  // ref dies with the panel). No bot (the tray's Open Bots panel): the list.
   useEffect(() => {
-    if (!openRequest) return;
-    // No bot (the tray's Open Bots panel): the list.
-    setOpenId(openRequest.botId || null);
-    if (openRequest.botId) setView("conversation");
+    if (!openRequest || openRequest === handledRequest) return;
+    handledRequest = openRequest;
+    if (openRequest.botId) openBot(openRequest.botId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openRequest]);
 
   const [now, setNow] = useState(() => Date.now());
@@ -160,159 +163,10 @@ export const BotContacts = ({
     ],
   );
 
-  const open = openId ? bots.find((b) => b.id === openId) || null : null;
-  // A bot deleted while open: back to the list.
-  useEffect(() => {
-    if (openId && !c.loading && !open) setOpenId(null);
-  }, [openId, c.loading, open]);
-
   const nameOf = (id) => {
     const b = bots.find((x) => x.id === id);
     return b ? b.name : id;
   };
-  const dashboardName = (workspaceId) => {
-    if (workspaceId === null || workspaceId === undefined) return null;
-    const ws = workspaces.find((w) => String(w.id) === String(workspaceId));
-    return ws ? ws.name : null;
-  };
-
-  const openBot = (id) => {
-    setOpenId(id);
-    setView("conversation");
-  };
-
-  if (open) {
-    const wsId =
-      open.workspaceId === null || open.workspaceId === undefined
-        ? null
-        : String(open.workspaceId);
-    const isLead = open.role === "lead";
-    const isPaused = paused.has(open.id);
-    const budget = budgets[open.id] || null;
-    const isOver = !!(budget && budget.over);
-    const isRunning = running.some((r) => r.id === open.id);
-    const canOpen = wsId !== null ? !!onOpenBotsView : !!onOpenSettings;
-    const toBotsView = (tab) => {
-      if (wsId !== null && onOpenBotsView) onOpenBotsView(wsId, open.id, tab);
-      else if (onOpenSettings) onOpenSettings(open.id);
-    };
-    const toSettings = canOpen ? () => toBotsView("settings") : null;
-    return (
-      <div className="flex flex-col flex-1 min-h-0" data-testid="bot-contact">
-        <PanelHeader
-          onBack={() => setOpenId(null)}
-          backLabel="All bots"
-          title={
-            <span className="flex flex-col min-w-0">
-              <span className="truncate">{open.name}</span>
-              <span
-                className={`text-xs font-normal truncate ${muted}`}
-                data-testid="bot-contact-subtitle"
-              >
-                {[
-                  isLead ? "Lead" : null,
-                  dashboardName(wsId) || "No dashboard",
-                  isPaused
-                    ? "paused"
-                    : isOver
-                      ? "over budget"
-                      : isRunning
-                        ? "running"
-                        : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </span>
-            </span>
-          }
-          actions={
-            <>
-              {isRunning && c.stop ? (
-                <ButtonIcon3
-                  icon="stop"
-                  ariaLabel={`Stop ${open.name}`}
-                  onClick={() => c.stop(open.id)}
-                />
-              ) : null}
-              {canOpen ? (
-                <ButtonIcon3
-                  icon={wsId !== null ? "arrow-up-right-from-square" : "gear"}
-                  ariaLabel={
-                    wsId !== null ? "Open in Bots view" : "Open in Settings"
-                  }
-                  onClick={() => toBotsView(view)}
-                />
-              ) : null}
-            </>
-          }
-        />
-        <div className={`flex-shrink-0 px-4 py-2.5 border-b ${hairline}`}>
-          <SegmentedControl
-            ariaLabel="Show"
-            value={view}
-            onChange={setView}
-            options={[
-              { value: "conversation", label: "Conversation" },
-              { value: "activity", label: "Activity" },
-            ]}
-          />
-        </div>
-        {view === "conversation" ? (
-          <BotChat
-            bot={open}
-            isLead={isLead}
-            approvals={approvals.filter(
-              (a) => a && a.request && a.request.botId === open.id,
-            )}
-            onApprove={c.approve || null}
-            nameOf={nameOf}
-            onOpenSettings={toSettings}
-            onChangeModel={toSettings}
-            paused={isPaused}
-            onResume={
-              c.setBotPaused ? () => c.setBotPaused(open.id, false) : null
-            }
-            overBudget={isOver ? budgetLimitText(budget) : null}
-            onKeepRunning={c.keepRunning ? () => c.keepRunning(open.id) : null}
-            queuedEvents={queued[open.id] || 0}
-          />
-        ) : (
-          <div className="flex flex-col flex-1 min-h-0">
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              <BotRunHistory
-                bot={open}
-                isLead={isLead}
-                nameOf={nameOf}
-                onOpenSettings={toSettings}
-                onChangeModel={toSettings}
-                compact
-              />
-            </div>
-            <div
-              className={`flex-shrink-0 border-t px-4 py-3 flex flex-row gap-2 ${hairline}`}
-            >
-              <Button
-                title="Run now"
-                size="sm"
-                disabled={isPaused || isRunning || isOver}
-                onClick={() => {
-                  const b = window.mainApi && window.mainApi.bots;
-                  if (b && b.run) b.run(open.id, "", false);
-                }}
-              />
-              {c.setBotPaused ? (
-                <Button3
-                  title={isPaused ? "Turn on" : "Pause"}
-                  size="sm"
-                  onClick={() => c.setBotPaused(open.id, !isPaused)}
-                />
-              ) : null}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
 
   // Waiting on you: approvals, and bots stopped for budget (US-019).
   const needs = needsYouItems(approvals, bots, budgets);

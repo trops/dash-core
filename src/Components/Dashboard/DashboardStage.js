@@ -64,6 +64,7 @@ import { MissingWidgetsModal } from "../../Widget/MissingWidgetsModal";
 import { DashboardConfigModal } from "./DashboardConfigModal";
 import { useTeamBots } from "../Bots/useTeamBots";
 import { BotsView } from "../Bots/BotsView";
+import { BotPageModal } from "../Bots/BotPageModal";
 import { usePendingApprovalCount } from "../Bots/usePendingApprovalCount";
 import { useProvidersNeedingSetup } from "../AppPages/useProviderStatus";
 import { AppPage } from "../AppPages/AppPage";
@@ -551,9 +552,20 @@ const DashboardStageInner = ({
     return () => window.removeEventListener("dash:open-create", handler);
   }, []);
 
-  const openBotSettings = useCallback(() => {
-    openAppSettings("bots");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // One bot's page in a large modal, from anywhere — the Bots panel, a
+  // notification (app-navigation NAV-016 AC5). detail: { botId, tab }
+  const [botPageRequest, setBotPageRequest] = useState(null);
+  useEffect(() => {
+    const handler = (e) => {
+      const d = (e && e.detail) || {};
+      if (!d.botId) return;
+      setBotPageRequest({ botId: d.botId, tab: d.tab || "conversation" });
+    };
+    window.addEventListener("dash:open-bot", handler);
+    return () => window.removeEventListener("dash:open-bot", handler);
+  }, []);
+  const openBotSettings = useCallback((botId) => {
+    if (botId) setBotPageRequest({ botId, tab: "settings" });
   }, []);
 
   // The assistant dock (AI Assistant + Bot Activity) renders outside any
@@ -2977,6 +2989,12 @@ const DashboardStageInner = ({
         {/* ─── Modals (hidden in popout mode) ────────── */}
         {!popout && (
           <>
+            <BotPageModal
+              request={botPageRequest}
+              onClose={() => setBotPageRequest(null)}
+              workspaces={workspaceConfig}
+              onOpenInBotsView={handleOpenBotInBotsView}
+            />
             <AppSettingsModal
               isOpen={isAppSettingsOpen}
               setIsOpen={setIsAppSettingsOpen}

@@ -183,7 +183,7 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 - [x] AC2: Approvals waiting on the bot show above every tab except Conversation, which shows them inline.
 - [x] AC3: Leaving Settings, or closing, with unsaved changes asks "Discard unsaved changes?".
 - [x] AC4: Manage › Bots shows the selected bot's page on the right, replacing the summary card and its separate Edit mode. The page-level Spending and Log stay as the all-bots views. The Dash team keeps its own panel.
-- [ ] AC5: Clicking a bot in the Bots panel opens its page in a large modal; the panel is the list (status, approvals); "bot settings" links open the modal on Settings — replacing the dead cog (`openAppSettings("bots")` had no Settings section left).
+- [x] AC5: Clicking a bot in the Bots panel opens its page in a large modal; the panel is the list (status, approvals); "bot settings" links open the modal on Settings — replacing the dead cog (`openAppSettings("bots")` had no Settings section left). _Implemented: `BotPageModal`, opened by the `dash:open-bot` event `{ botId, tab }` that DashboardStage answers; a clicked notification and Needs you › Review open it too. Clicking outside doesn't close it while Settings has unsaved edits._
 - [ ] AC6: A dashboard's Bots view shows the same page for the selected bot beside its team diagram.
 
 ### Nice-to-Have (P2)
@@ -374,3 +374,4 @@ NAV-011, NAV-012 (after the ownership fix), P2 items.
 | 1.9     | 2026-10-04 | John   | Authoring actions for the user's own widgets    |
 | 1.10    | 2026-10-08 | John   | NAV-015: choose where a provider is used        |
 | 1.11    | 2026-10-19 | John   | NAV-016: one bot page (slice 1, Manage › Bots)  |
+| 1.12    | 2026-10-19 | John   | NAV-016 slice 2: the bot page modal (AC5)       |
