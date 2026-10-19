@@ -1,8 +1,5 @@
-// Bot teams (bot-teams PRD): the shared bot editor, team lead UI, and team
+// Bot teams (bot-teams PRD): the bot page and views, the Bots panel, and team
 // helpers.
-export { BotEditorModal } from "./BotEditorModal";
-export { AskLead } from "./AskLead";
-export { TeamLeadSection } from "./TeamLeadSection";
 export { BotsView } from "./BotsView";
 export { BotChat } from "./BotChat";
 export { BotRunHistory } from "./BotRunHistory";

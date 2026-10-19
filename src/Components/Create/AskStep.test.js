@@ -404,3 +404,34 @@ describe("recentSections (fix/recent-sections)", () => {
     expect(recentSections([], [], {}).conversations).toEqual([]);
   });
 });
+
+// Consolidation Phase 2a: Ask lives inside Create, where Back / Close unmount
+// the question while it's still answering. The answer still lands in Recent.
+describe("AskStep — closed before the answer arrives", () => {
+  test("the answer is saved to Recent, not lost", async () => {
+    let finish;
+    const bots = api({
+      run: jest.fn(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      ),
+    });
+    const { unmount } = render(<AskStep question="What ran today?" />);
+    await waitFor(() => expect(bots.run).toHaveBeenCalled());
+    unmount();
+    finish(answered("Two bots ran."));
+    await waitFor(() =>
+      expect(bots.saveCreateRecent).toHaveBeenCalledWith({
+        id: "plan_q1",
+        conversation: {
+          messages: [
+            { who: "you", text: "What ran today?" },
+            expect.objectContaining({ who: "planner", text: "Two bots ran." }),
+          ],
+        },
+      }),
+    );
+  });
+});

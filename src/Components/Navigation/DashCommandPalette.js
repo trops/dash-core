@@ -20,7 +20,6 @@ export const DashCommandPalette = ({
   onCreateNewWorkspace = null,
   onCreateNewFolder = null,
   onLoadDashboard = null,
-  onOpenWizard = null,
   // Opens the Create screen (create-entry PRD CRE-001 AC1).
   onCreate = null,
   // Theme actions
@@ -96,13 +95,14 @@ export const DashCommandPalette = ({
         key: "create",
         label: "Create…",
         icon: "plus",
+        // DashboardStage binds ⌘N / Ctrl+N to Create (consolidation 2a).
+        shortcut: "⌘N",
         action: () => onCreate(),
       },
     matchesQuery("New Dashboard") && {
       key: "new-dashboard",
       label: "New Dashboard",
       icon: "plus",
-      shortcut: "⌘N",
       action: () => onCreateNewWorkspace && onCreateNewWorkspace(),
     },
     matchesQuery("Load Dashboard") && {
@@ -116,12 +116,6 @@ export const DashCommandPalette = ({
       label: "New Folder",
       icon: "folder-plus",
       action: () => onCreateNewFolder && onCreateNewFolder(),
-    },
-    matchesQuery("Dashboard Wizard") && {
-      key: "dashboard-wizard",
-      label: "Dashboard Wizard",
-      icon: "wand-magic-sparkles",
-      action: () => onOpenWizard && onOpenWizard(),
     },
   ].filter(Boolean);
 

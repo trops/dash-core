@@ -10,25 +10,27 @@ import {
   InputText,
   ThemeContext,
 } from "@trops/dash-react";
-import { LayoutManagerPicker } from "./Panel/LayoutManagerPicker";
-import { layoutTemplates, createLayoutFromTemplate } from "./layoutTemplates";
 import { FOLDER_ICONS } from "../../Settings/details/FolderDetail";
-import { CreationMethodPicker } from "./Panel/CreationMethodPicker";
 import { DiscoverDashboardsDetail } from "../../Settings/details/DiscoverDashboardsDetail";
 
+/**
+ * LayoutManagerModal — Create's no-AI dashboard starts (create-entry PRD
+ * CRE-008): **Import from file** (File, Name, Folder, Theme) and **Browse
+ * the registry**. Making a dashboard from scratch is Create's Blank
+ * dashboard; the old method picker and template stepper are gone
+ * (consolidation Phase 2a).
+ *
+ * @param {"import"|"registry"} [initialMethod]
+ */
 export const LayoutManagerModal = ({
   open,
   setIsOpen,
-  onCreateWorkspace,
   menuItems = [],
   onSaveMenuItem = null,
   appId,
   onReloadWorkspaces,
   onOpenWorkspace = null,
-  onOpenWizard = null,
-  // Open straight on a step ("import" | "registry") — the Create screen's
-  // start-without-AI row; null shows the method picker.
-  initialMethod = null,
+  initialMethod = "import",
 }) => {
   const {
     themes,
@@ -36,9 +38,8 @@ export const LayoutManagerModal = ({
     loadThemes,
   } = useContext(ThemeContext);
 
-  const [creationMethod, setCreationMethod] = useState(null);
+  const [creationMethod, setCreationMethod] = useState(initialMethod);
   const [dashboardName, setDashboardName] = useState("");
-  const [selectedTemplate, setSelectedTemplate] = useState(layoutTemplates[0]);
   const [activeStep, setActiveStep] = useState(0);
   const [selectedMenuId, setSelectedMenuId] = useState(null);
   const [selectedThemeKey, setSelectedThemeKey] = useState(null);
@@ -57,14 +58,13 @@ export const LayoutManagerModal = ({
   // Reset state when modal opens
   useEffect(() => {
     if (open) {
-      setCreationMethod(initialMethod);
+      setCreationMethod(initialMethod === "registry" ? "registry" : "import");
       setDashboardName("");
       setActiveStep(0);
       setLocalMenuItems(menuItems || []);
       setSelectedMenuId(
         menuItems && menuItems.length > 0 ? menuItems[0].id : 1,
       );
-      setSelectedTemplate(layoutTemplates[0]);
       const fallback = themes
         ? Object.entries(themes).sort(([, a], [, b]) =>
             (a.name || "").localeCompare(b.name || ""),
@@ -84,50 +84,10 @@ export const LayoutManagerModal = ({
     setIsOpen(false);
   }
 
-  function handleConfirm() {
-    let menuId = selectedMenuId;
-
-    // If creating a new folder, save it and use its id
-    if (isCreatingFolder && newFolderName.trim() && newFolderIcon) {
-      const newItem = {
-        id: Date.now(),
-        name: newFolderName.trim(),
-        icon: newFolderIcon,
-      };
-      menuId = newItem.id;
-      if (onSaveMenuItem) {
-        onSaveMenuItem(newItem);
-      }
-    }
-
-    if (selectedTemplate && onCreateWorkspace) {
-      const layoutObj = createLayoutFromTemplate(selectedTemplate, menuId);
-      Promise.resolve(
-        onCreateWorkspace(layoutObj, selectedThemeKey, dashboardName.trim()),
-      ).catch((e) => console.error("Failed to create dashboard:", e));
-    }
-    setIsOpen(false);
-  }
-
   function handleCancelNewFolder() {
     setIsCreatingFolder(false);
     setNewFolderName("");
     setNewFolderIcon(null);
-  }
-
-  // Advance to Step 2 on double-click (instead of instant create)
-  function handleTemplateDoubleClick(template) {
-    setSelectedTemplate(template);
-    setActiveStep(2);
-  }
-
-  function handleMethodSelect(method) {
-    if (method === "wizard" && onOpenWizard) {
-      setIsOpen(false);
-      onOpenWizard();
-      return;
-    }
-    setCreationMethod(method);
   }
 
   async function handleImportFromFile() {
@@ -519,18 +479,6 @@ export const LayoutManagerModal = ({
 
   // ─── Render body based on creationMethod ─────────────────────────
   function renderBody() {
-    if (creationMethod === null) {
-      return (
-        <Panel backgroundColor="bg-slate-800" padding={false}>
-          <Panel.Body scrollable={false} className="h-full">
-            <div className="h-full p-6 pb-0">
-              <CreationMethodPicker onSelect={handleMethodSelect} />
-            </div>
-          </Panel.Body>
-        </Panel>
-      );
-    }
-
     // Registry browser: install completes inside DiscoverDashboardsDetail
     // (via the DashboardInstallOptionsModal) and the onInstallComplete
     // handler closes this modal directly — no post-install stepper.
@@ -539,7 +487,7 @@ export const LayoutManagerModal = ({
         <Panel backgroundColor="bg-slate-800" padding={false}>
           <Panel.Body scrollable={false} className="h-full">
             <DiscoverDashboardsDetail
-              onBack={() => setCreationMethod(null)}
+              onBack={handleClose}
               appId={appId}
               onInstallComplete={handleRegistryInstallComplete}
             />
@@ -576,61 +524,11 @@ export const LayoutManagerModal = ({
         </Panel>
       );
     }
-
-    // creationMethod === "template" — existing 4-step wizard
-    return (
-      <Panel backgroundColor="bg-slate-800" padding={false}>
-        <Panel.Body scrollable={false} className="h-full">
-          <Stepper
-            activeStep={activeStep}
-            onStepChange={setActiveStep}
-            showNavigation={false}
-            className="h-full p-6 pb-0"
-          >
-            <Stepper.Step label="Name" description="Name your dashboard">
-              {renderNameStep()}
-            </Stepper.Step>
-            <Stepper.Step label="Choose Layout" description="Pick a template">
-              <LayoutManagerPicker
-                selectedTemplate={selectedTemplate}
-                onSelect={setSelectedTemplate}
-                onConfirm={handleTemplateDoubleClick}
-              />
-            </Stepper.Step>
-            <Stepper.Step label="Organize" description="Choose a folder">
-              {renderFolderStep()}
-            </Stepper.Step>
-            <Stepper.Step label="Choose Theme" description="Dashboard theme">
-              {renderThemeStep()}
-            </Stepper.Step>
-          </Stepper>
-        </Panel.Body>
-      </Panel>
-    );
+    return null;
   }
 
   // ─── Render footer based on creationMethod ───────────────────────
   function renderFooter() {
-    // Picker screen: just Cancel
-    if (creationMethod === null) {
-      return (
-        <Modal.Footer>
-          <div className="flex flex-row space-x-2">
-            <Button
-              onClick={handleClose}
-              title="Cancel"
-              textSize="text-base xl:text-lg"
-              padding="py-2 px-4"
-              backgroundColor="bg-gray-700"
-              textColor="text-gray-300"
-              hoverTextColor="hover:text-gray-100"
-              hoverBackgroundColor="hover:bg-gray-600"
-            />
-          </div>
-        </Modal.Footer>
-      );
-    }
-
     // Registry browser: Cancel only (DiscoverDashboardsDetail has its own inline back button)
     if (creationMethod === "registry") {
       return (
@@ -767,112 +665,7 @@ export const LayoutManagerModal = ({
         </Modal.Footer>
       );
     }
-
-    // Template wizard footer
-    return (
-      <Modal.Footer>
-        <div className="flex flex-row space-x-2">
-          {activeStep === 0 && (
-            <>
-              <Button
-                onClick={() => setCreationMethod(null)}
-                title="Back"
-                textSize="text-base xl:text-lg"
-                padding="py-2 px-4"
-                backgroundColor="bg-gray-700"
-                textColor="text-gray-300"
-                hoverTextColor="hover:text-gray-100"
-                hoverBackgroundColor="hover:bg-gray-600"
-              />
-              <Button
-                onClick={() => setActiveStep(1)}
-                title="Next"
-                textSize="text-base xl:text-lg"
-                padding="py-2 px-4"
-                backgroundColor="bg-blue-600"
-                textColor="text-white"
-                hoverTextColor="hover:text-white"
-                hoverBackgroundColor="hover:bg-blue-500"
-                disabled={!dashboardName.trim()}
-              />
-            </>
-          )}
-          {activeStep === 1 && (
-            <>
-              <Button
-                onClick={() => setActiveStep(0)}
-                title="Back"
-                textSize="text-base xl:text-lg"
-                padding="py-2 px-4"
-                backgroundColor="bg-gray-700"
-                textColor="text-gray-300"
-                hoverTextColor="hover:text-gray-100"
-                hoverBackgroundColor="hover:bg-gray-600"
-              />
-              <Button
-                onClick={() => setActiveStep(2)}
-                title="Next"
-                textSize="text-base xl:text-lg"
-                padding="py-2 px-4"
-                backgroundColor="bg-blue-600"
-                textColor="text-white"
-                hoverTextColor="hover:text-white"
-                hoverBackgroundColor="hover:bg-blue-500"
-                disabled={!selectedTemplate}
-              />
-            </>
-          )}
-          {activeStep === 2 && (
-            <>
-              <Button
-                onClick={() => setActiveStep(1)}
-                title="Back"
-                textSize="text-base xl:text-lg"
-                padding="py-2 px-4"
-                backgroundColor="bg-gray-700"
-                textColor="text-gray-300"
-                hoverTextColor="hover:text-gray-100"
-                hoverBackgroundColor="hover:bg-gray-600"
-              />
-              <Button
-                onClick={() => setActiveStep(3)}
-                title="Next"
-                textSize="text-base xl:text-lg"
-                padding="py-2 px-4"
-                backgroundColor="bg-blue-600"
-                textColor="text-white"
-                hoverTextColor="hover:text-white"
-                hoverBackgroundColor="hover:bg-blue-500"
-              />
-            </>
-          )}
-          {activeStep === 3 && (
-            <>
-              <Button
-                onClick={() => setActiveStep(2)}
-                title="Back"
-                textSize="text-base xl:text-lg"
-                padding="py-2 px-4"
-                backgroundColor="bg-gray-700"
-                textColor="text-gray-300"
-                hoverTextColor="hover:text-gray-100"
-                hoverBackgroundColor="hover:bg-gray-600"
-              />
-              <Button
-                onClick={handleConfirm}
-                title="Create"
-                textSize="text-base xl:text-lg"
-                padding="py-2 px-4"
-                backgroundColor="bg-blue-600"
-                textColor="text-white"
-                hoverTextColor="hover:text-white"
-                hoverBackgroundColor="hover:bg-blue-500"
-              />
-            </>
-          )}
-        </div>
-      </Modal.Footer>
-    );
+    return null;
   }
 
   return (

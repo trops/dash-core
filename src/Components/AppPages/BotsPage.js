@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useRef, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   Button3,
   ConfirmationModal,
@@ -73,8 +73,6 @@ export const BotsPage = ({
   dashApi = null,
   onOpenBotInBotsView = () => {},
   onOpenAppSettings = null,
-  createRequested = false,
-  onCreateAcknowledged = null,
 }) => {
   const { muted, strong, selectedBg, selectedBorder } = useConfigTokens();
   const appContext = useContext(AppContext) || {};
@@ -89,7 +87,7 @@ export const BotsPage = ({
   const [teams, setTeams] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
-  // null | "edit" | "create"
+  // null | "edit" (the Dash team's bots)
   const [mode, setMode] = useState(null);
   // The bot page has unsaved Settings edits: leaving it asks first.
   const [pageDirty, setPageDirty] = useState(false);
@@ -118,15 +116,6 @@ export const BotsPage = ({
       setAutoLeads(!next);
     }
   };
-
-  // The header's New Bot opens a blank editor in the detail panel.
-  const prevCreate = useRef(false);
-  useEffect(() => {
-    if (createRequested && !prevCreate.current) guard(() => setMode("create"));
-    prevCreate.current = createRequested;
-    if (createRequested && onCreateAcknowledged) onCreateAcknowledged();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [createRequested]);
 
   const allGroups = [
     ...(all.dashTeam && all.dashTeam.length
@@ -185,20 +174,7 @@ export const BotsPage = ({
 
   const showsBotPage = !mode && !!selected && !isDashTeamBot(selected);
   let detail;
-  if (mode === "create") {
-    detail = (
-      <BotDetail
-        key="new"
-        isCreating
-        providers={providers}
-        workspaces={workspaces}
-        getWidgetConfig={getWidgetConfig}
-        bots={all.bots}
-        onSave={handleSave}
-        onCancel={() => setMode(null)}
-      />
-    );
-  } else if (mode === "edit" && selected) {
+  if (mode === "edit" && selected) {
     // BotDetail only shows Cancel when creating — this is the way back.
     detail = (
       <div className="flex flex-col gap-2">
@@ -359,8 +335,7 @@ export const BotsPage = ({
             <div key={teamKey(g)} className="flex flex-col gap-0.5">
               <ListGroupLabel text={g.label} />
               {g.bots.map((bot) => {
-                const active =
-                  mode !== "create" && selected && bot.id === selected.id;
+                const active = selected && bot.id === selected.id;
                 return (
                   <button
                     key={bot.id}

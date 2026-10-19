@@ -35,7 +35,9 @@ describe("BotsPage — event picker wiring", () => {
 
   it("hands BotDetail the dashboards and the widget-config lookup", () => {
     const details = pageSrc.match(/<BotDetail\s[\s\S]*?\/>/g) || [];
-    expect(details.length).toBe(2); // create + edit
+    // The Dash team's edit form (New Bot opens Create; other bots use the
+    // bot page, which passes these itself).
+    expect(details.length).toBe(1);
     for (const d of details) {
       expect(d).toMatch(/workspaces=\{workspaces\}/);
       expect(d).toMatch(/getWidgetConfig=\{getWidgetConfig\}/);

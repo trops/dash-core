@@ -9,9 +9,14 @@ import { ThemesPage } from "./ThemesPage";
 import { FoldersSection } from "../Settings/sections/FoldersSection";
 import { ProvidersSection } from "../Settings/sections/ProvidersSection";
 
-// New Widget and New Bot open the Create screen on that type (create-entry
-// PRD CRE-008); the other pages create in place.
-const OPENS_CREATE = { widgets: "widget", bots: "bot" };
+// New Dashboard, New Widget and New Bot open the Create screen on that type
+// (create-entry PRD CRE-008, consolidation Phase 2a); the other pages create
+// in place.
+const OPENS_CREATE = {
+  dashboards: "dashboard",
+  widgets: "widget",
+  bots: "bot",
+};
 
 const CREATE_LABEL = {
   dashboards: "New Dashboard",
@@ -51,7 +56,6 @@ export const AppPage = ({
   onReloadMenuItems = null,
   onOpenWorkspace = null,
   onOpenThemeEditor = null,
-  onOpenWizard = null,
   // Dashboards page: open a dashboard's tab in its Bots view / with Config.
   onOpenBotsView = null,
   onOpenDashboardConfig = null,
@@ -97,7 +101,6 @@ export const AppPage = ({
         onOpenWorkspace={onOpenWorkspace}
         onOpenBotsView={onOpenBotsView}
         onOpenDashboardConfig={onOpenDashboardConfig}
-        onOpenWizard={onOpenWizard}
         {...createProps}
       />
     );

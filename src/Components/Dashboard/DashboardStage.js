@@ -42,7 +42,6 @@ import {
   createLayoutFromTemplate,
 } from "../Layout/LayoutManager/layoutTemplates";
 import { CreateModal } from "../Create/CreateModal";
-import { DashboardWizardModal } from "../Layout/DashboardWizard";
 import { OnboardingModal } from "./OnboardingModal";
 
 import { DashCommandPalette } from "../Navigation/DashCommandPalette";
@@ -117,9 +116,6 @@ export const DashboardStage = ({
   popoutView = null,
   popoutBotId = null,
   popoutBotTab = null,
-  showWelcomePrompt = false,
-  onAcceptWelcome = null,
-  onDismissWelcome = null,
   renderAiAssistant = null,
 }) => {
   return (
@@ -618,10 +614,9 @@ const DashboardStageInner = ({
   const [themeEditorKey, setThemeEditorKey] = useState(null);
   const [isDashboardLoaderOpen, setIsDashboardLoaderOpen] = useState(false);
   const [isLayoutPickerOpen, setIsLayoutPickerOpen] = useState(false);
-  const [isWizardOpen, setIsWizardOpen] = useState(false);
   // The New Dashboard modal opened on a step ("import" | "registry") from
   // the Create screen's start-without-AI row.
-  const [layoutInitialMethod, setLayoutInitialMethod] = useState(null);
+  const [layoutInitialMethod, setLayoutInitialMethod] = useState("import");
   // Create screen (create-entry PRD CRE-001): null = closed, else
   // { type, workspaceId }.
   const [createRequest, setCreateRequest] = useState(null);
@@ -1284,19 +1279,42 @@ const DashboardStageInner = ({
     setIsDirty(true);
   }
 
-  // ─── New Workspace from Empty State ───────────────────────────────
-
-  function handleClickNewFromEmpty() {
-    setLayoutInitialMethod(null);
-    setIsLayoutPickerOpen(true);
-  }
-
   // ─── Create screen (create-entry PRD CRE-001 / CRE-008) ──────────
 
-  // Auto by default (phase 5c): Create works out what to make.
+  // Auto by default (phase 5c): Create works out what to make. Every
+  // "make" button opens it (consolidation Phase 2a).
   function openCreate(type = "auto", workspaceId = null) {
     setCreateRequest({ type, workspaceId });
   }
+  // ⌘N (Mac) / Ctrl+N opens Create — like every other door, not while
+  // editing a dashboard, nor over another dialog; never in a popout. On a
+  // Mac, Ctrl+N stays the text fields' "next line".
+  const editingRef = useRef(isEditingDashboard);
+  editingRef.current = isEditingDashboard;
+  useEffect(() => {
+    if (popout) return undefined;
+    const isMac =
+      typeof navigator !== "undefined" &&
+      /Mac/i.test(navigator.platform || navigator.userAgent || "");
+    const onKey = (e) => {
+      const mod = isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+      if (
+        !mod ||
+        e.shiftKey ||
+        e.altKey ||
+        e.repeat ||
+        (e.key !== "n" && e.key !== "N")
+      ) {
+        return;
+      }
+      if (editingRef.current) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      e.preventDefault();
+      setCreateRequest((r) => r || { type: "auto", workspaceId: null });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [popout]);
 
   // A blank dashboard opens in Edit on Add; rename it in the Dashboard tab.
   async function handleCreateBlankDashboard() {
@@ -2800,7 +2818,6 @@ const DashboardStageInner = ({
                   onReloadMenuItems={loadMenuItems}
                   onOpenWorkspace={handleOpenTabGuarded}
                   onOpenThemeEditor={handleOpenThemeManager}
-                  onOpenWizard={() => setIsWizardOpen(true)}
                   onOpenBotsView={handleOpenDashboardBotsView}
                   onOpenDashboardConfig={handleOpenDashboardConfig}
                   onOpenBotInBotsView={handleOpenBotInBotsView}
@@ -2835,13 +2852,7 @@ const DashboardStageInner = ({
                         <ButtonIcon
                           icon="plus"
                           text="New Dashboard"
-                          onClick={handleClickNewFromEmpty}
-                          size="sm"
-                        />
-                        <ButtonIcon
-                          icon="wand-magic-sparkles"
-                          text="Wizard"
-                          onClick={() => setIsWizardOpen(true)}
+                          onClick={() => openCreate("dashboard")}
                           size="sm"
                         />
                       </div>
@@ -3038,13 +3049,11 @@ const DashboardStageInner = ({
             <LayoutManagerModal
               open={isLayoutPickerOpen}
               setIsOpen={setIsLayoutPickerOpen}
-              onCreateWorkspace={handleCreateFromTemplate}
               menuItems={menuItems}
               onSaveMenuItem={handleSaveNewMenuItem}
               appId={credentials?.appId}
               onReloadWorkspaces={loadWorkspaces}
               onOpenWorkspace={handleOpenTabGuarded}
-              onOpenWizard={() => setIsWizardOpen(true)}
               initialMethod={layoutInitialMethod}
             />
 
@@ -3069,17 +3078,6 @@ const DashboardStageInner = ({
                 setThemeInitial(theme);
                 setIsThemeManagerOpen(true);
               }}
-            />
-
-            <DashboardWizardModal
-              open={isWizardOpen}
-              setIsOpen={setIsWizardOpen}
-              menuItems={menuItems}
-              onSaveMenuItem={handleSaveNewMenuItem}
-              onCreateWorkspace={handleCreateFromTemplate}
-              onOpenDashboard={handleOpenTab}
-              onReloadWorkspaces={loadWorkspaces}
-              appId={credentials?.appId}
             />
 
             <MissingWidgetsModal
@@ -3172,7 +3170,7 @@ const DashboardStageInner = ({
           menuItems={menuItems}
           onOpenPage={handleOpenPageGuarded}
           onOpenWorkspace={handleOpenTab}
-          onCreateNewWorkspace={handleClickNewFromEmpty}
+          onCreateNewWorkspace={() => openCreate("dashboard")}
           onCreateNewFolder={() => openAppSettings("folders")}
           onLoadDashboard={() => setIsDashboardLoaderOpen(true)}
           providers={appContext?.providers || {}}
@@ -3191,7 +3189,6 @@ const DashboardStageInner = ({
             appContext.changeDebugMode(!appContext.debugMode)
           }
           onOpenDiscover={() => openAppSettings("widgets")}
-          onOpenWizard={() => setIsWizardOpen(true)}
           onCreate={() => openCreate()}
         />
       )}

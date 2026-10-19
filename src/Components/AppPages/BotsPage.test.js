@@ -272,20 +272,6 @@ describe("BotsPage — the list follows Turn on / Pause", () => {
   });
 });
 
-describe("BotsPage create (NAV-006 AC3)", () => {
-  it("the header's New Bot opens a blank editor and saving selects the new bot", async () => {
-    const onCreateAcknowledged = jest.fn();
-    const { botsApi } = setup({ createRequested: true, onCreateAcknowledged });
-    expect(screen.getByText("creating")).toBeInTheDocument();
-    expect(onCreateAcknowledged).toHaveBeenCalled();
-    fireEvent.click(screen.getByText("editor-save"));
-    await waitFor(() =>
-      expect(botsApi.save).toHaveBeenCalledWith({ name: "Saved" }),
-    );
-    await waitFor(() => expect(screen.queryByTestId("bot-editor")).toBeNull());
-  });
-});
-
 describe("BotsPage — Spending (bot-factory US-019 AC5)", () => {
   it("Bots | Spending switches the page to this month's spending and back", async () => {
     setup();

@@ -12,8 +12,10 @@ jest.mock("@trops/dash-react", () => {
   CommandPalette.Group = ({ label, children }) => (
     <section aria-label={label}>{children}</section>
   );
-  CommandPalette.Item = ({ children, onSelect }) => (
-    <button onClick={onSelect}>{children}</button>
+  CommandPalette.Item = ({ children, onSelect, shortcut }) => (
+    <button onClick={onSelect} data-shortcut={shortcut || undefined}>
+      {children}
+    </button>
   );
   return {
     CommandPalette,
@@ -80,6 +82,31 @@ describe("DashCommandPalette — Create… (create-entry PRD CRE-001 AC1)", () =
     fireEvent.click(screen.getByText("Create…"));
     expect(onCreate).toHaveBeenCalledTimes(1);
     expect(setIsOpen).toHaveBeenCalledWith(false);
+  });
+
+  // Consolidation Phase 2a: ⌘N opens Create (DashboardStage binds it), so
+  // the hint is on Create…; New Dashboard opens Create on Dashboard and the
+  // Wizard is gone.
+  it("shows ⌘N on Create…, and no Dashboard Wizard", () => {
+    const onCreateNewWorkspace = jest.fn();
+    render(
+      <DashCommandPalette
+        isOpen
+        setIsOpen={() => {}}
+        onCreate={() => {}}
+        onCreateNewWorkspace={onCreateNewWorkspace}
+      />,
+    );
+    expect(screen.getByText("Create…").closest("button")).toHaveAttribute(
+      "data-shortcut",
+      "⌘N",
+    );
+    expect(
+      screen.getByText("New Dashboard").closest("button"),
+    ).not.toHaveAttribute("data-shortcut");
+    expect(screen.queryByText("Dashboard Wizard")).toBeNull();
+    fireEvent.click(screen.getByText("New Dashboard"));
+    expect(onCreateNewWorkspace).toHaveBeenCalled();
   });
 
   it("is hidden without onCreate", () => {

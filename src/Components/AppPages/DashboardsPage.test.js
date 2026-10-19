@@ -40,17 +40,6 @@ jest.mock("../Bots/useTeamBots", () => ({
 jest.mock("./useApprovalsByDashboard", () => ({
   useApprovalsByDashboard: () => (id) => (String(id) === "7" ? 1 : 0),
 }));
-jest.mock("../Settings/details/NewDashboardChooser", () => ({
-  NewDashboardChooser: ({ onSelect }) => (
-    <div data-testid="chooser">
-      <button onClick={() => onSelect("wizard")}>wizard</button>
-      <button onClick={() => onSelect("marketplace")}>marketplace</button>
-    </div>
-  ),
-}));
-jest.mock("../Settings/details/DiscoverDashboardsDetail", () => ({
-  DiscoverDashboardsDetail: () => <div data-testid="marketplace" />,
-}));
 jest.mock("../Settings/details/StarRating", () => ({
   StarRating: () => <div data-testid="rating" />,
 }));
@@ -119,8 +108,6 @@ function setup(props = {}) {
     onOpenBotsView: jest.fn(),
     onOpenDashboardConfig: jest.fn(),
     onReloadWorkspaces: jest.fn(),
-    onOpenWizard: jest.fn(),
-    onCreateAcknowledged: jest.fn(),
   };
   render(
     <ThemeContext.Provider
@@ -340,25 +327,13 @@ describe("DashboardsPage — readable text", () => {
   });
 });
 
+// New Dashboard opens Create (AppPage, consolidation Phase 2a); the page
+// has no chooser or marketplace of its own.
 describe("DashboardsPage — creating", () => {
-  it("New Dashboard shows the chooser; Wizard hands off", () => {
-    const h = setup({ createRequested: true });
-    expect(screen.getByTestId("chooser")).toBeInTheDocument();
-    expect(h.onCreateAcknowledged).toHaveBeenCalled();
-    fireEvent.click(screen.getByText("wizard"));
-    expect(h.onOpenWizard).toHaveBeenCalled();
-  });
-
   it("there's no separate Browse marketplace button", () => {
     setup();
     expect(
       screen.queryByRole("button", { name: "Browse marketplace" }),
     ).not.toBeInTheDocument();
-  });
-
-  it("New Dashboard's marketplace option opens the marketplace", () => {
-    setup({ createRequested: true });
-    fireEvent.click(screen.getByText("marketplace"));
-    expect(screen.getByTestId("marketplace")).toBeInTheDocument();
   });
 });

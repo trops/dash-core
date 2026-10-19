@@ -13,6 +13,7 @@ import {
   Button,
   Button2,
   Button3,
+  ChatComposer,
   Heading2,
   SubHeading3,
   TextArea,
@@ -28,6 +29,11 @@ import { useAiBackend } from "../../hooks/useAiBackend";
 import { getWidgetBuilderRenderer } from "../../utils/widgetBuilderRenderer";
 import { CreateScoutStep } from "./CreateScoutStep";
 import { CreatePlanStep } from "./CreatePlanStep";
+import { AskStep } from "./AskStep";
+import {
+  RecipientPicker,
+  useTeamLeads,
+} from "../AiAssistant/components/RecipientPicker";
 import { recentSections } from "./recentRows";
 import { RecentList } from "./RecentList";
 import { StarterCards } from "./StarterCards";
@@ -68,6 +74,10 @@ const EMPTY = [];
  *
  * Dashboard and Theme are listed but can't be made with AI yet; their no-AI
  * starts are always in the row below.
+ *
+ * Ask a question (consolidation Phase 2a — it was the right rail's Create
+ * panel): to the Dash team (the Planner) or a dashboard's team lead (To:).
+ * It opens as a step here; an answer that plans something opens as a plan.
  *
  * @param {boolean} open
  * @param {(open: boolean) => void} setIsOpen
@@ -141,6 +151,22 @@ export const CreateModal = ({
   const [recentPlans, setRecentPlans] = useState(EMPTY);
   // Starters (CRE-002, 5b): registry dashboards tagged "starter" with bots.
   const [starters, setStarters] = useState(EMPTY);
+  // Ask a question: the box, who it goes to (null = the Dash team), and the
+  // open question ({ question, recentId, title, recipient }).
+  const [asking, setAsking] = useState("");
+  const [recipient, setRecipient] = useState(null);
+  const [askStep, setAskStep] = useState(null);
+  const { leads, loaded: leadsLoaded } = useTeamLeads(!!open);
+  // The chosen lead was deleted or turned off → back to the Dash team.
+  useEffect(() => {
+    if (
+      recipient &&
+      leadsLoaded &&
+      !leads.some((l) => l.botId === recipient.botId)
+    ) {
+      setRecipient(null);
+    }
+  }, [recipient, leads, leadsLoaded]);
 
   // Each open starts fresh on the requested type.
   useEffect(() => {
@@ -149,6 +175,8 @@ export const CreateModal = ({
     setPrompt("");
     setBotForm(null);
     setBuilderStep(null);
+    setAskStep(null);
+    setAsking("");
     if (initialRecentId) {
       setPlanStep({ prompt: "", recentId: initialRecentId });
     } else if (initialSeed) {
@@ -159,13 +187,13 @@ export const CreateModal = ({
   // The cursor starts in the prompt (CRE-001 AC2). The dialog focuses its
   // first control (Close) on open, so take focus back right after.
   useEffect(() => {
-    if (!open || botForm || builderStep) return undefined;
+    if (!open || botForm || builderStep || askStep) return undefined;
     const t = setTimeout(() => {
       const el = document.getElementById("create-prompt");
       if (el) el.focus();
     }, 50);
     return () => clearTimeout(t);
-  }, [open, botForm, builderStep]);
+  }, [open, botForm, builderStep, askStep]);
 
   // Recent: widget drafts (the host's drafts store) and plan conversations
   // (Create's Recent, live as builds progress). None outside the app.
@@ -249,6 +277,7 @@ export const CreateModal = ({
   // its startup (chat reset, draft resume) before the reset effect.
   const close = () => {
     askSeq.current += 1;
+    setAskStep(null);
     setPlanStep(null);
     setScoutStep(null);
     setBuilderStep(null);
@@ -386,13 +415,7 @@ export const CreateModal = ({
       return;
     }
     if (row.kind === "question") {
-      // Questions live in the dock (5e).
-      setIsOpen(false);
-      window.dispatchEvent(
-        new CustomEvent("dash:create-fold", {
-          detail: { recentId: row.id, title: row.title, kind: "question" },
-        }),
-      );
+      setAskStep({ recentId: row.id, title: row.title });
       return;
     }
     setPlanStep({ prompt: "", recentId: row.id });
@@ -433,6 +456,47 @@ export const CreateModal = ({
       }}
     />
   ) : null;
+
+  const askNow = () => {
+    const q = asking.trim();
+    if (!q) return;
+    setAsking("");
+    setAskStep({
+      question: q,
+      title: q,
+      // Its latest state (paused / running) from the live list.
+      recipient: recipient
+        ? leads.find((l) => l.botId === recipient.botId) || recipient
+        : null,
+    });
+  };
+  const askBox = (
+    <section className="flex flex-col gap-2" data-testid="create-ask">
+      <SubHeading3 title="Or ask a question" padding={false} />
+      <ChatComposer
+        value={asking}
+        onChange={(v) => setAsking(v)}
+        onSend={askNow}
+        ariaLabel="Ask about your dashboards and bots"
+        placeholder={
+          recipient
+            ? `Ask ${recipient.leadName}…`
+            : "Ask about your dashboards and bots…"
+        }
+        above={
+          leads.length ? (
+            <RecipientPicker
+              leads={leads}
+              recipient={recipient}
+              onChange={setRecipient}
+              defaultLabel="Dash team"
+            />
+          ) : null
+        }
+        sendLabel="Ask"
+      />
+    </section>
+  );
 
   const start = (
     <div className="flex-1 min-h-0 overflow-y-auto">
@@ -511,6 +575,8 @@ export const CreateModal = ({
             )}
           </div>
         )}
+
+        {askBox}
 
         {wantsStarters && starters.length > 0 && (
           <StarterCards starters={starters} onPick={pickStarter} />
@@ -591,6 +657,22 @@ export const CreateModal = ({
     />
   );
 
+  // A question (Ask): its answer can open as a plan, here.
+  const question = askStep && (
+    <div className="flex-1 min-h-0 flex flex-col">
+      <AskStep
+        key={askStep.recentId || `new:${askStep.question}`}
+        question={askStep.question || ""}
+        recentId={askStep.recentId || null}
+        recipient={askStep.recipient || null}
+        onOpenPlan={(seed) => {
+          setAskStep(null);
+          setPlanStep({ prompt: "", seed });
+        }}
+      />
+    </div>
+  );
+
   const builder = builderStep && Builder && (
     <div className="flex-1 min-h-0 flex flex-col">
       <Builder
@@ -608,19 +690,21 @@ export const CreateModal = ({
 
   // A step inside Create: the builder or the bot form. ← returns to the
   // start screen (the prompt is kept).
-  const stepTitle = builderStep
-    ? builderStep.title || "New widget"
-    : planStep
-      ? "Plan a dashboard"
-      : scoutStep
-        ? "Looking first"
-        : botForm
-          ? "New bot"
-          : autoStep
-            ? "Deciding what to make"
-            : themeStep
-              ? "New theme"
-              : null;
+  const stepTitle = askStep
+    ? askStep.title || "Question"
+    : builderStep
+      ? builderStep.title || "New widget"
+      : planStep
+        ? "Plan a dashboard"
+        : scoutStep
+          ? "Looking first"
+          : botForm
+            ? "New bot"
+            : autoStep
+              ? "Deciding what to make"
+              : themeStep
+                ? "New theme"
+                : null;
   // Fold the plan into the dock's Create panel; it carries on there (4e-2).
   const canFold = !!(planStep && planInfo && planInfo.recentId);
   const fold = () => {
@@ -630,6 +714,7 @@ export const CreateModal = ({
   };
   const back = () => {
     askSeq.current += 1;
+    setAskStep(null);
     setPlanStep(null);
     setScoutStep(null);
     setBuilderStep(null);
@@ -757,7 +842,12 @@ export const CreateModal = ({
             />
           </div>
         </div>
-        {builder || planner || scout || waiting || (botForm ? form : start)}
+        {question ||
+          builder ||
+          planner ||
+          scout ||
+          waiting ||
+          (botForm ? form : start)}
       </div>
     </Modal>
   );

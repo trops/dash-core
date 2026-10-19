@@ -14,7 +14,6 @@ const INSTALLERS = [
   "Widget/MissingWidgetsModal.js",
   "Widget/WidgetNotFound.js",
   "Components/AppPages/useWidgetInstall.js",
-  "Components/Layout/DashboardWizard/steps/WizardCustomizeStep.js",
   "Components/Layout/Builder/Enhanced/EnhancedWidgetDropdown.js",
   "hooks/useRegistrySearch.js",
   "hooks/useWidgetUpdates.js",
@@ -29,7 +28,6 @@ const DISPLAYS = [
     "{installError}",
   ],
   ["Components/Navigation/WidgetSidebar.js", "{registry.installError}"],
-  ["Components/Layout/DashboardWizard/steps/WizardCustomizeStep.js", "{error}"],
 ];
 
 describe("install errors are shown cleaned and whole", () => {
