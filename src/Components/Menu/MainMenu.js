@@ -10,6 +10,7 @@ import { AppContext } from "../../Context";
 import { deepCopy } from "@trops/dash-react";
 import { InputText } from "@trops/dash-react";
 import { LayoutContainer } from "../../Components/Layout";
+import { saveErrorText } from "../../utils/saveErrorText";
 
 const MainMenuConst = ({
   onClickNewWorkspace = null,
@@ -249,8 +250,17 @@ const MainMenuConst = ({
     console.log("workspace save complete ", message);
   }
 
-  function handleSaveWorkspaceError(e, message) {
-    console.log(message);
+  function handleSaveWorkspaceError(e, error) {
+    window.dispatchEvent(
+      new CustomEvent("dash:notify", {
+        detail: {
+          type: "error",
+          title: "Couldn't move the dashboard",
+          message: saveErrorText(error) || "Try again.",
+          duration: 8000,
+        },
+      }),
+    );
   }
 
   function handleCreateNew(menuItem) {

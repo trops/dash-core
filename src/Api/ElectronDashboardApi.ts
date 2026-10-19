@@ -208,6 +208,15 @@ class ElectronDashboardApi implements IDashboardApi {
         this.api.workspace
           .saveWorkspaceForApplication(appId, workspaceToSave)
           .then((result) => {
+            // A failed write comes back as { error: true, message }, not a
+            // rejection — it's an error, never a save.
+            if (result && result.error) {
+              onError(
+                this.events.WORKSPACE_SAVE_ERROR,
+                new Error(result.message || "The dashboard wasn't saved."),
+              );
+              return;
+            }
             onSuccess(this.events.WORKSPACE_SAVE_COMPLETE, result);
           })
           .catch((error) => {

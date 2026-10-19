@@ -72,7 +72,7 @@ describe("DashboardStage — edits wait for Save", () => {
     const stage = body.search(
       /if\s*\(\s*!previewModeRef\.current\s*\)\s*\{\s*stageWorkspaceEdit\(\s*reconciled\s*\);\s*return;\s*\}/,
     );
-    const save = body.indexOf("dashApi.saveWorkspace(");
+    const save = body.indexOf("saveRightAway(reconciled");
     expect(stage).toBeGreaterThan(-1);
     expect(save).toBeGreaterThan(stage);
   });

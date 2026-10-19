@@ -88,6 +88,7 @@ import { syncLayoutRefs } from "./editStaging";
 import { describeEditChanges } from "./editChanges";
 import { DiscardList } from "./DiscardList";
 import { pickWidgetDisplayName } from "../../utils/widgetIdentity";
+import { saveErrorText } from "../../utils/saveErrorText";
 
 /**
  * DashboardStage - Main application wrapper component
@@ -1573,27 +1574,39 @@ const DashboardStageInner = ({
         return;
       }
       // Not editing: a one-off pick, saved straight away.
-      updateTabWorkspace(reconciled);
-
-      // Persist to main app via IPC
-      try {
-        dashApi.saveWorkspace(
-          credentials.appId,
-          reconciled,
-          (e, result) => {
-            console.log("Workspace saved with provider selections:", result);
-          },
-          (e, error) => {
-            console.error(
-              "Failed to save workspace with provider selections:",
-              error,
-            );
-          },
-        );
-      } catch (e) {
-        console.error("Error saving workspace:", e);
-      }
+      saveRightAway(reconciled, "provider");
     }
+  }
+
+  // Phase 1e: a change made outside Edit shows at once and is saved straight
+  // away. If the save fails, the screen goes back to what's saved and the
+  // user is told — it never shows a change that didn't happen.
+  function saveRightAway(reconciled, what) {
+    const before = workspaceSelected;
+    updateTabWorkspace(reconciled);
+    const failed = (_e, error) => {
+      if (before) updateTabWorkspace(before);
+      notifySaveError(`Couldn't save the ${what} change`, error);
+    };
+    try {
+      dashApi.saveWorkspace(credentials.appId, reconciled, () => {}, failed);
+    } catch (e) {
+      failed(null, e);
+    }
+  }
+
+  function notifySaveError(title, error, next = "Try again.") {
+    const reason = saveErrorText(error).replace(/\.+$/, "");
+    window.dispatchEvent(
+      new CustomEvent("dash:notify", {
+        detail: {
+          type: "error",
+          title,
+          message: reason ? `${reason}. ${next}` : next,
+          duration: 8000,
+        },
+      }),
+    );
   }
 
   // ─── Bulk provider binding save (Dashboard Config modal) ──────────
@@ -1622,23 +1635,7 @@ const DashboardStageInner = ({
       stageWorkspaceEdit(reconciled);
       return;
     }
-    updateTabWorkspace(reconciled);
-
-    try {
-      dashApi.saveWorkspace(
-        credentials.appId,
-        reconciled,
-        (e, result) =>
-          console.log("Workspace saved with bulk provider bindings:", result),
-        (e, error) =>
-          console.error(
-            "Failed to save workspace with bulk provider bindings:",
-            error,
-          ),
-      );
-    } catch (e) {
-      console.error("Error saving workspace:", e);
-    }
+    saveRightAway(reconciled, "provider");
   }
 
   // ─── Bulk widget userPrefs save ───────────────────────────────────
@@ -1664,20 +1661,7 @@ const DashboardStageInner = ({
       stageWorkspaceEdit(reconciled);
       return;
     }
-    updateTabWorkspace(reconciled);
-
-    try {
-      dashApi.saveWorkspace(
-        credentials.appId,
-        reconciled,
-        (e, result) =>
-          console.log("Workspace saved with bulk userPrefs:", result),
-        (e, error) =>
-          console.error("Failed to save workspace with bulk userPrefs:", error),
-      );
-    } catch (e) {
-      console.error("Error saving workspace:", e);
-    }
+    saveRightAway(reconciled, "widget settings");
   }
 
   // ─── Bulk listener binding save ──────────────────────────────────
@@ -1702,23 +1686,7 @@ const DashboardStageInner = ({
       stageWorkspaceEdit(reconciled);
       return;
     }
-    updateTabWorkspace(reconciled);
-
-    try {
-      dashApi.saveWorkspace(
-        credentials.appId,
-        reconciled,
-        (e, result) =>
-          console.log("Workspace saved with bulk listener bindings:", result),
-        (e, error) =>
-          console.error(
-            "Failed to save workspace with bulk listener bindings:",
-            error,
-          ),
-      );
-    } catch (e) {
-      console.error("Error saving workspace:", e);
-    }
+    saveRightAway(reconciled, "listener");
   }
 
   // ─── Unresolved providers + listener orphans (modal + auto-open) ─
@@ -2421,7 +2389,7 @@ const DashboardStageInner = ({
         );
       }
     } catch (e) {
-      console.log(e.message);
+      handleSaveWorkspaceError(null, e);
     }
   }
 
@@ -2475,8 +2443,13 @@ const DashboardStageInner = ({
     setPreviewMode(() => true);
   }
 
-  function handleSaveWorkspaceError(e, message) {
-    console.log(e, message);
+  // A failed Save keeps Edit open with every change still there (Phase 1e).
+  function handleSaveWorkspaceError(_e, error) {
+    notifySaveError(
+      "Couldn't save the dashboard",
+      error,
+      "Your changes are still here — try Save again.",
+    );
   }
 
   function handleOpenThemeManager(themeKey = null) {

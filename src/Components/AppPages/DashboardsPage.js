@@ -31,6 +31,7 @@ import { PublishDashboardModal } from "../Settings/details/PublishDashboardModal
 import { dashboardSummary } from "./dashboardSummary";
 import { useApprovalsByDashboard } from "./useApprovalsByDashboard";
 import { exportedText } from "./exportedText";
+import { saveErrorText } from "../../utils/saveErrorText";
 
 const UNCATEGORIZED = "Uncategorized";
 const NO_FOLDER = "none";
@@ -161,7 +162,17 @@ const DashboardDetailPanel = ({
       appId,
       forSave(updated),
       () => onReloadWorkspaces && onReloadWorkspaces(),
-      (e, err) => console.error("Save dashboard error:", err),
+      (e, err) =>
+        window.dispatchEvent(
+          new CustomEvent("dash:notify", {
+            detail: {
+              type: "error",
+              title: "Couldn't save the dashboard",
+              message: saveErrorText(err) || "Try again.",
+              duration: 8000,
+            },
+          }),
+        ),
     );
   };
 
