@@ -273,7 +273,7 @@ describe("screens say a new bot is paused, and Turn on", () => {
       /paused until you turn it on/,
     );
   });
-  it("Resume reads Turn on — in the chat and the dock", () => {
+  it("Resume reads Turn on — in the chat and the bot page", () => {
     assert.match(
       read("Components", "Bots", "BotChat.js"),
       /Turn on \$\{bot\.name\} to message it/,
@@ -283,7 +283,7 @@ describe("screens say a new bot is paused, and Turn on", () => {
       /Resume \$\{bot\.name\} to message it/,
     );
     assert.match(
-      read("Components", "Bots", "BotContacts.js"),
+      read("Components", "Bots", "BotPage.js"),
       /isPaused \? "Turn on" : "Pause"/,
     );
   });

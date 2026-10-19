@@ -1,10 +1,10 @@
 /**
  * BotContacts — the Bots dock panel (bot-teams TEAM-015): a contacts list of
- * bots; pick one to chat or see its activity; Needs you at the top.
+ * bots; pick one to open its bot page (NAV-016 AC5); Needs you at the top.
  */
 import React from "react";
 import "@testing-library/jest-dom";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { BotContacts } from "./BotContacts";
 
 const workspaces = [
@@ -111,7 +111,8 @@ test("search narrows the list", () => {
   expect(rowNames()).toEqual(["PR Digest"]);
 });
 
-test("Needs you opens the waiting bot's chat, with the approval in it", async () => {
+test("Needs you opens the waiting bot's page", () => {
+  const onOpenBot = jest.fn();
   const c = contacts({
     approvals: [
       {
@@ -121,111 +122,88 @@ test("Needs you opens the waiting bot's chat, with the approval in it", async ()
       },
     ],
   });
-  render(<BotContacts contacts={c} workspaces={workspaces} />);
+  render(
+    <BotContacts contacts={c} workspaces={workspaces} onOpenBot={onOpenBot} />,
+  );
   expect(screen.getByTestId("bot-contacts-needs-you")).toHaveTextContent(
     "Inbox Sorter needs you",
   );
   expect(screen.getByText("1 to approve")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Review" }));
-  expect(await screen.findByTestId("bot-contact")).toBeInTheDocument();
-  expect(screen.getByText("Needs your approval")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Allow once" }));
-  expect(c.approve).toHaveBeenCalledWith("a1", { allow: true });
+  expect(onOpenBot).toHaveBeenCalledWith("is", "conversation");
 });
 
-test("a bot opens on its conversation; Activity, Open in Bots view and back", async () => {
-  const onOpenBotsView = jest.fn();
+test("a bot opens its page; the panel stays the list (NAV-016 AC5)", () => {
+  const onOpenBot = jest.fn();
   render(
     <BotContacts
       contacts={contacts()}
       workspaces={workspaces}
-      onOpenBotsView={onOpenBotsView}
-    />,
-  );
-  fireEvent.click(screen.getByRole("button", { name: /^Inbox Sorter:/ }));
-  expect(await screen.findByTestId("bot-contact-subtitle")).toHaveTextContent(
-    "Morning Brief",
-  );
-  expect(screen.getByLabelText("Message")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("radio", { name: "Activity" }));
-  await waitFor(() =>
-    expect(screen.queryByLabelText("Message")).not.toBeInTheDocument(),
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Run now" }));
-  expect(window.mainApi.bots.run).toHaveBeenCalledWith("is", "", false);
-  fireEvent.click(screen.getByRole("button", { name: "Open in Bots view" }));
-  expect(onOpenBotsView).toHaveBeenCalledWith("2", "is", "activity");
-  fireEvent.click(screen.getByRole("button", { name: "All bots" }));
-  expect(screen.getByTestId("bot-contacts")).toBeInTheDocument();
-});
-
-test("a clicked notification opens that bot's chat, again for a later click (US-018 AC5)", async () => {
-  const { rerender } = render(
-    <BotContacts
-      contacts={contacts()}
-      workspaces={workspaces}
-      openRequest={{ botId: "is" }}
-    />,
-  );
-  expect(await screen.findByTestId("bot-contact-subtitle")).toHaveTextContent(
-    "Morning Brief",
-  );
-  fireEvent.click(screen.getByRole("button", { name: "All bots" }));
-  expect(screen.getByTestId("bot-contacts")).toBeInTheDocument();
-  rerender(
-    <BotContacts
-      contacts={contacts()}
-      workspaces={workspaces}
-      openRequest={{ botId: "is" }}
-    />,
-  );
-  expect(await screen.findByTestId("bot-contact-subtitle")).toHaveTextContent(
-    "Morning Brief",
-  );
-});
-
-test("an open request with no bot (tray: Open Bots panel) shows the list", async () => {
-  const { rerender } = render(
-    <BotContacts
-      contacts={contacts()}
-      workspaces={workspaces}
-      openRequest={{ botId: "is" }}
-    />,
-  );
-  expect(await screen.findByTestId("bot-contact-subtitle")).toBeInTheDocument();
-  rerender(
-    <BotContacts
-      contacts={contacts()}
-      workspaces={workspaces}
-      openRequest={{ botId: null }}
-    />,
-  );
-  expect(await screen.findByTestId("bot-contacts")).toBeInTheDocument();
-});
-
-test("a paused bot: Turn on from its chat", async () => {
-  const c = contacts({ paused: new Set(["is"]) });
-  render(<BotContacts contacts={c} workspaces={workspaces} />);
-  fireEvent.click(screen.getByRole("button", { name: /^Inbox Sorter:/ }));
-  expect(await screen.findByTestId("bot-chat-paused")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Turn on" }));
-  expect(c.setBotPaused).toHaveBeenCalledWith("is", false);
-});
-
-test("a bot on no dashboard opens in Settings", async () => {
-  const onOpenSettings = jest.fn();
-  render(
-    <BotContacts
-      contacts={contacts()}
-      workspaces={workspaces}
-      onOpenSettings={onOpenSettings}
+      onOpenBot={onOpenBot}
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: /^PR Digest:/ }));
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Open in Settings" }),
+  expect(onOpenBot).toHaveBeenCalledWith("pr", "conversation");
+  expect(screen.getByTestId("bot-contacts")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Message")).toBeNull();
+});
+
+test("with no host handler, a bot click asks the app to open it", () => {
+  const seen = [];
+  const listen = (e) => seen.push(e.detail);
+  window.addEventListener("dash:open-bot", listen);
+  render(<BotContacts contacts={contacts()} workspaces={workspaces} />);
+  fireEvent.click(screen.getByRole("button", { name: /^Inbox Sorter:/ }));
+  window.removeEventListener("dash:open-bot", listen);
+  expect(seen).toEqual([{ botId: "is", tab: "conversation" }]);
+});
+
+test("a clicked notification opens that bot, again for a later click (US-018 AC5)", () => {
+  const onOpenBot = jest.fn();
+  const { rerender } = render(
+    <BotContacts
+      contacts={contacts()}
+      workspaces={workspaces}
+      onOpenBot={onOpenBot}
+      openRequest={{ botId: "is" }}
+    />,
   );
-  expect(onOpenSettings).toHaveBeenCalledWith("pr");
+  expect(onOpenBot).toHaveBeenCalledTimes(1);
+  rerender(
+    <BotContacts
+      contacts={contacts()}
+      workspaces={workspaces}
+      onOpenBot={onOpenBot}
+      openRequest={{ botId: "is" }}
+    />,
+  );
+  expect(onOpenBot).toHaveBeenCalledTimes(2);
+  expect(onOpenBot).toHaveBeenLastCalledWith("is", "conversation");
+});
+
+test("reopening the panel doesn't replay an old notification", () => {
+  const onOpenBot = jest.fn();
+  const request = { botId: "is" };
+  const props = { contacts: contacts(), workspaces, onOpenBot };
+  const { unmount } = render(<BotContacts {...props} openRequest={request} />);
+  expect(onOpenBot).toHaveBeenCalledTimes(1);
+  unmount();
+  render(<BotContacts {...props} openRequest={request} />);
+  expect(onOpenBot).toHaveBeenCalledTimes(1);
+});
+
+test("an open request with no bot (tray: Open Bots panel) just shows the list", () => {
+  const onOpenBot = jest.fn();
+  render(
+    <BotContacts
+      contacts={contacts()}
+      workspaces={workspaces}
+      onOpenBot={onOpenBot}
+      openRequest={{ botId: null }}
+    />,
+  );
+  expect(onOpenBot).not.toHaveBeenCalled();
+  expect(screen.getByTestId("bot-contacts")).toBeInTheDocument();
 });
 
 test("no bots yet: says where to make one", () => {
@@ -240,12 +218,13 @@ describe("budgets in the dock (US-019)", () => {
     limit: { scope: "bot:is", budget: 5 },
   };
 
-  test("Needs you lists an over-budget bot; its chat offers Keep running this month", async () => {
-    const keepRunning = jest.fn();
+  test("Needs you lists an over-budget bot; Review opens its page", () => {
+    const onOpenBot = jest.fn();
     render(
       <BotContacts
-        contacts={contacts({ budgets: { is: over }, keepRunning })}
+        contacts={contacts({ budgets: { is: over } })}
         workspaces={workspaces}
+        onOpenBot={onOpenBot}
       />,
     );
     expect(screen.getByTestId("bot-contacts-needs-you")).toHaveTextContent(
@@ -256,14 +235,7 @@ describe("budgets in the dock (US-019)", () => {
     );
     expect(screen.getAllByText("Over budget").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
-    expect(await screen.findByTestId("bot-contact-subtitle")).toHaveTextContent(
-      "over budget",
-    );
-    expect(screen.getByTestId("bot-chat-over-budget")).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Keep running this month" }),
-    );
-    expect(keepRunning).toHaveBeenCalledWith("is");
+    expect(onOpenBot).toHaveBeenCalledWith("is", "conversation");
   });
 
   test("80% of budget is a word on the row", () => {

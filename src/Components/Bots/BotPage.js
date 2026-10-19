@@ -1,4 +1,4 @@
-import React, { useContext, useMemo, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState } from "react";
 import {
   Button,
   Button3,
@@ -84,11 +84,25 @@ export const BotPage = ({
 
   const bots = c.bots || EMPTY;
   const bot = bots.find((b) => b.id === botId) || null;
+  // Deleted elsewhere mid-edit: its unsaved edits went with it.
+  const gone = !bot && !c.loading;
+  useEffect(() => {
+    if (gone && dirty) setDirty(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gone, dirty]);
 
   if (!bot) {
     return (
-      <div className={`p-6 text-sm ${muted}`} data-testid="bot-page-missing">
-        {c.loading ? "Loading…" : "This bot no longer exists."}
+      <div
+        className={`flex flex-row items-center gap-3 p-6 text-sm ${muted}`}
+        data-testid="bot-page-missing"
+      >
+        <span className="flex-1">
+          {c.loading ? "Loading…" : "This bot no longer exists."}
+        </span>
+        {onClose ? (
+          <ButtonIcon3 icon="xmark" ariaLabel="Close" onClick={onClose} />
+        ) : null}
       </div>
     );
   }

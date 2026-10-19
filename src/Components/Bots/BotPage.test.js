@@ -88,19 +88,22 @@ function setup(props = {}, contacts = {}) {
   const onOpenInBotsView = jest.fn();
   const onDeleted = jest.fn();
   const onClose = jest.fn();
-  render(
+  const page = (p) => (
     <AppContext.Provider value={{ providers: {} }}>
       <BotPage
         botId="b1"
         workspaces={workspaces}
         onOpenInBotsView={onOpenInBotsView}
         onDeleted={onDeleted}
-        {...props}
+        {...p}
       />
-    </AppContext.Provider>,
+    </AppContext.Provider>
   );
+  const { rerender } = render(page(props));
+  rerenderPage = (p) => rerender(page(p));
   return { botsApi, onOpenInBotsView, onDeleted, onClose };
 }
+let rerenderPage;
 
 const tab = (name) => fireEvent.click(screen.getByRole("radio", { name }));
 
@@ -187,6 +190,27 @@ describe("BotPage header", () => {
     expect(screen.getByTestId("bot-page-missing")).toHaveTextContent(
       "This bot no longer exists.",
     );
+  });
+
+  it("a gone bot can still be closed", () => {
+    const onClose = jest.fn();
+    setup({ botId: "nope", onClose });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("deleted elsewhere mid-edit: tells the host nothing is unsaved", () => {
+    const onDirtyChange = jest.fn();
+    setup({ initialTab: "settings", onDirtyChange });
+    fireEvent.click(screen.getByText("make-dirty"));
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    mockContacts = {
+      ...mockContacts,
+      bots: BOTS.filter((b) => b.id !== "b1"),
+    };
+    rerenderPage({ initialTab: "settings", onDirtyChange });
+    expect(screen.getByTestId("bot-page-missing")).toBeInTheDocument();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
   });
 });
 

@@ -115,8 +115,21 @@ describe("DashboardStage — Bot monitor hand-off (TEAM-011 B3)", () => {
     expect(stageSrc).toMatch(/focus=\{botsFocus\}/);
   });
 
-  it("Open in Settings goes to Settings › Bots", () => {
-    expect(stageSrc).toMatch(/openAppSettings\("bots"\)/);
+  // Settings › Bots no longer exists — the old hand-off opened nothing.
+  it("a bot opens in the bot page modal; bot settings opens it on Settings (NAV-016 AC5)", () => {
+    expect(stageSrc).toMatch(
+      /window\.addEventListener\("dash:open-bot", handler\)/,
+    );
+    expect(stageSrc).toMatch(
+      /setBotPageRequest\(\{ botId: d\.botId, tab: d\.tab \|\| "conversation" \}\)/,
+    );
+    expect(stageSrc).toMatch(
+      /openBotSettings = useCallback\(\(botId\) => \{\s*if \(botId\) setBotPageRequest\(\{ botId, tab: "settings" \}\);/,
+    );
+    expect(stageSrc).toMatch(
+      /<BotPageModal\s+request=\{botPageRequest\}\s+onClose=\{\(\) => setBotPageRequest\(null\)\}/,
+    );
+    expect(stageSrc).not.toMatch(/openAppSettings\("bots"\)/);
   });
 });
 

@@ -12,6 +12,7 @@ export { DraftBanner } from "./DraftBanner";
 export { useBotMonitor } from "./useBotMonitor";
 export { BotContacts } from "./BotContacts";
 export { BotPage, BOT_PAGE_TABS } from "./BotPage";
+export { BotPageModal } from "./BotPageModal";
 export { BotSpending } from "./BotSpending";
 export { useBotContacts } from "./useBotContacts";
 export { useSpending } from "./useSpending";
