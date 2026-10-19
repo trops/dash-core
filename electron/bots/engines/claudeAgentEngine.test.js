@@ -188,10 +188,74 @@ describe("claudeAgentEngine", () => {
     assert.deepEqual(captured.options.tools, []);
   });
 
-  it("by default the SDK keeps its built-in tool set", async () => {
+  it("by default a bot gets only the standard built-ins, named explicitly", async () => {
     stubQuery([{ type: "result", subtype: "success", usage: {} }]);
     await collect(claudeAgentEngine.run(ctx()));
-    assert.equal(captured.options.tools, undefined);
+    assert.deepEqual(captured.options.tools, [
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "Bash",
+      "WebFetch",
+      "WebSearch",
+      "TodoWrite",
+      "NotebookEdit",
+    ]);
+  });
+
+  for (const policy of ["ask", "allow"]) {
+    it(`denies built-ins outside the list without asking (policy ${policy})`, async () => {
+      stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+      const created = [];
+      await collect(
+        claudeAgentEngine.run(
+          ctx({
+            approvalPolicy: policy,
+            createApproval: (req) => {
+              created.push(req);
+              return { promise: Promise.resolve({ allow: true }) };
+            },
+          }),
+        ),
+      );
+      for (const name of [
+        "RemoteTrigger",
+        "Skill",
+        "ToolSearch",
+        "CronCreate",
+        "Agent",
+        "AskUserQuestion",
+        "mcp__claude_ai_Slack__slack_send_message",
+      ]) {
+        const res = await captured.options.canUseTool(name, {});
+        assert.equal(res.behavior, "deny", name);
+      }
+      assert.equal(created.length, 0);
+    });
+  }
+
+  it("bridged Dash tools still reach the gate for a default bot", async () => {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    let asked = null;
+    await collect(
+      claudeAgentEngine.run(
+        ctx({
+          approvalPolicy: "ask",
+          requestPermission: async (name) => {
+            asked = name;
+            return { allow: true };
+          },
+        }),
+      ),
+    );
+    const res = await captured.options.canUseTool(
+      "mcp__bot-mcp__slack_post",
+      {},
+    );
+    assert.equal(res.behavior, "allow");
+    assert.equal(asked, "slack_post");
   });
 
   it("with builtinTools 'none', a built-in that slips through is denied without asking", async () => {

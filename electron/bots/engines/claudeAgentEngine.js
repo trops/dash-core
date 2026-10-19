@@ -130,6 +130,29 @@ function* _fromUser(message) {
 // look at files, never change them or run anything.
 const READ_ONLY_BUILTINS = ["Read", "Glob", "Grep"];
 
+// Built-ins every other bot gets, named explicitly so the CLI's other
+// built-ins (Skill, RemoteTrigger, Cron*, ToolSearch, Agent, …) — and any a
+// newer CLI adds — never reach a bot. Skills could pre-approve tools and
+// RemoteTrigger made real cloud routines without asking.
+const DEFAULT_BUILTINS = [
+  "Read",
+  "Write",
+  "Edit",
+  "Glob",
+  "Grep",
+  "Bash",
+  "WebFetch",
+  "WebSearch",
+  "TodoWrite",
+  "NotebookEdit",
+];
+
+function _allowedBuiltins(ctx) {
+  if (ctx.builtinTools === "none") return [];
+  if (ctx.builtinTools === "read-only") return READ_ONLY_BUILTINS;
+  return DEFAULT_BUILTINS;
+}
+
 /** Build the SDK canUseTool hook from the run context. */
 function _makeCanUseTool(ctx) {
   return async function canUseTool(toolName, input) {
@@ -156,6 +179,14 @@ function _makeCanUseTool(ctx) {
         behavior: "deny",
         message:
           "This bot can only read files; make changes with its Dash tools.",
+      };
+    }
+    // Anything else outside this bot's built-ins — denied, never asked, even
+    // under "allow".
+    if (!bridged && !_allowedBuiltins(ctx).includes(toolName)) {
+      return {
+        behavior: "deny",
+        message: `${toolName} isn't available to bots.`,
       };
     }
     // Trusted bot → run tools without prompting.
@@ -240,12 +271,9 @@ async function _runAgent(ctx, stream) {
     cliPath = null;
   }
   if (cliPath) options.pathToClaudeCodeExecutable = cliPath;
-  // Read-only bots (team leads) get none of the SDK's built-ins — no shell,
-  // files, or web; only their bridged team tools.
-  if (ctx.builtinTools === "none") options.tools = [];
-  else if (ctx.builtinTools === "read-only") {
-    options.tools = READ_ONLY_BUILTINS.slice();
-  }
+  // Team leads get no built-ins, read-only bots only reads, every other bot
+  // the default list — never the CLI's full set.
+  options.tools = _allowedBuiltins(ctx).slice();
   if (ctx.maxTurns) options.maxTurns = ctx.maxTurns;
   if (ctx.workingDir) options.cwd = ctx.workingDir;
   if (ctx.session && ctx.session.id) options.resume = ctx.session.id;
