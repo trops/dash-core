@@ -21,9 +21,7 @@ export const Primary = Template.bind({});
 Primary.args = {
   open: true,
   scrollable: true,
-  onCreateWorkspace: (layoutObj) => {
-    console.log("Create workspace with layout:", layoutObj);
-  },
+  initialMethod: "import",
   appId: "storybook-app",
   onReloadWorkspaces: () => {
     console.log("Reload workspaces");

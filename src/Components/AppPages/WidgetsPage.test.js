@@ -628,17 +628,6 @@ describe("WidgetsPage page actions", () => {
     await waitFor(() => expect(drafts.delete).toHaveBeenCalledWith("x"));
   });
 
-  it("New Widget shows the install picker; a ZIP install shows the result", async () => {
-    const onCreateAcknowledged = jest.fn();
-    setup({ createRequested: true, onCreateAcknowledged });
-    expect(onCreateAcknowledged).toHaveBeenCalled();
-    fireEvent.click(screen.getByText("pick-zip"));
-    await waitFor(() => expect(mockInstallFromZip).toHaveBeenCalled());
-    expect(
-      await screen.findByText('Widget "weather" installed.'),
-    ).toBeInTheDocument();
-  });
-
   it("an install request from the Create screen runs that install (CRE-008)", async () => {
     setup({ installRequest: { action: "zip", nonce: 1 } });
     await waitFor(() => expect(mockInstallFromZip).toHaveBeenCalled());
@@ -680,8 +669,12 @@ describe("WidgetsPage page actions", () => {
     expect(screen.getByTestId("discover")).toBeInTheDocument();
   });
 
-  it("the builder card opens the Widget Builder", () => {
-    setup({ createRequested: true });
+  // New Widget opens Create (AppPage); the install picker is reached from an
+  // install's result (Install another).
+  it("Install another shows the picker; its builder card opens the Widget Builder", async () => {
+    setup({ installRequest: { action: "zip", nonce: 1 } });
+    fireEvent.click(await screen.findByText("Install another"));
+    expect(screen.getByTestId("install-picker")).toBeInTheDocument();
     let fired = false;
     const onEvent = () => {
       fired = true;

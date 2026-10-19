@@ -35,12 +35,6 @@ jest.mock("@trops/dash-react", () => {
     }),
   };
 });
-jest.mock("./Panel/LayoutManagerPicker", () => ({
-  LayoutManagerPicker: () => null,
-}));
-jest.mock("./Panel/CreationMethodPicker", () => ({
-  CreationMethodPicker: () => null,
-}));
 jest.mock("../../Settings/details/DiscoverDashboardsDetail", () => ({
   DiscoverDashboardsDetail: () => null,
 }));

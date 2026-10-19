@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { useContext, useMemo, useState } from "react";
 import {
   Button,
   Button3,
@@ -24,8 +24,6 @@ import { STATUS_DOT } from "../Bots/teamUtils";
 import { relativeTime } from "../Bots/BotMonitor";
 import { ThemeColorDots } from "../Theme/ThemeColorDots";
 import { ListGroupLabel, ManageLayout, OverflowMenu } from "./ManageLayout";
-import { NewDashboardChooser } from "../Settings/details/NewDashboardChooser";
-import { DiscoverDashboardsDetail } from "../Settings/details/DiscoverDashboardsDetail";
 import { StarRating } from "../Settings/details/StarRating";
 import { PublishDashboardModal } from "../Settings/details/PublishDashboardModal";
 import { dashboardSummary } from "./dashboardSummary";
@@ -496,9 +494,6 @@ export const DashboardsPage = ({
   onOpenWorkspace = () => {},
   onOpenBotsView = () => {},
   onOpenDashboardConfig = () => {},
-  onOpenWizard = null,
-  createRequested = false,
-  onCreateAcknowledged = null,
 }) => {
   const { muted } = useConfigTokens();
   const themeCtx = useContext(ThemeContext) || {};
@@ -512,8 +507,6 @@ export const DashboardsPage = ({
   const [folders, setFolders] = useState([]);
   const [view, setView] = useState("grouped");
   const [selectedId, setSelectedId] = useState(null);
-  // null | "picker" | "marketplace"
-  const [mode, setMode] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   const summaries = useMemo(() => {
@@ -533,15 +526,6 @@ export const DashboardsPage = ({
 
   const folderNameOf = (ws) =>
     menuItems.find((m) => m.id === ws.menuId)?.name || UNCATEGORIZED;
-
-  // The header's New Dashboard opens the chooser in the detail pane.
-  const prevCreate = useRef(false);
-  useEffect(() => {
-    if (createRequested && !prevCreate.current) setMode("picker");
-    prevCreate.current = createRequested;
-    if (createRequested && onCreateAcknowledged) onCreateAcknowledged();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [createRequested]);
 
   const q = query.trim().toLowerCase();
   const visible = workspaces.filter((ws) => {
@@ -607,30 +591,7 @@ export const DashboardsPage = ({
   };
 
   let detail;
-  if (mode === "picker") {
-    detail = (
-      <NewDashboardChooser
-        onSelect={(option) => {
-          if (option === "marketplace") setMode("marketplace");
-          else if (option === "wizard") {
-            setMode(null);
-            if (onOpenWizard) onOpenWizard();
-          }
-        }}
-      />
-    );
-  } else if (mode === "marketplace") {
-    detail = (
-      <DiscoverDashboardsDetail
-        onBack={() => setMode(null)}
-        appId={appId}
-        onInstallComplete={() => {
-          onReloadWorkspaces && onReloadWorkspaces();
-          themeCtx.loadThemes && themeCtx.loadThemes();
-        }}
-      />
-    );
-  } else if (selected) {
+  if (selected) {
     const theme = selected.themeKey ? themes[selected.themeKey] : null;
     detail = (
       <DashboardDetailPanel
@@ -701,7 +662,7 @@ export const DashboardsPage = ({
                 const s = summaries.get(ws.id);
                 const needs =
                   (s && s.unresolvedProviders > 0) || approvalsFor(ws.id) > 0;
-                const active = !mode && selected && ws.id === selected.id;
+                const active = selected && ws.id === selected.id;
                 const theme = ws.themeKey ? themes[ws.themeKey] : null;
                 const meta = [
                   s
@@ -719,10 +680,7 @@ export const DashboardsPage = ({
                     key={ws.id}
                     icon="table-cells-large"
                     selected={!!active}
-                    onClick={() => {
-                      setMode(null);
-                      setSelectedId(ws.id);
-                    }}
+                    onClick={() => setSelectedId(ws.id)}
                     title={<span data-name>{ws.name || "Untitled"}</span>}
                     meta={
                       <span className="flex flex-row flex-wrap items-center gap-x-2 gap-y-1">

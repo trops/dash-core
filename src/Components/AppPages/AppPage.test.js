@@ -100,6 +100,7 @@ describe("AppPage", () => {
   it.each([
     ["bots", "New Bot", "bot"],
     ["widgets", "New Widget", "widget"],
+    ["dashboards", "New Dashboard", "dashboard"],
   ])(
     "%s: the primary action opens the Create screen on that type (CRE-008)",
     (key, label, type) => {
@@ -117,7 +118,6 @@ describe("AppPage", () => {
   it.each([
     ["providers", "New Provider"],
     ["themes", "New Theme"],
-    ["dashboards", "New Dashboard"],
   ])("%s: the primary action asks the section to create", (key, label) => {
     render(<AppPage pageKey={key} />);
     expect(screen.getByTestId("create")).toHaveTextContent("false");

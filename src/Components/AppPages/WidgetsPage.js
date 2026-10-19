@@ -524,8 +524,6 @@ export const WidgetsPage = ({
   // query? } from the Create screen — select opens one of the user's
   // packages; discover can start on a search (the Scout's registry find).
   installRequest = null,
-  createRequested = false,
-  onCreateAcknowledged = null,
 }) => {
   const { muted, strong, hairline, selectedBg, selectedBorder } =
     useConfigTokens();
@@ -583,16 +581,6 @@ export const WidgetsPage = ({
     label: o.name,
     count: o.packages.length,
   }));
-
-  // The header's New Widget opens the install picker in the detail panel.
-  // (In the app, AppPage sends New Widget to the Create screen instead.)
-  const prevCreate = useRef(false);
-  useEffect(() => {
-    if (createRequested && !prevCreate.current) setMode("picker");
-    prevCreate.current = createRequested;
-    if (createRequested && onCreateAcknowledged) onCreateAcknowledged();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [createRequested]);
 
   const pick = async (option) => {
     if (option === "builder") {

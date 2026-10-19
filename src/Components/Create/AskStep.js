@@ -62,7 +62,27 @@ export const AskStep = ({
   const replyLabel = lead ? lead.leadName : "Planner";
   const replyName = lead ? lead.leadName : "the Planner";
 
-  const note = (text) => setMessages((m) => [...m, { who: "note", text }]);
+  // The conversation as it stands, for an answer that lands after this step
+  // has closed (Create's Back / Close, Phase 2a).
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  // Show a reply — or, once closed, save it to Recent so it isn't lost.
+  const add = (msg) => {
+    if (alive.current) {
+      setMessages((m) => [...m, msg]);
+      return;
+    }
+    const bots = window.mainApi && window.mainApi.bots;
+    if (!askId.current || !bots || !bots.saveCreateRecent) return;
+    messagesRef.current = [...messagesRef.current, msg];
+    Promise.resolve(
+      bots.saveCreateRecent({
+        id: askId.current,
+        conversation: { messages: messagesRef.current },
+      }),
+    ).catch(() => {});
+  };
+  const note = (text) => add({ who: "note", text });
 
   const ask = async (text, continueConversation, history) => {
     setBusy(true);
@@ -93,9 +113,10 @@ export const AskStep = ({
         onText,
       });
     }
-    if (!alive.current) return;
-    setBusy(false);
-    setSoFar("");
+    if (alive.current) {
+      setBusy(false);
+      setSoFar("");
+    }
     if (res.skipped) {
       note(
         to
@@ -114,26 +135,20 @@ export const AskStep = ({
       return;
     }
     if (to) {
-      setMessages((m) => [
-        ...m,
-        {
-          who: "lead",
-          text: res.output || "(no answer)",
-          meta: runCostLabel(res),
-        },
-      ]);
+      add({
+        who: "lead",
+        text: res.output || "(no answer)",
+        meta: runCostLabel(res),
+      });
       return;
     }
     const plan = extractPlan(res.output);
-    setMessages((m) => [
-      ...m,
-      {
-        who: "planner",
-        text: withoutPlan(res.output) || (plan ? plan.summary : "(no answer)"),
-        meta: runCostLabel(res),
-        ...(hasPlan(plan) ? { plan, asked: text } : {}),
-      },
-    ]);
+    add({
+      who: "planner",
+      text: withoutPlan(res.output) || (plan ? plan.summary : "(no answer)"),
+      meta: runCostLabel(res),
+      ...(hasPlan(plan) ? { plan, asked: text } : {}),
+    });
   };
 
   useEffect(() => {
