@@ -1,5 +1,6 @@
 import { useState, useEffect, useContext } from "react";
 import {
+  AlertBanner,
   Button,
   FontAwesomeIcon,
   Modal,
@@ -45,6 +46,8 @@ export const LayoutManagerModal = ({
 
   // Pre-import file selection (file preview, not yet saved)
   const [selectedFile, setSelectedFile] = useState(null);
+  // Why the file couldn't be read or imported (Phase 1e) — never silent.
+  const [importError, setImportError] = useState(null);
 
   // Inline new-folder form state
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
@@ -69,6 +72,7 @@ export const LayoutManagerModal = ({
         : null;
       setSelectedThemeKey(appThemeKey || fallback);
       setSelectedFile(null);
+      setImportError(null);
       setIsCreatingFolder(false);
       setNewFolderName("");
       setNewFolderIcon(null);
@@ -127,27 +131,33 @@ export const LayoutManagerModal = ({
   }
 
   async function handleImportFromFile() {
+    setImportError(null);
     try {
       const result = await window.mainApi.dashboardConfig.selectDashboardFile();
-      if (result && !result.canceled && result.success) {
-        setSelectedFile(result);
-        setDashboardName(
-          result.dashboardConfig?.workspace?.name ||
-            result.dashboardConfig?.name ||
-            "",
+      if (!result || result.canceled) return;
+      if (!result.success) {
+        setImportError(
+          `Couldn't read that file: ${result.error || "it isn't a dashboard ZIP"}.`,
         );
-        setSelectedMenuId(
-          result.dashboardConfig?.workspace?.menuId ||
-            (menuItems.length > 0 ? menuItems[0].id : 1),
-        );
-        setSelectedThemeKey(
-          result.dashboardConfig?.workspace?.themeKey || null,
-        );
-        setActiveStep(0);
-        setCreationMethod("import");
+        return;
       }
+      setSelectedFile(result);
+      setDashboardName(
+        result.dashboardConfig?.workspace?.name ||
+          result.dashboardConfig?.name ||
+          "",
+      );
+      setSelectedMenuId(
+        result.dashboardConfig?.workspace?.menuId ||
+          (menuItems.length > 0 ? menuItems[0].id : 1),
+      );
+      setSelectedThemeKey(result.dashboardConfig?.workspace?.themeKey || null);
+      setActiveStep(0);
+      setCreationMethod("import");
     } catch (err) {
-      console.error("[LayoutManagerModal] Select file error:", err);
+      setImportError(
+        `Couldn't open the file: ${(err && err.message) || "unknown error"}.`,
+      );
     }
   }
 
@@ -183,6 +193,7 @@ export const LayoutManagerModal = ({
       }
     }
 
+    setImportError(null);
     try {
       const result = await window.mainApi.dashboardConfig.importDashboardConfig(
         appId,
@@ -200,9 +211,15 @@ export const LayoutManagerModal = ({
           onOpenWorkspace(result.workspace);
         }
         handleClose();
+      } else {
+        setImportError(
+          `The dashboard wasn't imported: ${(result && result.error) || "no reason given"}.`,
+        );
       }
     } catch (err) {
-      console.error("[LayoutManagerModal] Import error:", err);
+      setImportError(
+        `The dashboard wasn't imported: ${(err && err.message) || "unknown error"}.`,
+      );
     }
   }
 
@@ -638,6 +655,15 @@ export const LayoutManagerModal = ({
     if (creationMethod === "import") {
       return (
         <Modal.Footer>
+          {importError ? (
+            <div className="flex-1 min-w-0 mr-4">
+              <AlertBanner
+                variant="error"
+                size="compact"
+                message={importError}
+              />
+            </div>
+          ) : null}
           <div className="flex flex-row space-x-2">
             {activeStep === 0 && (
               <>

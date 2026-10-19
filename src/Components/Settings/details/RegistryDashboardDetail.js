@@ -19,6 +19,7 @@ import { InstallProgressModal } from "./InstallProgressModal";
 import { RegistryAuthModal } from "../../Registry/RegistryAuthModal";
 import { DashboardInstallOptionsModal } from "./DashboardInstallOptionsModal";
 import { teamLines, installedText } from "./dashboardBots";
+import { unavailableRequiredWidgets } from "./registryDashboardCompat";
 
 /**
  * RegistryDashboardDetail — detail panel for a registry dashboard package.
@@ -309,6 +310,8 @@ export const RegistryDashboardDetail = ({
       widgets: augWidgets,
     };
   })();
+  // Install is blocked while a required widget can't be installed (Phase 1e).
+  const blockedBy = unavailableRequiredWidgets(widgetDeps, compatibility);
   const wiring = preview?.wiring || [];
   // Its bots (create-entry 5a-2, US-027 AC3): the registry's summary.
   const team = teamLines(preview?.team || pkg.team);
@@ -643,8 +646,14 @@ export const RegistryDashboardDetail = ({
       {installResult?.status !== "success" &&
         installResult?.status !== "auth" && (
           <div
-            className={`flex items-center justify-end px-6 py-3 border-t ${currentTheme["border-primary-medium"]}`}
+            className={`flex items-center justify-end gap-3 px-6 py-3 border-t ${currentTheme["border-primary-medium"]}`}
           >
+            {blockedBy.length > 0 ? (
+              <span className="text-sm opacity-70 mr-auto">
+                Can&apos;t install — these widgets aren&apos;t available:{" "}
+                {blockedBy.join(", ")}.
+              </span>
+            ) : null}
             <Button
               title={isInstalling ? "Installing..." : "Install Dashboard"}
               bgColor="bg-blue-600"
@@ -652,7 +661,7 @@ export const RegistryDashboardDetail = ({
               textSize="text-sm"
               padding="py-1.5 px-4"
               onClick={handleInstallClick}
-              disabled={isInstalling}
+              disabled={isInstalling || blockedBy.length > 0}
             />
           </div>
         )}
