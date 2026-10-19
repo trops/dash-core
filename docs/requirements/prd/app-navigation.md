@@ -173,7 +173,7 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 
 **Out of scope for NAV-015:** copying settings between providers; deleting the old provider from the dialog (use Delete on its own detail); changing a type's default (stays the "Use as default for <type> widgets" checkbox).
 
-**NAV-016: One bot page** _(slice 1 implemented 2026-10-19 — Manage › Bots; slice 2 the large modal from the Bots panel; slice 3 the dashboard Bots view)_
+**NAV-016: One bot page** _(implemented 2026-10-19 — slice 1 Manage › Bots; slice 2 the large modal from the Bots panel; slice 3 the dashboard Bots view)_
 
 **User Story:** As a user, I want everything about a bot — its conversation, runs, log, spending and settings — in one place, the same wherever I open it, so half of it isn't in the main page and half in the side panel.
 
@@ -184,7 +184,7 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 - [x] AC3: Leaving Settings, or closing, with unsaved changes asks "Discard unsaved changes?".
 - [x] AC4: Manage › Bots shows the selected bot's page on the right, replacing the summary card and its separate Edit mode. The page-level Spending and Log stay as the all-bots views. The Dash team keeps its own panel.
 - [x] AC5: Clicking a bot in the Bots panel opens its page in a large modal; the panel is the list (status, approvals); "bot settings" links open the modal on Settings — replacing the dead cog (`openAppSettings("bots")` had no Settings section left). _Implemented: `BotPageModal`, opened by the `dash:open-bot` event `{ botId, tab }` that DashboardStage answers; a clicked notification and Needs you › Review open it too. Clicking outside doesn't close it while Settings has unsaved edits._
-- [ ] AC6: A dashboard's Bots view shows the same page for the selected bot beside its team diagram.
+- [x] AC6: A dashboard's Bots view shows the same page for the selected bot beside its team diagram. _Implemented: `BotsView` renders `BotPage` for saved bots, with the team's ⋯ actions (Show on dashboard, Publish bot…, Remove from team, Delete; Turn off lead) through its `actions`/`below` slots and a lead's drafts through `chatProps`. A lead's draft or a new bot keeps the bot form. The bot page now says where an installed bot came from, and an error's "Open Settings › Providers" opens the app's settings everywhere (it had opened the bot's own Settings tab)._
 
 ### Nice-to-Have (P2)
 
@@ -375,3 +375,4 @@ NAV-011, NAV-012 (after the ownership fix), P2 items.
 | 1.10    | 2026-10-08 | John   | NAV-015: choose where a provider is used        |
 | 1.11    | 2026-10-19 | John   | NAV-016: one bot page (slice 1, Manage › Bots)  |
 | 1.12    | 2026-10-19 | John   | NAV-016 slice 2: the bot page modal (AC5)       |
+| 1.13    | 2026-10-19 | John   | NAV-016 slice 3: the Bots view's bot page (AC6) |

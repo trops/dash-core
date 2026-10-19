@@ -26,8 +26,8 @@ import { useBotContacts } from "./useBotContacts";
 /**
  * BotPage — everything about one bot in one place (app-navigation NAV-016):
  * a header with Run now / Turn on·Pause / Stop, then Conversation · Activity ·
- * Log · Spending · Settings. The same page in Manage › Bots and in the large
- * modal opened from the Bots panel.
+ * Log · Spending · Settings. The same page in Manage › Bots, in the large
+ * modal opened from the Bots panel, and in a dashboard's Bots view.
  *
  * @param {string} botId
  * @param {string} [initialTab]  "conversation" (default) | "activity" | "log" | "spending" | "settings"
@@ -35,8 +35,14 @@ import { useBotContacts } from "./useBotContacts";
  * @param {(workspace, botId) => void} [onOpenInBotsView]  a team bot's Bots view
  * @param {() => void} [onClose]  the modal's close (×)
  * @param {(botId) => void} [onDeleted]
- * @param {() => void} [onChanged]  after Turn on / Pause (the host's list)
+ * @param {() => void} [onChanged]  after Turn on / Pause / Save (the host's list)
  * @param {(dirty: boolean) => void} [onDirtyChange]  Settings has unsaved edits
+ * @param {(tab: string) => void} [onTabChange]  the tab now showing
+ * @param {(section: string) => void} [onOpenSettings]  an error's next step
+ *   ("Open Settings › Providers") — the app's settings, not this bot's
+ * @param {React.ReactNode} [actions]  more header buttons (the Bots view's ⋯)
+ * @param {React.ReactNode} [below]  shown under the header (that menu's row)
+ * @param {object} [chatProps]  more Conversation props (a lead's drafts)
  */
 export const BOT_PAGE_TABS = [
   { value: "conversation", label: "Conversation" },
@@ -59,16 +65,25 @@ export const BotPage = ({
   onDeleted = null,
   onChanged = null,
   onDirtyChange = null,
+  onTabChange = null,
+  onOpenSettings = null,
+  actions = null,
+  below = null,
+  chatProps = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const statusTokens = useStatusTokens();
   const appContext = useContext(AppContext) || {};
   const c = useBotContacts();
-  const [tab, setTab] = useState(
+  const [tab, setTabState] = useState(
     BOT_PAGE_TABS.some((t) => t.value === initialTab)
       ? initialTab
       : "conversation",
   );
+  const setTab = (next) => {
+    setTabState(next);
+    if (onTabChange) onTabChange(next);
+  };
   const [runStatus, setRunStatus] = useState(null);
   const [dirty, setDirtyState] = useState(false);
   const setDirty = (v) => {
@@ -195,6 +210,7 @@ export const BotPage = ({
     const b = window.mainApi && window.mainApi.bots;
     const saved = await b.save(definition);
     setDirty(false);
+    if (onChanged) onChanged();
     return saved;
   }
 
@@ -238,6 +254,9 @@ export const BotPage = ({
             >
               <span className={`inline-block h-2 w-2 rounded-full ${dot}`} />
               {status} · {ws ? ws.name : "No dashboard"}
+              {bot.installedFrom
+                ? ` · From ${bot.installedFrom.package} v${bot.installedFrom.version}`
+                : null}
             </span>
           </div>
         </div>
@@ -270,11 +289,13 @@ export const BotPage = ({
               }}
             />
           )}
+          {actions}
           {onClose ? (
             <ButtonIcon3 icon="xmark" ariaLabel="Close" onClick={close} />
           ) : null}
         </div>
       </div>
+      {below}
       {runStatus ? (
         <span
           className={`flex-shrink-0 px-5 pt-2 text-xs ${muted}`}
@@ -334,13 +355,14 @@ export const BotPage = ({
             approvals={approvals}
             onApprove={c.approve || null}
             nameOf={nameOf}
-            onOpenSettings={toSettings}
+            onOpenSettings={onOpenSettings}
             onChangeModel={toSettings}
             paused={isPaused}
             onResume={c.setBotPaused ? () => setPaused(false) : null}
             overBudget={isOver ? budgetLimitText(budget) : null}
             onKeepRunning={c.keepRunning ? () => c.keepRunning(bot.id) : null}
             queuedEvents={(c.queued || {})[bot.id] || 0}
+            {...(chatProps || {})}
           />
         ) : null}
         {tab === "activity" ? (
@@ -349,7 +371,7 @@ export const BotPage = ({
               bot={bot}
               isLead={isLead}
               nameOf={nameOf}
-              onOpenSettings={toSettings}
+              onOpenSettings={onOpenSettings}
               onChangeModel={toSettings}
             />
           </div>

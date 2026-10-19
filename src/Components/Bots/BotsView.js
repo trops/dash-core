@@ -8,7 +8,6 @@ import React, {
 } from "react";
 import {
   Button,
-  Button2,
   Button3,
   ButtonIcon,
   ConfirmationModal,
@@ -19,11 +18,10 @@ import {
   ThemeContext,
   useResizableWidth,
 } from "@trops/dash-react";
-import { BotChat } from "./BotChat";
 import { BotAvatar } from "./BotAvatar";
 import { TeamChart } from "./TeamChart";
 import { BotFlowSummary } from "./BotFlowSummary";
-import { BotRunHistory } from "./BotRunHistory";
+import { BotPage } from "./BotPage";
 import { BotDetail } from "../Settings/details/BotDetail";
 import { DraftBanner } from "./DraftBanner";
 import { TeamImportReview } from "./TeamImportReview";
@@ -45,10 +43,11 @@ import {
  * BotsView — a dashboard's team, full stage (bot-teams PRD TEAM-011).
  *
  * Left: the team (lead pinned, then members, status dots, + Add bot).
- * Right: the selected bot — header with Run now / Pause / ⋯, and tabs
- * Conversation (Ask the lead) / Activity / Settings. Settings is the bot form
- * inline; leaving it with unsaved changes asks first. Narrow windows swap the
- * team list for a bot picker.
+ * Right: the selected bot's page (BotPage, app-navigation NAV-016 AC6 — the
+ * same page as Manage › Bots) with this team's actions under ⋯; a lead's
+ * draft or a new bot gets the bot form to save it first. Leaving unsaved
+ * Settings edits asks first. Narrow windows swap the team list for a bot
+ * picker.
  *
  * @param {object} workspace   the dashboard
  * @param {object[]} workspaces all dashboards (bot form's Team field)
@@ -114,7 +113,7 @@ const PANEL_GAP = 16; // gap-4 between the diagram and the panel
 const PANEL_MIN = 360;
 const DIAGRAM_MIN = 320;
 
-const TABS = ["conversation", "activity", "settings"];
+const TABS = ["conversation", "activity", "log", "spending", "settings"];
 
 // Diagram / List (TEAM-014), remembered per viewer. Storage can be blocked.
 const MODE_KEY = "dash:botsView:mode";
@@ -228,6 +227,10 @@ export const BotsView = ({
   }, []);
   // Bumped by "Discard changes" to remount the form from the saved bot.
   const [formKey, setFormKey] = useState(0);
+  // Bumped when the view picks a bot or tab (a click, Open in Bots view), so
+  // the bot page reopens on it.
+  const [pageSeq, setPageSeq] = useState(0);
+  const reopenPage = () => setPageSeq((n) => n + 1);
   const [pendingNav, setPendingNav] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -302,17 +305,12 @@ export const BotsView = ({
       setDirty(false);
       setSelectedId(id);
       setTab(id === NEW_BOT || isDraftId(id) ? "settings" : "conversation");
+      reopenPage();
       setMenuOpen(false);
       setImportPreview(null);
       setRegistryOpen(false);
       // A new bot or a draft has no summary — its form opens (diagram).
       if (id === NEW_BOT || isDraftId(id)) setDetailOpen(true);
-    });
-
-  const switchTab = (next) =>
-    guarded(() => {
-      setDirty(false);
-      setTab(next);
     });
 
   // Diagram: open a bot's tab beside the diagram / back to its summary.
@@ -321,6 +319,7 @@ export const BotsView = ({
       setDirty(false);
       setSelectedId(id);
       setTab(TABS.includes(nextTab) ? nextTab : "conversation");
+      reopenPage();
       setMenuOpen(false);
       setImportPreview(null);
       setRegistryOpen(false);
@@ -351,6 +350,7 @@ export const BotsView = ({
       setDirty(false);
       setSelectedId(focus.botId);
       setTab(TABS.includes(focus.tab) ? focus.tab : "conversation");
+      reopenPage();
       setMenuOpen(false);
       setDetailOpen(true);
     });
@@ -359,27 +359,14 @@ export const BotsView = ({
 
   const afterChange = () => team && team.refresh && team.refresh();
 
-  // Run now on a paused bot is a test run (Phase 1d): it stays paused, and
-  // a pass offers Turn on.
-  const [testRun, setTestRun] = useState(null);
-  const runNow = async () => {
+  // The summary's Run now: runs it and opens its page on Activity, where the
+  // run shows (failed or skipped too).
+  const runNow = () => {
     const bots = api();
     if (!bots || !selected) return;
-    const bot = selected;
-    const wasPaused = status === "Paused";
-    setTestRun(null);
-    const res = await Promise.resolve(bots.run(bot.id, "", false)).catch(
-      (err) => ({ status: "failed", error: (err && err.message) || "" }),
-    );
-    if (!wasPaused) return;
-    setTestRun({
-      botId: bot.id,
-      name: bot.name,
-      ok: !!res && !res.skipped && res.status === "completed",
-      why:
-        (res && (res.error || (res.skipped && res.reason))) ||
-        "it didn't finish",
-    });
+    const id = selected.id;
+    openBot(id, "activity");
+    Promise.resolve(bots.run(id, "", false)).catch(() => {});
   };
 
   // Diagram wiring (TEAM-014 slice 2): a trigger is a subscription on the
@@ -428,16 +415,6 @@ export const BotsView = ({
   };
 
   const status = selected && team ? team.statusOf(selected.id) : "Idle";
-  const statusDot = DOT[status] || DOT.Idle;
-
-  const togglePause = async () => {
-    const bots = api();
-    if (!bots || !selected) return;
-    if (status === "Paused") await bots.resumeBot(selected.id);
-    else await bots.pauseBot(selected.id);
-    setTestRun(null);
-    afterChange();
-  };
 
   // Place a bot widget on this dashboard (TEAM-012) and say how it went.
   const showOnDashboard = async (kind, bot = null) => {
@@ -1027,182 +1004,119 @@ export const BotsView = ({
             } min-w-0 min-h-0 flex flex-col rounded-xl border ${hairline}`}
             style={resizable ? { width: panelWidth } : undefined}
           >
-            <div className="flex flex-row items-start justify-between gap-4 px-5 pt-4">
-              <div className="min-w-0">
-                <div className="flex flex-row items-center gap-2">
-                  <h2 className="text-lg font-semibold truncate">
-                    {selected
-                      ? selected.name
-                      : selectedDraft
-                        ? selectedDraft.definition.name
-                        : "New bot"}
-                  </h2>
-                  {selected ? (
-                    <span
-                      className={`flex flex-row items-center gap-1.5 text-xs ${muted}`}
-                    >
-                      <span className={`h-2 w-2 rounded-full ${statusDot}`} />
-                      {status}
-                    </span>
-                  ) : null}
-                </div>
-                <div className={`text-sm ${muted}`}>
-                  {selected
-                    ? isLead
-                      ? "Answers questions about this team · costs nothing until asked"
-                      : [
-                          (selected.mcpServers || []).join(", "),
-                          triggerSummary(selected),
-                          selected.installedFrom
-                            ? `From ${selected.installedFrom.package} v${selected.installedFrom.version}`
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")
-                    : `Joins the ${workspace ? workspace.name : "dashboard"} team`}
-                </div>
-              </div>
-              {selected ? (
-                <div className="flex flex-row items-center gap-2 flex-shrink-0">
-                  {!isLead ? (
-                    <Button2 title="Run now" size="sm" onClick={runNow} />
-                  ) : null}
-                  {!isLead ? (
-                    <Button3
-                      title={status === "Paused" ? "Turn on" : "Pause"}
-                      size="sm"
-                      onClick={togglePause}
-                    />
-                  ) : null}
+            {selected ? (
+              // The same bot page as Manage › Bots (NAV-016 AC6), plus this
+              // team's actions under ⋯.
+              <BotPage
+                key={`${selected.id}-${pageSeq}`}
+                botId={selected.id}
+                initialTab={tab}
+                workspaces={workspaces}
+                onChanged={afterChange}
+                onDeleted={afterChange}
+                onDirtyChange={setDirty}
+                onTabChange={setTab}
+                onOpenSettings={onOpenSettings}
+                onClose={sideBySide ? closeDetail : null}
+                chatProps={
+                  isLead
+                    ? {
+                        drafts,
+                        onOpenDraft: (id) => select(DRAFT_PREFIX + id),
+                      }
+                    : null
+                }
+                actions={
                   <Button3
                     title="⋯"
                     size="sm"
                     ariaLabel="More actions"
                     onClick={() => setMenuOpen((v) => !v)}
                   />
+                }
+                below={
+                  menuOpen ? (
+                    <div className="flex flex-row flex-wrap justify-end gap-2 px-5 pt-2">
+                      {isLead ? (
+                        <Button3
+                          title="Turn off lead"
+                          size="sm"
+                          onClick={turnOffLead}
+                        />
+                      ) : (
+                        <>
+                          <Button3
+                            title="Show on dashboard"
+                            size="sm"
+                            onClick={() => showOnDashboard("results", selected)}
+                          />
+                          <Button3
+                            title="Publish bot…"
+                            size="sm"
+                            onClick={() => openPublish("bot")}
+                          />
+                          <Button3
+                            title="Remove from team"
+                            size="sm"
+                            onClick={removeFromTeam}
+                          />
+                          <Button3
+                            title="Delete"
+                            size="sm"
+                            onClick={() => setConfirmDelete(true)}
+                          />
+                        </>
+                      )}
+                    </div>
+                  ) : null
+                }
+              />
+            ) : selectedId &&
+              selectedId !== NEW_BOT &&
+              !isDraftId(selectedId) ? (
+              // Just created: shown once the team has it (not the empty form).
+              <p
+                className={`p-5 text-sm ${muted}`}
+                data-testid="bots-view-loading"
+              >
+                Loading…
+              </p>
+            ) : (
+              // A lead's draft or a new bot: the form, to save it first.
+              <>
+                <div className="flex flex-row items-start justify-between gap-4 px-5 pt-4">
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-semibold truncate">
+                      {selectedDraft
+                        ? selectedDraft.definition.name
+                        : "New bot"}
+                    </h2>
+                    <div className={`text-sm ${muted}`}>
+                      {`Joins the ${workspace ? workspace.name : "dashboard"} team`}
+                    </div>
+                  </div>
                   {sideBySide ? (
                     <ButtonIcon
                       icon="xmark"
                       size="sm"
-                      ariaLabel="Back to summary"
+                      ariaLabel="Close"
                       onClick={closeDetail}
                     />
                   ) : null}
                 </div>
-              ) : sideBySide ? (
-                <ButtonIcon
-                  icon="xmark"
-                  size="sm"
-                  ariaLabel="Close"
-                  onClick={closeDetail}
-                />
-              ) : null}
-            </div>
-            {testRun &&
-            selected &&
-            testRun.botId === selected.id &&
-            (!testRun.ok || status === "Paused") ? (
-              <div
-                data-testid="bot-test-run"
-                className={`flex flex-row flex-wrap items-center gap-2 px-5 pt-2 text-xs ${
-                  testRun.ok ? "" : "text-red-500"
-                }`}
-              >
-                <span>
-                  {testRun.ok
-                    ? `It worked. ${testRun.name} is still paused — turn it on?`
-                    : `The test run failed: ${testRun.why}. ${testRun.name} stays paused.`}
-                </span>
-                {testRun.ok ? (
-                  <Button2 title="Turn on" size="sm" onClick={togglePause} />
-                ) : null}
-              </div>
-            ) : null}
-            {menuOpen && selected ? (
-              <div className="flex flex-row justify-end gap-2 px-5 pt-2">
-                {isLead ? (
-                  <Button3
-                    title="Turn off lead"
-                    size="sm"
-                    onClick={turnOffLead}
-                  />
-                ) : (
-                  <>
-                    <Button3
-                      title="Show on dashboard"
-                      size="sm"
-                      onClick={() => showOnDashboard("results", selected)}
-                    />
-                    <Button3
-                      title="Publish bot…"
-                      size="sm"
-                      onClick={() => openPublish("bot")}
-                    />
-                    <Button3
-                      title="Remove from team"
-                      size="sm"
-                      onClick={removeFromTeam}
-                    />
-                    <Button3
-                      title="Delete"
-                      size="sm"
-                      onClick={() => setConfirmDelete(true)}
-                    />
-                  </>
-                )}
-              </div>
-            ) : null}
-
-            <div
-              role="tablist"
-              className={`flex flex-row gap-6 px-5 mt-3 border-b ${hairline}`}
-            >
-              {tabs.map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === id}
-                  onClick={() => switchTab(id)}
-                  className={`py-2.5 text-sm font-medium -mb-px border-b-2 ${
-                    tab === id
-                      ? "border-indigo-400"
-                      : `border-transparent ${muted}`
-                  }`}
+                <div
+                  role="tablist"
+                  className={`flex flex-row gap-6 px-5 mt-3 border-b ${hairline}`}
                 >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex-1 min-h-0 flex flex-col">
-              {tab === "conversation" && selected ? (
-                <BotChat
-                  bot={selected}
-                  isLead={isLead}
-                  approvals={team ? team.approvalsFor(selected.id) : []}
-                  onApprove={team ? team.approve : null}
-                  nameOf={nameOf}
-                  onOpenSettings={onOpenSettings}
-                  onChangeModel={() => switchTab("settings")}
-                  drafts={isLead ? drafts : undefined}
-                  onOpenDraft={
-                    isLead ? (id) => select(DRAFT_PREFIX + id) : null
-                  }
-                  paused={status === "Paused"}
-                  onResume={togglePause}
-                />
-              ) : null}
-              {tab === "activity" && selected ? (
-                <BotRunHistory
-                  bot={selected}
-                  isLead={isLead}
-                  nameOf={nameOf}
-                  onOpenSettings={onOpenSettings}
-                  onChangeModel={() => switchTab("settings")}
-                />
-              ) : null}
-              {tab === "settings" ? (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected="true"
+                    className="py-2.5 text-sm font-medium -mb-px border-b-2 border-indigo-400"
+                  >
+                    {selectedDraft ? "Review draft" : "New bot"}
+                  </button>
+                </div>
                 <div className="flex-1 min-h-0 flex flex-col">
                   <BotDetail
                     // The lead's banner scrolls with the form (not pinned).
@@ -1215,13 +1129,9 @@ export const BotsView = ({
                         />
                       ) : null
                     }
-                    key={`${selected ? selected.id : selectedId || NEW_BOT}-${formKey}`}
-                    bot={
-                      selected ||
-                      (selectedDraft && selectedDraft.definition) ||
-                      null
-                    }
-                    isCreating={!selected}
+                    key={`${selectedId || NEW_BOT}-${formKey}`}
+                    bot={(selectedDraft && selectedDraft.definition) || null}
+                    isCreating
                     suggestions={
                       selectedDraft ? selectedDraft.suggestions : null
                     }
@@ -1241,8 +1151,8 @@ export const BotsView = ({
                     }}
                   />
                 </div>
-              ) : null}
-            </div>
+              </>
+            )}
           </section>
         </>
       )}

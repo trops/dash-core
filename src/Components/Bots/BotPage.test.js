@@ -5,6 +5,7 @@
 import React from "react";
 import "@testing-library/jest-dom";
 import {
+  act,
   render,
   screen,
   fireEvent,
@@ -17,15 +18,23 @@ let mockContacts;
 jest.mock("./useBotContacts", () => ({
   useBotContacts: () => mockContacts,
 }));
+let mockChatProps;
 jest.mock("./BotChat", () => ({
-  BotChat: ({ bot, approvals }) => (
-    <div data-testid="chat-stub">
-      chat with {bot.name} ({approvals.length} approvals)
-    </div>
-  ),
+  BotChat: (props) => {
+    mockChatProps = props;
+    return (
+      <div data-testid="chat-stub">
+        chat with {props.bot.name} ({props.approvals.length} approvals)
+      </div>
+    );
+  },
 }));
+let mockRunProps;
 jest.mock("./BotRunHistory", () => ({
-  BotRunHistory: ({ bot }) => <div>runs of {bot.name}</div>,
+  BotRunHistory: (props) => {
+    mockRunProps = props;
+    return <div>runs of {props.bot.name}</div>;
+  },
 }));
 jest.mock("./BotSpending", () => ({
   BotSpending: ({ bot }) => <div>spending of {bot.name}</div>,
@@ -211,6 +220,68 @@ describe("BotPage header", () => {
     rerenderPage({ initialTab: "settings", onDirtyChange });
     expect(screen.getByTestId("bot-page-missing")).toBeInTheDocument();
     expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+});
+
+describe("BotPage in a dashboard's Bots view (NAV-016 AC6)", () => {
+  it("says where an installed bot came from", () => {
+    setup(
+      {},
+      {
+        bots: [
+          {
+            ...BOTS[0],
+            installedFrom: { package: "trops/inbox", version: "1.0.0" },
+          },
+        ],
+      },
+    );
+    expect(screen.getByTestId("bot-page-status")).toHaveTextContent(
+      "Idle · Kitchen Sink · From trops/inbox v1.0.0",
+    );
+  });
+
+  it("shows the host's actions and what goes under the header", () => {
+    setup({
+      actions: <button>host-action</button>,
+      below: <div>host-row</div>,
+    });
+    expect(screen.getByText("host-action")).toBeInTheDocument();
+    expect(screen.getByText("host-row")).toBeInTheDocument();
+  });
+
+  it("tells the host which tab is showing", () => {
+    const onTabChange = jest.fn();
+    setup({ onTabChange });
+    tab("Settings");
+    expect(onTabChange).toHaveBeenLastCalledWith("settings");
+  });
+
+  it("an error's next step opens the app's settings, not the bot's", () => {
+    const onOpenSettings = jest.fn();
+    setup({ onOpenSettings });
+    expect(mockChatProps.onOpenSettings).toBe(onOpenSettings);
+    tab("Activity");
+    expect(mockRunProps.onOpenSettings).toBe(onOpenSettings);
+  });
+
+  it("passes a lead's drafts to its conversation", () => {
+    const onOpenDraft = jest.fn();
+    setup({
+      botId: "lead7",
+      chatProps: { drafts: [{ id: "d1" }], onOpenDraft },
+    });
+    expect(mockChatProps.drafts).toEqual([{ id: "d1" }]);
+    expect(mockChatProps.onOpenDraft).toBe(onOpenDraft);
+  });
+
+  it("saving tells the host (its list refreshes)", async () => {
+    const onChanged = jest.fn();
+    setup({ initialTab: "settings", onChanged });
+    await act(async () => {
+      await mockDetailProps.onSave({ id: "b1", name: "Inbox Watch" });
+    });
+    expect(onChanged).toHaveBeenCalled();
   });
 });
 
