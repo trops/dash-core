@@ -33,6 +33,8 @@ export const AuditLogView = ({
   bots = NONE,
   botIds = NONE,
   onBotIdsChange = () => {},
+  // One bot's page (NAV-016): already filtered to it — no Bot filter.
+  hideBotFilter = false,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const [kinds, setKinds] = useState([]);
@@ -117,12 +119,14 @@ export const AuditLogView = ({
       data-testid="audit-log-view"
     >
       <div className="flex-shrink-0 flex flex-row flex-wrap items-center gap-2">
-        <FilterMenu
-          label="Bot"
-          options={botOptions}
-          selected={botIds}
-          onChange={onBotIdsChange}
-        />
+        {hideBotFilter ? null : (
+          <FilterMenu
+            label="Bot"
+            options={botOptions}
+            selected={botIds}
+            onChange={onBotIdsChange}
+          />
+        )}
         <FilterMenu
           label="Kind"
           options={AUDIT_KINDS}

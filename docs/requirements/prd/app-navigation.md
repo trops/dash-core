@@ -173,6 +173,19 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 
 **Out of scope for NAV-015:** copying settings between providers; deleting the old provider from the dialog (use Delete on its own detail); changing a type's default (stays the "Use as default for <type> widgets" checkbox).
 
+**NAV-016: One bot page** _(slice 1 implemented 2026-10-19 — Manage › Bots; slice 2 the large modal from the Bots panel; slice 3 the dashboard Bots view)_
+
+**User Story:** As a user, I want everything about a bot — its conversation, runs, log, spending and settings — in one place, the same wherever I open it, so half of it isn't in the main page and half in the side panel.
+
+**Acceptance Criteria:**
+
+- [x] AC1: `BotPage` (`Components/Bots/BotPage.js`) takes a bot id and shows a header (avatar, name, Lead badge, status · dashboard; **Open in <team>'s Bots view** for a team bot, **Stop** while running, **Run now** and **Turn on / Pause** — not for leads — with the Run now result from Phase 1d) and the tabs **Conversation** (default) · **Activity** (runs) · **Log** (this bot's audit log, no Bot filter) · **Spending** (monthly budget + cost of each recent run) · **Settings** (the bot form; Delete asks first).
+- [x] AC2: Approvals waiting on the bot show above every tab except Conversation, which shows them inline.
+- [x] AC3: Leaving Settings, or closing, with unsaved changes asks "Discard unsaved changes?".
+- [x] AC4: Manage › Bots shows the selected bot's page on the right, replacing the summary card and its separate Edit mode. The page-level Spending and Log stay as the all-bots views. The Dash team keeps its own panel.
+- [ ] AC5: Clicking a bot in the Bots panel opens its page in a large modal; the panel is the list (status, approvals); "bot settings" links open the modal on Settings — replacing the dead cog (`openAppSettings("bots")` had no Settings section left).
+- [ ] AC6: A dashboard's Bots view shows the same page for the selected bot beside its team diagram.
+
 ### Nice-to-Have (P2)
 
 **NAV-013: Collapsible org sections** on Widgets when the list is long.
@@ -360,3 +373,4 @@ NAV-011, NAV-012 (after the ownership fix), P2 items.
 | 1.8     | 2026-10-04 | John   | Live widget preview (NAV-011 slice A)           |
 | 1.9     | 2026-10-04 | John   | Authoring actions for the user's own widgets    |
 | 1.10    | 2026-10-08 | John   | NAV-015: choose where a provider is used        |
+| 1.11    | 2026-10-19 | John   | NAV-016: one bot page (slice 1, Manage › Bots)  |

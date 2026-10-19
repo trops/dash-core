@@ -14,6 +14,7 @@ import {
 import { AppContext } from "../../Context/App/AppContext";
 
 const mockApprove = jest.fn();
+const mockRefresh = jest.fn();
 jest.mock("./useAllBots", () => ({
   useAllBots: () => ({
     loading: false,
@@ -52,7 +53,7 @@ jest.mock("./useAllBots", () => ({
         : [],
     lastRunOf: () => null,
     approve: mockApprove,
-    refresh: jest.fn(),
+    refresh: mockRefresh,
   }),
 }));
 jest.mock("../Settings/details/BotDetail", () => ({
@@ -62,6 +63,25 @@ jest.mock("../Settings/details/BotDetail", () => ({
       <button onClick={() => onSave({ name: "Saved" })}>editor-save</button>
       {onCancel ? <button onClick={onCancel}>editor-cancel</button> : null}
       {onDelete ? <button onClick={onDelete}>editor-delete</button> : null}
+    </div>
+  ),
+}));
+jest.mock("../Bots/BotPage", () => ({
+  BotPage: ({
+    botId,
+    onOpenInBotsView,
+    onDeleted,
+    onDirtyChange,
+    onChanged,
+  }) => (
+    <div data-testid="bot-page-stub">
+      <span>bot page {botId}</span>
+      <button onClick={() => onOpenInBotsView({ id: 9 }, botId)}>
+        stub-open-bots-view
+      </button>
+      <button onClick={() => onDeleted(botId)}>stub-deleted</button>
+      <button onClick={() => onDirtyChange(true)}>stub-dirty</button>
+      <button onClick={() => onChanged()}>stub-changed</button>
     </div>
   ),
 }));
@@ -181,92 +201,78 @@ describe("BotsPage list (NAV-006 AC1)", () => {
   });
 });
 
-describe("BotsPage detail (NAV-006 AC2)", () => {
-  it("shows the selected bot: handle, team, providers + tools, last run", async () => {
-    const { botsApi } = setup();
-    fireEvent.click(within(list()).getByText("Inbox Watch"));
-    const d = detail();
-    expect(within(d).getByText("Inbox Watch")).toBeInTheDocument();
-    expect(within(d).getByText("local/inbox-watch")).toBeInTheDocument();
-    expect(within(d).getByText("Kitchen Sink")).toBeInTheDocument();
-    expect(within(d).getByText("Gmail 3")).toBeInTheDocument();
-    expect(within(d).getByText("search_emails")).toBeInTheDocument();
-    expect(botsApi.getRuns).toHaveBeenCalledWith("b1", 1);
-    expect(await within(d).findByText(/Sent 3 emails/)).toBeInTheDocument();
-  });
-
-  it("labels a stopped last run as Stopped", async () => {
-    const { botsApi } = setup();
-    botsApi.getRuns.mockResolvedValue([
-      { status: "stopped", endedAt: "2026-10-05T09:00:00Z", output: "" },
-    ]);
-    fireEvent.click(within(list()).getByText("Inbox Watch"));
-    expect(await within(detail()).findByText(/^Stopped ·/)).toBeInTheDocument();
-  });
-
-  it("a lead uses team tools only and can't be run directly", () => {
+// The detail is the bot's page (NAV-016) — its header and tabs are tested in
+// Bots/BotPage.test.js.
+describe("BotsPage detail (NAV-006 AC2, NAV-016)", () => {
+  it("shows the first bot's page, then the one you pick", () => {
     setup();
-    fireEvent.click(within(list()).getByText("Kitchen Sink Lead"));
-    expect(within(detail()).getByText("Team tools only")).toBeInTheDocument();
-    expect(
-      within(detail()).queryByRole("button", { name: "Run now" }),
-    ).toBeNull();
-  });
-
-  it("allows or denies a waiting approval inline", () => {
-    setup();
-    fireEvent.click(within(list()).getByText("Inbox Watch"));
-    expect(
-      within(detail()).getByText("Wants to use send_email on Gmail 3."),
-    ).toBeInTheDocument();
-    fireEvent.click(within(detail()).getByRole("button", { name: "Allow" }));
-    expect(mockApprove).toHaveBeenCalledWith("a1", { allow: true });
-    fireEvent.click(within(detail()).getByRole("button", { name: "Deny" }));
-    expect(mockApprove).toHaveBeenCalledWith("a1", { allow: false });
-  });
-
-  it("runs a bot now", () => {
-    const { botsApi } = setup();
+    expect(within(detail()).getByText("bot page lead7")).toBeInTheDocument();
     fireEvent.click(within(list()).getByText("Digest"));
-    fireEvent.click(within(detail()).getByRole("button", { name: "Run now" }));
-    expect(botsApi.run).toHaveBeenCalledWith("b2");
+    expect(within(detail()).getByText("bot page b2")).toBeInTheDocument();
   });
 
-  it("opens the bot in its team's Bots view (not for Unassigned)", () => {
+  it("passes Open in Bots view through", () => {
     const { onOpenBotInBotsView } = setup();
     fireEvent.click(within(list()).getByText("Digest"));
-    fireEvent.click(
-      within(detail()).getByRole("button", {
-        name: "Open in Mail's Bots view",
-      }),
+    fireEvent.click(screen.getByText("stub-open-bots-view"));
+    expect(onOpenBotInBotsView).toHaveBeenCalledWith({ id: 9 }, "b2");
+  });
+
+  it("a deleted bot leaves the detail", async () => {
+    setup();
+    fireEvent.click(within(list()).getByText("Digest"));
+    fireEvent.click(screen.getByText("stub-deleted"));
+    await waitFor(() =>
+      expect(within(detail()).queryByText("bot page b2")).toBeNull(),
     );
-    expect(onOpenBotInBotsView).toHaveBeenCalledWith(workspaces[1], "b2");
-    fireEvent.click(within(list()).getByText("Loose Bot"));
-    expect(
-      within(detail()).queryByRole("button", { name: /Bots view/ }),
-    ).toBeNull();
   });
 });
 
-describe("BotsPage edit / create / delete (NAV-006 AC3)", () => {
-  it("Edit shows the bot editor in the detail panel; Cancel goes back", () => {
+describe("BotsPage — unsaved changes on a bot's page (NAV-016 AC3)", () => {
+  it("asks before another bot replaces it", () => {
     setup();
     fireEvent.click(within(list()).getByText("Digest"));
-    fireEvent.click(within(detail()).getByRole("button", { name: "Edit" }));
-    expect(screen.getByText("editing Digest")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("editor-cancel"));
-    expect(screen.queryByTestId("bot-editor")).toBeNull();
+    fireEvent.click(screen.getByText("stub-dirty"));
+    fireEvent.click(within(list()).getByText("Loose Bot"));
+    const modal = screen.getByTestId("confirmation-modal");
+    expect(
+      within(modal).getByText("Discard unsaved changes?"),
+    ).toBeInTheDocument();
+    expect(within(detail()).getByText("bot page b2")).toBeInTheDocument();
+    fireEvent.click(within(modal).getByText("Discard"));
+    expect(within(detail()).getByText("bot page b3")).toBeInTheDocument();
   });
 
-  it("Back to details leaves the editor (BotDetail has no Cancel when editing)", () => {
+  it("asks before switching to Log", () => {
     setup();
     fireEvent.click(within(list()).getByText("Digest"));
-    fireEvent.click(within(detail()).getByRole("button", { name: "Edit" }));
-    fireEvent.click(screen.getByRole("button", { name: "Back to details" }));
-    expect(screen.queryByTestId("bot-editor")).toBeNull();
-    expect(within(detail()).getByText("local/digest")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("stub-dirty"));
+    fireEvent.click(screen.getByRole("radio", { name: "Log" }));
+    expect(screen.getByTestId("confirmation-modal")).toBeInTheDocument();
+    expect(screen.queryByTestId("audit-log-view")).toBeNull();
   });
 
+  it("keeps showing the bot when a filter would hide it", () => {
+    setup();
+    fireEvent.click(within(list()).getByText("Digest"));
+    fireEvent.click(screen.getByText("stub-dirty"));
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "inbox" },
+    });
+    expect(within(detail()).getByText("bot page b2")).toBeInTheDocument();
+  });
+});
+
+describe("BotsPage — the list follows Turn on / Pause", () => {
+  it("refreshes when the bot's page changes it", () => {
+    setup();
+    fireEvent.click(within(list()).getByText("Digest"));
+    fireEvent.click(screen.getByText("stub-changed"));
+    expect(mockRefresh).toHaveBeenCalled();
+  });
+});
+
+describe("BotsPage create (NAV-006 AC3)", () => {
   it("the header's New Bot opens a blank editor and saving selects the new bot", async () => {
     const onCreateAcknowledged = jest.fn();
     const { botsApi } = setup({ createRequested: true, onCreateAcknowledged });
@@ -277,26 +283,6 @@ describe("BotsPage edit / create / delete (NAV-006 AC3)", () => {
       expect(botsApi.save).toHaveBeenCalledWith({ name: "Saved" }),
     );
     await waitFor(() => expect(screen.queryByTestId("bot-editor")).toBeNull());
-  });
-
-  it("delete asks first, then removes the bot", async () => {
-    const { botsApi } = setup();
-    fireEvent.click(within(list()).getByText("Digest"));
-    fireEvent.click(within(detail()).getByRole("button", { name: "Edit" }));
-    fireEvent.click(screen.getByText("editor-delete"));
-    const modal = screen.getByTestId("confirmation-modal");
-    expect(within(modal).getByText("Delete bot?")).toBeInTheDocument();
-    fireEvent.click(within(modal).getByText("Delete"));
-    await waitFor(() => expect(botsApi.delete).toHaveBeenCalledWith("b2"));
-  });
-});
-
-describe("BotsPage — last run cost (CRE-012)", () => {
-  test("the detail's Last run shows model · tokens · cost", async () => {
-    setup();
-    expect(await screen.findByTestId("last-run-cost")).toHaveTextContent(
-      "Sonnet · 14.2k tokens · $0.06",
-    );
   });
 });
 
@@ -319,42 +305,19 @@ describe("BotsPage — Spending (bot-factory US-019 AC5)", () => {
 });
 
 describe("BotsPage — Log (bot-factory US-003 AC5, US-014 AC9)", () => {
-  it("a bot's See this bot's log opens the Log filtered to it", async () => {
+  it("Bots | Log shows every bot's log", async () => {
     setup();
     window.mainApi.bots.auditLog = jest
       .fn()
       .mockResolvedValue({ entries: [], more: false });
-    fireEvent.click(within(list()).getByText("Inbox Watch"));
-    fireEvent.click(
-      within(detail()).getByRole("button", { name: "See this bot's log" }),
-    );
+    fireEvent.click(screen.getByRole("radio", { name: "Log" }));
     expect(await screen.findByTestId("audit-log-view")).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "Log" })).toBeChecked();
     await waitFor(() =>
       expect(window.mainApi.bots.auditLog).toHaveBeenCalledWith({
-        botIds: ["b1"],
+        botIds: [],
         kinds: [],
         limit: 50,
       }),
     );
   });
-});
-
-// Consolidation Phase 1d: Manage › Bots can turn a bot on or pause it, and
-// Run now says what happened.
-describe("BotsPage — Turn on and honest Run now (Phase 1d)", () => {
-  const src = require("fs").readFileSync(
-    require("path").join(__dirname, "BotsPage.js"),
-    "utf8",
-  );
-  it("the detail has Turn on / Pause", () => {
-    assert1d(src, /status === "Paused" \? "Turn on" : "Pause"/);
-  });
-  it('Run now reports a skipped or failed run, not "Started."', () => {
-    assert1d(src, /res && res\.skipped/);
-    assert1d(src, /It worked/);
-  });
-  function assert1d(text, re) {
-    expect(text).toMatch(re);
-  }
 });
