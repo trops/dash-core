@@ -65,6 +65,8 @@ export function isRegistryAuthError(x) {
     msg.includes("sign in to the registry") ||
     msg.includes("not signed in") ||
     msg.includes("session expired") ||
+    // The registry's own wording for a missing or stale sign-in.
+    msg.includes("authentication expired. please sign in again") ||
     msg.includes("401")
   );
 }

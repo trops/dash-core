@@ -155,3 +155,13 @@ test("a found bot opens as the plan, shown at once — the Planner isn't asked",
   });
   expect(botSeed(piece, null).label).toBe("Use a copy of Inbox Digest");
 });
+
+test("what Dash knows about the dashboard goes along to both (2c-2)", () => {
+  const ctx = '(What Dash knows about the "Morning Brief" dashboard: …)';
+  expect(botPlanRequest("x", brief, ctx)).toMatch(
+    /\n\n\(What Dash knows about/,
+  );
+  expect(scoutBotRequest("x", ctx)).toMatch(/\n\n\(What Dash knows about/);
+  expect(scoutBotRequest("x")).toMatch(/isn't a match to copy there/);
+  expect(botPlanRequest("x", brief)).not.toMatch(/What Dash knows/);
+});

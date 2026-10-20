@@ -29,7 +29,6 @@ let mockPageProps;
 jest.mock("./BotPage", () => ({
   BotPage: (props) => {
     mockPageProps = props;
-    const drafts = (props.chatProps && props.chatProps.drafts) || [];
     return (
       <div data-testid="bot-page">
         <span data-testid="bot-page-shows">
@@ -49,11 +48,6 @@ jest.mock("./BotPage", () => ({
             page-open-providers
           </button>
         ) : null}
-        {drafts.map((d) => (
-          <button key={d.id} onClick={() => props.chatProps.onOpenDraft(d.id)}>
-            page-draft-{d.id}
-          </button>
-        ))}
         {props.actions}
         {props.below}
       </div>
@@ -378,12 +372,11 @@ describe("BotsView — team list", () => {
     expect(within(teamList()).getByLabelText("Failed")).toBeInTheDocument();
   });
 
-  it("opens on the lead's bot page, with its drafts and Turn off lead", () => {
+  it("opens on the lead's bot page, with Turn off lead — no Drafts (2c-2)", () => {
     setup();
     expect(pageShows()).toBe("lead_7 on conversation");
-    expect(mockPageProps.chatProps).toEqual(
-      expect.objectContaining({ drafts: [] }),
-    );
+    expect(mockPageProps.chatProps).toBeUndefined();
+    expect(screen.queryByText("Drafts")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "More actions" }));
     expect(screen.getByText("Turn off lead")).toBeInTheDocument();
     expect(screen.queryByText("Publish bot…")).toBeNull();
@@ -392,7 +385,6 @@ describe("BotsView — team list", () => {
     setup();
     fireEvent.click(within(teamList()).getByText("Inbox Watch"));
     expect(pageShows()).toBe("b1 on conversation");
-    expect(mockPageProps.chatProps).toBeNull();
     expect(mockPageProps.workspaces).toEqual([workspace]);
     fireEvent.click(screen.getByRole("button", { name: "More actions" }));
     for (const a of [
@@ -611,243 +603,6 @@ describe("BotsView — bots changed elsewhere (TEAM-011 refresh)", () => {
     expect(window.mainApi.bots.list.mock.calls.length).toBe(calls + 1);
     unmount();
     expect(window.mainApi.bots.removeListener).toHaveBeenCalledWith("lc");
-  });
-});
-
-describe("BotsView — lead drafts (TEAM-005)", () => {
-  const draft = {
-    id: "d1",
-    workspaceId: "7",
-    reasoning: "You asked for a digest.",
-    definition: {
-      name: "Morning Digest",
-      instructions: "Summarise urgent mail.",
-      workspaceId: "7",
-      mcpServers: [],
-      toolSelections: {},
-      approvalPolicy: "ask",
-      schedules: [{ cron: "0 8 * * *" }],
-      subscriptions: [],
-    },
-    suggestions: [
-      { provider: "Gmail New", tools: ["search_emails"], toolsChecked: true },
-    ],
-    missing: [],
-    dropped: [],
-    duplicateOf: null,
-  };
-
-  function renderWithDraft() {
-    setup();
-    document.body.innerHTML = "";
-    const team = makeTeam({ drafts: [draft], dismissDraft: jest.fn() });
-    render(
-      <AppContext.Provider value={{ providers: {} }}>
-        <BotsView
-          workspace={workspace}
-          workspaces={[workspace]}
-          team={team}
-          narrow={false}
-        />
-      </AppContext.Provider>,
-    );
-    return team;
-  }
-
-  it("lists drafts in the team list", () => {
-    renderWithDraft();
-    expect(within(teamList()).getByText("Drafts")).toBeInTheDocument();
-    expect(within(teamList()).getByText("Morning Digest")).toBeInTheDocument();
-  });
-
-  it("opens a draft as a prefilled new bot with the lead's notes", () => {
-    renderWithDraft();
-    fireEvent.click(within(teamList()).getByText("Morning Digest"));
-    expect(screen.getByText(/Drafted by your team lead/)).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Morning Digest")).toBeInTheDocument();
-    expect(screen.getByText("Create")).toBeInTheDocument();
-  });
-
-  it("Create saves it as a real bot on this dashboard and removes the draft", async () => {
-    const team = renderWithDraft();
-    fireEvent.click(within(teamList()).getByText("Morning Digest"));
-    fireEvent.click(screen.getByText("Create"));
-    await waitFor(() => expect(window.mainApi.bots.save).toHaveBeenCalled());
-    const saved = window.mainApi.bots.save.mock.calls[0][0];
-    expect(saved.name).toBe("Morning Digest");
-    expect(String(saved.workspaceId)).toBe("7");
-    expect(saved.mcpServers).toEqual([]);
-    await waitFor(() => expect(team.dismissDraft).toHaveBeenCalledWith("d1"));
-  });
-
-  const confirmDiscard = () =>
-    fireEvent.click(
-      within(screen.getByTestId("confirmation-modal")).getByText("Discard"),
-    );
-
-  it("Discard draft (in the draft's banner) asks, then removes it and returns to the lead", async () => {
-    const team = renderWithDraft();
-    fireEvent.click(within(teamList()).getByText("Morning Digest"));
-    fireEvent.click(screen.getAllByText("Discard draft")[0]);
-    expect(team.dismissDraft).not.toHaveBeenCalled();
-    confirmDiscard();
-    await waitFor(() => expect(team.dismissDraft).toHaveBeenCalledWith("d1"));
-    // Back to the lead once the dismiss resolves.
-    await waitFor(() => expect(pageShows()).toBe("lead_7 on conversation"));
-  });
-});
-
-describe("BotsView — discarding a draft you don't want", () => {
-  const draft = {
-    id: "d1",
-    workspaceId: "7",
-    definition: {
-      name: "Morning Digest",
-      instructions: "Summarise urgent mail.",
-      workspaceId: "7",
-      mcpServers: [],
-      toolSelections: {},
-      approvalPolicy: "ask",
-      schedules: [],
-      subscriptions: [],
-    },
-    suggestions: [],
-    missing: [],
-    dropped: [],
-    duplicateOf: null,
-  };
-  function renderWithDraft(mode = "list") {
-    setup({ mode });
-    document.body.innerHTML = "";
-    const team = makeTeam({ drafts: [draft], dismissDraft: jest.fn() });
-    render(
-      <AppContext.Provider value={{ providers: {} }}>
-        <BotsView
-          workspace={workspace}
-          workspaces={[workspace]}
-          team={team}
-          narrow={false}
-        />
-      </AppContext.Provider>,
-    );
-    return team;
-  }
-  const confirm = () =>
-    fireEvent.click(
-      within(screen.getByTestId("confirmation-modal")).getByText("Discard"),
-    );
-
-  it("each draft row has a remove button that asks first (List)", async () => {
-    const team = renderWithDraft("list");
-    fireEvent.click(
-      screen.getByRole("button", { name: "Discard draft Morning Digest" }),
-    );
-    expect(screen.getByTestId("confirmation-modal")).toHaveTextContent(
-      "Morning Digest",
-    );
-    confirm();
-    await waitFor(() => expect(team.dismissDraft).toHaveBeenCalledWith("d1"));
-  });
-
-  it("…and in the Diagram's drafts list", async () => {
-    const team = renderWithDraft(null);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Discard draft Morning Digest" }),
-    );
-    confirm();
-    await waitFor(() => expect(team.dismissDraft).toHaveBeenCalledWith("d1"));
-  });
-
-  it("an open draft's form has Discard draft next to Create", async () => {
-    const team = renderWithDraft("list");
-    fireEvent.click(within(teamList()).getByText("Morning Digest"));
-    expect(screen.getByText("Create")).toBeInTheDocument();
-    // The footer one (the banner has a link too).
-    const buttons = screen.getAllByRole("button", { name: "Discard draft" });
-    expect(buttons.length).toBeGreaterThanOrEqual(1);
-    fireEvent.click(buttons[buttons.length - 1]);
-    confirm();
-    await waitFor(() => expect(team.dismissDraft).toHaveBeenCalledWith("d1"));
-  });
-
-  it("Cancel keeps the draft", () => {
-    const team = renderWithDraft("list");
-    fireEvent.click(
-      screen.getByRole("button", { name: "Discard draft Morning Digest" }),
-    );
-    fireEvent.click(
-      within(screen.getByTestId("confirmation-modal")).getByText("Keep draft"),
-    );
-    expect(team.dismissDraft).not.toHaveBeenCalled();
-  });
-});
-
-describe("BotsView — 5b: Review draft and accepting suggestions", () => {
-  const draft = {
-    id: "d1",
-    workspaceId: "7",
-    leadId: "lead_7",
-    createdAt: "2026-10-03T10:00:10.000Z",
-    reasoning: "Digest.",
-    definition: {
-      name: "Morning Digest",
-      instructions: "Summarise.",
-      workspaceId: "7",
-      mcpServers: [],
-      toolSelections: {},
-      approvalPolicy: "ask",
-      schedules: [],
-      subscriptions: [],
-    },
-    suggestions: [
-      { provider: "Gmail New", tools: ["search_emails"], toolsChecked: true },
-    ],
-    missing: [],
-    dropped: [],
-    notes: [],
-    duplicateOf: null,
-  };
-
-  function renderIt(runs = []) {
-    setup();
-    document.body.innerHTML = "";
-    window.mainApi.bots.getRuns = jest.fn().mockResolvedValue(runs);
-    window.mainApi.bots.listToolSources = jest.fn().mockResolvedValue([
-      {
-        name: "Gmail New",
-        type: "gmail",
-        running: true,
-        toolCount: 2,
-        declared: true,
-        tools: ["search_emails", "read_email"],
-      },
-    ]);
-    const team = makeTeam({ drafts: [draft], dismissDraft: jest.fn() });
-    render(
-      <AppContext.Provider value={{ providers: {} }}>
-        <BotsView
-          workspace={workspace}
-          workspaces={[workspace]}
-          team={team}
-          narrow={false}
-        />
-      </AppContext.Provider>,
-    );
-    return team;
-  }
-
-  it("the lead's conversation links to its draft", () => {
-    renderIt();
-    expect(mockPageProps.chatProps.drafts).toHaveLength(1);
-    fireEvent.click(screen.getByText("page-draft-d1"));
-    expect(screen.getByText(/Drafted by your team lead/)).toBeInTheDocument();
-  });
-  it("the draft's form offers Accept for the lead's suggestions", async () => {
-    renderIt();
-    fireEvent.click(within(teamList()).getByText("Morning Digest"));
-    expect(
-      await screen.findByRole("button", { name: "Accept Gmail New" }),
-    ).toBeInTheDocument();
   });
 });
 

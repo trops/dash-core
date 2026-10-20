@@ -34,6 +34,7 @@ import {
   hasLeadSession,
 } from "./leadMessages";
 import { appendAnswerText } from "../../utils/answerText";
+import { withoutHandoff } from "../../utils/handoff";
 import { readableError } from "../Bots/botConversation";
 
 // The fields of a team lead stored on chat messages / the saved recipient.
@@ -432,7 +433,7 @@ export function ChatCore({
             if (event.type === "text" && event.text) {
               streamed = appendAnswerText(streamed, event.text, { afterTool });
               afterTool = false;
-              const now = streamed;
+              const now = withoutHandoff(streamed);
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === placeholderId ? { ...m, content: now } : m,
@@ -480,7 +481,8 @@ export function ChatCore({
             });
           } else {
             finishLeadRun(placeholderId, {
-              content: record?.output || streamed,
+              // A lead's hand-off marker isn't shown (2c-2).
+              content: withoutHandoff(record?.output || streamed),
             });
           }
         })

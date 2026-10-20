@@ -49,17 +49,20 @@ export function forWhere(plan, where) {
   };
 }
 
-/** What the Planner is told: one new bot, for that dashboard or none. */
-export function botPlanRequest(prompt, where) {
+/**
+ * What the Planner is told: one new bot, for that dashboard or none — and
+ * what Dash knows there (teamContext.contextRequest, 2c-2).
+ */
+export function botPlanRequest(prompt, where, context = "") {
   const place = where
     ? `It goes on the user's "${where.name}" dashboard: set "dashboard": {"id": "${where.id}", "name": "${where.name}"}. Unless the user said, ask whether to show its results on ${where.name} (a results card) or keep them in the Bots view, and set showResults from the answer.`
     : "It isn't on a dashboard: leave dashboard out, and set showResults false — its results stay in the Bots view.";
-  return `${prompt}\n\n(Plan exactly one new bot — no widgets, layout or theme. ${place} Give it everything a new bot needs: instructions, only the tools it needs from the user's providers, a schedule if it runs on its own. It's saved paused; the user tries it with Try it now right after it's saved, then turns it on. Write what the user reads in plain words — no cron expressions or code.)`;
+  return `${prompt}\n\n(Plan exactly one new bot — no widgets, layout or theme. ${place} Give it everything a new bot needs: instructions, only the tools it needs from the user's providers, a schedule if it runs on its own. It's saved paused; the user tries it with Try it now right after it's saved, then turns it on. Write what the user reads in plain words — no cron expressions or code.)${context ? `\n\n${context}` : ""}`;
 }
 
-/** What the Scout is asked: bots that already do it. */
-export function scoutBotRequest(prompt) {
-  return `Find bots that already do this: "${prompt}". Search with search_library with what: "bots". End with the bots that fit as <matches>, each with "kind": "bot" and package set to the bot's id for one of theirs, or its dashboard package for a registry one; start its why with where it is ("on Work", "Unassigned", "in the Inbox Triage package"). If nothing fits, say so in a sentence or two — the Planner plans a new one next, so don't tell the user who to ask.`;
+/** What the Scout is asked: bots that already do it (with what Dash knows). */
+export function scoutBotRequest(prompt, context = "") {
+  return `Find bots that already do this: "${prompt}". Search with search_library with what: "bots". End with the bots that fit as <matches>, each with "kind": "bot" and package set to the bot's id for one of theirs, or its dashboard package for a registry one; start its why with where it is ("on Work", "Unassigned", "in the Inbox Triage package"). If nothing fits, say so in a sentence or two — the Planner plans a new one next, so don't tell the user who to ask. A bot already on that dashboard isn't a match to copy there — say it already does this instead.${context ? `\n\n${context}` : ""}`;
 }
 
 /**

@@ -7,7 +7,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { buildDraft, DraftStore } = require("./botDrafts");
+const { buildDraft } = require("./botDrafts");
 
 const WS = "1774291410862";
 const sources = [
@@ -153,31 +153,6 @@ describe("buildDraft", () => {
     });
     assert.ok(draft.definition.instructions.length <= 8000);
     assert.ok(draft.reasoning.length <= 1000);
-  });
-});
-
-describe("DraftStore", () => {
-  const draft = (id, ws = WS) => ({ id, workspaceId: ws, createdAt: id });
-
-  it("keeps up to 10 per dashboard (oldest dropped) and notifies on change", () => {
-    const s = new DraftStore();
-    let changes = 0;
-    s.onChange(() => changes++);
-    for (let i = 0; i < 12; i++) s.add(draft(`d${String(i).padStart(2, "0")}`));
-    s.add(draft("other", "9"));
-    assert.equal(s.list(WS).length, 10);
-    assert.equal(s.list(WS)[0].id, "d02");
-    assert.equal(s.list("9").length, 1);
-    assert.equal(changes, 13);
-  });
-
-  it("gets and removes by id", () => {
-    const s = new DraftStore();
-    s.add(draft("a"));
-    assert.equal(s.get("a").id, "a");
-    assert.equal(s.remove("a"), true);
-    assert.equal(s.get("a"), null);
-    assert.equal(s.remove("a"), false);
   });
 });
 

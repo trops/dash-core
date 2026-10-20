@@ -77,7 +77,6 @@ describe("tools and servers", () => {
       [
         "widget_guide",
         "build_widget",
-        "draft_bot",
         "place_widget",
         "read_widget",
         "list_providers",

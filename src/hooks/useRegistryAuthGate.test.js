@@ -21,6 +21,11 @@ describe("isRegistryAuthError", () => {
     expect(isRegistryAuthError({ status: 401 })).toBe(true);
     expect(isRegistryAuthError({ statusCode: 401 })).toBe(true);
   });
+  test("detects the registry's own expired-sign-in message (found live, 2c-2)", () => {
+    expect(
+      isRegistryAuthError("Authentication expired. Please sign in again."),
+    ).toBe(true);
+  });
   test("detects message signals (thrown errors / error strings)", () => {
     expect(isRegistryAuthError(new Error("Unauthorized"))).toBe(true);
     expect(

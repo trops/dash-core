@@ -265,16 +265,6 @@ describe("BotPage in a dashboard's Bots view (NAV-016 AC6)", () => {
     expect(mockRunProps.onOpenSettings).toBe(onOpenSettings);
   });
 
-  it("passes a lead's drafts to its conversation", () => {
-    const onOpenDraft = jest.fn();
-    setup({
-      botId: "lead7",
-      chatProps: { drafts: [{ id: "d1" }], onOpenDraft },
-    });
-    expect(mockChatProps.drafts).toEqual([{ id: "d1" }]);
-    expect(mockChatProps.onOpenDraft).toBe(onOpenDraft);
-  });
-
   it("saving tells the host (its list refreshes)", async () => {
     const onChanged = jest.fn();
     setup({ initialTab: "settings", onChanged });

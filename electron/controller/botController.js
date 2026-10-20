@@ -166,12 +166,9 @@ const {
 } = require("../bots/planMemory");
 const { recentRuns, lastRuns } = require("../bots/recentRuns");
 const { coalesce } = require("../bots/coalesce");
-const { buildDraft, DraftStore } = require("../bots/botDrafts");
 const { findProviders } = require("../bots/providerDiscovery");
 const { searchRegistry } = require("../bots/registrySearch");
 
-// How long a lead's find_providers results stay valid for its drafts.
-const FOUND_PROVIDERS_TTL_MS = 30 * 60 * 1000;
 const { onWorkspaceDeleted } = require("../utils/workspaceEvents");
 const {
   checkChain,
@@ -218,7 +215,6 @@ const {
   BOT_RUN_ACTIVE,
   BOT_LIST_CHANGED,
   BOT_OPEN_REQUEST,
-  BOT_DRAFTS_CHANGED,
   BOT_PLAN_BUILD_PROGRESS,
   CREATE_RECENT_CHANGED,
 } = require("../events/botEvents");
@@ -375,12 +371,6 @@ const botController = {
       console.error("[botController] Recent couldn't be read:", err);
     }
     this._recent.onChange(() => this._broadcast(CREATE_RECENT_CHANGED, {}));
-    // Bots a team lead drafted, awaiting the user's review (TEAM-005). In
-    // memory only — a restart drops them (the lead's answer still says so).
-    this._drafts = new DraftStore();
-    // What each lead's find_providers returned (leadId → { at, entries }), so
-    // drafts only keep suggestions that were really found (CAP-004).
-    this._foundProviders = new Map();
 
     // Event-bus bridge (P1: FR-009): per-bot cooldown so a chatty event can't
     // flood the runner with event-triggered runs.
@@ -507,13 +497,6 @@ const botController = {
     if (this._offStoreChange) this._offStoreChange();
     this._offStoreChange = this._store.onChange(() =>
       this._notifyListChanged(),
-    );
-    this._notifyDraftsChanged = coalesce(() =>
-      this._broadcast(BOT_DRAFTS_CHANGED, {}),
-    );
-    if (this._offDraftsChange) this._offDraftsChange();
-    this._offDraftsChange = this._drafts.onChange(() =>
-      this._notifyDraftsChanged(),
     );
 
     this.ensureDashTeam();
@@ -1188,43 +1171,13 @@ const botController = {
     });
   },
 
-  // ---- Lead drafts (TEAM-005) -----------------------------------------------
-
-  /**
-   * A lead's propose_bot: validate the proposal against the user's providers
-   * and this team's bots, and keep it as a draft for review. Never saves,
-   * grants or runs anything.
-   */
-  _proposeBot({ workspaceId, botId }, proposal, { author = "lead" } = {}) {
-    const team = this._store
-      .list()
-      .filter(
-        (b) =>
-          b.workspaceId !== null &&
-          b.workspaceId !== undefined &&
-          String(b.workspaceId) === String(workspaceId),
-      );
-    const res = buildDraft({
-      proposal,
-      sources: this.listToolSources(workspaceId),
-      team,
-      workspaceId,
-      leadId: botId,
-      knownProviders: this._knownProvidersFor(botId),
-      author,
-    });
-    if (res.draft) this._drafts.add(res.draft);
-    return res;
-  },
-
   /**
    * A lead's find_providers (bot-capabilities CAP-003): search the user's
-   * providers, Dash's catalogs and the MCP Registry. What it returns is
-   * remembered for this lead for a while, so a draft can only suggest
-   * providers that were actually found (CAP-004). Read-only.
+   * providers, Dash's catalogs and the MCP Registry. Read-only — the user
+   * adds what they choose.
    */
-  async _findProviders({ workspaceId, botId }, capability) {
-    const found = await findProviders(capability, {
+  _findProviders({ workspaceId }, capability) {
+    return findProviders(capability, {
       listInstalled: () => this.listToolSources(workspaceId),
       getCatalog: () =>
         (this._mcp.getCatalog && this._mcp.getCatalog(null).catalog) || [],
@@ -1234,31 +1187,6 @@ const botController = {
         [],
       searchRegistry: (query) => searchRegistry(query),
     });
-    const now = Date.now();
-    const prev = this._foundProviders.get(botId);
-    const entries =
-      prev && now - prev.at < FOUND_PROVIDERS_TTL_MS ? prev.entries : {};
-    for (const entry of found.results) entries[entry.id] = entry;
-    this._foundProviders.set(botId, { at: now, entries });
-    return found;
-  },
-
-  /** find_providers results this lead got recently (id → entry). */
-  _knownProvidersFor(botId) {
-    const rec = this._foundProviders && this._foundProviders.get(botId);
-    return rec && Date.now() - rec.at < FOUND_PROVIDERS_TTL_MS
-      ? rec.entries
-      : {};
-  },
-
-  /** Drafts awaiting review on a dashboard, oldest first. */
-  listDrafts(workspaceId) {
-    return this._drafts ? this._drafts.list(workspaceId) : [];
-  },
-
-  /** Remove a draft (discarded, or saved as a real bot). */
-  dismissDraft(draftId) {
-    return { dismissed: this._drafts ? this._drafts.remove(draftId) : false };
   },
 
   /** The user's Dash providers (name, type, …); [] when unavailable. */
@@ -3131,7 +3059,6 @@ const botController = {
       listThemes: () => this._themeNames(),
       botResults: () => this._botResultsForTeam(),
       botRuns: () => this._botRunsForTeam(),
-      draftBot: (req) => this._teamDraftBot(req),
       // Not during a cell build (Phase 2b): the editor places that widget,
       // and a save here would overwrite the user's unsaved edits.
       placeWidget: (req) =>
@@ -3306,32 +3233,6 @@ const botController = {
       cell: placed.cell,
       widgetId: placed.widgetId,
     };
-  },
-
-  /**
-   * draft_bot: the Builder's bot draft on a dashboard (by id or name), made
-   * the same way as a lead's propose_bot and waiting in that dashboard's
-   * Bots view for the user to save or discard (CRE-011, G3).
-   */
-  _teamDraftBot({ callerId, dashboard, proposal }) {
-    const dashboards = this._dashboardsWithBots();
-    const want = String(dashboard || "").trim();
-    const ws =
-      dashboards.find((d) => d.id === want) ||
-      dashboards.find((d) => d.name.toLowerCase() === want.toLowerCase());
-    if (!ws) {
-      return {
-        error: `No dashboard "${want}". The user's dashboards: ${
-          dashboards.map((d) => d.name).join(", ") || "none"
-        }.`,
-      };
-    }
-    const res = this._proposeBot(
-      { workspaceId: ws.id, botId: callerId },
-      proposal || {},
-      { author: "dash-team" },
-    );
-    return res && res.draft ? { ...res, dashboardName: ws.name } : res;
   },
 
   /**
@@ -3563,12 +3464,9 @@ const botController = {
           memory: this._memory,
           isRunning: (id) => this._runner.listActive().includes(id),
           isPaused: (id) => this._pause.isPaused(id),
-          proposeBot: (teamCtx, proposal) =>
-            this._proposeBot(teamCtx, proposal),
           findProviders: (teamCtx, capability) =>
             this._findProviders(teamCtx, capability),
           listProviders: () => this.listToolSources(caller.workspaceId),
-          listDrafts: (ws) => this.listDrafts(ws),
         },
         { workspaceId: caller.workspaceId, botId: caller.id },
         toolName,

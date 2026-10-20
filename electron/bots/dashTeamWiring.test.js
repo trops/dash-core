@@ -147,23 +147,12 @@ describe("botController — the build server is configured for the Builder's run
   });
 });
 
-describe("botController — draft_bot (CRE-011, slice 3b-2)", () => {
-  it("drafts through the leads' path, on a dashboard found by id or name", () => {
-    assert.match(ctrl, /draftBot: \(req\) => this\._teamDraftBot\(req\)/);
-    assert.match(
+describe("botController — no bot drafts (Phase 2c-2)", () => {
+  it("the Dash team and leads draft nothing", () => {
+    assert.doesNotMatch(
       ctrl,
-      /dashboards\.find\(\(d\) => d\.id === want\) \|\|\s*dashboards\.find\(/,
+      /_teamDraftBot|_proposeBot|DraftStore|listDrafts/,
     );
-    assert.match(
-      ctrl,
-      /this\._proposeBot\(\s*\{ workspaceId: ws\.id, botId: callerId \}/,
-    );
-  });
-});
-
-describe("botController — Builder drafts are marked (3b-2)", () => {
-  it("passes author dash-team", () => {
-    assert.match(ctrl, /proposal \|\| \{\},\s*\{ author: "dash-team" \}/);
   });
 });
 

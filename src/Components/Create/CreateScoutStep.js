@@ -8,6 +8,7 @@ import {
 } from "../../utils/teamRoles";
 import { runCostLabel } from "../../utils/runCostLabel";
 import { scoutBotRequest } from "./botCreate";
+import { toPlainText } from "../Bots/botConversation";
 
 /**
  * CreateScoutStep — before building a widget, the Dash team's Scout looks
@@ -25,6 +26,8 @@ import { scoutBotRequest } from "./botCreate";
  * @param {{ where: string|null }} [bot]  looking for a bot (Phase 2c-1):
  *   the user's bots and registry ones; each match is "Use on <where>" (a
  *   copy), and Build new plans one with the Dash team
+ * @param {string} [context]  what Dash knows about the dashboard (and a
+ *   lead's note) — teamContext.contextRequest (2c-2)
  */
 export const CreateScoutStep = ({
   prompt,
@@ -32,6 +35,7 @@ export const CreateScoutStep = ({
   onUse,
   cell = false,
   bot = null,
+  context = "",
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   // looking | done | failed
@@ -46,7 +50,7 @@ export const CreateScoutStep = ({
       "scout",
       // It knows what comes next, so it doesn't send the user elsewhere.
       bot
-        ? scoutBotRequest(prompt)
+        ? scoutBotRequest(prompt, context)
         : `Find widgets that could do this: "${prompt}". Search with search_library. If nothing fits, say so in a sentence or two — the Planner plans a new one next, so don't tell the user who to ask.`,
       { onText: (t) => alive.current && setSoFar(t) },
     ).then((res) => {
@@ -75,7 +79,8 @@ export const CreateScoutStep = ({
       ? found.map((m) => ({ ...m, kind: "bot" }))
       : found.filter((m) => m.kind !== "bot")
     : null;
-  const prose = withoutMatches(answer);
+  // Plain text, as every bot answer (no Markdown markers).
+  const prose = toPlainText(withoutMatches(answer));
   const meta = run ? runCostLabel(run) : "";
   // A cell or a bot: the Dash team plans it next.
   const plansNext = cell || !!bot;
@@ -131,7 +136,7 @@ export const CreateScoutStep = ({
               }
             >
               {phase === "looking"
-                ? (soFar && withoutMatches(soFar)) ||
+                ? (soFar && toPlainText(withoutMatches(soFar))) ||
                   (bot
                     ? "Looking through your bots and the registry's…"
                     : "Looking through your widgets, AI-built widgets and the registry…")

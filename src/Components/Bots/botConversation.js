@@ -1,3 +1,5 @@
+import { withoutHandoff } from "../../utils/handoff";
+
 /**
  * botConversation.js
  *
@@ -300,10 +302,11 @@ export function botStatus({ botId, running, paused, approvals, lastRun }) {
 
 /**
  * Bot answers are shown as plain text — never rendered as HTML, because they
- * can quote email or web content. Strip leftover Markdown markers.
+ * can quote email or web content. Strip leftover Markdown markers — and a
+ * team lead's hand-off marker (2c-2; its button is shown instead).
  */
 export function toPlainText(text) {
-  return String(text || "")
+  return withoutHandoff(text)
     .replace(/^#{1,6}\s+/gm, "")
     .replace(/^>\s?/gm, "")
     .replace(/\*\*([^*]+)\*\*/g, "$1")

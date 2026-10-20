@@ -5,7 +5,6 @@ export { BotChat } from "./BotChat";
 export { BotRunHistory } from "./BotRunHistory";
 export { useTeamBots } from "./useTeamBots";
 export { BotMonitor, relativeTime } from "./BotMonitor";
-export { DraftBanner } from "./DraftBanner";
 export { useBotMonitor } from "./useBotMonitor";
 export { BotContacts } from "./BotContacts";
 export { BotPage, BOT_PAGE_TABS } from "./BotPage";

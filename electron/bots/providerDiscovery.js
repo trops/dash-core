@@ -373,7 +373,7 @@ function describeFindings(capability, { results, notes }) {
   const lines = [`Providers for "${capability}":`];
   if (!results.length) {
     lines.push(
-      "Nothing found. Put the capability in propose_bot's needs so the user knows it's missing.",
+      "Nothing found — tell the user none of their providers or Dash's catalog covers it.",
     );
   }
   for (const tier of TIER_ORDER) {
@@ -398,7 +398,7 @@ function describeFindings(capability, { results, notes }) {
   if (results.length) {
     lines.push(
       "",
-      "To suggest one on a draft, pass propose_bot gaps: [{ need, suggestions: [id, …] }] using the ids above. Installed providers can also go straight in providers. You can't install anything — the user does.",
+      "Tell the user which of these could do it; they add it from Settings › Providers. You can't install anything — the user does.",
     );
   }
   return lines.join("\n");

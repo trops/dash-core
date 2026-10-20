@@ -299,7 +299,7 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 > so that I can decide what to add without researching.
 
 **Priority:** P1
-**Status:** Implemented
+**Status:** Superseded (consolidation Phase 2c-2) — lead drafts (and their gaps) are gone; `find_providers` stays for the lead to say what could be connected. See bot-teams TEAM-005.
 
 **Acceptance Criteria:**
 

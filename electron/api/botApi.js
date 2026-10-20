@@ -59,8 +59,6 @@ const {
   BOTS_GET_LATEST_RESULT,
   BOTS_LIST_RECENT_RUNS,
   BOTS_LAST_RUNS,
-  BOTS_LIST_DRAFTS,
-  BOTS_DISMISS_DRAFT,
   BOTS_EXPORT_TEAM,
   BOTS_PREVIEW_TEAM_IMPORT,
   BOTS_INSTALL_TEAM,
@@ -78,7 +76,6 @@ const {
   BOT_RUN_ACTIVE,
   BOT_LIST_CHANGED,
   BOT_OPEN_REQUEST,
-  BOT_DRAFTS_CHANGED,
   BOT_PLAN_BUILD_PROGRESS,
 } = require("../events/botEvents");
 
@@ -116,12 +113,6 @@ const botApi = {
   getLatestResult: (eventType) =>
     ipcRenderer.invoke(BOTS_GET_LATEST_RESULT, { eventType }),
   stop: (botId) => ipcRenderer.invoke(BOTS_STOP, { botId }),
-  /** Bots a team lead drafted for this dashboard, awaiting review (TEAM-005). */
-  listDrafts: (workspaceId) =>
-    ipcRenderer.invoke(BOTS_LIST_DRAFTS, { workspaceId }),
-  /** Remove a draft (discarded, or saved as a real bot). */
-  dismissDraft: (draftId) =>
-    ipcRenderer.invoke(BOTS_DISMISS_DRAFT, { draftId }),
   /** Save this dashboard's team as a .team.json (TEAM-006). meta: { name, description } */
   exportTeam: (workspaceId, meta) =>
     ipcRenderer.invoke(BOTS_EXPORT_TEAM, { workspaceId, meta }),
@@ -301,8 +292,6 @@ const botApi = {
   onListChanged: (callback) => _addListener(BOT_LIST_CHANGED, callback),
   /** A notification asked to open a bot — call takeOpenRequest(). */
   onOpenRequest: (callback) => _addListener(BOT_OPEN_REQUEST, callback),
-  /** A lead drafted a bot, or a draft was saved/discarded. */
-  onDraftsChanged: (callback) => _addListener(BOT_DRAFTS_CHANGED, callback),
   /** A plan build's progress: ({ buildId, state }) after every change. */
   onPlanBuild: (callback) => _addListener(BOT_PLAN_BUILD_PROGRESS, callback),
   /** Recent changed (a save, a build's progress, a removal). */

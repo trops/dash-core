@@ -10,12 +10,12 @@
  * credentials or grants. Results are fenced as untrusted data: run answers
  * and memory can contain email or web text (TEAM-003 AC3).
  *
- * propose_bot (TEAM-005) is the one tool that does anything: it hands a bot
- * proposal to deps.proposeBot, which validates it and stores a *draft* for
- * the user to review — never saved or run by the lead.
+ * Nothing here makes anything: asked to make a bot, a widget or a layout
+ * change, the lead hands it to the Dash team (consolidation Phase 2c-2,
+ * handoff.js) — its drafts (propose_bot, TEAM-005) are gone.
  *
  * Portable (NFR-006): no Electron. botController injects the store, memory,
- * status lookups and the drafting hook. Result shape: { text, isError }.
+ * status lookups and the provider search. Result shape: { text, isError }.
  */
 "use strict";
 
@@ -30,7 +30,7 @@ const TEAM_TOOLS = [
   {
     name: "team_list_bots",
     description:
-      "List the bots on your dashboard's team: name, status (running / paused / idle), how each one starts, and which providers it uses — plus any drafts you proposed that are still waiting for the user's review.",
+      "List the bots on your dashboard's team: name, status (running / paused / idle), how each one starts, and which providers it uses.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -81,13 +81,13 @@ const TEAM_TOOLS = [
   {
     name: "team_providers",
     description:
-      "List the user's providers (from Settings › Providers): name, type, and the tools each one offers. Use this before propose_bot so a draft suggests providers the user actually has.",
+      "List the user's providers (from Settings › Providers): name, type, and the tools each one offers. Use it to say what the user has connected.",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "find_providers",
     description:
-      "Search for providers that could give a bot a capability the user's providers don't cover (e.g. 'download an image from a URL', 'search stock photos'). Looks in the user's providers, Dash's built-in catalog, Dash's vetted list, and the public MCP Registry (unverified community servers), in that order, and returns ids you can suggest in propose_bot's gaps. Read-only: you can't install anything; the user does.",
+      "Search for providers that could give a bot a capability the user's providers don't cover (e.g. 'download an image from a URL', 'search stock photos'). Looks in the user's providers, Dash's built-in catalog, Dash's vetted list, and the public MCP Registry (unverified community servers), in that order. Read-only: you can't install anything; the user does.",
     inputSchema: {
       type: "object",
       properties: {
@@ -98,87 +98,6 @@ const TEAM_TOOLS = [
         },
       },
       required: ["capability"],
-    },
-  },
-  {
-    name: "propose_bot",
-    description:
-      "Draft a new bot for this team when the user asks for one. Creates a DRAFT only — the user reviews it in this dashboard's Bots view and saves it themselves; you can't create, save or run bots. Call team_providers first and suggest only those providers (by name or type). For a capability none of them covers, call find_providers and list it in 'gaps' with the ids it returned, so the user can add one from the review. Event triggers can only be other bots on this team finishing ('completed') or failing ('failed'). If a team bot already does this, say so instead of drafting a duplicate.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "Short bot name." },
-        instructions: {
-          type: "string",
-          description: "What the bot should do, in plain words.",
-        },
-        reasoning: {
-          type: "string",
-          description: "One or two sentences on why this design, for the user.",
-        },
-        providers: {
-          type: "array",
-          description:
-            "Suggested providers and tools (provider names as in Settings › Providers).",
-          items: {
-            type: "object",
-            properties: {
-              name: { type: "string" },
-              tools: { type: "array", items: { type: "string" } },
-            },
-            required: ["name"],
-          },
-        },
-        schedule: {
-          type: "object",
-          description: "Optional schedule as a cron expression.",
-          properties: {
-            cron: { type: "string", description: "e.g. '0 8 * * *'" },
-            prompt: { type: "string" },
-          },
-        },
-        on: {
-          type: "array",
-          description:
-            "Optional: run when another team bot completes or fails.",
-          items: {
-            type: "object",
-            properties: {
-              bot: { type: "string", description: "The team bot's name." },
-              event: { type: "string", enum: ["completed", "failed"] },
-            },
-            required: ["bot", "event"],
-          },
-        },
-        needs: {
-          type: "array",
-          description:
-            "Short names of services the user would need a provider for (e.g. 'Microsoft Teams'). Put anything else in reasoning.",
-          items: { type: "string" },
-        },
-        gaps: {
-          type: "array",
-          description:
-            "Capabilities the user's providers don't cover, each with provider ids from find_providers that could fill it (best first). Only ids find_providers returned are kept.",
-          items: {
-            type: "object",
-            properties: {
-              need: {
-                type: "string",
-                description: "The capability, e.g. 'download images'.",
-              },
-              suggestions: {
-                type: "array",
-                description:
-                  "Ids from find_providers, e.g. 'builtin:web-fetch'.",
-                items: { type: "string" },
-              },
-            },
-            required: ["need"],
-          },
-        },
-      },
-      required: ["name", "instructions"],
     },
   },
 ];
@@ -255,25 +174,6 @@ function handleTeamTool(deps, ctx, toolName, args = {}) {
               return `- ${b.name} — ${status} — starts ${howItStarts(b)} — providers: ${providers}`;
             })
           : ["Your team has no bots yet."];
-        // Drafts still waiting for review (TEAM-005) — earlier ones may have
-        // been saved or discarded since, so this is the source of truth.
-        if (typeof deps.listDrafts === "function") {
-          const drafts = deps.listDrafts(ctx.workspaceId) || [];
-          lines.push(
-            drafts.length
-              ? `Drafts awaiting the user's review: ${drafts
-                  .map(
-                    (d) =>
-                      `${d.definition && d.definition.name} (drafted ${String(
-                        d.createdAt || "",
-                      )
-                        .slice(0, 16)
-                        .replace("T", " ")})`,
-                  )
-                  .join("; ")}`
-              : "No drafts waiting for review.",
-          );
-        }
         return ok(lines.join("\n"));
       }
       case "team_get_bot": {
@@ -391,18 +291,6 @@ function handleTeamTool(deps, ctx, toolName, args = {}) {
             ),
           );
       }
-      case "propose_bot": {
-        if (typeof deps.proposeBot !== "function") {
-          return fail("Drafting bots isn't available here.");
-        }
-        const res = deps.proposeBot(ctx, args || {});
-        if (!res || res.error) {
-          return fail(
-            `Couldn't draft that bot: ${(res && res.error) || "unknown error"}`,
-          );
-        }
-        return ok(describeDraft(res.draft));
-      }
       default:
         return fail(`Unknown team tool "${toolName}".`);
     }
@@ -411,55 +299,9 @@ function handleTeamTool(deps, ctx, toolName, args = {}) {
   }
 }
 
-/** What the lead tells the user about a draft (it's never created by the lead). */
-function describeDraft(draft) {
-  const name = draft.definition && draft.definition.name;
-  const lines = [
-    `Drafted "${name}". It is NOT created — tell the user it's waiting for their review in this dashboard's Bots view (under Drafts), where they can edit it and Save, or discard it.`,
-  ];
-  if (draft.duplicateOf) {
-    lines.push(
-      `Note: the team already has a bot named "${draft.duplicateOf}" — suggest adjusting it instead if it does the same job.`,
-    );
-  }
-  if (draft.suggestions && draft.suggestions.length) {
-    lines.push(
-      "Suggested providers (the user turns these on themselves): " +
-        draft.suggestions
-          .map(
-            (s) =>
-              `${s.provider}: ${s.tools.length ? s.tools.join(", ") : "any tools"}`,
-          )
-          .join("; "),
-    );
-  }
-  for (const gap of draft.gaps || []) {
-    lines.push(
-      gap.suggestions.length
-        ? `For "${gap.need}" the user can add: ${gap.suggestions
-            .map((s) => `${s.name} (${s.tier})`)
-            .join(", ")} — from the draft review.`
-        : `For "${gap.need}" no suggested provider was kept (only ids from find_providers count).`,
-    );
-  }
-  if (draft.missing && draft.missing.length) {
-    lines.push(
-      `Needs a provider the user doesn't have: ${draft.missing.join(", ")} — they can add it in Settings › Providers.`,
-    );
-    if (draft.available && draft.available.length) {
-      lines.push(`The user's providers: ${draft.available.join(", ")}.`);
-    }
-  }
-  if (draft.dropped && draft.dropped.length) {
-    lines.push(`Left out: ${draft.dropped.join(" ")}`);
-  }
-  return lines.join("\n");
-}
-
 module.exports = {
   TEAM_SERVER,
   TEAM_TOOLS,
   handleTeamTool,
   fenceTeamData,
-  describeDraft,
 };

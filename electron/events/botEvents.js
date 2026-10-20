@@ -74,9 +74,6 @@ const BOTS_LIST_RECENT_RUNS = "bots-list-recent-runs";
 const BOTS_LAST_RUNS = "bots-last-runs";
 // Team dashboards (TD-002): the latest result a bot sent, for late widgets.
 const BOTS_GET_LATEST_RESULT = "bots-get-latest-result";
-// Lead drafts (TEAM-005): bots a team lead proposed, awaiting review.
-const BOTS_LIST_DRAFTS = "bots-list-drafts";
-const BOTS_DISMISS_DRAFT = "bots-dismiss-draft";
 // Team export/import (TEAM-006/007, slice 1): a dashboard's team as .team.json.
 const BOTS_EXPORT_TEAM = "bots-export-team";
 const BOTS_PREVIEW_TEAM_IMPORT = "bots-preview-team-import";
@@ -105,8 +102,6 @@ const BOT_RUN_ACTIVE = "bot-run-active"; // { count, running: string[] }
 const BOT_LIST_CHANGED = "bot-list-changed"; // {}
 // A notification was clicked: open its bot — take it with takeOpenRequest.
 const BOT_OPEN_REQUEST = "bot-open-request"; // {}
-// A lead drafted a bot, or a draft was saved/discarded.
-const BOT_DRAFTS_CHANGED = "bot-drafts-changed"; // {}
 const BOT_PLAN_BUILD_PROGRESS = "bot-plan-build-progress"; // { buildId, state }
 
 module.exports = {
@@ -162,8 +157,6 @@ module.exports = {
   BOTS_LIST_RECENT_RUNS,
   BOTS_LAST_RUNS,
   BOTS_GET_LATEST_RESULT,
-  BOTS_LIST_DRAFTS,
-  BOTS_DISMISS_DRAFT,
   BOTS_EXPORT_TEAM,
   BOTS_PREVIEW_TEAM_IMPORT,
   BOTS_INSTALL_TEAM,
@@ -181,6 +174,5 @@ module.exports = {
   BOT_RUN_ACTIVE,
   BOT_LIST_CHANGED,
   BOT_OPEN_REQUEST,
-  BOT_DRAFTS_CHANGED,
   BOT_PLAN_BUILD_PROGRESS,
 };

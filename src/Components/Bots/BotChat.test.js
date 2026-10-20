@@ -382,64 +382,70 @@ describe("BotChat — triggers and next steps (TEAM-011 gaps)", () => {
   });
 });
 
-describe("BotChat — Review draft under the lead's answer (5b)", () => {
-  const run = {
+describe("BotChat — the lead hands off to the Dash team (Phase 2c-2)", () => {
+  const run = (output) => ({
     trigger: "ask",
     status: "completed",
-    prompt: "Add a Gmail digest bot",
-    output: "I drafted Morning Digest.",
+    prompt: "Add a bot that sums up my email",
+    output,
     startedAt: "2026-10-03T10:00:00.000Z",
     endedAt: "2026-10-03T10:00:20.000Z",
     continued: false,
-  };
-  const during = {
-    id: "d1",
-    leadId: "lead_7",
-    createdAt: "2026-10-03T10:00:12.000Z",
-    definition: { name: "Morning Digest" },
-  };
-  const other = {
-    ...during,
-    id: "d2",
-    createdAt: "2026-10-01T09:00:00.000Z",
-    definition: { name: "Old" },
-  };
+  });
+  const handedOff =
+    'The Dash team makes bots — they\'ll check what you have and plan it with you.\n<handoff>{"type":"bot","request":"A bot that sums up my email at 7:30","note":"News Digest covers headlines at 7:00."}</handoff>';
 
-  function setupLead(drafts) {
+  function setupLead(output, isLead = true) {
     window.mainApi = {
       bots: {
-        getRuns: jest.fn().mockResolvedValue([run]),
+        getRuns: jest.fn().mockResolvedValue([run(output)]),
         askLead: jest.fn(),
         onStream: jest.fn(() => "s1"),
         removeListener: jest.fn(),
       },
     };
-    const onOpenDraft = jest.fn();
-    render(
-      <BotChat
-        bot={lead}
-        isLead
-        approvals={[]}
-        drafts={drafts}
-        onOpenDraft={onOpenDraft}
-      />,
-    );
-    return onOpenDraft;
+    render(<BotChat bot={lead} isLead={isLead} approvals={[]} />);
   }
 
-  it("shows Review draft under the answer that drafted it, and opens it", async () => {
-    const onOpenDraft = setupLead([during, other]);
-    const btn = await screen.findByText("Review draft: Morning Digest");
+  it("shows Plan this with the Dash team — never the marker", async () => {
+    setupLead(handedOff);
+    const btn = await screen.findByRole("button", {
+      name: "Plan this with the Dash team",
+    });
     expect(btn.closest('[data-testid="answer-bubble"]')).not.toBeNull();
-    expect(screen.queryByText("Review draft: Old")).toBeNull();
-    fireEvent.click(btn);
-    expect(onOpenDraft).toHaveBeenCalledWith("d1");
+    expect(screen.queryByText(/<handoff>/)).toBeNull();
+    expect(
+      screen.getByText(/The Dash team makes bots/).textContent,
+    ).not.toMatch(/handoff/);
   });
 
-  it("no button once the draft is saved or discarded", async () => {
-    setupLead([]);
-    await screen.findByText("I drafted Morning Digest.");
-    expect(screen.queryByText(/Review draft/)).toBeNull();
+  it("opens Create for this dashboard, with the request and the lead's note", async () => {
+    setupLead(handedOff);
+    const opened = jest.fn();
+    window.addEventListener("dash:open-create", opened);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Plan this with the Dash team",
+      }),
+    );
+    window.removeEventListener("dash:open-create", opened);
+    expect(opened.mock.calls[0][0].detail).toEqual({
+      type: "bot",
+      workspaceId: lead.workspaceId ?? null,
+      prompt: "A bot that sums up my email at 7:30",
+      context: {
+        note: "News Digest covers headlines at 7:00.",
+        from: lead.name,
+      },
+    });
+  });
+
+  it("a plain answer has no button; only a lead's answers hand off", async () => {
+    setupLead("News Digest ran at 7:00 and finished.");
+    await screen.findByText("News Digest ran at 7:00 and finished.");
+    expect(
+      screen.queryByRole("button", { name: "Plan this with the Dash team" }),
+    ).toBeNull();
   });
 });
 

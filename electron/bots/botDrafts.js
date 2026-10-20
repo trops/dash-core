@@ -1,8 +1,8 @@
 /**
- * botDrafts.js — a team lead's proposed bot (bot-teams TEAM-005).
- *
- * The lead's propose_bot tool hands in a free-form proposal; buildDraft turns
- * it into a draft that only uses what the user actually has:
+ * botDrafts.js — a proposed bot made safe to save (bot-teams TEAM-005; since
+ * consolidation Phase 2c-2 only plan builds use it — planBotDefinition — the
+ * lead's and Builder's drafts are gone). buildDraft turns a free-form
+ * proposal into one that only uses what the user actually has:
  *   - providers/tools from Settings › Providers (as listToolSources reports
  *     them) — offered as *suggestions*; the draft's own mcpServers and
  *     toolSelections stay empty until the user picks them in the form;
@@ -11,8 +11,6 @@
  *   - declared results (publishes, team-dashboards TD-001) only with valid,
  *     unique names — the Dash team's Builder drafts these (CRE-011);
  *   - anything else is dropped (and said so), or listed as missing.
- * The lead never saves or runs a draft — DraftStore just holds it until the
- * user saves or discards it in the Bots view.
  */
 "use strict";
 
@@ -68,7 +66,7 @@ function buildDraft({
   workspaceId,
   leadId,
   knownProviders = {},
-  // Who drafted it: "lead" (a team lead's propose_bot) or "dash-team" (the
+  // Who drafted it: "lead" (the retired propose_bot) or "dash-team" (the
   // Dash team's Builder, CRE-011) — the review says which.
   author = "lead",
   now,
@@ -269,59 +267,4 @@ function buildDraft({
   };
 }
 
-/** Drafts waiting for the user, per dashboard (in memory; not persisted). */
-class DraftStore {
-  constructor({ maxPerDashboard = MAX_PER_DASHBOARD } = {}) {
-    this._max = maxPerDashboard;
-    this._drafts = [];
-    this._listeners = new Set();
-  }
-
-  onChange(listener) {
-    this._listeners.add(listener);
-    return () => this._listeners.delete(listener);
-  }
-
-  _changed() {
-    for (const l of this._listeners) {
-      try {
-        l();
-      } catch (_e) {
-        // a listener's bug must not break the store
-      }
-    }
-  }
-
-  add(draft) {
-    this._drafts.push(draft);
-    const mine = this._drafts.filter(
-      (d) => d.workspaceId === draft.workspaceId,
-    );
-    if (mine.length > this._max) {
-      const drop = new Set(
-        mine.slice(0, mine.length - this._max).map((d) => d.id),
-      );
-      this._drafts = this._drafts.filter((d) => !drop.has(d.id));
-    }
-    this._changed();
-    return draft;
-  }
-
-  list(workspaceId) {
-    return this._drafts.filter((d) => d.workspaceId === String(workspaceId));
-  }
-
-  get(id) {
-    return this._drafts.find((d) => d.id === id) || null;
-  }
-
-  remove(id) {
-    const before = this._drafts.length;
-    this._drafts = this._drafts.filter((d) => d.id !== id);
-    const removed = this._drafts.length !== before;
-    if (removed) this._changed();
-    return removed;
-  }
-}
-
-module.exports = { buildDraft, DraftStore, BOT_EVENTS };
+module.exports = { buildDraft, BOT_EVENTS };

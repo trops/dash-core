@@ -15,7 +15,6 @@
  *   check_widget    Checker               compile, code checks, scorecard, config
  *   list_dashboards Planner, Builder      the user's dashboards and their bots
  *   list_themes     Planner               the user's saved themes (5e-2b)
- *   draft_bot       Builder               a bot draft on a dashboard, for review
  *   place_widget    Builder               put an installed widget on a dashboard
  *   bot_results     Planner               the latest result each bot sent (5e)
  *   bot_runs        Planner               recent bot runs and their answers (5e)
@@ -32,7 +31,6 @@
  */
 "use strict";
 
-const { describeDraft } = require("./teamTools");
 const {
   describeResults,
   describeRuns,
@@ -233,84 +231,6 @@ const TOOL_DEFS = {
       "List the names of the user's saved themes — the only themes a plan can apply to a dashboard.",
     inputSchema: { type: "object", properties: {} },
   },
-  draft_bot: {
-    name: "draft_bot",
-    description:
-      "Draft a bot onto one of the user's dashboards. Creates a DRAFT only — the user reviews it in that dashboard's Bots view (under Drafts) and saves or discards it; you can't create, save or run bots. Suggest only the user's providers (list_providers) and only the tools the bot needs; event triggers can only be bots on that dashboard finishing ('completed') or failing ('failed'). Declare results (publishes) when its output should show on the dashboard, e.g. in the Bot results widget.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        dashboard: {
-          type: "string",
-          description: "The dashboard's name or id (from list_dashboards).",
-        },
-        name: { type: "string", description: "Short bot name." },
-        instructions: {
-          type: "string",
-          description: "What the bot should do, in plain words.",
-        },
-        reasoning: {
-          type: "string",
-          description: "One or two sentences on why this design, for the user.",
-        },
-        providers: {
-          type: "array",
-          description:
-            "Suggested providers and tools (provider names or types, as list_providers gives them).",
-          items: {
-            type: "object",
-            properties: {
-              name: { type: "string" },
-              tools: { type: "array", items: { type: "string" } },
-            },
-            required: ["name"],
-          },
-        },
-        schedule: {
-          type: "object",
-          description: "Optional schedule as a cron expression.",
-          properties: {
-            cron: { type: "string", description: "e.g. '0 8 * * 1-5'" },
-            prompt: { type: "string" },
-          },
-        },
-        on: {
-          type: "array",
-          description:
-            "Optional: run when another bot on that dashboard completes or fails.",
-          items: {
-            type: "object",
-            properties: {
-              bot: { type: "string" },
-              event: { type: "string", enum: ["completed", "failed"] },
-            },
-            required: ["bot", "event"],
-          },
-        },
-        publishes: {
-          type: "array",
-          description:
-            "Results the bot sends to its dashboard: name (letters, digits, underscores), label, description.",
-          items: {
-            type: "object",
-            properties: {
-              name: { type: "string" },
-              label: { type: "string" },
-              description: { type: "string" },
-            },
-            required: ["name"],
-          },
-        },
-        needs: {
-          type: "array",
-          description:
-            "Services the user would need a provider for that they don't have.",
-          items: { type: "string" },
-        },
-      },
-      required: ["dashboard", "name", "instructions"],
-    },
-  },
   ask_role: {
     name: "ask_role",
     description: `Hand a request to another Dash team role and get its answer: "scout" to find what the user already has, "builder" to build, "checker" to check what was built. Be specific — the role sees only your request. At most ${MAX_HANDOFFS} per run.`,
@@ -340,7 +260,6 @@ const ROLE_TOOL_NAMES = {
   builder: [
     "widget_guide",
     "build_widget",
-    "draft_bot",
     "place_widget",
     "read_widget",
     "list_providers",
@@ -743,8 +662,6 @@ function describeCheck(res, compareConfigs) {
  *   compareConfigs(old, new): configDiff.compareConfigs
  *   listDashboards(): [{ id, name, bots: [name], pages?: [name], theme? }]
  *   listThemes(): [name] — the user's saved themes
- *   draftBot({ callerId, dashboard, proposal }): { draft, dashboardName } |
- *     { error } — buildDraft on that dashboard, stored for review
  *   placeWidget({ callerId, dashboard, widget, component, page, row, col,
  *     settings }): { component, dashboardName, page, cell } | { error }
  * @param {{ botId: string, role: string }} ctx  the calling team bot
@@ -960,36 +877,6 @@ async function handleRoleTool(deps, ctx, toolName, args = {}) {
         const themes = (deps.listThemes && deps.listThemes()) || [];
         if (!themes.length) return ok("The user has no saved themes.");
         return ok(themes.map((t) => `- ${t}`).join("\n"));
-      }
-      case "draft_bot": {
-        if (!deps.draftBot) return fail("Drafting bots isn't available here.");
-        const dashboard = String(a.dashboard || "").trim();
-        if (!dashboard) {
-          return fail("draft_bot needs the dashboard (name or id).");
-        }
-        const { dashboard: _d, ...proposal } = a;
-        const res = await deps.draftBot({
-          callerId: ctx.botId,
-          dashboard,
-          proposal,
-        });
-        if (!res || res.error) {
-          return fail(
-            `Couldn't draft that bot: ${(res && res.error) || "unknown error"}`,
-          );
-        }
-        const where = res.dashboardName
-          ? `the "${res.dashboardName}" dashboard's Bots view`
-          : "that dashboard's Bots view";
-        const lines = [
-          describeDraft(res.draft).replace("this dashboard's Bots view", where),
-        ];
-        const results = (res.draft.definition.publishes || []).map(
-          (p) => p.name,
-        );
-        if (results.length)
-          lines.push(`Results it sends: ${results.join(", ")}`);
-        return ok(lines.join("\n"));
       }
       case "place_widget": {
         if (!deps.placeWidget)
