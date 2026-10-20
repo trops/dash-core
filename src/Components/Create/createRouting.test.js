@@ -83,7 +83,7 @@ describe("createRouting (create-entry PRD CRE-001/005)", () => {
     );
   });
 
-  test("Widget opens the builder with the prompt; Bot opens the form with it as instructions", () => {
+  test("Widget opens the builder with the prompt; Bot goes to the Dash team (2c-1)", () => {
     expect(routeCreate({ type: "widget", prompt: "  Show my PRs " })).toEqual({
       kind: "widget-builder",
       detail: { prompt: "Show my PRs" },
@@ -91,12 +91,12 @@ describe("createRouting (create-entry PRD CRE-001/005)", () => {
     expect(
       routeCreate({
         type: "bot",
-        prompt: "Summarize my inbox",
+        prompt: " Summarize my inbox ",
         workspaceId: 7,
       }),
     ).toEqual({
-      kind: "bot-form",
-      bot: { instructions: "Summarize my inbox" },
+      kind: "bot-plan",
+      detail: { prompt: "Summarize my inbox" },
       workspaceId: 7,
     });
     expect(routeCreate({ type: "nope", prompt: "x" })).toBeNull();

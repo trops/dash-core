@@ -109,6 +109,20 @@ describe("extractMatches", () => {
     expect(withoutMatches(text)).toBe("Here's what I found.");
   });
 
+  test("a bot match says it's a bot (Phase 2c-1)", () => {
+    const text =
+      '<matches>[{"kind":"bot","source":"Yours","name":"Inbox Digest","package":"bot_1","why":"same job"}]</matches>';
+    expect(extractMatches(text)).toEqual([
+      {
+        kind: "bot",
+        source: "Yours",
+        name: "Inbox Digest",
+        package: "bot_1",
+        why: "same job",
+      },
+    ]);
+  });
+
   test("an empty list, no tag, or bad JSON", () => {
     expect(extractMatches("<matches>[]</matches>")).toEqual([]);
     expect(extractMatches("nothing")).toBeNull();

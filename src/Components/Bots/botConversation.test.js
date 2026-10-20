@@ -8,7 +8,14 @@ import {
   errorNextSteps,
   readableError,
   skipNotice,
+  toPlainText,
 } from "./botConversation";
+
+test("toPlainText drops Markdown markers, quote marks too", () => {
+  expect(
+    toPlainText('## Today\n> "Keep going."\n> — Someone\n**Done** `now`'),
+  ).toBe('Today\n"Keep going."\n— Someone\nDone now');
+});
 
 const run = (over) => ({
   trigger: "manual",

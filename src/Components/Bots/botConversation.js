@@ -305,6 +305,7 @@ export function botStatus({ botId, running, paused, approvals, lastRun }) {
 export function toPlainText(text) {
   return String(text || "")
     .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^>\s?/gm, "")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/__([^_]+)__/g, "$1")
     .replace(/`([^`]+)`/g, "$1");

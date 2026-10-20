@@ -51,7 +51,7 @@ export const PROMPT_PLACEHOLDER = {
   auto: "Describe what you want — a widget, a bot, a whole dashboard or a theme",
   theme: "Describe the look — colors, mood, or a brand",
   widget: "Describe the widget — what it shows and where the data comes from",
-  bot: "Describe what the bot should do — this becomes its instructions",
+  bot: "Describe what the bot should do, and when",
   dashboard: "Describe the dashboard — what it's for and what it should show",
 };
 
@@ -65,7 +65,7 @@ export const CREATE_HINT = {
     "You'll get a plan to review first. Nothing is made until you press Build.",
   widget:
     "You'll see it in the Widget Builder first. It's only installed when you press Install.",
-  bot: "The bot opens in a form for you to check. Nothing is saved until you save it.",
+  bot: "You'll get a plan to review first. Nothing is saved until you press Build, and it's saved paused.",
   theme:
     "It opens in the theme editor for you to check. Nothing changes until you save it.",
 };
@@ -144,8 +144,9 @@ export function canSend({ type, prompt, aiBackend }) {
 /**
  * What Send does for a type.
  *   widget → open the Widget Builder with the prompt as the first message
- *   bot    → the bot form, the prompt as its instructions (no AI needed to
- *            create it; the bot uses its own AI when it runs)
+ *   bot    → the Dash team (Phase 2c-1): the Scout looks for a bot the
+ *            user has, else the Planner plans one; the form stays as the
+ *            no-AI start ("Fill in the bot form")
  *   dashboard → the Planner, the prompt as the first message (phase 4)
  *   auto   → work out which of the above (or theme) first (phase 5c)
  *   theme  → the AI makes a theme; it opens unsaved in the theme editor
@@ -159,11 +160,7 @@ export function routeCreate({ type, prompt, workspaceId = null }) {
     return { kind: "dashboard-plan", detail: { prompt: text } };
   }
   if (type === "bot") {
-    return {
-      kind: "bot-form",
-      bot: { instructions: text },
-      workspaceId,
-    };
+    return { kind: "bot-plan", detail: { prompt: text }, workspaceId };
   }
   if (type === "auto") return { kind: "auto", detail: { prompt: text } };
   if (type === "theme") return { kind: "theme", detail: { prompt: text } };

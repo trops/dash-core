@@ -337,7 +337,8 @@ function extractPlan(text) {
  *   have must list it under beforeBuilding — and, when given, their
  *   dashboards and saved theme names (a target or theme must be one of them);
  *   context.cell: a plan for one cell of a dashboard being edited
- *   (consolidation Phase 2b) — exactly one widget, nothing else.
+ *   (consolidation Phase 2b) — exactly one widget, nothing else;
+ *   context.bot: a plan for one bot (Phase 2c-1) — exactly one new bot.
  * @returns {{ valid: boolean, errors: string[], warnings: string[] }}
  */
 function validatePlan(plan, context = {}) {
@@ -378,6 +379,18 @@ function validatePlan(plan, context = {}) {
     if (widgets.length !== 1 || pieces.length !== 1 || target) {
       errors.push(
         "A plan for one cell is one widget — no bots, theme, layout or dashboard.",
+      );
+    }
+  }
+  // One bot (Phase 2c-1): saved on the dashboard it names, or Unassigned —
+  // exactly one new bot, nothing else.
+  if (context.bot && Array.isArray(pieces)) {
+    const bots = pieces.filter(
+      (p) => p && p.kind === "bot" && p.source === "new",
+    );
+    if (bots.length !== 1 || pieces.length !== 1) {
+      errors.push(
+        "A plan for one bot is one new bot — no widgets, theme or layout.",
       );
     }
   }
