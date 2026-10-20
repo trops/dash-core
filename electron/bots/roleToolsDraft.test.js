@@ -1,6 +1,6 @@
 /**
- * roleToolsDraft.test.js — the Builder drafts bots onto dashboards and the
- * Planner/Builder list dashboards (create-entry CRE-011, slice 3b-2).
+ * roleToolsDraft.test.js — the Planner/Builder list dashboards (create-entry
+ * CRE-011, slice 3b-2); the Builder no longer drafts bots (Phase 2c-2).
  */
 "use strict";
 
@@ -32,22 +32,6 @@ function deps(over = {}) {
     providerTools: () => [],
     askRole: async () => ({ text: "", isError: false }),
     listDashboards: () => DASHBOARDS,
-    draftBot: ({ callerId, dashboard, proposal }) => {
-      const ws = DASHBOARDS.find(
-        (d) =>
-          d.id === dashboard ||
-          d.name.toLowerCase() === dashboard.toLowerCase(),
-      );
-      if (!ws) return { error: `No dashboard "${dashboard}".` };
-      const res = buildDraft({
-        proposal,
-        sources: [],
-        team: [],
-        workspaceId: ws.id,
-        leadId: callerId,
-      });
-      return res.draft ? { ...res, dashboardName: ws.name } : res;
-    },
     ...over,
   };
 }
@@ -108,53 +92,16 @@ describe("list_themes and dashboard themes (5e-2b)", () => {
   });
 });
 
-describe("draft_bot", () => {
-  it("drafts onto the named dashboard with its schedule and results, never 'created'", async () => {
-    const r = await handleRoleTool(deps(), as("builder"), "draft_bot", {
-      dashboard: "programmatic test",
-      name: "Daily quote",
-      instructions: "Send an encouraging quote.",
-      schedule: { cron: "0 8 * * 1-5" },
-      publishes: [{ name: "quote", label: "Quote" }],
-    });
-    assert.equal(r.isError, false);
-    assert.match(r.text, /Drafted "Daily quote"\. It is NOT created/);
-    assert.match(r.text, /the "Programmatic Test" dashboard's Bots view/);
-    assert.match(r.text, /Results it sends: quote/);
-  });
-
-  it("is auto-allowed (a draft runs nothing) and only the Builder has it", async () => {
-    assert.equal(serverForTool("draft_bot"), ROLE_SERVER);
-    const r = await handleRoleTool(deps(), as("planner"), "draft_bot", {
-      dashboard: "Mail",
-      name: "x",
-      instructions: "y",
-    });
-    assert.equal(r.isError, true);
-  });
-
-  it("an unknown dashboard or a missing one is an error", async () => {
-    let r = await handleRoleTool(deps(), as("builder"), "draft_bot", {
-      dashboard: "Nope",
-      name: "x",
-      instructions: "y",
-    });
-    assert.match(r.text, /No dashboard "Nope"/);
-    r = await handleRoleTool(deps(), as("builder"), "draft_bot", {
-      name: "x",
-      instructions: "y",
-    });
-    assert.match(r.text, /needs the dashboard/);
-  });
-
-  it("without the host, drafting isn't available", async () => {
-    const r = await handleRoleTool(
-      deps({ draftBot: undefined }),
-      as("builder"),
-      "draft_bot",
-      { dashboard: "Mail", name: "x", instructions: "y" },
-    );
-    assert.match(r.text, /Drafting bots isn't available here/);
+describe("draft_bot (removed, Phase 2c-2)", () => {
+  it("no role has it — bots are saved by Dash from the plan", async () => {
+    for (const role of ["builder", "planner"]) {
+      const r = await handleRoleTool(deps(), as(role), "draft_bot", {
+        dashboard: "Sales",
+        name: "X",
+        instructions: "x",
+      });
+      assert.equal(r.isError, true, role);
+    }
   });
 });
 

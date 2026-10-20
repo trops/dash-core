@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Button3, ChatComposer, ChatMessage } from "@trops/dash-react";
+import { Button, Button3, ChatComposer, ChatMessage } from "@trops/dash-react";
 import { runTeamRole } from "../../utils/teamRoles";
 import { askTeamLead } from "../../utils/leadAsk";
 import { useTeamLeads } from "../AiAssistant/components/RecipientPicker";
@@ -9,6 +9,8 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { extractPlan } from "../../utils/teamPlan";
 import { runCostLabel } from "../../utils/runCostLabel";
 import { withoutPlan } from "./CreatePlanStep";
+import { extractHandoff, withoutHandoff } from "../../utils/handoff";
+import { planWithDashTeam } from "../../utils/openCreate";
 import {
   questionRequest,
   leadQuestion,
@@ -29,6 +31,11 @@ import {
  * goes straight to it (bots.askLead) and the conversation stays with it,
  * saved with the conversation so a reopened one carries on with the lead.
  *
+ * A lead asked to make something hands it to the Dash team (consolidation
+ * Phase 2c-2): its answer shows "Plan this with the Dash team" — here in
+ * Create, `onHandoff(handoff, lead)` starts it; elsewhere (the dock) it opens
+ * Create.
+ *
  * New: `question` (+ `recipient`). Reopened from Recent: `recentId`.
  */
 export const AskStep = ({
@@ -36,6 +43,7 @@ export const AskStep = ({
   recentId = null,
   recipient = null,
   onOpenPlan = null,
+  onHandoff = null,
 }) => {
   // [{ who: "you" | "planner" | "lead" | "note", text, meta?, plan? }]
   const [messages, setMessages] = useState(
@@ -135,10 +143,12 @@ export const AskStep = ({
       return;
     }
     if (to) {
+      const handoff = extractHandoff(res.output);
       add({
         who: "lead",
-        text: res.output || "(no answer)",
+        text: withoutHandoff(res.output) || "(no answer)",
         meta: runCostLabel(res),
+        ...(handoff ? { handoff } : {}),
       });
       return;
     }
@@ -250,7 +260,20 @@ export const AskStep = ({
                 meta={m.meta}
                 testId="ask-answer"
                 footer={
-                  m.plan && onOpenPlan ? (
+                  m.handoff && lead ? (
+                    <Button
+                      size="sm"
+                      title="Plan this with the Dash team"
+                      onClick={() =>
+                        onHandoff
+                          ? onHandoff(m.handoff, lead)
+                          : planWithDashTeam(m.handoff, {
+                              workspaceId: lead.dashboardId ?? null,
+                              from: lead.leadName,
+                            })
+                      }
+                    />
+                  ) : m.plan && onOpenPlan ? (
                     <Button3
                       size="sm"
                       title="Open as a plan"
@@ -266,7 +289,8 @@ export const AskStep = ({
           {busy ? (
             <ChatMessage role="reply" label={replyLabel} streaming>
               <span className="whitespace-pre-wrap">
-                {(lead ? soFar : withoutPlan(soFar)) || "Looking…"}
+                {(lead ? withoutHandoff(soFar) : withoutPlan(soFar)) ||
+                  "Looking…"}
               </span>
             </ChatMessage>
           ) : null}

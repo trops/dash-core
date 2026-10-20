@@ -25,7 +25,6 @@ import {
   buildTriggerOptions,
 } from "./eventCatalog";
 import { dashboardOptions, offTeamSubscriptions } from "../../Bots/teamUtils";
-import { DraftGaps } from "../../Bots/DraftGaps";
 import { resultNameFor } from "./resultNames";
 import { BotBudgetSection } from "../../Bots/BotBudgetSection";
 import { cleanIpcError } from "../../../utils/errorUtils";
@@ -172,21 +171,11 @@ export const BotDetail = ({
   // Optional "Discard changes" (the Bots view's inline Settings tab): the
   // host resets the form; enabled only with unsaved changes.
   onDiscard = null,
-  // A lead's draft being reviewed: "Discard draft" beside Create (the host
-  // asks first and removes the draft).
-  onDiscardDraft = null,
-  // A team lead's suggested providers/tools for a drafted bot (TEAM-005):
-  // [{ provider, tools, toolsChecked }]. Nothing is selected until the user
-  // accepts a suggestion (or ticks it themselves).
-  suggestions = null,
-  // Capabilities the draft lacks, with providers the lead's find_providers
-  // suggested (bot-capabilities CAP-004/005): [{ need, suggestions }].
-  gaps = null,
   // In a dashboard's Bots view: a new bot can show its results on that
   // dashboard (TEAM-012). Passed to onSave as { showOnDashboard }.
   canShowOnDashboard = false,
-  // Optional content at the top of the form's scroll area (e.g. a lead's
-  // draft banner) — scrolls with the form instead of staying pinned above it.
+  // Optional content at the top of the form's scroll area — scrolls with
+  // the form instead of staying pinned above it.
   header = null,
   // The edit panel's bot tabs (create-entry PRD CRE-006 AC5): show only
   // "instructions" (name, instructions, team, model, schedule, events,
@@ -518,35 +507,6 @@ export const BotDetail = ({
     });
   };
 
-  // Accept a lead's suggestion: turn the provider on with exactly the
-  // suggested tools — or every tool when they couldn't be checked.
-  const acceptSuggestion = (sug) => {
-    if (!sug || !sug.provider) return;
-    setSelectedServers((prev) =>
-      prev.includes(sug.provider) ? prev : [...prev, sug.provider],
-    );
-    const src = availableServers.find((x) => x.serverName === sug.provider);
-    const known = src && Array.isArray(src.tools) ? src.tools : null;
-    const picked =
-      sug.toolsChecked && known && Array.isArray(sug.tools)
-        ? sug.tools.filter((t) => known.includes(t))
-        : null;
-    setToolSelections((prev) => {
-      const copy = { ...prev };
-      if (picked && picked.length && picked.length < known.length) {
-        copy[sug.provider] = picked;
-      } else {
-        delete copy[sug.provider];
-      }
-      return copy;
-    });
-  };
-  const suggestionFor = (serverName) =>
-    (suggestions || []).find((x) => x.provider === serverName) || null;
-  const pendingSuggestions = (suggestions || []).filter(
-    (x) => !selectedServers.includes(x.provider),
-  );
-
   const setAllTools = (serverName, on) => {
     setToolSelections((prev) => {
       const copy = { ...prev };
@@ -759,34 +719,10 @@ export const BotDetail = ({
                 Providers. The bot starts any that aren&apos;t running when it
                 runs.
               </span>
-              {pendingSuggestions.length ? (
-                <div>
-                  <Button3
-                    title="Accept all suggestions"
-                    size="xs"
-                    onClick={() => pendingSuggestions.forEach(acceptSuggestion)}
-                  />
-                </div>
-              ) : null}
-              {gaps && gaps.length ? (
-                <DraftGaps
-                  gaps={gaps}
-                  toolSources={toolSources}
-                  selectedServers={selectedServers}
-                  onUse={(providerName) =>
-                    acceptSuggestion({
-                      provider: providerName,
-                      tools: [],
-                      toolsChecked: false,
-                    })
-                  }
-                />
-              ) : null}
               {availableServers.length ? (
                 <div className="flex flex-col gap-1">
                   {availableServers.map((s) => {
                     const on = selectedServers.includes(s.serverName);
-                    const sug = on ? null : suggestionFor(s.serverName);
                     return (
                       <div key={s.serverName} className="flex flex-col gap-1">
                         <div className="flex flex-row items-center justify-between gap-3">
@@ -797,30 +733,6 @@ export const BotDetail = ({
                           />
                           <span className="text-xs opacity-50">{s.status}</span>
                         </div>
-                        {sug ? (
-                          <div className="flex flex-row flex-wrap items-center gap-2 pl-7">
-                            <span className="text-xs text-amber-300">
-                              Suggested by the lead
-                            </span>
-                            {sug.tools && sug.tools.length ? (
-                              <span className="text-xs opacity-60 font-mono">
-                                {sug.tools.join(", ")}
-                              </span>
-                            ) : null}
-                            <Button3
-                              title={
-                                sug.toolsChecked &&
-                                sug.tools &&
-                                sug.tools.length
-                                  ? "Accept"
-                                  : "Accept (all tools)"
-                              }
-                              size="xs"
-                              ariaLabel={`Accept ${s.label}`}
-                              onClick={() => acceptSuggestion(sug)}
-                            />
-                          </div>
-                        ) : null}
                         {on ? (
                           <div className="flex flex-col gap-1 pl-7 pb-2">
                             {s.tools && s.tools.length ? (
@@ -1216,14 +1128,6 @@ export const BotDetail = ({
             ) : null}
             {isCreating && onCancel ? (
               <Button title="Cancel" onClick={onCancel} size="sm" />
-            ) : null}
-            {isCreating && onDiscardDraft ? (
-              <Button
-                title="Discard draft"
-                onClick={onDiscardDraft}
-                size="sm"
-                disabled={saving}
-              />
             ) : null}
             {onDiscard && !isCreating ? (
               <Button

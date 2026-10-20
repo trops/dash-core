@@ -112,7 +112,7 @@ Nothing plans the three pieces together, so the user has to design the wiring th
 
 ### TD-006: The lead's drafts can run on widget events (P1) — Release 2
 
-**Status:** In Progress
+**Status:** Superseded (consolidation Phase 2c-2) — the lead no longer drafts bots; it hands making them to the Dash team, whose plans already wire widget events to bots (TD-008). See bot-teams TEAM-005.
 
 **Acceptance Criteria:**
 
@@ -193,6 +193,6 @@ Nothing plans the three pieces together, so the user has to design the wiring th
 
 ## Revision History
 
-| Version | Date       | Author             | Changes                                             |
-| ------- | ---------- | ------------------ | --------------------------------------------------- |
+| Version | Date       | Author            | Changes                                              |
+| ------- | ---------- | ----------------- | ---------------------------------------------------- |
 | 1.0     | 2026-10-10 | John Giatropoulos | Initial PRD; Release 1 (TD-001 – TD-003) in progress |

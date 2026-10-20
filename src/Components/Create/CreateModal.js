@@ -43,6 +43,12 @@ import { foldCreate } from "./CreateDockPanel";
 import { PlanMenu } from "./PlanMenu";
 import { pickType } from "./autoType";
 import { themeFromPrompt } from "./themeFromPrompt";
+import { teamContext, teamLine, contextRequest } from "./teamContext";
+import { createType } from "../../utils/handoff";
+import {
+  useRegistryAuthGate,
+  isRegistryAuthError,
+} from "../../hooks/useRegistryAuthGate";
 import {
   BOT_STEPS,
   botStepIndex,
@@ -178,6 +184,9 @@ export const CreateModal = ({
   cell = null,
   // What to ask, filled in (a lead's hand-off).
   initialPrompt = "",
+  // A lead's hand-off (2c-2): { note, from } — its note goes to the Scout
+  // and the Planner with what Dash knows about the dashboard.
+  initialContext = null,
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const appContext = useContext(AppContext) || {};
@@ -186,6 +195,9 @@ export const CreateModal = ({
     grow: false,
   });
   const ai = useAiBackend();
+  // Reading a registry bot's package needs the user signed in to the
+  // registry (searching doesn't): ask, then carry on.
+  const { ensureAuthed, authGate } = useRegistryAuthGate();
 
   const [type, setType] = useState(normalizeCreateType(initialType));
   // Type: Auto (phase 5c): { prompt } while it works out what to make, and
@@ -214,6 +226,11 @@ export const CreateModal = ({
   const [planStep, setPlanStep] = useState(null);
   // The plan's { recentId, busy }, for Fold (4e-2).
   const [planInfo, setPlanInfo] = useState(null);
+  // A lead's hand-off note ({ note, from }), shown and passed on (2c-2).
+  const [leadContext, setLeadContext] = useState(initialContext);
+  // The dashboard a Type: Dashboard plan changes (the open one, or the
+  // one a lead handed off for).
+  const [planDashboardId, setPlanDashboardId] = useState(workspaceId);
   // Where a new bot goes (Phase 2c-1): a dashboard's id, or "" for none.
   const [whereId, setWhereId] = useState(
     workspaceId != null ? String(workspaceId) : "",
@@ -284,6 +301,8 @@ export const CreateModal = ({
     setType(normalizeCreateType(initialType));
     setPrompt(initialPrompt || "");
     setWhereId(workspaceId != null ? String(workspaceId) : "");
+    setPlanDashboardId(workspaceId);
+    setLeadContext(initialContext);
     setBotForm(null);
     setBuilderStep(null);
     setAskStep(null);
@@ -299,6 +318,7 @@ export const CreateModal = ({
     initialRecentId,
     initialSeed,
     initialPrompt,
+    initialContext,
     workspaceId,
   ]);
 
@@ -372,9 +392,10 @@ export const CreateModal = ({
     });
   };
 
-  // Other bots → "Another bot" events in the bot form's picker.
+  // Other bots → "Another bot" events in the bot form's picker, and what's
+  // on a dashboard for the team context (2c-2).
   useEffect(() => {
-    if (!botForm) return undefined;
+    if (!open) return undefined;
     let alive = true;
     const api = typeof window !== "undefined" ? window.mainApi : null;
     if (!api?.bots?.list) return undefined;
@@ -386,7 +407,7 @@ export const CreateModal = ({
     return () => {
       alive = false;
     };
-  }, [botForm]);
+  }, [open, botForm]);
 
   if (!open) return null;
 
@@ -584,6 +605,51 @@ export const CreateModal = ({
       name: (ws && (ws.name || ws.label)) || `Dashboard ${whereId}`,
     };
   })();
+  // What Dash knows about a dashboard (its widgets and bots) — told to the
+  // Scout and Planner with a lead's note (2c-2). Read from Dash's own data.
+  const workspaceOf = (id) =>
+    id == null || id === ""
+      ? null
+      : (workspaces || []).find((w) => w && String(w.id) === String(id)) ||
+        null;
+  const teamOn = (id) => teamContext(workspaceOf(id), bots);
+  // A bot's: where it goes. A dashboard plan's: only for a hand-off (its
+  // dashboard is the one the lead works for).
+  const botContext = (id) => contextRequest(teamOn(id), leadContext);
+  const dashContext = leadContext
+    ? contextRequest(teamOn(planDashboardId), leadContext)
+    : "";
+  // A lead's widget or layout hand-off changes its dashboard: said up top.
+  const handedOffTitle =
+    !cell && !isBot && leadContext && type === "dashboard"
+      ? `Changes to ${
+          (workspaceOf(planDashboardId) || {}).name || "the dashboard"
+        }`
+      : "";
+  // Said on the start screen: the lead's note, and the dashboard's team.
+  const contextNote =
+    !cell && leadContext && leadContext.note
+      ? `From the ${leadContext.from || "team lead"}: ${leadContext.note}`
+      : "";
+  const contextTeam = cell
+    ? ""
+    : isBot
+      ? teamLine(teamOn(whereId))
+      : leadContext
+        ? teamLine(teamOn(planDashboardId))
+        : "";
+  // A lead's hand-off from Ask, here in Create: the start screen, filled in
+  // — the request, its type, that dashboard and the lead's note.
+  const takeHandoff = (handoff, lead) => {
+    setAskStep(null);
+    setType(createType(handoff.type));
+    setPrompt(handoff.request);
+    setLeadContext({ note: handoff.note || "", from: lead.leadName || "" });
+    if (lead.dashboardId != null) {
+      setWhereId(String(lead.dashboardId));
+      setPlanDashboardId(lead.dashboardId);
+    }
+  };
   // A bot the Scout found, as the plan's one bot (a copy): one of the
   // user's (by id), or a registry dashboard package's (by name).
   const useBot = async (match) => {
@@ -592,15 +658,26 @@ export const CreateModal = ({
     // can take a moment) — no flash of the start screen.
     const api = window.mainApi || {};
     let piece = null;
+    // Why a found bot couldn't be used, said in the plan's conversation.
+    let why = "";
     try {
       if (match.source === "Registry") {
         const pkgName = String(match.package || "")
           .replace(/^@[^/]+\//, "")
           .trim();
-        const res =
+        const read = () =>
           pkgName && api.dashboardConfig && api.dashboardConfig.getPackageConfig
-            ? await api.dashboardConfig.getPackageConfig(pkgName)
+            ? api.dashboardConfig.getPackageConfig(pkgName)
             : null;
+        let res = await read();
+        if (res && !res.success && isRegistryAuthError(res.error)) {
+          const signedIn = await ensureAuthed({
+            message: `Sign in to the Dash registry to use ${match.name}.`,
+          });
+          if (signedIn) res = await read();
+          else
+            why = `You didn't sign in to the registry, so ${match.name} couldn't be read — the Planner plans one like it.`;
+        }
         const config = res && res.success ? res.config : null;
         piece = config ? pieceFromStarter(config, {}, match.name) : null;
       } else if (api.bots && api.bots.list) {
@@ -626,6 +703,9 @@ export const CreateModal = ({
     setPlanStep({
       prompt: `${asked}\n\nBase it on the ${match.name} bot (${match.package}).`,
       bot: { where: botWhere },
+      note:
+        why ||
+        `${match.name} couldn't be read — the Planner plans one like it.`,
     });
   };
 
@@ -799,7 +879,11 @@ export const CreateModal = ({
               id="create-prompt"
               aria-label="What do you want to make?"
               value={prompt}
-              onChange={(value) => setPrompt(value)}
+              onChange={(value) => {
+                setPrompt(value);
+                // A cleared request ends a hand-off (its note no longer fits).
+                if (!String(value || "").trim()) setLeadContext(null);
+              }}
               placeholder={PROMPT_PLACEHOLDER[type] || ""}
               rows={3}
               autoFocus
@@ -823,7 +907,12 @@ export const CreateModal = ({
                   label="Type"
                   value={type}
                   options={createTypes()}
-                  onChange={setType}
+                  onChange={(next) => {
+                    // Another type is another request: the hand-off's note
+                    // stays with the one it was for.
+                    if (next !== type) setLeadContext(null);
+                    setType(next);
+                  }}
                 />
               )}
               {isBot ? (
@@ -855,6 +944,17 @@ export const CreateModal = ({
                 ? "You see it running before it's installed — nothing on the dashboard changes until you say so."
                 : CREATE_HINT[type]}
             </span>
+          ) : null}
+          {/* What goes along to the Dash team (2c-2): the lead's note, and
+              what's on the dashboard — nothing hidden from the user. */}
+          {contextNote || contextTeam ? (
+            <div
+              className={`flex flex-col gap-1 text-xs ${muted}`}
+              data-testid="create-context"
+            >
+              {contextNote ? <span>{contextNote}</span> : null}
+              {contextTeam ? <span>{contextTeam}</span> : null}
+            </div>
           ) : null}
         </div>
 
@@ -942,6 +1042,7 @@ export const CreateModal = ({
       prompt={scoutStep.prompt}
       cell={!!cell}
       bot={scoutStep.bot ? { where: botWhere ? botWhere.name : null } : null}
+      context={scoutStep.bot ? botContext(whereId) : ""}
       onBuildNew={() => {
         const { detail } = scoutStep;
         setScoutStep(null);
@@ -975,11 +1076,19 @@ export const CreateModal = ({
       prompt={planStep.prompt}
       recentId={planStep.recentId || null}
       seed={planStep.seed || null}
-      openDashboardId={cell ? null : workspaceId}
+      note={planStep.note || ""}
+      openDashboardId={cell ? null : planDashboardId}
       cell={cell ? { label: cellLabel } : null}
       onCellDone={cell ? placeInCell : null}
       onDiscard={cell ? close : null}
       bot={planStep.bot || null}
+      context={
+        planStep.bot
+          ? botContext(planStep.bot.where ? planStep.bot.where.id : null)
+          : cell
+            ? ""
+            : dashContext
+      }
       onOpenBot={(botId) => {
         close();
         window.dispatchEvent(
@@ -1006,6 +1115,7 @@ export const CreateModal = ({
         question={askStep.question || ""}
         recentId={askStep.recentId || null}
         recipient={askStep.recipient || null}
+        onHandoff={takeHandoff}
         onOpenPlan={(seed) => {
           setAskStep(null);
           setPlanStep({ prompt: "", seed });
@@ -1155,8 +1265,9 @@ export const CreateModal = ({
                 ariaLabel="Back"
               />
             ) : null}
-            {stepTitle || isBot ? (
-              // A bot's start screen wears the same breadcrumb as its steps.
+            {stepTitle || isBot || handedOffTitle ? (
+              // A bot's start screen (or a hand-off's) wears the same
+              // breadcrumb as its steps.
               <nav
                 aria-label="Where you are"
                 className="flex items-center gap-2 text-lg"
@@ -1167,6 +1278,7 @@ export const CreateModal = ({
                 </span>
                 <span className="font-semibold">
                   {stepTitle ||
+                    handedOffTitle ||
                     (botWhere ? `Bot for ${botWhere.name}` : "New bot")}
                 </span>
                 {autoPick && !autoStep ? (
@@ -1265,6 +1377,7 @@ export const CreateModal = ({
             </Stepper>
           </div>
         ) : null}
+        {authGate}
         {question ||
           builder ||
           planner ||

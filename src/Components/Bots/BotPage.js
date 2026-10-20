@@ -42,7 +42,7 @@ import { useBotContacts } from "./useBotContacts";
  *   ("Open Settings › Providers") — the app's settings, not this bot's
  * @param {React.ReactNode} [actions]  more header buttons (the Bots view's ⋯)
  * @param {React.ReactNode} [below]  shown under the header (that menu's row)
- * @param {object} [chatProps]  more Conversation props (a lead's drafts)
+ * @param {object} [chatProps]  more Conversation props for BotChat
  */
 export const BOT_PAGE_TABS = [
   { value: "conversation", label: "Conversation" },

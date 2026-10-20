@@ -11,6 +11,12 @@ import {
   toPlainText,
 } from "./botConversation";
 
+test("toPlainText drops a lead's hand-off marker (2c-2)", () => {
+  expect(
+    toPlainText('Sure.\n<handoff>{"type":"bot","request":"x"}</handoff>'),
+  ).toBe("Sure.");
+});
+
 test("toPlainText drops Markdown markers, quote marks too", () => {
   expect(
     toPlainText('## Today\n> "Keep going."\n> — Someone\n**Done** `now`'),

@@ -12,7 +12,6 @@ import {
   ButtonIcon,
   ConfirmationModal,
   ResizeHandle,
-  SectionLabel,
   SegmentedControl,
   SelectInput,
   ThemeContext,
@@ -23,7 +22,6 @@ import { TeamChart } from "./TeamChart";
 import { BotFlowSummary } from "./BotFlowSummary";
 import { BotPage } from "./BotPage";
 import { BotDetail } from "../Settings/details/BotDetail";
-import { DraftBanner } from "./DraftBanner";
 import { TeamImportReview } from "./TeamImportReview";
 import { PublishBotDialog } from "./PublishBotDialog";
 import { TeamBudgetDialog } from "./TeamBudgetDialog";
@@ -44,8 +42,9 @@ import {
  *
  * Left: the team (lead pinned, then members, status dots, + Add bot).
  * Right: the selected bot's page (BotPage, app-navigation NAV-016 AC6 — the
- * same page as Manage › Bots) with this team's actions under ⋯; a lead's
- * draft or a new bot gets the bot form to save it first. Leaving unsaved
+ * same page as Manage › Bots) with this team's actions under ⋯; a new bot
+ * gets the bot form to save it first. A lead asked to make something hands
+ * it to the Dash team (its answer's button opens Create, Phase 2c-2). Leaving unsaved
  * Settings edits asks first. Narrow windows swap the team list for a bot
  * picker.
  *
@@ -61,9 +60,6 @@ import {
  *   it, through the unsaved-changes guard.
  */
 const NEW_BOT = "__new__";
-// A lead's drafted bot (TEAM-005) is selected as "draft:<id>".
-const DRAFT_PREFIX = "draft:";
-const isDraftId = (id) => typeof id === "string" && id.startsWith(DRAFT_PREFIX);
 const NARROW_PX = 900;
 const DOT = STATUS_DOT;
 
@@ -168,7 +164,6 @@ export const BotsView = ({
   const lead = team ? team.lead : null;
   const members = team ? team.members : [];
   const all = [lead, ...members].filter(Boolean);
-  const drafts = (team && team.drafts) || [];
 
   const focusTarget =
     focus && all.some((b) => b.id === focus.botId) ? focus : null;
@@ -269,27 +264,14 @@ export const BotsView = ({
   // Fall back to the lead when the selection disappears (deleted elsewhere).
   useEffect(() => {
     if (selectedId === NEW_BOT) return;
-    // A draft saved or discarded elsewhere → back to the lead.
-    if (isDraftId(selectedId)) {
-      if (!drafts.some((d) => DRAFT_PREFIX + d.id === selectedId)) {
-        setSelectedId(
-          (lead && lead.id) || (members[0] && members[0].id) || null,
-        );
-        setTab("conversation");
-      }
-      return;
-    }
     if (!all.some((b) => b.id === selectedId)) {
       setSelectedId((lead && lead.id) || (members[0] && members[0].id) || null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [team && team.bots, team && team.drafts]);
+  }, [team && team.bots]);
 
-  const selectedDraft = isDraftId(selectedId)
-    ? drafts.find((d) => DRAFT_PREFIX + d.id === selectedId) || null
-    : null;
   const selected =
-    selectedId === NEW_BOT || isDraftId(selectedId)
+    selectedId === NEW_BOT
       ? null
       : all.find((b) => b.id === selectedId) || null;
   const isLead = !!(selected && selected.role === "lead");
@@ -304,13 +286,13 @@ export const BotsView = ({
     guarded(() => {
       setDirty(false);
       setSelectedId(id);
-      setTab(id === NEW_BOT || isDraftId(id) ? "settings" : "conversation");
+      setTab(id === NEW_BOT ? "settings" : "conversation");
       reopenPage();
       setMenuOpen(false);
       setImportPreview(null);
       setRegistryOpen(false);
-      // A new bot or a draft has no summary — its form opens (diagram).
-      if (id === NEW_BOT || isDraftId(id)) setDetailOpen(true);
+      // A new bot has no summary — its form opens (diagram).
+      if (id === NEW_BOT) setDetailOpen(true);
     });
 
   // Diagram: open a bot's tab beside the diagram / back to its summary.
@@ -329,8 +311,8 @@ export const BotsView = ({
     guarded(() => {
       setDirty(false);
       setDetailOpen(false);
-      // A new bot / draft has no summary — back to the lead (or first bot).
-      if (selectedId === NEW_BOT || isDraftId(selectedId)) {
+      // A new bot has no summary — back to the lead (or first bot).
+      if (selectedId === NEW_BOT) {
         setSelectedId(
           (lead && lead.id) || (members[0] && members[0].id) || null,
         );
@@ -443,72 +425,11 @@ export const BotsView = ({
     }
     setDirty(false);
     afterChange();
-    // Saving a lead's draft makes it a real bot — the draft goes away.
-    if (selectedDraft && team && team.dismissDraft) {
-      await team.dismissDraft(selectedDraft.id);
-    }
-    if (
-      (selectedId === NEW_BOT || isDraftId(selectedId)) &&
-      saved &&
-      saved.id
-    ) {
+    if (selectedId === NEW_BOT && saved && saved.id) {
       setSelectedId(saved.id);
       setTab("conversation");
     }
     return saved;
-  };
-
-  // Discarding a draft (row ×, the draft form's button, its banner) asks
-  // first; the lead can draft it again if asked.
-  const [discardTarget, setDiscardTarget] = useState(null);
-  const discardDraft = () => {
-    if (selectedDraft) setDiscardTarget(selectedDraft);
-  };
-  const confirmDiscardDraft = async () => {
-    const d = discardTarget;
-    setDiscardTarget(null);
-    if (!d || !team || !team.dismissDraft) return;
-    await team.dismissDraft(d.id);
-    if (selectedId === DRAFT_PREFIX + d.id) {
-      setDirty(false);
-      setSelectedId((lead && lead.id) || (members[0] && members[0].id) || null);
-      setTab("conversation");
-      setDetailOpen(false);
-    }
-  };
-
-  const draftRow = (d) => {
-    const id = DRAFT_PREFIX + d.id;
-    const active = id === selectedId;
-    const name = (d.definition && d.definition.name) || "draft";
-    return (
-      <div
-        key={id}
-        className={`w-full rounded-lg flex flex-row items-center gap-1 border ${
-          active ? `${selectedBg} ${selectedBorder}` : "border-transparent"
-        }`}
-      >
-        <button
-          type="button"
-          onClick={() => select(id)}
-          aria-current={active ? "true" : undefined}
-          className="flex-1 min-w-0 text-left px-3 py-2 flex flex-col"
-        >
-          <span className="text-sm font-medium truncate">{name}</span>
-          <span className={`text-xs ${muted}`}>
-            {d.author === "dash-team"
-              ? "Drafted by the Dash team · not created yet"
-              : "Drafted by the lead · not created yet"}
-          </span>
-        </button>
-        <ButtonIcon
-          icon="xmark"
-          size="sm"
-          ariaLabel={`Discard draft ${name}`}
-          onClick={() => setDiscardTarget(d)}
-        />
-      </div>
-    );
   };
 
   const removeFromTeam = async () => {
@@ -829,21 +750,13 @@ export const BotsView = ({
           No bots on this dashboard yet.
         </div>
       ) : null}
-      {drafts.length ? (
-        <>
-          <div className="px-2 pt-3 pb-1">
-            <SectionLabel text="Drafts" />
-          </div>
-          {drafts.map(draftRow)}
-        </>
-      ) : null}
       <div className="flex-1" />
       {teamActions}
       <Button title="Add bot" size="sm" onClick={() => select(NEW_BOT)} />
     </nav>
   );
 
-  // Diagram mode (TEAM-014): the team as an org chart; drafts, team actions
+  // Diagram mode (TEAM-014): the team as an org chart; team actions
   // and + Add bot stay reachable underneath.
   const teamDiagram = (
     <section
@@ -887,12 +800,6 @@ export const BotsView = ({
           onSaveTrigger={saveTrigger}
           onRemoveTrigger={removeTriggerFrom}
         />
-        {drafts.length ? (
-          <div className="flex flex-col gap-1 px-2 pt-2">
-            <SectionLabel text="Drafts" />
-            {drafts.map(draftRow)}
-          </div>
-        ) : null}
       </div>
       <div className={`px-4 py-3 border-t ${hairline}`}>{teamActions}</div>
     </section>
@@ -914,10 +821,6 @@ export const BotsView = ({
           onChange={(v) => select(v)}
           options={[
             ...all.map((b) => ({ value: b.id, label: b.name })),
-            ...drafts.map((d) => ({
-              value: DRAFT_PREFIX + d.id,
-              label: `${d.definition && d.definition.name} (draft)`,
-            })),
             { value: NEW_BOT, label: "+ Add bot" },
           ]}
         />
@@ -931,9 +834,7 @@ export const BotsView = ({
         ["activity", "Activity"],
         ["settings", "Settings"],
       ]
-    : selectedDraft
-      ? [["settings", "Review draft"]]
-      : [["settings", "New bot"]];
+    : [["settings", "New bot"]];
 
   return (
     <div
@@ -1018,14 +919,6 @@ export const BotsView = ({
                 onTabChange={setTab}
                 onOpenSettings={onOpenSettings}
                 onClose={sideBySide ? closeDetail : null}
-                chatProps={
-                  isLead
-                    ? {
-                        drafts,
-                        onOpenDraft: (id) => select(DRAFT_PREFIX + id),
-                      }
-                    : null
-                }
                 actions={
                   <Button3
                     title="⋯"
@@ -1071,9 +964,7 @@ export const BotsView = ({
                   ) : null
                 }
               />
-            ) : selectedId &&
-              selectedId !== NEW_BOT &&
-              !isDraftId(selectedId) ? (
+            ) : selectedId && selectedId !== NEW_BOT ? (
               // Just created: shown once the team has it (not the empty form).
               <p
                 className={`p-5 text-sm ${muted}`}
@@ -1082,15 +973,11 @@ export const BotsView = ({
                 Loading…
               </p>
             ) : (
-              // A lead's draft or a new bot: the form, to save it first.
+              // A new bot: the form, to save it first.
               <>
                 <div className="flex flex-row items-start justify-between gap-4 px-5 pt-4">
                   <div className="min-w-0">
-                    <h2 className="text-lg font-semibold truncate">
-                      {selectedDraft
-                        ? selectedDraft.definition.name
-                        : "New bot"}
-                    </h2>
+                    <h2 className="text-lg font-semibold truncate">New bot</h2>
                     <div className={`text-sm ${muted}`}>
                       {`Joins the ${workspace ? workspace.name : "dashboard"} team`}
                     </div>
@@ -1114,28 +1001,14 @@ export const BotsView = ({
                     aria-selected="true"
                     className="py-2.5 text-sm font-medium -mb-px border-b-2 border-indigo-400"
                   >
-                    {selectedDraft ? "Review draft" : "New bot"}
+                    New bot
                   </button>
                 </div>
                 <div className="flex-1 min-h-0 flex flex-col">
                   <BotDetail
-                    // The lead's banner scrolls with the form (not pinned).
-                    header={
-                      selectedDraft ? (
-                        <DraftBanner
-                          draft={selectedDraft}
-                          onDiscard={discardDraft}
-                          onOpenSettings={onOpenSettings}
-                        />
-                      ) : null
-                    }
                     key={`${selectedId || NEW_BOT}-${formKey}`}
-                    bot={(selectedDraft && selectedDraft.definition) || null}
+                    bot={null}
                     isCreating
-                    suggestions={
-                      selectedDraft ? selectedDraft.suggestions : null
-                    }
-                    gaps={selectedDraft ? selectedDraft.gaps : null}
                     defaultWorkspaceId={workspace ? workspace.id : null}
                     providers={providers}
                     workspaces={workspaces}
@@ -1144,7 +1017,6 @@ export const BotsView = ({
                     onSave={saveBot}
                     canShowOnDashboard={!!workspace}
                     onDirtyChange={setDirty}
-                    onDiscardDraft={selectedDraft ? discardDraft : null}
                     onDiscard={() => {
                       setDirty(false);
                       setFormKey((k) => k + 1);
@@ -1172,22 +1044,6 @@ export const BotsView = ({
           if (nav) nav();
         }}
         onCancel={() => setPendingNav(null)}
-      />
-      <ConfirmationModal
-        isOpen={!!discardTarget}
-        setIsOpen={(open) => !open && setDiscardTarget(null)}
-        title="Discard this draft?"
-        message={`"${
-          (discardTarget &&
-            discardTarget.definition &&
-            discardTarget.definition.name) ||
-          "This draft"
-        }" won't be created. Your team lead can draft it again if you ask.`}
-        confirmLabel="Discard"
-        cancelLabel="Keep draft"
-        variant="danger"
-        onConfirm={confirmDiscardDraft}
-        onCancel={() => setDiscardTarget(null)}
       />
       <ConfirmationModal
         isOpen={confirmDelete}

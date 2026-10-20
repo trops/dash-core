@@ -20,6 +20,7 @@ const {
   resolveDashboard,
   AskCap,
 } = require("../bots/teamDirectory");
+const { extractHandoff, withoutHandoff } = require("../bots/handoff");
 
 const CAP_LIMIT = 5;
 
@@ -151,8 +152,6 @@ function makeTeamToolHandlers({
         );
       }
 
-      const askedAt = Date.now();
-
       const result = await bots.askLead(lead.id, question, {
         via: "mcp",
       });
@@ -168,24 +167,14 @@ function makeTeamToolHandlers({
           }`,
         );
       }
-      // A draft the lead made during this ask (propose_bot, TEAM-005).
-      const drafts = (
-        bots.listDrafts ? bots.listDrafts(ws.id) || [] : []
-      ).filter(
-        (d) =>
-          d.leadId === lead.id && Date.parse(d.createdAt) >= askedAt - 1000,
-      );
-      const draftNote = drafts.length
-        ? "\n\n" +
-          drafts
-            .map(
-              (d) =>
-                `Draft "${d.definition.name}" is waiting for the user's review in ${name}'s Bots view (under Drafts) — it is not created until they save it.`,
-            )
-            .join("\n")
+      // Asked to make something, the lead hands it to the Dash team
+      // (Phase 2c-2): said in words here — the marker is for Dash's UI.
+      const handoff = extractHandoff(result.output);
+      const handoffNote = handoff
+        ? `\n\nThe lead suggests planning this with the Dash team: in Dash, open Create and ask for "${handoff.request}" on ${name}.`
         : "";
       return reply(
-        `Team: ${name} (lead: ${lead.name})\n\n${result.output || "(no answer)"}${draftNote}`,
+        `Team: ${name} (lead: ${lead.name})\n\n${withoutHandoff(result.output) || "(no answer)"}${handoffNote}`,
       );
     },
   };
@@ -219,7 +208,6 @@ function registerTeamTools() {
       list: () => botController.list(),
       getRuns: (id, opts) => botController.getRuns(id, opts),
       leadAvailability: (id) => botController.leadAvailability(id),
-      listDrafts: (wsId) => botController.listDrafts(wsId),
       askLead: (id, q, opts) => botController.askLead(id, q, opts),
     },
   });

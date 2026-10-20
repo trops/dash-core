@@ -32,13 +32,16 @@ describe("DashboardStage — Create screen", () => {
       /window\.addEventListener\("dash:open-create", handler\)/,
     );
     expect(source).toMatch(
-      /setCreateRequest\(\{\s*type: cell \? "widget" : d\.type \|\| "auto",\s*workspaceId: cell \? cell\.workspaceId : \(d\.workspaceId \?\? null\),\s*recentId: d\.recentId \|\| null,\s*seed: d\.seed \|\| null,\s*cell,[\s\S]{0,80}prompt: typeof d\.prompt === "string" \? d\.prompt : "",\s*\}\)/,
+      /setCreateRequest\(\{\s*type: cell \? "widget" : d\.type \|\| "auto",\s*workspaceId: cell \? cell\.workspaceId : \(d\.workspaceId \?\? null\),\s*recentId: d\.recentId \|\| null,\s*seed: d\.seed \|\| null,\s*cell,[\s\S]{0,80}prompt: typeof d\.prompt === "string" \? d\.prompt : "",[\s\S]{0,120}context:\s*d\.context && typeof d\.context === "object" \? d\.context : null,\s*\}\)/,
     );
   });
 
   test("dash:open-create can fill in what to ask (2c)", () => {
     expect(source).toMatch(
       /initialPrompt=\{createRequest \? createRequest\.prompt \|\| "" : ""\}/,
+    );
+    expect(source).toMatch(
+      /initialContext=\{\s*createRequest \? createRequest\.context \|\| null : null\s*\}/,
     );
   });
 

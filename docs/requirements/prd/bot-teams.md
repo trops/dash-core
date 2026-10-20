@@ -185,8 +185,8 @@ Bots stay a power-user feature. Multi-bot workflows remain hand-assembled and un
 
 - [x] AC1: When a dashboard is created (or first opened, for existing dashboards), Dash creates its **lead**: a bot with `role: "lead"`, named "<Dashboard> Lead", in that dashboard's team.
 - [x] AC2: The lead is **idle by default**: no schedule, no subscriptions, and no model calls until the user (or the Assistant) asks it something. An untouched lead costs $0.
-- [x] AC3: The lead introduces itself once, non-blockingly, in the Bots tab and the Activity panel: what it is, what it can do ("Ask me what the team is doing, or ask me to add a bot"), and how to turn it off. _(The "add a bot" line arrives with TEAM-005.)_
-- [x] AC4: The lead's tools are **read-only team tools** served in-process (like `memory_*`): `team_list_bots`, `team_get_bot`, `team_recent_runs` (summaries, statuses, errors), `team_memory_read`, plus `propose_bot` (TEAM-005). It has no provider (MCP) tools unless the user explicitly adds them. _(v1: a lead gets only its team tools — providers on a lead are ignored — and no engine built-ins.)_
+- [x] AC3: The lead introduces itself once, non-blockingly, in the Bots tab and the Activity panel: what it is, what it can do ("Ask me what the team is doing, or ask me to add a bot"), and how to turn it off. _(The "add a bot" line arrives with TEAM-005. Consolidation Phase 2c-2: asked to add a bot — or a widget, or a layout change — the lead hands it to the Dash team; see TEAM-005.)_
+- [x] AC4: The lead's tools are **read-only team tools** served in-process (like `memory_*`): `team_list_bots`, `team_get_bot`, `team_recent_runs` (summaries, statuses, errors), `team_memory_read`, plus `team_providers` and `find_providers` (`propose_bot`, TEAM-005, was removed in consolidation Phase 2c-2). It has no provider (MCP) tools unless the user explicitly adds them. _(v1: a lead gets only its team tools — providers on a lead are ignored — and no engine built-ins.)_
 - [x] AC5: The user can rename the lead, change its model, or **turn it off**. Turning it off removes the lead from that dashboard and stops auto-creating it there; it can be turned back on from the Bots tab.
 - [x] AC6: A dashboard has at most one lead.
 
@@ -298,7 +298,8 @@ Want me to draft a bot that follows up on renewals?"
 > so that I can grow my team without knowing how bots are configured.
 
 **Priority:** P1
-**Status:** Implemented (5a + 5b)
+**Status:** Superseded (consolidation Phase 2c-2, 2026-10-20) — the lead no longer drafts bots. Asked to make a bot, a widget or a layout change, it says the Dash team will plan it and ends its answer with a hand-off (`<handoff>{"type","request","note"}</handoff>`, `electron/bots/handoff.js` + its renderer copy). Wherever you talk to a lead — BotChat (the Bots view, a bot's page) and Ask in Create — the answer shows **Plan this with the Dash team**, which opens Create with the request and that dashboard (a bot → Create › Bot, Where = that dashboard; a widget or layout → a plan that changes it). Create shows and passes on the lead's note and what Dash itself knows there (its widgets, and each bot: what it does, when it runs, what it sends — `Create/teamContext.js`) to the Scout and the Planner, so they build on the team's bots instead of duplicating them. Dash's MCP `ask_team_lead` says the same in words. Removed: `propose_bot`, the Builder's `draft_bot`, the drafts store, its events/API/IPC, the Bots view's Drafts section and Review draft, `DraftBanner`, `DraftGaps` and the bot form's draft-only parts. `buildDraft` stays (plan builds save planned bots through it). Leads with the generated instructions upgrade on next start; edited ones are left alone.
+_(Was: Implemented (5a + 5b).)_
 
 **Acceptance Criteria:**
 
@@ -1113,23 +1114,24 @@ A draft (TEAM-005) is checked when it's drafted and checked again when it's acce
 
 ## Revision History
 
-| Version | Date       | Author | Changes                                                          |
-| ------- | ---------- | ------ | ---------------------------------------------------------------- |
-| 1.0     | 2026-10-01 | John   | Initial draft                                                    |
-| 1.1     | 2026-10-01 | John   | Resolved the six open questions (proposed answers accepted)      |
-| 1.2     | 2026-10-02 | John   | Added TEAM-011 Bots view (from the approved mockup)              |
-| 1.3     | 2026-10-02 | John   | TEAM-011 B2 (Bots view UI) implementation notes                  |
-| 1.4     | 2026-10-02 | John   | TEAM-011 gaps closed (triggers, approvals, next steps, guard)    |
-| 1.5     | 2026-10-02 | John   | TEAM-004 implemented (slice 2b: Assistant ↔ team leads)          |
-| 1.6     | 2026-10-02 | John   | TEAM-005 5a: lead drafts bots (propose_bot, Drafts in Bots view) |
-| 1.7     | 2026-10-03 | John   | TEAM-005 5b: Accept suggestions, Review draft link; Implemented  |
-| 1.8     | 2026-10-03 | John   | Answer bubbles; leads see their current drafts                   |
-| 1.9     | 2026-10-03 | John   | Text before/after a tool call no longer runs together            |
-| 1.10    | 2026-10-03 | John   | Dashboard Config restyle slice 1 (frame + list tabs)             |
-| 1.11    | 2026-10-03 | John   | Dashboard Config restyle slice 2 (card tabs, WidgetGrantRow)     |
-| 1.12    | 2026-10-06 | John   | Added TEAM-013 (message a lead directly from the Assistant)      |
-| 1.13    | 2026-10-06 | John   | TEAM-013 slice 1 implemented (picker, direct send, context)      |
-| 1.14    | 2026-10-06 | John   | TEAM-013 slice 2 (@ shortcut); TEAM-013 Implemented              |
-| 1.15    | 2026-10-08 | John   | Added TEAM-014 team diagram (from the approved mockup)           |
-| 1.16    | 2026-10-08 | John   | TEAM-014 slice 1: diagram, summary, detail beside, list avatars  |
-| 1.17    | 2026-10-08 | John   | TEAM-014 slice 2: drag to wire, trigger notes; Implemented       |
+| Version | Date       | Author | Changes                                                                                |
+| ------- | ---------- | ------ | -------------------------------------------------------------------------------------- |
+| 1.0     | 2026-10-01 | John   | Initial draft                                                                          |
+| 1.1     | 2026-10-01 | John   | Resolved the six open questions (proposed answers accepted)                            |
+| 1.2     | 2026-10-02 | John   | Added TEAM-011 Bots view (from the approved mockup)                                    |
+| 1.3     | 2026-10-02 | John   | TEAM-011 B2 (Bots view UI) implementation notes                                        |
+| 1.4     | 2026-10-02 | John   | TEAM-011 gaps closed (triggers, approvals, next steps, guard)                          |
+| 1.5     | 2026-10-02 | John   | TEAM-004 implemented (slice 2b: Assistant ↔ team leads)                                |
+| 1.6     | 2026-10-02 | John   | TEAM-005 5a: lead drafts bots (propose_bot, Drafts in Bots view)                       |
+| 1.7     | 2026-10-03 | John   | TEAM-005 5b: Accept suggestions, Review draft link; Implemented                        |
+| 1.8     | 2026-10-03 | John   | Answer bubbles; leads see their current drafts                                         |
+| 1.9     | 2026-10-03 | John   | Text before/after a tool call no longer runs together                                  |
+| 1.10    | 2026-10-03 | John   | Dashboard Config restyle slice 1 (frame + list tabs)                                   |
+| 1.11    | 2026-10-03 | John   | Dashboard Config restyle slice 2 (card tabs, WidgetGrantRow)                           |
+| 1.12    | 2026-10-06 | John   | Added TEAM-013 (message a lead directly from the Assistant)                            |
+| 1.13    | 2026-10-06 | John   | TEAM-013 slice 1 implemented (picker, direct send, context)                            |
+| 1.14    | 2026-10-06 | John   | TEAM-013 slice 2 (@ shortcut); TEAM-013 Implemented                                    |
+| 1.15    | 2026-10-08 | John   | Added TEAM-014 team diagram (from the approved mockup)                                 |
+| 1.16    | 2026-10-08 | John   | TEAM-014 slice 1: diagram, summary, detail beside, list avatars                        |
+| 1.17    | 2026-10-08 | John   | TEAM-014 slice 2: drag to wire, trigger notes; Implemented                             |
+| 1.18    | 2026-10-20 | John   | Consolidation 2c-2: TEAM-005 drafts superseded by the lead's hand-off to the Dash team |

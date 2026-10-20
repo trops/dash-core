@@ -312,6 +312,11 @@ export const CreatePlanStep = ({
   bot = null,
   // Its page, once saved: (botId).
   onOpenBot = null,
+  // What Dash knows about the dashboard it works on, and a lead's note
+  // (teamContext.contextRequest, 2c-2) — told to the Planner at the start.
+  context = "",
+  // A note to show under the request (e.g. why a found bot wasn't used).
+  note = "",
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const [botMode, setBotMode] = useState(bot);
@@ -320,7 +325,12 @@ export const CreatePlanStep = ({
   const app = useContext(AppContext) || {};
   // [{ who: "you" | "planner" | "note", text, meta? }]
   const [messages, setMessages] = useState(
-    recentId ? [] : [{ who: "you", text: seed ? seed.label : prompt }],
+    recentId
+      ? []
+      : [
+          { who: "you", text: seed ? seed.label : prompt },
+          ...(note ? [{ who: "note", text: note }] : []),
+        ],
   );
   const [busy, setBusy] = useState(true);
   // Recent (4e-1): this conversation's id (its plan memory too); whether
@@ -495,9 +505,9 @@ export const CreatePlanStep = ({
                 : cell
                   ? `${prompt}\n\n(Plan exactly one widget for ${cell.label}: the user is editing that dashboard and it goes into that one cell. No bots, theme or layout, and don't set "dashboard" — the user previews the widget and the editor places it. Put the connection and settings they want on the widget piece.)`
                   : botMode
-                    ? botPlanRequest(prompt, where)
+                    ? botPlanRequest(prompt, where, context)
                     : openDashboardId != null
-                      ? `${prompt}\n\n(The user is looking at the dashboard with id ${openDashboardId}.)`
+                      ? `${prompt}\n\n(The user is looking at the dashboard with id ${openDashboardId}.)${context ? `\n\n${context}` : ""}`
                       : prompt,
               false,
             );

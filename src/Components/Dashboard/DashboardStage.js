@@ -532,7 +532,8 @@ const DashboardStageInner = ({
   }, [openBotsView]);
   // Open the Create screen from anywhere — Manage pages' New Widget / New Bot
   // (create-entry PRD CRE-008). detail: { type, workspaceId, recentId, seed,
-  // cell, prompt } — prompt fills in what to ask; recentId opens a plan
+  // cell, prompt, context } — prompt fills in what to ask, context is a
+  // lead's hand-off note ({ note, from }); recentId opens a plan
   // conversation (Expand from the dock, 4e-2);
   // seed starts one from a plan (Open as a plan from Ask, 5e); cell is an
   // empty cell being edited ({ workspaceId, gridItemId, cellNumber, scope }):
@@ -562,6 +563,8 @@ const DashboardStageInner = ({
         cell,
         // What to ask, filled in (a team lead's hand-off, 2c).
         prompt: typeof d.prompt === "string" ? d.prompt : "",
+        // …and its note and who it's from ({ note, from }).
+        context: d.context && typeof d.context === "object" ? d.context : null,
       });
     };
     window.addEventListener("dash:open-create", handler);
@@ -3106,6 +3109,9 @@ const DashboardStageInner = ({
               initialRecentId={createRequest ? createRequest.recentId : null}
               initialSeed={createRequest ? createRequest.seed : null}
               initialPrompt={createRequest ? createRequest.prompt || "" : ""}
+              initialContext={
+                createRequest ? createRequest.context || null : null
+              }
               onOpenTheme={(theme) => {
                 setThemeEditorKey(null);
                 setThemeStartInCreate(false);

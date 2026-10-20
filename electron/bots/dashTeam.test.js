@@ -204,10 +204,13 @@ describe("Dash team instructions (slice 3b-1)", () => {
 });
 
 describe("Dash team instructions (slice 3b-2)", () => {
-  it("the Builder drafts bots and never says they're created", () => {
+  it("the Builder builds widgets; Dash saves the plan's bots (2c-2)", () => {
     const builder = ROLES.find((r) => r.role === "builder");
-    assert.match(builder.instructions, /draft_bot/);
-    assert.match(builder.instructions, /never that it's created/);
+    assert.doesNotMatch(builder.instructions, /draft_bot/);
+    assert.match(
+      builder.instructions,
+      /Bots in a plan are saved by Dash itself/,
+    );
     assert.ok(builder.history.length >= 2);
   });
 });
@@ -225,7 +228,7 @@ describe("Dash team instructions (slice 3c)", () => {
       builder.instructions,
       /nothing is installed until the Checker passes it/,
     );
-    assert.equal(builder.history.length, 4);
+    assert.equal(builder.history.length, 5);
   });
 });
 

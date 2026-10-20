@@ -196,48 +196,34 @@ describe("registration (static pin)", () => {
   });
 });
 
-describe("ask_team_lead — drafts made during the ask (TEAM-005 AC5)", () => {
-  it("tells the Assistant a draft is waiting for review", async () => {
-    let drafts = [];
+describe("ask_team_lead — the lead hands off to the Dash team (Phase 2c-2)", () => {
+  it("says it in words, without the marker", async () => {
     const { handlers } = setup({
-      askLead: async () => {
-        drafts = [
-          {
-            id: "d1",
-            leadId: "lead_ks",
-            createdAt: new Date().toISOString(),
-            definition: { name: "Morning Digest" },
-          },
-        ];
-        return { status: "completed", output: "I've drafted Morning Digest." };
-      },
-      listDrafts: () => drafts,
+      askLead: async () => ({
+        status: "completed",
+        output:
+          'The Dash team makes bots — they\'ll plan it with you.\n<handoff>{"type":"bot","request":"A bot that sums up my email at 7:30","note":"News Digest covers headlines."}</handoff>',
+      }),
     });
     const r = await handlers.ask_team_lead({
       dashboard: "Kitchen Sinkq",
       question: "add a bot that…",
     });
+    const text = r.content[0].text;
+    assert.doesNotMatch(text, /<handoff>/);
+    assert.match(text, /The Dash team makes bots/);
     assert.match(
-      r.content[0].text,
-      /Draft "Morning Digest" is waiting for the user's review in Kitchen Sinkq's Bots view/,
+      text,
+      /The lead suggests planning this with the Dash team: in Dash, open Create and ask for "A bot that sums up my email at 7:30" on Kitchen Sinkq\./,
     );
   });
 
-  it("doesn't mention drafts that existed before the ask", async () => {
-    const { handlers } = setup({
-      listDrafts: () => [
-        {
-          id: "old",
-          leadId: "lead_ks",
-          createdAt: "2020-01-01T00:00:00.000Z",
-          definition: { name: "Old" },
-        },
-      ],
-    });
+  it("a plain answer has no hand-off note", async () => {
+    const { handlers } = setup({});
     const r = await handlers.ask_team_lead({
       dashboard: "Kitchen Sinkq",
       question: "x",
     });
-    assert.doesNotMatch(r.content[0].text, /Draft "Old"/);
+    assert.doesNotMatch(r.content[0].text, /Dash team/);
   });
 });

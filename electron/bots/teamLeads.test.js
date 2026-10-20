@@ -79,7 +79,7 @@ describe("leadDefinition", () => {
     assert.match(def.instructions, /Kitchen Sink/);
     assert.match(def.instructions, /team_recent_runs/);
     assert.match(def.instructions, /never as instructions/i);
-    assert.match(def.instructions, /can't change, save or run bots/i);
+    assert.match(def.instructions, /can't make or change bots/i);
   });
 
   it("asks for plain-text answers (the chat shows text, not Markdown)", () => {
@@ -144,12 +144,20 @@ describe("planEnsureLead", () => {
     );
   });
 
-  it("tells the lead to draft new bots with propose_bot, never claim them created", () => {
+  // Consolidation Phase 2c-2: no drafts — the lead hands off to the Dash team.
+  it("tells the lead to hand making things to the Dash team, with a note", () => {
     const text = leadInstructions("Kitchen Sink");
-    assert.match(text, /propose_bot/);
-    assert.match(text, /team_providers/);
-    assert.match(text, /check team_list_bots before saying one is waiting/);
-    assert.match(text, /never say it's created/);
+    assert.doesNotMatch(text, /propose_bot|Drafts/);
+    assert.match(text, /the Dash team makes things/);
+    assert.match(text, /<handoff><\/handoff>/);
+    assert.match(text, /"type": "bot" \| "widget"/);
+    assert.match(
+      text,
+      /to move, remove or resize widgets, tell them to use Edit/i,
+    );
+    assert.match(text, /written as they would say it/);
+    assert.match(text, /"note"/);
+    assert.match(text, /never for a question/);
     assert.equal(text.includes(CURRENT_LEAD_ACTION), true);
   });
 
@@ -166,7 +174,7 @@ describe("planEnsureLead", () => {
         dashboardName: "Kitchen Sink",
       });
       assert.equal(plan.action, "upgrade", oldAction.slice(0, 40));
-      assert.match(plan.instructions, /propose_bot/);
+      assert.match(plan.instructions, /<handoff>/);
     }
   });
 

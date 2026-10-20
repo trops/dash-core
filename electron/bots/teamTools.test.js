@@ -90,7 +90,7 @@ const deps = {
 const lead = { workspaceId: "7", botId: "lead_7" };
 
 describe("teamTools definitions", () => {
-  it("serves the read-only tools plus propose_bot under the team server", () => {
+  it("serves the read-only tools under the team server — no propose_bot (2c-2)", () => {
     assert.equal(TEAM_SERVER, "bot-team");
     assert.deepEqual(
       TEAM_TOOLS.map((t) => t.name),
@@ -101,7 +101,6 @@ describe("teamTools definitions", () => {
         "team_memory_read",
         "team_providers",
         "find_providers",
-        "propose_bot",
       ],
     );
   });
@@ -164,10 +163,10 @@ describe("handleTeamTool", () => {
   });
 
   it("every result is fenced as untrusted team data", () => {
-    // The read tools return team data (fenced); propose_bot returns its own
-    // summary; find_providers is async (its own test below).
+    // The read tools return team data (fenced); find_providers is async
+    // (its own test below).
     for (const name of TEAM_TOOLS.map((t) => t.name).filter(
-      (n) => n !== "propose_bot" && n !== "find_providers",
+      (n) => n !== "find_providers",
     )) {
       const r = handleTeamTool(deps, lead, name, { name: "Inbox Watch" });
       assert.match(r.text, /<team_data>/, name);
@@ -187,69 +186,6 @@ describe("handleTeamTool", () => {
 
   it("unknown tool → error", () => {
     const r = handleTeamTool(deps, lead, "team_delete_everything", {});
-    assert.equal(r.isError, true);
-  });
-});
-
-describe("propose_bot (TEAM-005)", () => {
-  const draft = {
-    id: "draft_1",
-    definition: { name: "Morning Digest" },
-    suggestions: [
-      { provider: "Gmail New", tools: ["search_emails"], toolsChecked: true },
-    ],
-    missing: ["Notion"],
-    dropped: ['Schedule "every morning" — not a valid schedule.'],
-    duplicateOf: null,
-  };
-
-  it("drafts through deps.proposeBot and tells the lead it isn't created", () => {
-    let got = null;
-    const r = handleTeamTool(
-      {
-        ...deps,
-        proposeBot: (ctx, args) => ((got = { ctx, args }), { draft }),
-      },
-      lead,
-      "propose_bot",
-      { name: "Morning Digest", instructions: "x" },
-    );
-    assert.equal(r.isError, false);
-    assert.deepEqual(got.ctx, lead);
-    assert.match(r.text, /Drafted "Morning Digest"/);
-    assert.match(r.text, /NOT created/);
-    assert.match(r.text, /Bots view/);
-    assert.match(r.text, /Gmail New: search_emails/);
-    assert.match(r.text, /Needs a provider the user doesn't have: Notion/);
-    assert.match(r.text, /not a valid schedule/);
-  });
-
-  it("flags a duplicate", () => {
-    const r = handleTeamTool(
-      {
-        ...deps,
-        proposeBot: () => ({ draft: { ...draft, duplicateOf: "Inbox Watch" } }),
-      },
-      lead,
-      "propose_bot",
-      {},
-    );
-    assert.match(r.text, /already has a bot named "Inbox Watch"/);
-  });
-
-  it("reports a refused draft", () => {
-    const r = handleTeamTool(
-      { ...deps, proposeBot: () => ({ error: "A draft needs a name." }) },
-      lead,
-      "propose_bot",
-      {},
-    );
-    assert.equal(r.isError, true);
-    assert.match(r.text, /needs a name/);
-  });
-
-  it("is unavailable without the drafting hook", () => {
-    const r = handleTeamTool(deps, lead, "propose_bot", {});
     assert.equal(r.isError, true);
   });
 });
@@ -289,57 +225,6 @@ describe("team_providers (TEAM-005)", () => {
       {},
     );
     assert.match(r.text, /no providers/i);
-  });
-});
-
-describe("team_list_bots — drafts awaiting review", () => {
-  const drafts = [
-    {
-      id: "d1",
-      createdAt: "2026-10-03T10:12:00.000Z",
-      definition: { name: "Morning Digest" },
-    },
-  ];
-
-  it("lists the dashboard's drafts after its bots", () => {
-    let askedFor = null;
-    const r = handleTeamTool(
-      { ...deps, listDrafts: (ws) => ((askedFor = ws), drafts) },
-      lead,
-      "team_list_bots",
-      {},
-    );
-    assert.equal(askedFor, lead.workspaceId);
-    assert.match(
-      r.text,
-      /Drafts awaiting the user's review: Morning Digest \(drafted /,
-    );
-  });
-
-  it("says when no drafts are waiting", () => {
-    const r = handleTeamTool(
-      { ...deps, listDrafts: () => [] },
-      lead,
-      "team_list_bots",
-      {},
-    );
-    assert.match(r.text, /No drafts waiting for review/);
-  });
-
-  it("still reports drafts on a team with no bots yet", () => {
-    const r = handleTeamTool(
-      { ...deps, store: { list: () => [] }, listDrafts: () => drafts },
-      lead,
-      "team_list_bots",
-      {},
-    );
-    assert.match(r.text, /no bots yet/);
-    assert.match(r.text, /Morning Digest/);
-  });
-
-  it("its description says it includes drafts", () => {
-    const def = TEAM_TOOLS.find((t) => t.name === "team_list_bots");
-    assert.match(def.description, /drafts/i);
   });
 });
 
@@ -383,7 +268,7 @@ describe("find_providers (bot-capabilities CAP-003)", () => {
     assert.match(r.text, /<team_data>/);
     assert.match(r.text, /Built into Dash/);
     assert.match(r.text, /\[id: builtin:web-fetch\]/);
-    assert.match(r.text, /gaps/);
+    assert.match(r.text, /they add it from Settings › Providers/);
   });
 
   it("needs a capability", async () => {
@@ -410,14 +295,5 @@ describe("find_providers (bot-capabilities CAP-003)", () => {
     );
     assert.equal(r.isError, true);
     assert.match(r.text, /boom/);
-  });
-
-  it("propose_bot accepts gaps with suggestion ids", () => {
-    const tool = TEAM_TOOLS.find((t) => t.name === "propose_bot");
-    const gaps = tool.inputSchema.properties.gaps;
-    assert.equal(gaps.type, "array");
-    assert.equal(gaps.items.properties.need.type, "string");
-    assert.equal(gaps.items.properties.suggestions.items.type, "string");
-    assert.match(tool.description, /find_providers/);
   });
 });

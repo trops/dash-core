@@ -358,6 +358,81 @@ describe("asking a team lead (5e-2a)", () => {
     );
     expect(screen.queryByLabelText("Send to")).toBeNull();
   });
+
+  // Consolidation Phase 2c-2: asked to make something, the lead hands it to
+  // the Dash team.
+  const HANDED_OFF =
+    'The Dash team makes bots — they\'ll plan it with you.\n<handoff>{"type":"bot","request":"A bot that sums up my email at 7:30","note":"News Digest covers headlines."}</handoff>';
+
+  test("a hand-off shows Plan this with the Dash team, never the marker", async () => {
+    leadApi({
+      askLead: jest.fn().mockResolvedValue({
+        status: "completed",
+        output: HANDED_OFF,
+      }),
+    });
+    const onHandoff = jest.fn();
+    render(
+      <AskStep
+        question="Add a bot that sums up my email"
+        recipient={{ ...LEAD, dashboardId: "7" }}
+        onHandoff={onHandoff}
+      />,
+    );
+    const answer = await screen.findByTestId("ask-answer");
+    expect(answer).toHaveTextContent("The Dash team makes bots");
+    expect(answer.textContent).not.toMatch(/handoff/);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Plan this with the Dash team" }),
+    );
+    expect(onHandoff).toHaveBeenCalledWith(
+      {
+        type: "bot",
+        request: "A bot that sums up my email at 7:30",
+        note: "News Digest covers headlines.",
+      },
+      expect.objectContaining({
+        leadName: "Daily Brief Lead",
+        dashboardId: "7",
+      }),
+    );
+  });
+
+  test("outside Create (the dock) it opens Create for that dashboard", async () => {
+    leadApi({
+      askLead: jest.fn().mockResolvedValue({
+        status: "completed",
+        output: HANDED_OFF,
+      }),
+    });
+    render(<AskStep question="x" recipient={{ ...LEAD, dashboardId: "7" }} />);
+    const opened = jest.fn();
+    window.addEventListener("dash:open-create", opened);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Plan this with the Dash team",
+      }),
+    );
+    window.removeEventListener("dash:open-create", opened);
+    expect(opened.mock.calls[0][0].detail).toEqual({
+      type: "bot",
+      workspaceId: "7",
+      prompt: "A bot that sums up my email at 7:30",
+      context: {
+        note: "News Digest covers headlines.",
+        from: "Daily Brief Lead",
+      },
+    });
+  });
+
+  test("a plain answer has no hand-off button", async () => {
+    leadApi();
+    render(<AskStep question="Anything urgent?" recipient={LEAD} />);
+    await screen.findByTestId("ask-answer");
+    expect(
+      screen.queryByRole("button", { name: "Plan this with the Dash team" }),
+    ).toBeNull();
+  });
 });
 
 describe("CreateDockPanel — the Ask box", () => {

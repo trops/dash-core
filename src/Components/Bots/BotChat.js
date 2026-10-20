@@ -18,6 +18,8 @@ import {
   ThemeContext,
   useStatusTokens,
 } from "@trops/dash-react";
+import { extractHandoff, withoutHandoff } from "../../utils/handoff";
+import { planWithDashTeam } from "../../utils/openCreate";
 import {
   buildConversation,
   errorNextSteps,
@@ -51,8 +53,11 @@ import { runCostLabel } from "../../utils/runCostLabel";
  * @param {(botId: string) => string} [nameOf]  bot names for trigger chains
  * @param {(section: string) => void} [onOpenSettings]  error next steps
  * @param {() => void} [onChangeModel]  "Change AI model" — opens the bot's Settings
- * @param {object[]} [drafts]  a lead's drafts awaiting review (TEAM-005)
- * @param {(draftId: string) => void} [onOpenDraft]
+ *
+ * A lead asked to make something hands it to the Dash team (consolidation
+ * Phase 2c-2): its answer carries a hand-off (handoff.js) — shown as
+ * "Plan this with the Dash team", which opens Create with the request, this
+ * dashboard and the lead's note; the marker itself is never shown.
  * @param {boolean} [paused]  the bot is paused: it says so and the box waits
  * @param {() => void} [onResume]  Resume, shown with the paused note
  * @param {string} [overBudget]  the limit it's over ("its $5.00 monthly
@@ -89,8 +94,6 @@ export const BotChat = ({
   nameOf = undefined,
   onOpenSettings = null,
   onChangeModel = null,
-  drafts = EMPTY,
-  onOpenDraft = null,
   paused = false,
   queuedEvents = 0,
   onResume = null,
@@ -409,16 +412,9 @@ export const BotChat = ({
         );
       }
       case "bot": {
-        // Drafts this lead made while writing this answer (TEAM-005 5b).
-        const madeHere =
-          isLead && onOpenDraft && t.startedAt && !t.pending
-            ? drafts.filter((d) => {
-                const c = Date.parse(d.createdAt);
-                const from = Date.parse(t.startedAt) - 1000;
-                const to = t.endedAt ? Date.parse(t.endedAt) + 5000 : Infinity;
-                return d.leadId === bot.id && c >= from && c <= to;
-              })
-            : EMPTY;
+        // A lead's hand-off to the Dash team (2c-2), once the answer's in.
+        const handoff =
+          isLead && !t.pending && t.text ? extractHandoff(t.text) : null;
         return (
           <ChatMessage
             key={i}
@@ -428,16 +424,18 @@ export const BotChat = ({
             streaming={!!t.pending}
             testId="answer-bubble"
             footer={
-              madeHere.length ? (
+              handoff ? (
                 <div className="flex flex-row flex-wrap gap-2">
-                  {madeHere.map((d) => (
-                    <Button3
-                      key={d.id}
-                      title={`Review draft: ${d.definition && d.definition.name}`}
-                      size="sm"
-                      onClick={() => onOpenDraft(d.id)}
-                    />
-                  ))}
+                  <Button
+                    title="Plan this with the Dash team"
+                    size="sm"
+                    onClick={() =>
+                      planWithDashTeam(handoff, {
+                        workspaceId: bot.workspaceId,
+                        from: bot.name,
+                      })
+                    }
+                  />
                 </div>
               ) : null
             }
@@ -449,7 +447,11 @@ export const BotChat = ({
               </span>
             ) : (
               <span className="whitespace-pre-wrap">
-                {t.text ? toPlainText(t.text) : t.pending ? "Working…" : ""}
+                {t.text
+                  ? toPlainText(withoutHandoff(t.text))
+                  : t.pending
+                    ? "Working…"
+                    : ""}
               </span>
             )}
           </ChatMessage>
