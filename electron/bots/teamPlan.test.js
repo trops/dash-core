@@ -746,3 +746,36 @@ describe("plan grids — where each widget goes", () => {
     );
   });
 });
+
+describe("validatePlan — a widget for one cell (consolidation Phase 2b)", () => {
+  const one = {
+    summary: "Unreads",
+    pieces: [{ kind: "widget", name: "Slack Threads", source: "new" }],
+  };
+  const rule =
+    "A plan for one cell is one widget — no bots, theme, layout or dashboard.";
+  it("one widget is fine", () => {
+    assert.deepEqual(validatePlan(one, { cell: true }).errors, []);
+  });
+  it("more than one widget, a bot or a layout is refused", () => {
+    for (const extra of [
+      { kind: "widget", name: "Second", source: "new" },
+      { kind: "bot", name: "Digest", runs: "manually", instructions: "x" },
+      { kind: "layout", name: "Grid", source: "new" },
+    ]) {
+      const plan = { ...one, pieces: [...one.pieces, extra] };
+      assert.ok(validatePlan(plan, { cell: true }).errors.includes(rule));
+    }
+  });
+  it("naming a dashboard is refused (the editor places it)", () => {
+    const plan = { ...one, dashboard: { id: "7", name: "Slack Pack" } };
+    assert.ok(validatePlan(plan, { cell: true }).errors.includes(rule));
+  });
+  it("without context.cell the rule doesn't apply", () => {
+    const plan = {
+      ...one,
+      pieces: [...one.pieces, { kind: "widget", name: "B", source: "new" }],
+    };
+    assert.ok(!validatePlan(plan).errors.includes(rule));
+  });
+});

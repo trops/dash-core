@@ -75,3 +75,33 @@ describe("LayoutBuilder — workspace-id guard on AI placement events", () => {
     );
   });
 });
+
+// Consolidation Phase 2b: Create's cell builds place their widget here, into
+// the open edit — on the one page and scope the cell is on, with the
+// connection and settings the user picked at the preview.
+describe("LayoutBuilder — placing a cell build's widget", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "LayoutBuilder.js"),
+    "utf8",
+  );
+  test("only the named scope and page act (grid ids repeat across them)", () => {
+    expect(source).toMatch(
+      /if \(targetScope && targetScope !== \(scope \|\| "main"\)\) return;/,
+    );
+    expect(source).toMatch(
+      /targetPage != null &&\s*pageId != null &&\s*targetPage !== pageId/,
+    );
+  });
+  test("the picked settings and connection go on the new widget", () => {
+    expect(source).toMatch(
+      /newItem\.userPrefs = \{ \.\.\.\(newItem\.userPrefs \|\| \{\}\), \.\.\.userPrefs \};/,
+    );
+    expect(source).toMatch(
+      /newItem\.selectedProviders = \{ \.\.\.selectedProviders \};/,
+    );
+  });
+  test("a just-installed widget is waited for (briefly) before placing", () => {
+    expect(source).toMatch(/if \(tries < 20\)/);
+    expect(source).toMatch(/if \(timer\) clearTimeout\(timer\);/);
+  });
+});

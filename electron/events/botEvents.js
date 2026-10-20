@@ -56,6 +56,9 @@ const BOTS_GET_PLAN_BUILD = "bots-get-plan-build";
 const BOTS_FIX_PLAN_BUILD = "bots-fix-plan-build";
 const BOTS_RETRY_PLAN_BUILD = "bots-retry-plan-build";
 const BOTS_RESUME_PLAN_BUILD = "bots-resume-plan-build";
+// A cell build's preview (consolidation Phase 2b): Looks good / Change something.
+const BOTS_APPROVE_PLAN_STEP = "bots-approve-plan-step";
+const BOTS_REVISE_PLAN_STEP = "bots-revise-plan-step";
 const BOTS_REMOVE_PLAN_BUILD = "bots-remove-plan-build";
 // Create's Recent (4e-1): plan conversations and their builds.
 const CREATE_RECENT_LIST = "create-recent-list";
@@ -147,6 +150,8 @@ module.exports = {
   BOTS_FIX_PLAN_BUILD,
   BOTS_RETRY_PLAN_BUILD,
   BOTS_RESUME_PLAN_BUILD,
+  BOTS_APPROVE_PLAN_STEP,
+  BOTS_REVISE_PLAN_STEP,
   BOTS_REMOVE_PLAN_BUILD,
   CREATE_RECENT_LIST,
   CREATE_RECENT_GET,

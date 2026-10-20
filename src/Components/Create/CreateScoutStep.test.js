@@ -61,9 +61,15 @@ const found = {
 
 test("while looking, Skip builds right away", async () => {
   const { onBuildNew } = setup({ pending: true });
+  // As the Planner: the Scout's reply, with a spinner while it looks.
   expect(
-    await screen.findByText("Looking through your widgets and the registry…"),
+    await screen.findByText(
+      "Looking through your widgets, AI-built widgets and the registry…",
+    ),
   ).toBeInTheDocument();
+  expect(
+    screen.getByText(/Looking through/).closest('[aria-busy="true"]'),
+  ).not.toBeNull();
   fireEvent.click(screen.getByText("Skip — just build it"));
   expect(onBuildNew).toHaveBeenCalled();
 });
