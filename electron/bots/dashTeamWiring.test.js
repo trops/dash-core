@@ -169,7 +169,11 @@ describe("botController — Builder drafts are marked (3b-2)", () => {
 
 describe("botController — place_widget (3c)", () => {
   it("resolves the widget, places it with placeWidget and saves", () => {
-    assert.match(ctrl, /placeWidget: \(req\) => this\._teamPlaceWidget\(req\)/);
+    // Not while a cell build runs (Phase 2b): the editor places that one.
+    assert.match(
+      ctrl,
+      /placeWidget: \(req\) =>\s*this\._cellBuildRunning\(\)\s*\?[\s\S]{0,200}: this\._teamPlaceWidget\(req\)/,
+    );
     assert.match(ctrl, /resolveWidgetComponent\(\s+widget,\s+component,/);
     assert.match(
       ctrl,
@@ -248,7 +252,10 @@ describe("botController — after a build (phase 4d-3)", () => {
       ctrl,
       /resume = \{ plan: earlier\.plan, state: earlier\.state \};/,
     );
-    assert.match(ctrl, /\{ dashboardName, resume, autoFix: true \},/);
+    assert.match(
+      ctrl,
+      /\{ dashboardName, resume, autoFix: true, cell: !!cell \},/,
+    );
   });
   it("Remove deletes the dashboard, its bots and lead, and new widgets — not installs", () => {
     assert.match(ctrl, /leadOf\(this\._store\.list\(\), dashboardId\)/);
@@ -365,5 +372,61 @@ describe("botController — checked plan builds (Phase 1b)", () => {
       /validatePlan\(plan, \{[\s\S]{0,200}dashboards[\s\S]{0,200}themes/,
     );
     assert.match(start, /The plan can't be built yet/);
+  });
+});
+
+// Consolidation Phase 2b: a widget for one cell — built, previewed by the
+// user, installed; nothing placed or installed behind the user's edit.
+describe("botController — cell builds (Phase 2b)", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "controller", "botController.js"),
+    "utf8",
+  );
+  it("checks a cell plan as one widget and builds in cell mode", () => {
+    assert.match(src, /cell: !!cell,\s*\}\);/);
+    assert.match(src, /autoFix: true, cell: !!cell \}/);
+  });
+  it("Looks good / Change something only on a waiting preview", () => {
+    assert.match(src, /approvePlanStep\(buildId, stepId, inputs = \{\}\) \{/);
+    assert.match(src, /revisePlanStep\(buildId, stepId, note\) \{/);
+    assert.match(
+      src,
+      /step\.kind !== "preview" \|\| step\.status !== "needs-you"/,
+    );
+  });
+  it("the Builder can't install or place during a cell build", () => {
+    assert.match(
+      src,
+      /installDraft: \(req\) =>[\s\S]{0,120}this\._cellBuildRunning\(\)/,
+    );
+    // Only while the cell build's own roles run.
+    assert.match(
+      src,
+      /this\._cellRoleRuns = \(this\._cellRoleRuns \|\| 0\) \+ 1;/,
+    );
+    assert.match(src, /return \(this\._cellRoleRuns \|\| 0\) > 0;/);
+  });
+  it("its preview inputs come from the config source, parsed not run", () => {
+    assert.match(src, /previewConfig: async \(\{ draft, component \}\) =>/);
+    assert.match(src, /this\._widgetTools\.previewDraft\(\{ name: draft \}\)/);
+  });
+});
+
+// Found live (Phase 2b): a plan's registry install was kept under the bare
+// package name ("clock"), so nothing found "@trops/clock" until a restart.
+describe("botController — a plan's registry install is kept under its scoped id", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "controller", "botController.js"),
+    "utf8",
+  );
+  it("installs and announces @scope/name", () => {
+    assert.match(
+      src,
+      /const installAs = pkg\.scope \? `@\$\{pkg\.scope\}\/\$\{pkg\.name\}` : pkg\.name;/,
+    );
+    assert.match(
+      src,
+      /registry\.downloadWidget\(installAs, pkg\.downloadUrl\)/,
+    );
   });
 });

@@ -64,7 +64,22 @@ function resolveWidgetComponent(widget, component, listInstalled, hint = {}) {
         .toLowerCase()
         .replace(/[^a-z0-9]/g, "");
     const named = hint && hint.name ? squash(hint.name) : "";
-    const hit = named ? comps.find((c) => squash(c) === named) : null;
+    // "Digital Clock" names DigitalClockWidget too (the common suffix),
+    // and a widget's display name counts (found live, Phase 2b).
+    const bare = (v) => squash(v).replace(/widget$/, "");
+    const entries = (Array.isArray(pkg.widgets) ? pkg.widgets : []).filter(
+      (w) => w && w.name,
+    );
+    const byName = named
+      ? comps.find((c) => squash(c) === named) ||
+        comps.find((c) => bare(c) === bare(named)) ||
+        (
+          entries.find(
+            (w) => w.displayName && bare(w.displayName) === bare(named),
+          ) || {}
+        ).name
+      : null;
+    const hit = byName || null;
     if (hit) return { component: scopedId(pkg.name, hit) };
     return {
       error: `${pkgName} has several widgets (${comps.join(", ")}) — say which with component.`,

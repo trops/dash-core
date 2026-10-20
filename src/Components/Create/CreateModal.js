@@ -18,6 +18,7 @@ import {
   SubHeading3,
   TextArea,
   ChoiceMenu,
+  Stepper,
   getStylesForItem,
   themeObjects,
 } from "@trops/dash-react";
@@ -58,6 +59,61 @@ const getWidgetConfig = (name) =>
   (name && ComponentManager.config(name)) || null;
 
 const EMPTY = [];
+
+// A cell build's steps, shown as a wizard in Create's header (Phase 2b).
+export const CELL_STEPS = [
+  "Describe",
+  "Find",
+  "Plan",
+  "Build",
+  "Preview",
+  "Place",
+];
+
+/**
+ * Where a cell build is: 0 Describe (the start screen), 1 Find (the
+ * Scout), 2 Plan (the Planner), 3 Build (Builder, Checker, install), 4
+ * Preview (waiting for the user), 5 Place (done — into the cell).
+ */
+export function cellStepIndex({ scout, plan, buildStatus }) {
+  if (buildStatus === "done") return 5;
+  if (buildStatus === "waiting-for-you") return 4;
+  if (buildStatus) return 3;
+  if (plan) return 2;
+  if (scout) return 1;
+  return 0;
+}
+// The no-AI starts every type shows (dashboards, themes) — not for a cell.
+const NO_AI_COMMON_KEYS = new Set(noAiOptions("__none__").map((o) => o.key));
+
+/**
+ * A Scout match as the one widget of a cell build ("Use in this cell",
+ * consolidation Phase 2b): { kind, name, source, package } — the package as
+ * "@scope/name" (the Scout may give a component id or a bare "scope/name").
+ * null without a package (the Planner works it out instead).
+ */
+export function cellPieceFromMatch(match) {
+  if (!match || !match.name) return null;
+  const raw = String(match.package || "").trim();
+  if (!raw) return null;
+  const parts = raw.split(".");
+  const pkg =
+    !raw.includes("/") && parts.length >= 3
+      ? `@${parts[0]}/${parts[1]}`
+      : raw.startsWith("@")
+        ? raw
+        : `@${raw}`;
+  const source =
+    match.source === "Registry"
+      ? "registry"
+      : match.source === "AI-built"
+        ? "ai-built"
+        : "yours";
+  const piece = { kind: "widget", name: match.name, source, package: pkg };
+  // A component id names the very widget (packages can hold several).
+  if (!raw.includes("/") && parts.length >= 3) piece.component = raw;
+  return piece;
+}
 
 /**
  * CreateModal — one place to start making things (create-entry PRD CRE-001,
@@ -108,6 +164,10 @@ export const CreateModal = ({
   initialSeed = null,
   // Open the theme editor on a theme Create made (unsaved) — Type: Theme.
   onOpenTheme = null,
+  // An empty cell being edited (consolidation Phase 2b): { workspaceId,
+  // gridItemId, cellNumber, pageId, scope } — Create makes one widget for
+  // it through the Dash team, with a preview, and the editor places it.
+  cell = null,
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const appContext = useContext(AppContext) || {};
@@ -144,6 +204,23 @@ export const CreateModal = ({
   const [planStep, setPlanStep] = useState(null);
   // The plan's { recentId, busy }, for Fold (4e-2).
   const [planInfo, setPlanInfo] = useState(null);
+  // A cell build's live status, for the step bar (Phase 2b).
+  const [cellBuildStatus, setCellBuildStatus] = useState(null);
+  const cellBuildId = cell && planInfo ? planInfo.buildId || null : null;
+  const cellWidget = cell && planInfo ? planInfo.widgetName || "" : "";
+  useEffect(() => {
+    setCellBuildStatus(cellBuildId ? "running" : null);
+    const bots = typeof window !== "undefined" ? window.mainApi?.bots : null;
+    if (!cellBuildId || !bots || !bots.onPlanBuild) return undefined;
+    const id = bots.onPlanBuild((payload) => {
+      if (payload && payload.buildId === cellBuildId && payload.state) {
+        setCellBuildStatus(payload.state.status || "running");
+      }
+    });
+    return () => {
+      if (id != null && bots.removeListener) bots.removeListener(id);
+    };
+  }, [cellBuildId]);
   const [bots, setBots] = useState(EMPTY);
   // Recent (CRE-007 AC2, 4e-1): Widget Builder drafts and plan
   // conversations (summaries from the main process).
@@ -276,6 +353,14 @@ export const CreateModal = ({
   // the start screen — never a flash of the last builder, which would rerun
   // its startup (chat reset, draft resume) before the reset effect.
   const close = () => {
+    // A cell build ends here: closed early, it stops (nothing half-done is
+    // left running, or installed unseen, for a cell no one is waiting on).
+    if (cell && planInfo && planInfo.buildId) {
+      const bots = window.mainApi && window.mainApi.bots;
+      if (bots && bots.stopPlanBuild) {
+        Promise.resolve(bots.stopPlanBuild(planInfo.buildId)).catch(() => {});
+      }
+    }
     askSeq.current += 1;
     setAskStep(null);
     setPlanStep(null);
@@ -287,7 +372,18 @@ export const CreateModal = ({
     setThemeStep(null);
     setIsOpen(false);
   };
-  const sendable = canSend({ type, prompt, aiBackend: ai.effective });
+  // A cell: the Dash team builds it, so only a description is needed.
+  const cellLabel = cell
+    ? `cell ${cell.cellNumber}${(() => {
+        const ws = (workspaces || []).find(
+          (w) => w && String(w.id) === String(cell.workspaceId),
+        );
+        return ws && ws.name ? ` on ${ws.name}` : "";
+      })()}`
+    : "";
+  const sendable = cell
+    ? !!String(prompt || "").trim()
+    : canSend({ type, prompt, aiBackend: ai.effective });
   // The AI picker shows for types that ask the AI here.
   const needsAi = type === "widget" || type === "theme" || type === "auto";
   const noAi =
@@ -331,6 +427,16 @@ export const CreateModal = ({
 
   const send = () => {
     if (!sendable) return;
+    if (cell) {
+      // The Scout looks first; with nothing that fits, the Planner plans it.
+      const text = prompt.trim();
+      if (window.mainApi?.bots?.listDashTeam) {
+        setScoutStep({ prompt: text, detail: { prompt: text } });
+      } else {
+        setPlanStep({ prompt: text });
+      }
+      return;
+    }
     setAutoPick(null);
     perform(routeCreate({ type, prompt, workspaceId }));
   };
@@ -498,14 +604,64 @@ export const CreateModal = ({
     </section>
   );
 
+  // Use in this cell: the match is the one widget of a cell build — it's
+  // installed (registry) and previewed, then placed. Without a package the
+  // Planner works it out.
+  const useInCell = (match) => {
+    const piece = cellPieceFromMatch(match);
+    setScoutStep(null);
+    if (!piece) {
+      setPlanStep({ prompt: `Use the ${match.name} widget` });
+      return;
+    }
+    const label = `Use ${match.name} in ${cellLabel}`;
+    setPlanStep({
+      prompt: "",
+      seed: {
+        plan: { summary: label, pieces: [piece] },
+        request: null,
+        label,
+        autoBuild: true,
+      },
+    });
+  };
+  // Done (Looks good, installed): the editor puts it in the cell — an
+  // unsaved change, with the picked connection and settings.
+  const placeInCell = (made) => {
+    const inputs = (made && made.inputs) || {};
+    if (made && made.component) {
+      window.dispatchEvent(
+        new CustomEvent("dash:place-widget-in-cell", {
+          detail: {
+            widgetComponentName: made.component,
+            cellNumber: cell.cellNumber,
+            gridItemId: cell.gridItemId,
+            workspaceId: cell.workspaceId,
+            pageId: cell.pageId ?? null,
+            scope: cell.scope || "main",
+            userPrefs: inputs.settings || null,
+            selectedProviders: inputs.providers || null,
+          },
+        }),
+      );
+    }
+    close();
+  };
+
   const start = (
     <div className="flex-1 min-h-0 overflow-y-auto">
       <div className="mx-auto w-full max-w-2xl flex flex-col gap-6 px-6 py-10">
         <div className="flex flex-col gap-2">
-          <Heading2 title="What do you want to make?" padding={false} />
+          <Heading2
+            title={
+              cell ? "What should this cell show?" : "What do you want to make?"
+            }
+            padding={false}
+          />
           <p className={`text-sm ${muted}`}>
-            Describe it and Dash works it out with you, or start without AI
-            below.
+            {cell
+              ? "Describe the widget. The Dash team checks what you already have, then builds it if needed — you see it running before it goes in."
+              : "Describe it and Dash works it out with you, or start without AI below."}
           </p>
         </div>
 
@@ -529,14 +685,23 @@ export const CreateModal = ({
               }}
             />
             <div className="flex flex-row flex-wrap items-center gap-2">
-              <ChoiceMenu
-                label="Type"
-                value={type}
-                options={createTypes()}
-                onChange={setType}
-              />
+              {cell ? (
+                <span
+                  className={`text-sm ${muted}`}
+                  data-testid="create-cell-type"
+                >
+                  Type: Widget
+                </span>
+              ) : (
+                <ChoiceMenu
+                  label="Type"
+                  value={type}
+                  options={createTypes()}
+                  onChange={setType}
+                />
+              )}
               <div className="flex-1" />
-              {needsAi && (
+              {needsAi && !cell && (
                 <ChoiceMenu
                   label="AI"
                   value={ai.effective}
@@ -549,14 +714,16 @@ export const CreateModal = ({
               <Button title="Send" onClick={send} disabled={!sendable} />
             </div>
           </div>
-          {CREATE_HINT[type] ? (
+          {cell || CREATE_HINT[type] ? (
             <span className={`text-xs ${muted}`} data-testid="create-hint">
-              {CREATE_HINT[type]}
+              {cell
+                ? "You see it running before it's installed — nothing on the dashboard changes until you say so."
+                : CREATE_HINT[type]}
             </span>
           ) : null}
         </div>
 
-        {noAi && (
+        {noAi && !cell && (
           <div className={`flex flex-row items-center gap-2 text-sm ${muted}`}>
             <FontAwesomeIcon icon="circle-info" className="h-3.5 w-3.5" />
             <span>
@@ -576,23 +743,33 @@ export const CreateModal = ({
           </div>
         )}
 
-        {askBox}
+        {/* A cell: only a widget for it — no questions, starters or
+            Recent (they lead to other dashboards). */}
+        {cell ? null : askBox}
 
-        {wantsStarters && starters.length > 0 && (
+        {!cell && wantsStarters && starters.length > 0 && (
           <StarterCards starters={starters} onPick={pickStarter} />
         )}
 
-        <RecentList
-          sections={recent}
-          onOpen={openRecent}
-          onRemove={removeRecent}
-          onAllDrafts={() => startWithoutAi("widget-drafts")}
-        />
+        {cell ? null : (
+          <RecentList
+            sections={recent}
+            onOpen={openRecent}
+            onRemove={removeRecent}
+            onAllDrafts={() => startWithoutAi("widget-drafts")}
+          />
+        )}
 
         <section className="flex flex-col gap-3" data-testid="create-no-ai">
           <SubHeading3 title="Or start without AI" padding={false} />
           <div className="flex flex-row flex-wrap gap-2">
-            {noAiOptions(type).map((o) => (
+            {(cell
+              ? // A cell: only widget starts (dashboards are made elsewhere).
+                noAiOptions("widget").filter(
+                  (o) => !NO_AI_COMMON_KEYS.has(o.key),
+                )
+              : noAiOptions(type)
+            ).map((o) => (
               <Button2 key={o.key} onClick={() => startWithoutAi(o.key)}>
                 <span className="inline-flex items-center gap-2">
                   <FontAwesomeIcon icon={o.icon} className="h-3.5 w-3.5" />
@@ -626,12 +803,19 @@ export const CreateModal = ({
   const scout = scoutStep && !builderStep && (
     <CreateScoutStep
       prompt={scoutStep.prompt}
+      cell={!!cell}
       onBuildNew={() => {
         const { detail } = scoutStep;
         setScoutStep(null);
-        openBuilder(detail, "New widget");
+        // A cell: the Dash team plans and builds it (Phase 2b).
+        if (cell) setPlanStep({ prompt: detail.prompt || scoutStep.prompt });
+        else openBuilder(detail, "New widget");
       }}
       onUse={(match) => {
+        if (cell) {
+          useInCell(match);
+          return;
+        }
         close();
         if (onOpenWidget) onOpenWidget(match);
       }}
@@ -644,7 +828,10 @@ export const CreateModal = ({
       prompt={planStep.prompt}
       recentId={planStep.recentId || null}
       seed={planStep.seed || null}
-      openDashboardId={workspaceId}
+      openDashboardId={cell ? null : workspaceId}
+      cell={cell ? { label: cellLabel } : null}
+      onCellDone={cell ? placeInCell : null}
+      onDiscard={cell ? close : null}
       onState={setPlanInfo}
       onOpenDashboard={
         onOpenDashboard
@@ -695,9 +882,20 @@ export const CreateModal = ({
     : builderStep
       ? builderStep.title || "New widget"
       : planStep
-        ? "Plan a dashboard"
+        ? cell
+          ? // Each step says where it is (as the mockup).
+            cellBuildStatus === "waiting-for-you"
+            ? `Preview · ${cellWidget || cellLabel}`
+            : cellBuildStatus === "done"
+              ? `Placing it in ${cellLabel}`
+              : cellBuildStatus
+                ? `Building · ${cellWidget ? `${cellWidget} ` : ""}for ${cellLabel}`
+                : `Plan a widget for ${cellLabel}`
+          : "Plan a dashboard"
         : scoutStep
-          ? "Looking first"
+          ? cell
+            ? `Looking first · ${cellLabel}`
+            : "Looking first"
           : botForm
             ? "New bot"
             : autoStep
@@ -706,7 +904,8 @@ export const CreateModal = ({
                 ? "New theme"
                 : null;
   // Fold the plan into the dock's Create panel; it carries on there (4e-2).
-  const canFold = !!(planStep && planInfo && planInfo.recentId);
+  // A cell build stays here: it ends in this dashboard's editor.
+  const canFold = !cell && !!(planStep && planInfo && planInfo.recentId);
   const fold = () => {
     if (!canFold || planInfo.busy) return;
     foldCreate({ recentId: planInfo.recentId, title: stepTitle });
@@ -807,7 +1006,16 @@ export const CreateModal = ({
                 ) : null}
               </nav>
             ) : (
-              <span className="text-lg font-semibold">Create</span>
+              <span className="text-lg font-semibold">
+                {cell ? (
+                  <>
+                    <span className={muted}>Create › </span>
+                    Widget for {cellLabel}
+                  </>
+                ) : (
+                  "Create"
+                )}
+              </span>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -842,6 +1050,25 @@ export const CreateModal = ({
             />
           </div>
         </div>
+        {cell ? (
+          <div
+            className={`flex-shrink-0 px-6 pt-3 border-b ${hairline}`}
+            data-testid="create-cell-steps"
+          >
+            <Stepper
+              activeStep={cellStepIndex({
+                scout: !!scoutStep,
+                plan: !!planStep,
+                buildStatus: cellBuildStatus,
+              })}
+              showNavigation={false}
+            >
+              {CELL_STEPS.map((label) => (
+                <Stepper.Step key={label} label={label} />
+              ))}
+            </Stepper>
+          </div>
+        ) : null}
         {question ||
           builder ||
           planner ||

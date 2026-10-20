@@ -531,17 +531,34 @@ const DashboardStageInner = ({
     return () => window.removeEventListener("dash:open-bots-view", handler);
   }, [openBotsView]);
   // Open the Create screen from anywhere — Manage pages' New Widget / New Bot
-  // (create-entry PRD CRE-008). detail: { type, workspaceId, recentId, seed }
-  // — recentId opens a plan conversation (Expand from the dock, 4e-2); seed
-  // starts one from a plan (Open as a plan from Ask, 5e).
+  // (create-entry PRD CRE-008). detail: { type, workspaceId, recentId, seed,
+  // cell } — recentId opens a plan conversation (Expand from the dock, 4e-2);
+  // seed starts one from a plan (Open as a plan from Ask, 5e); cell is an
+  // empty cell being edited ({ workspaceId, gridItemId, cellNumber, scope }):
+  // Create makes one widget for it (consolidation Phase 2b).
+  const activePageRef = useRef(null);
   useEffect(() => {
     const handler = (e) => {
       const d = (e && e.detail) || {};
+      const cell =
+        d.cell && d.cell.gridItemId != null && d.cell.cellNumber
+          ? {
+              ...d.cell,
+              scope: d.cell.scope || "main",
+              // The main grid's page is the one being edited.
+              pageId:
+                d.cell.pageId ??
+                ((d.cell.scope || "main") === "main"
+                  ? activePageRef.current
+                  : null),
+            }
+          : null;
       setCreateRequest({
-        type: d.type || "auto",
-        workspaceId: d.workspaceId ?? null,
+        type: cell ? "widget" : d.type || "auto",
+        workspaceId: cell ? cell.workspaceId : (d.workspaceId ?? null),
         recentId: d.recentId || null,
         seed: d.seed || null,
+        cell,
       });
     };
     window.addEventListener("dash:open-create", handler);
@@ -1444,6 +1461,12 @@ const DashboardStageInner = ({
     loadWorkspaces();
     handleOpenTab(newWorkspace);
     setSidebarCollapsed(true);
+    // Opens in Edit: snapshot it as Edit does, or Cancel has nothing to go
+    // back to and keeps every change (found live, Phase 2b).
+    originalWorkspaceRef.current = deepCopy(newWorkspace);
+    setIsDirty(false);
+    setPendingBotEdits({});
+    pendingBotFormsRef.current = {};
     setPreviewMode(false);
     return { success: true, workspace: newWorkspace };
   }
@@ -1865,6 +1888,8 @@ const DashboardStageInner = ({
     activePageId ||
     workspaceSelected?.activePageId ||
     (workspacePages[0]?.id ?? null);
+  // For Create's cell requests (registered once, above).
+  activePageRef.current = currentActivePageId;
 
   // Stable refs for tab/dashboard handlers so the open/close-dashboard
   // listener doesn't have to re-subscribe on every render.
@@ -2924,12 +2949,16 @@ const DashboardStageInner = ({
                 }
                 onAskAi={() => {
                   if (editSelection?.kind === "cell") {
+                    // Create, for this cell, through the Dash team (2b).
                     window.dispatchEvent(
-                      new CustomEvent("dash:open-widget-builder", {
+                      new CustomEvent("dash:open-create", {
                         detail: {
-                          cellNumber: editSelection.cellNumber,
-                          gridItemId: editSelection.gridItemId,
-                          workspaceId: workspaceSelected?.id,
+                          cell: {
+                            cellNumber: editSelection.cellNumber,
+                            gridItemId: editSelection.gridItemId,
+                            workspaceId: workspaceSelected?.id,
+                            scope: editSelection.scope || "main",
+                          },
                         },
                       }),
                     );
@@ -3066,6 +3095,7 @@ const DashboardStageInner = ({
               workspaceId={createRequest ? createRequest.workspaceId : null}
               workspaces={workspaceConfig}
               onStartWithoutAi={handleStartWithoutAi}
+              cell={createRequest ? createRequest.cell || null : null}
               onBotCreated={handleBotCreated}
               onOpenAiSettings={() => openAppSettings("ai-assistant")}
               onOpenWidget={handleOpenScoutMatch}

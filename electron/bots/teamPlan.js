@@ -335,7 +335,9 @@ function extractPlan(text) {
  * @param {{ providers?: string[], dashboards?: [{ id }], themes?: string[] }}
  *   [context]  the user's provider types — a piece needing one they don't
  *   have must list it under beforeBuilding — and, when given, their
- *   dashboards and saved theme names (a target or theme must be one of them).
+ *   dashboards and saved theme names (a target or theme must be one of them);
+ *   context.cell: a plan for one cell of a dashboard being edited
+ *   (consolidation Phase 2b) — exactly one widget, nothing else.
  * @returns {{ valid: boolean, errors: string[], warnings: string[] }}
  */
 function validatePlan(plan, context = {}) {
@@ -369,6 +371,16 @@ function validatePlan(plan, context = {}) {
 
   // A plan that changes a dashboard the user has (5e-2b).
   const target = planTarget(plan);
+  // A widget for one cell (Phase 2b): the editor places it, so a cell plan
+  // is exactly one widget — no bots, theme, layout or dashboard.
+  if (context.cell && Array.isArray(pieces)) {
+    const widgets = pieces.filter((p) => p && p.kind === "widget");
+    if (widgets.length !== 1 || pieces.length !== 1 || target) {
+      errors.push(
+        "A plan for one cell is one widget — no bots, theme, layout or dashboard.",
+      );
+    }
+  }
   if (plan.dashboard !== undefined && plan.dashboard !== null && !target) {
     errors.push("dashboard needs the id of one of the user's dashboards.");
   }

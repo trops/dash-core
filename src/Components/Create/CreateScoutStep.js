@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Button, Button3, SectionLabel } from "@trops/dash-react";
+import { Button, Button3, ChatMessage, SectionLabel } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import {
   runTeamRole,
@@ -18,8 +18,16 @@ import { runCostLabel } from "../../utils/runCostLabel";
  * @param {string} prompt          what the user asked for
  * @param {() => void} onBuildNew  open the Widget Builder with the prompt
  * @param {(m: { source, name, package }) => void} onUse  open a match
+ * @param {boolean} [cell]  for a cell being edited (Phase 2b): each match is
+ *   "Use in this cell" (a registry one is installed first), and Build new
+ *   plans it with the Dash team
  */
-export const CreateScoutStep = ({ prompt, onBuildNew, onUse }) => {
+export const CreateScoutStep = ({
+  prompt,
+  onBuildNew,
+  onUse,
+  cell = false,
+}) => {
   const { muted, strong, hairline } = useConfigTokens();
   // looking | done | failed
   const [phase, setPhase] = useState("looking");
@@ -31,7 +39,8 @@ export const CreateScoutStep = ({ prompt, onBuildNew, onUse }) => {
     alive.current = true;
     runTeamRole(
       "scout",
-      `Find widgets that could do this: "${prompt}". Search with search_library.`,
+      // It knows what comes next, so it doesn't send the user elsewhere.
+      `Find widgets that could do this: "${prompt}". Search with search_library. If nothing fits, say so in a sentence or two — the Planner plans a new one next, so don't tell the user who to ask.`,
       { onText: (t) => alive.current && setSoFar(t) },
     ).then((res) => {
       if (!alive.current) return;
@@ -54,86 +63,116 @@ export const CreateScoutStep = ({ prompt, onBuildNew, onUse }) => {
   const prose = withoutMatches(answer);
   const meta = run ? runCostLabel(run) : "";
 
+  const choice =
+    phase === "looking" ? (
+      <Button3
+        title={cell ? "Skip — plan a new one" : "Skip — just build it"}
+        onClick={onBuildNew}
+      />
+    ) : (
+      <Button
+        title={
+          cell
+            ? matches && matches.length
+              ? "None of these — plan a new one"
+              : "Plan it"
+            : matches && matches.length
+              ? "Build new instead"
+              : "Build it"
+        }
+        onClick={onBuildNew}
+      />
+    );
+
+  // A conversation, as the Planner's (create-entry CRE-011): the request on
+  // the right; the Scout's reply on the left — a spinner while it looks, then
+  // what it found and the choice, all in its reply.
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto" data-testid="create-scout">
-      <div className="mx-auto w-full max-w-2xl flex flex-col gap-5 px-6 py-12">
-        <div
-          className={`rounded-lg border px-4 py-3 text-sm ${hairline} ${strong}`}
+    // A solid scroller (the modal's own color): see-through, the Scout's
+    // growing reply left stale gray tiles behind it (found live, light mode).
+    <div
+      className="flex-1 min-h-0 overflow-y-auto"
+      style={{ backgroundColor: "inherit" }}
+      data-testid="create-scout"
+    >
+      <div className="mx-auto w-full max-w-3xl flex flex-col gap-4 px-6 py-8">
+        <ChatMessage role="you">{prompt}</ChatMessage>
+        <ChatMessage
+          role="reply"
+          label="Scout"
+          meta={meta || undefined}
+          streaming={phase === "looking"}
+          testId="scout-message"
         >
-          {prompt}
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-row items-center gap-3 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-wider">
-              Scout
-            </span>
-            <span className={muted}>
-              {phase === "looking"
-                ? "Looking through your widgets and the registry…"
-                : phase === "failed"
-                  ? "Couldn't finish the search"
-                  : "Searched your widgets, AI-built widgets and the registry"}
-            </span>
-            {meta ? <span className={muted}>· {meta}</span> : null}
-          </div>
-          {phase === "failed" ? (
-            <span className="text-sm">
-              {(run && run.error) || "The Scout didn't answer."} You can still
-              build it.
-            </span>
-          ) : null}
-        </div>
-
-        {/* The choice first — the list can be long. */}
-        <div className="flex flex-row flex-wrap items-center gap-3">
-          {phase === "looking" ? (
-            <Button3 title="Skip — just build it" onClick={onBuildNew} />
-          ) : (
-            <Button
-              title={
-                matches && matches.length ? "Build new instead" : "Build it"
+          <div className="flex flex-col gap-3">
+            <span
+              className="whitespace-pre-wrap"
+              data-testid={
+                phase === "done" && !(matches && matches.length)
+                  ? "scout-prose"
+                  : undefined
               }
-              onClick={onBuildNew}
-            />
-          )}
-        </div>
-        {phase === "done" && matches && matches.length ? (
-          <div className="flex flex-col gap-2" data-testid="scout-matches">
-            <SectionLabel text="What you could use instead" />
-            {matches.map((m, i) => (
-              <div
-                key={`${m.package}-${m.name}-${i}`}
-                className={`flex flex-row items-center gap-3 rounded-lg border px-4 py-3 ${hairline}`}
-              >
-                <span
-                  className={`text-xs font-semibold uppercase tracking-wider flex-shrink-0 ${muted}`}
-                >
-                  {m.source === "Registry" ? "Registry · install" : m.source}
-                </span>
-                <span className="flex-1 min-w-0 flex flex-col">
-                  <span className={`text-sm font-medium truncate ${strong}`}>
-                    {m.name}
-                  </span>
-                  <span className={`text-xs truncate ${muted}`}>
-                    {[m.package, m.why].filter(Boolean).join(" · ")}
-                  </span>
-                </span>
-                <Button3
-                  title={m.source === "Registry" ? "Install" : "Use this"}
-                  size="sm"
-                  onClick={() => onUse(m)}
-                />
+            >
+              {phase === "looking"
+                ? (soFar && withoutMatches(soFar)) ||
+                  "Looking through your widgets, AI-built widgets and the registry…"
+                : phase === "failed"
+                  ? `${(run && run.error) || "The Scout didn't answer."} You can still build it.`
+                  : matches && matches.length
+                    ? "Here's what you already have, or could install, that fits:"
+                    : prose ||
+                      "Nothing you have, or the registry has, fits — let's make it."}
+            </span>
+            {phase === "done" && matches && matches.length ? (
+              <div className="flex flex-col gap-2" data-testid="scout-matches">
+                {matches.map((m, i) => (
+                  <div
+                    key={`${m.package}-${m.name}-${i}`}
+                    className={`flex flex-row items-center gap-3 rounded-lg border px-3 py-2 ${hairline}`}
+                  >
+                    <span className="flex-1 min-w-0 flex flex-col">
+                      <span
+                        className={`text-sm font-medium truncate ${strong}`}
+                      >
+                        {m.name}
+                      </span>
+                      <span className={`text-xs truncate ${muted}`}>
+                        <span>
+                          {m.source === "Registry"
+                            ? "Registry · install"
+                            : m.source}
+                        </span>
+                        {m.why ? ` · ${m.why}` : ""}
+                      </span>
+                    </span>
+                    <Button3
+                      title={
+                        cell
+                          ? "Use in this cell"
+                          : m.source === "Registry"
+                            ? "Install"
+                            : "Use this"
+                      }
+                      size="sm"
+                      onClick={() => onUse(m)}
+                    />
+                  </div>
+                ))}
               </div>
-            ))}
+            ) : null}
+            {phase === "done" && matches && matches.length && prose ? (
+              <span
+                className={`text-xs whitespace-pre-wrap ${muted}`}
+                data-testid="scout-prose"
+              >
+                {prose}
+              </span>
+            ) : null}
+            <div className="flex flex-row flex-wrap items-center gap-3">
+              {choice}
+            </div>
           </div>
-        ) : null}
-
-        {phase === "done" && (!matches || !matches.length) && prose ? (
-          <p className="text-sm whitespace-pre-wrap" data-testid="scout-prose">
-            {prose}
-          </p>
-        ) : null}
+        </ChatMessage>
       </div>
     </div>
   );

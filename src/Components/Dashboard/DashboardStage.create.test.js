@@ -32,7 +32,7 @@ describe("DashboardStage — Create screen", () => {
       /window\.addEventListener\("dash:open-create", handler\)/,
     );
     expect(source).toMatch(
-      /setCreateRequest\(\{\s*type: d\.type \|\| "auto",\s*workspaceId: d\.workspaceId \?\? null,\s*recentId: d\.recentId \|\| null,\s*seed: d\.seed \|\| null,\s*\}\)/,
+      /setCreateRequest\(\{\s*type: cell \? "widget" : d\.type \|\| "auto",\s*workspaceId: cell \? cell\.workspaceId : \(d\.workspaceId \?\? null\),\s*recentId: d\.recentId \|\| null,\s*seed: d\.seed \|\| null,\s*cell,\s*\}\)/,
     );
   });
 
@@ -60,6 +60,17 @@ describe("DashboardStage — Create screen", () => {
   test("a blank dashboard is created from the single-panel template and named", () => {
     expect(source).toMatch(
       /createLayoutFromTemplate\(layoutTemplates\[0\], menuId\),\s*themeKey \|\| null,\s*"Untitled dashboard",/,
+    );
+  });
+
+  // Found live (Phase 2b): Cancel kept a cell's widget on a new dashboard.
+  test("a new dashboard opens in Edit with a snapshot, so Cancel can undo", () => {
+    const body = source.slice(
+      source.indexOf("async function handleCreateFromTemplate("),
+      source.indexOf("function loadWorkspaces()"),
+    );
+    expect(body).toMatch(
+      /originalWorkspaceRef\.current = deepCopy\(newWorkspace\);[\s\S]*setIsDirty\(false\);[\s\S]*setPreviewMode\(false\);/,
     );
   });
 

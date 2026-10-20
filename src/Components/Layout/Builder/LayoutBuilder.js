@@ -182,12 +182,34 @@ export const LayoutBuilder = ({
     }
   }
 
-  // Listen for AI widget builder placement — modifies layout state directly
+  // Listen for AI widget builder placement — modifies layout state directly.
+  // Create's cell builds (consolidation Phase 2b) send the page and scope the
+  // cell is on, and the connection + settings the user picked at the preview.
   useEffect(() => {
+    let timer = null;
     const handler = (e) => {
-      const { widgetComponentName, cellNumber, gridItemId, workspaceId } =
-        e.detail || {};
+      const {
+        widgetComponentName,
+        cellNumber,
+        gridItemId,
+        workspaceId,
+        pageId: targetPage = null,
+        scope: targetScope = null,
+        userPrefs = null,
+        selectedProviders = null,
+      } = e.detail || {};
       if (!widgetComponentName || !cellNumber || !gridItemId) return;
+      // Grid ids repeat across pages and the pinned sidebar: when the event
+      // names them, only that scope and page act.
+      if (targetScope && targetScope !== (scope || "main")) return;
+      if (
+        (scope || "main") === "main" &&
+        targetPage != null &&
+        pageId != null &&
+        targetPage !== pageId
+      ) {
+        return;
+      }
 
       const ws = wsRef.current;
       if (!ws?.layout) return;
@@ -209,8 +231,17 @@ export const LayoutBuilder = ({
       const gridItem = ws.layout.find((item) => item.id === gridItemId);
       if (!gridItem?.grid) return;
 
+      // Just installed: it may take a moment to be registered here.
       const config = ComponentManager.config(widgetComponentName);
       if (!config) {
+        const tries = (e.detail && e.detail.tries) || 0;
+        if (tries < 20) {
+          timer = setTimeout(
+            () => handler({ detail: { ...e.detail, tries: tries + 1 } }),
+            250,
+          );
+          return;
+        }
         console.warn(
           `[LayoutBuilder] Widget ${widgetComponentName} not found in ComponentManager`,
         );
@@ -229,7 +260,14 @@ export const LayoutBuilder = ({
           },
           hasChildren,
         );
-        const newWidgetId = newLayout[newLayout.length - 1].id;
+        const newItem = newLayout[newLayout.length - 1];
+        const newWidgetId = newItem.id;
+        if (userPrefs && typeof userPrefs === "object") {
+          newItem.userPrefs = { ...(newItem.userPrefs || {}), ...userPrefs };
+        }
+        if (selectedProviders && typeof selectedProviders === "object") {
+          newItem.selectedProviders = { ...selectedProviders };
+        }
         const updatedGrid = newLayout.find((item) => item.id === gridItem.id);
         if (updatedGrid?.grid) {
           updatedGrid.grid[cellNumber] = {
@@ -249,8 +287,10 @@ export const LayoutBuilder = ({
     };
 
     window.addEventListener("dash:place-widget-in-cell", handler);
-    return () =>
+    return () => {
+      if (timer) clearTimeout(timer);
       window.removeEventListener("dash:place-widget-in-cell", handler);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

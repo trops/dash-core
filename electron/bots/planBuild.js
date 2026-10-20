@@ -31,6 +31,15 @@
  *   opts.resume    an edited plan reuses what an earlier build already made
  * Finished steps are never run twice.
  *
+ * A widget for one cell (consolidation Phase 2b, opts.cell): the plan is one
+ * widget, built for a dashboard the user is editing. Its steps are install
+ * (registry) or build → check, then **preview**: the build waits for the
+ * user to see it running and pick its connection and settings —
+ *   approve(stepId, inputs)  looks good: carry on (Install), keeping inputs
+ *   revise(stepId, note)     change something: back to the Builder with the
+ *                            note, checked again, previewed again
+ * — then Install. Nothing touches the dashboard: the editor places it.
+ *
  * Pure (NFR-006): every effect is an injected hook.
  */
 "use strict";
@@ -60,10 +69,18 @@ const STATUS = {
   stopped: "stopped",
   // Needs a provider the user skipped connecting ("waiting for Gmail").
   needsProvider: "needs-provider",
+  // Waits for the user to look at it (a cell build's Preview, Phase 2b).
+  needsYou: "needs-you",
 };
 
 // How many times the Builder may fix one widget before it's over to the user.
 const MAX_FIXES = 2;
+// How many changes the user can ask for at a cell build's preview.
+const MAX_REVISIONS = 5;
+
+/** A plain object, or null — the user's picks from the preview. */
+const plainObject = (v) =>
+  v && typeof v === "object" && !Array.isArray(v) ? v : null;
 
 /**
  * The new dashboard's name: the layout piece's, without a trailing
@@ -75,13 +92,70 @@ function dashboardNameOf(layout) {
   return bare || name || "New dashboard";
 }
 
+/**
+ * A cell build's steps (opts.cell): its one widget installed (registry) or
+ * built and checked, previewed by the user, then installed (built ones).
+ * No dashboard, theme, bot or place steps — the editor places it.
+ */
+function cellSteps(widgets, add) {
+  widgets.forEach((p, i) => {
+    const built = p.source === "new" || p.source === "update";
+    if (p.source === "registry" && p.package) {
+      add({
+        id: `install:${i}`,
+        kind: "install",
+        piece: i,
+        role: "dash",
+        label: `Install ${p.name}`,
+      });
+    }
+    if (built) {
+      add({
+        id: `build:${i}`,
+        kind: "build",
+        piece: i,
+        source: p.source,
+        role: "builder",
+        label: `Build ${p.name}`,
+      });
+      add({
+        id: `check:${i}`,
+        kind: "check",
+        piece: i,
+        role: "checker",
+        label: `Check ${p.name}`,
+      });
+    }
+    add({
+      id: `preview:${i}`,
+      kind: "preview",
+      piece: i,
+      role: "you",
+      label: `Preview ${p.name}`,
+    });
+    if (built) {
+      add({
+        id: `save:${i}`,
+        kind: "save",
+        piece: i,
+        role: "dash",
+        label: `Install ${p.name}`,
+      });
+    }
+  });
+}
+
 /** The steps for a plan, all waiting. */
-function planSteps(plan, { dashboardName } = {}) {
+function planSteps(plan, { dashboardName, cell = false } = {}) {
   const pieces = ((plan && plan.pieces) || []).filter(Boolean);
   const widgets = pieces.filter((p) => p.kind === "widget");
   const layout = pieces.find((p) => p.kind === "layout");
   const steps = [];
   const add = (step) => steps.push({ status: STATUS.waiting, ...step });
+  if (cell) {
+    cellSteps(widgets, add);
+    return steps;
+  }
 
   widgets.forEach((p, i) => {
     if (p.source === "registry" && p.package) {
@@ -257,9 +331,20 @@ function blockersFor(step, steps) {
   }
   if (step.kind === "check")
     return steps.filter((s) => s.id === `build:${step.piece}`);
+  if (step.kind === "preview")
+    return steps.filter(
+      (s) =>
+        s.id === `install:${step.piece}` ||
+        s.id === `build:${step.piece}` ||
+        s.id === `check:${step.piece}`,
+    );
   if (step.kind === "save")
     return steps.filter(
-      (s) => s.id === `build:${step.piece}` || s.id === `check:${step.piece}`,
+      (s) =>
+        s.id === `build:${step.piece}` ||
+        s.id === `check:${step.piece}` ||
+        // A cell build installs only what the user saw and liked.
+        s.id === `preview:${step.piece}`,
     );
   if (step.kind === "place") {
     return steps.filter(
@@ -278,21 +363,30 @@ function blockersFor(step, steps) {
  * The Builder's request for one widget. With `fix` ({ package, problem }) it
  * asks the Builder to fix what it built (Let Builder fix it, 4d-3).
  */
-function buildRequest(plan, piece, fix = null) {
+function buildRequest(plan, piece, fix = null, { cell = false } = {}) {
   const providers = (piece.providers || []).join(", ") || "none";
   const update = piece.source === "update" || !!(fix && fix.installed);
   const first = fix
-    ? fix.draft
-      ? `Fix the widget you wrote for this plan (${fix.draft}).`
-      : fix.package
-        ? `Fix the widget ${fix.package} you built for this plan.`
-        : `Build this plan's widget again — the last try didn't work.`
+    ? fix.change && fix.draft
+      ? `Change the widget you wrote for this plan (${fix.draft}) — the user looked at it and wants a change.`
+      : fix.draft
+        ? `Fix the widget you wrote for this plan (${fix.draft}).`
+        : fix.package
+          ? `Fix the widget ${fix.package} you built for this plan.`
+          : `Build this plan's widget again — the last try didn't work.`
     : piece.source === "update"
       ? `Update the widget ${piece.package || piece.name} for this plan.`
       : `Build a new widget for this plan.`;
   return [
     first,
-    ...(fix ? [`What went wrong: ${fix.problem}`] : []),
+    ...(fix
+      ? [`${fix.change ? "What to change" : "What went wrong"}: ${fix.problem}`]
+      : []),
+    ...(cell
+      ? [
+          "It goes into one cell of a dashboard the user is editing: build only this widget, and don't place it — the user previews it and the editor puts it in the cell.",
+        ]
+      : []),
     `Plan: ${plan.summary || ""}`,
     `Widget: ${piece.name}${piece.notes ? ` — ${piece.notes}` : ""}`,
     `Providers: ${providers}`,
@@ -1011,6 +1105,8 @@ function createPlanBuild(plan, deps, opts = {}) {
     results: {},
     // the theme applied { name, key, previous, previousName } (5e-2b)
     theme: null,
+    // piece index → changes the user asked for at the preview (cell builds)
+    revisions: {},
     // what an earlier build made that the edited plan no longer has
     leftovers: [],
     totals: { tokens: 0, usd: 0, includedInPlan: true },
@@ -1113,7 +1209,7 @@ function createPlanBuild(plan, deps, opts = {}) {
       case "build": {
         const record = await deps.askRole(
           "builder",
-          buildRequest(plan, piece, step.fix || null),
+          buildRequest(plan, piece, step.fix || null, { cell: !!opts.cell }),
         );
         account(step, record);
         if (!record || record.skipped)
@@ -1182,8 +1278,84 @@ function createPlanBuild(plan, deps, opts = {}) {
           throw new Error((res && res.error) || "it wasn't installed");
         }
         if (res.widgetName) made.package = String(res.widgetName).toLowerCase();
+        // A cell build hands the editor the widget's component to place.
+        if (opts.cell && deps.resolveComponent) {
+          made.component =
+            (await deps.resolveComponent(made.package, piece.name)) || null;
+          if (!made.component) {
+            state.made[step.piece] = made;
+            throw new Error(
+              `it was installed, but its widget couldn't be found in ${made.package} to place`,
+            );
+          }
+        }
+        state.made[step.piece] = made;
         step.detail = made.package;
         return;
+      }
+      case "preview": {
+        // What to show: the checked draft, or the installed widget.
+        let made = state.made[step.piece] || {};
+        if (!made.draft && !made.component && piece.package) {
+          made = {
+            ...made,
+            package: piece.package,
+            component:
+              (piece.component &&
+                String(piece.component).split(".").length >= 3 &&
+                piece.component) ||
+              (deps.resolveComponent
+                ? (await deps.resolveComponent(piece.package, piece.name)) ||
+                  null
+                : null),
+          };
+          state.made[step.piece] = made;
+          if (!made.component) {
+            throw new Error(
+              `couldn't tell which widget in ${piece.package} to use`,
+            );
+          }
+        }
+        // Its inputs for the preview — settings and the providers it needs —
+        // read from its config without running it (the AST parser).
+        if (!made.preview && deps.previewConfig) {
+          const src = await deps.previewConfig({
+            draft: made.draft || null,
+            component: made.component || null,
+          });
+          const parsed =
+            src && src.configCode ? parseDashConfig(src.configCode) : null;
+          const config = parsed && parsed.ok ? parsed.config || {} : {};
+          made = {
+            ...made,
+            preview: {
+              componentName:
+                (src && src.componentName) ||
+                String(made.component || piece.name || "")
+                  .split(".")
+                  .pop(),
+              userConfig: config.userConfig || {},
+              providers: Array.isArray(config.providers)
+                ? config.providers
+                : [],
+              // The installed widget's name, to load its code by.
+              widgetName: (src && src.widgetName) || null,
+              // What the plan said to use, to start from.
+              provider: piece.provider || null,
+              settings: piece.settings || null,
+            },
+          };
+          state.made[step.piece] = made;
+        }
+        if (step.approved) {
+          // The connection and settings the user picked go into the cell.
+          state.made[step.piece] = { ...made, inputs: step.approved };
+          step.detail = "Looks good";
+          return;
+        }
+        const wait = new Error("waiting for you to look at it");
+        wait.needsYou = true;
+        throw wait;
       }
       case "place": {
         const made = state.made[step.piece] || {};
@@ -1285,6 +1457,8 @@ function createPlanBuild(plan, deps, opts = {}) {
     "listen",
   ]);
   const RETRIES = new Set([
+    // A cell build's preview couldn't find its widget (Phase 2b).
+    "preview",
     "install",
     "dashboard",
     "theme",
@@ -1339,6 +1513,8 @@ function createPlanBuild(plan, deps, opts = {}) {
       (b) => b.status !== STATUS.done,
     );
     if (!blocked) return false;
+    // Behind the user's preview: it waits, untouched, until they decide.
+    if (blocked.status === STATUS.needsYou) return true;
     if (blocked.status === STATUS.needsProvider) {
       step.status = STATUS.needsProvider;
       step.waitingFor = (blocked.waitingFor || []).slice();
@@ -1379,6 +1555,13 @@ function createPlanBuild(plan, deps, opts = {}) {
         await runStep(step);
         step.status = STATUS.done;
       } catch (err) {
+        if (err && err.needsYou && !stopping) {
+          step.status = STATUS.needsYou;
+          step.finishedAt = now();
+          current = null;
+          emit();
+          continue;
+        }
         const waitingFor =
           err && Array.isArray(err.waitingFor) && err.waitingFor;
         if (waitingFor && waitingFor.length && !stopping) {
@@ -1416,9 +1599,11 @@ function createPlanBuild(plan, deps, opts = {}) {
             (s) => s.status === STATUS.failed || s.status === STATUS.skipped,
           )
         ? "finished-with-problems"
-        : steps.some((s) => s.status === STATUS.needsProvider)
-          ? "waiting-for-providers"
-          : "done";
+        : steps.some((s) => s.status === STATUS.needsYou)
+          ? "waiting-for-you"
+          : steps.some((s) => s.status === STATUS.needsProvider)
+            ? "waiting-for-providers"
+            : "done";
     state.finishedAt = now();
     busy = false;
     emit();
@@ -1459,13 +1644,29 @@ function createPlanBuild(plan, deps, opts = {}) {
       .join("\n");
     const saveStep = steps.find((s) => s.id === `save:${w}`);
     const installed = !!saveStep && saveStep.status === STATUS.done;
+    // A cell build: what the Builder fixes is previewed again — nothing the
+    // user hasn't seen is installed (Phase 2b).
+    const preview = steps.find((s) => s.id === `preview:${w}`);
+    if (preview) {
+      reset(preview);
+      delete preview.approved;
+      if (state.made[w]) {
+        delete state.made[w].preview;
+        delete state.made[w].inputs;
+      }
+    }
+    // A change the user asked for stays asked for.
+    const asked =
+      build && build.fix && build.fix.change ? build.fix.problem : null;
     if (build) {
       reset(build);
       build.fix = {
         package: made.package || null,
         draft: made.draft || null,
         installed,
-        problem,
+        problem: asked
+          ? `${problem}\n(While making the change the user asked for: ${asked})`
+          : problem,
       };
       // Which try this is ("fixing, try 1 of 2").
       build.fixTry = state.fixes[w];
@@ -1499,13 +1700,84 @@ function createPlanBuild(plan, deps, opts = {}) {
     return run();
   }
 
+  /** The preview, as the user decided it. */
+  const waitingPreview = (stepId) => {
+    const step = steps.find((s) => s.id === stepId);
+    return step && step.kind === "preview" && step.status === STATUS.needsYou
+      ? step
+      : null;
+  };
+
+  /**
+   * Looks good (a cell build's preview): carry on — the widget is installed
+   * — keeping the user's picks { providers, settings } for the cell.
+   */
+  function approve(stepId, inputs = {}) {
+    if (busy) return Promise.resolve({ error: "The build is still running." });
+    const step = waitingPreview(stepId);
+    if (!step) return Promise.resolve({ error: "Nothing is waiting there." });
+    const picked = inputs && typeof inputs === "object" ? inputs : {};
+    reset(step);
+    step.approved = JSON.parse(
+      JSON.stringify({
+        providers: plainObject(picked.providers),
+        settings: plainObject(picked.settings),
+      }),
+    );
+    return run();
+  }
+
+  /**
+   * Change something (a cell build's preview): the Builder changes its
+   * draft as the user asked, the Checker checks it again, and it's
+   * previewed again. Doesn't use up the Builder's own fixes.
+   */
+  function revise(stepId, note) {
+    if (busy) return Promise.resolve({ error: "The build is still running." });
+    const step = waitingPreview(stepId);
+    if (!step) return Promise.resolve({ error: "Nothing is waiting there." });
+    const w = step.piece;
+    const build = steps.find((s) => s.id === `build:${w}`);
+    if (!build) {
+      return Promise.resolve({
+        error: "This widget wasn't built here — ask the Planner for another.",
+      });
+    }
+    const change = String(note || "").trim();
+    if (!change) return Promise.resolve({ error: "Say what to change." });
+    if ((state.revisions[w] || 0) >= MAX_REVISIONS) {
+      return Promise.resolve({
+        error: `That's ${MAX_REVISIONS} changes — discard it and describe what you want again.`,
+      });
+    }
+    state.revisions[w] = (state.revisions[w] || 0) + 1;
+    const made = state.made[w] || {};
+    reset(build);
+    build.fix = {
+      package: made.package || null,
+      draft: made.draft || null,
+      installed: false,
+      change: true,
+      problem: change,
+    };
+    build.revision = state.revisions[w];
+    if (state.made[w]) delete state.made[w].preview;
+    for (const id of [`check:${w}`, `save:${w}`]) {
+      const s = steps.find((x) => x.id === id);
+      if (s) reset(s);
+    }
+    reset(step);
+    delete step.approved;
+    return run();
+  }
+
   function stop() {
     stopping = true;
     if (current && current.role !== "dash" && deps.abortRole)
       deps.abortRole(current.role);
   }
 
-  return { state, run, stop, fix, retry, resume };
+  return { state, run, stop, fix, retry, resume, approve, revise };
 }
 
 module.exports = {

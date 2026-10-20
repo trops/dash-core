@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import {
   Button,
   Button3,
@@ -10,6 +10,11 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { formatTokens, modelLabel } from "../../utils/runCostLabel";
 import { normalizeType, providerLabel } from "./planChecklist";
 import { ConnectDialog } from "./PlanChecklistDialogs";
+import { CellPreview } from "./CellPreview";
+import {
+  useRegistryAuthGate,
+  isRegistryAuthError,
+} from "../../hooks/useRegistryAuthGate";
 
 /**
  * CreateBuildingStep — building an approved plan (create-entry PRD CRE-004
@@ -23,9 +28,20 @@ import { ConnectDialog } from "./PlanChecklistDialogs";
  * per widget) or Try again on the step, and Edit plan / Remove what was
  * built for the whole build; finished steps are kept. Steps that need a
  * provider the user skipped wait for it (AC5) with Connect <provider>.
+ *
+ * A cell build (consolidation Phase 2b, `cell`): after the Checker the
+ * build waits on the Preview step — CellPreview, where the user picks its
+ * connection and settings, runs it, and decides (Looks good / Change
+ * something / Discard). When it's done, onCellDone(made) hands the widget
+ * and the picks to the editor; nothing here touches the dashboard.
  */
 
-const ROLE = { builder: "Builder", checker: "Checker", dash: "Dash" };
+const ROLE = {
+  builder: "Builder",
+  checker: "Checker",
+  dash: "Dash",
+  you: "You",
+};
 // How many times the Builder fixes one widget by itself (planBuild MAX_FIXES).
 const MAX_FIXES = 2;
 const tries = (n) => (n === 1 ? "1 try" : `${n} tries`);
@@ -37,6 +53,7 @@ const MARK = {
   skipped: "–",
   stopped: "■",
   "needs-provider": "○",
+  "needs-you": "→",
 };
 const HEAD = {
   waiting: "Getting ready…",
@@ -47,6 +64,8 @@ const HEAD = {
   removed: "Removed",
   // The app closed while it was building (4e-1): finished steps are kept.
   interrupted: "Interrupted — the app closed while it was building",
+  // A cell build's preview (Phase 2b).
+  "waiting-for-you": "Ready for you to look at",
 };
 
 /** The providers waiting steps need, once each: ["gmail"]. */
@@ -78,6 +97,11 @@ export const CreateBuildingStep = ({
   onContinue = null,
   // The dock's narrow panel (4e-2).
   compact = false,
+  // A cell build (Phase 2b): { label } — "cell 2.2 on Slack Pack"; done →
+  // onCellDone(made); Discard → onDiscard().
+  cell = null,
+  onCellDone = null,
+  onDiscard = null,
 }) => {
   const app = useContext(AppContext) || {};
   const { muted, strong, hairline } = useConfigTokens();
@@ -91,6 +115,9 @@ export const CreateBuildingStep = ({
   const [removing, setRemoving] = useState(false);
   // The provider type being connected (waiting steps).
   const [connecting, setConnecting] = useState(null);
+  // A registry install that failed because the user isn't signed in: sign
+  // in (the Widgets page's prompt), then it's tried again.
+  const { ensureAuthed, authGate } = useRegistryAuthGate();
 
   useEffect(() => {
     const bots = window.mainApi && window.mainApi.bots;
@@ -113,6 +140,22 @@ export const CreateBuildingStep = ({
 
   const steps = (state && state.steps) || [];
   const status = (state && state.status) || "waiting";
+  // A cell build that's done: the editor places it, once.
+  const handedOff = useRef(false);
+  useEffect(() => {
+    if (!cell || status !== "done" || handedOff.current) return;
+    handedOff.current = true;
+    const made = (state && state.made && state.made[0]) || {};
+    if (onCellDone) onCellDone(made);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cell, status]);
+  // Looks good / Change something on the preview.
+  const [deciding, setDeciding] = useState(false);
+  const decide = async (call) => {
+    setDeciding(true);
+    await act(call);
+    setDeciding(false);
+  };
   const running = status === "waiting" || status === "running";
   const totals = (state && state.totals) || { tokens: 0, includedInPlan: true };
   const finished = !running;
@@ -203,6 +246,12 @@ export const CreateBuildingStep = ({
     act(() => window.mainApi.bots.fixPlanBuild(buildId, step.id));
   const retry = (step) =>
     act(() => window.mainApi.bots.retryPlanBuild(buildId, step.id));
+  const signInAndRetry = async (step) => {
+    const ok = await ensureAuthed({
+      message: "Sign in to the Dash registry to install this widget.",
+    });
+    if (ok) retry(step);
+  };
 
   // Connect, then the waiting steps run (only if it really got connected,
   // they'd wait again otherwise).
@@ -263,7 +312,84 @@ export const CreateBuildingStep = ({
         ? `Built — waiting for ${andList(waitingFor.map(providerLabel))}`
         : targeted && status === "done"
           ? `Changes made to ${built.dashboard.name}`
-          : HEAD[status] || status;
+          : cell && status === "finished-with-problems"
+            ? // Nothing went into the cell yet — not "built".
+              "It isn't ready yet"
+            : HEAD[status] || status;
+
+  // A cell build waiting on the user: the Preview takes the screen (as the
+  // mockup) — the widget running, its inputs, and what to do with it.
+  const waitingPreview = cell
+    ? steps.find((x) => x.kind === "preview" && x.status === "needs-you")
+    : null;
+  if (waitingPreview) {
+    const p = waitingPreview.piece;
+    const doneSoFar = steps
+      .filter((x) => x.status === "done")
+      .map((x) => `${x.label} ✓`)
+      .join(" · ");
+    return (
+      <div
+        className={`flex-1 min-h-0 overflow-y-auto ${strong}`}
+        data-testid="create-building"
+      >
+        <div className="w-full flex flex-col gap-4 px-6 py-6">
+          <div className="flex flex-col gap-1">
+            <span
+              className={`text-lg font-semibold ${strong}`}
+              data-testid="building-status"
+            >
+              {HEAD["waiting-for-you"]}
+            </span>
+            {doneSoFar ? (
+              <span
+                className={`text-xs ${muted}`}
+                data-testid="building-done-so-far"
+              >
+                {doneSoFar}
+              </span>
+            ) : null}
+          </div>
+          {actionError ? (
+            <span className="text-xs" data-testid="building-action-error">
+              {actionError}
+            </span>
+          ) : null}
+          <CellPreview
+            made={(state.made || {})[p] || {}}
+            name={waitingPreview.label.replace(/^Preview /, "")}
+            cellLabel={cell.label}
+            deciding={deciding}
+            checked={steps.some(
+              (x) => x.id === `check:${p}` && x.status === "done",
+            )}
+            onApprove={(inputs) =>
+              decide(() =>
+                window.mainApi.bots.approvePlanStep(
+                  buildId,
+                  waitingPreview.id,
+                  inputs,
+                ),
+              )
+            }
+            onRevise={
+              steps.some((x) => x.id === `build:${p}`)
+                ? (note) =>
+                    decide(() =>
+                      window.mainApi.bots.revisePlanStep(
+                        buildId,
+                        waitingPreview.id,
+                        note,
+                      ),
+                    )
+                : null
+            }
+            onDiscard={onDiscard}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -271,9 +397,10 @@ export const CreateBuildingStep = ({
       data-testid="create-building"
     >
       <div
-        className={`mx-auto w-full max-w-3xl flex flex-col ${
-          compact ? "gap-3 px-3 py-3" : "gap-5 px-6 py-8"
-        }`}
+        className={`mx-auto w-full ${
+          // A cell build's preview sits beside its inputs: more room.
+          cell ? "max-w-5xl" : "max-w-3xl"
+        } flex flex-col ${compact ? "gap-3 px-3 py-3" : "gap-5 px-6 py-8"}`}
       >
         <div className="flex flex-row items-center justify-between gap-3">
           <span
@@ -286,6 +413,12 @@ export const CreateBuildingStep = ({
             <Button3 title="Stop" onClick={stop} disabled={stopping} />
           ) : null}
         </div>
+        {cell && running ? (
+          // As the mockup's Build frame.
+          <span className={`text-sm ${muted}`} data-testid="building-cell-note">
+            {`If the Checker finds problems, nothing is installed: the Builder gets up to ${MAX_FIXES} tries to fix them. Then you see it running before it goes in.`}
+          </span>
+        ) : null}
 
         {finished && !interrupted && waitingFor.length ? (
           <div
@@ -331,6 +464,14 @@ export const CreateBuildingStep = ({
                 {compact ? null : usageOf(s)}
               </div>
               {compact ? usageOf(s) : null}
+              {s.kind === "build" && s.revision && s.status === "running" ? (
+                <span
+                  className={`text-xs ml-7 ${muted}`}
+                  data-testid="building-step-revising"
+                >
+                  Changing it as you asked
+                </span>
+              ) : null}
               {s.kind === "build" && s.fixTry && s.status === "running" ? (
                 <span
                   className={`text-xs ml-7 ${muted}`}
@@ -387,7 +528,13 @@ export const CreateBuildingStep = ({
                       onClick={() => fix(s)}
                     />
                   ) : null}
-                  {s.canRetry ? (
+                  {s.canRetry && isRegistryAuthError(s.error) ? (
+                    <Button3
+                      title="Sign in to the registry"
+                      size="sm"
+                      onClick={() => signInAndRetry(s)}
+                    />
+                  ) : s.canRetry ? (
                     <Button3
                       title="Try again"
                       size="sm"
@@ -544,6 +691,7 @@ export const CreateBuildingStep = ({
         </ConfirmationModal>
       ) : null}
 
+      {authGate}
       {connecting ? (
         <ConnectDialog
           item={{

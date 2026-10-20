@@ -67,3 +67,26 @@ describe("removed for good", () => {
     expect(fs.existsSync(path.join(__dirname, "..", ...p))).toBe(false);
   });
 });
+
+// Consolidation Phase 2b: a cell's Build with AI and Edit's Ask AI open
+// Create for that cell (the Dash team, a preview, placed in the edit).
+describe("an empty cell's AI doors open Create for that cell", () => {
+  it("Build with AI on the grid", () => {
+    const grid = read("Layout", "Builder", "LayoutGridContainer.js");
+    expect(grid).toMatch(
+      /new CustomEvent\("dash:open-create", \{\s*detail: \{\s*cell: \{\s*cellNumber,\s*gridItemId: item\.id,\s*workspaceId: workspace\?\.id,\s*scope: workspaceScope \|\| "main",/,
+    );
+    expect(grid).not.toMatch(/dash:open-widget-builder/);
+  });
+  it("Edit's Ask AI › Build a widget for this cell", () => {
+    expect(stageSrc).toMatch(
+      /new CustomEvent\("dash:open-create", \{\s*detail: \{\s*cell: \{\s*cellNumber: editSelection\.cellNumber,/,
+    );
+  });
+  it("the request carries the page being edited, and Create gets the cell", () => {
+    expect(stageSrc).toMatch(/activePageRef\.current = currentActivePageId;/);
+    expect(stageSrc).toMatch(
+      /cell=\{createRequest \? createRequest\.cell \|\| null : null\}/,
+    );
+  });
+});

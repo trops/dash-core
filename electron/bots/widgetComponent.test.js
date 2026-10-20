@@ -84,3 +84,39 @@ describe("resolveWidgetComponent — the piece's name picks the component (Creat
     );
   });
 });
+
+// Found live (Phase 2b): "Use in this cell" on the registry's Digital Clock
+// failed — the clock package's components end in "Widget".
+describe("resolveWidgetComponent — names with or without the Widget suffix", () => {
+  const clocks = () => [
+    {
+      name: "@trops/clock",
+      widgets: [
+        { name: "AnalogClockWidget", displayName: "Analog Clock" },
+        { name: "DigitalClockWidget", displayName: "Digital Clock" },
+        { name: "MinimalTextClockWidget", displayName: "Words" },
+      ],
+    },
+  ];
+  it('"Digital Clock" → DigitalClockWidget', () => {
+    assert.deepEqual(
+      resolveWidgetComponent("@trops/clock", null, clocks, {
+        name: "Digital Clock",
+      }),
+      { component: "trops.clock.DigitalClockWidget" },
+    );
+  });
+  it("a display name picks its widget", () => {
+    assert.deepEqual(
+      resolveWidgetComponent("@trops/clock", null, clocks, { name: "Words" }),
+      { component: "trops.clock.MinimalTextClockWidget" },
+    );
+  });
+  it("no match still says which to pick", () => {
+    assert.match(
+      resolveWidgetComponent("@trops/clock", null, clocks, { name: "Flip" })
+        .error,
+      /has several widgets/,
+    );
+  });
+});

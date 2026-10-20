@@ -298,6 +298,13 @@ export const CreatePlanStep = ({
   // The dashboard the user is looking at (5e-2b): the Planner is told, so
   // "this dashboard" means it.
   openDashboardId = null,
+  // One widget for a cell being edited (consolidation Phase 2b):
+  // { label: "cell 2.2 on Slack Pack" } — the plan is one widget, built with
+  // a preview and placed by the editor (onCellDone); a seed with autoBuild
+  // (Use in this cell) skips the Planner and builds at once.
+  cell = null,
+  onCellDone = null,
+  onDiscard = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const statusTokens = useStatusTokens();
@@ -431,8 +438,12 @@ export const CreatePlanStep = ({
         // Kept in Recent from the start, then the Planner (with this plan's
         // memory) — saving first gives the plan its id.
         const first = seed ? seed.label : prompt;
+        // Use in this cell: nothing to plan — it builds (previews) at once.
+        const direct = !!(seed && seed.autoBuild);
+        // A cell build stays out of Recent: it ends in the editor, and
+        // Recent's Remove / Edit plan don't apply to it (Phase 2b).
         Promise.resolve(
-          bots && bots.saveCreateRecent
+          bots && bots.saveCreateRecent && !cell
             ? bots.saveCreateRecent({ prompt: first })
             : null,
         )
@@ -443,18 +454,24 @@ export const CreatePlanStep = ({
             }
           })
           .catch(() => {})
-          .then(
-            () =>
-              alive.current &&
-              ask(
-                seed
-                  ? seed.request
+          .then(() => {
+            if (!alive.current) return;
+            if (direct) {
+              setBusy(false);
+              startBuild();
+              return;
+            }
+            ask(
+              seed
+                ? seed.request
+                : cell
+                  ? `${prompt}\n\n(Plan exactly one widget for ${cell.label}: the user is editing that dashboard and it goes into that one cell. No bots, theme or layout, and don't set "dashboard" — the user previews the widget and the editor places it. Put the connection and settings they want on the widget piece.)`
                   : openDashboardId != null
                     ? `${prompt}\n\n(The user is looking at the dashboard with id ${openDashboardId}.)`
                     : prompt,
-                false,
-              ),
-          );
+              false,
+            );
+          });
       }
       if (window.mainApi?.bots?.listDashTeam) {
         Promise.resolve(window.mainApi.bots.listDashTeam())
@@ -527,16 +544,26 @@ export const CreatePlanStep = ({
   const firstAsk =
     layoutName || (messages.find((m) => m.who === "you") || {}).text || "";
   const built = !!build && !removedNote;
+  // A cell build's one widget, by name (the headers say it).
+  const widgetName =
+    (
+      (plan && Array.isArray(plan.pieces) ? plan.pieces : []).find(
+        (p) => p && p.kind === "widget" && p.name,
+      ) || {}
+    ).name || "";
   useEffect(() => {
     if (onState)
       onState({
         recentId: savedId,
         busy,
         built,
+        // The running build, so a cell build can be stopped on close.
+        buildId: build ? build.buildId : null,
         title: firstAsk.length > 60 ? `${firstAsk.slice(0, 57)}…` : firstAsk,
+        widgetName,
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy, savedId, built, firstAsk]);
+  }, [busy, savedId, built, firstAsk, build, widgetName]);
 
   const answer = (text) => {
     const t = String(text || "").trim();
@@ -571,7 +598,7 @@ export const CreatePlanStep = ({
 
   const questions = (plan && plan.questions) || [];
   const pieces = (plan && plan.pieces) || [];
-  const check = plan ? validatePlan(plan) : null;
+  const check = plan ? validatePlan(plan, { cell: !!cell }) : null;
   const estimate =
     plan && pieces.length ? estimatePlan(plan, { team, planningTokens }) : null;
   const have = providerTypesOf(app.providers);
@@ -593,6 +620,8 @@ export const CreatePlanStep = ({
   // Unsaved edits on the dashboard the plan changes: it waits (two saves at
   // once would overwrite each other) — checked before anything is walked.
   const heldByEdits = () => {
+    // A cell build never saves the dashboard: the editor places its widget.
+    if (cell) return false;
     if (!target || dirtyDashboardId() !== target.id) return false;
     setReady(false);
     setBuildError(
@@ -614,6 +643,7 @@ export const CreatePlanStep = ({
       const from = continueFrom || resumeFrom;
       const res = await bots.startPlanBuild(plan, {
         ...(from ? { resumeFrom: from } : {}),
+        ...(cell ? { cell: true } : {}),
         // Kept on this conversation in Recent, with its build memory.
         ...(planId.current ? { recentId: planId.current } : {}),
       });
@@ -673,6 +703,9 @@ export const CreatePlanStep = ({
     return (
       <CreateBuildingStep
         compact={compact}
+        cell={cell}
+        onCellDone={onCellDone}
+        onDiscard={onDiscard}
         buildId={build.buildId}
         initialState={build.state}
         estimate={estimate}
@@ -823,6 +856,60 @@ export const CreatePlanStep = ({
         ) : null}
       </div>
     ) : null;
+  const expectSection =
+    plan && pieces.length ? (
+      <PlanSection title="What to expect" testId="plan-expect">
+        {(plan.access || []).length ? (
+          <div className="flex flex-col gap-1" data-testid="plan-access">
+            <SectionLabel text="What it can and can't do" />
+            {plan.access.map((a, i) => {
+              const cant = cannotLine(a);
+              return (
+                <span
+                  key={i}
+                  className="flex flex-row items-start gap-2 text-sm"
+                >
+                  <FontAwesomeIcon
+                    icon={cant ? "ban" : "check"}
+                    className={`h-3.5 w-3.5 mt-1 flex-shrink-0 ${cant ? muted : statusTokens.success.icon}`}
+                    aria-label={cant ? "Can't" : "Can"}
+                  />
+                  <span>{a}</span>
+                </span>
+              );
+            })}
+          </div>
+        ) : null}
+
+        {(plan.checks || []).length ? (
+          <div className="flex flex-col gap-1">
+            <SectionLabel text="How we'll know it works" />
+            <ul
+              className="flex flex-col gap-1 text-sm"
+              style={{
+                margin: 0,
+                paddingLeft: "1.1rem",
+                listStyle: "disc",
+              }}
+            >
+              {plan.checks.map((c, i) => (
+                <li key={i}>{c}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <div className="flex flex-col gap-1" data-testid="plan-estimate">
+          <SectionLabel text="Estimated cost" />
+          <span className="text-sm">
+            To build: {describeEstimate(estimate)}
+          </span>
+          {plan.estimate && plan.estimate.running ? (
+            <span className="text-sm">To run: {plan.estimate.running}</span>
+          ) : null}
+        </div>
+      </PlanSection>
+    ) : null;
   const planCard =
     plan && pieces.length ? (
       <div className="flex flex-col gap-4" data-testid="plan-card">
@@ -840,7 +927,7 @@ export const CreatePlanStep = ({
           {plan.summary}
         </span>
         <span className={`text-sm ${muted}`} data-testid="plan-counts">
-          {countsLine(plan)}
+          {cell ? `Goes into: ${cell.label}` : countsLine(plan)}
         </span>
 
         <PlanSection
@@ -895,16 +982,19 @@ export const CreatePlanStep = ({
                               onClick={() => setSwapIndex(index)}
                             />
                           ) : null}
-                          <ButtonIcon
-                            icon="xmark"
-                            ariaLabel={`Remove ${p.name} from the plan`}
-                            onClick={() =>
-                              editPlan(
-                                removePiece(plan, index),
-                                `removed ${p.name}`,
-                              )
-                            }
-                          />
+                          {cell ? null : (
+                            // A cell's plan is this one widget: Swap, not remove.
+                            <ButtonIcon
+                              icon="xmark"
+                              ariaLabel={`Remove ${p.name} from the plan`}
+                              onClick={() =>
+                                editPlan(
+                                  removePiece(plan, index),
+                                  `removed ${p.name}`,
+                                )
+                              }
+                            />
+                          )}
                         </div>
                       </div>
                       {p.kind === "bot" && p.source === "new" ? (
@@ -947,7 +1037,8 @@ export const CreatePlanStep = ({
 
         {/* What it will look like, with made-up data (CRE-003 AC6) —
                   a new dashboard's grid; not drawn for one the user has. */}
-        {target ? null : <PlanSketch plan={plan} compact={compact} />}
+        {/* A cell build shows the real widget running before it goes in. */}
+        {target || cell ? null : <PlanSketch plan={plan} compact={compact} />}
 
         {checklist.length ? (
           <PlanSection title="Before building" testId="plan-before">
@@ -1002,57 +1093,8 @@ export const CreatePlanStep = ({
           </PlanSection>
         ) : null}
 
-        <PlanSection title="What to expect" testId="plan-expect">
-          {(plan.access || []).length ? (
-            <div className="flex flex-col gap-1" data-testid="plan-access">
-              <SectionLabel text="What it can and can't do" />
-              {plan.access.map((a, i) => {
-                const cant = cannotLine(a);
-                return (
-                  <span
-                    key={i}
-                    className="flex flex-row items-start gap-2 text-sm"
-                  >
-                    <FontAwesomeIcon
-                      icon={cant ? "ban" : "check"}
-                      className={`h-3.5 w-3.5 mt-1 flex-shrink-0 ${cant ? muted : statusTokens.success.icon}`}
-                      aria-label={cant ? "Can't" : "Can"}
-                    />
-                    <span>{a}</span>
-                  </span>
-                );
-              })}
-            </div>
-          ) : null}
-
-          {(plan.checks || []).length ? (
-            <div className="flex flex-col gap-1">
-              <SectionLabel text="How we'll know it works" />
-              <ul
-                className="flex flex-col gap-1 text-sm"
-                style={{
-                  margin: 0,
-                  paddingLeft: "1.1rem",
-                  listStyle: "disc",
-                }}
-              >
-                {plan.checks.map((c, i) => (
-                  <li key={i}>{c}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          <div className="flex flex-col gap-1" data-testid="plan-estimate">
-            <SectionLabel text="Estimated cost" />
-            <span className="text-sm">
-              To build: {describeEstimate(estimate)}
-            </span>
-            {plan.estimate && plan.estimate.running ? (
-              <span className="text-sm">To run: {plan.estimate.running}</span>
-            ) : null}
-          </div>
-        </PlanSection>
+        {/* A cell's plan keeps Build in view (the mockup): this goes below. */}
+        {cell ? null : expectSection}
 
         {broken ? (
           <span
@@ -1095,12 +1137,15 @@ export const CreatePlanStep = ({
                     ? "Starting the build…"
                     : resumeFrom
                       ? "What's built is kept — only what's new or changed gets built."
-                      : removedNote ||
-                        (target
-                          ? `Kept in Recent · nothing on ${target.name} changes until you press this.`
-                          : "Kept in Recent · nothing has been built or installed yet.")}
+                      : cell
+                        ? `Nothing goes into ${cell.label} until you've seen it running.`
+                        : removedNote ||
+                          (target
+                            ? `Kept in Recent · nothing on ${target.name} changes until you press this.`
+                            : "Kept in Recent · nothing has been built or installed yet.")}
           </span>
         </div>
+        {cell ? expectSection : null}
       </div>
     ) : null;
   const dialogs = (

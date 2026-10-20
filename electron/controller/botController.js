@@ -2299,10 +2299,18 @@ const botController = {
    * `resumeFrom` (Edit plan, 4d-3): an earlier build of this plan whose work
    * is reused — same dashboard, unchanged pieces kept. A plan that names a
    * dashboard (plan.dashboard, 5e-2b) adds to that one instead of making one.
+   * `cell` (consolidation Phase 2b): one widget for a cell of a dashboard
+   * being edited — built, checked, previewed by the user (approvePlanStep /
+   * revisePlanStep), installed; never placed here: the editor places it.
    */
   startPlanBuild(
     plan,
-    { dashboardName = null, resumeFrom = null, recentId = null } = {},
+    {
+      dashboardName = null,
+      resumeFrom = null,
+      recentId = null,
+      cell = false,
+    } = {},
   ) {
     if (!plan || !Array.isArray(plan.pieces) || !plan.pieces.length) {
       return { error: "The plan has nothing to build." };
@@ -2312,6 +2320,7 @@ const botController = {
     const checked = validatePlan(plan, {
       dashboards: this._dashboardsWithBots(),
       themes: this._themeNames(),
+      cell: !!cell,
     });
     if (checked.errors.length) {
       return {
@@ -2354,7 +2363,13 @@ const botController = {
       this._builds.delete(resumeFrom);
     }
     const buildId = `build_${Date.now()}`;
-    const entry = { plan, state: null, build: null, recentId: planId };
+    const entry = {
+      plan,
+      state: null,
+      build: null,
+      recentId: planId,
+      cell: !!cell,
+    };
     const build = createPlanBuild(
       plan,
       {
@@ -2363,12 +2378,65 @@ const botController = {
           this._planCreateDashboard(name, count, pages),
         useDashboard: (id) => this._planUseDashboard(id),
         applyTheme: (req) => this._planApplyTheme(req),
-        askRole: (role, request) => this._planAskRole(role, request, planId),
+        // A cell build's own Builder / Checker: while they run, the Dash
+        // team's place_widget / installDraft refuse (Phase 2b).
+        askRole: cell
+          ? async (role, request) => {
+              this._cellRoleRuns = (this._cellRoleRuns || 0) + 1;
+              try {
+                return await this._planAskRole(role, request, planId);
+              } finally {
+                this._cellRoleRuns -= 1;
+              }
+            }
+          : (role, request) => this._planAskRole(role, request, planId),
         abortRole: (role) => {
           const bot = dashTeamBot(this._store.list(), role);
           if (bot) this._runner.abort(bot.id);
         },
         placeWidget: (req) => this._planPlaceWidget(req),
+        // A cell build hands the editor the component to place (Phase 2b).
+        resolveComponent: (pkg, name) => {
+          const r = resolveWidgetComponent(
+            pkg,
+            null,
+            () => require("../widgetRegistry").getWidgetRegistry().getWidgets(),
+            { name },
+          );
+          return r && !r.error ? r.component : null;
+        },
+        // A cell build's preview inputs: the draft's (or installed widget's)
+        // config source — parsed, never run, in planBuild.
+        previewConfig: async ({ draft, component }) => {
+          if (draft && this._widgetTools && this._widgetTools.previewDraft) {
+            const r = this._widgetTools.previewDraft({ name: draft });
+            return r && r.success
+              ? { configCode: r.configCode, componentName: r.componentName }
+              : null;
+          }
+          const parts = String(component || "").split(".");
+          if (parts.length < 3) return null;
+          // Found by its component: registry packages are kept under their
+          // bare name ("clock"), not "@trops/clock".
+          const reg = require("../widgetRegistry");
+          const installed = (reg.getWidgetRegistry().getWidgets() || []).find(
+            (w) => w && (w.componentNames || []).includes(component),
+          );
+          const widgetName = installed
+            ? installed.name
+            : `@${parts[0]}/${parts[1]}`;
+          const src = await reg.readWidgetSources({
+            widgetName,
+            componentName: component,
+          });
+          return src && src.success
+            ? {
+                configCode: src.configCode,
+                componentName: parts[parts.length - 1],
+                widgetName,
+              }
+            : { widgetName };
+        },
         // The Install step: the draft the Checker passed (Phase 1b).
         installBuilt: (draft) =>
           this._widgetTools && this._widgetTools.installDraft
@@ -2395,7 +2463,7 @@ const botController = {
           this._keepBuild(planId, buildId, plan, state);
         },
       },
-      { dashboardName, resume, autoFix: true },
+      { dashboardName, resume, autoFix: true, cell: !!cell },
     );
     entry.build = build;
     entry.state = JSON.parse(JSON.stringify(build.state));
@@ -2468,6 +2536,41 @@ const botController = {
       return { error: "That step can't be tried again." };
     }
     return this._continueBuild(entry.build.retry(stepId));
+  },
+
+  /**
+   * Looks good (a cell build's preview, Phase 2b): carry on with the user's
+   * picks { providers, settings } — the widget is installed.
+   */
+  approvePlanStep(buildId, stepId, inputs = {}) {
+    const { entry, step, error } = this._finishedBuild(buildId, stepId);
+    if (error) return { error };
+    if (!entry.build) return { error: "Continue building first." };
+    if (step.kind !== "preview" || step.status !== "needs-you") {
+      return { error: "Nothing is waiting there." };
+    }
+    return this._continueBuild(entry.build.approve(stepId, inputs));
+  },
+
+  /** Change something (a cell build's preview): back to the Builder. */
+  revisePlanStep(buildId, stepId, note) {
+    const { entry, step, error } = this._finishedBuild(buildId, stepId);
+    if (error) return { error };
+    if (!entry.build) return { error: "Continue building first." };
+    if (step.kind !== "preview" || step.status !== "needs-you") {
+      return { error: "Nothing is waiting there." };
+    }
+    if (!String(note || "").trim()) return { error: "Say what to change." };
+    return this._continueBuild(entry.build.revise(stepId, note));
+  },
+
+  /**
+   * A cell build's Builder or Checker is at work: the editor places that
+   * widget after the user previews it, so nothing is installed or placed
+   * by the team meanwhile.
+   */
+  _cellBuildRunning() {
+    return (this._cellRoleRuns || 0) > 0;
   },
 
   /** Providers were connected: the steps waiting for them run (AC5). */
@@ -2665,8 +2768,11 @@ const botController = {
     if (!pkg) throw new Error(`${pkgName} isn't in the registry`);
     if (!pkg.downloadUrl) throw new Error(`${pkgName} can't be downloaded`);
     const registry = require("../widgetRegistry").getWidgetRegistry();
-    const config = await registry.downloadWidget(pkg.name, pkg.downloadUrl);
-    this._broadcast("widget:installed", { widgetName: pkg.name, config });
+    // Kept under its scoped id ("@trops/clock"), like the Widgets page's
+    // install — and as it's read back after a restart.
+    const installAs = pkg.scope ? `@${pkg.scope}/${pkg.name}` : pkg.name;
+    const config = await registry.downloadWidget(installAs, pkg.downloadUrl);
+    this._broadcast("widget:installed", { widgetName: installAs, config });
     const widgets = pkg.widgets || [];
     const want = String((piece && piece.name) || "").toLowerCase();
     const w =
@@ -2964,10 +3070,28 @@ const botController = {
       botResults: () => this._botResultsForTeam(),
       botRuns: () => this._botRunsForTeam(),
       draftBot: (req) => this._teamDraftBot(req),
-      placeWidget: (req) => this._teamPlaceWidget(req),
+      // Not during a cell build (Phase 2b): the editor places that widget,
+      // and a save here would overwrite the user's unsaved edits.
+      placeWidget: (req) =>
+        this._cellBuildRunning()
+          ? {
+              error:
+                "Don't place it: this widget goes into a cell the user is editing — the editor places it after they preview it.",
+            }
+          : this._teamPlaceWidget(req),
       // place_widget with a draft the Checker passed (Phase 1b).
       ...(this._widgetTools && this._widgetTools.installDraft
-        ? { installDraft: (req) => this._widgetTools.installDraft(req) }
+        ? {
+            installDraft: (req) =>
+              // Nothing is installed before the user's preview (Phase 2b).
+              this._cellBuildRunning()
+                ? {
+                    success: false,
+                    error:
+                      "Don't install it: the user previews this widget first — finish with the draft's name.",
+                  }
+                : this._widgetTools.installDraft(req),
+          }
         : {}),
     };
   },
