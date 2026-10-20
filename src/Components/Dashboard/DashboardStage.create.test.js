@@ -32,7 +32,13 @@ describe("DashboardStage — Create screen", () => {
       /window\.addEventListener\("dash:open-create", handler\)/,
     );
     expect(source).toMatch(
-      /setCreateRequest\(\{\s*type: cell \? "widget" : d\.type \|\| "auto",\s*workspaceId: cell \? cell\.workspaceId : \(d\.workspaceId \?\? null\),\s*recentId: d\.recentId \|\| null,\s*seed: d\.seed \|\| null,\s*cell,\s*\}\)/,
+      /setCreateRequest\(\{\s*type: cell \? "widget" : d\.type \|\| "auto",\s*workspaceId: cell \? cell\.workspaceId : \(d\.workspaceId \?\? null\),\s*recentId: d\.recentId \|\| null,\s*seed: d\.seed \|\| null,\s*cell,[\s\S]{0,80}prompt: typeof d\.prompt === "string" \? d\.prompt : "",\s*\}\)/,
+    );
+  });
+
+  test("dash:open-create can fill in what to ask (2c)", () => {
+    expect(source).toMatch(
+      /initialPrompt=\{createRequest \? createRequest\.prompt \|\| "" : ""\}/,
     );
   });
 

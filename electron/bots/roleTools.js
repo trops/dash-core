@@ -5,7 +5,8 @@
  * served in-process under a virtual "dash-team" server like the leads' team
  * tools. Each role gets only the tools its job needs:
  *
- *   search_library  Scout, Planner        your widgets, AI-built, registry
+ *   search_library  Scout, Planner        your widgets, AI-built, registry;
+ *                                         or bots: yours and registry (2c-1)
  *   read_widget     all four roles        an installed widget's source
  *   list_providers  every role            each tool marked can read / can change
  *   ask_role        Planner               hand a request to another role
@@ -55,14 +56,19 @@ const TOOL_DEFS = {
   search_library: {
     name: "search_library",
     description:
-      "Search for widgets that fit a request across the user's installed widgets, widgets the AI built for them, and the online registry. Best matches first; when two match equally well, the user's own comes first. Each result says where it's from: Yours, AI-built, or Registry (install needed).",
+      "Search for widgets that fit a request across the user's installed widgets, widgets the AI built for them, and the online registry. Best matches first; when two match equally well, the user's own comes first. Each result says where it's from: Yours, AI-built, or Registry (install needed). With what: \"bots\", it searches bots instead: the user's own bots (each with its id and dashboard) and the bots in registry dashboard packages.",
     inputSchema: {
       type: "object",
       properties: {
         query: {
           type: "string",
           description:
-            'What the widget should do or show, e.g. "gmail unread count".',
+            'What the widget (or bot) should do or show, e.g. "gmail unread count".',
+        },
+        what: {
+          type: "string",
+          enum: ["widgets", "bots"],
+          description: "widgets (the default) or bots.",
         },
       },
       required: ["query"],
@@ -482,6 +488,93 @@ function rankLibrary(query, installed, registry) {
   return all.slice(0, MAX_RESULTS);
 }
 
+/** How much of a bot's instructions a search result shows. */
+const BOT_TEXT = 160;
+
+/**
+ * Rank the user's bots and registry bots for a query (Phase 2c-1): matches
+ * only, best first, the user's own first on a tie.
+ * @param {Array<{ id, name, instructions, dashboard, providers }>} yours
+ * @param {Array<{ name, package, packageName, description, providers }>} registry
+ */
+function rankBots(query, yours, registry) {
+  const q = tokens(query);
+  if (!q.length) return [];
+  const all = [
+    ...(Array.isArray(yours) ? yours : []).map((b) => ({
+      kind: "bot",
+      source: "Yours",
+      id: b.id,
+      name: b.name,
+      where: b.dashboard ? `on ${b.dashboard}` : "Unassigned",
+      providers: b.providers || [],
+      description: String(b.instructions || "")
+        .replace(/\s+/g, " ")
+        .trim(),
+    })),
+    ...(Array.isArray(registry) ? registry : []).map((b) => ({
+      kind: "bot",
+      source: "Registry",
+      package: b.package,
+      name: b.name,
+      where: `in the ${b.packageName || b.package} dashboard package`,
+      providers: b.providers || [],
+      description: b.description || "",
+    })),
+  ]
+    .filter((c) => c.name)
+    .map((c) => ({
+      ...c,
+      score: score(
+        q,
+        [c.name, c.description, c.where, c.providers.join(" ")].join(" "),
+      ),
+    }))
+    .filter((c) => c.score > 0);
+  all.sort(
+    (a, b) =>
+      b.score - a.score || SOURCE_ORDER[a.source] - SOURCE_ORDER[b.source],
+  );
+  return all.slice(0, MAX_RESULTS);
+}
+
+/**
+ * The bots in the registry index's public dashboard packages, for
+ * search_library: [{ name, package, packageName, description, providers }].
+ */
+function registryBotsOf(index) {
+  const list = Array.isArray(index)
+    ? index
+    : (index && Array.isArray(index.packages) && index.packages) || [];
+  const out = [];
+  for (const p of list) {
+    if (!p || p.type !== "dashboard" || p.visibility === "private") continue;
+    const members = (p.team && p.team.members) || [];
+    for (const m of Array.isArray(members) ? members : []) {
+      if (!m || !m.name) continue;
+      out.push({
+        name: m.name,
+        package: p.scope ? `@${p.scope}/${p.name}` : p.name,
+        packageName: p.displayName || p.name,
+        description: p.description || "",
+        providers: Array.isArray(p.providerTypes) ? p.providerTypes : [],
+      });
+    }
+  }
+  return out;
+}
+
+function describeBot(c) {
+  const ref = c.source === "Yours" ? `id ${c.id}` : c.package;
+  const uses = c.providers.length
+    ? ` · ${c.source === "Yours" ? "uses" : "needs"} ${c.providers.join(", ")}`
+    : "";
+  const desc = c.description
+    ? ` — ${c.description.length > BOT_TEXT ? `${c.description.slice(0, BOT_TEXT - 1)}…` : c.description}`
+    : "";
+  return `- [${c.source} · bot] ${c.name} (${ref} · ${c.where})${uses}${desc}`;
+}
+
 function describeCandidate(c) {
   const where =
     c.source === "Registry" ? "Registry · install needed" : c.source;
@@ -667,6 +760,29 @@ async function handleRoleTool(deps, ctx, toolName, args = {}) {
       case "search_library": {
         const query = String(a.query || "").trim();
         if (!query) return fail("search_library needs a query.");
+        if (a.what === "bots") {
+          // The user's bots, and the bots in registry dashboard packages.
+          let registryBots = [];
+          let note = "";
+          try {
+            registryBots = deps.registryBots ? await deps.registryBots() : [];
+          } catch (err) {
+            note = `\n(The online registry couldn't be searched: ${
+              (err && err.message) || "unavailable"
+            }.)`;
+          }
+          const bots = rankBots(
+            query,
+            deps.listBots ? deps.listBots() : [],
+            registryBots,
+          );
+          if (!bots.length) {
+            return ok(
+              `No bot matches "${query}" in the user's bots or the registry.${note}`,
+            );
+          }
+          return ok(bots.map(describeBot).join("\n") + note);
+        }
         // The registry matches a query as one phrase, so "algolia search
         // widget" finds nothing — search each word and merge.
         const registry = [];
@@ -966,6 +1082,8 @@ module.exports = {
   roleToolsFor,
   handleRoleTool,
   rankLibrary,
+  rankBots,
+  registryBotsOf,
   classifyTool,
   describeProvider,
   HandoffCap,

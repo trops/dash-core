@@ -125,6 +125,8 @@ export function extractMatches(text) {
   return list
     .filter((x) => x && typeof x.name === "string" && x.name.trim())
     .map((x) => ({
+      // A bot the Scout found (Phase 2c-1): its id (yours) or package.
+      ...(x.kind === "bot" ? { kind: "bot" } : {}),
       source: SOURCES.includes(x.source) ? x.source : "Registry",
       name: x.name.trim(),
       package: typeof x.package === "string" ? x.package.trim() : "",

@@ -779,3 +779,57 @@ describe("validatePlan — a widget for one cell (consolidation Phase 2b)", () =
     assert.ok(!validatePlan(plan).errors.includes(rule));
   });
 });
+
+// One bot through the Dash team (consolidation Phase 2c-1).
+describe("validatePlan — a plan for one bot", () => {
+  const rule =
+    "A plan for one bot is one new bot — no widgets, theme or layout.";
+  const bot = {
+    kind: "bot",
+    name: "Morning Email Summary",
+    source: "new",
+    instructions: "Summarize my unread email.",
+  };
+  it("one new bot, with or without its dashboard, is fine", () => {
+    assert.deepEqual(
+      validatePlan({ summary: "s", pieces: [bot] }, { bot: true }).errors,
+      [],
+    );
+    assert.deepEqual(
+      validatePlan(
+        {
+          summary: "s",
+          dashboard: { id: "7", name: "Morning Brief" },
+          pieces: [bot],
+        },
+        { bot: true, dashboards: [{ id: "7" }] },
+      ).errors,
+      [],
+    );
+  });
+  it("anything else — a widget, a layout, two bots, none — isn't", () => {
+    const widget = { kind: "widget", name: "W", source: "new" };
+    const layout = { kind: "layout", name: "L", pages: [] };
+    for (const pieces of [
+      [bot, widget],
+      [bot, layout],
+      [bot, { ...bot, name: "Two" }],
+      [widget],
+    ]) {
+      assert.ok(
+        validatePlan({ summary: "s", pieces }, { bot: true }).errors.includes(
+          rule,
+        ),
+        JSON.stringify(pieces.map((p) => p.kind)),
+      );
+    }
+  });
+  it("only for a bot build", () => {
+    assert.ok(
+      !validatePlan({
+        summary: "s",
+        pieces: [bot, { kind: "widget", name: "W", source: "new" }],
+      }).errors.includes(rule),
+    );
+  });
+});

@@ -260,6 +260,12 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
             recentId={folded.recentId}
             compact
             onState={setPlanInfo}
+            // A bot plan folded here: its page, once saved (2c-1).
+            onOpenBot={(botId) =>
+              window.dispatchEvent(
+                new CustomEvent("dash:open-bot", { detail: { botId } }),
+              )
+            }
             onOpenDashboard={(id) =>
               window.dispatchEvent(
                 new CustomEvent("dash:open-built-dashboard", {

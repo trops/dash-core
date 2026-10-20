@@ -40,6 +40,10 @@
  *                            note, checked again, previewed again
  * — then Install. Nothing touches the dashboard: the editor places it.
  *
+ * One bot (consolidation Phase 2c-1, opts.bot): the plan is one new bot —
+ * checked (checkbot), then saved paused on the dashboard the plan names, with
+ * its results card if planned, or Unassigned. Never a new dashboard.
+ *
  * Pure (NFR-006): every effect is an injected hook.
  */
 "use strict";
@@ -145,8 +149,57 @@ function cellSteps(widgets, add) {
   });
 }
 
+/**
+ * A bot build's steps (opts.bot): one bot, checked, then saved paused — on
+ * the dashboard the plan names (its results card there too, if planned) or
+ * Unassigned. Never a new dashboard.
+ */
+function botSteps(plan, add) {
+  const target = planTarget(plan);
+  if (target) {
+    add({
+      id: "dashboard",
+      kind: "dashboard",
+      role: "dash",
+      label: `Use the "${target.name}" dashboard`,
+      name: target.name,
+      target: target.id,
+    });
+  }
+  botPieces(plan)
+    .slice(0, 1)
+    .forEach((b, i) => {
+      add({
+        id: `checkbot:${i}`,
+        kind: "checkbot",
+        bot: i,
+        role: "dash",
+        label: "Check the bot",
+        needs: target ? ["dashboard"] : [],
+      });
+      add({
+        id: `bot:${i}`,
+        kind: "bot",
+        bot: i,
+        role: "dash",
+        label: `Save ${b.name} — paused`,
+        needs: [`checkbot:${i}`],
+      });
+      if (target && b.showResults) {
+        add({
+          id: `results:${i}`,
+          kind: "results",
+          bot: i,
+          role: "dash",
+          label: `Show its results on ${target.name}`,
+          needs: [`bot:${i}`],
+        });
+      }
+    });
+}
+
 /** The steps for a plan, all waiting. */
-function planSteps(plan, { dashboardName, cell = false } = {}) {
+function planSteps(plan, { dashboardName, cell = false, bot = false } = {}) {
   const pieces = ((plan && plan.pieces) || []).filter(Boolean);
   const widgets = pieces.filter((p) => p.kind === "widget");
   const layout = pieces.find((p) => p.kind === "layout");
@@ -154,6 +207,10 @@ function planSteps(plan, { dashboardName, cell = false } = {}) {
   const add = (step) => steps.push({ status: STATUS.waiting, ...step });
   if (cell) {
     cellSteps(widgets, add);
+    return steps;
+  }
+  if (bot) {
+    botSteps(plan, add);
     return steps;
   }
 
@@ -548,6 +605,8 @@ function planBotDefinition(piece, { dashboardId, sources, team }) {
   }
   const definition = {
     ...draft.definition,
+    // A bot build with no dashboard (2c-1): Unassigned, not "null".
+    workspaceId: dashboardId == null ? null : String(dashboardId),
     mcpServers: [],
     toolSelections: {},
   };
@@ -1072,6 +1131,8 @@ function undoOnDashboard(workspace, built) {
  *     page: the page's name (null: the page shown); row / col: its planned
  *     cell (null: the next free one); dropped: what of the
  *     connection and settings it couldn't use, said under the step
+ *   checkBot({ dashboardId, piece }) → { detail } | throws — a bot build's
+ *     check before the save (opts.bot); dashboardId null = Unassigned
  *   saveBot({ dashboardId, piece, botId? }) → { id, name } | throws (an
  *     error with waitingFor = provider names → the step waits for them)
  *   placeBotResults({ dashboardId, botId }) → { component, widgetId, pageId } | throws
@@ -1391,9 +1452,19 @@ function createPlanBuild(plan, deps, opts = {}) {
         }
         return;
       }
+      case "checkbot": {
+        // As the save will check it, before anything is saved (2c-1).
+        const res = await deps.checkBot({
+          dashboardId: state.dashboard ? state.dashboard.id : null,
+          piece: bots[step.bot],
+        });
+        step.detail = (res && res.detail) || "";
+        return;
+      }
       case "bot": {
         const saved = await deps.saveBot({
-          dashboardId: state.dashboard.id,
+          // A bot build with no dashboard saves it Unassigned.
+          dashboardId: state.dashboard ? state.dashboard.id : null,
           piece: bots[step.bot],
           ...(step.replaces ? { botId: step.replaces } : {}),
         });
@@ -1463,6 +1534,7 @@ function createPlanBuild(plan, deps, opts = {}) {
     "dashboard",
     "theme",
     "place",
+    "checkbot",
     "bot",
     "results",
   ]);

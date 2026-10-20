@@ -41,6 +41,7 @@ import {
 } from "./PlanChecklistDialogs";
 import { CreateBuildingStep } from "./CreateBuildingStep";
 import { PlanSketch } from "./PlanSketch";
+import { botPlanRequest, forWhere } from "./botCreate";
 
 /**
  * The Planner's first question in a conversation reopened from Recent: its
@@ -305,8 +306,16 @@ export const CreatePlanStep = ({
   cell = null,
   onCellDone = null,
   onDiscard = null,
+  // One bot (consolidation Phase 2c-1): { where: { id, name } | null } —
+  // the plan is one new bot, saved paused on that dashboard or Unassigned.
+  // Kept with the conversation, so a plan reopened from Recent stays one.
+  bot = null,
+  // Its page, once saved: (botId).
+  onOpenBot = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
+  const [botMode, setBotMode] = useState(bot);
+  const where = botMode ? botMode.where || null : null;
   const statusTokens = useStatusTokens();
   const app = useContext(AppContext) || {};
   // [{ who: "you" | "planner" | "note", text, meta? }]
@@ -363,6 +372,8 @@ export const CreatePlanStep = ({
       reopened.current = false;
       cont = false;
       request = reopenedRequest(origPrompt, plan, text);
+      // Still one bot, where it was going (2c-1).
+      if (botMode) request = botPlanRequest(request, where);
     }
     const res = await runTeamRole("planner", request, {
       continueConversation: cont,
@@ -406,7 +417,8 @@ export const CreatePlanStep = ({
     setPlanningTokens((n) => n + usageTokens(res.usage));
     const found = extractPlan(res.output);
     if (found) {
-      setPlan(found);
+      // A bot goes where Where says, whatever the Planner wrote.
+      setPlan(botMode ? forWhere(found, where) : found);
       setSwapIndex(null);
       setReady(false);
     }
@@ -461,14 +473,32 @@ export const CreatePlanStep = ({
               startBuild();
               return;
             }
+            // A plan to start from with nothing to ask (a bot the Scout
+            // found, 2c-1): it shows at once; the Planner is there to change it.
+            if (seed && !seed.request) {
+              // The Planner hasn't seen it: a first question brings it along.
+              setOrigPrompt(seed.label);
+              reopened.current = true;
+              setMessages((m) => [
+                ...m,
+                {
+                  who: "note",
+                  text: "Ready to build as it is — or ask the Planner to change anything first, like when it runs.",
+                },
+              ]);
+              setBusy(false);
+              return;
+            }
             ask(
               seed
                 ? seed.request
                 : cell
                   ? `${prompt}\n\n(Plan exactly one widget for ${cell.label}: the user is editing that dashboard and it goes into that one cell. No bots, theme or layout, and don't set "dashboard" — the user previews the widget and the editor places it. Put the connection and settings they want on the widget piece.)`
-                  : openDashboardId != null
-                    ? `${prompt}\n\n(The user is looking at the dashboard with id ${openDashboardId}.)`
-                    : prompt,
+                  : botMode
+                    ? botPlanRequest(prompt, where)
+                    : openDashboardId != null
+                      ? `${prompt}\n\n(The user is looking at the dashboard with id ${openDashboardId}.)`
+                      : prompt,
               false,
             );
           });
@@ -496,6 +526,8 @@ export const CreatePlanStep = ({
     );
     if (conv.plan) setPlan(conv.plan);
     if (conv.checks) setChecks(conv.checks);
+    // A bot plan stays one (2c-1).
+    if (conv.bot && typeof conv.bot === "object") setBotMode(conv.bot);
     setPlanningTokens(Number(conv.planningTokens) || 0);
     const b = entry && entry.build;
     if (b && b.state && b.state.status === "removed") {
@@ -524,12 +556,18 @@ export const CreatePlanStep = ({
       Promise.resolve(
         bots.saveCreateRecent({
           id: planId.current,
-          conversation: { messages, plan, checks, planningTokens },
+          conversation: {
+            messages,
+            plan,
+            checks,
+            planningTokens,
+            ...(botMode ? { bot: botMode } : {}),
+          },
         }),
       ).catch(() => {});
     }, 300);
     return () => clearTimeout(t);
-  }, [loaded, messages, plan, checks, planningTokens]);
+  }, [loaded, messages, plan, checks, planningTokens, botMode]);
 
   // What the host needs for Fold and the "…" menu: the plan's id, whether
   // the Planner is answering, whether a build exists (Discard vs Remove from
@@ -544,6 +582,12 @@ export const CreatePlanStep = ({
   const firstAsk =
     layoutName || (messages.find((m) => m.who === "you") || {}).text || "";
   const built = !!build && !removedNote;
+  // A bot build's one bot (2c-1): the headers and Done say it.
+  const botPiece = botMode
+    ? (plan && Array.isArray(plan.pieces) ? plan.pieces : []).find(
+        (p) => p && p.kind === "bot",
+      ) || null
+    : null;
   // A cell build's one widget, by name (the headers say it).
   const widgetName =
     (
@@ -561,9 +605,12 @@ export const CreatePlanStep = ({
         buildId: build ? build.buildId : null,
         title: firstAsk.length > 60 ? `${firstAsk.slice(0, 57)}…` : firstAsk,
         widgetName,
+        botName: botPiece ? botPiece.name || "" : "",
+        // A bot plan (reopened from Recent too): the host shows its steps.
+        bot: botMode || null,
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy, savedId, built, firstAsk, build, widgetName]);
+  }, [busy, savedId, built, firstAsk, build, widgetName, botPiece, botMode]);
 
   const answer = (text) => {
     const t = String(text || "").trim();
@@ -598,15 +645,18 @@ export const CreatePlanStep = ({
 
   const questions = (plan && plan.questions) || [];
   const pieces = (plan && plan.pieces) || [];
-  const check = plan ? validatePlan(plan, { cell: !!cell }) : null;
+  const check = plan
+    ? validatePlan(plan, { cell: !!cell, bot: !!botMode })
+    : null;
   const estimate =
     plan && pieces.length ? estimatePlan(plan, { team, planningTokens }) : null;
   const have = providerTypesOf(app.providers);
   const checklist = plan ? buildChecklist(plan, have) : [];
   // A plan for a dashboard the user has (5e-2b).
   const target = planTarget(plan);
+  // A bot plan is Build, even on a dashboard the user has (2c-1).
   const buildLabel = buildButtonLabel(checklist, checks, have, {
-    targeted: !!target,
+    targeted: !!target && !botMode,
   });
   // Open questions: the answers change the plan (a connection, an index,
   // which pages), so it isn't built until they're answered.
@@ -644,6 +694,7 @@ export const CreatePlanStep = ({
       const res = await bots.startPlanBuild(plan, {
         ...(from ? { resumeFrom: from } : {}),
         ...(cell ? { cell: true } : {}),
+        ...(botMode ? { bot: true } : {}),
         // Kept on this conversation in Recent, with its build memory.
         ...(planId.current ? { recentId: planId.current } : {}),
       });
@@ -704,6 +755,8 @@ export const CreatePlanStep = ({
       <CreateBuildingStep
         compact={compact}
         cell={cell}
+        bot={botMode ? { where, piece: botPiece } : null}
+        onOpenBot={onOpenBot}
         onCellDone={onCellDone}
         onDiscard={onDiscard}
         buildId={build.buildId}
@@ -859,6 +912,12 @@ export const CreatePlanStep = ({
   const expectSection =
     plan && pieces.length ? (
       <PlanSection title="What to expect" testId="plan-expect">
+        {botMode ? (
+          <span className="text-sm" data-testid="plan-expect-bot">
+            It's checked, then saved paused. Nothing runs until you try it or
+            turn it on.
+          </span>
+        ) : null}
         {(plan.access || []).length ? (
           <div className="flex flex-col gap-1" data-testid="plan-access">
             <SectionLabel text="What it can and can't do" />
@@ -902,7 +961,10 @@ export const CreatePlanStep = ({
         <div className="flex flex-col gap-1" data-testid="plan-estimate">
           <SectionLabel text="Estimated cost" />
           <span className="text-sm">
-            To build: {describeEstimate(estimate)}
+            {botMode
+              ? // Dash checks and saves it — no AI (2c-1).
+                "To build: nothing — Dash checks and saves it, no AI"
+              : `To build: ${describeEstimate(estimate)}`}
           </span>
           {plan.estimate && plan.estimate.running ? (
             <span className="text-sm">To run: {plan.estimate.running}</span>
@@ -917,7 +979,7 @@ export const CreatePlanStep = ({
         <div data-testid="plan-status">
           <SectionLabel
             text={
-              target
+              target && !botMode
                 ? `Changes to ${target.name} · not made yet`
                 : "Plan · not built yet"
             }
@@ -927,11 +989,17 @@ export const CreatePlanStep = ({
           {plan.summary}
         </span>
         <span className={`text-sm ${muted}`} data-testid="plan-counts">
-          {cell ? `Goes into: ${cell.label}` : countsLine(plan)}
+          {cell
+            ? `Goes into: ${cell.label}`
+            : botMode
+              ? where
+                ? `1 bot · goes on: ${where.name}`
+                : "1 bot · on no dashboard — its results stay in the Bots view"
+              : countsLine(plan)}
         </span>
 
         <PlanSection
-          title={target ? "What it adds" : "What it makes"}
+          title={target && !botMode ? "What it adds" : "What it makes"}
           testId="plan-pieces"
         >
           {GROUPS.map(([kind, label]) => {
@@ -982,8 +1050,9 @@ export const CreatePlanStep = ({
                               onClick={() => setSwapIndex(index)}
                             />
                           ) : null}
-                          {cell ? null : (
-                            // A cell's plan is this one widget: Swap, not remove.
+                          {cell || botMode ? null : (
+                            // A cell's plan is this one widget (a bot plan,
+                            // this one bot): Swap, not remove.
                             <ButtonIcon
                               icon="xmark"
                               ariaLabel={`Remove ${p.name} from the plan`}
@@ -1038,7 +1107,9 @@ export const CreatePlanStep = ({
         {/* What it will look like, with made-up data (CRE-003 AC6) —
                   a new dashboard's grid; not drawn for one the user has. */}
         {/* A cell build shows the real widget running before it goes in. */}
-        {target || cell ? null : <PlanSketch plan={plan} compact={compact} />}
+        {target || cell || botMode ? null : (
+          <PlanSketch plan={plan} compact={compact} />
+        )}
 
         {checklist.length ? (
           <PlanSection title="Before building" testId="plan-before">
@@ -1093,8 +1164,9 @@ export const CreatePlanStep = ({
           </PlanSection>
         ) : null}
 
-        {/* A cell's plan keeps Build in view (the mockup): this goes below. */}
-        {cell ? null : expectSection}
+        {/* A cell's (or bot's) plan keeps Build in view (the mockup): this
+            goes below. */}
+        {cell || botMode ? null : expectSection}
 
         {broken ? (
           <span
@@ -1139,13 +1211,15 @@ export const CreatePlanStep = ({
                       ? "What's built is kept — only what's new or changed gets built."
                       : cell
                         ? `Nothing goes into ${cell.label} until you've seen it running.`
-                        : removedNote ||
-                          (target
-                            ? `Kept in Recent · nothing on ${target.name} changes until you press this.`
-                            : "Kept in Recent · nothing has been built or installed yet.")}
+                        : botMode && !removedNote
+                          ? "Nothing is saved until you press Build."
+                          : removedNote ||
+                            (target
+                              ? `Kept in Recent · nothing on ${target.name} changes until you press this.`
+                              : "Kept in Recent · nothing has been built or installed yet.")}
           </span>
         </div>
-        {cell ? expectSection : null}
+        {cell || botMode ? expectSection : null}
       </div>
     ) : null;
   const dialogs = (

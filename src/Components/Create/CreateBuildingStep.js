@@ -1,16 +1,23 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
 import {
   Button,
+  Button2,
   Button3,
   ConfirmationModal,
   SectionLabel,
+  useStatusTokens,
 } from "@trops/dash-react";
 import { AppContext } from "../../Context/App/AppContext";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
-import { formatTokens, modelLabel } from "../../utils/runCostLabel";
-import { normalizeType, providerLabel } from "./planChecklist";
+import {
+  formatTokens,
+  modelLabel,
+  runCostLabel,
+} from "../../utils/runCostLabel";
+import { normalizeType, providerLabel, scheduleLabel } from "./planChecklist";
 import { ConnectDialog } from "./PlanChecklistDialogs";
 import { CellPreview } from "./CellPreview";
+import { toPlainText } from "../Bots/botConversation";
 import {
   useRegistryAuthGate,
   isRegistryAuthError,
@@ -102,6 +109,10 @@ export const CreateBuildingStep = ({
   cell = null,
   onCellDone = null,
   onDiscard = null,
+  // One bot (Phase 2c-1): { where: { id, name } | null, piece } — done, it
+  // offers Try it now (a test run), Turn on and Open its page.
+  bot = null,
+  onOpenBot = null,
 }) => {
   const app = useContext(AppContext) || {};
   const { muted, strong, hairline } = useConfigTokens();
@@ -316,6 +327,23 @@ export const CreateBuildingStep = ({
             ? // Nothing went into the cell yet — not "built".
               "It isn't ready yet"
             : HEAD[status] || status;
+
+  // A bot build that's done (2c-1): it's saved paused — try it, turn it on,
+  // or open its page (as the mockup's Done frame).
+  const savedBot = bot && status === "done" ? savedBots[0] : null;
+  if (savedBot) {
+    return (
+      <BotDone
+        bot={savedBot}
+        piece={bot.piece}
+        where={bot.where}
+        resultsPlaced={!!(state.results && state.results[0])}
+        // Checking and saving take a moment: what was done stays in view.
+        steps={steps}
+        onOpenBot={onOpenBot}
+      />
+    );
+  }
 
   // A cell build waiting on the user: the Preview takes the screen (as the
   // mockup) — the widget running, its inputs, and what to do with it.
@@ -703,6 +731,185 @@ export const CreateBuildingStep = ({
           onClose={connected}
         />
       ) : null}
+    </div>
+  );
+};
+
+/**
+ * A bot build's Done (Phase 2c-1): saved paused. Try it now is a test run —
+ * it stays paused, and what it wrote shows here; Turn on starts its
+ * schedule; Open its page goes to its conversation and settings.
+ */
+export const BotDone = ({
+  bot,
+  piece = null,
+  where = null,
+  resultsPlaced = false,
+  steps = [],
+  onOpenBot = null,
+}) => {
+  const { muted, strong, hairline } = useConfigTokens();
+  const status = useStatusTokens();
+  // null | "running" | { record, seconds } | { error }
+  const [test, setTest] = useState(null);
+  // null | "on" | error text
+  const [turnedOn, setTurnedOn] = useState(null);
+  // Saved paused (Phase 1d) — unless it was turned on elsewhere since.
+  const [paused, setPaused] = useState(true);
+  useEffect(() => {
+    const bots = window.mainApi && window.mainApi.bots;
+    if (!bots || !bots.getPauseState) return undefined;
+    let alive = true;
+    Promise.resolve(bots.getPauseState())
+      .then((p) => {
+        if (alive && p && Array.isArray(p.bots)) {
+          setPaused(p.bots.includes(bot.id));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [bot.id]);
+  const cron = piece && piece.schedule && piece.schedule.cron;
+  const when = cron ? scheduleLabel(cron) : "";
+  const isOn = turnedOn === "on" || !paused;
+  // What was done: "Check the bot ✓ (schedule is valid) · Saved, paused ✓
+  // · Its results card ✓" — the dashboard step isn't news, and once it's on
+  // it isn't paused any more.
+  const doneSoFar = (steps || [])
+    .filter((s) => s && s.status === "done" && s.kind !== "dashboard")
+    .map((s) => {
+      const label =
+        s.kind === "bot" && isOn ? s.label.replace(/ — paused$/, "") : s.label;
+      const detail = s.kind === "checkbot" && s.detail ? ` (${s.detail})` : "";
+      return `${label} ✓${detail}`;
+    })
+    .join(" · ");
+
+  const tryIt = async () => {
+    setTest("running");
+    const started = Date.now();
+    try {
+      const record = await window.mainApi.bots.run(bot.id);
+      if (record && record.skipped) {
+        setTest({
+          error: `It didn't run: ${record.reason || "it was skipped"}.`,
+        });
+      } else if (record && (record.error || record.status === "failed")) {
+        setTest({ error: String(record.error || "The run failed.") });
+      } else {
+        setTest({
+          record: record || {},
+          seconds: Math.max(1, Math.round((Date.now() - started) / 1000)),
+        });
+      }
+    } catch (err) {
+      setTest({ error: (err && err.message) || "It couldn't start." });
+    }
+  };
+  const turnOn = async () => {
+    try {
+      const res = await window.mainApi.bots.resumeBot(bot.id);
+      if (res && res.error) {
+        setTurnedOn(`Couldn't turn it on: ${res.error}`);
+        return;
+      }
+      setTurnedOn("on");
+    } catch (err) {
+      setTurnedOn(
+        `Couldn't turn it on: ${(err && err.message) || "unknown error"}`,
+      );
+    }
+  };
+  const done = test && test.record;
+  return (
+    <div
+      className={`flex-1 min-h-0 overflow-y-auto ${strong}`}
+      // A solid scroller (the modal's own color): see-through, the steps
+      // before it left stale tiles behind (found live, as the Scout's).
+      style={{ backgroundColor: "inherit" }}
+      data-testid="create-building"
+    >
+      <div
+        className="mx-auto w-full max-w-3xl flex flex-col gap-5 px-6 py-8"
+        data-testid="bot-done"
+      >
+        <div className="flex flex-col gap-1">
+          <span
+            className={`text-lg font-semibold ${strong}`}
+            data-testid="building-status"
+          >
+            {isOn ? `${bot.name} is on` : "It's saved, paused"}
+          </span>
+          <span className={`text-sm ${muted}`}>
+            {isOn
+              ? when
+                ? `It runs ${when}.`
+                : "It runs when it's started."
+              : `Try it once to see what it writes. Turn it on when you're happy${
+                  when ? ` — then it runs ${when}` : ""
+                }.`}
+          </span>
+          {doneSoFar ? (
+            <span
+              className={`text-xs ${muted}`}
+              data-testid="building-done-so-far"
+            >
+              {doneSoFar}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex flex-row flex-wrap items-center gap-3">
+          <Button
+            title={test === "running" ? "Running…" : "Try it now"}
+            onClick={tryIt}
+            disabled={test === "running"}
+          />
+          {isOn ? null : <Button2 title="Turn on" onClick={turnOn} />}
+          {onOpenBot ? (
+            <Button3 title="Open its page" onClick={() => onOpenBot(bot.id)} />
+          ) : null}
+        </div>
+        {turnedOn && turnedOn !== "on" ? (
+          <span
+            className={`text-xs ${status.error.icon}`}
+            role="alert"
+            data-testid="bot-done-error"
+          >
+            {turnedOn}
+          </span>
+        ) : null}
+        {test && test !== "running" ? (
+          <div
+            className={`flex flex-col gap-2 rounded-lg border px-4 py-3 ${hairline}`}
+            data-testid="bot-test-run"
+          >
+            <span className={`text-xs ${muted}`}>
+              {done
+                ? ["Test run", `${test.seconds}s`, runCostLabel(test.record)]
+                    .filter(Boolean)
+                    .join(" · ")
+                : "Test run"}
+            </span>
+            <span
+              className={`text-sm whitespace-pre-wrap ${done ? "" : status.error.icon}`}
+              role={done ? undefined : "alert"}
+            >
+              {done
+                ? // Plain text, as in its conversation (never rendered).
+                  toPlainText(test.record.output) ||
+                  "(It finished without an answer.)"
+                : test.error}
+            </span>
+            {done && resultsPlaced && where ? (
+              <span className={`text-xs ${muted}`}>
+                Also shown in its results card on {where.name}.
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 };

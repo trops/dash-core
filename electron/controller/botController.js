@@ -139,6 +139,7 @@ const {
   roleToolsFor,
   handleRoleTool,
   HandoffCap,
+  registryBotsOf,
 } = require("../bots/roleTools");
 const { compareConfigs } = require("../bots/configDiff");
 const {
@@ -2302,6 +2303,8 @@ const botController = {
    * `cell` (consolidation Phase 2b): one widget for a cell of a dashboard
    * being edited — built, checked, previewed by the user (approvePlanStep /
    * revisePlanStep), installed; never placed here: the editor places it.
+   * `bot` (Phase 2c-1): one bot — checked, saved paused on the dashboard
+   * the plan names (or Unassigned); never a new dashboard.
    */
   startPlanBuild(
     plan,
@@ -2310,6 +2313,7 @@ const botController = {
       resumeFrom = null,
       recentId = null,
       cell = false,
+      bot = false,
     } = {},
   ) {
     if (!plan || !Array.isArray(plan.pieces) || !plan.pieces.length) {
@@ -2321,6 +2325,7 @@ const botController = {
       dashboards: this._dashboardsWithBots(),
       themes: this._themeNames(),
       cell: !!cell,
+      bot: !!bot,
     });
     if (checked.errors.length) {
       return {
@@ -2442,6 +2447,8 @@ const botController = {
           this._widgetTools && this._widgetTools.installDraft
             ? this._widgetTools.installDraft({ name: draft })
             : { success: false, error: "installing isn't available here" },
+        // A bot build's check before the save (2c-1).
+        checkBot: (req) => this._planCheckBot(req),
         saveBot: (req) => this._planSaveBot(req),
         placeBotResults: ({ dashboardId, botId }) => {
           const res = this.addBotWidget(dashboardId, {
@@ -2463,7 +2470,7 @@ const botController = {
           this._keepBuild(planId, buildId, plan, state);
         },
       },
-      { dashboardName, resume, autoFix: true, cell: !!cell },
+      { dashboardName, resume, autoFix: true, cell: !!cell, bot: !!bot },
     );
     entry.build = build;
     entry.state = JSON.parse(JSON.stringify(build.state));
@@ -2857,6 +2864,38 @@ const botController = {
     return { ...res, dropped: choices.dropped };
   },
 
+  /** The bots already on a dashboard (none for an Unassigned bot). */
+  _planBotTeam(dashboardId) {
+    if (dashboardId == null) return [];
+    return this._store
+      .list()
+      .filter((b) => String(b.workspaceId) === String(dashboardId));
+  },
+
+  /**
+   * A bot build's Check step (Phase 2c-1): the bot as it will be saved,
+   * through the save's own check — nothing is saved. A provider that isn't
+   * connected throws waitingFor (the step waits for it).
+   */
+  _planCheckBot({ dashboardId, piece }) {
+    const definition = planBotDefinition(piece, {
+      dashboardId,
+      sources: this.listToolSources(dashboardId),
+      team: this._planBotTeam(dashboardId),
+    });
+    const { errors } = checkBot(definition, this._botCheckContext(null));
+    if (errors.length) throw new Error(errors.join(" "));
+    const said = [];
+    if ((definition.mcpServers || []).length) {
+      said.push(`${definition.mcpServers.join(", ")} connected`);
+    }
+    if (Object.keys(definition.toolSelections || {}).length) {
+      said.push("tools exist");
+    }
+    if ((definition.schedules || []).length) said.push("schedule is valid");
+    return { detail: said.join(" · ") || "Nothing to connect" };
+  },
+
   /**
    * A plan's new bot, saved on the build's dashboard exactly as planned
    * (team-dashboards TD-008): checked like a draft (only the user's
@@ -2868,9 +2907,7 @@ const botController = {
     const definition = planBotDefinition(piece, {
       dashboardId,
       sources: this.listToolSources(dashboardId),
-      team: this._store
-        .list()
-        .filter((b) => String(b.workspaceId) === String(dashboardId)),
+      team: this._planBotTeam(dashboardId),
     });
     // An edited plan's changed bot is saved over the one built before
     // (4d-3); its triggers stay.
@@ -3045,6 +3082,31 @@ const botController = {
           throw new Error(parsed.error || "registry search failed");
         }
         return parsed.widgets || [];
+      },
+      // search_library's bots (Phase 2c-1): the user's own — not the Dash
+      // team or leads — with the dashboard each is on.
+      listBots: () => {
+        const names = new Map(
+          this._dashboardsWithBots().map((d) => [d.id, d.name]),
+        );
+        return this._store
+          .list()
+          .filter((b) => !isDashTeam(b) && !isLead(b))
+          .map((b) => ({
+            id: b.id,
+            name: b.name,
+            instructions: b.instructions || "",
+            dashboard:
+              b.workspaceId != null
+                ? names.get(String(b.workspaceId)) || null
+                : null,
+            providers: b.mcpServers || [],
+          }));
+      },
+      // …and the bots in public registry dashboard packages.
+      registryBots: async () => {
+        const { fetchRegistryIndex } = require("./registryController");
+        return registryBotsOf(await fetchRegistryIndex());
       },
       readWidget: ({ name, component }) =>
         require("../widgetRegistry").readWidgetSources({

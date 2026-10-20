@@ -7,6 +7,7 @@ import {
   withoutMatches,
 } from "../../utils/teamRoles";
 import { runCostLabel } from "../../utils/runCostLabel";
+import { scoutBotRequest } from "./botCreate";
 
 /**
  * CreateScoutStep — before building a widget, the Dash team's Scout looks
@@ -21,12 +22,16 @@ import { runCostLabel } from "../../utils/runCostLabel";
  * @param {boolean} [cell]  for a cell being edited (Phase 2b): each match is
  *   "Use in this cell" (a registry one is installed first), and Build new
  *   plans it with the Dash team
+ * @param {{ where: string|null }} [bot]  looking for a bot (Phase 2c-1):
+ *   the user's bots and registry ones; each match is "Use on <where>" (a
+ *   copy), and Build new plans one with the Dash team
  */
 export const CreateScoutStep = ({
   prompt,
   onBuildNew,
   onUse,
   cell = false,
+  bot = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   // looking | done | failed
@@ -40,7 +45,9 @@ export const CreateScoutStep = ({
     runTeamRole(
       "scout",
       // It knows what comes next, so it doesn't send the user elsewhere.
-      `Find widgets that could do this: "${prompt}". Search with search_library. If nothing fits, say so in a sentence or two — the Planner plans a new one next, so don't tell the user who to ask.`,
+      bot
+        ? scoutBotRequest(prompt)
+        : `Find widgets that could do this: "${prompt}". Search with search_library. If nothing fits, say so in a sentence or two — the Planner plans a new one next, so don't tell the user who to ask.`,
       { onText: (t) => alive.current && setSoFar(t) },
     ).then((res) => {
       if (!alive.current) return;
@@ -59,20 +66,30 @@ export const CreateScoutStep = ({
   }, [prompt]);
 
   const answer = run ? run.output || soFar : soFar;
-  const matches = phase === "done" ? extractMatches(answer) : null;
+  // Bots when looking for a bot, widgets otherwise.
+  const found = phase === "done" ? extractMatches(answer) : null;
+  // (Looking for a bot, the search only returned bots — a match the Scout
+  // didn't mark is one too.)
+  const matches = found
+    ? bot
+      ? found.map((m) => ({ ...m, kind: "bot" }))
+      : found.filter((m) => m.kind !== "bot")
+    : null;
   const prose = withoutMatches(answer);
   const meta = run ? runCostLabel(run) : "";
+  // A cell or a bot: the Dash team plans it next.
+  const plansNext = cell || !!bot;
 
   const choice =
     phase === "looking" ? (
       <Button3
-        title={cell ? "Skip — plan a new one" : "Skip — just build it"}
+        title={plansNext ? "Skip — plan a new one" : "Skip — just build it"}
         onClick={onBuildNew}
       />
     ) : (
       <Button
         title={
-          cell
+          plansNext
             ? matches && matches.length
               ? "None of these — plan a new one"
               : "Plan it"
@@ -115,11 +132,15 @@ export const CreateScoutStep = ({
             >
               {phase === "looking"
                 ? (soFar && withoutMatches(soFar)) ||
-                  "Looking through your widgets, AI-built widgets and the registry…"
+                  (bot
+                    ? "Looking through your bots and the registry's…"
+                    : "Looking through your widgets, AI-built widgets and the registry…")
                 : phase === "failed"
-                  ? `${(run && run.error) || "The Scout didn't answer."} You can still build it.`
+                  ? `${(run && run.error) || "The Scout didn't answer."} You can still ${bot ? "plan" : "build"} it.`
                   : matches && matches.length
-                    ? "Here's what you already have, or could install, that fits:"
+                    ? bot
+                      ? "Here's what you already have, or could add, that fits:"
+                      : "Here's what you already have, or could install, that fits:"
                     : prose ||
                       "Nothing you have, or the registry has, fits — let's make it."}
             </span>
@@ -138,7 +159,7 @@ export const CreateScoutStep = ({
                       </span>
                       <span className={`text-xs truncate ${muted}`}>
                         <span>
-                          {m.source === "Registry"
+                          {m.source === "Registry" && !bot
                             ? "Registry · install"
                             : m.source}
                         </span>
@@ -147,11 +168,15 @@ export const CreateScoutStep = ({
                     </span>
                     <Button3
                       title={
-                        cell
-                          ? "Use in this cell"
-                          : m.source === "Registry"
-                            ? "Install"
-                            : "Use this"
+                        bot
+                          ? bot.where
+                            ? `Use on ${bot.where}`
+                            : "Use a copy"
+                          : cell
+                            ? "Use in this cell"
+                            : m.source === "Registry"
+                              ? "Install"
+                              : "Use this"
                       }
                       size="sm"
                       onClick={() => onUse(m)}
