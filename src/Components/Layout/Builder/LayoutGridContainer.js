@@ -1,12 +1,9 @@
 import React, { memo, useState, useContext, useRef, useEffect } from "react";
 import { useDrag, useDrop, DndContext } from "react-dnd";
 
-// Identifies which "bucket" of the workspace a LayoutBuilder belongs
-// to so drop handlers on grid cells can distinguish a same-container
-// swap from a cross-container move (sidebar ↔ main dashboard). Wrap
-// the sidebar's LayoutBuilder with value "sidebar"; everything else
-// defaults to "main".
-export const WorkspaceScopeContext = React.createContext("main");
+import { WorkspaceScopeContext } from "./WorkspaceScopeContext";
+// Re-exported for the modules that import it from here.
+export { WorkspaceScopeContext };
 import {
   DropComponent,
   DragComponent,

@@ -732,6 +732,8 @@ async function handleAddWidget({ dashboardId, widgetName, row, col, page }) {
     id: newId,
     order: maxOrder + 1,
     component: widgetName.trim(),
+    // A widget, so the editor shows its Listeners (src/utils/widgetSections.js).
+    type: "widget",
     parent: parentContainerId,
     config: {},
   };
