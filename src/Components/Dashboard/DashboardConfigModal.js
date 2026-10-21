@@ -32,6 +32,7 @@ import { useBotEmitters } from "../Settings/details/useBotEmitters";
 import { PermissionsTab } from "./PermissionsTab";
 import { BotsTab } from "./BotsTab";
 import { ConfigListRow, useConfigTokens } from "./ConfigListRow";
+import { ListenersMap, NotificationsList } from "./ConfigLists";
 
 /** One tab in the modal's tab strip — the Bots view's tab style. */
 const ConfigTab = ({ active, onClick, children }) => {
@@ -106,6 +107,11 @@ export const DashboardConfigModal = ({
   initialTab = "providers",
   // Bots tab's "Open in Bots view" (bot-teams TEAM-011).
   onOpenBotsView = null,
+  // One widget is edited in the edit panel (consolidation Phase 3P): Edit in
+  // panel keeps what was changed here (as unsaved dashboard changes), closes
+  // this and selects the widget. target: { uuid?, component?, itemId?,
+  // section? }. Without it the tabs edit per widget as before.
+  onEditInPanel = null,
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
@@ -519,6 +525,11 @@ export const DashboardConfigModal = ({
     setIsOpen(false);
   }
 
+  function handleEditInPanel(target) {
+    handleSave();
+    if (onEditInPanel) onEditInPanel(target);
+  }
+
   function handleCancel() {
     setStaged({});
     setStagedListeners({ adds: [], removes: [] });
@@ -650,15 +661,23 @@ export const DashboardConfigModal = ({
         <div
           className={`flex-1 min-h-0 ${activeTab === "widgets" ? "" : "p-5"}`}
         >
-          {activeTab === "listeners" && (
-            <ListenersTab
-              emitters={emitters}
-              receivers={receivers}
-              wiring={effectiveWiring}
-              onAdd={stageListenerAdd}
-              onRemove={stageListenerRemove}
-            />
-          )}
+          {activeTab === "listeners" &&
+            (onEditInPanel ? (
+              <ListenersMap
+                emitters={emitters}
+                receivers={receivers}
+                wiring={effectiveWiring}
+                onEditInPanel={handleEditInPanel}
+              />
+            ) : (
+              <ListenersTab
+                emitters={emitters}
+                receivers={receivers}
+                wiring={effectiveWiring}
+                onAdd={stageListenerAdd}
+                onRemove={stageListenerRemove}
+              />
+            ))}
           {activeTab === "providers" && (
             <ProvidersTab
               grouped={grouped}
@@ -668,7 +687,10 @@ export const DashboardConfigModal = ({
             />
           )}
           {activeTab === "notifications" && (
-            <NotificationsTab workspace={workspace} />
+            <NotificationsTab
+              workspace={workspace}
+              onEditInPanel={onEditInPanel ? handleEditInPanel : null}
+            />
           )}
           {activeTab === "widgets" && (
             <WidgetsTab
@@ -677,6 +699,7 @@ export const DashboardConfigModal = ({
               stagedPrefs={stagedPrefs}
               stagePrefField={stagePrefField}
               stagePrefFieldForAll={stagePrefFieldForAll}
+              onEditInPanel={onEditInPanel ? handleEditInPanel : null}
             />
           )}
           {activeTab === "permissions" && (
@@ -722,7 +745,7 @@ export const DashboardConfigModal = ({
  * write fails the user can re-toggle. No staging — the bulk modal
  * doesn't gate the user behind a Save button for boolean prefs.
  */
-function NotificationsTab({ workspace }) {
+function NotificationsTab({ workspace, onEditInPanel = null }) {
   const { muted, hairline } = useConfigTokens();
   const [searchQuery, setSearchQuery] = useState("");
   // Local mirror of widgetUuid -> { typeKey: bool }. Seeded from the
@@ -865,6 +888,17 @@ function NotificationsTab({ workspace }) {
       window.mainApi?.notifications?.setPreferences(wi.uuid, update);
     });
   };
+
+  // In the editor: the list, each widget opening in the panel (where its
+  // switches are, waiting for Save) — consolidation Phase 3P.
+  if (onEditInPanel) {
+    return (
+      <NotificationsList
+        widgets={widgetInstances}
+        onEditInPanel={onEditInPanel}
+      />
+    );
+  }
 
   if (!loaded) {
     return <div className={`p-4 text-sm ${muted}`}>Loading…</div>;

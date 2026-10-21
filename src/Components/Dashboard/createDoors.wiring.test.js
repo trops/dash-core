@@ -103,12 +103,16 @@ describe("Change with AI doors open Create on the widget", () => {
       /edit=\{createRequest \? createRequest\.edit \|\| null : null\}/,
     );
   });
-  it("the card menu, the Edit panel and Ask AI say Change with AI", () => {
+  it("the card menu and the Edit panel have one Change <widget>; no Ask AI tab (Phase 3P)", () => {
     const header = read("Layout", "Builder", "Enhanced", "WidgetCardHeader.js");
-    expect(header).toMatch(/label: "Change with AI"/);
+    expect(header).toMatch(
+      /label: `Change \$\{widgetName \|\| "this widget"\}`/,
+    );
+    expect(header).not.toMatch(/"Change with AI"/);
     const panel = read("Dashboard", "EditPanel.js");
-    expect(panel).toMatch(/title="Change with AI"/);
-    expect(panel).toMatch(/"Change this widget with AI"/);
+    expect(panel).toMatch(/title=\{`Change \$\{widgetName\}`\}/);
+    expect(panel).not.toMatch(/Change this widget with AI/);
+    expect(panel).not.toMatch(/value="ask"/);
     expect(panel).not.toMatch(/Opens the Widget Builder/);
   });
   it("the card and the Edit panel say where the widget is", () => {

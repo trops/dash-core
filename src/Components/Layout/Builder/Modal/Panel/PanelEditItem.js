@@ -1,10 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import {
-  SelectMenu,
-  InputText,
-  SubHeading3,
-  FormLabel,
-} from "@trops/dash-react";
+import { SelectMenu, InputText, FormLabel } from "@trops/dash-react";
 import { replaceItemInLayout } from "../../../../../utils/layout";
 import { WorkspaceModel } from "../../../../../Models";
 import deepEqual from "deep-equal";
@@ -250,17 +245,10 @@ export const PanelEditItem = ({
   return (
     itemSelected &&
     workspaceSelected && (
-      <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
-        {hasCustomSettings && (
-          <div className="flex flex-col space-y-3">
-            <SubHeading3 title="Configuration" padding={false} />
-            {renderCustomSettings()}
-          </div>
-        )}
-
-        {/* Provider bindings used to render here. They now live in
-            their own "Providers" sidebar section (PanelEditItemProviders)
-            so the Settings panel stays focused on userConfig only. */}
+      // Under the widget panel's own "Settings" heading (consolidation
+      // Phase 3P) — no heading or scroll box of its own.
+      <div className="flex flex-col space-y-3">
+        {hasCustomSettings && renderCustomSettings()}
       </div>
     )
   );

@@ -54,16 +54,84 @@ describe("WidgetCardHeader — design audit", () => {
     expect(meta.className).toMatch(/text-neutral-400/);
   });
 
-  test("one quiet kebab labelled Widget options opens the menu", () => {
+  test("an unresolved required provider marks the menu and Edit in panel", () => {
     renderHeader();
-    fireEvent.click(screen.getByLabelText("Widget options"));
-    expect(screen.getByText("Listeners")).toBeInTheDocument();
-    expect(screen.getByTestId("icon-tower-broadcast")).toBeInTheDocument();
-    expect(screen.queryByTestId("icon-phone")).toBeNull();
+    const kebab = screen.getByRole("button", {
+      name: "Composed Widget 3 options",
+    });
+    expect(kebab).toHaveAttribute("data-dot", "true");
+    fireEvent.click(kebab);
+    expect(
+      screen.getByRole("menuitem", { name: /Edit in panel/ }),
+    ).toHaveTextContent("!");
+  });
+});
+
+/**
+ * The ⋮ menu (consolidation Phase 3P): Edit in panel, one Change, then Move,
+ * Split and Remove — no Configure / Providers / Listeners dialogs.
+ */
+describe("WidgetCardHeader — the ⋮ menu", () => {
+  function open(props) {
+    renderHeader(props);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Composed Widget 3 options" }),
+    );
+  }
+
+  test("its items, in order", () => {
+    open({
+      onEditWithAI: jest.fn(),
+      onMove: jest.fn(),
+      onSplitHorizontal: jest.fn(),
+      onSplitVertical: jest.fn(),
+      onDelete: jest.fn(),
+    });
+    expect(
+      screen.getAllByRole("menuitem").map((b) => b.textContent.trim()),
+    ).toEqual([
+      "Edit in panel !",
+      "Change Composed Widget 3",
+      "Move to another cell",
+      "Split side by side",
+      "Split top and bottom",
+      "Remove",
+    ]);
+    for (const old of ["Configure", "Providers", "Listeners"]) {
+      expect(screen.queryByRole("menuitem", { name: old })).toBeNull();
+    }
   });
 
-  test("an unresolved required provider shows the warning dot", () => {
-    renderHeader();
-    expect(screen.getByTitle("Required provider not set")).toBeInTheDocument();
+  test("each item calls its handler", () => {
+    const onConfigure = jest.fn();
+    const onEditWithAI = jest.fn();
+    const onMove = jest.fn();
+    const onSplitHorizontal = jest.fn();
+    const onDelete = jest.fn();
+    const item = { component: "trops.composed.ComposedWidget3" };
+    const pick = (name) => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Composed Widget 3 options" }),
+      );
+      fireEvent.click(screen.getByRole("menuitem", { name }));
+    };
+    renderHeader({
+      item,
+      onConfigure,
+      onEditWithAI,
+      onMove,
+      onSplitHorizontal,
+      onDelete,
+    });
+    pick(/Edit in panel/);
+    expect(onConfigure).toHaveBeenCalledWith(item, "edit");
+    pick("Change Composed Widget 3");
+    expect(onEditWithAI).toHaveBeenCalledWith(item);
+    pick("Move to another cell");
+    expect(onMove).toHaveBeenCalledWith(item);
+    pick("Split side by side");
+    expect(onSplitHorizontal).toHaveBeenCalled();
+    pick("Remove");
+    expect(onDelete).toHaveBeenCalledWith(item);
   });
 });

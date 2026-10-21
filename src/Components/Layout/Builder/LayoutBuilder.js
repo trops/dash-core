@@ -18,7 +18,8 @@ import { deepCopy } from "@trops/dash-react";
 import { LayoutContainer } from "../../../Components/Layout";
 import { LayoutDragBuilderEdit } from "./";
 
-import { LayoutBuilderAddItemModal, LayoutBuilderConfigModal } from "./Modal";
+import { LayoutBuilderAddItemModal } from "./Modal";
+import { pickWidgetDisplayName } from "../../../utils/widgetIdentity";
 import { EnhancedWidgetDropdown } from "./Enhanced";
 import {
   getComponentInLayout,
@@ -29,14 +30,17 @@ import {
 } from "../../../utils/layout";
 import { DashboardModel, LayoutModel } from "../../../Models";
 import { ComponentManager } from "../../../ComponentManager";
-import { findWidgetCell } from "../../Dashboard/editSelection";
+import {
+  EditSelectionContext,
+  findWidgetCell,
+} from "../../Dashboard/editSelection";
 import { WorkspaceScopeContext } from "./LayoutGridContainer";
+import { LayoutPageContext } from "./WorkspaceScopeContext";
 import { ProviderSelector } from "../../Provider/ProviderSelector";
 import { McpServerPicker } from "../../Provider/McpServerPicker";
 
 // import LayoutBuilderEditItemModal from "./Modal/LayoutBuilderEditItemModal";
 // import LayoutBuilderEventModal from "./Modal/LayoutBuilderEventModal";
-// import LayoutBuilderConfigModal from "./Modal/LayoutBuilderConfigModal";
 // import LayoutBuilderAddItemModal from "./Modal/LayoutBuilderAddItemModal";
 
 /**
@@ -96,7 +100,6 @@ export const LayoutBuilder = ({
   const [, setIsWidgetModalOpen] = useState(false);
   const [isAddWidgetModalOpen, setIsAddWidgetModalOpen] = useState(false);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
-  const [configInitialSection, setConfigInitialSection] = useState(null);
   const [itemSelected, setItemSelected] = useState(null);
 
   // Enhanced UI state
@@ -390,6 +393,7 @@ export const LayoutBuilder = ({
   // layout. Every builder hears the event — only the one holding the widget
   // (by uuid), or the targeted page for + Row / + Column, acts.
   const scope = useContext(WorkspaceScopeContext);
+  const editSelection = useContext(EditSelectionContext);
   const editActionRef = useRef(null);
   editActionRef.current = (detail) => {
     const {
@@ -441,6 +445,18 @@ export const LayoutBuilder = ({
 
     const item = ws.layout.find((i) => i && i.uuid === uuid);
     if (!item) return;
+    // Uuids repeat across pages and the pinned sidebar (same component, same
+    // id): only the builder for the widget's scope — and on the main grid,
+    // its page — acts (consolidation Phase 3P).
+    if ((detail.scope || "main") !== scope) return;
+    if (
+      scope === "main" &&
+      targetPage != null &&
+      pageId != null &&
+      targetPage !== pageId
+    ) {
+      return;
+    }
     // A change from the edit panel's inline settings (CRE-006 AC5) — staged
     // like the Configure dialog's save, until the dashboard's Save.
     if (action === "update") {
@@ -453,10 +469,22 @@ export const LayoutBuilder = ({
       });
       return;
     }
-    if (action === "configure") {
-      handleClickEditItem(item, section || null);
-    } else if (action === "remove") {
+    if (action === "remove") {
       onClickRemove(item.id);
+    } else if (action === "split") {
+      // The widget panel's ⋯ menu (consolidation Phase 3P): split its cell
+      // in two, as the card's menu does; the widget keeps the first half.
+      const cell = findWidgetCell(ws.layout, item.id);
+      const grid = cell
+        ? ws.layout.find((i) => i && i.id === cell.gridItemId)
+        : null;
+      if (!grid) return;
+      handleSplitCell({
+        cellNumber: cell.cellNumber,
+        direction: detail.direction === "vertical" ? "vertical" : "horizontal",
+        count: 2,
+        gridContainer: grid,
+      });
     } else if (action === "edit-with-ai") {
       const cell = findWidgetCell(ws.layout, item.id);
       if (!cell) return;
@@ -860,35 +888,34 @@ export const LayoutBuilder = ({
     return newWorkspace;
   }
 
+  // A widget's settings (old headers, legacy containers, a footer badge):
+  // select it in the edit panel, open on that section — the Configure
+  // dialog is retired (consolidation Phase 3P). Outside the editor there's
+  // no panel, so nothing to open.
   function handleClickEditItem(newItem, initialSection = null) {
-    delete newItem["api"];
-    delete newItem["componentData"];
-
-    // Refresh config fields (eventHandlers, events, etc.) from the
-    // component definition so that grid-path items — which skip
-    // LayoutModel during rendering — always have up-to-date metadata.
-    const refreshedItem = LayoutModel(
-      newItem,
-      currentWorkspace?.layout || [],
-      dashboardId,
-    );
-
-    setItemSelected(() => refreshedItem || newItem);
-    setConfigInitialSection(initialSection);
-    // setIsWidgetModalOpen(() => true);
-    setIsConfigModalOpen(() => true);
+    if (!newItem || !editSelection.available) return;
+    const ws = currentWorkspace || {};
+    const cell = findWidgetCell(ws.layout || [], newItem.id);
+    editSelection.select({
+      kind: "widget",
+      uuid: newItem.uuid,
+      id: newItem.id,
+      component: newItem.component,
+      gridItemId: cell ? cell.gridItemId : null,
+      cellNumber: cell ? cell.cellNumber : null,
+      scope,
+      label: pickWidgetDisplayName(
+        newItem,
+        ComponentManager.config(newItem.component, newItem),
+      ),
+      openTab: "widget",
+      section: initialSection || "edit",
+      sectionRequest: Date.now(),
+    });
   }
 
   function handleClickEvents(d) {
-    console.log(d);
-    const refreshedItem = LayoutModel(
-      d,
-      currentWorkspace?.layout || [],
-      dashboardId,
-    );
-    setItemSelected(() => refreshedItem || d);
-    // setIsEventModalOpen(() => true);
-    setIsConfigModalOpen(true);
+    handleClickEditItem(d, "handlers");
   }
 
   // Provider Handlers
@@ -1491,77 +1518,78 @@ export const LayoutBuilder = ({
 
   return (
     // <LayoutContexts workspace={currentWorkspace}>
-    <div
-      className={`flex flex-col w-full h-full overflow-clip`}
-      key={"layout-builder"}
-    >
-      <div className="flex flex-row w-full h-full overflow-clip">
-        <LayoutContainer
-          key={"search-layout-builder"}
-          id="search-layout-builder"
-          scrollable={!preview}
-          direction={"col"}
-          width={"w-full"}
-          height={"h-full"}
-          grow={true}
-          space={preview}
-        >
-          {/* One builder for view AND edit, in one slot, so widgets stay
+    <LayoutPageContext.Provider value={scope === "main" ? pageId : null}>
+      <div
+        className={`flex flex-col w-full h-full overflow-clip`}
+        key={"layout-builder"}
+      >
+        <div className="flex flex-row w-full h-full overflow-clip">
+          <LayoutContainer
+            key={"search-layout-builder"}
+            id="search-layout-builder"
+            scrollable={!preview}
+            direction={"col"}
+            width={"w-full"}
+            height={"h-full"}
+            grow={true}
+            space={preview}
+          >
+            {/* One builder for view AND edit, in one slot, so widgets stay
               mounted across mode switches (create-entry phase 1c). */}
-          {(preview === true || editMode === "all") && (
-            <LayoutDragBuilderEdit
-              key={`layout-drag-${dashboardId}`}
-              dashboardId={dashboardId}
-              isDraggable={true}
-              workspace={currentWorkspace}
-              header={currentWorkspace["name"]}
-              layout={currentWorkspace["layout"]}
-              parentKey={0}
-              debugMode={debugMode}
-              previewMode={preview}
-              editMode={editMode}
-              onClickAdd={onClickAdd}
-              onClickQuickAdd={onClickQuickAdd}
-              onClickRemove={onClickRemove}
-              onClickShrink={onClickShrink}
-              onClickExpand={onClickExpand}
-              onClickEmptyCell={handleOnClickEmptyCell}
-              onClickContextSettings={(i) => {
-                console.log("context settings clicked ", i);
-                // set the item here so that we can constrict the contexts
-                // that the user can choose from, only show the compatible contexts
-                setItemSelected(() => i);
-                setIsContextSettingsOpen(true);
-              }}
-              onSelectWidgetForCell={handleSelectWidgetForCell}
-              onChangeDirection={onChangeDirection}
-              onChangeOrder={onChangeOrder}
-              onDropItem={onDropItem}
-              onDragItem={onDragItem}
-              onOpenConfig={handleClickEditItem}
-              onOpenEvents={handleClickEvents}
-              onSaveConfiguration={handleSaveConfiguration}
-              onProviderSelect={handleSelectProvider}
-              onCreateProvider={handleOpenProviderModal}
-              providers={providers}
-              onClickEdit={onTogglePreview}
-              onSplitCell={handleSplitCell}
-              onMergeCells={handleMergeCells}
-              onAddGridRow={handleAddGridRow}
-              onDeleteGridRow={handleDeleteGridRow}
-              onAddGridColumn={handleAddGridColumn}
-              onDeleteGridColumn={handleDeleteGridColumn}
-              onChangeRowHeight={handleChangeRowHeight}
-              onChangeRowMode={handleChangeRowMode}
-              onChangeRowSizing={handleChangeRowSizing}
-              onChangeColMode={handleChangeColMode}
-              onMoveWidgetToCell={handleMoveWidgetToCell}
-              onDropWidgetFromSidebar={handleDropWidgetFromSidebar}
-              onWidgetPopout={onWidgetPopout}
-            />
-          )}
+            {(preview === true || editMode === "all") && (
+              <LayoutDragBuilderEdit
+                key={`layout-drag-${dashboardId}`}
+                dashboardId={dashboardId}
+                isDraggable={true}
+                workspace={currentWorkspace}
+                header={currentWorkspace["name"]}
+                layout={currentWorkspace["layout"]}
+                parentKey={0}
+                debugMode={debugMode}
+                previewMode={preview}
+                editMode={editMode}
+                onClickAdd={onClickAdd}
+                onClickQuickAdd={onClickQuickAdd}
+                onClickRemove={onClickRemove}
+                onClickShrink={onClickShrink}
+                onClickExpand={onClickExpand}
+                onClickEmptyCell={handleOnClickEmptyCell}
+                onClickContextSettings={(i) => {
+                  console.log("context settings clicked ", i);
+                  // set the item here so that we can constrict the contexts
+                  // that the user can choose from, only show the compatible contexts
+                  setItemSelected(() => i);
+                  setIsContextSettingsOpen(true);
+                }}
+                onSelectWidgetForCell={handleSelectWidgetForCell}
+                onChangeDirection={onChangeDirection}
+                onChangeOrder={onChangeOrder}
+                onDropItem={onDropItem}
+                onDragItem={onDragItem}
+                onOpenConfig={handleClickEditItem}
+                onOpenEvents={handleClickEvents}
+                onSaveConfiguration={handleSaveConfiguration}
+                onProviderSelect={handleSelectProvider}
+                onCreateProvider={handleOpenProviderModal}
+                providers={providers}
+                onClickEdit={onTogglePreview}
+                onSplitCell={handleSplitCell}
+                onMergeCells={handleMergeCells}
+                onAddGridRow={handleAddGridRow}
+                onDeleteGridRow={handleDeleteGridRow}
+                onAddGridColumn={handleAddGridColumn}
+                onDeleteGridColumn={handleDeleteGridColumn}
+                onChangeRowHeight={handleChangeRowHeight}
+                onChangeRowMode={handleChangeRowMode}
+                onChangeRowSizing={handleChangeRowSizing}
+                onChangeColMode={handleChangeColMode}
+                onMoveWidgetToCell={handleMoveWidgetToCell}
+                onDropWidgetFromSidebar={handleDropWidgetFromSidebar}
+                onWidgetPopout={onWidgetPopout}
+              />
+            )}
 
-          {/* {preview === false && editMode === "layout" && (
+            {/* {preview === false && editMode === "layout" && (
                         <LayoutDragBuilderEdit
                             key={`layout-drag-edit-${dashboardId}`}
                             dashboardId={dashboardId}
@@ -1590,7 +1618,7 @@ export const LayoutBuilder = ({
                             onClickEdit={onTogglePreview}
                         />
                     )} */}
-          {/* {preview === false && editMode === "workspace" && (
+            {/* {preview === false && editMode === "workspace" && (
                         <LayoutDragBuilderEdit
                             key={`layout-drag-edit-${dashboardId}`}
                             dashboardId={dashboardId}
@@ -1619,7 +1647,7 @@ export const LayoutBuilder = ({
                             onClickEdit={onTogglePreview}
                         />
                     )} */}
-          {/* {preview === false && editMode === "widget" && (
+            {/* {preview === false && editMode === "widget" && (
                         <LayoutDragBuilderEdit
                             key={`layout-drag-edit-${dashboardId}`}
                             dashboardId={dashboardId}
@@ -1648,8 +1676,8 @@ export const LayoutBuilder = ({
                             onClickEdit={onTogglePreview}
                         />
                     )} */}
-        </LayoutContainer>
-        {/* {preview === false && (
+          </LayoutContainer>
+          {/* {preview === false && (
                     <div className="flex flex-col p-2 text-xs text-green-700 h-full hidden xl:flex xl:w-1/4 bg-slate-900 rounded">
                         <LayoutBuilderConfigPanel 
                             workspace={currentWorkspace} 
@@ -1659,7 +1687,7 @@ export const LayoutBuilder = ({
                     </div>
                 )} */}
 
-        {/* {preview === false && itemSelected && (
+          {/* {preview === false && itemSelected && (
                     <div className="flex flex-col p-2 text-xs text-green-700 h-full hidden xl:flex xl:w-1/4 bg-slate-900 rounded">
                          <WidgetConfigPanel
                             item={itemSelected}
@@ -1671,8 +1699,8 @@ export const LayoutBuilder = ({
                         />
                     </div>
                 )} */}
-      </div>
-      {/* {itemSelected !== null && (
+        </div>
+        {/* {itemSelected !== null && (
                 <LayoutBuilderEditItemModal
                     open={isWidgetModalOpen}
                     setIsOpen={setIsWidgetModalOpen}
@@ -1681,65 +1709,67 @@ export const LayoutBuilder = ({
                     workspace={currentWorkspace}
                 />
             )} */}
-      {/*
+        {/*
                 Modals — wrapped in AppThemeScope so they use the app theme
                 instead of the dashboard-specific theme from DashboardThemeProvider.
             */}
-      <AppThemeScope>
-        {/*
+        <AppThemeScope>
+          {/*
                     Enhanced Widget Dropdown (NEW)
                     Inline dropdown for faster widget selection
                 */}
-        {USE_ENHANCED_WIDGET_SELECTOR && showWidgetDropdown && (
-          <EnhancedWidgetDropdown
-            isOpen={showWidgetDropdown}
-            onClose={() => setShowWidgetDropdown(false)}
-            onSelectWidget={(widget) => {
-              console.log("[LayoutBuilder] onSelectWidget called");
-              console.log("[LayoutBuilder] Original widget object:", widget);
-              console.log("[LayoutBuilder] widget.key:", widget.key);
-              console.log(
-                "[LayoutBuilder] widget.component:",
-                widget.component,
-              );
+          {USE_ENHANCED_WIDGET_SELECTOR && showWidgetDropdown && (
+            <EnhancedWidgetDropdown
+              isOpen={showWidgetDropdown}
+              onClose={() => setShowWidgetDropdown(false)}
+              onSelectWidget={(widget) => {
+                console.log("[LayoutBuilder] onSelectWidget called");
+                console.log("[LayoutBuilder] Original widget object:", widget);
+                console.log("[LayoutBuilder] widget.key:", widget.key);
+                console.log(
+                  "[LayoutBuilder] widget.component:",
+                  widget.component,
+                );
 
-              // Add component property from widget.key
-              const widgetWithComponent = {
-                ...widget,
-                component: widget.key,
-              };
-              console.log(
-                "[LayoutBuilder] widgetWithComponent after mapping:",
-                widgetWithComponent,
-              );
-              console.log(
-                "[LayoutBuilder] widgetWithComponent.component:",
-                widgetWithComponent.component,
-              );
+                // Add component property from widget.key
+                const widgetWithComponent = {
+                  ...widget,
+                  component: widget.key,
+                };
+                console.log(
+                  "[LayoutBuilder] widgetWithComponent after mapping:",
+                  widgetWithComponent,
+                );
+                console.log(
+                  "[LayoutBuilder] widgetWithComponent.component:",
+                  widgetWithComponent.component,
+                );
 
-              handleClickConfirmAdd(widgetWithComponent, dropdownTarget);
-              setShowWidgetDropdown(false);
-            }}
-            workspaceType={currentWorkspace?.workspace}
-          />
-        )}
+                handleClickConfirmAdd(widgetWithComponent, dropdownTarget);
+                setShowWidgetDropdown(false);
+              }}
+              workspaceType={currentWorkspace?.workspace}
+            />
+          )}
 
-        {/*
+          {/*
                     Original Modal (FALLBACK)
                     This is the modal window that will allow a user to ADD a widget
                     It has the "Build" title and contains all of the widgets/workspaces that can be added
                     to the project
                 */}
-        {!USE_ENHANCED_WIDGET_SELECTOR && itemSelected !== null && (
-          <LayoutBuilderAddItemModal
-            open={isAddWidgetModalOpen}
-            setIsOpen={setIsAddWidgetModalOpen}
-            item={isAddWidgetModalOpen === true ? itemSelected : null}
-            onSaveItem={handleSaveWorkspace}
-            workspace={isAddWidgetModalOpen === true ? currentWorkspace : null}
-          />
-        )}
-        {/* {itemSelected !== null && (
+          {!USE_ENHANCED_WIDGET_SELECTOR && itemSelected !== null && (
+            <LayoutBuilderAddItemModal
+              open={isAddWidgetModalOpen}
+              setIsOpen={setIsAddWidgetModalOpen}
+              item={isAddWidgetModalOpen === true ? itemSelected : null}
+              onSaveItem={handleSaveWorkspace}
+              workspace={
+                isAddWidgetModalOpen === true ? currentWorkspace : null
+              }
+            />
+          )}
+          {/* {itemSelected !== null && (
                     <LayoutBuilderEventModal
                         open={isConfigModalOpen}
                         setIsOpen={setIsEventModalOpen}
@@ -1751,19 +1781,7 @@ export const LayoutBuilder = ({
                     />
                 )} */}
 
-        {itemSelected !== null && (
-          <LayoutBuilderConfigModal
-            open={isConfigModalOpen}
-            setIsOpen={setIsConfigModalOpen}
-            item={isConfigModalOpen === true ? itemSelected : null}
-            initialSection={configInitialSection}
-            onSaveWorkspace={handleSaveNewWorkspace}
-            // onSaveWidgetChanges={handleSaveWidgetChanges}
-            workspace={isConfigModalOpen === true ? currentWorkspace : null}
-          />
-        )}
-
-        {/* {itemSelected !== null && (
+          {/* {itemSelected !== null && (
                     <LayoutBuilderWidgetConfigPanel
                         open={true}
                         setOpen={setIsConfigModalOpen}
@@ -1776,7 +1794,7 @@ export const LayoutBuilder = ({
                     />
                 )} */}
 
-        {/* {currentWorkspace && currentWorkspace !== null && (
+          {/* {currentWorkspace && currentWorkspace !== null && (
                         <ContextSettingsModal
                             open={isContextSettingsOpen}
                             setIsOpen={setIsContextSettingsOpen}
@@ -1785,33 +1803,34 @@ export const LayoutBuilder = ({
                         />
                     )} */}
 
-        {/* Provider Creation Modal */}
-        <ProviderSelector
-          isOpen={isProviderModalOpen}
-          setIsOpen={setIsProviderModalOpen}
-          providerType={providerModalConfig.providerType}
-          existingProviders={providers}
-          credentialSchema={providerModalConfig.credentialSchema}
-          onSelect={(providerId) => {
-            handleSelectProvider(
-              providerModalConfig.widgetId,
-              providerModalConfig.providerType,
-              providerId,
-            );
-            setIsProviderModalOpen(false);
-          }}
-          onCreate={handleCreateProvider}
-        />
+          {/* Provider Creation Modal */}
+          <ProviderSelector
+            isOpen={isProviderModalOpen}
+            setIsOpen={setIsProviderModalOpen}
+            providerType={providerModalConfig.providerType}
+            existingProviders={providers}
+            credentialSchema={providerModalConfig.credentialSchema}
+            onSelect={(providerId) => {
+              handleSelectProvider(
+                providerModalConfig.widgetId,
+                providerModalConfig.providerType,
+                providerId,
+              );
+              setIsProviderModalOpen(false);
+            }}
+            onCreate={handleCreateProvider}
+          />
 
-        {/* MCP Server Picker Modal */}
-        <McpServerPicker
-          isOpen={isMcpPickerOpen}
-          setIsOpen={setIsMcpPickerOpen}
-          onSave={handleMcpProviderSave}
-          autoSelectId={mcpPickerProviderType}
-        />
-      </AppThemeScope>
-    </div>
+          {/* MCP Server Picker Modal */}
+          <McpServerPicker
+            isOpen={isMcpPickerOpen}
+            setIsOpen={setIsMcpPickerOpen}
+            onSave={handleMcpProviderSave}
+            autoSelectId={mcpPickerProviderType}
+          />
+        </AppThemeScope>
+      </div>
+    </LayoutPageContext.Provider>
     // </LayoutContexts>
   );
 };

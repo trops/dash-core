@@ -41,9 +41,21 @@ describe("WidgetErrorBoundary — friendlier UI + Fix with AI", () => {
     expect(source).toMatch(/dash:edit-widget-with-ai/);
   });
 
-  test('"Fix with AI" button text is present, not the old builder', () => {
-    expect(source).toMatch(/Fix with AI/);
+  test("the box: <name> couldn't show, Try again, Fix <name>, Remove while editing (Phase 3P)", () => {
+    expect(source).toMatch(/\{name\} couldn't show/);
+    expect(source).toMatch(/Try again/);
+    expect(source).toMatch(/Fix \{name\}/);
+    expect(source).not.toMatch(/>\s*Fix with AI\s*</);
     expect(source).not.toMatch(/Open in AI Builder/);
+    // Remove only while editing, as a staged removal.
+    expect(source).toMatch(
+      /editSelection && editSelection\.editing && params && params\.uuid/,
+    );
+    expect(source).toMatch(/action: "remove"/);
+    // Aimed at its own page and scope (uuids repeat across them).
+    expect(source).toMatch(
+      /pageId: layoutPageId,\s*scope: workspaceScope \|\| "main",/,
+    );
   });
 
   test("new code for the widget clears the error box (keyed to its version)", () => {

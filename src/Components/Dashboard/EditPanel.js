@@ -1,6 +1,8 @@
 import React, { useContext, useEffect, useState } from "react";
 import {
+  ActionMenu,
   Button,
+  Button2,
   Button3,
   InputText,
   RadioGroup,
@@ -8,6 +10,7 @@ import {
   SelectInput,
   Tabs3,
   Toggle,
+  useStatusTokens,
 } from "@trops/dash-react";
 import { ThemeContext } from "../../Context";
 import { ThemeColorDots } from "../Theme/ThemeColorDots";
@@ -23,9 +26,11 @@ import { WidgetSidebar } from "../Navigation/WidgetSidebar";
  *   Dashboard — name, folder, Scrollable, pinned sidebar, Dashboard Config
  *   Theme     — the dashboard's theme
  *
- *   Widget    — the selected widget (phase 1c): its Settings, Listeners,
- *               Providers and Code open the Configure dialog at that
- *               section; Change with AI (Create, Phase 3); Remove
+ *   Widget    — the selected widget (consolidation Phase 3P): its name and
+ *               whose it is, a ⋯ menu (Move, Split, Remove), one Change
+ *               button (Create, where you pick AI or by hand — blocked
+ *               while edits wait for Save), then everything you can set on
+ *               it (WidgetPanel)
  *   Bot       — the selected bot's form (passed in as `botEditor`)
  *
  * Every change here is staged like any other edit and saved with Save.
@@ -47,13 +52,21 @@ export const EditPanel = ({
   // Select-to-edit (phase 1c)
   selection = null,
   onWidgetAction = null,
-  // The selected widget's Settings / Listeners / Providers / Code, inline
-  // (WidgetConfigPanel, built by DashboardStage) — CRE-006 AC5.
+  // Everything you can set on the selected widget (WidgetPanel, built by
+  // DashboardStage) — consolidation Phase 3P.
   widgetConfig = null,
   botEditor = null,
-  // Phase 1d: place a picked widget in the selected empty cell; Ask AI.
+  // Phase 1d: place a picked widget in the selected empty cell; an empty
+  // cell's Build with AI (Create, through the Dash team).
   onPlaceWidget = null,
-  onAskAi = null,
+  onBuildWithAi = null,
+  // The selected widget: whose it is ("Built by AI · yours"), whether a
+  // change can go in place, and why Change waits (unsaved edits).
+  widgetOwner = "",
+  widgetNotYours = false,
+  changeBlocked = "",
+  // False for a built-in widget (it ships with Dash; nothing to change).
+  canChange = true,
   // Phase 1e: move the selected widget without dragging (true = start).
   onMoveWidget = null,
 }) => {
@@ -66,27 +79,29 @@ export const EditPanel = ({
         ? `cell:${selection.scope}:${selection.gridItemId}:${selection.cellNumber}`
         : `bot:${selection.botId}`
     : null;
-  const canAskAi = selection?.kind === "widget" || selection?.kind === "cell";
   // A new selection opens its tab; clearing it leaves a stale tab — fall
   // back to Add.
   useEffect(() => {
     if (!selection) {
-      setTab((t) => (t === "widget" || t === "bot" || t === "ask" ? "add" : t));
+      setTab((t) => (t === "widget" || t === "bot" ? "add" : t));
     } else {
-      // A new selection opens its own settings (widget: Settings; bot: its
-      // form) — whether you were on Add or a settings tab — so working by
-      // hand never lands in a chat. Only Ask AI stays on Ask AI (CRE-006
-      // AC4).
-      setTab((current) => {
-        if (selection.openTab) return selection.openTab;
-        if (selection.kind === "cell") return current === "ask" ? "ask" : "add";
-        if (current === "ask" && selection.kind === "widget") return "ask";
+      // A new selection opens its own panel (a widget's, a bot's form; an
+      // empty cell: Add, with Build with AI on top).
+      setTab(() => {
+        if (selection.kind === "cell") return "add";
+        if (selection.openTab && selection.openTab !== "ask") {
+          return selection.openTab;
+        }
         return selection.kind;
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectionKey]);
   const act = (...args) => onWidgetAction && onWidgetAction(...args);
+  const muted = currentTheme["text-neutral-medium"] || "";
+  const status = useStatusTokens();
+  const widgetName =
+    selection?.kind === "widget" ? selection.label || selection.component : "";
   const allThemes =
     themes && Object.keys(themes).length > 0 ? themes : contextThemes || {};
   const ws = workspace || {};
@@ -128,7 +143,6 @@ export const EditPanel = ({
           {selection?.kind === "bot" && (
             <Tabs3.Trigger value="bot">Bot</Tabs3.Trigger>
           )}
-          {canAskAi && <Tabs3.Trigger value="ask">Ask AI</Tabs3.Trigger>}
           <Tabs3.Trigger value="dashboard">Dashboard</Tabs3.Trigger>
           <Tabs3.Trigger value="theme">Theme</Tabs3.Trigger>
         </Tabs3.List>
@@ -136,12 +150,28 @@ export const EditPanel = ({
         <Tabs3.Content value="add" className="flex flex-1 min-h-0">
           <div className="flex flex-col flex-1 min-h-0 min-w-0">
             {selection?.kind === "cell" && (
-              <span
-                className={`mx-4 mt-3 text-xs ${currentTheme["text-neutral-medium"] || ""}`}
+              <div
+                className="flex flex-col gap-2 px-4 pt-4"
+                data-testid="empty-cell"
               >
-                Placing in cell {selection.cellNumber} — click a widget, or drag
-                one onto the dashboard.
-              </span>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-base font-semibold">Empty cell</span>
+                  <span className={`text-xs ${muted}`}>
+                    Cell {selection.cellNumber}
+                  </span>
+                </div>
+                {onBuildWithAi && (
+                  <Button3
+                    title="Build with AI"
+                    onClick={onBuildWithAi}
+                    size="sm"
+                  />
+                )}
+                <span className={`text-xs ${muted}`}>
+                  Or add a widget you have: click it, or drag it onto the
+                  dashboard.
+                </span>
+              </div>
             )}
             <WidgetSidebar
               embedded
@@ -160,17 +190,51 @@ export const EditPanel = ({
             value="widget"
             className="flex flex-col flex-1 min-h-0"
           >
-            <div className="flex flex-col gap-2 px-4 pt-4 pb-2">
-              <div className="flex flex-col gap-1">
-                <SectionLabel>Widget</SectionLabel>
-                <span className="text-base font-semibold">
-                  {selection.label || selection.component}
-                </span>
-                <span
-                  className={`text-xs break-all ${currentTheme["text-neutral-medium"] || ""}`}
-                >
-                  {selection.component}
-                </span>
+            <div className="flex flex-col gap-3 px-4 pt-4 pb-2">
+              <div className="flex flex-row items-start gap-2">
+                <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                  <span className="text-base font-semibold truncate">
+                    {widgetName}
+                  </span>
+                  {widgetOwner ? (
+                    <span className={`text-xs ${muted}`}>{widgetOwner}</span>
+                  ) : null}
+                </div>
+                {!selection.moving && (
+                  <ActionMenu
+                    label={`${widgetName} options`}
+                    items={[
+                      ...(onMoveWidget
+                        ? [
+                            {
+                              label: "Move to another cell",
+                              onSelect: () => onMoveWidget(true),
+                            },
+                          ]
+                        : []),
+                      {
+                        label: "Split side by side",
+                        onSelect: () =>
+                          act("split", null, {
+                            direction: "horizontal",
+                          }),
+                      },
+                      {
+                        label: "Split top and bottom",
+                        onSelect: () =>
+                          act("split", null, {
+                            direction: "vertical",
+                          }),
+                      },
+                      "separator",
+                      {
+                        label: "Remove",
+                        danger: true,
+                        onSelect: () => act("remove"),
+                      },
+                    ]}
+                  />
+                )}
               </div>
               {onMoveWidget && selection.moving ? (
                 <div className="flex flex-col gap-2">
@@ -188,34 +252,42 @@ export const EditPanel = ({
                     size="sm"
                   />
                 </div>
-              ) : (
-                <div className="flex flex-row flex-wrap gap-2">
-                  {onMoveWidget && (
-                    <Button3
-                      title="Move to another cell"
-                      onClick={() => onMoveWidget(true)}
-                      size="sm"
-                    />
-                  )}
-                  <Button3
-                    title="Change with AI"
+              ) : canChange ? (
+                <div
+                  className="flex flex-col gap-1"
+                  data-testid="widget-change"
+                >
+                  {/* One Change: Create › Change, where you pick AI (the
+                      Dash team) or by hand. Secondary — the dashboard's
+                      Save stays the one main button. */}
+                  <Button2
+                    title={`Change ${widgetName}`}
                     onClick={() => act("edit-with-ai")}
-                    size="sm"
+                    disabled={!!changeBlocked}
                   />
-                  <Button3
-                    title="Remove"
-                    onClick={() => act("remove")}
-                    size="sm"
-                  />
+                  {changeBlocked ? (
+                    <span
+                      role="status"
+                      className={`text-xs ${status.warning.icon}`}
+                    >
+                      {changeBlocked}
+                    </span>
+                  ) : widgetNotYours ? (
+                    <span className={`text-xs ${muted}`}>
+                      It isn't yours, so a change is saved as a new widget in
+                      this cell.
+                    </span>
+                  ) : null}
                 </div>
-              )}
+              ) : null}
             </div>
             {widgetConfig}
             <span
-              className={`px-4 py-2 text-xs ${currentTheme["text-neutral-medium"] || ""}`}
+              className={`px-4 py-2 border-t text-xs ${muted} ${
+                currentTheme["border-neutral-dark"] || ""
+              }`}
             >
-              Changes wait for Save. Press Esc or click the dashboard name to go
-              back to the dashboard.
+              Settings wait for Save. Changes to the code are made in Create.
             </span>
           </Tabs3.Content>
         )}
@@ -226,29 +298,6 @@ export const EditPanel = ({
             className="flex flex-col flex-1 min-h-0 overflow-y-auto"
           >
             {botEditor}
-          </Tabs3.Content>
-        )}
-
-        {canAskAi && (
-          <Tabs3.Content value="ask" className="flex flex-col gap-3 p-4">
-            <SectionLabel>Ask AI</SectionLabel>
-
-            <Button
-              title={
-                selection.kind === "cell"
-                  ? "Build a widget for this cell"
-                  : "Change this widget with AI"
-              }
-              onClick={() => onAskAi && onAskAi()}
-              size="sm"
-            />
-
-            <span
-              className={`text-xs ${currentTheme["text-neutral-medium"] || ""}`}
-            >
-              Opens Create: the Dash team plans it with you, and you see it
-              running before anything changes.
-            </span>
           </Tabs3.Content>
         )}
 

@@ -1,12 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useContext } from "react";
 import {
-  SubHeading3,
   Switch,
   InputText,
   SelectInput,
   FontAwesomeIcon,
 } from "@trops/dash-react";
 import { ComponentManager } from "../../../../../ComponentManager";
+import {
+  PendingSettingsContext,
+  stageOrApply,
+  unstageSetting,
+} from "../../../../Dashboard/pendingSettings";
+import { useConfigTokens } from "../../../../Dashboard/ConfigListRow";
 
 const DAYS = [
   { key: "mon", label: "Mon" },
@@ -68,6 +73,12 @@ function TaskScheduleEditor({
   const [time, setTime] = useState(taskState?.time || "09:00");
 
   const hasSchedule = !!taskState;
+  // While editing, a change waits for the dashboard's Save (Phase 3P): the
+  // task as it ends up is registered then — the last change wins.
+  const pending = useContext(PendingSettingsContext);
+  const stageKey = `schedule:${widgetId}:${taskDef.key}`;
+  const { muted, hairline, strong, selectedBg, selectedBorder } =
+    useConfigTokens();
 
   function saveTask(overrides = {}) {
     if (!window.mainApi?.scheduler?.registerTask) return;
@@ -87,21 +98,19 @@ function TaskScheduleEditor({
       ...overrides,
     };
 
-    window.mainApi.scheduler.registerTask(payload);
+    stageOrApply(pending, stageKey, () =>
+      window.mainApi.scheduler.registerTask(payload),
+    );
   }
 
   function handleToggle(value) {
     setEnabled(value);
-    if (!hasSchedule && value) {
-      // First enable — register with default schedule
-      saveTask({ enabled: true });
-    } else if (hasSchedule) {
-      const taskId = `${widgetId}:${taskDef.key}`;
-      if (value) {
-        window.mainApi?.scheduler?.enableTask(taskId);
-      } else {
-        window.mainApi?.scheduler?.disableTask(taskId);
-      }
+    if (hasSchedule || value) {
+      // registerTask updates a task that exists, on or off.
+      saveTask({ enabled: value });
+    } else {
+      // Turned on then off again before Save: nothing to register.
+      unstageSetting(pending, stageKey);
     }
   }
 
@@ -151,13 +160,13 @@ function TaskScheduleEditor({
   }
 
   return (
-    <div className="border border-white/10 rounded-lg p-4 space-y-3">
+    <div className={`border rounded-lg p-4 space-y-3 ${hairline}`}>
       {/* Header */}
       <div className="flex flex-row items-center justify-between">
         <div className="flex flex-col">
           <span className="text-sm font-medium">{taskDef.displayName}</span>
           {taskDef.description && (
-            <span className="text-xs opacity-50">{taskDef.description}</span>
+            <span className={`text-xs ${muted}`}>{taskDef.description}</span>
           )}
         </div>
         <Switch checked={enabled} onChange={handleToggle} />
@@ -174,7 +183,6 @@ function TaskScheduleEditor({
                 name={`schedule-type-${taskDef.key}`}
                 checked={scheduleType === "interval"}
                 onChange={() => handleScheduleTypeChange("interval")}
-                className="accent-blue-500"
               />
               <span>Interval</span>
             </label>
@@ -184,7 +192,6 @@ function TaskScheduleEditor({
                 name={`schedule-type-${taskDef.key}`}
                 checked={scheduleType === "dayTime"}
                 onChange={() => handleScheduleTypeChange("dayTime")}
-                className="accent-blue-500"
               />
               <span>Day & Time</span>
             </label>
@@ -215,19 +222,21 @@ function TaskScheduleEditor({
             <div className="space-y-3">
               {/* Day checkboxes */}
               <div className="flex flex-col space-y-2">
-                <span className="text-xs opacity-70">Days</span>
+                <span className={`text-xs ${muted}`}>Days</span>
                 <div className="flex flex-row flex-wrap gap-2">
                   {DAYS.map((day) => {
                     const isSelected =
                       days.includes(day.key) || days.includes("every");
                     return (
                       <button
+                        type="button"
                         key={day.key}
+                        aria-pressed={isSelected}
                         onClick={() => handleDayToggle(day.key)}
                         className={`px-2.5 py-1 text-xs rounded border transition-colors ${
                           isSelected
-                            ? "bg-blue-600 border-blue-500 text-white"
-                            : "border-white/20 text-white/60 hover:border-white/40"
+                            ? `${selectedBg} ${selectedBorder} ${strong}`
+                            : `${hairline} ${muted}`
                         }`}
                       >
                         {day.label}
@@ -235,11 +244,13 @@ function TaskScheduleEditor({
                     );
                   })}
                   <button
+                    type="button"
+                    aria-pressed={days.includes("every")}
                     onClick={() => handleDayToggle("every")}
                     className={`px-2.5 py-1 text-xs rounded border transition-colors ${
                       days.includes("every")
-                        ? "bg-blue-600 border-blue-500 text-white"
-                        : "border-white/20 text-white/60 hover:border-white/40"
+                        ? `${selectedBg} ${selectedBorder} ${strong}`
+                        : `${hairline} ${muted}`
                     }`}
                   >
                     Every day
@@ -260,7 +271,7 @@ function TaskScheduleEditor({
 
           {/* Last fired info */}
           {taskState?.lastFiredAt && (
-            <div className="text-xs opacity-40">
+            <div className={`text-xs ${muted}`}>
               <FontAwesomeIcon icon="clock" className="h-3 w-3 mr-1" />
               Last fired: {new Date(taskState.lastFiredAt).toLocaleString()}
               {taskState.fireCount > 0 && ` (${taskState.fireCount} total)`}
@@ -308,17 +319,12 @@ export const PanelEditItemSchedule = ({ item, workspace, onUpdate }) => {
   if (!item || scheduledTaskDefs.length === 0) return null;
 
   if (isLoading) {
-    return (
-      <div className="flex flex-col flex-1 min-h-0 p-6">
-        <SubHeading3 title="Schedule" padding={false} />
-        <div className="text-sm opacity-50 mt-4">Loading schedules...</div>
-      </div>
-    );
+    return <div className="text-sm opacity-60">Loading schedules…</div>;
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
-      <SubHeading3 title="Schedule" padding={false} />
+    // Under the widget panel's own "Schedule" heading (Phase 3P).
+    <div className="flex flex-col space-y-3">
       {scheduledTaskDefs.map((taskDef) => (
         <TaskScheduleEditor
           key={taskDef.key}

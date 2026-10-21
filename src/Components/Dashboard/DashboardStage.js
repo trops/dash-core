@@ -50,11 +50,22 @@ import { PageTabBar } from "../Navigation/PageTabBar";
 import { PinnedSidebar } from "./PinnedSidebar";
 import { DashSidebar } from "../Navigation/DashSidebar";
 import { EditPanel } from "./EditPanel";
-import { WidgetConfigPanel } from "./WidgetConfigPanel";
+import { WidgetPanel } from "./WidgetPanel";
+import {
+  PendingSettingsContext,
+  createPendingSettings,
+} from "./pendingSettings";
+import { ownerLabel, changeBlockedText } from "./widgetPanelText";
 import { BotConfigPanel } from "./BotConfigPanel";
 import { keepLatest } from "../Settings/details/botFormMerge";
 import { EditBotsRow } from "./EditBotsRow";
-import { EditSelectionContext, relatedTo, widgetsOf } from "./editSelection";
+import {
+  EditSelectionContext,
+  findWidgetCell,
+  relatedTo,
+  widgetsOf,
+} from "./editSelection";
+import { findWidgetForHandOff } from "./configHandOff";
 
 import { AppContext } from "../../Context/App/AppContext";
 import { WorkspaceContext } from "../../Context/WorkspaceContext";
@@ -85,7 +96,7 @@ import { moveWidgetAcrossContainers } from "../../utils/layout";
 import { ComponentManager } from "../../ComponentManager";
 import { saveNewWorkspace, isSavedWorkspace } from "./saveNewWorkspace";
 import { syncLayoutRefs } from "./editStaging";
-import { describeEditChanges } from "./editChanges";
+import { describeEditChanges, withPendingSettings } from "./editChanges";
 import { DiscardList } from "./DiscardList";
 import { pickWidgetDisplayName } from "../../utils/widgetIdentity";
 import { saveErrorText } from "../../utils/saveErrorText";
@@ -378,15 +389,6 @@ const DashboardStageInner = ({
       relatedTo(editSelection, { widgets: editWidgets, bots: editTeamBots }),
     [editSelection, editWidgets, editTeamBots],
   );
-  const editSelectionValue = useMemo(
-    () => ({
-      available: true,
-      selection: editSelection,
-      related: editRelated,
-      select: setEditSelection,
-    }),
-    [editSelection, editRelated],
-  );
   // Tell the builder holding the selected widget (or the visible page) to
   // act: open Configure at a section, Change with AI, Remove, + Row/Column.
   function dispatchEditAction(action, section = null, extra = null) {
@@ -397,6 +399,8 @@ const DashboardStageInner = ({
           pageId: currentActivePageId,
           uuid:
             editSelection?.kind === "widget" ? editSelection.uuid : undefined,
+          scope:
+            (editSelection?.kind === "widget" && editSelection.scope) || "main",
           action,
           section,
           ...(extra || {}),
@@ -436,8 +440,24 @@ const DashboardStageInner = ({
       },
     };
   }, [editSelection, workspaceSelected]);
-  // Which inline section is open; a selection can ask for one (the
-  // widget's gear → Listeners, …).
+  // The selected widget's header: whose it is, whether a change can go in
+  // place, and — while edits wait for Save — why Change waits
+  // (consolidation Phase 3P).
+  const selectedWidgetOwner = useMemo(() => {
+    if (editSelection?.kind !== "widget") return "";
+    const item = editConfigTarget?.item || null;
+    return ownerLabel({
+      component: editSelection.component,
+      sourcePackage:
+        (item && (item.packageId || item._sourcePackage)) ||
+        ComponentManager.config(editSelection.component, item)
+          ?._sourcePackage ||
+        null,
+      username: authProfile?.username || "",
+    });
+  }, [editSelection, editConfigTarget, authProfile]);
+  // Which section the panel shows; a selection can ask for one (the card's
+  // menu → Edit in panel, a footer badge → Listens for, …).
   const [editConfigSection, setEditConfigSection] = useState("edit");
   useEffect(() => {
     setEditConfigSection(
@@ -596,6 +616,9 @@ const DashboardStageInner = ({
           sourcePackage: d.sourcePackage || null,
           itemId,
           workspaceId: d.workspaceId ?? null,
+          // Its cell — the Widget Builder swaps a new widget into it.
+          gridItemId: itemId != null ? (d.gridItemId ?? null) : null,
+          cellNumber: itemId != null ? (d.cellNumber ?? null) : null,
           // Where it is: its scope, and the main grid's page.
           scope: d.scope || "main",
           pageId:
@@ -817,6 +840,44 @@ const DashboardStageInner = ({
   // Which dashboard has the unsaved edits, so Create doesn't change it
   // mid-edit (create-entry 5e-2b: two saves would overwrite each other).
   const dirtyWorkspaceId = isDirty ? (workspaceSelected?.id ?? null) : null;
+  // A widget's notifications and schedule wait for Save too (they're kept in
+  // the main process, not the dashboard's file) — consolidation Phase 3P.
+  const pendingSettings = useMemo(
+    () =>
+      createPendingSettings((count) => {
+        if (count > 0) setIsDirty(true);
+      }),
+    [],
+  );
+  // Why the selected widget's Change waits: edits not saved yet (a change
+  // from Create would land on top of them) — consolidation Phase 3P.
+  const changeBlocked = useMemo(() => {
+    if (!isEditingDashboard) return "";
+    const botEdits = Object.keys(pendingBotEdits || {}).length;
+    if (!isDirty && botEdits === 0) return "";
+    const { discarded } = describeEditChanges({
+      original: originalWorkspaceRef.current,
+      current: workspaceSelected,
+      pendingBotEdits,
+    });
+    return changeBlockedText(Math.max(discarded.length, 1));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditingDashboard, isDirty, pendingBotEdits, workspaceSelected]);
+  // The editor's selection, for the grid, the cards and the widgets inside
+  // them. `editing`: only while the dashboard is being edited (a crashed
+  // widget's Remove); `changeBlocked`: why Change waits (the card's menu,
+  // as the panel) — consolidation Phase 3P.
+  const editSelectionValue = useMemo(
+    () => ({
+      available: true,
+      editing: isEditingDashboard,
+      changeBlocked,
+      selection: editSelection,
+      related: editRelated,
+      select: setEditSelection,
+    }),
+    [editSelection, editRelated, isEditingDashboard, changeBlocked],
+  );
   useEffect(() => {
     if (typeof globalThis !== "undefined") {
       globalThis.__dashboardDirtyId = dirtyWorkspaceId;
@@ -2255,13 +2316,19 @@ const DashboardStageInner = ({
   const cancelChanges = useMemo(
     () =>
       pendingNavigation
-        ? describeEditChanges({
-            original: originalWorkspaceRef.current,
-            current: workspaceSelected,
-            pendingBotEdits,
-            nameOf: (w) =>
-              pickWidgetDisplayName(w, ComponentManager.config(w.component, w)),
-          })
+        ? withPendingSettings(
+            describeEditChanges({
+              original: originalWorkspaceRef.current,
+              current: workspaceSelected,
+              pendingBotEdits,
+              nameOf: (w) =>
+                pickWidgetDisplayName(
+                  w,
+                  ComponentManager.config(w.component, w),
+                ),
+            }),
+            pendingSettings.size(),
+          )
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pendingNavigation],
@@ -2279,6 +2346,7 @@ const DashboardStageInner = ({
     setIsDirty(false);
     setPendingBotEdits({});
     pendingBotFormsRef.current = {};
+    pendingSettings.clear();
     setPreviewMode(true);
   }
 
@@ -2302,6 +2370,7 @@ const DashboardStageInner = ({
       setIsDirty(false);
       setPendingBotEdits({});
       pendingBotFormsRef.current = {};
+      pendingSettings.clear();
       setPreviewMode(false);
       setStageMode("dashboard");
       return;
@@ -2538,6 +2607,27 @@ const DashboardStageInner = ({
           ),
         );
       }
+    }
+
+    // The widgets' notifications / schedule wait for the dashboard to be
+    // saved — a failed save keeps them waiting, and Cancel then drops them
+    // (consolidation Phase 3P).
+    const settings = pendingSettings.take();
+    if (settings.length > 0) {
+      Promise.all(settings.map((apply) => Promise.resolve().then(apply))).catch(
+        (err) => {
+          const id = `${Date.now()}-settings-save`;
+          setToasts((prev) => [
+            ...prev,
+            {
+              id,
+              type: "error",
+              title: "Couldn't save a widget's notifications or schedule",
+              message: (err && err.message) || String(err),
+            },
+          ]);
+        },
+      );
     }
 
     // Clear edit-mode refs — edits are now persisted
@@ -2959,48 +3049,49 @@ const DashboardStageInner = ({
               )}
             </div>
             {isEditingDashboard && (
-              <EditPanel
-                workspace={workspaceSelected}
-                menuItems={menuItems}
-                themes={themes || {}}
-                username={authProfile?.username || ""}
-                onNameChange={handleWorkspaceNameChange}
-                onFolderChange={handleWorkspaceFolderChange}
-                onThemeChange={handleWorkspaceThemeChange}
-                scrollableEnabled={getRootScrollable()}
-                onScrollableChange={
-                  workspacePages.length <= 1 ? handleScrollableChange : null
-                }
-                sidebarEnabled={sidebarEnabled}
-                onSidebarChange={handleSidebarToggle}
-                onOpenConfig={() => setIsConfigModalOpen(true)}
-                configUnresolvedCount={unresolvedCount}
-                selection={editSelection}
-                onWidgetAction={dispatchEditAction}
-                onPlaceWidget={(widgetKey) => {
-                  if (editSelection?.kind !== "cell") return;
-                  window.dispatchEvent(
-                    new CustomEvent("dash:edit-widget-action", {
-                      detail: {
-                        workspaceId: workspaceSelected?.id,
-                        pageId: currentActivePageId,
-                        scope: editSelection.scope || "main",
-                        action: "place",
-                        gridItemId: editSelection.gridItemId,
-                        cellNumber: editSelection.cellNumber,
-                        widgetKey,
-                      },
-                    }),
-                  );
-                  setEditSelection(null);
-                }}
-                onMoveWidget={(on) =>
-                  setEditSelection((sel) =>
-                    sel?.kind === "widget" ? { ...sel, moving: on } : sel,
-                  )
-                }
-                onAskAi={() => {
-                  if (editSelection?.kind === "cell") {
+              <PendingSettingsContext.Provider value={pendingSettings}>
+                <EditPanel
+                  workspace={workspaceSelected}
+                  menuItems={menuItems}
+                  themes={themes || {}}
+                  username={authProfile?.username || ""}
+                  onNameChange={handleWorkspaceNameChange}
+                  onFolderChange={handleWorkspaceFolderChange}
+                  onThemeChange={handleWorkspaceThemeChange}
+                  scrollableEnabled={getRootScrollable()}
+                  onScrollableChange={
+                    workspacePages.length <= 1 ? handleScrollableChange : null
+                  }
+                  sidebarEnabled={sidebarEnabled}
+                  onSidebarChange={handleSidebarToggle}
+                  onOpenConfig={() => setIsConfigModalOpen(true)}
+                  configUnresolvedCount={unresolvedCount}
+                  selection={editSelection}
+                  onWidgetAction={dispatchEditAction}
+                  onPlaceWidget={(widgetKey) => {
+                    if (editSelection?.kind !== "cell") return;
+                    window.dispatchEvent(
+                      new CustomEvent("dash:edit-widget-action", {
+                        detail: {
+                          workspaceId: workspaceSelected?.id,
+                          pageId: currentActivePageId,
+                          scope: editSelection.scope || "main",
+                          action: "place",
+                          gridItemId: editSelection.gridItemId,
+                          cellNumber: editSelection.cellNumber,
+                          widgetKey,
+                        },
+                      }),
+                    );
+                    setEditSelection(null);
+                  }}
+                  onMoveWidget={(on) =>
+                    setEditSelection((sel) =>
+                      sel?.kind === "widget" ? { ...sel, moving: on } : sel,
+                    )
+                  }
+                  onBuildWithAi={() => {
+                    if (editSelection?.kind !== "cell") return;
                     // Create, for this cell, through the Dash team (2b).
                     window.dispatchEvent(
                       new CustomEvent("dash:open-create", {
@@ -3014,62 +3105,68 @@ const DashboardStageInner = ({
                         },
                       }),
                     );
-                  } else if (editSelection?.kind === "widget") {
-                    dispatchEditAction("edit-with-ai");
+                  }}
+                  widgetOwner={selectedWidgetOwner}
+                  widgetNotYours={selectedWidgetOwner.startsWith(
+                    "From the registry",
+                  )}
+                  canChange={selectedWidgetOwner !== "Built into Dash"}
+                  changeBlocked={changeBlocked}
+                  widgetConfig={
+                    editConfigTarget ? (
+                      <WidgetPanel
+                        key={editSelection.uuid}
+                        item={editConfigTarget.item}
+                        workspace={editConfigTarget.workspace}
+                        name={editSelection.label || editSelection.component}
+                        focus={{
+                          section: editConfigSection,
+                          request: editSelection.sectionRequest || 0,
+                        }}
+                        onCommit={(ws) =>
+                          dispatchEditAction("update", null, { workspace: ws })
+                        }
+                      />
+                    ) : null
                   }
-                }}
-                widgetConfig={
-                  editConfigTarget ? (
-                    <WidgetConfigPanel
-                      key={editSelection.uuid}
-                      item={editConfigTarget.item}
-                      workspace={editConfigTarget.workspace}
-                      section={editConfigSection}
-                      onSectionChange={setEditConfigSection}
-                      onCommit={(ws) =>
-                        dispatchEditAction("update", null, { workspace: ws })
-                      }
-                      onOpenMore={() => dispatchEditAction("configure")}
-                    />
-                  ) : null
-                }
-                botEditor={
-                  selectedEditBot ? (
-                    <BotConfigPanel
-                      key={selectedEditBot.id}
-                      bot={selectedEditBot}
-                      formProps={{
-                        providers: appContext?.providers || {},
-                        workspaces: workspaceConfig,
-                        getWidgetConfig: (name) =>
-                          (name && ComponentManager.config(name)) || null,
-                        bots: team.bots || [],
-                        defaultWorkspaceId: workspaceSelected?.id,
-                      }}
-                      onStage={(definition, opened) => {
-                        const id = selectedEditBot.id;
-                        const prevForm = pendingBotFormsRef.current[id];
-                        pendingBotFormsRef.current = {
-                          ...pendingBotFormsRef.current,
-                          [id]: {
-                            edited: definition,
-                            // The form as first opened, across re-stages.
-                            opened: prevForm ? prevForm.opened : opened,
-                          },
-                        };
-                        setPendingBotEdits((prev) => ({
-                          ...prev,
-                          [id]: {
-                            ...(prev[id] || selectedEditBot),
-                            ...definition,
-                          },
-                        }));
-                        setIsDirty(true);
-                      }}
-                    />
-                  ) : null
-                }
-              />
+                  botEditor={
+                    selectedEditBot ? (
+                      <BotConfigPanel
+                        key={selectedEditBot.id}
+                        bot={selectedEditBot}
+                        formProps={{
+                          providers: appContext?.providers || {},
+                          workspaces: workspaceConfig,
+                          getWidgetConfig: (name) =>
+                            (name && ComponentManager.config(name)) || null,
+                          bots: team.bots || [],
+                          defaultWorkspaceId: workspaceSelected?.id,
+                        }}
+                        onStage={(definition, opened) => {
+                          const id = selectedEditBot.id;
+                          const prevForm = pendingBotFormsRef.current[id];
+                          pendingBotFormsRef.current = {
+                            ...pendingBotFormsRef.current,
+                            [id]: {
+                              edited: definition,
+                              // The form as first opened, across re-stages.
+                              opened: prevForm ? prevForm.opened : opened,
+                            },
+                          };
+                          setPendingBotEdits((prev) => ({
+                            ...prev,
+                            [id]: {
+                              ...(prev[id] || selectedEditBot),
+                              ...definition,
+                            },
+                          }));
+                          setIsDirty(true);
+                        }}
+                      />
+                    ) : null
+                  }
+                />
+              </PendingSettingsContext.Provider>
             )}
             {!popout && !isEditingDashboard && (
               <WorkspaceContext.Provider value={dockWorkspaceContext}>
@@ -3209,6 +3306,46 @@ const DashboardStageInner = ({
               }}
               onSaveListeners={handleBulkListenerBindings}
               onSaveUserPrefs={handleBulkUserPrefs}
+              // One widget is edited in the edit panel (Phase 3P): Config
+              // keeps its changes as unsaved dashboard changes, closes, and
+              // the widget opens in the panel — on its page, at the section.
+              onEditInPanel={
+                isEditingDashboard
+                  ? (target) => {
+                      const found = findWidgetForHandOff(
+                        workspaceSelected,
+                        target,
+                      );
+                      if (!found) return;
+                      if (
+                        found.pageId != null &&
+                        found.pageId !== currentActivePageId
+                      ) {
+                        handleSwitchPage(found.pageId);
+                      }
+                      const cell = findWidgetCell(found.layout, found.item.id);
+                      setEditSelection({
+                        kind: "widget",
+                        uuid: found.item.uuid,
+                        id: found.item.id,
+                        component: found.item.component,
+                        gridItemId: cell ? cell.gridItemId : null,
+                        cellNumber: cell ? cell.cellNumber : null,
+                        scope: found.scope,
+                        label: pickWidgetDisplayName(
+                          found.item,
+                          ComponentManager.config(
+                            found.item.component,
+                            found.item,
+                          ),
+                        ),
+                        openTab: "widget",
+                        section: (target && target.section) || "edit",
+                        sectionRequest: Date.now(),
+                      });
+                    }
+                  : null
+              }
               onSkip={() => {
                 // Suppress the unresolved-providers banner for this
                 // workspace (session-scoped). Matches the banner's own

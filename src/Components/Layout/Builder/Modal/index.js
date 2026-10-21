@@ -1,5 +1,4 @@
 export * from "./LayoutBuilderAddItemModal";
-export * from "./LayoutBuilderConfigModal";
 export * from "./LayoutBuilderEditItemModal";
 export * from "./LayoutBuilderEventModal";
 export * from "./WidgetConfigPanel";

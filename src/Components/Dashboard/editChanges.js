@@ -77,6 +77,25 @@ function gridLines(before, after) {
 
 const SETTINGS = ["userPrefs", "listeners", "providers"];
 
+/**
+ * The Cancel list, plus the widget notification / schedule changes waiting
+ * for Save (consolidation Phase 3P) — they're kept outside the dashboard's
+ * file, so describeEditChanges can't see them.
+ */
+export function withPendingSettings(changes, count) {
+  const out = changes || { discarded: [], kept: [] };
+  if (!count) return out;
+  return {
+    ...out,
+    discarded: [
+      ...(out.discarded || []),
+      count === 1
+        ? "Changed a widget's notifications or schedule"
+        : `Changed widgets' notifications or schedules (${count})`,
+    ],
+  };
+}
+
 export function describeEditChanges({
   original,
   current,

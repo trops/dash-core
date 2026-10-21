@@ -1,6 +1,11 @@
-import { useState, useEffect } from "react";
-import { SubHeading3, Switch } from "@trops/dash-react";
+import { useState, useEffect, useContext } from "react";
+import { Switch } from "@trops/dash-react";
 import { ComponentManager } from "../../../../../ComponentManager";
+import {
+  PendingSettingsContext,
+  stageOrApply,
+} from "../../../../Dashboard/pendingSettings";
+import { useConfigTokens } from "../../../../Dashboard/ConfigListRow";
 
 export const PanelEditItemNotifications = ({ item, workspace, onUpdate }) => {
   const widgetConfig = item
@@ -9,6 +14,9 @@ export const PanelEditItemNotifications = ({ item, workspace, onUpdate }) => {
   const notificationDefs = widgetConfig?.notifications || [];
 
   const [notifPrefs, setNotifPrefs] = useState({});
+  // While editing, a change waits for the dashboard's Save (Phase 3P).
+  const pending = useContext(PendingSettingsContext);
+  const { muted } = useConfigTokens();
   const widgetUuid = item?.uuid || item?.uuidString;
 
   useEffect(() => {
@@ -26,11 +34,12 @@ export const PanelEditItemNotifications = ({ item, workspace, onUpdate }) => {
   function handleNotifToggle(typeKey, value) {
     const updated = { ...notifPrefs, [typeKey]: value };
     setNotifPrefs(updated);
-    if (window.mainApi?.notifications?.setPreferences && widgetUuid) {
+    if (!window.mainApi?.notifications?.setPreferences || !widgetUuid) return;
+    stageOrApply(pending, `notifications:${widgetUuid}:${typeKey}`, () =>
       window.mainApi.notifications.setPreferences(widgetUuid, {
         [typeKey]: value,
-      });
-    }
+      }),
+    );
   }
 
   function getNotifEnabled(typeKey, defaultEnabled) {
@@ -41,9 +50,9 @@ export const PanelEditItemNotifications = ({ item, workspace, onUpdate }) => {
   if (!item || notificationDefs.length === 0) return null;
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
-      <div className="flex flex-col space-y-3">
-        <SubHeading3 title="Notifications" padding={false} />
+    // Under the widget panel's own "Notifications" heading (Phase 3P).
+    <div className="flex flex-col">
+      <div className="flex flex-col space-y-1">
         {notificationDefs.map((notif) => (
           <div
             key={notif.key}
@@ -52,7 +61,7 @@ export const PanelEditItemNotifications = ({ item, workspace, onUpdate }) => {
             <div className="flex flex-col">
               <span className="text-sm">{notif.displayName}</span>
               {notif.description && (
-                <span className="text-xs opacity-50">{notif.description}</span>
+                <span className={`text-xs ${muted}`}>{notif.description}</span>
               )}
             </div>
             <Switch

@@ -57,10 +57,9 @@ const openBuilder = (detail) =>
   );
 
 /**
- * An installed widget's door: Change with AI (Create › Change <widget>, the
- * same event as a dashboard widget's — consolidation Phase 3), or Edit the
- * code yourself (the Widget Builder, by hand). Who may change it in place
- * is the same ownership rule either way.
+ * An installed widget's one door: Change <widget> (Create › Change, the same
+ * event as a dashboard widget's — consolidation Phase 3P). Create offers the
+ * Dash team, and "Edit the code yourself" for your own widgets.
  */
 const openWidget = (event, widget, pkg) => {
   const component =
@@ -80,10 +79,10 @@ const openWidget = (event, widget, pkg) => {
     }),
   );
 };
-const changeWithAi = (widget, pkg) =>
+const changeWidget = (widget, pkg) =>
   openWidget("dash:edit-widget-with-ai", widget, pkg);
-const editCode = (widget, pkg) =>
-  openWidget("dash:edit-widget-code", widget, pkg);
+const widgetLabel = (widget) =>
+  (widget && (widget.displayName || widget.name)) || "this widget";
 
 /** Dashboards using a package or widget, each with Open. */
 const UsedOn = ({ usage, workspaces, onOpenWorkspace, muted }) => {
@@ -245,19 +244,14 @@ const PackageDetail = ({
               onClick={() => onPublish(pkg)}
             />
           ) : null}
-          {own && !pkg.isDraft ? (
-            <>
-              <Button3
-                title="Change with AI"
-                size="sm"
-                onClick={() => changeWithAi(first, pkg)}
-              />
-              <Button3
-                title="Edit the code yourself"
-                size="sm"
-                onClick={() => editCode(first, pkg)}
-              />
-            </>
+          {/* Changing is per widget: a package with one widget offers it
+              here; otherwise each widget's page does. */}
+          {own && !pkg.isDraft && (pkg.widgets || []).length === 1 ? (
+            <Button3
+              title={`Change ${widgetLabel(first)}`}
+              size="sm"
+              onClick={() => changeWidget(first, pkg)}
+            />
           ) : null}
           {/* Less-used and destructive actions: the … menu (Uninstall
               and Delete confirm first). */}
@@ -418,21 +412,14 @@ const WidgetDetail = ({
           </div>
         </div>
         {!pkg.isBuiltIn && !pkg.isDraft ? (
-          // Anyone's widget can be changed with AI — someone else's is
-          // saved as a new widget; only yours is edited by hand.
+          // Anyone's widget can be changed — someone else's is saved as a
+          // new widget; Create offers editing the code by hand for yours.
           <div className="flex flex-row flex-wrap gap-2 flex-shrink-0">
             <Button3
-              title="Change with AI"
+              title={`Change ${widgetLabel(widget)}`}
               size="sm"
-              onClick={() => changeWithAi(widget, pkg)}
+              onClick={() => changeWidget(widget, pkg)}
             />
-            {pkg.mine ? (
-              <Button3
-                title="Edit the code yourself"
-                size="sm"
-                onClick={() => editCode(widget, pkg)}
-              />
-            ) : null}
           </div>
         ) : null}
       </div>

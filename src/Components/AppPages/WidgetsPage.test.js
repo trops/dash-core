@@ -426,7 +426,7 @@ describe("WidgetsPage package detail (NAV-008 AC3)", () => {
     ).toBeInTheDocument();
   });
 
-  it("Change with AI opens Create on the widget; Edit the code yourself, the builder", () => {
+  it("one Change <widget> door opens Create on it; the code by hand is in Create (Phase 3P)", () => {
     setup();
     const events = [];
     const code = [];
@@ -434,34 +434,29 @@ describe("WidgetsPage package detail (NAV-008 AC3)", () => {
     const onCode = (e) => code.push(e.detail);
     window.addEventListener("dash:edit-widget-with-ai", onEvent);
     window.addEventListener("dash:edit-widget-code", onCode);
+    // A package with several widgets: changing is per widget.
     fireEvent.click(pkgRow("slack"));
-    fireEvent.click(
-      within(detail()).getByRole("button", { name: "Change with AI" }),
-    );
-    // And from one widget's detail.
+    expect(
+      within(detail()).queryByRole("button", { name: /^Change / }),
+    ).toBeNull();
+    // One widget's page.
     fireEvent.click(within(list()).getByText("Channel Messages"));
     fireEvent.click(
-      within(detail()).getByRole("button", { name: "Change with AI" }),
+      within(detail()).getByRole("button", { name: "Change Channel Messages" }),
     );
-    fireEvent.click(
-      within(detail()).getByRole("button", { name: "Edit the code yourself" }),
-    );
+    expect(
+      within(detail()).queryByRole("button", {
+        name: "Edit the code yourself",
+      }),
+    ).toBeNull();
+    expect(
+      within(detail()).queryByRole("button", { name: "Change with AI" }),
+    ).toBeNull();
     window.removeEventListener("dash:edit-widget-with-ai", onEvent);
     window.removeEventListener("dash:edit-widget-code", onCode);
-    expect(code).toEqual([
-      {
-        widgetComponentName: "trops.slack.Messages",
-        sourcePackage: "@trops/slack",
-        widgetId: "@trops/slack/trops.slack.Messages",
-      },
-    ]);
+    expect(code).toEqual([]);
     expect(events).toEqual([
       // "<package>/<component>": not on a dashboard, so nothing is swapped.
-      {
-        widgetComponentName: "trops.slack.Channels",
-        sourcePackage: "@trops/slack",
-        widgetId: "@trops/slack/trops.slack.Channels",
-      },
       {
         widgetComponentName: "trops.slack.Messages",
         sourcePackage: "@trops/slack",

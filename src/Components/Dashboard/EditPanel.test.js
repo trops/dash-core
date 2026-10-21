@@ -138,22 +138,86 @@ describe("EditPanel — selection tabs (phase 1c)", () => {
     expect(screen.getByText("Important Emails")).toBeInTheDocument();
   });
 
-  test("the Widget tab shows the widget's settings inline, edits with AI and removes (CRE-006 AC5)", () => {
+  test("the Widget tab: name and whose, one Change, the panel, no dialogs (Phase 3P)", () => {
     const onWidgetAction = jest.fn();
     renderPanel({
       selection: widgetSel,
       onWidgetAction,
+      widgetOwner: "Built by AI · yours",
       widgetConfig: <div data-testid="widget-config">settings here</div>,
     });
+    expect(screen.getByText("Important Emails")).toBeInTheDocument();
+    expect(screen.getByText("Built by AI · yours")).toBeInTheDocument();
+    // Not the internal id.
+    expect(screen.queryByText("ai-built.emails.Emails")).toBeNull();
     expect(screen.getByTestId("widget-config")).toBeInTheDocument();
-    // No buttons that open the Configure dialog any more.
     expect(screen.queryByRole("button", { name: "Listeners" })).toBeNull();
-    fireEvent.click(screen.getByText("Change with AI"));
-    fireEvent.click(screen.getByText("Remove"));
-    expect(onWidgetAction.mock.calls).toEqual([["edit-with-ai"], ["remove"]]);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Change Important Emails" }),
+    );
+    expect(onWidgetAction.mock.calls).toEqual([["edit-with-ai"]]);
+    expect(
+      screen.getByText(
+        "Settings wait for Save. Changes to the code are made in Create.",
+      ),
+    ).toBeInTheDocument();
   });
 
-  test("a new selection opens its settings from Add or a settings tab; Ask AI stays on Ask AI (CRE-006 AC4)", () => {
+  test("the ⋯ menu moves, splits and removes", () => {
+    const onWidgetAction = jest.fn();
+    const onMoveWidget = jest.fn();
+    renderPanel({ selection: widgetSel, onWidgetAction, onMoveWidget });
+    const pick = (name) => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Important Emails options" }),
+      );
+      fireEvent.click(screen.getByRole("menuitem", { name }));
+    };
+    pick("Move to another cell");
+    expect(onMoveWidget).toHaveBeenCalledWith(true);
+    pick("Split side by side");
+    pick("Split top and bottom");
+    pick("Remove");
+    expect(onWidgetAction.mock.calls).toEqual([
+      ["split", null, { direction: "horizontal" }],
+      ["split", null, { direction: "vertical" }],
+      ["remove"],
+    ]);
+  });
+
+  test("Change waits while edits wait for Save, and says why", () => {
+    const onWidgetAction = jest.fn();
+    renderPanel({
+      selection: widgetSel,
+      onWidgetAction,
+      changeBlocked: "Save or cancel your 1 change first.",
+    });
+    const change = screen.getByRole("button", {
+      name: "Change Important Emails",
+    });
+    expect(change).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Save or cancel your 1 change first.",
+    );
+  });
+
+  test("someone else's widget: a change is saved as a new widget", () => {
+    renderPanel({ selection: widgetSel, widgetNotYours: true });
+    expect(
+      screen.getByText(
+        "It isn't yours, so a change is saved as a new widget in this cell.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  test("a built-in widget has no Change", () => {
+    renderPanel({ selection: widgetSel, canChange: false });
+    expect(
+      screen.queryByRole("button", { name: "Change Important Emails" }),
+    ).toBeNull();
+  });
+
+  test("a new selection opens its own panel, from any tab; there's no Ask AI", () => {
     const panel = (selection) => (
       <ThemeContext.Provider value={{ currentTheme: {}, themes: {} }}>
         <EditPanel workspace={workspace} selection={selection} />
@@ -161,23 +225,21 @@ describe("EditPanel — selection tabs (phase 1c)", () => {
     );
     const other = { ...widgetSel, uuid: "w-2", label: "Calendar" };
     const { rerender } = render(panel(null));
-    // From Add → the widget's settings.
     rerender(panel(widgetSel));
     expect(screen.getByRole("tab", { name: "Widget" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    // From the Dashboard settings tab → the next widget's settings.
     fireEvent.click(screen.getByRole("tab", { name: "Dashboard" }));
     rerender(panel(other));
     expect(screen.getByRole("tab", { name: "Widget" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    // On Ask AI → stays on Ask AI.
-    fireEvent.click(screen.getByRole("tab", { name: "Ask AI" }));
-    rerender(panel(widgetSel));
-    expect(screen.getByRole("tab", { name: "Ask AI" })).toHaveAttribute(
+    expect(screen.queryByRole("tab", { name: "Ask AI" })).toBeNull();
+    // An old request for Ask AI opens the widget's panel instead.
+    rerender(panel({ ...widgetSel, uuid: "w-3", openTab: "ask" }));
+    expect(screen.getByRole("tab", { name: "Widget" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -196,7 +258,7 @@ describe("EditPanel — selection tabs (phase 1c)", () => {
   });
 });
 
-describe("EditPanel — placing in a cell and Ask AI (phase 1d)", () => {
+describe("EditPanel — an empty cell (phase 1d, Phase 3P)", () => {
   const cellSel = {
     kind: "cell",
     gridItemId: 1,
@@ -211,7 +273,8 @@ describe("EditPanel — placing in a cell and Ask AI (phase 1d)", () => {
       "aria-selected",
       "true",
     );
-    expect(screen.getByText(/Placing in cell 2\.1/)).toBeInTheDocument();
+    expect(screen.getByTestId("empty-cell")).toHaveTextContent("Empty cell");
+    expect(screen.getByTestId("empty-cell")).toHaveTextContent("Cell 2.1");
     fireEvent.click(screen.getByText("pick clock"));
     expect(onPlaceWidget).toHaveBeenCalledWith("dash.clock.Clock");
   });
@@ -221,59 +284,17 @@ describe("EditPanel — placing in a cell and Ask AI (phase 1d)", () => {
     expect(screen.queryByText("pick clock")).toBeNull();
   });
 
-  test("Ask AI builds a widget for the selected cell", () => {
-    const onAskAi = jest.fn();
-    renderPanel({ selection: cellSel, onAskAi });
-    fireEvent.click(screen.getByRole("tab", { name: "Ask AI" }));
-    fireEvent.click(screen.getByText("Build a widget for this cell"));
-    expect(onAskAi).toHaveBeenCalled();
-    expect(
-      screen.getByText(/Opens Create: the Dash team plans it/),
-    ).toBeInTheDocument();
-  });
-
-  test("Ask AI edits the selected widget", () => {
-    const onAskAi = jest.fn();
-    renderPanel({
-      selection: {
-        kind: "widget",
-        uuid: "w1",
-        label: "Emails",
-        component: "x",
-      },
-      onAskAi,
-    });
-    fireEvent.click(screen.getByRole("tab", { name: "Ask AI" }));
-    fireEvent.click(screen.getByText("Change this widget with AI"));
-    expect(onAskAi).toHaveBeenCalled();
-  });
-
-  test("a selection can ask to open on Ask AI", () => {
-    renderPanel({
-      selection: {
-        kind: "widget",
-        uuid: "w1",
-        label: "Emails",
-        component: "x",
-        openTab: "ask",
-      },
-    });
-    expect(screen.getByRole("tab", { name: "Ask AI" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+  test("Build with AI builds a widget for the selected cell", () => {
+    const onBuildWithAi = jest.fn();
+    renderPanel({ selection: cellSel, onBuildWithAi });
+    fireEvent.click(screen.getByRole("button", { name: "Build with AI" }));
+    expect(onBuildWithAi).toHaveBeenCalled();
+    expect(screen.queryByRole("tab", { name: "Ask AI" })).toBeNull();
   });
 });
 
 describe("EditPanel — moving a widget without dragging (phase 1e)", () => {
   const sel = { kind: "widget", uuid: "w1", label: "Emails", component: "x" };
-
-  test("Move… starts moving the selected widget", () => {
-    const onMoveWidget = jest.fn();
-    renderPanel({ selection: sel, onMoveWidget });
-    fireEvent.click(screen.getByText("Move to another cell"));
-    expect(onMoveWidget).toHaveBeenCalledWith(true);
-  });
 
   test("while moving, the panel says how to finish and can stop", () => {
     const onMoveWidget = jest.fn();

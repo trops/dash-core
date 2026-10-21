@@ -29,3 +29,45 @@ describe("showsListeners", () => {
     expect(showsListeners(afterLayoutModel)).toBe(true);
   });
 });
+
+describe("panelSections", () => {
+  const { panelSections } = require("./widgetSections");
+  const widget = { type: "widget", eventHandlers: ["onQueryChanged"] };
+
+  test("what a full widget has", () => {
+    expect(
+      panelSections(widget, {
+        userConfig: { hitTemplate: { type: "text" } },
+        providers: [{ type: "algolia", providerClass: "credential" }],
+        notifications: [{ key: "ready" }],
+        scheduledTasks: [{ key: "refresh" }],
+      }),
+    ).toEqual({
+      settings: true,
+      connections: true,
+      listeners: true,
+      notifications: true,
+      schedule: true,
+    });
+  });
+
+  test("an empty widget, and settings written as a list", () => {
+    expect(panelSections({ type: "widget" }, {})).toEqual({
+      settings: false,
+      connections: false,
+      listeners: false,
+      notifications: false,
+      schedule: false,
+    });
+    expect(
+      panelSections({ type: "widget" }, { userConfig: [{ key: "title" }] })
+        .settings,
+    ).toBe(true);
+  });
+
+  test("handlers from the config when the item has none", () => {
+    expect(
+      panelSections({ type: "widget" }, { eventHandlers: ["onX"] }).listeners,
+    ).toBe(true);
+  });
+});

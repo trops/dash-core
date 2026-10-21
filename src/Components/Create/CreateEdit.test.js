@@ -156,7 +156,9 @@ test("yours: what it does now, where it's used, and Change it in place", async (
   expect(
     screen.getByText("Every place it's used changes: Morning Brief and Sales."),
   ).toBeInTheDocument();
-  expect(screen.getByRole("radio", { name: /Change Inbox/ })).toBeChecked();
+  expect(
+    screen.getByRole("radio", { name: /Update Inbox everywhere/ }),
+  ).toBeChecked();
   expect(
     screen.getByText(
       "Inbox stays as it is; the new one replaces it in this cell only.",
@@ -229,7 +231,9 @@ test("AI-built is yours, signed in or not", async () => {
     { ...FROM_CELL, component: "ai-built.notes.Notes" },
     { username: null },
   );
-  expect(screen.getByRole("radio", { name: /Change Notes/ })).toBeChecked();
+  expect(
+    screen.getByRole("radio", { name: /Update Notes everywhere/ }),
+  ).toBeChecked();
   expect(screen.getByTestId("edit-facts")).toHaveTextContent(
     "@ai-built/notes · AI-built",
   );
@@ -385,4 +389,31 @@ test("Change something else starts again from the widget as it is now", async ()
   expect(
     screen.getByRole("textbox", { name: "What should change?" }),
   ).toHaveValue("");
+});
+
+describe("Or change it without AI (consolidation Phase 3P)", () => {
+  test("yours: Edit the code yourself opens the Widget Builder and closes Create", async () => {
+    const { setIsOpen } = await setup(FROM_CELL);
+    const events = [];
+    const on = (e) => events.push(e.detail);
+    window.addEventListener("dash:edit-widget-code", on);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit the code yourself" }),
+    );
+    window.removeEventListener("dash:edit-widget-code", on);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      widgetComponentName: "jg.inbox.Inbox",
+      sourcePackage: "@jg/inbox",
+    });
+    expect(setIsOpen).toHaveBeenCalled();
+  });
+
+  test("someone else's widget: no by-hand row", async () => {
+    await setup(
+      { ...FROM_CELL, component: "trops.clock.Clock" },
+      { username: null },
+    );
+    expect(screen.queryByTestId("edit-by-hand")).toBeNull();
+  });
 });
