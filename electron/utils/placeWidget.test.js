@@ -45,6 +45,8 @@ describe("placeWidget", () => {
     assert.equal(r.widgetId, 3);
     assert.equal(item.component, "dash.bots.BotResults");
     assert.equal(item.parent, 1);
+    // Typed as a widget, so the editor shows its Listeners.
+    assert.equal(item.type, "widget");
     assert.deepEqual(item.userPrefs, { botId: "bot_i" });
     assert.equal(r.workspace.layout[0].grid["1.2"].component, 3);
     // The input is not mutated.

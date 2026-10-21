@@ -46,10 +46,6 @@ describe("WidgetErrorBoundary — friendlier UI + Fix with AI", () => {
     expect(source).not.toMatch(/Open in AI Builder/);
   });
 
-  test("the error goes along", () => {
-    expect(source).toMatch(/error: errorMessage/);
-  });
-
   test("new code for the widget clears the error box (keyed to its version)", () => {
     expect(source).toMatch(
       /<WidgetErrorBoundary\s+key=\{`boundary-\$\{componentVersion\}`\}/,
@@ -77,5 +73,57 @@ describe("canFixWithAi", () => {
     expect(canFixWithAi("dash.bots.BotResults")).toBe(false);
     expect(canFixWithAi("Counter")).toBe(false);
     expect(canFixWithAi(undefined)).toBe(false);
+  });
+});
+
+describe("fixRequestDetail", () => {
+  const { fixRequestDetail } = require("./canFixWithAi");
+
+  test("a widget in a cell says where it is, like the card's menu", () => {
+    const item = {
+      id: 3,
+      parent: 1,
+      dashboardId: 7,
+      userPrefs: { title: "My Counter" },
+      selectedProviders: { algolia: "Store" },
+      packageId: "@ai-built/counter",
+    };
+    expect(
+      fixRequestDetail("ai-built.counter.Counter", "boom", item, "sidebar"),
+    ).toEqual({
+      widgetComponentName: "ai-built.counter.Counter",
+      error: "boom",
+      widgetId: 3,
+      gridItemId: 1,
+      workspaceId: 7,
+      scope: "sidebar",
+      userPrefs: { title: "My Counter" },
+      selectedProviders: { algolia: "Store" },
+      sourcePackage: "@ai-built/counter",
+    });
+  });
+
+  test("anywhere else: just the widget and its error", () => {
+    expect(fixRequestDetail("ai-built.counter.Counter", "boom")).toEqual({
+      widgetComponentName: "ai-built.counter.Counter",
+      error: "boom",
+    });
+    expect(
+      fixRequestDetail("ai-built.counter.Counter", "boom", { id: 3 }),
+    ).toEqual({
+      widgetComponentName: "ai-built.counter.Counter",
+      error: "boom",
+    });
+  });
+
+  test("the error box sends it with its cell and where it is", () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, "WidgetFactory.js"),
+      "utf8",
+    );
+    expect(source).toMatch(
+      /fixRequestDetail\(widgetName, errorMessage, item, scope\)/,
+    );
+    expect(source).toMatch(/item=\{params\}\s+scope=\{workspaceScope\}/);
   });
 });

@@ -1038,6 +1038,9 @@ describe("MCP Tool Handlers", () => {
         (n) => n.component === "LayoutGridContainer",
       );
       assert.equal(gridNode.grid["1.2"].component, Number(data.widgetId));
+      // Typed as a widget, so the editor shows its Listeners.
+      const placed = ws.layout.find((n) => n.id === Number(data.widgetId));
+      assert.equal(placed.type, "widget");
     });
 
     it("auto-places in next empty cell when no row/col", async () => {

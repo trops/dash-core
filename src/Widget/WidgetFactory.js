@@ -11,7 +11,8 @@ import { WidgetNotFound } from "./WidgetNotFound";
 import { resolveGateWidgetId } from "../utils/scopedComponentId";
 import { MountTokenWrapper } from "./MountTokenWrapper";
 import { buildWidgetData } from "./buildWidgetData";
-import { canFixWithAi } from "./canFixWithAi";
+import { canFixWithAi, fixRequestDetail } from "./canFixWithAi";
+import { WorkspaceScopeContext } from "../Components/Layout/Builder/WorkspaceScopeContext";
 
 /**
  * WidgetErrorBoundary - Catches errors from widget rendering
@@ -37,7 +38,7 @@ class WidgetErrorBoundary extends Component {
 
   render() {
     if (this.state.hasError) {
-      const { widgetName } = this.props;
+      const { widgetName, item, scope } = this.props;
       const errorMessage = this.state.error?.message || "Unknown error";
 
       // Check if it's a WidgetContext error
@@ -51,7 +52,7 @@ class WidgetErrorBoundary extends Component {
         try {
           window.dispatchEvent(
             new CustomEvent("dash:edit-widget-with-ai", {
-              detail: { widgetComponentName: widgetName, error: errorMessage },
+              detail: fixRequestDetail(widgetName, errorMessage, item, scope),
             }),
           );
         } catch (err) {
@@ -124,6 +125,8 @@ const WidgetRenderer = ({
   children = null,
 }) => {
   const { dashApi } = useContext(DashboardContext);
+  // Main grid or pinned sidebar — Fix tells Create where the widget is.
+  const workspaceScope = useContext(WorkspaceScopeContext);
 
   // When a widget package is updated via Settings > Widgets (or the AI
   // Widget Builder), the main process broadcasts "widget:installed"
@@ -278,6 +281,8 @@ const WidgetRenderer = ({
           <WidgetErrorBoundary
             key={`boundary-${componentVersion}`}
             widgetName={component}
+            item={params}
+            scope={workspaceScope}
           >
             {hasScheduledTasks ? (
               <div className="flex flex-col w-full h-full min-h-0">

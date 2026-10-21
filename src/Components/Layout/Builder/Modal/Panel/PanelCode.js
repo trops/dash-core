@@ -66,7 +66,14 @@ export const PanelCode = ({ workspace, onUpdate, item = null }) => {
       // widget" state.
       const merged = { ...itemSelected };
       for (const k of Object.keys(edited)) merged[k] = edited[k];
-      onUpdate(merged, workspaceSelected);
+      // The edited item goes into the layout handed back — the caller
+      // commits that workspace, so an unchanged one would drop the edit.
+      const layout = Array.isArray(workspaceSelected.layout)
+        ? workspaceSelected.layout.map((li) =>
+            li && li.id === merged.id ? merged : li,
+          )
+        : workspaceSelected.layout;
+      onUpdate(merged, { ...workspaceSelected, layout });
     } catch {
       // Malformed JSON — leave state alone; the editor keeps the
       // user's text so they can fix it.

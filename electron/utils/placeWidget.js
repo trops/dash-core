@@ -85,6 +85,8 @@ function placeInto(layout, component, userPrefs, at = null, selectedProviders) {
     id: widgetId,
     order,
     component,
+    // A widget, so the editor shows its Listeners (src/utils/widgetSections.js).
+    type: "widget",
     parent: gridNode ? gridNode.id : container ? container.id : 0,
     config: {},
     userPrefs: { ...(userPrefs || {}) },

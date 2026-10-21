@@ -17,6 +17,7 @@ import PanelCode from "./Panel/PanelCode";
 import { ComponentManager } from "../../../../ComponentManager";
 import { getUserConfigurableProviders } from "../../../../utils/providerUtils";
 import { pickWidgetDisplayName } from "../../../../utils/widgetIdentity";
+import { showsListeners } from "../../../../utils/widgetSections";
 
 export const getSections = (item) => {
   const widgetConfig = item
@@ -47,7 +48,7 @@ export const getSections = (item) => {
     ...(hasScheduledTasks
       ? [{ key: "schedule", label: "Schedule", icon: "clock" }]
       : []),
-    ...(item?.workspace !== "layout"
+    ...(showsListeners(item)
       ? [{ key: "handlers", label: "Listeners", icon: "phone" }]
       : []),
     ...(userConfigurableProviders.length > 0
