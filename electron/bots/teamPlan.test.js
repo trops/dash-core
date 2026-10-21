@@ -833,3 +833,75 @@ describe("validatePlan — a plan for one bot", () => {
     );
   });
 });
+
+describe("a change to one widget (consolidation Phase 3)", () => {
+  const edit = { package: "@jg/inbox", mode: "update" };
+  const change = {
+    summary: "Inbox gets a date filter",
+    pieces: [
+      {
+        kind: "widget",
+        name: "Inbox",
+        source: "update",
+        package: "@jg/inbox",
+        adds: "A date filter.",
+        keeps: ["Max messages"],
+      },
+    ],
+    checks: ["The filter changes the list"],
+  };
+  const rule =
+    "A change to a widget is that one widget — no bots, theme, layout or dashboard.";
+  it("that widget, changed in place, is fine", () => {
+    const res = validatePlan(change, { edit });
+    assert.deepEqual(res.errors, []);
+    assert.deepEqual(
+      res.warnings.filter((w) => /adds|keeps/.test(w)),
+      [],
+    );
+  });
+  it("another widget, a bot or a dashboard is refused", () => {
+    for (const extra of [
+      { kind: "widget", name: "Second", source: "new" },
+      { kind: "bot", name: "Digest", source: "new", instructions: "x" },
+    ]) {
+      const plan = { ...change, pieces: [...change.pieces, extra] };
+      assert.ok(validatePlan(plan, { edit }).errors.includes(rule));
+    }
+    const targeted = { ...change, dashboard: { id: "7", name: "Brief" } };
+    assert.ok(validatePlan(targeted, { edit }).errors.includes(rule));
+  });
+  it("in place means that package, as an update", () => {
+    for (const piece of [
+      { ...change.pieces[0], package: "@jg/other" },
+      { ...change.pieces[0], source: "new" },
+    ]) {
+      const errors = validatePlan(
+        { ...change, pieces: [piece] },
+        { edit },
+      ).errors;
+      assert.match(errors.join(" "), /updates @jg\/inbox in place/);
+    }
+  });
+  it("saved as new means a new widget", () => {
+    const asNew = { package: "@jg/inbox", mode: "new" };
+    assert.match(
+      validatePlan(change, { edit: asNew }).errors.join(" "),
+      /saved as a new widget/,
+    );
+    const plan = {
+      ...change,
+      pieces: [{ kind: "widget", name: "Inbox Dates", source: "new" }],
+    };
+    assert.deepEqual(validatePlan(plan, { edit: asNew }).errors, []);
+  });
+  it("adds and keeps that aren't text are only warnings", () => {
+    const plan = {
+      ...change,
+      pieces: [{ ...change.pieces[0], adds: 3, keeps: "all" }],
+    };
+    const res = validatePlan(plan, { edit });
+    assert.deepEqual(res.errors, []);
+    assert.equal(res.warnings.filter((w) => /adds|keeps/.test(w)).length, 2);
+  });
+});

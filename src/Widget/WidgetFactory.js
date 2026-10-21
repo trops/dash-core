@@ -11,6 +11,7 @@ import { WidgetNotFound } from "./WidgetNotFound";
 import { resolveGateWidgetId } from "../utils/scopedComponentId";
 import { MountTokenWrapper } from "./MountTokenWrapper";
 import { buildWidgetData } from "./buildWidgetData";
+import { canFixWithAi } from "./canFixWithAi";
 
 /**
  * WidgetErrorBoundary - Catches errors from widget rendering
@@ -44,19 +45,13 @@ class WidgetErrorBoundary extends Component {
         errorMessage.includes("Widget ID not found in Context") ||
         errorMessage.includes("WidgetContext");
 
-      // AI-built widgets live under @ai-built/* — they get an "Open
-      // in AI Builder" recovery button that dispatches the existing
-      // dash:edit-widget-with-ai event (dash-electron's Dash.js
-      // listens for it and reopens the failing widget in remix mode).
-      const isAiBuilt =
-        typeof widgetName === "string" &&
-        /(^|[./])ai-built\b/i.test(widgetName);
+      const canFix = canFixWithAi(widgetName);
 
       const openInBuilder = () => {
         try {
           window.dispatchEvent(
             new CustomEvent("dash:edit-widget-with-ai", {
-              detail: { widgetComponentName: widgetName },
+              detail: { widgetComponentName: widgetName, error: errorMessage },
             }),
           );
         } catch (err) {
@@ -102,12 +97,12 @@ export const ${widgetName} = (props) => {
             >
               Retry
             </button>
-            {isAiBuilt && (
+            {canFix && (
               <button
                 onClick={openInBuilder}
                 className="px-3 py-1 rounded text-xs bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
               >
-                Open in AI Builder
+                Fix with AI
               </button>
             )}
           </div>
@@ -278,7 +273,12 @@ const WidgetRenderer = ({
       const widgetIdForGate = resolveGateWidgetId(component, params?.name);
       return (
         <MountTokenWrapper widgetId={widgetIdForGate} widgetData={widgetData}>
-          <WidgetErrorBoundary widgetName={component}>
+          {/* Keyed to the widget's version: new code (Fix with AI, an
+              update) clears the error box instead of waiting for Retry. */}
+          <WidgetErrorBoundary
+            key={`boundary-${componentVersion}`}
+            widgetName={component}
+          >
             {hasScheduledTasks ? (
               <div className="flex flex-col w-full h-full min-h-0">
                 <div className="flex-1 min-h-0 overflow-auto">

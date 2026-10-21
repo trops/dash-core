@@ -57,30 +57,33 @@ const openBuilder = (detail) =>
   );
 
 /**
- * Open the Widget Builder on an installed widget (the same event as a
- * dashboard widget's "Edit with AI"). The builder decides update-in-place vs
- * remix with the same ownership rule.
+ * An installed widget's door: Change with AI (Create › Change <widget>, the
+ * same event as a dashboard widget's — consolidation Phase 3), or Edit the
+ * code yourself (the Widget Builder, by hand). Who may change it in place
+ * is the same ownership rule either way.
  */
-const editInBuilder = (widget, pkg) => {
+const openWidget = (event, widget, pkg) => {
   const component =
     ((widget && widget.componentNames) || []).find(
       (n) => n && !String(n).startsWith("@"),
     ) ||
     (widget && widget.name);
   window.dispatchEvent(
-    new CustomEvent("dash:edit-widget-with-ai", {
+    new CustomEvent(event, {
       detail: {
         widgetComponentName: component,
         sourcePackage: pkg.id,
-        // Puts the builder in edit mode (Update original for the owner).
-        // "<package>/<component>" is what the builder itself uses when it
-        // edits a package without a dashboard instance; with no grid cell,
-        // installing swaps / places nothing.
+        // "<package>/<component>": not on a dashboard, so nothing is
+        // swapped or placed when it's done.
         widgetId: `${pkg.id}/${component}`,
       },
     }),
   );
 };
+const changeWithAi = (widget, pkg) =>
+  openWidget("dash:edit-widget-with-ai", widget, pkg);
+const editCode = (widget, pkg) =>
+  openWidget("dash:edit-widget-code", widget, pkg);
 
 /** Dashboards using a package or widget, each with Open. */
 const UsedOn = ({ usage, workspaces, onOpenWorkspace, muted }) => {
@@ -243,11 +246,18 @@ const PackageDetail = ({
             />
           ) : null}
           {own && !pkg.isDraft ? (
-            <Button3
-              title="Edit in Widget Builder"
-              size="sm"
-              onClick={() => editInBuilder(first, pkg)}
-            />
+            <>
+              <Button3
+                title="Change with AI"
+                size="sm"
+                onClick={() => changeWithAi(first, pkg)}
+              />
+              <Button3
+                title="Edit the code yourself"
+                size="sm"
+                onClick={() => editCode(first, pkg)}
+              />
+            </>
           ) : null}
           {/* Less-used and destructive actions: the … menu (Uninstall
               and Delete confirm first). */}
@@ -407,12 +417,23 @@ const WidgetDetail = ({
             </span>
           </div>
         </div>
-        {pkg.mine && !pkg.isBuiltIn && !pkg.isDraft ? (
-          <Button3
-            title="Edit in Widget Builder"
-            size="sm"
-            onClick={() => editInBuilder(widget, pkg)}
-          />
+        {!pkg.isBuiltIn && !pkg.isDraft ? (
+          // Anyone's widget can be changed with AI — someone else's is
+          // saved as a new widget; only yours is edited by hand.
+          <div className="flex flex-row flex-wrap gap-2 flex-shrink-0">
+            <Button3
+              title="Change with AI"
+              size="sm"
+              onClick={() => changeWithAi(widget, pkg)}
+            />
+            {pkg.mine ? (
+              <Button3
+                title="Edit the code yourself"
+                size="sm"
+                onClick={() => editCode(widget, pkg)}
+              />
+            ) : null}
+          </div>
         ) : null}
       </div>
       {widget.description ? (

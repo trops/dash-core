@@ -74,8 +74,18 @@ function deps(over = {}) {
             componentName: "InboxCount",
             componentCode: "export default function InboxCount() {}",
             configCode: "export default { type: 'widget' };",
+            files: [
+              "dash.json",
+              "widgets/InboxCount.dash.js",
+              "widgets/InboxCount.js",
+              "widgets/lib/format.js",
+            ],
           }
         : { success: false, error: `Widget not found: ${name}` },
+    readWidgetFile: async ({ name, file }) =>
+      name === "@ai-built/inboxcount" && file === "widgets/lib/format.js"
+        ? { success: true, file, content: "export const fmt = (n) => n;" }
+        : { success: false, error: `${name} has no source file "${file}".` },
     providerTools: () => [
       {
         name: "Gmail",
@@ -180,6 +190,35 @@ describe("read_widget", () => {
     assert.equal(res.isError, false);
     assert.match(res.text, /--- InboxCount\.dash\.js ---/);
     assert.match(res.text, /export default function InboxCount/);
+  });
+
+  it("lists the package's other files (Phase 3)", async () => {
+    const res = await handleRoleTool(deps(), as("scout"), "read_widget", {
+      name: "@ai-built/inboxcount",
+    });
+    assert.match(
+      res.text,
+      /Its package's other files \(read one with file\): dash\.json, widgets\/lib\/format\.js/,
+    );
+  });
+
+  it("reads one of them with file, and only those", async () => {
+    const ok = await handleRoleTool(deps(), as("builder"), "read_widget", {
+      name: "@ai-built/inboxcount",
+      file: "widgets/lib/format.js",
+    });
+    assert.equal(ok.isError, false);
+    assert.match(
+      ok.text,
+      /--- @ai-built\/inboxcount › widgets\/lib\/format\.js ---/,
+    );
+    assert.match(ok.text, /export const fmt/);
+    const no = await handleRoleTool(deps(), as("builder"), "read_widget", {
+      name: "@ai-built/inboxcount",
+      file: "../../secrets.json",
+    });
+    assert.equal(no.isError, true);
+    assert.match(no.text, /has no source file/);
   });
 
   it("reports a missing widget as an error", async () => {

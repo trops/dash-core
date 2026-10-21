@@ -220,3 +220,37 @@ test("building for a cell says nothing is installed until it passes", () => {
     "If the Checker finds problems, nothing is installed: the Builder gets up to 2 tries to fix them.",
   );
 });
+
+// Consolidation Phase 3: a change to a widget waits on the same preview, in
+// its own words with the widget as it was, and hands back what it made.
+describe("a change to a widget", () => {
+  const EDIT = {
+    mode: "update",
+    original: { componentCode: "a", configCode: "b" },
+    approveLabel: "Looks good — update Inbox",
+    discardLabel: "Discard — keep Inbox as it is",
+    inputsNote: "Only for trying it here.",
+  };
+  test("its preview, with its words and the original code", () => {
+    setup({ cell: null, edit: EDIT });
+    expect(screen.getByTestId("cell-preview-stub")).toBeInTheDocument();
+    expect(mockPreviewProps).toMatchObject({
+      cellLabel: "",
+      approveLabel: "Looks good — update Inbox",
+      discardLabel: "Discard — keep Inbox as it is",
+      inputsNote: "Only for trying it here.",
+      original: { componentCode: "a", configCode: "b" },
+    });
+  });
+  test("done: what it made is handed back once", async () => {
+    const { onCellDone } = setup({ cell: null, edit: EDIT });
+    const made = { 0: { component: "jg.inbox.Inbox" } };
+    act(() =>
+      listener({
+        buildId: "b1",
+        state: { ...waiting, status: "done", steps: steps("done"), made },
+      }),
+    );
+    await waitFor(() => expect(onCellDone).toHaveBeenCalledWith(made[0]));
+  });
+});

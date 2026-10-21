@@ -311,7 +311,7 @@ describe("botController — Recent and build memory are wired", () => {
     assert.match(
       ctrl,
       // Both a cell build's (counted, Phase 2b) and the rest pass planId.
-      /askRole: cell[\s\S]{0,200}?return await this\._planAskRole\(role, request, planId\);[\s\S]{0,120}?: \(role, request\) => this\._planAskRole\(role, request, planId\)/,
+      /: cell\s*\?[\s\S]{0,220}?return await this\._planAskRole\(role, request, planId\);[\s\S]{0,160}?: \(role, request\) => this\._planAskRole\(role, request, planId\)/,
     );
     assert.match(ctrl, /planId && isDashTeam\(this\._store\.get\(botId\)\)/);
     assert.match(runner, /await this\._resolveTools\(bot, opts\)/);

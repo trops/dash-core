@@ -109,6 +109,10 @@ export const CreateBuildingStep = ({
   cell = null,
   onCellDone = null,
   onDiscard = null,
+  // A change to a widget the user has (Phase 3): { mode, name, original,
+  // approveLabel, discardLabel, inputsNote } — the cell build's preview in
+  // its own words, with the draft's code; done → onCellDone(made) too.
+  edit = null,
   // One bot (Phase 2c-1): { where: { id, name } | null, piece } — done, it
   // offers Try it now (a test run), Turn on and Open its page.
   bot = null,
@@ -154,12 +158,12 @@ export const CreateBuildingStep = ({
   // A cell build that's done: the editor places it, once.
   const handedOff = useRef(false);
   useEffect(() => {
-    if (!cell || status !== "done" || handedOff.current) return;
+    if (!(cell || edit) || status !== "done" || handedOff.current) return;
     handedOff.current = true;
     const made = (state && state.made && state.made[0]) || {};
     if (onCellDone) onCellDone(made);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cell, status]);
+  }, [cell, edit, status]);
   // Looks good / Change something on the preview.
   const [deciding, setDeciding] = useState(false);
   const decide = async (call) => {
@@ -323,7 +327,7 @@ export const CreateBuildingStep = ({
         ? `Built — waiting for ${andList(waitingFor.map(providerLabel))}`
         : targeted && status === "done"
           ? `Changes made to ${built.dashboard.name}`
-          : cell && status === "finished-with-problems"
+          : (cell || edit) && status === "finished-with-problems"
             ? // Nothing went into the cell yet — not "built".
               "It isn't ready yet"
             : HEAD[status] || status;
@@ -347,9 +351,10 @@ export const CreateBuildingStep = ({
 
   // A cell build waiting on the user: the Preview takes the screen (as the
   // mockup) — the widget running, its inputs, and what to do with it.
-  const waitingPreview = cell
-    ? steps.find((x) => x.kind === "preview" && x.status === "needs-you")
-    : null;
+  const waitingPreview =
+    cell || edit
+      ? steps.find((x) => x.kind === "preview" && x.status === "needs-you")
+      : null;
   if (waitingPreview) {
     const p = waitingPreview.piece;
     const doneSoFar = steps
@@ -386,7 +391,15 @@ export const CreateBuildingStep = ({
           <CellPreview
             made={(state.made || {})[p] || {}}
             name={waitingPreview.label.replace(/^Preview /, "")}
-            cellLabel={cell.label}
+            cellLabel={cell ? cell.label : ""}
+            {...(edit
+              ? {
+                  approveLabel: edit.approveLabel,
+                  discardLabel: edit.discardLabel,
+                  inputsNote: edit.inputsNote,
+                  original: edit.original || null,
+                }
+              : {})}
             deciding={deciding}
             checked={steps.some(
               (x) => x.id === `check:${p}` && x.status === "done",
@@ -427,7 +440,7 @@ export const CreateBuildingStep = ({
       <div
         className={`mx-auto w-full ${
           // A cell build's preview sits beside its inputs: more room.
-          cell ? "max-w-5xl" : "max-w-3xl"
+          cell || edit ? "max-w-5xl" : "max-w-3xl"
         } flex flex-col ${compact ? "gap-3 px-3 py-3" : "gap-5 px-6 py-8"}`}
       >
         <div className="flex flex-row items-center justify-between gap-3">
@@ -441,10 +454,12 @@ export const CreateBuildingStep = ({
             <Button3 title="Stop" onClick={stop} disabled={stopping} />
           ) : null}
         </div>
-        {cell && running ? (
+        {(cell || edit) && running ? (
           // As the mockup's Build frame.
           <span className={`text-sm ${muted}`} data-testid="building-cell-note">
-            {`If the Checker finds problems, nothing is installed: the Builder gets up to ${MAX_FIXES} tries to fix them. Then you see it running before it goes in.`}
+            {edit
+              ? `Nothing changes until you've seen it: if the Checker finds problems, the Builder gets up to ${MAX_FIXES} tries to fix them, then you see it running.`
+              : `If the Checker finds problems, nothing is installed: the Builder gets up to ${MAX_FIXES} tries to fix them. Then you see it running before it goes in.`}
           </span>
         ) : null}
 

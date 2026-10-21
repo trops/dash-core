@@ -210,7 +210,7 @@ export const WidgetCardHeader = ({
   if (onEditWithAI && widgetItem) {
     overflowActions.push({
       icon: "wand-magic-sparkles",
-      label: "Edit with AI",
+      label: "Change with AI",
       onClick: () => {
         onEditWithAI(widgetItem);
         setShowOverflowMenu(false);

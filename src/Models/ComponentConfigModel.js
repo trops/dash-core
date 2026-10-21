@@ -37,6 +37,8 @@
     "events": ["fetchAnalyticsComplete"],
     "eventHandlers":['handleSearchChange','handleRefinementChange']
 */
+import { normalizeUserConfig } from "../utils/userConfigFields";
+
 /**
  * ComponentConfigModel
  * @param {object} o the data passed in to generate the model
@@ -73,7 +75,7 @@ export const ComponentConfigModel = (obj = {}) => {
    * userConfig
    * Allow the end users to edit/input parameters into the edit widget layout panel
    */
-  obj.userConfig = "userConfig" in obj ? obj["userConfig"] : {};
+  obj.userConfig = normalizeUserConfig(obj["userConfig"]);
 
   /**
    * canHaveChildren

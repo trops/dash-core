@@ -185,8 +185,14 @@ describe("bot builds — the bot as saved", () => {
 
 describe("botController — bot builds (Phase 2c-1)", () => {
   it("checks a bot plan as one bot and builds in bot mode", () => {
-    assert.match(ctrl, /cell: !!cell,\s*bot: !!bot,\s*\}\);/);
-    assert.match(ctrl, /autoFix: true, cell: !!cell, bot: !!bot \}/);
+    assert.match(
+      ctrl,
+      /cell: !!cell,\s*bot: !!bot,\s*edit: editTarget[\s\S]{0,160}?\}\);/,
+    );
+    assert.match(
+      ctrl,
+      /autoFix: true,\s*cell: !!cell,\s*bot: !!bot,\s*edit: editTarget,/,
+    );
   });
   it("the check is the save's own check, before anything is saved", () => {
     assert.match(ctrl, /checkBot: \(req\) => this\._planCheckBot\(req\)/);

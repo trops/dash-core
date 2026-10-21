@@ -42,6 +42,7 @@ import {
 import { CreateBuildingStep } from "./CreateBuildingStep";
 import { PlanSketch } from "./PlanSketch";
 import { botPlanRequest, forWhere } from "./botCreate";
+import { forEdit } from "./editCreate";
 
 /**
  * The Planner's first question in a conversation reopened from Recent: its
@@ -182,6 +183,39 @@ export function pieceMeta(p) {
   if (p.kind === "theme") return "One of your saved themes";
   return "";
 }
+/**
+ * A change's widget on the plan card (Phase 3): what it adds, what it keeps
+ * and which files it touches.
+ */
+const EditPlanDetails = ({ piece, edit, muted }) => {
+  const update = edit.mode === "update";
+  const files = update
+    ? `widgets/${edit.target.componentName}.js, widgets/${edit.target.componentName}.dash.js`
+    : `A new widget — ${edit.target.componentName} isn't changed`;
+  const keeps = (Array.isArray(piece.keeps) ? piece.keeps : []).filter(
+    (k) => typeof k === "string" && k.trim(),
+  );
+  const rows = [
+    ["Adds", typeof piece.adds === "string" ? piece.adds : piece.notes || ""],
+    ["Keeps", keeps.join(" · ")],
+    ["Files", files],
+  ].filter(([, v]) => v);
+  return (
+    <div
+      className="grid gap-x-3 gap-y-1 text-sm"
+      style={{ gridTemplateColumns: "4.5rem minmax(0, 1fr)" }}
+      data-testid="plan-edit-details"
+    >
+      {rows.map(([k, v]) => (
+        <React.Fragment key={k}>
+          <span className={muted}>{k}</span>
+          <span>{v}</span>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+};
+
 /** The Planner's words without its <plan> block. */
 export function withoutPlan(text) {
   return String(text || "")
@@ -317,10 +351,17 @@ export const CreatePlanStep = ({
   context = "",
   // A note to show under the request (e.g. why a found bot wasn't used).
   note = "",
+  // A change to one widget the user has (consolidation Phase 3): { target:
+  // { package, component, componentName, displayName }, mode: "update" |
+  // "new", request, usedOn, inputs: { settings, providers }, original } —
+  // the plan is that widget, built with a preview like a cell's.
+  edit = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const [botMode, setBotMode] = useState(bot);
   const where = botMode ? botMode.where || null : null;
+  // One widget, previewed before it's installed: a cell, or a change.
+  const single = !!(cell || edit);
   const statusTokens = useStatusTokens();
   const app = useContext(AppContext) || {};
   // [{ who: "you" | "planner" | "note", text, meta? }]
@@ -428,7 +469,13 @@ export const CreatePlanStep = ({
     const found = extractPlan(res.output);
     if (found) {
       // A bot goes where Where says, whatever the Planner wrote.
-      setPlan(botMode ? forWhere(found, where) : found);
+      setPlan(
+        botMode
+          ? forWhere(found, where)
+          : edit
+            ? forEdit(found, edit.target, edit.mode)
+            : found,
+      );
       setSwapIndex(null);
       setReady(false);
     }
@@ -465,7 +512,7 @@ export const CreatePlanStep = ({
         // A cell build stays out of Recent: it ends in the editor, and
         // Recent's Remove / Edit plan don't apply to it (Phase 2b).
         Promise.resolve(
-          bots && bots.saveCreateRecent && !cell
+          bots && bots.saveCreateRecent && !single
             ? bots.saveCreateRecent({ prompt: first })
             : null,
         )
@@ -502,13 +549,15 @@ export const CreatePlanStep = ({
             ask(
               seed
                 ? seed.request
-                : cell
-                  ? `${prompt}\n\n(Plan exactly one widget for ${cell.label}: the user is editing that dashboard and it goes into that one cell. No bots, theme or layout, and don't set "dashboard" — the user previews the widget and the editor places it. Put the connection and settings they want on the widget piece.)`
-                  : botMode
-                    ? botPlanRequest(prompt, where, context)
-                    : openDashboardId != null
-                      ? `${prompt}\n\n(The user is looking at the dashboard with id ${openDashboardId}.)${context ? `\n\n${context}` : ""}`
-                      : prompt,
+                : edit
+                  ? edit.request
+                  : cell
+                    ? `${prompt}\n\n(Plan exactly one widget for ${cell.label}: the user is editing that dashboard and it goes into that one cell. No bots, theme or layout, and don't set "dashboard" — the user previews the widget and the editor places it. Put the connection and settings they want on the widget piece.)`
+                    : botMode
+                      ? botPlanRequest(prompt, where, context)
+                      : openDashboardId != null
+                        ? `${prompt}\n\n(The user is looking at the dashboard with id ${openDashboardId}.)${context ? `\n\n${context}` : ""}`
+                        : prompt,
               false,
             );
           });
@@ -656,7 +705,11 @@ export const CreatePlanStep = ({
   const questions = (plan && plan.questions) || [];
   const pieces = (plan && plan.pieces) || [];
   const check = plan
-    ? validatePlan(plan, { cell: !!cell, bot: !!botMode })
+    ? validatePlan(plan, {
+        cell: !!cell,
+        bot: !!botMode,
+        edit: edit ? { package: edit.target.package, mode: edit.mode } : null,
+      })
     : null;
   const estimate =
     plan && pieces.length ? estimatePlan(plan, { team, planningTokens }) : null;
@@ -680,8 +733,9 @@ export const CreatePlanStep = ({
   // Unsaved edits on the dashboard the plan changes: it waits (two saves at
   // once would overwrite each other) — checked before anything is walked.
   const heldByEdits = () => {
-    // A cell build never saves the dashboard: the editor places its widget.
-    if (cell) return false;
+    // A cell build never saves the dashboard: the editor places its widget
+    // (a change doesn't touch one).
+    if (single) return false;
     if (!target || dirtyDashboardId() !== target.id) return false;
     setReady(false);
     setBuildError(
@@ -704,6 +758,18 @@ export const CreatePlanStep = ({
       const res = await bots.startPlanBuild(plan, {
         ...(from ? { resumeFrom: from } : {}),
         ...(cell ? { cell: true } : {}),
+        // A change: the main process works out the package itself.
+        ...(edit
+          ? {
+              edit: {
+                component: edit.target.component,
+                mode: edit.mode,
+                displayName: edit.target.displayName,
+                settings: (edit.inputs && edit.inputs.settings) || null,
+                providers: (edit.inputs && edit.inputs.providers) || null,
+              },
+            }
+          : {}),
         ...(botMode ? { bot: true } : {}),
         // Kept on this conversation in Recent, with its build memory.
         ...(planId.current ? { recentId: planId.current } : {}),
@@ -765,6 +831,24 @@ export const CreatePlanStep = ({
       <CreateBuildingStep
         compact={compact}
         cell={cell}
+        edit={
+          edit
+            ? {
+                mode: edit.mode,
+                original: edit.original || null,
+                approveLabel:
+                  edit.mode === "update"
+                    ? `Looks good — update ${edit.target.displayName}`
+                    : edit.cellLabel
+                      ? "Looks good — put it in this cell"
+                      : "Looks good — install it",
+                discardLabel: `Discard — keep ${edit.target.displayName} as it is`,
+                inputsNote: edit.cellLabel
+                  ? "From this cell's settings · only for trying it here."
+                  : "Only for trying it here.",
+              }
+            : null
+        }
         bot={botMode ? { where, piece: botPiece } : null}
         onOpenBot={onOpenBot}
         onCellDone={onCellDone}
@@ -989,9 +1073,11 @@ export const CreatePlanStep = ({
         <div data-testid="plan-status">
           <SectionLabel
             text={
-              target && !botMode
-                ? `Changes to ${target.name} · not made yet`
-                : "Plan · not built yet"
+              edit
+                ? `Change to ${edit.target.displayName} · not made yet`
+                : target && !botMode
+                  ? `Changes to ${target.name} · not made yet`
+                  : "Plan · not built yet"
             }
           />
         </div>
@@ -999,17 +1085,31 @@ export const CreatePlanStep = ({
           {plan.summary}
         </span>
         <span className={`text-sm ${muted}`} data-testid="plan-counts">
-          {cell
-            ? `Goes into: ${cell.label}`
-            : botMode
-              ? where
-                ? `1 bot · goes on: ${where.name}`
-                : "1 bot · on no dashboard — its results stay in the Bots view"
-              : countsLine(plan)}
+          {edit
+            ? edit.mode === "update"
+              ? `1 widget · changes ${edit.target.displayName} in place${
+                  edit.usedOn ? ` · used on ${edit.usedOn}` : ""
+                }`
+              : `1 widget · a new widget${
+                  edit.cellLabel ? ` · goes into ${edit.cellLabel}` : ""
+                } · ${edit.target.displayName} isn't changed`
+            : cell
+              ? `Goes into: ${cell.label}`
+              : botMode
+                ? where
+                  ? `1 bot · goes on: ${where.name}`
+                  : "1 bot · on no dashboard — its results stay in the Bots view"
+                : countsLine(plan)}
         </span>
 
         <PlanSection
-          title={target && !botMode ? "What it adds" : "What it makes"}
+          title={
+            edit
+              ? "What changes"
+              : target && !botMode
+                ? "What it adds"
+                : "What it makes"
+          }
           testId="plan-pieces"
         >
           {GROUPS.map(([kind, label]) => {
@@ -1024,8 +1124,11 @@ export const CreatePlanStep = ({
                     label: p.source,
                     state: "neutral",
                   };
-                  const source =
-                    p.source === "new"
+                  const source = edit
+                    ? edit.mode === "update"
+                      ? { label: "Change", state: "warning" }
+                      : { label: "New widget", state: "closed" }
+                    : p.source === "new"
                       ? { ...base, label: `New ${p.kind}` }
                       : base;
                   const meta = pieceMeta(p);
@@ -1053,14 +1156,14 @@ export const CreatePlanStep = ({
                           ) : null}
                         </div>
                         <div className="dr-row-actions flex flex-row items-center gap-1 flex-shrink-0 pt-5">
-                          {p.kind === "widget" ? (
+                          {p.kind === "widget" && !edit ? (
                             <Button2
                               title="Swap…"
                               size="sm"
                               onClick={() => setSwapIndex(index)}
                             />
                           ) : null}
-                          {cell || botMode ? null : (
+                          {single || botMode ? null : (
                             // A cell's plan is this one widget (a bot plan,
                             // this one bot): Swap, not remove.
                             <ButtonIcon
@@ -1076,6 +1179,9 @@ export const CreatePlanStep = ({
                           )}
                         </div>
                       </div>
+                      {edit && p.kind === "widget" ? (
+                        <EditPlanDetails piece={p} edit={edit} muted={muted} />
+                      ) : null}
                       {p.kind === "bot" && p.source === "new" ? (
                         <BotPlanDetails
                           piece={p}
@@ -1117,7 +1223,7 @@ export const CreatePlanStep = ({
         {/* What it will look like, with made-up data (CRE-003 AC6) —
                   a new dashboard's grid; not drawn for one the user has. */}
         {/* A cell build shows the real widget running before it goes in. */}
-        {target || cell || botMode ? null : (
+        {target || single || botMode ? null : (
           <PlanSketch plan={plan} compact={compact} />
         )}
 
@@ -1176,7 +1282,7 @@ export const CreatePlanStep = ({
 
         {/* A cell's (or bot's) plan keeps Build in view (the mockup): this
             goes below. */}
-        {cell || botMode ? null : expectSection}
+        {single || botMode ? null : expectSection}
 
         {broken ? (
           <span
@@ -1219,17 +1325,19 @@ export const CreatePlanStep = ({
                     ? "Starting the build…"
                     : resumeFrom
                       ? "What's built is kept — only what's new or changed gets built."
-                      : cell
-                        ? `Nothing goes into ${cell.label} until you've seen it running.`
-                        : botMode && !removedNote
-                          ? "Nothing is saved until you press Build."
-                          : removedNote ||
-                            (target
-                              ? `Kept in Recent · nothing on ${target.name} changes until you press this.`
-                              : "Kept in Recent · nothing has been built or installed yet.")}
+                      : edit
+                        ? "Nothing changes until you've seen it running and said OK."
+                        : cell
+                          ? `Nothing goes into ${cell.label} until you've seen it running.`
+                          : botMode && !removedNote
+                            ? "Nothing is saved until you press Build."
+                            : removedNote ||
+                              (target
+                                ? `Kept in Recent · nothing on ${target.name} changes until you press this.`
+                                : "Kept in Recent · nothing has been built or installed yet.")}
           </span>
         </div>
-        {cell || botMode ? expectSection : null}
+        {single || botMode ? expectSection : null}
       </div>
     ) : null;
   const dialogs = (

@@ -25,7 +25,7 @@ import { WidgetSidebar } from "../Navigation/WidgetSidebar";
  *
  *   Widget    — the selected widget (phase 1c): its Settings, Listeners,
  *               Providers and Code open the Configure dialog at that
- *               section; Edit with AI; Remove
+ *               section; Change with AI (Create, Phase 3); Remove
  *   Bot       — the selected bot's form (passed in as `botEditor`)
  *
  * Every change here is staged like any other edit and saved with Save.
@@ -198,7 +198,7 @@ export const EditPanel = ({
                     />
                   )}
                   <Button3
-                    title="Edit with AI"
+                    title="Change with AI"
                     onClick={() => act("edit-with-ai")}
                     size="sm"
                   />
@@ -237,7 +237,7 @@ export const EditPanel = ({
               title={
                 selection.kind === "cell"
                   ? "Build a widget for this cell"
-                  : "Edit this widget with AI"
+                  : "Change this widget with AI"
               }
               onClick={() => onAskAi && onAskAi()}
               size="sm"
@@ -246,8 +246,8 @@ export const EditPanel = ({
             <span
               className={`text-xs ${currentTheme["text-neutral-medium"] || ""}`}
             >
-              Opens the Widget Builder. Building right here in the panel comes
-              with the Create screen.
+              Opens Create: the Dash team plans it with you, and you see it
+              running before anything changes.
             </span>
           </Tabs3.Content>
         )}

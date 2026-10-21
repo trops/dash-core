@@ -394,13 +394,14 @@ describe("WidgetsPage package detail (NAV-008 AC3)", () => {
     await waitFor(() => expect(drafts.delete).toHaveBeenCalledWith("x"));
   });
 
-  it("someone else's package can't be published or edited in the builder", () => {
+  it("someone else's package can't be published or edited by hand", () => {
     setup();
     fireEvent.click(pkgRow("charts"));
     for (const name of [
       "Publish…",
       "Publish new version…",
-      "Edit in Widget Builder",
+      "Change with AI",
+      "Edit the code yourself",
     ]) {
       expect(within(detail()).queryByRole("button", { name })).toBeNull();
     }
@@ -425,25 +426,37 @@ describe("WidgetsPage package detail (NAV-008 AC3)", () => {
     ).toBeInTheDocument();
   });
 
-  it("Edit in Widget Builder opens the builder on the package's widget", () => {
+  it("Change with AI opens Create on the widget; Edit the code yourself, the builder", () => {
     setup();
     const events = [];
+    const code = [];
     const onEvent = (e) => events.push(e.detail);
+    const onCode = (e) => code.push(e.detail);
     window.addEventListener("dash:edit-widget-with-ai", onEvent);
+    window.addEventListener("dash:edit-widget-code", onCode);
     fireEvent.click(pkgRow("slack"));
     fireEvent.click(
-      within(detail()).getByRole("button", { name: "Edit in Widget Builder" }),
+      within(detail()).getByRole("button", { name: "Change with AI" }),
     );
     // And from one widget's detail.
     fireEvent.click(within(list()).getByText("Channel Messages"));
     fireEvent.click(
-      within(detail()).getByRole("button", { name: "Edit in Widget Builder" }),
+      within(detail()).getByRole("button", { name: "Change with AI" }),
+    );
+    fireEvent.click(
+      within(detail()).getByRole("button", { name: "Edit the code yourself" }),
     );
     window.removeEventListener("dash:edit-widget-with-ai", onEvent);
+    window.removeEventListener("dash:edit-widget-code", onCode);
+    expect(code).toEqual([
+      {
+        widgetComponentName: "trops.slack.Messages",
+        sourcePackage: "@trops/slack",
+        widgetId: "@trops/slack/trops.slack.Messages",
+      },
+    ]);
     expect(events).toEqual([
-      // widgetId puts the builder in edit mode (Update original for the
-      // owner) — "<package>/<component>", as the builder uses for packages
-      // it edits without a dashboard instance; no cell, so nothing is swapped.
+      // "<package>/<component>": not on a dashboard, so nothing is swapped.
       {
         widgetComponentName: "trops.slack.Channels",
         sourcePackage: "@trops/slack",

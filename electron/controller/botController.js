@@ -154,6 +154,7 @@ const {
   settingKeys,
 } = require("../bots/planBuild");
 const { planTarget, validatePlan } = require("../bots/teamPlan");
+const { resolveEditTarget, ownsWidget } = require("../bots/editTarget");
 const { checkBot } = require("../bots/checkBot");
 const { summarizeSpending } = require("../bots/spending");
 const { resolveWidgetComponent } = require("../bots/widgetComponent");
@@ -220,6 +221,29 @@ const {
 } = require("../events/botEvents");
 
 const { runCost } = require("../bots/runCost");
+
+/**
+ * A change's plan, held to its widget (Phase 3): its one widget piece is
+ * that package as an update, or a new widget — whatever the Planner wrote.
+ * Anything else stays, for validatePlan to refuse.
+ */
+function editPlan(plan, target) {
+  let seen = false;
+  // A change goes to a widget, never to a dashboard.
+  const { dashboard: _dashboard, ...rest } = plan;
+  return {
+    ...rest,
+    pieces: plan.pieces.map((p) => {
+      if (!p || p.kind !== "widget" || seen) return p;
+      seen = true;
+      if (target.mode === "update") {
+        return { ...p, source: "update", package: target.package };
+      }
+      const { package: _pkg, ...rest } = p;
+      return { ...rest, source: "new" };
+    }),
+  };
+}
 
 /** Pricing lookup for BudgetController: curated-model pricing by provider. */
 function pricingFor(providerId, model) {
@@ -2233,6 +2257,10 @@ const botController = {
    * revisePlanStep), installed; never placed here: the editor places it.
    * `bot` (Phase 2c-1): one bot — checked, saved paused on the dashboard
    * the plan names (or Unassigned); never a new dashboard.
+   * `edit` (Phase 3): a change to one widget the user has — { component,
+   * mode: "update" | "new", displayName, settings, providers } — built,
+   * checked and previewed like a cell build. Which package it is, and
+   * whether the user may change it in place, is worked out here.
    */
   startPlanBuild(
     plan,
@@ -2242,10 +2270,17 @@ const botController = {
       recentId = null,
       cell = false,
       bot = false,
+      edit = null,
     } = {},
   ) {
     if (!plan || !Array.isArray(plan.pieces) || !plan.pieces.length) {
       return { error: "The plan has nothing to build." };
+    }
+    let editTarget = null;
+    if (edit) {
+      editTarget = this._editTarget(edit);
+      if (editTarget.error) return { error: editTarget.error };
+      plan = editPlan(plan, editTarget);
     }
     // Checked against the user's own dashboards and themes (consolidation
     // Phase 1b): a plan with errors isn't built.
@@ -2254,6 +2289,9 @@ const botController = {
       themes: this._themeNames(),
       cell: !!cell,
       bot: !!bot,
+      edit: editTarget
+        ? { package: editTarget.package, mode: editTarget.mode }
+        : null,
     });
     if (checked.errors.length) {
       return {
@@ -2313,16 +2351,18 @@ const botController = {
         applyTheme: (req) => this._planApplyTheme(req),
         // A cell build's own Builder / Checker: while they run, the Dash
         // team's place_widget / installDraft refuse (Phase 2b).
-        askRole: cell
-          ? async (role, request) => {
-              this._cellRoleRuns = (this._cellRoleRuns || 0) + 1;
-              try {
-                return await this._planAskRole(role, request, planId);
-              } finally {
-                this._cellRoleRuns -= 1;
+        askRole: editTarget
+          ? (role, request) => this._editAskRole(role, request, editTarget)
+          : cell
+            ? async (role, request) => {
+                this._cellRoleRuns = (this._cellRoleRuns || 0) + 1;
+                try {
+                  return await this._planAskRole(role, request, planId);
+                } finally {
+                  this._cellRoleRuns -= 1;
+                }
               }
-            }
-          : (role, request) => this._planAskRole(role, request, planId),
+            : (role, request) => this._planAskRole(role, request, planId),
         abortRole: (role) => {
           const bot = dashTeamBot(this._store.list(), role);
           if (bot) this._runner.abort(bot.id);
@@ -2372,9 +2412,11 @@ const botController = {
         },
         // The Install step: the draft the Checker passed (Phase 1b).
         installBuilt: (draft) =>
-          this._widgetTools && this._widgetTools.installDraft
-            ? this._widgetTools.installDraft({ name: draft })
-            : { success: false, error: "installing isn't available here" },
+          editTarget
+            ? this._planInstallEdit(draft, editTarget)
+            : this._widgetTools && this._widgetTools.installDraft
+              ? this._widgetTools.installDraft({ name: draft })
+              : { success: false, error: "installing isn't available here" },
         // A bot build's check before the save (2c-1).
         checkBot: (req) => this._planCheckBot(req),
         saveBot: (req) => this._planSaveBot(req),
@@ -2398,7 +2440,14 @@ const botController = {
           this._keepBuild(planId, buildId, plan, state);
         },
       },
-      { dashboardName, resume, autoFix: true, cell: !!cell, bot: !!bot },
+      {
+        dashboardName,
+        resume,
+        autoFix: true,
+        cell: !!cell,
+        bot: !!bot,
+        edit: editTarget,
+      },
     );
     entry.build = build;
     entry.state = JSON.parse(JSON.stringify(build.state));
@@ -2506,6 +2555,97 @@ const botController = {
    */
   _cellBuildRunning() {
     return (this._cellRoleRuns || 0) > 0;
+  },
+
+  /**
+   * The widget a change goes to (Phase 3): found from what's installed —
+   * the renderer only names the component — with the cell's connection and
+   * settings to preview it with. In place needs the user signed in to the
+   * registry (unless the AI built it); the install checks it's theirs.
+   */
+  _editTarget(edit) {
+    const t = resolveEditTarget(
+      edit,
+      require("../widgetRegistry").getWidgetRegistry().getWidgets() || [],
+    );
+    if (t.error) return t;
+    if (
+      t.mode === "update" &&
+      !t.aiBuilt &&
+      !require("./registryAuthController").getAuthStatus().authenticated
+    ) {
+      return {
+        error: `Sign in to the registry to change ${t.componentName} in place — or save the change as a new widget.`,
+      };
+    }
+    const text = (v) => (typeof v === "string" ? v.trim().slice(0, 80) : "");
+    const obj = (v) =>
+      v && typeof v === "object" && !Array.isArray(v)
+        ? JSON.parse(JSON.stringify(v))
+        : null;
+    return {
+      ...t,
+      displayName: text(edit.displayName) || t.componentName,
+      settings: obj(edit.settings),
+      providers: obj(edit.providers),
+    };
+  },
+
+  /**
+   * A change's Builder or Checker (Phase 3): while it works, build_widget
+   * is held to that widget (_editRun), and — as for a cell build — the
+   * team installs or places nothing. One change builds at a time.
+   */
+  async _editAskRole(role, request, target) {
+    if (this._editRun && this._editRun !== target) {
+      return {
+        status: "failed",
+        error:
+          "Another change to a widget is being built — try again when it's done.",
+      };
+    }
+    this._editRun = target;
+    this._cellRoleRuns = (this._cellRoleRuns || 0) + 1;
+    try {
+      return await this._planAskRole(role, request, null);
+    } finally {
+      this._cellRoleRuns -= 1;
+      if (this._editRun === target) this._editRun = null;
+    }
+  },
+
+  /**
+   * A change's Install step (Phase 3): the draft the Checker passed and the
+   * user approved. In place on a package that isn't AI-built only when it's
+   * the user's own — checked against who's signed in now.
+   */
+  async _planInstallEdit(draft, target) {
+    if (!this._widgetTools || !this._widgetTools.installDraft) {
+      return { success: false, error: "installing isn't available here" };
+    }
+    if (target.mode === "update" && !target.aiBuilt) {
+      let profile = null;
+      try {
+        profile =
+          await require("./registryAuthController").getRegistryProfile();
+      } catch (_e) {
+        profile = null;
+      }
+      if (
+        // The package's own scope — never the component id it was opened by.
+        !ownsWidget({
+          pkg: target.package,
+          component: null,
+          username: profile && profile.username,
+        })
+      ) {
+        return {
+          success: false,
+          error: `${target.componentName} isn't under your registry name, so it can't be changed in place — save the change as a new widget instead.`,
+        };
+      }
+    }
+    return this._widgetTools.installDraft({ name: draft, edit: target });
   },
 
   /** Providers were connected: the steps waiting for them run (AC5). */
@@ -3041,15 +3181,23 @@ const botController = {
           widgetName: name,
           componentName: component,
         }),
+      // One of its package's other files (Phase 3).
+      readWidgetFile: ({ name, file }) =>
+        require("../widgetRegistry").readWidgetFile({
+          widgetName: name,
+          file,
+        }),
       providerTools: () => this._providerToolsWithFlags(),
       askRole: (req) => this._askRole(req),
       ...(this._widgetTools
         ? {
             widgetGuide: (req) => this._widgetTools.guide(req),
+            // During a change (Phase 3) the build is held to its widget.
             buildWidget: (req) =>
               this._widgetTools.build({
                 ...req,
                 provider: this._providerPick(req.provider),
+                edit: this._editRun || null,
               }),
             checkWidget: (req) => this._widgetTools.check(req),
           }

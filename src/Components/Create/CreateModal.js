@@ -30,6 +30,7 @@ import { useAiBackend } from "../../hooks/useAiBackend";
 import { getWidgetBuilderRenderer } from "../../utils/widgetBuilderRenderer";
 import { CreateScoutStep } from "./CreateScoutStep";
 import { CreatePlanStep } from "./CreatePlanStep";
+import { CreateEdit } from "./CreateEdit";
 import { AskStep } from "./AskStep";
 import {
   RecipientPicker,
@@ -187,6 +188,10 @@ export const CreateModal = ({
   // A lead's hand-off (2c-2): { note, from } — its note goes to the Scout
   // and the Planner with what Dash knows about the dashboard.
   initialContext = null,
+  // A change to one widget the user has (consolidation Phase 3, Change with
+  // AI): { component, sourcePackage, itemId, workspaceId, pageId, settings,
+  // providers, error } — Create › Change <widget> (CreateEdit).
+  edit = null,
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const appContext = useContext(AppContext) || {};
@@ -410,6 +415,32 @@ export const CreateModal = ({
   }, [open, botForm]);
 
   if (!open) return null;
+
+  // Change with AI: the change, start to finish (CreateEdit).
+  if (edit) {
+    return (
+      <Modal
+        isOpen={open}
+        setIsOpen={(v) => (v ? setIsOpen(true) : setIsOpen(false))}
+        width="w-11/12"
+        height="h-5/6"
+      >
+        <div
+          className={`dr-modal-surface flex flex-col h-full w-full rounded-lg overflow-clip border ${
+            panelStyles.backgroundColor || ""
+          } ${panelStyles.borderColor || ""} ${panelStyles.textColor || ""}`}
+          data-testid="create-modal"
+        >
+          <CreateEdit
+            key={edit.component || "edit"}
+            edit={edit}
+            workspaces={workspaces}
+            onClose={() => setIsOpen(false)}
+          />
+        </div>
+      </Modal>
+    );
+  }
 
   // Closing ends any step (builder or bot form) here, so reopening starts on
   // the start screen — never a flash of the last builder, which would rerun

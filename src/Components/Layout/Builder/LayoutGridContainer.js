@@ -1466,6 +1466,9 @@ export const LayoutGridContainer = memo(
                         cellNumber,
                         gridItemId: item.id,
                         workspaceId: workspace?.id,
+                        // Where it is: a new widget made from it takes its
+                        // place there (Phase 3).
+                        scope: workspaceScope || "main",
                         widgetComponentName: cellComponent.component,
                         widgetId: cellComponent.id,
                         selectedProviders:
