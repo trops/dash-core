@@ -40,11 +40,6 @@ import { MergeCellsModal } from "./Modal";
  * Grids rendered without a drag-and-drop provider (some previews) get a plain
  * body — the drag/drop hooks would throw without one.
  */
-// Configure sections the edit panel shows inline (CRE-006 AC5); others
-// (notifications, schedule) still open the Configure dialog.
-const opensInPanel = (section) =>
-  !section || ["edit", "handlers", "providers", "code"].includes(section);
-
 const DraggableDroppableCellBody = (props) => {
   const dnd = useContext(DndContext);
   return dnd && dnd.dragDropManager ? (
@@ -1351,7 +1346,7 @@ export const LayoutGridContainer = memo(
 
       // section: open this inline settings section (edit / handlers /
       // providers / code) in the edit panel.
-      const selectWidget = (openTab, section = null) => {
+      const selectWidget = (openTab, section = null, extra = null) => {
         if (!editSelection.available || !cellComponent) return;
         // A plain click on the widget that's already selected keeps the
         // selection — React bubbles clicks from the header menu (a portal)
@@ -1359,6 +1354,7 @@ export const LayoutGridContainer = memo(
         if (
           !openTab &&
           !section &&
+          !extra &&
           editSelection.selection?.kind === "widget" &&
           editSelection.selection.uuid === cellComponent.uuid
         ) {
@@ -1391,6 +1387,8 @@ export const LayoutGridContainer = memo(
           // A fresh marker per request, so asking again for the section
           // that's already set still switches the panel to it.
           ...(section ? { section, sectionRequest: Date.now() } : {}),
+
+          ...(extra || {}),
         });
       };
 
@@ -1434,15 +1432,13 @@ export const LayoutGridContainer = memo(
           onConfigure={
             cellComponent
               ? (widgetItem, section) => {
-                  // Editing: the panel shows the settings inline
-                  // (CRE-006 AC5). Sections it doesn't show inline still
-                  // open the Configure dialog.
-                  if (editSelection.available && opensInPanel(section)) {
+                  // Everything about the widget is in its panel
+                  // (consolidation Phase 3P) — no dialog.
+                  if (editSelection.available) {
                     selectWidget("widget", section || "edit");
-                    return;
+                  } else if (onOpenConfig) {
+                    onOpenConfig(cellComponent, section);
                   }
-                  selectWidget();
-                  if (onOpenConfig) onOpenConfig(cellComponent, section);
                 }
               : undefined
           }
@@ -1453,10 +1449,18 @@ export const LayoutGridContainer = memo(
                 }
               : undefined
           }
+          changeBlocked={editSelection.changeBlocked || ""}
+          onMove={
+            cellComponent && editSelection.available
+              ? () => selectWidget("widget", null, { moving: true })
+              : undefined
+          }
           onEditWithAI={
             cellComponent
               ? () => {
-                  selectWidget("ask");
+                  // Its panel stays open behind Create (there's no Ask AI
+                  // tab any more — consolidation Phase 3P).
+                  selectWidget("widget");
                   window.dispatchEvent(
                     new CustomEvent("dash:edit-widget-with-ai", {
                       detail: {
@@ -1492,11 +1496,11 @@ export const LayoutGridContainer = memo(
         <WidgetCard.Footer
           item={cellComponent}
           onConfigure={(item, section) => {
-            if (editSelection.available && opensInPanel(section)) {
+            if (editSelection.available) {
               selectWidget("widget", section || "edit");
-              return;
+            } else if (onOpenConfig) {
+              onOpenConfig(item, section);
             }
-            if (onOpenConfig) onOpenConfig(item, section);
           }}
         />
       ) : null;

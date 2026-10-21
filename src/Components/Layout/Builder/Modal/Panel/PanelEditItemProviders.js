@@ -107,21 +107,12 @@ export const PanelEditItemProviders = ({
     onUpdate(updatedItem, updatedWorkspace);
   }
 
-  if (providerRequirements.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full text-sm opacity-60 text-center px-6">
-        This widget doesn't declare any providers.
-      </div>
-    );
-  }
+  // The widget panel says when a widget uses no connections (consolidation
+  // Phase 3P); this is the list itself, under the panel's "Connections".
+  if (providerRequirements.length === 0) return null;
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
-      <div className="text-sm opacity-70">
-        Bind each required provider so the widget can connect to its data
-        source. Changes save immediately.
-      </div>
-
+    <div className="flex flex-col">
       <div className="space-y-3">
         {providerRequirements.map((req) => {
           const type = req.type;

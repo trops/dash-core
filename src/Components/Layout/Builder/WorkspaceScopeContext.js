@@ -7,3 +7,8 @@ import React from "react";
 // defaults to "main". Its own module so a widget (WidgetFactory) can read
 // where it is without importing the grid.
 export const WorkspaceScopeContext = React.createContext("main");
+
+// Which page a LayoutBuilder shows (null: the pinned sidebar, or a dashboard
+// without pages) — so a widget inside it can say where it is (consolidation
+// Phase 3P: a crashed widget's Remove).
+export const LayoutPageContext = React.createContext(null);

@@ -9,12 +9,10 @@
  * - More menu (three-dot)
  */
 
-import React, { useContext, useState } from "react";
+import React, { useContext } from "react";
 import {
-  ButtonIcon3,
-  DropdownPanel,
+  ActionMenu,
   FontAwesomeIcon,
-  MenuItem2,
   ThemeContext,
   useStatusTokens,
 } from "@trops/dash-react";
@@ -48,6 +46,10 @@ export const WidgetCardHeader = ({
   onSplitVertical = null,
   onMoreOptions,
   onEditWithAI,
+  // Move it to another cell without dragging (consolidation Phase 3P).
+  onMove = null,
+  // Why Change waits (unsaved edits) — the panel's rule, here too.
+  changeBlocked = "",
   // Merge selection props
   isSelected = false,
   isSelectable = true,
@@ -58,7 +60,6 @@ export const WidgetCardHeader = ({
   // of cell size. Previous design kept provider badges + action
   // buttons inline (both flex-shrink-0) which cropped the title on
   // narrow cells and made the config button unreachable.
-  const [showOverflowMenu, setShowOverflowMenu] = useState(false);
 
   // Support both 'item' and 'widget' props
   const widgetItem = item || widget;
@@ -169,92 +170,58 @@ export const WidgetCardHeader = ({
     (req) => req.required && !isProviderResolved(req.type),
   );
 
-  // Build overflow actions list — single source of truth for the
-  // dropdown items. Provider editing used to live inline in this
-  // menu as dropdowns per provider; that's moved to the widget
-  // config modal under a "Providers" section, so here we just show
-  // a "Providers" entry (when the widget declares any) that opens
-  // the modal pre-selected on that section.
-  const overflowActions = [];
+  // The ⋮ menu (consolidation Phase 3P): Edit in panel (every setting —
+  // its connections and listeners too — is in the edit panel), one Change
+  // (Create, where you pick AI or by hand), then Move, Split and Remove. No
+  // dialogs. A "!" marks Edit in panel when a required connection isn't set.
+  const menuItems = [];
   if (onConfigure) {
-    overflowActions.push({
-      icon: "cog",
-      label: "Configure",
-      onClick: () => {
-        onConfigure(widgetItem);
-        setShowOverflowMenu(false);
-      },
-    });
-  }
-  if (onConfigure && providerRequirements.length > 0) {
-    overflowActions.push({
-      icon: "plug",
-      label: "Providers",
+    menuItems.push({
+      label: "Edit in panel",
+      description: "Its settings, connections and listeners",
       badge: hasUnresolvedRequiredProvider ? "!" : null,
-      onClick: () => {
-        onConfigure(widgetItem, "providers");
-        setShowOverflowMenu(false);
-      },
+      onSelect: () => onConfigure(widgetItem, "edit"),
     });
   }
-  if (onConfigure) {
-    overflowActions.push({
-      icon: "tower-broadcast",
-      label: "Listeners",
-      onClick: () => {
-        onConfigure(widgetItem, "handlers");
-        setShowOverflowMenu(false);
-      },
+  // Built-in widgets ship with Dash: nothing to change.
+  const builtIn =
+    typeof widgetItem?.component === "string" &&
+    widgetItem.component.startsWith("dash.");
+  if (onEditWithAI && widgetItem && !builtIn) {
+    menuItems.push({
+      label: `Change ${widgetName || "this widget"}`,
+      disabled: !!changeBlocked,
+      description: changeBlocked || null,
+      onSelect: () => onEditWithAI(widgetItem),
     });
   }
-  if (onEditWithAI && widgetItem) {
-    overflowActions.push({
-      icon: "wand-magic-sparkles",
-      label: "Change with AI",
-      onClick: () => {
-        onEditWithAI(widgetItem);
-        setShowOverflowMenu(false);
-      },
-    });
+  const layoutActions = [
+    ...(onMove
+      ? [{ label: "Move to another cell", onSelect: () => onMove(widgetItem) }]
+      : []),
+    ...(onSplitHorizontal
+      ? [{ label: "Split side by side", onSelect: () => onSplitHorizontal() }]
+      : []),
+    ...(onSplitVertical
+      ? [{ label: "Split top and bottom", onSelect: () => onSplitVertical() }]
+      : []),
+  ];
+  if (layoutActions.length) {
+    if (menuItems.length) menuItems.push("separator");
+    menuItems.push(...layoutActions);
   }
-  if (onSplitHorizontal) {
-    overflowActions.push({
-      icon: "arrows-left-right",
-      label: "Split Horiz",
-      onClick: () => {
-        onSplitHorizontal();
-        setShowOverflowMenu(false);
-      },
-    });
-  }
-  if (onSplitVertical) {
-    overflowActions.push({
-      icon: "arrows-up-down",
-      label: "Split Vert",
-      onClick: () => {
-        onSplitVertical();
-        setShowOverflowMenu(false);
-      },
+  if (onMoreOptions) {
+    menuItems.push({
+      label: "More options",
+      onSelect: () => onMoreOptions(widget),
     });
   }
   if (handleDelete) {
-    overflowActions.push({
-      icon: "trash",
+    if (menuItems.length) menuItems.push("separator");
+    menuItems.push({
       label: "Remove",
-      onClick: () => {
-        handleDelete(widgetItem);
-        setShowOverflowMenu(false);
-      },
-    });
-  }
-  if (onMoreOptions) {
-    overflowActions.push({
-      icon: "ellipsis-vertical",
-      label: "More Options",
-      onClick: () => {
-        onMoreOptions(widget);
-        setShowOverflowMenu(false);
-      },
+      danger: true,
+      onSelect: () => handleDelete(widgetItem),
     });
   }
 
@@ -326,59 +293,17 @@ export const WidgetCardHeader = ({
         </div>
       </div>
 
-      {/* One overflow button for the whole header — providers +
-          actions — so the widget title always gets full width. A quiet
-          28px icon button (dr-row-actions keeps it unfilled until
-          hovered); a warning dot marks an unresolved required provider. */}
-      {(providerRequirements.length > 0 ||
-        overflowActions.length > 0 ||
-        onMoreOptions) && (
-        <div className="relative flex-shrink-0">
-          <div className="dr-row-actions relative inline-flex">
-            <ButtonIcon3
-              icon="ellipsis-vertical"
-              onClick={() => setShowOverflowMenu((v) => !v)}
-              ariaLabel="Widget options"
-              backgroundColor="bg-transparent"
-              textColor={muted}
-              className="h-7 w-7"
-            />
-            {hasUnresolvedRequiredProvider && (
-              <span
-                className={`absolute top-1 right-1 h-2 w-2 rounded-full pointer-events-none ${status.warning.solidBg}`}
-                title="Required provider not set"
-              />
-            )}
-          </div>
-          <DropdownPanel
-            isOpen={showOverflowMenu}
-            onClose={() => setShowOverflowMenu(false)}
-            position="absolute top-full right-0 mt-1"
-            portal={true}
-            align="right"
-          >
-            {/* Every action opens the widget config modal or acts on
-                the widget directly. Provider editing lives inside
-                the config modal's Providers tab now, not inline
-                here, so the menu stays short and the title has room. */}
-            {overflowActions.map((action) => (
-              <MenuItem2 key={action.label} onClick={action.onClick}>
-                <FontAwesomeIcon
-                  icon={action.icon}
-                  className={`w-4 text-center ${muted}`}
-                />
-                <span className="flex-1">{action.label}</span>
-                {action.badge && (
-                  <span
-                    className={`ml-auto text-xs font-bold ${status.warning.icon}`}
-                  >
-                    {action.badge}
-                  </span>
-                )}
-              </MenuItem2>
-            ))}
-          </DropdownPanel>
-        </div>
+      {/* One ⋮ for the whole header, so the title gets the full width; a
+          warning dot marks a required connection that isn't set. */}
+      {menuItems.length > 0 && (
+        <ActionMenu
+          label={`${widgetName || cellNumber || "Widget"} options`}
+          icon="ellipsis-vertical"
+          items={menuItems}
+          dot={hasUnresolvedRequiredProvider}
+          portal
+          className="flex-shrink-0"
+        />
       )}
     </div>
   );

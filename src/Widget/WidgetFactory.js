@@ -12,7 +12,12 @@ import { resolveGateWidgetId } from "../utils/scopedComponentId";
 import { MountTokenWrapper } from "./MountTokenWrapper";
 import { buildWidgetData } from "./buildWidgetData";
 import { canFixWithAi, fixRequestDetail } from "./canFixWithAi";
-import { WorkspaceScopeContext } from "../Components/Layout/Builder/WorkspaceScopeContext";
+import {
+  LayoutPageContext,
+  WorkspaceScopeContext,
+} from "../Components/Layout/Builder/WorkspaceScopeContext";
+import { EditSelectionContext } from "../Components/Dashboard/editSelection";
+import { pickWidgetDisplayName } from "../utils/widgetIdentity";
 
 /**
  * WidgetErrorBoundary - Catches errors from widget rendering
@@ -38,7 +43,8 @@ class WidgetErrorBoundary extends Component {
 
   render() {
     if (this.state.hasError) {
-      const { widgetName, item, scope } = this.props;
+      const { widgetName, item, scope, label, onRemove } = this.props;
+      const name = label || widgetName;
       const errorMessage = this.state.error?.message || "Unknown error";
 
       // Check if it's a WidgetContext error
@@ -66,7 +72,7 @@ class WidgetErrorBoundary extends Component {
       return (
         <div className="flex flex-col h-full w-full bg-amber-950 border border-amber-700 rounded p-4 text-amber-100">
           <div className="text-base font-semibold mb-2 text-amber-200">
-            Widget couldn't render
+            {name} couldn't show
           </div>
           <div className="text-xs mb-2 break-words">
             <span className="text-amber-300">{widgetName}</span> threw{" "}
@@ -93,17 +99,32 @@ export const ${widgetName} = (props) => {
           )}
           <div className="flex items-center gap-2 mt-2">
             <button
+              type="button"
               onClick={() => this.setState({ hasError: false, error: null })}
               className="px-3 py-1 rounded text-xs bg-amber-700 hover:bg-amber-600 text-amber-100 transition-colors"
             >
-              Retry
+              Try again
             </button>
+            {/* The one Change door, for a widget that crashed: Create ›
+                Change with the error and its cell (consolidation Phase 3P). */}
             {canFix && (
               <button
+                type="button"
                 onClick={openInBuilder}
                 className="px-3 py-1 rounded text-xs bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
               >
-                Fix with AI
+                Fix {name}
+              </button>
+            )}
+            {/* While editing: a way out of a widget that keeps crashing
+                (waits for Save like any removal). */}
+            {onRemove && (
+              <button
+                type="button"
+                onClick={onRemove}
+                className="px-3 py-1 rounded text-xs text-amber-200 hover:text-amber-100 transition-colors"
+              >
+                Remove
               </button>
             )}
           </div>
@@ -127,6 +148,10 @@ const WidgetRenderer = ({
   const { dashApi } = useContext(DashboardContext);
   // Main grid or pinned sidebar — Fix tells Create where the widget is.
   const workspaceScope = useContext(WorkspaceScopeContext);
+  // While editing, a crashed widget can be removed from its box — on its
+  // own page and scope (uuids repeat across pages and the sidebar).
+  const editSelection = useContext(EditSelectionContext);
+  const layoutPageId = useContext(LayoutPageContext);
 
   // When a widget package is updated via Settings > Widgets (or the AI
   // Widget Builder), the main process broadcasts "widget:installed"
@@ -283,6 +308,23 @@ const WidgetRenderer = ({
             widgetName={component}
             item={params}
             scope={workspaceScope}
+            label={pickWidgetDisplayName(params, config)}
+            onRemove={
+              editSelection && editSelection.editing && params && params.uuid
+                ? () =>
+                    window.dispatchEvent(
+                      new CustomEvent("dash:edit-widget-action", {
+                        detail: {
+                          workspaceId: params.dashboardId ?? null,
+                          pageId: layoutPageId,
+                          scope: workspaceScope || "main",
+                          uuid: params.uuid,
+                          action: "remove",
+                        },
+                      }),
+                    )
+                : null
+            }
           >
             {hasScheduledTasks ? (
               <div className="flex flex-col w-full h-full min-h-0">

@@ -224,6 +224,32 @@ export const CreateEdit = ({ edit, workspaces = [], onClose }) => {
   );
   const close = () => onClose();
 
+  // "Edit the code yourself": the Widget Builder on this widget, by hand
+  // (dash-electron hears dash:edit-widget-code), with this cell's settings
+  // and connections when the change came from one. Create closes.
+  const editByHand = () => {
+    if (!target) return;
+    window.dispatchEvent(
+      new CustomEvent("dash:edit-widget-code", {
+        detail: {
+          widgetComponentName: target.component,
+          sourcePackage: target.package,
+          widgetId:
+            edit.itemId != null
+              ? edit.itemId
+              : `${target.package}/${target.component}`,
+          workspaceId: edit.workspaceId ?? null,
+          // Its cell: a new widget saved from the builder takes its place.
+          gridItemId: edit.gridItemId ?? null,
+          cellNumber: edit.cellNumber ?? null,
+          userPrefs: edit.settings || null,
+          selectedProviders: edit.providers || null,
+        },
+      }),
+    );
+    onClose();
+  };
+
   const send = () => {
     const text = String(prompt || "").trim();
     if (!text || !target || !mode) return;
@@ -355,7 +381,7 @@ export const CreateEdit = ({ edit, workspaces = [], onClose }) => {
                   label: (
                     <span className="flex flex-col">
                       <span className={`font-semibold ${strong}`}>
-                        Change {name}
+                        Update {name} everywhere
                       </span>
                       <span className={`text-xs ${muted}`}>
                         {usedOn.length
@@ -448,6 +474,20 @@ export const CreateEdit = ({ edit, workspaces = [], onClose }) => {
             anything is installed.
           </span>
         </div>
+
+        {/* The one Change door's other way (consolidation Phase 3P): by
+            hand, in the Widget Builder — for your own widgets. */}
+        {owner ? (
+          <div className="flex flex-col gap-2" data-testid="edit-by-hand">
+            <SectionLabel>Or change it without AI</SectionLabel>
+            <div>
+              <Button3 title="Edit the code yourself" onClick={editByHand} />
+            </div>
+            <span className={`text-xs ${muted}`}>
+              Opens {name}'s code in the Widget Builder.
+            </span>
+          </div>
+        ) : null}
       </div>
     </div>
   ) : null;

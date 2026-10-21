@@ -35,8 +35,10 @@ const SOURCE = fs.readFileSync(
   path.join(__dirname, "PanelEditItem.js"),
   "utf8",
 );
-const MODAL_SOURCE = fs.readFileSync(
-  path.join(__dirname, "..", "LayoutBuilderConfigModal.js"),
+// The Configure dialog is retired (consolidation Phase 3P): the edit
+// panel's WidgetPanel is where Settings is edited, and it flushes.
+const PANEL_SOURCE = fs.readFileSync(
+  path.join(__dirname, "..", "..", "..", "..", "Dashboard", "WidgetPanel.js"),
   "utf8",
 );
 
@@ -185,25 +187,17 @@ describe("PanelEditItem — unused LayoutModel import dropped", () => {
   });
 });
 
-describe("LayoutBuilderConfigModal — wires the flushRef so Save reads fresh state", () => {
-  test("declares panelEditFlushRef via useRef(null)", () => {
-    expect(MODAL_SOURCE).toMatch(/panelEditFlushRef\s*=\s*useRef\(null\)/);
-  });
-
-  test("passes panelEditFlushRef into <PanelEditItem flushRef=...>", () => {
-    expect(MODAL_SOURCE).toMatch(/flushRef=\{panelEditFlushRef\}/);
-  });
-
-  test("handleSaveConfig calls the flush and uses the returned workspace, not the stale state", () => {
-    // The bug we're guarding against: calling onSaveWorkspace
-    // (workspaceSelected) directly would save the pre-flush state
-    // because setState is async. Reading from the flush return value
-    // sidesteps that.
-    const save = stripComments(
-      extractFunctionBlock("handleSaveConfig", MODAL_SOURCE),
+describe("WidgetPanel — wires the flushRef so Save reads what was typed", () => {
+  test("keeps a flushRef and passes it to <PanelEditItem flushRef=...>", () => {
+    expect(PANEL_SOURCE).toMatch(/const flushRef = useRef\(null\)/);
+    expect(PANEL_SOURCE).toMatch(
+      /<PanelEditItem \{\.\.\.props\} flushRef=\{flushRef\} \/>/,
     );
-    expect(save).toMatch(/panelEditFlushRef\.current\(/);
-    expect(save).toMatch(/flushed\.workspace/);
-    expect(save).toMatch(/onSaveWorkspace\(workspaceToSave\)/);
+  });
+
+  test("flushes when a field loses focus, so the dashboard's Save includes it", () => {
+    expect(PANEL_SOURCE).toMatch(
+      /onBlur=\{\(\) => flushRef\.current && flushRef\.current\(\)\}/,
+    );
   });
 });

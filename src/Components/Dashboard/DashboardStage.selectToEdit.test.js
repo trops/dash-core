@@ -51,6 +51,13 @@ describe("DashboardStage — select to edit", () => {
     expect(body).toMatch(
       /api\.save\(await finalDefinition\(id, def\)\)[\s\S]{0,40}\)\s*\.then\(\(\) => saveDashboardWorkspace\(\)\)\s*\.catch\(/,
     );
+    // The widgets' notifications / schedule wait for the dashboard to be
+    // saved (Phase 3P): not taken here, so a failed save keeps them.
+    expect(body).not.toMatch(/pendingSettings\.take\(\)/);
+    const done = fnBody(stage, "handleSaveWorkspaceComplete");
+    expect(done).toMatch(/const settings = pendingSettings\.take\(\);/);
+    const failed = fnBody(stage, "handleSaveWorkspaceError");
+    expect(failed).not.toMatch(/pendingSettings/);
   });
 
   test("Cancel discards staged bot edits", () => {
@@ -89,8 +96,13 @@ describe("LayoutBuilder — edit panel actions", () => {
     );
   });
 
-  test("opens Configure at the requested section", () => {
-    expect(builder).toMatch(/handleClickEditItem\(item, section \|\| null\)/);
+  test("a widget's settings open in its panel, at the requested section", () => {
+    expect(builder).not.toMatch(/action === "configure"/);
+    expect(builder).toMatch(
+      /function handleClickEditItem\(newItem, initialSection = null\) \{\s*if \(!newItem \|\| !editSelection\.available\) return;/,
+    );
+    expect(builder).toMatch(/section: initialSection \|\| "edit",/);
+    expect(builder).toMatch(/handleClickEditItem\(d, "handlers"\)/);
   });
 });
 
@@ -106,10 +118,12 @@ describe("phase 1d — routing into the editor", () => {
     );
   });
 
-  test("the widget menu's Configure and Edit with AI also select the widget", () => {
+  test("the widget menu's Edit in panel, Change and Move select the widget", () => {
     const edit = grid.match(/function renderEditCell\([\s\S]*?\n    \}\n/)[0];
-    expect(edit).toMatch(/selectWidget\(\)[\s\S]{0,80}onOpenConfig/);
-    expect(edit).toMatch(/selectWidget\("ask"\)/);
+    expect(edit).toMatch(/selectWidget\("widget", section \|\| "edit"\)/);
+    expect(edit).toMatch(/selectWidget\("widget"\);/);
+    expect(edit).toMatch(/selectWidget\("widget", null, \{ moving: true \}\)/);
+    expect(edit).not.toMatch(/selectWidget\("ask"\)/);
   });
 
   test("LayoutBuilder places a picked widget, only in the matching scope and page", () => {
@@ -147,6 +161,28 @@ describe("phase 1e — Cancel list and keyboard move", () => {
   test("the empty cell's Add widget is a real button", () => {
     expect(grid).toMatch(
       /<button\s+type="button"[\s\S]{0,900}handleClickAdd\(cellNumber\);[\s\S]{0,400}<\/button>/,
+    );
+  });
+});
+
+describe("LayoutBuilder — a widget action reaches only its own page and scope (Phase 3P)", () => {
+  const builderSrc = fs.readFileSync(
+    path.join(__dirname, "..", "Layout", "Builder", "LayoutBuilder.js"),
+    "utf8",
+  );
+  test("scope and page are checked before acting on a uuid", () => {
+    expect(builderSrc).toMatch(
+      /if \(\(detail\.scope \|\| "main"\) !== scope\) return;\s*if \(\s*scope === "main" &&\s*targetPage != null &&\s*pageId != null &&\s*targetPage !== pageId\s*\)/,
+    );
+  });
+  test("the panel's actions name the selection's scope", () => {
+    expect(stage).toMatch(
+      /scope:\s*\(editSelection\?\.kind === "widget" && editSelection\.scope\) \|\|\s*"main",/,
+    );
+  });
+  test("the builder shares its page with the widgets in it", () => {
+    expect(builderSrc).toMatch(
+      /<LayoutPageContext\.Provider value=\{scope === "main" \? pageId : null\}>/,
     );
   });
 });

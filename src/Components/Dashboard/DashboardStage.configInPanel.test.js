@@ -34,19 +34,21 @@ describe("DashboardStage — inline widget settings", () => {
     expect(stage).toMatch(/workspace: \{ \.\.\.workspaceSelected, layout \}/);
   });
 
-  test("renders WidgetConfigPanel in the panel, keyed by the widget", () => {
+  test("renders WidgetPanel in the panel, keyed by the widget (Phase 3P)", () => {
     expect(stage).toMatch(
-      /widgetConfig=\{\s*editConfigTarget \? \(\s*<WidgetConfigPanel\s+key=\{editSelection\.uuid\}/,
+      /widgetConfig=\{\s*editConfigTarget \? \(\s*<WidgetPanel\s+key=\{editSelection\.uuid\}/,
     );
+    expect(stage).not.toMatch(/WidgetConfigPanel/);
   });
 
-  test("changes go out as an update edit action; More settings opens the dialog", () => {
+  test("changes go out as an update edit action; a section request reaches the panel", () => {
     expect(stage).toMatch(
       /onCommit=\{\(ws\) =>\s*dispatchEditAction\("update", null, \{ workspace: ws \}\)\s*\}/,
     );
     expect(stage).toMatch(
-      /onOpenMore=\{\(\) => dispatchEditAction\("configure"\)\}/,
+      /focus=\{\{\s*section: editConfigSection,\s*request: editSelection\.sectionRequest \|\| 0,\s*\}\}/,
     );
+    expect(stage).not.toMatch(/onOpenMore=/);
   });
 
   test("a selection can ask for a section (the gear → Listeners)", () => {
@@ -65,18 +67,29 @@ describe("LayoutBuilder — the update action", () => {
 });
 
 describe("Grid — the widget's Configure buttons while editing", () => {
-  test("the gear and the footer open the panel section, not the dialog", () => {
+  test("the card's menu and the footer open the panel section, never a dialog", () => {
     expect(
       grid.match(
-        /editSelection\.available && opensInPanel\(section\)\s*\)?\s*\{\s*selectWidget\("widget", section \|\| "edit"\);\s*return;/g,
+        /if \(editSelection\.available\) \{\s*selectWidget\("widget", section \|\| "edit"\);/g,
       ),
     ).toHaveLength(2);
+    expect(grid).not.toMatch(/opensInPanel/);
   });
 
-  test("notifications / schedule still open the dialog", () => {
-    expect(grid).toMatch(
-      /!section \|\| \["edit", "handlers", "providers", "code"\]\.includes\(section\)/,
-    );
+  test("the Configure dialog is gone (consolidation Phase 3P)", () => {
+    expect(builder).not.toMatch(/<LayoutBuilderConfigModal/);
+    expect(
+      fs.existsSync(
+        path.join(
+          __dirname,
+          "..",
+          "Layout",
+          "Builder",
+          "Modal",
+          "LayoutBuilderConfigModal.js",
+        ),
+      ),
+    ).toBe(false);
   });
 });
 

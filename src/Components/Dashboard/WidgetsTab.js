@@ -1,5 +1,10 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { Button3, FontAwesomeIcon, SectionLabel } from "@trops/dash-react";
+import {
+  Button,
+  Button3,
+  FontAwesomeIcon,
+  SectionLabel,
+} from "@trops/dash-react";
 import { forEachWidget } from "../../utils/providerResolution";
 import {
   pickWidgetDisplayName,
@@ -62,6 +67,9 @@ export const WidgetsTab = ({
   stagedPrefs,
   stagePrefField,
   stagePrefFieldForAll,
+  // In the editor (consolidation Phase 3P): one widget shows a summary and
+  // "Edit in panel" instead of its own settings form.
+  onEditInPanel = null,
 }) => {
   const { muted, hairline } = useConfigTokens();
   // Flatten every widget on the workspace, preserving which layout
@@ -91,6 +99,14 @@ export const WidgetsTab = ({
         section,
         userConfig: cfg.userConfig || {},
         userPrefs: item.userPrefs || {},
+        // For the summary and the hand-off to the panel.
+        uuid: item.uuid || item.uuidString || null,
+        itemId: item.id,
+        selectedProviders: item.selectedProviders || {},
+        listenerCount: Object.values(item.listeners || {}).reduce(
+          (n, list) => n + (Array.isArray(list) ? list.length : 0),
+          0,
+        ),
         scope: cfg.scope || item.scope || null,
         packageName: cfg.packageName || cfg.name || item.packageName || null,
       });
@@ -233,6 +249,7 @@ export const WidgetsTab = ({
             onFieldChange={(key, value) =>
               stagePrefField(selectedWidget.id, key, value)
             }
+            onEditInPanel={onEditInPanel}
           />
         )}
       </div>
@@ -240,9 +257,90 @@ export const WidgetsTab = ({
   );
 };
 
-function SingleWidgetPane({ widget, effectivePrefs, onFieldChange }) {
+/**
+ * One widget, in the editor (consolidation Phase 3P): what's set on it and
+ * "Edit in panel" — its settings, connections and listeners are edited in
+ * the edit panel, so nothing else edits one widget.
+ */
+function WidgetSummary({ widget, prefs, onEditInPanel }) {
+  const { muted, strong } = useConfigTokens();
+  const settings = Object.entries(prefs || {})
+    .filter(([, v]) => v !== "" && v != null && typeof v !== "object")
+    .slice(0, 4)
+    .map(([k, v]) => {
+      const label = (widget.userConfig[k] || {}).displayName || k;
+      const text = String(v);
+      return `${label}: ${text.length > 24 ? `${text.slice(0, 23)}…` : text}`;
+    });
+  const connections = Object.entries(widget.selectedProviders || {}).map(
+    ([type, name]) => `${type} · ${name}`,
+  );
+  const rows = [
+    ["Settings", settings.length ? settings.join(" · ") : "Nothing set"],
+    ["Connections", connections.length ? connections.join(" · ") : "None"],
+    [
+      "Listens for",
+      widget.listenerCount
+        ? `${widget.listenerCount} ${widget.listenerCount === 1 ? "event" : "events"}`
+        : "Nothing yet",
+    ],
+  ];
+  return (
+    <div className="flex flex-col gap-4" data-testid="widget-summary">
+      <div className="flex flex-col gap-0.5">
+        <div className={`font-semibold ${strong}`}>{widget.displayName}</div>
+        <div className={`text-xs ${muted}`}>{widget.section}</div>
+      </div>
+      <div
+        className="grid gap-x-4 gap-y-1 text-sm"
+        style={{ gridTemplateColumns: "7rem minmax(0, 1fr)" }}
+      >
+        {rows.map(([k, v]) => (
+          <React.Fragment key={k}>
+            <span className={muted}>{k}</span>
+            <span className={strong}>{v}</span>
+          </React.Fragment>
+        ))}
+      </div>
+      <div className="flex flex-col gap-1 items-start">
+        <Button
+          title="Edit in panel"
+          size="sm"
+          onClick={() =>
+            onEditInPanel({
+              uuid: widget.uuid,
+              component: widget.component,
+              itemId: widget.itemId,
+            })
+          }
+        />
+        <span className={`text-xs ${muted}`}>
+          Closes this and selects {widget.displayName} on the dashboard, where
+          all of its settings are. Anything you changed here stays as an unsaved
+          dashboard change.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function SingleWidgetPane({
+  widget,
+  effectivePrefs,
+  onFieldChange,
+  onEditInPanel = null,
+}) {
   const { muted, strong } = useConfigTokens();
   const hasFields = Object.keys(widget.userConfig).length > 0;
+  if (onEditInPanel) {
+    return (
+      <WidgetSummary
+        widget={widget}
+        prefs={effectivePrefs}
+        onEditInPanel={onEditInPanel}
+      />
+    );
+  }
   return (
     <div>
       <div className="mb-3">

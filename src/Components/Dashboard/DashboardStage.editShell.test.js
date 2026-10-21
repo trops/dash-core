@@ -47,7 +47,10 @@ describe("DashboardStage — full-screen edit shell", () => {
   });
 
   test("the EditPanel replaces the old widget sidebar", () => {
-    expect(source).toMatch(/\{isEditingDashboard && \(\s*<EditPanel/);
+    // Wrapped so its notifications / schedule editors wait for Save.
+    expect(source).toMatch(
+      /\{isEditingDashboard && \(\s*<PendingSettingsContext\.Provider value=\{pendingSettings\}>\s*<EditPanel/,
+    );
     expect(source).not.toMatch(/<WidgetSidebar/);
   });
 

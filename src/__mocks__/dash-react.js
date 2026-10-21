@@ -782,6 +782,61 @@ function Toggle({ text, enabled, setEnabled }) {
   );
 }
 
+// dash-react ActionMenu (consolidation Phase 3P): a ⋯ / ⋮ button (named by
+// `label`) that opens a menu of actions; disabled ones can't run, danger and
+// badge show as data attributes / text, "separator" strings split the list.
+function ActionMenu({ label = "Actions", items = [], dot = false }) {
+  const [open, setOpen] = React.useState(false);
+  return React.createElement(
+    "div",
+    null,
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        "aria-label": label,
+        "aria-haspopup": "menu",
+        "aria-expanded": open,
+        "data-dot": dot ? "true" : undefined,
+        onClick: (e) => {
+          e.stopPropagation();
+          setOpen(!open);
+        },
+      },
+      "⋯",
+    ),
+    open &&
+      React.createElement(
+        "div",
+        { role: "menu", "aria-label": label },
+        items.map((item, i) =>
+          item === "separator"
+            ? React.createElement("hr", { key: "sep-" + i })
+            : item
+              ? React.createElement(
+                  "button",
+                  {
+                    key: item.key || item.label,
+                    type: "button",
+                    role: "menuitem",
+                    "aria-disabled": item.disabled ? true : undefined,
+                    "data-danger": item.danger ? "true" : undefined,
+                    onClick: (e) => {
+                      e.stopPropagation();
+                      if (item.disabled) return;
+                      setOpen(false);
+                      if (item.onSelect) item.onSelect();
+                    },
+                  },
+                  item.label,
+                  item.badge ? " " + item.badge : null,
+                )
+              : null,
+        ),
+      ),
+  );
+}
+
 // dash-react ≥1.0.69 ChoiceMenu: a menu button ("Type: Widget") that opens
 // a menu of radio items; disabled options show their hint and can't be picked.
 function ChoiceMenu({
@@ -1059,6 +1114,7 @@ module.exports = {
   RadioGroup,
   FilterMenu,
   ChoiceMenu,
+  ActionMenu,
   Heading2,
   SearchInput,
   Checkbox,

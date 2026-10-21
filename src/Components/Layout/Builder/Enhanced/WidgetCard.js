@@ -48,6 +48,9 @@ const WidgetCardHeader_Component = ({
   onSplitHorizontal = null,
   onSplitVertical = null,
   onEditWithAI,
+  // Move to another cell without dragging (consolidation Phase 3P).
+  onMove = null,
+  changeBlocked = "",
   // Merge selection props
   isSelected = false,
   isSelectable = true,
@@ -72,6 +75,8 @@ const WidgetCardHeader_Component = ({
       onSplitHorizontal={onSplitHorizontal}
       onSplitVertical={onSplitVertical}
       onEditWithAI={onEditWithAI}
+      onMove={onMove}
+      changeBlocked={changeBlocked}
       isSelected={isSelected}
       isSelectable={isSelectable}
       onToggleSelect={onToggleSelect}
