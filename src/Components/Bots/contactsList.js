@@ -1,7 +1,8 @@
 /**
  * contactsList.js — the Bots dock's contacts list (bot-teams PRD TEAM-015):
  * every user bot as a contact, its latest activity on the row, grouped by
- * dashboard or one list, newest activity first or A–Z.
+ * dashboard or one list, newest activity first or A–Z. The open
+ * dashboard's lead and the Dash team are pinned above (Phase 4a).
  *
  * Pure: no React, no IPC.
  */
@@ -133,12 +134,36 @@ function sortContacts(list, sort) {
 }
 
 /**
+ * The lead of the dashboard that's open, pinned at the top of the Bots
+ * panel (consolidation Phase 4a) — or null (no dashboard open, or no lead).
+ */
+export function pinnedLeadOf(bots, workspaceId) {
+  if (workspaceId === null || workspaceId === undefined) return null;
+  return (
+    (bots || []).find(
+      (b) =>
+        b &&
+        b.role === "lead" &&
+        b.workspaceId !== null &&
+        b.workspaceId !== undefined &&
+        String(b.workspaceId) === String(workspaceId),
+    ) || null
+  );
+}
+
+/** Whether the Dash team's pinned row matches a search. */
+export function dashTeamMatches(query) {
+  const q = lower(query).trim();
+  return !q || "dash team".includes(q);
+}
+
+/**
  * The contacts list's sections.
  * @param {object} args
  *   bots, workspaces, lastRuns ({ [botId]: { at, status, text, error } }),
  *   running, approvals, paused (Set of bot ids), budgets ({ [botId]:
  *   botStatus }), sort ("recent" | "az"),
- *   byTeam, query, now
+ *   byTeam, query, now, exclude (bot ids shown elsewhere — the pinned lead)
  * @returns {Array<{ key, label, contacts }>} — one section ("All bots") when
  *   not grouped; empty sections left out.
  */
@@ -155,10 +180,12 @@ export function contactSections({
   byTeam = true,
   query = "",
   now = Date.now(),
+  exclude = [],
 } = {}) {
   const q = lower(query).trim();
   const visible = (bots || []).filter(
-    (b) => b && b.id && (!q || lower(b.name).includes(q)),
+    (b) =>
+      b && b.id && !exclude.includes(b.id) && (!q || lower(b.name).includes(q)),
   );
   const contact = (b) =>
     contactOf(b, {

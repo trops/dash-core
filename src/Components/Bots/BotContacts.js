@@ -14,14 +14,19 @@ import {
   ThemeContext,
   useStatusTokens,
 } from "@trops/dash-react";
+import { WorkspaceContext } from "../../Context/WorkspaceContext";
 import { BotAvatar } from "./BotAvatar";
 import { STATUS_DOT } from "./teamUtils";
 import {
   budgetLimitText,
+  contactOf,
   contactSections,
+  dashTeamMatches,
   needsYouItems,
+  pinnedLeadOf,
   shortTime,
 } from "./contactsList";
+import { DASH_TEAM_CONTACT, openDashTeam } from "./dashTeamContact";
 
 /**
  * BotContacts — the Bots dock panel (bot-teams PRD TEAM-015): your bots as a
@@ -30,6 +35,11 @@ import {
  * open its bot page in a large modal (app-navigation NAV-016 AC5) — a
  * `dash:open-bot` event the host answers, unless `onOpenBot` is given.
  * Approvals waiting on you stay at the top ("Needs you").
+ *
+ * Pinned under that (consolidation Phase 4a): the open dashboard's lead (the
+ * host's WorkspaceContext says which — none on a Manage page) and the Dash
+ * team, which opens the team's conversations (`dash:open-dash-team`). The
+ * pinned lead isn't repeated in the list below.
  *
  * @param {object} contacts  useBotContacts()
  * @param {object[]} workspaces  all dashboards (group names)
@@ -91,6 +101,9 @@ export const BotContacts = ({
   const muted = currentTheme["text-neutral-medium"] || "";
   const strong = currentTheme["text-neutral-light"] || "";
   const statusTokens = useStatusTokens();
+  const { workspaceData } = useContext(WorkspaceContext) || {};
+  const openDashboardId =
+    workspaceData && workspaceData.id !== undefined ? workspaceData.id : null;
 
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState(() =>
@@ -131,6 +144,27 @@ export const BotContacts = ({
   const budgets = c.budgets || NO_RUNS;
   const queued = c.queued || NO_RUNS;
 
+  const lead = pinnedLeadOf(bots, openDashboardId);
+  const leadId = lead ? lead.id : null;
+  const q = query.trim().toLowerCase();
+  const leadShown =
+    lead &&
+    (!q ||
+      String(lead.name || "")
+        .toLowerCase()
+        .includes(q))
+      ? contactOf(lead, {
+          last: lastRuns[lead.id] || null,
+          running,
+          approvals,
+          paused,
+          budget: budgets[lead.id] || null,
+          queued: queued[lead.id] || 0,
+          now,
+        })
+      : null;
+  const teamShown = dashTeamMatches(query);
+
   const sections = useMemo(
     () =>
       contactSections({
@@ -146,8 +180,10 @@ export const BotContacts = ({
         byTeam,
         query,
         now,
+        exclude: leadId ? [leadId] : EMPTY,
       }),
     [
+      leadId,
       bots,
       workspaces,
       lastRuns,
@@ -190,6 +226,49 @@ export const BotContacts = ({
         ]
           .filter(Boolean)
           .join(" · ");
+
+  // One contact's row — the list's and the pinned lead's. `where` leads
+  // the line ("This dashboard · …").
+  const contactRow = (ct, where = null) => {
+    const when = shortTime(ct.at, now);
+    return (
+      <ListRow
+        key={ct.id}
+        testId="bot-contact-row"
+        icon={<ContactAvatar bot={ct.bot} status={ct.status} />}
+        ariaLabel={`${ct.name}${ct.isLead ? ", lead" : ""}: ${ct.line}`}
+        title={
+          <span className="flex flex-row items-center gap-1.5 min-w-0">
+            <span className="truncate">{ct.name}</span>
+            {ct.isLead ? (
+              <StatusBadge state="neutral" label="Lead" compact />
+            ) : null}
+            {ct.approvals ? (
+              <StatusBadge
+                state="warning"
+                label={`${ct.approvals} to approve`}
+                compact
+              />
+            ) : null}
+            {ct.budget === "over" ? (
+              <StatusBadge state="warning" label="Over budget" compact />
+            ) : ct.budget === "warn" ? (
+              <StatusBadge state="neutral" label="80% of budget" compact />
+            ) : null}
+          </span>
+        }
+        meta={
+          <span className="flex flex-row gap-1 min-w-0">
+            <span className="truncate">
+              {where ? `${where} · ${ct.line}` : ct.line}
+            </span>
+            {when ? <span className="flex-shrink-0">· {when}</span> : null}
+          </span>
+        }
+        onClick={() => openBot(ct.id)}
+      />
+    );
+  };
 
   return (
     <div className="flex flex-col flex-1 min-h-0" data-testid="bot-contacts">
@@ -265,15 +344,33 @@ export const BotContacts = ({
           </div>
         ) : null}
 
+        {leadShown || teamShown ? (
+          <div className="flex flex-col" data-testid="bot-contacts-pinned">
+            <div className="px-2 pt-3 pb-1">
+              <SectionLabel text="Pinned" />
+            </div>
+            {leadShown ? contactRow(leadShown, "This dashboard") : null}
+            {teamShown ? (
+              <ListRow
+                testId="bot-contact-dash-team"
+                icon={<BotAvatar bot={DASH_TEAM_CONTACT} icon="people-group" />}
+                ariaLabel="Dash team: ask about anything, or plan something new"
+                title="Dash team"
+                meta="Ask about anything, or plan something new"
+                onClick={() => openDashTeam()}
+              />
+            ) : null}
+          </div>
+        ) : null}
+
         {!c.loading && !bots.length ? (
           <EmptyState
-            icon={<FontAwesomeIcon icon="robot" className="h-6 w-6" />}
             title="No bots yet"
-            description="Make one in Create, or from a dashboard's Bots view. They show up here to chat with."
-            className="my-10"
+            description="Your bots show up here. Ask the Dash team to make one."
+            className="my-6"
           />
         ) : null}
-        {bots.length && !sections.length ? (
+        {q && bots.length && !sections.length && !leadShown && !teamShown ? (
           <p className={`px-3 py-6 text-sm ${muted}`}>
             No bots match &ldquo;{query}&rdquo;.
           </p>
@@ -285,59 +382,13 @@ export const BotContacts = ({
             className="flex flex-col"
             data-testid="bot-contacts-section"
           >
-            {byTeam ? (
+            {/* One flat list still gets a label under Pinned. */}
+            {byTeam || leadShown || teamShown ? (
               <div className="px-2 pt-3 pb-1">
                 <SectionLabel text={s.label} />
               </div>
             ) : null}
-            {s.contacts.map((ct) => {
-              const when = shortTime(ct.at, now);
-              return (
-                <ListRow
-                  key={ct.id}
-                  testId="bot-contact-row"
-                  icon={<ContactAvatar bot={ct.bot} status={ct.status} />}
-                  ariaLabel={`${ct.name}${ct.isLead ? ", lead" : ""}: ${ct.line}`}
-                  title={
-                    <span className="flex flex-row items-center gap-1.5 min-w-0">
-                      <span className="truncate">{ct.name}</span>
-                      {ct.isLead ? (
-                        <StatusBadge state="neutral" label="Lead" compact />
-                      ) : null}
-                      {ct.approvals ? (
-                        <StatusBadge
-                          state="warning"
-                          label={`${ct.approvals} to approve`}
-                          compact
-                        />
-                      ) : null}
-                      {ct.budget === "over" ? (
-                        <StatusBadge
-                          state="warning"
-                          label="Over budget"
-                          compact
-                        />
-                      ) : ct.budget === "warn" ? (
-                        <StatusBadge
-                          state="neutral"
-                          label="80% of budget"
-                          compact
-                        />
-                      ) : null}
-                    </span>
-                  }
-                  meta={
-                    <span className="flex flex-row gap-1 min-w-0">
-                      <span className="truncate">{ct.line}</span>
-                      {when ? (
-                        <span className="flex-shrink-0">· {when}</span>
-                      ) : null}
-                    </span>
-                  }
-                  onClick={() => openBot(ct.id)}
-                />
-              );
-            })}
+            {s.contacts.map((ct) => contactRow(ct))}
           </div>
         ))}
       </div>

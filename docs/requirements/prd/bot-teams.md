@@ -756,6 +756,8 @@ _Slice 2 — drag to wire_
 - [x] AC7: **Nothing silently dropped.** A paused bot says so in its chat with **Resume**, and the message box waits. A message the runner skips (paused, busy with another run) goes back into the box with why. (Also in the Bots view's conversation.)
 - [x] AC8 (slice 2): bot chats use the shared chat components (ChatMessage / ChatToolCall / ChatComposer), so they look like Create's: replies labelled with the bot and its model · tokens, run labels as centered dividers, and Stop in the box while the bot answers. Approval and error cards, Review draft (in the reply footer), the paused note and New conversation stay.
 
+- [x] AC9 (consolidation Phase 4a, 2026-10-21): **Pinned.** Under Needs you, a **Pinned** section holds the open dashboard's lead ("This dashboard · what it last did"; the host's `WorkspaceContext` says which dashboard — none on a Manage page) and **Dash team** ("Ask about anything, or plan something new"), which opens the Dash team's page (app-navigation NAV-016 AC7, `dash:open-dash-team`). The pinned lead isn't repeated below; Pinned stays with By team off (the rest is then one list labelled "All bots"); search filters the pinned rows too. With no bots of your own: "Your bots show up here. Ask the Dash team to make one."
+
 **Notes (slice 1):** dash-core `Bots/BotContacts.js` (panel), `useBotContacts.js` (useBotMonitor + latest runs + pause state), `contactsList.js` (pure: rows, groups, sort, search); `bots.lastRuns()` (`BOTS_LAST_RUNS`, `electron/bots/recentRuns.js` `lastRuns`) gives each user bot's latest run — `listRecentRuns` only covers the newest 50 across all bots, so quiet bots had no activity. `BotChat` gains `paused` / `onResume` and keeps a skipped message (`skipNotice`). Known gap: an over-budget bot that isn't a lead can't be told apart yet (its tools are refused during the run).
 
 **TEAM-010: Lead coordination (exploratory)**
@@ -1135,3 +1137,4 @@ A draft (TEAM-005) is checked when it's drafted and checked again when it's acce
 | 1.16    | 2026-10-08 | John   | TEAM-014 slice 1: diagram, summary, detail beside, list avatars                        |
 | 1.17    | 2026-10-08 | John   | TEAM-014 slice 2: drag to wire, trigger notes; Implemented                             |
 | 1.18    | 2026-10-20 | John   | Consolidation 2c-2: TEAM-005 drafts superseded by the lead's hand-off to the Dash team |
+| 1.19    | 2026-10-21 | John   | Consolidation 4a: TEAM-015 AC9 — the open dashboard's lead and the Dash team pinned    |

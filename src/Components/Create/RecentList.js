@@ -55,11 +55,12 @@ const RecentRow = ({ row, onOpen, onRemove }) => (
 );
 
 /**
- * Recent in two labelled sections (dock and Create's start screen):
- * Questions & plans, and Unfinished widgets (Widget Builder drafts — open to
- * carry on in the builder). Empty sections are hidden; `empty` shows when
- * both are. Removing a question or plan asks first (design guide rule 10);
- * `onRemove` runs once it's confirmed.
+ * Recent in two labelled sections (the dock's Create panel): Plans, and
+ * Unfinished widgets (Widget Builder drafts — open to carry on in the
+ * builder). Questions are the Dash team's conversations now (consolidation
+ * Phase 4a). Empty sections are hidden; `empty` shows when both are.
+ * Removing a plan asks first (design guide rule 10); `onRemove` runs once
+ * it's confirmed.
  */
 export const RecentList = ({
   sections,
@@ -76,7 +77,7 @@ export const RecentList = ({
     <div className="flex flex-col gap-4" data-testid="create-recent">
       {conversations.length ? (
         <div className="flex flex-col gap-1" data-testid="recent-conversations">
-          <SectionLabel text="Questions & plans" />
+          <SectionLabel text="Plans" />
           {conversations.map((row) => (
             <RecentRow
               key={row.key}

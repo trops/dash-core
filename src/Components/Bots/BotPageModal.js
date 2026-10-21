@@ -7,6 +7,7 @@ import {
   themeObjects,
 } from "@trops/dash-react";
 import { BotPage } from "./BotPage";
+import { DashTeamPage } from "./DashTeamPage";
 
 const EMPTY = [];
 
@@ -19,7 +20,11 @@ const EMPTY = [];
  * some, clicking outside or pressing Escape does nothing (the page's own ×
  * asks first), and a request for another bot or tab asks first too.
  *
- * @param {{ botId: string, tab?: string }|null} request  the bot to show
+ * The Dash team's page (DashTeamPage, Phase 4a) shows here too:
+ * `{ dashTeam: true, tab }`.
+ *
+ * @param {{ botId?: string, dashTeam?: boolean, tab?: string }|null} request
+ *   the bot (or the Dash team) to show
  * @param {() => void} onClose
  * @param {object[]} [workspaces]
  * @param {(workspace, botId) => void} [onOpenInBotsView]
@@ -52,7 +57,7 @@ export const BotPageModal = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request]);
 
-  if (!shown || !shown.botId) return null;
+  if (!shown || !(shown.botId || shown.dashTeam)) return null;
 
   const close = () => {
     setDirty(false);
@@ -81,31 +86,49 @@ export const BotPageModal = ({
         } ${panelStyles.borderColor || ""} ${panelStyles.textColor || ""}`}
         data-testid="bot-page-modal"
       >
-        <BotPage
-          key={`${shown.botId}-${shown.tab || "conversation"}`}
-          botId={shown.botId}
-          initialTab={shown.tab || "conversation"}
-          workspaces={workspaces}
-          onOpenInBotsView={
-            onOpenInBotsView
-              ? (ws, botId) => {
-                  close();
-                  onOpenInBotsView(ws, botId);
-                }
-              : null
-          }
-          onOpenSettings={
-            onOpenSettings
-              ? (section) => {
-                  close();
-                  onOpenSettings(section);
-                }
-              : null
-          }
-          onClose={close}
-          onDeleted={close}
-          onDirtyChange={setDirty}
-        />
+        {shown.dashTeam ? (
+          <DashTeamPage
+            key={`dash-team-${shown.tab || "conversation"}`}
+            initialTab={shown.tab || "conversation"}
+            workspaces={workspaces}
+            onOpenPlan={(seed) => {
+              close();
+              window.dispatchEvent(
+                new CustomEvent("dash:open-create", {
+                  detail: { type: "dashboard", seed },
+                }),
+              );
+            }}
+            onClose={close}
+            onDirtyChange={setDirty}
+          />
+        ) : (
+          <BotPage
+            key={`${shown.botId}-${shown.tab || "conversation"}`}
+            botId={shown.botId}
+            initialTab={shown.tab || "conversation"}
+            workspaces={workspaces}
+            onOpenInBotsView={
+              onOpenInBotsView
+                ? (ws, botId) => {
+                    close();
+                    onOpenInBotsView(ws, botId);
+                  }
+                : null
+            }
+            onOpenSettings={
+              onOpenSettings
+                ? (section) => {
+                    close();
+                    onOpenSettings(section);
+                  }
+                : null
+            }
+            onClose={close}
+            onDeleted={close}
+            onDirtyChange={setDirty}
+          />
+        )}
         {/* Mounted only while asking: a dialog's layer is placed when it
             mounts, and one mounted with this modal would sit beneath it. */}
         {pending ? (

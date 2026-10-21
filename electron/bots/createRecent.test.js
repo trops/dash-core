@@ -100,6 +100,20 @@ describe("CreateRecent — conversations kept as they go", () => {
     assert.equal(r.get(a.id).conversation.messages.length, 1);
   });
 
+  it("keeps the newest entries of each kind: questions don't push plans out (Phase 4a)", () => {
+    const r = recent();
+    r.save({ prompt: "the one plan" });
+    for (let i = 0; i < MAX_ENTRIES + 3; i++) {
+      r.save({ kind: "question", prompt: `q${i}` });
+    }
+    const list = r.list();
+    assert.equal(list.filter((e) => e.kind === "question").length, MAX_ENTRIES);
+    assert.deepEqual(
+      list.filter((e) => e.kind === "plan").map((e) => e.title),
+      ["the one plan"],
+    );
+  });
+
   it("lists newest first, as summaries; keeps the newest entries and messages", () => {
     const r = recent();
     for (let i = 0; i < MAX_ENTRIES + 3; i++) r.save({ prompt: `p${i}` });
