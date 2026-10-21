@@ -453,7 +453,7 @@ function buildRequest(
   plan,
   piece,
   fix = null,
-  { cell = false, edit = null } = {},
+  { cell = false, standalone = false, edit = null } = {},
 ) {
   if (edit) return editBuildRequest(plan, piece, fix, edit);
   const providers = (piece.providers || []).join(", ") || "none";
@@ -476,7 +476,9 @@ function buildRequest(
       : []),
     ...(cell
       ? [
-          "It goes into one cell of a dashboard the user is editing: build only this widget, and don't place it — the user previews it and the editor puts it in the cell.",
+          standalone
+            ? "It's one new widget for the user's widgets, not for a dashboard: build only this widget, and don't place it — the user previews it, then it's installed."
+            : "It goes into one cell of a dashboard the user is editing: build only this widget, and don't place it — the user previews it and the editor puts it in the cell.",
         ]
       : []),
     `Plan: ${plan.summary || ""}`,
@@ -1368,6 +1370,7 @@ function createPlanBuild(plan, deps, opts = {}) {
           "builder",
           buildRequest(plan, piece, step.fix || null, {
             cell: !!opts.cell,
+            standalone: !!opts.standalone,
             edit: opts.edit || null,
           }),
         );

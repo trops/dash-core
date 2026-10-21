@@ -198,6 +198,19 @@ test("closing Create stops a cell build that's still going", () => {
   expect(window.mainApi.bots.stopPlanBuild).toHaveBeenCalledWith("b9");
 });
 
+test("Back stops a cell build that's still going, too (3b review)", () => {
+  setup();
+  window.mainApi.bots.stopPlanBuild = jest.fn().mockResolvedValue({ ok: true });
+  describeIt();
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  act(() => mockScoutProps.onBuildNew());
+  act(() =>
+    mockPlanProps.onState({ recentId: null, busy: false, buildId: "b9" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Back" }));
+  expect(window.mainApi.bots.stopPlanBuild).toHaveBeenCalledWith("b9");
+});
+
 describe("cellPieceFromMatch", () => {
   it.each([
     [

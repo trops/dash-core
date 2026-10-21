@@ -591,7 +591,13 @@ export const WidgetsPage = ({
   }));
 
   const pick = async (option) => {
-    if (option === "builder") {
+    if (option === "dash-team") {
+      // Create › Widget: the Dash team (consolidation Phase 3b).
+      setMode(null);
+      window.dispatchEvent(
+        new CustomEvent("dash:open-create", { detail: { type: "widget" } }),
+      );
+    } else if (option === "builder") {
       setMode(null);
       openBuilder();
     } else if (option === "discover") {

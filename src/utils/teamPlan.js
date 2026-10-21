@@ -384,7 +384,9 @@ function validatePlan(plan, context = {}) {
     const widgets = pieces.filter((p) => p && p.kind === "widget");
     if (widgets.length !== 1 || pieces.length !== 1 || target) {
       errors.push(
-        "A plan for one cell is one widget — no bots, theme, layout or dashboard.",
+        context.standalone
+          ? "A plan for one widget is that widget — no bots, theme, layout or dashboard."
+          : "A plan for one cell is one widget — no bots, theme, layout or dashboard.",
       );
     }
   }

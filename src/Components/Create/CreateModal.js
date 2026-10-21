@@ -13,7 +13,6 @@ import {
   Button,
   Button2,
   Button3,
-  ChatComposer,
   Heading2,
   SubHeading3,
   TextArea,
@@ -31,13 +30,6 @@ import { getWidgetBuilderRenderer } from "../../utils/widgetBuilderRenderer";
 import { CreateScoutStep } from "./CreateScoutStep";
 import { CreatePlanStep } from "./CreatePlanStep";
 import { CreateEdit } from "./CreateEdit";
-import { AskStep } from "./AskStep";
-import {
-  RecipientPicker,
-  useTeamLeads,
-} from "../AiAssistant/components/RecipientPicker";
-import { recentSections } from "./recentRows";
-import { RecentList } from "./RecentList";
 import { StarterCards } from "./StarterCards";
 import { starterPackages, starterToPlan, remixRequest } from "./starters";
 import { foldCreate } from "./CreateDockPanel";
@@ -45,7 +37,6 @@ import { PlanMenu } from "./PlanMenu";
 import { pickType } from "./autoType";
 import { themeFromPrompt } from "./themeFromPrompt";
 import { teamContext, teamLine, contextRequest } from "./teamContext";
-import { createType } from "../../utils/handoff";
 import {
   useRegistryAuthGate,
   isRegistryAuthError,
@@ -98,6 +89,20 @@ export function cellStepIndex({ scout, plan, buildStatus }) {
   if (scout) return 1;
   return 0;
 }
+
+/**
+ * A widget built on its own (Phase 3b): its name for the Done screen — its
+ * config's display name, else its component's last part as words
+ * ("ai-built.order-lookup.OrderLookup" → "Order Lookup").
+ */
+export function builtWidgetName(made) {
+  const component = made && made.component ? String(made.component) : "";
+  const cfg = component ? ComponentManager.config(component) : null;
+  const named = cfg && (cfg.displayName || cfg.name);
+  if (named && named !== "My Workspace") return named;
+  const tail = component.split(".").pop();
+  return tail ? tail.replace(/([a-z0-9])([A-Z])/g, "$1 $2") : "Your widget";
+}
 // The no-AI starts every type shows (dashboards, themes) — not for a cell.
 const NO_AI_COMMON_KEYS = new Set(noAiOptions("__none__").map((o) => o.key));
 
@@ -146,9 +151,8 @@ export function cellPieceFromMatch(match) {
  * Dashboard and Theme are listed but can't be made with AI yet; their no-AI
  * starts are always in the row below.
  *
- * Ask a question (consolidation Phase 2a — it was the right rail's Create
- * panel): to the Dash team (the Planner) or a dashboard's team lead (To:).
- * It opens as a step here; an answer that plans something opens as a plan.
+ * Questions and Recent live in the sidebar's Create panel; this screen is
+ * only for making something (consolidation Phase 3b).
  *
  * @param {boolean} open
  * @param {(open: boolean) => void} setIsOpen
@@ -229,6 +233,8 @@ export const CreateModal = ({
   const [scoutStep, setScoutStep] = useState(null);
   // null = no plan; { prompt } = planning a dashboard with the Planner (4a).
   const [planStep, setPlanStep] = useState(null);
+  // A widget built on its own (Phase 3b): { name } — the Done screen.
+  const [widgetDone, setWidgetDone] = useState(null);
   // The plan's { recentId, busy }, for Fold (4e-2).
   const [planInfo, setPlanInfo] = useState(null);
   // A lead's hand-off note ({ note, from }), shown and passed on (2c-2).
@@ -248,9 +254,14 @@ export const CreateModal = ({
   );
   // A cell or bot build's live status, for the step bar (Phase 2b).
   const [cellBuildStatus, setCellBuildStatus] = useState(null);
+  // A widget on its own builds like a cell's (Phase 3b).
+  const widgetPlan = !!(planStep && planStep.widget);
   const cellBuildId =
-    (cell || botPlan) && planInfo ? planInfo.buildId || null : null;
-  const cellWidget = cell && planInfo ? planInfo.widgetName || "" : "";
+    (cell || botPlan || widgetPlan) && planInfo
+      ? planInfo.buildId || null
+      : null;
+  const cellWidget =
+    (cell || widgetPlan) && planInfo ? planInfo.widgetName || "" : "";
   useEffect(() => {
     setCellBuildStatus(cellBuildId ? "running" : null);
     const bots = typeof window !== "undefined" ? window.mainApi?.bots : null;
@@ -277,29 +288,8 @@ export const CreateModal = ({
     };
   }, [cellBuildId]);
   const [bots, setBots] = useState(EMPTY);
-  // Recent (CRE-007 AC2, 4e-1): Widget Builder drafts and plan
-  // conversations (summaries from the main process).
-  const [drafts, setDrafts] = useState(EMPTY);
-  const [recentPlans, setRecentPlans] = useState(EMPTY);
   // Starters (CRE-002, 5b): registry dashboards tagged "starter" with bots.
   const [starters, setStarters] = useState(EMPTY);
-  // Ask a question: the box, who it goes to (null = the Dash team), and the
-  // open question ({ question, recentId, title, recipient }).
-  const [asking, setAsking] = useState("");
-  const [recipient, setRecipient] = useState(null);
-  const [askStep, setAskStep] = useState(null);
-  const { leads, loaded: leadsLoaded } = useTeamLeads(!!open);
-  // The chosen lead was deleted or turned off → back to the Dash team.
-  useEffect(() => {
-    if (
-      recipient &&
-      leadsLoaded &&
-      !leads.some((l) => l.botId === recipient.botId)
-    ) {
-      setRecipient(null);
-    }
-  }, [recipient, leads, leadsLoaded]);
-
   // Each open starts fresh on the requested type.
   useEffect(() => {
     if (!open) return;
@@ -310,8 +300,6 @@ export const CreateModal = ({
     setLeadContext(initialContext);
     setBotForm(null);
     setBuilderStep(null);
-    setAskStep(null);
-    setAsking("");
     if (initialRecentId) {
       setPlanStep({ prompt: "", recentId: initialRecentId });
     } else if (initialSeed) {
@@ -330,44 +318,13 @@ export const CreateModal = ({
   // The cursor starts in the prompt (CRE-001 AC2). The dialog focuses its
   // first control (Close) on open, so take focus back right after.
   useEffect(() => {
-    if (!open || botForm || builderStep || askStep) return undefined;
+    if (!open || botForm || builderStep) return undefined;
     const t = setTimeout(() => {
       const el = document.getElementById("create-prompt");
       if (el) el.focus();
     }, 50);
     return () => clearTimeout(t);
-  }, [open, botForm, builderStep, askStep]);
-
-  // Recent: widget drafts (the host's drafts store) and plan conversations
-  // (Create's Recent, live as builds progress). None outside the app.
-  useEffect(() => {
-    if (!open) return undefined;
-    let alive = true;
-    const api = typeof window !== "undefined" ? window.mainApi : null;
-    if (api?.drafts?.list) {
-      Promise.resolve(api.drafts.list())
-        .then((list) => {
-          if (alive && Array.isArray(list)) setDrafts(list);
-        })
-        .catch(() => {});
-    }
-    const bots = api && api.bots;
-    const loadPlans = () => {
-      if (!bots || !bots.listCreateRecent) return;
-      Promise.resolve(bots.listCreateRecent())
-        .then((list) => {
-          if (alive && Array.isArray(list)) setRecentPlans(list);
-        })
-        .catch(() => {});
-    };
-    loadPlans();
-    const id =
-      bots && bots.onCreateRecent ? bots.onCreateRecent(loadPlans) : null;
-    return () => {
-      alive = false;
-      if (id != null && bots.removeListener) bots.removeListener(id);
-    };
-  }, [open]);
+  }, [open, botForm, builderStep]);
 
   // Starters, for Auto and Dashboard (the registry index; none offline).
   const wantsStarters = type === "auto" || type === "dashboard";
@@ -448,15 +405,19 @@ export const CreateModal = ({
   const close = () => {
     // A cell build ends here: closed early, it stops (nothing half-done is
     // left running, or installed unseen, for a cell no one is waiting on).
-    if (cell && planInfo && planInfo.buildId) {
+    if (
+      (cell || (planStep && planStep.widget)) &&
+      planInfo &&
+      planInfo.buildId
+    ) {
       const bots = window.mainApi && window.mainApi.bots;
       if (bots && bots.stopPlanBuild) {
         Promise.resolve(bots.stopPlanBuild(planInfo.buildId)).catch(() => {});
       }
     }
     askSeq.current += 1;
-    setAskStep(null);
     setPlanStep(null);
+    setWidgetDone(null);
     setScoutStep(null);
     setBuilderStep(null);
     setBotForm(null);
@@ -484,7 +445,6 @@ export const CreateModal = ({
     botPlan ||
     (isBot &&
       !botForm &&
-      !askStep &&
       !builderStep &&
       !autoStep &&
       !themeStep &&
@@ -597,8 +557,10 @@ export const CreateModal = ({
       makeTheme(action.detail.prompt);
       return;
     }
-    if (action.kind === "widget-builder") {
-      // The Scout looks for something that already does this first (CRE-009).
+    if (action.kind === "widget-plan") {
+      // The Scout looks for something that already does this first (CRE-009),
+      // then the Dash team plans and builds one widget (Phase 3b). Without
+      // the Dash team: the Widget Builder, to build it by hand.
       if (
         action.detail &&
         action.detail.prompt &&
@@ -607,7 +569,7 @@ export const CreateModal = ({
       ) {
         setScoutStep({ prompt: action.detail.prompt, detail: action.detail });
       } else {
-        openBuilder(action.detail, "New widget");
+        openBuilder({}, "New widget");
       }
     } else if (action.kind === "dashboard-plan") {
       setPlanStep({ prompt: action.detail.prompt });
@@ -669,18 +631,6 @@ export const CreateModal = ({
       : leadContext
         ? teamLine(teamOn(planDashboardId))
         : "";
-  // A lead's hand-off from Ask, here in Create: the start screen, filled in
-  // — the request, its type, that dashboard and the lead's note.
-  const takeHandoff = (handoff, lead) => {
-    setAskStep(null);
-    setType(createType(handoff.type));
-    setPrompt(handoff.request);
-    setLeadContext({ note: handoff.note || "", from: lead.leadName || "" });
-    if (lead.dashboardId != null) {
-      setWhereId(String(lead.dashboardId));
-      setPlanDashboardId(lead.dashboardId);
-    }
-  };
   // A bot the Scout found, as the plan's one bot (a copy): one of the
   // user's (by id), or a registry dashboard package's (by name).
   const useBot = async (match) => {
@@ -740,32 +690,6 @@ export const CreateModal = ({
     });
   };
 
-  const continueDraft = (draft) => {
-    openBuilder({ resumeDraftId: draft.id }, draft.name || "Draft");
-  };
-
-  const recent = recentSections(recentPlans, drafts);
-  const openRecent = (row) => {
-    if (row.kind === "widget-draft") {
-      continueDraft({ id: row.id, name: row.title });
-      return;
-    }
-    if (row.kind === "question") {
-      setAskStep({ recentId: row.id, title: row.title });
-      return;
-    }
-    setPlanStep({ prompt: "", recentId: row.id });
-  };
-  const removeRecent = async (row) => {
-    const bots = window.mainApi && window.mainApi.bots;
-    if (!bots || !bots.removeCreateRecent) return;
-    try {
-      await bots.removeCreateRecent(row.id);
-    } catch (_e) {
-      // the list stays as it is
-    }
-  };
-
   const startWithoutAi = (key) => {
     if (key === "blank-bot") {
       // On the dashboard Where names (2c-1).
@@ -793,47 +717,6 @@ export const CreateModal = ({
       }}
     />
   ) : null;
-
-  const askNow = () => {
-    const q = asking.trim();
-    if (!q) return;
-    setAsking("");
-    setAskStep({
-      question: q,
-      title: q,
-      // Its latest state (paused / running) from the live list.
-      recipient: recipient
-        ? leads.find((l) => l.botId === recipient.botId) || recipient
-        : null,
-    });
-  };
-  const askBox = (
-    <section className="flex flex-col gap-2" data-testid="create-ask">
-      <SubHeading3 title="Or ask a question" padding={false} />
-      <ChatComposer
-        value={asking}
-        onChange={(v) => setAsking(v)}
-        onSend={askNow}
-        ariaLabel="Ask about your dashboards and bots"
-        placeholder={
-          recipient
-            ? `Ask ${recipient.leadName}…`
-            : "Ask about your dashboards and bots…"
-        }
-        above={
-          leads.length ? (
-            <RecipientPicker
-              leads={leads}
-              recipient={recipient}
-              onChange={setRecipient}
-              defaultLabel="Dash team"
-            />
-          ) : null
-        }
-        sendLabel="Ask"
-      />
-    </section>
-  );
 
   // Use in this cell: the match is the one widget of a cell build — it's
   // installed (registry) and previewed, then placed. Without a package the
@@ -1009,22 +892,8 @@ export const CreateModal = ({
           </div>
         )}
 
-        {/* A cell: only a widget for it — no questions, starters or
-            Recent (they lead to other dashboards). A bot: only the bot
-            (the mockup). */}
-        {cell || isBot ? null : askBox}
-
         {!cell && wantsStarters && starters.length > 0 && (
           <StarterCards starters={starters} onPick={pickStarter} />
-        )}
-
-        {cell || isBot ? null : (
-          <RecentList
-            sections={recent}
-            onOpen={openRecent}
-            onRemove={removeRecent}
-            onAllDrafts={() => startWithoutAi("widget-drafts")}
-          />
         )}
 
         <section className="flex flex-col gap-3" data-testid="create-no-ai">
@@ -1033,8 +902,10 @@ export const CreateModal = ({
             {(cell || isBot
               ? // A cell: only widget starts (dashboards are made elsewhere);
                 // a bot: only the bot form.
+                // (An empty cell has its own Add widget; no by-hand row.)
                 noAiOptions(cell ? "widget" : "bot").filter(
-                  (o) => !NO_AI_COMMON_KEYS.has(o.key),
+                  (o) =>
+                    !NO_AI_COMMON_KEYS.has(o.key) && o.key !== "widget-by-hand",
                 )
               : noAiOptions(type)
             ).map((o) => (
@@ -1082,9 +953,15 @@ export const CreateModal = ({
           setPlanStep({ prompt: scoutStep.prompt, bot: { where: botWhere } });
           return;
         }
-        // A cell: the Dash team plans and builds it (Phase 2b).
+        // A cell (Phase 2b), or a widget on its own (Phase 3b): the Dash
+        // team plans and builds it.
         if (cell) setPlanStep({ prompt: detail.prompt || scoutStep.prompt });
-        else openBuilder(detail, "New widget");
+        else {
+          setPlanStep({
+            prompt: detail.prompt || scoutStep.prompt,
+            widget: true,
+          });
+        }
       }}
       onUse={(match) => {
         if (scoutStep.bot) {
@@ -1101,6 +978,27 @@ export const CreateModal = ({
     />
   );
 
+  // A widget built on its own is in the user's widgets (Phase 3b).
+  const widgetDoneView = widgetDone && (
+    <div
+      className="flex flex-col items-center justify-center flex-1 gap-4 p-8 text-center"
+      data-testid="widget-done"
+    >
+      <Heading2 title={`${widgetDone.name} is in your widgets`} />
+      <span className={`text-sm max-w-md ${muted}`}>
+        Put it on a dashboard from any empty cell's Add widget, or find it on
+        the Widgets page.
+      </span>
+      <div className="flex flex-row gap-2">
+        <Button2
+          title="See it on the Widgets page"
+          onClick={() => startWithoutAi("open-widgets")}
+        />
+        <Button title="Done" onClick={close} />
+      </div>
+    </div>
+  );
+
   const planner = planStep && (
     <CreatePlanStep
       key={planStep.recentId || "new"}
@@ -1108,15 +1006,22 @@ export const CreateModal = ({
       recentId={planStep.recentId || null}
       seed={planStep.seed || null}
       note={planStep.note || ""}
-      openDashboardId={cell ? null : planDashboardId}
+      openDashboardId={cell || planStep.widget ? null : planDashboardId}
       cell={cell ? { label: cellLabel } : null}
-      onCellDone={cell ? placeInCell : null}
-      onDiscard={cell ? close : null}
+      widget={!!planStep.widget}
+      onCellDone={
+        cell
+          ? placeInCell
+          : planStep.widget
+            ? (made) => setWidgetDone({ name: builtWidgetName(made) })
+            : null
+      }
+      onDiscard={cell || planStep.widget ? close : null}
       bot={planStep.bot || null}
       context={
         planStep.bot
           ? botContext(planStep.bot.where ? planStep.bot.where.id : null)
-          : cell
+          : cell || planStep.widget
             ? ""
             : dashContext
       }
@@ -1136,23 +1041,6 @@ export const CreateModal = ({
           : null
       }
     />
-  );
-
-  // A question (Ask): its answer can open as a plan, here.
-  const question = askStep && (
-    <div className="flex-1 min-h-0 flex flex-col">
-      <AskStep
-        key={askStep.recentId || `new:${askStep.question}`}
-        question={askStep.question || ""}
-        recentId={askStep.recentId || null}
-        recipient={askStep.recipient || null}
-        onHandoff={takeHandoff}
-        onOpenPlan={(seed) => {
-          setAskStep(null);
-          setPlanStep({ prompt: "", seed });
-        }}
-      />
-    </div>
   );
 
   const builder = builderStep && Builder && (
@@ -1180,8 +1068,9 @@ export const CreateModal = ({
   const planWhere = planBot ? planBot.where || null : botWhere;
   const whereSuffix = planWhere ? ` for ${planWhere.name}` : "";
   const botName = planInfo ? planInfo.botName || "" : "";
-  const stepTitle = askStep
-    ? askStep.title || "Question"
+  const stepTitle = widgetDone
+    ? // The screen itself names it; the header only says where you are.
+      "Done"
     : builderStep
       ? builderStep.title || "New widget"
       : planBot
@@ -1205,7 +1094,13 @@ export const CreateModal = ({
                   : cellBuildStatus
                     ? `Building · ${cellWidget ? `${cellWidget} ` : ""}for ${cellLabel}`
                     : `Plan a widget for ${cellLabel}`
-              : "Plan a dashboard"
+              : widgetPlan
+                ? cellBuildStatus === "waiting-for-you"
+                  ? `Preview · ${cellWidget || "your widget"}`
+                  : cellBuildStatus
+                    ? `Building · ${cellWidget || "your widget"}`
+                    : "Plan a widget"
+                : "Plan a dashboard"
             : scoutStep
               ? cell
                 ? `Looking first · ${cellLabel}`
@@ -1226,9 +1121,17 @@ export const CreateModal = ({
     close();
   };
   const back = () => {
+    // A widget build left behind would run on with no one to preview it
+    // (and a cell's would keep the team from placing anything).
+    if ((cell || widgetPlan) && planInfo && planInfo.buildId) {
+      const bots = window.mainApi && window.mainApi.bots;
+      if (bots && bots.stopPlanBuild) {
+        Promise.resolve(bots.stopPlanBuild(planInfo.buildId)).catch(() => {});
+      }
+    }
     askSeq.current += 1;
-    setAskStep(null);
     setPlanStep(null);
+    setWidgetDone(null);
     setScoutStep(null);
     setBuilderStep(null);
     setBotForm(null);
@@ -1409,8 +1312,8 @@ export const CreateModal = ({
           </div>
         ) : null}
         {authGate}
-        {question ||
-          builder ||
+        {builder ||
+          widgetDoneView ||
           planner ||
           scout ||
           waiting ||

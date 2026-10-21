@@ -138,7 +138,7 @@ describe("CreateModal — start screen", () => {
     setup();
     await screen.findByRole("button", { name: /^AI: Claude Code/ });
     expect(screen.getByTestId("create-hint")).toHaveTextContent(
-      "You'll see it in the Widget Builder first. It's only installed when you press Install.",
+      "You'll get a plan, then see it running. Nothing is installed until you say so.",
     );
     expect(screen.queryByText(/Dash builds it with AI/)).toBeNull();
   });
@@ -151,7 +151,7 @@ describe("CreateModal — start screen", () => {
     expect(sendButton()).not.toBeDisabled();
   });
 
-  test("Enter on a widget prompt opens the Widget Builder with it and closes", async () => {
+  test("without the Dash team, Enter on a widget prompt opens the Widget Builder to build it by hand", async () => {
     const { setIsOpen } = setup();
     await screen.findByRole("button", { name: /^AI: Claude Code/ });
     const onOpen = jest.fn();
@@ -160,9 +160,8 @@ describe("CreateModal — start screen", () => {
     fireEvent.keyDown(promptBox(), { key: "Enter" });
     window.removeEventListener("dash:open-widget-builder", onOpen);
     expect(onOpen).toHaveBeenCalledTimes(1);
-    expect(onOpen.mock.calls[0][0].detail).toEqual({
-      prompt: "Show my open PRs",
-    });
+    // No prompt: the builder has no chat to seed (consolidation Phase 3b).
+    expect(onOpen.mock.calls[0][0].detail).toEqual({});
     expect(setIsOpen).toHaveBeenCalledWith(false);
   });
 
@@ -294,107 +293,6 @@ describe("CreateModal — Bot", () => {
   });
 });
 
-describe("CreateModal — Recent (2c-2, 4e-1)", () => {
-  const now = Date.now();
-  const DRAFTS = [
-    { id: "d1", name: "Tokyo clock", updatedAt: now - 5 * 60_000 },
-    { id: "d2", name: "PR digest", updatedAt: now - 3 * 3_600_000 },
-    { id: "d3", name: "", updatedAt: now - 2 * 86_400_000 },
-    { id: "d4", name: "Oldest", updatedAt: now - 9 * 86_400_000 },
-  ];
-  const PLANS = [
-    {
-      id: "plan_1",
-      title: "Morning Brief",
-      status: "building",
-      progress: { done: 3, total: 7 },
-      tokens: 21000,
-      updatedAt: new Date(now - 60_000).toISOString(),
-    },
-    {
-      id: "plan_2",
-      title: "Ask Test",
-      status: "waiting",
-      waitingFor: ["gmail"],
-      updatedAt: new Date(now - 4 * 86_400_000).toISOString(),
-    },
-  ];
-
-  test("two sections: questions & plans, then unfinished widgets (fix/recent-sections)", async () => {
-    setup({ drafts: DRAFTS, recent: PLANS });
-    const conv = await screen.findByTestId("recent-conversations");
-    expect(conv).toHaveTextContent("Questions & plans");
-    const convRows = [...conv.querySelectorAll('[data-testid="recent-row"]')];
-    expect(convRows.map((r) => r.textContent)).toEqual([
-      expect.stringMatching(
-        /Morning BriefBuilding 3\/7 · 21\.0k tokens · 1m ago/,
-      ),
-      expect.stringMatching(/Ask TestWaiting for Gmail · 4d ago/),
-    ]);
-    const dr = screen.getByTestId("recent-drafts");
-    expect(dr).toHaveTextContent("Unfinished widgets");
-    const drRows = [...dr.querySelectorAll('[data-testid="recent-row"]')];
-    expect(drRows.map((r) => r.textContent)).toEqual([
-      expect.stringMatching(/Tokyo clockContinue in Widget Builder · 5m ago/),
-      expect.stringMatching(/PR digestContinue in Widget Builder · 3h ago/),
-      expect.stringMatching(
-        /Untitled draftContinue in Widget Builder · 2d ago/,
-      ),
-    ]);
-    // Drafts have no Remove here (the Widgets page handles drafts).
-    expect(
-      screen.queryByRole("button", { name: "Remove Tokyo clock from Recent" }),
-    ).toBeNull();
-  });
-
-  test("a widget draft opens the Widget Builder on it and closes Create", async () => {
-    const { setIsOpen } = setup({ drafts: DRAFTS });
-    const onOpen = jest.fn();
-    window.addEventListener("dash:open-widget-builder", onOpen);
-    fireEvent.click(await screen.findByRole("button", { name: /Tokyo clock/ }));
-    window.removeEventListener("dash:open-widget-builder", onOpen);
-    expect(onOpen.mock.calls[0][0].detail).toEqual({ resumeDraftId: "d1" });
-    expect(setIsOpen).toHaveBeenCalledWith(false);
-  });
-
-  test("a plan can be removed from Recent, after a confirm; Recent follows changes", async () => {
-    setup({ recent: PLANS });
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Remove Morning Brief from Recent",
-      }),
-    );
-    // Asks first (design guide rule 10); Keep it changes nothing.
-    expect(screen.getByTestId("confirmation-modal")).toHaveTextContent(
-      "Discard “Morning Brief”?",
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Keep it" }));
-    expect(window.mainApi.bots.removeCreateRecent).not.toHaveBeenCalled();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Remove Morning Brief from Recent" }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
-    expect(window.mainApi.bots.removeCreateRecent).toHaveBeenCalledWith(
-      "plan_1",
-    );
-    expect(window.mainApi.bots.onCreateRecent).toHaveBeenCalled();
-  });
-
-  test("more than three drafts → All N drafts opens the Widgets page", async () => {
-    const { onStartWithoutAi } = setup({ drafts: DRAFTS });
-    fireEvent.click(
-      await screen.findByRole("button", { name: "All 4 drafts" }),
-    );
-    expect(onStartWithoutAi).toHaveBeenCalledWith("widget-drafts");
-  });
-
-  test("nothing in Recent → no section", async () => {
-    setup();
-    await screen.findByRole("button", { name: /^AI: Claude Code/ });
-    expect(screen.queryByTestId("create-recent")).toBeNull();
-  });
-});
-
 describe("CreateModal — the Widget Builder inside Create (2c-3)", () => {
   const Builder = jest.fn(
     ({ initialPrompt, resumeDraftId, onClose, onTitle }) => (
@@ -419,7 +317,7 @@ describe("CreateModal — the Widget Builder inside Create (2c-3)", () => {
     fireEvent.click(sendButton());
   };
 
-  test("Send shows the builder inside Create with the prompt — no window event", async () => {
+  test("without the Dash team, Send shows the builder inside Create, by hand — no window event", async () => {
     const { setIsOpen } = setup();
     const onOpen = jest.fn();
     window.addEventListener("dash:open-widget-builder", onOpen);
@@ -427,9 +325,8 @@ describe("CreateModal — the Widget Builder inside Create (2c-3)", () => {
     window.removeEventListener("dash:open-widget-builder", onOpen);
     expect(onOpen).not.toHaveBeenCalled();
     expect(setIsOpen).not.toHaveBeenCalled();
-    expect(screen.getByTestId("builder-prompt")).toHaveTextContent(
-      "Count my unread email",
-    );
+    // No prompt to seed: the builder has no chat (consolidation Phase 3b).
+    expect(screen.getByTestId("builder-prompt")).toHaveTextContent("null");
     expect(screen.getByTestId("builder-draft")).toHaveTextContent("null");
     const nav = screen.getByRole("navigation", { name: "Where you are" });
     expect(nav).toHaveTextContent("Create›New widget");
@@ -487,18 +384,6 @@ describe("CreateModal — the Widget Builder inside Create (2c-3)", () => {
       screen.getByRole("navigation", { name: "Where you are" }),
     ).toHaveTextContent("Create›Unread mail");
   });
-
-  test("Continue a draft opens it inside Create, titled with its name", async () => {
-    setup({
-      drafts: [{ id: "d1", name: "Tokyo clock", updatedAt: Date.now() }],
-    });
-    fireEvent.click(await screen.findByRole("button", { name: /Tokyo clock/ }));
-    expect(screen.getByTestId("builder-draft")).toHaveTextContent("d1");
-    expect(screen.getByTestId("builder-prompt")).toHaveTextContent("null");
-    expect(
-      screen.getByRole("navigation", { name: "Where you are" }),
-    ).toHaveTextContent("Create›Tokyo clock");
-  });
 });
 
 describe("CreateModal — the Scout looks first (slice 4)", () => {
@@ -531,7 +416,7 @@ describe("CreateModal — the Scout looks first (slice 4)", () => {
     fireEvent.click(sendButton());
   };
 
-  test("Send shows the Scout's step; Build new instead opens the builder with the prompt", async () => {
+  test("Send shows the Scout's step; Build new instead goes to the Planner, not the builder (3b)", async () => {
     setup();
     withScout();
     await sendWidget("an Algolia search widget");
@@ -541,9 +426,8 @@ describe("CreateModal — the Scout looks first (slice 4)", () => {
     ).toHaveTextContent("Create›Looking first");
     expect(screen.queryByTestId("builder")).toBeNull();
     fireEvent.click(screen.getByText("Build new instead"));
-    expect(screen.getByTestId("builder-prompt")).toHaveTextContent(
-      "an Algolia search widget",
-    );
+    expect(await screen.findByTestId("create-plan")).toBeInTheDocument();
+    expect(screen.queryByTestId("builder")).toBeNull();
   });
 
   test("picking a match closes Create and hands it to the host", async () => {

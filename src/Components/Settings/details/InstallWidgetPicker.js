@@ -31,12 +31,12 @@ const OptionCard = ({ icon, title, description, onClick, currentTheme }) => (
  * InstallWidgetPicker — the consolidated chooser shown when the
  * "New Widget" header button is clicked (audit #19).
  *
- * Options:
- * 1. Use Widget Builder (Phase 19 — folds the inline "+ New Widget"
- *    button's function into the chooser so there's one entry point)
- * 2. Search for Widgets (registry browser)
- * 3. Install from File (.zip)
- * 4. Load from Folder
+ * Options (consolidation Phase 3b: the Dash team first, then by hand):
+ * 1. Describe it to the Dash team (Create › Widget)
+ * 2. Build it by hand (the Widget Builder, no AI)
+ * 3. Search for Widgets (registry browser)
+ * 4. Install from File (.zip)
+ * 5. Load from Folder
  */
 export const InstallWidgetPicker = ({ onSelect }) => {
   const { currentTheme } = useContext(ThemeContext);
@@ -56,8 +56,15 @@ export const InstallWidgetPicker = ({ onSelect }) => {
         </span>
         <OptionCard
           icon="wand-magic-sparkles"
-          title="Use Widget Builder"
-          description="Open the AI Widget Builder to create a new widget from scratch"
+          title="Describe it to the Dash team"
+          description="Say what it should do; the team plans it, builds it, checks it and shows it running first"
+          onClick={() => onSelect("dash-team")}
+          currentTheme={currentTheme}
+        />
+        <OptionCard
+          icon="wrench"
+          title="Build it by hand"
+          description="Pick a layout and parts yourself in the Widget Builder. No AI"
           onClick={() => onSelect("builder")}
           currentTheme={currentTheme}
         />

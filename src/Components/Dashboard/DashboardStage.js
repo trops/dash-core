@@ -1486,9 +1486,13 @@ const DashboardStageInner = ({
       setThemeEditorKey(null);
       setThemeStartInCreate(true);
       setIsThemeManagerOpen(true);
-    } else if (key === "widget-drafts") {
-      // Drafts are listed (with Resume) on the Widgets page.
+    } else if (key === "widget-drafts" || key === "open-widgets") {
+      // Drafts are listed (with Resume) on the Widgets page; a widget Create
+      // just built is there too (Phase 3b).
       handleOpenPageGuarded("widgets");
+    } else if (key === "widget-by-hand") {
+      // The Widget Builder, by hand (consolidation Phase 3b).
+      window.dispatchEvent(new CustomEvent("dash:open-widget-builder"));
     } else if (WIDGET_INSTALL_ACTIONS[key]) {
       handleOpenPageGuarded("widgets", {
         widgetLink: { action: WIDGET_INSTALL_ACTIONS[key], nonce: Date.now() },

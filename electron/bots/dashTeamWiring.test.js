@@ -243,7 +243,7 @@ describe("botController — after a build (phase 4d-3)", () => {
     );
     assert.match(
       ctrl,
-      /dashboardName,\s*resume,\s*autoFix: true,\s*cell: !!cell,\s*bot: !!bot,\s*edit: editTarget,/,
+      /dashboardName,\s*resume,\s*autoFix: true,\s*cell: !!cell,\s*standalone: !!\(cell && standalone\),\s*bot: !!bot,\s*edit: editTarget,/,
     );
   });
   it("Remove deletes the dashboard, its bots and lead, and new widgets — not installs", () => {
@@ -374,11 +374,11 @@ describe("botController — cell builds (Phase 2b)", () => {
   it("checks a cell plan as one widget and builds in cell mode", () => {
     assert.match(
       src,
-      /cell: !!cell,\s*bot: !!bot,\s*edit: editTarget[\s\S]{0,160}?\}\);/,
+      /cell: !!cell,\s*standalone: !!\(cell && standalone\),\s*bot: !!bot,\s*edit: editTarget[\s\S]{0,160}?\}\);/,
     );
     assert.match(
       src,
-      /autoFix: true,\s*cell: !!cell,\s*bot: !!bot,\s*edit: editTarget,/,
+      /autoFix: true,\s*cell: !!cell,\s*standalone: !!\(cell && standalone\),\s*bot: !!bot,\s*edit: editTarget,/,
     );
   });
   it("Looks good / Change something only on a waiting preview", () => {
