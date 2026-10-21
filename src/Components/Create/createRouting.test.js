@@ -56,6 +56,8 @@ describe("createRouting (create-entry PRD CRE-001/005)", () => {
       "new-theme",
     ];
     expect(keys("widget")).toEqual([
+      // The Widget Builder, by hand (consolidation Phase 3b).
+      "widget-by-hand",
       "browse-widgets",
       "widget-zip",
       "widget-folder",
@@ -83,9 +85,9 @@ describe("createRouting (create-entry PRD CRE-001/005)", () => {
     );
   });
 
-  test("Widget opens the builder with the prompt; Bot goes to the Dash team (2c-1)", () => {
+  test("Widget and Bot go to the Dash team (2c-1, 3b)", () => {
     expect(routeCreate({ type: "widget", prompt: "  Show my PRs " })).toEqual({
-      kind: "widget-builder",
+      kind: "widget-plan",
       detail: { prompt: "Show my PRs" },
     });
     expect(

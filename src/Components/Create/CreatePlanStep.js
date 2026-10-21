@@ -337,7 +337,11 @@ export const CreatePlanStep = ({
   // { label: "cell 2.2 on Slack Pack" } — the plan is one widget, built with
   // a preview and placed by the editor (onCellDone); a seed with autoBuild
   // (Use in this cell) skips the Planner and builds at once.
-  cell = null,
+  cell: cellProp = null,
+  // One widget on its own (consolidation Phase 3b): Create › Type: Widget —
+  // planned and built like a cell's, previewed, installed into the user's
+  // widgets and not placed anywhere (onCellDone hands it back).
+  widget = false,
   onCellDone = null,
   onDiscard = null,
   // One bot (consolidation Phase 2c-1): { where: { id, name } | null } —
@@ -358,6 +362,17 @@ export const CreatePlanStep = ({
   edit = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
+  // A widget on its own builds as a cell does; only its words differ.
+  const cell =
+    cellProp ||
+    (widget
+      ? {
+          label: "your widgets",
+          approveLabel: "Looks good — add it to my widgets",
+          discardLabel: "Discard — nothing is installed",
+          inputsNote: "Only for trying it here.",
+        }
+      : null);
   const [botMode, setBotMode] = useState(bot);
   const where = botMode ? botMode.where || null : null;
   // One widget, previewed before it's installed: a cell, or a change.
@@ -551,13 +566,15 @@ export const CreatePlanStep = ({
                 ? seed.request
                 : edit
                   ? edit.request
-                  : cell
-                    ? `${prompt}\n\n(Plan exactly one widget for ${cell.label}: the user is editing that dashboard and it goes into that one cell. No bots, theme or layout, and don't set "dashboard" — the user previews the widget and the editor places it. Put the connection and settings they want on the widget piece.)`
-                    : botMode
-                      ? botPlanRequest(prompt, where, context)
-                      : openDashboardId != null
-                        ? `${prompt}\n\n(The user is looking at the dashboard with id ${openDashboardId}.)${context ? `\n\n${context}` : ""}`
-                        : prompt,
+                  : widget
+                    ? `${prompt}\n\n(Plan exactly one new widget for the user's widgets — it isn't going on a dashboard. No bots, theme or layout, and don't set "dashboard": the user previews the widget, then it's installed. Put the connection and settings they want on the widget piece.)`
+                    : cell
+                      ? `${prompt}\n\n(Plan exactly one widget for ${cell.label}: the user is editing that dashboard and it goes into that one cell. No bots, theme or layout, and don't set "dashboard" — the user previews the widget and the editor places it. Put the connection and settings they want on the widget piece.)`
+                      : botMode
+                        ? botPlanRequest(prompt, where, context)
+                        : openDashboardId != null
+                          ? `${prompt}\n\n(The user is looking at the dashboard with id ${openDashboardId}.)${context ? `\n\n${context}` : ""}`
+                          : prompt,
               false,
             );
           });
@@ -707,6 +724,7 @@ export const CreatePlanStep = ({
   const check = plan
     ? validatePlan(plan, {
         cell: !!cell,
+        standalone: !!widget,
         bot: !!botMode,
         edit: edit ? { package: edit.target.package, mode: edit.mode } : null,
       })
@@ -758,6 +776,8 @@ export const CreatePlanStep = ({
       const res = await bots.startPlanBuild(plan, {
         ...(from ? { resumeFrom: from } : {}),
         ...(cell ? { cell: true } : {}),
+        // A widget on its own (Phase 3b): the team is told it's not for a cell.
+        ...(widget ? { standalone: true } : {}),
         // A change: the main process works out the package itself.
         ...(edit
           ? {

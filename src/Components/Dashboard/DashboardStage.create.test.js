@@ -101,9 +101,15 @@ describe("DashboardStage — Create screen", () => {
     expect(source).toMatch(/widgetLink=\{widgetLink\}/);
   });
 
-  test("All drafts opens the Widgets page (2c-2)", () => {
+  test("All drafts, and a widget Create just built, open the Widgets page (2c-2, 3b)", () => {
     expect(source).toMatch(
-      /key === "widget-drafts"\) \{[\s\S]{0,120}handleOpenPageGuarded\("widgets"\);/,
+      /key === "widget-drafts" \|\| key === "open-widgets"\) \{[\s\S]{0,200}handleOpenPageGuarded\("widgets"\);/,
+    );
+  });
+
+  test("Build it by hand opens the Widget Builder (3b)", () => {
+    expect(source).toMatch(
+      /key === "widget-by-hand"\) \{[\s\S]{0,120}new CustomEvent\("dash:open-widget-builder"\)/,
     );
   });
 

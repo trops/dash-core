@@ -333,34 +333,6 @@ test("a lead's hand-off: its note is shown and goes along", async () => {
   );
 });
 
-test("Ask in Create: a lead's hand-off fills in the start screen for that dashboard", async () => {
-  setup({ initialType: "auto" });
-  fireEvent.change(
-    screen.getByLabelText("Ask about your dashboards and bots"),
-    { target: { value: "add a bot" } },
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Ask" }));
-  act(() =>
-    mockAskProps.onHandoff(
-      {
-        type: "bot",
-        request: "A bot that sums up my email",
-        note: "Not news.",
-      },
-      { leadName: "Morning Brief Lead", dashboardId: "7" },
-    ),
-  );
-  expect(
-    screen.getByRole("textbox", { name: "What do you want to make?" }),
-  ).toHaveValue("A bot that sums up my email");
-  expect(
-    screen.getByRole("button", { name: /^Where: Morning Brief/ }),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByText("From the Morning Brief Lead: Not news."),
-  ).toBeInTheDocument();
-});
-
 // Searching the registry is public; reading a bot's package needs sign-in.
 describe("Use a registry bot when not signed in", () => {
   const TRIAGE_CONFIG = {

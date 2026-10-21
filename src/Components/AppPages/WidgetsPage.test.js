@@ -124,6 +124,7 @@ jest.mock("../Settings/details/InstallWidgetPicker", () => ({
   InstallWidgetPicker: ({ onSelect }) => (
     <div data-testid="install-picker">
       <button onClick={() => onSelect("zip")}>pick-zip</button>
+      <button onClick={() => onSelect("dash-team")}>pick-dash-team</button>
       <button onClick={() => onSelect("builder")}>pick-builder</button>
       <button onClick={() => onSelect("discover")}>pick-discover</button>
     </div>
@@ -691,6 +692,18 @@ describe("WidgetsPage page actions", () => {
     fireEvent.click(screen.getByText("pick-builder"));
     window.removeEventListener("dash:open-widget-builder", onEvent);
     expect(fired).toBe(true);
+    expect(screen.queryByTestId("install-picker")).toBeNull();
+  });
+
+  it("Install another › Describe it to the Dash team opens Create on Widget (3b)", async () => {
+    setup({ installRequest: { action: "zip", nonce: 1 } });
+    fireEvent.click(await screen.findByText("Install another"));
+    const details = [];
+    const onEvent = (e) => details.push(e.detail);
+    window.addEventListener("dash:open-create", onEvent);
+    fireEvent.click(screen.getByText("pick-dash-team"));
+    window.removeEventListener("dash:open-create", onEvent);
+    expect(details).toEqual([{ type: "widget" }]);
     expect(screen.queryByTestId("install-picker")).toBeNull();
   });
 });

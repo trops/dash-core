@@ -104,7 +104,9 @@ export const CreateBuildingStep = ({
   onContinue = null,
   // The dock's narrow panel (4e-2).
   compact = false,
-  // A cell build (Phase 2b): { label } — "cell 2.2 on Slack Pack"; done →
+  // A cell build (Phase 2b): { label } — "cell 2.2 on Slack Pack" (a widget
+  // on its own, Phase 3b: "your widgets", with its own approveLabel,
+  // discardLabel and inputsNote for the preview); done →
   // onCellDone(made); Discard → onDiscard().
   cell = null,
   onCellDone = null,
@@ -392,6 +394,13 @@ export const CreateBuildingStep = ({
             made={(state.made || {})[p] || {}}
             name={waitingPreview.label.replace(/^Preview /, "")}
             cellLabel={cell ? cell.label : ""}
+            {...(cell && cell.approveLabel
+              ? {
+                  approveLabel: cell.approveLabel,
+                  discardLabel: cell.discardLabel,
+                  inputsNote: cell.inputsNote,
+                }
+              : {})}
             {...(edit
               ? {
                   approveLabel: edit.approveLabel,

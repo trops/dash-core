@@ -64,7 +64,7 @@ export const CREATE_HINT = {
   dashboard:
     "You'll get a plan to review first. Nothing is made until you press Build.",
   widget:
-    "You'll see it in the Widget Builder first. It's only installed when you press Install.",
+    "You'll get a plan, then see it running. Nothing is installed until you say so.",
   bot: "You'll get a plan to review first. Nothing is saved until you press Build, and it's saved paused.",
   theme:
     "It opens in the theme editor for you to check. Nothing changes until you save it.",
@@ -95,6 +95,12 @@ export const NO_AI_COMMON = [
 
 export const NO_AI_BY_TYPE = {
   widget: [
+    // The Widget Builder, by hand (consolidation Phase 3b).
+    {
+      key: "widget-by-hand",
+      label: "Build it by hand",
+      icon: "wrench",
+    },
     {
       key: "browse-widgets",
       label: "Browse widgets in the registry",
@@ -143,7 +149,10 @@ export function canSend({ type, prompt, aiBackend }) {
 
 /**
  * What Send does for a type.
- *   widget → open the Widget Builder with the prompt as the first message
+ *   widget → the Dash team (consolidation Phase 3b): the Scout looks for
+ *            a widget the user has, else the Planner plans one — built,
+ *            previewed, then installed into their widgets; "Build it by
+ *            hand" (the Widget Builder) stays as the no-AI start
  *   bot    → the Dash team (Phase 2c-1): the Scout looks for a bot the
  *            user has, else the Planner plans one; the form stays as the
  *            no-AI start ("Fill in the bot form")
@@ -154,7 +163,7 @@ export function canSend({ type, prompt, aiBackend }) {
 export function routeCreate({ type, prompt, workspaceId = null }) {
   const text = String(prompt || "").trim();
   if (type === "widget") {
-    return { kind: "widget-builder", detail: { prompt: text } };
+    return { kind: "widget-plan", detail: { prompt: text } };
   }
   if (type === "dashboard") {
     return { kind: "dashboard-plan", detail: { prompt: text } };

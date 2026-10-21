@@ -2269,6 +2269,8 @@ const botController = {
       resumeFrom = null,
       recentId = null,
       cell = false,
+      // A widget on its own (Phase 3b): built as a cell's, not for a dashboard.
+      standalone = false,
       bot = false,
       edit = null,
     } = {},
@@ -2288,6 +2290,7 @@ const botController = {
       dashboards: this._dashboardsWithBots(),
       themes: this._themeNames(),
       cell: !!cell,
+      standalone: !!(cell && standalone),
       bot: !!bot,
       edit: editTarget
         ? { package: editTarget.package, mode: editTarget.mode }
@@ -2445,6 +2448,7 @@ const botController = {
         resume,
         autoFix: true,
         cell: !!cell,
+        standalone: !!(cell && standalone),
         bot: !!bot,
         edit: editTarget,
       },
@@ -3213,7 +3217,7 @@ const botController = {
         this._cellBuildRunning()
           ? {
               error:
-                "Don't place it: this widget goes into a cell the user is editing — the editor places it after they preview it.",
+                "Don't place it: the user previews this widget first — then it's installed, or the editor puts it in their cell.",
             }
           : this._teamPlaceWidget(req),
       // place_widget with a draft the Checker passed (Phase 1b).
