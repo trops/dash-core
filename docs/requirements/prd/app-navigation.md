@@ -148,7 +148,7 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 
 **NAV-011: Live widget preview** _(slice A implemented 2026-10-04; Add to dashboard is slice B)_ — the widget detail renders the selected widget live in an isolated frame (the AI Widget Builder's `evaluateBundle` path with error isolation), using the user's providers; a widget whose provider isn't set up shows "Needs a <type> provider to show live data".
 
-**NAV-012: Authoring actions** _(implemented 2026-10-04 — see notes; no org membership: users publish only under their own username)_ — for packages the user authored: AI-built drafts get **Publish…** and **Edit in Widget Builder**; published packages get **Publish vX.Y.Z** when changed since the last publish (else **Publish new version…**) and **Edit in Widget Builder**; the widget detail gets **Edit in Widget Builder**. Requires `deriveWidgetOwnership` to recognise packages owned by an org the user belongs to (known gap).
+**NAV-012: Authoring actions** _(implemented 2026-10-04 — see notes; no org membership: users publish only under their own username; **Edit in Widget Builder superseded 2026-10-20 by consolidation Phase 3**: **Change with AI** opens Create › Change <widget> through the Dash team, and **Edit the code yourself** opens the Widget Builder by hand — see dash-electron create-entry CRE-014)_ — for packages the user authored: AI-built drafts get **Publish…** and **Edit in Widget Builder**; published packages get **Publish vX.Y.Z** when changed since the last publish (else **Publish new version…**) and **Edit in Widget Builder**; the widget detail gets **Edit in Widget Builder**. Requires `deriveWidgetOwnership` to recognise packages owned by an org the user belongs to (known gap).
 
 **NAV-015: Choose where a provider is used** _(implemented 2026-10-08 — see Phase 5 notes)_
 
@@ -325,6 +325,7 @@ NAV-010 (dash-react first), then NAV-006, NAV-008, NAV-009 in the list + detail 
 - Ownership follows the registry: every user publishes only under their own registered username as the scope (the publish endpoint rejects any other scope), so "theirs" = `@<username>/*` plus their local `@ai-built` packages and drafts (which publish under their username). There is **no org membership** to model — the earlier "org-membership" idea is dropped. The rule (`deriveWidgetScope` / `deriveWidgetOwnership`, with its security tests) moved from dash-electron into `utils/widgetOwnership.js`; the Widget Builder uses the same one.
 - `AppPages/useRegistryIdentity.js`: the signed-in username (`registryAuth.getProfile`) and published versions (`registryAuth.getPackages`), re-read on window focus and after the publish modal closes. Signed out → only local AI-built packages are the user's.
 - Widgets page: the "Mine" chip = the user's packages. Their packages get **Publish…** (or **Publish new version…** when already on the registry), **Edit in Widget Builder** (opens the builder in edit mode via `dash:edit-widget-with-ai` with `widgetId: "<package>/<component>"` — the builder's own convention for a package without a dashboard instance — so the owner gets **Update Original** / **Remix as New**; no grid cell, so installing swaps / places nothing. On the package's first widget; each widget detail has it too), and a line "Published vX · installed vY" / "Not published yet" / "Sign in to the registry to publish.". Drafts can now be published. Others' packages no longer offer Publish… (it would have republished a copy under the user's scope).
+- **Phase 3 (2026-10-20):** "Edit in Widget Builder" is now two buttons. **Change with AI** sends the same `dash:edit-widget-with-ai` event, which dash-core's DashboardStage turns into Create › Change <widget> (the Scout reads it, the Planner plans the change, the Builder writes a draft, the Checker checks it, the user previews it with its code, then it's installed — in place for the owner, else as a new widget). It shows on the package (yours) and on any installed widget's detail — someone else's widget is saved as a new one. **Edit the code yourself** (`dash:edit-widget-code`, yours only) opens the Widget Builder by hand. The main process re-checks ownership at install (`electron/bots/editTarget.js`, the same rule as `widgetOwnership.js`).
 - "Publish vX.Y.Z when changed since the last publish" isn't shown: nothing records whether local files changed after a publish; the modal handles the version bump.
 
 ### Phase 4: Previews and authoring
@@ -360,19 +361,20 @@ NAV-011, NAV-012 (after the ownership fix), P2 items.
 
 ## Revision History
 
-| Version | Date       | Author | Changes                                         |
-| ------- | ---------- | ------ | ----------------------------------------------- |
-| 1.0     | 2026-10-03 | John   | Initial PRD from the approved navigation mockup |
-| 1.1     | 2026-10-03 | John   | Slice 1 implemented (Manage nav, page tabs)     |
-| 1.2     | 2026-10-03 | John   | Slice 2: Dashboards page, FilterMenu, Go to     |
-| 1.3     | 2026-10-03 | John   | Slice 3a: Bots page (list + detail)             |
-| 1.4     | 2026-10-03 | John   | Slice 3b: Widgets page (org → package → widget) |
-| 1.5     | 2026-10-03 | John   | Slice 3c: Themes page (list + preview)          |
-| 1.6     | 2026-10-04 | John   | Cleanup: removed the replaced Settings sections |
-| 1.7     | 2026-10-04 | John   | Providers restyle, status, Used by, nav dot     |
-| 1.8     | 2026-10-04 | John   | Live widget preview (NAV-011 slice A)           |
-| 1.9     | 2026-10-04 | John   | Authoring actions for the user's own widgets    |
-| 1.10    | 2026-10-08 | John   | NAV-015: choose where a provider is used        |
-| 1.11    | 2026-10-19 | John   | NAV-016: one bot page (slice 1, Manage › Bots)  |
-| 1.12    | 2026-10-19 | John   | NAV-016 slice 2: the bot page modal (AC5)       |
-| 1.13    | 2026-10-19 | John   | NAV-016 slice 3: the Bots view's bot page (AC6) |
+| Version | Date       | Author | Changes                                                    |
+| ------- | ---------- | ------ | ---------------------------------------------------------- |
+| 1.0     | 2026-10-03 | John   | Initial PRD from the approved navigation mockup            |
+| 1.1     | 2026-10-03 | John   | Slice 1 implemented (Manage nav, page tabs)                |
+| 1.2     | 2026-10-03 | John   | Slice 2: Dashboards page, FilterMenu, Go to                |
+| 1.3     | 2026-10-03 | John   | Slice 3a: Bots page (list + detail)                        |
+| 1.4     | 2026-10-03 | John   | Slice 3b: Widgets page (org → package → widget)            |
+| 1.5     | 2026-10-03 | John   | Slice 3c: Themes page (list + preview)                     |
+| 1.6     | 2026-10-04 | John   | Cleanup: removed the replaced Settings sections            |
+| 1.7     | 2026-10-04 | John   | Providers restyle, status, Used by, nav dot                |
+| 1.8     | 2026-10-04 | John   | Live widget preview (NAV-011 slice A)                      |
+| 1.9     | 2026-10-04 | John   | Authoring actions for the user's own widgets               |
+| 1.10    | 2026-10-08 | John   | NAV-015: choose where a provider is used                   |
+| 1.11    | 2026-10-19 | John   | NAV-016: one bot page (slice 1, Manage › Bots)             |
+| 1.12    | 2026-10-19 | John   | NAV-016 slice 2: the bot page modal (AC5)                  |
+| 1.13    | 2026-10-19 | John   | NAV-016 slice 3: the Bots view's bot page (AC6)            |
+| 1.14    | 2026-10-20 | John   | NAV-012: Change with AI / Edit the code yourself (Phase 3) |

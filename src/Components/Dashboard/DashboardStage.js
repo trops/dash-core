@@ -388,7 +388,7 @@ const DashboardStageInner = ({
     [editSelection, editRelated],
   );
   // Tell the builder holding the selected widget (or the visible page) to
-  // act: open Configure at a section, Edit with AI, Remove, + Row/Column.
+  // act: open Configure at a section, Change with AI, Remove, + Row/Column.
   function dispatchEditAction(action, section = null, extra = null) {
     window.dispatchEvent(
       new CustomEvent("dash:edit-widget-action", {
@@ -569,6 +569,52 @@ const DashboardStageInner = ({
     };
     window.addEventListener("dash:open-create", handler);
     return () => window.removeEventListener("dash:open-create", handler);
+  }, []);
+
+  // Change with AI (consolidation Phase 3): every door — a widget's ⋮ menu,
+  // the Edit panel, Ask AI, the error box, the Widgets page — opens Create
+  // › Change <widget> on it. detail: { widgetComponentName, sourcePackage,
+  // widgetId (its layout item; the Widgets page sends "<pkg>/<component>"),
+  // gridItemId, workspaceId, userPrefs, selectedProviders, error }
+  useEffect(() => {
+    const handler = (e) => {
+      const d = (e && e.detail) || {};
+      if (!d.widgetComponentName) return;
+      // A widget on a dashboard (not the Widgets page): a new widget made
+      // from it can take its place.
+      const itemId =
+        d.gridItemId != null &&
+        d.widgetId != null &&
+        !String(d.widgetId).includes("/")
+          ? d.widgetId
+          : null;
+      setCreateRequest({
+        type: "widget",
+        workspaceId: d.workspaceId ?? null,
+        edit: {
+          component: String(d.widgetComponentName),
+          sourcePackage: d.sourcePackage || null,
+          itemId,
+          workspaceId: d.workspaceId ?? null,
+          // Where it is: its scope, and the main grid's page.
+          scope: d.scope || "main",
+          pageId:
+            itemId != null && (d.scope || "main") === "main"
+              ? (d.pageId ?? activePageRef.current)
+              : null,
+          settings:
+            d.userPrefs && typeof d.userPrefs === "object" ? d.userPrefs : null,
+          providers:
+            d.selectedProviders && typeof d.selectedProviders === "object"
+              ? d.selectedProviders
+              : null,
+          error: typeof d.error === "string" ? d.error : "",
+        },
+      });
+    };
+    window.addEventListener("dash:edit-widget-with-ai", handler);
+    return () =>
+      window.removeEventListener("dash:edit-widget-with-ai", handler);
   }, []);
 
   // One bot's page in a large modal, from anywhere — the Bots panel, a
@@ -3112,6 +3158,7 @@ const DashboardStageInner = ({
               initialContext={
                 createRequest ? createRequest.context || null : null
               }
+              edit={createRequest ? createRequest.edit || null : null}
               onOpenTheme={(theme) => {
                 setThemeEditorKey(null);
                 setThemeStartInCreate(false);

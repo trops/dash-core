@@ -9,6 +9,7 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { getWidgetPreviewRenderer } from "../../utils/widgetPreviewRenderer";
 import { resolveProviderName } from "../../utils/providerResolution";
 import { getUserConfigurableProviders } from "../../utils/providerUtils";
+import { normalizeUserConfig } from "../../utils/userConfigFields";
 
 /**
  * The providers a preview runs with: for each type the widget needs, the one
@@ -70,7 +71,7 @@ export function previewProviders(widget, appProviders, chosen = {}) {
 export function defaultProps(config) {
   const out = {};
   for (const [key, field] of Object.entries(
-    (config && config.userConfig) || {},
+    normalizeUserConfig(config && config.userConfig),
   )) {
     if (field && field.defaultValue !== undefined)
       out[key] = field.defaultValue;

@@ -294,11 +294,31 @@ export const LayoutBuilder = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Listen for AI widget remix — swaps existing widget component in-place
+  // Listen for AI widget remix — swaps existing widget component in-place.
+  // A new widget made from one (Change with AI › Save as a new widget,
+  // consolidation Phase 3) names the scope and page it's on — item ids
+  // repeat across pages and the pinned sidebar — and may take a moment to
+  // be registered.
   useEffect(() => {
+    let timer = null;
     const handler = (e) => {
-      const { widgetComponentName, widgetId, workspaceId } = e.detail || {};
+      const {
+        widgetComponentName,
+        widgetId,
+        workspaceId,
+        pageId: targetPage = null,
+        scope: targetScope = null,
+      } = e.detail || {};
       if (!widgetComponentName || !widgetId) return;
+      if (targetScope && targetScope !== (scope || "main")) return;
+      if (
+        (scope || "main") === "main" &&
+        targetPage != null &&
+        pageId != null &&
+        targetPage !== pageId
+      ) {
+        return;
+      }
 
       const ws = wsRef.current;
       if (!ws?.layout) return;
@@ -315,6 +335,14 @@ export const LayoutBuilder = ({
 
       const config = ComponentManager.config(widgetComponentName);
       if (!config) {
+        const tries = (e.detail && e.detail.tries) || 0;
+        if (tries < 20) {
+          timer = setTimeout(
+            () => handler({ detail: { ...e.detail, tries: tries + 1 } }),
+            250,
+          );
+          return;
+        }
         console.warn(
           `[LayoutBuilder] Widget ${widgetComponentName} not found in ComponentManager`,
         );
@@ -350,8 +378,10 @@ export const LayoutBuilder = ({
     };
 
     window.addEventListener("dash:swap-widget-in-cell", handler);
-    return () =>
+    return () => {
+      if (timer) clearTimeout(timer);
       window.removeEventListener("dash:swap-widget-in-cell", handler);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -436,6 +466,8 @@ export const LayoutBuilder = ({
             cellNumber: cell.cellNumber,
             gridItemId: cell.gridItemId,
             workspaceId: ws.id,
+            scope: scope || "main",
+            pageId: pageId ?? null,
             widgetComponentName: item.component,
             widgetId: item.id,
             selectedProviders: item.selectedProviders || null,

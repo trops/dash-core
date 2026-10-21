@@ -52,13 +52,14 @@ const made = {
   },
 };
 
-function setup(props = {}) {
+function setup(props = {}, draft = {}) {
   window.mainApi = {
     widgetBuilder: {
       previewDraft: jest.fn().mockResolvedValue({
         success: true,
         bundleSource: "module.exports = {}",
         componentName: "SlackThreads",
+        ...draft,
       }),
     },
     widgets: {
@@ -225,4 +226,62 @@ test("with a connection it waits for Run preview", () => {
   expect(
     screen.getByRole("button", { name: "Run preview" }),
   ).toBeInTheDocument();
+});
+
+// Consolidation Phase 3: a change to a widget previews its draft with its
+// code, what changed from the widget as it was, and its own words.
+describe("a change's preview", () => {
+  const original = {
+    componentCode: "line one\nline two\nline three",
+    configCode: "export default {}",
+  };
+  const code = {
+    componentCode: "line one\nline 2\nline three",
+    configCode: "export default {}",
+  };
+
+  test("no original: no tabs (a cell build)", () => {
+    setup();
+    expect(screen.queryByRole("radio", { name: "Code" })).toBeNull();
+  });
+
+  test("Code shows the draft's files, read-only", async () => {
+    setup({ original }, code);
+    fireEvent.click(screen.getByRole("radio", { name: "Code" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("code-editor")).toHaveTextContent("line 2"),
+    );
+    fireEvent.click(
+      screen.getByRole("radio", { name: "SlackThreads.dash.js" }),
+    );
+    expect(screen.getByTestId("code-editor")).toHaveTextContent(
+      "export default {}",
+    );
+  });
+
+  test("What changed lists the changed lines per file", async () => {
+    setup({ original }, code);
+    fireEvent.click(screen.getByRole("radio", { name: "What changed" }));
+    const pane = await screen.findByTestId("cell-preview-changes");
+    await waitFor(() => expect(pane).toHaveTextContent("− line two"));
+    expect(pane).toHaveTextContent("+ line 2");
+    expect(pane).toHaveTextContent("SlackThreads.dash.js");
+    expect(pane).toHaveTextContent("No changes.");
+  });
+
+  test("its own words on the buttons and under the inputs", () => {
+    setup({
+      original,
+      approveLabel: "Looks good — update Inbox",
+      discardLabel: "Discard — keep Inbox as it is",
+      inputsNote: "Only for trying it here.",
+    });
+    expect(
+      screen.getByRole("button", { name: "Looks good — update Inbox" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Discard — keep Inbox as it is" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Only for trying it here.")).toBeInTheDocument();
+  });
 });

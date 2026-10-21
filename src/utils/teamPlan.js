@@ -37,7 +37,10 @@
  *                   schedule?: { cron, prompt? }, results?: [{ name, label? }],
  *                   on?: [{ widget, event }], showResults?: boolean,
                    // made-up lines for the plan's preview (5d)
-                   sample?: [string] }],
+                   sample?: [string],
+                   // a change to a widget the user has (Phase 3): what it
+                   // adds, and what it keeps (settings, connection, events)
+                   adds?: string, keeps?: [string] }],
                    // theme: one of the user's saved themes (source "yours")
  *     beforeBuilding: [{ kind: "connect" | "install" | "approve", what }],
  *     checks:    [string],                                 // how to tell it worked
@@ -338,7 +341,10 @@ function extractPlan(text) {
  *   dashboards and saved theme names (a target or theme must be one of them);
  *   context.cell: a plan for one cell of a dashboard being edited
  *   (consolidation Phase 2b) — exactly one widget, nothing else;
- *   context.bot: a plan for one bot (Phase 2c-1) — exactly one new bot.
+ *   context.bot: a plan for one bot (Phase 2c-1) — exactly one new bot;
+ *   context.edit: a change to one widget the user has ({ package, mode },
+ *   Phase 3) — exactly that widget: "update" changes it in place (source
+ *   "update", its package), "new" saves the change as a new widget.
  * @returns {{ valid: boolean, errors: string[], warnings: string[] }}
  */
 function validatePlan(plan, context = {}) {
@@ -379,6 +385,33 @@ function validatePlan(plan, context = {}) {
     if (widgets.length !== 1 || pieces.length !== 1 || target) {
       errors.push(
         "A plan for one cell is one widget — no bots, theme, layout or dashboard.",
+      );
+    }
+  }
+  // A change to one widget (Phase 3): that widget and nothing else — in
+  // place (its own package) or as a new widget.
+  if (context.edit && Array.isArray(pieces)) {
+    const widgets = pieces.filter((p) => p && p.kind === "widget");
+    const one =
+      widgets.length === 1 && pieces.length === 1 && !target
+        ? widgets[0]
+        : null;
+    if (!one) {
+      errors.push(
+        "A change to a widget is that one widget — no bots, theme, layout or dashboard.",
+      );
+    } else if (context.edit.mode === "update") {
+      if (
+        one.source !== "update" ||
+        nameKey(one.package) !== nameKey(context.edit.package)
+      ) {
+        errors.push(
+          `This change updates ${context.edit.package} in place: its piece must be source "update" with package "${context.edit.package}".`,
+        );
+      }
+    } else if (one.source !== "new") {
+      errors.push(
+        'This change is saved as a new widget: its piece must be source "new".',
       );
     }
   }
@@ -515,6 +548,16 @@ function validatePlan(plan, context = {}) {
             }
           });
         }
+      }
+      // What a change adds and keeps (Phase 3): shown, never built.
+      if (p.adds !== undefined && typeof p.adds !== "string") {
+        warnings.push(`${at}.adds should be a sentence; it isn't shown.`);
+      }
+      if (
+        p.keeps !== undefined &&
+        !(Array.isArray(p.keeps) && p.keeps.every((x) => typeof x === "string"))
+      ) {
+        warnings.push(`${at}.keeps should be a list of short lines.`);
       }
       // Made-up preview data (5d): never blocks building — the preview
       // only shows short text lines.

@@ -1685,6 +1685,66 @@ let widgetRegistry = null;
  * @returns {Promise<{ success, componentCode?, configCode?, manifest?,
  *   widgetName?, componentName?, error? }>}
  */
+// A package's own source files, for the Dash team to read (a change to a
+// widget, consolidation Phase 3): code, styles and data — never what it
+// installed (node_modules) or built (dist).
+const SOURCE_FILE = /\.(js|jsx|ts|tsx|css|json|md)$/i;
+const NOT_SOURCE = new Set(["node_modules", "dist", ".git"]);
+const MAX_PACKAGE_FILES = 60;
+
+/** Its source files, relative to the package ("widgets/Inbox.js"). */
+function packageFiles(root) {
+  const out = [];
+  const walk = (dir, rel) => {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch (_e) {
+      return;
+    }
+    for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (out.length >= MAX_PACKAGE_FILES) return;
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) {
+        if (!NOT_SOURCE.has(e.name)) walk(path.join(dir, e.name), r);
+      } else if (e.isFile() && SOURCE_FILE.test(e.name)) {
+        out.push(r);
+      }
+    }
+  };
+  walk(root, "");
+  return out;
+}
+
+/**
+ * One source file of an installed package — only one packageFiles lists
+ * (never outside the package). → { success, file, content } | { error }
+ */
+async function readWidgetFile({ widgetName, file } = {}) {
+  try {
+    const widget = getWidgetRegistry().getWidget(widgetName);
+    if (!widget || !widget.path) {
+      return { success: false, error: `Widget not found: ${widgetName}` };
+    }
+    const want = String(file || "")
+      .replace(/\\/g, "/")
+      .replace(/^\.\//, "");
+    if (!packageFiles(widget.path).includes(want)) {
+      return {
+        success: false,
+        error: `${widgetName} has no source file "${file}".`,
+      };
+    }
+    return {
+      success: true,
+      file: want,
+      content: fs.readFileSync(path.join(widget.path, want), "utf8"),
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 async function readWidgetSources({ widgetName, componentName } = {}) {
   try {
     const registry = getWidgetRegistry();
@@ -1761,6 +1821,8 @@ async function readWidgetSources({ widgetName, componentName } = {}) {
       manifest,
       widgetName,
       componentName: target,
+      // The package's other source files, by path (Phase 3).
+      files: packageFiles(widget.path),
     };
   } catch (error) {
     console.error(
@@ -2154,6 +2216,8 @@ function setupWidgetRegistryHandlers() {
 module.exports = WidgetRegistry;
 module.exports.getWidgetRegistry = getWidgetRegistry;
 module.exports.readWidgetSources = readWidgetSources;
+module.exports.readWidgetFile = readWidgetFile;
+module.exports.packageFiles = packageFiles;
 // For backward compatibility, provide widgetRegistry as a getter
 Object.defineProperty(module.exports, "widgetRegistry", {
   get: getWidgetRegistry,

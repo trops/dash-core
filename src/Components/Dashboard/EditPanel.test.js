@@ -148,7 +148,7 @@ describe("EditPanel — selection tabs (phase 1c)", () => {
     expect(screen.getByTestId("widget-config")).toBeInTheDocument();
     // No buttons that open the Configure dialog any more.
     expect(screen.queryByRole("button", { name: "Listeners" })).toBeNull();
-    fireEvent.click(screen.getByText("Edit with AI"));
+    fireEvent.click(screen.getByText("Change with AI"));
     fireEvent.click(screen.getByText("Remove"));
     expect(onWidgetAction.mock.calls).toEqual([["edit-with-ai"], ["remove"]]);
   });
@@ -227,7 +227,9 @@ describe("EditPanel — placing in a cell and Ask AI (phase 1d)", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Ask AI" }));
     fireEvent.click(screen.getByText("Build a widget for this cell"));
     expect(onAskAi).toHaveBeenCalled();
-    expect(screen.getByText(/Opens the Widget Builder/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Opens Create: the Dash team plans it/),
+    ).toBeInTheDocument();
   });
 
   test("Ask AI edits the selected widget", () => {
@@ -242,7 +244,7 @@ describe("EditPanel — placing in a cell and Ask AI (phase 1d)", () => {
       onAskAi,
     });
     fireEvent.click(screen.getByRole("tab", { name: "Ask AI" }));
-    fireEvent.click(screen.getByText("Edit this widget with AI"));
+    fireEvent.click(screen.getByText("Change this widget with AI"));
     expect(onAskAi).toHaveBeenCalled();
   });
 

@@ -105,3 +105,29 @@ describe("LayoutBuilder — placing a cell build's widget", () => {
     expect(source).toMatch(/if \(timer\) clearTimeout\(timer\);/);
   });
 });
+
+// Consolidation Phase 3: a new widget made from one (Change with AI › Save as
+// a new widget) takes its place — only on its scope and page, once it's
+// registered.
+describe("LayoutBuilder — swapping in a new widget made from one", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "LayoutBuilder.js"),
+    "utf8",
+  );
+  const start = source.indexOf("// Listen for AI widget remix");
+  const body = source.slice(
+    start,
+    source.indexOf('"dash:swap-widget-in-cell", handler);', start),
+  );
+  test("only the named scope and page act", () => {
+    expect(body).toMatch(
+      /if \(targetScope && targetScope !== \(scope \|\| "main"\)\) return;/,
+    );
+    expect(body).toMatch(
+      /targetPage != null &&\s*pageId != null &&\s*targetPage !== pageId/,
+    );
+  });
+  test("it waits for a just-installed widget to be registered", () => {
+    expect(body).toMatch(/if \(tries < 20\)/);
+  });
+});

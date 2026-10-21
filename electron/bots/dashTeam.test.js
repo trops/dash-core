@@ -173,7 +173,7 @@ describe("Dash team instructions (slice 3a)", () => {
     assert.match(planner.instructions, /<plan><\/plan>/);
     assert.ok(planner.history.length >= 1);
     const bots = ROLE_IDS.map((r) => teamBot(r));
-    bots[0].instructions = planner.history[4];
+    bots[0].instructions = planner.history[5];
     const plan = planEnsureDashTeam(bots);
     assert.equal(plan[0].action, "upgrade");
     assert.equal(plan[0].role, "planner");
@@ -190,8 +190,8 @@ describe("Dash team instructions (slice 3b-1)", () => {
     assert.match(checker.instructions, /check_widget/);
     assert.match(checker.instructions, /VERDICT: PASSED/);
     const bots = ROLE_IDS.map((r) => teamBot(r));
-    bots[2].instructions = builder.history[0];
-    bots[3].instructions = checker.history[0];
+    bots[2].instructions = builder.history[1];
+    bots[3].instructions = checker.history[1];
     const plan = planEnsureDashTeam(bots);
     assert.deepEqual(
       plan.map((p) => [p.action, p.role]),
@@ -228,7 +228,7 @@ describe("Dash team instructions (slice 3c)", () => {
       builder.instructions,
       /nothing is installed until the Checker passes it/,
     );
-    assert.equal(builder.history.length, 5);
+    assert.equal(builder.history.length, 6);
   });
 });
 
@@ -236,9 +236,9 @@ describe("Dash team instructions (slice 4)", () => {
   it("the Scout ends with its matches for Create; earlier text upgrades", () => {
     const scout = ROLES.find((r) => r.role === "scout");
     assert.match(scout.instructions, /<matches><\/matches>/);
-    assert.equal(scout.history.length, 2);
+    assert.equal(scout.history.length, 3);
     const bots = ROLE_IDS.map((r) => teamBot(r));
-    bots[1].instructions = scout.history[0];
+    bots[1].instructions = scout.history[1];
     const plan = planEnsureDashTeam(bots);
     assert.deepEqual(
       plan.map((p) => [p.action, p.role]),
@@ -252,7 +252,7 @@ describe("Dash team instructions (phase 4a)", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /"access": \[string\]/);
     assert.match(planner.instructions, /short tappable options/);
-    assert.equal(planner.history.length, 12);
+    assert.equal(planner.history.length, 13);
   });
 });
 
@@ -270,8 +270,8 @@ describe("Dash team instructions (phase 4d-2)", () => {
     );
     assert.match(planner.instructions, /"showResults": boolean/);
     // The 4a text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[9], /short tappable options/);
-    assert.doesNotMatch(planner.history[9], /showResults/);
+    assert.match(planner.history[10], /short tappable options/);
+    assert.doesNotMatch(planner.history[10], /showResults/);
   });
 });
 
@@ -281,8 +281,8 @@ describe("Dash team instructions (phase 5d)", () => {
     assert.match(planner.instructions, /"sample": \[string\]/);
     assert.match(planner.instructions, /never the user's real data/);
     // The 4d-2 text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[8], /"showResults": boolean/);
-    assert.doesNotMatch(planner.history[8], /"sample"/);
+    assert.match(planner.history[9], /"showResults": boolean/);
+    assert.doesNotMatch(planner.history[9], /"sample"/);
   });
 });
 
@@ -296,8 +296,8 @@ describe("Dash team instructions (phase 5e)", () => {
       /When the user asks to make or change something, end every answer with the plan/,
     );
     // The 5d text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[7], /"sample": \[string\]/);
-    assert.doesNotMatch(planner.history[7], /bot_results/);
+    assert.match(planner.history[8], /"sample": \[string\]/);
+    assert.doesNotMatch(planner.history[8], /bot_results/);
   });
 });
 
@@ -310,8 +310,8 @@ describe("Dash team instructions (screen audit: typed answers)", () => {
       /never offer options like "I'll type it"/,
     );
     // The 5e-1 text is kept so an unedited Planner upgrades.
-    assert.match(planner.history[6], /bot_results/);
-    assert.doesNotMatch(planner.history[6], /give that question no options/);
+    assert.match(planner.history[7], /bot_results/);
+    assert.doesNotMatch(planner.history[7], /give that question no options/);
   });
 });
 
@@ -331,8 +331,8 @@ describe("Dash team instructions (5e-2b: changing a dashboard you have)", () => 
     assert.match(planner.instructions, /Removing, moving or resizing widgets/);
     assert.match(planner.instructions, /ask which/);
     // The text before this is upgraded.
-    assert.match(planner.history[5], /give that question no options/);
-    assert.doesNotMatch(planner.history[5], /list_themes/);
+    assert.match(planner.history[6], /give that question no options/);
+    assert.doesNotMatch(planner.history[6], /list_themes/);
   });
 });
 
@@ -389,8 +389,8 @@ describe("Dash team instructions — pages, connections and answers (Create buil
     assert.match(planner.instructions, /never "… layout"/);
   });
   it("the earlier Planner text upgrades", () => {
-    assert.match(planner.history[3], /"component": string/);
-    assert.doesNotMatch(planner.history[3], /"pages"/);
+    assert.match(planner.history[4], /"component": string/);
+    assert.doesNotMatch(planner.history[4], /"pages"/);
   });
 });
 
@@ -404,9 +404,9 @@ describe("Dash team instructions (Create build fixes 3)", () => {
     );
     assert.match(checker.instructions, /must-fix/);
     assert.match(checker.instructions, /installed only if you pass it/);
-    assert.equal(checker.history.length, 3);
+    assert.equal(checker.history.length, 4);
     const bots = ROLE_IDS.map((r) => teamBot(r));
-    bots[3].instructions = checker.history[0];
+    bots[3].instructions = checker.history[1];
     const plan = planEnsureDashTeam(bots);
     assert.deepEqual(
       plan.map((p) => [p.action, p.role]),
@@ -423,7 +423,7 @@ describe("Dash team instructions (plan grids)", () => {
     assert.match(planner.instructions, /never only in notes/);
     assert.match(planner.instructions, /one filter per row/);
     const bots = ROLE_IDS.map((r) => teamBot(r));
-    bots[0].instructions = planner.history[1];
+    bots[0].instructions = planner.history[2];
     const plan = planEnsureDashTeam(bots);
     assert.deepEqual(
       plan.map((p) => [p.action, p.role]),
@@ -448,13 +448,13 @@ describe("Dash team instructions (dashboards can be apps)", () => {
     );
     // The grid-only text a dev build ran upgrades, as does the text before
     // plan grids.
-    assert.match(planner.history[1], /"grid": \{"cols"/);
+    assert.match(planner.history[2], /"grid": \{"cols"/);
     assert.doesNotMatch(
-      planner.history[1],
+      planner.history[2],
       /A dashboard can be a whole small app/,
     );
-    assert.doesNotMatch(planner.history[2], /"grid"/);
-    for (const old of [planner.history[1], planner.history[2]]) {
+    assert.doesNotMatch(planner.history[3], /"grid"/);
+    for (const old of [planner.history[2], planner.history[3]]) {
       const bots = ROLE_IDS.map((r) => teamBot(r));
       bots[0].instructions = old;
       assert.deepEqual(
@@ -477,15 +477,63 @@ describe("Dash team instructions (bot results cards are the user's call)", () =>
     assert.match(planner.instructions, /unless the user already said/);
     assert.match(planner.instructions, /a team of bots needs no widgets/i);
     assert.doesNotMatch(
-      planner.history[0],
+      planner.history[1],
       /ask whether to show each bot's results/,
     );
-    assert.match(planner.history[0], /A dashboard can be a whole small app/);
+    assert.match(planner.history[1], /A dashboard can be a whole small app/);
     const bots = ROLE_IDS.map((r) => teamBot(r));
-    bots[0].instructions = planner.history[0];
+    bots[0].instructions = planner.history[1];
     assert.deepEqual(
       planEnsureDashTeam(bots).map((p) => [p.action, p.role]),
       [["upgrade", "planner"]],
+    );
+  });
+});
+
+describe("Dash team instructions (consolidation Phase 3: a change to one widget)", () => {
+  const role = (r) => ROLES.find((x) => x.role === r);
+  it("the Planner plans that one widget, saying what it adds and keeps", () => {
+    const planner = role("planner");
+    assert.match(planner.instructions, /a change to one widget the user has/);
+    assert.match(
+      planner.instructions,
+      /plan exactly that one widget and nothing else/,
+    );
+    assert.match(planner.instructions, /"adds": string, "keeps": \[string\]/);
+    assert.match(
+      planner.instructions,
+      /ask first: other dashboards may use it/,
+    );
+    assert.doesNotMatch(
+      planner.history[0],
+      /a change to one widget the user has/,
+    );
+  });
+  it("the Scout says what a widget does now, without matches", () => {
+    const scout = role("scout");
+    assert.match(scout.instructions, /what one widget does now/);
+    assert.match(scout.instructions, /Don't search or list matches then/);
+    assert.doesNotMatch(scout.history[0], /what one widget does now/);
+  });
+  it("the Builder changes any widget the user has, held to that widget", () => {
+    const builder = role("builder");
+    assert.match(builder.instructions, /To change a widget the user has/);
+    assert.match(builder.instructions, /build_widget builds only that widget/);
+    assert.doesNotMatch(builder.instructions, /the AI built earlier/);
+    assert.match(builder.history[0], /the AI built earlier/);
+  });
+  it("the Checker fails a change that lost a setting, provider or event", () => {
+    const checker = role("checker");
+    assert.match(checker.instructions, /lost a setting, provider or event/);
+    assert.doesNotMatch(checker.history[0], /lost a setting/);
+  });
+  it("the text before Phase 3 upgrades, for every role", () => {
+    const bots = ROLE_IDS.map((r) =>
+      teamBot(r, { instructions: role(r).history[0] }),
+    );
+    assert.deepEqual(
+      planEnsureDashTeam(bots).map((p) => [p.action, p.role]),
+      ROLE_IDS.map((r) => ["upgrade", r]),
     );
   });
 });

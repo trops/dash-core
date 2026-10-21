@@ -40,6 +40,13 @@
  *                            note, checked again, previewed again
  * — then Install. Nothing touches the dashboard: the editor places it.
  *
+ * A change to one widget the user has (consolidation Phase 3, opts.edit:
+ * { package, component, componentName, mode, displayName, settings,
+ * providers }): the cell build's steps — build → check → preview → save —
+ * for that widget. "update" changes it in place (its own package; the
+ * install keeps a backup), "new" saves the change as a new AI-built widget.
+ * The Builder is told which widget; the main process holds it to that.
+ *
  * One bot (consolidation Phase 2c-1, opts.bot): the plan is one new bot —
  * checked (checkbot), then saved paused on the dashboard the plan names, with
  * its results card if planned, or Unassigned. Never a new dashboard.
@@ -99,9 +106,27 @@ function dashboardNameOf(layout) {
 /**
  * A cell build's steps (opts.cell): its one widget installed (registry) or
  * built and checked, previewed by the user, then installed (built ones).
- * No dashboard, theme, bot or place steps — the editor places it.
+ * No dashboard, theme, bot or place steps — the editor places it. A change
+ * to a widget (edit) says so in its labels.
  */
-function cellSteps(widgets, add) {
+function cellSteps(widgets, add, edit = null) {
+  const label = (kind, p) => {
+    if (!edit) {
+      return {
+        build: `Build ${p.name}`,
+        check: `Check ${p.name}`,
+        preview: `Preview ${p.name}`,
+        save: `Install ${p.name}`,
+      }[kind];
+    }
+    const name = edit.displayName || edit.componentName || p.name;
+    return {
+      build: "Write the change into a draft",
+      check: "Check the draft",
+      preview: `Preview ${edit.mode === "update" ? name : p.name}`,
+      save: edit.mode === "update" ? `Update ${name}` : `Install ${p.name}`,
+    }[kind];
+  };
   widgets.forEach((p, i) => {
     const built = p.source === "new" || p.source === "update";
     if (p.source === "registry" && p.package) {
@@ -120,14 +145,14 @@ function cellSteps(widgets, add) {
         piece: i,
         source: p.source,
         role: "builder",
-        label: `Build ${p.name}`,
+        label: label("build", p),
       });
       add({
         id: `check:${i}`,
         kind: "check",
         piece: i,
         role: "checker",
-        label: `Check ${p.name}`,
+        label: label("check", p),
       });
     }
     add({
@@ -135,7 +160,7 @@ function cellSteps(widgets, add) {
       kind: "preview",
       piece: i,
       role: "you",
-      label: `Preview ${p.name}`,
+      label: label("preview", p),
     });
     if (built) {
       add({
@@ -143,7 +168,7 @@ function cellSteps(widgets, add) {
         kind: "save",
         piece: i,
         role: "dash",
-        label: `Install ${p.name}`,
+        label: label("save", p),
       });
     }
   });
@@ -199,14 +224,18 @@ function botSteps(plan, add) {
 }
 
 /** The steps for a plan, all waiting. */
-function planSteps(plan, { dashboardName, cell = false, bot = false } = {}) {
+function planSteps(
+  plan,
+  { dashboardName, cell = false, bot = false, edit = null } = {},
+) {
   const pieces = ((plan && plan.pieces) || []).filter(Boolean);
   const widgets = pieces.filter((p) => p.kind === "widget");
   const layout = pieces.find((p) => p.kind === "layout");
   const steps = [];
   const add = (step) => steps.push({ status: STATUS.waiting, ...step });
-  if (cell) {
-    cellSteps(widgets, add);
+  if (cell || edit) {
+    // A change is to one widget (validatePlan).
+    cellSteps(edit ? widgets.slice(0, 1) : widgets, add, edit);
     return steps;
   }
   if (bot) {
@@ -420,7 +449,13 @@ function blockersFor(step, steps) {
  * The Builder's request for one widget. With `fix` ({ package, problem }) it
  * asks the Builder to fix what it built (Let Builder fix it, 4d-3).
  */
-function buildRequest(plan, piece, fix = null, { cell = false } = {}) {
+function buildRequest(
+  plan,
+  piece,
+  fix = null,
+  { cell = false, edit = null } = {},
+) {
+  if (edit) return editBuildRequest(plan, piece, fix, edit);
   const providers = (piece.providers || []).join(", ") || "none";
   const update = piece.source === "update" || !!(fix && fix.installed);
   const first = fix
@@ -461,6 +496,48 @@ function buildRequest(plan, piece, fix = null, { cell = false } = {}) {
 }
 
 /**
+ * The Builder's request for a change to one widget the user has (Phase 3):
+ * read it, change only it — in place under its own name, or as a new
+ * self-contained widget — and finish with the draft. The main process holds
+ * build_widget to that widget whatever the Builder sends.
+ */
+function editBuildRequest(plan, piece, fix, edit) {
+  const name = edit.componentName;
+  const pkg = edit.package;
+  const update = edit.mode === "update";
+  const first = fix
+    ? fix.change
+      ? `Change the draft you wrote (${fix.draft || `draft:${name}`}) — the user looked at it and wants a change.`
+      : `Fix the draft you wrote (${fix.draft || `draft:${name}`}).`
+    : update
+      ? `Change the user's widget ${name} (package ${pkg}). The change goes into that widget, everywhere it's used.`
+      : `Make a new widget from the user's widget ${name} (package ${pkg}), with a change. ${name} itself stays as it is.`;
+  return [
+    first,
+    ...(fix
+      ? [`${fix.change ? "What to change" : "What went wrong"}: ${fix.problem}`]
+      : []),
+    `Read it first: read_widget with name "${pkg}" and component "${name}". If it imports other files of its package, read them with read_widget's file.`,
+    `Plan: ${plan.summary || ""}`,
+    ...(isStr(piece.adds) && piece.adds.trim()
+      ? [`The change: ${piece.adds.trim()}`]
+      : []),
+    ...(isStr(piece.notes) && piece.notes.trim()
+      ? [`Notes: ${piece.notes.trim()}`]
+      : []),
+    ...(Array.isArray(piece.keeps) && piece.keeps.length
+      ? [`Keep: ${piece.keeps.filter(isStr).join("; ")}.`]
+      : []),
+    "Keep every setting, its connection and the events it sends, unless the plan says to drop one.",
+    ...wiringLines(plan, piece),
+    update
+      ? `Keep the name ${name} and change only widgets/${name}.js and widgets/${name}.dash.js — not its other files. Read widget_guide, then build_widget with name "${name}" and update: true; it's built inside a copy of its package, so the other files come along.`
+      : `Give it a new PascalCase name based on "${piece.name}" (not ${name}) and change only its component and .dash.js — it's built inside a copy of the package, so it can keep importing the package's other files. Read widget_guide, then build_widget with that name (no update).`,
+    "It writes a draft (draft:<Name>): the Checker checks it and the user previews it before anything is installed. Don't place or install it. Finish with the draft's name.",
+  ].join("\n");
+}
+
+/**
  * The events a widget must send: its own, plus any a planned bot starts on
  * (the bot's `on` wins when the two disagree — both are sent).
  */
@@ -483,10 +560,23 @@ const isStr = (v) => typeof v === "string";
  * breaking change — and after Let Builder fix it, the Checker is told what
  * the fix was for, so the change it asked for isn't held against it (4d-3).
  */
-function checkRequest(plan, piece, made = {}) {
+function checkRequest(plan, piece, made = {}, { edit = null } = {}) {
   const lines = [
     `Check ${made.draft || made.package}. Run check_widget on ${made.draft || made.package}, read the code if you need to, and end with VERDICT: PASSED or VERDICT: FAILED.`,
   ];
+  // A change to a widget the user has (Phase 3): it's compared with what
+  // it was — losing a setting, its connection or an event breaks the
+  // dashboards that use it.
+  if (edit) {
+    lines.push(
+      edit.mode === "update"
+        ? `It's a change to the user's widget ${edit.componentName} (${edit.package}), which is in use: check_widget compares its config with the installed one. A setting, provider or event it had and doesn't now fails it, unless the plan says to drop it. Read the original with read_widget if you need to.`
+        : `It's a new widget made from the user's widget ${edit.componentName} (${edit.package}): it must keep that widget's settings, connection and events unless the plan says otherwise. Read the original with read_widget to compare.`,
+    );
+    if (isStr(piece.adds) && piece.adds.trim()) {
+      lines.push(`The change it should make: ${piece.adds.trim()}`);
+    }
+  }
   if (isStr(piece.notes) && piece.notes.trim()) {
     lines.push(`What the plan says it does: ${piece.notes.trim()}`);
   }
@@ -1141,9 +1231,11 @@ function undoOnDashboard(workspace, built) {
  *   emit(state)   progress after every change
  *   now()
  * @param {{ dashboardName?: string, resume?: { plan, state },
- *           autoFix?: boolean }} [opts]
+ *           autoFix?: boolean, cell?: boolean, bot?: boolean,
+ *           edit?: object }} [opts]
  *   resume — an earlier build of this plan whose work is reused (Edit plan)
  *   autoFix — a failed build or check is fixed by the Builder by itself
+ *   edit — a change to one widget the user has (Phase 3, see the top)
  * @returns {{ state, run, stop, fix, retry, resume }} — run/fix/retry/resume
  *   resolve with the state when that pass ends, or { error }
  */
@@ -1178,6 +1270,10 @@ function createPlanBuild(plan, deps, opts = {}) {
   let busy = false;
   const pieces = widgetPieces(plan);
   const bots = botPieces(plan);
+  // A change's widget as it is now (opts.edit): its cell's connection and
+  // settings, to preview the change with.
+  const editOf = (key) =>
+    opts.edit && plainObject(opts.edit[key]) ? opts.edit[key] : null;
   // The new dashboard's pages, and which one each widget goes on.
   const pages = planPages(plan);
   const pageOf = (i) => {
@@ -1270,7 +1366,10 @@ function createPlanBuild(plan, deps, opts = {}) {
       case "build": {
         const record = await deps.askRole(
           "builder",
-          buildRequest(plan, piece, step.fix || null, { cell: !!opts.cell }),
+          buildRequest(plan, piece, step.fix || null, {
+            cell: !!opts.cell,
+            edit: opts.edit || null,
+          }),
         );
         account(step, record);
         if (!record || record.skipped)
@@ -1304,7 +1403,7 @@ function createPlanBuild(plan, deps, opts = {}) {
         const made = state.made[step.piece] || {};
         const record = await deps.askRole(
           "checker",
-          checkRequest(plan, piece, made),
+          checkRequest(plan, piece, made, { edit: opts.edit || null }),
         );
         account(step, record);
         if (!record || record.skipped)
@@ -1339,8 +1438,12 @@ function createPlanBuild(plan, deps, opts = {}) {
           throw new Error((res && res.error) || "it wasn't installed");
         }
         if (res.widgetName) made.package = String(res.widgetName).toLowerCase();
-        // A cell build hands the editor the widget's component to place.
-        if (opts.cell && deps.resolveComponent) {
+        // A cell build hands the editor the widget's component to place. A
+        // change in place keeps the component it was opened on — whatever
+        // the Planner called the piece.
+        if (opts.edit && opts.edit.mode === "update") {
+          made.component = opts.edit.component;
+        } else if ((opts.cell || opts.edit) && deps.resolveComponent) {
           made.component =
             (await deps.resolveComponent(made.package, piece.name)) || null;
           if (!made.component) {
@@ -1402,8 +1505,12 @@ function createPlanBuild(plan, deps, opts = {}) {
               // The installed widget's name, to load its code by.
               widgetName: (src && src.widgetName) || null,
               // What the plan said to use, to start from.
-              provider: piece.provider || null,
-              settings: piece.settings || null,
+              // A change starts from the cell's own connection and settings.
+              provider: piece.provider || editOf("providers") || null,
+              settings:
+                piece.settings || editOf("settings")
+                  ? { ...editOf("settings"), ...piece.settings }
+                  : null,
             },
           };
           state.made[step.piece] = made;

@@ -3,10 +3,13 @@ import {
   Button,
   Button2,
   Button3,
+  CodeEditorVS,
   FontAwesomeIcon,
   InputText,
+  SegmentedControl,
   SelectInput,
   StatusBadge,
+  useStatusTokens,
 } from "@trops/dash-react";
 import { AppContext } from "../../Context/App/AppContext";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
@@ -14,6 +17,8 @@ import { PanelEditForm } from "../../Context/Modal/Panel/PanelEditForm";
 import { getWidgetPreviewRenderer } from "../../utils/widgetPreviewRenderer";
 import { getUserConfigurableProviders } from "../../utils/providerUtils";
 import { previewProviders, defaultProps } from "../AppPages/WidgetPreview";
+import { lineDiff } from "./editCreate";
+import { normalizeUserConfig } from "../../utils/userConfigFields";
 
 /**
  * The provider each type starts on: what the plan said ({ type: name } or a
@@ -46,6 +51,11 @@ export function plannedProviders(planned, needs = [], appProviders = {}) {
  *
  * @param {object} made  the build's piece: { draft?, package?, component?,
  *   preview: { componentName, userConfig, providers, provider, settings } }
+ *
+ * A change to a widget (consolidation Phase 3) passes its own words
+ * (approveLabel, discardLabel, inputsNote) and the widget as it was
+ * (original: { componentCode, configCode }): the draft then gets Code (the
+ * Widget Builder's code view, read-only) and What changed beside Preview.
  */
 export const CellPreview = ({
   made = {},
@@ -57,12 +67,16 @@ export const CellPreview = ({
   deciding = false,
   // The Checker passed it (a built widget) — said beside the preview.
   checked = false,
+  approveLabel = "Looks good — put it in the cell",
+  discardLabel = "Discard — leave the cell empty",
+  inputsNote = "Filled in from the plan · they go into the cell with the widget.",
+  original = null,
 }) => {
   const app = useContext(AppContext) || {};
   const appProviders = app.providers || {};
   const { muted, strong, hairline } = useConfigTokens();
   const preview = made.preview || {};
-  const userConfig = preview.userConfig || {};
+  const userConfig = normalizeUserConfig(preview.userConfig);
   const widget = { providers: preview.providers || [] };
 
   const [chosen, setChosen] = useState(() =>
@@ -82,6 +96,31 @@ export const CellPreview = ({
   const [error, setError] = useState(null);
   const [runId, setRunId] = useState(0);
   const [change, setChange] = useState("");
+  const statusTokens = useStatusTokens();
+  // A change's draft (Phase 3): Preview, its Code, or What changed.
+  const showsCode = !!(original && made.draft);
+  const [view, setView] = useState("preview");
+  const [codeFile, setCodeFile] = useState("component");
+  const [draftCode, setDraftCode] = useState(null);
+  useEffect(() => {
+    if (!showsCode) return undefined;
+    const api = window.mainApi && window.mainApi.widgetBuilder;
+    if (!api || !api.previewDraft) return undefined;
+    let alive = true;
+    Promise.resolve(api.previewDraft(made.draft))
+      .then((r) => {
+        if (alive && r && r.success) {
+          setDraftCode({
+            componentCode: r.componentCode || "",
+            configCode: r.configCode || "",
+          });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [showsCode, made.draft]);
 
   const Renderer = getWidgetPreviewRenderer();
   const { needs, selected, missing, unchosen } = previewProviders(
@@ -172,6 +211,105 @@ export const CellPreview = ({
       <Button title={title} size={size} onClick={start} disabled={!canRun} />
     ) : null;
 
+  // A change's draft: its code (read-only) and what changed, per file.
+  const fileName = preview.componentName || name;
+  const codePane = showsCode ? (
+    <div
+      className={`flex flex-col gap-2 rounded-lg border p-2 ${hairline}`}
+      style={{ height: 440 }}
+      data-testid="cell-preview-code"
+    >
+      <SegmentedControl
+        ariaLabel="Which file"
+        value={codeFile}
+        onChange={setCodeFile}
+        options={[
+          { value: "component", label: `${fileName}.js` },
+          { value: "config", label: `${fileName}.dash.js` },
+        ]}
+      />
+      <div className="flex-1 min-h-0 relative">
+        {draftCode ? (
+          <div className="absolute inset-0">
+            <CodeEditorVS
+              key={codeFile}
+              code={
+                codeFile === "config"
+                  ? draftCode.configCode
+                  : draftCode.componentCode
+              }
+              language="javascript"
+              readOnly
+              onChange={() => {}}
+              minimapEnabled={false}
+              padding="p-0"
+            />
+          </div>
+        ) : (
+          <span className={`text-sm ${muted}`}>Loading the code…</span>
+        )}
+      </div>
+    </div>
+  ) : null;
+  const diffs =
+    showsCode && draftCode
+      ? [
+          {
+            file: `${fileName}.js`,
+            lines: lineDiff(original.componentCode, draftCode.componentCode),
+          },
+          {
+            file: `${fileName}.dash.js`,
+            lines: lineDiff(original.configCode, draftCode.configCode),
+          },
+        ]
+      : null;
+  const MARKS = { add: "+", del: "−", same: " ", gap: " " };
+  const changesPane = showsCode ? (
+    <div
+      className={`flex flex-col gap-4 rounded-lg border p-3 overflow-auto ${hairline}`}
+      style={{ height: 440 }}
+      data-testid="cell-preview-changes"
+    >
+      {diffs ? (
+        diffs.map((d) => {
+          const changed = d.lines.some(
+            (l) => l.type === "add" || l.type === "del",
+          );
+          return (
+            <div key={d.file} className="flex flex-col gap-1">
+              <span className={`text-sm font-semibold ${strong}`}>
+                {d.file}
+              </span>
+              {changed ? (
+                <div className="flex flex-col font-mono text-xs">
+                  {d.lines.map((l, i) => (
+                    <span
+                      key={i}
+                      className={`whitespace-pre ${
+                        l.type === "add"
+                          ? statusTokens.success.icon
+                          : l.type === "del"
+                            ? statusTokens.error.icon
+                            : muted
+                      }`}
+                    >
+                      {`${MARKS[l.type]} ${l.text}`}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <span className={`text-xs ${muted}`}>No changes.</span>
+              )}
+            </div>
+          );
+        })
+      ) : (
+        <span className={`text-sm ${muted}`}>Loading the code…</span>
+      )}
+    </div>
+  ) : null;
+
   // As the mockup: the widget running on the left, large; its inputs and
   // what to do with it on the right (stacked when narrow).
   return (
@@ -183,6 +321,18 @@ export const CellPreview = ({
         className="flex flex-col gap-3 min-w-0"
         style={{ flex: "3 1 420px" }}
       >
+        {showsCode ? (
+          <SegmentedControl
+            ariaLabel="Show"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: "preview", label: "Preview" },
+              { value: "code", label: "Code" },
+              { value: "changes", label: "What changed" },
+            ]}
+          />
+        ) : null}
         <div className="flex flex-row flex-wrap items-center justify-between gap-3">
           <span
             className={`text-xs font-semibold uppercase tracking-wider ${muted}`}
@@ -200,57 +350,65 @@ export const CellPreview = ({
             <StatusBadge state="success" label="Checker passed" compact />
           ) : null}
         </div>
-        <div
-          className={`flex flex-col rounded-lg border overflow-hidden ${hairline}`}
-          data-testid="cell-preview-stage"
-          style={{ height: 440 }}
-        >
-          {running ? (
-            <div data-testid="cell-preview-frame" className="flex-1 min-h-0">
-              <Renderer
-                key={runId}
-                bundleSource={bundle}
-                componentName={preview.componentName || name}
-                declaredProviders={declared}
-                widgetData={{
-                  providers: getUserConfigurableProviders(widget.providers),
-                  selectedProviders: selected,
-                  userPrefs: settings,
-                  uuidString: `cell-preview-${preview.componentName || name}`,
-                }}
-                props={settings}
-                onMounted={() => setError(null)}
-                onError={(e) =>
-                  setError(
-                    `It hit an error: ${(e && e.message) || "unknown"} — use Change something to have it fixed.`,
-                  )
-                }
-              />
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center">
-              <span className={`text-base font-semibold ${strong}`}>
-                {name}
-              </span>
-              {!Renderer ? (
-                <span className={`text-sm ${muted}`}>
-                  Live preview isn't available in this app.
+        {view === "code" && codePane ? (
+          codePane
+        ) : view === "changes" && changesPane ? (
+          changesPane
+        ) : (
+          <div
+            className={`flex flex-col rounded-lg border overflow-hidden ${hairline}`}
+            data-testid="cell-preview-stage"
+            style={{ height: 440 }}
+          >
+            {running ? (
+              <div data-testid="cell-preview-frame" className="flex-1 min-h-0">
+                <Renderer
+                  key={runId}
+                  bundleSource={bundle}
+                  componentName={preview.componentName || name}
+                  declaredProviders={declared}
+                  widgetData={{
+                    providers: getUserConfigurableProviders(widget.providers),
+                    selectedProviders: selected,
+                    userPrefs: settings,
+                    uuidString: `cell-preview-${preview.componentName || name}`,
+                  }}
+                  props={settings}
+                  onMounted={() => setError(null)}
+                  onError={(e) =>
+                    setError(
+                      `It hit an error: ${(e && e.message) || "unknown"} — use Change something to have it fixed.`,
+                    )
+                  }
+                />
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center">
+                <span className={`text-base font-semibold ${strong}`}>
+                  {name}
                 </span>
-              ) : run === "loading" ? (
-                <span className={`text-sm ${muted}`}>Loading the widget…</span>
-              ) : (
-                <>
+                {!Renderer ? (
                   <span className={`text-sm ${muted}`}>
-                    {connects
-                      ? "It runs with your real connections, so it starts when you ask."
-                      : "Ready to run."}
+                    Live preview isn't available in this app.
                   </span>
-                  {runButton("Run preview", "md")}
-                </>
-              )}
-            </div>
-          )}
-        </div>
+                ) : run === "loading" ? (
+                  <span className={`text-sm ${muted}`}>
+                    Loading the widget…
+                  </span>
+                ) : (
+                  <>
+                    <span className={`text-sm ${muted}`}>
+                      {connects
+                        ? "It runs with your real connections, so it starts when you ask."
+                        : "Ready to run."}
+                    </span>
+                    {runButton("Run preview", "md")}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         {error ? (
           <span
             className="flex flex-row items-center gap-2 text-sm"
@@ -312,9 +470,7 @@ export const CellPreview = ({
             </span>
           )}
           {hasSettings || connects ? (
-            <span className={`text-xs ${muted}`}>
-              Filled in from the plan · they go into the cell with the widget.
-            </span>
+            <span className={`text-xs ${muted}`}>{inputsNote}</span>
           ) : null}
           {running ? (
             <div>
@@ -325,7 +481,7 @@ export const CellPreview = ({
 
         <div className="flex flex-col" data-testid="cell-preview-decide">
           <Button
-            title="Looks good — put it in the cell"
+            title={approveLabel}
             onClick={looksGood}
             disabled={deciding || !!unchosen}
           />
@@ -367,7 +523,7 @@ export const CellPreview = ({
         {onDiscard ? (
           <div>
             <Button3
-              title="Discard — leave the cell empty"
+              title={discardLabel}
               onClick={onDiscard}
               disabled={deciding}
             />

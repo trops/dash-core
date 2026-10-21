@@ -90,3 +90,35 @@ describe("an empty cell's AI doors open Create for that cell", () => {
     );
   });
 });
+
+// Consolidation Phase 3: every Change with AI door opens Create › Change
+// <widget> — the card menu, the Edit panel and Ask AI, the error box, the
+// Widgets page — through one event DashboardStage turns into Create.
+describe("Change with AI doors open Create on the widget", () => {
+  it("DashboardStage opens Create with the change", () => {
+    expect(stageSrc).toMatch(
+      /window\.addEventListener\("dash:edit-widget-with-ai", handler\)/,
+    );
+    expect(stageSrc).toMatch(
+      /edit=\{createRequest \? createRequest\.edit \|\| null : null\}/,
+    );
+  });
+  it("the card menu, the Edit panel and Ask AI say Change with AI", () => {
+    const header = read("Layout", "Builder", "Enhanced", "WidgetCardHeader.js");
+    expect(header).toMatch(/label: "Change with AI"/);
+    const panel = read("Dashboard", "EditPanel.js");
+    expect(panel).toMatch(/title="Change with AI"/);
+    expect(panel).toMatch(/"Change this widget with AI"/);
+    expect(panel).not.toMatch(/Opens the Widget Builder/);
+  });
+  it("the card and the Edit panel say where the widget is", () => {
+    const grid = read("Layout", "Builder", "LayoutGridContainer.js");
+    expect(grid).toMatch(
+      /new CustomEvent\("dash:edit-widget-with-ai", \{[\s\S]*?scope: workspaceScope \|\| "main",/,
+    );
+    const builder = read("Layout", "Builder", "LayoutBuilder.js");
+    expect(builder).toMatch(
+      /scope: scope \|\| "main",\s*pageId: pageId \?\? null,/,
+    );
+  });
+});

@@ -75,7 +75,7 @@ const TOOL_DEFS = {
   read_widget: {
     name: "read_widget",
     description:
-      "Read an installed widget's source: its component code, its .dash.js config and its manifest. Use the widget's name exactly as search_library gave it.",
+      "Read an installed widget's source: its component code, its .dash.js config, and the list of its package's other files. Use the widget's name exactly as search_library gave it. To read one of those other files (a helper it imports), pass file with its path.",
     inputSchema: {
       type: "object",
       properties: {
@@ -83,6 +83,11 @@ const TOOL_DEFS = {
         component: {
           type: "string",
           description: "Which component, when the package has several.",
+        },
+        file: {
+          type: "string",
+          description:
+            'One of the package\'s other files to read, by the path read_widget listed (e.g. "widgets/lib/format.js").',
         },
       },
       required: ["name"],
@@ -735,6 +740,20 @@ async function handleRoleTool(deps, ctx, toolName, args = {}) {
       case "read_widget": {
         const name = String(a.name || "").trim();
         if (!name) return fail("read_widget needs the widget's name.");
+        const clip = (s) =>
+          String(s || "").length > SOURCE_LIMIT
+            ? `${String(s).slice(0, SOURCE_LIMIT)}\n… (cut at ${SOURCE_LIMIT} characters)`
+            : String(s || "");
+        // One of its other files (Phase 3): read-only, inside the package.
+        if (a.file) {
+          if (!deps.readWidgetFile)
+            return fail("Reading other files isn't available here.");
+          const f = await deps.readWidgetFile({ name, file: String(a.file) });
+          if (!f || !f.success) {
+            return fail((f && f.error) || `Couldn't read ${a.file}.`);
+          }
+          return ok(`--- ${name} › ${f.file} ---\n${clip(f.content)}`);
+        }
         const res = await deps.readWidget({
           name,
           component: a.component || null,
@@ -744,13 +763,19 @@ async function handleRoleTool(deps, ctx, toolName, args = {}) {
             (res && res.error) || `Couldn't read the widget "${name}".`,
           );
         }
-        const clip = (s) =>
-          String(s || "").length > SOURCE_LIMIT
-            ? `${String(s).slice(0, SOURCE_LIMIT)}\n… (cut at ${SOURCE_LIMIT} characters)`
-            : String(s || "");
+        const others = (Array.isArray(res.files) ? res.files : []).filter(
+          (p) =>
+            p !== `widgets/${res.componentName}.js` &&
+            p !== `widgets/${res.componentName}.dash.js`,
+        );
         return ok(
           [
             `Widget: ${name} › ${res.componentName}`,
+            ...(others.length
+              ? [
+                  `Its package's other files (read one with file): ${others.join(", ")}`,
+                ]
+              : []),
             `--- ${res.componentName}.dash.js ---`,
             clip(res.configCode) || "(no config file)",
             `--- ${res.componentName}.js ---`,

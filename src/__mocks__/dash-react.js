@@ -101,6 +101,11 @@ function RadioGroup({ label, name, value, onChange, options = [] }) {
   );
 }
 
+// dash-react CodeEditorVS: the code, as text (read-only in tests).
+function CodeEditorVS({ code = "" }) {
+  return React.createElement("pre", { "data-testid": "code-editor" }, code);
+}
+
 // dash-react ≥1.0.58 SegmentedControl: a radiogroup of option buttons.
 function SegmentedControl({ options = [], value, onChange, ariaLabel }) {
   return React.createElement(
@@ -1050,6 +1055,7 @@ module.exports = {
   InputText,
   TextArea,
   SegmentedControl,
+  CodeEditorVS,
   RadioGroup,
   FilterMenu,
   ChoiceMenu,
