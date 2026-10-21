@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import {
   Button2,
   ButtonIcon,
-  ChatComposer,
   EmptyState,
   FontAwesomeIcon,
   PanelHeader,
@@ -11,14 +10,9 @@ import {
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { CreatePlanStep } from "./CreatePlanStep";
-import { AskStep } from "./AskStep";
 import { recentSections } from "./recentRows";
 import { RecentList } from "./RecentList";
 import { PlanMenu } from "./PlanMenu";
-import {
-  RecipientPicker,
-  useTeamLeads,
-} from "../AiAssistant/components/RecipientPicker";
 
 /**
  * CreateDockPanel — Create in the right-hand dock (create-entry PRD CRE-007
@@ -26,12 +20,9 @@ import {
  * (`dash:create-fold` { recentId, title }) carries on here in a compact
  * layout — chat, plan, Before building and the build's live steps — and
  * Expand reopens it full size (`dash:open-create` { type, recentId }). With
- * nothing folded it shows Recent, where questions and plans share one list
- * (CRE-007 AC4), with the Ask box pinned at the bottom like every chat (5e —
- * questions go to the Planner, which reads the bots' results; design guide
- * rule 16). A question opens here, never full size. The box's "To:" sends
- * it to the Dash team (the Planner) or straight to a dashboard's team lead
- * (5e-2a), shown only when there are leads.
+ * nothing folded it shows Recent: plans and unfinished widgets. Questions
+ * are asked in the Dash team's conversations, from the Bots panel
+ * (consolidation Phase 4a) — this panel has no Ask box.
  *
  * The host's dock decides when it's open (`collapsed`); it stays mounted
  * either way so a fold is never missed.
@@ -49,23 +40,8 @@ export function foldCreate(detail) {
 
 export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
   const { hairline } = useConfigTokens();
-  // { recentId, title, kind?: "question", question? } — the conversation
-  // folded here (a new question has no recentId yet), or null (Recent).
+  // { recentId, title } — the plan folded here, or null (Recent).
   const [folded, setFolded] = useState(null);
-  const [asking, setAsking] = useState("");
-  // null = the Dash team (Planner); else a team lead from bots.listLeads.
-  const [recipient, setRecipient] = useState(null);
-  const { leads, loaded: leadsLoaded } = useTeamLeads(!collapsed);
-  // The chosen lead was deleted or turned off → back to the Dash team.
-  useEffect(() => {
-    if (
-      recipient &&
-      leadsLoaded &&
-      !leads.some((l) => l.botId === recipient.botId)
-    ) {
-      setRecipient(null);
-    }
-  }, [recipient, leads, leadsLoaded]);
   const [plans, setPlans] = useState([]);
   const [drafts, setDrafts] = useState([]);
   // The open plan, as CreatePlanStep reports it (for the "…" menu).
@@ -82,13 +58,7 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
   useEffect(() => {
     const onFold = (e) => {
       const d = (e && e.detail) || {};
-      if (d.recentId) {
-        setFolded({
-          recentId: d.recentId,
-          title: d.title || "",
-          kind: d.kind === "question" ? "question" : "plan",
-        });
-      }
+      if (d.recentId) setFolded({ recentId: d.recentId, title: d.title || "" });
     };
     window.addEventListener("dash:create-fold", onFold);
     return () => window.removeEventListener("dash:create-fold", onFold);
@@ -123,18 +93,13 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
   if (collapsed) return null;
 
   const expand = () => {
-    if (!folded || folded.kind === "question") return;
+    if (!folded) return;
     const { recentId } = folded;
     setFolded(null);
     if (onCollapse) onCollapse();
     openCreate({ type: "dashboard", recentId });
   };
   const openRow = (row) => {
-    // A question is a short chat: it opens here.
-    if (row.kind === "question") {
-      setFolded({ recentId: row.id, title: row.title, kind: row.kind });
-      return;
-    }
     // A plan has a lot to review: Create full size, like Expand.
     if (row.kind === "plan") {
       if (onCollapse) onCollapse();
@@ -148,7 +113,7 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
       }),
     );
   };
-  // Remove a question or plan from Recent (RecentList asks first).
+  // Remove a plan from Recent (RecentList asks first).
   const removeRecent = async (row) => {
     const bots = window.mainApi && window.mainApi.bots;
     if (!bots || !bots.removeCreateRecent) return;
@@ -158,7 +123,10 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
       // It stays listed; try again.
     }
   };
-  const sections = recentSections(plans, drafts, { conversations: 12 });
+  const sections = recentSections(plans, drafts, {
+    conversations: 12,
+    questions: false,
+  });
   const hasRecent = sections.conversations.length + sections.drafts.length > 0;
   // A secondary button, not a link: it leaves the dock for Create full size.
   const makeNew = (
@@ -176,26 +144,6 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
       </span>
     </Button2>
   );
-  const askNow = () => {
-    const q = asking.trim();
-    if (!q) return;
-    setAsking("");
-    setFolded({
-      recentId: null,
-      title: q,
-      kind: "question",
-      question: q,
-      // Its latest state (paused / running) from the live list.
-      recipient: recipient
-        ? leads.find((l) => l.botId === recipient.botId) || recipient
-        : null,
-    });
-  };
-  // Open as a plan: Create (full size) starts from the answer's plan.
-  const openPlan = (seed) => {
-    if (onCollapse) onCollapse();
-    openCreate({ type: "dashboard", seed });
-  };
 
   return (
     <aside
@@ -209,22 +157,17 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
         testId="create-dock-header"
         onBack={folded ? () => setFolded(null) : null}
         backLabel="Back to Recent"
-        title={
-          folded
-            ? folded.title ||
-              (folded.kind === "question" ? "Question" : "Plan a dashboard")
-            : "Create"
-        }
+        title={folded ? folded.title || "Plan a dashboard" : "Create"}
         actions={
           <>
-            {folded && folded.kind !== "question" ? (
+            {folded ? (
               <ButtonIcon
                 icon="up-right-and-down-left-from-center"
                 ariaLabel="Expand"
                 onClick={expand}
               />
             ) : null}
-            {folded && folded.kind !== "question" && folded.recentId ? (
+            {folded && folded.recentId ? (
               <PlanMenu
                 recentId={folded.recentId}
                 title={(planInfo && planInfo.title) || folded.title}
@@ -242,17 +185,7 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
           </>
         }
       />
-      {folded && folded.kind === "question" ? (
-        <div className="flex-1 min-h-0 flex flex-col">
-          <AskStep
-            key={folded.recentId || `new:${folded.question}`}
-            question={folded.question || ""}
-            recentId={folded.recentId}
-            recipient={folded.recipient || null}
-            onOpenPlan={openPlan}
-          />
-        </div>
-      ) : folded ? (
+      {folded ? (
         <div className="flex-1 min-h-0 flex flex-col">
           <CreatePlanStep
             key={folded.recentId}
@@ -276,50 +209,26 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
           />
         </div>
       ) : (
-        <div className="flex-1 min-h-0 flex flex-col">
-          <div
-            className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-4 p-4"
-            data-testid="create-dock-recent"
-          >
-            <RecentList
-              sections={sections}
-              onOpen={openRow}
-              onRemove={removeRecent}
-              empty={
-                <EmptyState
-                  testId="create-dock-empty"
-                  className="my-auto"
-                  title="Nothing here yet"
-                  description="Ask about your dashboards and bots below. Ask for something new and you'll get a plan to review first — nothing is made until you press Build. Questions, plans and unfinished widgets show up here."
-                >
-                  {makeNew}
-                </EmptyState>
-              }
-            />
-            {hasRecent ? <div>{makeNew}</div> : null}
-          </div>
-          <ChatComposer
-            value={asking}
-            onChange={(v) => setAsking(v)}
-            onSend={askNow}
-            ariaLabel="Ask about your dashboards and bots"
-            placeholder={
-              recipient
-                ? `Ask ${recipient.leadName}…`
-                : "Ask about your dashboards and bots…"
+        <div
+          className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-4 p-4"
+          data-testid="create-dock-recent"
+        >
+          <RecentList
+            sections={sections}
+            onOpen={openRow}
+            onRemove={removeRecent}
+            empty={
+              <EmptyState
+                testId="create-dock-empty"
+                className="my-auto"
+                title="Nothing here yet"
+                description="Plans and unfinished widgets show up here. To ask a question, open Dash team in the Bots panel."
+              >
+                {makeNew}
+              </EmptyState>
             }
-            above={
-              leads.length ? (
-                <RecipientPicker
-                  leads={leads}
-                  recipient={recipient}
-                  onChange={setRecipient}
-                  defaultLabel="Dash team"
-                />
-              ) : null
-            }
-            sendLabel="Ask"
           />
+          {hasRecent ? <div>{makeNew}</div> : null}
         </div>
       )}
     </aside>

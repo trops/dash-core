@@ -28,6 +28,19 @@ jest.mock("./BotPage", () => ({
   },
 }));
 
+jest.mock("./DashTeamPage", () => ({
+  DashTeamPage: (props) => (
+    <div>
+      dash team on {props.initialTab}
+      <button onClick={() => props.onOpenPlan({ prompt: "p" })}>
+        open-plan
+      </button>
+      <button onClick={props.onClose}>team-close</button>
+      <button onClick={() => props.onDirtyChange(true)}>team-dirty</button>
+    </div>
+  ),
+}));
+
 let mockModalProps;
 jest.mock("@trops/dash-react", () => {
   const actual = jest.requireActual("@trops/dash-react");
@@ -152,4 +165,33 @@ test("Open in Bots view closes the modal first", () => {
 test("no Bots view button when the host can't open one", () => {
   setup();
   expect(mockPageProps.onOpenInBotsView).toBeNull();
+});
+
+describe("the Dash team (consolidation Phase 4a)", () => {
+  test("a Dash team request shows its page on the asked-for tab", () => {
+    setup({ dashTeam: true, tab: "settings" });
+    expect(screen.getByText("dash team on settings")).toBeInTheDocument();
+    expect(screen.queryByText(/page for/)).toBeNull();
+  });
+
+  test("unsaved role edits keep a click outside from closing it", () => {
+    const { onClose } = setup({ dashTeam: true, tab: "settings" });
+    fireEvent.click(screen.getByText("team-dirty"));
+    act(() => mockModalProps.setIsOpen(false));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText("dash team on settings")).toBeInTheDocument();
+  });
+
+  test("Open as a plan closes the modal and opens Create on the plan", () => {
+    const opened = jest.fn();
+    window.addEventListener("dash:open-create", opened);
+    const { onClose } = setup({ dashTeam: true, tab: "conversation" });
+    fireEvent.click(screen.getByText("open-plan"));
+    expect(onClose).toHaveBeenCalled();
+    expect(opened.mock.calls[0][0].detail).toEqual({
+      type: "dashboard",
+      seed: { prompt: "p" },
+    });
+    window.removeEventListener("dash:open-create", opened);
+  });
 });

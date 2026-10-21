@@ -649,8 +649,17 @@ const DashboardStageInner = ({
       if (!d.botId) return;
       setBotPageRequest({ botId: d.botId, tab: d.tab || "conversation" });
     };
+    // The Dash team's page, from the Bots panel's pinned row (Phase 4a).
+    const onDashTeam = (e) => {
+      const d = (e && e.detail) || {};
+      setBotPageRequest({ dashTeam: true, tab: d.tab || "conversation" });
+    };
     window.addEventListener("dash:open-bot", handler);
-    return () => window.removeEventListener("dash:open-bot", handler);
+    window.addEventListener("dash:open-dash-team", onDashTeam);
+    return () => {
+      window.removeEventListener("dash:open-bot", handler);
+      window.removeEventListener("dash:open-dash-team", onDashTeam);
+    };
   }, []);
   const openBotSettings = useCallback((botId) => {
     if (botId) setBotPageRequest({ botId, tab: "settings" });

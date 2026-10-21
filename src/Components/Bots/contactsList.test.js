@@ -9,6 +9,8 @@ import {
   shortTime,
   budgetLimitText,
   needsYouItems,
+  pinnedLeadOf,
+  dashTeamMatches,
 } from "./contactsList";
 
 const NOW = Date.parse("2026-10-14T12:00:00.000Z");
@@ -252,5 +254,39 @@ describe("events waiting for held bots (US-011 AC8)", () => {
     });
     expect(c.status).toBe("Over budget");
     expect(c.line).toMatch(/· 3 events waiting$/);
+  });
+});
+
+describe("pinned (consolidation Phase 4a)", () => {
+  const team = [
+    { id: "l1", name: "Pack Lead", role: "lead", workspaceId: 1 },
+    { id: "b1", name: "Sorter", workspaceId: 1 },
+    { id: "l2", name: "Brief Lead", role: "lead", workspaceId: "2" },
+  ];
+
+  test("pinnedLeadOf: the open dashboard's lead, ids compared as text", () => {
+    expect(pinnedLeadOf(team, 1).id).toBe("l1");
+    expect(pinnedLeadOf(team, 2).id).toBe("l2");
+    expect(pinnedLeadOf(team, 3)).toBeNull();
+    expect(pinnedLeadOf(team, null)).toBeNull();
+    expect(pinnedLeadOf(null, 1)).toBeNull();
+  });
+
+  test("dashTeamMatches: no search, or a search for it", () => {
+    expect(dashTeamMatches("")).toBe(true);
+    expect(dashTeamMatches(" Dash ")).toBe(true);
+    expect(dashTeamMatches("team")).toBe(true);
+    expect(dashTeamMatches("sorter")).toBe(false);
+  });
+
+  test("contactSections leaves out what's pinned", () => {
+    const s = contactSections({
+      bots: team,
+      workspaces,
+      byTeam: false,
+      exclude: ["l1"],
+      now: NOW,
+    });
+    expect(s[0].contacts.map((c) => c.id).sort()).toEqual(["b1", "l2"]);
   });
 });

@@ -7,7 +7,6 @@ import React from "react";
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { AskStep } from "./AskStep";
-import { CreateDockPanel } from "./CreateDockPanel";
 import {
   questionRequest,
   leadQuestion,
@@ -15,7 +14,12 @@ import {
   hasPlan,
   planSeed,
 } from "./askThread";
-import { recentRows, recentStatus, recentSections } from "./recentRows";
+import {
+  questionThreads,
+  recentRows,
+  recentStatus,
+  recentSections,
+} from "./recentRows";
 
 jest.mock("../Settings/sections/ProvidersSection", () => ({
   ProvidersSection: () => <div data-testid="providers-section" />,
@@ -325,40 +329,6 @@ describe("asking a team lead (5e-2a)", () => {
     expect(bots.run).not.toHaveBeenCalled();
   });
 
-  test("the dock's To: lists leads; picking one sends the question to it", async () => {
-    const bots = leadApi();
-    render(<CreateDockPanel />);
-    const to = await screen.findByLabelText("Send to");
-    expect([...to.options].map((o) => o.textContent)).toEqual([
-      "Dash team",
-      "Daily Brief Lead · Daily Brief",
-    ]);
-    fireEvent.change(to, { target: { value: "b_lead" } });
-    const box = screen.getByLabelText("Ask about your dashboards and bots");
-    expect(box).toHaveAttribute("placeholder", "Ask Daily Brief Lead…");
-    fireEvent.change(box, { target: { value: "Anything urgent?" } });
-    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
-    expect(await screen.findByTestId("ask-answer")).toHaveTextContent(
-      "Nothing urgent.",
-    );
-    expect(bots.askLead).toHaveBeenCalledWith(
-      "b_lead",
-      "Anything urgent?",
-      false,
-      "create",
-    );
-    expect(bots.run).not.toHaveBeenCalled();
-  });
-
-  test("no leads → no To: (the Dash team answers)", async () => {
-    api({ listLeads: jest.fn().mockResolvedValue([]) });
-    render(<CreateDockPanel />);
-    await waitFor(() =>
-      expect(window.mainApi.bots.listLeads).toHaveBeenCalled(),
-    );
-    expect(screen.queryByLabelText("Send to")).toBeNull();
-  });
-
   // Consolidation Phase 2c-2: asked to make something, the lead hands it to
   // the Dash team.
   const HANDED_OFF =
@@ -435,19 +405,53 @@ describe("asking a team lead (5e-2a)", () => {
   });
 });
 
-describe("CreateDockPanel — the Ask box", () => {
-  test("asking opens the question in the dock", async () => {
-    api();
-    render(<CreateDockPanel />);
-    fireEvent.change(
-      screen.getByLabelText("Ask about your dashboards and bots"),
-      { target: { value: "What did my bots find today?" } },
+describe("the Dash team's conversations (consolidation Phase 4a)", () => {
+  test("questionThreads: questions only, newest first, a lead's named", () => {
+    const now = Date.parse("2026-10-21T12:00:00Z");
+    const threads = questionThreads(
+      [
+        { id: "p", title: "Brief", status: "draft", updatedAt: now - 1000 },
+        {
+          id: "q1",
+          kind: "question",
+          title: "What ran?",
+          updatedAt: now - 3 * 3600000,
+        },
+        {
+          id: "q2",
+          kind: "question",
+          title: "Anything urgent?",
+          to: "Sales Lead",
+          updatedAt: now - 60000,
+        },
+        { kind: "question", title: "no id" },
+      ],
+      now,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
-    expect(await screen.findByTestId("ask-step")).toBeInTheDocument();
-    expect(await screen.findByTestId("ask-answer")).toBeInTheDocument();
-    // A question has no Expand.
-    expect(screen.queryByRole("button", { name: "Expand" })).toBeNull();
+    expect(threads.map((x) => [x.id, x.sub])).toEqual([
+      ["q2", "1m ago · asked Sales Lead"],
+      ["q1", "3h ago"],
+    ]);
+    expect(questionThreads(null)).toEqual([]);
+  });
+
+  test("recentSections can leave questions out (the dock lists plans)", () => {
+    const plans = [
+      { id: "q", kind: "question", title: "What ran?", updatedAt: 5 },
+      { id: "p", title: "Brief", status: "draft", updatedAt: 1 },
+    ];
+    expect(
+      recentSections(plans, [], { questions: false }).conversations.map(
+        (r) => r.id,
+      ),
+    ).toEqual(["p"]);
+  });
+
+  test("onStarted says which Recent entry a new question was saved as", async () => {
+    api();
+    const onStarted = jest.fn();
+    render(<AskStep question="What ran today?" onStarted={onStarted} />);
+    await waitFor(() => expect(onStarted).toHaveBeenCalledWith("plan_q1"));
   });
 });
 

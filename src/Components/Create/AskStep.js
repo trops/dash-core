@@ -37,6 +37,8 @@ import {
  * Create.
  *
  * New: `question` (+ `recipient`). Reopened from Recent: `recentId`.
+ * `onStarted(id)` says which Recent entry a new question was saved as (the
+ * Dash team's conversation list selects it, Phase 4a).
  */
 export const AskStep = ({
   question = "",
@@ -44,6 +46,7 @@ export const AskStep = ({
   recipient = null,
   onOpenPlan = null,
   onHandoff = null,
+  onStarted = null,
 }) => {
   // [{ who: "you" | "planner" | "lead" | "note", text, meta?, plan? }]
   const [messages, setMessages] = useState(
@@ -202,10 +205,15 @@ export const AskStep = ({
             : null,
         )
           .then((res) => {
-            if (res && res.id) askId.current = res.id;
+            if (res && res.id) {
+              askId.current = res.id;
+              if (onStarted && alive.current) onStarted(res.id);
+            }
           })
           .catch(() => {})
-          .then(() => alive.current && ask(question, false, []));
+          // Asked even if closed meanwhile: the answer is saved to Recent
+          // (add), so a reopened question isn't left unanswered.
+          .then(() => ask(question, false, []));
       }
     }
     return () => {

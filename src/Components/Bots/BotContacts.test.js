@@ -4,8 +4,9 @@
  */
 import React from "react";
 import "@testing-library/jest-dom";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { BotContacts } from "./BotContacts";
+import { WorkspaceContext } from "../../Context/WorkspaceContext";
 
 const workspaces = [
   { id: 1, name: "Slack Pack" },
@@ -249,5 +250,113 @@ describe("budgets in the dock (US-019)", () => {
     );
     expect(screen.getByText("80% of budget")).toBeInTheDocument();
     expect(screen.queryByTestId("bot-contacts-needs-you")).toBeNull();
+  });
+});
+
+describe("pinned: this dashboard's lead and the Dash team (consolidation Phase 4a)", () => {
+  const onDashboard = (id, over = {}) =>
+    render(
+      <WorkspaceContext.Provider
+        value={{ workspaceData: id === null ? null : { id, name: "x" } }}
+      >
+        <BotContacts
+          contacts={contacts(over)}
+          workspaces={workspaces}
+          {...(over.props || {})}
+        />
+      </WorkspaceContext.Provider>,
+    );
+  const pinned = () => screen.queryByTestId("bot-contacts-pinned");
+
+  test("the open dashboard's lead is pinned with Dash team, and not repeated below", () => {
+    onDashboard(1);
+    const box = pinned();
+    expect(box).toHaveTextContent("Pinned");
+    expect(
+      within(box)
+        .getByTestId("bot-contact-row")
+        .querySelector("button")
+        .getAttribute("aria-label"),
+    ).toMatch(/^Slack Pack Lead, lead: All quiet/);
+    expect(box).toHaveTextContent("This dashboard · All quiet");
+    expect(within(box).getByTestId("bot-contact-dash-team")).toHaveTextContent(
+      "Ask about anything, or plan something new",
+    );
+    // Below: the other bots only.
+    const below = screen.getAllByTestId("bot-contacts-section").flatMap((s) =>
+      within(s)
+        .queryAllByTestId("bot-contact-row")
+        .map((r) => r.textContent),
+    );
+    expect(below.join(" ")).not.toMatch(/Slack Pack Lead/);
+    expect(below.join(" ")).toMatch(/Inbox Sorter/);
+  });
+
+  test("no dashboard open (a Manage page): only Dash team is pinned", () => {
+    onDashboard(null);
+    expect(within(pinned()).queryByTestId("bot-contact-row")).toBeNull();
+    expect(
+      within(pinned()).getByTestId("bot-contact-dash-team"),
+    ).toBeInTheDocument();
+    expect(rowNames()).toContain("Slack Pack Lead, lead");
+  });
+
+  test("a dashboard with no lead: only Dash team is pinned", () => {
+    onDashboard(2);
+    expect(within(pinned()).queryByTestId("bot-contact-row")).toBeNull();
+  });
+
+  test("the pinned lead opens its page; Dash team opens the team's page", () => {
+    const onOpenBot = jest.fn();
+    onDashboard(1, { props: { onOpenBot } });
+    fireEvent.click(
+      within(pinned()).getByTestId("bot-contact-row").querySelector("button"),
+    );
+    expect(onOpenBot).toHaveBeenCalledWith("sl", "conversation");
+    const opened = jest.fn();
+    window.addEventListener("dash:open-dash-team", opened);
+    fireEvent.click(
+      within(pinned())
+        .getByTestId("bot-contact-dash-team")
+        .querySelector("button"),
+    );
+    window.removeEventListener("dash:open-dash-team", opened);
+    expect(opened.mock.calls[0][0].detail).toEqual({ tab: "conversation" });
+  });
+
+  test("search filters the pinned rows too", () => {
+    onDashboard(1);
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search bots" }), {
+      target: { value: "inbox" },
+    });
+    expect(pinned()).toBeNull();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search bots" }), {
+      target: { value: "dash" },
+    });
+    expect(
+      within(pinned()).getByTestId("bot-contact-dash-team"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/No bots match/)).toBeNull();
+  });
+
+  test("By team off: pinned stays, the rest is one labelled list", () => {
+    window.localStorage.setItem("dash:bot-contacts:by-team", "false");
+    onDashboard(1);
+    expect(pinned()).toBeInTheDocument();
+    const sections = screen.getAllByTestId("bot-contacts-section");
+    expect(sections).toHaveLength(1);
+    expect(sections[0]).toHaveTextContent(/^All bots/);
+  });
+
+  test("no bots yet: Dash team is still there, and says it can make one", () => {
+    onDashboard(null, { bots: [] });
+    expect(
+      within(pinned()).getByTestId("bot-contact-dash-team"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Your bots show up here. Ask the Dash team to make one.",
+      ),
+    ).toBeInTheDocument();
   });
 });

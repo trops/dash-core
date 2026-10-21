@@ -78,6 +78,29 @@ export function recentRows(plans = [], drafts = [], limit = RECENT_ROWS) {
   return rows.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit);
 }
 
+/**
+ * The Dash team's conversations (consolidation Phase 4a): the questions in
+ * Recent, newest first — { id, title, sub, to, updatedAt }; `to` names the
+ * lead a question went to (null = the Dash team).
+ */
+export function questionThreads(plans = [], now = Date.now()) {
+  return (plans || [])
+    .filter((p) => p && p.kind === "question" && p.id)
+    .map((p) => ({
+      id: p.id,
+      title: p.title || "Question",
+      to: p.to || null,
+      updatedAt: ms(p.updatedAt),
+    }))
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .map((t) => ({
+      ...t,
+      sub: [draftAge(t.updatedAt, now), t.to ? `asked ${t.to}` : null]
+        .filter(Boolean)
+        .join(" · "),
+    }));
+}
+
 /** "Ask Test · Building 3/7 · 21k tokens · 5m ago" */
 export function recentLine(row, now = Date.now()) {
   return `${row.title} · ${row.status} · ${draftAge(row.updatedAt, now)}`;
@@ -92,10 +115,18 @@ export function recentLine(row, now = Date.now()) {
 export function recentSections(
   plans = [],
   drafts = [],
-  { conversations = RECENT_ROWS, unfinished = RECENT_DRAFTS } = {},
+  {
+    conversations = RECENT_ROWS,
+    unfinished = RECENT_DRAFTS,
+    // false: plans only — questions live in the Dash team's conversations
+    // (consolidation Phase 4a).
+    questions = true,
+  } = {},
 ) {
   const rows = recentRows(plans, drafts, Infinity);
-  const conv = rows.filter((r) => r.kind !== "widget-draft");
+  const conv = rows.filter(
+    (r) => r.kind !== "widget-draft" && (questions || r.kind !== "question"),
+  );
   const dr = rows
     .filter((r) => r.kind === "widget-draft")
     .map((r) => ({ ...r, status: "Continue in Widget Builder" }));

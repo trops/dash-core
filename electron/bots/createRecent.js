@@ -125,11 +125,18 @@ class CreateRecent {
   }
 
   _write(blob) {
-    // Newest MAX_ENTRIES only.
-    const ids = Object.values(blob.entries)
-      .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
-      .map((e) => e.id);
-    for (const id of ids.slice(MAX_ENTRIES)) delete blob.entries[id];
+    // Newest MAX_ENTRIES of each kind: questions are the Dash team's
+    // conversations now (consolidation Phase 4a), so asking a lot never
+    // pushes plans out, or the other way round.
+    const sorted = Object.values(blob.entries).sort((a, b) =>
+      String(b.updatedAt).localeCompare(String(a.updatedAt)),
+    );
+    const kept = {};
+    for (const e of sorted) {
+      const kind = e.kind || "plan";
+      kept[kind] = (kept[kind] || 0) + 1;
+      if (kept[kind] > MAX_ENTRIES) delete blob.entries[e.id];
+    }
     this._persistence.write(blob);
     for (const fn of this._listeners) {
       try {
