@@ -188,8 +188,10 @@ describe("PanelEditItem — unused LayoutModel import dropped", () => {
 });
 
 describe("WidgetPanel — wires the flushRef so Save reads what was typed", () => {
-  test("keeps a flushRef and passes it to <PanelEditItem flushRef=...>", () => {
-    expect(PANEL_SOURCE).toMatch(/const flushRef = useRef\(null\)/);
+  test("keeps a flushRef (the dashboard's, when given) and passes it to <PanelEditItem flushRef=...>", () => {
+    expect(PANEL_SOURCE).toMatch(
+      /const flushRef = outerFlushRef \|\| ownFlushRef/,
+    );
     expect(PANEL_SOURCE).toMatch(
       /<PanelEditItem \{\.\.\.props\} flushRef=\{flushRef\} \/>/,
     );

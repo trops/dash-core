@@ -112,6 +112,7 @@ export const AppPage = ({
         dashApi={dashApi}
         credentials={credentials}
         onReloadMenuItems={onReloadMenuItems}
+        onReloadWorkspaces={onReloadWorkspaces}
         {...createProps}
       />
     );

@@ -278,6 +278,8 @@ const DashboardStageInner = ({
   const [providerLink, setProviderLink] = useState(null);
   // Widgets page install deep link { action, nonce } (Create screen).
   const [widgetLink, setWidgetLink] = useState(null);
+  // The widget panel's "apply what's typed" — Save calls it first.
+  const panelFlushRef = useRef(null);
   // Bot approvals waiting anywhere — the sidebar's Bots dot (NAV-001 AC3).
   const pendingApprovals = usePendingApprovalCount();
   // Providers that still need a credential — the Providers item's dot.
@@ -1874,6 +1876,7 @@ const DashboardStageInner = ({
       getUnresolvedProviders({
         workspace: workspaceSelected,
         appProviders: appContext?.providers || {},
+        providersLoaded: appContext?.providersLoaded,
         // Use ComponentManager.config so a legacy layout referencing
         // a bare component name (`"PipelineKanban"`) still resolves
         // to its scoped registration. Direct `componentMap[name]`
@@ -1881,7 +1884,7 @@ const DashboardStageInner = ({
         getWidgetRequirements: (name) =>
           (name && ComponentManager.config(name)?.providers) || [],
       }),
-    [workspaceSelected, appContext?.providers],
+    [workspaceSelected, appContext?.providers, appContext?.providersLoaded],
   );
   const unresolvedProvidersCount = unresolvedProviders.length;
   // Listener orphans are pruned in WorkspaceModel / DashboardModel at
@@ -2483,6 +2486,11 @@ const DashboardStageInner = ({
   // Save: staged bot edits first (phase 1c), then the dashboard. A failed
   // bot save stops here so nothing is half-saved silently.
   function handleClickSaveWorkspace() {
+    // A setting still being typed in the widget panel applies on blur,
+    // which can land after this click (or never, if the panel closes):
+    // apply it now. It reaches the page refs synchronously, which is
+    // what saveDashboardWorkspace reads.
+    if (typeof panelFlushRef.current === "function") panelFlushRef.current();
     const staged = Object.entries(pendingBotEdits);
     if (staged.length === 0) return saveDashboardWorkspace();
     const api = window.mainApi.bots;
@@ -3139,6 +3147,7 @@ const DashboardStageInner = ({
                         onCommit={(ws) =>
                           dispatchEditAction("update", null, { workspace: ws })
                         }
+                        flushRef={panelFlushRef}
                       />
                     ) : null
                   }

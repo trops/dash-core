@@ -40,6 +40,16 @@ describe("DashboardStage — select to edit", () => {
     );
   });
 
+  test("Save first applies a widget setting still being typed (QA 2026-10-22)", () => {
+    const body = fnBody(stage, "handleClickSaveWorkspace");
+    const flush = body.indexOf("panelFlushRef.current()");
+    expect(flush).toBeGreaterThan(-1);
+    expect(flush).toBeLessThan(body.indexOf("return saveDashboardWorkspace()"));
+    expect(stage).toMatch(
+      /<WidgetPanel[\s\S]{0,1200}flushRef=\{panelFlushRef\}/,
+    );
+  });
+
   test("Save writes staged bot edits before the dashboard, and stops on failure", () => {
     const body = fnBody(stage, "handleClickSaveWorkspace");
     expect(body).not.toBeNull();

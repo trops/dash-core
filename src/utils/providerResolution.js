@@ -19,6 +19,22 @@ import {
 } from "./widgetIdentity";
 
 /**
+ * Whether a provider of this name exists. appProviders is a map keyed by
+ * name or an array of { name }. Until the list has loaded (providersLoaded
+ * not true) an empty list counts as unknown, so every name exists and
+ * widgets don't flash a missing pill while providers load.
+ */
+export function providerExists(appProviders, name, providersLoaded) {
+  const names = Array.isArray(appProviders)
+    ? appProviders.map((p) => p?.name)
+    : appProviders && typeof appProviders === "object"
+      ? Object.keys(appProviders)
+      : [];
+  if (names.length === 0 && providersLoaded !== true) return true;
+  return names.includes(name);
+}
+
+/**
  * Resolve which provider name a given widget instance would bind to for
  * the given provider type. Mirrors the 3-layer chain in useMcpProvider
  * and useWebSocketProvider exactly:
@@ -28,6 +44,9 @@ import {
  *   3. app default              (any provider of matching type flagged
  *                                `isDefaultForType` in appProviders)
  *   4. null                     (truly unresolved)
+ *
+ * A binding to a provider that has since been deleted is unresolved too
+ * (null, not the default): the runtime hooks bind to that name and fail.
  */
 export function resolveProviderName({
   providerType,
@@ -35,15 +54,24 @@ export function resolveProviderName({
   widgetId,
   workspace,
   appProviders,
+  providersLoaded,
 }) {
   // 1. Widget-level
   const widgetLevel = layoutItem?.selectedProviders?.[providerType];
-  if (widgetLevel) return widgetLevel;
+  if (widgetLevel) {
+    return providerExists(appProviders, widgetLevel, providersLoaded)
+      ? widgetLevel
+      : null;
+  }
 
   // 2. Workspace-level
   const workspaceLevel =
     widgetId && workspace?.selectedProviders?.[widgetId]?.[providerType];
-  if (workspaceLevel) return workspaceLevel;
+  if (workspaceLevel) {
+    return providerExists(appProviders, workspaceLevel, providersLoaded)
+      ? workspaceLevel
+      : null;
+  }
 
   // 3. App default — appProviders is either a map keyed by name or an
   //    array. Support both because different callers shape it either way.
@@ -157,6 +185,7 @@ export function forEachWidget(workspace, visit) {
 export function getUnresolvedProviders({
   workspace,
   appProviders,
+  providersLoaded,
   getWidgetRequirements,
 }) {
   if (!workspace || typeof getWidgetRequirements !== "function") return [];
@@ -188,6 +217,7 @@ export function getUnresolvedProviders({
         widgetId,
         workspace,
         appProviders,
+        providersLoaded,
       });
       if (!name) {
         unresolved.push({

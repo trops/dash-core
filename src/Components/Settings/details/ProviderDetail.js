@@ -259,15 +259,18 @@ export const ProviderDetail = ({
   const [wsTestResult, setWsTestResult] = useState(null);
 
   const handleWsTestConnection = async () => {
-    if (!dashApi?.webSocket || !provider?.wsConfig?.url || !providerName)
-      return;
+    const wsApi = dashApi?.api?.webSocket;
+    if (!wsApi || !provider?.wsConfig?.url || !providerName) return;
 
     setIsWsTesting(true);
     setWsTestResult(null);
 
+    // Its own connection: under the provider's name it would reuse, then
+    // close, the socket the provider's widgets are using.
+    const testName = `${providerName} (connection test)`;
     const startTime = Date.now();
     try {
-      const result = await dashApi.webSocket.connect(providerName, {
+      const result = await wsApi.connect(testName, {
         url: provider.wsConfig.url,
         headers: provider.wsConfig.headers || null,
         subprotocols: provider.wsConfig.subprotocols || null,
@@ -286,10 +289,8 @@ export const ProviderDetail = ({
           success: true,
           message: `Connected in ${latency}ms`,
         });
-
-        // Disconnect after test
-        await dashApi.webSocket.disconnect(providerName).catch(() => {});
       }
+      await wsApi.disconnect(testName).catch(() => {});
     } catch (err) {
       setWsTestResult({
         success: false,

@@ -50,6 +50,9 @@ export const AppWrapper = ({ children, credentials = null, dashApi }) => {
 
   const [providers, setProviders] = useState({});
   const [isLoadingProviders, setIsLoadingProviders] = useState(false);
+  // True once a list has loaded, so an empty one means "none" rather
+  // than "not known yet" (a binding to a deleted provider shows a pill).
+  const [providersLoaded, setProvidersLoaded] = useState(false);
 
   // ── App-launch updates check ───────────────────────────────────
   // Aggregator over widget + dashboard registry checks. Powers the
@@ -250,6 +253,7 @@ export const AppWrapper = ({ children, credentials = null, dashApi }) => {
         providersObj[provider.name] = provider;
       });
       setProviders(() => providersObj);
+      setProvidersLoaded(true);
     }
     setIsLoadingProviders(() => false);
   }
@@ -317,6 +321,7 @@ export const AppWrapper = ({ children, credentials = null, dashApi }) => {
         settings: settings,
         providers: providers,
         isLoadingProviders: isLoadingProviders,
+        providersLoaded,
         refreshProviders: loadProviders,
         changeSearchClient,
         changeCreds,
@@ -342,6 +347,7 @@ export const AppWrapper = ({ children, credentials = null, dashApi }) => {
     settings,
     providers,
     isLoadingProviders,
+    providersLoaded,
     loadProviders,
     changeSearchClient,
     changeCreds,

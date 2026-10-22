@@ -262,8 +262,11 @@ export const ProvidersSection = ({
     }
 
     // If it's a WebSocket provider, disconnect first
-    if (targetProvider?.providerClass === "websocket" && dashApi?.webSocket) {
-      dashApi.webSocket.disconnect(deleteTarget).catch(() => {});
+    if (
+      targetProvider?.providerClass === "websocket" &&
+      dashApi?.api?.webSocket
+    ) {
+      dashApi.api.webSocket.disconnect(deleteTarget).catch(() => {});
     }
 
     dashApi.deleteProvider(

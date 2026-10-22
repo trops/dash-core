@@ -16,22 +16,35 @@ jest.mock("../../ComponentManager", () => ({
 }));
 jest.mock("../Layout/Builder/Modal/Panel/PanelEditItem", () => ({
   __esModule: true,
-  default: ({ item, workspace, onUpdate }) => (
-    <button
-      type="button"
-      onClick={() =>
+  default: ({ item, workspace, onUpdate, flushRef }) => {
+    // Like the real one: the panel can apply what is typed via flushRef.
+    if (flushRef) {
+      flushRef.current = () =>
         onUpdate(
-          { ...item, userPrefs: { title: "Edited" } },
+          { ...item, userPrefs: { title: "Typed" } },
           {
             ...workspace,
-            layout: [{ ...item, userPrefs: { title: "Edited" } }],
+            layout: [{ ...item, userPrefs: { title: "Typed" } }],
           },
-        )
-      }
-    >
-      settings form
-    </button>
-  ),
+        );
+    }
+    return (
+      <button
+        type="button"
+        onClick={() =>
+          onUpdate(
+            { ...item, userPrefs: { title: "Edited" } },
+            {
+              ...workspace,
+              layout: [{ ...item, userPrefs: { title: "Edited" } }],
+            },
+          )
+        }
+      >
+        settings form
+      </button>
+    );
+  },
 }));
 jest.mock("../Layout/Builder/Modal/Panel", () => ({
   PanelEditItemProviders: () => <div>connections form</div>,
@@ -114,5 +127,26 @@ test("a change goes to onCommit, for the dashboard's Save", () => {
   expect(onCommit).toHaveBeenCalledTimes(1);
   expect(onCommit.mock.calls[0][0].layout[0].userPrefs).toEqual({
     title: "Edited",
+  });
+});
+
+test("the dashboard's Save can apply a setting still being typed", () => {
+  mockConfig = { userConfig: { title: { type: "text" } } };
+  const onCommit = jest.fn();
+  const flushRef = { current: null };
+  render(
+    <WidgetPanel
+      item={item}
+      workspace={workspace}
+      name="Counter"
+      onCommit={onCommit}
+      flushRef={flushRef}
+    />,
+  );
+  expect(typeof flushRef.current).toBe("function");
+  flushRef.current();
+  expect(onCommit).toHaveBeenCalledTimes(1);
+  expect(onCommit.mock.calls[0][0].layout[0].userPrefs).toEqual({
+    title: "Typed",
   });
 });

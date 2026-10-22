@@ -21,6 +21,7 @@ import { WidgetIcon } from "./WidgetIcon";
 import { ComponentManager } from "../../../../ComponentManager";
 import { getUserConfigurableProviders } from "../../../../utils/providerUtils";
 import { pickWidgetDisplayName } from "../../../../utils/widgetIdentity";
+import { providerExists } from "../../../../utils/providerResolution";
 import { AppContext } from "../../../../Context";
 import { cardFixPill } from "../../../Dashboard/widgetPanelText";
 import { providerLabel } from "../../../Create/planChecklist";
@@ -153,7 +154,15 @@ export const WidgetCardHeader = ({
   // `utils/providerResolution.js` so the indicator agrees with what
   // the runtime hook actually does.
   const isProviderResolved = (providerType) => {
-    if (selectedProviders[providerType] != null) return true;
+    // A pick of a since-deleted provider isn't resolved: the runtime
+    // binds to it and fails.
+    if (selectedProviders[providerType] != null) {
+      return providerExists(
+        appProviders,
+        selectedProviders[providerType],
+        appCtx?.providersLoaded,
+      );
+    }
     // Walk appProviders looking for a default of this type.
     const entries =
       appProviders && typeof appProviders === "object"
