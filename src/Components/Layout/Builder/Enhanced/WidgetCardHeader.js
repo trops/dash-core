@@ -13,6 +13,7 @@ import React, { useContext } from "react";
 import {
   ActionMenu,
   FontAwesomeIcon,
+  StatusBadge,
   ThemeContext,
   useStatusTokens,
 } from "@trops/dash-react";
@@ -21,6 +22,8 @@ import { ComponentManager } from "../../../../ComponentManager";
 import { getUserConfigurableProviders } from "../../../../utils/providerUtils";
 import { pickWidgetDisplayName } from "../../../../utils/widgetIdentity";
 import { AppContext } from "../../../../Context";
+import { cardFixPill } from "../../../Dashboard/widgetPanelText";
+import { providerLabel } from "../../../Create/planChecklist";
 
 // ComponentConfigModel's fallback `name` for a config that sets none.
 const DEFAULT_CONFIG_NAME = "My Workspace";
@@ -166,21 +169,45 @@ export const WidgetCardHeader = ({
   // button + the "!" badge on the Providers menu item so the user
   // can see truly-unresolved state at a glance. Widgets relying on
   // a global default no longer trip this.
-  const hasUnresolvedRequiredProvider = providerRequirements.some(
-    (req) => req.required && !isProviderResolved(req.type),
-  );
+  const missingConnections = [
+    ...new Set(
+      providerRequirements
+        .filter((req) => req.required && !isProviderResolved(req.type))
+        .map((req) => req.type),
+    ),
+  ];
+  const hasUnresolvedRequiredProvider = missingConnections.length > 0;
+
+  // Listeners it has but nothing wired to them (moved up from the card's
+  // footer, consolidation Phase 4c).
+  const eventHandlers = widgetConfig?.eventHandlers || [];
+  const listeners = widgetItem?.listeners || {};
+  const unconnectedListeners = eventHandlers.filter(
+    (h) => !listeners[h] || listeners[h].length === 0,
+  ).length;
+  // One pill for what's missing; it opens the panel at the fix.
+  const fixPill = cardFixPill({
+    missingConnections,
+    unconnectedListeners,
+    label: providerLabel,
+  });
 
   // The ⋮ menu (consolidation Phase 3P): Edit in panel (every setting —
   // its connections and listeners too — is in the edit panel), one Change
   // (Create, where you pick AI or by hand), then Move, Split and Remove. No
-  // dialogs. A "!" marks Edit in panel when a required connection isn't set.
+  // dialogs. A "!" marks Edit in panel when a required connection isn't set,
+  // and it then opens at Connections (Phase 4c).
   const menuItems = [];
   if (onConfigure) {
     menuItems.push({
       label: "Edit in panel",
       description: "Its settings, connections and listeners",
       badge: hasUnresolvedRequiredProvider ? "!" : null,
-      onSelect: () => onConfigure(widgetItem, "edit"),
+      onSelect: () =>
+        onConfigure(
+          widgetItem,
+          hasUnresolvedRequiredProvider ? "providers" : "edit",
+        ),
     });
   }
   // Built-in widgets ship with Dash: nothing to change.
@@ -290,6 +317,23 @@ export const WidgetCardHeader = ({
               {packageLabel}
             </span>
           )}
+          {fixPill && onConfigure ? (
+            <button
+              type="button"
+              data-testid="widget-fix-pill"
+              onClick={(e) => {
+                e.stopPropagation();
+                onConfigure(widgetItem, fixPill.section);
+              }}
+              className="mt-1 self-start inline-flex rounded-full cursor-pointer focus-visible:outline-none focus-visible:ring-2"
+              title="Fix it in the panel"
+            >
+              <StatusBadge state="warning">
+                <FontAwesomeIcon icon={fixPill.icon} className="h-3 w-3" />
+                <span>{fixPill.text}</span>
+              </StatusBadge>
+            </button>
+          ) : null}
         </div>
       </div>
 

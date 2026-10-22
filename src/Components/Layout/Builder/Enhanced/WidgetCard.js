@@ -16,8 +16,7 @@
 import React from "react";
 import { WidgetCardHeader } from "./WidgetCardHeader";
 import { WidgetCardStatusBar } from "./WidgetCardStatusBar";
-import { ComponentManager } from "../../../../ComponentManager";
-import { FontAwesomeIcon, StatusBadge, ThemeContext } from "@trops/dash-react";
+import { ThemeContext } from "@trops/dash-react";
 
 /**
  * WidgetCard - Main component with Header/Body/Footer subcomponents
@@ -106,56 +105,16 @@ const WidgetCardBody = ({ children, padding = "p-2", className = "" }) => {
 };
 
 /**
- * WidgetCard.Footer - Footer section with handler warnings
- * Only renders in edit mode (preview === false)
- * Shows amber warning when widget has eventHandlers that lack listener connections
+ * WidgetCard.Footer - Footer section (edit mode only). The "listeners not
+ * connected" pill moved up into the header with the missing-connection one
+ * (consolidation Phase 4c), so this only holds what it's given.
  */
-const WidgetCardFooter = ({
-  children,
-  item = null,
-  onConfigure = null,
-  className = "",
-}) => {
+const WidgetCardFooter = ({ children, className = "" }) => {
   const { preview } = React.useContext(WidgetCardContext);
-  if (preview === true) return null;
-
-  // Compute unconfigured handlers
-  const widgetConfig = item?.component
-    ? ComponentManager.config(item.component, item)
-    : null;
-  const eventHandlers = widgetConfig?.eventHandlers || [];
-  const listeners = item?.listeners || {};
-  const unconfiguredCount = eventHandlers.filter(
-    (h) => !listeners[h] || listeners[h].length === 0,
-  ).length;
-
-  // Don't render if no children AND no warnings
-  if (!children && unconfiguredCount === 0) return null;
-
+  if (preview === true || !children) return null;
   // No border or fill of its own — it sits inside the cell's one frame
-  // (GridCellFrame). The warning is a dash-react StatusBadge, so it reads
-  // in light and dark themes alike.
-  return (
-    <div className={`px-3 pb-2 pt-1 ${className}`}>
-      {children}
-      {unconfiguredCount > 0 && (
-        <button
-          type="button"
-          onClick={() => onConfigure && onConfigure(item, "handlers")}
-          className="inline-flex rounded-full cursor-pointer focus-visible:outline-none focus-visible:ring-2"
-          title="Click to configure listeners"
-        >
-          <StatusBadge state="warning">
-            <FontAwesomeIcon icon="tower-broadcast" className="h-3 w-3" />
-            <span>
-              {unconfiguredCount} listener
-              {unconfiguredCount > 1 ? "s" : ""} not connected
-            </span>
-          </StatusBadge>
-        </button>
-      )}
-    </div>
-  );
+  // (GridCellFrame).
+  return <div className={`px-3 pb-2 pt-1 ${className}`}>{children}</div>;
 };
 
 /**

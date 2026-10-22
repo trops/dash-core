@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Button,
   Button3,
@@ -10,6 +10,7 @@ import { getWidgetPreviewRenderer } from "../../utils/widgetPreviewRenderer";
 import { resolveProviderName } from "../../utils/providerResolution";
 import { getUserConfigurableProviders } from "../../utils/providerUtils";
 import { normalizeUserConfig } from "../../utils/userConfigFields";
+import { providerLabel } from "../Create/planChecklist";
 
 /**
  * The providers a preview runs with: for each type the widget needs, the one
@@ -95,10 +96,27 @@ export function componentToMount(widget) {
 }
 
 /**
+ * Whether the preview would start a server: a chosen provider that's an
+ * MCP server (declared so, or set up so). Such a preview waits for a click
+ * (consolidation Phase 4b); the rest start by themselves.
+ */
+export function startsServer(needs, appProviders) {
+  return (needs || []).some(
+    (n) =>
+      n.selected &&
+      (n.providerClass === "mcp" ||
+        ((appProviders || {})[n.selected] || {}).providerClass === "mcp"),
+  );
+}
+
+/**
  * WidgetPreview — the selected widget rendered live (app-navigation PRD
  * NAV-011), inside the host's sandbox (getWidgetPreviewRenderer — the Widget
  * Builder's iframe in dash-electron), so a broken widget can't affect the
- * app. Runs on click: a live preview starts MCP servers and calls real APIs.
+ * app. It runs as soon as it can (consolidation Phase 4b), except when it
+ * would start a server (an MCP provider): that one runs on Start preview,
+ * since it launches the server and calls the real service. Stop stays
+ * stopped until Reload.
  */
 export const WidgetPreview = ({
   widget,
@@ -121,11 +139,14 @@ export const WidgetPreview = ({
     appProviders,
     chosen,
   );
-  const usesText = Object.values(selected).length
-    ? `Uses ${Object.values(selected).join(", ")}.`
-    : "";
+  const names = Object.values(selected).join(", ");
+  const usesText = names ? `Uses ${names}.` : "";
 
+  // Each run (and Stop) takes a new token; a load that finishes after a
+  // newer one started is dropped (Reload, StrictMode's double effect).
+  const runToken = useRef(0);
   const run = async () => {
+    const token = ++runToken.current;
     setState("loading");
     setError(null);
     setRunId((n) => n + 1);
@@ -135,6 +156,7 @@ export const WidgetPreview = ({
         api && api.readBundle
           ? await api.readBundle(widget.packageId || widget.name)
           : { success: false, error: "not available" };
+      if (token !== runToken.current) return;
       if (!result || !result.success || !result.source) {
         setError(
           `Couldn't load this widget's code: ${
@@ -147,6 +169,7 @@ export const WidgetPreview = ({
       setBundle(result.source);
       setState("running");
     } catch (err) {
+      if (token !== runToken.current) return;
       setError(
         `Couldn't load this widget's code: ${(err && err.message) || err}`,
       );
@@ -155,26 +178,43 @@ export const WidgetPreview = ({
   };
 
   const stop = () => {
+    runToken.current += 1;
     setState("idle");
     setBundle(null);
     setError(null);
   };
 
+  const server = startsServer(needs, appProviders);
+  const canRun =
+    !!Renderer &&
+    !(widget && widget.source === "builtin") &&
+    !missing &&
+    !unchosen;
+  // Runs by itself when it can and starts no server — on open, and again
+  // after a provider is picked (picking stops it). Stop isn't undone: the
+  // key only changes with the widget or its providers.
+  const autoKey = `${widget && widget.name}|${Object.entries(selected)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(",")}`;
+  useEffect(() => {
+    if (canRun && !server) run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoKey, canRun, server]);
+
   // What the sandbox may use: the provider types, plus its "mcp" namespace
   // when a chosen provider is an MCP server (the sandbox's mainApi gate
   // blocks undeclared credentialed namespaces).
   const declared = Object.keys(selected);
-  if (
-    needs.some(
+  if (server && !declared.includes("mcp")) declared.push("mcp");
+  const serverTypes = needs
+    .filter(
       (n) =>
         n.selected &&
         (n.providerClass === "mcp" ||
           ((appProviders || {})[n.selected] || {}).providerClass === "mcp"),
-    ) &&
-    !declared.includes("mcp")
-  ) {
-    declared.push("mcp");
-  }
+    )
+    .map((n) => providerLabel(n.type))
+    .join(" and ");
 
   let body;
   if (widget && widget.source === "builtin") {
@@ -219,6 +259,8 @@ export const WidgetPreview = ({
                     placeholder="Choose a provider"
                     options={n.options.map((o) => ({ label: o, value: o }))}
                     onChange={(value) => {
+                      // The same one again changes nothing.
+                      if (value === n.selected) return;
                       setChosen((prev) => ({ ...prev, [n.type]: value }));
                       // A running preview restarts on the new provider.
                       stop();
@@ -234,26 +276,34 @@ export const WidgetPreview = ({
           </span>
         ) : null}
         <div className="flex flex-row flex-wrap items-center justify-between gap-3">
-          <span className={`text-xs ${muted}`}>
-            {state === "idle"
-              ? `Runs the widget with your providers. ${usesText}`.trim()
-              : usesText}
+          <span className={`text-xs ${muted}`} data-testid="preview-status">
+            {state === "idle" && server && !unchosen
+              ? `This preview starts your ${serverTypes} server and calls the real service. ${usesText}`.trim()
+              : state === "running" && names
+                ? `Running with ${names}.`
+                : usesText}
           </span>
           <span className="flex flex-row gap-2">
             {state === "idle" ? (
-              unchosen ? null : (
-                <Button title="Run preview" size="sm" onClick={run} />
+              unchosen ? null : server ? (
+                <Button title="Start preview" size="sm" onClick={run} />
+              ) : (
+                <Button3 title="Reload" size="xs" onClick={run} />
               )
             ) : (
               <>
-                <Button3 title="Reload" size="xs" onClick={run} />
+                <Button3
+                  title={state === "failed" ? "Try again" : "Reload"}
+                  size="xs"
+                  onClick={run}
+                />
                 <Button3 title="Stop" size="xs" onClick={stop} />
               </>
             )}
           </span>
         </div>
         {state === "loading" ? (
-          <span className={`text-sm ${muted}`}>Loading the widget…</span>
+          <span className={`text-sm ${muted}`}>Starting preview…</span>
         ) : null}
         {error ? (
           <span className="flex flex-row items-center gap-2 text-sm text-red-400">

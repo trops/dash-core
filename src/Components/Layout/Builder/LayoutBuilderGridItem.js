@@ -274,7 +274,6 @@ export const LayoutBuilderGridItem = ({
               <WidgetCard.Body padding="p-3">
                 {renderComponentData()}
               </WidgetCard.Body>
-              <WidgetCard.Footer item={item} onConfigure={handleOpenConfig} />
             </WidgetCard>
           )}
 
@@ -377,7 +376,6 @@ export const LayoutBuilderGridItem = ({
             <WidgetCard.Body padding="p-3">
               {renderComponentData()}
             </WidgetCard.Body>
-            <WidgetCard.Footer item={item} onConfigure={handleOpenConfig} />
           </WidgetCard>
         )}
 

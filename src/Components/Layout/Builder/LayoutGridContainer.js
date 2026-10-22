@@ -1404,7 +1404,17 @@ export const LayoutGridContainer = memo(
           item={cellComponent}
           cellNumber={cellNumber}
           providers={cellComponent ? availableProviders || [] : []}
-          selectedProviders={cellComponent?.selectedProviders || {}}
+          // Its picks the way the widget resolves them (providerResolution):
+          // the dashboard's for this widget, then its own — so the header's
+          // "Needs a … connection" pill (Phase 4c) agrees with what runs.
+          selectedProviders={
+            cellComponent
+              ? {
+                  ...(workspace?.selectedProviders?.[cellComponent.id] || {}),
+                  ...(cellComponent.selectedProviders || {}),
+                }
+              : {}
+          }
           isSelected={isCellSelected}
           isSelectable={isCellSelectable}
           onToggleSelect={() => handleToggleCellSelection(cellNumber)}
@@ -1492,18 +1502,7 @@ export const LayoutGridContainer = memo(
           }
         />
       );
-      const footer = cellComponent ? (
-        <WidgetCard.Footer
-          item={cellComponent}
-          onConfigure={(item, section) => {
-            if (editSelection.available) {
-              selectWidget("widget", section || "edit");
-            } else if (onOpenConfig) {
-              onOpenConfig(item, section);
-            }
-          }}
-        />
-      ) : null;
+      // No footer: what's missing is the header's pill (Phase 4c).
 
       // An occupied cell uses GridCellFrame — the same element tree as view
       // mode — so its widget stays mounted across view ↔ edit (phase 1c).
@@ -1515,7 +1514,6 @@ export const LayoutGridContainer = memo(
           <GridCellFrame
             editing
             header={header}
-            footer={footer}
             label={pickWidgetDisplayName(
               cellComponent,
               ComponentManager.config(cellComponent.component, cellComponent),
@@ -1576,7 +1574,6 @@ export const LayoutGridContainer = memo(
               </WidgetCard.Body>
             )}
           </DroppableEmptyCell>
-          {footer}
         </WidgetCard>
       );
     }

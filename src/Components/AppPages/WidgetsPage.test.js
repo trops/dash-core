@@ -1,6 +1,7 @@
 /**
  * WidgetsPage — the Widgets Manage page as list + detail, org → package →
- * widgets (app-navigation PRD NAV-008).
+ * widgets (app-navigation PRD NAV-008). The list drills in: packages, then
+ * an open package's widgets (consolidation Phase 4b).
  */
 import React from "react";
 import "@testing-library/jest-dom";
@@ -218,15 +219,23 @@ function setup(props = {}) {
 
 const list = () => screen.getByRole("list", { name: "Widgets" });
 const detail = () => screen.getByTestId("widget-detail");
-const pkgRow = (label) =>
+// A package row's button; its accessible name is "<label>: N widgets".
+const pkgButtons = () =>
   within(list())
-    .getAllByRole("button")
-    .find((b) => b.getAttribute("data-package") === label);
-const pkgLabels = () =>
+    .queryAllByTestId("package-row")
+    .map((r) => r.querySelector("button"));
+const labelOf = (b) => b.getAttribute("aria-label").split(":")[0];
+const pkgLabels = () => pkgButtons().map(labelOf);
+// Inside a package, its row isn't listed: go back to all packages first.
+const pkgRow = (label) => {
+  const back = within(list()).queryByRole("button", { name: "All packages" });
+  if (back) fireEvent.click(back);
+  return pkgButtons().find((b) => labelOf(b) === label);
+};
+const widgetRows = () =>
   within(list())
-    .getAllByRole("button")
-    .filter((b) => b.hasAttribute("data-package"))
-    .map((b) => b.getAttribute("data-package"));
+    .queryAllByTestId("widget-row")
+    .map((r) => r.textContent);
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -255,26 +264,97 @@ describe("WidgetsPage list (NAV-008 AC1, AC2)", () => {
     expect(within(pkgRow("slack")).getByTestId("package-update")).toBeTruthy();
   });
 
-  it("selecting a package expands its widgets in the list", () => {
+  it("opening a package turns the list into its widgets, under ← the package", () => {
     setup();
     expect(within(list()).queryByText("Channel Messages")).toBeNull();
     fireEvent.click(pkgRow("slack"));
-    expect(within(list()).getByText("Channel Messages")).toBeInTheDocument();
-    expect(within(list()).getByText("Slack Channels")).toBeInTheDocument();
-    // The widgets sit inside the open package's group container.
-    const group = within(list()).getByTestId("package-group");
-    expect(within(group).getByText("Channel Messages")).toBeInTheDocument();
-    expect(group).toContainElement(pkgRow("slack"));
+    // The header is the package; the packages are gone from the list.
+    expect(within(list()).getByTestId("package-header")).toHaveTextContent(
+      "slack",
+    );
+    expect(pkgLabels()).toEqual([]);
+    expect(
+      within(list()).getByTestId("package-widgets-heading"),
+    ).toHaveTextContent("2 widgets");
+    expect(widgetRows()).toEqual([
+      "Slack ChannelsNot used",
+      "Channel MessagesOn 1 dashboard",
+    ]);
+    // About this package is the package's own page, selected now.
+    expect(
+      within(list()).getByTestId("package-about").querySelector("button"),
+    ).toHaveAttribute("aria-current", "true");
+    // ← back: all packages again, nothing open.
+    fireEvent.click(
+      within(list()).getByRole("button", { name: "All packages" }),
+    );
+    expect(pkgLabels()).toContain("slack");
+    expect(within(detail()).getByTestId("widgets-summary")).toBeInTheDocument();
   });
 
-  it("search on a widget shows just that widget under its package", () => {
+  it("search lists matching widgets flat, each with its package", () => {
     setup();
     fireEvent.change(screen.getByRole("searchbox"), {
       target: { value: "recent messages" },
     });
+    expect(pkgLabels()).toEqual([]);
+    expect(widgetRows()).toEqual(["Channel Messagesin slack"]);
+    // A package whose name matches is listed under Packages.
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "slack" },
+    });
+    expect(
+      within(list())
+        .getAllByTestId("search-heading")
+        .map((h) => h.textContent),
+    ).toEqual(["Packages", "Widgets"]);
     expect(pkgLabels()).toEqual(["slack"]);
-    expect(within(list()).getByText("Channel Messages")).toBeInTheDocument();
-    expect(within(list()).queryByText("Slack Channels")).toBeNull();
+  });
+
+  it("a widget found by search opens; clearing the search lands in its package", () => {
+    setup();
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "recent messages" },
+    });
+    fireEvent.click(within(list()).getByText("Channel Messages"));
+    expect(
+      within(detail()).getByText("Recent messages in a channel"),
+    ).toBeTruthy();
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "" } });
+    expect(within(list()).getByTestId("package-header")).toHaveTextContent(
+      "slack",
+    );
+  });
+
+  it("nothing matches: says so", () => {
+    setup();
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "zzz" },
+    });
+    expect(within(list()).getByText(/No widgets match/)).toBeInTheDocument();
+  });
+
+  it("before a package is opened, the detail is a summary", () => {
+    setup();
+    const s = within(detail()).getByTestId("widgets-summary");
+    expect(s).toHaveTextContent("4 packages · 5 widgets");
+    expect(s).toHaveTextContent("2 widgets on 1 dashboard");
+    expect(s).toHaveTextContent("1 package has an update");
+  });
+
+  it("inside a package, In use / Not used filter its widgets and never leave it", () => {
+    setup();
+    fireEvent.click(pkgRow("charts"));
+    fireEvent.click(screen.getByRole("radio", { name: "In use" }));
+    // charts isn't in use: the list stays in it and says so.
+    expect(within(list()).getByTestId("package-header")).toHaveTextContent(
+      "charts",
+    );
+    expect(
+      within(list()).getByText("No widgets in charts match In use."),
+    ).toBeInTheDocument();
+    fireEvent.click(pkgRow("slack"));
+    expect(widgetRows()).toEqual(["Channel MessagesOn 1 dashboard"]);
   });
 
   it("filters by org and by in use / not used / mine", () => {
@@ -301,7 +381,8 @@ describe("WidgetsPage package detail (NAV-008 AC3)", () => {
     expect(within(d).getByText("@trops/slack")).toBeInTheDocument();
     expect(within(d).getByText("Installed · v1.2.0")).toBeInTheDocument();
     expect(within(d).getByText("Recent messages in a channel")).toBeTruthy();
-    expect(within(d).getByText("Slack Channels")).toBeInTheDocument();
+    expect(within(d).queryByText("Slack Channels")).toBeNull();
+    expect(widgetRows()).toHaveLength(2);
     expect(
       within(within(d).getByTestId("needs-providers")).getByText("slack"),
     ).toBeInTheDocument();
@@ -335,11 +416,13 @@ describe("WidgetsPage package detail (NAV-008 AC3)", () => {
       within(detail()).getByRole("menuitem", { name: "Uninstall" }),
     );
     const modal = screen.getByTestId("confirmation-modal");
-    expect(
-      within(modal).getByText(
-        "This removes its 2 widgets. They're used on 1 dashboard (Kitchen Sink), which will show them as missing.",
-      ),
-    ).toBeInTheDocument();
+    expect(within(modal).getByText("Uninstall slack?")).toBeInTheDocument();
+    const copy = within(modal).getByTestId("uninstall-copy");
+    expect(copy).toHaveTextContent("This removes its 2 widgets:");
+    expect(copy).toHaveTextContent("Channel Messages · on Kitchen Sink");
+    expect(copy).toHaveTextContent(
+      'On that dashboard, the cells will show "Widget Not Found" until you reinstall it from the registry.',
+    );
     fireEvent.click(within(modal).getByText("Uninstall"));
     await waitFor(() =>
       expect(mockUninstall).toHaveBeenCalledWith("trops.slack.Channels"),
@@ -569,7 +652,7 @@ describe("WidgetsPage checks", () => {
 });
 
 describe("WidgetsPage widget detail (NAV-008 AC4)", () => {
-  it("shows the widget with a link back to its package", () => {
+  it("shows the widget; About this package goes back to the package", () => {
     setup();
     fireEvent.click(pkgRow("slack"));
     fireEvent.click(within(list()).getByText("Slack Channels"));
@@ -579,8 +662,68 @@ describe("WidgetsPage widget detail (NAV-008 AC4)", () => {
     ).toBeInTheDocument();
     expect(within(d).getByText("list_channels")).toBeInTheDocument();
     expect(within(d).getByText("Not on any dashboard yet")).toBeTruthy();
-    fireEvent.click(within(d).getByRole("button", { name: "← slack" }));
+    // No back link in the detail: the list is the package.
+    expect(within(d).queryByRole("button", { name: "← slack" })).toBeNull();
+    fireEvent.click(
+      within(list()).getByTestId("package-about").querySelector("button"),
+    );
     expect(within(detail()).getByText("@trops/slack")).toBeInTheDocument();
+  });
+
+  it("Uninstall from a widget names the widgets that go with it", async () => {
+    setup();
+    fireEvent.click(pkgRow("slack"));
+    fireEvent.click(within(list()).getByText("Slack Channels"));
+    fireEvent.click(
+      within(detail()).getByRole("button", { name: "More actions" }),
+    );
+    fireEvent.click(
+      within(detail()).getByRole("menuitem", { name: "Uninstall slack…" }),
+    );
+    const modal = screen.getByTestId("confirmation-modal");
+    expect(within(modal).getByTestId("uninstall-copy")).toHaveTextContent(
+      "Slack Channels comes with 1 other widget in the slack package. Uninstalling removes all 2:",
+    );
+    fireEvent.click(within(modal).getByText("Uninstall"));
+    await waitFor(() =>
+      expect(mockUninstall).toHaveBeenCalledWith("trops.slack.Channels"),
+    );
+    // Gone: back to all packages.
+    await waitFor(() =>
+      expect(within(list()).queryByTestId("package-header")).toBeNull(),
+    );
+  });
+
+  it("an AI-built package can't be put back: the confirm says so", () => {
+    mockExtraWidgets = [
+      {
+        name: "ai-built.counter.Counter",
+        displayName: "Counter",
+        packageId: "@ai-built/counter",
+        version: "1.0.0",
+        source: "installed",
+        kind: "installed",
+        providers: [],
+        componentNames: ["ai-built.counter.Counter"],
+      },
+    ];
+    setup();
+    fireEvent.click(pkgRow("counter"));
+    fireEvent.click(within(list()).getByText("Counter"));
+    fireEvent.click(
+      within(detail()).getByRole("button", { name: "More actions" }),
+    );
+    fireEvent.click(
+      within(detail()).getByRole("menuitem", { name: "Uninstall counter…" }),
+    );
+    const copy = within(screen.getByTestId("confirmation-modal")).getByTestId(
+      "uninstall-copy",
+    );
+    expect(copy).toHaveTextContent("It isn't on any dashboard.");
+    expect(copy).toHaveTextContent(
+      "This can't be undone: it isn't in the registry.",
+    );
+    mockExtraWidgets = [];
   });
 });
 
@@ -594,17 +737,17 @@ describe("WidgetsPage live preview (NAV-011)", () => {
     );
   });
 
-  it("each widget row in the package detail has Preview", () => {
+  it("each widget in the open package's list opens its page and preview", () => {
     setup();
     fireEvent.click(pkgRow("slack"));
-    const previews = within(detail()).getAllByRole("button", {
-      name: "Preview",
-    });
-    expect(previews).toHaveLength(2);
-    fireEvent.click(previews[1]);
+    fireEvent.click(within(list()).getByText("Channel Messages"));
     expect(within(detail()).getByTestId("widget-preview")).toHaveTextContent(
       "trops.slack.Messages",
     );
+    // The open widget is the selected row.
+    expect(
+      within(list()).getAllByTestId("widget-row")[1].querySelector("button"),
+    ).toHaveAttribute("aria-current", "true");
   });
 
   it("Set up starts the provider create flow", () => {
