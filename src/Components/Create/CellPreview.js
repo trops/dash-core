@@ -37,6 +37,9 @@ export function plannedProviders(planned, needs = [], appProviders = {}) {
   return out;
 }
 
+// How long a run may take to show its widget before the preview says so.
+export const PREVIEW_START_TIMEOUT_MS = 10000;
+
 /**
  * CellPreview — a cell build's widget, running, before it's installed or
  * placed (consolidation Phase 2b). The user picks its inputs — a connection
@@ -95,6 +98,9 @@ export const CellPreview = ({
   const [bundle, setBundle] = useState(null);
   const [error, setError] = useState(null);
   const [runId, setRunId] = useState(0);
+  // The run whose widget has shown (onMounted). A run that never shows
+  // gets a way out instead of a blank frame (QA 2026-10-22).
+  const [mountedRunId, setMountedRunId] = useState(0);
   const [change, setChange] = useState("");
   const statusTokens = useStatusTokens();
   // A change's draft (Phase 3): Preview, its Code, or What changed.
@@ -206,6 +212,14 @@ export const CellPreview = ({
     });
 
   const running = run === "running" && bundle && Renderer;
+
+  useEffect(() => {
+    if (!running || mountedRunId === runId) return undefined;
+    const timer = setTimeout(() => {
+      setError("The preview didn't start. Use Run preview again.");
+    }, PREVIEW_START_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [running, runId, mountedRunId]);
   const runButton = (title, size = "sm") =>
     Renderer ? (
       <Button title={title} size={size} onClick={start} disabled={!canRun} />
@@ -374,7 +388,10 @@ export const CellPreview = ({
                     uuidString: `cell-preview-${preview.componentName || name}`,
                   }}
                   props={settings}
-                  onMounted={() => setError(null)}
+                  onMounted={() => {
+                    setError(null);
+                    setMountedRunId(runId);
+                  }}
                   onError={(e) =>
                     setError(
                       `It hit an error: ${(e && e.message) || "unknown"} — use Change something to have it fixed.`,

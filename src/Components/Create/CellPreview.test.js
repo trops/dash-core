@@ -8,7 +8,12 @@ import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ThemeContext } from "@trops/dash-react";
 import { AppContext } from "../../Context/App/AppContext";
-import { CellPreview, plannedProviders } from "./CellPreview";
+import {
+  CellPreview,
+  plannedProviders,
+  PREVIEW_START_TIMEOUT_MS,
+} from "./CellPreview";
+import { act } from "@testing-library/react";
 
 let mockRendered;
 jest.mock("../../utils/widgetPreviewRenderer", () => ({
@@ -283,5 +288,42 @@ describe("a change's preview", () => {
       screen.getByRole("button", { name: "Discard — keep Inbox as it is" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Only for trying it here.")).toBeInTheDocument();
+  });
+});
+
+describe("a preview that never shows (QA 2026-10-22)", () => {
+  const STUCK = "The preview didn't start. Use Run preview again.";
+
+  test("says so after a while, instead of a blank frame", async () => {
+    jest.useFakeTimers();
+    try {
+      setup();
+      fireEvent.click(screen.getByRole("button", { name: "Run preview" }));
+      await screen.findByTestId("sandbox");
+      act(() => {
+        jest.advanceTimersByTime(PREVIEW_START_TIMEOUT_MS + 10);
+      });
+      expect(screen.getByText(STUCK)).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("a widget that shows never gets the message", async () => {
+    jest.useFakeTimers();
+    try {
+      setup();
+      fireEvent.click(screen.getByRole("button", { name: "Run preview" }));
+      await screen.findByTestId("sandbox");
+      act(() => {
+        mockRendered.onMounted();
+      });
+      act(() => {
+        jest.advanceTimersByTime(PREVIEW_START_TIMEOUT_MS + 10);
+      });
+      expect(screen.queryByText(STUCK)).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
