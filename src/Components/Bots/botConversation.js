@@ -94,7 +94,7 @@ const AI_MODEL_PROBLEM =
 
 // An MCP provider problem: a server that couldn't start, or an auth failure.
 const PROVIDER_PROBLEM =
-  /couldn't start|settings › providers|\b401\b|unauthori[sz]ed|authentication|token (has )?expired|expired token|invalid token|forbidden|\b403\b/i;
+  /couldn't start|settings › providers|\b(in|on) the providers page\b|\b401\b|unauthori[sz]ed|authentication|token (has )?expired|expired token|invalid token|forbidden|\b403\b/i;
 
 /**
  * A run error as a person reads it: raw API errors (`400 {"type":"error",
@@ -136,7 +136,7 @@ export function errorNextSteps(text, { isLead = false } = {}) {
     steps.push({
       action: "open-settings",
       section: "providers",
-      label: "Open Settings › Providers",
+      label: "Open Providers",
     });
   }
   return steps;

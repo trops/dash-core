@@ -34,7 +34,7 @@ import { StarterCards } from "./StarterCards";
 import { starterPackages, starterToPlan, remixRequest } from "./starters";
 import { foldCreate } from "./CreateDockPanel";
 import { PlanMenu } from "./PlanMenu";
-import { pickType } from "./autoType";
+import { pickType, autoPickLabel } from "./autoType";
 import { themeFromPrompt } from "./themeFromPrompt";
 import { teamContext, teamLine, contextRequest } from "./teamContext";
 import {
@@ -1221,10 +1221,7 @@ export const CreateModal = ({
                     data-testid="auto-pick"
                     title={autoPick.why || undefined}
                   >
-                    ·{" "}
-                    {autoPick.by === "ai"
-                      ? "picked by Auto"
-                      : "guessed by Auto"}
+                    · {autoPickLabel(autoPick)}
                   </span>
                 ) : null}
               </nav>

@@ -115,7 +115,7 @@ export const TeamImportReview = ({
     if (!need.options.length) {
       return (
         <span key={need.type} className="text-xs text-red-400">
-          {`${need.type}: none set up — add one in Settings › Providers`}
+          {`${need.type}: none set up — add one on the Providers page`}
         </span>
       );
     }

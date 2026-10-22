@@ -121,8 +121,7 @@ function createWebFetchServer(credentials, opts = {}) {
   const serverName = opts.serverName || "Web Fetch";
   const doFetch = opts.fetch || safeFetch;
   const shrink = opts.shrink || nativeShrink;
-  const where = (setting) =>
-    `(Settings › Providers › ${serverName} › ${setting})`;
+  const where = (setting) => `(Providers › ${serverName} › ${setting})`;
 
   // Plain-language errors that point at the setting involved (AC8).
   function explain(err) {

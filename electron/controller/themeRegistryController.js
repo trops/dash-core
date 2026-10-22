@@ -372,6 +372,14 @@ async function installThemeFromRegistry(win, appId, packageName) {
       `${TAG} [3/5 Download] status=${response.status} contentType="${response.headers.get("content-type") || "unknown"}"`,
     );
     if (response.status === 401) {
+      // "Expired" only when a token was sent.
+      if (!auth?.token) {
+        return {
+          success: false,
+          error: "Sign in to the Dash registry to use this.",
+          authRequired: true,
+        };
+      }
       clearToken();
       return {
         success: false,

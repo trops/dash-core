@@ -7,6 +7,13 @@ import { aiOnce, firstJson } from "../../utils/aiOnce";
 
 export const AUTO_TYPES = ["widget", "bot", "dashboard", "theme"];
 
+/** What Auto says it picked: "a widget, picked by Auto" (QA 2026-10-22). */
+export function autoPickLabel(pick) {
+  const how = pick && pick.by === "ai" ? "picked" : "guessed";
+  const type = pick && AUTO_TYPES.includes(pick.type) ? pick.type : null;
+  return type ? `a ${type}, ${how} by Auto` : `${how} by Auto`;
+}
+
 export const AUTO_SYSTEM = `You sort requests in Dash, a desktop dashboard app, into what to make. Answer with JSON only: {"type": "widget" | "bot" | "dashboard" | "theme", "why": "<one short sentence>"}.
 - widget: one panel that shows or does one thing (a chart, a list, a clock, a button).
 - bot: something that works on its own — on a schedule or when something happens — e.g. "every morning summarize my email", "when a PR opens, review it".

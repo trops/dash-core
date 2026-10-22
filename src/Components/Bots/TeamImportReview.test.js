@@ -149,7 +149,7 @@ describe("TeamImportReview (TEAM-007 slice 1)", () => {
     const writer = screen.getByTestId("team-member-Writer");
     expect(
       within(writer).getByText(
-        /filesystem: none set up — add one in Settings › Providers/,
+        /filesystem: none set up — add one on the Providers page/,
       ),
     ).toBeInTheDocument();
   });

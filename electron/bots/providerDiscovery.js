@@ -365,7 +365,7 @@ async function findProviders(capability, deps) {
 function describeFindings(capability, { results, notes }) {
   const label = {
     installed: "Already set up (use these first)",
-    "built-in": "Built into Dash (the user adds it in Settings › Providers)",
+    "built-in": "Built into Dash (the user adds it on the Providers page)",
     vetted: "Vetted by Dash (the user installs it after a confirmation)",
     community:
       "Community — UNVERIFIED third-party code from the MCP Registry (only if nothing above fits)",
@@ -398,7 +398,7 @@ function describeFindings(capability, { results, notes }) {
   if (results.length) {
     lines.push(
       "",
-      "Tell the user which of these could do it; they add it from Settings › Providers. You can't install anything — the user does.",
+      "Tell the user which of these could do it; they add it from the Providers page. You can't install anything — the user does.",
     );
   }
   return lines.join("\n");

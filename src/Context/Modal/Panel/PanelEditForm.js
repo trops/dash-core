@@ -1,5 +1,6 @@
 import React from "react";
-import { InputText, SelectMenu } from "@trops/dash-react";
+import { InputText, SelectMenu, Switch } from "@trops/dash-react";
+import { normalizeOptions } from "../../../utils/userConfigFields";
 
 /**
  * PanelEditForm
@@ -23,7 +24,9 @@ export const PanelEditForm = ({ userConfig, userPrefs, onFieldChange }) => {
     <>
       {Object.keys(userConfig).map((key) => {
         const configItem = userConfig[key];
-        const { instructions, displayName, required } = configItem;
+        const { instructions, required } = configItem;
+        // A field written with `label` (or neither) still gets a label.
+        const displayName = configItem.displayName || configItem.label || key;
         const value = userPrefs?.[key] ?? "";
         return renderFormItem(
           displayName,
@@ -78,18 +81,47 @@ function renderFormItem(
           inputClassName="text-sm"
         />
       )}
+      {/* As PanelEditItem (the dashboard's settings): a number within its
+          min / max, else the change is ignored. */}
+      {configItem["type"] === "number" && (
+        <InputText
+          type="number"
+          name={key}
+          value={value}
+          onChange={(v) => {
+            const num = Number(v);
+            if (v === "" || isNaN(num)) return;
+            if (configItem.min != null && num < configItem.min) return;
+            if (configItem.max != null && num > configItem.max) return;
+            onChange(key, num);
+          }}
+          inputClassName="text-sm"
+          min={configItem.min}
+          max={configItem.max}
+          step={configItem.step ?? 1}
+        />
+      )}
+      {configItem["type"] === "boolean" && (
+        <Switch
+          ariaLabel={displayName}
+          checked={value === true || value === "true"}
+          onChange={(checked) => onChange(key, !!checked)}
+        />
+      )}
       {configItem["type"] === "select" && (
         <SelectMenu
           name={key}
           selectedValue={value}
-          onChange={(e) => onChange(key, e)}
+          // The value, not the change event (QA 2026-10-22: the preview
+          // stored the event object).
+          onChange={(e) => onChange(key, e && e.target ? e.target.value : e)}
           textSize="text-xs"
           className="font-normal"
         >
-          {"options" in configItem &&
-            configItem.options.map((option) => (
+          {Array.isArray(configItem.options) &&
+            normalizeOptions(configItem.options).map((option) => (
               <option
-                key={option.value}
+                key={String(option.value)}
                 value={option.value}
                 className={"text-sm"}
               >

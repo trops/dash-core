@@ -39,6 +39,28 @@ describe("normalizeUserConfig", () => {
     expect(normalizeUserConfig(undefined)).toEqual({});
     expect(normalizeUserConfig("x")).toEqual({});
   });
+
+  // QA 2026-10-22: blank labels and blank options in the Create preview.
+  test("an object's field written with label gets it as its displayName", () => {
+    const out = normalizeUserConfig({ city: { type: "text", label: "City" } });
+    expect(out.city.displayName).toBe("City");
+  });
+
+  test("select options as strings or { value, label } get a displayName", () => {
+    const out = normalizeUserConfig({
+      style: { type: "select", displayName: "Style", options: ["big"] },
+      unit: {
+        type: "select",
+        displayName: "Unit",
+        options: [{ value: "c", label: "Celsius" }, { value: "f" }],
+      },
+    });
+    expect(out.style.options).toEqual([{ value: "big", displayName: "big" }]);
+    expect(out.unit.options).toEqual([
+      { value: "c", label: "Celsius", displayName: "Celsius" },
+      { value: "f", displayName: "f" },
+    ]);
+  });
 });
 
 describe("a widget whose settings are a list", () => {

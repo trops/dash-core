@@ -170,7 +170,7 @@ describe("Web Fetch tools", () => {
       r.content[0].text,
       /Too large: 14 MB; this provider's limit is 10 MB/,
     );
-    assert.match(r.content[0].text, /Settings › Providers › Web Fetch/);
+    assert.match(r.content[0].text, /\(Providers › Web Fetch/);
   });
 
   it("shrinks an image over the model's limit when the setting is on", async () => {

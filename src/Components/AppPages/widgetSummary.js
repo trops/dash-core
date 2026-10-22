@@ -154,6 +154,9 @@ export function widgetOrgs(
         // (its own build), and its checks (consolidation Phase 1a-2).
         build: w.build || null,
         checks: w.checks || null,
+        // Loaded from the user's own folder: Uninstall forgets it, the
+        // folder stays.
+        loadedInPlace: !!w.loadedInPlace,
       };
       packages.set(id, pkg);
     }
@@ -300,12 +303,15 @@ export function uninstallCopy(pkg, widget = null) {
   const items =
     n === 1 ? [] : pkg.widgets.map((w) => `${widgetTitle(w)}${usedOnText(w)}`);
   const notInRegistry = pkg.org === AI_BUILT || pkg.org === LOCAL;
-  // Not in the registry: it can't be put back, which is what matters.
-  const note = notInRegistry
-    ? "This can't be undone: it isn't in the registry."
-    : pkg.usedOn.length
-      ? `On ${pkg.usedOn.length === 1 ? "that dashboard" : `those ${pkg.usedOn.length} dashboards`}, ${n === 1 ? "its cell will show" : "the cells will show"} "Widget Not Found" until you reinstall it from the registry.`
-      : "";
+  // Loaded from the user's folder: nothing is deleted. Otherwise, not in
+  // the registry: it can't be put back, which is what matters.
+  const note = pkg.loadedInPlace
+    ? "Dash will forget it. Your folder stays where it is."
+    : notInRegistry
+      ? "This can't be undone: it isn't in the registry."
+      : pkg.usedOn.length
+        ? `On ${pkg.usedOn.length === 1 ? "that dashboard" : `those ${pkg.usedOn.length} dashboards`}, ${n === 1 ? "its cell will show" : "the cells will show"} "Widget Not Found" until you reinstall it from the registry.`
+        : "";
   return { title: `Uninstall ${label}?`, intro, items, note };
 }
 

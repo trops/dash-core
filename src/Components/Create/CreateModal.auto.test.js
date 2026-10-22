@@ -97,7 +97,9 @@ test("Auto is the type; it decides, then carries on as that type", async () => {
   expect(await screen.findByTestId("bot-form")).toHaveTextContent(
     "every morning summarize my inbox",
   );
-  expect(screen.getByTestId("auto-pick")).toHaveTextContent("picked by Auto");
+  expect(screen.getByTestId("auto-pick")).toHaveTextContent(
+    "a bot, picked by Auto",
+  );
   expect(screen.getByTestId("auto-pick")).toHaveAttribute(
     "title",
     "runs on a schedule",
@@ -113,7 +115,9 @@ test("Change goes back with the prompt kept and Type set to the pick", async () 
   );
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
   await screen.findByTestId("bot-form");
-  expect(screen.getByTestId("auto-pick")).toHaveTextContent("guessed by Auto");
+  expect(screen.getByTestId("auto-pick")).toHaveTextContent(
+    "a bot, guessed by Auto",
+  );
   fireEvent.click(screen.getByRole("button", { name: "Change" }));
   expect(prompt()).toHaveValue("remind me daily");
   expect(

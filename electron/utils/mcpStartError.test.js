@@ -9,7 +9,7 @@ const assert = require("node:assert/strict");
 const { describeStartFailure, StderrTail } = require("./mcpStartError");
 
 const CLOSED = "MCP error -32000: Connection closed";
-const NEXT = "Check its settings in Settings › Providers.";
+const NEXT = "Check its settings on the Providers page.";
 
 // What the Slack MCP server printed in the live repro.
 const SLACK_STDERR = [

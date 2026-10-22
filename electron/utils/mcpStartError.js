@@ -6,12 +6,12 @@
  * real reason is on the server's stderr, e.g. Slack's
  *   {"level":"fatal","message":"Authentication required: …"}
  * This turns that into "Slack couldn't start: Authentication required: ….
- * Check its settings in Settings › Providers." — one trimmed line, with
+ * Check its settings on the Providers page." — one trimmed line, with
  * anything that looks like a secret redacted.
  */
 "use strict";
 
-const NEXT_STEP = "Check its settings in Settings › Providers.";
+const NEXT_STEP = "Check its settings on the Providers page.";
 const MAX_REASON = 300;
 
 // SDK messages that say nothing about the cause.

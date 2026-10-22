@@ -80,3 +80,13 @@ describe("stable widgets across view ↔ edit", () => {
     expect(grid).toMatch(/return useGridLayout \?/);
   });
 });
+
+describe("an empty cell outside edit mode", () => {
+  test("shows no cell number (QA 2026-10-22: a stray '1.1')", () => {
+    const body = grid.match(
+      /function renderPreviewEmptyCell\(cellNumber\) \{[\s\S]*?\n {4}\}\n/,
+    );
+    expect(body).not.toBeNull();
+    expect(body[0]).not.toMatch(/>\{cellNumber\}</);
+  });
+});

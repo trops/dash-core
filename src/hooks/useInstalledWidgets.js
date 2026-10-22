@@ -213,6 +213,8 @@ export const useInstalledWidgets = () => {
             // Who built the code that runs, and its checks (Phase 1a-2).
             build: reg.build || null,
             checks: reg.checks || null,
+            // Runs from the user's own folder (Uninstall keeps it).
+            loadedInPlace: !!reg.loadedInPlace,
           };
         });
 
@@ -246,6 +248,7 @@ export const useInstalledWidgets = () => {
             scopedId: w.name,
             build: w.build || null,
             checks: w.checks || null,
+            loadedInPlace: !!w.loadedInPlace,
           };
         });
 

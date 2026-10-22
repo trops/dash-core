@@ -139,7 +139,7 @@ async function ensureBotServers({
           serverName,
           message:
             result.message ||
-            `Provider "${serverName}" was not found in Settings → Providers`,
+            `Provider "${serverName}" was not found on the Providers page`,
         });
         continue;
       }
@@ -151,7 +151,7 @@ async function ensureBotServers({
       ) {
         failed.push({
           serverName,
-          message: `Provider "${serverName}" was not found in Settings → Providers`,
+          message: `Provider "${serverName}" was not found on the Providers page`,
         });
         continue;
       }

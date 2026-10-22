@@ -319,10 +319,10 @@ describe("BotChat — triggers and next steps (TEAM-011 gaps)", () => {
     await waitFor(() =>
       expect(api.run).toHaveBeenCalledWith("b1", "Check inbox", false),
     );
-    expect(screen.queryByText("Open Settings › Providers")).toBeNull();
+    expect(screen.queryByText("Open Providers")).toBeNull();
   });
 
-  it("a provider problem also offers Open Settings › Providers", async () => {
+  it("a provider problem also offers Open Providers", async () => {
     const { onOpenSettings } = setupWith([
       {
         trigger: "manual",
@@ -331,7 +331,7 @@ describe("BotChat — triggers and next steps (TEAM-011 gaps)", () => {
         prompt: "x",
       },
     ]);
-    fireEvent.click(await screen.findByText("Open Settings › Providers"));
+    fireEvent.click(await screen.findByText("Open Providers"));
     expect(onOpenSettings).toHaveBeenCalledWith("providers");
   });
 
@@ -354,7 +354,7 @@ describe("BotChat — triggers and next steps (TEAM-011 gaps)", () => {
         "Your credit balance is too low to access the Anthropic API.",
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Open Settings › Providers")).toBeNull();
+    expect(screen.queryByText("Open Providers")).toBeNull();
     fireEvent.click(screen.getByText("Change AI model"));
     expect(onChangeModel).toHaveBeenCalled();
   });

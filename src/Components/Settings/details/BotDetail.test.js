@@ -464,10 +464,10 @@ describe("BotDetail — Providers (the user's Dash MCP providers)", () => {
     expect(screen.getByLabelText("Search emails")).not.toBeChecked();
   });
 
-  it("empty state points to Settings → Providers (not MCP Server)", async () => {
+  it("empty state points to the Providers page (not MCP Server)", async () => {
     listToolSources.mockResolvedValue([]);
     render(<BotDetail isCreating providers={{}} onSave={jest.fn()} />);
-    expect(await screen.findByText(/Settings → Providers/)).toBeInTheDocument();
+    expect(await screen.findByText(/the Providers page/)).toBeInTheDocument();
     expect(screen.queryByText(/Settings → MCP Server/)).toBeNull();
   });
 
