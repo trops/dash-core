@@ -1,10 +1,12 @@
 # PRD: Bot Capabilities — Image Results, Web Fetch, and Finding Providers
 
-**Status:** In Progress (Phases 1–3 implemented; Phase 4 / P2 not started)
-**Last Updated:** 2026-10-07
+**Status:** In Progress (Phases 1–3 implemented; Phase 4 / P2 not started). _(2026-10-22: the draft-review parts of Phase 3 — CAP-004, CAP-005 — were superseded in consolidation Phase 2c-2 when lead drafts were removed; `find_providers` (CAP-003) stays.)_
+**Last Updated:** 2026-10-22
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; dash-electron consumes it via a version bump)
-**Related PRDs:** [bot-factory.md](./bot-factory.md) (bots, engines, approvals), [bot-teams.md](./bot-teams.md) (team leads, `propose_bot`, drafts), [mcp-providers.md](./mcp-providers.md) (provider catalog, custom MCP servers)
+**Related PRDs:** [bot-factory.md](./bot-factory.md) (bots, engines, approvals), [bot-teams.md](./bot-teams.md) (team leads and their hand-off to the Dash team, TEAM-005 — formerly `propose_bot` and drafts), [mcp-providers.md](./mcp-providers.md) (provider catalog, custom MCP servers)
+
+> **Since 2026-10-20 (consolidation Phase 2c-2):** leads no longer draft bots. `propose_bot`, the draft review, `DraftGaps` and the drafts store are gone; a lead asked for a bot hands the request to the Dash team in Create (bot-teams TEAM-005). Where this PRD says a lead suggests providers "on the draft", read: the lead uses `find_providers` to say what could be connected, in its answer. Text about drafts below is kept as history.
 
 ---
 
@@ -275,7 +277,7 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 - [x] AC3: Each result includes name, description, tier, how it runs (command or URL), what credentials it needs, and the source repo when known. Registry results are de-duplicated (the API returns one row per version; keep the latest).
 - [x] AC4: Results are fenced as untrusted data in the lead's prompt, like other team tool output.
 - [x] AC5: If the registry can't be reached, the tool still returns the local tiers and says the community search was unavailable.
-- [x] AC6: `propose_bot`'s description tells the lead to call `find_providers` for anything `team_providers` doesn't cover.
+- [x] AC6: `propose_bot`'s description tells the lead to call `find_providers` for anything `team_providers` doesn't cover. _(Superseded by the lead's instructions (2026-10-20): `propose_bot` is gone; `CURRENT_LEAD_ACTION` in `electron/bots/teamLeads.js` tells the lead to use `find_providers` when the user asks whether a service can be connected — it can only suggest; the user installs.)_
 
 **Edge Cases:**
 
@@ -316,7 +318,7 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 > so that I can fill the gap and approve the bot in one place.
 
 **Priority:** P1
-**Status:** Implemented (slice 3b)
+**Status:** Superseded (consolidation Phase 2c-2, 2026-10-20) — there is no draft review to install from. _(Was: Implemented (slice 3b). `AddProviderDialog` is still in `src/Components/Bots/` but nothing uses it.)_
 
 **Acceptance Criteria:**
 
@@ -352,7 +354,7 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 
 - [ ] AC1: A bot setting, **Built-in tools**: All (today's behavior), Read-only (Read, Glob, Grep), or None.
 - [ ] AC2: "None" uses the same mechanism leads already use (`tools: []` plus the `canUseTool` backstop).
-- [ ] AC3: Lead-drafted bots default to **None** unless the draft explains why it needs built-ins.
+- [ ] AC3: Bots the Dash team plans in Create default to **None** unless the plan explains why they need built-ins. _(Reworded 2026-10-22: leads no longer draft bots — consolidation Phase 2c-2. Was: "Lead-drafted bots default to **None** unless the draft explains why it needs built-ins.")_
 
 ---
 
@@ -550,3 +552,4 @@ Image-based workflows (classification, enrichment, visual QA) stay impossible fo
 | 1.3     | 2026-10-07 | John   | CAP-002 Web Fetch + FR-C02a settings fields implemented (Phase 2); Open Question 7                      |
 | 1.4     | 2026-10-07 | John   | Phase 3 slice 3a: find_providers, registry search, draft gaps (CAP-003; CAP-004 data)                   |
 | 1.5     | 2026-10-07 | John   | Phase 3 slice 3b: gaps in the draft review, Use/Add/Install, add-provider dialog (CAP-004 AC2, CAP-005) |
+| 1.6     | 2026-10-22 | John   | Consolidation 5: `propose_bot` and drafts gone (Phase 2c-2) — CAP-003 AC6 and CAP-005 marked superseded |

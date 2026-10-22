@@ -1,7 +1,7 @@
 # PRD: Widget Installation Model
 
 **Status:** Implemented
-**Last Updated:** 2026-04-24
+**Last Updated:** 2026-10-22
 **Owner:** Core Team
 **Related PRDs:** [Dashboard Marketplace](dashboard-marketplace.md), [Widget Dropdown](widget-dropdown.md)
 **Repos:** dash-core (v0.1.239+, hardened in v0.1.425–v0.1.427), dash-electron (v0.0.239+)
@@ -52,11 +52,11 @@ Three independent installation tracks, each with distinct use cases:
 
 ### Installation Track 1: Registry (Discover)
 
-The primary path for end users. Widgets are browsed in the Discover tab or Dashboard Wizard, then downloaded and installed from the registry.
+The primary path for end users. Widgets are browsed in the registry, then downloaded and installed. The registry browser opens from Create › Widget's no-AI start **Browse widgets in the registry**, and shows on the Widgets page (app-navigation NAV-008). Create's Dash team also finds and installs registry widgets while it builds a plan. _(The Discover tab and the Dashboard Wizard: superseded by Create's no-AI starts and starters (2026-10-22). See Appendix: history.)_
 
 **Flow:**
 
-1. User browses widgets via Discover tab or Wizard
+1. User browses widgets in the registry (Create › Widget › Browse widgets in the registry)
 2. `useRegistrySearch()` calls `window.mainApi.registry.search(query, filters)`
 3. Results filtered by app capabilities (only shows widgets the app can support)
 4. User clicks Install -- `installPackage(widget)` triggers:
@@ -69,15 +69,15 @@ The primary path for end users. Widgets are browsed in the Discover tab or Dashb
 
 **Key files:**
 
-| File                                                                 | Repo      | Role                                      |
-| -------------------------------------------------------------------- | --------- | ----------------------------------------- |
-| `src/hooks/useRegistrySearch.js`                                     | dash-core | Search + install trigger (renderer)       |
-| `electron/controller/registryController.js`                          | dash-core | API fetch, search, update checking (main) |
-| `electron/widgetRegistry.js`                                         | dash-core | Download, extract, register (main)        |
-| `src/Components/Settings/details/DiscoverWidgetsDetail.js`           | dash-core | Discover tab UI                           |
-| `src/Components/Layout/DashboardWizard/steps/WizardCustomizeStep.js` | dash-core | Wizard install step                       |
+| File                                                       | Repo      | Role                                         |
+| ---------------------------------------------------------- | --------- | -------------------------------------------- |
+| `src/hooks/useRegistrySearch.js`                           | dash-core | Search + install trigger (renderer)          |
+| `electron/controller/registryController.js`                | dash-core | API fetch, search, update checking (main)    |
+| `electron/widgetRegistry.js`                               | dash-core | Download, extract, register (main)           |
+| `src/Components/Settings/details/DiscoverWidgetsDetail.js` | dash-core | Registry browser (shown on the Widgets page) |
+| `src/Components/Create/createRouting.js`                   | dash-core | Create's no-AI starts (`noAiOptions`)        |
 
-**Wizard integration:** The Wizard's custom path auto-installs selected registry widgets before creating the dashboard layout. This ensures layout items referencing widget component names resolve correctly.
+**Wizard integration:** Superseded by Create (2026-10-22) — the Wizard was removed in consolidation Phase 2a; a dashboard Create builds installs the registry widgets its plan uses before placing them. See Appendix: history.
 
 **Capability filtering:** The search hook discovers the app's API namespaces from `window.mainApi` and only shows packages whose required APIs are available. A toggle ("Show all packages") overrides this filter.
 
@@ -87,7 +87,7 @@ For offline use, private widgets, or development testing. Users provide a `.zip`
 
 **Flow:**
 
-1. User goes to Settings > Widgets > "Install from ZIP"
+1. User picks **Install a widget from file** (Create › Widget's no-AI starts; it runs on the Widgets page)
 2. File picker opens via `window.mainApi.dialog.chooseFile(true, ["zip"])`
 3. Calls `window.mainApi.widgets.installLocal(widgetName, filepath)`
 4. Main process extracts ZIP or copies folder to `widgets/name/`
@@ -96,14 +96,14 @@ For offline use, private widgets, or development testing. Users provide a `.zip`
 7. Auto-compiles CJS bundle if not present
 8. Widget registered, `widget:installed` event broadcast
 
-**Folder install:** Settings > Widgets also supports "Load from Folder" which bulk-imports widgets from a directory. Uses smart detection to determine if the folder itself is a widget or contains widget subdirectories.
+**Folder install:** **Load a widget from a folder** (also a Create › Widget no-AI start) bulk-imports widgets from a directory. Uses smart detection to determine if the folder itself is a widget or contains widget subdirectories.
 
 **Key files:**
 
-| File                                                 | Repo      | Role                                                    |
-| ---------------------------------------------------- | --------- | ------------------------------------------------------- |
-| `src/Components/Settings/sections/WidgetsSection.js` | dash-core | Install UI (renderer)                                   |
-| `electron/widgetRegistry.js`                         | dash-core | `installFromLocalPath()`, `registerWidgetsFromFolder()` |
+| File                                          | Repo      | Role                                                    |
+| --------------------------------------------- | --------- | ------------------------------------------------------- |
+| `src/Components/AppPages/useWidgetInstall.js` | dash-core | Install UI flow (renderer, Widgets page)                |
+| `electron/widgetRegistry.js`                  | dash-core | `installFromLocalPath()`, `registerWidgetsFromFolder()` |
 
 ### Installation Track 3: Built-in Widgets (`src/Widgets/`)
 
@@ -196,12 +196,12 @@ On first load, `widgetRegistry.loadRegistry()` migrates legacy bare-name entries
 
 ### For End Users
 
-| I want to...                 | How                                                                |
-| ---------------------------- | ------------------------------------------------------------------ |
-| Browse and install widgets   | Settings > Widgets > Discover tab, or use the Dashboard Wizard     |
-| Install a widget from a file | Settings > Widgets > "Install from ZIP"                            |
-| See available updates        | Settings > Widgets -- update indicators appear on registry widgets |
-| Uninstall a widget           | Settings > Widgets > click widget > Uninstall                      |
+| I want to...                 | How                                                        |
+| ---------------------------- | ---------------------------------------------------------- |
+| Browse and install widgets   | Create › Widget › Browse widgets in the registry           |
+| Install a widget from a file | Create › Widget › Install a widget from file               |
+| See available updates        | Widgets page -- an amber dot and "N updates · Update all"  |
+| Uninstall a widget           | Widgets page > open the package > a widget's ⋯ > Uninstall |
 
 ### For Widget Developers
 
@@ -362,32 +362,32 @@ Nothing is installed, loaded or published unchecked.
 
 ## First-Run Experience
 
-The app launches with an empty state showing three actions:
+The app launches with an empty state ("No dashboards open") showing two actions:
 
-1. **Search** -- opens the command palette widget search
-2. **New Dashboard** -- creates a blank dashboard
-3. **Wizard** -- guided flow: browse registry, select widgets, create dashboard
+1. **Search** -- opens the command palette
+2. **New Dashboard** -- opens Create on Dashboard (a plan from the Dash team, or a no-AI start: blank, import from file, browse the registry's dashboards)
 
-The previous "Welcome Prompt" (Kitchen Sink sample workspace) has been removed. The `WelcomePrompt` component still exists in dash-core for API compatibility but is no longer rendered by `DashboardStage`.
+_(The **Wizard** action: superseded by Create's no-AI starts and starters (2026-10-22). The `WelcomePrompt` component has been removed. See Appendix: history.)_
 
 ---
 
 ## Decisions Made
 
-| Date       | Decision                                            | Rationale                                                           |
-| ---------- | --------------------------------------------------- | ------------------------------------------------------------------- |
-| 2026-03-20 | Ship dash-electron with empty `src/Widgets/`        | Eliminates built-in widget bloat; users install only what they need |
-| 2026-03-20 | Keep built-in widget mechanism intact               | Developers who clone the template can still compile custom widgets  |
-| 2026-03-20 | Only registry widgets get updates                   | Clean separation -- built-in and ZIP widgets are developer-managed  |
-| 2026-03-20 | Use npm-style `@scope/name` for widget identity     | Prevents name collisions, familiar convention                       |
-| 2026-03-20 | Remove Kitchen Sink welcome prompt                  | Wizard provides a better onboarding experience                      |
-| 2026-03-20 | Wizard auto-installs widgets before layout creation | Prevents broken layout references to uninstalled widgets            |
-| 2026-04-24 | Layout items record `packageId` at widget-add time  | Lets publish attribute each instance to the exact source package — no guessing when two installed packages both declare the same component (see `LayoutModel.js`, `handleDropWidgetFromSidebar`, `dash:place-widget-in-cell`, `dash:swap-widget-in-cell`) |
-| 2026-04-24 | Registry re-enriches `componentNames` on every startup | `backfillMetadataFromDisk` always runs against each installed entry. Previously it skipped entries whose cache looked populated, so a package that gained widgets after first install never advertised them — publish attribution fell through to singletons |
-| 2026-10-16 | Every install, folder load and publish is checked first; a refusal keeps the installed version | One gate for every way in (consolidation roadmap Phase 1a) |
-| 2026-10-16 | A package's own build is kept, and recorded as the developer's | Widget packages may bundle any library; rebuilding with only the app's libraries would break that (Phase 1a-2; building with the package's own libraries is 1a-3) |
-| 2026-10-16 | Installed widgets that fail the checks are flagged, not disabled | Nothing the user relies on stops working without warning (Phase 1a-2) |
-| 2026-04-24 | Publish-side + install-side sanitize `providers` arrays | `generateWidgetRegistryManifest` and `enrichEntryFromDisk` drop falsy/non-object entries. Consumers (`getUserConfigurableProviders`, `useMemo` flatMaps) ALSO null-guard — three layers so a single sparse array never takes the renderer down |
+| Date       | Decision                                                                                           | Rationale                                                                                                                                                                                                                                                    |
+| ---------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-03-20 | Ship dash-electron with empty `src/Widgets/`                                                       | Eliminates built-in widget bloat; users install only what they need                                                                                                                                                                                          |
+| 2026-03-20 | Keep built-in widget mechanism intact                                                              | Developers who clone the template can still compile custom widgets                                                                                                                                                                                           |
+| 2026-03-20 | Only registry widgets get updates                                                                  | Clean separation -- built-in and ZIP widgets are developer-managed                                                                                                                                                                                           |
+| 2026-03-20 | Use npm-style `@scope/name` for widget identity                                                    | Prevents name collisions, familiar convention                                                                                                                                                                                                                |
+| 2026-03-20 | Remove Kitchen Sink welcome prompt                                                                 | Wizard provides a better onboarding experience (the Wizard was later replaced by Create)                                                                                                                                                                     |
+| 2026-03-20 | Wizard auto-installs widgets before layout creation                                                | Prevents broken layout references to uninstalled widgets (superseded 2026-10-22: Create installs a plan's widgets before placing them)                                                                                                                       |
+| 2026-10-19 | The Wizard and Settings › Widgets' Discover tab are replaced by Create's no-AI starts and starters | One door for making things (consolidation Phase 2a)                                                                                                                                                                                                          |
+| 2026-04-24 | Layout items record `packageId` at widget-add time                                                 | Lets publish attribute each instance to the exact source package — no guessing when two installed packages both declare the same component (see `LayoutModel.js`, `handleDropWidgetFromSidebar`, `dash:place-widget-in-cell`, `dash:swap-widget-in-cell`)    |
+| 2026-04-24 | Registry re-enriches `componentNames` on every startup                                             | `backfillMetadataFromDisk` always runs against each installed entry. Previously it skipped entries whose cache looked populated, so a package that gained widgets after first install never advertised them — publish attribution fell through to singletons |
+| 2026-10-16 | Every install, folder load and publish is checked first; a refusal keeps the installed version     | One gate for every way in (consolidation roadmap Phase 1a)                                                                                                                                                                                                   |
+| 2026-10-16 | A package's own build is kept, and recorded as the developer's                                     | Widget packages may bundle any library; rebuilding with only the app's libraries would break that (Phase 1a-2; building with the package's own libraries is 1a-3)                                                                                            |
+| 2026-10-16 | Installed widgets that fail the checks are flagged, not disabled                                   | Nothing the user relies on stops working without warning (Phase 1a-2)                                                                                                                                                                                        |
+| 2026-04-24 | Publish-side + install-side sanitize `providers` arrays                                            | `generateWidgetRegistryManifest` and `enrichEntryFromDisk` drop falsy/non-object entries. Consumers (`getUserConfigurableProviders`, `useMemo` flatMaps) ALSO null-guard — three layers so a single sparse array never takes the renderer down               |
 
 ---
 
@@ -420,9 +420,22 @@ and `electron/schema/dashboardConfigUtils.test.js` lock them in.
 
 ## Revision History
 
-| Version | Date       | Author    | Changes                                                                                       |
-| ------- | ---------- | --------- | --------------------------------------------------------------------------------------------- |
-| 1.0     | 2026-03-20 | Core Team | Initial version -- documents registry-first model, scoped identity, three installation tracks |
-| 1.1     | 2026-04-24 | Core Team | Adds `packageId` on layout items, registry cache refresh-on-startup, and three-layer sparse-providers sanitization. See dash-core v0.1.425–v0.1.427. |
+| Version | Date       | Author    | Changes                                                                                                                                                                                                     |
+| ------- | ---------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.0     | 2026-03-20 | Core Team | Initial version -- documents registry-first model, scoped identity, three installation tracks                                                                                                               |
+| 1.1     | 2026-04-24 | Core Team | Adds `packageId` on layout items, registry cache refresh-on-startup, and three-layer sparse-providers sanitization. See dash-core v0.1.425–v0.1.427.                                                        |
 | 1.2     | 2026-10-16 | Core Team | Install gate: staged + checked installs, folder loads and publishes (v0.1.785); who built it, startup checks, every file checked, safe swap, ZIPs named by their package, checks never delete (Phase 1a-2). |
-| 1.3     | 2026-10-16 | Core Team | A package's own libraries: recorded at publish, downloaded at install; registry installs build from the checked source, keeping the developer's build when they can't (Phase 1a-3). |
+| 1.3     | 2026-10-16 | Core Team | A package's own libraries: recorded at publish, downloaded at install; registry installs build from the checked source, keeping the developer's build when they can't (Phase 1a-3).                         |
+| 1.4     | 2026-10-22 | Core Team | Phase 5 reconciliation: the Wizard, the Discover tab and Settings › Widgets are superseded by Create's no-AI starts and the Widgets page.                                                                   |
+
+---
+
+## Appendix: history
+
+Text replaced by later work, kept as it was written.
+
+-   **Track 1 (2026-03-20):** "The primary path for end users. Widgets are browsed in the Discover tab or Dashboard Wizard, then downloaded and installed from the registry." Flow step 1: "User browses widgets via Discover tab or Wizard". Key file: `src/Components/Layout/DashboardWizard/steps/WizardCustomizeStep.js` (Wizard install step).
+-   **Wizard integration (2026-03-20):** "The Wizard's custom path auto-installs selected registry widgets before creating the dashboard layout. This ensures layout items referencing widget component names resolve correctly."
+-   **Track 2 (2026-03-20):** "User goes to Settings > Widgets > 'Install from ZIP'"; "Settings > Widgets also supports 'Load from Folder'"; key file `src/Components/Settings/sections/WidgetsSection.js`.
+-   **For End Users (2026-03-20):** browse via "Settings > Widgets > Discover tab, or use the Dashboard Wizard"; install from file via "Settings > Widgets > 'Install from ZIP'"; updates and Uninstall in Settings > Widgets.
+-   **First-Run Experience (2026-03-20):** three actions — Search, New Dashboard (creates a blank dashboard), and **Wizard** (guided flow: browse registry, select widgets, create dashboard). "The `WelcomePrompt` component still exists in dash-core for API compatibility but is no longer rendered by `DashboardStage`."

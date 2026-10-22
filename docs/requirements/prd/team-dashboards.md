@@ -1,7 +1,7 @@
 # PRD: Team Dashboards — Bots, Widgets and Dashboards Built to Work Together
 
-**Status:** In Progress
-**Last Updated:** 2026-10-10
+**Status:** Implemented
+**Last Updated:** 2026-10-22
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; Widget Builder guidance and app wiring in dash-electron)
 **Related PRDs:** [bot-teams.md](./bot-teams.md) (teams, leads, TEAM-012 bot widgets), [bot-factory.md](./bot-factory.md) (bot events US-010/US-011, dashboard packages US-027), dash-electron `docs/requirements/prd/ai-assistant.md` (Widget Builder)
@@ -112,12 +112,7 @@ Nothing plans the three pieces together, so the user has to design the wiring th
 
 ### TD-006: The lead's drafts can run on widget events (P1) — Release 2
 
-**Status:** Superseded (consolidation Phase 2c-2) — the lead no longer drafts bots; it hands making them to the Dash team, whose plans already wire widget events to bots (TD-008). See bot-teams TEAM-005.
-
-**Acceptance Criteria:**
-
-- [ ] AC1: `propose_bot` accepts triggers on widgets of the lead's own dashboard, validated against the dashboard's widget event catalog. (Plan builds do this — create-entry 4d-2: a planned bot's `on` becomes a subscription to the placed widget's exact event, checked against its .dash.js; the lead's `propose_bot` itself is still open.)
-- [~] AC2: `propose_bot` accepts declared results (TD-001). _(Partial, 2026-10-14: drafts support publishes and the Dash team's draft tool sets it; the lead's propose_bot can't)_
+**Status:** Superseded by the lead's hand-off to the Dash team (consolidation Phase 2c-2, 2026-10-20). The lead no longer drafts bots. It hands the request to the Dash team, whose plans wire widget events to bots and declare results (TD-008). See bot-teams TEAM-005. The original ACs are in the Appendix.
 
 ### TD-007: One plan from a goal (P1) — Release 3
 
@@ -125,9 +120,11 @@ Nothing plans the three pieces together, so the user has to design the wiring th
 
 **As a** user, **I want** to describe a goal and get one plan for the bots, widgets, layout and wiring **so that** I approve it once instead of designing it myself.
 
+The Dash team's **Planner** writes the plan, in Create (dash-electron create-entry.md, CRE-003 and CRE-011). It ends its answer with the plan as JSON inside `<plan></plan>` (`electron/bots/teamPlan.js`).
+
 **Acceptance Criteria:**
 
-- [x] AC1: The plan lists each bot (purpose, providers, triggers, results), each widget (what it shows, what it listens to, what it sends), the layout and a setup checklist (providers the user must add). _(Built, 2026-10-14: teamPlan.js — bot, widget and layout pieces plus Before building)_
+- [x] AC1: The Planner's plan lists each bot (purpose, providers, triggers, results), each widget (what it shows, what it listens to, what it sends), the layout and a setup checklist (providers the user must add). _(Built, 2026-10-14: teamPlan.js — bot, widget and layout pieces plus Before building)_
 - [x] AC2: The user reviews the plan on one screen and can drop or change parts before building. _(Built, 2026-10-14: Create's plan step: remove a piece, edit a note)_
 
 ### TD-008: Build from the plan (P1) — Release 3
@@ -137,7 +134,7 @@ Nothing plans the three pieces together, so the user has to design the wiring th
 **Acceptance Criteria:**
 
 - [x] AC1 (create-entry 4d-1 + 4d-2, dash-core electron/bots/planBuild.js): Approving the plan saves the bots, generates the widgets, places them on the dashboard and wires listeners and triggers. Bots are saved as planned (not drafts) after a draft-style check; a bot whose provider isn't connected waits ("needs a provider", create-entry CRE-004 AC5 — this replaces "fails that step"). Widgets the Builder makes are drafts until the Checker passes them; only then are they installed and placed (consolidation Phase 1b, create-entry CRE-004). Wiring is checked against the widget's .dash.js, and a widget publishing with the raw `api.publishEvent` (unprefixed, so nothing hears it) fails the step — the Widget Builder and `build_widget` reject it earlier.
-- [x] AC2: Anything that needs the user (provider sign-in, grants) is listed, never done for them. _(Built, 2026-10-14: Before building (connect / install / approve) in Create's checklist; an unconnected provider fails its step)_
+- [x] AC2: Anything that needs the user (provider sign-in, grants) is listed, never done for them. _(Built, 2026-10-14: Before building (connect / install / approve) in Create's checklist; a step whose provider isn't connected waits for it ("needs a provider") and resumes once it is, as in AC1 and create-entry CRE-004 AC5)_
 - [x] AC3 (create-entry 4d-1): Widget generation runs without opening the Widget Builder window, with progress shown.
 
 ---
@@ -193,6 +190,18 @@ Nothing plans the three pieces together, so the user has to design the wiring th
 
 ## Revision History
 
-| Version | Date       | Author            | Changes                                              |
-| ------- | ---------- | ----------------- | ---------------------------------------------------- |
-| 1.0     | 2026-10-10 | John Giatropoulos | Initial PRD; Release 1 (TD-001 – TD-003) in progress |
+| Version | Date       | Author            | Changes                                                                                                                                                             |
+| ------- | ---------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.0     | 2026-10-10 | John Giatropoulos | Initial PRD; Release 1 (TD-001 – TD-003) in progress                                                                                                                |
+| 1.1     | 2026-10-22 | John Giatropoulos | Consolidation Phase 5: status Implemented; TD-006 superseded (ACs moved to the Appendix); TD-007 names the Planner; TD-008 AC2: a missing provider waits, not fails |
+
+---
+
+## Appendix: history
+
+### TD-006: The lead's drafts can run on widget events (retired)
+
+Retired in consolidation Phase 2c-2, when the lead stopped drafting bots (`propose_bot` was removed). The original ACs:
+
+- [ ] AC1: `propose_bot` accepts triggers on widgets of the lead's own dashboard, validated against the dashboard's widget event catalog. (Plan builds do this — create-entry 4d-2: a planned bot's `on` becomes a subscription to the placed widget's exact event, checked against its .dash.js.)
+- [~] AC2: `propose_bot` accepts declared results (TD-001). _(Partial, 2026-10-14: drafts support publishes and the Dash team's draft tool sets it; the lead's propose_bot couldn't)_

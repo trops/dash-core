@@ -1,7 +1,7 @@
 # PRD: Bot Teams — Dashboard Teams, Team Leads, and Installable Teams
 
 **Status:** In Progress
-**Last Updated:** 2026-10-14 (reconciled with the code — story statuses and boxes say what is built; `[~]` marks partly built, with what's missing)
+**Last Updated:** 2026-10-22 (consolidation Phase 5: reconciled with the code after Phases 1–4 — the AI Assistant panel, Settings › Bots, the lead's drafts and the old team components are gone; see "Where things are now" below)
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; team UI consumed by dash-electron)
 **Related PRDs:** [bot-factory.md](./bot-factory.md) (bots, events, memory, templates, access review), [dashboard-marketplace.md](./dashboard-marketplace.md), [mcp-providers.md](./mcp-providers.md), dash-electron `docs/requirements/prd/ai-assistant.md`
@@ -10,7 +10,19 @@
 
 ## Executive Summary
 
-Bot Teams turns the bots on a dashboard into a **team** the user can talk to, grow, and share. Every dashboard gets a **team lead**: a built-in bot that acts as the team's liaison. It knows what the team's bots are, what they did, and what they found, and the user (or the in-app **AI Assistant**) can ask it questions in plain language. The user can also ask the lead to **add a bot for them**. The lead drafts the bot, and the user reviews and approves it, because a lead can never grant access on its own. Teams are also a **registry asset**: a `.team.json` manifest lists the member bots by **role** and how they're wired together, so a user can install a complete working team (for example "Project Management Team") in one step instead of assembling each bot and its triggers by hand. Every member stays its own bot, with its own grants, approvals, and budget. Teams coordinate the way Bot Factory already decided they should: through the dashboard event bus and shared memory, not a central orchestrator.
+Bot Teams turns the bots on a dashboard into a **team** the user can talk to, grow, and share. Every dashboard gets a **team lead**: a built-in bot that acts as the team's liaison. It knows what the team's bots are, what they did, and what they found, and the user can ask it questions in plain language (in the Bots panel, the Bots view or the bot's page; outside apps through Dash's MCP server). Asked to **add a bot** — or a widget, or a layout change — the lead hands the request to the **Dash team** in Create, which plans and builds it; the user reviews and approves, because a lead can never grant access on its own. Teams are also a **registry asset**: a `.team.json` manifest lists the member bots by **role** and how they're wired together, so a user can install a complete working team (for example "Project Management Team") in one step instead of assembling each bot and its triggers by hand. Every member stays its own bot, with its own grants, approvals, and budget. Teams coordinate the way Bot Factory already decided they should: through the dashboard event bus and shared memory, not a central orchestrator.
+
+### Where things are now (2026-10-22)
+
+The consolidation roadmap (Phases 1–4, 2026-10-16 → 2026-10-21) moved several doors this PRD was written around. Older text below is kept, marked where it no longer holds.
+
+| Written as                                                 | Now                                                                                                                                                                                                                                                                        |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The AI Assistant panel is the front door                   | Retired (create-entry 5e-2c). **Create** is the one door for making things, and the **Dash team** (Planner, Scout, Builder, Checker) answers questions on its own page (TEAM-015 AC9). Outside apps reach leads through Dash's MCP server (`list_teams`, `ask_team_lead`). |
+| Settings › Bots                                            | The **Bots** page in the left nav (`AppPages/BotsPage.js`): all bots grouped by team, plus **Create team leads automatically**. A bot opens its **bot page** (app-navigation NAV-016).                                                                                     |
+| `BotEditorModal`, `AskLead`, `TeamLeadSection`             | Removed (consolidation Phase 2a). Bots are edited in `BotDetail` (the bot page, the Bots view); a lead is talked to in `BotChat`.                                                                                                                                          |
+| The lead drafts bots (`propose_bot`, Drafts, Review draft) | Removed (Phase 2c-2). The lead hands the request to the Dash team: **Plan this with the Dash team** opens Create with it (TEAM-005).                                                                                                                                       |
+| Create's Ask box with a "To:" picker (TEAM-013 in Create)  | Removed (Phase 4a). Ask a lead in its chat (the Bots panel, the Bots view, its bot page); ask the Dash team on its page.                                                                                                                                                   |
 
 ---
 
@@ -24,7 +36,7 @@ Bots are individuals today. A user can build several bots and wire them together
 
 Sharing has the same gap. Bot Factory lets a single bot be published as a template (US-026), and lets bots ride along inside a dashboard package (US-027). But a team that doesn't need a dashboard, such as a project-management team that watches Jira and Slack and reports in a chat, has no way to be packaged. A user who finds a good team has to rebuild it bot by bot.
 
-Finally, the AI Assistant, the user's main conversational entry point, can't see bots at all. It can build dashboards and widgets, but it can't answer "what did my bots find this morning?" or "set up a bot that watches my inbox for client emails".
+Finally, the AI Assistant, the user's main conversational entry point, can't see bots at all. It can build dashboards and widgets, but it can't answer "what did my bots find this morning?" or "set up a bot that watches my inbox for client emails". _(Historical: the Assistant panel was retired in create-entry 5e-2c; Create and the Dash team now play this role — see "Where things are now".)_
 
 **Who experiences this problem?**
 
@@ -37,7 +49,7 @@ Bots stay a power-user feature. Multi-bot workflows remain hand-assembled and un
 
 ### Current State
 
-**What exists today?** (shipped through dash-core v0.1.641 / dash-electron v0.0.836)
+**What existed when this PRD was written** (shipped through dash-core v0.1.641 / dash-electron v0.0.836 — a snapshot; Settings › Bots, the Bot Activity panel and the AI Assistant have since been replaced, see "Where things are now")
 
 - **Bots** with providers, per-tool selection, schedules, approvals, and remembered approvals ("Always allow") — Settings › Bots, Bot Activity panel
 - **Event triggers** — a bot runs on a widget's declared event (Dashboard › Widget › Event) or on another bot's event (`bot:<ref>[<botId>].completed | failed | tool.<providerType>.<tool>`), with dashboard scoping, a chain/depth loop guard, and untrusted-payload fencing
@@ -61,7 +73,7 @@ Bots stay a power-user feature. Multi-bot workflows remain hand-assembled and un
 ### Primary Goals
 
 1. **Every dashboard has a team you can talk to** — The user can ask a dashboard's lead what the team did and get an answer grounded in real runs and memory.
-2. **Build a team by asking** — The user can describe a bot they need and get a ready-to-review draft, without knowing how bots are configured.
+2. **Build a team by asking** — The user can describe a bot they need and get it planned and built for review, without knowing how bots are configured. _(Through the Dash team in Create; a lead hands such requests on — TEAM-005.)_
 3. **Install a team in one step** — A published team installs with one review screen, one grouped access review, and its wiring intact.
 4. **Stay in control** — No lead grants access, installs servers, or runs members beyond what the user approved; every team action is visible.
 5. **Cost-safe by default** — Leads cost nothing until the user engages them.
@@ -74,7 +86,7 @@ Bots stay a power-user feature. Multi-bot workflows remain hand-assembled and un
 | Lead answers grounded in team data (runs/memory cited)      | ≥ 90% of answers on a QA question set  | Eval set over seeded team activity |
 | Access granted by a lead or an install without user consent | 0                                      | Permission tests, audit log review |
 | Model spend by idle leads (never engaged)                   | $0                                     | Usage records per lead bot         |
-| "Add a bot for me" drafts saved without manual edits        | ≥ 60% in dogfood                       | Draft-vs-saved diff                |
+| "Add a bot for me" bots kept without manual edits           | ≥ 60% in dogfood                       | Planned-vs-saved diff (Create)     |
 | Team installs with all wiring resolved                      | 100% when all members install          | Install integration test           |
 
 ### Non-Goals
@@ -83,7 +95,7 @@ Bots stay a power-user feature. Multi-bot workflows remain hand-assembled and un
 - **Leads acting outside their dashboard** — A lead sees and acts only on its own dashboard's team.
 - **Self-granting** — No lead, template, or manifest can grant tools; only the user can.
 - **Multi-user or cloud teams** — Teams are local to one user's Dash, like bots.
-- **Replacing the AI Assistant** — The Assistant stays the front door; leads are what it talks to about teams.
+- **Being the front door** — A lead is its team's liaison, not the place to make things. _(Originally "the AI Assistant stays the front door; leads are what it talks to about teams" — superseded by Create and the Dash team (2026-10-22).)_
 
 ---
 
@@ -147,7 +159,7 @@ Bots stay a power-user feature. Multi-bot workflows remain hand-assembled and un
 - [x] AC3: **+ Add bot** in the Bots tab opens the existing bot form with `workspaceId` preset; the event picker opens on this dashboard's widgets.
 - [x] AC4: An unassigned bot can be **moved into** a team (sets `workspaceId`), and a member can be moved out. Moving warns that event subscriptions scoped to another dashboard won't fire from this one.
 - [~] AC5: The Bot Activity panel gains **+ New bot** (scoped to the current dashboard) and can filter/group its feed by team. _(Partial, 2026-10-14: the Bots panel groups bots by team (contacts list, TEAM-015); its "+ New bot" went with the old panel — new bots start from Create or the Bots view)_
-- [x] AC6: Settings › Bots stays the all-bots view, grouped by team (dashboard) with an Unassigned group.
+- [x] AC6: Settings › Bots stays the all-bots view, grouped by team (dashboard) with an Unassigned group. _(Now the **Bots** page in the left nav, `AppPages/BotsPage.js`; Settings › Bots was removed when the Manage pages replaced it — app-navigation.)_
 
 **Edge Cases:**
 
@@ -157,9 +169,9 @@ Bots stay a power-user feature. Multi-bot workflows remain hand-assembled and un
 **Implementation notes (slice 1, 2026-10-01):**
 
 - **Membership:** `bot.workspaceId` (ids compared as strings) — `electron/bots/teams.js` (main) and `src/Components/Bots/teamUtils.js` (renderer). The event matcher already scoped a team bot to its own dashboard's events; it now compares ids as strings.
-- **One bot editor everywhere:** `BotEditorModal` (exported from dash-core) wraps `BotDetail`; used by Dashboard Config › Bots and dash-electron's Bot Activity panel. Settings › Bots keeps its inline form. `BotDetail` gained a **Team** field (Unassigned + dashboards, same-named ones numbered), `defaultWorkspaceId`, the picker preselect, and the off-team warning.
+- **One bot editor everywhere:** `BotEditorModal` (exported from dash-core) wraps `BotDetail`; used by Dashboard Config › Bots and dash-electron's Bot Activity panel. Settings › Bots keeps its inline form. _(Superseded: `BotEditorModal` was removed in consolidation Phase 2a; `BotDetail` is edited in the Bots view and on the bot page (NAV-016), and Dashboard Config › Bots is a read-only summary with **Open in Bots view** (TEAM-011).)_ `BotDetail` gained a **Team** field (Unassigned + dashboards, same-named ones numbered), `defaultWorkspaceId`, the picker preselect, and the off-team warning.
 - **Bots tab** (`src/Components/Dashboard/BotsTab.js`): saves immediately (unlike the other staged tabs) and says so; **Remove from team** only unassigns.
-- **Current dashboard for the dock:** `DashboardStage` wraps the assistant dock in `WorkspaceContext` (`workspaceData` = current dashboard, `workspaces` = all).
+- **Current dashboard for the dock:** `DashboardStage` wraps the dock (then the assistant, now Create and the Bots panel) in `WorkspaceContext` (`workspaceData` = current dashboard, `workspaces` = all).
 - **Dashboard delete:** `workspaceController.deleteWorkspaceForApplication` emits `workspaceEvents.emitWorkspaceDeleted` (covers the app and the MCP `delete_dashboard` tool); `botController` unassigns + pauses that team (`teams.unassignTeam`).
 
 **Definition of Done:**
@@ -179,21 +191,21 @@ Bots stay a power-user feature. Multi-bot workflows remain hand-assembled and un
 > so that I always have someone to ask and a natural place to start building a team.
 
 **Priority:** P0
-**Status:** Implemented (slice 2a) — `propose_bot` follows with TEAM-005
+**Status:** Implemented (slice 2a). _(Its "`propose_bot` follows with TEAM-005" is moot: TEAM-005's drafts were superseded by the lead's hand-off to the Dash team, 2026-10-20.)_
 
 **Acceptance Criteria:**
 
 - [x] AC1: When a dashboard is created (or first opened, for existing dashboards), Dash creates its **lead**: a bot with `role: "lead"`, named "<Dashboard> Lead", in that dashboard's team.
-- [x] AC2: The lead is **idle by default**: no schedule, no subscriptions, and no model calls until the user (or the Assistant) asks it something. An untouched lead costs $0.
-- [x] AC3: The lead introduces itself once, non-blockingly, in the Bots tab and the Activity panel: what it is, what it can do ("Ask me what the team is doing, or ask me to add a bot"), and how to turn it off. _(The "add a bot" line arrives with TEAM-005. Consolidation Phase 2c-2: asked to add a bot — or a widget, or a layout change — the lead hands it to the Dash team; see TEAM-005.)_
+- [x] AC2: The lead is **idle by default**: no schedule, no subscriptions, and no model calls until the user (or an outside app, through Dash's MCP server) asks it something. An untouched lead costs $0.
+- [~] AC3: The lead introduces itself once, non-blockingly, in the Bots tab and the Activity panel: what it is, what it can do ("Ask me what the team is doing, or ask me to add a bot"), and how to turn it off. _(The "add a bot" line arrives with TEAM-005. Consolidation Phase 2c-2: asked to add a bot — or a widget, or a layout change — the lead hands it to the Dash team; see TEAM-005.)_ _(2026-10-22: the intro card lived in `TeamLeadSection`, removed in consolidation Phase 2a; nothing shows it now — `bots.dismissLeadIntro` is still in the API, unused. Turn off/on is in the Bots view.)_
 - [x] AC4: The lead's tools are **read-only team tools** served in-process (like `memory_*`): `team_list_bots`, `team_get_bot`, `team_recent_runs` (summaries, statuses, errors), `team_memory_read`, plus `team_providers` and `find_providers` (`propose_bot`, TEAM-005, was removed in consolidation Phase 2c-2). It has no provider (MCP) tools unless the user explicitly adds them. _(v1: a lead gets only its team tools — providers on a lead are ignored — and no engine built-ins.)_
-- [x] AC5: The user can rename the lead, change its model, or **turn it off**. Turning it off removes the lead from that dashboard and stops auto-creating it there; it can be turned back on from the Bots tab.
+- [x] AC5: The user can rename the lead, change its model, or **turn it off**. Turning it off removes the lead from that dashboard and stops auto-creating it there; it can be turned back on from the Bots tab. _(Now the Bots view: "Team lead is off" with turn on.)_
 - [x] AC6: A dashboard has at most one lead.
 
 **Edge Cases:**
 
 - No AI provider configured → the lead exists but shows "Add a model source to talk to your lead", with a link to the provider setup.
-- Lead deleted from Settings › Bots → treated as turned off for that dashboard.
+- Lead deleted (the Bots page, formerly Settings › Bots) → treated as turned off for that dashboard.
 - Global setting "Create team leads automatically" (default on) → off means leads are created only on demand from the Bots tab.
 
 **Definition of Done:**
@@ -217,7 +229,7 @@ Bots stay a power-user feature. Multi-bot workflows remain hand-assembled and un
 
 **Acceptance Criteria:**
 
-- [x] AC1: The Bots tab and the Activity panel offer **Ask the lead**: a chat with the lead that continues across messages (the lead's engine session is resumed for follow-ups and reset on "New conversation").
+- [x] AC1: The Bots tab and the Activity panel offer **Ask the lead**: _(now the lead's chat, `BotChat`, in the Bots panel, the Bots view and its bot page)_ a chat with the lead that continues across messages (the lead's engine session is resumed for follow-ups and reset on "New conversation").
 - [x] AC2: Answers are grounded in team data from the team tools (runs, outputs, memory). The lead cites what it used ("From Inbox Watch's 9:02 run…") and says so when it doesn't know.
 - [x] AC3: Data the lead reads from runs and memory is presented to its model as **untrusted data**, using the same fencing as event payloads (bot-factory US-011 AC4), because it can contain email or web text.
 - [x] AC4: Every question and answer is logged in the Activity feed as a lead run (trigger "ask").
@@ -227,7 +239,7 @@ Bots stay a power-user feature. Multi-bot workflows remain hand-assembled and un
 - **Lead creation:** `DashboardStage` calls `bots.ensureLead(id, name)` when a dashboard opens; `electron/bots/teamLeads.js` decides (`planEnsureLead`: one per dashboard, never when turned off or auto-create is off unless forced). Leads default to the user's default AI provider, else Claude Code. Deleting a lead in Settings counts as turning it off.
 - **Read-only by construction:** `botController._resolveTools` gives a lead only `TEAM_TOOLS` (`electron/bots/teamTools.js`, served under the internal `bot-team` server, scoped to the lead's dashboard, results fenced in `<team_data>`); the runner sets `builtinTools: "none"`, which the Claude Agent engine maps to the SDK's `tools: []` with a deny backstop in `canUseTool`. Lead answers don't go on the event bus.
 - **Run answers:** `BotRunner` keeps each run's final text (last 8 KB) on the run record — what `team_recent_runs` reads — and `BotStore` **seals it at rest** with the OS keychain (`secretBox.js` over Electron `safeStorage`, injected by `host.js`; plain-text fallback where unavailable; undecryptable answers read as unavailable).
-- **UI:** `AskLead` (chat; follow-ups resume the session) and `TeamLeadSection` (lead, one-time intro, Turn off/on) in Dashboard Config › Bots and the Bot Activity panel; **Create team leads automatically** in Settings › Bots.
+- **UI:** `AskLead` (chat; follow-ups resume the session) and `TeamLeadSection` (lead, one-time intro, Turn off/on) in Dashboard Config › Bots and the Bot Activity panel; **Create team leads automatically** in Settings › Bots. _(Superseded 2026-10-22: `AskLead` and `TeamLeadSection` were removed in consolidation Phase 2a — the lead is talked to in `BotChat`, turned off/on in the Bots view; **Create team leads automatically** is on the Bots page.)_
 - **Edge-case deviation:** with no AI provider configured, the lead uses Claude Code (no API key needed) rather than showing "Add a model source".
 
 **Example Scenario:**
@@ -236,8 +248,10 @@ Bots stay a power-user feature. Multi-bot workflows remain hand-assembled and un
 User (Sales dashboard → Bots → Ask the lead): "Anything urgent today?"
 Lead: "Inbox Watch flagged 2 client emails at 9:02 (Acme renewal, Globex
 pricing question). CRM Sync failed at 10:15 — the Salesforce token expired.
-Want me to draft a bot that follows up on renewals?"
+Want the Dash team to plan a bot that follows up on renewals?"
 ```
+
+_(The closing offer was "Want me to draft a bot…" before TEAM-005's drafts were superseded by the hand-off.)_
 
 **Definition of Done:**
 
@@ -251,7 +265,7 @@ Want me to draft a bot that follows up on renewals?"
 
 **TEAM-004: The AI Assistant talks to team leads**
 
-> **Update (create-entry 5e-2c, 2026-10-14):** the AI Assistant panel is retired. `list_teams` / `ask_team_lead` stay on Dash's MCP server for outside apps; their lead runs are recorded as `via: "mcp"` and the Bots view says "Asked through Dash's MCP server" (older runs keep "Asked via the AI Assistant"). In the app, Create's Ask box asks the Dash team or a lead (TEAM-013 note below).
+> **Update (create-entry 5e-2c, 2026-10-14):** the AI Assistant panel is retired. `list_teams` / `ask_team_lead` stay on Dash's MCP server for outside apps; their lead runs are recorded as `via: "mcp"` and the Bots view says "Asked through Dash's MCP server" (older runs keep "Asked via the AI Assistant"). In the app, a lead is asked in its own chat (`BotChat`); Create's Ask box and its "To:" picker were removed in consolidation Phase 4a (TEAM-013 note below). This story now stands for the MCP tools only.
 
 > As a team owner,
 > I want to ask the AI Assistant about any of my teams,
@@ -265,7 +279,7 @@ Want me to draft a bot that follows up on renewals?"
 - [x] AC1: The Dash MCP server gains team tools (new `electron/mcp/teamTools.js`): `list_teams` (dashboards with a lead or members: name, member count, last activity) and `ask_team_lead(dashboard, question)`, which runs that dashboard's lead with the question and returns its answer.
 - [x] AC2: The Assistant relays the lead's answer and names which team it came from. Questions spanning teams ("what did all my teams do today?") fan out to each lead, with a cap on how many are asked per question (default 5).
 - [x] AC3: `ask_team_lead` obeys the lead's approval policy and budget like any run; a paused or over-budget lead returns that status instead of an answer.
-- [x] AC4: Assistant-originated lead runs are labelled "via Assistant" in the Activity feed.
+- [x] AC4: Assistant-originated lead runs are labelled "via Assistant" in the Activity feed. _(Now `via: "mcp"`, "Asked through Dash's MCP server", in the lead's conversation.)_
 
 **Edge Cases:**
 
@@ -298,38 +312,10 @@ Want me to draft a bot that follows up on renewals?"
 > so that I can grow my team without knowing how bots are configured.
 
 **Priority:** P1
-**Status:** Superseded (consolidation Phase 2c-2, 2026-10-20) — the lead no longer drafts bots. Asked to make a bot, a widget or a layout change, it says the Dash team will plan it and ends its answer with a hand-off (`<handoff>{"type","request","note"}</handoff>`, `electron/bots/handoff.js` + its renderer copy). Wherever you talk to a lead — BotChat (the Bots view, a bot's page) and Ask in Create — the answer shows **Plan this with the Dash team**, which opens Create with the request and that dashboard (a bot → Create › Bot, Where = that dashboard; a widget or layout → a plan that changes it). Create shows and passes on the lead's note and what Dash itself knows there (its widgets, and each bot: what it does, when it runs, what it sends — `Create/teamContext.js`) to the Scout and the Planner, so they build on the team's bots instead of duplicating them. Dash's MCP `ask_team_lead` says the same in words. Removed: `propose_bot`, the Builder's `draft_bot`, the drafts store, its events/API/IPC, the Bots view's Drafts section and Review draft, `DraftBanner`, `DraftGaps` and the bot form's draft-only parts. `buildDraft` stays (plan builds save planned bots through it). Leads with the generated instructions upgrade on next start; edited ones are left alone.
+**Status:** Superseded (consolidation Phase 2c-2, 2026-10-20) — the lead no longer drafts bots. Asked to make a bot, a widget or a layout change, it says the Dash team will plan it and ends its answer with a hand-off (`<handoff>{"type","request","note"}</handoff>`, `electron/bots/handoff.js` + its renderer copy). Wherever you talk to a lead — its chat (`BotChat`) on the bot page, in the Bots view, the Bots page or opened from the Bots panel — the answer shows **Plan this with the Dash team**, which opens Create with the request and that dashboard (a bot → Create › Bot, Where = that dashboard; a widget or layout → a plan that changes it). Create shows and passes on the lead's note and what Dash itself knows there (its widgets, and each bot: what it does, when it runs, what it sends — `Create/teamContext.js`) to the Scout and the Planner, so they build on the team's bots instead of duplicating them. Dash's MCP `ask_team_lead` says the same in words. Removed: `propose_bot`, the Builder's `draft_bot`, the drafts store, its events/API/IPC, the Bots view's Drafts section and Review draft, `DraftBanner`, `DraftGaps` and the bot form's draft-only parts. `buildDraft` stays (plan builds save planned bots through it). Leads with the generated instructions upgrade on next start; edited ones are left alone. _(2026-10-22: Create's Ask box was removed in consolidation Phase 4a. Its component, `AskStep`, now runs the Dash team page's Conversation; reopening an older question that was asked of a lead still talks to that lead, and its hand-off answer still shows **Plan this with the Dash team** there — see TEAM-013.)_
 _(Was: Implemented (5a + 5b).)_
 
-**Acceptance Criteria:**
-
-- [x] AC1: The lead's `propose_bot` tool produces a **draft**: name, instructions, providers and tools (from the user's existing Dash providers only), schedule, and event subscriptions (from the picker's catalogs, never invented event names).
-- [x] AC2: A draft is never saved or run by the lead. It opens the bot form prefilled (with Bot Builder's Chat pane when available, bot-factory US-017), with the lead's reasoning shown, for the user to edit and **Save**.
-- [x] AC3: Tools in the draft appear as **pending suggestions** the user accepts individually (bot-factory US-017 AC5). Saving the bot doesn't grant tools beyond what the user accepted; runtime approvals still apply.
-- [x] AC4: If the request needs a provider the user doesn't have, the draft says so and links to Settings › Providers (or the capability ladder, bot-factory US-025). It never installs anything.
-- [x] AC5: The AI Assistant can trigger the same flow ("ask the Sales lead to add a bot that…"). The draft still opens for the user's review.
-
-**Edge Cases:**
-
-- Request duplicates an existing member → the lead points to that bot and offers to adjust it instead.
-- Request would wire bots into a loop → the draft is flagged with the chain the loop guard would refuse.
-
-**Implementation notes (5a, 2026-10-02):**
-
-- The lead gets two tools: **`team_providers`** (the user's providers — name, type, tool names; nothing secret) and **`propose_bot`**. Its instructions say to check providers, draft with propose_bot, and never claim a draft is created; earlier generated instructions upgrade automatically (a history of earlier "action" sentences).
-- **`electron/bots/botDrafts.js`** builds the draft: providers matched by name, else by type ("gmail" → each Gmail provider); tools filtered to what the provider has (or marked "couldn't check"); schedule kept only if croner parses it; event triggers only to this team's bots' completed/failed events; a duplicate name is flagged; short `needs` → missing providers (with the user's available providers listed back to the lead), longer ones → notes. The draft's own providers/tools are **empty** — suggestions only (so AC3's "nothing granted beyond what the user accepts" holds; one-click Accept is 5b).
-- Drafts live in memory (10 per dashboard), broadcast `bot-drafts-changed`, and are listed/dismissed over IPC. Not kept across restarts.
-- Bots view: a **Drafts** section; opening one shows the new-bot form prefilled under a **DraftBanner** (reasoning, suggestions, missing providers → Settings › Providers, notes, left-out items, duplicate warning). Create saves a real bot and removes the draft; Discard draft removes it.
-- AI Assistant: `ask_team_lead` adds "Draft '<name>' is waiting for the user's review…" when the lead drafted during the ask.
-- Widget events can't be validated in the main process (their catalog lives in the renderer), so 5a drafts only trigger on team bots' events; users add widget triggers in the form.
-- Loop edge case: a brand-new bot can't be in a loop yet (nothing subscribes to it), so no check is needed at draft time.
-
-**Implementation notes (5b, 2026-10-03):**
-
-- **Accept in the form:** `BotDetail` takes the draft's `suggestions`. A suggested provider that's still off shows "Suggested by the lead", its tools, and **Accept** (turns the provider on with exactly the suggested tools) — or **Accept (all tools)** when its tools couldn't be checked. **Accept all suggestions** sits at the top of Providers. Nothing changes until the user clicks; Save still only grants what's ticked.
-- **Review draft** under the lead's answer that produced it: answer turns keep their run's start/end, and a draft from that lead created in that window is linked. Saved or discarded drafts no longer show.
-- `needs` cleanup: bracketed text and a trailing "provider(s)" are dropped before the 40-character note cutoff ("Microsoft Teams provider (to post the summary)" → missing "Microsoft Teams").
-- **Follow-ups — both done (2026-10-03):** `team_list_bots` now lists drafts awaiting review (and the lead is told to check before saying one is waiting); answers show in a chat bubble. The last nit is fixed too: text a bot wrote before and after a tool call was joined without a space ("prefer.Done"); it now starts a new paragraph after a tool call (`appendAnswerText`, in `electron/bots/answerText.js` and its mirror `src/utils/answerText.js`) in the run record, the `completed` event, and the live stream. Answers saved before the fix are unchanged. Originally: (1) a lead can't see whether its earlier drafts still exist — continuing an old conversation, it may say a draft is waiting when it was already saved/discarded; listing current drafts in `team_list_bots` would fix it. (2) Show the lead's (and bots') answers in a chat bubble like the user's messages, so it's clear who's talking.
+**Acceptance Criteria:** retired with the draft flow. The original ACs (draft via `propose_bot`, prefilled form, pending suggestions, missing providers, Assistant-triggered drafts) and the 5a/5b implementation notes are in **Appendix: history › TEAM-005 drafts**. What holds now is the hand-off in the Status above.
 
 **Definition of Done:**
 
@@ -476,7 +462,7 @@ answers from today's runs.
 > so that working with bots has room to breathe instead of being squeezed into a modal tab or a side panel.
 
 **Priority:** P1 (next after slice 2a; supersedes the slice 1–2a Bots tab and the side panel's chat)
-**Status:** Implemented (B1–B3 + gaps; two small follow-ups noted below)
+**Status:** Implemented (B1–B3 + gaps; two small follow-ups noted below). _(2026-10-22: the selected bot is now its **bot page** — Conversation, Activity, Log, Spending, Settings — app-navigation NAV-016 AC6; the side panel of AC9 is the Bots contacts panel, TEAM-015.)_
 **Design:** clickable mockup — https://claude.ai/artifact/DmugteBVtFYEUBrAuo5KCE (Aurora look from `docs/design/dark-shell.html`)
 
 **Acceptance Criteria:**
@@ -502,7 +488,7 @@ answers from today's runs.
 
 **Technical Notes:**
 
-- Renderer components in dash-core (`src/Components/Bots/`): `BotsView`, `TeamList`, `BotConversation`, `BotRunHistory`; reuse `AskLead`, `BotDetail`, and the approval card. `DashboardStage` holds the Dashboard | Bots mode per dashboard.
+- Renderer components in dash-core (`src/Components/Bots/`): `BotsView`, `TeamList`, `BotConversation`, `BotRunHistory`; reuse `AskLead`, `BotDetail`, and the approval card. _(`AskLead` was removed in consolidation Phase 2a; the conversation is `BotChat`.)_ `DashboardStage` holds the Dashboard | Bots mode per dashboard.
 - **Run history API:** `bots.getRuns(botId, { limit })` — decrypted run records (the store already seals answers at rest).
 - **Conversations for non-lead bots** need more than the answer on each run record: the run's prompt and a compact tool-call summary (tool, provider, ok/failed — never raw results), both sealed at rest like answers. Reply-to-continue reuses `continueSession`.
 - Design: list-left / detail-right, hairline glass cards, underline tabs, one primary action per view. The same design is planned for Dashboard Config later (out of scope here).
@@ -574,7 +560,7 @@ answers from today's runs.
 > so that I can talk to any team without remembering lead names or which dashboard they belong to.
 
 **Priority:** P1
-**Status:** Retired (create-entry 5e-2c removed the AI Assistant panel; asking a lead now happens in Create's Ask box with To:, 5e-2a)
+**Status:** Retired (create-entry 5e-2c removed the AI Assistant panel; asking a lead then moved to Create's Ask box with To:, 5e-2a). _(2026-10-22: Create's Ask box and its "To:" picker were removed too, in consolidation Phase 4a. A lead is asked in its own chat on its bot page — from the Bots panel (pinned for the open dashboard, TEAM-015 AC9), the Bots view or the Bots page; the Dash team is asked on its page. Only Create's entry point went: the Ask box's component, `AskStep`, now runs the Dash team page's Conversation (`Bots/DashTeamPage.js`) and still imports `askTeamLead` and `useTeamLeads` (from `RecipientPicker`). The page lists older questions asked of a lead ("asked <lead>"); reopening one still sends follow-ups to that lead, and a lead's answer that offers a hand-off still shows **Plan this with the Dash team**. The `RecipientPicker` dropdown shows only when ChatCore's `enableLeadRecipients` is on, and nothing in the app turns it on.)_
 
 **Context:** TEAM-004 already lets the Assistant reach leads, but only through the model: the user names a dashboard in prose, the Assistant calls `list_teams` / `ask_team_lead`, rewords the question, and relays (summarises) the answer. TEAM-013 adds an explicit recipient: messages to a selected lead go **directly** to the lead (decided 2026-10-06), as the Bots view's lead chat already does.
 
@@ -606,13 +592,13 @@ answers from today's runs.
 - **ChatCore:** messages gain an optional `from: { type: "lead", botId, leadName, dashboardName }`; `MessageBubble` renders lead bubbles (any other role currently renders nothing); `handleSend` routes lead-addressed text to `askLead` (not the LLM) and, when the Assistant is next addressed, folds earlier lead exchanges into its history as labelled user-role context (AC10); ChatInput gains the recipient picker.
 - The Assistant panel in dash-electron uses dash-core's `ChatCore`, so the UI change lands in dash-core; dash-electron only needs the IPC wiring and a dash-core bump.
 - **Create's Ask box (create-entry 5e-2a, 2026-10-14):** the dock's Ask box has the same "To:" picker (`RecipientPicker` with `defaultLabel="Dash team"`, shown only when there are leads). A question to a lead goes straight to it (`utils/leadAsk.js` `askTeamLead` → `askLead(…, via: "create")`), stays with that lead for follow-ups, and is kept in Create's Recent with its recipient (`Answered · <lead>`). The Bots view labels these runs "Asked from Create".
-- **The AI Assistant panel is retired (create-entry 5e-2c, 2026-10-14):** Create's Ask box is now the one place to message a lead. ChatCore keeps its lead-recipient support (`enableLeadRecipients`) as public API, unused in the app.
+- **The AI Assistant panel is retired (create-entry 5e-2c, 2026-10-14):** Create's Ask box is now the one place to message a lead. _(Until consolidation Phase 4a removed the Ask box from Create; `AskStep` lives on in the Dash team page — see Status.)_ ChatCore keeps its lead-recipient support (`enableLeadRecipients`) as public API, unused in the app.
 - `ask_team_lead`'s fan-out cap (5 per 2 minutes) does not apply here: each direct message is one explicit user action.
 
 **Implementation notes (slice 1, 2026-10-06):**
 
 - **Directory:** `summarizeLeads` in `electron/bots/teamDirectory.js` (pure, node-tested) — one entry per dashboard with a lead, numbered labels for same-named dashboards, tolerant of failing availability/running lookups. `botController.listLeads()` feeds it the saved dashboards (`workspaceController`, as `_loadWorkspace` does), `leadAvailability` and the runner's active set. `botApi.listLeads` / `BOTS_LIST_LEADS`; `botApi.askLead` gains a 4th `via` argument.
-- **Opt-in:** `ChatCore` takes `enableLeadRecipients` (default false) — only the dash-electron AI Assistant panel turns it on, so the widget builder chat and the Chat sample widget are unchanged (no picker, no `listLeads` IPC, history built exactly as before).
+- **Opt-in:** `ChatCore` takes `enableLeadRecipients` (default false) — only the dash-electron AI Assistant panel turns it on, so the widget builder chat and the Chat sample widget are unchanged (no picker, no `listLeads` IPC, history built exactly as before). _(With the Assistant panel retired, nothing in the app turns it on now.)_
 - **Renderer:** `components/RecipientPicker.js` (`useTeamLeads` refreshes on `bot-list-changed` + `bot-run-active`; dash-react `SelectInput` with a "Team leads" option group). `leadMessages.js` (pure, jest-tested): `buildLlmHistory` folds lead exchanges into labelled user-role context and merges consecutive user entries; `availabilityNotice`; `hasLeadSession`. User messages to a lead carry `to: lead`; answers are `role: "lead"` with `from: lead`, streamed into a placeholder that keeps its id when it finishes (no remount). `ChatInput`'s `onSend` may return `false` to keep the text (refused send).
 - **dash-electron:** the `bots-ask-lead` handler forwards `via` only when it is `"assistant"`; new `bots-list-leads` handler.
   **Implementation notes (slice 2, 2026-10-06):** `filterRecipients` + `ASSISTANT_RECIPIENT` in `leadMessages.js`; `components/LeadMentionMenu.js` is a listbox (focus stays in the textarea; options pick on mousedown); `ChatInput` takes optional `leads` / `onPickRecipient` — without `onPickRecipient` the shortcut is off. Verified in the app: `@dai` → Daily Brief (test) Lead, Enter sets the To: picker and clears the box (light + dark).
@@ -698,7 +684,7 @@ _Slice 2 — drag to wire_
 - `Bots/TeamChart.js`: cards and labels are absolutely positioned with inline styles (the prebuilt CSS has no arbitrary sizes or negative offsets); lines are SVG paths with `stroke="currentColor"` and colour classes. Selecting a bot that has lines highlights them and fades the rest; selecting the lead (or a bot with no lines) fades nothing. Named TeamChart because `teamDiagram.js` holds the helpers and macOS file names ignore case.
 - `Bots/BotFlowSummary.js`: status instead of "last run" (the Bots view has no last-run data without another call); providers, Runs after (other dashboards marked), Then triggers, Conversation / Activity / Settings / Run now.
 - `Bots/BotAvatar.js`: shared by the Bots page, the Bots view list and the diagram (AC1).
-- `BotsView`: Diagram is the default; the choice is remembered in `localStorage` (`dash:botsView:mode`, wrapped in try/catch). In Diagram mode the bot's tabs open in a half-width panel beside the diagram (× back to the summary); + Add bot and drafts open their form there; a focus request (Open in Bots view) opens the tabs. Narrow windows keep the bot picker.
+- `BotsView`: Diagram is the default; the choice is remembered in `localStorage` (`dash:botsView:mode`, wrapped in try/catch). In Diagram mode the bot's tabs open in a half-width panel beside the diagram (× back to the summary); + Add bot and drafts open their form there (drafts were removed in Phase 2c-2); a focus request (Open in Bots view) opens the tabs. Narrow windows keep the bot picker.
 - Verified live on the Algolia Data Enrichment team with a temporary trigger (Record Reader runs after Schema Planner completes): line + label drawn, summary lists it, Activity opens beside the diagram (bots wrap to two rows), light and dark.
 
 **Implementation notes (slice 2, 2026-10-08):**
@@ -714,7 +700,7 @@ _Slice 2 — drag to wire_
 **Implementation notes (resizable bot panel, 2026-10-09):**
 
 - The bot panel beside the diagram has a drag handle on its left edge (dash-react `ResizeHandle` + `useResizableWidth`, ≥ 1.0.65). It starts at half the view; the diagram keeps ≥ 320px and the panel ≥ 360px; the width is remembered per viewer (`dash:botsView:panelWidth`); double-click resets to half; ← / → step it when focused. Narrow windows and the List view are unchanged.
-- The AI Assistant side panel uses the same handle (it had its own; now its width is remembered too).
+- The AI Assistant side panel uses the same handle (it had its own; now its width is remembered too). _(That panel was retired in create-entry 5e-2c.)_
 
 ---
 
@@ -749,12 +735,12 @@ _Slice 2 — drag to wire_
 
 - [x] AC1: **Contacts.** The right-hand dock's robot panel is called **Bots** and lists every bot you made (not the Dash team's): its avatar with a status dot, its name, a **Lead** tag, what it last did (or "Needs approval · tool", "Running now…", "Paused", "Failed · why", "Hasn't run yet") and how long ago.
 - [x] AC2: **Grouped and sorted.** Grouped under each dashboard's name (bots on no dashboard last, under "No dashboard"), or one list with **By team** off. **Recent** (default) puts bots waiting on you first, then the newest activity; **A–Z** sorts teams and bots by name. Search by name. Sort and grouping are remembered.
-- [x] AC3: **Chat from the list.** Picking a bot opens its conversation in the panel (BotChat): send a message (a lead is asked), see the reply stream in, approve or deny its tool requests in the thread. **Back** returns to the list.
-- [x] AC4: **Conversation / Activity.** A switch shows the bot's runs instead (BotRunHistory), with **Run now** and **Pause / Resume**.
-- [x] AC5: **Open in Bots view.** An icon opens the bot in its dashboard's Bots view on the same tab (Open in Settings for a bot on no dashboard). **Stop** shows while it runs.
+- [x] AC3: **Chat from the list.** Picking a bot opens its conversation in the panel (BotChat): send a message (a lead is asked), see the reply stream in, approve or deny its tool requests in the thread. **Back** returns to the list. _(Superseded by app-navigation NAV-016 AC5: picking a bot opens its **bot page** in a large modal (`BotPageModal`, `dash:open-bot`), on the Conversation tab — the same BotChat, with its other tabs.)_
+- [x] AC4: **Conversation / Activity.** A switch shows the bot's runs instead (BotRunHistory), with **Run now** and **Pause / Resume**. _(Superseded by the bot page's tabs, NAV-016.)_
+- [x] AC5: **Open in Bots view.** An icon opens the bot in its dashboard's Bots view on the same tab (Open in Settings for a bot on no dashboard). **Stop** shows while it runs. _(Superseded by the bot page, NAV-016.)_
 - [x] AC6: **Needs you.** Approvals waiting on you stay at the top of the list ("Inbox Sorter needs you · Wants to use gmail.send" › Review opens that bot's chat), each waiting bot's row says how many, and the rail button keeps its count — the approvals inbox (bot-factory US-014 AC3) lives on here.
 - [x] AC7: **Nothing silently dropped.** A paused bot says so in its chat with **Resume**, and the message box waits. A message the runner skips (paused, busy with another run) goes back into the box with why. (Also in the Bots view's conversation.)
-- [x] AC8 (slice 2): bot chats use the shared chat components (ChatMessage / ChatToolCall / ChatComposer), so they look like Create's: replies labelled with the bot and its model · tokens, run labels as centered dividers, and Stop in the box while the bot answers. Approval and error cards, Review draft (in the reply footer), the paused note and New conversation stay.
+- [x] AC8 (slice 2): bot chats use the shared chat components (ChatMessage / ChatToolCall / ChatComposer), so they look like Create's: replies labelled with the bot and its model · tokens, run labels as centered dividers, and Stop in the box while the bot answers. Approval and error cards, Review draft (in the reply footer), the paused note and New conversation stay. _(Review draft went with the drafts in Phase 2c-2; a lead's reply now ends with **Plan this with the Dash team** when it hands something off — TEAM-005.)_
 
 - [x] AC9 (consolidation Phase 4a, 2026-10-21): **Pinned.** Under Needs you, a **Pinned** section holds the open dashboard's lead ("This dashboard · what it last did"; the host's `WorkspaceContext` says which dashboard — none on a Manage page) and **Dash team** ("Ask about anything, or plan something new"), which opens the Dash team's page (app-navigation NAV-016 AC7, `dash:open-dash-team`). The pinned lead isn't repeated below; Pinned stays with By team off (the rest is then one list labelled "All bots"); search filters the pinned rows too. With no bots of your own: "Your bots show up here. Ask the Dash team to make one."
 
@@ -772,7 +758,7 @@ _Slice 2 — drag to wire_
 **Acceptance Criteria:**
 
 - [ ] AC1: With the user's opt-in per team, the lead may **ask a member to run** (`team_run_bot(role, prompt)`), which goes through the member's own grants, approvals, budget, and the chain/depth loop guard.
-- [x] AC2: The lead can never change a member's settings or grants; it can only propose changes (TEAM-005). _(Built, 2026-10-14: a lead has only read-only team tools plus propose_bot)_
+- [x] AC2: The lead can never change a member's settings or grants; it can only propose changes (TEAM-005). _(Built, 2026-10-14: a lead has only read-only team tools plus propose_bot. Since Phase 2c-2 (2026-10-20) it has only read-only team tools — `team_list_bots`, `team_get_bot`, `team_recent_runs`, `team_memory_read`, `team_providers`, `find_providers` — and hands changes to the Dash team.)_
 
 ---
 
@@ -794,15 +780,15 @@ _Slice 2 — drag to wire_
 
 **FR-T03: Team tools**
 
-- **Description:** `team_list_bots`, `team_get_bot`, `team_recent_runs`, `team_memory_read`, `propose_bot` served in-process to leads, scoped to the lead's own dashboard; returned data fenced as untrusted.
-- **Priority:** P0 (read tools), P1 (`propose_bot`)
+- **Description:** `team_list_bots`, `team_get_bot`, `team_recent_runs`, `team_memory_read`, `team_providers`, `find_providers` served in-process to leads (`electron/bots/teamTools.js`), scoped to the lead's own dashboard; returned data fenced as untrusted. _(`propose_bot` was removed in consolidation Phase 2c-2; superseded by the lead's hand-off, TEAM-005.)_
+- **Priority:** P0
 - **Validation:** Unit tests for scoping (a lead can't read another team) and fencing.
 
-**FR-T04: Assistant ↔ lead bridge**
+**FR-T04: Assistant ↔ lead bridge** _(now: outside apps ↔ lead, through Dash's MCP server — the in-app Assistant was retired)_
 
-- **Description:** Dash MCP tools `list_teams` and `ask_team_lead` (`electron/mcp/teamTools.js`).
+- **Description:** Dash MCP tools `list_teams` and `ask_team_lead` (`electron/mcp/teamTools.js`); runs are recorded `via: "mcp"`.
 - **Priority:** P0
-- **Validation:** Tool handler tests; E2E: the Assistant answers a team question from a seeded run.
+- **Validation:** Tool handler tests; E2E: an MCP client answers a team question from a seeded run.
 
 **FR-T05: Team manifest, export, and publish**
 
@@ -830,7 +816,7 @@ _Slice 2 — drag to wire_
 
 **NFR-T02: Cost**
 
-- Idle leads make zero model calls. Assistant fan-out to leads is capped per question.
+- Idle leads make zero model calls. `ask_team_lead` fan-out to leads is capped (5 per 2 minutes).
 
 **NFR-T03: Untrusted data**
 
@@ -854,7 +840,7 @@ _Slice 2 — drag to wire_
 2. Review screen shows the lead and the Planner, Tracker, and Reporter roles, the wiring, and the cost estimate.
 3. User fills in the shared variables once and checks tools per bot in the access review.
 4. The team installs in setup state; the user completes the checklist and activates all members.
-5. Next morning, the user asks the Assistant "what did the PM team do?"; the Assistant asks the PM lead and relays its answer.
+5. Next morning, the user asks the PM lead "what did the team do?" — in the Bots panel (the lead is pinned while the dashboard is open) or the Bots view — and it answers from the team's runs. _(Was: asked the AI Assistant, which relayed the lead's answer; the Assistant panel was retired.)_
 
 **Success State:** Team runs on schedule and wiring; the lead answers from real runs.
 
@@ -869,11 +855,13 @@ _Slice 2 — drag to wire_
 
 **Steps:**
 
-1. Lead calls `propose_bot` and drafts a bot: Gmail search + read, subscribed to Inbox Watch's `tool.gmail.search_emails`.
-2. The bot form opens prefilled, with the Gmail tools as pending suggestions.
-3. User accepts the tools, tweaks the instructions, and saves.
+1. The lead checks the team's providers and answers that the Dash team will plan it, ending with a hand-off; the reply shows **Plan this with the Dash team**.
+2. That opens Create › Bot with the request, Where = the Sales dashboard, and the lead's note and the team's bots passed to the Scout and the Planner.
+3. The Dash team plans the bot (Gmail search + read, triggered by Inbox Watch); the user reviews and builds it, and the bot is saved through the same save check as every bot.
 
-**Success State:** New member on the Sales team, wired to Inbox Watch, with only the tools the user accepted.
+**Success State:** New member on the Sales team, wired to Inbox Watch, with only the tools the user approved.
+
+_(Was, until Phase 2c-2: the lead drafted the bot with `propose_bot`, the bot form opened prefilled with pending suggestions, and the user accepted and saved — see Appendix: history.)_
 
 ---
 
@@ -881,10 +869,10 @@ _Slice 2 — drag to wire_
 
 ### UI/UX Requirements
 
-- **Dashboard Config › Bots** is the team's home: lead pinned first, then members, with **+ Add bot**, **Ask the lead**, **Export team**, **Pause team**.
-- **Bot Activity panel**: **+ New bot** for the current dashboard, team grouping and filter, **Ask the lead**.
-- **Settings › Bots**: all bots grouped by team, plus Unassigned.
-- The lead's introduction is a dismissible card, never a modal.
+- **Dashboard Config › Bots** is the team's home: lead pinned first, then members, with **+ Add bot**, **Ask the lead**, **Export team**, **Pause team**. _(Now the Bots view is the team's home (TEAM-011); Dashboard Config › Bots is a read-only summary with Open in Bots view.)_
+- **Bot Activity panel**: **+ New bot** for the current dashboard, team grouping and filter, **Ask the lead**. _(Now the Bots contacts panel, TEAM-015: grouped by team, the open dashboard's lead and the Dash team pinned; new bots start in Create.)_
+- **Settings › Bots**: all bots grouped by team, plus Unassigned. _(Now the Bots page in the left nav.)_
+- The lead's introduction is a dismissible card, never a modal. _(The card was removed with `TeamLeadSection`; see TEAM-002 AC3.)_
 - Everything uses `@trops/dash-react` primitives and the current design.
 
 ### Architecture Requirements
@@ -970,7 +958,7 @@ _Slice 2 — drag to wire_
 
 ### Dependencies
 
-- bot-factory **US-012** (workspace memory), **US-014** (Activity Manager), **US-017** (Bot Builder chat, for TEAM-005's best experience), **US-026** (bot templates), **US-027** (setup checklist), **US-029** (access review)
+- bot-factory **US-012** (workspace memory), **US-014** (Activity Manager), ~~**US-017** (Bot Builder chat, for TEAM-005's best experience)~~ _(superseded 2026-10-22: the Bot Builder chat and TEAM-005's drafts are both gone)_, **US-026** (bot templates), **US-027** (setup checklist), **US-029** (access review)
 - Shipped: event picker and bot events (`bot:<ref>[<botId>].<event>`, chain guard, dashboard scoping)
 
 ---
@@ -992,34 +980,38 @@ The six questions raised in the first draft were resolved on 2026-10-01 (see the
 
 ### Decisions Made
 
-| Date       | Decision                                                                            | Rationale                                                                 | Owner |
-| ---------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----- |
-| 2026-10-01 | A team is a dashboard's bots; the dashboard is the team boundary                    | Matches bot-factory's workspace-as-team decision and event scoping        | John  |
-| 2026-10-01 | Every dashboard gets a team lead (liaison), idle until engaged                      | One place to ask; zero cost until used                                    | John  |
-| 2026-10-01 | The AI Assistant talks to team leads                                                | The Assistant stays the front door; leads hold team context               | John  |
-| 2026-10-01 | Leads propose, users approve; leads never grant, install, or save bots              | Same declared-vs-granted model as templates and access review             | John  |
-| 2026-10-01 | Teams are a registry asset (`.team.json`, `type: "bot-team"`)                       | Installing a whole team is far easier than assembling bots one by one     | John  |
-| 2026-10-01 | Manifests refer to members by role; events by `ref` + portable event name           | Survives install (new bot ids) and works across users' providers          | John  |
-| 2026-10-01 | Members stay unique bots with their own grants, approvals, and budgets              | Revoking one bot never affects its teammates                              | John  |
-| 2026-10-01 | Bots can be created from the dashboard (Bots tab, Activity panel)                   | Bots belong to the dashboard they serve; Settings stays the all-bots view | John  |
-| 2026-10-01 | One team per dashboard in v1                                                        | Simple; matches the dashboard boundary bots and events already use        | John  |
-| 2026-10-01 | Leads are created automatically for every dashboard, idle until engaged             | Discoverable without setup; idle leads cost nothing                       | John  |
-| 2026-10-01 | Leads answer and propose only in v1; directing members (TEAM-010) stays exploratory | Keeps choreography (events + memory) as the coordination model            | John  |
-| 2026-10-01 | A lead defaults to the user's default model source, fast tier                       | Answering from team data is light work; no extra setup                    | John  |
-| 2026-10-01 | The Assistant can reach every team, with a capped fan-out per question              | Cross-team answers are useful; the cap bounds cost and reach              | John  |
-| 2026-10-01 | Unassigned (global) bots stay global and can be moved into a team                   | No forced migration; existing bots keep working                           | John  |
-| 2026-10-06 | TEAM-013: a lead picked in the Assistant gets the message directly (not via model)  | User's exact words, one run instead of two, no rewording of the answer    | John  |
-| 2026-10-06 | TEAM-013: the Assistant sees direct lead exchanges as labelled context              | "Summarise what the lead said" works; one thread                          | John  |
-| 2026-10-06 | TEAM-013: the picker lists team leads only                                          | Leads are the team front door; other bots later if wanted                 | John  |
-| 2026-10-06 | TEAM-013: "All team leads" option deferred (P2)                                     | ask_team_lead via the Assistant already fans out                          | John  |
-| 2026-10-08 | TEAM-014: the team diagram shows bots only; widgets as event sources come later     | Keeps the first version readable; bot→bot links are the hidden ones       | John  |
-| 2026-10-08 | TEAM-014: the lead sits on top without event lines                                  | The lead coordinates and answers; it isn't triggered by events            | John  |
-| 2026-10-08 | TEAM-014: hand-built SVG, no diagram library                                        | Team-sized charts; no new dependency                                      | John  |
-| 2026-10-08 | TEAM-014: bot detail opens beside the diagram, not over it                          | Seeing the flow while working on a bot is the point                       | John  |
+| Date       | Decision                                                                                                                                             | Rationale                                                                 | Owner |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----- |
+| 2026-10-01 | A team is a dashboard's bots; the dashboard is the team boundary                                                                                     | Matches bot-factory's workspace-as-team decision and event scoping        | John  |
+| 2026-10-01 | Every dashboard gets a team lead (liaison), idle until engaged                                                                                       | One place to ask; zero cost until used                                    | John  |
+| 2026-10-01 | The AI Assistant talks to team leads _(superseded 2026-10-22: Create and the Dash team are the front door; leads stay reachable through Dash's MCP)_ | The Assistant stays the front door; leads hold team context               | John  |
+| 2026-10-01 | Leads propose, users approve; leads never grant, install, or save bots                                                                               | Same declared-vs-granted model as templates and access review             | John  |
+| 2026-10-01 | Teams are a registry asset (`.team.json`, `type: "bot-team"`)                                                                                        | Installing a whole team is far easier than assembling bots one by one     | John  |
+| 2026-10-01 | Manifests refer to members by role; events by `ref` + portable event name                                                                            | Survives install (new bot ids) and works across users' providers          | John  |
+| 2026-10-01 | Members stay unique bots with their own grants, approvals, and budgets                                                                               | Revoking one bot never affects its teammates                              | John  |
+| 2026-10-01 | Bots can be created from the dashboard (Bots tab, Activity panel) _(now: Create › Bot, Where = a dashboard; the Bots page is the all-bots view)_     | Bots belong to the dashboard they serve; Settings stays the all-bots view | John  |
+| 2026-10-01 | One team per dashboard in v1                                                                                                                         | Simple; matches the dashboard boundary bots and events already use        | John  |
+| 2026-10-01 | Leads are created automatically for every dashboard, idle until engaged                                                                              | Discoverable without setup; idle leads cost nothing                       | John  |
+| 2026-10-01 | Leads answer and propose only in v1; directing members (TEAM-010) stays exploratory                                                                  | Keeps choreography (events + memory) as the coordination model            | John  |
+| 2026-10-01 | A lead defaults to the user's default model source, fast tier                                                                                        | Answering from team data is light work; no extra setup                    | John  |
+| 2026-10-01 | The Assistant can reach every team, with a capped fan-out per question                                                                               | Cross-team answers are useful; the cap bounds cost and reach              | John  |
+| 2026-10-01 | Unassigned (global) bots stay global and can be moved into a team                                                                                    | No forced migration; existing bots keep working                           | John  |
+| 2026-10-06 | TEAM-013: a lead picked in the Assistant gets the message directly (not via model)                                                                   | User's exact words, one run instead of two, no rewording of the answer    | John  |
+| 2026-10-06 | TEAM-013: the Assistant sees direct lead exchanges as labelled context                                                                               | "Summarise what the lead said" works; one thread                          | John  |
+| 2026-10-06 | TEAM-013: the picker lists team leads only                                                                                                           | Leads are the team front door; other bots later if wanted                 | John  |
+| 2026-10-06 | TEAM-013: "All team leads" option deferred (P2)                                                                                                      | ask_team_lead via the Assistant already fans out                          | John  |
+| 2026-10-08 | TEAM-014: the team diagram shows bots only; widgets as event sources come later                                                                      | Keeps the first version readable; bot→bot links are the hidden ones       | John  |
+| 2026-10-08 | TEAM-014: the lead sits on top without event lines                                                                                                   | The lead coordinates and answers; it isn't triggered by events            | John  |
+| 2026-10-08 | TEAM-014: hand-built SVG, no diagram library                                                                                                         | Team-sized charts; no new dependency                                      | John  |
+| 2026-10-08 | TEAM-014: bot detail opens beside the diagram, not over it                                                                                           | Seeing the flow while working on a bot is the point                       | John  |
+| 2026-10-20 | A lead hands requests to make things to the Dash team instead of drafting bots                                                                       | One door for making things (consolidation Phase 2c-2)                     | John  |
+| 2026-10-21 | The Bots panel pins the open dashboard's lead and the Dash team                                                                                      | The two you most likely want are always one click away (Phase 4a)         | John  |
 
 ---
 
 ## Accepting a lead's draft (consolidation Phase 1d, 2026-10-16)
+
+_(Superseded by the lead's hand-off (2026-10-20): there are no lead drafts now. The save check below still applies to every bot, including bots a plan builds.)_
 
 A draft (TEAM-005) is checked when it's drafted and checked again when it's accepted — accepting goes through the same save check as every bot (bot-factory: "Saving and turning on a bot"), so an edit made after drafting can't skip it. The accepted bot starts paused until the user turns it on.
 
@@ -1040,9 +1032,9 @@ A draft (TEAM-005) is checked when it's drafted and checked again when it's acce
 
 **Deliverables:**
 
-- [ ] Team model, Bots tab in Dashboard Config, + New bot in the Activity panel
-- [ ] Lead auto-creation (idle), read-only team tools, Ask the lead
-- [ ] `list_teams` / `ask_team_lead` on the Dash MCP server
+- [x] Team model, Bots tab in Dashboard Config, + New bot in the Activity panel _(the Activity panel and its + New bot were later replaced — TEAM-001 AC5, TEAM-015)_
+- [x] Lead auto-creation (idle), read-only team tools, Ask the lead
+- [x] `list_teams` / `ask_team_lead` on the Dash MCP server
 
 ### Phase 1.5: Bots view (P1)
 
@@ -1050,9 +1042,9 @@ A draft (TEAM-005) is checked when it's drafted and checked again when it's acce
 
 **Deliverables:**
 
-- [ ] Dashboard | Bots switch; full-stage team list + selected bot (Conversation / Activity / Settings)
-- [ ] `bots.getRuns`; run prompt + tool-call summary stored (sealed) for conversations; reply to continue
-- [ ] Bot Activity side panel slimmed to a global monitor; Dashboard Config › Bots → summary + Open in Bots view
+- [x] Dashboard | Bots switch; full-stage team list + selected bot (Conversation / Activity / Settings) _(the selected bot is now the bot page, NAV-016)_
+- [x] `bots.getRuns`; run prompt + tool-call summary stored (sealed) for conversations; reply to continue
+- [x] Bot Activity side panel slimmed to a global monitor; Dashboard Config › Bots → summary + Open in Bots view _(the panel is now the Bots contacts panel, TEAM-015)_
 
 ### Phase 1.6: Team diagram (P1)
 
@@ -1069,10 +1061,10 @@ A draft (TEAM-005) is checked when it's drafted and checked again when it's acce
 
 **Deliverables:**
 
-- [ ] `propose_bot` and the prefilled bot form
-- [ ] `.team.json` schema, Export team, publish
-- [ ] Team install (review, shared variables, grouped access review, role wiring)
-- [ ] Team pause, budget, remove; Activity grouping
+- [x] `propose_bot` and the prefilled bot form _(built, then superseded 2026-10-20 by the lead's hand-off to the Dash team — TEAM-005)_
+- [~] `.team.json` schema, Export team, publish _(partly — see TEAM-006)_
+- [~] Team install (review, shared variables, grouped access review, role wiring) _(partly — see TEAM-007)_
+- [~] Team pause, budget, remove; Activity grouping _(team budget built; the rest open — see TEAM-008)_
 
 **Depends on:** bot-factory US-026, US-027, US-029
 
@@ -1090,7 +1082,7 @@ A draft (TEAM-005) is checked when it's drafted and checked again when it's acce
 - [ ] Lead creation rules (one per dashboard, turn off, global setting)
 - [ ] Team tools scoped to the lead's own dashboard; data fenced as untrusted
 - [ ] Manifest validation; role → bot resolution; wiring rewrite to `bot:<ref>[<botId>].<event>`
-- [ ] `propose_bot` drafts only use existing providers and catalog events
+- [ ] ~~`propose_bot` drafts only use existing providers and catalog events~~ _(superseded: no drafts since Phase 2c-2; the lead's hand-off is tested in `electron/bots/handoff.test.js`)_
 
 ### Integration Tests
 
@@ -1101,40 +1093,79 @@ A draft (TEAM-005) is checked when it's drafted and checked again when it's acce
 ### E2E Tests
 
 - [ ] Install a 3-role team into a new dashboard, complete setup, trigger the chain, see the Reporter's approval
-- [ ] Ask the Assistant about a team and get the lead's answer
+- [ ] Ask a lead about its team (in its chat, or through Dash's MCP `ask_team_lead`) and get its answer _(was: ask the Assistant — retired)_
 - [ ] Bots view: switch to Bots, pick a member, run it with a prompt, reply to continue, approve inline, see the run in Activity, edit and save in Settings
 
 ### Manual Testing
 
 - [ ] Bots view: the composer stays pinned while a long conversation scrolls; "↓ New messages" appears when scrolled up
 - [ ] Bots view at narrow widths (team list collapses to a picker)
-- [ ] Lead introduction is clear and dismissible
-- [ ] "Add a bot for me" produces a sensible, reviewable draft
+- [ ] Lead introduction is clear and dismissible _(no intro card since Phase 2a — TEAM-002 AC3)_
+- [ ] "Add a bot for me" to a lead ends in **Plan this with the Dash team**, and Create plans a sensible bot for that dashboard _(was: a reviewable draft)_
 - [ ] Access review for a team is understandable at a glance
 
 ---
 
 ## Revision History
 
-| Version | Date       | Author | Changes                                                                                |
-| ------- | ---------- | ------ | -------------------------------------------------------------------------------------- |
-| 1.0     | 2026-10-01 | John   | Initial draft                                                                          |
-| 1.1     | 2026-10-01 | John   | Resolved the six open questions (proposed answers accepted)                            |
-| 1.2     | 2026-10-02 | John   | Added TEAM-011 Bots view (from the approved mockup)                                    |
-| 1.3     | 2026-10-02 | John   | TEAM-011 B2 (Bots view UI) implementation notes                                        |
-| 1.4     | 2026-10-02 | John   | TEAM-011 gaps closed (triggers, approvals, next steps, guard)                          |
-| 1.5     | 2026-10-02 | John   | TEAM-004 implemented (slice 2b: Assistant ↔ team leads)                                |
-| 1.6     | 2026-10-02 | John   | TEAM-005 5a: lead drafts bots (propose_bot, Drafts in Bots view)                       |
-| 1.7     | 2026-10-03 | John   | TEAM-005 5b: Accept suggestions, Review draft link; Implemented                        |
-| 1.8     | 2026-10-03 | John   | Answer bubbles; leads see their current drafts                                         |
-| 1.9     | 2026-10-03 | John   | Text before/after a tool call no longer runs together                                  |
-| 1.10    | 2026-10-03 | John   | Dashboard Config restyle slice 1 (frame + list tabs)                                   |
-| 1.11    | 2026-10-03 | John   | Dashboard Config restyle slice 2 (card tabs, WidgetGrantRow)                           |
-| 1.12    | 2026-10-06 | John   | Added TEAM-013 (message a lead directly from the Assistant)                            |
-| 1.13    | 2026-10-06 | John   | TEAM-013 slice 1 implemented (picker, direct send, context)                            |
-| 1.14    | 2026-10-06 | John   | TEAM-013 slice 2 (@ shortcut); TEAM-013 Implemented                                    |
-| 1.15    | 2026-10-08 | John   | Added TEAM-014 team diagram (from the approved mockup)                                 |
-| 1.16    | 2026-10-08 | John   | TEAM-014 slice 1: diagram, summary, detail beside, list avatars                        |
-| 1.17    | 2026-10-08 | John   | TEAM-014 slice 2: drag to wire, trigger notes; Implemented                             |
-| 1.18    | 2026-10-20 | John   | Consolidation 2c-2: TEAM-005 drafts superseded by the lead's hand-off to the Dash team |
-| 1.19    | 2026-10-21 | John   | Consolidation 4a: TEAM-015 AC9 — the open dashboard's lead and the Dash team pinned    |
+| Version | Date       | Author | Changes                                                                                                                                                                                                                      |
+| ------- | ---------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.0     | 2026-10-01 | John   | Initial draft                                                                                                                                                                                                                |
+| 1.1     | 2026-10-01 | John   | Resolved the six open questions (proposed answers accepted)                                                                                                                                                                  |
+| 1.2     | 2026-10-02 | John   | Added TEAM-011 Bots view (from the approved mockup)                                                                                                                                                                          |
+| 1.3     | 2026-10-02 | John   | TEAM-011 B2 (Bots view UI) implementation notes                                                                                                                                                                              |
+| 1.4     | 2026-10-02 | John   | TEAM-011 gaps closed (triggers, approvals, next steps, guard)                                                                                                                                                                |
+| 1.5     | 2026-10-02 | John   | TEAM-004 implemented (slice 2b: Assistant ↔ team leads)                                                                                                                                                                      |
+| 1.6     | 2026-10-02 | John   | TEAM-005 5a: lead drafts bots (propose_bot, Drafts in Bots view)                                                                                                                                                             |
+| 1.7     | 2026-10-03 | John   | TEAM-005 5b: Accept suggestions, Review draft link; Implemented                                                                                                                                                              |
+| 1.8     | 2026-10-03 | John   | Answer bubbles; leads see their current drafts                                                                                                                                                                               |
+| 1.9     | 2026-10-03 | John   | Text before/after a tool call no longer runs together                                                                                                                                                                        |
+| 1.10    | 2026-10-03 | John   | Dashboard Config restyle slice 1 (frame + list tabs)                                                                                                                                                                         |
+| 1.11    | 2026-10-03 | John   | Dashboard Config restyle slice 2 (card tabs, WidgetGrantRow)                                                                                                                                                                 |
+| 1.12    | 2026-10-06 | John   | Added TEAM-013 (message a lead directly from the Assistant)                                                                                                                                                                  |
+| 1.13    | 2026-10-06 | John   | TEAM-013 slice 1 implemented (picker, direct send, context)                                                                                                                                                                  |
+| 1.14    | 2026-10-06 | John   | TEAM-013 slice 2 (@ shortcut); TEAM-013 Implemented                                                                                                                                                                          |
+| 1.15    | 2026-10-08 | John   | Added TEAM-014 team diagram (from the approved mockup)                                                                                                                                                                       |
+| 1.16    | 2026-10-08 | John   | TEAM-014 slice 1: diagram, summary, detail beside, list avatars                                                                                                                                                              |
+| 1.17    | 2026-10-08 | John   | TEAM-014 slice 2: drag to wire, trigger notes; Implemented                                                                                                                                                                   |
+| 1.18    | 2026-10-20 | John   | Consolidation 2c-2: TEAM-005 drafts superseded by the lead's hand-off to the Dash team                                                                                                                                       |
+| 1.19    | 2026-10-21 | John   | Consolidation 4a: TEAM-015 AC9 — the open dashboard's lead and the Dash team pinned                                                                                                                                          |
+| 1.20    | 2026-10-22 | John   | Consolidation 5: reconciled with the code — "Where things are now"; Assistant, Settings › Bots, drafts, removed components and the Ask box marked superseded; TEAM-005 drafts moved to Appendix: history; phase boxes ticked |
+
+---
+
+## Appendix: history
+
+Retired text kept for the record. Each piece is replaced by what its story's status says.
+
+### TEAM-005 drafts (superseded 2026-10-20 by the lead's hand-off)
+
+**Acceptance Criteria (retired):**
+
+- [x] AC1: The lead's `propose_bot` tool produces a **draft**: name, instructions, providers and tools (from the user's existing Dash providers only), schedule, and event subscriptions (from the picker's catalogs, never invented event names).
+- [x] AC2: A draft is never saved or run by the lead. It opens the bot form prefilled (with Bot Builder's Chat pane when available, bot-factory US-017), with the lead's reasoning shown, for the user to edit and **Save**.
+- [x] AC3: Tools in the draft appear as **pending suggestions** the user accepts individually (bot-factory US-017 AC5). Saving the bot doesn't grant tools beyond what the user accepted; runtime approvals still apply.
+- [x] AC4: If the request needs a provider the user doesn't have, the draft says so and links to Settings › Providers (or the capability ladder, bot-factory US-025). It never installs anything.
+- [x] AC5: The AI Assistant can trigger the same flow ("ask the Sales lead to add a bot that…"). The draft still opens for the user's review.
+
+**Edge Cases:**
+
+- Request duplicates an existing member → the lead points to that bot and offers to adjust it instead.
+- Request would wire bots into a loop → the draft is flagged with the chain the loop guard would refuse.
+
+**Implementation notes (5a, 2026-10-02):**
+
+- The lead gets two tools: **`team_providers`** (the user's providers — name, type, tool names; nothing secret) and **`propose_bot`**. Its instructions say to check providers, draft with propose_bot, and never claim a draft is created; earlier generated instructions upgrade automatically (a history of earlier "action" sentences).
+- **`electron/bots/botDrafts.js`** builds the draft: providers matched by name, else by type ("gmail" → each Gmail provider); tools filtered to what the provider has (or marked "couldn't check"); schedule kept only if croner parses it; event triggers only to this team's bots' completed/failed events; a duplicate name is flagged; short `needs` → missing providers (with the user's available providers listed back to the lead), longer ones → notes. The draft's own providers/tools are **empty** — suggestions only (so AC3's "nothing granted beyond what the user accepts" holds; one-click Accept is 5b).
+- Drafts live in memory (10 per dashboard), broadcast `bot-drafts-changed`, and are listed/dismissed over IPC. Not kept across restarts.
+- Bots view: a **Drafts** section; opening one shows the new-bot form prefilled under a **DraftBanner** (reasoning, suggestions, missing providers → Settings › Providers, notes, left-out items, duplicate warning). Create saves a real bot and removes the draft; Discard draft removes it.
+- AI Assistant: `ask_team_lead` adds "Draft '<name>' is waiting for the user's review…" when the lead drafted during the ask.
+- Widget events can't be validated in the main process (their catalog lives in the renderer), so 5a drafts only trigger on team bots' events; users add widget triggers in the form.
+- Loop edge case: a brand-new bot can't be in a loop yet (nothing subscribes to it), so no check is needed at draft time.
+
+**Implementation notes (5b, 2026-10-03):**
+
+- **Accept in the form:** `BotDetail` takes the draft's `suggestions`. A suggested provider that's still off shows "Suggested by the lead", its tools, and **Accept** (turns the provider on with exactly the suggested tools) — or **Accept (all tools)** when its tools couldn't be checked. **Accept all suggestions** sits at the top of Providers. Nothing changes until the user clicks; Save still only grants what's ticked.
+- **Review draft** under the lead's answer that produced it: answer turns keep their run's start/end, and a draft from that lead created in that window is linked. Saved or discarded drafts no longer show.
+- `needs` cleanup: bracketed text and a trailing "provider(s)" are dropped before the 40-character note cutoff ("Microsoft Teams provider (to post the summary)" → missing "Microsoft Teams").
+- **Follow-ups — both done (2026-10-03):** `team_list_bots` now lists drafts awaiting review (and the lead is told to check before saying one is waiting); answers show in a chat bubble. The last nit is fixed too: text a bot wrote before and after a tool call was joined without a space ("prefer.Done"); it now starts a new paragraph after a tool call (`appendAnswerText`, in `electron/bots/answerText.js` and its mirror `src/utils/answerText.js`) in the run record, the `completed` event, and the live stream. Answers saved before the fix are unchanged. Originally: (1) a lead can't see whether its earlier drafts still exist — continuing an old conversation, it may say a draft is waiting when it was already saved/discarded; listing current drafts in `team_list_bots` would fix it. (2) Show the lead's (and bots') answers in a chat bubble like the user's messages, so it's clear who's talking.

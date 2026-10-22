@@ -1,7 +1,7 @@
 # PRD: LayoutBuilder Hybrid Redesign
 
-**Status:** Phase 1 Complete
-**Last Updated:** 2026-04-24
+**Status:** Partly superseded — grid integrity (US-009) and edit-mode Cancel (US-010) are built; the add-widget pop-up, header badges and header buttons (US-001–US-008) were replaced by the dashboard editor's panel (dash-electron create-entry CRE-006, CRE-015)
+**Last Updated:** 2026-10-22
 **Owner:** Core Team
 **Related PRDs:** [Dashboard Marketplace](dashboard-marketplace.md), [Widget Installation Model](widget-installation-model.md)
 
@@ -149,237 +149,31 @@ LayoutBuilder uses `LayoutBuilderAddItemModal` for widget selection - a full-scr
 
 **US-001: Quick Widget Addition**
 
-> As a dashboard user,
-> I want to add widgets without opening a modal,
-> so that I can maintain visual context and iterate quickly.
-
-**Priority:** P0
-**Status:** In Progress
-
-**Acceptance Criteria:**
-
--   [ ] AC1: Clicking "+" button opens an inline dropdown (no modal overlay)
--   [ ] AC2: Dropdown appears centered on screen with backdrop
--   [ ] AC3: Dropdown shows search input auto-focused
--   [ ] AC4: Widget list displays with icons, names, and workspace categories
--   [ ] AC5: Clicking a widget adds it immediately to the layout
--   [ ] AC6: Dropdown closes automatically after selection
--   [ ] AC7: Recent widgets section shows last 3 used widgets
--   [ ] AC8: Keyboard navigation (↑/↓/Enter/Esc) works correctly
-
-**Edge Cases:**
-
--   Empty widget list → Shows "No widgets found" message
--   Search with no results → Shows helpful message with suggestion
--   Widget addition fails → Shows error, keeps dropdown open
-
-**Technical Notes:**
-Implemented by `WidgetDropdown` component in `src/Components/Layout/Builder/Enhanced/WidgetDropdown.js`. Uses ComponentManager.map() to get all widgets. Recent widgets stored in localStorage (max 10).
-
-**Example Scenario:**
-
-```
-User: Sarah, empty dashboard in edit mode
-Action: Clicks "+" on root container
-Expected: WidgetDropdown appears centered, search input focused, shows 15 available widgets
-Time: <100ms to render
-```
-
-**Definition of Done:**
-
--   [ ] Code implemented and reviewed
--   [ ] Unit tests pass for WidgetDropdown component
--   [ ] Integration tests verify dropdown opens/closes correctly
--   [ ] Acceptance criteria verified with manual testing
--   [ ] Documentation updated in CLAUDE.md
+**Status:** Superseded by the edit panel's Add tab (create-entry CRE-006, 2026-10-22). In the editor, an empty cell's **Add widget** selects the cell and the panel's Add tab lists your widgets (`WidgetSidebar`); picking one places it. **Build with AI** sits under Add widget in the cell. The pop-up this story built (`EnhancedWidgetDropdown`, a modal, with Recent) is now only a fallback outside the editor. The original story is in the Appendix.
 
 ---
 
 **US-002: Widget Search & Filtering**
 
-> As a dashboard user,
-> I want to search for widgets by name,
-> so that I can quickly find what I need in large widget libraries.
-
-**Priority:** P0
-**Status:** In Progress
-
-**Acceptance Criteria:**
-
--   [ ] AC1: Search input filters widgets in real-time
--   [ ] AC2: Search is case-insensitive
--   [ ] AC3: Search matches widget name and key
--   [ ] AC4: Empty search shows all widgets categorized by workspace
--   [ ] AC5: Search results highlight matching text (nice-to-have)
-
-**Edge Cases:**
-
--   Search query with special characters → Escapes regex properly
--   Very long search query → Truncates display if needed
-
-**Technical Notes:**
-Uses JavaScript filter() method on widget list. Debounced to 50ms for performance.
-
-**Example Scenario:**
-
-```
-User: Sarah, dropdown open with 50 widgets
-Action: Types "slack" in search
-Expected: Widget list filters to show only Slack-related widgets (3 results)
-Time: <50ms to update
-```
-
-**Definition of Done:**
-
--   [ ] Code implemented and reviewed
--   [ ] Unit tests verify filter logic
--   [ ] Case-insensitive search tested
--   [ ] Performance verified with 100+ widgets
--   [ ] Documentation updated
+**Status:** Superseded by the edit panel's Add tab (create-entry CRE-006, 2026-10-22): its search matches a widget's name, key or description, and it can filter by provider (`WidgetSidebar`). The original story is in the Appendix.
 
 ---
 
 **US-003: Provider Status Visibility**
 
-> As a dashboard user,
-> I want to see provider requirements on widget headers,
-> so that I know what needs configuration before using the dashboard.
-
-**Priority:** P0
-**Status:** In Progress
-
-**Acceptance Criteria:**
-
--   [ ] AC1: ProviderBadge component displays on widget headers
--   [ ] AC2: Badge shows provider type (e.g., "slack", "github")
--   [ ] AC3: Badge color indicates status (green=configured, yellow=required, gray=optional)
--   [ ] AC4: Badge shows provider name when configured (e.g., "slack · My Workspace")
--   [ ] AC5: Badge is visible in both edit and preview modes
--   [ ] AC6: Multiple badges shown if widget requires multiple providers
-
-**Edge Cases:**
-
--   Widget with no provider requirements → No badges shown
--   Provider deleted after widget configured → Shows error state badge
--   Provider type doesn't exist → Shows warning badge
-
-**Technical Notes:**
-Implemented by `ProviderBadge` component in `src/Components/Layout/Builder/Enhanced/ProviderBadge.js`. Uses widgetConfig.providers to get requirements. Reads selectedProviders from widget item data.
-
-**Example Scenario:**
-
-```
-Widget: SlackNotifications
-Providers required: [{type: "slack", required: true}]
-State: Provider not configured
-Expected: Yellow badge with "⚠️ slack" displayed on widget header
-```
-
-**Definition of Done:**
-
--   [ ] Code implemented and reviewed
--   [ ] Unit tests verify badge color logic
--   [ ] Visual design matches mockups
--   [ ] Accessibility verified (color contrast, ARIA labels)
--   [ ] Documentation updated
+**Status:** Superseded by the card's one "what's missing" pill (create-entry CRE-015 AC9, 2026-10-22): "Needs a Slack connection", "N listeners not connected" or "2 things to fix", shown while editing. `ProviderBadge.js` is no longer rendered. The original story is in the Appendix.
 
 ---
 
 **US-004: Inline Provider Assignment**
 
-> As a dashboard user,
-> I want to assign providers directly from the widget header,
-> so that I don't have to open separate configuration modals.
-
-**Priority:** P0
-**Status:** In Progress
-
-**Acceptance Criteria:**
-
--   [ ] AC1: Clicking provider badge opens dropdown menu
--   [ ] AC2: Dropdown lists available providers of that type
--   [ ] AC3: Selected provider is highlighted in dropdown
--   [ ] AC4: Clicking provider in dropdown assigns it to widget
--   [ ] AC5: Dropdown shows "Create New Provider" option
--   [ ] AC6: Clicking "Create New" opens provider creation modal (fallback)
--   [ ] AC7: Badge updates immediately after assignment
--   [ ] AC8: Dropdown closes after selection
--   [ ] AC9: Click outside dropdown closes it
-
-**Edge Cases:**
-
--   No providers of required type configured → Shows "No providers configured" with "Create New" button
--   Provider assignment fails → Shows error message, dropdown stays open
--   Multiple widgets share same provider → All update when provider edited
-
-**Technical Notes:**
-Provider dropdown implemented in WidgetCardHeader. Uses providers from DashboardContext. Calls onProviderChange handler to update widget.selectedProviders.
-
-**Example Scenario:**
-
-```
-User: Sarah, widget with yellow slack badge
-Action: Clicks badge
-Expected: Dropdown opens showing 2 slack providers + "Create New" option
-Action: Selects "My Slack Workspace"
-Expected: Badge turns green, shows "✓ slack · My Slack Workspace", dropdown closes
-Time: ~4s total
-```
-
-**Definition of Done:**
-
--   [ ] Code implemented and reviewed
--   [ ] Unit tests for provider selection logic
--   [ ] Integration tests for provider assignment
--   [ ] Error handling tested
--   [ ] Documentation updated
+**Status:** Superseded by the widget panel's **Connections** section (create-entry CRE-015, 2026-10-22). The pill and ⋮ › Edit in panel open it at the fix. The original story is in the Appendix.
 
 ---
 
 **US-005: Enhanced Widget Card Header**
 
-> As a dashboard user,
-> I want to access common widget actions from the header,
-> so that I can configure, duplicate, and delete widgets efficiently.
-
-**Priority:** P0
-**Status:** In Progress
-
-**Acceptance Criteria:**
-
--   [ ] AC1: Widget header shows drag handle (⋮⋮)
--   [ ] AC2: Widget icon and name displayed clearly
--   [ ] AC3: Action buttons shown: Configure (⚙️), Duplicate (📋), Delete (🗑️)
--   [ ] AC4: Buttons show on hover or always visible (configurable)
--   [ ] AC5: Configure button opens widget config modal
--   [ ] AC6: Duplicate creates a copy below the original
--   [ ] AC7: Delete confirms before removal
--   [ ] AC8: All actions have tooltips
-
-**Edge Cases:**
-
--   Duplicate fails (no space) → Shows error message
--   Delete last widget in container → Confirms with stronger warning
--   Widget too narrow to show all buttons → Truncates with "more" menu
-
-**Technical Notes:**
-Implemented by `WidgetCardHeader` component. Integrates with existing LayoutBuilderConfigModal for configuration. Uses ComponentManager.config() to get widget metadata.
-
-**Example Scenario:**
-
-```
-Widget: StatusWidget in edit mode
-Header shows: [⋮⋮] StatusIcon "Status Widget" [⚙️] [📋] [🗑️] [🔌 provider badges]
-Hover state: Buttons highlight
-```
-
-**Definition of Done:**
-
--   [ ] Code implemented and reviewed
--   [ ] Unit tests for all actions
--   [ ] Accessibility tested (keyboard navigation, tooltips)
--   [ ] Visual design matches specification
--   [ ] Documentation updated
+**Status:** Superseded by the one widget panel (create-entry CRE-015 AC6, 2026-10-22). The header shows the widget's icon and name, the "what's missing" pill and a ⋮ menu: Edit in panel, Change `<widget name>`, Move to another cell, Split side by side, Split top and bottom, More options (only where the host provides it) and Remove (`WidgetCardHeader.js`). The Configure dialog (AC5) is retired: its settings are in the panel. There is no Duplicate, and Remove has no confirm (Cancel undoes it). The original story is in the Appendix.
 
 ---
 
@@ -387,84 +181,13 @@ Hover state: Buttons highlight
 
 **US-006: Widget Dropdown Shows Provider Requirements**
 
-> As a dashboard user,
-> I want to see provider requirements in the widget dropdown,
-> so that I can make informed decisions before adding widgets.
-
-**Priority:** P1
-**Status:** Backlog
-
-**Acceptance Criteria:**
-
--   [ ] AC1: Widget items in dropdown show 🔌 icon if they require providers
--   [ ] AC2: Hovering/focusing widget item shows provider details (tooltip or expanded view)
--   [ ] AC3: Widget description mentions provider requirements
--   [ ] AC4: Required vs. optional providers are distinguished visually
-
-**Edge Cases:**
-
--   Widget with many providers → Truncates with "+N more" indicator
--   Provider type unknown → Shows warning icon
-
-**Technical Notes:**
-Enhancement to WidgetDropdown component. Reads providers from widgetConfig.
-
-**Example Scenario:**
-
-```
-Dropdown showing widgets:
-- StatusWidget (no icon)
-- SlackNotifications 🔌 (hover shows "Requires: slack")
-- AnalyticsDashboard 🔌 (hover shows "Requires: algolia, Optional: github")
-```
-
-**Definition of Done:**
-
--   [ ] Code implemented and reviewed
--   [ ] Unit tests verify provider display
--   [ ] Visual design approved
--   [ ] Documentation updated
+**Status:** Superseded by the edit panel's Add tab (create-entry CRE-006, 2026-10-22), which lists the providers each widget needs. The original story is in the Appendix.
 
 ---
 
 **US-007: Recent Widgets Section**
 
-> As a power user,
-> I want to see recently used widgets at the top of the dropdown,
-> so that I can add frequently used widgets faster.
-
-**Priority:** P1
-**Status:** Backlog
-
-**Acceptance Criteria:**
-
--   [ ] AC1: Dropdown shows "Recent" section with last 3-5 used widgets
--   [ ] AC2: Recent widgets stored in localStorage
--   [ ] AC3: Recent list updates when widget is added
--   [ ] AC4: Recent section can be cleared (optional)
-
-**Edge Cases:**
-
--   localStorage quota exceeded → Fails gracefully, doesn't block widget addition
--   Widget removed from system → Filters out of recent list
-
-**Technical Notes:**
-Uses localStorage with key "dash-recent-widgets". Stores widget keys, not full configs.
-
-**Example Scenario:**
-
-```
-User: Alex, frequently adds StatusWidget and AnalyticsDashboard
-Opens dropdown: Shows "Recent" section with these 2 widgets
-Selecting from recent: Instantly adds without searching
-```
-
-**Definition of Done:**
-
--   [ ] Code implemented and reviewed
--   [ ] Unit tests for localStorage operations
--   [ ] Edge cases tested (quota, deleted widgets)
--   [ ] Documentation updated
+**Status:** Built only in the fallback pop-up (`recentWidgets` in localStorage). The edit panel's Add tab has no Recent section (2026-10-22). The original story is in the Appendix.
 
 ---
 
@@ -636,42 +359,7 @@ Each header change reads from currentWorkspaceRef (which has the merged layout)
 
 **US-008: Context Menu for Power Users**
 
-> As a power user,
-> I want to right-click widgets for advanced options,
-> so that I can access power features without cluttering the UI.
-
-**Priority:** P2
-**Status:** Backlog
-
-**Acceptance Criteria:**
-
--   [ ] AC1: Right-click widget opens context menu
--   [ ] AC2: Menu options: Configure, Duplicate, Delete, Move Up, Move Down, Export Config
--   [ ] AC3: Menu appears at cursor position
--   [ ] AC4: Menu closes on click outside or selection
--   [ ] AC5: Keyboard shortcut hints shown in menu
-
-**Edge Cases:**
-
--   Right-click on widget boundary → Menu positions to stay in viewport
--   Menu too large for screen → Scrollable
-
-**Technical Notes:**
-Future enhancement. Would use react-contextmenu or custom implementation.
-
-**Example Scenario:**
-
-```
-User: Power user, right-clicks StatusWidget
-Menu appears: [⚙️ Configure] [📋 Duplicate] [🗑️ Delete] [↑ Move Up] [↓ Move Down] [💾 Export Config]
-```
-
-**Definition of Done:**
-
--   [ ] Code implemented and reviewed
--   [ ] Unit tests for menu interactions
--   [ ] Keyboard navigation tested
--   [ ] Documentation updated
+**Status:** Superseded by the widget's ⋮ menu (2026-10-22): Edit in panel (in place of Configure), Change `<widget name>`, Move to another cell, Split side by side, Split top and bottom, More options (only where the host provides it) and Remove. The original story is in the Appendix.
 
 ---
 
@@ -754,6 +442,8 @@ Menu appears: [⚙️ Configure] [📋 Duplicate] [🗑️ Delete] [↑ Move Up]
 ---
 
 ## User Workflows
+
+> **Superseded (2026-10-22).** Workflows 1–4 describe the inline "+" dropdown and the provider badge, which are no longer how the editor works. Today an empty cell's **Add widget** selects the cell, and the edit panel's Add tab lists your widgets (create-entry CRE-006). A widget that needs a connection shows the card's one "what's missing" pill, which opens the widget panel's **Connections** section (create-entry CRE-015 AC9); `ProviderBadge` is no longer rendered. The workflows below are kept as a record.
 
 ### Workflow 1: Add Widget (Happy Path)
 
@@ -1000,7 +690,7 @@ Time: 30 seconds (depends on typing speed)
 
 ## Implementation Phases
 
-### Phase 1: MVP (P0 Stories) - CURRENT
+### Phase 1: MVP (P0 Stories)
 
 **Timeline:** Sprint 1-2 (2 weeks)
 
@@ -1009,8 +699,8 @@ Time: 30 seconds (depends on typing speed)
 -   [x] US-001: Quick widget addition (WidgetDropdown component)
 -   [x] US-002: Widget search & filtering
 -   [x] US-003: Provider status badges (ProviderBadge component)
--   [ ] US-004: Inline provider assignment
--   [ ] US-005: Enhanced widget card header (WidgetCardHeader component)
+-   US-004: Inline provider assignment — superseded by the widget panel's Connections section (CRE-015, 2026-10-22)
+-   US-005: Enhanced widget card header (WidgetCardHeader component) — superseded by the one widget panel and the ⋮ menu (CRE-015 AC6, 2026-10-22)
 -   [x] US-010: Edit mode snapshot & cancel discard
 
 **Success Criteria:**
@@ -1026,7 +716,7 @@ Time: 30 seconds (depends on typing speed)
 -   Provider dropdown positioning edge cases - Mitigation: Extensive testing across layouts
 -   Performance with 100+ widgets - Mitigation: Virtualized list if needed
 
-**Current Status:** WidgetDropdown, ProviderBadge, WidgetCardHeader components created. Integration in progress.
+**Current Status (2026-10-22):** US-001–US-003 shipped in this form; all five P0 stories (US-001–US-005) are now replaced by the dashboard editor's panel (see each story). US-010 is built.
 
 ---
 
@@ -1036,8 +726,8 @@ Time: 30 seconds (depends on typing speed)
 
 **Deliverables:**
 
--   [ ] US-006: Provider requirements in widget dropdown
--   [ ] US-007: Recent widgets section
+-   US-006: Provider requirements in widget dropdown — superseded by the edit panel's Add tab (CRE-006, 2026-10-22)
+-   [x] US-007: Recent widgets section — built only in the fallback pop-up; the edit panel's Add tab has none (2026-10-22)
 
 **Success Criteria:**
 
@@ -1057,7 +747,7 @@ Time: 30 seconds (depends on typing speed)
 
 **Deliverables:**
 
--   [ ] US-008: Context menu for power users
+-   US-008: Context menu for power users — superseded by the widget's ⋮ menu (2026-10-22)
 
 **Success Criteria:**
 
@@ -1084,7 +774,7 @@ Time: 30 seconds (depends on typing speed)
 -   WidgetDropdown: Created (src/Components/Layout/Builder/Enhanced/WidgetDropdown.js)
 -   ProviderBadge: Created (src/Components/Layout/Builder/Enhanced/ProviderBadge.js)
 -   WidgetCardHeader: Created (src/Components/Layout/Builder/Enhanced/WidgetCardHeader.js)
--   Integration: In progress (LayoutBuilder.js, LayoutBuilderGridItem.js)
+-   Integration: done, then superseded (2026-10-22) — in the editor, cells select into the edit panel (`EditPanel`, `WidgetPanel`); the pop-up is a fallback outside it, and `ProviderBadge` is no longer rendered
 
 ### Grid Cell Normalization System
 
@@ -1273,6 +963,7 @@ Column/row gutter labels in `LayoutGridContainer.js` use `getColGutterSpan()` / 
 | 1.2     | 2026-02-19 | Core Team | US-009: Added load-time grid repair, column/row compaction, gutter span fix  |
 | 1.3     | 2026-02-19 | Core Team | Added US-010, FR-006: Edit mode snapshot/restore — Cancel discards all edits |
 | 1.4     | 2026-04-24 | Core Team | Mutation handlers (swap/drop/delete/place) now propagate via `onWorkspaceChange` so the Dashboard Config modal and publish flow see the same state as the save path. `packageId` recorded on new layout items. Added Implementation Notes section with invariants. dash-core v0.1.422, v0.1.425. |
+| 1.5     | 2026-10-22 | Core Team | Consolidation Phase 5: US-001–US-008 superseded by the dashboard editor's panel (create-entry CRE-006, CRE-015); the Configure dialog is retired; originals moved to the Appendix. |
 
 ---
 
@@ -1304,3 +995,353 @@ published — and the publish modal showed the pre-drag widget because
 -   When a widget is added to any layout, stamp `packageId` (from
     `config._sourcePackage`) onto the new layout item. Publish reads
     this to route the widget to its exact source package.
+
+---
+
+## Appendix: history
+
+Stories superseded by the dashboard editor's panel (consolidation Phase 5, 2026-10-22), as they were written.
+
+### US-001: Quick Widget Addition
+
+> As a dashboard user,
+> I want to add widgets without opening a modal,
+> so that I can maintain visual context and iterate quickly.
+
+**Priority:** P0
+**Status:** In Progress
+
+**Acceptance Criteria:**
+
+-   [ ] AC1: Clicking "+" button opens an inline dropdown (no modal overlay)
+-   [ ] AC2: Dropdown appears centered on screen with backdrop
+-   [ ] AC3: Dropdown shows search input auto-focused
+-   [ ] AC4: Widget list displays with icons, names, and workspace categories
+-   [ ] AC5: Clicking a widget adds it immediately to the layout
+-   [ ] AC6: Dropdown closes automatically after selection
+-   [ ] AC7: Recent widgets section shows last 3 used widgets
+-   [ ] AC8: Keyboard navigation (↑/↓/Enter/Esc) works correctly
+
+**Edge Cases:**
+
+-   Empty widget list → Shows "No widgets found" message
+-   Search with no results → Shows helpful message with suggestion
+-   Widget addition fails → Shows error, keeps dropdown open
+
+**Technical Notes:**
+Implemented by `WidgetDropdown` component in `src/Components/Layout/Builder/Enhanced/WidgetDropdown.js`. Uses ComponentManager.map() to get all widgets. Recent widgets stored in localStorage (max 10).
+
+**Example Scenario:**
+
+```
+User: Sarah, empty dashboard in edit mode
+Action: Clicks "+" on root container
+Expected: WidgetDropdown appears centered, search input focused, shows 15 available widgets
+Time: <100ms to render
+```
+
+**Definition of Done:**
+
+-   [ ] Code implemented and reviewed
+-   [ ] Unit tests pass for WidgetDropdown component
+-   [ ] Integration tests verify dropdown opens/closes correctly
+-   [ ] Acceptance criteria verified with manual testing
+-   [ ] Documentation updated in CLAUDE.md
+
+### US-002: Widget Search & Filtering
+
+> As a dashboard user,
+> I want to search for widgets by name,
+> so that I can quickly find what I need in large widget libraries.
+
+**Priority:** P0
+**Status:** In Progress
+
+**Acceptance Criteria:**
+
+-   [ ] AC1: Search input filters widgets in real-time
+-   [ ] AC2: Search is case-insensitive
+-   [ ] AC3: Search matches widget name and key
+-   [ ] AC4: Empty search shows all widgets categorized by workspace
+-   [ ] AC5: Search results highlight matching text (nice-to-have)
+
+**Edge Cases:**
+
+-   Search query with special characters → Escapes regex properly
+-   Very long search query → Truncates display if needed
+
+**Technical Notes:**
+Uses JavaScript filter() method on widget list. Debounced to 50ms for performance.
+
+**Example Scenario:**
+
+```
+User: Sarah, dropdown open with 50 widgets
+Action: Types "slack" in search
+Expected: Widget list filters to show only Slack-related widgets (3 results)
+Time: <50ms to update
+```
+
+**Definition of Done:**
+
+-   [ ] Code implemented and reviewed
+-   [ ] Unit tests verify filter logic
+-   [ ] Case-insensitive search tested
+-   [ ] Performance verified with 100+ widgets
+-   [ ] Documentation updated
+
+### US-003: Provider Status Visibility
+
+> As a dashboard user,
+> I want to see provider requirements on widget headers,
+> so that I know what needs configuration before using the dashboard.
+
+**Priority:** P0
+**Status:** In Progress
+
+**Acceptance Criteria:**
+
+-   [ ] AC1: ProviderBadge component displays on widget headers
+-   [ ] AC2: Badge shows provider type (e.g., "slack", "github")
+-   [ ] AC3: Badge color indicates status (green=configured, yellow=required, gray=optional)
+-   [ ] AC4: Badge shows provider name when configured (e.g., "slack · My Workspace")
+-   [ ] AC5: Badge is visible in both edit and preview modes
+-   [ ] AC6: Multiple badges shown if widget requires multiple providers
+
+**Edge Cases:**
+
+-   Widget with no provider requirements → No badges shown
+-   Provider deleted after widget configured → Shows error state badge
+-   Provider type doesn't exist → Shows warning badge
+
+**Technical Notes:**
+Implemented by `ProviderBadge` component in `src/Components/Layout/Builder/Enhanced/ProviderBadge.js`. Uses widgetConfig.providers to get requirements. Reads selectedProviders from widget item data.
+
+**Example Scenario:**
+
+```
+Widget: SlackNotifications
+Providers required: [{type: "slack", required: true}]
+State: Provider not configured
+Expected: Yellow badge with "⚠️ slack" displayed on widget header
+```
+
+**Definition of Done:**
+
+-   [ ] Code implemented and reviewed
+-   [ ] Unit tests verify badge color logic
+-   [ ] Visual design matches mockups
+-   [ ] Accessibility verified (color contrast, ARIA labels)
+-   [ ] Documentation updated
+
+### US-004: Inline Provider Assignment
+
+> As a dashboard user,
+> I want to assign providers directly from the widget header,
+> so that I don't have to open separate configuration modals.
+
+**Priority:** P0
+**Status:** In Progress
+
+**Acceptance Criteria:**
+
+-   [ ] AC1: Clicking provider badge opens dropdown menu
+-   [ ] AC2: Dropdown lists available providers of that type
+-   [ ] AC3: Selected provider is highlighted in dropdown
+-   [ ] AC4: Clicking provider in dropdown assigns it to widget
+-   [ ] AC5: Dropdown shows "Create New Provider" option
+-   [ ] AC6: Clicking "Create New" opens provider creation modal (fallback)
+-   [ ] AC7: Badge updates immediately after assignment
+-   [ ] AC8: Dropdown closes after selection
+-   [ ] AC9: Click outside dropdown closes it
+
+**Edge Cases:**
+
+-   No providers of required type configured → Shows "No providers configured" with "Create New" button
+-   Provider assignment fails → Shows error message, dropdown stays open
+-   Multiple widgets share same provider → All update when provider edited
+
+**Technical Notes:**
+Provider dropdown implemented in WidgetCardHeader. Uses providers from DashboardContext. Calls onProviderChange handler to update widget.selectedProviders.
+
+**Example Scenario:**
+
+```
+User: Sarah, widget with yellow slack badge
+Action: Clicks badge
+Expected: Dropdown opens showing 2 slack providers + "Create New" option
+Action: Selects "My Slack Workspace"
+Expected: Badge turns green, shows "✓ slack · My Slack Workspace", dropdown closes
+Time: ~4s total
+```
+
+**Definition of Done:**
+
+-   [ ] Code implemented and reviewed
+-   [ ] Unit tests for provider selection logic
+-   [ ] Integration tests for provider assignment
+-   [ ] Error handling tested
+-   [ ] Documentation updated
+
+### US-005: Enhanced Widget Card Header
+
+> As a dashboard user,
+> I want to access common widget actions from the header,
+> so that I can configure, duplicate, and delete widgets efficiently.
+
+**Priority:** P0
+**Status:** In Progress
+
+**Acceptance Criteria:**
+
+-   [ ] AC1: Widget header shows drag handle (⋮⋮)
+-   [ ] AC2: Widget icon and name displayed clearly
+-   [ ] AC3: Action buttons shown: Configure (⚙️), Duplicate (📋), Delete (🗑️)
+-   [ ] AC4: Buttons show on hover or always visible (configurable)
+-   [ ] AC5: Configure button opens widget config modal
+-   [ ] AC6: Duplicate creates a copy below the original
+-   [ ] AC7: Delete confirms before removal
+-   [ ] AC8: All actions have tooltips
+
+**Edge Cases:**
+
+-   Duplicate fails (no space) → Shows error message
+-   Delete last widget in container → Confirms with stronger warning
+-   Widget too narrow to show all buttons → Truncates with "more" menu
+
+**Technical Notes:**
+Implemented by `WidgetCardHeader` component. Integrates with existing LayoutBuilderConfigModal for configuration. Uses ComponentManager.config() to get widget metadata.
+
+**Example Scenario:**
+
+```
+Widget: StatusWidget in edit mode
+Header shows: [⋮⋮] StatusIcon "Status Widget" [⚙️] [📋] [🗑️] [🔌 provider badges]
+Hover state: Buttons highlight
+```
+
+**Definition of Done:**
+
+-   [ ] Code implemented and reviewed
+-   [ ] Unit tests for all actions
+-   [ ] Accessibility tested (keyboard navigation, tooltips)
+-   [ ] Visual design matches specification
+-   [ ] Documentation updated
+
+### US-006: Widget Dropdown Shows Provider Requirements
+
+> As a dashboard user,
+> I want to see provider requirements in the widget dropdown,
+> so that I can make informed decisions before adding widgets.
+
+**Priority:** P1
+**Status:** Backlog
+
+**Acceptance Criteria:**
+
+-   [ ] AC1: Widget items in dropdown show 🔌 icon if they require providers
+-   [ ] AC2: Hovering/focusing widget item shows provider details (tooltip or expanded view)
+-   [ ] AC3: Widget description mentions provider requirements
+-   [ ] AC4: Required vs. optional providers are distinguished visually
+
+**Edge Cases:**
+
+-   Widget with many providers → Truncates with "+N more" indicator
+-   Provider type unknown → Shows warning icon
+
+**Technical Notes:**
+Enhancement to WidgetDropdown component. Reads providers from widgetConfig.
+
+**Example Scenario:**
+
+```
+Dropdown showing widgets:
+- StatusWidget (no icon)
+- SlackNotifications 🔌 (hover shows "Requires: slack")
+- AnalyticsDashboard 🔌 (hover shows "Requires: algolia, Optional: github")
+```
+
+**Definition of Done:**
+
+-   [ ] Code implemented and reviewed
+-   [ ] Unit tests verify provider display
+-   [ ] Visual design approved
+-   [ ] Documentation updated
+
+### US-007: Recent Widgets Section
+
+> As a power user,
+> I want to see recently used widgets at the top of the dropdown,
+> so that I can add frequently used widgets faster.
+
+**Priority:** P1
+**Status:** Backlog
+
+**Acceptance Criteria:**
+
+-   [ ] AC1: Dropdown shows "Recent" section with last 3-5 used widgets
+-   [ ] AC2: Recent widgets stored in localStorage
+-   [ ] AC3: Recent list updates when widget is added
+-   [ ] AC4: Recent section can be cleared (optional)
+
+**Edge Cases:**
+
+-   localStorage quota exceeded → Fails gracefully, doesn't block widget addition
+-   Widget removed from system → Filters out of recent list
+
+**Technical Notes:**
+Uses localStorage with key "dash-recent-widgets". Stores widget keys, not full configs.
+
+**Example Scenario:**
+
+```
+User: Alex, frequently adds StatusWidget and AnalyticsDashboard
+Opens dropdown: Shows "Recent" section with these 2 widgets
+Selecting from recent: Instantly adds without searching
+```
+
+**Definition of Done:**
+
+-   [ ] Code implemented and reviewed
+-   [ ] Unit tests for localStorage operations
+-   [ ] Edge cases tested (quota, deleted widgets)
+-   [ ] Documentation updated
+
+### US-008: Context Menu for Power Users
+
+> As a power user,
+> I want to right-click widgets for advanced options,
+> so that I can access power features without cluttering the UI.
+
+**Priority:** P2
+**Status:** Backlog
+
+**Acceptance Criteria:**
+
+-   [ ] AC1: Right-click widget opens context menu
+-   [ ] AC2: Menu options: Configure, Duplicate, Delete, Move Up, Move Down, Export Config
+-   [ ] AC3: Menu appears at cursor position
+-   [ ] AC4: Menu closes on click outside or selection
+-   [ ] AC5: Keyboard shortcut hints shown in menu
+
+**Edge Cases:**
+
+-   Right-click on widget boundary → Menu positions to stay in viewport
+-   Menu too large for screen → Scrollable
+
+**Technical Notes:**
+Future enhancement. Would use react-contextmenu or custom implementation.
+
+**Example Scenario:**
+
+```
+User: Power user, right-clicks StatusWidget
+Menu appears: [⚙️ Configure] [📋 Duplicate] [🗑️ Delete] [↑ Move Up] [↓ Move Down] [💾 Export Config]
+```
+
+**Definition of Done:**
+
+-   [ ] Code implemented and reviewed
+-   [ ] Unit tests for menu interactions
+-   [ ] Keyboard navigation tested
+-   [ ] Documentation updated

@@ -134,31 +134,36 @@ Going forward every freshly-created layout item is born scoped.
 ## Audit checklist (re-run before any cross-cutting change)
 
 When touching anything in the layout / lookup / event pipeline,
-verify each of these still holds:
+verify each of these still holds. Last run 2026-10-22 (consolidation Phase 5): ticked items hold; the open one doesn't.
 
-- [ ] `resolveComponentKey` is one line. No fallback. No second arg.
-- [ ] `registerWidget` throws on missing origin metadata.
+- [x] `resolveComponentKey` is one line. No fallback. No second arg.
+- [x] `registerWidget` throws on missing origin metadata.
 - [ ] `LayoutModel` does NOT do the bare-name migration —
       `WorkspaceModel` does it once at workspace load.
-- [ ] `migrateScopedIdsInWorkspace` runs BEFORE
+      _(Doesn't hold, 2026-10-22: `LayoutModel` still calls
+      `migrateBareComponentName` per item, as well as the
+      workspace-level pass.)_
+- [x] `migrateScopedIdsInWorkspace` runs BEFORE
       `pruneDeadListenerReferences`. Order matters: prune-first
       destroys legacy wiring.
-- [ ] No `${item.workspace}` or similar fallback in any package-label
+- [x] No `${item.workspace}` or similar fallback in any package-label
       derivation. The label is always
       `item.component.split(".").slice(0, 2).join("/")` formatted
       as `@<scope>/<package>`.
-- [ ] Drag/drop and click-add handlers write
+- [x] Drag/drop and click-add handlers write
       `component: <scoped-id>` into the new layout item, never the
       bare display name.
-- [ ] Per-widget listener editor uses `forEachWidget` for source
+- [x] Per-widget listener editor uses `forEachWidget` for source
       widget enumeration. Direct walks over
       `workspace.layout + pages[].layout` will double-count when
       `pages[0].layout === workspace.layout` (the
       single-page-no-explicit-pages shape WorkspaceModel sets up).
-- [ ] Per-widget listener editor uses `applyWiringChanges` to
+- [x] Per-widget listener editor uses `applyWiringChanges` to
       persist. Direct `replaceItemInLayout(workspace.layout, ...)`
       silently fails when the receiver is in a page or the sidebar.
-- [ ] Publish-time `assertNoLocalScopes` still runs. Widgets / themes
+      (Today's listener editor is the widget panel's Listens for,
+      `Dashboard/ListensFor.js`; it uses both.)
+- [x] Publish-time `assertNoLocalScopes` still runs. Widgets / themes
       / dashboards must NEVER ship to the registry with `local.*` or
       `ai-built.*` ids.
 
@@ -183,11 +188,11 @@ The contract:
 
 Surfaces that subscribe through the hook:
 
-  - `WidgetSidebar` — Installed list and Discover tab "Installed" badges
+  - `WidgetSidebar` — Installed list and the Registry tab's "Installed" badges (the tab is labelled "Discover" when the sidebar isn't embedded in the edit panel)
   - `EnhancedWidgetDropdown` — re-loads when the dropdown is open
-  - `DiscoverWidgetsDetail` — Settings → Widgets → Discover panel
+  - `DiscoverWidgetsDetail` — the Widgets page's install picker › Search for Widgets (was Settings → Widgets → Discover; updated 2026-10-22)
   - `LayoutBuilderAddItemModal` — re-renders the available-widgets list
-  - `useInstalledWidgets` — used by Settings → Widgets list
+  - `useInstalledWidgets` — used by the Widgets page list (was Settings → Widgets; updated 2026-10-22)
   - `useMissingWidgets` — re-evaluates "is this widget resolvable" after install
 
 If you add a new panel that walks `componentMap()`, add the hook.
@@ -199,7 +204,8 @@ The audit query is `grep -r 'ComponentManager.map\|componentMap()'`.
   string equality between the broadcast `widgetName` (bare) and the
   layout item's `component` (scoped). Won't re-mount on package
   update. Low-severity — manual reload works around it. Fix in a
-  separate PR with a test that covers the matcher logic.
+  separate PR with a test that covers the matcher logic. (Still
+  open, 2026-10-22.)
 - **Themes and dashboards** still use ad-hoc identifiers. The
   v0.1.436 PR shipped widgets only; themes and dashboards each get
   their own `migrate*InWorkspace`-style pre-pass, registration

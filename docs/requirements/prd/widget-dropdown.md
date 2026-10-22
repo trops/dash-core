@@ -4,15 +4,17 @@
 
 | Field              | Value                                                    |
 | ------------------ | -------------------------------------------------------- |
-| **Status**         | Phase 1: ✅ Completed, Phase 2: 📋 Planned               |
+| **Status**         | Superseded in the dashboard editor (2026-10-22); the pop-up remains as a fallback outside it |
 | **Version**        | 2.0.0                                                    |
 | **Author**         | Product Team                                             |
 | **Created**        | 2026-02-14                                               |
-| **Last Updated**   | 2026-02-14                                               |
+| **Last Updated**   | 2026-10-22                                               |
 | **Target Release** | Phase 1: Q1 2026 (Completed), Phase 2: Q2 2026 (Planned) |
 | **Priority**       | P0 - Critical                                            |
 | **Component**      | EnhancedWidgetDropdown                                   |
 | **Epic**           | Dashboard Builder UX Enhancement                         |
+
+> **Superseded (consolidation Phase 5, 2026-10-22).** In the dashboard editor, an empty cell's **Add widget** now selects the cell and the edit panel's **Add** tab places the widget (`WidgetSidebar`). The widget's connections and settings are set afterwards in the one widget panel, and the card's pill says what's missing (dash-electron create-entry CRE-006, CRE-015). `EnhancedWidgetDropdown` (this PRD) only opens outside the editor, where no edit panel exists. This PRD is kept as the record of how that pop-up works.
 
 ---
 
@@ -989,7 +991,7 @@ EnhancedWidgetDropdown (Modal)
 
 **Phase 1:** ✅ **COMPLETED** (Three-column layout, filtering, basic widget selection)
 
-**Phase 2:** 📋 **PLANNED** (Configure providers and userConfig before adding widget)
+**Phase 2:** Partly built, then superseded (2026-10-22). Built in `EnhancedWidgetDropdown`: picking a provider for each required one, with a new provider made inline (US-P2-001); the widget's settings, with required fields checked (US-P2-002); and Recent with saved providers and settings (US-P2-003). Not re-checked: the 2-column layout and the responsive layout (US-P2-004, US-P2-005); the file's header comment still describes three columns. In the dashboard editor, an empty cell's **Add widget** now selects the cell and the edit panel's **Add** tab places the widget (`WidgetSidebar`). The widget's connections and settings are set afterwards in the one widget panel, and the card's pill says what's missing (dash-electron create-entry CRE-006, CRE-015). The editor adds first and fixes after; there is no "configure before add" there.
 
 ### Overview
 
@@ -1704,7 +1706,7 @@ The following features are explicitly **out of scope** for this PRD and will be 
 
 **Goal:** Transform from selection interface to complete "configure and add" workflow
 
-**Status:** 📋 **PLANNED** - Ready for implementation
+**Status:** Superseded (2026-10-22). Milestones 2–4 were built in `EnhancedWidgetDropdown` (see Phase 2 Enhancements › Status Update); in the dashboard editor they were replaced by the edit panel (create-entry CRE-006, CRE-015).
 
 **Planned Tasks:**
 
@@ -1920,6 +1922,7 @@ The following features are explicitly **out of scope** for this PRD and will be 
 | ------- | ---------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1.0.0   | 2026-02-14 | Product Team | Initial PRD creation (Phase 1: Three-column layout, filtering, widget details)                                                                           |
 | 2.0.0   | 2026-02-14 | Product Team | Added Phase 2 requirements: Configure before add workflow, provider configuration, userConfig fields, recent widgets, 2-column layout, responsive design |
+| 2.1.0   | 2026-10-22 | Product Team | Consolidation Phase 5: Phase 2 status (US-P2-001–003 built in the pop-up); superseded in the dashboard editor by the edit panel's Add tab and the one widget panel |
 
 ---
 

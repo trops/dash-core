@@ -1,7 +1,7 @@
 # PRD: Bot Factory — Persistent, Provider-Agnostic AI Bots
 
 **Status:** In Progress
-**Last Updated:** 2026-10-14 (reconciled with the code — each story's Status and its acceptance criteria now say what is built; `[~]` marks partly built, with what's missing)
+**Last Updated:** 2026-10-22 (consolidation Phase 5: Settings → Bots, the Bot Builder modal and the AI Assistant panel marked superseded — Manage › Bots, the bot page, Create › Bot; drafts removed). Earlier: 2026-10-14 (reconciled with the code — each story's Status and its acceptance criteria now say what is built; `[~]` marks partly built, with what's missing)
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; Bots UI consumed by dash-electron)
 **Related PRDs:** [mcp-providers.md](./mcp-providers.md), [dashboard-marketplace.md](./dashboard-marketplace.md), [bot-factory-use-cases.md](./bot-factory-use-cases.md), [bot-teams.md](./bot-teams.md) (dashboard teams, team leads, installable teams), dash-electron `docs/requirements/prd/ai-assistant.md`
@@ -39,7 +39,7 @@ Automation stays outside Dash in ad-hoc scripts, the MCP server remains underuse
 
 **What exists today?**
 
--   **AI Assistant panel** (`src/AiAssistant/`) — interactive assistant with Dash MCP tool access
+-   **AI Assistant panel** (`src/AiAssistant/`) — interactive assistant with Dash MCP tool access _(Superseded by Create and the Dash team (create-entry CRE-007, 2026-10-22) — the panel was retired in Create phase 5e-2c; its settings are Settings › AI)_
 -   **ChatAnthropicWidget / ChatClaudeCodeWidget** — streaming chat with tool use
 -   **Dash MCP server** — dashboard/widget/theme/provider tools at `http://127.0.0.1:3141/mcp`
 -   **dash-core controllers** — `widgetMcpGrantsController`, `jitConsent`, `widgetMountTokenController`
@@ -91,7 +91,7 @@ Automation stays outside Dash in ad-hoc scripts, the MCP server remains underuse
 -   **Waking a sleeping machine for schedules** — requires elevated privileges or is unreliable on laptops; missed schedules are handled by catch-up policies instead.
 -   **A separate bot marketplace** — Bot templates are distributed through the existing Dash registry and dashboard packages (US-008, US-026, US-027), not a new marketplace surface.
 -   **Identical capabilities on every provider** — Bots share one UI, grant model, and approval flow, but some engines offer more (e.g. built-in file/shell tools, skills via the Claude Agent SDK). Capability differences are surfaced, not hidden.
--   **Replacing the AI Assistant panel** — The assistant remains the interactive, single-session experience. Bots are for delegated, persistent work.
+-   **Replacing the AI Assistant panel** — The assistant remains the interactive, single-session experience. Bots are for delegated, persistent work. _(Superseded by Create and the Dash team (2026-10-22): the panel itself was retired (create-entry CRE-007); asking and making things go through Create, and bots stay the delegated, persistent work.)_
 
 ---
 
@@ -151,7 +151,7 @@ Automation stays outside Dash in ad-hoc scripts, the MCP server remains underuse
 
 **Acceptance Criteria:**
 
--   [~] AC1: Given Settings → Bots, when I click "New Bot," then the NewBotPicker offers templates or blank, followed by the Bot Builder (US-017) whose form covers name, role/instructions, provider/model (with recommendation, US-016), MCP servers, allowed tools, and approval policy. _(Partial, 2026-10-14: New Bot opens the bot form (BotDetail) — name, instructions, team, provider/model with Recommended, providers and tools, approval policy. No NewBotPicker or templates; no allowedTools field (approval policy + Always allow cover it))_
+-   [~] AC1: Given Settings → Bots, when I click "New Bot," then the NewBotPicker offers templates or blank, followed by the Bot Builder (US-017) whose form covers name, role/instructions, provider/model (with recommendation, US-016), MCP servers, allowed tools, and approval policy. _(Partial, 2026-10-14: New Bot opens the bot form (BotDetail) — name, instructions, team, provider/model with Recommended, providers and tools, approval policy. No NewBotPicker or templates; no allowedTools field (approval policy + Always allow cover it). Where you start, 2026-10-22: Settings → Bots is gone — **New Bot** on Manage › Bots opens **Create › Bot** (the Dash team plans one bot, checked and saved paused; **Fill in the bot form** is the no-AI start, create-entry CRE-005), and a dashboard's Bots view **+ Add bot** opens the bot form for that team. Editing is the bot page's Settings tab (app-navigation NAV-016). There is no Bot Builder modal (US-017).)_
 -   [x] AC2: Saving persists a bot definition matching the Bot Schema (see Architecture) and the bot appears in the roster. _(Built, 2026-10-14: BotStore.create + validateBotDefinition; listed in Manage › Bots)_
 -   [x] AC3: A bot's private working directory is created under `app.getPath("userData")/bots/<botId>/files` (distinct from the Dash workspace it belongs to). _(Built, 2026-10-14: BotStore.workingDir under userData/bots)_
 -   [~] AC3a: Every bot belongs to exactly one Dash workspace, defaulting to the workspace the user is in when creating it. _(Partial, 2026-10-14: defaults to the open dashboard; a bot can also be unassigned (no dashboard))_
@@ -552,7 +552,7 @@ This keeps the runner in the Electron main process. It does not run bots when Da
 **Acceptance Criteria:**
 
 -   [~] AC1: The NewBotPicker offers templates from three sources: built-in (shipped with dash-core), installed (from registry packages), and a "Browse registry" tab listing `type: "bot"` packages. _(Partial, 2026-10-14: registry browse and install in the Bots view; no NewBotPicker, built-in or installed template sources)_
--   [ ] AC2: Choosing a template opens the Bot Builder pre-filled from the template, with its install variables (US-026) shown as required fields.
+-   [ ] AC2: Choosing a template opens the bot form (Bot Builder superseded by the bot form, 2026-10-22) pre-filled from the template, with its install variables (US-026) shown as required fields.
 -   [ ] AC3: A launch set of priority templates ships built in, drawn from [bot-factory-use-cases.md](./bot-factory-use-cases.md): PR Digest, PR Summarizer, Security Reviewer, Inbox Triage, Meeting Prep, Daily Brief, Error Watch, and Demo Check.
 -   [~] AC4: Any bot can be exported as a `.bot.json` template from BotDetail (secrets, sessions, memory values, and activity excluded). _(Partial, 2026-10-14: a bot publishes to the registry as bot.json and a team exports as team.json; no .bot.json export from the form)_
 
@@ -829,20 +829,20 @@ Expected: Recommended → deep tier (Anthropic: Opus), high reasoning,
 > so that I can build a good bot without knowing how bots are configured.
 
 **Priority:** P0 (form, Recommended model); P1 (chat co-pilot, Test tab)
-**Status:** In Progress
+**Status:** Partly superseded (2026-10-22) — the form part stands (AC2, AC6, AC7). The modal, its chat co-pilot and Test tab are superseded by **Create › Bot**: you describe the bot, the Dash team plans exactly one (you see the plan before anything is made), it is checked and saved paused, then **Try it now** runs it once and **Turn on** starts it (create-entry CRE-005; consolidation Phase 2c-1). Editing a bot is its bot page’s Settings tab (app-navigation NAV-016). The modal (`BotEditorModal`) was removed (consolidation Phase 2a).
 
 **Acceptance Criteria:**
 
--   [~] AC1: Creating or editing a bot opens the **Bot Builder** modal: the form on the left, an optional collapsible right pane with **Chat** and **Test** tabs (modeled on `WidgetBuilderModal`). _(Partial, 2026-10-14: the form opens in a modal (BotEditorModal); no right pane, Chat or Test tabs)_
+-   AC1: Superseded by Create › Bot and the bot page (2026-10-22). _(Was: a Bot Builder modal with the form and a Chat / Test pane. The form opened in `BotEditorModal`, now removed.)_
 -   [x] AC2: The form is the source of truth. A bot can be built entirely from the form with the right pane closed; saving always saves the form. _(Built, 2026-10-14: the form is the one editor; Save saves the form)_
--   [ ] AC3 (P1): Chat proposes form changes as structured field patches. Changed fields highlight, with per-field undo and "Undo all from this message."
--   [ ] AC4 (P1): Each chat turn receives the current form state, so manual edits are respected and never silently overwritten.
--   [ ] AC5 (P1): Chat cannot change permissions on its own. Proposed changes to tools, MCP servers, grants, project membership, or cross-workspace subscriptions appear as pending suggestions the user must accept individually.
+-   AC3 (P1): Superseded by Create › Bot (2026-10-22) — there is no chat co-pilot; the Dash team plans the bot and you review the plan. _(Was: Chat proposes form changes as structured field patches. Changed fields highlight, with per-field undo and "Undo all from this message.")_
+-   AC4 (P1): Superseded by Create › Bot (2026-10-22) — there is no chat co-pilot; the Dash team plans the bot and you review the plan. _(Was: Each chat turn receives the current form state, so manual edits are respected and never silently overwritten.)_
+-   AC5 (P1): Superseded by Create › Bot (2026-10-22) — there is no chat co-pilot; the Dash team plans the bot and you review the plan. _(Was: Chat cannot change permissions on its own. Proposed changes to tools, MCP servers, grants, project membership, or cross-workspace subscriptions appear as pending suggestions the user must accept individually.)_
 -   [ ] AC6: Advisor re-evaluation triggers only on advice-relevant fields (instructions, tools, triggers, schedule frequency), debounced and on blur, plus once on save. Name, description, and cosmetic fields never trigger it.
 -   [ ] AC7: In "Recommended" mode, the model updates automatically with a short note on why. After a manual model choice, the model stays fixed and a non-blocking hint appears if the advisor now recommends a different tier.
--   [ ] AC8 (P1): When chat is open, advisor reasoning appears in the conversation; when closed, it appears as the inline rationale under the model field.
--   [ ] AC9 (P1): The **Test** tab runs the draft bot once against sample or live input without saving, streaming the run like the bot view; test runs obey grants and approvals and are labeled "test" in the Activity Manager.
--   [ ] AC10: On narrow windows, the panes collapse into Form / Chat / Test tabs.
+-   AC8 (P1): Superseded by Create › Bot (2026-10-22) — there is no chat pane, so advisor reasoning has only the inline rationale under the model field (AC7). _(Was: When chat is open, advisor reasoning appears in the conversation; when closed, it appears as the inline rationale under the model field.)_
+-   AC9 (P1): Superseded by Create › Bot’s **Try it now** (2026-10-22) — a planned bot is saved paused and run once from Create before you turn it on. _(Was: The **Test** tab runs the draft bot once against sample or live input without saving, streaming the run like the bot view; test runs obey grants and approvals and are labeled "test" in the Activity Manager.)_
+-   AC10: Superseded (2026-10-22) — there are no Chat / Test panes. _(Was: on narrow windows, the panes collapse into Form / Chat / Test tabs.)_
 
 **Edge Cases:**
 
@@ -1001,15 +1001,15 @@ User runs Test; the digest streams in the Test tab; user saves.
 
 *Detection*
 
--   [~] AC1: While building, the Bot Builder chat identifies needed capabilities that no granted server provides and raises them before save. _(Partial, 2026-10-14: leads' find_providers and draft gaps raise missing capabilities before approval (bot-capabilities CAP-003/004); no Bot Builder chat)_
+-   [~] AC1: While building, the Bot Builder chat identifies needed capabilities that no granted server provides and raises them before save. _(Partial, 2026-10-14: leads' find_providers and draft gaps raise missing capabilities before approval (bot-capabilities CAP-003/004); no Bot Builder chat. 2026-10-22: drafts and their gaps were removed in consolidation Phase 2c-2, and there is no Bot Builder chat. A bot made in Create › Bot is planned first, and the plan's **Before building** lists a **Connect** step for each provider type it needs that you don't have (`Create/planChecklist.js`); a lead still uses find_providers when asked whether a service can be connected, and hands making a bot to the Dash team)_
 -   [ ] AC2: Every bot has a built-in `request_capability` tool (description + reason). It creates a **capability request** in the Activity Manager; it never installs or grants anything. The run continues without the capability or pauses, per the bot's `onMissingCapability` setting (`continue` default, or `pause`).
 
 *Resolution ladder* (offered in this order, most trusted first)
 
--   [~] AC3: **Installed but not granted** → propose a grant for this bot as a pending suggestion. _(Partial, 2026-10-14: draft review has Use for an installed provider; not at run time)_
--   [~] AC4: **In the curated catalog** (`mcpServerCatalog.json` / `knownExternalMcpServers.json`) → use the existing `install_known_mcp_server` flow and `InstallExternalMcpModal` (package, command, credential fields; user confirms). _(Partial, 2026-10-14: vetted entries install through the usual confirmation, from draft review only)_
+-   [~] AC3: **Installed but not granted** → propose a grant for this bot as a pending suggestion. _(Partial, 2026-10-14: draft review has Use for an installed provider; not at run time. 2026-10-22: the draft review is gone (Phase 2c-2); a planned bot uses the providers you have, and one you don't is a Connect step before building)_
+-   [~] AC4: **In the curated catalog** (`mcpServerCatalog.json` / `knownExternalMcpServers.json`) → use the existing `install_known_mcp_server` flow and `InstallExternalMcpModal` (package, command, credential fields; user confirms). _(Partial, 2026-10-14: vetted entries install through the usual confirmation, from draft review only. 2026-10-22: the draft review is gone (Phase 2c-2); Create's Connect step opens the connect dialog instead)_
 -   [~] AC5 (P2): **In the official MCP Registry** (mcp-providers PRD Phase 5) → show publisher, source repository, version, transport, required credentials, and verified-namespace status, with a "not curated by Dash" warning. Remote (HTTP/OAuth) servers are preferred over local stdio servers when both exist. _(Partial, 2026-10-14: community results show Unverified and the source repo; no verified namespace, version or transport, no remote preference)_
--   [x] AC6: **User-supplied server** → existing `CustomMcpServerForm`, including OAuth. _(Built, 2026-10-14: AddProviderDialog → the custom server form, pre-filled)_
+-   [x] AC6: **User-supplied server** → existing `CustomMcpServerForm`, including OAuth. _(Built, 2026-10-14: AddProviderDialog → the custom server form, pre-filled. 2026-10-22: `AddProviderDialog` is no longer used (see bot-capabilities CAP-005); a user-supplied server is added with `CustomMcpServerForm` from the Providers page.)_
 -   [~] AC7: **Nothing suitable** → say so plainly and suggest alternatives (webhook trigger, generic fetch server, different approach). Generating a custom MCP server is out of scope for this story. _(Partial, 2026-10-14: the lead says nothing matched and keeps the gap; no alternatives)_
 
 *Installation guardrails*
@@ -1033,7 +1033,7 @@ User runs Test; the digest streams in the Test tab; user saves.
 **Example Scenario:**
 
 ```
-User in Bot Builder chat: "Also save each digest as a page in Notion."
+User in Bot Builder chat (superseded 2026-10-22 — today this is a Create › Bot request): "Also save each digest as a page in Notion."
 Expected: Chat replies that no installed server can write to Notion, and that
 the curated catalog has a Notion server. User opens the install modal,
 connects Notion, and sees its tools; "create page" is unchecked by default,
@@ -1242,7 +1242,7 @@ Notifier posts to Slack after approval but never reacts to threads.
 -   [ ] AC2: Dash can install and remove an OS-level supervisor for it, per platform: a per-user **launchd LaunchAgent** on macOS (`RunAtLoad`, `KeepAlive`), a **systemd user service** on Linux (`Restart=always`, optional `loginctl enable-linger`), and a **Task Scheduler** task at logon with restart-on-failure on Windows.
 -   [ ] AC3: Scheduling stays in the runner (`croner`); the OS supervisor only keeps the runner alive. OS-native scheduling is not used, so schedules have one source of truth on every platform.
 -   [ ] AC4: Only one runner is active: Dash first discovers a running headless runner (lock file + local socket) and connects to it as a client; otherwise it hosts the runner in-process.
--   [ ] AC5: Dash and the headless runner communicate over a local authenticated channel (Unix socket / named pipe, or localhost with a per-install token). The Activity panel, approvals, and Bot Builder work the same either way.
+-   [ ] AC5: Dash and the headless runner communicate over a local authenticated channel (Unix socket / named pipe, or localhost with a per-install token). The Activity panel, approvals, and the bot page (was the Bot Builder) work the same either way.
 -   [ ] AC6: Approvals raised while no Dash window is connected use OS notifications from the runner, or wait in the queue until Dash connects.
 -   [ ] AC7 (future): The same runner can be deployed to a home server or VPS, with Dash connecting remotely over an authenticated, encrypted channel.
 
@@ -1356,7 +1356,8 @@ The macOS supervisor is a LaunchAgent (runs in the user's session), not a Launch
 
 **FR-015: Bot Builder**
 
--   **Description:** Split-view create/edit modal: form (source of truth), Chat co-pilot producing structured field patches with highlight/undo and gated permission suggestions, advisor triggers on relevant fields, and a Test tab for unsaved draft runs.
+-   **Superseded (2026-10-22)** by Create › Bot (the Dash team plans the bot; **Fill in the bot form** is the no-AI start) and the bot page's Settings tab (app-navigation NAV-016). The form part stands; see US-017.
+-   **Description (was):** Split-view create/edit modal: form (source of truth), Chat co-pilot producing structured field patches with highlight/undo and gated permission suggestions, advisor triggers on relevant fields, and a Test tab for unsaved draft runs.
 -   **User Story:** US-017
 -   **Priority:** P0 (form), P1 (Chat, Test)
 -   **Validation:** Unit tests for patch application, conflict handling, and trigger rules; E2E for chat-driven creation with permission acceptance.
@@ -1391,7 +1392,7 @@ The macOS supervisor is a LaunchAgent (runs in the user's session), not a Launch
 
 **FR-020: Capability Requests and MCP Installation**
 
--   **Description:** Capability gap detection (Bot Builder and `request_capability`), a resolution ladder over existing grants, the curated catalog, the MCP Registry, and custom servers, with pinned installs, post-install tool selection, fail-closed grants, rollback on failure, and audit.
+-   **Description:** Capability gap detection (Create's plan — was the Bot Builder, superseded 2026-10-22 — and `request_capability`), a resolution ladder over existing grants, the curated catalog, the MCP Registry, and custom servers, with pinned installs, post-install tool selection, fail-closed grants, rollback on failure, and audit.
 -   **User Story:** US-025
 -   **Priority:** P1 (registry and sandboxing P2)
 -   **Validation:** Unit tests that model-supplied package names never reach the installer; integration tests for install → tool listing → selective grant → rollback on failure.
@@ -1405,7 +1406,7 @@ The macOS supervisor is a LaunchAgent (runs in the user's session), not a Launch
 
 **FR-005: Bots UI**
 
--   **Description:** Settings → Bots section (NewBotPicker, BotDetail), Activity panel with per-bot drill-down and popout, workspace bot indicator, command palette entries, and Memory view, all built from `@trops/dash-react`. See UI Surfaces.
+-   **Description:** Settings → Bots section (NewBotPicker, BotDetail) _(superseded 2026-10-22 by Manage › Bots and the bot page, app-navigation NAV-006/NAV-016; New Bot opens Create › Bot)_, Activity panel with per-bot drill-down and popout, workspace bot indicator, command palette entries, and Memory view, all built from `@trops/dash-react`. See UI Surfaces.
 -   **User Story:** US-001–US-004
 -   **Priority:** P0
 -   **Validation:** E2E (Playwright) for create → run → approve flow.
@@ -1435,7 +1436,7 @@ The macOS supervisor is a LaunchAgent (runs in the user's session), not a Launch
 
 **NFR-005: Compatibility**
 
--   No change to existing dashboards, widgets, or the AI Assistant panel.
+-   No change to existing dashboards, widgets, or the AI Assistant panel. _(The AI Assistant panel has since been retired — superseded by Create and the Dash team, 2026-10-22.)_
 -   Runs on all platforms Dash currently ships for; Node ≥ 18 per the Agent SDK's engine requirement.
 -   Existing Anthropic-only consumers of `modelProviders.js` and `llmController.js` keep working unchanged.
 
@@ -1451,16 +1452,16 @@ The macOS supervisor is a LaunchAgent (runs in the user's session), not a Launch
 
 ### Workflow 1: Create and schedule a digest bot
 
-**Trigger:** User opens Settings → Bots (or "New bot in this workspace" from the command palette), then "New Bot."
+**Trigger:** User opens Manage › Bots and clicks **New Bot**, which opens Create › Bot (or **+ Add bot** in a dashboard's Bots view, which opens the bot form). _(Was: Settings → Bots, or "New bot in this workspace" from the command palette — superseded 2026-10-22.)_
 
 **Steps:**
 
-1. User picks a template or blank in the Bot Builder, then either fills the form or describes the job in Chat, which populates the form; permission changes are accepted individually. Provider defaults to their designated provider and model to "Recommended."
+1. User describes the job; the Dash team plans one bot and the user reviews the plan (or picks **Fill in the bot form** and fills it in). Provider defaults to their designated provider and model to "Recommended." _(Was: a template or blank in the Bot Builder, with a Chat co-pilot — superseded by Create › Bot, 2026-10-22.)_
 1a. System recommends a model tier and reasoning level with a rationale and cost estimate; user accepts or overrides.
 2. System validates and shows a summary of granted capabilities.
 3. User adds a weekday 7am schedule and saves.
 4. System persists the bot, creates its working directory, and registers the schedule; the bot list and workspace indicator show "Next run: tomorrow 7:00."
-5. User runs the draft in the Test tab (or "Run now" after saving).
+5. The bot is saved paused; the user runs it once with **Try it now** (or **Run now**, a test run on a paused bot), then **Turn on**. _(Was: the Test tab — superseded 2026-10-22.)_
 6. System opens the Activity panel on the bot view and streams the run; activity log records "Completed."
 
 **Success State:** Bot visible in roster with a successful test run and next-run time.
@@ -1505,21 +1506,15 @@ The macOS supervisor is a LaunchAgent (runs in the user's session), not a Launch
 
 | Surface                     | Where                                         | Purpose                                                                 |
 | --------------------------- | --------------------------------------------- | ----------------------------------------------------------------------- |
-| **Settings → Bots**         | New section in `AppSettingsModal`, beside Providers | Create, configure, and delete bots                                  |
+| **Manage › Bots**           | Left-nav page (was Settings → Bots — superseded 2026-10-22) | Every bot; the bot page (NAV-016); New Bot opens Create › Bot |
 | **Activity panel**          | Right slide-over (like `AiAssistantPanel`), opened from a navbar icon; can pop out to its own window | Watch all bot activity, drill into a bot, approve, and intervene |
 | **Workspace indicator**     | Workspace tab bar                             | Show the current workspace's bot count, running state, and pending approvals |
 | **Command palette**         | `DashCommandPalette`                          | "New bot in this workspace," "Open activity," "Pause all bots," jump to a bot |
-| **AI Assistant**            | Existing panel via new Dash MCP bot tools     | "Make a bot that…" drafts a bot config for the user to confirm          |
+| **Create › Bot**            | Create (was the AI Assistant panel — superseded 2026-10-22) | "Make a bot that…" — the Dash team plans one bot for the user to review |
 | **Debug Console**           | Existing `EventMonitor`                       | Bot events and chain traces alongside widget events, for developers      |
 | **Built-in widgets**        | Optional, added to any dashboard              | Bot Output, Bot Status, Bot Chat, Activity Feed (US-007)                 |
 
-**Settings → Bots**
-
--   Same list-and-detail pattern as Providers: a list grouped by workspace, a **NewBotPicker** (templates or blank, modeled on `NewProviderPicker`), and a **BotDetail** (modeled on `ProviderDetail`).
--   Creating a bot while in a workspace defaults it to that workspace.
--   "New Bot" and "Edit" open the **Bot Builder** modal (US-017): form on the left, optional Chat / Test pane on the right. The form sections mirror BotDetail's tabs.
--   BotDetail tabs: **Setup** (name, instructions, provider, model with recommendation), **Tools & Grants** (reusing `ToolSelector` and `WidgetGrantRow`), **Triggers** (schedules, subscriptions, `whilePaused`), **Memory** (workspace and project entries it has written), **Projects** (memberships).
--   List rows show name, workspace, status (Idle / Running / Paused / Awaiting approval / Failed), provider and model as a Tag, last run, and next run.
+**Settings → Bots** — superseded by Manage › Bots and the bot page (2026-10-22). Manage › Bots lists every bot; selecting one opens its bot page (Conversation, Activity, Log, Spending, Settings — app-navigation NAV-016), the same page a dashboard's Bots view and the Bots panel open. New Bot opens Create › Bot; Settings is the bot form (BotDetail). The original design is in [Appendix: history](#appendix-history).
 
 **Activity panel**
 
@@ -1543,7 +1538,7 @@ The macOS supervisor is a LaunchAgent (runs in the user's session), not a Launch
 ```mermaid
 flowchart TB
     subgraph R["Renderer — dash-electron UI"]
-        BB["Bot Builder<br/>Settings → Bots"]
+        BB["Create › Bot · bot page<br/>Manage › Bots"]
         AP["Activity panel<br/>feed · approvals · controls"]
         W["Dashboards & widgets<br/>incl. built-in bot widgets"]
     end
@@ -1928,11 +1923,11 @@ for await (const event of engine.run({
     - Options: (A) Bundled table updated with dash-core releases. (B) Fetched from a registry-hosted pricing file.
     - Status: Open
 
-10. **Q: Which model powers the Bot Builder chat?**
+10. **Q: Which model powers the Bot Builder chat?** _(Superseded 2026-10-22: there is no Bot Builder chat; Create › Bot uses the Dash team on the AI picked in Create — Settings › AI.)_
 
     - Context: Building a bot well (choosing tools, writing instructions) benefits from a stronger model than the advisor's fast-tier check, but runs only during setup.
     - Options: (A) Balanced tier of the user's default provider. (B) User-selectable in Settings → AI Assistant.
-    - Status: Open
+    - Status: Closed (superseded)
 
 11. **Q: Should background mode be on by default?**
 
@@ -1973,8 +1968,8 @@ for await (const event of engine.run({
 | 2026-09-27 | Bot Activity Manager replaces the standalone approvals inbox | One place to observe and intervene | John |
 | 2026-09-27 | Projects span workspaces for shared memory and a project event channel, not shared actions | Enables larger efforts while keeping each bot's actions in its own workspace | John |
 | 2026-09-27 | Pause is enforced at the permission gate | Works identically on every engine; no engine-specific pause logic | John |
-| 2026-09-27 | Bots are headless by default: configured in Settings → Bots, watched in a slide-over Activity panel (with popout), surfaced on dashboards only via optional widgets | Keeps dashboards clean; mirrors the provider model users already know | John |
-| 2026-09-27 | Bot Builder: form is the source of truth; chat is an optional co-pilot that patches the form; permission changes need explicit acceptance | Works for users who prefer either; keeps every setting inspectable and permissions deliberate | John |
+| 2026-09-27 | Bots are headless by default: configured in Settings → Bots (superseded 2026-10-22 by Manage › Bots and the bot page), watched in a slide-over Activity panel (with popout), surfaced on dashboards only via optional widgets | Keeps dashboards clean; mirrors the provider model users already know | John |
+| 2026-09-27 | Bot Builder: form is the source of truth; chat is an optional co-pilot that patches the form; permission changes need explicit acceptance (chat co-pilot superseded 2026-10-22 by Create › Bot; the form rule stands) | Works for users who prefer either; keeps every setting inspectable and permissions deliberate | John |
 | 2026-09-27 | Advisor re-runs only on advice-relevant fields, debounced/on blur, and never overrides a manual model choice | Controls cost and noise; respects user intent | John |
 | 2026-09-27 | P0 background mode via tray residency and login item; schedules catch up on start/resume | Covers most always-on needs cheaply without a separate process | John |
 | 2026-09-27 | Runner code must not import Electron (host interface) | Keeps the headless runner a packaging change, not a rewrite | John |
@@ -1992,7 +1987,7 @@ for await (const event of engine.run({
 
 ## Saving and turning on a bot (consolidation Phase 1d, 2026-10-16)
 
--   **One check for every save, before anything is written** (`electron/bots/checkBot.js`, run in `botController.save` — which the Create bot form, the Bots view, Manage › Bots, accepted lead drafts, plan builds and team imports all use): the bot's shape; each schedule is a valid cron (a bad one used to be saved and then fail to schedule); each connection it uses is one the user has (one that isn't running is fine); a chosen AI provider is one the app knows; a widget trigger names a widget on that dashboard (whether it sends the event is checked where triggers are made — plan builds and the trigger picker); a bot trigger names a bot that exists. Only what's new or changed is held to it — an old dead trigger or removed connection warns, so the bot can still be edited. A refusal lists every reason.
+-   **One check for every save, before anything is written** (`electron/bots/checkBot.js`, run in `botController.save` — which the Create bot form, the Bots view, Manage › Bots, plan builds and team imports all use; accepted lead drafts did too until Phase 2c-2 removed drafts): the bot's shape; each schedule is a valid cron (a bad one used to be saved and then fail to schedule); each connection it uses is one the user has (one that isn't running is fine); a chosen AI provider is one the app knows; a widget trigger names a widget on that dashboard (whether it sends the event is checked where triggers are made — plan builds and the trigger picker); a bot trigger names a bot that exists. Only what's new or changed is held to it — an old dead trigger or removed connection warns, so the bot can still be edited. A refusal lists every reason.
 -   **Every new bot starts paused** until the user turns it on — imports already did. The Dash team and leads are the app's own and aren't saved this way. "Resume" reads **Turn on**.
 -   **Run now on a paused bot is a test run:** it runs (tools and all) and the bot stays paused; a pass offers **Turn on** (Bots view, Manage › Bots, the plan-build end screen). Not while everything is paused. Manage › Bots has Turn on / Pause, and every Run now says what happened.
 -   A schedule saved before this that isn't valid can't stop the app from starting: that bot's schedule is skipped and logged.
@@ -2039,7 +2034,7 @@ These are inherent and documented rather than fixed:
 -   [ ] US-005: Bots remember prior work
 -   [ ] US-006: Choose a bot's AI provider (engines: `claude-agent` and `tool-loop` with OpenAI-compatible adapter)
 -   [ ] US-014: Bot Activity Manager (P0 scope: feed, approvals, run/bot/global controls)
--   [ ] US-017: Bot Builder (P0 scope: form, Recommended model)
+-   [ ] US-017: Bot Builder (P0 scope: form, Recommended model) — the form is built; the modal is superseded (2026-10-22)
 -   [x] US-018: Background mode
 -   [ ] US-019: Budgets and cost controls
 -   [x] NFR-006: Runner portability (host interface, no Electron imports)
@@ -2065,7 +2060,7 @@ These are inherent and documented rather than fixed:
 
 -   [ ] US-007: Built-in bot widgets
 -   [ ] US-016: Model recommendations (P1 scope: creation-time recommendation)
--   [ ] US-017: Bot Builder (P1 scope: Chat co-pilot, Test tab)
+-   US-017: Bot Builder (P1 scope: Chat co-pilot, Test tab) — superseded by Create › Bot (2026-10-22)
 -   [ ] US-020: Shared built-in file tools
 -   [ ] US-021: Run summaries and provider handover
 -   [ ] US-022: Taint-aware approvals
@@ -2121,7 +2116,7 @@ These are inherent and documented rather than fixed:
 -   `electron/llm/modelProviders.js` - Model provider registry to extend
 -   `electron/controller/llmController.js` - Existing Anthropic tool loop to generalize
 -   dash-electron `docs/MCP_DASH_SERVER.md` - Dash MCP server tools
--   dash-electron `docs/requirements/prd/ai-assistant.md` - Existing AI Assistant design
+-   dash-electron `docs/requirements/prd/ai-assistant.md` - AI Assistant design (the panel is retired; it lists where each thing it did lives now)
 -   Claude Agent SDK docs: https://docs.claude.com
 
 **Implementation Status:** Not started
@@ -2160,7 +2155,7 @@ These are inherent and documented rather than fixed:
 -   [ ] Limited bots: capability summary in run context, denied tool returns "not granted" without prompting, repeated attempts collapse into one capability request
 -   [ ] Packages: `.dashboard.json` with `bots` round-trips; wiring remaps to new widget instances; imported bots start in setup state with zero grants; per-bot activation gating
 -   [ ] Permission gate: `bot` principal enforces tool allow-lists and path containment identically to widgets
--   [ ] Bot Builder: field patch apply/undo, conflict on concurrent edit, permission suggestions never auto-applied, advisor trigger rules (relevant fields only, debounce, manual override respected)
+-   [ ] Advisor trigger rules (relevant fields only, debounce, manual override respected). _(Bot Builder field patches, conflicts and permission suggestions: superseded with the chat co-pilot, 2026-10-22.)_
 -   [ ] Channels: workspace stamping, default workspace scope, project/global authorization, cross-workspace grant enforcement
 -   [ ] Intervention: pause checked at `requestPermission` for run/bot/workspace/project/global, `whilePaused` queue vs drop, resume delivery
 
@@ -2191,14 +2186,14 @@ These are inherent and documented rather than fixed:
 -   [ ] Pause a noisy bot from the Activity Manager, confirm queued events deliver on resume
 -   [ ] Create a bot from the command palette with a recommended model, accept it, and watch its first run in a popped-out Activity window
 -   [ ] Add and remove a Bot Status widget; confirm the bot keeps running
--   [ ] Build a bot entirely through Chat, accept permission suggestions, run it in the Test tab, save
+-   [ ] Build a bot in Create › Bot: describe it, review the plan, Build, **Try it now**, **Turn on** _(was: through the Bot Builder Chat and Test tab — superseded 2026-10-22)_
 -   [ ] Build a bot entirely through the form with the right pane closed
 -   [ ] Close all windows; confirm a scheduled bot runs from the tray and an approval raises an OS notification
 -   [ ] Sleep the machine across a scheduled time; confirm catch-up on wake
 -   [ ] Hit a bot budget; confirm auto-pause and notification
 -   [ ] Install the "Engineering Review Team" package end to end: review screen, setup checklist, activate bots, click a PR, approve the Slack post
 -   [ ] Install the same package granting only read-only tools; confirm the Reviewer runs as Limited and never attempts GitHub comments
--   [ ] Ask the Bot Builder for a capability from the curated catalog; install, select tools, grant, and use it in a Test run
+-   [ ] Ask Create › Bot for a bot that needs a provider you don't have; connect it from Before building, then **Try it now** _(was: the Bot Builder and a Test run — superseded 2026-10-22)_
 -   [ ] Time-to-first-bot measurement
 
 **Test File:** `e2e/bot-factory.spec.js`
@@ -2233,3 +2228,18 @@ These are inherent and documented rather than fixed:
 | 1.10    | 2026-09-27 | John   | Install-time access review with partial grants and Limited bots; required/optional tools with purpose in templates |
 | 1.11    | 2026-09-27 | John   | Required tools checked by default at install; optional unchecked |
 | 1.12    | 2026-10-16 | John   | Phase 1d: one checkBot for every save (cron, connections, AI provider, triggers) before anything is written; new bots start paused; Run now on a paused bot is a test run; Turn on |
+| 1.13    | 2026-10-22 | John   | Consolidation Phase 5: Settings → Bots, the Bot Builder modal and the AI Assistant panel marked superseded (Manage › Bots, the bot page, Create › Bot); drafts removed (Phase 2c-2); original Settings → Bots design moved to Appendix: history |
+
+---
+
+## Appendix: history
+
+### Settings → Bots (original design, 2026-09-27; superseded 2026-10-22)
+
+**Settings → Bots**
+
+-   Same list-and-detail pattern as Providers: a list grouped by workspace, a **NewBotPicker** (templates or blank, modeled on `NewProviderPicker`), and a **BotDetail** (modeled on `ProviderDetail`).
+-   Creating a bot while in a workspace defaults it to that workspace.
+-   "New Bot" and "Edit" open the **Bot Builder** modal (US-017): form on the left, optional Chat / Test pane on the right. The form sections mirror BotDetail's tabs.
+-   BotDetail tabs: **Setup** (name, instructions, provider, model with recommendation), **Tools & Grants** (reusing `ToolSelector` and `WidgetGrantRow`), **Triggers** (schedules, subscriptions, `whilePaused`), **Memory** (workspace and project entries it has written), **Projects** (memberships).
+-   List rows show name, workspace, status (Idle / Running / Paused / Awaiting approval / Failed), provider and model as a Tag, last run, and next run.
