@@ -6,7 +6,7 @@
  * stale saved selection, auto-migrate it, and show a notice — without an IPC
  * round-trip. KEEP IN SYNC with modelProviders.js (anthropic provider).
  */
-export const DEFAULT_MODEL = "claude-opus-4-8";
+export const DEFAULT_MODEL = "claude-opus-5-5";
 
 const RETIRED_MODEL_MAP = {
   "claude-sonnet-4-20250514": "claude-sonnet-4-6",
@@ -17,6 +17,7 @@ const RETIRED_MODEL_MAP = {
   "claude-3-5-sonnet-20240620": "claude-sonnet-4-6",
   "claude-3-5-haiku-20241022": "claude-haiku-4-5",
   "claude-3-opus-20240229": "claude-opus-4-8",
+  "claude-fable-5": "claude-fable-5-1",
 };
 
 export function isRetiredModel(id) {

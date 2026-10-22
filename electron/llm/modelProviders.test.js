@@ -42,14 +42,40 @@ const NOOP_SDK = mockSdk(async () => ({ data: [] }));
 
 describe("modelProviders", () => {
   describe("defaults and curated list", () => {
-    it("default model for anthropic is claude-opus-4-8", () => {
+    it("default model for anthropic is claude-opus-5-5", () => {
       const mp = loadModule(NOOP_SDK);
-      assert.equal(mp.getDefaultModel("anthropic"), "claude-opus-4-8");
+      assert.equal(mp.getDefaultModel("anthropic"), "claude-opus-5-5");
     });
 
     it("unknown provider falls back to the default provider", () => {
       const mp = loadModule(NOOP_SDK);
-      assert.equal(mp.getDefaultModel("does-not-exist"), "claude-opus-4-8");
+      assert.equal(mp.getDefaultModel("does-not-exist"), "claude-opus-5-5");
+    });
+
+    it("curated list leads with the Claude 5 family, older models after", () => {
+      const mp = loadModule(NOOP_SDK);
+      const ids = mp.getCuratedModels("anthropic").map((m) => m.value);
+      assert.deepEqual(ids.slice(0, 4), [
+        "claude-opus-5-5",
+        "claude-sonnet-5-5",
+        "claude-haiku-5-5",
+        "claude-fable-5-1",
+      ]);
+      assert.ok(!ids.includes("claude-fable-5"));
+      // The CLI provider offers the same models and default.
+      assert.deepEqual(
+        mp.getCuratedModels("claude-code").map((m) => m.value),
+        ids,
+      );
+      assert.equal(mp.getDefaultModel("claude-code"), "claude-opus-5-5");
+    });
+
+    it("Fable 5 self-heals to Fable 5.1", () => {
+      const mp = loadModule(NOOP_SDK);
+      assert.equal(
+        mp.migrateModelId("anthropic", "claude-fable-5"),
+        "claude-fable-5-1",
+      );
     });
 
     it("curated list contains current, non-deprecated ids", () => {
@@ -88,9 +114,9 @@ describe("modelProviders", () => {
       const mp = loadModule(NOOP_SDK);
       assert.equal(
         mp.migrateModelId("anthropic", undefined),
-        "claude-opus-4-8",
+        "claude-opus-5-5",
       );
-      assert.equal(mp.migrateModelId("anthropic", ""), "claude-opus-4-8");
+      assert.equal(mp.migrateModelId("anthropic", ""), "claude-opus-5-5");
     });
 
     it("isKnownRetired flags retired ids only", () => {
@@ -180,6 +206,9 @@ describe("modelProviders", () => {
       const byId = Object.fromEntries(
         mp.getCuratedModels("anthropic").map((m) => [m.value, m]),
       );
+      assert.equal(byId["claude-opus-5-5"].tier, "deep");
+      assert.equal(byId["claude-sonnet-5-5"].tier, "balanced");
+      assert.equal(byId["claude-haiku-5-5"].tier, "fast");
       assert.equal(byId["claude-opus-4-8"].tier, "deep");
       assert.equal(byId["claude-sonnet-4-6"].tier, "balanced");
       assert.equal(byId["claude-haiku-4-5"].tier, "fast");

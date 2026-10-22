@@ -38,12 +38,42 @@ const PROVIDERS = {
     // through the "anthropic" adapter (Anthropic SDK streaming + tool use).
     engine: "tool-loop",
     adapter: "anthropic",
-    defaultModel: "claude-opus-4-8",
+    defaultModel: "claude-opus-5-5",
     // Curated fallback — current, non-deprecated IDs. Used for the Claude
     // Code CLI backend (which has no Models API) and whenever a live fetch
     // can't run (no API key, offline, error). Each entry also carries advisor
     // metadata (tier/reasoning/pricing).
     curatedModels: [
+      {
+        value: "claude-opus-5-5",
+        label: "Claude Opus 5.5",
+        tier: "deep",
+        reasoning: EFFORT_REASONING,
+        pricing: { input: 4, output: 20 },
+      },
+      {
+        value: "claude-sonnet-5-5",
+        label: "Claude Sonnet 5.5",
+        tier: "balanced",
+        reasoning: EFFORT_REASONING,
+        pricing: { input: 2, output: 10 },
+      },
+      {
+        value: "claude-haiku-5-5",
+        label: "Claude Haiku 5.5",
+        tier: "fast",
+        reasoning: EFFORT_REASONING,
+        // Up to 100K-token prompts ($0.50 / $2.50 beyond).
+        pricing: { input: 0.1, output: 0.5 },
+      },
+      {
+        value: "claude-fable-5-1",
+        label: "Claude Fable 5.1",
+        tier: "deep",
+        reasoning: EFFORT_REASONING,
+        pricing: { input: 10, output: 50 },
+      },
+      // Older models, still served.
       {
         value: "claude-opus-4-8",
         label: "Claude Opus 4.8",
@@ -73,13 +103,6 @@ const PROVIDERS = {
         reasoning: null,
         pricing: { input: 1, output: 5 },
       },
-      {
-        value: "claude-fable-5",
-        label: "Claude Fable 5",
-        tier: "deep",
-        reasoning: EFFORT_REASONING,
-        pricing: { input: 10, output: 50 },
-      },
     ],
     // Retired/deprecated IDs → current replacement. Lets a stale saved
     // selection self-heal instead of 404-ing at call time.
@@ -92,6 +115,8 @@ const PROVIDERS = {
       "claude-3-5-sonnet-20240620": "claude-sonnet-4-6",
       "claude-3-5-haiku-20241022": "claude-haiku-4-5",
       "claude-3-opus-20240229": "claude-opus-4-8",
+      // Superseded by Fable 5.1 at the same price.
+      "claude-fable-5": "claude-fable-5-1",
     },
     async listModels({ apiKey } = {}) {
       const client = new Anthropic({ apiKey });

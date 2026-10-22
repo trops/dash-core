@@ -92,18 +92,18 @@ describe("planEnsureDashTeam", () => {
 
 describe("modelForRole", () => {
   it("each role's tier on Claude models", () => {
-    assert.equal(tierModel("claude-code", "fast"), "claude-haiku-4-5");
+    assert.equal(tierModel("claude-code", "fast"), "claude-haiku-5-5");
     assert.equal(
       modelForRole(teamBot("planner"), "claude-code", {}),
-      "claude-opus-4-8",
+      "claude-opus-5-5",
     );
     assert.equal(
       modelForRole(teamBot("scout"), "anthropic", {}),
-      "claude-haiku-4-5",
+      "claude-haiku-5-5",
     );
     assert.equal(
       modelForRole(teamBot("builder"), "claude-code", {}),
-      "claude-sonnet-4-6",
+      "claude-sonnet-5-5",
     );
   });
 
@@ -118,7 +118,7 @@ describe("modelForRole", () => {
     // …only on that provider.
     assert.equal(
       modelForRole(teamBot("scout"), "anthropic", settings),
-      "claude-haiku-4-5",
+      "claude-haiku-5-5",
     );
   });
 
