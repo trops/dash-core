@@ -1,7 +1,7 @@
 # PRD: App Navigation — Manage pages in the left nav
 
-**Status:** In Progress (slices 1–2 implemented)
-**Last Updated:** 2026-10-03
+**Status:** Implemented (NAV-001–012, NAV-015, NAV-016). Open: NAV-008 AC4 / NAV-011 slice B (Add to dashboard), NAV-013, NAV-014.
+**Last Updated:** 2026-10-22
 **Owner:** John
 **Related PRDs:** [bot-teams.md](./bot-teams.md) (Bots view, TEAM-011), [command-palette-navigation.md](./command-palette-navigation.md), [widget-installation-model.md](./widget-installation-model.md), [scoped-widget-ids.md](./scoped-widget-ids.md)
 
@@ -30,10 +30,12 @@ Bots, providers and widgets are now core workflows — bots use providers, run o
 
 ### Current State
 
+_(The state before this PRD, kept as written.)_
+
 - `Navigation/DashSidebar.js`: Search, "+ New Dashboard", Recents, dashboards by folder; Settings only via the user menu. Collapsed, only Search and New show.
 - `Navigation/DashTabBar.js` + `Dashboard/DashboardStage.js`: tabs are always dashboards (`{ id: workspace.id, name, workspace }`); restore drops ids that aren't dashboards; much of the stage assumes a dashboard is selected; the tab bar only renders when one is.
 - `Settings/AppSettingsModal.js`: 12 hard-coded sections. Most use `Settings/SectionLayout.js` (list + detail) and don't depend on the modal (no close callback), so they can render full-screen.
-- ~10 callers use `openAppSettings(section, …)` (Bots view next steps, Draft banner, command palette, Bot Activity panel, `dash:open-settings-create-provider`).
+- ~10 callers use `openAppSettings(section, …)` (Bots view next steps, command palette, Bot Activity panel, `dash:open-settings-create-provider`).
 
 **Limitations:** no non-dashboard full-screen view; the Settings modal is the only home for app areas; no attention indicators in the nav.
 
@@ -73,46 +75,46 @@ As a user, I want Dashboards, Bots, Providers, Widgets and Themes in the left na
 
 **Acceptance Criteria:**
 
-- [ ] AC1: The sidebar shows a **Manage** group (Dashboards, Bots, Providers, Widgets, Themes) below the Dashboards group (New dashboard + Recents + folders, unchanged).
-- [ ] AC2: Collapsed, every Manage item stays visible as an icon with its label as a tooltip.
-- [ ] AC3: Bots shows an amber dot + count when bots need approval; Providers when providers need setup or sign-in.
-- [ ] AC4: The item for the active page tab is highlighted, like the active dashboard.
-- [ ] AC5: Built from dash-react `Sidebar` primitives and theme tokens (no bare colours).
+- [x] AC1: The sidebar shows a **Manage** group (Dashboards, Bots, Providers, Widgets, Themes) below the Dashboards group (New dashboard + Recents + folders, unchanged). _(It sits after Recents and before the folder groups, so it stays near the top.)_
+- [x] AC2: Collapsed, every Manage item stays visible as an icon with its label as a tooltip.
+- [x] AC3: Bots shows an amber dot + count when bots need approval; Providers when providers need setup or sign-in. _(Providers: needs setup; "sign in again" can't be known without connecting — see NAV-007.)_
+- [x] AC4: The item for the active page tab is highlighted, like the active dashboard.
+- [x] AC5: Built from dash-react `Sidebar` primitives and theme tokens (no bare colours).
 
 **NAV-002: Pages open as tabs**
 As a user, I want a Manage page to open as a tab beside my dashboards so I can switch between them.
 
 **Acceptance Criteria:**
 
-- [ ] AC1: Tabs carry a kind: `{ kind: "dashboard" | "page", id, name, workspace? }`; page ids are `page:<key>` (`page:bots`, …).
-- [ ] AC2: One tab per page: clicking a Manage item opens its tab, or switches to it if open.
-- [ ] AC3: Page tabs close like dashboard tabs and are saved/restored with the session (unknown page keys are dropped).
-- [ ] AC4: The tab bar shows whenever any tab is open (not only when a dashboard is); page tabs show the page's icon.
-- [ ] AC5: Dashboard-only behaviour (header, page tabs, dashboard theme, Bots view mode, team lead, recents, missing-widget/config banners) runs only for dashboard tabs.
-- [ ] AC6: Switching tabs with unsaved dashboard edits asks first (closes today's gap where switching wasn't guarded).
+- [x] AC1: Tabs carry a kind: `{ kind: "dashboard" | "page", id, name, workspace? }`; page ids are `page:<key>` (`page:bots`, …).
+- [x] AC2: One tab per page: clicking a Manage item opens its tab, or switches to it if open.
+- [x] AC3: Page tabs close like dashboard tabs and are saved/restored with the session (unknown page keys are dropped).
+- [x] AC4: The tab bar shows whenever any tab is open (not only when a dashboard is); page tabs show the page's icon.
+- [x] AC5: Dashboard-only behaviour (header, page tabs, dashboard theme, Bots view mode, team lead, recents, missing-widget/config banners) runs only for dashboard tabs.
+- [x] AC6: Switching tabs with unsaved dashboard edits asks first (closes today's gap where switching wasn't guarded).
 
 **NAV-003: Full-screen page host**
 As a user, I want Manage pages to use the whole main area in a consistent layout.
 
 **Acceptance Criteria:**
 
-- [ ] AC1: A page host renders the page in the **app theme** (outside `DashboardThemeProvider`).
-- [ ] AC2: Page header: small "Manage" label, title, one-line description, and the page's primary action (New provider, New bot, Install widget, New theme, New dashboard / New folder).
-- [ ] AC3: List + detail pages: the filter bar stays fixed; the list and the detail panel fill the remaining height and scroll independently; the detail panel doesn't change size with its content.
+- [x] AC1: A page host renders the page in the **app theme** (outside `DashboardThemeProvider`).
+- [x] AC2: Page header: small "Manage" label, title, one-line description, and the page's primary action (New provider, New bot, Install widget, New theme, New dashboard / New folder). _Consolidation Phase 2a (2026-10-19): **New Dashboard**, **New Widget** and **New Bot** open Create on that type (dash-electron create-entry CRE-008); "Install widget" is now **New Widget**, and installing from the registry, a zip or a folder is one of Create's no-AI starts (it lands back on this page). New Provider, New Theme and New Folder still create in place._
+- [x] AC3: List + detail pages: the filter bar stays fixed; the list and the detail panel fill the remaining height and scroll independently; the detail panel doesn't change size with its content.
 
 **NAV-004: Settings keeps only settings; links follow the move**
 **Acceptance Criteria:**
 
-- [ ] AC1: The Settings modal lists General, Account, Notifications, MCP Server, AI Assistant, Privacy & Security.
-- [ ] AC2: `openAppSettings("bots" | "providers" | "widgets" | "themes" | "dashboards" | "folders")` opens the matching page tab instead (provider deep links — name/type/class, create — still work).
-- [ ] AC3: The command palette gains "Go to Dashboards / Bots / Providers / Widgets / Themes".
+- [x] AC1: The Settings modal lists General, Account, Notifications, MCP Server, AI Assistant, Privacy & Security. _(The AI Assistant section is labelled **AI** in the list.)_
+- [x] AC2: `openAppSettings("bots" | "providers" | "widgets" | "themes" | "dashboards" | "folders")` opens the matching page tab instead (provider deep links — name/type/class, create — still work).
+- [x] AC3: The command palette gains "Go to Dashboards / Bots / Providers / Widgets / Themes".
 
 **NAV-005: Dashboards page**
 **Acceptance Criteria:**
 
-- [ ] AC1: List of dashboards grouped by folder (colour, page and widget counts, attention dot); search across dashboard and widget names; **Folder** filter (see NAV-010).
-- [ ] AC2: Detail: folder and theme, attention line, a layout preview of the first page, pages, widgets (with their package), bots (team, with status), providers used.
-- [ ] AC3: Actions: Open (as a tab), Bots view, Dashboard Config; page actions New dashboard, New folder; folder management (rename, delete, move) replaces Settings › Folders.
+- [x] AC1: List of dashboards grouped by folder (colour, page and widget counts, attention dot); search across dashboard and widget names; **Folder** filter (see NAV-010).
+- [x] AC2: Detail: folder and theme, attention line, a layout preview of the first page, pages, widgets (with their package), bots (team, with status), providers used.
+- [x] AC3: Actions: Open (as a tab), Bots view, Dashboard Config; page actions New dashboard, New folder; folder management (rename, delete, move) replaces Settings › Folders. _(Folders are the page's Dashboards / Folders switch. **New Dashboard** opens Create on Dashboard — consolidation Phase 2a.)_
 
 **NAV-006: Bots page**
 **Acceptance Criteria:**
@@ -133,7 +135,7 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 - [x] AC1: The list mirrors the hierarchy **org → package → widgets**: org headings; package rows (widget count, version, Yours marker, amber dot for update available / unpublished changes) that expand to their widget rows.
 - [x] AC2: Search matches package and widget names; **Org** filter (NAV-010); chips In use / Not used / Mine.
 - [x] AC3: Package detail: full name, version and source, description, its widgets (each selectable), used on (dashboards, Open), needs providers, permissions; actions Update to vX (others' packages) and Uninstall.
-- [ ] AC4: Widget detail: link back to its package, used on, needs providers, permissions; Add to dashboard. _(Done except Add to dashboard — deferred to the live-preview slice.)_
+- [ ] AC4: Widget detail: link back to its package, used on, needs providers, permissions; Add to dashboard. _(Done except Add to dashboard — still open, NAV-011 slice B. The back link is superseded by AC5's drill-in list (2026-10-22).)_
 - [x] AC5 (consolidation Phase 4b, 2026-10-21): **The list drills in** (replaces AC1's expanding rows and AC4's back link). The list shows packages only (dash-react `ListRow`, badges in the title), grouped by org; before one is opened the detail is a summary (packages · widgets, in use, updates) — the first package no longer opens by itself. Opening a package turns the list into its widgets under a `PanelHeader` that is the package, with ← back to all packages; **About this package** (first row) shows the package page, a widget row its page. The package page no longer lists its widgets (the list does). The open package is looked up among all packages, so a filter never swaps it: In use / Not used filter its widgets, and with none left the list says "No widgets in <package> match <chip>." A search lists matches flat — **Packages** whose name matches, then **Widgets** wherever they live, each "in <package>"; opening one and clearing the search lands inside its package. **Uninstall on the widget page**: its ⋯ has **Uninstall <package>…**; the confirm (`uninstallCopy`) names the widgets that go with it and where each is used, says those cells will show "Widget Not Found" until reinstalled from the registry — or, for an AI-built or local package, that it can't be undone (it isn't in the registry). Built-ins have no Uninstall.
 
 **NAV-009: Themes page**
@@ -149,7 +151,7 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 
 **NAV-011: Live widget preview** _(slice A implemented 2026-10-04; Add to dashboard is slice B)_ — the widget detail renders the selected widget live in an isolated frame (the AI Widget Builder's `evaluateBundle` path with error isolation), using the user's providers; a widget whose provider isn't set up shows "Needs a <type> provider to show live data". _Consolidation Phase 4b (2026-10-21): the preview runs by itself when the page opens (and again after a provider is picked) — no Run preview click — unless it would start a server (an MCP provider): that one says "This preview starts your <type> server and calls the real service." and waits for **Start preview**. Stop stays stopped until Reload; a failed load has Try again; loading says "Starting preview…"._
 
-**NAV-012: Authoring actions** _(implemented 2026-10-04 — see notes; no org membership: users publish only under their own username; **Edit in Widget Builder superseded 2026-10-20 by consolidation Phase 3**: **Change with AI** opens Create › Change <widget> through the Dash team, and **Edit the code yourself** opens the Widget Builder by hand — see dash-electron create-entry CRE-014)_ — for packages the user authored: AI-built drafts get **Publish…** and **Edit in Widget Builder**; published packages get **Publish vX.Y.Z** when changed since the last publish (else **Publish new version…**) and **Edit in Widget Builder**; the widget detail gets **Edit in Widget Builder**. Requires `deriveWidgetOwnership` to recognise packages owned by an org the user belongs to (known gap).
+**NAV-012: Authoring actions** _(implemented 2026-10-04 — see notes; no org membership: users publish only under their own username; **Edit in Widget Builder superseded 2026-10-20 by consolidation Phase 3**: **Change with AI** opens Create › Change <widget> through the Dash team, and **Edit the code yourself** opens the Widget Builder by hand — see dash-electron create-entry CRE-014)_ — for packages the user authored: AI-built drafts get **Publish…** and **Edit in Widget Builder**; published packages get **Publish vX.Y.Z** when changed since the last publish (else **Publish new version…**) and **Edit in Widget Builder**; the widget detail gets **Edit in Widget Builder**. _(The org-membership requirement was dropped: users publish only under their own username — see the NAV-012 notes.)_
 
 **NAV-015: Choose where a provider is used** _(implemented 2026-10-08 — see Phase 5 notes)_
 
@@ -185,7 +187,7 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 - [x] AC3: Leaving Settings, or closing, with unsaved changes asks "Discard unsaved changes?".
 - [x] AC4: Manage › Bots shows the selected bot's page on the right, replacing the summary card and its separate Edit mode. The page-level Spending and Log stay as the all-bots views. The Dash team keeps its own panel.
 - [x] AC5: Clicking a bot in the Bots panel opens its page in a large modal; the panel is the list (status, approvals); "bot settings" links open the modal on Settings — replacing the dead cog (`openAppSettings("bots")` had no Settings section left). _Implemented: `BotPageModal`, opened by the `dash:open-bot` event `{ botId, tab }` that DashboardStage answers; a clicked notification and Needs you › Review open it too. Clicking outside doesn't close it while Settings has unsaved edits._
-- [x] AC6: A dashboard's Bots view shows the same page for the selected bot beside its team diagram. _Implemented: `BotsView` renders `BotPage` for saved bots, with the team's ⋯ actions (Show on dashboard, Publish bot…, Remove from team, Delete; Turn off lead) through its `actions`/`below` slots and a lead's drafts through `chatProps`. A lead's draft or a new bot keeps the bot form. The bot page now says where an installed bot came from, and an error's "Open Settings › Providers" opens the app's settings everywhere (it had opened the bot's own Settings tab)._
+- [x] AC6: A dashboard's Bots view shows the same page for the selected bot beside its team diagram. _Implemented: `BotsView` renders `BotPage` for saved bots, with the team's ⋯ actions (Show on dashboard, Publish bot…, Remove from team, Delete; Turn off lead) through its `actions`/`below` slots. A new bot keeps the bot form. The bot page now says where an installed bot came from, and an error's "Open Settings › Providers" opens the app's settings everywhere (it had opened the bot's own Settings tab)._ (A lead's drafts: superseded by the lead's hand-off to the Dash team, 2026-10-22 — consolidation Phase 2c-2 removed drafts; see Appendix: history.)
 
 - [x] AC7 (consolidation Phase 4a, 2026-10-21): **The Dash team's page.** The Bots panel's pinned **Dash team** row opens it in the same large modal (`BotPageModal` with `{ dashTeam: true, tab }`, from the `dash:open-dash-team` event; `Bots/DashTeamPage.js`). Header: the team, "Planner · Scout · Builder · Checker". **Conversation** (default): your questions, one thread each — the questions kept in Create's Recent (`questionThreads`), newest first, a lead's marked "asked <lead>" — and **New conversation**. A thread is AskStep: the Planner answers, follow-ups stay in the thread, and an answer that plans something has **Open as a plan** (closes the modal, opens Create on it). Plans and builds the team runs in Create aren't threads (a thread is a question, not the Planner's run history). A paused Planner shows "The Dash team is paused" with **Turn on** instead of the box. **Settings**: the four roles (Planner, Scout, Builder, Checker), each On / Paused with its job · model · when it last ran; one opens its DashTeamPanel (pause, model, last run) and **Edit** its form. Unsaved role edits are never dropped silently: another tab, back or close asks "Discard unsaved changes?", and the modal ignores outside clicks while there are some. Create's Recent keeps the newest 20 of each kind (plans, questions), so asking a lot never pushes plans out. The sidebar's Create panel no longer has an Ask box (create-entry CRE-007).
 
@@ -211,7 +213,7 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 ### Dependencies
 
 - dash-react: `Sidebar` primitives (exist); new filter menu (NAV-010).
-- `deriveWidgetOwnership` org-membership fix (NAV-012).
+- ~~`deriveWidgetOwnership` org-membership fix (NAV-012).~~ Dropped — there is no org membership (NAV-012 notes).
 
 ---
 
@@ -264,7 +266,7 @@ NAV-005, NAV-004 AC3 (palette). NAV-010 (`FilterMenu`) moved up into this slice 
 **Implementation notes (slice 2, 2026-10-03):**
 
 - **dash-react `FilterMenu`** (NAV-010): searchable multi-select for open-ended lists — button reads "Folder" / "Folder: Work" / "Folder: 3 selected" with a clear button; the menu has its own search, a checkbox per option with its count, "No match", closes on Escape or a click outside; theme tokens + `dr-filter-menu` hooks. Falls back cleanly when the ThemeContext default (`currentTheme: null`) is used.
-- `AppPages/DashboardsPage.js` replaces `DashboardsSection` on the Dashboards page: filter bar (search across dashboard **and widget** names, Folder `FilterMenu`, Grouped / A-Z, Browse marketplace) fixed above a full-height list (grouped by folder; theme colour dots, "N pages · M widgets", amber dot when a required provider is unresolved or a team bot is waiting for approval) and detail (name + "folder · theme", attention line, layout preview per page with page chips, widgets with packages, team bots with status dots + LEAD, providers used + unresolved note, Folder / Theme selects, registry badge + rating). Actions: Open, Bots view, Dashboard Config, and ⋯ → Rename / Duplicate / Export ZIP / Publish / Delete (confirmed). New Dashboard opens Create on Dashboard (consolidation Phase 2a, 2026-10-19 — the chooser, the Wizard and the page's own marketplace view are gone; the registry is one of Create's no-AI starts).
+- `AppPages/DashboardsPage.js` replaces `DashboardsSection` on the Dashboards page: filter bar (search across dashboard **and widget** names, Folder `FilterMenu`, Grouped / A-Z; its Browse marketplace button was later removed) fixed above a full-height list (grouped by folder; theme colour dots, "N pages · M widgets", amber dot when a required provider is unresolved or a team bot is waiting for approval) and detail (name + "folder · theme", attention line, layout preview per page with page chips, widgets with packages, team bots with status dots + LEAD, providers used + unresolved note, Folder / Theme selects, registry badge + rating). Actions: Open, Bots view, Dashboard Config, and ⋯ → Rename / Duplicate / Export ZIP / Publish / Delete (confirmed). New Dashboard opens Create on Dashboard (consolidation Phase 2a, 2026-10-19 — the chooser, the Wizard and the page's own marketplace view are gone; the registry is one of Create's no-AI starts).
 - `AppPages/dashboardSummary.js` (pure): pages + grid per page, widgets (name + `@scope/package`), providers used, unresolved required providers — same derivations as Dashboard Config. `AppPages/useApprovalsByDashboard.js` counts waiting approvals per dashboard (re-reads on approval / run / bot-list events).
 - Stage: `handleOpenDashboardBotsView` sets the dashboard's stage mode to Bots and opens its tab; `handleOpenDashboardConfig` opens the tab, then (once it's showing) enters edit mode the usual way (snapshot, so Cancel works) and opens Config.
 - Command palette: a **Go to** group (Dashboards, Bots, Providers, Widgets, Themes) opens the page tab.
@@ -290,7 +292,7 @@ NAV-010 (dash-react first), then NAV-006, NAV-008, NAV-009 in the list + detail 
 - Package detail: name, full id, source (Installed / AI-built / Draft / Built-in) + version, description, its widgets (each selectable, with how many dashboards use it), Used on (Open), Needs providers, Permissions ("Manage permissions" opens Settings › Privacy & Security). Actions: Update to vX (sign-in gate first), Resume (drafts), Publish… (installed packages), Open in Finder, Uninstall / Delete (confirmed, naming the dashboards that use it). Built-ins get no actions.
 - Widget detail: "← <package>" back, icon, name + component id, description, Used on, Needs providers with required tools. **Add to dashboard is deferred** (no flow yet for placing a widget outside edit mode) — with the live preview (NAV-011).
 - `AppPages/widgetSummary.js` (pure): `widgetOrgs` builds org → package → widgets with version, source, update, providers, usage; `filterOrgs` applies search / org / chip. Usage counts every page of a dashboard (`findWidgetUsage` only read `ws.layout`, so multi-page dashboards were missed). "Mine" is AI-built packages and drafts until widget ownership recognises the user's orgs (NAV-012).
-- `AppPages/useWidgetInstall.js`: the ZIP / folder install flow and progress-modal state, moved from `WidgetsSection`; New Widget shows the existing install picker (Widget Builder, Discover, ZIP, folder) in the detail panel, then the result.
+- `AppPages/useWidgetInstall.js`: the ZIP / folder install flow and progress-modal state, moved from `WidgetsSection`. The New Widget install picker: superseded by Create (2026-10-22) — **New Widget** opens Create › Widget; Create's no-AI starts (registry, zip, folder) send an install request that this page runs. See Appendix: history.
 - Stage passes `onOpenPrivacySettings` → `openAppSettings("privacy-security")`.
 - `WidgetsSection` is no longer used by any page; kept for the cleanup.
 
@@ -318,7 +320,7 @@ NAV-010 (dash-react first), then NAV-006, NAV-008, NAV-009 in the list + detail 
 
 **Implementation notes (live widget preview — NAV-011 slice A, 2026-10-04):**
 
-- The Widgets page widget detail has a **Preview** section (and each widget row in the package detail a **Preview** button that opens it). It runs **on click** (Run preview → Reload / Stop): a live preview starts MCP servers and calls real APIs, like placing the widget on a dashboard.
+- The Widgets page widget detail has a **Preview** section. Running on click: superseded by NAV-011's Phase 4b note (2026-10-21) — it runs by itself, except a preview that would start an MCP server waits for **Start preview**. See Appendix: history.
 - It renders inside the host's sandbox: dash-core can't import dash-electron's iframe (`PreviewIframe`, the Widget Builder's), so `utils/widgetPreviewRenderer.js` is a slot the host fills at startup (`setWidgetPreviewRenderer`, like `setHostModules`). Without one the detail says live preview isn't available.
 - `AppPages/WidgetPreview.js`: loads the package bundle (`mainApi.widgets.readBundle`), mounts the widget by its last name segment, passes `userConfig` defaults as props. **Providers:** a picker per provider type the widget needs, pre-selecting the user's default for that type (`resolveProviderName`, the rule dashboards use) or the only provider of that type; with several and no default the user picks before Run (preview only — nothing app-wide changes; changing it stops a running preview). Only those types are declared to the sandbox. A required type with no provider at all → "Needs a <type> provider to show live data." + **Set up** (provider create flow). Load failures and errors from the widget show in the panel. (Default-only, as first planned, would have blocked every MCP widget here: dashboards bind providers per widget, so no MCP provider was a type default.)
 - Built-in widgets don't get a live preview (they have no bundle, and rendering them in the host tree would bypass the sandbox).
@@ -333,7 +335,7 @@ NAV-010 (dash-react first), then NAV-006, NAV-008, NAV-009 in the list + detail 
 
 ### Phase 4: Previews and authoring
 
-NAV-011, NAV-012 (after the ownership fix), P2 items.
+NAV-011 slice A and NAV-012 shipped (2026-10-04; ownership needed no org fix). Open: NAV-011 slice B (Add to dashboard), NAV-013, NAV-014.
 
 ### Phase 5: Choose where a provider is used (NAV-015)
 
@@ -383,3 +385,14 @@ NAV-011, NAV-012 (after the ownership fix), P2 items.
 | 1.14    | 2026-10-20 | John   | NAV-012: Change with AI / Edit the code yourself (Phase 3) |
 | 1.15    | 2026-10-21 | John   | NAV-016 AC7: the Dash team's page (Phase 4a)               |
 | 1.16    | 2026-10-21 | John   | NAV-008 AC5 drill-in list, NAV-011 runs by itself (4b)     |
+| 1.17    | 2026-10-22 | John   | Phase 5 reconciliation: status, NAV-001–005 ticked, Create |
+
+---
+
+## Appendix: history
+
+Text replaced by later work, kept as it was written.
+
+- **NAV-016 AC6, a lead's drafts (2026-10-19):** "…through its `actions`/`below` slots and a lead's drafts through `chatProps`. A lead's draft or a new bot keeps the bot form." Drafts were removed in consolidation Phase 2c-2; a lead now hands work to the Dash team.
+- **Slice 3b, the New Widget install picker (2026-10-03):** "New Widget shows the existing install picker (Widget Builder, Discover, ZIP, folder) in the detail panel, then the result."
+- **NAV-011 slice A, preview on click (2026-10-04):** "(and each widget row in the package detail a **Preview** button that opens it). It runs **on click** (Run preview → Reload / Stop): a live preview starts MCP servers and calls real APIs, like placing the widget on a dashboard."

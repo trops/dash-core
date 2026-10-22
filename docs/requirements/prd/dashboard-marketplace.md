@@ -1,7 +1,7 @@
 # PRD: Dashboard Configuration Marketplace
 
-**Status:** Implemented
-**Last Updated:** 2026-04-24
+**Status:** Implemented — P0 and P1 built; P2 partly (each story says what's built)
+**Last Updated:** 2026-10-22
 **Owner:** Core Team
 **Related PRDs:** [Widget Installation Model](widget-installation-model.md)
 **Epic:** DASH-10
@@ -152,15 +152,15 @@ The dash-registry (`registry-index.json`) supports browsing and installing indiv
 > so that dashboards can be reliably exported, shared, and imported across installations.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** Implemented
 
 **Acceptance Criteria:**
 
--   [ ] AC1: A `.dashboard.json` schema is defined that includes: workspace layout (full `DashboardModel` JSON), widget dependencies (package name, version, required flag), event wiring (source/target widget + event/handler names), provider requirements (type, class, which widgets use them), metadata (name, description, author, tags, icon, screenshots), and a `shareable` boolean flag
--   [ ] AC2: The `shareable` flag defaults to `true` when a user creates a dashboard config from their own workspace, and is set to `false` when importing from registry or ZIP
--   [ ] AC3: Dashboard author attribution is separate from widget author attribution -- each widget entry in the config retains its original `author` field
--   [ ] AC4: Schema includes a `schemaVersion` field for future compatibility
--   [ ] AC5: Schema validation rejects configs missing required fields (name, workspace, widgets array)
+-   [x] AC1: A `.dashboard.json` schema is defined that includes: workspace layout (full `DashboardModel` JSON), widget dependencies (package name, version, required flag), event wiring (source/target widget + event/handler names), provider requirements (type, class, which widgets use them), metadata (name, description, author, tags, icon, screenshots), and a `shareable` boolean flag
+-   [x] AC2: The `shareable` flag defaults to `true` when a user creates a dashboard config from their own workspace, and is set to `false` when importing from registry or ZIP
+-   [x] AC3: Dashboard author attribution is separate from widget author attribution -- each widget entry in the config retains its original `author` field
+-   [x] AC4: Schema includes a `schemaVersion` field for future compatibility
+-   [x] AC5: Schema validation rejects configs missing required fields (name, workspace, widgets array) _(Built: `electron/schema/dashboard-config.schema.json` requires schemaVersion, name, workspace, widgets; `dashboardConfigValidator.js`)_
 
 **Edge Cases:**
 
@@ -282,10 +282,10 @@ The schema builds on existing models:
 
 **Definition of Done:**
 
--   [ ] Schema documented with all fields, types, and validation rules
--   [ ] JSON Schema file created for programmatic validation
--   [ ] Example configs created for testing
--   [ ] Schema handles all existing workspace/layout model properties
+-   [x] Schema documented with all fields, types, and validation rules
+-   [x] JSON Schema file created for programmatic validation
+-   [x] Example configs created for testing
+-   [x] Schema handles all existing workspace/layout model properties
 
 ---
 
@@ -296,16 +296,16 @@ The schema builds on existing models:
 > so that I can share it with colleagues via file transfer.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** Implemented
 
 **Acceptance Criteria:**
 
--   [ ] AC1: User can right-click or use a menu action on any workspace to select "Export as ZIP"
--   [ ] AC2: The exported ZIP contains a valid `.dashboard.json` file following the schema from US-001
--   [ ] AC3: The export process reads the current workspace from `workspaceController`, resolves widget dependencies from installed widgets, extracts event wiring from `LayoutModel` listeners, and aggregates provider requirements from `.dash.js` configs
--   [ ] AC4: User is prompted with a native file save dialog to choose the export location
--   [ ] AC5: The `shareable` flag is set to `true` in the exported config (user created this dashboard)
--   [ ] AC6: Dashboard author is set to the current user; each widget's `author` field comes from the widget's package metadata
+-   [x] AC1: User can right-click or use a menu action on any workspace to select "Export as ZIP" _(Built: the ⋯ menu on the Dashboards page — **Export ZIP**, or, when the dashboard has bots, **Export ZIP with bots** / **Export ZIP without bots**)_
+-   [x] AC2: The exported ZIP contains a valid `.dashboard.json` file following the schema from US-001
+-   [x] AC3: The export process reads the current workspace from `workspaceController`, resolves widget dependencies from installed widgets, extracts event wiring from `LayoutModel` listeners, and aggregates provider requirements from `.dash.js` configs
+-   [x] AC4: User is prompted with a native file save dialog to choose the export location
+-   [x] AC5: The `shareable` flag is set to `true` in the exported config (user created this dashboard)
+-   [x] AC6: Dashboard author is set to the current user; each widget's `author` field comes from the widget's package metadata _(Built: `exportDashboardConfig` in `electron/controller/dashboardConfigController.js`)_
 
 **Edge Cases:**
 
@@ -334,12 +334,12 @@ ZIP contains devops-monitor.dashboard.json with shareable: true.
 
 **Definition of Done:**
 
--   [ ] Export action accessible from workspace context menu
--   [ ] Generated ZIP contains valid `.dashboard.json`
--   [ ] All widget dependencies resolved and included in config
--   [ ] Event wiring extracted from layout listeners
--   [ ] Provider requirements aggregated from widget configs
--   [ ] Native file save dialog used for export location
+-   [x] Export action accessible from the Dashboards page's ⋯ menu
+-   [x] Generated ZIP contains valid `.dashboard.json`
+-   [x] All widget dependencies resolved and included in config
+-   [x] Event wiring extracted from layout listeners
+-   [x] Provider requirements aggregated from widget configs
+-   [x] Native file save dialog used for export location
 
 ---
 
@@ -350,26 +350,26 @@ ZIP contains devops-monitor.dashboard.json with shareable: true.
 > so that I can use a dashboard shared by a colleague without manual setup.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** Implemented (AC8 open: a ZIP import opens the new dashboard without a summary)
 
 **Acceptance Criteria:**
 
--   [ ] AC1: User can trigger "Import Dashboard from ZIP" from the app menu or workspace list
--   [ ] AC2: A native file picker allows selecting a `.zip` file from disk
--   [ ] AC3: The system validates the `.dashboard.json` inside the ZIP against the schema
--   [ ] AC4: Required widgets that are not already installed are automatically downloaded and installed from the registry
--   [ ] AC5: The workspace is added to `workspaces.json` and appears in the workspace list
--   [ ] AC6: Event wiring from the config's `eventWiring` array is applied to the workspace's layout model `listeners` properties
--   [ ] AC7: The imported dashboard is marked `shareable: false` -- the user cannot re-publish someone else's dashboard
--   [ ] AC8: A summary is shown after import: widgets installed, events wired, providers needed
--   [ ] AC9: ZIP entries are validated against path traversal attacks (reuse existing `validateZipEntries` from `widgetRegistry.js`)
+-   [x] AC1: User can trigger "Import Dashboard from ZIP" from the app menu or workspace list _(Built: Create › Start without AI › Import dashboard from file)_
+-   [x] AC2: A native file picker allows selecting a `.zip` file from disk
+-   [x] AC3: The system validates the `.dashboard.json` inside the ZIP against the schema
+-   [x] AC4: Required widgets that are not already installed are automatically downloaded and installed from the registry
+-   [x] AC5: The workspace is added to `workspaces.json` and appears in the workspace list
+-   [x] AC6: Event wiring from the config's `eventWiring` array is applied to the workspace's layout model `listeners` properties
+-   [x] AC7: The imported dashboard is marked `shareable: false` -- the user cannot re-publish someone else's dashboard
+-   [ ] AC8: A summary is shown after import: widgets installed, events wired, providers needed _(Open, 2026-10-22: a ZIP import opens the new dashboard with no summary. A registry install (US-005) shows only a short line — "Dashboard X installed successfully." plus the bots added — with no events or providers summary either)_
+-   [x] AC9: ZIP entries are validated against path traversal attacks (reuse existing `validateZipEntries` from `widgetRegistry.js`)
 
 **Edge Cases:**
 
 -   ZIP contains invalid or missing `.dashboard.json` -> Show error, abort import
 -   Required widget not found in registry -> Show warning listing missing widgets; import proceeds with available widgets placed, missing slots show placeholder
 -   Widget version conflict (installed version doesn't match required range) -> Use installed version if compatible, warn if not
--   Duplicate workspace name -> Append " (imported)" suffix
+-   Duplicate workspace name -> The user names the dashboard in the import step; no " (imported)" suffix is added
 -   User already has an identical workspace -> Import creates a new copy with unique ID
 
 **Technical Notes:**
@@ -399,14 +399,14 @@ Dashboard shareable flag set to false.
 
 **Definition of Done:**
 
--   [ ] Import action accessible from app menu and workspace list
--   [ ] ZIP validation includes path traversal protection
--   [ ] Schema validation catches malformed configs
--   [ ] Missing widgets auto-installed from registry
--   [ ] Workspace created and visible in workspace list
--   [ ] Event wiring applied to layout model
--   [ ] Imported dashboard marked `shareable: false`
--   [ ] Post-import summary displayed to user
+-   [x] Import action accessible from Create › Start without AI
+-   [x] ZIP validation includes path traversal protection
+-   [x] Schema validation catches malformed configs
+-   [x] Missing widgets auto-installed from registry
+-   [x] Workspace created and visible in workspace list
+-   [x] Event wiring applied to layout model
+-   [x] Imported dashboard marked `shareable: false`
+-   [ ] Post-import summary displayed to user (AC8)
 
 ---
 
@@ -417,16 +417,16 @@ Dashboard shareable flag set to false.
 > so that I can discover pre-made dashboards for my use case.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** Implemented (AC2 superseded; AC5 is in the registry search but not offered in the app)
 
 **Acceptance Criteria:**
 
--   [ ] AC1: The registry index (`registry-index.json`) supports a new package type `"dashboard"` alongside existing `"widget"` type
--   [ ] AC2: The registry UI (widget browser) shows a toggle or tab to switch between widgets and dashboards
--   [ ] AC3: Dashboard entries display: name, description, author, tags, widget count, and icon
--   [ ] AC4: Search works across dashboard name, description, tags, and included widget names
--   [ ] AC5: Filter option: "Compatible with my installed widgets" shows dashboards whose required widgets are all already installed
--   [ ] AC6: Clicking a dashboard entry shows a detail view with full description, widget list, provider requirements, and event wiring summary
+-   [x] AC1: The registry index (`registry-index.json`) supports a new package type `"dashboard"` alongside existing `"widget"` type
+-   ~~AC2: The registry UI (widget browser) shows a toggle or tab to switch between widgets and dashboards~~ Superseded by Create (2026-10-22): Create › Start without AI › Browse dashboards in the registry, and Create's starters (create-entry CRE-002).
+-   [x] AC3: Dashboard entries display: name, description, author, tags, widget count, and icon _(Built: the list shows name, icon and widget and bot counts; description, author and tags are in the detail)_
+-   [x] AC4: Search works across dashboard name, description, tags, and included widget names _(Built: `searchRegistry` matches name, description, author, tags and widget names)_
+-   [ ] AC5: Filter option: "Compatible with my installed widgets" shows dashboards whose required widgets are all already installed _(Open, 2026-10-22: `searchRegistry` takes `compatibleWidgets`, but the browser doesn't offer the filter)_
+-   [x] AC6: Clicking a dashboard entry shows a detail view with full description, widget list, provider requirements, and event wiring summary _(Built: `RegistryDashboardDetail` — widgets with compatibility, providers, event wiring)_
 
 **Edge Cases:**
 
@@ -446,7 +446,7 @@ Key files to extend:
 **Example Scenario:**
 
 ```
-User opens the widget browser and switches to "Dashboards" tab.
+User opens Create › Start without AI › Browse dashboards in the registry.
 Registry shows 8 available dashboards.
 User searches "analytics".
 Results filter to 2 dashboards: "Algolia Analytics" and "GitHub Insights".
@@ -456,11 +456,11 @@ Detail view shows: 4 widgets required (2 installed, 2 need install), 3 event wir
 
 **Definition of Done:**
 
--   [ ] Registry index supports `type: "dashboard"` packages
--   [ ] Registry UI shows dashboards separately from widgets
--   [ ] Search and filter works for dashboard entries
--   [ ] Compatibility filter based on installed widgets
--   [ ] Dashboard detail view shows complete information
+-   [x] Registry index supports `type: "dashboard"` packages
+-   [x] Registry UI shows dashboards separately from widgets (Browse dashboards in the registry)
+-   [x] Search works for dashboard entries (the compatibility filter is AC5, open)
+-   [ ] Compatibility filter based on installed widgets (AC5)
+-   [x] Dashboard detail view shows complete information
 
 ---
 
@@ -471,17 +471,17 @@ Detail view shows: 4 widgets required (2 installed, 2 need install), 3 event wir
 > so that I can set up a pre-made dashboard without needing a ZIP file.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** Implemented (AC6 partial: the post-install summary is a one-line result and the bots added)
 
 **Acceptance Criteria:**
 
--   [ ] AC1: Dashboard detail view (from US-004) includes an "Install" button
--   [ ] AC2: Clicking "Install" triggers the same import flow as ZIP import (US-003) but sourced from the registry instead of a local file
--   [ ] AC3: The dashboard config is fetched from the registry, validated, and processed identically to ZIP import
--   [ ] AC4: All required widgets are auto-installed from the registry
--   [ ] AC5: The installed dashboard is marked `shareable: false`
--   [ ] AC6: Post-install summary shows widgets installed, events wired, and providers needed
--   [ ] AC7: If the user already has a workspace with the same name, the import appends " (imported)" to avoid collision
+-   [x] AC1: Dashboard detail view (from US-004) includes an "Install" button
+-   [x] AC2: Clicking "Install" triggers the same import flow as ZIP import (US-003) but sourced from the registry instead of a local file
+-   [x] AC3: The dashboard config is fetched from the registry, validated, and processed identically to ZIP import
+-   [x] AC4: All required widgets are auto-installed from the registry
+-   [x] AC5: The installed dashboard is marked `shareable: false`
+-   [~] AC6: Post-install summary shows widgets installed, events wired, and providers needed _(Partial, 2026-10-22: `installDashboardFromRegistry` installs it — the detail's Install asks for a folder and name first, and needs a registry sign-in — but the summary (`installedText` in `Settings/details/dashboardBots.js`) is only "Dashboard X installed successfully." plus the bots added (paused) and any not wired. The install progress list shows each widget; nothing shows events wired or providers needed)_
+-   [x] AC7: If the user already has a workspace with the same name, the import appends " (imported)" to avoid collision _(Changed: the user names the dashboard before it installs, instead of a suffix)_
 
 **Edge Cases:**
 
@@ -512,13 +512,13 @@ Dashboard marked shareable: false.
 
 **Definition of Done:**
 
--   [ ] Install button on dashboard detail view
--   [ ] Dashboard config fetched from registry
--   [ ] Import pipeline shared with ZIP import flow
--   [ ] Widgets auto-installed from registry
--   [ ] Dashboard marked `shareable: false`
--   [ ] Post-install summary displayed
--   [ ] Error handling with rollback on failure
+-   [x] Install button on dashboard detail view
+-   [x] Dashboard config fetched from registry
+-   [x] Import pipeline shared with ZIP import flow
+-   [x] Widgets auto-installed from registry
+-   [x] Dashboard marked `shareable: false`
+-   [~] Post-install summary displayed _(partial: a one-line result and the bots added; no events or providers — AC6)_
+-   [ ] Error handling with rollback on failure (not re-checked, 2026-10-22)
 
 ---
 
@@ -531,13 +531,13 @@ Dashboard marked shareable: false.
 > so that other users can discover and install it.
 
 **Priority:** P1
-**Status:** Backlog
+**Status:** Implemented (Publish in the Dashboards page's ⋯ menu; AC1 and AC3 checked 2026-10-22, the rest not re-checked)
 
 **Acceptance Criteria:**
 
--   [ ] AC1: "Publish to Registry" option is only available for dashboards with `shareable: true` (user-created dashboards, not imported ones)
+-   [x] AC1: "Publish to Registry" option is only available for dashboards with `shareable: true` (user-created dashboards, not imported ones) _(Built: `prepareDashboardForPublish` refuses `shareable: false`)_
 -   [ ] AC2: User can add/edit description, tags, icon, and screenshots before publishing
--   [ ] AC3: The published dashboard appears in the registry as a `type: "dashboard"` package
+-   [x] AC3: The published dashboard appears in the registry as a `type: "dashboard"` package
 -   [ ] AC4: Dashboard author attribution is preserved; widget authors are credited individually
 -   [ ] AC5: Publishing validates that all referenced widgets exist in the registry
 -   [ ] AC6: User receives confirmation with a link/identifier for the published dashboard
@@ -580,7 +580,7 @@ Dashboard published. Confirmation: "Analytics Hub published to registry."
 > so that I can understand the impact before importing a dashboard.
 
 **Priority:** P1
-**Status:** Backlog
+**Status:** Partly built: the registry detail shows each widget's compatibility and blocks install when a required widget is unavailable (`checkCompatibility`, `RegistryDashboardDetail`); ACs not re-checked one by one (2026-10-22)
 
 **Acceptance Criteria:**
 
@@ -627,7 +627,7 @@ User sees summary. Proceeds with install knowing JiraWidget won't be available.
 > so that I can evaluate whether it meets my needs.
 
 **Priority:** P1
-**Status:** Backlog
+**Status:** Partly built: `getDashboardPreview` feeds the registry detail (description, widgets, providers, wiring); ACs not re-checked one by one (2026-10-22)
 
 **Acceptance Criteria:**
 
@@ -679,7 +679,7 @@ User decides this fits their needs and clicks "Install".
 > so that I can get the dashboard fully functional in one step.
 
 **Priority:** P2
-**Status:** Backlog
+**Status:** Backlog — `getProviderSetupManifest` exists in the main process, but no screen uses it (2026-10-22)
 
 **Acceptance Criteria:**
 
@@ -714,7 +714,7 @@ This builds on the existing provider system. Provider requirements are aggregate
 > so that I can get the latest layout improvements and new widget integrations.
 
 **Priority:** P2
-**Status:** Backlog
+**Status:** Partly built: `checkDashboardUpdates` runs in the app's update check (`useAppUpdates`, App Updates); ACs not re-checked one by one (2026-10-22)
 
 **Acceptance Criteria:**
 
@@ -749,7 +749,7 @@ Requires tracking installed dashboard source (registry ID + version) in workspac
 > so that I can choose high-quality, well-maintained configurations.
 
 **Priority:** P2
-**Status:** Backlog
+**Status:** Partly built: ratings are saved locally (`dashboardRatingsApi`) and shown with `StarRating` in the registry detail; no shared reviews (2026-10-22)
 
 **Acceptance Criteria:**
 
@@ -858,7 +858,7 @@ Requires a backend service or registry extension for storing ratings. This is a 
 
 **Steps:**
 
-1. User selects "Import Dashboard" from the app menu or workspace list "+" button
+1. User opens Create › Start without AI › Import dashboard from file
 2. System opens native file picker filtered to `.zip` files
 3. User selects the ZIP file
 4. System extracts and validates `.dashboard.json` against schema
@@ -891,6 +891,8 @@ Requires a backend service or registry extension for storing ratings. This is a 
 ---
 
 ### Workflow 2: Browse and Install from Registry
+
+> **Superseded entry (2026-10-22):** there is no Dashboards tab in a widget browser. Dashboards are found through Create › Start without AI › Browse dashboards in the registry, or Create's starters (dash-electron create-entry CRE-002). The steps after picking a dashboard are unchanged.
 
 **Trigger:** User wants to find a pre-made dashboard for a specific use case
 
@@ -934,7 +936,7 @@ Requires a backend service or registry extension for storing ratings. This is a 
 
 **Steps:**
 
-1. User right-clicks workspace tab or opens workspace menu
+1. User opens the dashboard's ⋯ menu on the Dashboards page
 2. User sees sharing options: "Export as ZIP" and (if `shareable: true`) "Publish to Registry"
 3. User selects "Export as ZIP"
 4. System serializes workspace, resolves widget dependencies, extracts event wiring
@@ -1066,11 +1068,11 @@ Requires a backend service or registry extension for storing ratings. This is a 
 
 **Deliverables:**
 
--   [ ] US-001: Dashboard Config Schema
--   [ ] US-002: Export Dashboard as ZIP
--   [ ] US-003: Import Dashboard from ZIP
--   [ ] US-004: Browse/Search Dashboards on Registry
--   [ ] US-005: Install Dashboard from Registry
+-   [x] US-001: Dashboard Config Schema
+-   [x] US-002: Export Dashboard as ZIP
+-   [x] US-003: Import Dashboard from ZIP
+-   [x] US-004: Browse/Search Dashboards on Registry
+-   [x] US-005: Install Dashboard from Registry
 
 **Success Criteria:** Users can export dashboards as ZIP files, import them on another installation with widgets auto-installed and events auto-wired, and browse/install dashboards from the registry.
 
@@ -1085,7 +1087,7 @@ Requires a backend service or registry extension for storing ratings. This is a 
 
 **Deliverables:**
 
--   [ ] US-006: Publish Dashboard to Registry
+-   [x] US-006: Publish Dashboard to Registry
 -   [ ] US-007: Compatibility Check
 -   [ ] US-008: Dashboard Preview
 
@@ -1217,9 +1219,21 @@ so the next person touching this flow knows what NOT to regress.
 
 ---
 
+## Status check (consolidation Phase 5, 2026-10-22)
+
+The stories above were checked against the code. Where things start today:
+
+-   **Export / Publish:** the dashboard's ⋯ menu on the Dashboards page (`AppPages/DashboardsPage.js`, `PublishDashboardModal`).
+-   **Import from a ZIP:** Create › Start without AI › Import dashboard from file (`LayoutManagerModal`, import step).
+-   **Browse and install from the registry:** Create › Start without AI › Browse dashboards in the registry (`DiscoverDashboardsDetail` → `RegistryDashboardDetail`), and Create's starters (`Create/starters.js`).
+-   **Open:** US-003 AC8 (no summary after a ZIP import), US-005 AC6 (the registry install's summary has no events or providers), US-004 AC5 (compatibility filter not offered), US-009 (no provider setup screen).
+
+---
+
 ## Revision History
 
 | Version | Date       | Author    | Changes       |
 | ------- | ---------- | --------- | ------------- |
 | 1.0     | 2026-03-07 | Core Team | Initial draft |
 | 1.1     | 2026-04-24 | Core Team | Publish-dep attribution uses exact `packageId` from layout items; Dashboard Config gains a Dependencies tab; reconciler identity + schema `version` field + 3-layer sparse-providers defense documented. dash-core v0.1.421–v0.1.427. |
+| 1.2     | 2026-10-22 | Core Team | Consolidation Phase 5: story statuses match the code (P0 and P1 built, P2 partly); entry points moved to Create and the Dashboards page; Workflow 2's Dashboards tab superseded by Create; open gaps listed. |

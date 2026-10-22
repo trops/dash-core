@@ -1,7 +1,7 @@
 # PRD: Widget Display & Installation UX
 
-**Status:** Partially Implemented
-**Last Updated:** 2026-03-22
+**Status:** Implemented
+**Last Updated:** 2026-10-22
 **Owner:** Core Team
 **Related PRDs:** [Widget Installation Model](widget-installation-model.md), [Widget Dropdown](widget-dropdown.md), [Dashboard Marketplace](dashboard-marketplace.md)
 **Repos:** dash-core, dash-electron
@@ -9,6 +9,8 @@
 ---
 
 ## Executive Summary
+
+> **Phase 5 reconciliation (2026-10-22).** All five stories are built (see each story's status). **Settings > Widgets**, named throughout this PRD, became the **Widgets page** in the left nav (app-navigation NAV-008, 2026-10-03); its Discover tab is now the registry browser that Create › Widget's **Browse widgets in the registry** opens on that page. `WidgetsSection.js` was removed; the install flow lives in `AppPages/useWidgetInstall.js` and `AppPages/WidgetsPage.js`. Read "Settings > Widgets" below as the Widgets page. The text below is otherwise kept as written.
 
 The widget display and installation experience has four critical UX gaps that undermine the registry-first model: widget lists show package-level entries instead of individual components, installation progress is invisible in most entry points, the auth prompt renders inline (making it easy to miss), and missing widgets in dashboards must be resolved one at a time. This PRD locks down requirements for consistent, polished widget identification, universal installation progress feedback, modal-based authentication, and batch missing-widget resolution.
 
@@ -144,14 +146,14 @@ Users cannot confidently identify widgets, have no feedback during installation,
 > so that I can identify exactly which widgets I have and reference them by their unique identifier.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** Implemented — through the Widgets page (NAV-008), with AC1/AC3/AC4 superseded
 
 **Acceptance Criteria:**
 
--   [ ] AC1: Given any widget in Settings > Widgets, when viewing the list, then the primary label shows `displayName` (e.g., "Digital Clock") and a sub heading shows the full scoped ID (e.g., `trops.clock.DigitalClockWidget`)
--   [ ] AC2: Given a registry-installed package containing multiple widgets (e.g., Clock with Digital, Analog, Flip), when viewing Settings > Widgets, then each individual widget component has its own row in the list
--   [ ] AC3: Given a built-in widget without a scoped registry ID, when viewing Settings > Widgets, then the sub heading shows the ComponentManager registration key (e.g., `DigitalClockWidget`)
--   [ ] AC4: Given an installed widget with `packageId`, when viewing Settings > Widgets, then the sub heading shows the full scoped ID including package context (e.g., `trops.clock.DigitalClockWidget`), not just the package ID (`@trops/clock`)
+-   [x] AC1: Given any widget in Settings > Widgets, when viewing the list, then the primary label shows `displayName` (e.g., "Digital Clock") and a sub heading shows the full scoped ID (e.g., `trops.clock.DigitalClockWidget`) — _Superseded by NAV-008 AC5 (2026-10-22): the list is org → package → widgets; a widget row shows its name and where it's used, the widget's page shows its component name, and **About this package** shows the scoped package id and version._
+-   [x] AC2: Given a registry-installed package containing multiple widgets (e.g., Clock with Digital, Analog, Flip), when viewing Settings > Widgets, then each individual widget component has its own row in the list _(opening a package lists its widgets, one row each)_
+-   [x] AC3: Given a built-in widget without a scoped registry ID, when viewing Settings > Widgets, then the sub heading shows the ComponentManager registration key (e.g., `DigitalClockWidget`) — _Superseded by NAV-008 (2026-10-22): built-ins sit under the **Built-in** org; the widget's page shows its name._
+-   [x] AC4: Given an installed widget with `packageId`, when viewing Settings > Widgets, then the sub heading shows the full scoped ID including package context (e.g., `trops.clock.DigitalClockWidget`), not just the package ID (`@trops/clock`) — _Superseded by NAV-008 AC5 (2026-10-22), as AC1._
 
 **Edge Cases:**
 
@@ -193,12 +195,12 @@ Expected: Three separate rows appear:
 
 **Definition of Done:**
 
--   [ ] Code implemented and reviewed
--   [ ] Every widget in Settings > Widgets shows displayName + full scoped ID
--   [ ] Multi-widget packages show individual component rows
--   [ ] Built-in widgets show CM registration key as sub heading
--   [ ] Acceptance criteria verified via screenshot
--   [ ] `npm run ci` passes
+-   [x] Code implemented and reviewed
+-   [x] Every widget in Settings > Widgets shows displayName + full scoped ID _(superseded — see AC1)_
+-   [x] Multi-widget packages show individual component rows
+-   [x] Built-in widgets show CM registration key as sub heading _(superseded — see AC3)_
+-   [x] Acceptance criteria verified via screenshot
+-   [x] `npm run ci` passes
 
 ---
 
@@ -209,17 +211,17 @@ Expected: Three separate rows appear:
 > so that I know the installation is working and can see exactly what's happening.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** Implemented
 
 **Acceptance Criteria:**
 
--   [ ] AC1: Given I install a widget from Settings > Widgets > Discover (`DiscoverWidgetsDetail`), when the install starts, then the `InstallProgressModal` appears with dark overlay, per-item progress list, and status icons
--   [ ] AC2: Given I install a widget from the layout builder widget dropdown (`EnhancedWidgetDropdown`), when the install starts, then the `InstallProgressModal` appears
--   [ ] AC3: Given I install from ZIP via Settings > Widgets (`WidgetsSection` `handleInstallFromZip`), when the install starts, then the `InstallProgressModal` appears (replacing inline loading text)
--   [ ] AC4: Given I load from a folder via Settings > Widgets (`WidgetsSection` `handleLoadFolder`), when the install starts, then the `InstallProgressModal` appears (replacing inline loading text)
--   [ ] AC5: Given the WidgetSidebar discover tab install, when the install starts, then the existing `InstallProgressModal` continues to work (reference implementation, no regression)
--   [ ] AC6: Given the modal is open and installation is in progress, when I click the overlay or press Escape, then the modal does NOT close (non-dismissible during install)
--   [ ] AC7: Given all items have reached terminal status (installed, already-installed, or failed), when I look at the modal, then the "Done" button is enabled and clicking it closes the modal
+-   [x] AC1: Given I install a widget from Settings > Widgets > Discover (`DiscoverWidgetsDetail`), when the install starts, then the `InstallProgressModal` appears with dark overlay, per-item progress list, and status icons _(the registry browser on the Widgets page)_
+-   [x] AC2: Given I install a widget from the layout builder widget dropdown (`EnhancedWidgetDropdown`), when the install starts, then the `InstallProgressModal` appears
+-   [x] AC3: Given I install from ZIP via Settings > Widgets (`WidgetsSection` `handleInstallFromZip`), when the install starts, then the `InstallProgressModal` appears (replacing inline loading text) _(now `useWidgetInstall` on the Widgets page, started from Create › Widget › Install a widget from file)_
+-   [x] AC4: Given I load from a folder via Settings > Widgets (`WidgetsSection` `handleLoadFolder`), when the install starts, then the `InstallProgressModal` appears (replacing inline loading text) _(as AC3, from Load a widget from a folder)_
+-   [x] AC5: Given the WidgetSidebar discover tab install, when the install starts, then the existing `InstallProgressModal` continues to work (reference implementation, no regression)
+-   [ ] AC6: Given the modal is open and installation is in progress, when I click the overlay or press Escape, then the modal does NOT close (non-dismissible during install) — _Open gap (2026-10-22): `InstallProgressModal` passes `setIsOpen` straight to `Modal`, and the Widgets page's handler closes it at any time; not verified._
+-   [x] AC7: Given all items have reached terminal status (installed, already-installed, or failed), when I look at the modal, then the "Done" button is enabled and clicking it closes the modal
 
 **Edge Cases:**
 
@@ -272,12 +274,12 @@ When all done:
 
 **Definition of Done:**
 
--   [ ] Code implemented and reviewed
--   [ ] Progress modal appears for all 5 install entry points
--   [ ] Modal is non-dismissible during active installation
--   [ ] Done button only enabled when all items are terminal
--   [ ] Works for widgets, dashboards, and themes
--   [ ] `npm run ci` passes
+-   [x] Code implemented and reviewed
+-   [x] Progress modal appears for all 5 install entry points
+-   [ ] Modal is non-dismissible during active installation _(see AC6)_
+-   [x] Done button only enabled when all items are terminal
+-   [ ] Works for widgets, dashboards, and themes _(widgets and dashboards — `RegistryDashboardDetail` uses it; themes don't)_
+-   [x] `npm run ci` passes
 
 ---
 
@@ -288,15 +290,15 @@ When all done:
 > so that I can immediately see and use my newly installed widgets.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** Implemented
 
 **Acceptance Criteria:**
 
--   [ ] AC1: Given I install a widget from ANY entry point (sidebar, discover, dropdown, ZIP, folder), when installation completes, then the Settings > Widgets list includes the newly installed widget(s) as individual items with full scoped IDs
--   [ ] AC2: Given I install a widget, when installation completes, then Discover views show an "Installed" badge on the package
--   [ ] AC3: Given I install a widget, when installation completes, then the sidebar widget list includes the new widget(s)
--   [ ] AC4: Given I install a widget, when installation completes, then the `EnhancedWidgetDropdown` "Installed" tab includes the new widget(s)
--   [ ] AC5: Given the `dash:widgets-updated` event, when it fires, then all listener components re-fetch their widget data
+-   [x] AC1: Given I install a widget from ANY entry point (sidebar, discover, dropdown, ZIP, folder), when installation completes, then the Settings > Widgets list includes the newly installed widget(s) as individual items with full scoped IDs _(the Widgets page; identity per US-001)_
+-   [x] AC2: Given I install a widget, when installation completes, then Discover views show an "Installed" badge on the package
+-   [x] AC3: Given I install a widget, when installation completes, then the sidebar widget list includes the new widget(s)
+-   [x] AC4: Given I install a widget, when installation completes, then the `EnhancedWidgetDropdown` "Installed" tab includes the new widget(s)
+-   [x] AC5: Given the `dash:widgets-updated` event, when it fires, then all listener components re-fetch their widget data _(dash-electron `Dash.js` dispatches it after each install path; listeners read `useWidgetRegistryVersion`)_
 
 **Edge Cases:**
 
@@ -330,11 +332,11 @@ Expected:
 
 **Definition of Done:**
 
--   [ ] Code implemented and reviewed
--   [ ] `dash:widgets-updated` fires after every install method
--   [ ] All four views refresh after install from any entry point
--   [ ] Acceptance criteria verified
--   [ ] `npm run ci` passes
+-   [x] Code implemented and reviewed
+-   [x] `dash:widgets-updated` fires after every install method
+-   [x] All four views refresh after install from any entry point
+-   [x] Acceptance criteria verified
+-   [x] `npm run ci` passes
 
 ---
 
@@ -345,17 +347,17 @@ Expected:
 > so that I understand why sign-in is needed and can authenticate without hunting through the UI.
 
 **Priority:** P0 — BLOCKER (users cannot download any registry asset without authenticating)
-**Status:** Backlog
+**Status:** Implemented (`Registry/RegistryAuthModal.js`)
 
 **Acceptance Criteria:**
 
--   [ ] AC1: Given I trigger an action that requires registry authentication, when the auth prompt appears, then it renders as a **modal with dark overlay background** — not inline within a panel
--   [ ] AC2: Given the auth modal is visible, when I read the content, then it clearly states WHY authentication is needed (e.g., "The Dash Registry requires authentication to download and install packages")
--   [ ] AC3: Given the auth modal is visible, when I look at the modal, then the sign-in button is immediately visible without scrolling
--   [ ] AC4: Given I click "Sign In" and the device code flow starts, when the polling state is active, then the device code and instructions display within the modal (not inline)
--   [ ] AC5: Given I click "Cancel" in the auth modal, when the modal closes, then the original operation is cancelled gracefully
--   [ ] AC6: Given I successfully authenticate, when the auth completes, then the modal closes automatically and the original operation (install) resumes
--   [ ] AC7: Given the auth modal, when it appears from ANY entry point (widget install, dashboard install, theme install, sidebar discover, widget-not-found), then the modal looks and behaves identically
+-   [x] AC1: Given I trigger an action that requires registry authentication, when the auth prompt appears, then it renders as a **modal with dark overlay background** — not inline within a panel
+-   [x] AC2: Given the auth modal is visible, when I read the content, then it clearly states WHY authentication is needed (e.g., "The Dash Registry requires authentication to download and install packages")
+-   [x] AC3: Given the auth modal is visible, when I look at the modal, then the sign-in button is immediately visible without scrolling
+-   [x] AC4: Given I click "Sign In" and the device code flow starts, when the polling state is active, then the device code and instructions display within the modal (not inline)
+-   [x] AC5: Given I click "Cancel" in the auth modal, when the modal closes, then the original operation is cancelled gracefully
+-   [x] AC6: Given I successfully authenticate, when the auth completes, then the modal closes automatically and the original operation (install) resumes _(`onAuthenticated`)_
+-   [x] AC7: Given the auth modal, when it appears from ANY entry point (widget install, dashboard install, theme install, sidebar discover, widget-not-found), then the modal looks and behaves identically _(one `RegistryAuthModal` in every registry detail, the widget sidebar, the dropdown, `WidgetNotFound` and `MissingWidgetsModal`. Create has its own sign-in step ("Sign in to the registry") — not this modal)_
 
 **Edge Cases:**
 
@@ -408,14 +410,14 @@ Expected: Modal closes, widget installation begins with InstallProgressModal.
 
 **Definition of Done:**
 
--   [ ] Code implemented and reviewed
--   [ ] Auth prompt renders as modal with dark overlay in all entry points
--   [ ] Modal clearly explains why authentication is needed
--   [ ] Sign-in button visible without scrolling
--   [ ] Device code displays in modal during polling
--   [ ] Cancel closes modal, successful auth closes modal and resumes operation
--   [ ] Duplicated auth flow in RegistryThemeDetail removed
--   [ ] `npm run ci` passes
+-   [x] Code implemented and reviewed
+-   [x] Auth prompt renders as modal with dark overlay in all entry points
+-   [x] Modal clearly explains why authentication is needed
+-   [x] Sign-in button visible without scrolling
+-   [x] Device code displays in modal during polling
+-   [x] Cancel closes modal, successful auth closes modal and resumes operation
+-   [x] Duplicated auth flow in RegistryThemeDetail removed
+-   [x] `npm run ci` passes
 
 ---
 
@@ -426,17 +428,17 @@ Expected: Modal closes, widget installation begins with InstallProgressModal.
 > so that I can install everything at once instead of resolving each missing widget individually.
 
 **Priority:** P0
-**Status:** Backlog
+**Status:** Implemented (`Widget/MissingWidgetsModal.js`, `hooks/useMissingWidgets.js`)
 
 **Acceptance Criteria:**
 
--   [ ] AC1: Given a dashboard loads with multiple missing widgets, when the dashboard renders, then a single modal appears listing ALL missing widgets for that dashboard
--   [ ] AC2: Given the missing widgets modal, when I view the list, then each missing widget shows: component name (from layout), whether it was found in the registry (with package name), and "Not found" if no registry match
--   [ ] AC3: Given the missing widgets modal with found widgets, when I click "Install All", then all found packages install in a single batch operation
--   [ ] AC4: Given I click "Install All" and authentication is required, when the auth modal appears, then it appears ONCE (not per widget) and after authenticating, the batch install proceeds
--   [ ] AC5: Given the batch install is in progress, when I look at the screen, then the `InstallProgressModal` shows per-widget progress for all items being installed
--   [ ] AC6: Given the batch install completes, when all widgets are installed, then the dashboard refreshes and missing widgets are replaced with their installed components
--   [ ] AC7: Given a dashboard with only ONE missing widget, when it renders, then the existing `WidgetNotFound` component with "Find in Registry" still works as a fallback (no batch modal for single missing widget)
+-   [x] AC1: Given a dashboard loads with multiple missing widgets, when the dashboard renders, then a single modal appears listing ALL missing widgets for that dashboard _(Open Question 1 went to option B: a banner — "N widgets are missing from this dashboard." with **Resolve** and Dismiss — opens the modal, rather than the modal opening by itself)_
+-   [x] AC2: Given the missing widgets modal, when I view the list, then each missing widget shows: component name (from layout), whether it was found in the registry (with package name), and "Not found" if no registry match
+-   [x] AC3: Given the missing widgets modal with found widgets, when I click "Install All", then all found packages install in a single batch operation _(the button reads "Install N Packages"; they install one after another)_
+-   [x] AC4: Given I click "Install All" and authentication is required, when the auth modal appears, then it appears ONCE (not per widget) and after authenticating, the batch install proceeds
+-   [x] AC5: Given the batch install is in progress, when I look at the screen, then the `InstallProgressModal` shows per-widget progress for all items being installed
+-   [x] AC6: Given the batch install completes, when all widgets are installed, then the dashboard refreshes and missing widgets are replaced with their installed components
+-   [x] AC7: Given a dashboard with only ONE missing widget, when it renders, then the existing `WidgetNotFound` component with "Find in Registry" still works as a fallback (no batch modal for single missing widget) _(the banner shows only for 2 or more)_
 
 **Edge Cases:**
 
@@ -503,14 +505,14 @@ individual WidgetNotFound with "Find in Registry" as fallback.
 
 **Definition of Done:**
 
--   [ ] Code implemented and reviewed
--   [ ] Batch modal appears for dashboards with 2+ missing widgets
--   [ ] Modal shows registry lookup results per widget
--   [ ] "Install All" triggers batch install with single auth
--   [ ] InstallProgressModal shows during batch install
--   [ ] Dashboard refreshes after batch install
--   [ ] Individual WidgetNotFound still works for single missing widget
--   [ ] `npm run ci` passes
+-   [x] Code implemented and reviewed
+-   [x] Batch modal appears for dashboards with 2+ missing widgets _(from the banner's Resolve)_
+-   [x] Modal shows registry lookup results per widget
+-   [x] "Install All" triggers batch install with single auth
+-   [x] InstallProgressModal shows during batch install
+-   [x] Dashboard refreshes after batch install
+-   [x] Individual WidgetNotFound still works for single missing widget
+-   [x] `npm run ci` passes
 
 ---
 
@@ -665,19 +667,18 @@ individual WidgetNotFound with "Find in Registry" as fallback.
 
     - Context: Auto-showing a modal on dashboard load could be disruptive if the user doesn't want to install anything right now
     - Options: (A) Auto-show on load, (B) Show a banner with "Install Missing Widgets" button that opens the modal
-    - Status: Open
+    - Status: Answered — (B): a banner with **Resolve** (and Dismiss) for 2 or more missing widgets
 
 2. **Q: Should the auth modal be a singleton at the app level or rendered per-component?**
 
     - Context: If multiple components try to show auth simultaneously, we need one modal, not many
     - Options: (A) Global auth modal managed by context/hook, (B) First-render-wins with a shared lock
-    - Status: Open
+    - Status: Answered — rendered per component (`RegistryAuthModal` in each entry point), as Phase 1's risk note proposed
 
 3. **Q: How should we handle the scoped ID format for display — dots or slashes?**
-
     - Context: CM keys use dots (`trops.clock.DigitalClockWidget`), package IDs use npm-style (`@trops/clock`). Which is the sub heading?
     - Options: (A) CM key with dots, (B) npm-style `@scope/name`, (C) Both
-    - Status: Open — Recommended: CM key (dots) as it uniquely identifies the widget, not just the package
+    - Status: Superseded by NAV-008 (2026-10-22) — the Widgets page shows org → package → widgets: the package's `@scope/name` on its About page, the widget's name on its own page
 
 ### Decisions Made
 
@@ -713,9 +714,9 @@ individual WidgetNotFound with "Find in Registry" as fallback.
 
 **Deliverables:**
 
--   [ ] US-004: Registry auth prompt as modal (BLOCKER — unblocks all install flows)
--   [ ] US-002: Universal install progress modal (5 entry points)
--   [ ] US-003: Post-installation refresh across all views
+-   [x] US-004: Registry auth prompt as modal (BLOCKER — unblocks all install flows)
+-   [x] US-002: Universal install progress modal (5 entry points) _(AC6 open)_
+-   [x] US-003: Post-installation refresh across all views
 
 **Success Criteria:** Every install flow shows the auth modal (if needed) and the progress modal, and all views refresh after install.
 
@@ -730,7 +731,7 @@ individual WidgetNotFound with "Find in Registry" as fallback.
 
 **Deliverables:**
 
--   [ ] US-001: Widget list shows individual components with full scoped ID
+-   [x] US-001: Widget list shows individual components with full scoped ID _(through the Widgets page, NAV-008)_
 
 **Success Criteria:** Every widget in Settings > Widgets shows displayName + full scoped ID sub heading; multi-widget packages show individual rows.
 
@@ -745,7 +746,7 @@ individual WidgetNotFound with "Find in Registry" as fallback.
 
 **Deliverables:**
 
--   [ ] US-005: Batch "Install All Missing Widgets" for dashboards
+-   [x] US-005: Batch "Install All Missing Widgets" for dashboards
 
 **Success Criteria:** Dashboard with 5 missing widgets shows single batch modal; user installs all found widgets in one action.
 
@@ -760,22 +761,24 @@ individual WidgetNotFound with "Find in Registry" as fallback.
 
 All files in dash-core unless noted otherwise.
 
-| File                                                               | Role                                                             |
-| ------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| `src/Components/Settings/sections/WidgetsSection.js`               | Widget list — needs scoped ID sub heading + modal for ZIP/folder |
-| `src/Components/Settings/details/DiscoverWidgetsDetail.js`         | Settings discover — needs progress modal                         |
-| `src/Components/Settings/details/InstallProgressModal.js`          | Progress modal component (exists, reuse everywhere)              |
-| `src/Components/Settings/details/RegistryPackageDetail.js`         | Package detail panel                                             |
-| `src/Components/Settings/details/RegistryThemeDetail.js`           | Theme detail — has duplicated auth flow to remove                |
-| `src/Components/Settings/details/RegistryDashboardDetail.js`       | Dashboard detail — needs modal auth                              |
-| `src/Components/Navigation/WidgetSidebar.js`                       | Reference implementation for progress modal                      |
-| `src/Components/Layout/Builder/Enhanced/EnhancedWidgetDropdown.js` | Widget dropdown — needs progress modal                           |
-| `src/Components/Registry/RegistryAuthPrompt.js`                    | Auth prompt — convert to modal                                   |
-| `src/hooks/useRegistrySearch.js`                                   | Install logic                                                    |
-| `src/hooks/useRegistryAuth.js`                                     | Auth hook (device code OAuth)                                    |
-| `src/hooks/useInstalledWidgets.js`                                 | Widget list hook — needs full ID exposure                        |
-| `src/Widget/WidgetNotFound.js`                                     | Missing widget fallback — needs batch awareness                  |
-| `dash-electron/src/Dash.js`                                        | Post-install event dispatch                                      |
+| File                                                                  | Role                                                            |
+| --------------------------------------------------------------------- | --------------------------------------------------------------- |
+| ~~`src/Components/Settings/sections/WidgetsSection.js`~~              | Removed — now `AppPages/WidgetsPage.js` + `useWidgetInstall.js` |
+| `src/Components/Registry/RegistryAuthModal.js`                        | Auth modal (US-004)                                             |
+| `src/Widget/MissingWidgetsModal.js`, `src/hooks/useMissingWidgets.js` | Batch missing widgets (US-005)                                  |
+| `src/Components/Settings/details/DiscoverWidgetsDetail.js`            | Settings discover — needs progress modal                        |
+| `src/Components/Settings/details/InstallProgressModal.js`             | Progress modal component (exists, reuse everywhere)             |
+| `src/Components/Settings/details/RegistryPackageDetail.js`            | Package detail panel                                            |
+| `src/Components/Settings/details/RegistryThemeDetail.js`              | Theme detail — has duplicated auth flow to remove               |
+| `src/Components/Settings/details/RegistryDashboardDetail.js`          | Dashboard detail — needs modal auth                             |
+| `src/Components/Navigation/WidgetSidebar.js`                          | Reference implementation for progress modal                     |
+| `src/Components/Layout/Builder/Enhanced/EnhancedWidgetDropdown.js`    | Widget dropdown — needs progress modal                          |
+| `src/Components/Registry/RegistryAuthPrompt.js`                       | Auth prompt — convert to modal                                  |
+| `src/hooks/useRegistrySearch.js`                                      | Install logic                                                   |
+| `src/hooks/useRegistryAuth.js`                                        | Auth hook (device code OAuth)                                   |
+| `src/hooks/useInstalledWidgets.js`                                    | Widget list hook — needs full ID exposure                       |
+| `src/Widget/WidgetNotFound.js`                                        | Missing widget fallback — needs batch awareness                 |
+| `dash-electron/src/Dash.js`                                           | Post-install event dispatch                                     |
 
 ---
 
@@ -784,26 +787,38 @@ All files in dash-core unless noted otherwise.
 ### Automated
 
 ```bash
-# Verify widget list shows displayName + full scoped ID
-npm run screenshot -- --click-selector 'button:has([data-icon="circle-user"], [data-icon="user"])' --click "Settings" --click "Widgets"
+# The Widgets page (left nav › Manage › Widgets)
+npm run screenshot -- --click "Widgets"
 ```
+
+_(The Settings › Widgets screenshot command: superseded by the Widgets page (2026-10-22). See Appendix: history.)_
 
 ### Manual Testing
 
--   [ ] Install from Settings > Discover → dark progress modal appears with per-widget progress
+-   [ ] Install from the registry browser (Create › Widget › Browse widgets in the registry) → dark progress modal appears with per-widget progress
 -   [ ] Install from widget dropdown (layout builder) → same modal appears
--   [ ] Install from ZIP → same modal appears
--   [ ] Install from folder → same modal appears
+-   [ ] Install from ZIP (Create › Widget › Install a widget from file) → same modal appears
+-   [ ] Install from folder (Create › Widget › Load a widget from a folder) → same modal appears
 -   [ ] Install from sidebar discover → existing modal still works (no regression)
 -   [ ] After any install, widget list refreshes in all views
 -   [ ] Unauthenticated user triggers install → auth MODAL (not inline) appears with clear explanation
--   [ ] Open dashboard with multiple missing widgets → single batch modal lists all missing widgets
+-   [ ] Open dashboard with multiple missing widgets → banner → Resolve → single batch modal lists all missing widgets
 -   [ ] Click "Install All" in batch modal → auth once if needed → progress modal → dashboard refreshes
 
 ---
 
 ## Revision History
 
-| Version | Date       | Author    | Changes                                                                                      |
-| ------- | ---------- | --------- | -------------------------------------------------------------------------------------------- |
-| 1.0     | 2026-03-22 | Core Team | Initial draft — widget identity, universal progress modal, modal auth, batch missing widgets |
+| Version | Date       | Author    | Changes                                                                                                                                                                                                    |
+| ------- | ---------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.0     | 2026-03-22 | Core Team | Initial draft — widget identity, universal progress modal, modal auth, batch missing widgets                                                                                                               |
+| 1.1     | 2026-10-22 | Core Team | Phase 5 reconciliation: all stories marked built (verified in code); Settings > Widgets is the Widgets page (NAV-008); US-001 identity superseded by NAV-008; open gaps: US-002 AC6, themes progress modal |
+
+---
+
+## Appendix: history
+
+Text replaced by later work, kept as it was written.
+
+-   **Automated verification (2026-03-22):** `npm run screenshot -- --click-selector 'button:has([data-icon="circle-user"], [data-icon="user"])' --click "Settings" --click "Widgets"` — "Verify widget list shows displayName + full scoped ID".
+-   **Manual testing (2026-03-22):** "Install from Settings > Discover → dark progress modal appears with per-widget progress"; "Open dashboard with multiple missing widgets → single batch modal lists all missing widgets".
