@@ -1,4 +1,5 @@
 import {
+  cardFixPill,
   ownerLabel,
   humanizeName,
   listenerRows,
@@ -108,5 +109,43 @@ describe("changeBlockedText", () => {
     expect(changeBlockedText(0)).toBe("");
     expect(changeBlockedText(1)).toBe("Save or cancel your 1 change first.");
     expect(changeBlockedText(3)).toBe("Save or cancel your 3 changes first.");
+  });
+});
+
+describe("cardFixPill (consolidation Phase 4c)", () => {
+  const label = (t) => ({ slack: "Slack", algolia: "Algolia" })[t] || t;
+  test("nothing missing: no pill", () => {
+    expect(cardFixPill({})).toBeNull();
+    expect(
+      cardFixPill({ missingConnections: [], unconnectedListeners: 0 }),
+    ).toBeNull();
+  });
+  test("one connection: names it (a / an) and opens Connections", () => {
+    expect(cardFixPill({ missingConnections: ["slack"], label })).toEqual({
+      text: "Needs a Slack connection",
+      section: "providers",
+      icon: "plug",
+    });
+    expect(cardFixPill({ missingConnections: ["algolia"], label }).text).toBe(
+      "Needs an Algolia connection",
+    );
+  });
+  test("listeners only: the count, and Listens for", () => {
+    expect(cardFixPill({ unconnectedListeners: 2 })).toEqual({
+      text: "2 listeners not connected",
+      section: "handlers",
+      icon: "tower-broadcast",
+    });
+    expect(cardFixPill({ unconnectedListeners: 1 }).text).toBe(
+      "1 listener not connected",
+    );
+  });
+  test("two things: says so, and opens at Connections first", () => {
+    expect(
+      cardFixPill({ missingConnections: ["slack"], unconnectedListeners: 3 }),
+    ).toMatchObject({ text: "2 things to fix", section: "providers" });
+    expect(
+      cardFixPill({ missingConnections: ["slack", "algolia"] }),
+    ).toMatchObject({ text: "2 things to fix", section: "providers" });
   });
 });

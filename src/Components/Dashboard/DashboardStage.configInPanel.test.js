@@ -67,12 +67,15 @@ describe("LayoutBuilder — the update action", () => {
 });
 
 describe("Grid — the widget's Configure buttons while editing", () => {
-  test("the card's menu and the footer open the panel section, never a dialog", () => {
+  test("the card's menu and its fix pill open the panel section, never a dialog", () => {
+    // One opener: the header's (its ⋮ and the "what's missing" pill —
+    // the footer's pill moved up into it, consolidation Phase 4c).
     expect(
       grid.match(
         /if \(editSelection\.available\) \{\s*selectWidget\("widget", section \|\| "edit"\);/g,
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
+    expect(grid).not.toMatch(/<WidgetCard\.Footer/);
     expect(grid).not.toMatch(/opensInPanel/);
   });
 

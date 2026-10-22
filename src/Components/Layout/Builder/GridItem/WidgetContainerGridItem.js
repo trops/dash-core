@@ -255,7 +255,6 @@ export const WidgetContainerGridItem = ({
               <WidgetCard.Body padding="p-3">
                 {renderComponentData()}
               </WidgetCard.Body>
-              <WidgetCard.Footer item={item} onConfigure={handleOpenConfig} />
               <WidgetCard.StatusBar item={item} />
             </WidgetCard>
           )}
@@ -348,7 +347,6 @@ export const WidgetContainerGridItem = ({
             <WidgetCard.Body padding="p-3">
               {renderComponentData()}
             </WidgetCard.Body>
-            <WidgetCard.Footer item={item} onConfigure={handleOpenConfig} />
             <WidgetCard.StatusBar item={item} />
           </WidgetCard>
         )}

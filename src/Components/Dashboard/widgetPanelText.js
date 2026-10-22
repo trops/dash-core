@@ -1,7 +1,8 @@
 /**
  * widgetPanelText.js — the words of the edit panel's widget panel
  * (consolidation Phase 3P): whose a widget is, event and handler names a
- * person can read, the listeners a widget has, and why Change waits.
+ * person can read, the listeners a widget has, why Change waits, and the
+ * card's "something's missing" pill (Phase 4c).
  *
  * Pure.
  */
@@ -72,6 +73,46 @@ export function listenerRows(item, nameOf = () => "") {
     }
   }
   return rows;
+}
+
+/**
+ * The card's one "something's missing" pill (consolidation Phase 4c): a
+ * required connection that isn't set, and listeners not connected. One
+ * problem names itself; two say "2 things to fix". It opens the panel at
+ * the first fix — Connections before Listens for.
+ * @param {{ missingConnections?: string[], unconnectedListeners?: number,
+ *   label?: (type: string) => string }} args
+ * @returns {null | { text, section: "providers" | "handlers", icon }}
+ */
+export function cardFixPill({
+  missingConnections = [],
+  unconnectedListeners = 0,
+  label = (t) => t,
+} = {}) {
+  const conn = missingConnections.filter(Boolean);
+  const n = Number(unconnectedListeners) || 0;
+  const count = conn.length + (n > 0 ? 1 : 0);
+  if (!count) return null;
+  if (count > 1) {
+    return {
+      text: `${count} things to fix`,
+      section: conn.length ? "providers" : "handlers",
+      icon: "triangle-exclamation",
+    };
+  }
+  if (conn.length) {
+    const name = label(conn[0]);
+    return {
+      text: `Needs ${/^[aeiou]/i.test(name) ? "an" : "a"} ${name} connection`,
+      section: "providers",
+      icon: "plug",
+    };
+  }
+  return {
+    text: `${n} listener${n === 1 ? "" : "s"} not connected`,
+    section: "handlers",
+    icon: "tower-broadcast",
+  };
 }
 
 /** Why Change waits: "Save or cancel your 1 change first." */

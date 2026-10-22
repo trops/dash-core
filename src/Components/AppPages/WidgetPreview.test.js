@@ -1,7 +1,9 @@
 /**
  * WidgetPreview — a widget rendered live on the Widgets page, through the
- * host's sandboxed preview renderer (app-navigation PRD NAV-011). Runs on
- * click; uses the user's default provider for each type the widget needs.
+ * host's sandboxed preview renderer (app-navigation PRD NAV-011); uses the
+ * user's default provider for each type the widget needs. It runs by itself
+ * unless it would start a server (an MCP provider) — that one waits for
+ * Start preview (consolidation Phase 4b). The Slack widget here is MCP.
  */
 import React from "react";
 import "@testing-library/jest-dom";
@@ -80,16 +82,18 @@ afterEach(() => {
 });
 
 describe("WidgetPreview (NAV-011)", () => {
-  it("doesn't run until asked", () => {
+  it("a widget that starts a server doesn't run until asked, and says why", () => {
     setup();
     expect(screen.queryByTestId("sandbox")).toBeNull();
     expect(window.mainApi.widgets.readBundle).not.toHaveBeenCalled();
-    expect(screen.getByText(/Uses Slack Work/)).toBeInTheDocument();
+    expect(screen.getByTestId("preview-status")).toHaveTextContent(
+      "This preview starts your Slack server and calls the real service. Uses Slack Work.",
+    );
   });
 
   it("Run preview loads the package bundle and mounts the widget in the sandbox", async () => {
     setup();
-    fireEvent.click(screen.getByRole("button", { name: "Run preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start preview" }));
     expect(await screen.findByTestId("sandbox")).toHaveTextContent(
       "Channels|module.exports={}",
     );
@@ -114,7 +118,7 @@ describe("WidgetPreview (NAV-011)", () => {
         componentNames: ["trops.gmail.GmailInbox", "trops.gmail.GmailSend"],
       },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Run preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start preview" }));
     expect(await screen.findByTestId("sandbox")).toHaveTextContent(
       "GmailInbox|",
     );
@@ -122,7 +126,7 @@ describe("WidgetPreview (NAV-011)", () => {
 
   it("Stop unmounts it; Reload loads it again", async () => {
     setup();
-    fireEvent.click(screen.getByRole("button", { name: "Run preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start preview" }));
     await screen.findByTestId("sandbox");
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));
     await waitFor(() =>
@@ -130,12 +134,12 @@ describe("WidgetPreview (NAV-011)", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Stop" }));
     expect(screen.queryByTestId("sandbox")).toBeNull();
-    expect(screen.getByRole("button", { name: "Run preview" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Start preview" })).toBeTruthy();
   });
 
   it("shows the widget's own error from the sandbox", async () => {
     setup();
-    fireEvent.click(screen.getByRole("button", { name: "Run preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start preview" }));
     await screen.findByTestId("sandbox");
     act(() => lastProps.onError({ message: "x is undefined" }));
     expect(
@@ -148,7 +152,7 @@ describe("WidgetPreview (NAV-011)", () => {
       {},
       jest.fn().mockResolvedValue({ success: false, error: "no dist" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Run preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start preview" }));
     expect(
       await screen.findByText("Couldn't load this widget's code: no dist"),
     ).toBeInTheDocument();
@@ -160,7 +164,7 @@ describe("WidgetPreview (NAV-011)", () => {
     expect(
       screen.getByText("Needs a slack provider to show live data."),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Run preview" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Start preview" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Set up" }));
     expect(onSetUpProvider).toHaveBeenCalledWith("slack", "mcp");
   });
@@ -171,7 +175,7 @@ describe("WidgetPreview (NAV-011)", () => {
     expect(picker).toHaveValue("Slack Work");
     fireEvent.change(picker, { target: { value: "Other" } });
     expect(screen.getByText(/Uses Other/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Run preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start preview" }));
     await screen.findByTestId("sandbox");
     expect(lastProps.widgetData.selectedProviders).toEqual({ slack: "Other" });
   });
@@ -201,7 +205,7 @@ describe("WidgetPreview (NAV-011)", () => {
       appProviders: { Other: { type: "slack", providerClass: "mcp" } },
     });
     expect(screen.getByLabelText("slack provider")).toHaveValue("Other");
-    expect(screen.getByRole("button", { name: "Run preview" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Start preview" })).toBeTruthy();
   });
 
   it("several and no default: choose one before running", () => {
@@ -214,22 +218,22 @@ describe("WidgetPreview (NAV-011)", () => {
     expect(
       screen.getByText("Choose a slack provider to run the preview."),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Run preview" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Start preview" })).toBeNull();
     fireEvent.change(screen.getByLabelText("slack provider"), {
       target: { value: "B" },
     });
-    expect(screen.getByRole("button", { name: "Run preview" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Start preview" })).toBeTruthy();
   });
 
   it("changing the provider stops a running preview", async () => {
     setup();
-    fireEvent.click(screen.getByRole("button", { name: "Run preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start preview" }));
     await screen.findByTestId("sandbox");
     fireEvent.change(screen.getByLabelText("slack provider"), {
       target: { value: "Other" },
     });
     expect(screen.queryByTestId("sandbox")).toBeNull();
-    expect(screen.getByRole("button", { name: "Run preview" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Start preview" })).toBeTruthy();
   });
 
   it("built-in widgets and hosts without a sandbox don't offer a preview", () => {
@@ -245,5 +249,97 @@ describe("WidgetPreview (NAV-011)", () => {
     expect(
       screen.getByText("Live preview isn't available in this app."),
     ).toBeInTheDocument();
+  });
+
+  describe("runs by itself (consolidation Phase 4b)", () => {
+    const plain = {
+      ...slackWidget,
+      name: "ai.counter.Counter",
+      packageId: "@ai-built/counter",
+      providers: [],
+    };
+    const keys = {
+      ...slackWidget,
+      name: "trops.algolia.Search",
+      packageId: "@trops/algolia",
+      providers: [
+        { type: "algolia", providerClass: "credential", required: true },
+      ],
+    };
+
+    it("a widget with no connection runs as soon as it opens", async () => {
+      setup({ widget: plain, appProviders: {} });
+      expect(await screen.findByTestId("sandbox")).toHaveTextContent(
+        "Counter|",
+      );
+      expect(
+        screen.queryByRole("button", { name: "Start preview" }),
+      ).toBeNull();
+    });
+
+    it("a credential connection runs by itself; Stop stays stopped until Reload", async () => {
+      setup({
+        widget: keys,
+        appProviders: {
+          "Algolia Keys": { type: "algolia", isDefaultForType: true },
+        },
+      });
+      await screen.findByTestId("sandbox");
+      fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+      expect(screen.queryByTestId("sandbox")).toBeNull();
+      expect(window.mainApi.widgets.readBundle).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+      expect(await screen.findByTestId("sandbox")).toBeInTheDocument();
+    });
+
+    it("several connections and no default: waits for a pick, then runs", async () => {
+      setup({
+        widget: keys,
+        appProviders: {
+          A: { type: "algolia" },
+          B: { type: "algolia" },
+        },
+      });
+      expect(window.mainApi.widgets.readBundle).not.toHaveBeenCalled();
+      fireEvent.change(screen.getByLabelText("algolia provider"), {
+        target: { value: "B" },
+      });
+      expect(await screen.findByTestId("sandbox")).toBeInTheDocument();
+      expect(lastProps.widgetData.selectedProviders).toEqual({ algolia: "B" });
+    });
+
+    it("a failed load says why, with Try again", async () => {
+      setup(
+        { widget: plain, appProviders: {} },
+        jest.fn().mockResolvedValue({ success: false, error: "no dist" }),
+      );
+      expect(
+        await screen.findByText("Couldn't load this widget's code: no dist"),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    });
+  });
+
+  it("a load that finishes after Stop is dropped; running says what it runs with", async () => {
+    let finish;
+    setup(
+      {},
+      jest.fn(
+        () =>
+          new Promise((r) => {
+            finish = r;
+          }),
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Start preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    await act(async () => finish({ success: true, source: "late" }));
+    expect(screen.queryByTestId("sandbox")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Start preview" }));
+    await act(async () => finish({ success: true, source: "fresh" }));
+    expect(screen.getByTestId("sandbox")).toHaveTextContent("fresh");
+    expect(screen.getByTestId("preview-status")).toHaveTextContent(
+      "Running with Slack Work.",
+    );
   });
 });

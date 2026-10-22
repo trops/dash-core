@@ -13,7 +13,9 @@ jest.mock("../../../../ComponentManager", () => ({
             icon: "cube",
             providers: [{ type: "slack", required: true }],
           }
-        : null,
+        : component === "trops.feed.Feed"
+          ? { name: "Feed", eventHandlers: ["onPick", "onClear"] }
+          : null,
   },
 }));
 jest.mock("../../../../Context", () => ({
@@ -124,7 +126,8 @@ describe("WidgetCardHeader — the ⋮ menu", () => {
       onDelete,
     });
     pick(/Edit in panel/);
-    expect(onConfigure).toHaveBeenCalledWith(item, "edit");
+    // Its Slack connection isn't set: the panel opens at Connections (4c).
+    expect(onConfigure).toHaveBeenCalledWith(item, "providers");
     pick("Change Composed Widget 3");
     expect(onEditWithAI).toHaveBeenCalledWith(item);
     pick("Move to another cell");
@@ -134,4 +137,77 @@ describe("WidgetCardHeader — the ⋮ menu", () => {
     pick("Remove");
     expect(onDelete).toHaveBeenCalledWith(item);
   });
+});
+
+describe("WidgetCardHeader — what's missing (consolidation Phase 4c)", () => {
+  const { AppContext } = require("../../../../Context");
+
+  test("a missing connection: a pill that names it and opens Connections", () => {
+    const onConfigure = jest.fn();
+    const item = { component: "trops.composed.ComposedWidget3" };
+    renderHeader({ item, onConfigure });
+    const pill = screen.getByTestId("widget-fix-pill");
+    expect(pill).toHaveTextContent("Needs a Slack connection");
+    fireEvent.click(pill);
+    expect(onConfigure).toHaveBeenCalledWith(item, "providers");
+  });
+
+  test("a default connection of that type counts: no pill, Edit in panel opens at the top", () => {
+    const onConfigure = jest.fn();
+    const item = { component: "trops.composed.ComposedWidget3" };
+    render(
+      <ThemeContext.Provider value={{ currentTheme: theme }}>
+        <AppContext.Provider
+          value={{
+            providers: {
+              "Work Slack": { type: "slack", isDefaultForType: true },
+            },
+          }}
+        >
+          <WidgetCardHeader item={item} onConfigure={onConfigure} />
+        </AppContext.Provider>
+      </ThemeContext.Provider>,
+    );
+    expect(screen.queryByTestId("widget-fix-pill")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Composed Widget 3 options" }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: /Edit in panel/ }));
+    expect(onConfigure).toHaveBeenCalledWith(item, "edit");
+  });
+
+  test("listeners not connected: the pill (moved up from the footer) opens Listens for", () => {
+    const onConfigure = jest.fn();
+    const item = { component: "trops.feed.Feed", listeners: { onPick: ["x"] } };
+    renderHeader({ item, onConfigure });
+    const pill = screen.getByTestId("widget-fix-pill");
+    expect(pill).toHaveTextContent("1 listener not connected");
+    fireEvent.click(pill);
+    expect(onConfigure).toHaveBeenCalledWith(item, "handlers");
+  });
+
+  test("no way to fix it (no panel): no pill", () => {
+    render(
+      <ThemeContext.Provider value={{ currentTheme: theme }}>
+        <WidgetCardHeader
+          item={{ component: "trops.composed.ComposedWidget3" }}
+        />
+      </ThemeContext.Provider>,
+    );
+    expect(screen.queryByTestId("widget-fix-pill")).toBeNull();
+  });
+});
+
+test("a connection picked for it on the dashboard counts: no pill (4c)", () => {
+  // LayoutGridContainer passes the dashboard's picks merged with its own.
+  render(
+    <ThemeContext.Provider value={{ currentTheme: theme }}>
+      <WidgetCardHeader
+        item={{ component: "trops.composed.ComposedWidget3" }}
+        selectedProviders={{ slack: "Work Slack" }}
+        onConfigure={jest.fn()}
+      />
+    </ThemeContext.Provider>,
+  );
+  expect(screen.queryByTestId("widget-fix-pill")).toBeNull();
 });

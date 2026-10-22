@@ -10,6 +10,10 @@ import {
   widgetOrgs,
   filterOrgs,
   packageLabel,
+  packageWidgets,
+  searchResults,
+  widgetTotals,
+  uninstallCopy,
 } from "./widgetSummary";
 
 const W = (over) => ({
@@ -287,4 +291,105 @@ describe("widgetOrgs — build and checks", () => {
       /build: w\.build \|\| null,\s*checks: w\.checks \|\| null,/,
     );
   });
+});
+
+describe("the drill-in list (consolidation Phase 4b)", () => {
+  const orgs = () => widgetOrgs(widgets, { workspaces });
+  const slack = () =>
+    orgs()
+      .flatMap((o) => o.packages)
+      .find((p) => p.id === "@trops/slack");
+
+  test("packageWidgets: In use / Not used filter a package's widgets; Mine keeps them", () => {
+    const names = (chip) => packageWidgets(slack(), chip).map((w) => w.name);
+    expect(names("all")).toEqual([
+      "trops.slack.Channels",
+      "trops.slack.Messages",
+    ]);
+    expect(names("inUse")).toEqual(["trops.slack.Messages"]);
+    expect(names("notUsed")).toEqual(["trops.slack.Channels"]);
+    expect(names("mine")).toHaveLength(2);
+  });
+
+  test("searchResults: packages by name, widgets wherever they live, flat", () => {
+    const r = searchResults(orgs(), { query: "messages" });
+    expect(r.packages).toEqual([]);
+    expect(r.widgets.map((x) => [x.pkg.id, x.widget.name])).toEqual([
+      ["@trops/slack", "trops.slack.Messages"],
+    ]);
+    const s = searchResults(orgs(), { query: "slack" });
+    expect(s.packages.map((p) => p.id)).toEqual(["@trops/slack"]);
+    expect(s.widgets.map((x) => x.widget.name)).toEqual([
+      "trops.slack.Channels",
+      "trops.slack.Messages",
+    ]);
+    expect(searchResults(orgs(), { query: "  " })).toEqual({
+      packages: [],
+      widgets: [],
+    });
+    // The Org filter and chips apply.
+    expect(
+      searchResults(orgs(), { query: "slack", orgs: ["@acme"] }).widgets,
+    ).toEqual([]);
+    expect(
+      searchResults(orgs(), { query: "slack", chip: "notUsed" }).widgets.map(
+        (x) => x.widget.name,
+      ),
+    ).toEqual([]);
+  });
+
+  test("widgetTotals: packages, widgets, in use and updates", () => {
+    expect(widgetTotals(orgs())).toEqual({
+      packages: 6,
+      widgets: 7,
+      inUse: 3,
+      dashboards: 3,
+      updates: 0,
+    });
+  });
+
+  test("uninstallCopy: from a widget, the others that go with it and where", () => {
+    const pkg = slack();
+    const c = uninstallCopy(pkg, pkg.widgets[0]);
+    expect(c.title).toBe("Uninstall slack?");
+    expect(c.intro).toBe(
+      "Slack Channels comes with 1 other widget in the slack package. Uninstalling removes all 2:",
+    );
+    expect(c.items).toEqual([
+      "Slack Channels",
+      "Channel Messages · on Kitchen Sink, Mail",
+    ]);
+    expect(c.note).toBe(
+      'On those 2 dashboards, the cells will show "Widget Not Found" until you reinstall it from the registry.',
+    );
+    expect(uninstallCopy(pkg).intro).toBe("This removes its 2 widgets:");
+  });
+
+  test("uninstallCopy: one widget, not in the registry, not used", () => {
+    const notes = orgs()
+      .flatMap((o) => o.packages)
+      .find((p) => p.id === "@ai-built/notes");
+    expect(uninstallCopy(notes, notes.widgets[0])).toEqual({
+      title: "Uninstall notes?",
+      intro: "It isn't on any dashboard.",
+      items: [],
+      note: "This can't be undone: it isn't in the registry.",
+    });
+  });
+});
+
+test("widgetTitle: a display name that's just its component id reads as words", () => {
+  expect(
+    widgetTitle({
+      name: "ai-built.statusboard.StatusBoard",
+      displayName: "ai-built.statusboard.StatusBoard",
+    }),
+  ).toBe("Status Board");
+  // A real name with a dot in it stays.
+  expect(widgetTitle({ name: "x.y.Z", displayName: "Sales v2.1" })).toBe(
+    "Sales v2.1",
+  );
+  expect(widgetTitle({ name: "x.node.Node", displayName: "Node.js" })).toBe(
+    "Node.js",
+  );
 });

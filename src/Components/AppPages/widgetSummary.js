@@ -70,14 +70,17 @@ const DEFAULT_CONFIG_NAME = "My Workspace";
 /**
  * A widget's title in lists: its display name, else its component name
  * made readable ("trops.slack.ChannelMessages" → "Channel Messages").
- * The config model's default "My Workspace" never counts as a name.
+ * The config model's default "My Workspace" never counts as a name, nor
+ * does a display name that's just its component id.
  */
 export function widgetTitle(w) {
   const real = (v) =>
     typeof v === "string" && v.trim() && v.trim() !== DEFAULT_CONFIG_NAME
       ? v.trim()
       : null;
-  const shown = real(w && w.displayName);
+  const display = real(w && w.displayName);
+  const ids = [w && w.name, ...((w && w.componentNames) || [])].filter(Boolean);
+  const shown = display && ids.includes(display) ? null : display;
   if (shown) return shown;
   const component =
     ((w && w.componentNames) || []).find(
@@ -196,6 +199,115 @@ const CHIPS = {
   notUsed: (pkg) => pkg.usedOn.length === 0,
   mine: (pkg) => pkg.mine,
 };
+
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * A package's widgets under the In use / Not used chips (consolidation
+ * Phase 4b: the list inside an open package). Mine is the package's, so it
+ * keeps them all.
+ */
+export function packageWidgets(pkg, chip) {
+  const used = (w) => ((pkg && pkg.widgetUsage[w.name]) || []).length > 0;
+  const all = (pkg && pkg.widgets) || [];
+  if (chip === "inUse") return all.filter(used);
+  if (chip === "notUsed") return all.filter((w) => !used(w));
+  return all;
+}
+
+/**
+ * Search as one flat list (Phase 4b): packages whose name matches, then
+ * widgets that match wherever they live, each with its package — so a
+ * search never lands inside a closed package. Same Org filter and chips.
+ * @returns {{ packages: object[], widgets: Array<{ pkg, widget }> }}
+ */
+export function searchResults(
+  orgs,
+  { query = "", orgs: only = [], chip } = {},
+) {
+  const q = query.trim().toLowerCase();
+  const out = { packages: [], widgets: [] };
+  if (!q) return out;
+  const keep = CHIPS[chip] || (() => true);
+  for (const o of orgs || []) {
+    if (only.length && !only.includes(o.name)) continue;
+    for (const pkg of o.packages.filter(keep)) {
+      if (`${pkg.id} ${packageLabel(pkg)}`.toLowerCase().includes(q)) {
+        out.packages.push(pkg);
+      }
+      for (const widget of packageWidgets(pkg, chip)) {
+        const text = [
+          widgetTitle(widget),
+          widget.displayName,
+          widget.name,
+          widget.description,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (text.includes(q)) out.widgets.push({ pkg, widget });
+      }
+    }
+  }
+  return out;
+}
+
+/** The Widgets page's summary, before a package is opened (Phase 4b). */
+export function widgetTotals(orgs) {
+  const pkgs = (orgs || []).flatMap((o) => o.packages);
+  const widgets = pkgs.flatMap((p) =>
+    p.widgets.map((w) => ({ pkg: p, widget: w })),
+  );
+  const inUse = widgets.filter(
+    ({ pkg, widget }) => (pkg.widgetUsage[widget.name] || []).length > 0,
+  ).length;
+  const dashboards = new Set(
+    pkgs.flatMap((p) => p.usedOn.map((u) => u.workspaceId)),
+  ).size;
+  return {
+    packages: pkgs.length,
+    widgets: widgets.length,
+    inUse,
+    dashboards,
+    updates: pkgs.filter((p) => p.update).length,
+  };
+}
+
+/**
+ * What Uninstall says before it happens (Phase 4b). Uninstall is
+ * package-level, so from a widget it names the others that go with it,
+ * where each is used, and what those dashboards will show; a package that
+ * isn't in the registry (AI-built, local) can't be put back.
+ * @param {object} pkg
+ * @param {object} [widget]  the widget page it was asked from
+ * @returns {{ title, intro, items: string[], note }}
+ */
+export function uninstallCopy(pkg, widget = null) {
+  const label = packageLabel(pkg);
+  const n = pkg.widgets.length;
+  const usedOnText = (w) => {
+    const u = pkg.widgetUsage[w.name] || [];
+    return u.length ? ` · on ${u.map((x) => x.workspaceName).join(", ")}` : "";
+  };
+  const intro =
+    n === 1
+      ? pkg.usedOn.length
+        ? `It's used on ${pkg.usedOn.map((u) => u.workspaceName).join(", ")}.`
+        : "It isn't on any dashboard."
+      : widget
+        ? `${widgetTitle(widget)} comes with ${plural(n - 1, "other widget")} in the ${label} package. Uninstalling removes all ${n}:`
+        : `This removes its ${n} widgets:`;
+  const items =
+    n === 1 ? [] : pkg.widgets.map((w) => `${widgetTitle(w)}${usedOnText(w)}`);
+  const notInRegistry = pkg.org === AI_BUILT || pkg.org === LOCAL;
+  // Not in the registry: it can't be put back, which is what matters.
+  const note = notInRegistry
+    ? "This can't be undone: it isn't in the registry."
+    : pkg.usedOn.length
+      ? `On ${pkg.usedOn.length === 1 ? "that dashboard" : `those ${pkg.usedOn.length} dashboards`}, ${n === 1 ? "its cell will show" : "the cells will show"} "Widget Not Found" until you reinstall it from the registry.`
+      : "";
+  return { title: `Uninstall ${label}?`, intro, items, note };
+}
 
 /**
  * Search, Org filter and chips. Each kept package gets `matched` — the
