@@ -188,7 +188,8 @@ export const WebSocketProviderForm = ({
   }
 
   async function handleTestConnection() {
-    if (!dashApi?.webSocket || !url.trim() || !isValidWsUrl(url)) return;
+    const wsApi = dashApi?.api?.webSocket;
+    if (!wsApi || !url.trim() || !isValidWsUrl(url)) return;
 
     setIsWsTesting(true);
     setWsTestResult(null);
@@ -206,11 +207,12 @@ export const WebSocketProviderForm = ({
       .map((s) => s.trim())
       .filter(Boolean);
 
-    const testName = name.trim() || "__ws_test__";
+    // Its own connection, so testing an edit never closes the live one.
+    const testName = `${name.trim() || "New provider"} (connection test)`;
     const startTime = Date.now();
 
     try {
-      const result = await dashApi.webSocket.connect(testName, {
+      const result = await wsApi.connect(testName, {
         url: url.trim(),
         headers: Object.keys(headers).length > 0 ? headers : null,
         subprotocols: subprotoArray.length > 0 ? subprotoArray : null,
@@ -229,8 +231,8 @@ export const WebSocketProviderForm = ({
           success: true,
           message: `Connected in ${latency}ms`,
         });
-        await dashApi.webSocket.disconnect(testName).catch(() => {});
       }
+      await wsApi.disconnect(testName).catch(() => {});
     } catch (err) {
       setWsTestResult({
         success: false,
@@ -431,7 +433,7 @@ export const WebSocketProviderForm = ({
 
       {/* Footer */}
       <div className="flex-shrink-0 flex flex-row justify-end gap-2 px-6 py-4 border-t border-white/10">
-        {dashApi?.webSocket && (
+        {dashApi?.api?.webSocket && (
           <Button
             title={isWsTesting ? "Testing..." : "Test Connection"}
             onClick={handleTestConnection}

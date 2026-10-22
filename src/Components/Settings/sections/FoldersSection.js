@@ -1,5 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
-import { ConfirmationModal, FontAwesomeIcon, Sidebar } from "@trops/dash-react";
+import {
+  AlertBanner,
+  ConfirmationModal,
+  FontAwesomeIcon,
+  Sidebar,
+} from "@trops/dash-react";
 import { SectionLayout } from "../SectionLayout";
 import { FolderDetail } from "../details/FolderDetail";
 
@@ -9,9 +14,11 @@ export const FoldersSection = ({
   dashApi = null,
   credentials = null,
   onReloadMenuItems = null,
+  onReloadWorkspaces = null,
   createRequested = false,
   onCreateAcknowledged = null,
 }) => {
+  const [deleteError, setDeleteError] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -78,21 +85,32 @@ export const FoldersSection = ({
 
   function handleConfirmDelete() {
     if (!deleteTarget || !dashApi || !appId) return;
+    const target = deleteTarget;
+    const failed = (err) => {
+      console.error("Delete menu item error:", err);
+      setDeleteError(
+        `Couldn't delete "${target.name}"${
+          err && err.message ? `: ${err.message}` : "."
+        }`,
+      );
+      setDeleteTarget(null);
+    };
+    setDeleteError(null);
     dashApi.deleteMenuItem(
       appId,
-      deleteTarget.id,
-      () => {
-        if (selectedId === deleteTarget.id) {
+      target.id,
+      (e, result) => {
+        if (result && result.error) return failed(result);
+        if (selectedId === target.id) {
           setSelectedId(null);
           resetForm();
         }
         setDeleteTarget(null);
         onReloadMenuItems && onReloadMenuItems();
+        // Its dashboards are now without a folder, on disk.
+        onReloadWorkspaces && onReloadWorkspaces();
       },
-      (e, err) => {
-        console.error("Delete menu item error:", err);
-        setDeleteTarget(null);
-      },
+      (e, err) => failed(err),
     );
   }
 
@@ -190,6 +208,9 @@ export const FoldersSection = ({
 
   return (
     <>
+      {deleteError ? (
+        <AlertBanner variant="error" size="compact" message={deleteError} />
+      ) : null}
       <SectionLayout
         listContent={listContent}
         detailContent={detailContent}

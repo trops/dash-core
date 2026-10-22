@@ -131,9 +131,10 @@ export const useInstalledWidgets = () => {
       // drafts without the on-disk metadata still get classified.
       let draftsByPackageDir = new Map();
       let draftShortIdToId = new Map();
+      let allDrafts = [];
       if (window.mainApi?.drafts?.list) {
         try {
-          const allDrafts = (await window.mainApi.drafts.list()) || [];
+          allDrafts = (await window.mainApi.drafts.list()) || [];
           for (const d of allDrafts) {
             if (d?.packageDir) draftsByPackageDir.set(d.packageDir, d);
             if (d?.id) {
@@ -248,7 +249,42 @@ export const useInstalledWidgets = () => {
           };
         });
 
-      setWidgets([...builtinWidgets, ...installedFromCM, ...fallbackInstalled]);
+      // Drafts with no package yet (Save as draft before its first build):
+      // one entry each, so the Widgets page can offer Resume / Delete.
+      const listedDraftIds = new Set(
+        [...installedFromCM, ...fallbackInstalled]
+          .map((w) => w.draftId)
+          .filter(Boolean),
+      );
+      const unbuiltDrafts = (Array.isArray(allDrafts) ? allDrafts : [])
+        .filter((d) => d?.id && !listedDraftIds.has(d.id))
+        .map((d) => ({
+          name: `draft:${d.id}`,
+          displayName: d.name || "Untitled widget",
+          author: null,
+          package: null,
+          description: null,
+          icon: null,
+          version: null,
+          path: null,
+          source: "draft",
+          kind: "draft",
+          draftId: d.id,
+          providers: [],
+          workspace: null,
+          componentNames: [],
+          packageId: `@ai-built/${d.id}`,
+          scopedId: null,
+          build: null,
+          checks: null,
+        }));
+
+      setWidgets([
+        ...builtinWidgets,
+        ...installedFromCM,
+        ...fallbackInstalled,
+        ...unbuiltDrafts,
+      ]);
     } catch (err) {
       console.error("[useInstalledWidgets] Error listing widgets:", err);
       setError(err.message || "Failed to load widgets");

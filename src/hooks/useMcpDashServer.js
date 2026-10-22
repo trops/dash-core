@@ -21,7 +21,11 @@ export function useMcpDashServer() {
   });
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  // Kept apart: the status poll clears only its own error, so a failed
+  // start (e.g. the port is in use) stays on screen until the next action.
+  const [statusError, setStatusError] = useState(null);
+  const [actionError, setError] = useState(null);
+  const error = actionError || statusError;
   const pollRef = useRef(null);
 
   const api = window.mainApi?.mcpDashServer;
@@ -31,9 +35,9 @@ export function useMcpDashServer() {
     try {
       const result = await api.getStatus();
       setStatus(result);
-      setError(null);
+      setStatusError(null);
     } catch (err) {
-      setError(err.message || "Failed to get server status");
+      setStatusError(err.message || "Failed to get server status");
     }
   }, [api]);
 

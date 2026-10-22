@@ -42,6 +42,9 @@ const SECTION_OF = {
  * @param {(workspace: object) => void} onCommit
  * @param {{ section: string, request: number }|null} focus
  *   scroll to (and open) a section: "edit" | "providers" | "handlers" | "code"
+ * @param {{ current: Function|null }} flushRef
+ *   the dashboard's Save calls flushRef.current() first, so a setting typed
+ *   but not yet applied (the field still has focus) is saved too
  */
 export const WidgetPanel = ({
   item,
@@ -49,11 +52,13 @@ export const WidgetPanel = ({
   name = "This widget",
   onCommit,
   focus = null,
+  flushRef: outerFlushRef = null,
 }) => {
   const { muted, hairline } = useConfigTokens();
   const [local, setLocal] = useState({ item, workspace });
   const committedLayoutRef = useRef(workspace ? workspace.layout : null);
-  const flushRef = useRef(null);
+  const ownFlushRef = useRef(null);
+  const flushRef = outerFlushRef || ownFlushRef;
   const [rawOpen, setRawOpen] = useState(false);
   const refs = {
     settings: useRef(null),

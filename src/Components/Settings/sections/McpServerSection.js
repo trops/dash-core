@@ -40,7 +40,8 @@ export const McpServerSection = () => {
   const handleToggle = useCallback(
     async (enabled) => {
       if (enabled) {
-        await startServer(displayPort);
+        const result = await startServer(displayPort);
+        if (result?.success) setPortInput(null);
       } else {
         await stopServer();
       }
@@ -53,16 +54,17 @@ export const McpServerSection = () => {
     setPortInput(val ? parseInt(val, 10) : "");
   }, []);
 
+  // Running: a new port restarts the server on it. Stopped: the port is
+  // kept for the next start. Either way a port that fails stays in the
+  // field, next to its error, to change.
   const handlePortBlur = useCallback(async () => {
-    if (
-      portInput !== null &&
-      portInput !== "" &&
-      portInput !== port &&
-      running
-    ) {
-      await restartServer(portInput);
+    if (portInput === "" || portInput === port) {
+      setPortInput(null);
+      return;
     }
-    setPortInput(null);
+    if (!running || portInput === null) return;
+    const result = await restartServer(portInput);
+    if (result?.success) setPortInput(null);
   }, [portInput, port, running, restartServer]);
 
   const handlePortKeyDown = useCallback((e) => {

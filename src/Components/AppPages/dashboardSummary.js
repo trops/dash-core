@@ -49,6 +49,7 @@ export function dashboardSummary(workspace, ctx = {}) {
     getWidgetConfig = null,
     getWidgetRequirements = null,
     appProviders = null,
+    providersLoaded,
   } = ctx;
   const ws = workspace || {};
   const rawPages =
@@ -83,6 +84,7 @@ export function dashboardSummary(workspace, ctx = {}) {
     const bindings = getAllProviderBindings({
       workspace: ws,
       appProviders,
+      providersLoaded,
       getWidgetRequirements,
     });
     providers = Array.from(

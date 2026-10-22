@@ -52,6 +52,43 @@ const menuItemsController = {
       };
     }
   },
+
+  // Deletes a folder. Its dashboards stay, with no folder (menuId null —
+  // a missing menuId would read as folder 1), as the confirm says.
+  deleteMenuItemForApplication: (win, appId, menuItemId) => {
+    try {
+      const dir = path.join(app.getPath("userData"), appName, appId);
+      return deleteMenuItemFromFiles(
+        path.join(dir, configFilename),
+        path.join(dir, "workspaces.json"),
+        menuItemId,
+      );
+    } catch (e) {
+      console.error("[menuItemsController] Error deleting menu item:", e);
+      return { error: true, message: e.message, menuItems: [] };
+    }
+  },
 };
 
+function deleteMenuItemFromFiles(menuFile, workspacesFile, menuItemId) {
+  const same = (id) => id != null && String(id) === String(menuItemId);
+  const menuItems = (getFileContents(menuFile) || []).filter(
+    (mi) => mi && !same(mi.id),
+  );
+  const workspaces = getFileContents(workspacesFile) || [];
+  let moved = 0;
+  const nextWorkspaces = workspaces.map((ws) => {
+    if (!ws || !same(ws.menuId)) return ws;
+    moved += 1;
+    return { ...ws, menuId: null };
+  });
+  // Dashboards first: a failure here leaves the folder, never orphans.
+  if (moved > 0) {
+    writeFileSync(workspacesFile, JSON.stringify(nextWorkspaces, null, 2));
+  }
+  writeFileSync(menuFile, JSON.stringify(menuItems, null, 2));
+  return { success: true, menuItems, dashboardsMoved: moved };
+}
+
 module.exports = menuItemsController;
+module.exports.deleteMenuItemFromFiles = deleteMenuItemFromFiles;

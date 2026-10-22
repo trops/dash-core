@@ -478,6 +478,34 @@ describe("WidgetsPage package detail (NAV-008 AC3)", () => {
     await waitFor(() => expect(drafts.delete).toHaveBeenCalledWith("x"));
   });
 
+  it("a draft saved before its first build can be resumed, not published", () => {
+    mockExtraWidgets = [
+      {
+        name: "draft:draft-q1",
+        displayName: "QaDraft",
+        packageId: "@ai-built/draft-q1",
+        source: "draft",
+        kind: "draft",
+        draftId: "draft-q1",
+        providers: [],
+        componentNames: [],
+      },
+    ];
+    setup();
+    const events = [];
+    const onEvent = (e) => events.push(e.detail);
+    window.addEventListener("dash:open-widget-builder", onEvent);
+    fireEvent.click(pkgRow("QaDraft (draft)"));
+    fireEvent.click(within(detail()).getByRole("button", { name: "Resume" }));
+    window.removeEventListener("dash:open-widget-builder", onEvent);
+    expect(events).toEqual([{ resumeDraftId: "draft-q1" }]);
+    expect(
+      within(detail()).queryByRole("button", { name: /^Publish/ }),
+    ).toBeNull();
+    expect(within(detail()).queryByText("Not published yet")).toBeNull();
+    mockExtraWidgets = [];
+  });
+
   it("someone else's package can't be published or edited by hand", () => {
     setup();
     fireEvent.click(pkgRow("charts"));
@@ -648,6 +676,17 @@ describe("WidgetsPage checks", () => {
     fireEvent.click(screen.getByRole("button", { name: "Replace it" }));
     expect(mockConfirmReplace).toHaveBeenCalled();
     mockReplace = null;
+  });
+
+  it("runs a Create install request once, not again on each visit", async () => {
+    const request = { action: "zip", nonce: 4242 };
+    const first = setup({ installRequest: request });
+    await waitFor(() => expect(mockInstallFromZip).toHaveBeenCalledTimes(1));
+    first.unmount();
+    // Back to the Widgets page later: it remounts with the same request.
+    setup({ installRequest: request });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(mockInstallFromZip).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -824,7 +863,7 @@ describe("WidgetsPage page actions", () => {
   // New Widget opens Create (AppPage); the install picker is reached from an
   // install's result (Install another).
   it("Install another shows the picker; its builder card opens the Widget Builder", async () => {
-    setup({ installRequest: { action: "zip", nonce: 1 } });
+    setup({ installRequest: { action: "zip", nonce: 11 } });
     fireEvent.click(await screen.findByText("Install another"));
     expect(screen.getByTestId("install-picker")).toBeInTheDocument();
     let fired = false;
@@ -839,7 +878,7 @@ describe("WidgetsPage page actions", () => {
   });
 
   it("Install another › Describe it to the Dash team opens Create on Widget (3b)", async () => {
-    setup({ installRequest: { action: "zip", nonce: 1 } });
+    setup({ installRequest: { action: "zip", nonce: 12 } });
     fireEvent.click(await screen.findByText("Install another"));
     const details = [];
     const onEvent = (e) => details.push(e.detail);

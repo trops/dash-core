@@ -49,6 +49,7 @@ const { describeImage } = require("./openaiController");
 const {
   saveMenuItemForApplication,
   listMenuItemsForApplication,
+  deleteMenuItemForApplication,
 } = require("./menuItemsController");
 const {
   exportDashboardConfig,
@@ -163,6 +164,7 @@ module.exports = {
   describeImage,
   saveMenuItemForApplication,
   listMenuItemsForApplication,
+  deleteMenuItemForApplication,
   searchIndex,
   exportDashboardConfig,
   selectDashboardFile,

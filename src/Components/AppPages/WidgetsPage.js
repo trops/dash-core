@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState } from "react";
 import {
   Button,
   Button3,
@@ -197,6 +197,8 @@ const PackageDetail = ({
   // The user's own package (their scope, or local AI-built): they can
   // publish it — always under their own username — and edit it.
   const own = pkg.mine && !pkg.isBuiltIn;
+  // A draft saved before its first build has nothing to publish yet.
+  const unbuilt = pkg.isDraft && first.source === "draft";
   const signedIn = !!(identity && identity.signedIn);
   const published = own && identity ? identity.publishedVersion(pkg.id) : null;
   return (
@@ -244,7 +246,7 @@ const PackageDetail = ({
               onClick={() => openBuilder({ resumeDraftId: first.draftId })}
             />
           ) : null}
-          {own && signedIn ? (
+          {own && signedIn && !unbuilt ? (
             <Button3
               title={published ? "Publish new version…" : "Publish…"}
               size="sm"
@@ -282,7 +284,7 @@ const PackageDetail = ({
           />
         </div>
       </div>
-      {own ? (
+      {own && !unbuilt ? (
         <span className={`text-xs ${muted}`}>
           {!signedIn
             ? "Sign in to the registry to publish."
@@ -511,6 +513,10 @@ const InstallResult = ({ result, onBack, muted }) => (
  * package (About this package) or the widget picked. A search lists matching
  * packages and widgets flat, each widget with its package.
  */
+// The last Create install request (by nonce) the page has run, kept across
+// remounts.
+const handledInstallRequest = { current: null };
+
 export const WidgetsPage = ({
   workspaces = [],
   credentials = null,
@@ -637,8 +643,10 @@ export const WidgetsPage = ({
   // from a zip or load a folder, right here. Each request runs once — the
   // widget list changes when it installs, and that mustn't run it again
   // (Phase 1a-2: the file picker opened twice). Only "select" waits for
-  // the list, until its package is in it.
-  const handledRequest = useRef(null);
+  // the list, until its package is in it. The page remounts on every visit
+  // while the request stays set, so "handled" lives outside it (QA
+  // 2026-10-22: each visit opened the file picker again).
+  const handledRequest = handledInstallRequest;
   useEffect(() => {
     if (!installRequest || !installRequest.action) return;
     if (handledRequest.current === installRequest.nonce) return;

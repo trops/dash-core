@@ -518,11 +518,12 @@ export const DashboardsPage = ({
           getWidgetConfig,
           getWidgetRequirements,
           appProviders,
+          providersLoaded: appContext.providersLoaded,
         }),
       );
     }
     return map;
-  }, [workspaces, appProviders]);
+  }, [workspaces, appProviders, appContext.providersLoaded]);
 
   const folderNameOf = (ws) =>
     menuItems.find((m) => m.id === ws.menuId)?.name || UNCATEGORIZED;
