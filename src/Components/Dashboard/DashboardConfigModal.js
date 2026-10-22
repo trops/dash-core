@@ -98,6 +98,9 @@ export const DashboardConfigModal = ({
   // All dashboards — the Bots tab's bot form (Team field, event picker).
   workspaces = [],
   appProviders,
+  // True once the provider list has loaded: an empty one then means none,
+  // so a binding to a deleted provider counts as missing.
+  providersLoaded,
   getWidgetRequirements,
   getWidgetConfig = null,
   onSaveBindings,
@@ -146,9 +149,10 @@ export const DashboardConfigModal = ({
       getAllProviderBindings({
         workspace,
         appProviders,
+        providersLoaded,
         getWidgetRequirements,
       }),
-    [workspace, appProviders, getWidgetRequirements],
+    [workspace, appProviders, providersLoaded, getWidgetRequirements],
   );
 
   // Reflect staged choice in resolution without persisting. Used to

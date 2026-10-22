@@ -3303,6 +3303,7 @@ const DashboardStageInner = ({
               workspaces={workspaceConfig}
               workspace={workspaceSelected}
               appProviders={appContext?.providers || {}}
+              providersLoaded={appContext?.providersLoaded}
               // Use ComponentManager.config so legacy bare component
               // refs in `workspaceSelected.layout` still resolve to
               // their registered scoped form (post-v0.1.432). Direct

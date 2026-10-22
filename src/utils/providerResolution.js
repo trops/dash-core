@@ -259,6 +259,7 @@ export function groupByProviderType(unresolved) {
 export function getAllProviderBindings({
   workspace,
   appProviders,
+  providersLoaded,
   getWidgetRequirements,
 }) {
   if (!workspace || typeof getWidgetRequirements !== "function") return [];
@@ -288,6 +289,7 @@ export function getAllProviderBindings({
         widgetId,
         workspace,
         appProviders,
+        providersLoaded,
       });
       bindings.push({
         widgetId,

@@ -8,7 +8,9 @@ import {
   providerExists,
   resolveProviderName,
   getUnresolvedProviders,
+  getAllProviderBindings,
 } from "./providerResolution";
+import { dashboardSummary } from "../Components/AppPages/dashboardSummary";
 
 const slack = { name: "Slack", type: "slack" };
 
@@ -100,5 +102,26 @@ describe("getUnresolvedProviders", () => {
         getWidgetRequirements,
       }),
     ).toEqual([]);
+  });
+
+  // The last provider deleted: the Config modal's Providers tab and the
+  // Dashboards page summary agree with the card (review of PR #792).
+  test("the Config modal's bindings show the deleted last provider as missing", () => {
+    const [row] = getAllProviderBindings({
+      workspace,
+      appProviders: {},
+      providersLoaded: true,
+      getWidgetRequirements,
+    });
+    expect(row.resolvedProviderName).toBe(null);
+  });
+
+  test("the Dashboards page counts it unresolved", () => {
+    const summary = dashboardSummary(workspace, {
+      getWidgetRequirements,
+      appProviders: {},
+      providersLoaded: true,
+    });
+    expect(summary.unresolvedProviders).toBe(1);
   });
 });
