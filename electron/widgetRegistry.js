@@ -479,6 +479,24 @@ function localPackageName(resolvedPath) {
   return base;
 }
 
+// True only for a path strictly inside the widgets folder, links resolved,
+// so a widget loaded from the user's folder (or a link to it) is never
+// deleted with it.
+function isInsideWidgetsDir(target) {
+  try {
+    const root = fs.realpathSync(WIDGETS_CACHE_DIR);
+    const rel = path.relative(root, fs.realpathSync(target));
+    return (
+      rel !== "" &&
+      rel !== ".." &&
+      !rel.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(rel)
+    );
+  } catch {
+    return false;
+  }
+}
+
 class WidgetRegistry {
   constructor(componentManager = null, customPath = null) {
     if (!WIDGETS_CACHE_DIR) {
@@ -1623,7 +1641,9 @@ class WidgetRegistry {
     }
 
     try {
-      if (fs.existsSync(widget.path)) {
+      // A folder of widgets loads in place, so its path is the user's own
+      // folder: forget the widget, never delete files outside Dash's own.
+      if (fs.existsSync(widget.path) && isInsideWidgetsDir(widget.path)) {
         fs.rmSync(widget.path, { recursive: true });
       }
 
@@ -2226,3 +2246,4 @@ module.exports.setupWidgetRegistryHandlers = setupWidgetRegistryHandlers;
 module.exports.validateZipEntries = validateZipEntries;
 module.exports.setInstallGate = setInstallGate;
 module.exports.checkPackage = checkPackage;
+module.exports.isInsideWidgetsDir = isInsideWidgetsDir;
