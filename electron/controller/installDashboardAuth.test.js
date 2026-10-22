@@ -336,6 +336,25 @@ describe("installDashboardFromRegistry — 401 handling", () => {
   });
 });
 
+describe("getDashboardPackageConfig — a public read with no sign-in", () => {
+  beforeEach(() => {
+    mockStoredToken = null;
+    clearTokenCalled = false;
+    mockGetPackageResult = MOCK_PKG;
+  });
+
+  it("a 401 with no token sent asks to sign in, not 'expired' (QA 2026-10-22)", async () => {
+    mockFetchResponse = mock401Response();
+
+    const result = await controller.getDashboardPackageConfig("test-dashboard");
+
+    assert.equal(result.success, false);
+    assert.equal(result.authRequired, true);
+    assert.equal(result.error, "Sign in to the Dash registry to use this.");
+    assert.equal(clearTokenCalled, false);
+  });
+});
+
 describe("installDashboardFromRegistry — retry flow contract", () => {
   beforeEach(() => {
     mockStoredToken = null;

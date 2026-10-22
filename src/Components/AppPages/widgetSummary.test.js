@@ -376,6 +376,23 @@ describe("the drill-in list (consolidation Phase 4b)", () => {
       note: "This can't be undone: it isn't in the registry.",
     });
   });
+
+  test("uninstallCopy: loaded from the user's folder, the folder stays (QA 2026-10-22)", () => {
+    const [pkg] = widgetOrgs([
+      {
+        name: "tictactoe.TicTacToe",
+        packageId: "tictactoe",
+        source: "installed",
+        kind: "installed",
+        loadedInPlace: true,
+        componentNames: ["tictactoe.TicTacToe"],
+      },
+    ]).flatMap((o) => o.packages);
+    expect(pkg.loadedInPlace).toBe(true);
+    expect(uninstallCopy(pkg).note).toBe(
+      "Dash will forget it. Your folder stays where it is.",
+    );
+  });
 });
 
 test("widgetTitle: a display name that's just its component id reads as words", () => {

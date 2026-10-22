@@ -268,7 +268,7 @@ describe("find_providers (bot-capabilities CAP-003)", () => {
     assert.match(r.text, /<team_data>/);
     assert.match(r.text, /Built into Dash/);
     assert.match(r.text, /\[id: builtin:web-fetch\]/);
-    assert.match(r.text, /they add it from Settings › Providers/);
+    assert.match(r.text, /they add it from the Providers page/);
   });
 
   it("needs a capability", async () => {

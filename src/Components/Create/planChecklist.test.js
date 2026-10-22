@@ -96,6 +96,20 @@ describe("planChecklist (phase 4b)", () => {
     );
   });
 
+  test("a layout with no source is a new one, not 'undefined' (QA 2026-10-22)", () => {
+    expect(
+      countsLine({ pieces: [{ kind: "layout", name: "Morning Brief" }] }),
+    ).toBe("1 new layout");
+    expect(
+      countsLine({
+        pieces: [
+          { kind: "layout", name: "A" },
+          { kind: "layout", name: "B", source: "new" },
+        ],
+      }),
+    ).toBe("2 layouts: 2 new");
+  });
+
   test("swap, remove and the note for the Planner", () => {
     const swapped = swapPiece(plan, 1, {
       source: "AI-built",

@@ -156,3 +156,15 @@ test("its last run shows model, tokens and cost", () => {
     screen.getByText("Haiku · 1.3k tokens · included in your plan"),
   ).toBeInTheDocument();
 });
+
+test("its last run's answer hides the <matches> / <plan> blocks (QA 2026-10-22)", () => {
+  setup(scout, {
+    lastRun: {
+      status: "completed",
+      output:
+        'Found 1 widget.\n<matches>[{"source":"Registry","name":"Clock"}]</matches>',
+    },
+  });
+  expect(screen.getByText("Found 1 widget.")).toBeInTheDocument();
+  expect(screen.queryByText(/<matches>/)).toBeNull();
+});

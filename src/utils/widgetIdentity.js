@@ -26,6 +26,10 @@
  *   5. bare component name (last segment of the scoped id)
  *   6. full component string (last resort, never preferred)
  *
+ * A component's identifier ("QaThrowerTwo", as 5, or as cfg.name when that
+ * is just the identifier) reads as words: "Qa Thrower Two" — as Create
+ * names it (QA 2026-10-22: the Fix card used the raw name).
+ *
  * @param {Object} item - layout item (must carry `component` to be useful)
  * @param {Object} [cfg] - the live registry config returned by ComponentManager
  * @returns {string} a non-empty display string
@@ -42,13 +46,33 @@ export function pickWidgetDisplayName(item, cfg) {
     return userConfigTitle;
   }
   if (cfg?.displayName) return cfg.displayName;
-  if (cfg?.name) return cfg.name;
+  const bare =
+    typeof item?.component === "string"
+      ? item.component.split(".").pop()
+      : null;
+  if (cfg?.name) {
+    return cfg.name === bare ? humanizeIdentifier(cfg.name) : cfg.name;
+  }
   if (typeof item?.component === "string") {
     const parts = item.component.split(".");
-    if (parts.length === 3) return parts[2];
+    if (parts.length === 3) return humanizeIdentifier(parts[2]);
     return item.component;
   }
   return "Widget";
+}
+
+/**
+ * "QaThrowerTwo" → "Qa Thrower Two", "ComposedWidget3" → "Composed Widget 3",
+ * "MCPServer" → "MCP Server", "qa_thrower" → "qa thrower" (the card
+ * header's word split, WidgetCardHeader).
+ */
+export function humanizeIdentifier(name) {
+  return String(name || "")
+    .replace(/[-_]+/g, " ")
+    .replace(/([a-z])([A-Z0-9])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/([0-9])([A-Za-z])/g, "$1 $2")
+    .trim();
 }
 
 /**

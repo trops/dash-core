@@ -490,7 +490,7 @@ export const DiscoverWidgetsDetail = ({ onBack, initialQuery = null }) => {
                 )
                 .join(
                   "\n",
-                )}\n\nYou can update allowed tools in Settings → Providers after installing.`
+                )}\n\nYou can update allowed tools on the Providers page after installing.`
             : ""
         }
         confirmLabel="Install Anyway"

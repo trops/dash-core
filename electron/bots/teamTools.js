@@ -81,7 +81,7 @@ const TEAM_TOOLS = [
   {
     name: "team_providers",
     description:
-      "List the user's providers (from Settings › Providers): name, type, and the tools each one offers. Use it to say what the user has connected.",
+      "List the user's providers (from the Providers page): name, type, and the tools each one offers. Use it to say what the user has connected.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -257,7 +257,7 @@ function handleTeamTool(deps, ctx, toolName, args = {}) {
           typeof deps.listProviders === "function" ? deps.listProviders() : [];
         if (!list || !list.length) {
           return ok(
-            "The user has no providers set up yet (Settings › Providers).",
+            "The user has no providers set up yet (the Providers page).",
           );
         }
         return ok(

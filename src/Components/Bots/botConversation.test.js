@@ -276,9 +276,9 @@ describe("errorNextSteps (TEAM-011 gaps)", () => {
     });
   });
 
-  it("points provider problems at Settings › Providers", () => {
+  it("points provider problems at the Providers page", () => {
     for (const text of [
-      "Slack couldn't start: Authentication required: …. Check its settings in Settings › Providers.",
+      "Slack couldn't start: Authentication required: …. Check its settings on the Providers page.",
       "Token expired",
       "403 Forbidden",
     ]) {
@@ -287,7 +287,7 @@ describe("errorNextSteps (TEAM-011 gaps)", () => {
     expect(errorNextSteps("Token expired")[1]).toEqual({
       action: "open-settings",
       section: "providers",
-      label: "Open Settings › Providers",
+      label: "Open Providers",
     });
   });
 

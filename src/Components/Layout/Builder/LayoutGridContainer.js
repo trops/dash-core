@@ -1246,11 +1246,15 @@ export const LayoutGridContainer = memo(
     }
 
     // Render empty cell in preview mode
+    // An empty cell outside edit mode: just its outline. Its number is for
+    // editing (QA 2026-10-22: a stray "1.1" on an empty dashboard).
     function renderPreviewEmptyCell(cellNumber) {
       return (
-        <div className="w-full h-full border-2 border-dashed border-gray-800 rounded flex items-center justify-center">
-          <span className="text-xs text-gray-600">{cellNumber}</span>
-        </div>
+        <div
+          className="w-full h-full border-2 border-dashed border-gray-800 rounded flex items-center justify-center"
+          data-testid="preview-empty-cell"
+          data-cell-number={cellNumber}
+        />
       );
     }
 

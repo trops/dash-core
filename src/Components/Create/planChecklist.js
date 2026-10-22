@@ -188,6 +188,9 @@ export function nextOpen(items, state = {}, have = new Set()) {
   return items.find((it) => !isDone(it, state, have)) || null;
 }
 
+/** Where a plan piece comes from; none given means the plan makes it. */
+export const pieceSource = (piece) => (piece && piece.source) || "new";
+
 const SOURCE_WORD = {
   yours: "yours",
   "ai-built": "AI-built",
@@ -239,13 +242,19 @@ export function countsLine(plan) {
   ]) {
     const group = pieces.filter((p) => p && p.kind === kind);
     if (!group.length) continue;
+    // A piece with no source (a plan's layout often has none) is one the
+    // plan makes: new — not "1 undefined layout" (QA 2026-10-22).
     const bySource = {};
-    for (const p of group) bySource[p.source] = (bySource[p.source] || 0) + 1;
+    for (const p of group) {
+      const src = pieceSource(p);
+      bySource[src] = (bySource[src] || 0) + 1;
+    }
     const detail = Object.entries(bySource)
       .map(([src, n]) => `${n} ${SOURCE_WORD[src] || src}`)
       .join(", ");
     if (kind === "layout" && group.length === 1) {
-      parts.push(`1 ${SOURCE_WORD[group[0].source] || group[0].source} layout`);
+      const src = pieceSource(group[0]);
+      parts.push(`1 ${SOURCE_WORD[src] || src} layout`);
     } else {
       parts.push(
         `${group.length} ${group.length === 1 ? one : many}: ${detail}`,

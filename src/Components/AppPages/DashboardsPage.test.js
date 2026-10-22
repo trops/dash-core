@@ -207,7 +207,7 @@ describe("DashboardsPage — detail", () => {
     expect(within(d).getAllByTestId("layout-cell")).toHaveLength(2);
     fireEvent.click(within(d).getByRole("button", { name: "Notes" }));
     expect(within(d).queryAllByTestId("layout-cell")).toHaveLength(0);
-    expect(d).toHaveTextContent("ChannelMessages");
+    expect(d).toHaveTextContent("Channel Messages");
     expect(d).toHaveTextContent("@trops/slack");
     expect(within(d).getByText("Kitchen Sink Lead")).toBeInTheDocument();
     expect(within(d).getByText("Inbox Watch")).toBeInTheDocument();

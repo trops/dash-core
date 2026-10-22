@@ -114,7 +114,7 @@ describe("BotRunHistory — details, next steps, live (TEAM-011 gaps)", () => {
     status: "failed",
     startedAt: "2026-10-02T11:00:00.000Z",
     error:
-      "Slack couldn't start: Authentication required. Check its settings in Settings › Providers.",
+      "Slack couldn't start: Authentication required. Check its settings on the Providers page.",
     prompt: "EVENT PROMPT",
     source: { eventType: "e", label: "Gmail › new email", chain: [] },
     approvals: [
@@ -162,14 +162,14 @@ describe("BotRunHistory — details, next steps, live (TEAM-011 gaps)", () => {
     ).toBeInTheDocument();
   });
 
-  it("a failed run offers Run again and Open Settings › Providers", async () => {
+  it("a failed run offers Run again and Open Providers", async () => {
     const { api, onOpenSettings } = setupLive([failed]);
     fireEvent.click(await screen.findByTestId("run-row"));
     fireEvent.click(screen.getByText("Run again"));
     await waitFor(() =>
       expect(api.run).toHaveBeenCalledWith("b1", "EVENT PROMPT", false),
     );
-    fireEvent.click(screen.getByText("Open Settings › Providers"));
+    fireEvent.click(screen.getByText("Open Providers"));
     expect(onOpenSettings).toHaveBeenCalledWith("providers");
   });
 
@@ -191,7 +191,7 @@ describe("BotRunHistory — details, next steps, live (TEAM-011 gaps)", () => {
     );
     expect(row).not.toHaveTextContent("invalid_request_error");
     fireEvent.click(row);
-    expect(screen.queryByText("Open Settings › Providers")).toBeNull();
+    expect(screen.queryByText("Open Providers")).toBeNull();
     fireEvent.click(screen.getByText("Change AI model"));
     expect(onChangeModel).toHaveBeenCalled();
   });

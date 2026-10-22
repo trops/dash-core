@@ -504,7 +504,7 @@ export const useMcpProvider = (providerType, options = {}) => {
         throw new Error(
           `Tool "${toolName}" is not allowed for this widget. Allowed tools: ${effectiveAllowedTools.join(
             ", ",
-          )}${isRequired ? `. Note: "${toolName}" is declared as a required tool by this widget — update the provider's allowed tools in Settings → Providers.` : ""}`,
+          )}${isRequired ? `. Note: "${toolName}" is declared as a required tool by this widget — update the provider's allowed tools on the Providers page.` : ""}`,
         );
       }
 

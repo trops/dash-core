@@ -37,6 +37,7 @@ function setup(props) {
         .fn()
         .mockResolvedValue({ buildId: "b1", state: { status: "running" } }),
     },
+    registryAuth: { getProfile: jest.fn().mockResolvedValue({ id: "me" }) },
   };
   render(<CreatePlanStep prompt="" {...props} />);
 }

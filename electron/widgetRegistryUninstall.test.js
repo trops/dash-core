@@ -106,3 +106,22 @@ describe("isInsideWidgetsDir", () => {
     assert.equal(isInsideWidgetsDir(sibling), false);
   });
 });
+
+describe("listWidgets", () => {
+  it("marks a widget that runs from the user's folder (Uninstall keeps it)", () => {
+    const userFolder = fs.mkdtempSync(path.join(os.tmpdir(), "zz-list-"));
+    const mine = makeWidget(path.join(userFolder, "dial"));
+    const installed = makeWidget(path.join(widgetsDir, "@me", "gauge"));
+    registry.registerWidget("dial", { name: "dial" }, mine, false);
+    registry.registerWidget("@me/gauge", { name: "gauge" }, installed, false);
+
+    const byName = Object.fromEntries(
+      registry.listWidgets().map((w) => [w.name, w.loadedInPlace]),
+    );
+    assert.equal(byName.dial, true);
+    assert.equal(byName["@me/gauge"], false);
+
+    registry.uninstallWidget("dial");
+    registry.uninstallWidget("@me/gauge");
+  });
+});

@@ -184,7 +184,7 @@ export const PanelEditItemProviders = ({
                 {isUsingDefault && (
                   <span
                     className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold bg-emerald-800 text-emerald-100"
-                    title={`No per-widget override set — runtime resolves to the global default "${resolvedName}" (Settings → Providers).`}
+                    title={`No per-widget override set — runtime resolves to the global default "${resolvedName}" (the Providers page).`}
                   >
                     using default
                   </span>

@@ -977,6 +977,15 @@ async function downloadDashboardPackage(
   }
   const response = await fetch(downloadUrl, { headers });
   if (response.status === 401) {
+    // "Expired" only when we sent a token; a public read sent none, and a
+    // never-signed-in profile was told its sign-in expired (QA 2026-10-22).
+    if (!auth?.token) {
+      return {
+        success: false,
+        error: "Sign in to the Dash registry to use this.",
+        authRequired: true,
+      };
+    }
     clearToken();
     return {
       success: false,

@@ -1608,6 +1608,20 @@ class WidgetRegistry {
   }
 
   /**
+   * The widgets for the app's lists: each marked `loadedInPlace` when it
+   * runs from the user's own folder (a folder of widgets loads in place),
+   * so Uninstall can say the folder stays.
+   * @returns {Array}
+   */
+  listWidgets() {
+    return this.getWidgets().map((w) => ({
+      ...w,
+      loadedInPlace:
+        !!(w && w.path) && fs.existsSync(w.path) && !isInsideWidgetsDir(w.path),
+    }));
+  }
+
+  /**
    * Get widget by name
    * @param {string} widgetName - Name of the widget
    * @returns {Object|null} Widget configuration or null
@@ -1971,7 +1985,7 @@ function maybeEmitMcpConsentRequired(widgetName) {
  * Setup IPC handlers for widget management (use in main.js)
  */
 function setupWidgetRegistryHandlers() {
-  ipcMain.handle("widget:list", () => getWidgetRegistry().getWidgets());
+  ipcMain.handle("widget:list", () => getWidgetRegistry().listWidgets());
 
   ipcMain.handle("widget:get", (event, widgetName) => {
     return getWidgetRegistry().getWidget(widgetName);

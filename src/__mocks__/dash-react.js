@@ -35,6 +35,7 @@ function InputText({
   id,
   ariaLabel,
   onKeyDown,
+  type,
 }) {
   return React.createElement(
     "label",
@@ -42,12 +43,22 @@ function InputText({
     label,
     React.createElement("input", {
       id,
+      type,
       "aria-label": ariaLabel || undefined,
       value: value,
       onChange: (e) => onChange(e.target.value),
       onKeyDown,
       placeholder: placeholder,
     }),
+  );
+}
+
+// Like dash-react: a native <select> that hands onChange the change event.
+function SelectMenu({ name, selectedValue, onChange, children }) {
+  return React.createElement(
+    "select",
+    { name, value: selectedValue, onChange },
+    children,
   );
 }
 
@@ -1108,6 +1119,7 @@ module.exports = {
   Modal,
   Stepper,
   InputText,
+  SelectMenu,
   TextArea,
   SegmentedControl,
   CodeEditorVS,

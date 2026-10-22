@@ -5,6 +5,15 @@ import { DetailGroup } from "./ManageLayout";
 import { BotAvatar } from "../Bots/BotAvatar";
 import { toPlainText } from "../Bots/botConversation";
 import { modelLabel, runCostLabel } from "../../utils/runCostLabel";
+import { withoutMatches } from "../../utils/teamRoles";
+
+// A run's answer as words: the Scout's <matches> and the Planner's <plan>
+// blocks are for the app, not to read (QA 2026-10-22: a raw tag showed).
+function answerText(output) {
+  return withoutMatches(output)
+    .replace(/<plan>[\s\S]*?<\/plan>/gi, "")
+    .trim();
+}
 
 /**
  * DashTeamPanel — one Dash team role on the Bots page (create-entry PRD
@@ -163,9 +172,9 @@ export const DashTeamPanel = ({ bot, status, lastRun, onChanged, onEdit }) => {
                   {runCostLabel(lastRun)}
                 </span>
               ) : null}
-              {lastRun.error || lastRun.output ? (
+              {lastRun.error || answerText(lastRun.output) ? (
                 <span className={`text-sm line-clamp-3 ${muted}`}>
-                  {toPlainText(lastRun.error || lastRun.output)}
+                  {toPlainText(lastRun.error || answerText(lastRun.output))}
                 </span>
               ) : null}
             </div>

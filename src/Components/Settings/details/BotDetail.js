@@ -462,7 +462,7 @@ export const BotDetail = ({
     // null → every tool, list not known yet.
     tools: Array.isArray(s.tools) ? s.tools : null,
     status: s.missing
-      ? "No longer set up under Settings → Providers"
+      ? "No longer set up on the Providers page"
       : s.running
         ? `Running · ${s.toolCount ?? 0} tools`
         : "Starts when the bot runs",
@@ -807,7 +807,7 @@ export const BotDetail = ({
                             ) : (
                               <span className="text-xs opacity-50">
                                 All tools this provider offers — it has no tool
-                                limit set in Settings → Providers.
+                                limit set on the Providers page.
                               </span>
                             )}
                           </div>
@@ -818,8 +818,8 @@ export const BotDetail = ({
                 </div>
               ) : sourcesLoaded ? (
                 <span className="text-xs opacity-50">
-                  You haven&apos;t set up any MCP providers yet. Add one under
-                  Settings → Providers, then it will appear here.
+                  You haven&apos;t set up any MCP providers yet. Add one on the
+                  Providers page, then it will appear here.
                 </span>
               ) : null}
               <span className="text-xs opacity-50">

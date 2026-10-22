@@ -33,6 +33,7 @@ import {
   removePiece,
   botDetails,
   swapPiece,
+  pieceSource,
 } from "./planChecklist";
 import {
   ConnectDialog,
@@ -40,6 +41,7 @@ import {
   SwapPicker,
 } from "./PlanChecklistDialogs";
 import { CreateBuildingStep } from "./CreateBuildingStep";
+import { useRegistryAuthGate } from "../../hooks/useRegistryAuthGate";
 import { PlanSketch } from "./PlanSketch";
 import { botPlanRequest, forWhere } from "./botCreate";
 import { forEdit } from "./editCreate";
@@ -420,6 +422,9 @@ export const CreatePlanStep = ({
   // The running build (4d): { buildId, state } once Build starts.
   const [build, setBuild] = useState(null);
   const [buildError, setBuildError] = useState(null);
+  // A plan that installs from the registry needs a registry sign-in: asked
+  // before Build, not found out when an install fails (QA 2026-10-22).
+  const { ensureAuthed, authGate } = useRegistryAuthGate();
   // Edit plan (4d-3): the earlier build whose work the next Build reuses.
   const [resumeFrom, setResumeFrom] = useState(null);
   // Remove what was built (4d-3): what was removed, said on the plan.
@@ -765,6 +770,31 @@ export const CreatePlanStep = ({
   const startBuild = async (continueFrom = null) => {
     setBuildError(null);
     if (heldByEdits()) return;
+    // Signed in already (a token is stored): build. An expired token or an
+    // unreachable registry is the build's own sign-in-and-retry to handle —
+    // asking here would read "sign in" when the registry is just offline.
+    const hasRegistryToken = async () => {
+      try {
+        const api = window.mainApi && window.mainApi.registryAuth;
+        const s = api && api.getStatus ? await api.getStatus() : null;
+        return !!(s && s.authenticated);
+      } catch {
+        return false;
+      }
+    };
+    if (
+      pieces.some((p) => p && pieceSource(p) === "registry") &&
+      !(await hasRegistryToken()) &&
+      !(await ensureAuthed({
+        message:
+          "This plan installs widgets from the Dash registry. Sign in to the registry to build it.",
+      }))
+    ) {
+      setBuildError(
+        `Sign in to the Dash registry to build this plan — it installs widgets from it. Press ${buildLabel} again when you're signed in.`,
+      );
+      return;
+    }
     setReady(true);
     const bots = window.mainApi && window.mainApi.bots;
     if (!bots || !bots.startPlanBuild) {
@@ -1140,15 +1170,16 @@ export const CreatePlanStep = ({
                 <SectionLabel text={label} />
                 {group.map((p, gi) => {
                   const index = pieces.indexOf(p);
-                  const base = SOURCE[p.source] || {
-                    label: p.source,
+                  const src = pieceSource(p);
+                  const base = SOURCE[src] || {
+                    label: src,
                     state: "neutral",
                   };
                   const source = edit
                     ? edit.mode === "update"
                       ? { label: "Change", state: "warning" }
                       : { label: "New widget", state: "closed" }
-                    : p.source === "new"
+                    : src === "new"
                       ? { ...base, label: `New ${p.kind}` }
                       : base;
                   const meta = pieceMeta(p);
@@ -1419,6 +1450,8 @@ export const CreatePlanStep = ({
           }}
         />
       ) : null}
+      {/* Last, so the sign-in stacks above the plan's other dialogs. */}
+      {authGate}
     </>
   );
   // One scroll area: the Planner's questions end the conversation, and the
