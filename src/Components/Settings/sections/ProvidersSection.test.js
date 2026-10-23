@@ -28,8 +28,17 @@ jest.mock("../details/McpCatalogDetail", () => ({
   ),
 }));
 jest.mock("../details/CustomMcpServerForm", () => ({
-  CustomMcpServerForm: ({ initialName }) => (
-    <div data-testid="mcp-edit">{initialName}</div>
+  CustomMcpServerForm: ({ initialName, onSave }) => (
+    <div data-testid="mcp-edit">
+      {initialName}
+      <button
+        onClick={() =>
+          onSave(`${initialName} Work`, "slack", {}, { transport: "stdio" })
+        }
+      >
+        Save renamed
+      </button>
+    </div>
   ),
 }));
 jest.mock("../details/WebSocketProviderForm", () => ({
@@ -87,6 +96,8 @@ function setup({ appProviders = providers, ...props } = {}) {
       ok(null, { status: name === "Slack" ? "connected" : "disconnected" }),
     ),
     deleteProvider: jest.fn((appId, name, ok) => ok()),
+    saveProvider: jest.fn((appId, name, data, ok) => ok()),
+    mcpStartServer: jest.fn(),
     saveWorkspace: jest.fn((appId, ws, ok) => ok(null, {})),
     mcpStopServer: jest.fn(),
   };
@@ -201,6 +212,117 @@ describe("ProvidersSection detail (NAV-007)", () => {
     expect(dashApi.deleteProvider).toHaveBeenCalledWith(
       "app",
       "Algolia",
+      expect.any(Function),
+      expect.any(Function),
+    );
+  });
+
+  it("Delete says nothing uses an unused provider (once the bots are loaded)", async () => {
+    setup();
+    fireEvent.click(row("Algolia"));
+    fireEvent.click(within(detail()).getByRole("button", { name: "Delete" }));
+    const modal = screen.getByTestId("confirmation-modal");
+    expect(within(modal).getByText("Delete Algolia?")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        within(modal).getByText("Nothing uses Algolia. This can't be undone."),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("before the bots load, or with no dashboards given, it doesn't say nothing uses it", async () => {
+    // Clicked straight after mount: the bots list hasn't resolved yet.
+    setup();
+    fireEvent.click(row("Algolia"));
+    fireEvent.click(within(detail()).getByRole("button", { name: "Delete" }));
+    expect(
+      within(screen.getByTestId("confirmation-modal")).getByText(
+        /^Widgets and bots that use Algolia/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("with no dashboards given (Create's Connect), a rename still asks", async () => {
+    const { dashApi } = setup({ workspaces: null });
+    await waitFor(() => expect(window.mainApi.bots.list).toHaveBeenCalled());
+    fireEvent.click(row("GitHub"));
+    fireEvent.click(within(detail()).getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save renamed" }));
+    expect(
+      within(screen.getByTestId("confirmation-modal")).getByText(
+        /^Widgets and bots find GitHub by name/,
+      ),
+    ).toBeInTheDocument();
+    expect(dashApi.saveProvider).not.toHaveBeenCalled();
+  });
+
+  it("Delete names the dashboards and bots that use it (QA 2026-10-22)", async () => {
+    setup();
+    fireEvent.click(row("Slack"));
+    await waitFor(() =>
+      expect(within(detail()).getByText("Digest")).toBeInTheDocument(),
+    );
+    fireEvent.click(within(detail()).getByRole("button", { name: "Delete" }));
+    expect(
+      within(screen.getByTestId("confirmation-modal")).getByText(
+        "Slack is used by 1 dashboard (Kitchen Sink) and 2 bots (Digest, Loose). Once it's deleted, they need another provider picked before they work again. This can't be undone.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("renaming a provider in use asks first; Cancel keeps it", async () => {
+    const { dashApi } = setup();
+    fireEvent.click(row("Slack"));
+    await waitFor(() =>
+      expect(within(detail()).getByText("Digest")).toBeInTheDocument(),
+    );
+    fireEvent.click(within(detail()).getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save renamed" }));
+    const modal = screen.getByTestId("confirmation-modal");
+    expect(within(modal).getByText("Rename Slack?")).toBeInTheDocument();
+    expect(
+      within(modal).getByText(/until you pick Slack Work for them/),
+    ).toBeInTheDocument();
+    expect(dashApi.deleteProvider).not.toHaveBeenCalled();
+    expect(dashApi.saveProvider).not.toHaveBeenCalled();
+    fireEvent.click(within(modal).getByText("Cancel"));
+    expect(screen.queryByTestId("confirmation-modal")).toBeNull();
+    expect(dashApi.saveProvider).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save renamed" }));
+    fireEvent.click(
+      within(screen.getByTestId("confirmation-modal")).getByText("Rename"),
+    );
+    expect(dashApi.deleteProvider).toHaveBeenCalledWith(
+      "app",
+      "Slack",
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(dashApi.saveProvider).toHaveBeenCalledWith(
+      "app",
+      "Slack Work",
+      expect.objectContaining({ providerClass: "mcp" }),
+      expect.any(Function),
+      expect.any(Function),
+    );
+  });
+
+  it("renaming a provider nothing uses saves without asking", async () => {
+    const { dashApi } = setup();
+    // Usage is known once the bots are in (Slack's Used by lists them).
+    fireEvent.click(row("Slack"));
+    await waitFor(() =>
+      expect(within(detail()).getByText("Digest")).toBeInTheDocument(),
+    );
+    fireEvent.click(row("GitHub"));
+    fireEvent.click(within(detail()).getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save renamed" }));
+    expect(screen.queryByTestId("confirmation-modal")).toBeNull();
+    expect(dashApi.saveProvider).toHaveBeenCalledWith(
+      "app",
+      "GitHub Work",
+      expect.anything(),
       expect.any(Function),
       expect.any(Function),
     );

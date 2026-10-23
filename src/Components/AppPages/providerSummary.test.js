@@ -4,6 +4,8 @@ import {
   providerStatus,
   providerUsage,
   groupProviders,
+  providerDeleteMessage,
+  providerRenameMessage,
 } from "./providerSummary";
 
 const slack = {
@@ -296,5 +298,89 @@ describe("groupProviders", () => {
       ["Tools (MCP)", ["Slack"]],
       ["API keys", ["OpenAI Key"]],
     ]);
+  });
+});
+
+describe("delete / rename confirm messages", () => {
+  const dash = (n) => ({ workspaceId: n, workspaceName: `D${n}`, widgets: 1 });
+  const bot = (n) => ({ id: `b${n}`, name: `Bot${n}` });
+
+  it("says nothing uses an unused provider", () => {
+    const usage = { dashboards: [], bots: [], count: 0 };
+    expect(providerDeleteMessage("Slack", usage)).toBe(
+      "Nothing uses Slack. This can't be undone.",
+    );
+    expect(providerRenameMessage("Slack", "Slack 2", usage)).toBeNull();
+  });
+
+  it("names the dashboards and bots using it, singular and plural", () => {
+    expect(
+      providerDeleteMessage("Slack", {
+        dashboards: [dash(1)],
+        bots: [bot(1), bot(2)],
+        count: 3,
+      }),
+    ).toBe(
+      "Slack is used by 1 dashboard (D1) and 2 bots (Bot1, Bot2). Once it's deleted, they need another provider picked before they work again. This can't be undone.",
+    );
+    expect(
+      providerDeleteMessage("Slack", {
+        dashboards: [],
+        bots: [bot(1)],
+        count: 1,
+      }),
+    ).toBe(
+      "Slack is used by 1 bot (Bot1). Once it's deleted, that bot needs another provider picked before it works again. This can't be undone.",
+    );
+  });
+
+  it("shortens a long list", () => {
+    const usage = {
+      dashboards: [dash(1), dash(2), dash(3), dash(4), dash(5)],
+      bots: [],
+      count: 5,
+    };
+    expect(providerDeleteMessage("Slack", usage)).toContain(
+      "5 dashboards (D1, D2, D3 and 2 more)",
+    );
+  });
+
+  it("doesn't claim nothing uses it when usage isn't known", () => {
+    expect(providerDeleteMessage("Slack", null)).toBe(
+      "Widgets and bots that use Slack will need another provider picked before they work again. This can't be undone.",
+    );
+    expect(providerRenameMessage("Slack", "Slack 2", null)).toMatch(
+      /^Widgets and bots find Slack by name/,
+    );
+  });
+
+  it("warns that a rename leaves them without it", () => {
+    expect(
+      providerRenameMessage("Slack", "Slack Work", {
+        dashboards: [dash(1)],
+        bots: [],
+        count: 1,
+      }),
+    ).toBe(
+      "Slack is used by 1 dashboard (D1). That dashboard's widgets find providers by name, so after the rename to Slack Work they won't work until you pick Slack Work for them.",
+    );
+    expect(
+      providerRenameMessage("Slack", "Slack Work", {
+        dashboards: [],
+        bots: [bot(1)],
+        count: 1,
+      }),
+    ).toBe(
+      "Slack is used by 1 bot (Bot1). That bot finds providers by name, so after the rename to Slack Work it won't work until you pick Slack Work for it.",
+    );
+    expect(
+      providerRenameMessage("Slack", "Slack Work", {
+        dashboards: [dash(1)],
+        bots: [bot(1)],
+        count: 2,
+      }),
+    ).toBe(
+      "Slack is used by 1 dashboard (D1) and 1 bot (Bot1). They find providers by name, so after the rename to Slack Work they won't work until you pick Slack Work for them.",
+    );
   });
 });

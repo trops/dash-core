@@ -16,7 +16,11 @@ import {
   useMcpCatalog,
   useProviderStatus,
 } from "../../AppPages/useProviderStatus";
-import { groupProviders } from "../../AppPages/providerSummary";
+import {
+  groupProviders,
+  providerDeleteMessage,
+  providerRenameMessage,
+} from "../../AppPages/providerSummary";
 import { ListGroupLabel, ManageLayout } from "../../AppPages/ManageLayout";
 import {
   applyProviderUse,
@@ -68,8 +72,9 @@ export const ProvidersSection = ({
   credentials = null,
   createRequested = false,
   onCreateAcknowledged = null,
-  // Used by: dashboards (Open) and bots (Open in Bots view).
-  workspaces = [],
+  // Used by: dashboards (Open) and bots (Open in Bots view). Null = not
+  // given (Create's Connect dialog), so Delete / Rename can't say who uses one.
+  workspaces: workspacesProp = null,
   onOpenWorkspace = null,
   onOpenBotInBotsView = null,
   // Re-reads dashboards (and open tabs) after Choose where to use… saves.
@@ -92,7 +97,11 @@ export const ProvidersSection = ({
   const { muted, strong, selectedBg, selectedBorder } = useConfigTokens();
   // MCP catalog: authCommand / credentialSchema lookups and status.
   const catalog = useMcpCatalog(dashApi);
+  const workspaces = workspacesProp || [];
   const status = useProviderStatus({ providers, workspaces, dashApi, catalog });
+  // Who uses a provider, or null while that isn't known.
+  const knownUsage = (name) =>
+    workspacesProp && status.botsLoaded ? status.usageOf(name) : null;
   const [needsSetupOnly, setNeedsSetupOnly] = useState(false);
 
   const [providerTab, setProviderTab] = useState("all");
@@ -115,6 +124,9 @@ export const ProvidersSection = ({
   const [formType, setFormType] = useState("");
   const [formCredentials, setFormCredentials] = useState({});
   const [deleteTarget, setDeleteTarget] = useState(null);
+  // A rename of a provider something uses waits here for a confirm:
+  // { from, to, message, save }.
+  const [renameConfirm, setRenameConfirm] = useState(null);
   const [isAddingMcp, setIsAddingMcp] = useState(false);
   const [isEditingMcp, setIsEditingMcp] = useState(false);
   const [isAddingWs, setIsAddingWs] = useState(false);
@@ -217,8 +229,23 @@ export const ProvidersSection = ({
     }
   }
 
+  // Widgets and bots find a provider by name: renaming one that's in use
+  // asks first (QA 2026-10-22).
+  function confirmRename(from, to, save) {
+    const message =
+      from && to && from !== to
+        ? providerRenameMessage(from, to, knownUsage(from))
+        : null;
+    if (message) setRenameConfirm({ from, to, message, save });
+    else save();
+  }
+
   function handleSaveEdit() {
     if (!formName.trim() || !dashApi || !appId) return;
+    confirmRename(selectedName, formName.trim(), saveEdit);
+  }
+
+  function saveEdit() {
     const originalName = selectedName;
     const originalProvider = providers[originalName];
     // Delete old if name changed, then save new
@@ -320,14 +347,18 @@ export const ProvidersSection = ({
   }
 
   // Handle MCP provider editing via CustomMcpServerForm
-  function handleMcpEditSave(
+  function handleMcpEditSave(...args) {
+    if (!dashApi || !appId) return;
+    confirmRename(selectedName, args[0], () => saveMcpEdit(...args));
+  }
+
+  function saveMcpEdit(
     providerName,
     providerType,
     mcpCredentials,
     mcpConfig,
     allowedTools = null,
   ) {
-    if (!dashApi || !appId) return;
     const originalName = selectedName;
 
     // Delete old if name changed
@@ -476,8 +507,12 @@ export const ProvidersSection = ({
   }
 
   // Handle WebSocket provider editing
-  function handleWsEditSave(providerName, wsConfig, wsCredentials) {
+  function handleWsEditSave(...args) {
     if (!dashApi || !appId) return;
+    confirmRename(selectedName, args[0], () => saveWsEdit(...args));
+  }
+
+  function saveWsEdit(providerName, wsConfig, wsCredentials) {
     const originalName = selectedName;
 
     // Delete old if name changed
@@ -903,16 +938,39 @@ export const ProvidersSection = ({
       list={listContent}
       detail={detailContent}
     >
-      <ConfirmationModal
-        isOpen={!!deleteTarget}
-        setIsOpen={() => setDeleteTarget(null)}
-        title="Delete Provider"
-        message={`Are you sure you want to delete "${deleteTarget}"? This action cannot be undone.`}
-        confirmLabel="Delete"
-        variant="danger"
-        onConfirm={handleConfirmDelete}
-        onCancel={() => setDeleteTarget(null)}
-      />
+      {/* Mounted only while open: inside Create's Connect Modal, a confirm
+          mounted closed opens beneath it. */}
+      {deleteTarget ? (
+        <ConfirmationModal
+          isOpen
+          setIsOpen={() => setDeleteTarget(null)}
+          title={`Delete ${deleteTarget}?`}
+          message={providerDeleteMessage(
+            deleteTarget,
+            knownUsage(deleteTarget),
+          )}
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      ) : null}
+      {renameConfirm ? (
+        <ConfirmationModal
+          isOpen
+          setIsOpen={() => setRenameConfirm(null)}
+          title={`Rename ${renameConfirm.from}?`}
+          message={renameConfirm.message}
+          confirmLabel="Rename"
+          variant="danger"
+          onConfirm={() => {
+            const { save } = renameConfirm;
+            setRenameConfirm(null);
+            save();
+          }}
+          onCancel={() => setRenameConfirm(null)}
+        />
+      ) : null}
       <ProviderUseDialog
         isOpen={!!useTarget}
         model={useModel}

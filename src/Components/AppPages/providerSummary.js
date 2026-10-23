@@ -135,6 +135,78 @@ export function providerUsage(
   return { dashboards, bots: usedBy, count: dashboards.length + usedBy.length };
 }
 
+const MAX_NAMES = 3;
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const nameList = (names) =>
+  names.length > MAX_NAMES
+    ? `${names.slice(0, MAX_NAMES).join(", ")} and ${names.length - MAX_NAMES} more`
+    : names.join(", ");
+
+/** "1 dashboard (Sales) and 2 bots (Digest, Loose)", or "" when unused. */
+export function providerUsedByText(usage) {
+  const parts = [];
+  const dashboards = (usage && usage.dashboards) || [];
+  const bots = (usage && usage.bots) || [];
+  if (dashboards.length) {
+    parts.push(
+      `${plural(dashboards.length, "dashboard")} (${nameList(
+        dashboards.map((d) => d.workspaceName),
+      )})`,
+    );
+  }
+  if (bots.length) {
+    parts.push(
+      `${plural(bots.length, "bot")} (${nameList(bots.map((b) => b.name))})`,
+    );
+  }
+  return parts.join(" and ");
+}
+
+// Who's affected, worded for one bot, one dashboard, or several.
+function affected(usage) {
+  const dashboards = (usage && usage.dashboards) || [];
+  const bots = (usage && usage.bots) || [];
+  if (bots.length === 1 && !dashboards.length) {
+    return { subject: "that bot", s: "s", them: "it" };
+  }
+  if (dashboards.length === 1 && !bots.length) {
+    return { subject: "that dashboard's widgets", s: "", them: "them" };
+  }
+  return { subject: "they", s: "", them: "them" };
+}
+
+/**
+ * The Delete confirm (QA 2026-10-22: it never said what uses it). Null
+ * usage = not known yet (bots still loading, or no dashboards given).
+ */
+export function providerDeleteMessage(name, usage) {
+  if (!usage) {
+    return `Widgets and bots that use ${name} will need another provider picked before they work again. This can't be undone.`;
+  }
+  const usedBy = providerUsedByText(usage);
+  if (!usedBy) return `Nothing uses ${name}. This can't be undone.`;
+  const { subject, s } = affected(usage);
+  const it = s ? "it" : "they";
+  return `${name} is used by ${usedBy}. Once it's deleted, ${subject} need${s} another provider picked before ${it} work${s} again. This can't be undone.`;
+}
+
+/**
+ * The Rename confirm: widgets and bots find a provider by its name, so a
+ * rename leaves them without it. Null when nothing uses it (no confirm);
+ * null usage = not known yet, so it still asks.
+ */
+export function providerRenameMessage(from, to, usage) {
+  if (!usage) {
+    return `Widgets and bots find ${from} by name, so any that use it won't find it after it's renamed to ${to} until you pick ${to} for them.`;
+  }
+  const usedBy = providerUsedByText(usage);
+  if (!usedBy) return null;
+  const { subject, s, them } = affected(usage);
+  const Subject = subject[0].toUpperCase() + subject.slice(1);
+  const it = s ? "it" : "they";
+  return `${from} is used by ${usedBy}. ${Subject} find${s} providers by name, so after the rename to ${to} ${it} won't work until you pick ${to} for ${them}.`;
+}
+
 const GROUPS = [
   { cls: "mcp", label: "Tools (MCP)" },
   { cls: "credential", label: "API keys" },
