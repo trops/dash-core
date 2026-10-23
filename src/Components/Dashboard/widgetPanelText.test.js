@@ -44,6 +44,20 @@ describe("ownerLabel", () => {
     }
   });
 
+  test("app: built into this app, not 'from the registry'", () => {
+    expect(ownerLabel({ component: "app.clock.Clock" })).toBe(
+      "Built into this app",
+    );
+    // A registry user named "app" still reads as from the registry.
+    expect(
+      ownerLabel({
+        component: "app.clock.Clock",
+        sourcePackage: "@app/clock",
+        username: "trops",
+      }),
+    ).toBe("From the registry · by app");
+  });
+
   test("signed out, your registry widget reads as from the registry", () => {
     expect(
       ownerLabel({

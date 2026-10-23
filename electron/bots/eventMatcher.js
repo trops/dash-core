@@ -28,6 +28,19 @@ function sameDashboard(sub, event) {
 }
 
 /**
+ * Widgets built into an app from the template moved from the "local" scope
+ * to "app". Dashboards migrate their ids on load, but a bot's saved
+ * subscription keeps the old one — so `local.pkg.Comp[5].clicked` still
+ * hears `app.pkg.Comp[5].clicked`.
+ */
+const appScoped = (eventType) => eventType.replace(/^local\./, "app.");
+
+function sameEventType(subType, eventType) {
+  if (typeof subType !== "string") return false;
+  return subType === eventType || appScoped(subType) === appScoped(eventType);
+}
+
+/**
  * @param {Array<object>} bots  bot definitions (each may have `subscriptions`)
  * @param {{ eventType: string, workspaceId?: string }} event
  * @param {{ excludeBotId?: string }} [opts]  loop guard — never match this bot
@@ -42,7 +55,10 @@ function matchSubscribedBots(bots, event, opts = {}) {
     if (!bot || bot.id === excludeBotId) return false;
     const subs = Array.isArray(bot.subscriptions) ? bot.subscriptions : [];
     const subscribed = subs.some(
-      (s) => s && s.eventType === event.eventType && sameDashboard(s, event),
+      (s) =>
+        s &&
+        sameEventType(s.eventType, event.eventType) &&
+        sameDashboard(s, event),
     );
     if (!subscribed) return false;
 

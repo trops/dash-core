@@ -77,6 +77,39 @@ describe("migrateBareComponentName", () => {
     );
   });
 
+  // Template widgets moved from the "local" scope to "app"; "local" is
+  // a folder-loaded package now.
+  test("an unregistered local id → the app id built into the app", () => {
+    const map = { "app.clock.Clock": { type: "widget" } };
+    expect(migrateBareComponentName(map, "local.clock.Clock")).toBe(
+      "app.clock.Clock",
+    );
+  });
+
+  test("a folder widget already registered under the local id wins", () => {
+    const map = {
+      "local.clock.Clock": { type: "widget" },
+      "app.clock.Clock": { type: "widget" },
+    };
+    expect(migrateBareComponentName(map, "local.clock.Clock")).toBe(
+      "local.clock.Clock",
+    );
+  });
+
+  test("a local id with neither registered → unchanged", () => {
+    const map = { "app.other.Other": { type: "widget" } };
+    expect(migrateBareComponentName(map, "local.clock.Clock")).toBe(
+      "local.clock.Clock",
+    );
+  });
+
+  test("only the scope is swapped — another scope's id isn't touched", () => {
+    const map = { "app.clock.Clock": { type: "widget" } };
+    expect(migrateBareComponentName(map, "trops.clock.Clock")).toBe(
+      "trops.clock.Clock",
+    );
+  });
+
   test("two-part dotted forms migrate via suffix scan when unambiguous", () => {
     // A `pkg.Component` shape is non-canonical; the suffix scan
     // picks up the only matching scoped key.

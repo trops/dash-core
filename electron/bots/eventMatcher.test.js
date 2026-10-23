@@ -111,6 +111,21 @@ describe("matchSubscribedBots", () => {
     assert.deepEqual(ids, ["a"]);
   });
 
+  // Template widgets moved from the "local" scope to "app"; a bot saved
+  // before the move still hears the widget.
+  it("a subscription saved as local.* hears the app.* event", () => {
+    const bots = [
+      bot("a", [{ eventType: "local.samples.Sender[5].clicked" }]),
+      bot("b", [{ eventType: "app.samples.Sender[5].clicked" }]),
+      bot("c", [{ eventType: "local.samples.Sender[6].clicked" }]),
+      bot("d", [{ eventType: "trops.samples.Sender[5].clicked" }]),
+    ];
+    const ids = matchSubscribedBots(bots, {
+      eventType: "app.samples.Sender[5].clicked",
+    }).map((b) => b.id);
+    assert.deepEqual(ids, ["a", "b"]);
+  });
+
   it("returns [] for bad input or no subscribers", () => {
     assert.deepEqual(matchSubscribedBots(null, { eventType: "e" }), []);
     assert.deepEqual(matchSubscribedBots([], { eventType: "e" }), []);

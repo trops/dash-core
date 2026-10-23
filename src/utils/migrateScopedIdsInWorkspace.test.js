@@ -24,6 +24,31 @@ const STUB_REGISTRY = {
   "trops.dash-samples.NotificationWidget": { type: "widget" },
 };
 
+describe("migrateScopedIdsInWorkspace — local → app (template widgets)", () => {
+  test("rewrites the item and the wiring that points at it", () => {
+    const ws = {
+      layout: [
+        { id: 1, component: "local.samples.Sender" },
+        {
+          id: 2,
+          component: "local.samples.Receiver",
+          listeners: { onMessage: ["local.samples.Sender[1].clicked"] },
+        },
+      ],
+    };
+    const counts = migrateScopedIdsInWorkspace(ws, {
+      "app.samples.Sender": { type: "widget" },
+      "app.samples.Receiver": { type: "widget" },
+    });
+    expect(ws.layout[0].component).toBe("app.samples.Sender");
+    expect(ws.layout[1].component).toBe("app.samples.Receiver");
+    expect(ws.layout[1].listeners.onMessage).toEqual([
+      "app.samples.Sender[1].clicked",
+    ]);
+    expect(counts).toEqual({ components: 2, listeners: 1 });
+  });
+});
+
 describe("migrateScopedIdsInWorkspace — happy path", () => {
   test("migrates bare component on a root layout item", () => {
     const ws = {
