@@ -131,6 +131,11 @@ node --test electron/utils/safePath.test.js electron/utils/scanWidgetBotCalls.te
 step "Running widget compiler tests"
 node --test electron/widgetCompiler.test.js electron/widgetRegistryFiles.test.js electron/widgetRegistryGate.test.js electron/widgetRegistryChecks.test.js electron/widgetRegistryUninstall.test.js electron/widgetRegistryScope.test.js electron/widgetLibraries.test.js
 
+# 6c2a2. Widget integration suite: loader + registry end to end on temp
+#        packages (ZIP install, folder load, ZIP round-trip; package-scoped names)
+step "Running widget integration suite"
+node scripts/testWidgetIntegration.cjs
+
 # 6c2b. Phase 5D — install-time manifest-signature verifier
 step "Running install-time manifest-signature verifier tests (Phase 5D)"
 node --test electron/security/verifyDownloadManifest.test.js
