@@ -11,7 +11,9 @@
  * (getProfile) clears it when it's really gone.
  *
  * Each request carries this Dash install's anonymous ID, so the registry can
- * count unique installs of a package without an account.
+ * count unique installs of a package without an account. A read that isn't
+ * an install (an update's preview, a starter's thumbnail) says so with
+ * ?purpose=preview, so it isn't counted as one.
  */
 const INSTALL_ID_HEADER = "x-dash-install-id";
 
@@ -64,6 +66,16 @@ function downloadRefusal(response, { expired = false } = {}) {
   return null;
 }
 
+function withPurpose(url, purpose) {
+  try {
+    const u = new URL(url);
+    u.searchParams.set("purpose", purpose);
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 /**
  * The download functions over their dependencies (tests pass mocks; the
  * module's own exports use the real sign-in, fetch and install ID).
@@ -76,10 +88,12 @@ function createRegistryDownload({
 }) {
   /**
    * Fetch a registry download URL.
+   * @param {{ purpose?: "preview" }} opts  preview: read, not installed
    * @returns {Promise<{ response: Response, expired: boolean }>} expired: a
    *   sign-in was sent and refused
    */
-  async function registryDownloadFetch(url) {
+  async function registryDownloadFetch(rawUrl, { purpose = null } = {}) {
+    const url = purpose ? withPurpose(rawUrl, purpose) : rawUrl;
     const headers = {};
     const id = installId();
     if (id) headers[INSTALL_ID_HEADER] = id;
