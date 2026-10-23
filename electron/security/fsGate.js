@@ -261,6 +261,19 @@ function _mergeFsGrant(current, addition) {
  * not consent gaps. Once the request IS covered by the grant, the sync
  * gate is authoritative (any denial it returns is structural).
  */
+// A Deny lasts for the session: the same widget asking for the same file
+// again (a remount, an edit-mode toggle) is refused without a new prompt.
+// It holds only while the widget's file grant is unchanged — approving
+// another prompt, Settings, or a revoke asks again.
+const _declined = new Map(); // key → the widget's fs grant at the Deny
+const declineKey = (widgetId, action, filename) =>
+  `${widgetId}\u0000${action}\u0000${filename}`;
+
+/** Test-only: forget this session's Denies. */
+function _clearDeclined() {
+  _declined.clear();
+}
+
 async function gateFsCallWithJit(req, opts = {}) {
   if (!opts.enableJit) return gateFsCall(req);
 
@@ -305,6 +318,23 @@ async function gateFsCallWithJit(req, opts = {}) {
     }
   }
 
+  const declinedKey = declineKey(verifiedWidgetId, req.action, filename);
+  const grantNow = JSON.stringify(fsPerms || null);
+  if (_declined.has(declinedKey) && _declined.get(declinedKey) !== grantNow) {
+    _declined.delete(declinedKey);
+  }
+  if (_declined.has(declinedKey)) {
+    return {
+      allow: false,
+      reason:
+        "user declined JIT consent for widget '" +
+        verifiedWidgetId +
+        "' calling fs '" +
+        req.action +
+        "' earlier this session",
+    };
+  }
+
   // Slice 5: resolve siblings for the package-scope checkbox.
   const getRegistrySnapshot =
     opts.getRegistrySnapshot || _defaultRegistrySnapshot;
@@ -331,6 +361,7 @@ async function gateFsCallWithJit(req, opts = {}) {
   }
 
   if (!decision || decision.approve !== true) {
+    _declined.set(declinedKey, grantNow);
     return {
       allow: false,
       reason:
@@ -390,4 +421,5 @@ module.exports = {
   gateFsCallWithJit,
   isFsWriteAction,
   WRITE_ACTIONS,
+  _clearDeclined,
 };

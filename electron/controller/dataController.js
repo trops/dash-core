@@ -53,6 +53,7 @@ async function _runFsGate(win, action, widgetId, args, errorEvent, token) {
   if (win && errorEvent) {
     win.webContents.send(errorEvent, {
       success: false,
+      filename: args && args.filename,
       message: "fs permission gate: " + gate.reason,
     });
   }
@@ -596,6 +597,7 @@ const dataController = {
     } catch (e) {
       win.webContents.send(events.DATA_READ_FROM_FILE_ERROR, {
         succes: false,
+        filename,
         message: e.message,
       });
     }

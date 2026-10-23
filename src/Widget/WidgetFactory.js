@@ -1,4 +1,10 @@
-import React, { useContext, useEffect, useState, Component } from "react";
+import React, {
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  Component,
+} from "react";
 import { ComponentManager } from "../ComponentManager";
 import { DashboardPublisher } from "../DashboardPublisher";
 import { DashboardContext, WidgetContext } from "../Context";
@@ -162,6 +168,13 @@ const WidgetRenderer = ({
   // re-mount — unrelated widgets, the sidebar, and the Settings modal
   // are untouched. Replaces the old global stageKey remount in Dash.js.
   const [componentVersion, setComponentVersion] = useState(0);
+  // This widget's own api. One shared WidgetApi object tagged every
+  // widget's file reads and writes with whichever widget rendered last,
+  // so the permission prompt (and the grant) went to the wrong widget.
+  const widgetApi = useMemo(
+    () => Object.create(WidgetApi),
+    [widgetKey, component],
+  );
   useEffect(() => {
     const onWidgetInstalled = (e) => {
       const installed = e?.detail?.widgetName;
@@ -239,7 +252,7 @@ const WidgetRenderer = ({
       });
 
       // need to set the electron api here.
-      const w = WidgetApi;
+      const w = widgetApi;
       w.init({ id: widgetKey, name: component });
       w.setElectronApi(dashApi);
       w.setPublisher(DashboardPublisher);
