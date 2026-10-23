@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { cleanIpcError } from "../utils/errorUtils";
+import { isRegistryAuthError } from "./useRegistryAuthGate";
 
 /**
  * useRegistrySearch — shared hook for browsing and installing registry packages.
@@ -157,19 +158,8 @@ export const useRegistrySearch = ({ filterByCapabilities = true } = {}) => {
     setNeedsAuth(false);
 
     try {
-      // Check auth before attempting download
-      try {
-        const status = await window.mainApi?.registryAuth?.getStatus();
-        if (!status?.authenticated) {
-          setNeedsAuth(true);
-          setIsInstalling(false);
-          return;
-        }
-      } catch {
-        // If auth check fails, proceed — install will fail with
-        // Unauthorized which is caught below
-      }
-
+      // No sign-in check first: public packages install signed out, and
+      // the registry asks for one (caught below) when it's needed.
       const { packageName, packageScope, downloadUrl, packageVersion } = widget;
 
       // Build scoped ID (e.g. "@trops/slack") for the install key
@@ -194,10 +184,7 @@ export const useRegistrySearch = ({ filterByCapabilities = true } = {}) => {
     } catch (err) {
       console.error("[useRegistrySearch] Install error:", err);
       const msg = cleanIpcError(err.message || "Failed to install package");
-      if (
-        msg.toLowerCase().includes("unauthorized") ||
-        msg.toLowerCase().includes("authentication required")
-      ) {
+      if (isRegistryAuthError(msg)) {
         setNeedsAuth(true);
       } else {
         setInstallError(msg);

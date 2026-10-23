@@ -60,8 +60,23 @@ function loadController() {
 
   const projectRoot = path.resolve(__dirname, "../..");
 
+  const mockRegistryDownload =
+    require("../registryDownload").createRegistryDownload({
+      authedFetch: (url, opts) => {
+        const headers = { ...(opts && opts.headers) };
+        if (mockStoredToken && mockStoredToken.token) {
+          headers["Authorization"] = `Bearer ${mockStoredToken.token}`;
+        }
+        return mockFetch(url, { ...opts, headers });
+      },
+      getStoredToken: () => mockStoredToken,
+      fetchImpl: mockFetch,
+      installId: () => "test-install-id",
+    });
+
   const customRequire = (mod) => {
     if (mod === "electron") return mockElectron;
+    if (mod === "../registryDownload") return mockRegistryDownload;
     if (mod === "./registryAuthController") return mockRegistryAuthController;
     if (mod === "./registryController") return mockRegistryController;
     if (mod === "./themeController") return { getThemeRegistry: () => [] };
@@ -228,8 +243,31 @@ describe("installDashboardFromRegistry — missing token", () => {
     mockGetPackageResult = MOCK_PKG;
   });
 
-  it("returns authRequired when no token is stored", async () => {
+  it("downloads without a sign-in (public packages, 2026-10-23)", async () => {
     mockStoredToken = null;
+    mockFetchResponse = mockOkResponse();
+
+    try {
+      await controller.installDashboardFromRegistry(
+        null,
+        "app1",
+        "test-dashboard",
+      );
+    } catch {
+      // Parsing the empty ZIP may fail; only the request matters here.
+    }
+
+    assert.ok(lastFetchOptions, "fetch should have been called");
+    assert.equal(lastFetchOptions.headers["Authorization"], undefined);
+    assert.equal(
+      lastFetchOptions.headers["x-dash-install-id"],
+      "test-install-id",
+    );
+  });
+
+  it("a package that isn't public (401, no sign-in sent) asks to sign in", async () => {
+    mockStoredToken = null;
+    mockFetchResponse = mock401Response();
 
     const result = await controller.installDashboardFromRegistry(
       null,
@@ -239,26 +277,8 @@ describe("installDashboardFromRegistry — missing token", () => {
 
     assert.equal(result.success, false);
     assert.equal(result.authRequired, true);
-    assert.ok(
-      result.error.toLowerCase().includes("not authenticated"),
-      "Error message should indicate not authenticated",
-    );
-  });
-
-  it("does not call fetch when no token is stored", async () => {
-    mockStoredToken = null;
-
-    await controller.installDashboardFromRegistry(
-      null,
-      "app1",
-      "test-dashboard",
-    );
-
-    assert.equal(
-      lastFetchUrl,
-      null,
-      "fetch should not be called when token is missing",
-    );
+    assert.equal(result.error, "Sign in to the Dash registry to install this.");
+    assert.equal(clearTokenCalled, false);
   });
 });
 
@@ -285,7 +305,7 @@ describe("installDashboardFromRegistry — 401 handling", () => {
     assert.equal(result.authRequired, true);
   });
 
-  it("clears token on 401 response", async () => {
+  it("keeps the sign-in on a 401 (a registry blip can refuse a good one)", async () => {
     mockFetchResponse = mock401Response();
 
     await controller.installDashboardFromRegistry(
@@ -294,7 +314,7 @@ describe("installDashboardFromRegistry — 401 handling", () => {
       "test-dashboard",
     );
 
-    assert.equal(clearTokenCalled, true, "clearToken should be called on 401");
+    assert.equal(clearTokenCalled, false);
   });
 
   it("returns appropriate error message on 401", async () => {
@@ -350,7 +370,7 @@ describe("getDashboardPackageConfig — a public read with no sign-in", () => {
 
     assert.equal(result.success, false);
     assert.equal(result.authRequired, true);
-    assert.equal(result.error, "Sign in to the Dash registry to use this.");
+    assert.equal(result.error, "Sign in to the Dash registry to install this.");
     assert.equal(clearTokenCalled, false);
   });
 });
@@ -366,8 +386,9 @@ describe("installDashboardFromRegistry — retry flow contract", () => {
   });
 
   it("succeeds on retry when token becomes available", async () => {
-    // First call: no token → authRequired
+    // First call: signed out, the registry refuses (not public)
     mockStoredToken = null;
+    mockFetchResponse = mock401Response();
     const first = await controller.installDashboardFromRegistry(
       null,
       "app1",
@@ -411,7 +432,7 @@ describe("installDashboardFromRegistry — retry flow contract", () => {
       "test-dashboard",
     );
     assert.equal(first.authRequired, true);
-    assert.equal(clearTokenCalled, true, "Stale token should be cleared");
+    assert.match(first.error, /session expired/);
 
     // Simulate re-auth
     clearTokenCalled = false;

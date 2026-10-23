@@ -99,13 +99,15 @@ function mockWidgets() {
 }
 
 const mockUpdateWidget = jest.fn().mockResolvedValue(true);
+const mockUpdatePackages = jest.fn();
+let mockUpdateAllConfirm = null;
 jest.mock("../../hooks/useWidgetUpdates", () => ({
   useWidgetUpdates: () => ({
     updates: new Map([["trops.slack.Channels", { latestVersion: "1.3.0" }]]),
     packagesWithUpdates: [{ packageName: "@trops/slack" }],
     isChecking: false,
     updateWidget: mockUpdateWidget,
-    updatePackages: jest.fn(),
+    updatePackages: mockUpdatePackages,
     batchStatus: {},
     isBatchUpdating: false,
     isUpdating: null,
@@ -116,6 +118,8 @@ jest.mock("../../hooks/useWidgetUpdates", () => ({
 }));
 const mockEnsureAuthed = jest.fn().mockResolvedValue(true);
 jest.mock("../../hooks/useRegistryAuthGate", () => ({
+  isRegistryAuthError: jest.requireActual("../../hooks/useRegistryAuthGate")
+    .isRegistryAuthError,
   useRegistryAuthGate: () => ({
     ensureAuthed: mockEnsureAuthed,
     authGate: null,
@@ -142,8 +146,10 @@ jest.mock("../Settings/details/PublishWidgetModal", () => ({
     isOpen ? <div data-testid="publish">{widget.packageId}</div> : null,
 }));
 jest.mock("../Settings/sections/UpdateAllWidgetsModal", () => ({
-  UpdateAllWidgetsModal: ({ isOpen }) =>
-    isOpen ? <div data-testid="update-all" /> : null,
+  UpdateAllWidgetsModal: ({ isOpen, onConfirm }) => {
+    mockUpdateAllConfirm = onConfirm;
+    return isOpen ? <div data-testid="update-all" /> : null;
+  },
 }));
 jest.mock("../WidgetPreflightReview", () => ({
   WidgetPreflightReview: () => null,
@@ -390,16 +396,32 @@ describe("WidgetsPage package detail (NAV-008 AC3)", () => {
     expect(onOpenWorkspace).toHaveBeenCalledWith(workspaces[0]);
   });
 
-  it("updates the package after the registry sign-in check", async () => {
+  it("updates the package without asking to sign in (public, 2026-10-23)", async () => {
     setup();
     fireEvent.click(pkgRow("slack"));
     fireEvent.click(
       within(detail()).getByRole("button", { name: "Update to v1.3.0" }),
     );
     await waitFor(() =>
-      expect(mockUpdateWidget).toHaveBeenCalledWith("trops.slack.Channels"),
+      expect(mockUpdateWidget).toHaveBeenCalledWith("trops.slack.Channels", {
+        throwOnError: true,
+      }),
     );
+    expect(mockEnsureAuthed).not.toHaveBeenCalled();
+  });
+
+  it("when the registry asks for a sign-in, asks and updates again", async () => {
+    mockUpdateWidget.mockRejectedValueOnce(
+      new Error("Sign in to the Dash registry to install this."),
+    );
+    setup();
+    fireEvent.click(pkgRow("slack"));
+    fireEvent.click(
+      within(detail()).getByRole("button", { name: "Update to v1.3.0" }),
+    );
+    await waitFor(() => expect(mockUpdateWidget).toHaveBeenCalledTimes(2));
     expect(mockEnsureAuthed).toHaveBeenCalled();
+    expect(mockUpdateWidget).toHaveBeenLastCalledWith("trops.slack.Channels");
   });
 
   it("uninstall asks first (naming the dashboards), then removes the package", async () => {
@@ -809,6 +831,42 @@ describe("WidgetsPage page actions", () => {
       screen.getByRole("button", { name: "1 update · Update all" }),
     );
     expect(screen.getByTestId("update-all")).toBeInTheDocument();
+  });
+
+  it("Update all: rows the registry refused are retried after signing in, the rest kept", async () => {
+    mockEnsureAuthed.mockClear();
+    mockUpdatePackages
+      .mockResolvedValueOnce({
+        succeeded: ["@trops/a"],
+        failed: ["@trops/b", "@trops/c"],
+        failedDetails: [
+          {
+            name: "@trops/b",
+            error: "Sign in to the Dash registry to install this.",
+          },
+          { name: "@trops/c", error: "network blip" },
+        ],
+      })
+      .mockResolvedValueOnce({
+        succeeded: ["@trops/b"],
+        failed: [],
+        failedDetails: [],
+      });
+    setup();
+    const result = await mockUpdateAllConfirm([
+      "@trops/a",
+      "@trops/b",
+      "@trops/c",
+    ]);
+    expect(mockEnsureAuthed).toHaveBeenCalled();
+    expect(mockUpdatePackages).toHaveBeenLastCalledWith(["@trops/b"], {
+      keepStatus: true,
+    });
+    expect(result).toEqual({
+      succeeded: ["@trops/a", "@trops/b"],
+      failed: ["@trops/c"],
+      failedDetails: [{ name: "@trops/c", error: "network blip" }],
+    });
   });
 
   it("cleans up drafts after confirming", async () => {

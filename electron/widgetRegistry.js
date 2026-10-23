@@ -21,7 +21,10 @@ const { app, ipcMain, BrowserWindow } = require("electron");
 const { dynamicWidgetLoader } = require("./dynamicWidgetLoader");
 const { compileWidget, findWidgetsDir } = require("./widgetCompiler");
 const { toPackageId, parsePackageId } = require("./utils/packageId");
-const { getStoredToken } = require("./controller/registryAuthController");
+const {
+  registryDownloadFetch,
+  downloadRefusal,
+} = require("./registryDownload");
 const {
   getWidgetMcpPermissions,
   clearCache: clearWidgetPermsCache,
@@ -1351,33 +1354,33 @@ class WidgetRegistry {
         `[WidgetRegistry] Downloading widget: ${widgetName} from ${downloadUrl}`,
       );
 
-      // Add auth header for registry API download endpoints
-      const fetchOpts = {};
+      // Registry download endpoints: signed in or not (public packages
+      // download signed out), with this install's anonymous ID.
       const registryBase =
         process.env.DASH_REGISTRY_API_URL ||
         "https://main.d919rwhuzp7rj.amplifyapp.com";
-      if (
+      const fromRegistry =
         downloadUrl.includes(registryBase) ||
-        downloadUrl.includes("/api/packages/")
-      ) {
-        const auth = getStoredToken();
-        if (auth?.token) {
-          fetchOpts.headers = { Authorization: `Bearer ${auth.token}` };
-        }
-      }
+        downloadUrl.includes("/api/packages/");
 
       let response;
+      let expired = false;
       try {
-        response = await fetch(downloadUrl, fetchOpts);
+        if (fromRegistry) {
+          ({ response, expired } = await registryDownloadFetch(downloadUrl));
+        } else {
+          response = await fetch(downloadUrl);
+        }
       } catch (fetchErr) {
         throw new Error(
           "Could not reach the download server. Check your connection and try again.",
         );
       }
       if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error("Authentication required to download this widget");
-        }
+        const refusal = fromRegistry
+          ? downloadRefusal(response, { expired })
+          : null;
+        if (refusal) throw new Error(refusal.error);
         throw new Error(`Failed to fetch: ${response.statusText}`);
       }
 

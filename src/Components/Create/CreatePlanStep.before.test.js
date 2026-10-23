@@ -132,20 +132,16 @@ test("when nothing's open, Build starts the build and shows the steps (4d)", asy
   expect(screen.getByText('Create the "Brief" dashboard')).toBeInTheDocument();
 });
 
-test("signed out, a plan that installs from the registry asks to sign in before building (QA 2026-10-22)", async () => {
+test("signed out, a plan that installs from the registry builds without asking (public installs, 2026-10-23)", async () => {
   setup({ providers: { s: { type: "slack" }, g: { type: "gmail" } } });
   window.mainApi.registryAuth.getProfile = jest.fn().mockResolvedValue(null);
-  const startPlanBuild = jest.fn();
+  const startPlanBuild = jest.fn().mockResolvedValue({ success: true });
   Object.assign(window.mainApi.bots, { startPlanBuild });
   await screen.findByTestId("plan-card");
   fireEvent.click(screen.getByText("Approve 1 install & build"));
   fireEvent.click(await screen.findByText("Approve"));
-  expect(
-    await screen.findByText(
-      "This plan installs widgets from the Dash registry. Sign in to the registry to build it.",
-    ),
-  ).toBeInTheDocument();
-  expect(startPlanBuild).not.toHaveBeenCalled();
+  await waitFor(() => expect(startPlanBuild).toHaveBeenCalled());
+  expect(screen.queryByText(/Sign in to the registry/)).toBeNull();
 });
 
 test("signed in (a token stored) but the registry unreachable: it builds, no sign-in prompt", async () => {
@@ -160,11 +156,7 @@ test("signed in (a token stored) but the registry unreachable: it builds, no sig
   fireEvent.click(screen.getByText("Approve 1 install & build"));
   fireEvent.click(await screen.findByText("Approve"));
   await waitFor(() => expect(startPlanBuild).toHaveBeenCalled());
-  expect(
-    screen.queryByText(
-      "This plan installs widgets from the Dash registry. Sign in to the registry to build it.",
-    ),
-  ).toBeNull();
+  expect(screen.queryByText(/Sign in to the registry/)).toBeNull();
 });
 
 test("Skip this piece removes it from the plan", async () => {

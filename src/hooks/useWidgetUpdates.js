@@ -9,6 +9,7 @@ import {
 import { AppContext } from "../Context/App/AppContext";
 import { normalizeGrantsByProviderType } from "../utils/normalizeGrantsByProviderType";
 import { cleanIpcError } from "../utils/errorUtils";
+import { isRegistryAuthError } from "./useRegistryAuthGate";
 
 // --- Preflight helpers ---
 //
@@ -337,32 +338,9 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
       setIsUpdating(name);
       setUpdateError(null);
       try {
-        // Validate token against registry (not just check if it exists locally)
-        pushDiag("updateWidget:getProfile-call", { name });
-        const profile = await window.mainApi?.registryAuth?.getProfile();
-        pushDiag("updateWidget:getProfile-result", {
-          name,
-          profileId: profile ? profile.id : null,
-        });
-        if (!profile) {
-          pushDiag("updateWidget:stale-auth", { name });
-          setNeedsAuth(true);
-          // Batch callers (updatePackages with throwOnError=true) need
-          // this to surface as a failure so they don't mark the row
-          // "done" — otherwise a stale-auth user clicks Update all,
-          // sees every package report "✓ done", reloads, and finds
-          // nothing actually installed because each call returned
-          // silently here. Single-update detail-view callers keep the
-          // fire-and-forget shape (needsAuth still flips, triggering
-          // the existing RegistryAuthModal).
-          if (throwOnError) {
-            throw new Error(
-              "Authentication required — sign in to the registry to install updates.",
-            );
-          }
-          return;
-        }
-
+        // No sign-in check first: public packages update signed out. When
+        // the registry asks for one (a private package, or an expired
+        // sign-in), needsAuth flips below.
         const resolvedUrl = info.downloadUrl
           .replace(/\{version\}/g, info.latestVersion)
           .replace(/\{name\}/g, packageId);
@@ -450,7 +428,9 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
           name,
           message: err?.message || String(err),
         });
-        setUpdateError(cleanIpcError(err.message) || "Update failed");
+        const message = cleanIpcError(err.message) || "Update failed";
+        setUpdateError(message);
+        if (isRegistryAuthError(message)) setNeedsAuth(true);
         if (throwOnError) {
           // Re-throw so the batch caller can mark this row failed.
           // Single-update callers leave throwOnError as false and
@@ -657,8 +637,10 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
     [installedWidgets, appProviders],
   );
 
+  // keepStatus: a retry of some rows (after signing in) keeps the other
+  // rows' results in batchStatus.
   const updatePackages = useCallback(
-    async (packageNames) => {
+    async (packageNames, { keepStatus = false } = {}) => {
       if (!Array.isArray(packageNames) || packageNames.length === 0) {
         return { succeeded: [], failed: [] };
       }
@@ -668,7 +650,9 @@ export function useWidgetUpdates(installedWidgets = [], onUpdated) {
       for (const name of packageNames) {
         initial.set(name, { status: "pending" });
       }
-      setBatchStatus(initial);
+      setBatchStatus((prev) =>
+        keepStatus ? new Map([...prev, ...initial]) : initial,
+      );
       setIsBatchUpdating(true);
       setUpdateError(null);
 

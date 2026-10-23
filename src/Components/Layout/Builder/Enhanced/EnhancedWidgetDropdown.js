@@ -46,6 +46,7 @@ import { getUserConfigurableProviders } from "../../../../utils/providerUtils";
 import { RegistryAuthModal } from "../../../Registry/RegistryAuthModal";
 import { InstallProgressModal } from "../../../Settings/details/InstallProgressModal";
 import { cleanIpcError } from "../../../../utils/errorUtils";
+import { isRegistryAuthError } from "../../../../hooks/useRegistryAuthGate";
 import { useWidgetRegistryVersion } from "../../../../hooks/useWidgetRegistryVersion";
 import { isDraftPackage } from "../../../../utils/draftPackage";
 
@@ -829,20 +830,8 @@ export const EnhancedWidgetDropdown = ({
     setShowProgressModal(true);
 
     try {
-      // Check auth before attempting download
-      try {
-        const status = await window.mainApi?.registryAuth?.getStatus();
-        if (!status?.authenticated) {
-          setNeedsAuth(true);
-          setIsInstalling(false);
-          setShowProgressModal(false);
-          return;
-        }
-      } catch {
-        // If auth check fails, proceed — install will fail with
-        // Unauthorized which is caught below
-      }
-
+      // No sign-in check first: public packages install signed out, and
+      // the registry asks for one (caught below) when it's needed.
       const { packageName, downloadUrl, packageVersion } = selectedWidget;
 
       // Resolve version placeholder in download URL
@@ -868,10 +857,7 @@ export const EnhancedWidgetDropdown = ({
     } catch (error) {
       console.error("[EnhancedWidgetDropdown] Install error:", error);
       const msg = cleanIpcError(error.message || "Failed to install package");
-      if (
-        msg.toLowerCase().includes("unauthorized") ||
-        msg.toLowerCase().includes("authentication required")
-      ) {
+      if (isRegistryAuthError(msg)) {
         setNeedsAuth(true);
         setShowProgressModal(false);
       } else {

@@ -7,6 +7,7 @@ import {
   packageToFlatWidget,
 } from "../utils/registryUtils";
 import { cleanIpcError } from "../utils/errorUtils";
+import { isRegistryAuthError } from "../hooks/useRegistryAuthGate";
 
 /**
  * WidgetNotFound — rendered in place of an unresolvable widget.
@@ -71,20 +72,8 @@ export const WidgetNotFound = ({ component }) => {
     setNeedsAuth(false);
 
     try {
-      // Check auth before attempting install — direct API call avoids
-      // instantiating the full useRegistryAuth hook in this component.
-      try {
-        const status = await window.mainApi?.registryAuth?.getStatus();
-        if (!status?.authenticated) {
-          setNeedsAuth(true);
-          setIsInstalling(false);
-          return;
-        }
-      } catch {
-        // If auth check fails, proceed anyway — install will fail with
-        // Unauthorized which is caught below
-      }
-
+      // No sign-in check first: public packages install signed out, and
+      // the registry asks for one (caught below) when it's needed.
       const { packageName, packageScope, downloadUrl, packageVersion } =
         registryWidget;
 
@@ -100,7 +89,7 @@ export const WidgetNotFound = ({ component }) => {
       setShowModal(false);
     } catch (err) {
       const msg = cleanIpcError(err.message) || "Failed to install package";
-      if (msg.toLowerCase().includes("unauthorized")) {
+      if (isRegistryAuthError(msg)) {
         setNeedsAuth(true);
       } else {
         setInstallError(msg);

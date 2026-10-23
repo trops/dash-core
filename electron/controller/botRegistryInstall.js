@@ -28,40 +28,30 @@ function registryBaseUrl() {
  */
 async function downloadBotPackage(packageRef) {
   const registryController = require("./registryController");
-  const { getStoredToken, clearToken } = require("./registryAuthController");
+  const {
+    registryDownloadFetch,
+    downloadRefusal,
+  } = require("../registryDownload");
 
   const pkg = await registryController.getPackage(packageRef);
   if (!pkg) return { error: `"${packageRef}" wasn't found in the registry.` };
   if (pkg.type !== "bot" && pkg.type !== "bot-team") {
     return { error: `"${packageRef}" isn't a bot or a team.` };
   }
-  const auth = getStoredToken();
-  if (!auth) {
-    return {
-      error: "Sign in to the Dash registry to install.",
-      authRequired: true,
-    };
-  }
-
   const version = pkg.version || pkg.latestVersion || "1.0.0";
   const scopePath = pkg.scope ? `${encodeURIComponent(pkg.scope)}/` : "";
   const url = `${registryBaseUrl()}/api/packages/${scopePath}${encodeURIComponent(pkg.name)}/download?version=${encodeURIComponent(version)}`;
 
+  // Signed in or not: public bots and teams need no sign-in.
   let response;
+  let expired = false;
   try {
-    response = await fetch(url, {
-      headers: { Authorization: `Bearer ${auth.token}` },
-    });
+    ({ response, expired } = await registryDownloadFetch(url));
   } catch (e) {
     return { error: `Couldn't reach the registry (${e.message}).` };
   }
-  if (response.status === 401) {
-    clearToken();
-    return {
-      error: "Your registry session expired. Sign in again.",
-      authRequired: true,
-    };
-  }
+  const refusal = downloadRefusal(response, { expired });
+  if (refusal) return refusal;
   if (!response.ok) {
     return {
       error: `The registry returned ${response.status} for "${packageRef}".`,

@@ -279,17 +279,19 @@ describe("useWidgetUpdates — updatePackages batch orchestration", () => {
     expect(result.current.batchStatus.get("@trops/gmail")?.status).toBe("done");
   });
 
-  test("batch path surfaces stale-auth as a failed row (instead of silently marking 'done')", async () => {
-    // Reproduces the bug where a user with an expired registry token
-    // clicks Update all, sees every package report '✓ done', reloads
-    // the app, and finds nothing was actually installed. Root cause:
-    // updateWidget returned without throwing when getProfile() came
-    // back null. With throwOnError=true the batch caller now sees an
-    // exception and marks the row failed, surfacing the auth
-    // requirement instead of swallowing it.
+  test("batch path surfaces a refused sign-in as a failed row (instead of silently marking 'done')", async () => {
+    // No sign-in check before updating (public packages update signed
+    // out, 2026-10-23): the registry refusing — a private package or an
+    // expired sign-in — fails the row and flips needsAuth.
     installMainApi({
       checkUpdates: jest.fn().mockResolvedValue(sampleUpdates),
-      getProfile: jest.fn().mockResolvedValue(null),
+      install: jest
+        .fn()
+        .mockRejectedValue(
+          new Error(
+            "Your Dash registry session expired. Sign in again to install this.",
+          ),
+        ),
     });
     const { result } = renderHook(() =>
       useWidgetUpdates(sampleInstalled, jest.fn()),
@@ -308,7 +310,7 @@ describe("useWidgetUpdates — updatePackages batch orchestration", () => {
     expect(summary.failed).toEqual(["@trops/slack", "@trops/gmail"]);
     expect(result.current.batchStatus.get("@trops/slack")).toMatchObject({
       status: "failed",
-      error: expect.stringMatching(/Authentication/i),
+      error: expect.stringMatching(/Sign in again/),
     });
     // The Map stays populated because nothing was actually installed
     // — user retries after signing back in.
@@ -339,6 +341,29 @@ describe("useWidgetUpdates — updatePackages batch orchestration", () => {
     });
     expect(result.current.updates.size).toBe(0);
     expect(result.current.packagesWithUpdates).toEqual([]);
+  });
+
+  test("a retry with keepStatus keeps the other rows' results", async () => {
+    installMainApi({
+      checkUpdates: jest.fn().mockResolvedValue(sampleUpdates),
+      install: jest.fn().mockResolvedValue({ ok: true }),
+    });
+    const { result } = renderHook(() =>
+      useWidgetUpdates(sampleInstalled, jest.fn()),
+    );
+    await waitFor(() => {
+      expect(result.current.packagesWithUpdates.length).toBe(2);
+    });
+    await act(async () => {
+      await result.current.updatePackages(["@trops/gmail"]);
+    });
+    await act(async () => {
+      await result.current.updatePackages(["@trops/slack"], {
+        keepStatus: true,
+      });
+    });
+    expect(result.current.batchStatus.get("@trops/gmail")?.status).toBe("done");
+    expect(result.current.batchStatus.get("@trops/slack")?.status).toBe("done");
   });
 
   test("failed packages stay in the Map (so the user can retry just those)", async () => {
