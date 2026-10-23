@@ -368,7 +368,12 @@ export const AppWrapper = ({ children, credentials = null, dashApi }) => {
           via context.triggerAppUpdatesCheck. */}
       <AppUpdatesModal
         isOpen={appUpdatesModalOpen}
-        setIsOpen={setAppUpdatesModalOpen}
+        setIsOpen={(open) => {
+          // A refused update's "Sign in" doesn't stick past closing: next
+          // time, public updates are offered again (they need no sign-in).
+          if (!open) appUpdates.clearNeedsAuth();
+          setAppUpdatesModalOpen(open);
+        }}
         widgetUpdates={appUpdates.widgetUpdates}
         dashboardUpdates={appUpdates.dashboardUpdates}
         isChecking={appUpdates.isChecking}

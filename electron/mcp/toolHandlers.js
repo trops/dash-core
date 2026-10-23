@@ -1274,16 +1274,24 @@ async function handleInstallWidget({ packageName }) {
       };
     }
 
-    // Download and install
+    // Download and install under the scoped id (@scope/name) like every
+    // other install path, with the URL's {version}/{name} filled in — it
+    // installed under the bare name before.
+    const installId = pkg.scope
+      ? `@${String(pkg.scope).replace(/^@/, "")}/${pkg.name}`
+      : pkg.name;
+    const resolvedUrl = String(pkg.downloadUrl)
+      .replace(/\{version\}/g, pkg.version || pkg.latestVersion || "")
+      .replace(/\{name\}/g, pkg.name);
     const registry = getWidgetRegistry();
-    const config = await registry.downloadWidget(pkg.name, pkg.downloadUrl);
+    const config = await registry.downloadWidget(installId, resolvedUrl);
 
     // Notify all renderer windows
     const { win } = requireContext();
     const { BrowserWindow } = require("electron");
     BrowserWindow.getAllWindows().forEach((w) => {
       w.webContents.send("widget:installed", {
-        widgetName: pkg.name,
+        widgetName: installId,
         config,
       });
     });
@@ -1320,8 +1328,7 @@ async function handleInstallWidget({ packageName }) {
       ],
     };
   } catch (err) {
-    // The registry wants a sign-in (a private package) or one that expired
-    // (downloadWidget has already cleared it).
+    // The registry wants a sign-in (a private package) or one that expired.
     if (err.message && /sign in/i.test(err.message)) {
       return {
         content: [
