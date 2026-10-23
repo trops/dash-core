@@ -35,6 +35,8 @@ export function recentStatus(summary) {
     }
     case "built":
       return "Built";
+    case "ready":
+      return "Ready for you to look at";
     case "problems":
       return "Built, with problems";
     case "waiting":

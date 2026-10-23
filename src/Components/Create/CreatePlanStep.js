@@ -379,6 +379,10 @@ export const CreatePlanStep = ({
   const where = botMode ? botMode.where || null : null;
   // One widget, previewed before it's installed: a cell, or a change.
   const single = !!(cell || edit);
+  // Create › Widget on its own is saved like any plan (QA 2026-10-22: it
+  // wasn't, so closing it lost it); a cell's build and a change aren't.
+  const savedWidget = !!(widget && !cellProp && !edit);
+  const saves = !single || savedWidget;
   const statusTokens = useStatusTokens();
   const app = useContext(AppContext) || {};
   // [{ who: "you" | "planner" | "note", text, meta? }]
@@ -529,11 +533,13 @@ export const CreatePlanStep = ({
         const first = seed ? seed.label : prompt;
         // Use in this cell: nothing to plan — it builds (previews) at once.
         const direct = !!(seed && seed.autoBuild);
-        // A cell build stays out of Recent: it ends in the editor, and
-        // Recent's Remove / Edit plan don't apply to it (Phase 2b).
+        // A cell build isn't saved: it ends in the editor (Phase 2b).
         Promise.resolve(
-          bots && bots.saveCreateRecent && !single
-            ? bots.saveCreateRecent({ prompt: first })
+          bots && bots.saveCreateRecent && saves
+            ? bots.saveCreateRecent({
+                prompt: first,
+                ...(savedWidget ? { conversation: { widget: true } } : {}),
+              })
             : null,
         )
           .then((res) => {
@@ -597,6 +603,28 @@ export const CreatePlanStep = ({
   }, []);
 
   // A conversation from Recent, as it was left (4e-1).
+  // A widget plan is finished once its widget is added (Looks good);
+  // until then it's Unfinished. Discard ("nothing is installed") forgets it.
+  const widgetAdded = (made) => {
+    const bots = window.mainApi && window.mainApi.bots;
+    if (planId.current && bots && bots.saveCreateRecent) {
+      Promise.resolve(
+        bots.saveCreateRecent({
+          id: planId.current,
+          conversation: { widgetAdded: true },
+        }),
+      ).catch(() => {});
+    }
+    if (onCellDone) onCellDone(made);
+  };
+  const widgetDiscarded = (...args) => {
+    const bots = window.mainApi && window.mainApi.bots;
+    if (planId.current && bots && bots.removeCreateRecent) {
+      Promise.resolve(bots.removeCreateRecent(planId.current)).catch(() => {});
+    }
+    return onDiscard(...args);
+  };
+
   const restore = (entry) => {
     const conv = (entry && entry.conversation) || {};
     setOrigPrompt((entry && entry.prompt) || prompt || "");
@@ -643,6 +671,7 @@ export const CreatePlanStep = ({
             checks,
             planningTokens,
             ...(botMode ? { bot: botMode } : {}),
+            ...(savedWidget ? { widget: true } : {}),
           },
         }),
       ).catch(() => {});
@@ -901,8 +930,8 @@ export const CreatePlanStep = ({
         }
         bot={botMode ? { where, piece: botPiece } : null}
         onOpenBot={onOpenBot}
-        onCellDone={onCellDone}
-        onDiscard={onDiscard}
+        onCellDone={savedWidget ? widgetAdded : onCellDone}
+        onDiscard={savedWidget && onDiscard ? widgetDiscarded : onDiscard}
         buildId={build.buildId}
         initialState={build.state}
         estimate={estimate}

@@ -41,12 +41,15 @@ function titleFor(entry) {
 
 /**
  * What Recent shows for an entry (the renderer turns it into words):
- *   status   draft | building | built | problems | waiting | stopped |
- *            interrupted | removed — and for a question (5e): asked |
+ *   status   draft | building | built | ready | problems | waiting |
+ *            stopped | interrupted | removed (ready: built, waiting for you
+ *            — a preview to look at) — and for a question (5e): asked |
  *            answered
  *   progress { done, total } of the build's steps
  *   tokens   the build's tokens so far
  *   waitingFor  provider names the build waits for
+ *   widget      a Create › Widget plan (one widget on its own)
+ *   widgetAdded its widget was added to the user's widgets (Looks good)
  */
 function summarize(entry) {
   const state = entry.build && entry.build.state;
@@ -60,6 +63,8 @@ function summarize(entry) {
     tokens: 0,
     waitingFor: [],
     buildId: (entry.build && entry.build.buildId) || null,
+    widget: !!(entry.conversation && entry.conversation.widget),
+    widgetAdded: !!(entry.conversation && entry.conversation.widgetAdded),
   };
   if (out.kind === "question") {
     const messages = (entry.conversation && entry.conversation.messages) || [];
@@ -93,6 +98,7 @@ function summarize(entry) {
       waiting: "building",
       running: "building",
       done: "built",
+      "waiting-for-you": "ready",
       "finished-with-problems": "problems",
       "waiting-for-providers": "waiting",
       stopped: "stopped",

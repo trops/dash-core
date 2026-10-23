@@ -63,6 +63,28 @@ test("only unfinished plans — never built, building or waiting, stopped part-w
   );
 });
 
+test("a widget plan is unfinished until its widget is added; it reopens as a widget plan", () => {
+  const rows = unfinishedPlans([
+    { id: "w1", widget: true, status: "built", updatedAt: 3 },
+    {
+      id: "w2",
+      widget: true,
+      widgetAdded: true,
+      status: "built",
+      updatedAt: 2,
+    },
+    { id: "w3", widget: true, status: "draft", updatedAt: 1 },
+    { id: "w4", widget: true, status: "ready", updatedAt: 0 },
+    { id: "d1", status: "ready", updatedAt: -1 },
+  ]);
+  expect(rows.map((r) => [r.id, r.status, r.widget])).toEqual([
+    ["w1", "Ready to add", true],
+    ["w3", "Draft plan", true],
+    ["w4", "Ready to add", true],
+    ["d1", "Ready for you to look at", false],
+  ]);
+});
+
 test("at most a few", () => {
   const many = Array.from({ length: UNFINISHED_LIMIT + 2 }, (_, i) => ({
     id: `p${i}`,
@@ -114,6 +136,6 @@ test("Discard (never built) asks first, then forgets the plan — the plan menu'
 test("Create's start screen shows it (not for a cell) and Continue opens the plan step", () => {
   const src = fs.readFileSync(path.join(__dirname, "CreateModal.js"), "utf8");
   expect(src).toMatch(
-    /\{!cell \? \(\s*<UnfinishedPlans\s+onContinue=\{\(row\) => setPlanStep\(\{ prompt: "", recentId: row\.id \}\)\}/,
+    /\{!cell \? \(\s*<UnfinishedPlans\s+onContinue=\{\(row\) =>\s*setPlanStep\(\{\s*prompt: "",\s*recentId: row\.id,[\s\S]{0,80}\.\.\.\(row\.widget \? \{ widget: true \} : \{\}\),/,
   );
 });
