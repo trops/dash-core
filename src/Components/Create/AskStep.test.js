@@ -14,12 +14,7 @@ import {
   hasPlan,
   planSeed,
 } from "./askThread";
-import {
-  questionThreads,
-  recentRows,
-  recentStatus,
-  recentSections,
-} from "./recentRows";
+import { questionThreads, recentRows, recentStatus } from "./recentRows";
 
 jest.mock("../Settings/sections/ProvidersSection", () => ({
   ProvidersSection: () => <div data-testid="providers-section" />,
@@ -435,52 +430,11 @@ describe("the Dash team's conversations (consolidation Phase 4a)", () => {
     expect(questionThreads(null)).toEqual([]);
   });
 
-  test("recentSections can leave questions out (the dock lists plans)", () => {
-    const plans = [
-      { id: "q", kind: "question", title: "What ran?", updatedAt: 5 },
-      { id: "p", title: "Brief", status: "draft", updatedAt: 1 },
-    ];
-    expect(
-      recentSections(plans, [], { questions: false }).conversations.map(
-        (r) => r.id,
-      ),
-    ).toEqual(["p"]);
-  });
-
   test("onStarted says which Recent entry a new question was saved as", async () => {
     api();
     const onStarted = jest.fn();
     render(<AskStep question="What ran today?" onStarted={onStarted} />);
     await waitFor(() => expect(onStarted).toHaveBeenCalledWith("plan_q1"));
-  });
-});
-
-describe("recentSections (fix/recent-sections)", () => {
-  test("conversations and unfinished widgets apart; drafts say what opening does", () => {
-    const plans = [
-      {
-        id: "q",
-        kind: "question",
-        title: "What ran?",
-        status: "answered",
-        updatedAt: 5,
-      },
-      { id: "p", title: "Brief", status: "draft", updatedAt: 1 },
-    ];
-    const drafts = [1, 2, 3, 4].map((n) => ({
-      id: `d${n}`,
-      name: `W${n}`,
-      updatedAt: 10 - n,
-    }));
-    const s = recentSections(plans, drafts);
-    expect(s.conversations.map((r) => r.id)).toEqual(["q", "p"]);
-    expect(s.drafts.map((r) => [r.id, r.status])).toEqual([
-      ["d1", "Continue in Widget Builder"],
-      ["d2", "Continue in Widget Builder"],
-      ["d3", "Continue in Widget Builder"],
-    ]);
-    expect(s.moreDrafts).toBe(1);
-    expect(recentSections([], [], {}).conversations).toEqual([]);
   });
 });
 

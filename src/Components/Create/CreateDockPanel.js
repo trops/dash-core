@@ -10,8 +10,6 @@ import {
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { CreatePlanStep } from "./CreatePlanStep";
-import { recentSections } from "./recentRows";
-import { RecentList } from "./RecentList";
 import { PlanMenu } from "./PlanMenu";
 
 /**
@@ -20,9 +18,10 @@ import { PlanMenu } from "./PlanMenu";
  * (`dash:create-fold` { recentId, title }) carries on here in a compact
  * layout — chat, plan, Before building and the build's live steps — and
  * Expand reopens it full size (`dash:open-create` { type, recentId }). With
- * nothing folded it shows Recent: plans and unfinished widgets. Questions
- * are asked in the Dash team's conversations, from the Bots panel
- * (consolidation Phase 4a) — this panel has no Ask box.
+ * nothing folded it says how a plan gets here. It has no Recent list (QA
+ * 2026-10-22): what you made recently is at the top of the dashboard's Add
+ * list, unfinished widgets on the Widgets page. Questions are asked in the
+ * Dash team's conversations, from the Bots panel — this panel has no Ask box.
  *
  * The host's dock decides when it's open (`collapsed`); it stays mounted
  * either way so a fold is never missed.
@@ -40,10 +39,8 @@ export function foldCreate(detail) {
 
 export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
   const { hairline } = useConfigTokens();
-  // { recentId, title } — the plan folded here, or null (Recent).
+  // { recentId, title } — the plan folded here, or null.
   const [folded, setFolded] = useState(null);
-  const [plans, setPlans] = useState([]);
-  const [drafts, setDrafts] = useState([]);
   // The open plan, as CreatePlanStep reports it (for the "…" menu).
   const [planInfo, setPlanInfo] = useState(null);
   const { width, handleProps } = useResizableWidth({
@@ -64,32 +61,6 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
     return () => window.removeEventListener("dash:create-fold", onFold);
   }, []);
 
-  // Recent, while it's showing.
-  useEffect(() => {
-    if (collapsed || folded) return undefined;
-    let alive = true;
-    const api = window.mainApi || {};
-    const bots = api.bots;
-    const load = () => {
-      if (bots && bots.listCreateRecent) {
-        Promise.resolve(bots.listCreateRecent())
-          .then((l) => alive && Array.isArray(l) && setPlans(l))
-          .catch(() => {});
-      }
-    };
-    load();
-    if (api.drafts && api.drafts.list) {
-      Promise.resolve(api.drafts.list())
-        .then((l) => alive && Array.isArray(l) && setDrafts(l))
-        .catch(() => {});
-    }
-    const id = bots && bots.onCreateRecent ? bots.onCreateRecent(load) : null;
-    return () => {
-      alive = false;
-      if (id != null && bots.removeListener) bots.removeListener(id);
-    };
-  }, [collapsed, folded]);
-
   if (collapsed) return null;
 
   const expand = () => {
@@ -99,35 +70,6 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
     if (onCollapse) onCollapse();
     openCreate({ type: "dashboard", recentId });
   };
-  const openRow = (row) => {
-    // A plan has a lot to review: Create full size, like Expand.
-    if (row.kind === "plan") {
-      if (onCollapse) onCollapse();
-      openCreate({ type: "dashboard", recentId: row.id });
-      return;
-    }
-    // A widget draft opens in the Widget Builder (full size).
-    window.dispatchEvent(
-      new CustomEvent("dash:open-widget-builder", {
-        detail: { resumeDraftId: row.id },
-      }),
-    );
-  };
-  // Remove a plan from Recent (RecentList asks first).
-  const removeRecent = async (row) => {
-    const bots = window.mainApi && window.mainApi.bots;
-    if (!bots || !bots.removeCreateRecent) return;
-    try {
-      await bots.removeCreateRecent(row.id);
-    } catch (_e) {
-      // It stays listed; try again.
-    }
-  };
-  const sections = recentSections(plans, drafts, {
-    conversations: 12,
-    questions: false,
-  });
-  const hasRecent = sections.conversations.length + sections.drafts.length > 0;
   // A secondary button, not a link: it leaves the dock for Create full size.
   const makeNew = (
     <Button2
@@ -155,8 +97,6 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
       <ResizeHandle {...handleProps} ariaLabel="Resize Create" />
       <PanelHeader
         testId="create-dock-header"
-        onBack={folded ? () => setFolded(null) : null}
-        backLabel="Back to Recent"
         title={folded ? folded.title || "Plan a dashboard" : "Create"}
         actions={
           <>
@@ -209,26 +149,15 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
           />
         </div>
       ) : (
-        <div
-          className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-4 p-4"
-          data-testid="create-dock-recent"
-        >
-          <RecentList
-            sections={sections}
-            onOpen={openRow}
-            onRemove={removeRecent}
-            empty={
-              <EmptyState
-                testId="create-dock-empty"
-                className="my-auto"
-                title="Nothing here yet"
-                description="Plans and unfinished widgets show up here. To ask a question, open Dash team in the Bots panel."
-              >
-                {makeNew}
-              </EmptyState>
-            }
-          />
-          {hasRecent ? <div>{makeNew}</div> : null}
+        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-4 p-4">
+          <EmptyState
+            testId="create-dock-empty"
+            className="my-auto"
+            title="No plan folded here"
+            description="Fold a plan from Create to keep working on it beside your dashboard. To ask a question, open Dash team in the Bots panel."
+          >
+            {makeNew}
+          </EmptyState>
         </div>
       )}
     </aside>

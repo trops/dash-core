@@ -84,7 +84,7 @@ test("a new conversation is kept in Recent first; the Planner works with its mem
     ),
   );
   expect(screen.getByTestId("plan-ready")).toHaveTextContent(
-    "Kept in Recent · nothing has been built or installed yet.",
+    "Saved · nothing has been built or installed yet.",
   );
 });
 

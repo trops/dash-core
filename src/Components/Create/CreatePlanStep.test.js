@@ -152,7 +152,7 @@ test("the plan card: pieces by group and source, before building, access, estima
   expect(est).toHaveTextContent("included in your plan");
   expect(est).toHaveTextContent("To run: about $0.04 per run");
   expect(card).toHaveTextContent(
-    "Kept in Recent · nothing has been built or installed yet.",
+    "Saved · nothing has been built or installed yet.",
   );
 });
 
