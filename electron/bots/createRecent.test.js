@@ -143,6 +143,7 @@ describe("CreateRecent — conversations kept as they go", () => {
     assert.equal(r.findByBuild("b1").id, e.id);
     for (const [st, want] of [
       ["done", "built"],
+      ["waiting-for-you", "ready"],
       ["finished-with-problems", "problems"],
       ["waiting-for-providers", "waiting"],
       ["stopped", "stopped"],
@@ -153,6 +154,19 @@ describe("CreateRecent — conversations kept as they go", () => {
         want,
       );
     }
+  });
+
+  it("a Create › Widget plan says so, and whether its widget was added (QA 2026-10-22)", () => {
+    const r = recent();
+    const e = r.save({ prompt: "x", conversation: { widget: true } });
+    let s = r.list().find((x) => x.id === e.id);
+    assert.equal(s.widget, true);
+    assert.equal(s.widgetAdded, false);
+    r.save({ id: e.id, conversation: { widgetAdded: true } });
+    s = r.list().find((x) => x.id === e.id);
+    assert.equal(s.widget, true, "a later save keeps the widget flag");
+    assert.equal(s.widgetAdded, true);
+    assert.equal(summarize({}).widget, false);
   });
 
   it("a build running when the app closed is interrupted; its running step waits again", () => {

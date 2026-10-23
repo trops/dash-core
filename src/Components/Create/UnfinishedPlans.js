@@ -19,6 +19,7 @@ export const UNFINISHED_LIMIT = 5;
 const UNFINISHED = new Set([
   "draft",
   "building",
+  "ready",
   "waiting",
   "stopped",
   "interrupted",
@@ -47,14 +48,23 @@ export function unfinishedPlans(plans = [], limit = UNFINISHED_LIMIT) {
         p &&
         p.id &&
         p.kind !== "question" &&
-        UNFINISHED.has(p.status || "draft"),
+        (UNFINISHED.has(p.status || "draft") ||
+          // A widget built but not added to your widgets yet.
+          (p.widget &&
+            (p.status === "built" || p.status === "ready") &&
+            !p.widgetAdded)),
     )
     .map((p) => ({
       id: p.id,
       title: p.title || "Untitled plan",
-      status: recentStatus(p),
+      status:
+        p.widget && (p.status === "built" || p.status === "ready")
+          ? "Ready to add"
+          : recentStatus(p),
+      widget: !!p.widget,
       updatedAt: ms(p.updatedAt),
-      started: STARTED.has(p.status),
+      started:
+        STARTED.has(p.status) || p.status === "built" || p.status === "ready",
     }))
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, limit);

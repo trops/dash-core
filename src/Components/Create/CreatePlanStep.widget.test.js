@@ -36,6 +36,7 @@ function setup(props) {
   window.mainApi = {
     bots: {
       saveCreateRecent: jest.fn().mockResolvedValue({ id: "plan_1" }),
+      removeCreateRecent: jest.fn().mockResolvedValue({}),
       listDashTeam: jest.fn().mockResolvedValue([]),
       startPlanBuild: jest
         .fn()
@@ -59,8 +60,11 @@ test("the Planner is told: one widget for the user's widgets, no dashboard", asy
     /Plan exactly one new widget for the user's widgets — it isn't going on a dashboard/,
   );
   expect(request).toMatch(/don't set "dashboard"/);
-  // Not kept in Recent, like a cell's build.
-  expect(window.mainApi.bots.saveCreateRecent).not.toHaveBeenCalled();
+  // Saved, as a widget plan, so closing it doesn't lose it (QA 2026-10-22).
+  expect(window.mainApi.bots.saveCreateRecent).toHaveBeenCalledWith({
+    prompt: "Look up an order by number",
+    conversation: { widget: true },
+  });
 });
 
 test("it builds as a cell's does, with its own words for the preview", async () => {
@@ -77,6 +81,7 @@ test("it builds as a cell's does, with its own words for the preview", async () 
   expect(await screen.findByTestId("building-stub")).toHaveTextContent("b1");
   // standalone: the Builder is told it's for the user's widgets, not a cell.
   expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalledWith(plan, {
+    recentId: "plan_1",
     cell: true,
     standalone: true,
   });
@@ -86,7 +91,36 @@ test("it builds as a cell's does, with its own words for the preview", async () 
     discardLabel: "Discard — nothing is installed",
     inputsNote: "Only for trying it here.",
   });
-  expect(mockBuildProps.onCellDone).toBe(onCellDone);
+  // Looks good: the plan is marked done (it leaves Unfinished), then handed on.
+  mockBuildProps.onCellDone({ component: "x" });
+  expect(window.mainApi.bots.saveCreateRecent).toHaveBeenLastCalledWith({
+    id: "plan_1",
+    conversation: { widgetAdded: true },
+  });
+  expect(onCellDone).toHaveBeenCalledWith({ component: "x" });
+});
+
+test("Discard forgets a widget plan (nothing is installed)", async () => {
+  const plan = {
+    summary: "Order Lookup",
+    pieces: [{ kind: "widget", name: "Order Lookup", source: "new" }],
+  };
+  const onDiscard = jest.fn();
+  setup({
+    widget: true,
+    onDiscard,
+    seed: { plan, request: null, label: plan.summary, autoBuild: true },
+  });
+  await screen.findByTestId("building-stub");
+  mockBuildProps.onDiscard();
+  expect(window.mainApi.bots.removeCreateRecent).toHaveBeenCalledWith("plan_1");
+  expect(onDiscard).toHaveBeenCalled();
+});
+
+test("a cell's build is still not saved", async () => {
+  setup({ cell: { label: "cell 1.1" }, prompt: "A clock" });
+  await waitFor(() => expect(mockRunTeamRole).toHaveBeenCalled());
+  expect(window.mainApi.bots.saveCreateRecent).not.toHaveBeenCalled();
 });
 
 describe("builtWidgetName (the Done screen)", () => {

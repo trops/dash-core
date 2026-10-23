@@ -877,7 +877,14 @@ export const CreateModal = ({
             as it was left; a stopped build offers Continue building. */}
         {!cell ? (
           <UnfinishedPlans
-            onContinue={(row) => setPlanStep({ prompt: "", recentId: row.id })}
+            onContinue={(row) =>
+              setPlanStep({
+                prompt: "",
+                recentId: row.id,
+                // A Create › Widget plan reopens as one.
+                ...(row.widget ? { widget: true } : {}),
+              })
+            }
           />
         ) : null}
 
