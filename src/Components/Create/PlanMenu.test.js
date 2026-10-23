@@ -1,6 +1,6 @@
 /**
  * PlanMenu — the "…" on an open plan (screen audit, October 2026): Discard
- * plan (or Remove from Recent once built), asked first; the view closes
+ * plan (or Forget plan once built), asked first; the view closes
  * before the remove so its autosave can't bring it back.
  */
 import React from "react";
@@ -55,10 +55,10 @@ test("confirmed: the view closes, then the plan leaves Recent", async () => {
   expect(order).toEqual(["closed", "removed"]);
 });
 
-test("a built plan says Remove from Recent and that the dashboard stays", () => {
+test("a built plan says Forget plan and that the dashboard stays", () => {
   render(<PlanMenu recentId="plan_1" title="PR Review" built />);
   fireEvent.click(screen.getByRole("button", { name: "More actions" }));
-  fireEvent.click(screen.getByRole("menuitem", { name: /Remove from Recent/ }));
+  fireEvent.click(screen.getByRole("menuitem", { name: /Forget plan/ }));
   expect(screen.getByTestId("confirmation-modal")).toHaveTextContent(
     "The dashboard it built stays.",
   );

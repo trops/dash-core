@@ -22,7 +22,7 @@ import {
 /**
  * AskStep — a question to the Dash team's Planner (create-entry PRD CRE-007
  * AC4 / CRE-011 AC6, phase 5e). It reads the user's bot results and runs
- * (bot_results / bot_runs) and answers; follow-ups carry on. Kept in Recent
+ * (bot_results / bot_runs) and answers; follow-ups carry on. Saved
  * as a "question". When an answer plans something, Open as a plan starts
  * Create from it (`onOpenPlan(seed)`).
  *
@@ -184,7 +184,7 @@ export const AskStep = ({
                 ? conv.messages
                 : [{ who: "you", text: firstAsked.current }],
             );
-            if (!entry) note("This conversation isn't in Recent any more.");
+            if (!entry) note("This conversation isn't saved any more.");
             reopened.current = true;
             setLoaded(true);
           })
@@ -194,7 +194,7 @@ export const AskStep = ({
             setLoaded(true);
           });
       } else {
-        // Kept in Recent from the start; its id is the memory scope too.
+        // Saved from the start; its id is the memory scope too.
         Promise.resolve(
           bots && bots.saveCreateRecent
             ? bots.saveCreateRecent({

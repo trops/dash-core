@@ -37,6 +37,7 @@ import { PlanMenu } from "./PlanMenu";
 import { pickType, autoPickLabel } from "./autoType";
 import { themeFromPrompt } from "./themeFromPrompt";
 import { teamContext, teamLine, contextRequest } from "./teamContext";
+import { UnfinishedPlans } from "./UnfinishedPlans";
 import {
   useRegistryAuthGate,
   isRegistryAuthError,
@@ -871,6 +872,14 @@ export const CreateModal = ({
             </div>
           ) : null}
         </div>
+
+        {/* Plans you didn't finish (QA 2026-10-22): Continue reopens one
+            as it was left; a stopped build offers Continue building. */}
+        {!cell ? (
+          <UnfinishedPlans
+            onContinue={(row) => setPlanStep({ prompt: "", recentId: row.id })}
+          />
+        ) : null}
 
         {noAi && !cell && (
           <div className={`flex flex-row items-center gap-2 text-sm ${muted}`}>

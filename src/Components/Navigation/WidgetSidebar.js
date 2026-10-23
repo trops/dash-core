@@ -28,6 +28,7 @@ import { useRegistrySearch } from "../../hooks/useRegistrySearch";
 import { RegistryAuthModal } from "../Registry/RegistryAuthModal";
 import { InstallProgressModal } from "../Settings/details/InstallProgressModal";
 import { isDraftPackage } from "../../utils/draftPackage";
+import { recentlyCreated } from "./recentlyCreated";
 
 // ComponentConfigModel's fallback `name` for a config that sets none — it
 // isn't the widget's name, so it never titles a row.
@@ -593,6 +594,8 @@ export const WidgetSidebar = ({
   // Set of installed package identifiers for "Installed" badge in Discover tab.
   // Stores folder names, package names, and "author/name" keys for matching.
   const [installedPackageNames, setInstalledPackageNames] = useState(new Set());
+  // The registry's entries, for when each package was installed.
+  const [registryEntries, setRegistryEntries] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -619,6 +622,7 @@ export const WidgetSidebar = ({
           }
         }
         setInstalledPackageNames(names);
+        setRegistryEntries(Array.isArray(widgets) ? widgets : []);
       } catch (err) {
         console.error("[WidgetSidebar] Error loading installed widgets:", err);
       }
@@ -747,6 +751,16 @@ export const WidgetSidebar = ({
   };
 
   const authorNames = Object.keys(filteredGrouped).sort();
+
+  // What the user made recently, first — while nothing narrows the list
+  // (a search or filter shows its matches in their usual groups).
+  const recent = useMemo(
+    () =>
+      hasActiveFilters
+        ? []
+        : recentlyCreated(allWidgets, registryEntries, { username }),
+    [hasActiveFilters, allWidgets, registryEntries, username],
+  );
 
   // Readable 14px selects on the theme's field surface + hairline.
   const selectClassName = `w-full min-w-0 px-2 py-1.5 rounded-md text-sm border ${t.field} ${t.hairline} ${t.strong} focus:outline-none cursor-pointer`;
@@ -919,20 +933,39 @@ export const WidgetSidebar = ({
           </>
         ) : activeTab === "installed" ? (
           authorNames.length > 0 ? (
-            authorNames.map((author) => (
-              <Sidebar.Group key={author} label={author}>
-                <div className="flex flex-col gap-1">
-                  {filteredGrouped[author].map(({ key, widget }) => (
-                    <DraggableWidgetItem
-                      key={key}
-                      widgetKey={key}
-                      widget={widget}
-                      onPick={onPick}
-                    />
-                  ))}
-                </div>
-              </Sidebar.Group>
-            ))
+            <>
+              {recent.length > 0 ? (
+                <Sidebar.Group label="Recently created">
+                  <div
+                    className="flex flex-col gap-1"
+                    data-testid="recently-created"
+                  >
+                    {recent.map(({ key, widget }) => (
+                      <DraggableWidgetItem
+                        key={key}
+                        widgetKey={key}
+                        widget={widget}
+                        onPick={onPick}
+                      />
+                    ))}
+                  </div>
+                </Sidebar.Group>
+              ) : null}
+              {authorNames.map((author) => (
+                <Sidebar.Group key={author} label={author}>
+                  <div className="flex flex-col gap-1">
+                    {filteredGrouped[author].map(({ key, widget }) => (
+                      <DraggableWidgetItem
+                        key={key}
+                        widgetKey={key}
+                        widget={widget}
+                        onPick={onPick}
+                      />
+                    ))}
+                  </div>
+                </Sidebar.Group>
+              ))}
+            </>
           ) : (
             <div
               className={`flex flex-col items-center justify-center gap-2 py-8 px-4 text-center ${t.muted}`}

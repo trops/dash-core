@@ -524,7 +524,7 @@ export const CreatePlanStep = ({
           })
           .catch(() => alive.current && restore(null));
       } else {
-        // Kept in Recent from the start, then the Planner (with this plan's
+        // Saved from the start, then the Planner (with this plan's
         // memory) — saving first gives the plan its id.
         const first = seed ? seed.label : prompt;
         // Use in this cell: nothing to plan — it builds (previews) at once.
@@ -619,7 +619,7 @@ export const CreatePlanStep = ({
     if (!entry) {
       setMessages((m) => [
         ...m,
-        { who: "note", text: "This conversation isn't in Recent any more." },
+        { who: "note", text: "This conversation isn't saved any more." },
       ]);
     }
     reopened.current = true;
@@ -1384,8 +1384,8 @@ export const CreatePlanStep = ({
                             ? "Nothing is saved until you press Build."
                             : removedNote ||
                               (target
-                                ? `Kept in Recent · nothing on ${target.name} changes until you press this.`
-                                : "Kept in Recent · nothing has been built or installed yet.")}
+                                ? `Saved · nothing on ${target.name} changes until you press this.`
+                                : "Saved · nothing has been built or installed yet.")}
           </span>
         </div>
         {single || botMode ? expectSection : null}

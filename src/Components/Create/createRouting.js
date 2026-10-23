@@ -124,9 +124,6 @@ export function noAiOptions(type) {
   return [...(NO_AI_BY_TYPE[type] || []), ...NO_AI_COMMON];
 }
 
-/** How many recent widget drafts the start screen offers to continue. */
-export const RECENT_DRAFTS = 3;
-
 /** "just now" · "5m ago" · "3h ago" · "2d ago" for a draft's updatedAt. */
 export function draftAge(updatedAt, now = Date.now()) {
   const ms = Math.max(0, now - Number(updatedAt || 0));

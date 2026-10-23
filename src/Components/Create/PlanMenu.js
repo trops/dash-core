@@ -9,7 +9,7 @@ import {
 
 /**
  * PlanMenu — the "…" on an open plan (in Create and in the dock): Discard
- * plan, or Remove from Recent once it has built something (the dashboard
+ * plan, or Forget plan once it has built something (the dashboard
  * stays). Destructive, so it sits in "…" and asks first (design guide rule
  * 10; screen audit, October 2026). `onRemoved` runs before the remove so the
  * plan view closes first and its autosave can't bring the entry back.
@@ -18,16 +18,16 @@ export function planRemoveCopy({ title, built }) {
   const name = title ? `“${title}”` : "this plan";
   return built
     ? {
-        action: "Remove from Recent",
-        title: `Remove ${name} from Recent?`,
+        action: "Forget plan",
+        title: `Forget ${name}?`,
         message:
-          "It leaves Recent and its notes are forgotten. The dashboard it built stays.",
+          "The plan and its notes are forgotten. The dashboard it built stays.",
       }
     : {
         action: "Discard plan",
         title: `Discard ${name}?`,
         message:
-          "It's removed from Recent and its notes are forgotten. Nothing has been built.",
+          "The plan and its notes are forgotten. Nothing has been built.",
       };
 }
 
