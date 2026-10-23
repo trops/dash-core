@@ -44,6 +44,9 @@ export function useProviderStatus({
 }) {
   const [running, setRunning] = useState({});
   const [bots, setBots] = useState([]);
+  // False until the bots list has loaded (and if it fails): until then, who
+  // uses a provider isn't known.
+  const [botsLoaded, setBotsLoaded] = useState(false);
 
   const mcpNames = useMemo(
     () =>
@@ -86,7 +89,9 @@ export function useProviderStatus({
     const load = () =>
       Promise.resolve(api.list())
         .then((list) => {
-          if (alive) setBots(Array.isArray(list) ? list : []);
+          if (!alive) return;
+          setBots(Array.isArray(list) ? list : []);
+          setBotsLoaded(true);
         })
         .catch(() => {});
     load();
@@ -131,9 +136,19 @@ export function useProviderStatus({
       usageOf: (name) => providerUsage(name, { workspaces, bots, bindingsFor }),
       // The bot definitions (Choose where to use… saves them).
       bots,
+      botsLoaded,
       refresh: checkRunning,
     }),
-    [providers, running, catalog, workspaces, bots, bindingsFor, checkRunning],
+    [
+      providers,
+      running,
+      catalog,
+      workspaces,
+      bots,
+      botsLoaded,
+      bindingsFor,
+      checkRunning,
+    ],
   );
 }
 
