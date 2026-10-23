@@ -24,6 +24,8 @@ let mockRegistryPackages = [];
 let mockSearchResults = [];
 let mockSent = [];
 let mockServerContext = null;
+let mockPackage = null;
+let mockDownloads = [];
 
 // ---------------------------------------------------------------------------
 // Mock: BrowserWindow
@@ -107,6 +109,7 @@ function loadToolHandlers() {
   const mockRegistryController = {
     fetchRegistryIndex: async () => ({ packages: mockRegistryPackages }),
     searchRegistry: async () => ({ packages: mockSearchResults }),
+    getPackage: async () => mockPackage,
   };
 
   const mockSettingsController = {
@@ -164,7 +167,15 @@ function loadToolHandlers() {
     // Both pull in Electron; the handlers under test only need a widget list.
     if (mod === "../controller/registryAuthController") return {};
     if (mod === "../widgetRegistry")
-      return { getWidgetRegistry: () => ({ getWidgets: () => [] }) };
+      return {
+        getWidgetRegistry: () => ({
+          getWidgets: () => [],
+          downloadWidget: async (id, url) => {
+            mockDownloads.push({ id, url });
+            return { name: id };
+          },
+        }),
+      };
     if (mod === "../controller/settingsController")
       return mockSettingsController;
     if (mod === "../controller/themeFromUrlController")
@@ -182,6 +193,9 @@ function loadToolHandlers() {
     if (mod === "electron")
       return {
         BrowserWindow: class MockBW {
+          static getAllWindows() {
+            return [];
+          }
           constructor() {
             this.webContents = {
               on: () => {},
@@ -1752,5 +1766,31 @@ describe("Layout tools on dashboards with pages (3c)", () => {
     ).grid;
     assert.equal(grid["3.3"].component, 2);
     assert.deepEqual(ws().layout, page("p2").layout);
+  });
+});
+
+describe("install_widget", () => {
+  it("installs under the scoped id with the download URL filled in (it used the bare name)", async () => {
+    const handlers = loadToolHandlers();
+    mockServerContext = { win: {} };
+    mockDownloads = [];
+    mockPackage = {
+      scope: "trops",
+      name: "clock",
+      version: "1.2.0",
+      downloadUrl:
+        "https://registry.test/api/packages/trops/{name}/download?version={version}",
+      widgets: [{ name: "Clock" }],
+    };
+    const out = parseResult(
+      await handlers.handleInstallWidget({ packageName: "trops/clock" }),
+    );
+    assert.equal(out.success, true);
+    assert.deepEqual(mockDownloads, [
+      {
+        id: "@trops/clock",
+        url: "https://registry.test/api/packages/trops/clock/download?version=1.2.0",
+      },
+    ]);
   });
 });

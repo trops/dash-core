@@ -373,6 +373,19 @@ describe("getDashboardPackageConfig — a public read with no sign-in", () => {
     assert.equal(result.error, "Sign in to the Dash registry to install this.");
     assert.equal(clearTokenCalled, false);
   });
+
+  it("a starter read is marked a preview; an install isn't (not counted as one)", async () => {
+    mockFetchResponse = mock401Response();
+    await controller.getDashboardPackageConfig("test-dashboard-preview");
+    assert.equal(new URL(lastFetchUrl).searchParams.get("purpose"), "preview");
+
+    await controller.installDashboardFromRegistry(
+      null,
+      "app1",
+      "test-dashboard",
+    );
+    assert.equal(new URL(lastFetchUrl).searchParams.get("purpose"), null);
+  });
 });
 
 describe("installDashboardFromRegistry — retry flow contract", () => {

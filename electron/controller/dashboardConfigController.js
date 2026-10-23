@@ -948,7 +948,7 @@ function installTeamForImport(workspaceId, team) {
  * @returns {Promise<{ success: true, registryPkg, dashboardConfig } |
  *   { success: false, error, authRequired? }>}
  */
-async function downloadDashboardPackage(packageName) {
+async function downloadDashboardPackage(packageName, { purpose = null } = {}) {
   // 1. Look up the dashboard package in the registry
   const registryPkg = await getPackage(packageName);
   if (!registryPkg) {
@@ -970,7 +970,9 @@ async function downloadDashboardPackage(packageName) {
   );
 
   // Download the ZIP: signed in or not (public dashboards need no sign-in).
-  const { response, expired } = await registryDownloadFetch(downloadUrl);
+  const { response, expired } = await registryDownloadFetch(downloadUrl, {
+    purpose,
+  });
   const refusal = downloadRefusal(response, { expired });
   if (refusal) return { success: false, ...refusal };
   if (!response.ok) {
@@ -1110,7 +1112,10 @@ async function getDashboardPackageConfig(packageName) {
     return packageConfigCache.get(packageName);
   }
   try {
-    const res = await downloadDashboardPackage(packageName);
+    // Read for a starter card or Remix, not installed.
+    const res = await downloadDashboardPackage(packageName, {
+      purpose: "preview",
+    });
     const out = res.success
       ? { success: true, config: res.dashboardConfig }
       : { success: false, error: res.error, authRequired: !!res.authRequired };

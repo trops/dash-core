@@ -70,6 +70,27 @@ describe("registryDownloadFetch", () => {
   });
 });
 
+describe("purpose", () => {
+  it("a preview says so in the URL, keeping its other parameters", async () => {
+    const { dl, calls } = setup();
+    await dl.registryDownloadFetch(
+      "https://r.test/api/packages/a/b/download?version=1.0.0",
+      {
+        purpose: "preview",
+      },
+    );
+    const u = new URL(calls[0].url);
+    assert.equal(u.searchParams.get("purpose"), "preview");
+    assert.equal(u.searchParams.get("version"), "1.0.0");
+  });
+
+  it("an install doesn't", async () => {
+    const { dl, calls } = setup();
+    await dl.registryDownloadFetch("https://r.test/x/download");
+    assert.equal(calls[0].url, "https://r.test/x/download");
+  });
+});
+
 describe("downloadRefusal", () => {
   it("401: sign in (or sign in again when it expired)", () => {
     assert.deepEqual(downloadRefusal({ status: 401 }), {

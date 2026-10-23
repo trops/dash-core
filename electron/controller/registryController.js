@@ -16,6 +16,10 @@ const os = require("os");
 const { toPackageId } = require("../utils/packageId");
 const { isNewerVersion } = require("../utils/isNewerVersion");
 const { getStoredToken, authedFetch } = require("./registryAuthController");
+const {
+  registryDownloadFetch,
+  downloadRefusal,
+} = require("../registryDownload");
 
 // Default registry API base URL
 const DEFAULT_REGISTRY_API_URL = "https://main.d919rwhuzp7rj.amplifyapp.com";
@@ -609,18 +613,27 @@ async function fetchPackageSource(packageName, componentName = null) {
   const registryBase =
     process.env.DASH_REGISTRY_API_URL ||
     "https://main.d919rwhuzp7rj.amplifyapp.com";
-  // Use authedFetch (Bearer + auto-refresh) only for registry-hosted URLs;
-  // external download URLs (e.g. GitHub releases) must NOT receive our token.
+  // Registry-hosted URLs go through registryDownload (sign-in if any, the
+  // install ID); external download URLs (e.g. GitHub releases) must NOT
+  // receive our token.
   const isRegistryUrl =
     pkg.downloadUrl.includes(registryBase) ||
     pkg.downloadUrl.includes("/api/packages/");
-  const response = isRegistryUrl
-    ? await authedFetch(pkg.downloadUrl)
-    : await fetch(pkg.downloadUrl);
+  // A preview, not an install: marked so the registry doesn't count it.
+  let response;
+  let expired = false;
+  if (isRegistryUrl) {
+    ({ response, expired } = await registryDownloadFetch(pkg.downloadUrl, {
+      purpose: "preview",
+    }));
+  } else {
+    response = await fetch(pkg.downloadUrl);
+  }
   if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error("Authentication required to preview this package");
-    }
+    const refusal = isRegistryUrl
+      ? downloadRefusal(response, { expired })
+      : null;
+    if (refusal) throw new Error(refusal.error);
     throw new Error(`Failed to fetch package: ${response.statusText}`);
   }
 
@@ -794,18 +807,27 @@ async function fetchPackageManifest(packageName) {
   const registryBase =
     process.env.DASH_REGISTRY_API_URL ||
     "https://main.d919rwhuzp7rj.amplifyapp.com";
-  // Use authedFetch (Bearer + auto-refresh) only for registry-hosted URLs;
-  // external download URLs (e.g. GitHub releases) must NOT receive our token.
+  // Registry-hosted URLs go through registryDownload (sign-in if any, the
+  // install ID); external download URLs (e.g. GitHub releases) must NOT
+  // receive our token.
   const isRegistryUrl =
     pkg.downloadUrl.includes(registryBase) ||
     pkg.downloadUrl.includes("/api/packages/");
-  const response = isRegistryUrl
-    ? await authedFetch(pkg.downloadUrl)
-    : await fetch(pkg.downloadUrl);
+  // A preview, not an install: marked so the registry doesn't count it.
+  let response;
+  let expired = false;
+  if (isRegistryUrl) {
+    ({ response, expired } = await registryDownloadFetch(pkg.downloadUrl, {
+      purpose: "preview",
+    }));
+  } else {
+    response = await fetch(pkg.downloadUrl);
+  }
   if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error("Authentication required to fetch this package manifest");
-    }
+    const refusal = isRegistryUrl
+      ? downloadRefusal(response, { expired })
+      : null;
+    if (refusal) throw new Error(refusal.error);
     throw new Error(`Failed to fetch package manifest: ${response.statusText}`);
   }
   const contentType = response.headers.get("content-type") || "";
