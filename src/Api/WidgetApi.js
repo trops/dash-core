@@ -8,6 +8,58 @@
  * The UUID is then used for filenames, etc and MUST be unique.
  */
 
+/**
+ * The file result channels are shared by every widget, and results carry
+ * no request id. Each call listens for the result naming its own file and
+ * then stops listening — it used to clear every listener on the channel,
+ * so the last widget to read got every widget's data (and saved another
+ * widget's chat into its own file).
+ */
+function sameFile(response, filename) {
+  const got = response && response.filename;
+  if (typeof got !== "string" || !got) return true; // unlabeled: legacy
+  return (
+    got === filename ||
+    got.endsWith(`/${filename}`) ||
+    got.endsWith(`\\${filename}`)
+  );
+}
+
+function awaitFileResult(
+  eApi,
+  { completeEvent, errorEvent, filename, onComplete, onError },
+) {
+  if (!onComplete && !onError) return;
+  const stop = () => {
+    if (typeof eApi.removeListener !== "function") return;
+    eApi.removeListener(completeEvent, complete);
+    eApi.removeListener(errorEvent, error);
+  };
+  const complete = (_event, response) => {
+    if (!sameFile(response, filename)) return;
+    stop();
+    if (onComplete) onComplete(response);
+  };
+  const error = (_event, response) => {
+    if (!sameFile(response, filename)) return;
+    stop();
+    if (onError) onError(response);
+  };
+  eApi.on(completeEvent, complete);
+  eApi.on(errorEvent, error);
+}
+
+/** The shared api (no widget behind it) can't read or write files. */
+function refuseUnknownWidget(callbackError) {
+  if (callbackError) {
+    callbackError({
+      success: false,
+      message:
+        "File access needs the widget's own api (the `api` prop), so Dash knows which widget is asking.",
+    });
+  }
+}
+
 export const WidgetApi = {
   params: null,
 
@@ -32,6 +84,7 @@ export const WidgetApi = {
         this._electronApi = {
           on: rawApi.on || {},
           removeAllListeners: rawApi.removeAllListeners || {},
+          removeListener: rawApi.removeListener,
           data: rawApi.data || {},
           algolia: rawApi.algolia || {},
           events: rawApi.events || {},
@@ -167,35 +220,30 @@ export const WidgetApi = {
       // grab the electron api
       const eApi = this.electronApi();
       if (eApi) {
-        // remove the listeners (reset)
-        if ("removeAllListeners" in eApi) {
-          eApi.removeAllListeners(eApi.events.DATA_SAVE_TO_FILE_COMPLETE);
-          eApi.removeAllListeners(eApi.events.DATA_SAVE_TO_FILE_ERROR);
-          if (callbackComplete !== null) {
-            eApi.on(
-              eApi.events.DATA_SAVE_TO_FILE_COMPLETE,
-              (_event, response) => callbackComplete(response),
-            );
-          }
-          if (callbackError !== null) {
-            eApi.on(eApi.events.DATA_SAVE_TO_FILE_ERROR, (_event, response) =>
-              callbackError(response),
-            );
-          }
-          // Auto-thread widgetId from the singleton's per-widget
-          // state when the caller didn't supply one explicitly. This
-          // is what makes the fs gate fire for ordinary widgets that
-          // call `widgetApi.storeData({data, filename})` without
-          // knowing about widgetId.
-          const effectiveWidgetId = widgetId || this.params?.name || null;
-          eApi.data.saveData(
-            data,
-            toFilename,
-            append,
-            returnEmpty,
-            effectiveWidgetId,
-          );
+        // Auto-thread widgetId from this widget's api (WidgetFactory
+        // gives each widget its own) when the caller didn't supply one.
+        // This is what makes the fs gate fire for ordinary widgets that
+        // call `api.storeData({data, filename})` without knowing about
+        // widgetId.
+        const effectiveWidgetId = widgetId || this.params?.name || null;
+        if (!effectiveWidgetId) {
+          refuseUnknownWidget(callbackError);
+          return;
         }
+        awaitFileResult(eApi, {
+          completeEvent: eApi.events.DATA_SAVE_TO_FILE_COMPLETE,
+          errorEvent: eApi.events.DATA_SAVE_TO_FILE_ERROR,
+          filename: toFilename,
+          onComplete: callbackComplete,
+          onError: callbackError,
+        });
+        eApi.data.saveData(
+          data,
+          toFilename,
+          append,
+          returnEmpty,
+          effectiveWidgetId,
+        );
       }
     } catch (e) {
       if (callbackError !== null) {
@@ -225,14 +273,20 @@ export const WidgetApi = {
     try {
       const toFilename = filename !== null ? filename : `${uuid}.json`;
       const eApi = this.electronApi();
-      if ("removeAllListeners" in eApi) {
-        eApi.removeAllListeners(eApi.events.DATA_READ_FROM_FILE_COMPLETE);
-        eApi.removeAllListeners(eApi.events.DATA_READ_FROM_FILE_ERROR);
-
-        if (callbackComplete !== null) {
-          eApi.on(
-            eApi.events.DATA_READ_FROM_FILE_COMPLETE,
-            (_event, response) => {
+      if (eApi) {
+        // Auto-thread widgetId from this widget's api — same as storeData.
+        const effectiveWidgetId = widgetId || this.params?.name || null;
+        if (!effectiveWidgetId) {
+          refuseUnknownWidget(callbackError);
+          return;
+        }
+        awaitFileResult(eApi, {
+          completeEvent: eApi.events.DATA_READ_FROM_FILE_COMPLETE,
+          errorEvent: eApi.events.DATA_READ_FROM_FILE_ERROR,
+          filename: toFilename,
+          onComplete:
+            callbackComplete &&
+            ((response) => {
               // response.data is a JSON string from the main process;
               // parse it so callers receive the actual object.
               let parsed = response;
@@ -244,16 +298,9 @@ export const WidgetApi = {
                 }
               }
               callbackComplete(parsed);
-            },
-          );
-        }
-        if (callbackError !== null) {
-          eApi.on(eApi.events.DATA_READ_FROM_FILE_ERROR, (_event, response) =>
-            callbackError(response),
-          );
-        }
-        // Auto-thread widgetId from the singleton — same as storeData.
-        const effectiveWidgetId = widgetId || this.params?.name || null;
+            }),
+          onError: callbackError,
+        });
         eApi.data.readData(toFilename, [], effectiveWidgetId);
       }
     } catch (e) {

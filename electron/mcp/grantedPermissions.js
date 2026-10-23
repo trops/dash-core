@@ -42,8 +42,11 @@
 const fs = require("fs");
 const path = require("path");
 const { app } = require("electron");
+const { dropMisattributedFsPaths } = require("../security/fsGrantAttribution");
 
 const FILE_NAME = "widgetMcpGrants.json";
+// Written once the mis-attributed file grants have been dropped.
+const FS_CLEANUP_MARK = "widgetMcpGrants.fs-attribution-cleaned";
 
 // In-process cache of the entire grants file. Lazily loaded; invalidated
 // on every write.
@@ -60,11 +63,31 @@ function loadFromDisk() {
     const raw = fs.readFileSync(p, "utf8");
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return {};
-    return parsed;
+    return cleanMisattributedOnce(parsed);
   } catch (e) {
     console.warn("[grantedPermissions] failed to read " + p + ": " + e.message);
     return {};
   }
+}
+
+/**
+ * File grants a shared widget api once gave the wrong widget
+ * (fsGrantAttribution) — dropped and saved back, once per profile. A
+ * failed save leaves the mark unwritten, so the next load tries again.
+ */
+function cleanMisattributedOnce(parsed) {
+  const mark = path.join(path.dirname(grantsFilePath()), FS_CLEANUP_MARK);
+  if (fs.existsSync(mark)) return parsed;
+  const { grants, removed } = dropMisattributedFsPaths(parsed);
+  try {
+    if (removed > 0) writeToDisk(grants);
+    fs.writeFileSync(mark, new Date().toISOString(), "utf8");
+  } catch (e) {
+    console.warn(
+      "[grantedPermissions] failed to save cleaned grants: " + e.message,
+    );
+  }
+  return grants;
 }
 
 function ensureCache() {

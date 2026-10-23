@@ -60,7 +60,12 @@ require.cache[jitConsentPath] = {
   },
 };
 
-const { gateFsCall, gateFsCallWithJit, isFsWriteAction } = require("./fsGate");
+const {
+  gateFsCall,
+  gateFsCallWithJit,
+  isFsWriteAction,
+  _clearDeclined,
+} = require("./fsGate");
 const {
   setGrant,
   getGrant,
@@ -70,6 +75,7 @@ const {
 
 function reset() {
   clearCache();
+  _clearDeclined();
   const grantsFile = path.join(tmpRoot, "userData", "widgetMcpGrants.json");
   if (fs.existsSync(grantsFile)) fs.unlinkSync(grantsFile);
 }
@@ -611,4 +617,96 @@ test("fsGate: request payload includes packageId + siblingWidgetIds", async () =
   );
   assert.strictEqual(received.packageId, "@trops/fssib");
   assert.strictEqual(received.siblingWidgetIds.length, 3);
+});
+
+test("gateFsCallWithJit: a Deny isn't asked again this session (same widget + file)", async () => {
+  reset();
+  let prompts = 0;
+  __mockApproval = async () => {
+    prompts += 1;
+    return { approve: false };
+  };
+  const ask = (widgetId, filename) =>
+    gateFsCallWithJit(
+      { widgetId, action: "readFromFile", args: { filename } },
+      { enableJit: true },
+    );
+  const first = await ask("@trops/denied", "a.json");
+  const again = await ask("@trops/denied", "a.json");
+  assert.strictEqual(first.allow, false);
+  assert.strictEqual(again.allow, false);
+  assert.match(again.reason, /earlier this session/);
+  assert.strictEqual(prompts, 1);
+
+  // Another file, or another widget, still asks.
+  await ask("@trops/denied", "b.json");
+  await ask("@trops/other", "a.json");
+  assert.strictEqual(prompts, 3);
+});
+
+test("gateFsCallWithJit: a grant made after a Deny wins", async () => {
+  reset();
+  __mockApproval = async () => ({ approve: false });
+  const req = {
+    widgetId: "@trops/later-ok",
+    action: "readFromFile",
+    args: { filename: "a.json" },
+  };
+  await gateFsCallWithJit(req, { enableJit: true });
+  setGrant("@trops/later-ok", {
+    grantOrigin: "manual",
+    domains: {
+      fs: { actions: ["readFromFile"], readPaths: ["a.json"], writePaths: [] },
+    },
+  });
+  const r = await gateFsCallWithJit(req, { enableJit: true });
+  assert.strictEqual(r.allow, true);
+});
+
+test("gateFsCallWithJit: a prompt that times out isn't remembered as a Deny", async () => {
+  reset();
+  let prompts = 0;
+  __mockApproval = async () => {
+    prompts += 1;
+    throw new Error("permission request timed out");
+  };
+  const req = {
+    widgetId: "@trops/timeout",
+    action: "readFromFile",
+    args: { filename: "a.json" },
+  };
+  await gateFsCallWithJit(req, { enableJit: true });
+  await gateFsCallWithJit(req, { enableJit: true });
+  assert.strictEqual(prompts, 2);
+});
+
+test("gateFsCallWithJit: after a Deny, approving another prompt for the widget asks again", async () => {
+  reset();
+  let prompts = 0;
+  __mockApproval = async (req) => {
+    prompts += 1;
+    if (req.action === "readFromFile") return { approve: false };
+    return {
+      approve: true,
+      granted: {
+        grantOrigin: "live",
+        domains: {
+          fs: {
+            actions: ["saveToFile"],
+            readPaths: [],
+            writePaths: ["n.json"],
+          },
+        },
+      },
+    };
+  };
+  const call = (action) =>
+    gateFsCallWithJit(
+      { widgetId: "@trops/notes", action, args: { filename: "n.json" } },
+      { enableJit: true },
+    );
+  await call("readFromFile"); // Deny
+  await call("saveToFile"); // Allow — the grant changes
+  await call("readFromFile"); // asks again rather than staying denied
+  assert.strictEqual(prompts, 3);
 });

@@ -434,3 +434,64 @@ test("domains.network.actions: missing field is preserved as missing (legacy mig
   assert.ok(got.domains?.network);
   assert.strictEqual(got.domains.network.actions, undefined);
 });
+
+test("loading drops file grants given to the wrong widget and saves the file", () => {
+  const p = path.join(tmpRoot, "userData", "widgetMcpGrants.json");
+  const mark = path.join(
+    tmpRoot,
+    "userData",
+    "widgetMcpGrants.fs-attribution-cleaned",
+  );
+  if (fs.existsSync(mark)) fs.unlinkSync(mark);
+  const notepadFile = "1-trops.dash-samples.NotepadWidget-3.json";
+  fs.writeFileSync(
+    p,
+    JSON.stringify({
+      "trops.dash-samples.NotificationWidget": {
+        grantOrigin: "live",
+        domains: {
+          fs: { readPaths: [notepadFile], writePaths: [notepadFile] },
+        },
+      },
+      "trops.dash-samples.NotepadWidget": {
+        grantOrigin: "live",
+        domains: {
+          fs: { readPaths: [notepadFile], writePaths: [notepadFile] },
+        },
+      },
+    }),
+  );
+  clearCache();
+  const notify = getGrant("trops.dash-samples.NotificationWidget");
+  assert.deepStrictEqual(notify.domains.fs.readPaths, []);
+  assert.deepStrictEqual(notify.domains.fs.writePaths, []);
+  assert.deepStrictEqual(
+    getGrant("trops.dash-samples.NotepadWidget").domains.fs.readPaths,
+    [notepadFile],
+  );
+  const onDisk = JSON.parse(fs.readFileSync(p, "utf8"));
+  assert.deepStrictEqual(
+    onDisk["trops.dash-samples.NotificationWidget"].domains.fs.readPaths,
+    [],
+  );
+});
+
+test("the cleanup runs once: a cross-widget file grant made later is kept", () => {
+  // The previous test ran the cleanup and left its mark.
+  const p = path.join(tmpRoot, "userData", "widgetMcpGrants.json");
+  const notepadFile = "1-trops.dash-samples.NotepadWidget-3.json";
+  fs.writeFileSync(
+    p,
+    JSON.stringify({
+      "trops.dash-samples.ReaderWidget": {
+        grantOrigin: "manual",
+        domains: { fs: { readPaths: [notepadFile], writePaths: [] } },
+      },
+    }),
+  );
+  clearCache();
+  assert.deepStrictEqual(
+    getGrant("trops.dash-samples.ReaderWidget").domains.fs.readPaths,
+    [notepadFile],
+  );
+});
