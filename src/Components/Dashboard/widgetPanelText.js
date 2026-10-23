@@ -27,6 +27,8 @@ export function ownerLabel({ component, sourcePackage = null, username = "" }) {
   // @local: loaded from the user's folder while signed out (widgetRegistry
   // scopedLocalId) — theirs, never in the registry.
   if (scope === "local") return "Loaded from your folder · yours";
+  // app: compiled into this app (the template's src/Widgets) — no package.
+  if (scope === "app" && !sourcePackage) return "Built into this app";
   if (isOwner) return "Yours · published to the registry";
   if (scope) return `From the registry · by ${widgetScope}`;
   return "";

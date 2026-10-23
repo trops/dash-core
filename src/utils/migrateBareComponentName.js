@@ -13,6 +13,13 @@
  *   - Already-scoped (3 dot-separated parts) → return verbatim.
  *   - Bare name with exactly one matching registry key ending in
  *     `.${bareName}` → return the scoped key.
+ *   - `local.<package>.<Component>` that isn't registered while
+ *     `app.<package>.<Component>` is → the app id. Widgets built into
+ *     an app from the template were scoped "local" before they moved to
+ *     "app" (the "local" scope is a folder-loaded package now). A folder
+ *     widget already registered under the same id wins; folder widgets
+ *     register after the first dashboard load, though, so on a same-name
+ *     clash at startup the built-in one is chosen.
  *   - Zero matches OR multiple matches → return verbatim. The
  *     renderer surfaces `WidgetNotFound` rather than guessing wrong;
  *     the user can resave or republish to fix the layout.
@@ -33,7 +40,13 @@ export function migrateBareComponentName(componentMap, component) {
   // canonical shape (`scope.package.Component`); anything else
   // (bare names, two-part forms, four-part typos) goes through the
   // suffix scan.
-  if (component.split(".").length === 3) return component;
+  if (component.split(".").length === 3) {
+    if (component.startsWith("local.") && !(component in componentMap)) {
+      const appId = `app.${component.slice("local.".length)}`;
+      if (appId in componentMap) return appId;
+    }
+    return component;
+  }
   // Already in the registry under its current key — also a fast path.
   if (component in componentMap) return component;
   const suffix = `.${component}`;
