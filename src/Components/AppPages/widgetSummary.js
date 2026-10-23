@@ -12,6 +12,9 @@ export const AI_BUILT = "AI-built";
 export const LOCAL = "Local";
 
 const AI_SCOPE = "@ai-built";
+// A package loaded from a folder while signed out (widgetRegistry
+// scopedLocalId).
+const LOCAL_SCOPE = "@local";
 const scopeOf = (id) => {
   const m = /^(@[^/]+)\//.exec(id || "");
   return m ? m[1] : null;
@@ -22,6 +25,7 @@ function orgOf(w) {
   if (w.kind === "draft") return AI_BUILT;
   const scope = scopeOf(w.packageId);
   if (scope === AI_SCOPE) return AI_BUILT;
+  if (scope === LOCAL_SCOPE) return LOCAL;
   return scope || LOCAL;
 }
 
@@ -139,13 +143,17 @@ export function widgetOrgs(
         isBuiltIn: w.source === "builtin",
         isDraft: w.kind === "draft",
         // The user's own: their username's scope (the only scope they can
-        // publish under), plus their local @ai-built packages and drafts.
+        // publish under), plus their local @ai-built packages and drafts,
+        // and @local ones (loaded from their folder while signed out).
+        // @local is theirs here only: changing one in place would rewrite
+        // their folder, so edits copy it (widgetOwnership, editTarget).
         mine:
           !(w.source === "builtin") &&
-          deriveWidgetOwnership({
-            originalPackage: id,
-            registryUsername: username,
-          }).isOwner,
+          (scopeOf(id) === LOCAL_SCOPE ||
+            deriveWidgetOwnership({
+              originalPackage: id,
+              registryUsername: username,
+            }).isOwner),
         update: null,
         description: null,
         providers: [],

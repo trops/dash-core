@@ -68,6 +68,12 @@ const INSTALLED = [
     packageId: "@ai-built/pipeline",
     componentNames: ["Pipeline", "Stages"],
   },
+  {
+    name: "@local/tally",
+    packageId: "@local/tally",
+    componentNames: ["Tally"],
+    widgets: [{ name: "Tally", displayName: "Tally" }],
+  },
 ];
 const WORKSPACES = [
   {
@@ -224,6 +230,20 @@ test("someone else's widget: only a new widget; signed out, a way to sign in", a
   expect(
     screen.getByRole("button", { name: "Sign in to change World Clock" }),
   ).toBeInTheDocument();
+});
+
+test("loaded from your folder (@local): a new widget, your folder stays, no sign-in", async () => {
+  await setup(
+    { ...FROM_CELL, component: "local.tally.Tally" },
+    { username: null },
+  );
+  expect(screen.queryByRole("radio")).toBeNull();
+  expect(screen.getByTestId("edit-mode")).toHaveTextContent(
+    "Save as a new widget — Tally was loaded from your folder, so your folder stays as it is",
+  );
+  expect(
+    screen.queryByRole("button", { name: /Sign in to change/ }),
+  ).toBeNull();
 });
 
 test("AI-built is yours, signed in or not", async () => {

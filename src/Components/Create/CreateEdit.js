@@ -148,6 +148,9 @@ export const CreateEdit = ({ edit, workspaces = [], onClose }) => {
       }).isOwner
     : false;
   const aiBuilt = !!(target && /^@ai-built\//i.test(target.package));
+  // Loaded from the user's own folder: theirs, but never rewritten in place
+  // (that would change their files) — a change is always a new widget.
+  const fromFolder = !!(target && /^@local\//i.test(target.package));
   // Theirs, and a package that can change in place: in place by default.
   // Otherwise only a new widget (the main process holds the same rule).
   const blocked = target ? inPlaceProblem(target) : null;
@@ -414,19 +417,25 @@ export const CreateEdit = ({ edit, workspaces = [], onClose }) => {
                 <span className={`font-semibold ${strong}`}>
                   Save as a new widget
                 </span>
-                {owner && blocked
-                  ? ` — ${name} ${blocked}, so it stays as it is${
+                {fromFolder
+                  ? ` — ${name} was loaded from your folder, so your folder stays as it is${
                       fromCell
                         ? "; the new one replaces it in this cell only"
                         : ""
                     }.`
-                  : ` — ${name} isn't yours, so it stays as it is${
-                      fromCell
-                        ? "; the new one replaces it in this cell only"
-                        : ""
-                    }.`}
+                  : owner && blocked
+                    ? ` — ${name} ${blocked}, so it stays as it is${
+                        fromCell
+                          ? "; the new one replaces it in this cell only"
+                          : ""
+                      }.`
+                    : ` — ${name} isn't yours, so it stays as it is${
+                        fromCell
+                          ? "; the new one replaces it in this cell only"
+                          : ""
+                      }.`}
               </span>
-              {!aiBuilt && !username ? (
+              {!aiBuilt && !fromFolder && !username ? (
                 <div className="flex flex-row flex-wrap items-center gap-2">
                   <span className={`text-xs ${muted}`}>
                     Published it yourself? Sign in to change it in place.

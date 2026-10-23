@@ -41,7 +41,7 @@ describe("useWidgetInstall (app-navigation NAV-008)", () => {
     expect(refresh).toHaveBeenCalled();
     expect(result.current.result).toEqual({
       status: "success",
-      message: 'Widget "weather" installed successfully.',
+      message: "Installed as weather.",
     });
     expect(result.current.progress.open).toBe(true);
     expect(result.current.progress.complete).toBe(true);
@@ -55,9 +55,7 @@ describe("useWidgetInstall (app-navigation NAV-008)", () => {
       installed: { installedAs: "@zz/weather" },
     });
     await act(async () => result.current.installFromZip());
-    expect(result.current.result.message).toBe(
-      'Widget "@zz/weather" installed successfully.',
-    );
+    expect(result.current.result.message).toBe("Installed as @zz/weather.");
     expect(result.current.progress.widgets[0]).toMatchObject({
       packageName: "@zz/weather",
       status: "installed",
@@ -112,6 +110,20 @@ describe("useWidgetInstall (app-navigation NAV-008)", () => {
     expect(result.current.progress.widgets[0].status).toBe("failed");
   });
 
+  // A package with no scope of its own goes under @local while signed out
+  // (QA 2026-10-22): the message says so, and how to use your own name.
+  it("says how to put an @local package under your own name", async () => {
+    const { result } = setup({
+      zip: "/tmp/clock.zip",
+      inspect: { name: "@local/clock", installed: false },
+      installed: { installedAs: "@local/clock" },
+    });
+    await act(async () => result.current.installFromZip());
+    expect(result.current.result.message).toBe(
+      "Installed as @local/clock. To have new widgets go under your own name, sign in to the Dash registry first.",
+    );
+  });
+
   it("does nothing when the file dialog is cancelled", async () => {
     const { result, widgets } = setup({ zip: null });
     await act(async () => result.current.installFromZip());
@@ -129,7 +141,7 @@ describe("useWidgetInstall (app-navigation NAV-008)", () => {
     await act(async () => result.current.loadFolder());
     expect(result.current.result.status).toBe("success");
     expect(result.current.result.message).toBe(
-      "Loaded 2 widgets from folder. (1 non-widget folder skipped)",
+      "Loaded 2 widgets from folder: a, b. (1 non-widget folder skipped)",
     );
     expect(result.current.progress.widgets.map((w) => w.displayName)).toEqual([
       "A",
@@ -179,7 +191,7 @@ describe("useWidgetInstall (app-navigation NAV-008)", () => {
       },
     ]);
     expect(result.current.result.message).toBe(
-      "Loaded 1 widget from folder. (1 non-widget folder skipped) 1 didn't pass its checks — see why above.",
+      "Loaded 1 widget from folder: good. (1 non-widget folder skipped) 1 didn't pass its checks — see why above.",
     );
   });
 
@@ -197,7 +209,7 @@ describe("useWidgetInstall (app-navigation NAV-008)", () => {
       "failed",
     ]);
     expect(result.current.result.message).toBe(
-      "Loaded 1 widget from folder. 1 didn't pass its checks — see why above.",
+      "Loaded 1 widget from folder: good. 1 didn't pass its checks — see why above.",
     );
   });
 

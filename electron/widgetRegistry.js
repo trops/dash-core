@@ -429,54 +429,121 @@ function isDraftFolder(pkgPath) {
 }
 
 /**
- * The name a ZIP's package gives itself: dash.json's scope + name, then
- * package.json's name, then dash.json's name; null when it names itself
- * nowhere.
+ * The names a package gives itself, most specific first: dash.json's
+ * scope + name, package.json's name (what publishing uses), then
+ * dash.json's name. Reads a folder's files or a ZIP's.
  */
-function packageNameInZip(zip) {
-  const read = (file) => {
-    try {
-      const entry = zip.getEntry(file);
-      return entry ? JSON.parse(entry.getData().toString("utf8")) : null;
-    } catch (_e) {
-      return null;
-    }
-  };
-  // A file can't claim the AI-built scope (the user's own, never checked
-  // as drafts), or a name made of dots.
-  const valid = (n) =>
-    typeof n === "string" &&
-    /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/i.test(n) &&
-    !/^@ai-built\//i.test(n)
-      ? n
-      : null;
+function packageOwnNames(resolvedPath) {
+  let read;
+  if (resolvedPath.endsWith(".zip")) {
+    const zip = new AdmZip(resolvedPath);
+    read = (file) => {
+      try {
+        const entry = zip.getEntry(file);
+        return entry ? JSON.parse(entry.getData().toString("utf8")) : null;
+      } catch (_e) {
+        return null;
+      }
+    };
+  } else {
+    read = (file) => {
+      try {
+        return JSON.parse(
+          fs.readFileSync(path.join(resolvedPath, file), "utf8"),
+        );
+      } catch (_e) {
+        return null;
+      }
+    };
+  }
   const dash = read("dash.json") || {};
   const pkg = read("package.json") || {};
+  const names = [];
   if (dash.scope && dash.name && !String(dash.name).startsWith("@")) {
-    const scoped = valid(
-      `@${String(dash.scope).replace(/^@/, "")}/${dash.name}`,
-    );
-    if (scoped) return scoped;
+    names.push(`@${String(dash.scope).replace(/^@/, "")}/${dash.name}`);
   }
-  return valid(pkg.name) || valid(dash.name) || null;
+  names.push(pkg.name, dash.name);
+  return names.filter((n) => typeof n === "string" && n.trim());
+}
+
+const NAME_PART = /^[a-z0-9][a-z0-9._-]*$/;
+
+/**
+ * The id a local package installs under (QA 2026-10-22: a folder's name made
+ * an unscoped id that could never be placed on a dashboard). A scoped name
+ * stays; an unscoped one goes under the signed-in user's registry name, or
+ * @local when signed out. A file can't claim the AI-built scope (the user's
+ * own, never checked as drafts): its name goes under the user's scope too.
+ * Null for a name that isn't one (dots, spaces).
+ */
+function scopedLocalId(name, username = null) {
+  const m = String(name || "")
+    .trim()
+    .toLowerCase()
+    .match(/^(?:@([^/]+)\/)?([^/]+)$/);
+  if (!m || !NAME_PART.test(m[2])) return null;
+  const [, scope, bare] = m;
+  if (scope && scope !== "ai-built" && NAME_PART.test(scope)) {
+    return `@${scope}/${bare}`;
+  }
+  const user =
+    typeof username === "string"
+      ? username.trim().toLowerCase().replace(/^@/, "")
+      : "";
+  return `@${NAME_PART.test(user) ? user : "local"}/${bare}`;
 }
 
 /**
- * The name a local package installs under when none is given: a ZIP's
- * own name (packageNameInZip), else the file's or folder's name.
+ * The id a local package installs under when none is given: its own name
+ * (packageOwnNames), else the file's or folder's name — scoped either way
+ * (scopedLocalId).
  */
-function localPackageName(resolvedPath) {
-  const own = resolvedPath.endsWith(".zip")
-    ? packageNameInZip(new AdmZip(resolvedPath))
-    : null;
-  if (own) return own;
+function localPackageName(resolvedPath, username = null) {
   const base = path.basename(resolvedPath).replace(/\.zip$/i, "");
-  if (!base || base.startsWith(".")) {
-    throw new Error(
-      `Can't tell what ${path.basename(resolvedPath)} is called.`,
-    );
+  const names = [...packageOwnNames(resolvedPath), base];
+  // A real scope the package gives itself anywhere (dash.json or
+  // package.json) wins over an unscoped name. One that isn't a name
+  // ("@My Org/x", "@../x") doesn't count: the user's scope applies.
+  for (const name of names) {
+    const m = String(name)
+      .trim()
+      .toLowerCase()
+      .match(/^@([^/]+)\/[^/]+$/);
+    if (m && m[1] !== "ai-built" && NAME_PART.test(m[1])) {
+      const id = scopedLocalId(name);
+      if (id) return id;
+    }
   }
-  return base;
+  for (const name of names) {
+    const id = scopedLocalId(name, username);
+    if (id) return id;
+  }
+  throw new Error(`Can't tell what ${path.basename(resolvedPath)} is called.`);
+}
+
+// Test-only override of the signed-in username (null = signed out).
+let scopeUsernameForTest;
+
+/**
+ * The registry username a local package's unscoped name goes under: the
+ * one remembered at the last profile read, else a quick profile read when
+ * signed in; null when signed out or the registry doesn't answer in time.
+ */
+async function localScopeUsername() {
+  if (scopeUsernameForTest !== undefined) return scopeUsernameForTest;
+  try {
+    const auth = require("./controller/registryAuthController");
+    if (!auth.getStoredToken()) return null;
+    const cached = auth.getStoredUsername();
+    if (cached) return cached;
+    const profile = await Promise.race([
+      auth.getRegistryProfile(),
+      new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+    ]);
+    return (profile && profile.username) || null;
+  } catch {
+    return null;
+  }
 }
 
 // True only for a path strictly inside the widgets folder, links resolved,
@@ -946,12 +1013,12 @@ class WidgetRegistry {
    * replacing one (consolidation Phase 1a-2).
    * @returns {{ name: string, installed: boolean }}
    */
-  inspectLocalPath(localPath) {
+  async inspectLocalPath(localPath) {
     const resolvedPath = this.resolveLocalPath(localPath);
     if (!fs.existsSync(resolvedPath)) {
       throw new Error(`Local path not found: ${resolvedPath}`);
     }
-    const name = localPackageName(resolvedPath);
+    const name = localPackageName(resolvedPath, await localScopeUsername());
     return { name, installed: this.widgets.has(name) };
   }
 
@@ -976,9 +1043,11 @@ class WidgetRegistry {
         throw new Error(`Local path not found: ${resolvedPath}`);
       }
 
-      // No name given (Install a widget from file): the package's own,
-      // then the file's (consolidation Phase 1a-2).
-      if (!widgetName) widgetName = localPackageName(resolvedPath);
+      // No name given (Install a widget from file, Load a widget folder):
+      // the package's own, then the file's, scoped (scopedLocalId).
+      if (!widgetName) {
+        widgetName = localPackageName(resolvedPath, await localScopeUsername());
+      }
 
       // Scoped names (e.g. "@trops/slack") get nested dirs: widgets/@trops/slack/
       const widgetPath = path.join(WIDGETS_CACHE_DIR, ...widgetName.split("/"));
@@ -1108,23 +1177,39 @@ class WidgetRegistry {
         throw new Error(`Path is not a directory: ${resolvedPath}`);
       }
 
-      // 1. Check if the selected folder itself is a widget
+      // 1. Check if the selected folder itself is a widget: installed (a
+      //    copy) under the package's own, scoped name — not the folder's.
       if (this.isWidgetFolder(resolvedPath)) {
-        const widgetName = path.basename(resolvedPath);
         const config = await this.installFromLocalPath(
-          widgetName,
+          null,
           resolvedPath,
           autoRegister,
         );
+        const widgetName = config.installedAs;
+        // An older version installed it under the folder's bare name, which
+        // could never be placed on a dashboard: that copy goes (Dash's own
+        // copy only — uninstallWidget never deletes outside its folder).
+        const oldName = path.basename(resolvedPath);
+        if (
+          oldName !== widgetName &&
+          !oldName.includes("/") &&
+          this.widgets.has(oldName)
+        ) {
+          this.uninstallWidget(oldName);
+        }
         return [
           {
-            name: widgetName,
             path: resolvedPath,
             ...config,
+            name: widgetName,
             mode: "single",
           },
         ];
       }
+
+      const username = await localScopeUsername();
+      // id → the folder that took it, in this load.
+      const seenIds = new Map();
 
       // 2. Iterate subdirectories with filtering
       const entries = fs.readdirSync(resolvedPath, {
@@ -1151,8 +1236,28 @@ class WidgetRegistry {
           continue;
         }
 
+        // Its id: the package's own name, scoped — not the folder's name.
+        let id;
+        try {
+          id = localPackageName(widgetPath, username);
+        } catch (e) {
+          refused.push(entry.name);
+          refusedReasons[entry.name] = e.message;
+          skipped++;
+          continue;
+        }
+        if (seenIds.has(id)) {
+          refused.push(entry.name);
+          refusedReasons[entry.name] =
+            `${entry.name} wasn't loaded — its package is named ${id}, like ${seenIds.get(id)}. Give it its own name in dash.json.`;
+          skipped++;
+          continue;
+        }
+        seenIds.set(id, entry.name);
+
         // Loaded in place, so checked in place: bot calls (TD-005), the
-        // build, the app's gate. A refusal is listed with its reason.
+        // build, the app's gate. A refusal is listed with its reason, under
+        // the folder's name (the one the user picked from).
         let record;
         try {
           record = checkRecord(
@@ -1167,22 +1272,33 @@ class WidgetRegistry {
           continue;
         }
 
-        const config = await this.loadWidgetConfig(entry.name, widgetPath);
-        this.registerWidget(
-          entry.name,
-          { ...config, ...record },
-          widgetPath,
-          false,
-        );
+        // An older version registered this folder under its bare name (it
+        // could never be placed): forget that entry — nothing on disk, the
+        // folder is the user's. Scoped entries stay (dashboards use them).
+        for (const [key, w] of this.widgets) {
+          if (
+            key !== id &&
+            !key.includes("/") &&
+            w &&
+            w.path &&
+            path.resolve(w.path) === path.resolve(widgetPath)
+          ) {
+            this.widgets.delete(key);
+          }
+        }
+
+        const config = await this.loadWidgetConfig(id, widgetPath);
+        this.registerWidget(id, { ...config, ...record }, widgetPath, false);
 
         if (autoRegister) {
-          await this.loadWidgetComponents(entry.name, widgetPath);
+          await this.loadWidgetComponents(id, widgetPath);
         }
 
         results.push({
-          name: entry.name,
           path: widgetPath,
           ...config,
+          name: id,
+          installedAs: id,
         });
       }
 
@@ -2261,3 +2377,10 @@ module.exports.validateZipEntries = validateZipEntries;
 module.exports.setInstallGate = setInstallGate;
 module.exports.checkPackage = checkPackage;
 module.exports.isInsideWidgetsDir = isInsideWidgetsDir;
+module.exports.scopedLocalId = scopedLocalId;
+module.exports.localPackageName = localPackageName;
+// Test-only: the signed-in username local packages go under (null = signed
+// out; undefined = back to the registry's).
+module.exports._setScopeUsernameForTest = (name) => {
+  scopeUsernameForTest = name;
+};

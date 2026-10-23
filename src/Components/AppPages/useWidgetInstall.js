@@ -10,6 +10,14 @@ import { cleanIpcError } from "../../utils/errorUtils";
  */
 const CLOSED = { open: false, complete: false, widgets: [] };
 
+// A package with no scope of its own goes under @local while signed out
+// (widgetRegistry scopedLocalId): say how to put it under your name.
+const LOCAL_HINT =
+  " To have new widgets go under your own name, sign in to the Dash registry first.";
+const isLocalScope = (name) => /^@local\//.test(String(name || ""));
+export const installedAsMessage = (name) =>
+  `Installed as ${name}.${isLocalScope(name) ? LOCAL_HINT : ""}`;
+
 const failAll = (prev, err) => ({
   open: true,
   complete: true,
@@ -57,7 +65,7 @@ export function useWidgetInstall(refresh) {
         });
         setResult({
           status: "success",
-          message: `Widget "${widgetName}" installed successfully.`,
+          message: installedAsMessage(widgetName),
         });
       } catch (err) {
         setProgress((prev) => failAll(prev, err));
@@ -187,9 +195,14 @@ export function useWidgetInstall(refresh) {
 
       let message;
       if (isSingle) {
-        message = `Installed widget "${results[0].name}" from folder.`;
+        message = installedAsMessage(results[0].name);
       } else if (count > 0) {
-        message = `Loaded ${count} widget${count !== 1 ? "s" : ""} from folder.`;
+        message = `Loaded ${count} widget${count !== 1 ? "s" : ""} from folder: ${results
+          .map((r) => r.name)
+          .join(", ")}.`;
+        if (results.some((r) => isLocalScope(r.name))) {
+          message += LOCAL_HINT;
+        }
         if (skipped > 0) {
           message += ` (${skipped} non-widget folder${
             skipped !== 1 ? "s" : ""
