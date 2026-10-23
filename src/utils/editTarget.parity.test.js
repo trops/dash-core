@@ -27,7 +27,31 @@ const CASES = [
   [null, "trops.clock.Clock", "jg"],
   ["inbox", "jg.inbox.Inbox", "jg"],
   [null, null, "jg"],
+  // A package loaded from the user's folder while signed out (QA
+  // 2026-10-22): never changed in place — it would rewrite their folder.
+  ["@local/clock", "local.clock.Clock", null],
+  ["@local/clock", "local.clock.Clock", "jg"],
+  [null, "local.clock.Clock", "jg"],
 ];
+
+test("@local is never changed in place, on either side", () => {
+  for (const username of [null, "jg"]) {
+    expect(
+      ownsWidget({
+        pkg: "@local/clock",
+        component: "local.clock.Clock",
+        username,
+      }),
+    ).toBe(false);
+    expect(
+      deriveWidgetOwnership({
+        originalPackage: "@local/clock",
+        originalComponentName: "local.clock.Clock",
+        registryUsername: username,
+      }).isOwner,
+    ).toBe(false);
+  }
+});
 
 test.each(CASES)("%s / %s / %s", (pkg, component, username) => {
   const { isOwner } = deriveWidgetOwnership({

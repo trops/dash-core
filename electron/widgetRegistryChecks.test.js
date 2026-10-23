@@ -50,6 +50,8 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), "zz-registry-checks-"));
 WidgetRegistry.initialize(root);
 const WIDGETS = path.join(root, "widgets");
 const registry = new WidgetRegistry(null);
+// Signed out: a package's unscoped name goes under @local.
+WidgetRegistry._setScopeUsernameForTest(null);
 
 function makePackage(marker, { name = "@zz/checked", bundle = true } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "zz-src-"));
@@ -113,14 +115,17 @@ describe("an install records who built it and what it passed", () => {
 
   it("a folder loaded in place records the same", async () => {
     const parent = fs.mkdtempSync(path.join(os.tmpdir(), "zz-folder-"));
-    fs.cpSync(makePackage("f1"), path.join(parent, "zz-own-build"), {
-      recursive: true,
-    });
+    fs.cpSync(
+      makePackage("f1", { name: "@zz/own-build" }),
+      path.join(parent, "zz-own-build"),
+      { recursive: true },
+    );
     await registry.registerWidgetsFromFolder(parent, false);
-    const entry = registry.getWidget("zz-own-build");
+    // Under the package's own name, not the folder's.
+    const entry = registry.getWidget("@zz/own-build");
     assert.equal(entry.build, "developer");
     assert.equal(entry.checks.ok, true);
-    registry.widgets.delete("zz-own-build");
+    registry.widgets.delete("@zz/own-build");
     fs.rmSync(parent, { recursive: true, force: true });
   });
 });
@@ -205,8 +210,9 @@ describe("a ZIP installed without a name takes the package's own name", () => {
       zipOf(dir, "zz-fallback.zip"),
       false,
     );
-    assert.equal(config.installedAs, "zz-fallback");
-    registry.widgets.delete("zz-fallback");
+    // Signed out, an unscoped name goes under @local.
+    assert.equal(config.installedAs, "@local/zz-fallback");
+    registry.widgets.delete("@local/zz-fallback");
   });
 });
 
@@ -391,31 +397,33 @@ describe("a folder loaded in place runs its current source", () => {
   it("Dash's build is marked and rebuilt on each load; the developer's own isn't", async () => {
     const parent = fs.mkdtempSync(path.join(os.tmpdir(), "zz-folder-"));
     const dev = path.join(parent, "zz-dev");
-    fs.cpSync(makePackage("first", { bundle: false }), dev, {
+    fs.cpSync(makePackage("first", { bundle: false, name: "@zz/dev" }), dev, {
       recursive: true,
     });
     await registry.registerWidgetsFromFolder(parent, false);
     const bundle = path.join(dev, "dist", "index.cjs.js");
     assert.match(fs.readFileSync(bundle, "utf8"), /first/);
-    assert.equal(registry.getWidget("zz-dev").build, "dash");
+    assert.equal(registry.getWidget("@zz/dev").build, "dash");
     fs.writeFileSync(
       path.join(dev, "widgets", "Hello.js"),
       'export default function Hello() { return "second"; }',
     );
     await registry.registerWidgetsFromFolder(parent, false);
     assert.match(fs.readFileSync(bundle, "utf8"), /second/);
-    assert.equal(registry.getWidget("zz-dev").build, "dash");
+    assert.equal(registry.getWidget("@zz/dev").build, "dash");
 
     const own = path.join(parent, "zz-own");
-    fs.cpSync(makePackage("mine"), own, { recursive: true });
+    fs.cpSync(makePackage("mine", { name: "@zz/own" }), own, {
+      recursive: true,
+    });
     await registry.registerWidgetsFromFolder(parent, false);
     assert.equal(
       fs.readFileSync(path.join(own, "index.cjs.js"), "utf8"),
       "module.exports = {};",
     );
-    assert.equal(registry.getWidget("zz-own").build, "developer");
-    registry.widgets.delete("zz-dev");
-    registry.widgets.delete("zz-own");
+    assert.equal(registry.getWidget("@zz/own").build, "developer");
+    registry.widgets.delete("@zz/dev");
+    registry.widgets.delete("@zz/own");
     fs.rmSync(parent, { recursive: true, force: true });
   });
 });
@@ -436,26 +444,35 @@ describe("a ZIP never takes a name silently", () => {
   it("inspectLocalPath says what it would be installed as, and whether that's installed", async () => {
     await registry.installFromLocalPath("@zz/taken", makePackage("t"), false);
     assert.deepEqual(
-      registry.inspectLocalPath(zipNamed("taken", "x1.zip", { scope: "zz" })),
+      await registry.inspectLocalPath(
+        zipNamed("taken", "x1.zip", { scope: "zz" }),
+      ),
       { name: "@zz/taken", installed: true },
     );
     assert.deepEqual(
-      registry.inspectLocalPath(zipNamed("free", "x2.zip", { scope: "zz" })),
+      await registry.inspectLocalPath(
+        zipNamed("free", "x2.zip", { scope: "zz" }),
+      ),
       { name: "@zz/free", installed: false },
     );
   });
 
-  it("a file can't claim the AI-built scope, or a name made of dots", () => {
-    assert.doesNotMatch(
-      registry.inspectLocalPath(
-        zipNamed("mine", "ai-claim.zip", { scope: "ai-built" }),
+  it("a file can't claim the AI-built scope, or a name made of dots", async () => {
+    assert.equal(
+      (
+        await registry.inspectLocalPath(
+          zipNamed("mine", "ai-claim.zip", { scope: "ai-built" }),
+        )
       ).name,
-      /^@ai-built\//,
+      "@local/mine",
     );
     assert.equal(
-      registry.inspectLocalPath(zipNamed("..", "dots.zip", { scope: "x" }))
-        .name,
-      "dots",
+      (
+        await registry.inspectLocalPath(
+          zipNamed("..", "dots.zip", { scope: "x" }),
+        )
+      ).name,
+      "@local/dots",
     );
   });
 

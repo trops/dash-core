@@ -87,6 +87,9 @@ async function pollForToken(deviceCode) {
     // Store the token securely
     const s = getStore();
     s.set("accessToken", data.access_token);
+    // A new sign-in may be another account: forget the last one's username
+    // (getStoredUsername) until its profile is read.
+    s.delete("username");
     s.set("userId", data.user_id);
     s.set("tokenType", data.token_type);
     s.set("authenticatedAt", new Date().toISOString());
@@ -272,7 +275,32 @@ async function getRegistryProfile() {
     if (!response.ok) return null;
 
     const data = await response.json();
+    // Remembered so a widget loaded from a folder can be put under the
+    // user's name without asking the registry each time (cleared on sign-out).
+    if (data.user && typeof data.user.username === "string") {
+      try {
+        getStore().set("username", data.user.username);
+      } catch {
+        // Only a cache.
+      }
+    }
     return data.user || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The signed-in user's registry username as last seen (getRegistryProfile),
+ * without a network call. Null when signed out or never fetched.
+ *
+ * @returns {string|null}
+ */
+function getStoredUsername() {
+  try {
+    if (!getStoredToken()) return null;
+    const name = getStore().get("username");
+    return typeof name === "string" && name ? name : null;
   } catch {
     return null;
   }
@@ -462,6 +490,7 @@ module.exports = {
   initiateDeviceFlow,
   pollForToken,
   getStoredToken,
+  getStoredUsername,
   getAuthStatus,
   getRegistryProfile,
   updateRegistryProfile,

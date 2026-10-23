@@ -201,3 +201,33 @@ test("authedFetch: returns the 401 when refresh fails (no refresh token)", async
   // One attempt; no refresh token → no retry.
   assert.strictEqual(calls.length, 1);
 });
+
+// A new sign-in may be another account, so the username remembered for
+// local widgets' scope (getStoredUsername) is forgotten (QA 2026-10-22).
+test("pollForToken: a new token forgets the last account's username", async () => {
+  const pollStart = source.indexOf("async function pollForToken(");
+  const pollEnd = source.indexOf("\n}\n", pollStart) + 3;
+  const pollBlock = source.substring(pollStart, pollEnd);
+  const store = makeStore({ username: "olduser" });
+  store.delete = (k) => store._map.delete(k);
+  const fetchImpl = async () => ({
+    status: 200,
+    ok: true,
+    json: async () => ({
+      access_token: "tok",
+      user_id: "u2",
+      token_type: "Bearer",
+    }),
+  });
+  // eslint-disable-next-line no-new-func
+  const pollForToken = new Function(
+    "fetch",
+    "getStore",
+    "REGISTRY_BASE_URL",
+    `${pollBlock}\n return pollForToken;`,
+  )(fetchImpl, () => store, "https://reg");
+  const res = await pollForToken("dev-code");
+  assert.strictEqual(res.status, "authorized");
+  assert.strictEqual(store.get("accessToken"), "tok");
+  assert.strictEqual(store.get("username"), undefined);
+});

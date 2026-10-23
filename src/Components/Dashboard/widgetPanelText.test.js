@@ -31,6 +31,19 @@ describe("ownerLabel", () => {
     expect(ownerLabel({ component: "Clock" })).toBe("");
   });
 
+  // QA 2026-10-22: a package loaded from a folder while signed out.
+  test("@local: loaded from your folder, yours — not 'from the registry'", () => {
+    for (const username of ["", "trops"]) {
+      expect(
+        ownerLabel({
+          component: "local.clock.Clock",
+          sourcePackage: "@local/clock",
+          username,
+        }),
+      ).toBe("Loaded from your folder · yours");
+    }
+  });
+
   test("signed out, your registry widget reads as from the registry", () => {
     expect(
       ownerLabel({

@@ -410,3 +410,21 @@ test("widgetTitle: a display name that's just its component id reads as words", 
     "Node.js",
   );
 });
+
+// QA 2026-10-22: a package loaded from a folder while signed out is @local.
+describe("widgetOrgs — @local packages", () => {
+  it("are listed under Local, as the user's own", () => {
+    const orgs = widgetOrgs([
+      {
+        name: "local.clock.Clock",
+        packageId: "@local/clock",
+        source: "installed",
+        kind: "installed",
+        providers: [],
+        componentNames: [],
+      },
+    ]);
+    expect(orgs.map((o) => o.name)).toEqual([LOCAL]);
+    expect(orgs[0].packages[0].mine).toBe(true);
+  });
+});

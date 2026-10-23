@@ -10,8 +10,9 @@ import { deriveWidgetOwnership } from "../../utils/widgetOwnership";
 import { parseEventString, isBotSource } from "../../utils/listenerResolution";
 
 /**
- * "Built by AI · yours", "Yours · published to the registry",
- * "From the registry · by acme", "Built into Dash" — or "".
+ * "Built by AI · yours", "Loaded from your folder · yours",
+ * "Yours · published to the registry", "From the registry · by acme",
+ * "Built into Dash" — or "".
  */
 export function ownerLabel({ component, sourcePackage = null, username = "" }) {
   const id = typeof component === "string" ? component : "";
@@ -23,6 +24,9 @@ export function ownerLabel({ component, sourcePackage = null, username = "" }) {
   });
   const scope = String(widgetScope || "").toLowerCase();
   if (scope === "ai-built") return "Built by AI · yours";
+  // @local: loaded from the user's folder while signed out (widgetRegistry
+  // scopedLocalId) — theirs, never in the registry.
+  if (scope === "local") return "Loaded from your folder · yours";
   if (isOwner) return "Yours · published to the registry";
   if (scope) return `From the registry · by ${widgetScope}`;
   return "";
