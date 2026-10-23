@@ -207,14 +207,13 @@ describe("WidgetNotFound", () => {
   });
 
   describe("install auth flow", () => {
-    test("handleInstall shows auth prompt when unauthenticated", async () => {
+    test("signed out, a public package installs without asking (2026-10-23)", async () => {
       window.mainApi.registry.search.mockResolvedValue({
         packages: [samplePackage],
       });
 
       render(<WidgetNotFound component="MyWidget" />);
 
-      // Open modal
       await act(async () => {
         screen.getByText("Find in Registry").click();
       });
@@ -223,7 +222,34 @@ describe("WidgetNotFound", () => {
         expect(screen.getByText("Install Package")).toBeInTheDocument();
       });
 
-      // Click Install — should check auth and show auth prompt
+      await act(async () => {
+        screen.getByText("Install Package").click();
+      });
+
+      await waitFor(() => {
+        expect(window.mainApi.widgets.install).toHaveBeenCalled();
+      });
+      expect(screen.queryByTestId("registry-auth-prompt")).toBeNull();
+    });
+
+    test("the registry asking for a sign-in shows the prompt", async () => {
+      window.mainApi.registry.search.mockResolvedValue({
+        packages: [samplePackage],
+      });
+      window.mainApi.widgets.install.mockRejectedValue(
+        new Error("Sign in to the Dash registry to install this."),
+      );
+
+      render(<WidgetNotFound component="MyWidget" />);
+
+      await act(async () => {
+        screen.getByText("Find in Registry").click();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("Install Package")).toBeInTheDocument();
+      });
+
       await act(async () => {
         screen.getByText("Install Package").click();
       });
@@ -332,10 +358,12 @@ describe("WidgetNotFound", () => {
     });
 
     test("handleAuthSuccess clears needsAuth and retries install", async () => {
-      // First call: unauthenticated, second call: authenticated
-      window.mainApi.registryAuth.getStatus
-        .mockResolvedValueOnce({ authenticated: false })
-        .mockResolvedValue({ authenticated: true });
+      // First try: the registry wants a sign-in (a private package).
+      window.mainApi.widgets.install
+        .mockRejectedValueOnce(
+          new Error("Sign in to the Dash registry to install this."),
+        )
+        .mockResolvedValue({});
       window.mainApi.registry.search.mockResolvedValue({
         packages: [samplePackage],
       });
@@ -366,7 +394,7 @@ describe("WidgetNotFound", () => {
       });
 
       await waitFor(() => {
-        expect(window.mainApi.widgets.install).toHaveBeenCalled();
+        expect(window.mainApi.widgets.install).toHaveBeenCalledTimes(2);
       });
     });
 

@@ -39,7 +39,10 @@ const {
   assertNoLocalScopes,
 } = require("../schema/dashboardConfigUtils");
 const { searchRegistry, getPackage } = require("./registryController");
-const { getStoredToken, clearToken } = require("./registryAuthController");
+const {
+  registryDownloadFetch,
+  downloadRefusal,
+} = require("../registryDownload");
 const themeController = require("./themeController");
 
 const configFilename = "workspaces.json";
@@ -646,6 +649,8 @@ async function processDashboardConfig(
 
   // 2. Install bundled theme if present
   let themeInstalled = null;
+  // A theme the registry wouldn't install isn't bound to the dashboard.
+  let themeFailed = false;
   if (dashboardConfig.theme) {
     const bundledTheme = dashboardConfig.theme;
     const themeDisplay =
@@ -725,11 +730,16 @@ async function processDashboardConfig(
             const {
               installThemeFromRegistry,
             } = require("./themeRegistryController");
-            await installThemeFromRegistry(
+            const themeResult = await installThemeFromRegistry(
               win,
               appId,
               bundledTheme.registryPackage,
             );
+            // It answers a refusal (e.g. sign in) instead of throwing; it
+            // was reported "installed" anyway.
+            if (themeResult && themeResult.success === false) {
+              throw new Error(themeResult.error || "The theme didn't install");
+            }
             console.log(
               `[DashboardConfigController] Installed theme from registry: ${bundledTheme.registryPackage}`,
             );
@@ -741,6 +751,7 @@ async function processDashboardConfig(
               total: progressTotal,
             });
           } catch (registryErr) {
+            themeFailed = true;
             console.warn(
               `[DashboardConfigController] Could not install theme from registry: ${registryErr.message}`,
             );
@@ -765,8 +776,8 @@ async function processDashboardConfig(
             total: progressTotal,
           });
         }
-        // Always bind workspace to theme key
-        themeInstalled = themeKey;
+        // Bind the workspace to the theme, unless it didn't install
+        if (!themeFailed) themeInstalled = themeKey;
       }
     } catch (themeErr) {
       console.warn(
@@ -937,10 +948,7 @@ function installTeamForImport(workspaceId, team) {
  * @returns {Promise<{ success: true, registryPkg, dashboardConfig } |
  *   { success: false, error, authRequired? }>}
  */
-async function downloadDashboardPackage(
-  packageName,
-  { requireAuth = true } = {},
-) {
+async function downloadDashboardPackage(packageName) {
   // 1. Look up the dashboard package in the registry
   const registryPkg = await getPackage(packageName);
   if (!registryPkg) {
@@ -961,38 +969,10 @@ async function downloadDashboardPackage(
     `[DashboardConfigController] Fetching dashboard from: ${downloadUrl}`,
   );
 
-  // Download the ZIP (with auth header when signed in). Reading a public
-  // starter needs no sign-in (5b); installing still does.
-  const auth = getStoredToken();
-  if (!auth && requireAuth) {
-    return {
-      success: false,
-      error: "Not authenticated with registry",
-      authRequired: true,
-    };
-  }
-  const headers = {};
-  if (auth?.token) {
-    headers["Authorization"] = `Bearer ${auth.token}`;
-  }
-  const response = await fetch(downloadUrl, { headers });
-  if (response.status === 401) {
-    // "Expired" only when we sent a token; a public read sent none, and a
-    // never-signed-in profile was told its sign-in expired (QA 2026-10-22).
-    if (!auth?.token) {
-      return {
-        success: false,
-        error: "Sign in to the Dash registry to use this.",
-        authRequired: true,
-      };
-    }
-    clearToken();
-    return {
-      success: false,
-      error: "Authentication expired. Please sign in again.",
-      authRequired: true,
-    };
-  }
+  // Download the ZIP: signed in or not (public dashboards need no sign-in).
+  const { response, expired } = await registryDownloadFetch(downloadUrl);
+  const refusal = downloadRefusal(response, { expired });
+  if (refusal) return { success: false, ...refusal };
   if (!response.ok) {
     return {
       success: false,
@@ -1130,9 +1110,7 @@ async function getDashboardPackageConfig(packageName) {
     return packageConfigCache.get(packageName);
   }
   try {
-    const res = await downloadDashboardPackage(packageName, {
-      requireAuth: false,
-    });
+    const res = await downloadDashboardPackage(packageName);
     const out = res.success
       ? { success: true, config: res.dashboardConfig }
       : { success: false, error: res.error, authRequired: !!res.authRequired };

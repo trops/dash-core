@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useContext, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useContext,
+  useCallback,
+  useRef,
+} from "react";
 import {
   Modal,
   Button,
@@ -14,6 +20,7 @@ import {
   packageToFlatWidget,
 } from "../utils/registryUtils";
 import { cleanIpcError } from "../utils/errorUtils";
+import { isRegistryAuthError } from "../hooks/useRegistryAuthGate";
 
 /**
  * MissingWidgetsModal — batch lookup and install for multiple missing widgets.
@@ -114,21 +121,54 @@ export const MissingWidgetsModal = ({
   const foundPackages = lookupResults.filter((r) => r.found);
   const notFoundItems = lookupResults.filter((r) => !r.found);
 
+  // Rows the registry refused for a sign-in (private packages): tried
+  // again after signing in, the rest kept as they are.
+  const refusedRows = useRef([]);
+
+  // Install the found packages at these indexes, one at a time, updating
+  // their rows. Returns the indexes the registry wanted a sign-in for.
+  const installRows = useCallback(
+    async (indexes) => {
+      const refused = [];
+      for (const i of indexes) {
+        const { widget } = foundPackages[i];
+        try {
+          const { packageName, packageScope, downloadUrl, packageVersion } =
+            widget;
+          const scopedId = packageScope
+            ? `@${packageScope.replace(/^@/, "")}/${packageName}`
+            : packageName;
+          const resolvedUrl = (downloadUrl || "")
+            .replace(/\{version\}/g, packageVersion)
+            .replace(/\{name\}/g, packageName);
+
+          await window.mainApi.widgets.install(scopedId, resolvedUrl);
+
+          setProgressWidgets((prev) => {
+            const next = [...prev];
+            next[i] = { ...next[i], status: "installed", error: undefined };
+            return next;
+          });
+        } catch (err) {
+          const message = cleanIpcError(err.message) || "Install failed";
+          if (isRegistryAuthError(message)) refused.push(i);
+          setProgressWidgets((prev) => {
+            const next = [...prev];
+            next[i] = { ...next[i], status: "failed", error: message };
+            return next;
+          });
+        }
+      }
+      return refused;
+    },
+    [foundPackages],
+  );
+
   const handleInstallAll = useCallback(async () => {
     if (foundPackages.length === 0) return;
 
-    // Check auth first
-    try {
-      const status = await window.mainApi?.registryAuth?.getStatus();
-      if (!status?.authenticated) {
-        setNeedsAuth(true);
-        return;
-      }
-    } catch {
-      // Proceed anyway
-    }
-
-    // Build progress items
+    // No sign-in check first: public packages install signed out. If the
+    // registry asks for one (a private package), sign in and try those again.
     const items = foundPackages.map((r) => ({
       packageName: r.pkg.name,
       displayName: r.pkg.displayName || r.pkg.name,
@@ -139,41 +179,15 @@ export const MissingWidgetsModal = ({
     setProgressComplete(false);
     setShowProgressModal(true);
 
-    // Install sequentially
-    for (let i = 0; i < foundPackages.length; i++) {
-      const { widget } = foundPackages[i];
-      try {
-        const { packageName, packageScope, downloadUrl, packageVersion } =
-          widget;
-        const scopedId = packageScope
-          ? `@${packageScope.replace(/^@/, "")}/${packageName}`
-          : packageName;
-        const resolvedUrl = (downloadUrl || "")
-          .replace(/\{version\}/g, packageVersion)
-          .replace(/\{name\}/g, packageName);
-
-        await window.mainApi.widgets.install(scopedId, resolvedUrl);
-
-        setProgressWidgets((prev) => {
-          const next = [...prev];
-          next[i] = { ...next[i], status: "installed" };
-          return next;
-        });
-      } catch (err) {
-        setProgressWidgets((prev) => {
-          const next = [...prev];
-          next[i] = {
-            ...next[i],
-            status: "failed",
-            error: cleanIpcError(err.message) || "Install failed",
-          };
-          return next;
-        });
-      }
-    }
-
+    const refused = await installRows(foundPackages.map((_, i) => i));
     setProgressComplete(true);
-  }, [foundPackages]);
+    if (refused.length) {
+      refusedRows.current = refused;
+      // The sign-in dialog shows instead; the results come back after it.
+      setShowProgressModal(false);
+      setNeedsAuth(true);
+    }
+  }, [foundPackages, installRows]);
 
   const handleProgressDone = useCallback(() => {
     setShowProgressModal(false);
@@ -183,10 +197,29 @@ export const MissingWidgetsModal = ({
     if (onInstallComplete) onInstallComplete();
   }, [setIsOpen, onInstallComplete]);
 
-  const handleAuthSuccess = useCallback(() => {
+  // Signed in: only the refused rows again. Cancelled: the results as they
+  // are (Done reports what did install).
+  const handleAuthSuccess = useCallback(async () => {
     setNeedsAuth(false);
-    handleInstallAll();
-  }, [handleInstallAll]);
+    const retry = refusedRows.current;
+    refusedRows.current = [];
+    setProgressWidgets((prev) =>
+      prev.map((w, i) =>
+        retry.includes(i)
+          ? { ...w, status: "downloading", error: undefined }
+          : w,
+      ),
+    );
+    setProgressComplete(false);
+    setShowProgressModal(true);
+    await installRows(retry);
+    setProgressComplete(true);
+  }, [installRows]);
+  const handleAuthCancel = useCallback(() => {
+    setNeedsAuth(false);
+    refusedRows.current = [];
+    setShowProgressModal(true);
+  }, []);
 
   return (
     <>
@@ -292,10 +325,10 @@ export const MissingWidgetsModal = ({
       <RegistryAuthModal
         isOpen={needsAuth}
         setIsOpen={(open) => {
-          if (!open) setNeedsAuth(false);
+          if (!open) handleAuthCancel();
         }}
         onAuthenticated={handleAuthSuccess}
-        onCancel={() => setNeedsAuth(false)}
+        onCancel={handleAuthCancel}
         message="Sign in to install missing widgets from the Dash Registry."
       />
     </>

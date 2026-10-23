@@ -63,6 +63,7 @@ export function isRegistryAuthError(x) {
     msg.includes("authentication required") ||
     msg.includes("authentication is required") ||
     msg.includes("sign in to the registry") ||
+    msg.includes("sign in to the dash registry") ||
     msg.includes("not signed in") ||
     msg.includes("session expired") ||
     // The registry's own wording for a missing or stale sign-in.

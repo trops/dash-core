@@ -71,13 +71,9 @@ export const AppUpdatesModal = ({
   const [lastRunResult, setLastRunResult] = useState(null);
   // Direct device-code OAuth flow — clicking the footer "Sign in"
   // button opens the system browser straight to the verification URL.
-  // Auth status is checked PROACTIVELY when the modal opens so the
-  // footer button reads "Sign in to Registry" (not "Update N widgets")
-  // before the user clicks anything when they're signed out. Saves a
-  // round-trip vs. the previous "click Update → fail → click Sign in"
-  // dance.
+  // It's offered only after the registry refused an update (a private
+  // package or an expired sign-in); public packages update signed out.
   const {
-    isAuthenticated,
     isAuthenticating,
     authFlow,
     authError,
@@ -111,11 +107,10 @@ export const AppUpdatesModal = ({
   }, [isOpen]);
 
   const totalUpdates = widgetUpdates.length + dashboardUpdates.length;
-  // Single source of truth for "user needs to sign in before we can
-  // run the batch": either the proactive check found no session, or
-  // the parent hook flipped needsAuth (rare — only happens if auth
-  // expired between mount and the user clicking Update).
-  const needsSignIn = hasCheckedAuth && (!isAuthenticated || needsAuth);
+  // The sign-in is needed once the registry refused an update (the hook
+  // flips needsAuth); signed out alone isn't enough, public packages
+  // update without one.
+  const needsSignIn = hasCheckedAuth && needsAuth;
 
   const handleSignIn = () => {
     initiateAuth(() => {

@@ -16,9 +16,11 @@ const registryApiController = require("./registryApiController");
 const {
   getAuthStatus,
   getRegistryProfile,
-  getStoredToken,
-  clearToken,
 } = require("./registryAuthController");
+const {
+  registryDownloadFetch,
+  downloadRefusal,
+} = require("../registryDownload");
 
 const appName = "Dashboard";
 
@@ -341,24 +343,11 @@ async function installThemeFromRegistry(win, appId, packageName) {
     const downloadUrl = `${registryBaseUrl}/api/packages/${scopePath}${encodeURIComponent(urlName)}/download?version=${encodeURIComponent(urlVersion)}`;
     console.log(`${TAG} [2/5 URL Construction] url="${downloadUrl}"`);
 
-    // Stage 3: Download
-    const auth = getStoredToken();
-    if (!auth) {
-      console.log(`${TAG} [3/5 Download] FAIL — no stored auth token`);
-      return {
-        success: false,
-        error: "Not authenticated with registry",
-        authRequired: true,
-      };
-    }
-    const headers = {};
-    if (auth?.token) {
-      headers["Authorization"] = `Bearer ${auth.token}`;
-    }
-
+    // Stage 3: Download (signed out too: public themes need no sign-in)
     let response;
+    let expired = false;
     try {
-      response = await fetch(downloadUrl, { headers });
+      ({ response, expired } = await registryDownloadFetch(downloadUrl));
     } catch (fetchErr) {
       console.log(
         `${TAG} [3/5 Download] FAIL — network error: ${fetchErr.message}`,
@@ -371,22 +360,8 @@ async function installThemeFromRegistry(win, appId, packageName) {
     console.log(
       `${TAG} [3/5 Download] status=${response.status} contentType="${response.headers.get("content-type") || "unknown"}"`,
     );
-    if (response.status === 401) {
-      // "Expired" only when a token was sent.
-      if (!auth?.token) {
-        return {
-          success: false,
-          error: "Sign in to the Dash registry to use this.",
-          authRequired: true,
-        };
-      }
-      clearToken();
-      return {
-        success: false,
-        error: "Authentication expired. Please sign in again.",
-        authRequired: true,
-      };
-    }
+    const refusal = downloadRefusal(response, { expired });
+    if (refusal) return { success: false, ...refusal };
     if (response.status === 404) {
       return {
         success: false,

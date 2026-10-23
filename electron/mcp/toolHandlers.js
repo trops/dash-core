@@ -463,7 +463,6 @@ async function handleGetAppStats() {
 // --- Widget Tool Handlers ---
 
 const registryController = require("../controller/registryController");
-const registryAuthController = require("../controller/registryAuthController");
 const { getWidgetRegistry } = require("../widgetRegistry");
 
 /**
@@ -1243,24 +1242,7 @@ async function handleInstallWidget({ packageName }) {
     };
   }
 
-  // Check authentication
-  const auth = registryAuthController.getStoredToken();
-  if (!auth) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({
-            error:
-              "Not authenticated with the Dash registry. Please sign in via Settings > Account in the Dash app first.",
-            authRequired: true,
-          }),
-        },
-      ],
-      isError: true,
-    };
-  }
-
+  // Signed out is fine: public packages install without a sign-in.
   try {
     // Look up the package in the registry
     const pkg = await registryController.getPackage(packageName.trim());
@@ -1338,19 +1320,15 @@ async function handleInstallWidget({ packageName }) {
       ],
     };
   } catch (err) {
-    // Handle auth expiration
-    if (
-      err.message &&
-      (err.message.includes("401") || err.message.includes("Unauthorized"))
-    ) {
-      registryAuthController.clearToken();
+    // The registry wants a sign-in (a private package) or one that expired
+    // (downloadWidget has already cleared it).
+    if (err.message && /sign in/i.test(err.message)) {
       return {
         content: [
           {
             type: "text",
             text: JSON.stringify({
-              error:
-                "Authentication expired. Please sign in again via Settings > Account in the Dash app.",
+              error: `${err.message} (Settings > Account in the Dash app)`,
               authRequired: true,
             }),
           },

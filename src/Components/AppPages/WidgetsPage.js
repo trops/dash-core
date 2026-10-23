@@ -20,7 +20,10 @@ import { WidgetPreview } from "./WidgetPreview";
 import { useRegistryIdentity } from "./useRegistryIdentity";
 import { useInstalledWidgets } from "../../hooks/useInstalledWidgets";
 import { useWidgetUpdates } from "../../hooks/useWidgetUpdates";
-import { useRegistryAuthGate } from "../../hooks/useRegistryAuthGate";
+import {
+  isRegistryAuthError,
+  useRegistryAuthGate,
+} from "../../hooks/useRegistryAuthGate";
 import { resolveIcon } from "../../utils/resolveIcon";
 import { getUserConfigurableProviders } from "../../utils/providerUtils";
 import { WidgetPreflightReview } from "../WidgetPreflightReview";
@@ -669,12 +672,22 @@ export const WidgetsPage = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [installRequest && installRequest.nonce, widgets.length]);
 
+  // Public packages update signed out; when the registry asks for a
+  // sign-in (private, or expired), ask and try once more.
   const updatePackage = async (pkg) => {
-    const ok = await ensureAuthed({
-      message: "Sign in to the registry to install this widget update.",
-    });
-    if (!ok) return;
-    await updateWidget(pkg.widgets[0].name);
+    const name = pkg.widgets[0].name;
+    try {
+      await updateWidget(name, { throwOnError: true });
+    } catch (err) {
+      if (
+        isRegistryAuthError(err) &&
+        (await ensureAuthed({
+          message: "Sign in to the registry to install this widget update.",
+        }))
+      ) {
+        await updateWidget(name);
+      }
+    }
   };
 
   // { pkg, widget? } — widget: the widget page Uninstall was asked from.
@@ -1159,15 +1172,30 @@ export const WidgetsPage = ({
         batchStatus={batchStatus}
         isBatchUpdating={isBatchUpdating}
         onConfirm={async (names) => {
-          // Check the session first so an expired token shows the sign-in
-          // gate instead of failing every row.
+          // Public packages update signed out. Rows the registry refused
+          // for a sign-in get one more try after signing in.
+          const first = await updatePackages(names);
+          const refused = ((first && first.failedDetails) || [])
+            .filter((d) => isRegistryAuthError(d.error))
+            .map((d) => d.name);
           if (
+            !refused.length ||
             !(await ensureAuthed({
               message: "Sign in to the registry to install widget updates.",
             }))
-          )
-            return { succeeded: [], failed: [], cancelled: true };
-          return updatePackages(names);
+          ) {
+            return first;
+          }
+          const again = await updatePackages(refused, { keepStatus: true });
+          return {
+            succeeded: [...(first.succeeded || []), ...(again.succeeded || [])],
+            failed: (first.failed || [])
+              .filter((n) => !refused.includes(n))
+              .concat(again.failed || []),
+            failedDetails: (first.failedDetails || [])
+              .filter((d) => !refused.includes(d.name))
+              .concat(again.failedDetails || []),
+          };
         }}
       />
       {/* Permission consent for a batch update that asks for new access. */}

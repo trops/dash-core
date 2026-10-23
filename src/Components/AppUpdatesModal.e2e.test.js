@@ -223,13 +223,39 @@ describe("AppUpdatesModal — end-to-end happy path", () => {
   });
 });
 
-describe("AppUpdatesModal — proactive sign-in gate", () => {
-  test("unauthenticated → footer shows 'Sign in to Registry' from the start, no Update button", async () => {
+describe("AppUpdatesModal — sign-in only when the registry asks (2026-10-23)", () => {
+  test("signed out → public packages update without signing in", async () => {
     setupMainApi({ authenticated: false });
     render(<Harness installedWidgets={installed} />);
 
+    const update = await screen.findByRole("button", {
+      name: /Update 2 widgets/,
+    });
+    expect(
+      screen.queryByTestId("app-updates-modal-sign-in-registry"),
+    ).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(update);
+    });
     await waitFor(() => {
-      expect(screen.getByText(/2 updates available/)).toBeInTheDocument();
+      expect(window.mainApi.widgets.install).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  test("the registry refusing → footer shows 'Sign in to Registry'", async () => {
+    setupMainApi({ authenticated: false });
+    window.mainApi.widgets.install = jest
+      .fn()
+      .mockRejectedValue(
+        new Error("Sign in to the Dash registry to install this."),
+      );
+    render(<Harness installedWidgets={installed} />);
+
+    const updateButton = await screen.findByRole("button", {
+      name: /Update 2 widgets/,
+    });
+    await act(async () => {
+      fireEvent.click(updateButton);
     });
     // Subtitle copy explains why we're asking to sign in.
     await waitFor(() => {
@@ -237,17 +263,12 @@ describe("AppUpdatesModal — proactive sign-in gate", () => {
         screen.getByText(/Sign in to the registry to install 2 widget/),
       ).toBeInTheDocument();
     });
-    // Sign-in button is in the footer instead of "Update N widgets".
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("app-updates-modal-sign-in-registry"),
-      ).toBeInTheDocument();
-    });
+    expect(
+      screen.getByTestId("app-updates-modal-sign-in-registry"),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /Update 2 widgets/ }),
     ).not.toBeInTheDocument();
-    // Install was never called — proactive gate, no wasted click.
-    expect(window.mainApi.widgets.install).not.toHaveBeenCalled();
 
     // ONE click fires the device-code flow directly — no intermediate
     // modal. initiateLogin runs, browser opens via shell.openExternal,
@@ -269,8 +290,12 @@ describe("AppUpdatesModal — proactive sign-in gate", () => {
   });
 
   test("after successful poll, footer flips to 'Update N widgets' and onAuthenticated fires", async () => {
-    jest.useFakeTimers();
     setupMainApi({ authenticated: false });
+    window.mainApi.widgets.install = jest
+      .fn()
+      .mockRejectedValue(
+        new Error("Sign in to the Dash registry to install this."),
+      );
     const onAuthClearedSpy = jest.fn();
     render(
       <Harness
@@ -278,6 +303,13 @@ describe("AppUpdatesModal — proactive sign-in gate", () => {
         onAuthClearedSpy={onAuthClearedSpy}
       />,
     );
+    const updateButton = await screen.findByRole("button", {
+      name: /Update 2 widgets/,
+    });
+    await act(async () => {
+      fireEvent.click(updateButton);
+    });
+    jest.useFakeTimers();
     await waitFor(() => {
       expect(
         screen.getByTestId("app-updates-modal-sign-in-registry"),
