@@ -109,6 +109,17 @@ test("a fold lands here as the conversation; Expand reopens it in Create", async
   expect(onCollapse).toHaveBeenCalled();
 });
 
+test("Close plan puts a folded plan away (it stays saved)", async () => {
+  render(<CreateDockPanel onCollapse={jest.fn()} />);
+  act(() => foldCreate({ recentId: "plan_1", title: "Plan a dashboard" }));
+  await screen.findByText("Here's the plan.");
+  fireEvent.click(screen.getByRole("button", { name: "Close plan" }));
+  expect(screen.queryByTestId("plan-card")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: /Make something new/ }),
+  ).toBeInTheDocument();
+});
+
 test("collapsed renders nothing but still hears a fold", async () => {
   const { rerender } = render(<CreateDockPanel collapsed />);
   expect(screen.queryByTestId("create-dock")).toBeNull();

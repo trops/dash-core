@@ -12,10 +12,26 @@ import { planRemoveCopy } from "./PlanMenu";
 /** How many unfinished plans the start screen lists. */
 export const UNFINISHED_LIMIT = 5;
 
-// Saved but never built, or a build that stopped part-way (it offers
-// Continue building). Finished work isn't listed — it's Recently created in
-// the dashboard's Add list.
-const UNFINISHED = new Set(["draft", "stopped", "interrupted"]);
+// Saved but never built, a build still running or waiting for a
+// connection, one that stopped part-way (it offers Continue building), or
+// one that finished with problems. Cleanly built work isn't listed — it's
+// Recently created in the dashboard's Add list.
+const UNFINISHED = new Set([
+  "draft",
+  "building",
+  "waiting",
+  "stopped",
+  "interrupted",
+  "problems",
+]);
+// A build began: what it built stays when the plan is forgotten.
+const STARTED = new Set([
+  "building",
+  "waiting",
+  "stopped",
+  "interrupted",
+  "problems",
+]);
 
 const ms = (t) => (typeof t === "number" ? t : Date.parse(t) || 0);
 
@@ -38,7 +54,7 @@ export function unfinishedPlans(plans = [], limit = UNFINISHED_LIMIT) {
       title: p.title || "Untitled plan",
       status: recentStatus(p),
       updatedAt: ms(p.updatedAt),
-      started: p.status === "stopped" || p.status === "interrupted",
+      started: STARTED.has(p.status),
     }))
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, limit);

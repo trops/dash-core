@@ -97,6 +97,10 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
       <ResizeHandle {...handleProps} ariaLabel="Resize Create" />
       <PanelHeader
         testId="create-dock-header"
+        // Put a folded plan away: it stays saved (and, if unfinished, is
+        // under Unfinished on Create's start screen).
+        onBack={folded ? () => setFolded(null) : null}
+        backLabel="Close plan"
         title={folded ? folded.title || "Plan a dashboard" : "Create"}
         actions={
           <>

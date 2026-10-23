@@ -45,12 +45,19 @@ afterEach(() => {
   delete window.mainApi;
 });
 
-test("only unfinished plans — never built, or stopped part-way — newest first", () => {
+test("only unfinished plans — never built, building or waiting, stopped part-way, or built with problems — newest first", () => {
   expect(unfinishedPlans(PLANS).map((r) => [r.id, r.started])).toEqual([
+    ["p_prob", true],
+    ["p_run", true],
     ["p_stop", true],
     ["p_int", true],
     ["p_draft", false],
   ]);
+  expect(
+    unfinishedPlans([
+      { id: "w", status: "waiting", waitingFor: ["slack"], updatedAt: 1 },
+    ]).map((r) => r.id),
+  ).toEqual(["w"]);
   expect(unfinishedPlans([{ id: "x", updatedAt: 1 }])[0].status).toBe(
     "Draft plan",
   );
@@ -67,9 +74,7 @@ test("at most a few", () => {
 
 test("nothing unfinished: nothing shows", async () => {
   const bots = api(
-    PLANS.filter(
-      (p) => !["draft", "stopped", "interrupted"].includes(p.status),
-    ),
+    PLANS.filter((p) => p.status === "built" || p.kind === "question"),
   );
   const { container } = render(<UnfinishedPlans onContinue={jest.fn()} />);
   await waitFor(() => expect(bots.listCreateRecent).toHaveBeenCalled());
