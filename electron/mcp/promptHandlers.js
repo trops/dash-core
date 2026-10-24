@@ -128,6 +128,16 @@ async function handleSetupProvider({ service }) {
 3. Copy the Internal Integration Secret (starts with ntn_)`,
       credentials: '{ apiKey: "ntn_your_secret_here" }',
     },
+    salesforce: {
+      name: "Salesforce",
+      type: "salesforce",
+      steps: `1. In Salesforce Setup → API Catalog → MCP Servers, turn on the server to use (e.g. sobject-all)
+2. In Setup → External Client App Manager, create an app with OAuth scopes mcp_api and refresh_token, PKCE required, "Require secret for Web Server Flow" and "Require secret for Refresh Token Flow" unchecked, and the callback URL http://localhost:38000/callback
+3. Copy its Consumer Key (no secret needed)
+4. Dash opens Salesforce's sign-in in your browser when the provider first connects`,
+      credentials:
+        '{ serverUrl: "https://api.salesforce.com/platform/mcp/v1/platform/sobject-all", clientId: "your-consumer-key" }',
+    },
     openai: {
       name: "OpenAI",
       type: "openai",

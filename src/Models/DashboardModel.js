@@ -1,4 +1,5 @@
 import { LayoutModel } from "./LayoutModel";
+import { layoutItemUuid } from "../utils/layoutItemUuid";
 import { ComponentManager } from "../ComponentManager";
 import { deepCopy } from "@trops/dash-react";
 import { getNextHighestId, getNextHighestOrder } from "../utils/layout";
@@ -291,6 +292,11 @@ export class DashboardModel {
 
         // set the new id and order for the item
         childComponent["id"] = nextId;
+        childComponent["uuid"] = layoutItemUuid(
+          this.id,
+          childComponent["component"],
+          nextId,
+        );
         childComponent["order"] = nextOrder;
         // 1. Add the layoutItem as the parentWorkspace of the childComponent
         // childComponent["parentWorkspace"] = parentComponent;
@@ -586,6 +592,11 @@ export class DashboardModel {
 
           // set the new id and order for the item
           childComponent["id"] = nextId;
+          childComponent["uuid"] = layoutItemUuid(
+            this.id,
+            childComponent["component"],
+            nextId,
+          );
           childComponent["order"] = nextOrder;
           // 1. Add the layoutItem as the parentWorkspace of the childComponent
           //childComponent["parentWorkspace"] = parentComponent;

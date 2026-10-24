@@ -94,3 +94,58 @@ describe("CustomMcpServerForm with a warning (bot-capabilities CAP-005)", () => 
     expect(screen.getByDisplayValue("-y photos-mcp")).toBeInTheDocument();
   });
 });
+
+// Salesforce review (2026-10-24): saving a catalog OAuth provider in this
+// form dropped its callback port, so sign-in used a random one.
+describe("buildMcpConfig keeps the OAuth settings the form doesn't show", () => {
+  const salesforce = {
+    transport: "streamable_http",
+    url: "{{serverUrl}}",
+    auth: "oauth",
+    oauth: {
+      clientId: "{{clientId}}",
+      scopes: "mcp_api refresh_token",
+      callbackPort: "{{callbackPort}}",
+      defaults: { callbackPort: 38000 },
+    },
+  };
+
+  it("the callback port and its default survive a save", () => {
+    const out = buildMcpConfig(
+      "streamable_http",
+      {
+        command: "",
+        args: "",
+        envMappingRows: [],
+        url: "{{serverUrl}}",
+        headerRows: [],
+        authType: "oauth",
+        oauthScopes: "mcp_api refresh_token",
+        oauthClientId: "{{clientId}}",
+      },
+      salesforce,
+    );
+    expect(out.oauth).toEqual(salesforce.oauth);
+  });
+
+  it("a field cleared in the form is cleared", () => {
+    const out = buildMcpConfig(
+      "streamable_http",
+      {
+        command: "",
+        args: "",
+        envMappingRows: [],
+        url: "https://x.test/mcp",
+        headerRows: [],
+        authType: "oauth",
+        oauthScopes: "",
+        oauthClientId: "",
+      },
+      salesforce,
+    );
+    expect(out.oauth).toEqual({
+      callbackPort: "{{callbackPort}}",
+      defaults: { callbackPort: 38000 },
+    });
+  });
+});

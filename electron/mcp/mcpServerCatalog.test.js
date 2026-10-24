@@ -187,3 +187,44 @@ describe("mcpServerCatalog structural validation", () => {
     }
   });
 });
+
+describe("Salesforce (hosted MCP, a pre-registered app)", () => {
+  const sf = catalog.servers.find((s) => s.id === "salesforce");
+
+  it("is hosted, signs in with OAuth, and asks for the mcp_api scope", () => {
+    assert.ok(sf, "salesforce entry missing");
+    assert.equal(sf.mcpConfig.transport, "streamable_http");
+    assert.equal(sf.mcpConfig.auth, "oauth");
+    assert.match(sf.mcpConfig.oauth.scopes, /\bmcp_api\b/);
+    assert.match(sf.mcpConfig.oauth.scopes, /\brefresh_token\b/);
+  });
+
+  it("its URL, Consumer Key and callback port are fields of its own", () => {
+    assert.equal(sf.mcpConfig.url, "{{serverUrl}}");
+    assert.equal(sf.mcpConfig.oauth.clientId, "{{clientId}}");
+    assert.equal(sf.mcpConfig.oauth.callbackPort, "{{callbackPort}}");
+    for (const key of ["serverUrl", "clientId", "callbackPort"]) {
+      assert.ok(sf.credentialSchema[key], `${key} field missing`);
+    }
+    assert.equal(sf.credentialSchema.serverUrl.required, true);
+    assert.equal(sf.credentialSchema.clientId.required, true);
+    assert.equal(sf.credentialSchema.callbackPort.type, "number");
+    assert.equal(
+      sf.credentialSchema.callbackPort.default,
+      sf.mcpConfig.oauth.defaults.callbackPort,
+    );
+    assert.match(
+      sf.credentialSchema.callbackPort.instructions,
+      /http:\/\/localhost:38000\/callback/,
+    );
+  });
+
+  // Live test 2026-10-24: an empty port read "Needs setup — Missing: Callback port".
+  it("an empty callback port isn't missing (it means 38000)", () => {
+    assert.equal(sf.credentialSchema.callbackPort.worksWithout, true);
+  });
+
+  it("no client secret is stored", () => {
+    assert.equal("clientSecret" in sf.mcpConfig.oauth, false);
+  });
+});

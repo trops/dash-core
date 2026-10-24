@@ -83,3 +83,21 @@ describe("buildMcpConfigFromOverrides", () => {
     );
   });
 });
+
+// QA 2026-10-24 (Salesforce): OAuth settings can be the provider's own fields.
+describe("deriveFormFields — OAuth fields", () => {
+  test("a {{field}} in the OAuth settings is a form field", () => {
+    const keys = deriveFormFields({
+      transport: "streamable_http",
+      url: "{{serverUrl}}",
+      auth: "oauth",
+      oauth: {
+        clientId: "{{clientId}}",
+        scopes: "mcp_api",
+        callbackPort: "{{callbackPort}}",
+        defaults: { callbackPort: 38000 },
+      },
+    }).map((f) => f.key);
+    expect(keys).toEqual(["serverUrl", "clientId", "callbackPort"]);
+  });
+});

@@ -451,6 +451,30 @@ async function refreshGoogleOAuthToken(tokenRefresh) {
  *
  * @returns {Promise<{ client, transport }>} a connected client + transport
  */
+/**
+ * The OAuth provider for a server, its client id / callback port filled in
+ * from the provider's own fields (e.g. Salesforce's Consumer Key) — for a
+ * connect and for Authorize alike.
+ */
+function oauthProviderFor({ win, appId, serverName, mcpConfig, credentials }) {
+  const {
+    createMcpOAuthProvider,
+    resolveOAuthConfig,
+  } = require("../mcp/mcpOAuthProvider");
+  const { oauth, missing } = resolveOAuthConfig(mcpConfig.oauth, credentials);
+  if (missing.length) {
+    throw new Error(
+      `Sign-in needs this provider's ${missing.join(", ")}. Add it in the provider's settings and try again.`,
+    );
+  }
+  return createMcpOAuthProvider({
+    win,
+    appId,
+    serverName,
+    mcpConfig: { ...mcpConfig, oauth },
+  });
+}
+
 async function connectStreamableHttpWithOAuth(urlObj, oauthProvider) {
   const {
     UnauthorizedError,
@@ -624,14 +648,12 @@ const mcpController = {
             // OAuth 2.0 server (e.g. Granola, Linear): authenticate via the
             // SDK's native OAuthClientProvider + browser flow + token
             // refresh. Transport is created during the connect dance below.
-            const {
-              createMcpOAuthProvider,
-            } = require("../mcp/mcpOAuthProvider");
-            oauthProvider = createMcpOAuthProvider({
+            oauthProvider = oauthProviderFor({
               win,
               appId,
               serverName,
               mcpConfig,
+              credentials,
             });
             oauthUrl = new URL(url);
           } else {
@@ -892,12 +914,12 @@ const mcpController = {
         };
       }
 
-      const { createMcpOAuthProvider } = require("../mcp/mcpOAuthProvider");
-      const oauthProvider = createMcpOAuthProvider({
+      const oauthProvider = oauthProviderFor({
         win,
         appId,
         serverName,
         mcpConfig,
+        credentials,
       });
 
       const { client } = await connectStreamableHttpWithOAuth(
