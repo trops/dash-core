@@ -2,6 +2,7 @@ import { ComponentManager } from "../ComponentManager";
 import { deepCopy } from "@trops/dash-react";
 import { getNearestParentWorkspace } from "../utils/layout";
 import { migrateBareComponentName } from "../utils/migrateBareComponentName";
+import { layoutItemUuid } from "../utils/layoutItemUuid";
 /**
  * The model for all layout components used primarily in the renderLayout method
  * @param {Object} layoutItem an object containing various attributes of the layout item
@@ -187,10 +188,7 @@ export const LayoutModel = (layoutItem, workspaceLayout, dashboardId) => {
     // generate a unique name so that we can store files, publish events etc
     // all with this very specific identifier
 
-    layout.uuid =
-      dashboardId !== undefined
-        ? `${dashboardId}-${layout["component"]}-${layout.id}`
-        : `${layout["component"]}-${layout.id}`;
+    layout.uuid = layoutItemUuid(dashboardId, layout["component"], layout.id);
 
     // Resolve widget configuration — strict scoped lookup. By this
     // point `layout.component` has already been migrated from any

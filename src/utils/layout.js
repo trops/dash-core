@@ -8,6 +8,7 @@ import {
 import { WidgetFactory } from "../Widget";
 import { WidgetNotFound } from "../Widget/WidgetNotFound";
 import { DashboardModel, LayoutModel } from "../Models";
+import { layoutItemUuid } from "./layoutItemUuid";
 import { deepCopy } from "@trops/dash-react";
 import { ComponentManager } from "../ComponentManager";
 
@@ -1025,6 +1026,7 @@ export function addItemToItemLayout(
   id,
   itemToAdd,
   hasChildren = false,
+  dashboardId = null,
 ) {
   // let's get the values required to create the item
   const nextId = getNextHighestId(tempLayout, id);
@@ -1043,6 +1045,9 @@ export function addItemToItemLayout(
 
     // generate the new Item here...
     newItem["id"] = nextId;
+    // Its uuid from its real id and the dashboard's, as a reload gives it —
+    // so its data file is the same before and after the first save.
+    newItem["uuid"] = layoutItemUuid(dashboardId, newItem["component"], nextId);
     newItem["order"] = nextOrder["highest"];
     newItem["hasChildren"] = hasChildren === false ? 0 : 1;
     newItem["parent"] = id;

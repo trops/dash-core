@@ -26,11 +26,15 @@ const http = require("http");
 const providerController = require("../controller/providerController");
 
 /**
- * Start a loopback HTTP server bound to 127.0.0.1 on an OS-assigned port.
- * Resolves once listening with `{ server, port, codePromise }` where
- * `codePromise` resolves with the OAuth `code` (or rejects on `error`).
+ * Start a loopback HTTP server on 127.0.0.1 — on an OS-assigned port, or on
+ * `port` when the provider's app has a callback URL registered (e.g.
+ * Salesforce's External Client App: http://localhost:<port>/callback). A
+ * fixed port also listens on ::1, since "localhost" may resolve to either.
+ * Resolves once listening with `{ server, servers, port, codePromise }`
+ * where `codePromise` resolves with the OAuth `code` (or rejects on
+ * `error`).
  */
-function startLoopbackServer() {
+function startLoopbackServer(port = 0) {
   let resolveCode;
   let rejectCode;
   const codePromise = new Promise((resolve, reject) => {
@@ -75,13 +79,79 @@ function startLoopbackServer() {
   });
 
   return new Promise((resolve, reject) => {
-    server.once("error", reject);
+    server.once("error", (err) => {
+      reject(
+        port && err && err.code === "EADDRINUSE"
+          ? new Error(
+              `Port ${port} is in use, so Dash can't receive the sign-in. Finish or close the other sign-in using it (another app, or another Dash sign-in) and try again.`,
+            )
+          : err,
+      );
+    });
     // Bind to loopback only (never 0.0.0.0) — port 0 = OS-assigned.
-    server.listen(0, "127.0.0.1", () => {
+    server.listen(port, "127.0.0.1", () => {
       const addr = server.address();
-      resolve({ server, port: addr.port, codePromise });
+      const servers = [server];
+      const done = () =>
+        resolve({ server, servers, port: addr.port, codePromise });
+      if (!port) return done();
+      // The IPv6 loopback too (best effort: no IPv6, or it's taken).
+      const v6 = http.createServer((req, res) =>
+        server.emit("request", req, res),
+      );
+      v6.once("error", () => done());
+      v6.listen(port, "::1", () => {
+        servers.push(v6);
+        done();
+      });
     });
   });
+}
+
+/**
+ * The OAuth settings with a provider's own fields filled in ({{clientId}},
+ * {{callbackPort}}, …) — the way its URL and headers are. A port left empty
+ * falls back to `oauth.defaults.callbackPort`; one that isn't a port number
+ * means an OS-assigned port.
+ *
+ * @param {object} oauth  mcpConfig.oauth
+ * @param {object} credentials  the provider's saved fields
+ * @returns {{ oauth: object, missing: string[] }}  missing: fields the
+ *   client id / secret need that are empty
+ */
+function resolveOAuthConfig(oauth, credentials) {
+  const src = oauth || {};
+  const creds = credentials || {};
+  const missing = [];
+  const fill = (v, { track = false } = {}) => {
+    if (typeof v !== "string") return v;
+    let empty = false;
+    const out = v.replace(/\{\{(\w+)\}\}/g, (_m, key) => {
+      const val = creds[key];
+      if (val === undefined || val === null || String(val).trim() === "") {
+        empty = true;
+        if (track) missing.push(key);
+        return "";
+      }
+      return String(val).trim();
+    });
+    return empty && out === "" ? undefined : out;
+  };
+  const resolved = { ...src };
+  delete resolved.defaults;
+  for (const key of ["clientId", "clientSecret"]) {
+    if (key in src)
+      resolved[key] = fill(src[key], { track: key === "clientId" });
+  }
+  if ("scopes" in src) resolved.scopes = fill(src.scopes);
+  if ("callbackPort" in src) {
+    const raw = fill(src.callbackPort);
+    const fallback = src.defaults && src.defaults.callbackPort;
+    const n = Number(raw === undefined ? fallback : raw);
+    resolved.callbackPort =
+      Number.isInteger(n) && n >= 1024 && n <= 65535 ? n : undefined;
+  }
+  return { oauth: resolved, missing };
 }
 
 /**
@@ -113,12 +183,21 @@ function createMcpOAuthProvider({ win, appId, serverName, mcpConfig }) {
 
   // Loopback server for the current flow (null when idle).
   let loopback = null;
+  // A connect is under way (the controller waits for a sign-in's code). A
+  // provider with a fixed callback port only takes the port then, when the
+  // browser actually opens — not on every connect with valid tokens.
+  let inFlow = false;
 
   return {
     get redirectUrl() {
-      return loopback
-        ? `http://127.0.0.1:${loopback.port}/callback`
-        : undefined;
+      // A fixed port is registered with the provider as "localhost" (e.g.
+      // Salesforce's External Client App); it must match exactly, and is
+      // known before anything listens on it.
+      if (oauth.callbackPort) {
+        return `http://localhost:${oauth.callbackPort}/callback`;
+      }
+      if (!loopback) return undefined;
+      return `http://127.0.0.1:${loopback.port}/callback`;
     },
 
     get clientMetadata() {
@@ -170,6 +249,16 @@ function createMcpOAuthProvider({ win, appId, serverName, mcpConfig }) {
     },
 
     async redirectToAuthorization(authorizationUrl) {
+      if (oauth.callbackPort) {
+        // Outside a connect nobody waits for the code (e.g. a token that
+        // couldn't be refreshed mid-session): don't open a sign-in that
+        // goes nowhere — the next connect signs in again.
+        if (!inFlow) return;
+        // Take the port only now, when the sign-in really opens.
+        if (!loopback) {
+          loopback = await startLoopbackServer(oauth.callbackPort);
+        }
+      }
       await shell.openExternal(authorizationUrl.toString());
     },
 
@@ -186,18 +275,23 @@ function createMcpOAuthProvider({ win, appId, serverName, mcpConfig }) {
     // --- helpers used by the controller (not part of the SDK interface) ---
 
     async _startLoopback() {
-      if (!loopback) {
-        loopback = await startLoopbackServer();
+      inFlow = true;
+      // A fixed port is taken when the browser opens (redirectToAuthorization).
+      if (!loopback && !oauth.callbackPort) {
+        loopback = await startLoopbackServer(0);
       }
       return loopback;
     },
 
     _stopLoopback() {
+      inFlow = false;
       if (loopback) {
-        try {
-          loopback.server.close();
-        } catch (_e) {
-          /* already closing */
+        for (const s of loopback.servers || [loopback.server]) {
+          try {
+            s.close();
+          } catch (_e) {
+            /* already closing */
+          }
         }
         loopback = null;
       }
@@ -225,4 +319,8 @@ function createMcpOAuthProvider({ win, appId, serverName, mcpConfig }) {
   };
 }
 
-module.exports = { createMcpOAuthProvider, startLoopbackServer };
+module.exports = {
+  createMcpOAuthProvider,
+  startLoopbackServer,
+  resolveOAuthConfig,
+};

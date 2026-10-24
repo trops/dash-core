@@ -102,7 +102,12 @@ export function buildMcpConfig(
     // Interactive OAuth 2.0 (SDK-native). Scopes optional; clientId/secret
     // only for servers without Dynamic Client Registration.
     config.auth = "oauth";
-    const oauth = {};
+    // Keep what this form doesn't edit (a catalog entry's callback port and
+    // its default), and only replace the fields it shows.
+    const oauth = { ...(_baseOauth || {}) };
+    delete oauth.scopes;
+    delete oauth.clientId;
+    delete oauth.clientSecret;
     if (oauthScopes.trim()) oauth.scopes = oauthScopes.trim();
     if (oauthClientId.trim()) oauth.clientId = oauthClientId.trim();
     if (oauthClientSecret.trim()) oauth.clientSecret = oauthClientSecret.trim();

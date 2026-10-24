@@ -158,6 +158,11 @@ export const LayoutBuilder = ({
 
   // Ref for current workspace state (avoids stale closure in event listener)
   const wsRef = useRef(currentWorkspace);
+  // The dashboard a widget is added to — its uuid (data file) includes it.
+  const addToDashboardId = () =>
+    dashboardId !== undefined && dashboardId !== null
+      ? dashboardId
+      : (wsRef.current && wsRef.current.id) || null;
   useEffect(() => {
     wsRef.current = currentWorkspace;
   }, [currentWorkspace]);
@@ -262,6 +267,7 @@ export const LayoutBuilder = ({
             packageId: config._sourcePackage || config.packageId || null,
           },
           hasChildren,
+          addToDashboardId(),
         );
         const newItem = newLayout[newLayout.length - 1];
         const newWidgetId = newItem.id;
@@ -591,6 +597,7 @@ export const LayoutBuilder = ({
           toItem["id"],
           itemChosen,
           hasChildren,
+          addToDashboardId(),
         );
 
         // Get the newly added widget's ID (should be the last item)
@@ -663,6 +670,7 @@ export const LayoutBuilder = ({
           toItem["id"],
           itemChosen,
           hasChildren,
+          addToDashboardId(),
         );
         const newWorkspace = JSON.parse(JSON.stringify(currentWorkspace));
         newWorkspace["layout"] = newLayout;
@@ -1320,6 +1328,7 @@ export const LayoutBuilder = ({
         gridContainerId,
         widgetItem,
         hasChildren,
+        addToDashboardId(),
       );
 
       const newWidgetId = newLayout[newLayout.length - 1].id;

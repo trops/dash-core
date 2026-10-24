@@ -384,3 +384,35 @@ describe("delete / rename confirm messages", () => {
     );
   });
 });
+
+// Salesforce (live test 2026-10-24): an empty callback port means 38000.
+describe("missingFields — Salesforce", () => {
+  const entry =
+    require("../../../electron/mcp/mcpServerCatalog.json").servers.find(
+      (x) => x.id === "salesforce",
+    );
+  const provider = (credentials) => ({
+    type: "salesforce",
+    providerClass: "mcp",
+    mcpConfig: entry.mcpConfig,
+    credentials,
+  });
+
+  test("URL and Consumer Key filled, port empty: nothing missing", () => {
+    expect(
+      missingFields(
+        provider({ serverUrl: "https://api.salesforce.com/x", clientId: "k" }),
+        entry.credentialSchema,
+      ),
+    ).toEqual([]);
+  });
+
+  test("no Consumer Key: it's missing", () => {
+    expect(
+      missingFields(
+        provider({ serverUrl: "https://api.salesforce.com/x" }),
+        entry.credentialSchema,
+      ),
+    ).toEqual(["Consumer Key"]);
+  });
+});

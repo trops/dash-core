@@ -141,7 +141,10 @@
         "args": ["-y", "@modelcontextprotocol/server-filesystem"],
         "envMapping": {},
         "argsMapping": {
-          "allowedPaths": { "type": "split", "delimiter": "," }
+          "allowedPaths": {
+            "type": "split",
+            "delimiter": ","
+          }
         }
       },
       "credentialSchema": {
@@ -337,6 +340,54 @@
           "worksWithout": true,
           "secret": true,
           "instructions": "Optional — only if your MCP endpoint requires one. Your Algolia Search API Key, found in the Algolia dashboard under API Keys."
+        }
+      }
+    },
+    {
+      "id": "salesforce",
+      "name": "Salesforce",
+      "description": "Query and update your Salesforce records through Salesforce's hosted MCP servers. You sign in with your Salesforce account; your org needs an External Client App for Dash (Setup → External Client App Manager).",
+      "icon": "cloud",
+      "tags": ["crm", "sales", "data"],
+      "mcpConfig": {
+        "transport": "streamable_http",
+        "url": "{{serverUrl}}",
+        "auth": "oauth",
+        "oauth": {
+          "clientId": "{{clientId}}",
+          "scopes": "mcp_api refresh_token",
+          "callbackPort": "{{callbackPort}}",
+          "defaults": {
+            "callbackPort": 38000
+          }
+        }
+      },
+      "credentialSchema": {
+        "serverUrl": {
+          "type": "text",
+          "displayName": "MCP Server URL",
+          "required": true,
+          "secret": false,
+          "placeholder": "https://api.salesforce.com/platform/mcp/v1/platform/sobject-all",
+          "instructions": "Turn the server on first: Setup → API Catalog → MCP Servers. Production: https://api.salesforce.com/platform/mcp/v1/platform/<server> — sobject-all (read and write records), sobject-reads (read only), sobject-mutations, sobject-deletes, salesforce-api-context, metadata-experts; Data Cloud: …/v1/data/data-cloud-queries. Sandbox or scratch org: use /v1/sandbox/platform/ (or /v1/sandbox/data/) instead."
+        },
+        "clientId": {
+          "type": "text",
+          "displayName": "Consumer Key",
+          "required": true,
+          "secret": false,
+          "instructions": "From your org's External Client App (Setup → External Client App Manager → your app → OAuth Settings → Consumer Key and Secret). The app needs OAuth scopes mcp_api and refresh_token/offline_access, with PKCE required, and \"Require secret for Web Server Flow\" and \"Require secret for Refresh Token Flow\" unchecked — Dash signs in without a secret. A new app can take up to 30 minutes to work."
+        },
+        "callbackPort": {
+          "type": "number",
+          "displayName": "Callback port",
+          "required": false,
+          "worksWithout": true,
+          "secret": false,
+          "default": 38000,
+          "min": 1024,
+          "max": 65535,
+          "instructions": "Add http://localhost:<this port>/callback (http://localhost:38000/callback by default) to the External Client App's Callback URLs, exactly. An app already set up for Claude Code uses the same one."
         }
       }
     },

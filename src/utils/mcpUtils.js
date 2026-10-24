@@ -32,6 +32,14 @@ export function deriveFormFields(mcpConfig, credentialSchema = {}) {
         matches.forEach((m) => fieldKeys.add(m.slice(2, -2)));
       });
     }
+    // …and from the OAuth settings (a client id, a callback port)
+    if (mcpConfig.oauth) {
+      Object.values(mcpConfig.oauth).forEach((template) => {
+        if (typeof template !== "string") return;
+        const matches = template.match(/\{\{(\w+)\}\}/g) || [];
+        matches.forEach((m) => fieldKeys.add(m.slice(2, -2)));
+      });
+    }
   } else {
     // stdio: extract credential field names from envMapping values
     if (mcpConfig.envMapping) {

@@ -91,7 +91,8 @@ export const WorkspaceModel = (workspaceItem) => {
   workspace.id = "id" in obj ? obj["id"] : Date.now();
   workspace.name = "name" in obj ? obj["name"] : "New Dashboard";
   workspace.type = "type" in obj ? sanitizeType(obj["type"]) : "workspace";
-  workspace.label = "label" in obj ? obj["label"] : "New Dashboard";
+  // No label of its own: its name (not a stale "New Dashboard").
+  workspace.label = "label" in obj ? obj["label"] : workspace.name;
   workspace.version = "version" in obj ? obj["version"] : 1;
   // Use the provided layout if it exists and is non-empty; otherwise
   // create a default 1x1 grid so the workspace always has a renderable
