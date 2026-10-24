@@ -25,6 +25,7 @@ import {
   hasSettingValue,
 } from "./ProviderSettingField";
 import { ToolSelector } from "./ToolSelector";
+import { resolveIcon } from "../../../utils/resolveIcon";
 import { AdvancedMcpConfig } from "../../Provider/AdvancedMcpConfig";
 
 /**
@@ -45,7 +46,7 @@ const getIconForServer = (server) => {
     "google-calendar": "calendar-days",
     algolia: "magnifying-glass-plus",
   };
-  return iconMap[server.id] || server.icon || "server";
+  return resolveIcon(iconMap[server.id] || server.icon || "server");
 };
 
 /**

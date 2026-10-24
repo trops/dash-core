@@ -91,7 +91,7 @@
       "id": "puppeteer",
       "name": "Puppeteer",
       "description": "Headless browser automation — navigate pages, take screenshots, extract content.",
-      "icon": "browser",
+      "icon": "globe",
       "tags": ["browser", "automation", "scraping"],
       "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/main/src/puppeteer",
       "mcpConfig": {
@@ -308,7 +308,7 @@
       "id": "atlassian",
       "name": "Atlassian (Jira + Confluence)",
       "description": "Read Jira issues + Confluence pages.",
-      "icon": "jira",
+      "icon": "list-check",
       "tags": ["project-management", "issues", "wiki"],
       "sourceUrl": "https://github.com/sooperset/mcp-atlassian",
       "mcpConfig": {
@@ -374,7 +374,7 @@
       "id": "trello",
       "name": "Trello",
       "description": "Read boards, lists, and cards from Trello.",
-      "icon": "trello",
+      "icon": "table-columns",
       "tags": ["project-management", "kanban"],
       "sourceUrl": "https://github.com/delorenj/mcp-server-trello",
       "mcpConfig": {

@@ -16,6 +16,52 @@ const {
 const appName = "Dashboard";
 const configFilename = "providers.json";
 
+// Name prefix of the throwaway servers "Fetch Tools" / Test Connection start.
+const TEST_PREFIX = "__test__";
+// How long a "Fetch Tools" sign-in can be kept for the provider being added.
+const TEST_SIGN_IN_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * What a sign-in was made for: the server config and the provider's fields
+ * (URL, client id, …). A "Fetch Tools" sign-in only goes to a provider saved
+ * with exactly these — never to another server or account.
+ */
+function signInFingerprint(mcpConfig, credentials) {
+  const stable = (v) =>
+    Array.isArray(v)
+      ? v.map(stable)
+      : v && typeof v === "object"
+        ? Object.fromEntries(
+            Object.keys(v)
+              .sort()
+              .map((k) => [k, stable(v[k])]),
+          )
+        : v;
+  return require("crypto")
+    .createHash("sha256")
+    .update(JSON.stringify(stable({ mcpConfig, credentials })))
+    .digest("hex");
+}
+
+function encryptText(text) {
+  return safeStorage.encryptString(text).toString("base64");
+}
+
+function decryptText(b64) {
+  try {
+    return safeStorage.decryptString(Buffer.from(b64, "base64"));
+  } catch (e) {
+    return null;
+  }
+}
+
+function isFreshTestEntry(entry) {
+  const created = Date.parse(entry?.dateCreated || "");
+  return (
+    Number.isFinite(created) && Date.now() - created <= TEST_SIGN_IN_TTL_MS
+  );
+}
+
 const providerController = {
   /**
    * saveProvider
@@ -48,6 +94,9 @@ const providerController = {
     // `undefined` means "preserve whatever the saved provider has";
     // explicit `true`/`false` flips the flag.
     isDefaultForType = undefined,
+    // The provider's old name when this save renames it: its sign-in
+    // (OAuth state) moves to the new name.
+    renamedFrom = null,
   ) => {
     try {
       // Build file path
@@ -107,8 +156,39 @@ const providerController = {
       // written out-of-band by saveOAuthState. A fresh providerEntry would
       // otherwise drop it, wiping tokens whenever the user edits/re-saves an
       // OAuth MCP provider.
-      if (prev.oauth) {
+      const renaming = !!renamedFrom && renamedFrom !== providerName;
+      // On a rename, a sign-in already under the new name is only kept if
+      // it's this edit's own (Authorize writes one before Save, with no
+      // credentials) — never a different provider's that had that name.
+      if (prev.oauth && (!renaming || !prev.credentials)) {
         providerEntry.oauth = prev.oauth;
+      } else if (renaming && providers[renamedFrom]?.oauth) {
+        providerEntry.oauth = providers[renamedFrom].oauth;
+      } else if (providerClass === "mcp") {
+        // "Fetch Tools" signs in under a hidden test name
+        // (`__test__<catalog id>`): keep that sign-in for the provider
+        // being saved, so the user signs in once — but only if it was made
+        // just now, for exactly this server and these fields.
+        const testName = `${TEST_PREFIX}${providerType}`;
+        const test = providers[testName];
+        if (
+          testName !== providerName &&
+          test?.oauth &&
+          test.testFor &&
+          isFreshTestEntry(test) &&
+          decryptText(test.testFor) ===
+            signInFingerprint(mcpConfig, credentials)
+        ) {
+          providerEntry.oauth = test.oauth;
+          delete providers[testName];
+        }
+      }
+
+      // Test sign-ins nobody saved (the form was closed) don't linger.
+      for (const [name, data] of Object.entries(providers)) {
+        if (name.startsWith(TEST_PREFIX) && !isFreshTestEntry(data)) {
+          delete providers[name];
+        }
       }
 
       // Single-winner invariant: when flipping this provider's flag to
@@ -196,6 +276,9 @@ const providerController = {
       // Decrypt all credentials
       const decryptedProviders = [];
       Object.entries(providersData).forEach(([name, data]) => {
+        // Not providers: a "Fetch Tools" test's entry, or a sign-in saved
+        // before its provider was (Authorize runs before Save).
+        if (name.startsWith(TEST_PREFIX) || !data?.credentials) return;
         try {
           const credentialsBuffer = Buffer.from(data.credentials, "base64");
           const decryptedJson = safeStorage.decryptString(credentialsBuffer);
@@ -386,6 +469,59 @@ const providerController = {
         error: true,
         message: error.message,
       };
+    }
+  },
+
+  /**
+   * prepareTestSignIn
+   * Before a "Fetch Tools" / Test Connection server (`__test__<id>`) signs
+   * in: a sign-in left from another server, other fields, or a while ago is
+   * dropped — so it's never sent to a different server or reused for a
+   * different account — and the entry records what this one is for.
+   *
+   * @param {BrowserWindow} win the main window (unused; signature parity)
+   * @param {string} appId the application id
+   * @param {string} testName the test server's name (`__test__<id>`)
+   * @param {object} mcpConfig the config being tested
+   * @param {object} credentials the fields being tested
+   */
+  prepareTestSignIn: (win, appId, testName, mcpConfig, credentials) => {
+    try {
+      if (!String(testName).startsWith(TEST_PREFIX)) return { success: false };
+      const filename = path.join(
+        app.getPath("userData"),
+        appName,
+        appId,
+        configFilename,
+      );
+      ensureDirectoryExistence(filename);
+      const providers = getFileContents(filename, {});
+      const fingerprint = signInFingerprint(mcpConfig, credentials);
+      const prev = providers[testName];
+      const keep =
+        prev &&
+        prev.testFor &&
+        isFreshTestEntry(prev) &&
+        decryptText(prev.testFor) === fingerprint;
+      if (!keep) {
+        const now = new Date().toISOString();
+        providers[testName] = {
+          providerClass: "mcp",
+          testFor: encryptText(fingerprint),
+          dateCreated: now,
+          dateUpdated: now,
+        };
+        writeFileSync(filename, JSON.stringify(providers, null, 2), {
+          mode: 0o600,
+        });
+      }
+      return { success: true, kept: !!keep };
+    } catch (error) {
+      console.error(
+        "[providerController] Error preparing a test sign-in:",
+        error,
+      );
+      return { error: true, message: error.message };
     }
   },
 

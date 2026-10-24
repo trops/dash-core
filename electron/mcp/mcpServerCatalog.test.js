@@ -6,6 +6,42 @@ const path = require("path");
 const catalogPath = path.join(__dirname, "mcpServerCatalog.json");
 const catalog = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
 
+// Icons Dash has: every solid icon (with its aliases) — brand icons other
+// than Algolia aren't loaded, so a brand name shows nothing and logs
+// "Could not find icon" (QA 2026-10-24).
+const solidIconNames = (() => {
+  const solid = require("@fortawesome/free-solid-svg-icons");
+  const names = new Set();
+  for (const def of Object.values(solid)) {
+    if (!def || !def.iconName) continue;
+    names.add(def.iconName);
+    for (const alias of def.icon?.[2] || []) {
+      if (typeof alias === "string") names.add(alias);
+    }
+  }
+  return names;
+})();
+
+describe("catalog icons", () => {
+  const external = JSON.parse(
+    fs.readFileSync(
+      path.join(__dirname, "knownExternalMcpServers.json"),
+      "utf8",
+    ),
+  );
+  for (const [label, servers] of [
+    ["mcpServerCatalog.json", catalog.servers],
+    ["knownExternalMcpServers.json", external.servers],
+  ]) {
+    it(`every icon in ${label} is one Dash has`, () => {
+      const missing = servers
+        .filter((s) => s.icon && !solidIconNames.has(s.icon))
+        .map((s) => `${s.id}: ${s.icon}`);
+      assert.deepEqual(missing, []);
+    });
+  }
+});
+
 describe("mcpServerCatalog structural validation", () => {
   it("catalog has servers array", () => {
     assert.ok(Array.isArray(catalog.servers));

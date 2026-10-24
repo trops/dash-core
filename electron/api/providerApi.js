@@ -41,6 +41,8 @@ const providerApi = {
     // The controller uses this to distinguish "caller didn't pass a
     // value, preserve what's on disk" from "caller explicitly unset it".
     isDefaultForType = undefined,
+    // The old name when this save renames the provider (its sign-in moves).
+    renamedFrom = null,
   ) =>
     ipcRenderer.invoke(PROVIDER_SAVE, {
       appId,
@@ -52,6 +54,7 @@ const providerApi = {
       allowedTools,
       wsConfig,
       isDefaultForType,
+      renamedFrom,
     }),
 
   /**

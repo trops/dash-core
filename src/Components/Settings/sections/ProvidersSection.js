@@ -360,17 +360,10 @@ export const ProvidersSection = ({
     allowedTools = null,
   ) {
     const originalName = selectedName;
+    const renamed = !!originalName && originalName !== providerName;
 
-    // Delete old if name changed
-    if (originalName && originalName !== providerName) {
-      dashApi.deleteProvider(
-        appId,
-        originalName,
-        () => {},
-        () => {},
-      );
-    }
-
+    // A rename saves the new name first, taking the provider's sign-in with
+    // it (renamedFrom), then deletes the old name.
     dashApi.saveProvider(
       appId,
       providerName,
@@ -380,52 +373,72 @@ export const ProvidersSection = ({
         providerClass: "mcp",
         mcpConfig,
         allowedTools,
+        renamedFrom: renamed ? originalName : null,
       },
-      () => {
+      (event, result) => {
+        // The save reports its own failure as a result, not an error: keep
+        // the old name (and its sign-in) if nothing was written.
+        if (result?.error) {
+          console.error("Save MCP provider error:", result.message);
+          return;
+        }
+        if (renamed) {
+          dashApi.deleteProvider(
+            appId,
+            originalName,
+            () => {},
+            () => {},
+          );
+        }
         setSelectedName(providerName);
         setProviderTab("mcp");
         setIsEditingMcp(false);
         resetForm();
         refreshProviders && refreshProviders();
 
-        // Bounce the running MCP subprocess so the edit takes effect without
-        // requiring the user to fully quit and relaunch the app. stopServer
-        // is a no-op if nothing was running; we always start after stopping
-        // so a disconnected provider still picks up the new config on next
-        // tool call. Errors are logged but don't block the save UX.
+        // Stop the MCP server so the edit takes effect without quitting the
+        // app, and start it again only if it was running: a stopped one
+        // picks up the new config on its next use, and starting a sign-in
+        // provider that has no sign-in yet would open one (QA 2026-10-24).
+        // Errors are logged but don't block the save UX.
         const bounceName = originalName || providerName;
-        if (bounceName) {
+        const restart = () =>
+          dashApi.mcpStartServer(
+            providerName,
+            mcpConfig,
+            mcpCredentials,
+            (event, result) => {
+              if (result?.error) {
+                console.warn(
+                  `[ProvidersSection] mcpStartServer after save failed for ${providerName}:`,
+                  result.message,
+                );
+              } else {
+                console.log(
+                  `[ProvidersSection] ${providerName} restarted with new config`,
+                );
+              }
+            },
+            (e, err) =>
+              console.warn(
+                `[ProvidersSection] mcpStartServer after save errored for ${providerName}:`,
+                err?.message,
+              ),
+          );
+        const stop = (wasRunning) =>
           dashApi.mcpStopServer(
             bounceName,
-            () => {},
+            () => wasRunning && restart(),
             (e, err) =>
               console.warn(
                 `[ProvidersSection] mcpStopServer after save failed for ${bounceName}:`,
                 err?.message,
               ),
           );
-        }
-        dashApi.mcpStartServer(
-          providerName,
-          mcpConfig,
-          mcpCredentials,
-          (event, result) => {
-            if (result?.error) {
-              console.warn(
-                `[ProvidersSection] mcpStartServer after save failed for ${providerName}:`,
-                result.message,
-              );
-            } else {
-              console.log(
-                `[ProvidersSection] ${providerName} restarted with new config`,
-              );
-            }
-          },
-          (e, err) =>
-            console.warn(
-              `[ProvidersSection] mcpStartServer after save errored for ${providerName}:`,
-              err?.message,
-            ),
+        dashApi.mcpGetServerStatus(
+          bounceName,
+          (e, status) => stop(status?.status === "connected"),
+          () => stop(false),
         );
       },
       (e, err) => console.error("Save MCP provider error:", err),
