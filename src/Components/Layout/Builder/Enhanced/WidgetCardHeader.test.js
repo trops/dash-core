@@ -49,9 +49,10 @@ describe("WidgetCardHeader — design audit", () => {
     expect(screen.queryByText("My Workspace")).toBeNull();
   });
 
-  test("the package id is a 12px muted meta line", () => {
+  test("the package is a 12px muted meta line, never the internal id", () => {
     renderHeader();
-    const meta = screen.getByText("trops.composed.ComposedWidget3");
+    expect(screen.queryByText("trops.composed.ComposedWidget3")).toBeNull();
+    const meta = screen.getByText("@trops/composed");
     expect(meta.className).toMatch(/text-xs/);
     expect(meta.className).toMatch(/text-neutral-400/);
   });

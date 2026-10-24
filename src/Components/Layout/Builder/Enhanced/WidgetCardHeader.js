@@ -20,7 +20,10 @@ import {
 import { WidgetIcon } from "./WidgetIcon";
 import { ComponentManager } from "../../../../ComponentManager";
 import { getUserConfigurableProviders } from "../../../../utils/providerUtils";
-import { pickWidgetDisplayName } from "../../../../utils/widgetIdentity";
+import {
+  pickWidgetDisplayName,
+  widgetPackageLabel,
+} from "../../../../utils/widgetIdentity";
 import { providerExists } from "../../../../utils/providerResolution";
 import { AppContext } from "../../../../Context";
 import { cardFixPill } from "../../../Dashboard/widgetPanelText";
@@ -105,17 +108,11 @@ export const WidgetCardHeader = ({
   const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
   const status = useStatusTokens();
 
-  // Show the full scoped registry id (`scope.package.Component`) as
-  // the subtitle. The friendly title on line 1 may be a custom user
-  // title that doesn't reveal which widget is mounted; the subtitle
-  // pins down the underlying identity. Strict — the layout item is
-  // the source of truth.
-  const packageLabel = (() => {
-    const scopedId = widgetItem?.component || widgetConfig?.id || "";
-    if (typeof scopedId !== "string") return "";
-    const parts = scopedId.split(".");
-    return parts.length === 3 ? scopedId : "";
-  })();
+  // The package it comes from (`@scope/package`) as the subtitle. The
+  // title on line 1 may be a custom user title that doesn't reveal which
+  // widget is mounted; the package does, without an internal id.
+  const packageLabel =
+    widgetPackageLabel(widgetItem?.component || widgetConfig?.id) || "";
 
   // Get provider requirements from widget config (not from item directly)
   // Filter out providerClass: "api" so only user-configurable providers show badges

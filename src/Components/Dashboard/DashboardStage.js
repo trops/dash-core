@@ -309,6 +309,8 @@ const DashboardStageInner = ({
   const [isLoadingMenuItems, setIsLoadingMenuItems] = useState(false);
   const [menuItems, setMenuItems] = useState([]);
   const [workspaceConfig, setWorkspaceConfig] = useState([]);
+  // A workspaces load has come back (the first-run check waits for it).
+  const [workspacesLoaded, setWorkspacesLoaded] = useState(false);
 
   // This dashboard's team, live — the Bots switch's attention badge and the
   // Bots view (bot-teams TEAM-011). Popouts too (B3).
@@ -921,14 +923,18 @@ const DashboardStageInner = ({
       return;
     }
     if (onboardingCheckedRef.current) return;
-    if (isLoadingWorkspaces) return;
+    // Loading starts not-loading, so wait for a load to come back: before
+    // it, the list is empty even with dashboards saved.
+    if (isLoadingWorkspaces || !workspacesLoaded) return;
     onboardingCheckedRef.current = true;
 
     let cancelled = false;
+    let decided = false;
     (async () => {
       try {
         const status = await window.mainApi?.onboarding?.getStatus?.();
         if (cancelled) return;
+        decided = true;
         // Defense-in-depth: even if `workspaceConfig.length === 0`
         // briefly reads true during a race between `isLoadingWorkspaces`
         // and the workspace array populating, don't show the modal
@@ -956,14 +962,20 @@ const DashboardStageInner = ({
         // modal — silent absence is the right default for any host
         // that hasn't wired the onboarding controller yet.
         console.warn("[DashboardStage] onboarding gate skipped:", err);
-        if (!cancelled) setIsOnboardingOpen(false);
+        if (!cancelled) {
+          decided = true;
+          setIsOnboardingOpen(false);
+        }
       }
     })();
 
     return () => {
       cancelled = true;
+      // Superseded before deciding (the list changed): the next run
+      // decides, with the newer list.
+      if (!decided) onboardingCheckedRef.current = false;
     };
-  }, [popout, isLoadingWorkspaces, workspaceConfig.length]);
+  }, [popout, isLoadingWorkspaces, workspacesLoaded, workspaceConfig.length]);
 
   useEffect(() => {
     console.log(
@@ -1689,6 +1701,7 @@ const DashboardStageInner = ({
         return next.tabs;
       });
       setIsLoadingWorkspaces(false);
+      setWorkspacesLoaded(true);
     } catch (e) {
       console.log("handle load workspaces complete ERROR", e.message);
     }
