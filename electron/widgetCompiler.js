@@ -327,7 +327,15 @@ function findWidgetsDir(widgetPath) {
  *   package's listed libraries, never the app's (registry rebuilds)
  * @returns {Promise<string|null>} Path to the compiled bundle, or null if nothing to compile
  */
-async function compileWidget(widgetPath, { ownLibrariesOnly = false } = {}) {
+/**
+ * outDir: where the build goes (default <widgetPath>/dist). A folder the
+ * user loaded in place is built into Dash's own folder instead, so nothing
+ * is written into theirs — the build's entry file goes there too.
+ */
+async function compileWidget(
+  widgetPath,
+  { ownLibrariesOnly = false, outDir = null } = {},
+) {
   const widgetsDir = findWidgetsDir(widgetPath);
 
   if (!widgetsDir) {
@@ -351,8 +359,10 @@ async function compileWidget(widgetPath, { ownLibrariesOnly = false } = {}) {
   // Build a synthetic entry point that pairs each component with its config.
   // Compute relative path from the entry file (in widgetPath) to widgetsDir,
   // since widgetsDir may be nested (e.g., ./weather-widget/widgets/).
-  const relWidgetsDir =
-    "./" + path.relative(widgetPath, widgetsDir).split(path.sep).join("/");
+  // Built elsewhere (outDir), the entry imports the sources by full path.
+  const relWidgetsDir = outDir
+    ? path.resolve(widgetsDir).split(path.sep).join("/")
+    : "./" + path.relative(widgetPath, widgetsDir).split(path.sep).join("/");
   const imports = [];
   const exportParts = [];
 
@@ -364,7 +374,7 @@ async function compileWidget(widgetPath, { ownLibrariesOnly = false } = {}) {
 
     // Import the config (always)
     imports.push(
-      `import ${componentName}Config from "${relWidgetsDir}/${dashFile}";`,
+      `import ${componentName}Config from ${JSON.stringify(`${relWidgetsDir}/${dashFile}`)};`,
     );
 
     if (hasComponent) {
@@ -373,7 +383,7 @@ async function compileWidget(widgetPath, { ownLibrariesOnly = false } = {}) {
       //   export default function Foo → _Mod.default
       //   export const Foo = ...      → _Mod.Foo
       imports.push(
-        `import * as ${componentName}_Mod from "${relWidgetsDir}/${componentFile}";`,
+        `import * as ${componentName}_Mod from ${JSON.stringify(`${relWidgetsDir}/${componentFile}`)};`,
       );
       imports.push(
         `const ${componentName}Comp = ${componentName}_Mod.default || ${componentName}_Mod.${componentName} || Object.values(${componentName}_Mod).find(v => typeof v === 'function');`,
@@ -391,9 +401,9 @@ async function compileWidget(widgetPath, { ownLibrariesOnly = false } = {}) {
 
   const entryContent = [...imports, "", ...exportParts, ""].join("\n");
 
-  // Write temporary entry file in the widget root
-  const entryPath = path.join(widgetPath, "__compile_entry.js");
-  const distDir = path.join(widgetPath, "dist");
+  // Write temporary entry file in the widget root (or beside the build)
+  const distDir = outDir || path.join(widgetPath, "dist");
+  const entryPath = path.join(outDir || widgetPath, "__compile_entry.js");
   const outPath = path.join(distDir, "index.cjs.js");
   // The package's own libraries (package.json dependencies), downloaded
   // into a temp folder for this build (consolidation Phase 1a-3).
