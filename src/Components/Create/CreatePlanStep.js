@@ -45,6 +45,10 @@ import { PlanSketch } from "./PlanSketch";
 import { botPlanRequest, forWhere } from "./botCreate";
 import { forEdit } from "./editCreate";
 
+/** Create › Widget: the Planner plans one widget, not a dashboard. */
+const widgetPlanRequest = (prompt) =>
+  `${prompt}\n\n(Plan exactly one new widget for the user's widgets — it isn't going on a dashboard. No bots, theme or layout, and don't set "dashboard": the user previews the widget, then it's installed. Put the connection and settings they want on the widget piece.)`;
+
 /**
  * The Planner's first question in a conversation reopened from Recent: its
  * session may have moved on, so the plan comes along — and the plan's memory
@@ -376,6 +380,10 @@ export const CreatePlanStep = ({
       : null);
   const [botMode, setBotMode] = useState(bot);
   const where = botMode ? botMode.where || null : null;
+  // ask() can run from the first render's closure (a reopened plan asks at
+  // once), before setBotMode has re-rendered — it reads the mode from here.
+  const botModeRef = useRef(bot);
+  botModeRef.current = botMode;
   // One widget, previewed before it's installed: a cell, or a change.
   const single = !!(cell || edit);
   // Create › Widget on its own is saved like any plan (QA 2026-10-22: it
@@ -489,9 +497,10 @@ export const CreatePlanStep = ({
     const found = extractPlan(res.output);
     if (found) {
       // A bot goes where Where says, whatever the Planner wrote.
+      const mode = botModeRef.current;
       setPlan(
-        botMode
-          ? forWhere(found, where)
+        mode
+          ? forWhere(found, mode.where || null)
           : edit
             ? forEdit(found, edit.target, edit.mode)
             : found,
@@ -521,6 +530,29 @@ export const CreatePlanStep = ({
           .then((entry) => {
             if (!alive.current) return;
             restore(entry);
+            // Saved before the Planner ever answered (Create closed while
+            // the Scout looked): ask it now, as a first open would.
+            const conv = (entry && entry.conversation) || {};
+            const unanswered =
+              entry &&
+              entry.prompt &&
+              !(Array.isArray(conv.messages) && conv.messages.length) &&
+              !conv.plan;
+            if (unanswered) {
+              reopened.current = false;
+              const botWhere =
+                conv.bot && typeof conv.bot === "object"
+                  ? conv.bot.where || null
+                  : null;
+              ask(
+                conv.bot
+                  ? botPlanRequest(entry.prompt, botWhere)
+                  : widget || conv.widget
+                    ? widgetPlanRequest(entry.prompt)
+                    : entry.prompt,
+                false,
+              );
+            }
           })
           .catch(() => alive.current && restore(null));
       } else {
@@ -574,7 +606,7 @@ export const CreatePlanStep = ({
                 : edit
                   ? edit.request
                   : widget
-                    ? `${prompt}\n\n(Plan exactly one new widget for the user's widgets — it isn't going on a dashboard. No bots, theme or layout, and don't set "dashboard": the user previews the widget, then it's installed. Put the connection and settings they want on the widget piece.)`
+                    ? widgetPlanRequest(prompt)
                     : cell
                       ? `${prompt}\n\n(Plan exactly one widget for ${cell.label}: the user is editing that dashboard and it goes into that one cell. No bots, theme or layout, and don't set "dashboard" — the user previews the widget and the editor places it. Put the connection and settings they want on the widget piece.)`
                       : botMode
@@ -632,7 +664,10 @@ export const CreatePlanStep = ({
     if (conv.plan) setPlan(conv.plan);
     if (conv.checks) setChecks(conv.checks);
     // A bot plan stays one (2c-1).
-    if (conv.bot && typeof conv.bot === "object") setBotMode(conv.bot);
+    if (conv.bot && typeof conv.bot === "object") {
+      setBotMode(conv.bot);
+      botModeRef.current = conv.bot;
+    }
     setPlanningTokens(Number(conv.planningTokens) || 0);
     const b = entry && entry.build;
     if (b && b.state && b.state.status === "removed") {

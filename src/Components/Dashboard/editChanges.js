@@ -1,4 +1,5 @@
 import { findWidgetCell, widgetsOf } from "./editSelection";
+import { pruneDeadListenerReferences } from "../../utils/listenerResolution";
 
 /**
  * What Cancel will discard (create-entry phase 1e, CRE-006 AC7).
@@ -17,7 +18,30 @@ import { findWidgetCell, widgetsOf } from "./editSelection";
 const MAX_LINES = 8;
 
 const plural = (n, one, many) => (n === 1 ? `a ${one}` : `${n} ${many}`);
-const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+// Settings compare by content: key order, and an empty list/object or null
+// vs a missing value, aren't changes (loading the editor fills those in).
+// An empty string is — clearing a setting shows nothing instead of its
+// default.
+function canonical(value) {
+  if (Array.isArray(value)) {
+    const items = value.map((v) => {
+      const c = canonical(v);
+      return c === undefined ? null : c;
+    });
+    return items.length ? items : undefined;
+  }
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const key of Object.keys(value).sort()) {
+      const v = canonical(value[key]);
+      if (v !== undefined) out[key] = v;
+    }
+    return Object.keys(out).length ? out : undefined;
+  }
+  return value === null ? undefined : value;
+}
+const same = (a, b) =>
+  JSON.stringify(canonical(a) ?? null) === JSON.stringify(canonical(b) ?? null);
 
 /** [{ key, layout }] — each place widgets live on the dashboard. */
 function layoutsOf(ws) {
@@ -105,6 +129,11 @@ export function describeEditChanges({
   const discarded = [];
   const kept = [];
   if (!original || !current) return { discarded, kept };
+  // The editor drops wiring to widgets that aren't there any more as it
+  // loads; the copy taken on entering edit mode still has it. Drop it there
+  // too, so it isn't listed as a change the user made.
+  original = JSON.parse(JSON.stringify(original));
+  pruneDeadListenerReferences(original);
 
   if ((current.name || "") !== (original.name || "")) {
     discarded.push(`Renamed the dashboard to "${current.name}"`);

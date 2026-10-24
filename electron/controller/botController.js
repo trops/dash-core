@@ -506,10 +506,18 @@ const botController = {
       this._scheduler.catchUp(bot, this._lastRunAt(bot.id));
 
     // A deleted dashboard's team becomes unassigned + paused — never deleted,
-    // never left running somewhere unexpected (bot-teams TEAM-001).
+    // never left running somewhere unexpected (bot-teams TEAM-001). Its lead
+    // is removed: it has nothing left to lead.
     if (this._offWorkspaceDeleted) this._offWorkspaceDeleted();
     this._offWorkspaceDeleted = onWorkspaceDeleted((workspaceId) => {
-      unassignTeam({ store: this._store, pause: this._pause }, workspaceId);
+      unassignTeam(
+        {
+          store: this._store,
+          pause: this._pause,
+          deleteLead: (id) => this.delete(id),
+        },
+        workspaceId,
+      );
     });
 
     // Bot definitions changed (here, from Settings, the Assistant, a lead

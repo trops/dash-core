@@ -98,3 +98,35 @@ describe("unassignTeam (dashboard deleted)", () => {
     assert.deepEqual(paused, ["b"]);
   });
 });
+
+describe("unassignTeam — the lead goes with its dashboard", () => {
+  it("deletes the lead, unassigns and pauses the rest", () => {
+    const list = [
+      { id: "lead", role: "lead", workspaceId: "7" },
+      { id: "helper", workspaceId: "7" },
+      { id: "other", role: "lead", workspaceId: "9" },
+    ];
+    const store = {
+      list: () => list,
+      update: (id, patch) =>
+        Object.assign(
+          list.find((b) => b.id === id),
+          patch,
+        ),
+    };
+    const paused = [];
+    const deleted = [];
+    const ids = unassignTeam(
+      {
+        store,
+        pause: { pauseBot: (id) => paused.push(id) },
+        deleteLead: (id) => deleted.push(id),
+      },
+      7,
+    );
+    assert.deepEqual(deleted, ["lead"]);
+    assert.deepEqual(ids, ["helper"]);
+    assert.deepEqual(paused, ["helper"]);
+    assert.equal(list[2].workspaceId, "9"); // another dashboard's lead stays
+  });
+});

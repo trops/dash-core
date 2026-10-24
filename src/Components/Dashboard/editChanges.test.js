@@ -96,6 +96,47 @@ describe("describeEditChanges", () => {
     expect(r.discarded).toEqual(["Changed Emails's settings"]);
   });
 
+  // QA 2026-10-22: Discard listed Event Receiver's settings untouched.
+  test("loading the editor isn't a change: dead wiring dropped, empty vs missing", () => {
+    const withDeadWiring = {
+      ...original,
+      layout: [
+        original.layout[0],
+        widget(2, "Emails", {
+          listeners: { onMessage: ["Gone[9].clicked"] },
+        }),
+        widget(3, "Clock", { userPrefs: { b: 2, a: 1 } }),
+      ],
+    };
+    const r = describeEditChanges({
+      original: withDeadWiring,
+      current: {
+        ...original,
+        layout: [
+          original.layout[0],
+          widget(2, "Emails", { listeners: {}, providers: {} }),
+          widget(3, "Clock", { userPrefs: { a: 1, b: 2 } }),
+        ],
+      },
+      nameOf,
+    });
+    expect(r.discarded).toEqual([]);
+    // The copy taken on entering edit mode isn't changed.
+    expect(withDeadWiring.layout[1].listeners.onMessage).toHaveLength(1);
+  });
+
+  test("clearing a setting to empty is a change", () => {
+    const r = describe2({
+      ...original,
+      layout: [
+        original.layout[0],
+        widget(2, "Emails", { userPrefs: { title: "" } }),
+        original.layout[2],
+      ],
+    });
+    expect(r.discarded).toEqual(["Changed Emails's settings"]);
+  });
+
   test("staged bot edits", () => {
     const r = describe2(original, {
       pendingBotEdits: { b1: { id: "b1", name: "Triage" } },

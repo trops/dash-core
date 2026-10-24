@@ -403,7 +403,26 @@ export const CreateModal = ({
   // Closing ends any step (builder or bot form) here, so reopening starts on
   // the start screen — never a flash of the last builder, which would rerun
   // its startup (chat reset, draft resume) before the reset effect.
-  const close = () => {
+  const close = ({ saveScout = true } = {}) => {
+    // Closed while the Scout was still looking: nothing had saved the
+    // request yet (the plan step saves on its first open), so it goes under
+    // Unfinished now — reopening it asks the Planner. (Not when a match was
+    // picked: the user was helped.)
+    if (saveScout && scoutStep && !planStep && !cell) {
+      const recents = window.mainApi && window.mainApi.bots;
+      if (recents && recents.saveCreateRecent) {
+        Promise.resolve(
+          recents.saveCreateRecent({
+            prompt: scoutStep.prompt,
+            // The Scout looks first for a bot or a widget (a cell is
+            // excluded above); a widget is saved as one so it reopens as one.
+            conversation: scoutStep.bot
+              ? { bot: { where: botWhere } }
+              : { widget: true },
+          }),
+        ).catch(() => {});
+      }
+    }
     // A cell build ends here: closed early, it stops (nothing half-done is
     // left running, or installed unseen, for a cell no one is waiting on).
     if (
@@ -988,7 +1007,7 @@ export const CreateModal = ({
           useInCell(match);
           return;
         }
-        close();
+        close({ saveScout: false });
         if (onOpenWidget) onOpenWidget(match);
       }}
     />
