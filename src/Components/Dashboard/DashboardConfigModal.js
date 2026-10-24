@@ -246,7 +246,12 @@ export const DashboardConfigModal = ({
     // the standard places but doesn't surface which one — so we do a
     // lightweight parallel walk and annotate.
     const annotatedWalks = [];
-    if (Array.isArray(workspace?.layout)) {
+    // On a paged dashboard the top-level layout mirrors a page (a copy
+    // after a load), so walking both counted every widget twice.
+    const paged =
+      Array.isArray(workspace?.pages) &&
+      workspace.pages.some((p) => Array.isArray(p?.layout));
+    if (!paged && Array.isArray(workspace?.layout)) {
       annotatedWalks.push({ location: "root", layout: workspace.layout });
     }
     if (Array.isArray(workspace?.pages)) {

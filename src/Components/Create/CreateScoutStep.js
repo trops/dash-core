@@ -46,14 +46,23 @@ export const CreateScoutStep = ({
 
   useEffect(() => {
     alive.current = true;
+    // The Scout while it's looking: closed before it answers (Create
+    // closed, Skip, a pick), its run is stopped, not left going.
+    let looking = null;
     runTeamRole(
       "scout",
       // It knows what comes next, so it doesn't send the user elsewhere.
       bot
         ? scoutBotRequest(prompt, context)
         : `Find widgets that could do this: "${prompt}". Search with search_library. If nothing fits, say so in a sentence or two — the Planner plans a new one next, so don't tell the user who to ask.`,
-      { onText: (t) => alive.current && setSoFar(t) },
+      {
+        onText: (t) => alive.current && setSoFar(t),
+        onStart: (b) => {
+          looking = b;
+        },
+      },
     ).then((res) => {
+      looking = null;
       if (!alive.current) return;
       if (res.skipped) {
         // No Scout right now: build, as before the team existed.
@@ -65,6 +74,10 @@ export const CreateScoutStep = ({
     });
     return () => {
       alive.current = false;
+      const bots = window.mainApi && window.mainApi.bots;
+      if (looking && bots && typeof bots.stop === "function") {
+        Promise.resolve(bots.stop(looking.id)).catch(() => {});
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prompt]);

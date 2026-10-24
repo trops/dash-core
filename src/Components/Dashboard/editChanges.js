@@ -174,7 +174,8 @@ export function describeEditChanges({
     const a = after.get(k).widget;
     const b = before.get(k).widget;
     if (SETTINGS.some((f) => !same(a[f], b[f]))) {
-      discarded.push(`Changed ${nameOf(a)}'s settings`);
+      // Named as saved: the edited title is among what's discarded.
+      discarded.push(`Changed ${nameOf(b)}'s settings`);
     }
   });
 

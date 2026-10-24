@@ -11,6 +11,10 @@
  *   contextBridge.exposeInMainWorld("mainApi", defaultMainApi);
  */
 const { ipcRenderer, shell } = require("electron");
+
+// Listeners added with mainApi.on, by the id it returns.
+let _nextListenerId = 0;
+const _listeners = new Map();
 const secureStoreApi = require("./secureStoreApi");
 const workspaceApi = require("./workspaceApi");
 const layoutApi = require("./layoutApi");
@@ -59,14 +63,27 @@ function createMainApi(extensions = {}) {
     },
 
     // keep these for general use
+    // → an id for removeListener: across the contextBridge a function
+    // arrives as a new copy on each call, so removing it by the function
+    // never matches the one added.
     on: (event, fn) => {
       ipcRenderer.addListener(event, fn);
+      const id = String(++_nextListenerId);
+      _listeners.set(id, { event, fn });
+      return id;
     },
     removeAllListeners: (name = null) => {
       // can remove all listeners for event
       if (name) ipcRenderer.removeAllListeners(name);
     },
-    removeListener: (name, fn) => ipcRenderer.removeListener(name, fn),
+    removeListener: (name, idOrFn) => {
+      const entry = _listeners.get(idOrFn);
+      if (entry) {
+        _listeners.delete(idOrFn);
+        return ipcRenderer.removeListener(entry.event, entry.fn);
+      }
+      return ipcRenderer.removeListener(name, idOrFn);
+    },
 
     // Core APIs
     secureStoreApi: secureStoreApi,

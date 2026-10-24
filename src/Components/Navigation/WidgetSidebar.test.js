@@ -130,3 +130,15 @@ describe("WidgetSidebar — provider iteration safety", () => {
     expect(matches.length).toBeGreaterThanOrEqual(3);
   });
 });
+
+// QA 2026-10-24: each Add list row repeated the widget's internal id.
+describe("WidgetSidebar — a row's second line", () => {
+  test("is the package (@scope/package), not the widget key", () => {
+    const src = require("fs").readFileSync(
+      require("path").join(__dirname, "WidgetSidebar.js"),
+      "utf8",
+    );
+    expect(src).toMatch(/\{widgetPackageLabel\(widgetKey\)\}/);
+    expect(src).not.toMatch(/>\s*\{widgetKey\}\s*</);
+  });
+});

@@ -29,6 +29,7 @@ import { RegistryAuthModal } from "../Registry/RegistryAuthModal";
 import { InstallProgressModal } from "../Settings/details/InstallProgressModal";
 import { isDraftPackage } from "../../utils/draftPackage";
 import { recentlyCreated } from "./recentlyCreated";
+import { widgetPackageLabel } from "../../utils/widgetIdentity";
 
 // ComponentConfigModel's fallback `name` for a config that sets none — it
 // isn't the widget's name, so it never titles a row.
@@ -134,12 +135,9 @@ const DraggableWidgetItem = ({ widgetKey, widget, onPick = null }) => {
           {widgetTitle(widgetKey, widget)}
         </span>
       </div>
-      {widgetKey && (
-        <span
-          className={`text-xs pl-5 font-mono truncate ${t.muted}`}
-          title={widgetKey}
-        >
-          {widgetKey}
+      {widgetPackageLabel(widgetKey) && (
+        <span className={`text-xs pl-5 font-mono truncate ${t.muted}`}>
+          {widgetPackageLabel(widgetKey)}
         </span>
       )}
       {(providerTypes.length > 0 || hasEventInfo) && (

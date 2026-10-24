@@ -84,6 +84,31 @@ describe("describeEditChanges", () => {
     ]);
   });
 
+  // QA 2026-10-24: a renamed widget was named by its unsaved title.
+  test("a widget's settings line names it as saved", () => {
+    const named = (w) => w.userPrefs.title || w.component;
+    const r = describeEditChanges({
+      original: {
+        ...original,
+        layout: [
+          original.layout[0],
+          widget(2, "Emails", { userPrefs: { title: "Notepad" } }),
+          original.layout[2],
+        ],
+      },
+      current: {
+        ...original,
+        layout: [
+          original.layout[0],
+          widget(2, "Emails", { userPrefs: { title: "My Notes" } }),
+          original.layout[2],
+        ],
+      },
+      nameOf: named,
+    });
+    expect(r.discarded).toEqual(["Changed Notepad's settings"]);
+  });
+
   test("a widget's settings", () => {
     const r = describe2({
       ...original,

@@ -22,6 +22,7 @@ function setup({ team = [scout], record, pending = false } = {}) {
   let resolveRun;
   window.mainApi = {
     bots: {
+      stop: jest.fn(),
       listDashTeam: jest.fn().mockResolvedValue(team),
       onStream: jest.fn(() => 1),
       removeListener: jest.fn(),
@@ -36,14 +37,14 @@ function setup({ team = [scout], record, pending = false } = {}) {
   };
   const onBuildNew = jest.fn();
   const onUse = jest.fn();
-  render(
+  const { unmount } = render(
     <CreateScoutStep
       prompt="an Algolia search widget"
       onBuildNew={onBuildNew}
       onUse={onUse}
     />,
   );
-  return { onBuildNew, onUse, resolveRun: (r) => resolveRun(r) };
+  return { onBuildNew, onUse, unmount, resolveRun: (r) => resolveRun(r) };
 }
 
 afterEach(() => {
@@ -119,4 +120,23 @@ test("a failed search says so and still offers Build it", async () => {
   setup({ record: { status: "failed", error: "CLI not signed in" } });
   expect(await screen.findByText(/CLI not signed in/)).toBeInTheDocument();
   expect(screen.getByText("Build it")).toBeInTheDocument();
+});
+
+// QA 2026-10-24: closing Create left the Scout's run going.
+test("closed while it looks, the Scout's run is stopped", async () => {
+  const { unmount } = setup({ pending: true });
+  await screen.findByText(/Looking through/);
+  await waitFor(() => expect(window.mainApi.bots.run).toHaveBeenCalled());
+  const { stop } = window.mainApi.bots;
+  unmount();
+  expect(stop).toHaveBeenCalledTimes(1);
+  expect(stop).toHaveBeenCalledWith("b_scout");
+});
+
+test("closed after it answered, nothing is stopped", async () => {
+  const { unmount } = setup({ record: found });
+  await screen.findByText("Algolia Search");
+  const { stop } = window.mainApi.bots;
+  unmount();
+  expect(stop).not.toHaveBeenCalled();
 });

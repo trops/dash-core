@@ -130,7 +130,9 @@ describe("WidgetApi — file results go to the widget that asked", () => {
     const listeners = {};
     return {
       listeners,
-      on: (evt, fn) => (listeners[evt] = [...(listeners[evt] || []), fn]),
+      on: (evt, fn) => {
+        listeners[evt] = [...(listeners[evt] || []), fn];
+      },
       removeListener: (evt, fn) =>
         (listeners[evt] = (listeners[evt] || []).filter((f) => f !== fn)),
       removeAllListeners: () => {},

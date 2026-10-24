@@ -30,10 +30,13 @@ function awaitFileResult(
   { completeEvent, errorEvent, filename, onComplete, onError },
 ) {
   if (!onComplete && !onError) return;
+  // By the ids `on` returns (the function itself only off Electron).
+  let completeId;
+  let errorId;
   const stop = () => {
     if (typeof eApi.removeListener !== "function") return;
-    eApi.removeListener(completeEvent, complete);
-    eApi.removeListener(errorEvent, error);
+    eApi.removeListener(completeEvent, completeId || complete);
+    eApi.removeListener(errorEvent, errorId || error);
   };
   const complete = (_event, response) => {
     if (!sameFile(response, filename)) return;
@@ -45,8 +48,8 @@ function awaitFileResult(
     stop();
     if (onError) onError(response);
   };
-  eApi.on(completeEvent, complete);
-  eApi.on(errorEvent, error);
+  completeId = eApi.on(completeEvent, complete);
+  errorId = eApi.on(errorEvent, error);
 }
 
 /** The shared api (no widget behind it) can't read or write files. */
