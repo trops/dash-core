@@ -43,6 +43,7 @@ import {
 } from "../Layout/LayoutManager/layoutTemplates";
 import { CreateModal } from "../Create/CreateModal";
 import { OnboardingModal } from "./OnboardingModal";
+import { untitledDashboardName } from "../../utils/untitledDashboardName";
 
 import { DashCommandPalette } from "../Navigation/DashCommandPalette";
 import { DashTabBar } from "../Navigation/DashTabBar";
@@ -1481,7 +1482,8 @@ const DashboardStageInner = ({
       await handleCreateFromTemplate(
         createLayoutFromTemplate(layoutTemplates[0], menuId),
         themeKey || null,
-        "Untitled dashboard",
+        // Told apart from the blank ones already there ("… 2").
+        untitledDashboardName(workspaceConfig),
       );
     } catch (e) {
       console.error("Failed to create dashboard:", e);
