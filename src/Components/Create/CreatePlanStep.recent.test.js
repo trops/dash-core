@@ -125,6 +125,40 @@ test("reopened from Recent: as it was, no new question; the next one re-introduc
   expect(request).toMatch(/Now: Add a clock$/);
 });
 
+test("reopened before the Planner ever answered (closed during the Scout): it asks now", async () => {
+  const bots = api({
+    getCreateRecent: jest.fn().mockResolvedValue({
+      id: "plan_5",
+      prompt: "A weather widget",
+      conversation: {},
+      build: null,
+    }),
+  });
+  render(<CreatePlanStep prompt="" recentId="plan_5" />);
+  await waitFor(() => expect(bots.run).toHaveBeenCalled());
+  const [botId, request, cont, opts] = bots.run.mock.calls[0];
+  expect(botId).toBe("b_planner");
+  expect(request).toBe("A weather widget");
+  expect(cont).toBe(false);
+  expect(opts).toEqual({ planId: "plan_5" });
+});
+
+test("a widget request reopened before the Planner answered asks for one widget", async () => {
+  const bots = api({
+    getCreateRecent: jest.fn().mockResolvedValue({
+      id: "plan_6",
+      prompt: "A tip calculator",
+      conversation: { widget: true },
+      build: null,
+    }),
+  });
+  render(<CreatePlanStep prompt="" recentId="plan_6" />);
+  await waitFor(() => expect(bots.run).toHaveBeenCalled());
+  expect(bots.run.mock.calls[0][1]).toMatch(
+    /^A tip calculator\n\n\(Plan exactly one new widget/,
+  );
+});
+
 test("reopened mid-build: the build's last state, and Continue building resumes it", async () => {
   const bots = api({
     getCreateRecent: jest.fn().mockResolvedValue({

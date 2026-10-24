@@ -29,6 +29,37 @@ export function closeTab(tabs, tabId, activeTabId) {
 }
 
 /**
+ * Fresh dashboards in, tabs out: open dashboard tabs take the new data, and
+ * a deleted dashboard's tab closes (it used to stay until restart). Page
+ * tabs stay. If the active tab closed, the last remaining tab is active.
+ */
+export function syncTabs(tabs, workspaces, activeTabId, keepIds = []) {
+  const kept = [];
+  for (const tab of tabs || []) {
+    if (isPageTabId(tab.id)) {
+      kept.push(tab);
+      continue;
+    }
+    const fresh = (workspaces || []).find(
+      (w) => Number(w.id) === Number(tab.id),
+    );
+    if (!fresh) {
+      // An unsaved dashboard (e.g. loaded from a file) isn't in the list.
+      if (keepIds.some((id) => Number(id) === Number(tab.id))) kept.push(tab);
+      continue;
+    }
+    kept.push({ ...tab, name: fresh.name || tab.name, workspace: fresh });
+  }
+  if (activeTabId == null || kept.some((t) => t.id === activeTabId)) {
+    return { tabs: kept, activeTabId };
+  }
+  return {
+    tabs: kept,
+    activeTabId: kept.length ? kept[kept.length - 1].id : null,
+  };
+}
+
+/**
  * Rebuild tabs from saved ids (dashboard ids and `page:<key>`), in order.
  * Dashboards that no longer exist and unknown pages are dropped.
  */

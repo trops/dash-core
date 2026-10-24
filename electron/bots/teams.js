@@ -29,14 +29,20 @@ function teamOf(bots, workspaceId) {
 
 /**
  * A dashboard was deleted: its bots become unassigned AND paused — never
- * deleted, and never left running somewhere unexpected.
+ * deleted, and never left running somewhere unexpected. Its lead is the
+ * exception: it only leads that dashboard, so it's removed (`deleteLead`)
+ * instead of waiting under Unassigned with nothing to lead.
  * @returns {string[]} ids of the bots that were unassigned
  */
-function unassignTeam({ store, pause }, workspaceId) {
+function unassignTeam({ store, pause, deleteLead = null }, workspaceId) {
   if (normalizeWorkspaceId(workspaceId) === null) return [];
   const moved = [];
   for (const bot of teamOf(store.list(), workspaceId)) {
     try {
+      if (deleteLead && bot.role === "lead") {
+        deleteLead(bot.id);
+        continue;
+      }
       store.update(bot.id, { workspaceId: null });
       pause.pauseBot(bot.id);
       moved.push(bot.id);

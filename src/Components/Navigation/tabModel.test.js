@@ -1,4 +1,4 @@
-import { closeTab, openPageTab, restoreTabs } from "./tabModel";
+import { closeTab, openPageTab, restoreTabs, syncTabs } from "./tabModel";
 
 const ws = (id, name) => ({ id, name });
 const dashTab = (w) => ({ id: w.id, name: w.name, workspace: w });
@@ -76,6 +76,42 @@ describe("tabModel (app-navigation NAV-002)", () => {
 
     it("tolerates a missing list", () => {
       expect(restoreTabs(undefined, workspaces)).toEqual([]);
+    });
+  });
+});
+
+describe("syncTabs — tabs follow the dashboards (QA 2026-10-22)", () => {
+  const pageTab = {
+    id: "page:bots",
+    kind: "page",
+    pageKey: "bots",
+    name: "Bots",
+  };
+
+  it("a deleted dashboard's tab closes; the active one moves to the last tab", () => {
+    const tabs = [dashTab(ws(1, "Inbox")), pageTab, dashTab(ws(2, "Sales"))];
+    const out = syncTabs(tabs, [ws(1, "Inbox")], 2);
+    expect(out.tabs.map((t) => t.id)).toEqual([1, "page:bots"]);
+    expect(out.activeTabId).toBe("page:bots");
+  });
+
+  it("open tabs take the fresh data and keep the active tab", () => {
+    const out = syncTabs([dashTab(ws(1, "Inbox"))], [ws("1", "Mail")], 1);
+    expect(out.tabs[0].name).toBe("Mail");
+    expect(out.tabs[0].workspace).toEqual(ws("1", "Mail"));
+    expect(out.activeTabId).toBe(1);
+  });
+
+  it("a dashboard that was never saved (loaded from a file) keeps its tab", () => {
+    const out = syncTabs([dashTab(ws(5, "From file"))], [], 5, [5]);
+    expect(out.tabs.map((t) => t.id)).toEqual([5]);
+    expect(out.activeTabId).toBe(5);
+  });
+
+  it("closing the only tab leaves none active", () => {
+    expect(syncTabs([dashTab(ws(3, "Old"))], [], 3)).toEqual({
+      tabs: [],
+      activeTabId: null,
     });
   });
 });

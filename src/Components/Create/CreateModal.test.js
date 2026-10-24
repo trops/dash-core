@@ -430,6 +430,21 @@ describe("CreateModal — the Scout looks first (slice 4)", () => {
     expect(screen.queryByTestId("builder")).toBeNull();
   });
 
+  // QA 2026-10-22: closing while the Scout looked lost the request.
+  test("closed while the Scout is looking, the request goes under Unfinished", async () => {
+    setup();
+    withScout();
+    window.mainApi.bots.run = jest.fn(() => new Promise(() => {}));
+    await sendWidget("an Algolia search widget");
+    await screen.findByText(/Looking first/);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    // Saved as a widget request, so it reopens as one.
+    expect(window.mainApi.bots.saveCreateRecent).toHaveBeenCalledWith({
+      prompt: "an Algolia search widget",
+      conversation: { widget: true },
+    });
+  });
+
   test("picking a match closes Create and hands it to the host", async () => {
     const onOpenWidget = jest.fn();
     const { setIsOpen } = setup({ props: { onOpenWidget } });
@@ -437,6 +452,8 @@ describe("CreateModal — the Scout looks first (slice 4)", () => {
     await sendWidget("an Algolia search widget");
     fireEvent.click(await screen.findByText("Install"));
     expect(setIsOpen).toHaveBeenCalledWith(false);
+    // The user was helped: nothing goes under Unfinished.
+    expect(window.mainApi.bots.saveCreateRecent).not.toHaveBeenCalled();
     expect(onOpenWidget).toHaveBeenCalledWith(
       expect.objectContaining({
         source: "Registry",

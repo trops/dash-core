@@ -83,7 +83,12 @@ import {
   pageKeyOf,
   pageTabId,
 } from "../Navigation/appPages";
-import { closeTab, openPageTab, restoreTabs } from "../Navigation/tabModel";
+import {
+  closeTab,
+  openPageTab,
+  restoreTabs,
+  syncTabs,
+} from "../Navigation/tabModel";
 import {
   forEachWidget,
   getUnresolvedProviders,
@@ -1663,19 +1668,26 @@ const DashboardStageInner = ({
       // MCP-driven mutations (update_layout, add_widget, etc.) update the
       // config but the active tab keeps its stale snapshot — users only
       // see the change after closing and reopening the tab.
-      setOpenTabs((prevTabs) =>
-        prevTabs.map((tab) => {
-          const fresh = workspacesTemp.find(
-            (w) => Number(w.id) === Number(tab.id),
-          );
-          if (!fresh) return tab; // workspace was deleted; leave tab for handleCloseTab to reap
-          return {
-            ...tab,
-            name: fresh.name || tab.name,
-            workspace: fresh,
-          };
-        }),
-      );
+      // A deleted dashboard's tab closes here (syncTabs). Dashboards that
+      // were never saved (loaded from a file, still being edited) aren't in
+      // the list and stay open.
+      setOpenTabs((prevTabs) => {
+        const active = activeTabIdRef.current;
+        const unsaved = prevTabs
+          .filter(
+            (t) => t.workspace && !savedTabIdsRef.current.has(Number(t.id)),
+          )
+          .map((t) => t.id);
+        const next = syncTabs(prevTabs, workspacesTemp, active, unsaved);
+        for (const w of workspacesTemp)
+          savedTabIdsRef.current.add(Number(w.id));
+        if (next.activeTabId !== active) {
+          // The dashboard being edited was deleted: leave the editor.
+          if (!previewModeRef.current) leaveEditor();
+          setActiveTabId(next.activeTabId);
+        }
+        return next.tabs;
+      });
       setIsLoadingWorkspaces(false);
     } catch (e) {
       console.log("handle load workspaces complete ERROR", e.message);
@@ -2027,6 +2039,9 @@ const DashboardStageInner = ({
   const workspaceConfigRef = useRef([]);
   const openTabsRef = useRef([]);
   const activeTabIdRef = useRef(null);
+  // Dashboard ids seen in a saved list: one missing from a later list was
+  // deleted; one never seen was never saved (and its tab stays).
+  const savedTabIdsRef = useRef(new Set());
   handleOpenTabRef.current = handleOpenTab;
   const handleOpenBuiltRef = useRef(null);
   handleOpenBuiltRef.current = handleOpenBuiltDashboard;
@@ -2353,6 +2368,17 @@ const DashboardStageInner = ({
   // Internal: the unguarded cancel-edit operation. Called both from
   // the direct Cancel button (when nothing is dirty) and from the
   // confirmation modal's Discard action.
+  // Out of edit mode without restoring anything (the dashboard is gone).
+  function leaveEditor() {
+    currentWorkspaceRef.current = null;
+    originalWorkspaceRef.current = null;
+    setIsDirty(false);
+    setPendingBotEdits({});
+    pendingBotFormsRef.current = {};
+    pendingSettings.clear();
+    setPreviewMode(true);
+  }
+
   function performCancelEdit() {
     if (originalWorkspaceRef.current) {
       updateTabWorkspace(originalWorkspaceRef.current);
