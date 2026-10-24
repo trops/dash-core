@@ -32,7 +32,8 @@ import { exportedText } from "./exportedText";
 import { saveErrorText } from "../../utils/saveErrorText";
 
 const UNCATEGORIZED = "Uncategorized";
-const NO_FOLDER = "none";
+// Empty, so it takes the select's placeholder place ("No folder" once).
+const NO_FOLDER = "";
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 const getWidgetConfig = (name) =>

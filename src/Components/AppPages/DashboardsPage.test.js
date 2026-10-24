@@ -283,10 +283,15 @@ describe("DashboardsPage — detail", () => {
   it("a dashboard outside every folder shows No folder, and can go back to none", () => {
     const h = setup();
     pick("Loose");
-    expect(within(detail()).getByLabelText("Folder")).toHaveValue("none");
+    const folder = within(detail()).getByLabelText("Folder");
+    expect(folder).toHaveValue("");
+    // Once, not twice (QA 2026-10-23: the placeholder option repeated it).
+    expect(
+      [...folder.options].filter((o) => o.textContent === "No folder"),
+    ).toHaveLength(1);
     pick("Sales");
     fireEvent.change(within(detail()).getByLabelText("Folder"), {
-      target: { value: "none" },
+      target: { value: "" },
     });
     expect(h.dashApi.saveWorkspace.mock.calls[0][1].menuId).toBeNull();
   });

@@ -6,6 +6,7 @@ import {
   FontAwesomeIcon,
 } from "@trops/dash-react";
 import { AppContext } from "../../../Context/App/AppContext";
+import { connectionErrorText } from "../../../utils/connectionErrorText";
 
 /**
  * Validate that a URL starts with ws:// or wss://
@@ -224,7 +225,9 @@ export const WebSocketProviderForm = ({
       if (result.error) {
         setWsTestResult({
           success: false,
-          message: result.message || "Connection failed",
+          message:
+            connectionErrorText(result.message, url.trim()) ||
+            "Connection failed",
         });
       } else {
         setWsTestResult({
@@ -236,7 +239,8 @@ export const WebSocketProviderForm = ({
     } catch (err) {
       setWsTestResult({
         success: false,
-        message: err?.message || "Connection failed",
+        message:
+          connectionErrorText(err?.message, url.trim()) || "Connection failed",
       });
     }
     setIsWsTesting(false);

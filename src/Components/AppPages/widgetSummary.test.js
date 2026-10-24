@@ -395,6 +395,52 @@ describe("the drill-in list (consolidation Phase 4b)", () => {
   });
 });
 
+test("uninstallCopy: copied from the user's folder — Dash's copy goes, the folder stays", () => {
+  for (const packageId of ["@local/tictactoe", "@trops/tictactoe"]) {
+    const [pkg] = widgetOrgs([
+      {
+        name: packageId,
+        packageId,
+        source: "installed",
+        kind: "installed",
+        copiedFromFolder: true,
+        componentNames: ["local.tictactoe.TicTacToe"],
+      },
+    ]).flatMap((o) => o.packages);
+    expect(uninstallCopy(pkg).note).toBe(
+      "Dash removes its copy. Your folder stays where it is.",
+    );
+  }
+});
+
+test("uninstallCopy: a folder copy on a dashboard still says its cells break", () => {
+  const [pkg] = widgetOrgs(
+    [
+      {
+        name: "@local/tictactoe",
+        packageId: "@local/tictactoe",
+        source: "installed",
+        kind: "installed",
+        copiedFromFolder: true,
+        componentNames: ["local.tictactoe.TicTacToe"],
+      },
+    ],
+    {
+      workspaces: [
+        {
+          id: 1,
+          name: "Games",
+          layout: [{ id: 1, component: "local.tictactoe.TicTacToe" }],
+        },
+      ],
+    },
+  ).flatMap((o) => o.packages);
+  expect(pkg.usedOn.length).toBe(1);
+  expect(uninstallCopy(pkg).note).toBe(
+    'Dash removes its copy. Your folder stays where it is. Its cells will show "Widget Not Found" until you load it again.',
+  );
+});
+
 test("widgetTitle: a display name that's just its component id reads as words", () => {
   expect(
     widgetTitle({

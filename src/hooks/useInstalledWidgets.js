@@ -215,6 +215,8 @@ export const useInstalledWidgets = () => {
             checks: reg.checks || null,
             // Runs from the user's own folder (Uninstall keeps it).
             loadedInPlace: !!reg.loadedInPlace,
+            // A copy of the user's folder (Uninstall removes only the copy).
+            copiedFromFolder: !!reg.copiedFromFolder,
           };
         });
 
@@ -249,6 +251,7 @@ export const useInstalledWidgets = () => {
             build: w.build || null,
             checks: w.checks || null,
             loadedInPlace: !!w.loadedInPlace,
+            copiedFromFolder: !!w.copiedFromFolder,
           };
         });
 

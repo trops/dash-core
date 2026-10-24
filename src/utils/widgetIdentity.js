@@ -41,7 +41,8 @@ export function pickWidgetDisplayName(item, cfg) {
     item?.userConfig?.title?.defaultValue ||
     (typeof item?.userConfig?.title === "string"
       ? item.userConfig.title
-      : null);
+      : null) ||
+    cfg?.userConfig?.title?.defaultValue;
   if (typeof userConfigTitle === "string" && userConfigTitle.trim()) {
     return userConfigTitle;
   }
@@ -83,6 +84,17 @@ export function humanizeIdentifier(name) {
  * @param {Object} item
  * @returns {string|null}
  */
+/**
+ * A widget's package for a subtitle ("@trops/dash-samples"), never its
+ * internal id (trops.dash-samples.NotepadWidget) or a uuid — nor a draft's
+ * id-named folder. Null when there's nothing to show.
+ */
+export function widgetPackageLabel(ref) {
+  const parts = typeof ref === "string" ? ref.split(".") : [];
+  if (parts.length !== 3 || parts[1].startsWith("draft-")) return null;
+  return `@${parts[0]}/${parts[1]}`;
+}
+
 export function pickWidgetRef(item) {
   const c = item?.component;
   if (typeof c !== "string") return null;

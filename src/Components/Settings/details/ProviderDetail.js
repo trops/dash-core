@@ -9,6 +9,7 @@ import {
   FontAwesomeIcon,
 } from "@trops/dash-react";
 import { AppContext } from "../../../Context/App/AppContext";
+import { connectionErrorText } from "../../../utils/connectionErrorText";
 import { useConfigTokens } from "../../Dashboard/ConfigListRow";
 import {
   deriveFormFields,
@@ -282,7 +283,9 @@ export const ProviderDetail = ({
       if (result.error) {
         setWsTestResult({
           success: false,
-          message: result.message || "Connection failed",
+          message:
+            connectionErrorText(result.message, provider.wsConfig.url) ||
+            "Connection failed",
         });
       } else {
         setWsTestResult({
@@ -294,7 +297,9 @@ export const ProviderDetail = ({
     } catch (err) {
       setWsTestResult({
         success: false,
-        message: err?.message || "Connection failed",
+        message:
+          connectionErrorText(err?.message, provider.wsConfig?.url) ||
+          "Connection failed",
       });
     }
     setIsWsTesting(false);

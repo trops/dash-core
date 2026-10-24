@@ -5,6 +5,8 @@ import { AppContext } from "../../../../../Context";
 import { ComponentManager } from "../../../../../ComponentManager";
 import { replaceItemInLayout } from "../../../../../utils/layout";
 import { getUserConfigurableProviders } from "../../../../../utils/providerUtils";
+import { providerLabel } from "../../../../Create/planChecklist";
+import { emptyProviderOption } from "./emptyProviderOption";
 
 /**
  * PanelEditItemProviders
@@ -168,7 +170,7 @@ export const PanelEditItemProviders = ({
                     isMissing ? "text-red-100" : "text-gray-100"
                   }`}
                 >
-                  {type}
+                  {providerLabel(type)}
                 </span>
                 <span
                   className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold ${
@@ -217,11 +219,10 @@ export const PanelEditItemProviders = ({
                   }`}
                 >
                   <option value="">
-                    {isUsingDefault
-                      ? `— use default (${resolvedName}) —`
-                      : req.required
-                        ? "— select a provider —"
-                        : "— none —"}
+                    {emptyProviderOption({
+                      defaultName: defaultOption && defaultOption.name,
+                      required: req.required,
+                    })}
                   </option>
                   {options.map((opt) => (
                     <option key={opt.name} value={opt.name}>
@@ -232,8 +233,8 @@ export const PanelEditItemProviders = ({
                 </select>
                 {options.length === 0 && (
                   <div className="mt-1 text-[11px] text-amber-300">
-                    No {type} providers configured. Add one in Settings &gt;
-                    Providers.
+                    No {providerLabel(type)} providers configured. Add one in
+                    Settings &gt; Providers.
                   </div>
                 )}
               </div>

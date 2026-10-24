@@ -669,7 +669,13 @@ const webSocketController = {
 
         return {
           error: true,
-          message: error.message,
+          // localhost tries IPv4 and IPv6: an AggregateError whose own
+          // message is empty — the code says what happened.
+          message:
+            error.message ||
+            (error.errors && error.errors[0] && error.errors[0].message) ||
+            error.code ||
+            "Connection failed",
           providerName,
           status: STATUS.ERROR,
         };
