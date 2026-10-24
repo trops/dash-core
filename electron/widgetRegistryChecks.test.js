@@ -44,7 +44,7 @@ require.cache["__stub_electron_checks__"] = {
 
 process.env.DASH_LOCAL_INSTALL_LAX = "true";
 const WidgetRegistry = require("./widgetRegistry");
-const { setInstallGate } = require("./widgetRegistry");
+const { setInstallGate, findBundlePath } = require("./widgetRegistry");
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "zz-registry-checks-"));
 WidgetRegistry.initialize(root);
@@ -394,6 +394,62 @@ describe("a folder loaded in place runs its current source", () => {
   beforeEach(passAll);
   after(() => setInstallGate(null));
 
+  it("uninstalling a folder loaded in place removes Dash's build; the folder stays", async () => {
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), "zz-folder-"));
+    const dev = path.join(parent, "zz-gone");
+    fs.cpSync(makePackage("bye", { bundle: false, name: "@zz/gone" }), dev, {
+      recursive: true,
+    });
+    await registry.registerWidgetsFromFolder(parent, false);
+    const bundle = findBundlePath(dev);
+    assert.ok(bundle && fs.existsSync(bundle));
+    await registry.uninstallWidget("@zz/gone");
+    assert.equal(fs.existsSync(path.dirname(bundle)), false);
+    assert.ok(fs.existsSync(path.join(dev, "widgets", "Hello.js")));
+  });
+
+  it("a build the developer makes later wins over Dash's", async () => {
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), "zz-folder-"));
+    const dev = path.join(parent, "zz-later");
+    fs.cpSync(
+      makePackage("dash-made", { bundle: false, name: "@zz/later" }),
+      dev,
+      {
+        recursive: true,
+      },
+    );
+    await registry.registerWidgetsFromFolder(parent, false);
+    assert.match(fs.readFileSync(findBundlePath(dev), "utf8"), /dash-made/);
+    // The developer builds it themselves.
+    fs.mkdirSync(path.join(dev, "dist"));
+    fs.writeFileSync(
+      path.join(dev, "dist", "index.cjs.js"),
+      "module.exports = { theirs: true };",
+    );
+    await registry.registerWidgetsFromFolder(parent, false);
+    assert.equal(findBundlePath(dev), path.join(dev, "dist", "index.cjs.js"));
+    assert.equal(registry.getWidget("@zz/later").build, "developer");
+    registry.widgets.delete("@zz/later");
+  });
+
+  it("a build in widget-builds without its mark is still Dash's (rebuilt)", async () => {
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), "zz-folder-"));
+    const dev = path.join(parent, "zz-nomark");
+    fs.cpSync(makePackage("one", { bundle: false, name: "@zz/nomark" }), dev, {
+      recursive: true,
+    });
+    await registry.registerWidgetsFromFolder(parent, false);
+    const bundle = findBundlePath(dev);
+    fs.rmSync(path.join(path.dirname(bundle), ".dash-build"));
+    fs.writeFileSync(
+      path.join(dev, "widgets", "Hello.js"),
+      'export default function Hello() { return "two"; }',
+    );
+    await registry.registerWidgetsFromFolder(parent, false);
+    assert.match(fs.readFileSync(findBundlePath(dev), "utf8"), /two/);
+    registry.widgets.delete("@zz/nomark");
+  });
+
   it("Dash's build is marked and rebuilt on each load; the developer's own isn't", async () => {
     const parent = fs.mkdtempSync(path.join(os.tmpdir(), "zz-folder-"));
     const dev = path.join(parent, "zz-dev");
@@ -401,7 +457,11 @@ describe("a folder loaded in place runs its current source", () => {
       recursive: true,
     });
     await registry.registerWidgetsFromFolder(parent, false);
-    const bundle = path.join(dev, "dist", "index.cjs.js");
+    // Built into Dash's own folder — nothing is written into the user's.
+    const bundle = findBundlePath(dev);
+    assert.ok(bundle && !bundle.startsWith(dev), bundle);
+    assert.equal(fs.existsSync(path.join(dev, "dist")), false);
+    assert.equal(fs.existsSync(path.join(dev, "__compile_entry.js")), false);
     assert.match(fs.readFileSync(bundle, "utf8"), /first/);
     assert.equal(registry.getWidget("@zz/dev").build, "dash");
     fs.writeFileSync(
@@ -558,15 +618,16 @@ describe("a registry install builds from source", () => {
   const { checkPackage } = require("./widgetRegistry");
 
   it("a package that ships a build and builds here runs Dash's build", async () => {
-    const dir = makePackage("from-source");
+    // Registry installs are checked in Dash's staging folder.
+    const dir = path.join(WIDGETS, ".staging", "pkg-rebuilt");
+    fs.cpSync(makePackage("from-source"), dir, { recursive: true });
     const res = await checkPackage("@zz/rebuilt", dir, "installed", {
       rebuild: true,
     });
     assert.equal(res.build, "dash");
-    assert.match(
-      fs.readFileSync(path.join(dir, "dist", "index.cjs.js"), "utf8"),
-      /from-source/,
-    );
+    assert.equal(findBundlePath(dir), path.join(dir, "dist", "index.cjs.js"));
+    assert.match(fs.readFileSync(findBundlePath(dir), "utf8"), /from-source/);
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 
   it("one that can't be built here keeps its developer's build, saying why", async () => {

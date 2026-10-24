@@ -203,10 +203,15 @@ function checksFailed(widgetName, problems, done = "installed") {
  * → [problem] or null.
  */
 function botCallProblems(dir) {
-  const res = require("./utils/scanWidgetBotCalls").scanWidgetBotCalls(dir);
-  if (res.ok) return null;
+  const { scanWidgetBotCalls } = require("./utils/scanWidgetBotCalls");
+  // Dash's build of a folder loaded in place is the code that runs too.
+  const built = buildDirFor(dir);
+  const files = [dir, ...(built && fs.existsSync(built) ? [built] : [])]
+    .map((d) => scanWidgetBotCalls(d))
+    .flatMap((res) => (res.ok ? [] : res.files));
+  if (!files.length) return null;
   return [
-    `It starts your bots directly (${res.files.slice(0, 3).join(", ")}). Widgets may only send events that you wire a bot to, under the bot's "Run on events".`,
+    `It starts your bots directly (${files.slice(0, 3).join(", ")}). Widgets may only send events that you wire a bot to, under the bot's "Run on events".`,
   ];
 }
 
@@ -231,11 +236,45 @@ async function runGate(widgetName, dir) {
   };
 }
 
-// Marks a build Dash made (dist/.dash-build): it's rebuilt from the
-// current source each time, unlike a developer's own build.
+/**
+ * Where Dash builds a package. In its own widgets folder: the package's
+ * dist/. A folder the user loaded in place: Dash's widget-builds/ (one
+ * folder per path) — never a dist/ written into the user's folder.
+ * → the build folder, or null for the package's own dist/.
+ */
+function buildDirFor(dir) {
+  if (!WIDGETS_CACHE_DIR || !dir || isInsideWidgetsDir(dir)) return null;
+  const key = require("crypto")
+    .createHash("sha256")
+    .update(path.resolve(dir))
+    .digest("hex")
+    .slice(0, 16);
+  return path.join(path.dirname(WIDGETS_CACHE_DIR), "widget-builds", key);
+}
+
+// Marks a build Dash made (.dash-build beside it): it's rebuilt from the
+// current source each time, unlike a developer's own build. An older Dash
+// built in-place folders into their dist/ — that one counts too.
 const DASH_BUILD_MARK = ".dash-build";
+
+/** The developer's own build in the package folder (unmarked), or null. */
+function developerBundle(dir) {
+  const bundle = folderBundle(dir);
+  if (!bundle) return null;
+  return fs.existsSync(path.join(dir, "dist", DASH_BUILD_MARK)) ? null : bundle;
+}
+
 function builtByDash(dir) {
-  return fs.existsSync(path.join(dir, "dist", DASH_BUILD_MARK));
+  // A build the developer made since wins: it's kept, not rebuilt.
+  if (developerBundle(dir)) return false;
+  // Everything in widget-builds/ is Dash's.
+  const built = buildDirFor(dir);
+  return (
+    (built &&
+      (fs.existsSync(path.join(built, "index.cjs.js")) ||
+        fs.existsSync(path.join(built, DASH_BUILD_MARK)))) ||
+    fs.existsSync(path.join(dir, "dist", DASH_BUILD_MARK))
+  );
 }
 
 /**
@@ -314,15 +353,17 @@ async function checkPackage(
   let rebuildError = null;
   const markDashBuild = () => {
     try {
-      fs.mkdirSync(path.join(dir, "dist"), { recursive: true });
-      fs.writeFileSync(path.join(dir, "dist", DASH_BUILD_MARK), "");
+      const out = buildDirFor(dir) || path.join(dir, "dist");
+      fs.mkdirSync(out, { recursive: true });
+      fs.writeFileSync(path.join(out, DASH_BUILD_MARK), "");
     } catch (_e) {
       // unmarked: it's kept like a developer's build next time
     }
   };
   if (!findBundlePath(dir) || builtByDash(dir)) {
+    let compiled;
     try {
-      await compileWidget(dir);
+      compiled = await compileWidget(dir, { outDir: buildDirFor(dir) });
     } catch (e) {
       throw checksFailed(
         widgetName,
@@ -330,7 +371,7 @@ async function checkPackage(
         done,
       );
     }
-    markDashBuild();
+    if (compiled) markDashBuild();
     build = "dash";
   } else if (rebuild) {
     // Only with the libraries it lists, never the app's copies: a
@@ -343,7 +384,12 @@ async function checkPackage(
       rebuildError = `It doesn't list the libraries it uses (${imports.join(", ")}).`;
     } else {
       try {
-        if (await compileWidget(dir, { ownLibrariesOnly: true })) {
+        if (
+          await compileWidget(dir, {
+            ownLibrariesOnly: true,
+            outDir: buildDirFor(dir),
+          })
+        ) {
           markDashBuild();
           build = "dash";
         }
@@ -1643,7 +1689,9 @@ class WidgetRegistry {
       // Auto-compile widget source to CJS bundle if none exists
       if (!findBundlePath(widgetPath)) {
         try {
-          await compileWidget(widgetPath);
+          await compileWidget(widgetPath, {
+            outDir: buildDirFor(widgetPath),
+          });
           console.log(`[WidgetRegistry] Auto-compiled ${widgetName}`);
         } catch (compileError) {
           console.warn(
@@ -1779,10 +1827,17 @@ class WidgetRegistry {
     }
 
     try {
+      // Dash's build of a folder loaded in place (worked out while the
+      // path is still there to check).
+      const built = widget.path ? buildDirFor(widget.path) : null;
       // A folder of widgets loads in place, so its path is the user's own
       // folder: forget the widget, never delete files outside Dash's own.
       if (fs.existsSync(widget.path) && isInsideWidgetsDir(widget.path)) {
         fs.rmSync(widget.path, { recursive: true });
+      }
+      // Its build goes; the folder stays.
+      if (built && fs.existsSync(built)) {
+        fs.rmSync(built, { recursive: true, force: true });
       }
 
       // Clean up empty scope directory (e.g. widgets/@trops/ after removing @trops/slack)
@@ -2007,6 +2062,19 @@ function getWidgetRegistry() {
  * @returns {string|null} Absolute path to the bundle, or null if not found
  */
 function findBundlePath(widgetPath) {
+  // The developer's own build first; then Dash's build of a folder loaded
+  // in place; then a build an older Dash left in the folder's dist/.
+  const own = developerBundle(widgetPath);
+  if (own) return own;
+  const built = buildDirFor(widgetPath);
+  if (built && fs.existsSync(path.join(built, "index.cjs.js"))) {
+    return path.join(built, "index.cjs.js");
+  }
+  return folderBundle(widgetPath);
+}
+
+/** A bundle in the package folder itself (dist/ or its root), or null. */
+function folderBundle(widgetPath) {
   const candidates = [
     path.join(widgetPath, "dist", "index.cjs.js"),
     path.join(widgetPath, "index.cjs.js"),
@@ -2267,7 +2335,9 @@ function setupWidgetRegistryHandlers() {
       let compileError = null;
       if (!bundlePath) {
         try {
-          const compiled = await compileWidget(widget.path);
+          const compiled = await compileWidget(widget.path, {
+            outDir: buildDirFor(widget.path),
+          });
           if (compiled) {
             bundlePath = compiled;
           }
@@ -2319,7 +2389,9 @@ function setupWidgetRegistryHandlers() {
         // Auto-compile if no bundle exists
         if (!bundlePath) {
           try {
-            const compiled = await compileWidget(widgetPath);
+            const compiled = await compileWidget(widgetPath, {
+              outDir: buildDirFor(widgetPath),
+            });
             if (compiled) {
               bundlePath = compiled;
             }
@@ -2384,6 +2456,7 @@ module.exports.setupWidgetRegistryHandlers = setupWidgetRegistryHandlers;
 module.exports.validateZipEntries = validateZipEntries;
 module.exports.setInstallGate = setInstallGate;
 module.exports.checkPackage = checkPackage;
+module.exports.findBundlePath = findBundlePath;
 module.exports.isInsideWidgetsDir = isInsideWidgetsDir;
 module.exports.scopedLocalId = scopedLocalId;
 module.exports.localPackageName = localPackageName;
