@@ -3,9 +3,18 @@ import { Button3, SelectInput, StatusBadge } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { DetailGroup } from "./ManageLayout";
 import { BotAvatar } from "../Bots/BotAvatar";
-import { toPlainText } from "../Bots/botConversation";
+import { INTERRUPTED_TEXT, toPlainText } from "../Bots/botConversation";
 import { modelLabel, runCostLabel } from "../../utils/runCostLabel";
 import { withoutMatches } from "../../utils/teamRoles";
+import { relativeTime } from "../Bots/BotMonitor";
+
+/** "Stopped · 5 min ago": how the last run ended, and when. */
+function lastRunWhen(run) {
+  const s = run && run.status;
+  const word = s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
+  const when = relativeTime(run && (run.endedAt || run.at || run.startedAt));
+  return [word, when].filter(Boolean).join(" · ");
+}
 
 // A run's answer as words: the Scout's <matches> and the Planner's <plan>
 // blocks are for the app, not to read (QA 2026-10-22: a raw tag showed).
@@ -167,6 +176,9 @@ export const DashTeamPanel = ({ bot, status, lastRun, onChanged, onEdit }) => {
         <DetailGroup title="Last run">
           {lastRun ? (
             <div className="flex flex-col gap-1 min-w-0">
+              {lastRunWhen(lastRun) ? (
+                <span className="text-sm">{lastRunWhen(lastRun)}</span>
+              ) : null}
               {runCostLabel(lastRun) ? (
                 <span className={`text-xs ${muted}`}>
                   {runCostLabel(lastRun)}
@@ -176,6 +188,12 @@ export const DashTeamPanel = ({ bot, status, lastRun, onChanged, onEdit }) => {
                 <span className={`text-sm line-clamp-3 ${muted}`}>
                   {toPlainText(lastRun.error || answerText(lastRun.output))}
                 </span>
+              ) : lastRun.status === "stopped" ? (
+                <span className={`text-sm ${muted}`}>
+                  Stopped before it answered.
+                </span>
+              ) : lastRun.status === "interrupted" ? (
+                <span className={`text-sm ${muted}`}>{INTERRUPTED_TEXT}</span>
               ) : null}
             </div>
           ) : (

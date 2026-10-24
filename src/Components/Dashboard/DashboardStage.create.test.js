@@ -68,7 +68,7 @@ describe("DashboardStage — Create screen", () => {
 
   test("a blank dashboard is created from the single-panel template and named", () => {
     expect(source).toMatch(
-      /createLayoutFromTemplate\(layoutTemplates\[0\], menuId\),\s*themeKey \|\| null,\s*"Untitled dashboard",/,
+      /createLayoutFromTemplate\(layoutTemplates\[0\], menuId\),\s*themeKey \|\| null,[\s\S]{0,120}?untitledDashboardName\(workspaceConfig\),/,
     );
   });
 

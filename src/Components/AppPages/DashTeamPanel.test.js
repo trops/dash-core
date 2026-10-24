@@ -168,3 +168,30 @@ test("its last run's answer hides the <matches> / <plan> blocks (QA 2026-10-22)"
   expect(screen.getByText("Found 1 widget.")).toBeInTheDocument();
   expect(screen.queryByText(/<matches>/)).toBeNull();
 });
+
+// QA 2026-10-24: a stopped run's card said only "Haiku".
+test("its last run says how it ended and when", () => {
+  setup(scout, {
+    lastRun: {
+      status: "stopped",
+      model: "claude-haiku-4-5",
+      endedAt: new Date(Date.now() - 5 * 60000).toISOString(),
+      output: "",
+    },
+  });
+  expect(screen.getByText("Stopped · 5 min ago")).toBeInTheDocument();
+  expect(screen.getByText("Stopped before it answered.")).toBeInTheDocument();
+});
+
+test("a completed run: Completed and when, then its answer", () => {
+  setup(scout, {
+    lastRun: {
+      status: "completed",
+      endedAt: new Date().toISOString(),
+      output: "Found 2 widgets.",
+    },
+  });
+  expect(screen.getByText("Completed · just now")).toBeInTheDocument();
+  expect(screen.getByText("Found 2 widgets.")).toBeInTheDocument();
+  expect(screen.queryByText("Stopped before it answered.")).toBeNull();
+});
