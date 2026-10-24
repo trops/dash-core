@@ -1117,7 +1117,12 @@ class WidgetRegistry {
 
       this.registerWidget(
         widgetName,
-        { ...config, ...record },
+        // A copy of the user's folder: Uninstall says the folder stays.
+        {
+          ...config,
+          ...record,
+          ...(isDirectory ? { copiedFromFolder: true } : {}),
+        },
         widgetPath,
         false,
       );

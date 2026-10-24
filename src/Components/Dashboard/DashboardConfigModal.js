@@ -33,6 +33,16 @@ import { PermissionsTab } from "./PermissionsTab";
 import { BotsTab } from "./BotsTab";
 import { ConfigListRow, useConfigTokens } from "./ConfigListRow";
 import { ListenersMap, NotificationsList } from "./ConfigLists";
+import {
+  pickWidgetDisplayName,
+  widgetPackageLabel as packageOfRef,
+} from "../../utils/widgetIdentity";
+import { numberDuplicateLabels } from "../../utils/numberDuplicateLabels";
+import { emptyProviderOption } from "../Layout/Builder/Modal/Panel/emptyProviderOption";
+
+// A widget's name in words ("Notepad"), from its config when it has one.
+const widgetNameOf = (component) =>
+  pickWidgetDisplayName({ component }, ComponentManager.resolve(component));
 
 /** One tab in the modal's tab strip — the Bots view's tab style. */
 const ConfigTab = ({ active, onClick, children }) => {
@@ -319,11 +329,15 @@ export const DashboardConfigModal = ({
   // loaded so their wiring isn't judged before the bots are known.
   const botEmitters = useBotEmitters(workspace ? workspace.id : null, isOpen);
   const emitters = useMemo(
-    () => [...getEmitters(workspace, wConfig), ...(botEmitters || [])],
+    () =>
+      numberDuplicateLabels(
+        [...getEmitters(workspace, wConfig), ...(botEmitters || [])],
+        "label",
+      ),
     [workspace, wConfig, botEmitters],
   );
   const receivers = useMemo(
-    () => getReceivers(workspace, wConfig),
+    () => numberDuplicateLabels(getReceivers(workspace, wConfig), "label"),
     [workspace, wConfig],
   );
   const persistedWiring = useMemo(
@@ -804,8 +818,7 @@ function NotificationsTab({ workspace, onEditInPanel = null }) {
           if (config?.notifications?.length > 0) {
             out.push({
               uuid: item.uuid || item.uuidString,
-              title:
-                item.userPrefs?.title || config.displayName || item.component,
+              title: pickWidgetDisplayName(item, config),
               package: config.package || "Other",
               // Scoped component id (e.g. "trops.google.GoogleWidget")
               // — disambiguates rows when several widgets share a
@@ -831,10 +844,13 @@ function NotificationsTab({ workspace, onEditInPanel = null }) {
       workspace.pages.forEach((p) => visit(p?.layout));
     }
     visit(workspace?.sidebarLayout);
-    return out.sort((a, b) =>
-      String(a.title).localeCompare(String(b.title), undefined, {
-        sensitivity: "base",
-      }),
+    return numberDuplicateLabels(
+      out.sort((a, b) =>
+        String(a.title).localeCompare(String(b.title), undefined, {
+          sensitivity: "base",
+        }),
+      ),
+      "title",
     );
   }, [workspace]);
 
@@ -959,10 +975,6 @@ function NotificationsTab({ workspace, onEditInPanel = null }) {
           >
             <div className="flex flex-col gap-0.5">
               <span className="text-sm font-medium">{wi.title}</span>
-              <span className={`text-xs font-mono truncate ${muted}`}>
-                {wi.component}
-                {wi.itemId != null ? ` · #${wi.itemId}` : ""}
-              </span>
               <span className={`text-xs ${muted}`}>{wi.package}</span>
             </div>
             <div className={`flex flex-col border-t ${hairline}`}>
@@ -1023,7 +1035,10 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
     );
   }
 
-  const selectedRows = selectedType ? grouped.get(selectedType) || [] : [];
+  const selectedRows = numberDuplicateLabels(
+    selectedType ? grouped.get(selectedType) || [] : [],
+    "label",
+  );
   const selectedOptions = selectedType
     ? providersByType.get(selectedType) || []
     : [];
@@ -1129,12 +1144,9 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
                           <div className="text-sm font-medium truncate">
                             {row.label || row.component || "widget"}
                           </div>
-                          {(row.widgetRef || row.component) && (
-                            <div
-                              className={`text-xs font-mono truncate mt-0.5 ${muted}`}
-                              title={row.widgetRef || row.component}
-                            >
-                              {row.widgetRef || row.component}
+                          {packageOfRef(row.widgetRef) && (
+                            <div className={`text-xs truncate mt-0.5 ${muted}`}>
+                              {packageOfRef(row.widgetRef)}
                             </div>
                           )}
                           <div className="flex flex-row items-center gap-3 mt-1 text-xs">
@@ -1157,9 +1169,6 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
                                 Override
                               </span>
                             )}
-                            <span className={`font-mono truncate ${muted}`}>
-                              {(row.widgetId || "").slice(0, 8)}
-                            </span>
                           </div>
                         </div>
                         <select
@@ -1175,7 +1184,14 @@ function ProvidersTab({ grouped, providersByType, onBulk, onPerWidget }) {
                             needsAttention ? "border-amber-400" : hairline
                           }`}
                         >
-                          <option value="">— none —</option>
+                          <option value="">
+                            {emptyProviderOption({
+                              defaultName: selectedOptions.find(
+                                (o) => o.isDefaultForType,
+                              )?.name,
+                              required: isRequired,
+                            })}
+                          </option>
                           {selectedOptions.map((opt) => (
                             <option key={opt.name} value={opt.name}>
                               {opt.name}
@@ -1376,7 +1392,8 @@ function DependenciesTab({ dependencies }) {
                 <span className={`mr-1 ${muted}`}>Widgets:</span>
                 {dep.components
                   .map(
-                    (c) => `${c.component}${c.count > 1 ? ` ×${c.count}` : ""}`,
+                    (c) =>
+                      `${widgetNameOf(c.component)}${c.count > 1 ? ` ×${c.count}` : ""}`,
                   )
                   .join(", ")}
               </div>
@@ -1496,7 +1513,7 @@ function ListenersTab({ emitters, receivers, wiring, onAdd, onRemove }) {
               <ConfigListRow
                 key={r.key}
                 title={r.label}
-                subtitle={r.widgetRef || null}
+                subtitle={packageOfRef(r.widgetRef)}
                 active={r.key === selectedReceiverKey}
                 onClick={() => setSelectedReceiverKey(r.key)}
               />
@@ -1790,10 +1807,9 @@ function EventsColumn({
             >
               <div className="flex flex-col gap-0.5 mb-1">
                 <div className="text-sm font-semibold">{e.label}</div>
-                {(e.widgetRef || e.component) && (
-                  <div className={`text-xs font-mono truncate ${muted}`}>
-                    {(e.widgetRef || e.component) +
-                      (e.itemId != null ? `[${e.itemId}]` : "")}
+                {packageOfRef(e.widgetRef) && (
+                  <div className={`text-xs truncate ${muted}`}>
+                    {packageOfRef(e.widgetRef)}
                   </div>
                 )}
               </div>

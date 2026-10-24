@@ -61,6 +61,7 @@ const PROVIDER_NAMES = {
   github: "GitHub",
   gitlab: "GitLab",
   hubspot: "HubSpot",
+  websocket: "WebSocket",
 };
 
 /** "gmail" / "Google Calendar" / "github" → "Gmail" / "Google Calendar" / "GitHub". */

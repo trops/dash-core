@@ -9,10 +9,12 @@ import { forEachWidget } from "../../utils/providerResolution";
 import {
   pickWidgetDisplayName,
   pickWidgetRef,
+  widgetPackageLabel,
   belongsToWorkspace,
   isUserWidget,
 } from "../../utils/widgetIdentity";
 import { PanelEditForm } from "../../Context/Modal/Panel/PanelEditForm";
+import { numberDuplicateLabels } from "../../utils/numberDuplicateLabels";
 import { ConfigListRow, useConfigTokens } from "./ConfigListRow";
 
 const ALL_WIDGETS_ID = "__ALL__";
@@ -122,7 +124,8 @@ export const WidgetsTab = ({
       });
     }
     walkWithSection(workspace.sidebarLayout, "Sidebar");
-    return result;
+    // Two of a kind: "Notepad 1" / "Notepad 2", not internal ids.
+    return numberDuplicateLabels(result, "displayName");
   }, [workspace, getWidgetConfig]);
 
   // Fields declared by ≥ 2 widgets with matching type. Secrets are
@@ -202,7 +205,7 @@ export const WidgetsTab = ({
                 <ConfigListRow
                   key={w.id}
                   title={w.displayName}
-                  subtitle={w.widgetRef || null}
+                  subtitle={widgetPackageLabel(w.widgetRef)}
                   meta={
                     fieldCount === 0
                       ? "No configurable fields"
@@ -345,12 +348,9 @@ function SingleWidgetPane({
     <div>
       <div className="mb-3">
         <div className={`font-semibold ${strong}`}>{widget.displayName}</div>
-        {widget.widgetRef && (
-          <div
-            className={`text-xs font-mono truncate mt-0.5 ${muted}`}
-            title={widget.widgetRef}
-          >
-            {widget.widgetRef}
+        {widgetPackageLabel(widget.widgetRef) && (
+          <div className={`text-xs truncate mt-0.5 ${muted}`}>
+            {widgetPackageLabel(widget.widgetRef)}
           </div>
         )}
         <div className={`text-xs mt-0.5 ${muted}`}>{widget.section}</div>

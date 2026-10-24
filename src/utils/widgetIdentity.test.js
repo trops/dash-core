@@ -2,7 +2,11 @@
  * pickWidgetDisplayName — a component's identifier reads as words, as
  * Create names it (QA 2026-10-22: the Fix card said "QaThrowerTwo").
  */
-import { pickWidgetDisplayName, humanizeIdentifier } from "./widgetIdentity";
+import {
+  widgetPackageLabel,
+  pickWidgetDisplayName,
+  humanizeIdentifier,
+} from "./widgetIdentity";
 
 describe("pickWidgetDisplayName", () => {
   const item = { component: "ai-built.qathrowertwo.QaThrowerTwo" };
@@ -38,5 +42,26 @@ describe("humanizeIdentifier", () => {
     ["qa_thrower", "qa thrower"],
   ])("%s → %s", (input, out) => {
     expect(humanizeIdentifier(input)).toBe(out);
+  });
+});
+
+describe("widget names and packages for people (QA 2026-10-23)", () => {
+  test("the widget's own default title beats a code-name displayName", () => {
+    expect(
+      pickWidgetDisplayName(
+        { component: "trops.dash-samples.NotepadWidget" },
+        {
+          displayName: "NotepadWidget",
+          userConfig: { title: { defaultValue: "Notepad" } },
+        },
+      ),
+    ).toBe("Notepad");
+  });
+  test("package label: @scope/package, nothing for drafts or bare names", () => {
+    expect(widgetPackageLabel("trops.dash-samples.NotepadWidget")).toBe(
+      "@trops/dash-samples",
+    );
+    expect(widgetPackageLabel("ai-built.draft-abc123.Thing")).toBeNull();
+    expect(widgetPackageLabel("Clock")).toBeNull();
   });
 });

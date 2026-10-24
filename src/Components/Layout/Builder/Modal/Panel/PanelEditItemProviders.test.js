@@ -94,7 +94,8 @@ describe("PanelEditItemProviders — default-provider fallback awareness", () =>
   });
 
   test("the select 'no selection' option shows the default name when applicable", () => {
-    expect(source).toMatch(/use default \(\$\{resolvedName\}\)/);
+    expect(source).toMatch(/emptyProviderOption\(\{/);
+    expect(source).toMatch(/defaultName: defaultOption && defaultOption\.name/);
   });
 
   test("options dropdown annotates the default entry with (default)", () => {

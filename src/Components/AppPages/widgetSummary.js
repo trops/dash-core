@@ -165,6 +165,8 @@ export function widgetOrgs(
         // Loaded from the user's own folder: Uninstall forgets it, the
         // folder stays.
         loadedInPlace: !!w.loadedInPlace,
+        // Copied from the user's folder: Uninstall removes Dash's copy.
+        copiedFromFolder: !!w.copiedFromFolder,
       };
       packages.set(id, pkg);
     }
@@ -315,11 +317,17 @@ export function uninstallCopy(pkg, widget = null) {
   // the registry: it can't be put back, which is what matters.
   const note = pkg.loadedInPlace
     ? "Dash will forget it. Your folder stays where it is."
-    : notInRegistry
-      ? "This can't be undone: it isn't in the registry."
-      : pkg.usedOn.length
-        ? `On ${pkg.usedOn.length === 1 ? "that dashboard" : `those ${pkg.usedOn.length} dashboards`}, ${n === 1 ? "its cell will show" : "the cells will show"} "Widget Not Found" until you reinstall it from the registry.`
-        : "";
+    : pkg.copiedFromFolder
+      ? `Dash removes its copy. Your folder stays where it is.${
+          pkg.usedOn.length
+            ? ` ${n === 1 ? "Its cells" : "Their cells"} will show "Widget Not Found" until you load it again.`
+            : ""
+        }`
+      : notInRegistry
+        ? "This can't be undone: it isn't in the registry."
+        : pkg.usedOn.length
+          ? `On ${pkg.usedOn.length === 1 ? "that dashboard" : `those ${pkg.usedOn.length} dashboards`}, ${n === 1 ? "its cell will show" : "the cells will show"} "Widget Not Found" until you reinstall it from the registry.`
+          : "";
   return { title: `Uninstall ${label}?`, intro, items, note };
 }
 
