@@ -467,6 +467,17 @@ function oauthProviderFor({ win, appId, serverName, mcpConfig, credentials }) {
       `Sign-in needs this provider's ${missing.join(", ")}. Add it in the provider's settings and try again.`,
     );
   }
+  // A "Fetch Tools" server (`__test__<id>`) never reuses a sign-in made
+  // for another server, other fields, or a while ago.
+  if (String(serverName).startsWith("__test__")) {
+    require("./providerController").prepareTestSignIn(
+      win,
+      appId,
+      serverName,
+      mcpConfig,
+      credentials,
+    );
+  }
   return createMcpOAuthProvider({
     win,
     appId,
@@ -507,6 +518,33 @@ async function connectStreamableHttpWithOAuth(urlObj, oauthProvider) {
   } finally {
     oauthProvider._stopLoopback();
   }
+}
+
+/**
+ * A request failed because the server's sign-in expired and couldn't be
+ * renewed (the SDK refreshes tokens on its own; this is what's left when
+ * that fails). The server is disconnected so its next connect signs in
+ * again, instead of failing every call while marked connected. Returns the
+ * message to show, or null for any other error.
+ */
+async function signInExpired(error, win, serverName, workspaceId, server) {
+  const {
+    UnauthorizedError,
+  } = require("@modelcontextprotocol/sdk/client/auth.js");
+  if (!(error instanceof UnauthorizedError)) return null;
+  // Only the connection that failed: one that has since reconnected (and
+  // signed in again) stays up.
+  if (
+    server &&
+    activeServers.get(serverKey(workspaceId, serverName)) === server
+  ) {
+    try {
+      await mcpController.stopServer(win, serverName, workspaceId);
+    } catch (e) {
+      // Already gone — nothing to disconnect.
+    }
+  }
+  return `${serverName}'s sign-in has expired and couldn't be renewed, so Dash disconnected it. You'll be asked to sign in again the next time it connects.`;
 }
 
 const mcpController = {
@@ -1044,6 +1082,7 @@ const mcpController = {
     token = null,
   ) => {
     const key = serverKey(workspaceId, serverName);
+    let server = null;
     try {
       // Per-widget manifest gate. Activated by the
       // security.enforceWidgetMcpPermissions setting. When enabled
@@ -1079,7 +1118,7 @@ const mcpController = {
         }
       }
 
-      const server = activeServers.get(key);
+      server = activeServers.get(key);
       if (!server || !server.client) {
         throw new Error(`Server not connected: ${key}`);
       }
@@ -1115,7 +1154,8 @@ const mcpController = {
       // different scopes (Slice 3b will make that explicit).
       if (isReadOnlyTool(toolName)) {
         const cacheKey = `mcp:${key}:${toolName}:${JSON.stringify(args || {})}`;
-        return responseCache.get(cacheKey, doCall, {
+        // Awaited (here and below) so a failed call lands in the catch.
+        return await responseCache.get(cacheKey, doCall, {
           ttl: DEFAULT_TOOL_CACHE_TTL,
         });
       }
@@ -1123,15 +1163,22 @@ const mcpController = {
       // Write/mutation: invalidate any cached reads for this server
       // (safest default — broad invalidation when state changes)
       responseCache.invalidatePrefix(`mcp:${key}:`);
-      return doCall();
+      return await doCall();
     } catch (error) {
       console.error(
         `[mcpController] Error calling tool ${serverName}/${toolName}:`,
         error,
       );
+      const expired = await signInExpired(
+        error,
+        win,
+        serverName,
+        workspaceId,
+        server,
+      );
       return {
         error: true,
-        message: error.message,
+        message: expired || error.message,
       };
     }
   },
@@ -1147,8 +1194,9 @@ const mcpController = {
    */
   listTools: async (win, serverName, workspaceId) => {
     const key = serverKey(workspaceId, serverName);
+    let server = null;
     try {
-      const server = activeServers.get(key);
+      server = activeServers.get(key);
       if (!server || !server.client) {
         throw new Error(`Server not connected: ${key}`);
       }
@@ -1172,9 +1220,16 @@ const mcpController = {
         `[mcpController] Error listing tools for ${serverName}:`,
         error,
       );
+      const expired = await signInExpired(
+        error,
+        win,
+        serverName,
+        workspaceId,
+        server,
+      );
       return {
         error: true,
-        message: error.message,
+        message: expired || error.message,
       };
     }
   },

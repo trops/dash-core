@@ -461,4 +461,204 @@ describe("providerController", () => {
       assert.deepEqual(got.oauth, { tokens: { access_token: "keep-me" } });
     });
   });
+
+  // ===================================================================
+  // "Fetch Tools" signs in under __test__<catalog id> (QA 2026-10-24)
+  // ===================================================================
+  describe("Fetch Tools sign-in", () => {
+    const sfConfig = {
+      transport: "streamable_http",
+      url: "{{serverUrl}}",
+      auth: "oauth",
+      oauth: { clientId: "{{clientId}}" },
+    };
+    const orgA = { serverUrl: "https://a.example/mcp", clientId: "key-a" };
+    const orgB = { serverUrl: "https://b.example/mcp", clientId: "key-b" };
+    const providersFile = () => JSON.parse(Object.values(fileStore)[0] || "{}");
+
+    // What startServer does for a __test__ server, then the sign-in.
+    function fetchTools(creds, token = "from-test") {
+      controller.prepareTestSignIn(
+        null,
+        "test-app",
+        "__test__salesforce",
+        sfConfig,
+        creds,
+      );
+      controller.saveOAuthState(null, "test-app", "__test__salesforce", {
+        tokens: { access_token: token },
+      });
+    }
+    const save = (name, creds, type = "salesforce", renamedFrom = null) =>
+      controller.saveProvider(
+        null,
+        "test-app",
+        name,
+        type,
+        creds,
+        "mcp",
+        sfConfig,
+        null,
+        null,
+        undefined,
+        renamedFrom,
+      );
+    const oauthOf = (name) =>
+      controller.getOAuthState(null, "test-app", name).oauth;
+
+    it("is kept for the provider saved with the same server and fields", () => {
+      fetchTools(orgA);
+      save("My Salesforce", orgA);
+
+      assert.deepEqual(oauthOf("My Salesforce"), {
+        tokens: { access_token: "from-test" },
+      });
+      assert.equal(providersFile()["__test__salesforce"], undefined);
+    });
+
+    it("isn't given to a provider saved with another server or key", () => {
+      fetchTools(orgA);
+      save("Sandbox", orgB);
+
+      assert.equal(oauthOf("Sandbox"), undefined);
+    });
+
+    it("isn't given to a provider from another catalog entry", () => {
+      fetchTools(orgA);
+      save("Other", orgA, "custom");
+
+      assert.equal(oauthOf("Other"), undefined);
+    });
+
+    it("an old one isn't kept, and is cleared on the next save", () => {
+      fetchTools(orgA);
+      const file = Object.keys(fileStore)[0];
+      const data = JSON.parse(fileStore[file]);
+      data["__test__salesforce"].dateCreated = new Date(
+        Date.now() - 2 * 60 * 60 * 1000,
+      ).toISOString();
+      fileStore[file] = JSON.stringify(data);
+
+      save("My Salesforce", orgA);
+
+      assert.equal(oauthOf("My Salesforce"), undefined);
+      assert.equal(providersFile()["__test__salesforce"], undefined);
+    });
+
+    it("a test for another server or key starts without the last test's sign-in", () => {
+      fetchTools(orgA);
+      controller.prepareTestSignIn(
+        null,
+        "test-app",
+        "__test__salesforce",
+        sfConfig,
+        orgB,
+      );
+      assert.equal(oauthOf("__test__salesforce"), undefined);
+    });
+
+    it("testing the same server again keeps its sign-in", () => {
+      fetchTools(orgA);
+      const res = controller.prepareTestSignIn(
+        null,
+        "test-app",
+        "__test__salesforce",
+        sfConfig,
+        { clientId: "key-a", serverUrl: "https://a.example/mcp" },
+      );
+      assert.equal(res.kept, true);
+      assert.deepEqual(oauthOf("__test__salesforce"), {
+        tokens: { access_token: "from-test" },
+      });
+    });
+
+    it("never replaces the provider's own sign-in", () => {
+      controller.saveOAuthState(null, "test-app", "My Salesforce", {
+        tokens: { access_token: "own" },
+      });
+      fetchTools(orgA);
+      save("My Salesforce", orgA);
+
+      assert.deepEqual(oauthOf("My Salesforce"), {
+        tokens: { access_token: "own" },
+      });
+    });
+
+    it("a rename keeps the provider's sign-in", () => {
+      save("Salesforce", orgA);
+      controller.saveOAuthState(null, "test-app", "Salesforce", {
+        tokens: { access_token: "own" },
+      });
+
+      save("Salesforce Work", orgA, "salesforce", "Salesforce");
+
+      assert.deepEqual(oauthOf("Salesforce Work"), {
+        tokens: { access_token: "own" },
+      });
+    });
+
+    it("a rename onto another provider's name never takes that provider's sign-in", () => {
+      save("Linear Work", orgB, "linear");
+      controller.saveOAuthState(null, "test-app", "Linear Work", {
+        tokens: { access_token: "linear-account" },
+      });
+      save("Notion", orgA, "notion");
+      controller.saveOAuthState(null, "test-app", "Notion", {
+        tokens: { access_token: "notion-account" },
+      });
+
+      save("Linear Work", orgA, "notion", "Notion");
+
+      assert.deepEqual(oauthOf("Linear Work"), {
+        tokens: { access_token: "notion-account" },
+      });
+    });
+
+    it("a rename keeps the sign-in made in this edit (Authorize before Save)", () => {
+      save("Salesforce", orgA);
+      controller.saveOAuthState(null, "test-app", "Salesforce", {
+        tokens: { access_token: "old" },
+      });
+      // The edit form's Authorize signs in under the new name first.
+      controller.saveOAuthState(null, "test-app", "Salesforce Work", {
+        tokens: { access_token: "fresh" },
+      });
+
+      save("Salesforce Work", orgA, "salesforce", "Salesforce");
+
+      assert.deepEqual(oauthOf("Salesforce Work"), {
+        tokens: { access_token: "fresh" },
+      });
+    });
+
+    it("listing skips test entries and sign-ins saved before their provider, without an error", () => {
+      fetchTools(orgA);
+      controller.saveOAuthState(null, "test-app", "Not Saved Yet", {
+        tokens: { access_token: "t" },
+      });
+      controller.saveProvider(
+        null,
+        "test-app",
+        "Algolia",
+        "algolia",
+        { appId: "a" },
+        "credential",
+      );
+
+      const errors = [];
+      const origError = console.error;
+      console.error = (...a) => errors.push(a.join(" "));
+      let result;
+      try {
+        result = controller.listProviders(null, "test-app");
+      } finally {
+        console.error = origError;
+      }
+      assert.deepEqual(
+        result.providers.map((p) => p.name),
+        ["Algolia"],
+      );
+      assert.deepEqual(errors, []);
+    });
+  });
 });

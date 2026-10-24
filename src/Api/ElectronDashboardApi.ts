@@ -422,6 +422,7 @@ class ElectronDashboardApi implements IDashboardApi {
           allowedTools,
           wsConfig,
           isDefaultForType,
+          renamedFrom,
         } = providerData;
         this.api.providers
           .saveProvider(
@@ -434,6 +435,7 @@ class ElectronDashboardApi implements IDashboardApi {
             allowedTools,
             wsConfig,
             isDefaultForType,
+            renamedFrom,
           )
           .then((result) => {
             onSuccess(this.events.PROVIDER_SAVE_COMPLETE, result);

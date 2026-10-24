@@ -17,6 +17,7 @@ import {
   headerTemplateToRows,
 } from "../../utils/mcpUtils";
 import { AdvancedMcpConfig } from "./AdvancedMcpConfig";
+import { resolveIcon } from "../../utils/resolveIcon";
 import { ToolSelector } from "../Settings/details/ToolSelector";
 
 /**
@@ -354,7 +355,7 @@ export const McpServerPicker = ({
       "google-calendar": "calendar-days",
       algolia: "magnifying-glass-plus",
     };
-    return iconMap[server.id] || server.icon || "server";
+    return resolveIcon(iconMap[server.id] || server.icon || "server");
   };
 
   return (

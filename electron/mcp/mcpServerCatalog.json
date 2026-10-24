@@ -5,7 +5,7 @@
       "id": "github",
       "name": "GitHub",
       "description": "Access GitHub repositories, issues, pull requests, and more via the GitHub API.",
-      "icon": "github",
+      "icon": "code-branch",
       "tags": ["developer", "git", "code"],
       "mcpConfig": {
         "transport": "stdio",
@@ -29,7 +29,7 @@
       "id": "slack",
       "name": "Slack",
       "description": "Read, search, and send messages across your Slack workspace. Provide ONE of: a bot token (xoxb-), a user OAuth token (xoxp-), or a browser-session pair (xoxc- + xoxd-). The browser-session pair works without workspace admin approval and gives full visibility.",
-      "icon": "slack",
+      "icon": "comments",
       "tags": ["communication", "messaging", "team"],
       "credentialOptions": [
         ["xoxbToken"],
@@ -223,7 +223,7 @@
       "id": "google-drive",
       "name": "Google Drive",
       "description": "Search, read, and write files in Google Drive. Supports folder listing, file creation, and path resolution.",
-      "icon": "google-drive",
+      "icon": "hard-drive",
       "tags": ["google", "files", "cloud-storage"],
       "mcpConfig": {
         "transport": "stdio",

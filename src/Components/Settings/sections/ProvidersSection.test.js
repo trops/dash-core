@@ -242,6 +242,83 @@ describe("ProvidersSection detail (NAV-007)", () => {
     ).toBeInTheDocument();
   });
 
+  // QA 2026-10-24: saving restarted every MCP server, so a sign-in
+  // provider with no sign-in yet opened one on Save.
+  async function saveGitHubEdit(status) {
+    const { dashApi } = setup();
+    dashApi.mcpGetServerStatus.mockImplementation((name, ok) =>
+      ok(null, { status }),
+    );
+    dashApi.mcpStopServer.mockImplementation((name, ok) => ok());
+    await waitFor(() => expect(window.mainApi.bots.list).toHaveBeenCalled());
+    fireEvent.click(row("GitHub"));
+    fireEvent.click(within(detail()).getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save renamed" }));
+    expect(dashApi.saveProvider).toHaveBeenCalled();
+    return dashApi;
+  }
+
+  it("saving an edit stops a server that wasn't running and doesn't start it", async () => {
+    const dashApi = await saveGitHubEdit("disconnected");
+    expect(dashApi.mcpStopServer).toHaveBeenCalledWith(
+      "GitHub",
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(dashApi.mcpStartServer).not.toHaveBeenCalled();
+  });
+
+  it("a rename whose save fails keeps the old name", async () => {
+    const { dashApi } = setup();
+    dashApi.saveProvider.mockImplementation((appId, name, data, ok) =>
+      ok(null, { error: true, message: "keychain unavailable" }),
+    );
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await waitFor(() => expect(window.mainApi.bots.list).toHaveBeenCalled());
+      fireEvent.click(row("GitHub"));
+      fireEvent.click(within(detail()).getByRole("button", { name: "Edit" }));
+      fireEvent.click(screen.getByRole("button", { name: "Save renamed" }));
+      expect(dashApi.saveProvider).toHaveBeenCalled();
+      expect(dashApi.deleteProvider).not.toHaveBeenCalled();
+      expect(dashApi.mcpStopServer).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("a rename saves the new name with its sign-in, then deletes the old name", async () => {
+    const dashApi = await saveGitHubEdit("disconnected");
+    expect(dashApi.saveProvider).toHaveBeenCalledWith(
+      "app",
+      "GitHub Work",
+      expect.objectContaining({ renamedFrom: "GitHub" }),
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(dashApi.deleteProvider).toHaveBeenCalledWith(
+      "app",
+      "GitHub",
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(dashApi.saveProvider.mock.invocationCallOrder[0]).toBeLessThan(
+      dashApi.deleteProvider.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("saving an edit restarts a running server with the new config", async () => {
+    const dashApi = await saveGitHubEdit("connected");
+    expect(dashApi.mcpStopServer.mock.calls[0][0]).toBe("GitHub");
+    expect(dashApi.mcpStartServer).toHaveBeenCalledWith(
+      "GitHub Work",
+      { transport: "stdio" },
+      {},
+      expect.any(Function),
+      expect.any(Function),
+    );
+  });
+
   it("with no dashboards given (Create's Connect), a rename still asks", async () => {
     const { dashApi } = setup({ workspaces: null });
     await waitFor(() => expect(window.mainApi.bots.list).toHaveBeenCalled());

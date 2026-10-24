@@ -196,7 +196,12 @@ function createMcpOAuthProvider({ win, appId, serverName, mcpConfig }) {
       if (oauth.callbackPort) {
         return `http://localhost:${oauth.callbackPort}/callback`;
       }
-      if (!loopback) return undefined;
+      // Outside a sign-in there's no port yet, but the SDK must still see
+      // a redirect URL: without one it takes the provider for a
+      // non-interactive client and never refreshes an expired token
+      // (QA 2026-10-24). No browser opens outside a sign-in, and a client
+      // registered with this URL isn't saved (saveClientInformation).
+      if (!loopback) return "http://127.0.0.1/callback";
       return `http://127.0.0.1:${loopback.port}/callback`;
     },
 
@@ -226,6 +231,11 @@ function createMcpOAuthProvider({ win, appId, serverName, mcpConfig }) {
     },
 
     saveClientInformation(clientInformation) {
+      // Registered outside a sign-in (the SDK re-registers when a refresh
+      // finds the client gone), it carries the port-less placeholder
+      // redirect URL: don't keep it, so the next sign-in registers with
+      // its real one.
+      if (!inFlow && !oauth.callbackPort) return;
       persist({ clientInformation });
     },
 
@@ -249,11 +259,11 @@ function createMcpOAuthProvider({ win, appId, serverName, mcpConfig }) {
     },
 
     async redirectToAuthorization(authorizationUrl) {
+      // Outside a connect nobody waits for the code (e.g. a token that
+      // couldn't be refreshed mid-session): don't open a sign-in that goes
+      // nowhere — the next connect signs in again.
+      if (!inFlow) return;
       if (oauth.callbackPort) {
-        // Outside a connect nobody waits for the code (e.g. a token that
-        // couldn't be refreshed mid-session): don't open a sign-in that
-        // goes nowhere — the next connect signs in again.
-        if (!inFlow) return;
         // Take the port only now, when the sign-in really opens.
         if (!loopback) {
           loopback = await startLoopbackServer(oauth.callbackPort);

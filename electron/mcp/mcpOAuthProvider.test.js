@@ -81,13 +81,16 @@ describe("mcpOAuthProvider", () => {
     openedUrls = [];
   });
 
-  it("redirectUrl is undefined until the loopback starts, then matches the port", async () => {
+  // Outside a sign-in the SDK must still see a redirect URL: without one
+  // it treats the provider as non-interactive and never refreshes an
+  // expired token (QA 2026-10-24).
+  it("redirectUrl matches the loopback port during a sign-in, and is never empty", async () => {
     const p = createProvider();
-    assert.equal(p.redirectUrl, undefined);
+    assert.equal(p.redirectUrl, "http://127.0.0.1/callback");
     const lb = await p._startLoopback();
     assert.equal(p.redirectUrl, `http://127.0.0.1:${lb.port}/callback`);
     p._stopLoopback();
-    assert.equal(p.redirectUrl, undefined);
+    assert.equal(p.redirectUrl, "http://127.0.0.1/callback");
   });
 
   it("clientMetadata embeds the loopback redirect_uri", async () => {
@@ -128,11 +131,21 @@ describe("mcpOAuthProvider", () => {
     });
   });
 
-  it("clientInformation falls back to DCR-saved info when no manual id", () => {
+  it("clientInformation falls back to DCR-saved info when no manual id", async () => {
     const p = createProvider();
     assert.equal(p.clientInformation(), undefined);
+    await p._startLoopback();
     p.saveClientInformation({ client_id: "dcr-id" });
+    p._stopLoopback();
     assert.deepEqual(p.clientInformation(), { client_id: "dcr-id" });
+  });
+
+  // Outside a sign-in the redirect URL is a port-less placeholder; a client
+  // registered with it would break the next real sign-in.
+  it("a client registered outside a sign-in isn't saved", () => {
+    const p = createProvider();
+    p.saveClientInformation({ client_id: "placeholder-dcr" });
+    assert.equal(p.clientInformation(), undefined);
   });
 
   it("tokens round-trip through saveTokens/getOAuthState", () => {
@@ -154,18 +167,33 @@ describe("mcpOAuthProvider", () => {
     assert.equal(p.codeVerifier(), "verifier-xyz");
   });
 
-  it("redirectToAuthorization opens the system browser", async () => {
+  it("redirectToAuthorization opens the system browser during a connect", async () => {
+    const p = createProvider();
+    await p._startLoopback();
+    try {
+      await p.redirectToAuthorization(
+        new URL("https://auth.example.com/authorize"),
+      );
+    } finally {
+      p._stopLoopback();
+    }
+    assert.deepEqual(openedUrls, ["https://auth.example.com/authorize"]);
+  });
+
+  it("outside a connect, it opens no sign-in nobody waits for", async () => {
     const p = createProvider();
     await p.redirectToAuthorization(
       new URL("https://auth.example.com/authorize"),
     );
-    assert.deepEqual(openedUrls, ["https://auth.example.com/authorize"]);
+    assert.deepEqual(openedUrls, []);
   });
 
-  it("invalidateCredentials clears the requested scope", () => {
+  it("invalidateCredentials clears the requested scope", async () => {
     const p = createProvider();
     p.saveTokens({ access_token: "at" });
+    await p._startLoopback();
     p.saveClientInformation({ client_id: "dcr" });
+    p._stopLoopback();
     p.invalidateCredentials("tokens");
     assert.equal(p.tokens(), undefined);
     assert.deepEqual(p.clientInformation(), { client_id: "dcr" });
