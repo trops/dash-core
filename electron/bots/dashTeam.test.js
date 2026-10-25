@@ -252,7 +252,7 @@ describe("Dash team instructions (phase 4a)", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /"access": \[string\]/);
     assert.match(planner.instructions, /short tappable options/);
-    assert.equal(planner.history.length, 13);
+    assert.equal(planner.history.length, 14);
   });
 });
 
@@ -404,7 +404,7 @@ describe("Dash team instructions (Create build fixes 3)", () => {
     );
     assert.match(checker.instructions, /must-fix/);
     assert.match(checker.instructions, /installed only if you pass it/);
-    assert.equal(checker.history.length, 4);
+    assert.equal(checker.history.length, 5);
     const bots = ROLE_IDS.map((r) => teamBot(r));
     bots[3].instructions = checker.history[1];
     const plan = planEnsureDashTeam(bots);
@@ -535,5 +535,38 @@ describe("Dash team instructions (consolidation Phase 3: a change to one widget)
       planEnsureDashTeam(bots).map((p) => [p.action, p.role]),
       ROLE_IDS.map((r) => ["upgrade", r]),
     );
+  });
+});
+
+describe("Dash team instructions (design guide)", () => {
+  const role = (r) => ROLES.find((x) => x.role === r);
+  it("the Planner lays dashboards out by the guide's layout rules", () => {
+    const planner = role("planner");
+    assert.match(planner.instructions, /one main area/);
+    assert.match(planner.instructions, /each widget is its own panel/);
+    const before = planner.history[planner.history.length - 1];
+    assert.doesNotMatch(before, /one main area/);
+    assert.match(before, /<plan><\/plan>/);
+  });
+  it("the Checker fails hard-coded colors", () => {
+    const checker = role("checker");
+    assert.match(checker.instructions, /hard-coded color/);
+    assert.match(checker.instructions, /useDashTokens/);
+    assert.doesNotMatch(
+      checker.history[checker.history.length - 1],
+      /hard-coded color/,
+    );
+  });
+  it("teams on the text before the guide upgrade", () => {
+    const bots = ROLE_IDS.map((r) => {
+      const h = role(r).history;
+      return teamBot(r, { instructions: h[h.length - 1] });
+    });
+    const plan = planEnsureDashTeam(bots);
+    for (const r of ["planner", "checker"]) {
+      const p = plan.find((x) => x.role === r);
+      assert.equal(p && p.action, "upgrade", r);
+      assert.equal(p.instructions, role(r).instructions);
+    }
   });
 });
