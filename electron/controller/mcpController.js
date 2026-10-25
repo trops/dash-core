@@ -521,17 +521,45 @@ async function connectStreamableHttpWithOAuth(urlObj, oauthProvider) {
 }
 
 /**
- * A request failed because the server's sign-in expired and couldn't be
- * renewed (the SDK refreshes tokens on its own; this is what's left when
- * that fails). The server is disconnected so its next connect signs in
- * again, instead of failing every call while marked connected. Returns the
- * message to show, or null for any other error.
+ * A request failed because of the server's sign-in, and the SDK (which
+ * renews tokens on its own) couldn't fix it:
+ *   - the sign-in expired and couldn't be renewed (UnauthorizedError), or
+ *   - an OAuth server turned down even the renewed token (the SDK's 401
+ *     "after successful authentication" — e.g. the account can't use this
+ *     server; signing in again usually won't help).
+ * The server is disconnected so it isn't left failing every call while
+ * marked connected. Returns the message to show, or null for any other
+ * error (a 401 from a server without OAuth is a bad key — left as is).
  */
 async function signInExpired(error, win, serverName, workspaceId, server) {
   const {
     UnauthorizedError,
   } = require("@modelcontextprotocol/sdk/client/auth.js");
-  if (!(error instanceof UnauthorizedError)) return null;
+  const {
+    StreamableHTTPError,
+  } = require("@modelcontextprotocol/sdk/client/streamableHttp.js");
+  const isTurnedDown = (err) =>
+    err instanceof StreamableHTTPError &&
+    err.code === 401 &&
+    /after successful authentication/.test(err.message || "");
+  const expired = error instanceof UnauthorizedError;
+  if (!expired) {
+    if (!server?.usesOAuth || !isTurnedDown(error)) return null;
+    // The SDK flags "renewed, then 401 again" per connection, not per
+    // request: a request sent with the old token while another one renewed
+    // it sees the flag too. Try once more — if that works, the sign-in is
+    // fine and only this call failed.
+    try {
+      await server.client.listTools();
+      return null;
+    } catch (retryError) {
+      if (
+        !isTurnedDown(retryError) &&
+        !(retryError instanceof UnauthorizedError)
+      )
+        return null;
+    }
+  }
   // Only the connection that failed: one that has since reconnected (and
   // signed in again) stays up.
   if (
@@ -544,7 +572,9 @@ async function signInExpired(error, win, serverName, workspaceId, server) {
       // Already gone — nothing to disconnect.
     }
   }
-  return `${serverName}'s sign-in has expired and couldn't be renewed, so Dash disconnected it. You'll be asked to sign in again the next time it connects.`;
+  return expired
+    ? `${serverName}'s sign-in has expired and couldn't be renewed, so Dash disconnected it. You'll be asked to sign in again the next time it connects.`
+    : `${serverName} turned down Dash's sign-in even after renewing it, so Dash disconnected it. Check that your account can use this server, then connect again.`;
 }
 
 const mcpController = {
@@ -855,6 +885,8 @@ const mcpController = {
           status: STATUS.CONNECTED,
           workspaceId: workspaceId || null,
           serverName,
+          // Signs in with OAuth: a 401 from it is about that sign-in.
+          usesOAuth: !!oauthProvider,
         });
 
         console.log(

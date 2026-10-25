@@ -631,6 +631,28 @@ describe("providerController", () => {
       });
     });
 
+    it("listing says whether a provider is signed in — a yes/no, never the tokens", () => {
+      save("Signed In", orgA);
+      controller.saveOAuthState(null, "test-app", "Signed In", {
+        tokens: { access_token: "secret-at", refresh_token: "secret-rt" },
+      });
+      save("Signed Out", orgB);
+      controller.saveOAuthState(null, "test-app", "Signed Out", {
+        clientInformation: { client_id: "dcr" },
+      });
+      save("No OAuth", orgB);
+
+      const { providers } = controller.listProviders(null, "test-app");
+      const byName = Object.fromEntries(providers.map((p) => [p.name, p]));
+      assert.equal(byName["Signed In"].signedIn, true);
+      assert.equal(byName["Signed Out"].signedIn, false);
+      assert.equal(byName["No OAuth"].signedIn, undefined);
+      const listed = JSON.stringify(providers);
+      assert.ok(!listed.includes("secret-at"));
+      assert.ok(!listed.includes("secret-rt"));
+      assert.equal(byName["Signed In"].oauth, undefined);
+    });
+
     it("listing skips test entries and sign-ins saved before their provider, without an error", () => {
       fetchTools(orgA);
       controller.saveOAuthState(null, "test-app", "Not Saved Yet", {
