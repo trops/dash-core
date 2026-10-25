@@ -98,6 +98,12 @@ function createMainApi(extensions = {}) {
     mcp: mcpApi,
     registry: registryApi,
 
+    // The running app's version (Settings › App info). The app registers
+    // the "app:get-version" handler (dash-electron public/electron.js).
+    app: {
+      getVersion: () => ipcRenderer.invoke("app:get-version"),
+    },
+
     shell: {
       openPath: (path) => shell.openPath(path),
       openExternal: (url) => {

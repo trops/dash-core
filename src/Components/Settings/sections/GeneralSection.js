@@ -179,7 +179,25 @@ export const GeneralSection = () => {
     });
   }
 
-  const version = credentials.version || null;
+  // The app's version: passed in, or asked from the main process (the
+  // design audit found Settings showing none).
+  const [version, setVersion] = useState(credentials.version || null);
+  useEffect(() => {
+    if (credentials.version) return undefined;
+    const getVersion = window.mainApi?.app?.getVersion;
+    if (typeof getVersion !== "function") return undefined;
+    let cancelled = false;
+    Promise.resolve(getVersion())
+      .then((v) => {
+        if (!cancelled && typeof v === "string" && v) setVersion(v);
+      })
+      .catch(() => {
+        // An app without the handler just doesn't show a version.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [credentials.version]);
   const [botSettings, changeBotSetting] = useBackgroundSettings();
   const background = botSettings ? botSettings.background !== false : true;
 
@@ -260,17 +278,22 @@ export const GeneralSection = () => {
           label="Export everything"
           description="Save a ZIP of your dashboards, themes, folders and provider settings. Credentials are not included."
           extra={
-            exportFeedback ? (
-              <span data-testid="export-feedback">
-                <StatusBadge
-                  state={
-                    exportFeedback.kind === "success" ? "success" : "error"
-                  }
-                  compact
-                  label={exportFeedback.message}
-                />
-              </span>
-            ) : null
+            // Always mounted, so screen readers announce the result when it
+            // appears (a live region that shows up already filled is often
+            // skipped).
+            <span role="status">
+              {exportFeedback ? (
+                <span data-testid="export-feedback">
+                  <StatusBadge
+                    state={
+                      exportFeedback.kind === "success" ? "success" : "error"
+                    }
+                    compact
+                    label={exportFeedback.message}
+                  />
+                </span>
+              ) : null}
+            </span>
           }
         >
           <Button2
@@ -289,7 +312,7 @@ export const GeneralSection = () => {
             value={credentials.appId || "—"}
             divider={!!version}
           />
-          {/* Shown only when the app passes its version in. */}
+          {/* Shown once the version is known. */}
           {version ? (
             <DataList.Item label="Version" value={version} divider={false} />
           ) : null}
