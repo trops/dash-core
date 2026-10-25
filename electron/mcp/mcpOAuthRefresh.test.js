@@ -23,6 +23,7 @@ const http = require("http");
 const { Client } = require("@modelcontextprotocol/sdk/client/index.js");
 const {
   StreamableHTTPClientTransport,
+  StreamableHTTPError,
 } = require("@modelcontextprotocol/sdk/client/streamableHttp.js");
 const {
   UnauthorizedError,
@@ -72,6 +73,7 @@ let base;
 let server;
 const validTokens = new Set();
 let tokenRequests = [];
+let turnDownAll = false;
 
 function json(res, status, body, headers = {}) {
   res.writeHead(status, { "Content-Type": "application/json", ...headers });
@@ -140,7 +142,8 @@ before(async () => {
         params.get("grant_type") === "refresh_token" &&
         params.get("refresh_token") === "good-refresh"
       ) {
-        validTokens.add("fresh-access");
+        // A server that turns the account down issues tokens it won't take.
+        if (!turnDownAll) validTokens.add("fresh-access");
         return json(res, 200, {
           access_token: "fresh-access",
           token_type: "Bearer",
@@ -165,6 +168,7 @@ beforeEach(() => {
   openedUrls = [];
   tokenRequests = [];
   validTokens.clear();
+  turnDownAll = false;
 });
 
 // Connected with a valid token, the way a widget or bot would be.
@@ -205,6 +209,23 @@ describe("an OAuth MCP server's token expiring mid-session", () => {
       for (const r of tokenRequests)
         assert.equal(r.grant_type, "refresh_token");
       assert.equal(provider.tokens().access_token, "fresh-access");
+      assert.deepEqual(openedUrls, []);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("a renewed token the server still turns down fails with a 401, and no browser", async () => {
+    const { client } = await connected("good-refresh");
+    try {
+      validTokens.delete("first-access");
+      turnDownAll = true;
+
+      await assert.rejects(
+        () => client.callTool({ name: "ping", arguments: {} }),
+        (err) => err instanceof StreamableHTTPError && err.code === 401,
+      );
+      assert.equal(tokenRequests[0].grant_type, "refresh_token");
       assert.deepEqual(openedUrls, []);
     } finally {
       await client.close();
@@ -294,6 +315,88 @@ describe("mcpController on an expired sign-in", () => {
     assert.deepEqual(stopped, []);
   });
 
+  const turnedDown = () =>
+    new StreamableHTTPError(
+      401,
+      "Server returned 401 after successful authentication",
+    );
+
+  it("an OAuth server turning down a renewed token disconnects it, with its own message", async () => {
+    // The second try is turned down too.
+    const failed = {
+      client: { listTools: async () => Promise.reject(turnedDown()) },
+      usesOAuth: true,
+    };
+    const active = new Map([["ws1::Fake", failed]]);
+    const { signInExpired, stopped } = load(active);
+
+    const message = await signInExpired(
+      new StreamableHTTPError(
+        401,
+        "Server returned 401 after successful authentication",
+      ),
+      null,
+      "Fake",
+      "ws1",
+      failed,
+    );
+
+    assert.match(
+      message,
+      /^Fake turned down Dash's sign-in even after renewing it/,
+    );
+    assert.deepEqual(stopped, [["Fake", "ws1"]]);
+  });
+
+  it("a 401 racing another request's renewal doesn't disconnect (the second try works)", async () => {
+    let tries = 0;
+    const racing = {
+      client: {
+        listTools: async () => {
+          tries++;
+          return { tools: [] };
+        },
+      },
+      usesOAuth: true,
+    };
+    const { signInExpired, stopped } = load(new Map([["ws1::Fake", racing]]));
+    assert.equal(
+      await signInExpired(turnedDown(), null, "Fake", "ws1", racing),
+      null,
+    );
+    assert.equal(tries, 1);
+    assert.deepEqual(stopped, []);
+  });
+
+  it("other errors with code 401 (e.g. a JSON-RPC error) are left to the caller", async () => {
+    const failed = { client: { listTools: async () => ({}) }, usesOAuth: true };
+    const { signInExpired, stopped } = load(new Map([["ws1::Fake", failed]]));
+    const jsonRpc401 = Object.assign(new Error("MCP error 401: nope"), {
+      code: 401,
+    });
+    assert.equal(
+      await signInExpired(jsonRpc401, null, "Fake", "ws1", failed),
+      null,
+    );
+    assert.deepEqual(stopped, []);
+  });
+
+  it("a 401 from a server without OAuth (a bad key) is left to the caller", async () => {
+    const failed = { client: {}, usesOAuth: false };
+    const { signInExpired, stopped } = load(new Map([["ws1::Fake", failed]]));
+    assert.equal(
+      await signInExpired(
+        new StreamableHTTPError(401, "Error POSTing to endpoint: bad key"),
+        null,
+        "Fake",
+        "ws1",
+        failed,
+      ),
+      null,
+    );
+    assert.deepEqual(stopped, []);
+  });
+
   it("any other error is left to the caller", async () => {
     const failed = { client: {} };
     const { signInExpired, stopped } = load(new Map([["ws1::Fake", failed]]));
@@ -307,6 +410,8 @@ describe("mcpController on an expired sign-in", () => {
   it("tool calls and tool lists both use it", () => {
     const uses = source.match(/await signInExpired\(/g) || [];
     assert.equal(uses.length, 2);
+    // …and a connected server records whether it signs in with OAuth.
+    assert.match(source, /usesOAuth: !!oauthProvider,/);
     // callTool awaits the call, so a failed one reaches its catch (a
     // returned, un-awaited promise rejected past it — found live).
     assert.match(source, /return await responseCache\.get\(cacheKey, doCall,/);

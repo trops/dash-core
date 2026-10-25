@@ -5,7 +5,7 @@
  */
 import React from "react";
 import "@testing-library/jest-dom";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { AppContext } from "../../../Context/App/AppContext";
 import { CustomMcpServerForm, buildMcpConfig } from "./CustomMcpServerForm";
 
@@ -147,5 +147,135 @@ describe("buildMcpConfig keeps the OAuth settings the form doesn't show", () => 
       callbackPort: "{{callbackPort}}",
       defaults: { callbackPort: 38000 },
     });
+  });
+});
+
+// QA 2026-10-24: every edit of an OAuth provider made you Authorize again,
+// even when it was signed in and nothing about the sign-in changed.
+describe("CustomMcpServerForm editing a signed-in OAuth provider", () => {
+  const catalog = require("../../../../electron/mcp/mcpServerCatalog.json");
+  const sf = catalog.servers.find((x) => x.id === "salesforce");
+  const urlPlaceholder = sf.credentialSchema.serverUrl.placeholder;
+
+  function renderEdit({ signedIn = true, dashApi = {} } = {}) {
+    render(
+      <AppContext.Provider value={{ dashApi, credentials: { appId: "a" } }}>
+        <CustomMcpServerForm
+          isEditMode
+          initialName="SF Work"
+          initialProviderType="salesforce"
+          initialCredentialSchema={sf.credentialSchema}
+          initialTransport="streamable_http"
+          initialUrl={sf.mcpConfig.url}
+          initialCredentials={{
+            serverUrl: "https://a.example/mcp",
+            clientId: "key-a",
+          }}
+          initialMcpConfig={sf.mcpConfig}
+          initialSignedIn={signedIn}
+          onSave={jest.fn()}
+          onBack={jest.fn()}
+        />
+      </AppContext.Provider>,
+    );
+  }
+  const next = () => {
+    const buttons = screen.getAllByRole("button", { name: "Next" });
+    return buttons[buttons.length - 1];
+  };
+
+  it("Authorize is optional while the sign-in settings are unchanged", () => {
+    renderEdit();
+    fireEvent.click(next());
+    expect(
+      screen.getByText(
+        "Signed in. Authorize again only to use a different account.",
+      ),
+    ).toBeInTheDocument();
+    expect(next()).not.toBeDisabled();
+    fireEvent.click(next());
+    expect(
+      screen.getByRole("button", { name: "Save Changes" }),
+    ).toBeInTheDocument();
+  });
+
+  it("Fetch Tools then uses the provider's own sign-in", () => {
+    const dashApi = { mcpStartServer: jest.fn() };
+    renderEdit({ dashApi });
+    fireEvent.click(next());
+    fireEvent.click(next());
+    fireEvent.click(screen.getByRole("button", { name: "Fetch Tools" }));
+    expect(dashApi.mcpStartServer.mock.calls[0][0]).toBe("SF Work");
+  });
+
+  it("Fetch Tools leaves a server that's already running (a widget or bot's) running", () => {
+    const dashApi = {
+      mcpGetServerStatus: jest.fn((name, ok) =>
+        ok(null, { status: "connected", tools: [{ name: "ping" }] }),
+      ),
+      mcpStartServer: jest.fn(),
+      mcpStopServer: jest.fn(),
+    };
+    renderEdit({ dashApi });
+    fireEvent.click(next());
+    fireEvent.click(next());
+    fireEvent.click(screen.getByRole("button", { name: "Fetch Tools" }));
+    expect(dashApi.mcpGetServerStatus.mock.calls[0][0]).toBe("SF Work");
+    expect(
+      screen.getByText("Connected and in use. Found 1 tools."),
+    ).toBeInTheDocument();
+    expect(dashApi.mcpStartServer).not.toHaveBeenCalled();
+    expect(dashApi.mcpStopServer).not.toHaveBeenCalled();
+  });
+
+  it("Fetch Tools stops a server only it started", () => {
+    const dashApi = {
+      mcpGetServerStatus: jest.fn((name, ok) =>
+        ok(null, { status: "disconnected" }),
+      ),
+      mcpStartServer: jest.fn((name, cfg, creds, ok) =>
+        ok(null, { tools: [{ name: "ping" }] }),
+      ),
+      mcpStopServer: jest.fn(),
+    };
+    renderEdit({ dashApi });
+    fireEvent.click(next());
+    fireEvent.click(next());
+    fireEvent.click(screen.getByRole("button", { name: "Fetch Tools" }));
+    expect(dashApi.mcpStartServer.mock.calls[0][0]).toBe("SF Work");
+    expect(dashApi.mcpStopServer.mock.calls[0][0]).toBe("SF Work");
+  });
+
+  it("after a failed Authorize, the old sign-in no longer counts", () => {
+    const dashApi = {
+      mcpAuthorize: jest.fn((name, cfg, creds, ok) =>
+        ok(null, { error: true, message: "denied" }),
+      ),
+    };
+    renderEdit({ dashApi });
+    fireEvent.click(next());
+    expect(next()).not.toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Authorize" }));
+    expect(next()).toBeDisabled();
+  });
+
+  it("not signed in: Authorize is required", () => {
+    renderEdit({ signedIn: false });
+    fireEvent.click(next());
+    expect(next()).toBeDisabled();
+  });
+
+  it("a changed server URL needs a new sign-in", () => {
+    renderEdit();
+    fireEvent.change(screen.getByPlaceholderText(urlPlaceholder), {
+      target: { value: "https://b.example/mcp" },
+    });
+    fireEvent.click(next());
+    expect(
+      screen.queryByText(
+        "Signed in. Authorize again only to use a different account.",
+      ),
+    ).toBeNull();
+    expect(next()).toBeDisabled();
   });
 });

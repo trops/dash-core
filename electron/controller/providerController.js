@@ -322,6 +322,15 @@ const providerController = {
             provider.wsConfig = data.wsConfig;
           }
 
+          // Holds an OAuth sign-in (lets the edit form skip Authorize). A
+          // yes/no only — the tokens stay in the main process.
+          if (data.oauth) {
+            const oauth = JSON.parse(decryptText(data.oauth) || "{}");
+            provider.signedIn = !!(
+              oauth.tokens?.access_token || oauth.tokens?.refresh_token
+            );
+          }
+
           decryptedProviders.push(provider);
         } catch (decryptError) {
           console.error(

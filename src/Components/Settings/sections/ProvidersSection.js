@@ -843,6 +843,7 @@ export const ProvidersSection = ({
         initialAllowedTools={selectedProvider.allowedTools || null}
         initialAuthCommand={editCatalogEntry?.authCommand || null}
         initialMcpConfig={mc}
+        initialSignedIn={!!selectedProvider.signedIn}
         onSave={handleMcpEditSave}
         onBack={() => setIsEditingMcp(false)}
       />

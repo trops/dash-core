@@ -153,6 +153,9 @@ export function buildMcpConfig(
  *   preserved verbatim on save so editing never silently drops them.
  * @param {string} warning - Optional warning shown above the form, e.g. for a
  *   community server suggested by a team lead (bot-capabilities CAP-005).
+ * @param {boolean} initialSignedIn - Edit mode: the provider already holds an
+ *   OAuth sign-in. While its server and sign-in settings are unchanged,
+ *   Authorize is optional (only to switch accounts).
  */
 export const CustomMcpServerForm = ({
   onSave,
@@ -172,6 +175,7 @@ export const CustomMcpServerForm = ({
   initialAuthCommand = null,
   initialMcpConfig = null,
   warning = null,
+  initialSignedIn = false,
 }) => {
   const appContext = useContext(AppContext);
   const dashApi = appContext?.dashApi;
@@ -228,6 +232,8 @@ export const CustomMcpServerForm = ({
   // Auth state
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [authResult, setAuthResult] = useState(null);
+  // Whether step 2 may be left (this edit's Authorize, or a kept sign-in).
+  const authorizedRef = useRef(false);
 
   // JSON editor state
   const [viewMode, setViewMode] = useState("form"); // "form" | "json"
@@ -265,7 +271,7 @@ export const CustomMcpServerForm = ({
       if (viewMode === "form" && !validateForm()) return;
     }
     if (currentStepType === "authorize" && newStep > wizardStep) {
-      if (!authResult?.success) return;
+      if (!authorizedRef.current) return;
     }
     setWizardStep(newStep);
   };
@@ -304,6 +310,26 @@ export const CustomMcpServerForm = ({
       initialMcpConfig,
     ],
   );
+
+  // What a sign-in is for: the server URL, the OAuth settings and the
+  // provider's fields (e.g. Salesforce's URL + Consumer Key live there).
+  const signInSettings = JSON.stringify({
+    url: mcpConfig?.url || null,
+    oauth: mcpConfig?.oauth || null,
+    credentials: credentialData || {},
+  });
+  const initialSignInSettings = useRef(signInSettings);
+  // Editing a signed-in OAuth provider without touching what it signed in
+  // for: that sign-in still holds, so Authorize is only for another account.
+  // A failed Authorize may have cleared the saved sign-in: no longer kept.
+  const signInKept =
+    isEditMode &&
+    initialSignedIn &&
+    isOAuth &&
+    !(authResult && !authResult.success) &&
+    signInSettings === initialSignInSettings.current;
+  const authorized = !!authResult?.success || signInKept;
+  authorizedRef.current = authorized;
 
   // Invalidate test result when config changes after a test
   const mcpConfigRef = useRef(mcpConfig);
@@ -433,8 +459,59 @@ export const CustomMcpServerForm = ({
     setIsTesting(true);
     setTestResult(null);
 
-    const testName = "__test__custom";
+    // Test where the sign-in is: Authorize in this form signs in under the
+    // name being saved; a kept sign-in is under the provider's saved name.
+    // Anything else gets a throwaway test server.
+    const realName = authResult?.success
+      ? providerName.trim()
+      : signInKept
+        ? initialName
+        : "";
+    if (!realName) {
+      startTestServer("__test__custom");
+      return;
+    }
+    // Under a real name the server may already be running for a widget or
+    // bot: report it as it is and leave it running. Only a server this test
+    // starts is stopped afterwards.
+    if (typeof dashApi.mcpGetServerStatus !== "function") {
+      startTestServer(realName);
+      return;
+    }
+    dashApi.mcpGetServerStatus(
+      realName,
+      (event, status) => {
+        if (status && status.status === "connected") {
+          showTools(
+            status.tools || [],
+            status.resources || [],
+            `Connected and in use. Found ${(status.tools || []).length} tools.`,
+          );
+          setIsTesting(false);
+          return;
+        }
+        startTestServer(realName);
+      },
+      () => startTestServer(realName),
+    );
+  };
 
+  const showTools = (tools, resources, message) => {
+    setTestResult({ success: true, tools, resources, message });
+    // Pre-select tools: intersect with existing allowedTools if editing, or select all
+    const allToolNames = tools.map((t) => t.name);
+    if (initialAllowedTools) {
+      setSelectedTools(
+        allToolNames.filter((t) => initialAllowedTools.includes(t)),
+      );
+    } else {
+      setSelectedTools(allToolNames);
+    }
+  };
+
+  // Starts the server for the test and stops it again (nothing else was
+  // using it).
+  const startTestServer = (testName) => {
     dashApi.mcpStartServer(
       testName,
       mcpConfig,
@@ -449,22 +526,11 @@ export const CustomMcpServerForm = ({
           return;
         }
 
-        setTestResult({
-          success: true,
-          tools: result.tools || [],
-          resources: result.resources || [],
-          message: `Connected! Found ${(result.tools || []).length} tools.`,
-        });
-
-        // Pre-select tools: intersect with existing allowedTools if editing, or select all
-        const allToolNames = (result.tools || []).map((t) => t.name);
-        if (initialAllowedTools) {
-          setSelectedTools(
-            allToolNames.filter((t) => initialAllowedTools.includes(t)),
-          );
-        } else {
-          setSelectedTools(allToolNames);
-        }
+        showTools(
+          result.tools || [],
+          result.resources || [],
+          `Connected! Found ${(result.tools || []).length} tools.`,
+        );
 
         dashApi.mcpStopServer(
           testName,
@@ -1092,9 +1158,11 @@ export const CustomMcpServerForm = ({
               <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-5">
                 <div className="flex flex-col items-center justify-center py-8 space-y-4">
                   <p className="text-sm opacity-60 text-center max-w-md">
-                    {isOAuth
-                      ? "This server uses OAuth 2.0. Click below to open your browser, sign in, and approve access. Dash stores the resulting tokens securely and refreshes them automatically."
-                      : "This server requires OAuth authorization. Click the button below to open a browser window and complete the authentication flow."}
+                    {signInKept && !authResult
+                      ? "Signed in. Authorize again only to use a different account."
+                      : isOAuth
+                        ? "This server uses OAuth 2.0. Click below to open your browser, sign in, and approve access. Dash stores the resulting tokens securely and refreshes them automatically."
+                        : "This server requires OAuth authorization. Click the button below to open a browser window and complete the authentication flow."}
                   </p>
                   <Button
                     title={isAuthorizing ? "Authorizing..." : "Authorize"}
@@ -1246,7 +1314,7 @@ export const CustomMcpServerForm = ({
             <Button
               title="Next"
               onClick={() => handleWizardStepChange(wizardStep + 1)}
-              disabled={!authResult?.success}
+              disabled={!authorized}
               size="sm"
             />
           )}
