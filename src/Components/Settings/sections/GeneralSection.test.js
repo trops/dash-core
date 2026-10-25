@@ -6,6 +6,7 @@ import React from "react";
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { GeneralSection } from "./GeneralSection";
+import { AppContext } from "../../../Context/App/AppContext";
 
 beforeEach(() => {
   window.mainApi = {
@@ -74,4 +75,31 @@ test("without the bots API the group is hidden", () => {
   delete window.mainApi;
   render(<GeneralSection />);
   expect(screen.queryByText("Bots in the background")).toBeNull();
+});
+
+// Design audit follow-up: App info showed no version.
+test("App info shows the version the app reports", async () => {
+  window.mainApi.app = { getVersion: jest.fn().mockResolvedValue("0.0.1027") };
+  render(<GeneralSection />);
+  expect(await screen.findByText("0.0.1027")).toBeInTheDocument();
+  expect(screen.getByText("Version")).toBeInTheDocument();
+});
+
+test("a version passed in is shown without asking", async () => {
+  window.mainApi.app = { getVersion: jest.fn() };
+  render(
+    <AppContext.Provider
+      value={{ credentials: { appId: "a", version: "9.9.9" } }}
+    >
+      <GeneralSection />
+    </AppContext.Provider>,
+  );
+  expect(await screen.findByText("9.9.9")).toBeInTheDocument();
+  expect(window.mainApi.app.getVersion).not.toHaveBeenCalled();
+});
+
+test("no version handler: no Version row", async () => {
+  render(<GeneralSection />);
+  await screen.findByText("App info");
+  expect(screen.queryByText("Version")).toBeNull();
 });
