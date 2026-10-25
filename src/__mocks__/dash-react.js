@@ -273,6 +273,18 @@ function Caption({ text, children, className = "", block = false }) {
   );
 }
 
+// Mirrors dash-react DASH_ROLES (Hooks/useDashTokens.js).
+const DASH_ROLES = {
+  text: { key: "text-neutral-light", role: "dr-role-text" },
+  muted: { key: "text-neutral-medium", role: "dr-role-muted" },
+  faint: { key: "text-neutral-medium", role: "dr-role-faint" },
+  surface: { key: "bg-neutral-very-dark", role: "dr-role-surface" },
+  well: { key: "bg-neutral-very-dark", role: "dr-role-well" },
+  hairline: { key: "border-neutral-dark", role: "dr-role-hairline" },
+  accent: { key: "text-primary-medium", role: "dr-role-accent" },
+  accentSoft: { key: "bg-primary-very-dark", role: "dr-role-accent-soft" },
+};
+
 // Mirrors dash-react useStatusTokens() shape (Utils/statusColors.js), dark palette.
 function useStatusTokens() {
   const make = (c) => ({
@@ -1141,6 +1153,7 @@ module.exports = {
   Caption2: Caption,
   Caption3: Caption,
   useStatusTokens,
+  DASH_ROLES,
   AlertBanner,
   Code,
   Code2: Code,

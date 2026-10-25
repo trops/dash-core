@@ -1,20 +1,23 @@
 import React, { useContext } from "react";
-import { ThemeContext } from "@trops/dash-react";
+import { ThemeContext, DASH_ROLES } from "@trops/dash-react";
 
 /**
  * Theme tokens shared by the Dashboard Config modal — the same ones the Bots
  * view reads (BotsView / BotChat), so the two surfaces look alike and follow
- * theme switches. Bare Tailwind colours are fallbacks only.
+ * theme switches. The theme keys are the design guide's color roles
+ * (dash-react DASH_ROLES, the keys behind useDashTokens); bare Tailwind
+ * colours are fallbacks only.
  */
 export function useConfigTokens() {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
+  const key = (role) => currentTheme?.[DASH_ROLES[role].key];
   return {
-    muted: currentTheme["text-neutral-medium"] || "text-gray-400",
-    strong: currentTheme["text-neutral-light"] || "text-gray-200",
-    hairline: currentTheme["border-neutral-dark"] || "border-gray-700",
-    selectedBg: currentTheme["bg-neutral-very-dark"] || "bg-gray-800",
-    selectedBorder: currentTheme["border-primary-dark"] || "border-gray-600",
-    fieldBg: currentTheme["bg-neutral-very-dark"] || "bg-gray-900",
+    muted: key("muted") || "text-gray-400",
+    strong: key("text") || "text-gray-200",
+    hairline: key("hairline") || "border-gray-700",
+    selectedBg: key("surface") || "bg-gray-800",
+    selectedBorder: currentTheme?.["border-primary-dark"] || "border-gray-600",
+    fieldBg: key("well") || "bg-gray-900",
   };
 }
 
