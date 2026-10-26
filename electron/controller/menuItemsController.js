@@ -1,22 +1,19 @@
-const { app } = require("electron");
 const path = require("path");
 const { writeFileSync } = require("fs");
 const events = require("../events");
 const { getFileContents } = require("../utils/file");
+const {
+  getProfileFilePath,
+  getProfileDataDir,
+} = require("../profile/profilePaths");
 const { upsertMenuItem } = require("../utils/upsertMenuItem");
 
 const configFilename = "menuItems.json";
-const appName = "Dashboard";
 
 const menuItemsController = {
   saveMenuItemForApplication: (win, appId, menuItem) => {
     try {
-      const filename = path.join(
-        app.getPath("userData"),
-        appName,
-        appId,
-        configFilename,
-      );
+      const filename = getProfileFilePath(appId, configFilename);
       const raw = getFileContents(filename) || [];
       const deduped = upsertMenuItem(raw, menuItem);
       writeFileSync(filename, JSON.stringify(deduped, null, 2));
@@ -30,12 +27,7 @@ const menuItemsController = {
 
   listMenuItemsForApplication: (win, appId) => {
     try {
-      const filename = path.join(
-        app.getPath("userData"),
-        appName,
-        appId,
-        configFilename,
-      );
+      const filename = getProfileFilePath(appId, configFilename);
       const menuItemsArray = getFileContents(filename);
       const filtered = menuItemsArray.filter((mi) => mi !== null);
       // Return the data for ipcMain.handle() - modern promise-based approach
@@ -57,7 +49,7 @@ const menuItemsController = {
   // a missing menuId would read as folder 1), as the confirm says.
   deleteMenuItemForApplication: (win, appId, menuItemId) => {
     try {
-      const dir = path.join(app.getPath("userData"), appName, appId);
+      const dir = getProfileDataDir(appId);
       return deleteMenuItemFromFiles(
         path.join(dir, configFilename),
         path.join(dir, "workspaces.json"),

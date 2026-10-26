@@ -1,12 +1,10 @@
-const { app } = require("electron");
-const path = require("path");
 const { writeFileSync } = require("fs");
 const events = require("../events");
 const { getFileContents } = require("../utils/file");
+const { getProfileFilePath } = require("../profile/profilePaths");
 const { emitWorkspaceDeleted } = require("../utils/workspaceEvents");
 
 const configFilename = "workspaces.json";
-const appName = "Dashboard";
 
 const workspaceController = {
   /**
@@ -48,12 +46,7 @@ const workspaceController = {
   saveWorkspaceForApplication: (win, appId, workspaceObject) => {
     try {
       // filename to the pages file (live pages)
-      const filename = path.join(
-        app.getPath("userData"),
-        appName,
-        appId,
-        configFilename,
-      );
+      const filename = getProfileFilePath(appId, configFilename);
       const workspacesArray = getFileContents(filename);
 
       // lets check to see if we already have this one!
@@ -97,12 +90,7 @@ const workspaceController = {
   saveMenuItemsForApplication: (win, appId, menuItems) => {
     try {
       // filename to the workspaces file
-      const filename = path.join(
-        app.getPath("userData"),
-        appName,
-        appId,
-        configFilename,
-      );
+      const filename = getProfileFilePath(appId, configFilename);
       const workspacesArray = getFileContents(filename);
 
       // Update menu items for workspaces
@@ -146,12 +134,7 @@ const workspaceController = {
    */
   deleteWorkspaceForApplication: (win, appId, workspaceId) => {
     try {
-      const filename = path.join(
-        app.getPath("userData"),
-        appName,
-        appId,
-        configFilename,
-      );
+      const filename = getProfileFilePath(appId, configFilename);
       const workspacesArray = getFileContents(filename);
 
       const filtered = workspacesArray.filter(
@@ -185,12 +168,7 @@ const workspaceController = {
 
   listWorkspacesForApplication: (win, appId) => {
     try {
-      const filename = path.join(
-        app.getPath("userData"),
-        appName,
-        appId,
-        configFilename,
-      );
+      const filename = getProfileFilePath(appId, configFilename);
 
       const workspacesArray = getFileContents(filename);
       console.log(
@@ -213,12 +191,7 @@ const workspaceController = {
 
   listMenuItemsForApplication: (win, appId) => {
     try {
-      const filename = path.join(
-        app.getPath("userData"),
-        appName,
-        appId,
-        configFilename,
-      );
+      const filename = getProfileFilePath(appId, configFilename);
       const workspacesArray = getFileContents(filename);
 
       // Extract unique menu items from workspaces

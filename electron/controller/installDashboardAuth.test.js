@@ -81,6 +81,11 @@ function loadController() {
     if (mod === "./registryController") return mockRegistryController;
     if (mod === "./themeController") return { getThemeRegistry: () => [] };
     if (mod === "../utils/file") return { getFileContents: () => null };
+    if (mod === "../profile/profilePaths")
+      return {
+        getProfileFilePath: (appId, file) =>
+          path.join("/tmp", "Dashboard", appId, file),
+      };
     if (mod === "../widgetRegistry") return { validateZipEntries: () => {} };
     // Schema modules are safe to load from disk
     if (mod.startsWith("../schema/")) return require(mod);

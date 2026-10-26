@@ -34,6 +34,7 @@ Implementation Guides (code)
 
 | PRD | Status | Summary |
 |-----|--------|---------|
+| [Dash Profiles](./prd/dash-profiles.md) | In Progress | Separate, switchable setups per install; save to a file, load on another machine, later sync with your account |
 | [Command Palette Navigation](./prd/command-palette-navigation.md) | Phase 1 + 1.1 Complete | Keyboard-driven quick navigation across widgets, workspaces, and settings |
 | [Layout Builder Hybrid](./prd/layout-builder-hybrid.md) | Phase 1 Complete | Hybrid drag-and-drop + command-driven layout editing |
 | [Dashboard Marketplace](./prd/dashboard-marketplace.md) | Implemented | Browse, discover, and install widgets from a central registry |

@@ -20,6 +20,7 @@ const path = require("path");
 const fs = require("fs");
 const AdmZip = require("adm-zip");
 const { getFileContents } = require("../utils/file");
+const { getProfileFilePath } = require("../profile/profilePaths");
 const {
   validateDashboardConfig,
   applyDefaults,
@@ -46,7 +47,6 @@ const {
 const themeController = require("./themeController");
 
 const configFilename = "workspaces.json";
-const appName = "Dashboard";
 
 /**
  * Export a workspace as a .dashboard.json config inside a ZIP file.
@@ -69,12 +69,7 @@ async function exportDashboardConfig(
 ) {
   try {
     // 1. Read workspace from workspaces.json
-    const filename = path.join(
-      app.getPath("userData"),
-      appName,
-      appId,
-      configFilename,
-    );
+    const filename = getProfileFilePath(appId, configFilename);
     const workspacesArray = getFileContents(filename);
     const workspace = workspacesArray.find(
       (w) => w.id === workspaceId || w.id === Number(workspaceId),
@@ -1223,12 +1218,7 @@ async function collectDashboardDependencies(
 ) {
   try {
     // 1. Read workspace
-    const filename = path.join(
-      app.getPath("userData"),
-      appName,
-      appId,
-      configFilename,
-    );
+    const filename = getProfileFilePath(appId, configFilename);
     const workspacesArray = getFileContents(filename);
     const workspace = workspacesArray.find(
       (w) => w.id === workspaceId || w.id === Number(workspaceId),
@@ -1502,12 +1492,7 @@ async function prepareDashboardForPublish(
     const { resolveNextVersion } = require("../schema/widgetPublishManifest");
 
     // 1. Read workspace
-    const filename = path.join(
-      app.getPath("userData"),
-      appName,
-      appId,
-      configFilename,
-    );
+    const filename = getProfileFilePath(appId, configFilename);
     const workspacesArray = getFileContents(filename);
     const workspace = workspacesArray.find(
       (w) => w.id === workspaceId || w.id === Number(workspaceId),
@@ -2040,12 +2025,7 @@ async function checkDashboardUpdatesForApp(appId) {
   const { fetchRegistryIndex } = require("./registryController");
 
   try {
-    const filename = path.join(
-      app.getPath("userData"),
-      appName,
-      appId,
-      configFilename,
-    );
+    const filename = getProfileFilePath(appId, configFilename);
     const workspaces = getFileContents(filename) || [];
 
     const index = await fetchRegistryIndex();
@@ -2111,12 +2091,7 @@ function getProviderSetupManifest(appId, requiredProviders = []) {
  */
 function getDashboardPublishPreview(appId, workspaceId, widgetRegistry = null) {
   try {
-    const filename = path.join(
-      app.getPath("userData"),
-      appName,
-      appId,
-      configFilename,
-    );
+    const filename = getProfileFilePath(appId, configFilename);
     const workspacesArray = getFileContents(filename);
     const workspace = workspacesArray.find(
       (w) => w.id === workspaceId || w.id === Number(workspaceId),

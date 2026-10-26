@@ -6,22 +6,20 @@
  * Runs in the Electron main process.
  */
 
-const { app } = require("electron");
-const path = require("path");
 const { getFileContents, writeToFile } = require("../utils/file");
 const {
   validateAndBuildRating,
   enrichWithRatings,
 } = require("../schema/dashboardRatingsUtils");
+const { getProfileFilePath } = require("../profile/profilePaths");
 
 const ratingsFilename = "dashboard-ratings.json";
-const appName = "Dashboard";
 
 /**
  * Get the ratings file path for an app.
  */
 function getRatingsPath(appId) {
-  return path.join(app.getPath("userData"), appName, appId, ratingsFilename);
+  return getProfileFilePath(appId, ratingsFilename);
 }
 
 /**
