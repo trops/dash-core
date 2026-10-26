@@ -34,6 +34,52 @@ function currentItems(appId, botController) {
   };
 }
 
+// Every dashboard, bot, folder and theme on this computer, with a name to
+// show — unfiltered, so a profile can be given things it doesn't hold yet.
+// The Dash team is shared by every profile and isn't listed.
+function allItems(appId, botController) {
+  const list = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
+  const workspaces = list(
+    getFileContents(getAppFilePath(appId, "workspaces.json")),
+  );
+  const folders = list(
+    getFileContents(getAppFilePath(appId, "menuItems.json")),
+  );
+  const themes = getFileContents(getAppFilePath(appId, "themes.json"), {});
+  let bots = [];
+  try {
+    bots =
+      botController && botController._ready
+        ? botController._store
+            .list()
+            .filter((b) => b && b.system !== "dash-team")
+        : [];
+  } catch (_e) {
+    bots = [];
+  }
+  return {
+    dashboards: workspaces
+      .filter((w) => w.id != null)
+      .map((w) => ({
+        id: w.id,
+        name: w.name || w.label || "Untitled",
+        menuId: w.menuId ?? null,
+      })),
+    bots: bots.map((b) => ({
+      id: b.id,
+      name: b.name || "Untitled bot",
+      workspaceId: b.workspaceId ?? null,
+    })),
+    folders: folders
+      .filter((f) => f.id != null)
+      .map((f) => ({ id: f.id, name: f.name || "Untitled folder" })),
+    themes: Object.keys(themes || {}).map((key) => ({
+      id: key,
+      name: (themes[key] && themes[key].name) || key,
+    })),
+  };
+}
+
 function botControllerOrNull() {
   try {
     return require("./botController");
@@ -93,6 +139,91 @@ const profileController = {
   deleteProfile(appId, profileId) {
     try {
       return profileStore.remove(appId, profileId);
+    } catch (e) {
+      return fail(e);
+    }
+  },
+
+  /** A new profile holding the same items as `profileId`. */
+  duplicateProfile(appId, profileId, name) {
+    try {
+      const firstProfile = !profileStore.hasProfiles(appId);
+      const everything = firstProfile
+        ? currentItems(appId, botControllerOrNull())
+        : undefined;
+      const source = firstProfile
+        ? { items: everything }
+        : profileStore.list(appId).find((p) => p.id === profileId);
+      if (!source) throw new Error(`No profile with id ${profileId}`);
+      const profile = profileStore.create(appId, name, {
+        defaultItems: everything,
+        items: source.items,
+      });
+      return { success: true, profile };
+    } catch (e) {
+      return fail(e);
+    }
+  },
+
+  /**
+   * Everything on this computer, grouped by kind, each marked with whether
+   * `profileId` holds it and which other profiles do. With only Default,
+   * Default holds everything.
+   */
+  listContents(appId, profileId) {
+    try {
+      const all = allItems(appId, botControllerOrNull());
+      const profiles = profileStore.list(appId);
+      const explicit = profileStore.hasProfiles(appId);
+      const contents = {};
+      for (const kind of profileStore.KINDS) {
+        contents[kind] = all[kind].map((item) => {
+          const key = String(item.id);
+          const holders = explicit
+            ? profiles.filter((p) => p.items[kind].includes(key))
+            : profiles;
+          return {
+            ...item,
+            inProfile: holders.some((p) => p.id === profileId),
+            alsoIn: holders
+              .filter((p) => p.id !== profileId)
+              .map((p) => p.name),
+          };
+        });
+      }
+      return { success: true, contents, hasProfiles: explicit };
+    } catch (e) {
+      return fail(e);
+    }
+  },
+
+  /**
+   * Put an item in a profile or take it out of just that profile. The
+   * item itself is never deleted. Bots are rescheduled when the active
+   * profile changes.
+   */
+  setMembership(appId, profileId, kind, id, include) {
+    try {
+      if (!profileStore.hasProfiles(appId)) {
+        throw new Error("Create a profile first — Default holds everything");
+      }
+      if (include) profileStore.add(appId, kind, id, profileId);
+      else profileStore.removeFromProfile(appId, kind, id, profileId);
+      if (
+        kind === "bots" &&
+        profileId === profileStore.getActiveProfileId(appId)
+      ) {
+        const bots = botControllerOrNull();
+        if (bots && typeof bots.applyActiveProfile === "function") {
+          bots.applyActiveProfile();
+        }
+      }
+      return {
+        success: true,
+        alsoIn: profileStore
+          .profilesHolding(appId, kind, id, profileId)
+          .map((p) => p.name),
+      };
     } catch (e) {
       return fail(e);
     }

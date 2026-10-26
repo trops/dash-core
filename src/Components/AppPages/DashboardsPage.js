@@ -17,6 +17,7 @@ import {
   deepCopy,
 } from "@trops/dash-react";
 import { AppContext } from "../../Context/App/AppContext";
+import { useProfiles } from "../../hooks/useProfiles";
 import { ComponentManager } from "../../ComponentManager";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { useTeamBots } from "../Bots/useTeamBots";
@@ -140,6 +141,9 @@ const DashboardDetailPanel = ({
   onOpenBotsView,
   onOpenDashboardConfig,
   onRequestDelete,
+  // Set when there is more than one profile: take it out of the active one.
+  onRequestRemoveFromProfile = null,
+  activeProfileName = null,
 }) => {
   const { muted, strong, hairline, selectedBg } = useConfigTokens();
   const team = useTeamBots(ws.id);
@@ -286,6 +290,13 @@ const DashboardDetailPanel = ({
                     label: "Publish",
                     icon: "cloud-arrow-up",
                     onClick: () => setPublishOpen(true),
+                  }
+                : null,
+              onRequestRemoveFromProfile
+                ? {
+                    label: `Remove from ${activeProfileName || "this profile"}`,
+                    icon: "circle-minus",
+                    onClick: () => onRequestRemoveFromProfile(ws),
                   }
                 : null,
               {
@@ -509,6 +520,8 @@ export const DashboardsPage = ({
   const [view, setView] = useState("grouped");
   const [selectedId, setSelectedId] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [removeTarget, setRemoveTarget] = useState(null);
+  const profiles = useProfiles(appId);
 
   const summaries = useMemo(() => {
     const map = new Map();
@@ -592,6 +605,32 @@ export const DashboardsPage = ({
     );
   };
 
+  // Out of the active profile only — it stays on this computer.
+  const confirmRemove = async () => {
+    const target = removeTarget;
+    setRemoveTarget(null);
+    if (!target) return;
+    const res = await profiles.removeFromActive("dashboards", target.id);
+    if (!res.success) {
+      window.dispatchEvent(
+        new CustomEvent("dash:notify", {
+          detail: {
+            type: "error",
+            title: "Couldn't remove the dashboard from this profile",
+            message: res.error || "Try again.",
+            duration: 8000,
+          },
+        }),
+      );
+      return;
+    }
+    if (selectedId === target.id) setSelectedId(null);
+    onReloadWorkspaces && onReloadWorkspaces();
+  };
+  const removeElsewhere = removeTarget
+    ? profiles.otherHolders("dashboards", removeTarget.id)
+    : [];
+
   let detail;
   if (selected) {
     const theme = selected.themeKey ? themes[selected.themeKey] : null;
@@ -612,6 +651,10 @@ export const DashboardsPage = ({
         onOpenBotsView={onOpenBotsView}
         onOpenDashboardConfig={onOpenDashboardConfig}
         onRequestDelete={setDeleteTarget}
+        onRequestRemoveFromProfile={
+          profiles.hasProfiles ? setRemoveTarget : null
+        }
+        activeProfileName={profiles.active?.name}
       />
     );
   } else {
@@ -717,11 +760,28 @@ export const DashboardsPage = ({
         isOpen={!!deleteTarget}
         setIsOpen={() => setDeleteTarget(null)}
         title="Delete dashboard"
-        message={`Delete "${deleteTarget?.name || "Untitled"}"? This can't be undone.`}
+        message={`Delete "${deleteTarget?.name || "Untitled"}"${
+          profiles.hasProfiles ? " from this computer and every profile" : ""
+        }? This can't be undone.`}
         confirmLabel="Delete"
         variant="danger"
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
+      />
+      <ConfirmationModal
+        isOpen={!!removeTarget}
+        setIsOpen={() => setRemoveTarget(null)}
+        title={`Remove "${removeTarget?.name || "Untitled"}" from ${
+          profiles.active?.name || "this profile"
+        }`}
+        message={
+          removeElsewhere.length
+            ? `"${removeTarget?.name || "Untitled"}" won't show in ${profiles.active?.name || "this profile"}. It stays in ${removeElsewhere.join(", ")}.`
+            : `"${removeTarget?.name || "Untitled"}" isn't in any other profile, so it won't show anywhere. It stays on this computer — add it back in Settings › Profiles.`
+        }
+        confirmLabel="Remove"
+        onConfirm={confirmRemove}
+        onCancel={() => setRemoveTarget(null)}
       />
     </ManageLayout>
   );

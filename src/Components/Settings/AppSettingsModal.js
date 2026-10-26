@@ -16,6 +16,7 @@ import { NotificationsSection } from "./sections/NotificationsSection";
 import { McpServerSection } from "./sections/McpServerSection";
 import { AiAssistantSection } from "./sections/AiAssistantSection";
 import { PrivacySecuritySection } from "./sections/PrivacySecuritySection";
+import { ProfilesSection } from "./sections/ProfilesSection";
 
 // True settings only. Dashboards, Folders, Providers, Bots, Widgets and
 // Themes are Manage pages in the left nav (app-navigation PRD NAV-004);
@@ -23,6 +24,8 @@ import { PrivacySecuritySection } from "./sections/PrivacySecuritySection";
 const SECTIONS = [
   { key: "general", label: "General", icon: "cog" },
   { key: "account", label: "Account", icon: "circle-user" },
+  // Separate setups on this computer (dash-profiles PRD).
+  { key: "profiles", label: "Profiles", icon: "user" },
   { key: "notifications", label: "Notifications", icon: "bell" },
   { key: "mcp-server", label: "MCP Server", icon: "server" },
   // The key stays "ai-assistant" (links open it by key); the panel it was
@@ -46,6 +49,8 @@ export const AppSettingsModal = ({
   onSignIn = null,
   onSignOut = null,
   onProfileUpdated = null,
+  // Refresh the sidebar and lists after the active profile changes.
+  onReloadProfileContents = null,
 }) => {
   const [activeSection, setActiveSection] = useState(initialSection);
   const { currentTheme } = useContext(ThemeContext);
@@ -139,6 +144,15 @@ export const AppSettingsModal = ({
             }`}
           >
             <AiAssistantSection />
+          </div>
+        )}
+        {activeDef.key === "profiles" && (
+          <div
+            className={`flex-1 flex flex-col min-h-0 ${
+              panelStyles.textColor || "text-gray-200"
+            }`}
+          >
+            <ProfilesSection onReloadContents={onReloadProfileContents} />
           </div>
         )}
         {activeDef.key === "privacy-security" && (

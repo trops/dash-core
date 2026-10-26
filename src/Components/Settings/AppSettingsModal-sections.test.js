@@ -14,12 +14,13 @@ const src = fs.readFileSync(
 describe("AppSettingsModal — sections", () => {
   const block = src.match(/const SECTIONS = \[([\s\S]*?)\n\];/);
 
-  it("lists General, Account, Notifications, MCP Server, AI Assistant, Privacy & Security", () => {
+  it("lists General, Account, Profiles, Notifications, MCP Server, AI Assistant, Privacy & Security", () => {
     expect(block).not.toBeNull();
     const keys = [...block[1].matchAll(/key: "([^"]+)"/g)].map((m) => m[1]);
     expect(keys).toEqual([
       "general",
       "account",
+      "profiles",
       "notifications",
       "mcp-server",
       "ai-assistant",
