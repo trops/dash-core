@@ -1,11 +1,9 @@
-const { app } = require("electron");
-const path = require("path");
 const { writeFileSync } = require("fs");
 const events = require("../events");
 const { getFileContents } = require("../utils/file");
+const { getProfileFilePath } = require("../profile/profilePaths");
 
 const configFilename = "themes.json";
-const appName = "Dashboard";
 
 const themeController = {
   /**
@@ -20,12 +18,7 @@ const themeController = {
   saveThemeForApplication: (win, appId, name, obj) => {
     try {
       // filename to the pages file (live pages)
-      const filename = path.join(
-        app.getPath("userData"),
-        appName,
-        appId,
-        configFilename,
-      );
+      const filename = getProfileFilePath(appId, configFilename);
       const data = getFileContents(filename, {});
 
       // Add/update the theme based on the name
@@ -66,12 +59,7 @@ const themeController = {
    */
   listThemesForApplication: (win, appId) => {
     try {
-      const filename = path.join(
-        app.getPath("userData"),
-        appName,
-        appId,
-        configFilename,
-      );
+      const filename = getProfileFilePath(appId, configFilename);
 
       const data = getFileContents(filename, {});
 
@@ -108,12 +96,7 @@ const themeController = {
    */
   deleteThemeForApplication: (win, appId, themeKey) => {
     try {
-      const filename = path.join(
-        app.getPath("userData"),
-        appName,
-        appId,
-        configFilename,
-      );
+      const filename = getProfileFilePath(appId, configFilename);
       const data = getFileContents(filename, {});
 
       if (themeKey in data) {
