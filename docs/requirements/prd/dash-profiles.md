@@ -1,6 +1,6 @@
 # PRD: Dash Profiles
 
-**Status:** In Progress (PR 2 of 6: profiles as id lists + switching)
+**Status:** In Progress (PR 3 of 6: profiles UI)
 **Last Updated:** 2026-10-26
 **Owner:** trops
 **Related PRDs:** [Dashboard Marketplace](./dashboard-marketplace.md), [Bot Teams](./bot-teams.md)
@@ -95,7 +95,12 @@ computer.
    - The controllers filter their lists to the active profile, add new items to it, and remove deleted items from every profile.
    - Only the active profile's bots run and show. The Dash team is shared. Recent dashboards and open tabs are kept per profile.
    - `profile:*` IPC: list / get-active / create / rename / delete / switch.
-3. **Profiles UI.** The switcher in the sidebar account menu, and Settings › Profiles (new / rename / delete / duplicate / switch).
+3. **Profiles UI.**
+   - Account menu: the profiles (one tap switches) and "Manage profiles…", shown only once a second profile exists.
+   - Settings › Profiles: list + detail; New / Rename / Duplicate / Delete / Switch; what the profile holds as ticks per
+     dashboard, bot, folder and theme, each saying which other profiles hold it.
+   - "Remove from <profile>" in the Dashboards page "…" menu and on a bot's page.
+   - Switching asks first when bots are running.
 4. **Save to file.** The `.dashprofile` format.
 5. **Load from file.** Create-or-replace with the difference preview, plus the sync groundwork: `revision` and dashboard hashes.
 6. **dash-electron** picks up the new version.
@@ -135,10 +140,13 @@ auto-save.
 - `electron/profile/botProfiles.test.js`: new bots join the active profile; the Dash team is shared; switching schedules and stops
   the right bots; events skip other profiles' bots; delete removes a bot everywhere.
 - `electron/profile/sessionProfiles.test.js`: recents and open tabs per profile; `removeRecentDashboard`.
+- `electron/profile/profileContents.test.js`: contents with inProfile/alsoIn; unticking never deletes; duplicate.
+- `src/Components/Settings/sections/ProfilesSection.test.js`: active marker, Delete guards, ticks, the untick and switch confirms.
 
 ---
 
 ## Revision History
 
 - 2026-10-26: Created. Plan approved; PR 1 (profile storage) merged in dash-core v0.1.834.
-- 2026-10-26: PR 2: profiles became id lists (user decision), plus switching and bots per profile.
+- 2026-10-26: PR 2: profiles became id lists (user decision), plus switching and bots per profile. Merged in v0.1.835.
+- 2026-10-26: PR 3: profiles UI; `profile:duplicate | list-contents | set-membership` IPC.

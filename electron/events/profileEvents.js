@@ -11,6 +11,9 @@ const PROFILE_CREATE = "profile:create";
 const PROFILE_RENAME = "profile:rename";
 const PROFILE_DELETE = "profile:delete";
 const PROFILE_SWITCH = "profile:switch";
+const PROFILE_DUPLICATE = "profile:duplicate";
+const PROFILE_LIST_CONTENTS = "profile:list-contents";
+const PROFILE_SET_MEMBERSHIP = "profile:set-membership";
 
 module.exports = {
   PROFILE_LIST,
@@ -19,4 +22,7 @@ module.exports = {
   PROFILE_RENAME,
   PROFILE_DELETE,
   PROFILE_SWITCH,
+  PROFILE_DUPLICATE,
+  PROFILE_LIST_CONTENTS,
+  PROFILE_SET_MEMBERSHIP,
 };

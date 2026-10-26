@@ -117,7 +117,7 @@ node --test electron/bots/engines/eventStream.test.js electron/bots/engines/tool
 
 # 6b. Run controller tests (auth, folders)
 step "Running controller tests"
-node --test electron/controller/installDashboardAuth.test.js electron/controller/installThemeAuth.test.js electron/registryDownload.test.js electron/controller/menuItemsController.test.js electron/profile/profileStore.test.js electron/profile/profileMembership.test.js electron/profile/botProfiles.test.js electron/profile/sessionProfiles.test.js
+node --test electron/controller/installDashboardAuth.test.js electron/controller/installThemeAuth.test.js electron/registryDownload.test.js electron/controller/menuItemsController.test.js electron/profile/profileStore.test.js electron/profile/profileMembership.test.js electron/profile/botProfiles.test.js electron/profile/sessionProfiles.test.js electron/profile/profileContents.test.js
 
 # 6c. Run safe-JS-executor sandbox pin
 step "Running safeJsExecutor sandbox tests"

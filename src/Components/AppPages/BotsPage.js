@@ -17,7 +17,8 @@ import { BotAvatar } from "../Bots/BotAvatar";
 import { useAllBots } from "./useAllBots";
 import { DashTeamPanel } from "./DashTeamPanel";
 import { botHandle } from "./botSummary";
-import { ListGroupLabel, ManageLayout } from "./ManageLayout";
+import { ListGroupLabel, ManageLayout, OverflowMenu } from "./ManageLayout";
+import { useProfiles } from "../../hooks/useProfiles";
 import { SpendingView } from "./SpendingView";
 import { AuditLogView } from "./AuditLogView";
 import { BotPage } from "../Bots/BotPage";
@@ -79,6 +80,9 @@ export const BotsPage = ({
   const providers = appContext.providers || {};
   const botsApi = dashApi && dashApi.bots;
   const all = useAllBots();
+  const profiles = useProfiles(appContext.credentials?.appId);
+  // A bot being taken out of the active profile (it stays on the computer).
+  const [removeTarget, setRemoveTarget] = useState(null);
 
   const [pageView, setPageView] = useState("bots");
   // The Log's Bot filter — a bot's details open the Log filtered to it.
@@ -217,6 +221,19 @@ export const BotsPage = ({
         workspaces={workspaces}
         onOpenInBotsView={onOpenBotInBotsView}
         onOpenSettings={onOpenAppSettings}
+        actions={
+          profiles.hasProfiles ? (
+            <OverflowMenu
+              items={[
+                {
+                  label: `Remove from ${profiles.active?.name || "this profile"}`,
+                  icon: "circle-minus",
+                  onClick: () => setRemoveTarget(selected),
+                },
+              ]}
+            />
+          ) : null
+        }
         onChanged={all.refresh}
         onDirtyChange={(dirty) => {
           setPageDirty(dirty);
@@ -393,6 +410,43 @@ export const BotsPage = ({
         variant="danger"
         onConfirm={discardAndLeave}
         onCancel={() => setPendingLeave(null)}
+      />
+      <ConfirmationModal
+        isOpen={!!removeTarget}
+        setIsOpen={() => setRemoveTarget(null)}
+        title={`Remove "${removeTarget?.name || "bot"}" from ${
+          profiles.active?.name || "this profile"
+        }`}
+        message={(() => {
+          if (!removeTarget) return "";
+          const elsewhere = profiles.otherHolders("bots", removeTarget.id);
+          return elsewhere.length
+            ? `"${removeTarget.name}" stays in ${elsewhere.join(", ")} and stops running here.`
+            : `"${removeTarget.name}" isn't in any other profile, so it won't run or show anywhere. It stays on this computer — add it back in Settings › Profiles.`;
+        })()}
+        confirmLabel="Remove"
+        onConfirm={async () => {
+          const target = removeTarget;
+          setRemoveTarget(null);
+          if (!target) return;
+          const res = await profiles.removeFromActive("bots", target.id);
+          if (!res.success) {
+            window.dispatchEvent(
+              new CustomEvent("dash:notify", {
+                detail: {
+                  type: "error",
+                  title: "Couldn't remove the bot from this profile",
+                  message: res.error || "Try again.",
+                  duration: 8000,
+                },
+              }),
+            );
+            return;
+          }
+          setSelectedId(null);
+          all.refresh();
+        }}
+        onCancel={() => setRemoveTarget(null)}
       />
     </ManageLayout>
   );

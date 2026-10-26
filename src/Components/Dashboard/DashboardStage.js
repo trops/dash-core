@@ -2834,7 +2834,9 @@ const DashboardStageInner = ({
                 authProfile={authProfile}
                 onOpenWorkspace={handleOpenTabGuarded}
                 onNewDashboard={() => openCreate()}
-                onOpenSettings={() => openAppSettings("general")}
+                onOpenSettings={(section) =>
+                  openAppSettings(section || "general")
+                }
                 onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
                 onSignIn={handleSidebarSignIn}
                 onSignOut={handleSidebarSignOut}
@@ -3259,6 +3261,10 @@ const DashboardStageInner = ({
               onSignIn={handleSidebarSignIn}
               onSignOut={handleSidebarSignOut}
               onProfileUpdated={handleProfileUpdated}
+              onReloadProfileContents={() => {
+                loadWorkspaces();
+                loadMenuItems();
+              }}
             />
 
             <ThemeManagerModal

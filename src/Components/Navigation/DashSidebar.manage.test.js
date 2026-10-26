@@ -68,6 +68,18 @@ jest.mock("@trops/dash-react", () => {
       currentTheme: {},
     }),
     useSidebar: () => ({ collapsed: mockCollapsed }),
+    // The account menu: themed dropdown colors, ListRow rows, and the
+    // profile-switch confirm.
+    getStylesForItem: () => ({}),
+    themeObjects: {},
+    ListRow: ({ title, icon, onClick, selected, trailing }) => (
+      <button onClick={onClick} aria-current={selected ? "true" : undefined}>
+        {icon}
+        {title}
+        {trailing}
+      </button>
+    ),
+    ConfirmationModal: () => null,
   };
 });
 
