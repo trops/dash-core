@@ -1,6 +1,6 @@
 const events = require("../events");
 const { getFileContents } = require("../utils/file");
-const { getProfileFilePath } = require("../profile/profilePaths");
+const { getAppFilePath } = require("../utils/appPaths");
 
 const configFilename = "layouts.json";
 
@@ -13,7 +13,7 @@ const layoutController = {
    */
   listLayoutsForApplication: (win, appId) => {
     try {
-      const filename = getProfileFilePath(appId, configFilename);
+      const filename = getAppFilePath(appId, configFilename);
       const layoutsArray = getFileContents(filename);
       win.webContents.send(events.LAYOUT_LIST_COMPLETE, {
         layouts: layoutsArray,

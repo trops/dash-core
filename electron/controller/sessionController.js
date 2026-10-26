@@ -9,6 +9,14 @@
 
 const MAX_RECENTS = 20;
 
+// Recents and open tabs are per profile. Default keeps the keys used
+// before profiles existed; other profiles use profiles.<id>.<key>.
+function key(name) {
+  const { getActiveProfileId } = require("../profile/activeProfile");
+  const profileId = getActiveProfileId();
+  return profileId === "default" ? name : `profiles.${profileId}.${name}`;
+}
+
 // Lazy-load electron-store to avoid issues when not installed
 let store = null;
 function getStore() {
@@ -27,7 +35,7 @@ function getStore() {
 function getRecentDashboards() {
   try {
     const s = getStore();
-    const recents = s.get("recents", []);
+    const recents = s.get(key("recents"), []);
     return recents
       .sort((a, b) => new Date(b.openedAt) - new Date(a.openedAt))
       .slice(0, MAX_RECENTS);
@@ -46,7 +54,7 @@ function getRecentDashboards() {
 function addRecentDashboard(workspaceId, name) {
   try {
     const s = getStore();
-    let recents = s.get("recents", []);
+    let recents = s.get(key("recents"), []);
 
     // Remove existing entry for this workspace (upsert)
     recents = recents.filter((r) => r.workspaceId !== workspaceId);
@@ -61,7 +69,26 @@ function addRecentDashboard(workspaceId, name) {
     // Cap at MAX_RECENTS
     recents = recents.slice(0, MAX_RECENTS);
 
-    s.set("recents", recents);
+    s.set(key("recents"), recents);
+    return recents;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Remove one dashboard from the recents (e.g. it was deleted).
+ *
+ * @param {string} workspaceId
+ * @returns {Array} Updated recents list
+ */
+function removeRecentDashboard(workspaceId) {
+  try {
+    const s = getStore();
+    const recents = s
+      .get(key("recents"), [])
+      .filter((r) => String(r.workspaceId) !== String(workspaceId));
+    s.set(key("recents"), recents);
     return recents;
   } catch {
     return [];
@@ -74,7 +101,7 @@ function addRecentDashboard(workspaceId, name) {
 function clearRecentDashboards() {
   try {
     const s = getStore();
-    s.set("recents", []);
+    s.set(key("recents"), []);
   } catch {
     // ignore
   }
@@ -88,7 +115,7 @@ function clearRecentDashboards() {
 function getSessionState() {
   try {
     const s = getStore();
-    const state = s.get("sessionState", null);
+    const state = s.get(key("sessionState"), null);
     return state || null;
   } catch {
     return null;
@@ -104,7 +131,7 @@ function getSessionState() {
 function saveSessionState(openTabIds, activeTabId) {
   try {
     const s = getStore();
-    s.set("sessionState", { openTabIds, activeTabId });
+    s.set(key("sessionState"), { openTabIds, activeTabId });
   } catch {
     // ignore
   }
@@ -116,7 +143,7 @@ function saveSessionState(openTabIds, activeTabId) {
 function clearSessionState() {
   try {
     const s = getStore();
-    s.delete("sessionState");
+    s.delete(key("sessionState"));
   } catch {
     // ignore
   }
@@ -125,6 +152,7 @@ function clearSessionState() {
 module.exports = {
   getRecentDashboards,
   addRecentDashboard,
+  removeRecentDashboard,
   clearRecentDashboards,
   getSessionState,
   saveSessionState,

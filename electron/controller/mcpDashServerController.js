@@ -214,10 +214,15 @@ function saveMcpServerSettings(win, mcpSettings) {
 
 // --- App ID Resolution ---
 /**
- * Resolve the appId by scanning the userData/Dashboard directory for
- * subdirectories containing workspaces.json. Falls back to the default.
+ * Resolve the appId: the one recorded at startup, else scan the
+ * userData/Dashboard directory for subdirectories containing
+ * workspaces.json. Falls back to the default.
  */
 function resolveAppId() {
+  // The appId recorded at startup is the real one; scanning is the
+  // fallback for hosts that never record it.
+  const recorded = require("../profile/activeProfile").getAppId();
+  if (recorded) return recorded;
   const { app } = require("electron");
   const fs = require("fs");
   const path = require("path");

@@ -33,7 +33,7 @@ describe("botController — Dash team (CRE-011)", () => {
   it("list() leaves the team out; listDashTeam() is its own channel", () => {
     assert.match(
       ctrl,
-      /list\(\) \{\s*return this\._store\.list\(\)\.filter\(\(b\) => !isDashTeam\(b\)\);/,
+      /list\(\) \{\s*return this\._activeBots\(\)\.filter\(\(b\) => !isDashTeam\(b\)\);/,
     );
     assert.match(ctrl, /listDashTeam\(\) \{/);
     assert.match(
@@ -47,7 +47,7 @@ describe("botController — Dash team (CRE-011)", () => {
     assert.match(
       ctrl,
       // …except a test run the user started (Phase 1d).
-      /startBlocker: \(botId\) => \{[\s\S]{0,400}if \(this\._pause\.isPaused\(botId\) && !testRun\)\s*return "this bot is paused";/,
+      /startBlocker: \(botId\) => \{[\s\S]{0,600}if \(this\._pause\.isPaused\(botId\) && !testRun\)\s*return "this bot is paused";/,
     );
   });
 

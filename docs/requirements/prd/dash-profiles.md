@@ -1,6 +1,6 @@
 # PRD: Dash Profiles
 
-**Status:** In Progress (PR 1 of 6: profile storage)
+**Status:** In Progress (PR 2 of 6: profiles as id lists + switching)
 **Last Updated:** 2026-10-26
 **Owner:** trops
 **Related PRDs:** [Dashboard Marketplace](./dashboard-marketplace.md), [Bot Teams](./bot-teams.md)
@@ -88,12 +88,13 @@ computer.
 
 1. **Profile storage** (this PR).
    - `electron/profile/profileStore.js` keeps `Dashboard/<appId>/profiles.json`.
-   - `electron/profile/profilePaths.js` (`getProfileDataDir`, `getProfileFilePath`) resolves the active profile's folder.
-   - The per-profile controllers build their paths through it: workspaces, themes, menu items, layouts, dashboard ratings, and the
-     dashboard config reads.
-   - Default stays in `Dashboard/<appId>/`, and other profiles go in `Dashboard/<appId>/profiles/<id>/`.
-2. **Switching + bots per profile.** `profileId` on bots, only the active profile's bots run, session recents per profile, the switch flow,
-   and the MCP Dash server follows the active profile.
+   - Shipped with separate per-profile folders; replaced in PR 2 (see Implementation Notes).
+2. **Profiles as id lists + switching.**
+   - A profile is the list of ids it holds: `items: { dashboards, folders, themes, bots }`. Everything lives once in the shared files,
+     and one item can be in several profiles.
+   - The controllers filter their lists to the active profile, add new items to it, and remove deleted items from every profile.
+   - Only the active profile's bots run and show. The Dash team is shared. Recent dashboards and open tabs are kept per profile.
+   - `profile:*` IPC: list / get-active / create / rename / delete / switch.
 3. **Profiles UI.** The switcher in the sidebar account menu, and Settings › Profiles (new / rename / delete / duplicate / switch).
 4. **Save to file.** The `.dashprofile` format.
 5. **Load from file.** Create-or-replace with the difference preview, plus the sync groundwork: `revision` and dashboard hashes.
@@ -111,6 +112,17 @@ auto-save.
     user's dashboards.
   - Profile ids are checked against `^[a-z0-9-]{1,64}$` before they're used in a path.
   - Providers (`providers.json`), `settings.json`, `Dashboard/data/` and installed widgets are deliberately shared and not moved.
+- **PR 2:** switched to id lists, at the user's request: a profile is a config of what it holds, so one bot or dashboard can be in two
+  profiles. PR 1's per-profile folders were dropped; no install had any yet, because there was no UI.
+  - `utils/appPaths.js` (`getAppFilePath`) is the one place that builds `Dashboard/<appId>/<file>`.
+  - `profile/profileMembership.js`: `filterToActive`, `addToActive`, `removeEverywhere`. With no `profiles.json`, nothing is filtered.
+  - Creating the first extra profile writes Default's lists from everything that exists; a new profile starts empty.
+  - Themes are a soft list: a profile shows its own themes, the themes its dashboards use, and the app theme.
+  - Bots: `_inActiveProfile` gates scheduling, resume catch-up, events, the paused queue and `startBlocker`;
+    `applyActiveProfile()` reschedules on a switch, and a bot in both profiles keeps running.
+  - Opening a dashboard brings its lead into the active profile.
+  - `profile/activeProfile.js` records the main process's appId (used by recent dashboards and the MCP Dash server).
+  - Added the missing `removeRecentDashboard`, which dash-electron already called.
 
 ---
 
@@ -118,11 +130,15 @@ auto-save.
 
 - `electron/profile/profileStore.test.js`: create, rename, delete and switch; the Default and active-profile guards; damaged files;
   unsafe ids.
-- `electron/profile/profilePaths.test.js`: with no `profiles.json`, controllers read the same folder as before. After a switch, every
-  controller reads and writes only the new profile, and Default is untouched.
+- `electron/profile/profileMembership.test.js`: no filtering with only Default; first profile keeps everything in Default; new
+  items join the active profile; an item in two profiles shows in both; delete removes it everywhere.
+- `electron/profile/botProfiles.test.js`: new bots join the active profile; the Dash team is shared; switching schedules and stops
+  the right bots; events skip other profiles' bots; delete removes a bot everywhere.
+- `electron/profile/sessionProfiles.test.js`: recents and open tabs per profile; `removeRecentDashboard`.
 
 ---
 
 ## Revision History
 
-- 2026-10-26: Created. Plan approved; PR 1 (profile storage) in progress.
+- 2026-10-26: Created. Plan approved; PR 1 (profile storage) merged in dash-core v0.1.834.
+- 2026-10-26: PR 2: profiles became id lists (user decision), plus switching and bots per profile.

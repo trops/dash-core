@@ -42,6 +42,7 @@ const mcpDashServerApi = require("./mcpDashServerApi");
 const publisherKeyApi = require("./publisherKeyApi");
 const onboardingApi = require("./onboardingApi");
 const exportApi = require("./exportApi");
+const profileApi = require("./profileApi");
 
 // Events constants
 const events = require("../events");
@@ -136,6 +137,7 @@ function createMainApi(extensions = {}) {
     publisherKey: publisherKeyApi,
     onboarding: onboardingApi,
     export: exportApi,
+    profiles: profileApi,
     session: sessionApi,
     notifications: notificationApi,
     scheduler: schedulerApi,

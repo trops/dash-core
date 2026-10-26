@@ -1,9 +1,36 @@
 const { writeFileSync } = require("fs");
 const events = require("../events");
 const { getFileContents } = require("../utils/file");
-const { getProfileFilePath } = require("../profile/profilePaths");
+const { getAppFilePath } = require("../utils/appPaths");
+const {
+  hasProfiles,
+  filterKeysToActive,
+  filterToActive,
+  addToActive,
+  removeEverywhere,
+} = require("../profile/profileMembership");
 
 const configFilename = "themes.json";
+
+// A profile shows its own themes, any theme its dashboards use, and the
+// app theme (settings are shared), so nothing on screen loses its theme.
+function themesForActiveProfile(appId, themes) {
+  if (!hasProfiles(appId)) return themes;
+  const workspaces = getFileContents(getAppFilePath(appId, "workspaces.json"));
+  const used = filterToActive(
+    appId,
+    "dashboards",
+    Array.isArray(workspaces) ? workspaces : [],
+    (w) => w.id,
+  )
+    .map((w) => w.themeKey)
+    .filter(Boolean);
+  const appTheme = require("./settingsController").getSettingsForApplication(
+    null,
+  )?.settings?.theme;
+  if (appTheme) used.push(appTheme);
+  return filterKeysToActive(appId, "themes", themes, used);
+}
 
 const themeController = {
   /**
@@ -18,7 +45,7 @@ const themeController = {
   saveThemeForApplication: (win, appId, name, obj) => {
     try {
       // filename to the pages file (live pages)
-      const filename = getProfileFilePath(appId, configFilename);
+      const filename = getAppFilePath(appId, configFilename);
       const data = getFileContents(filename, {});
 
       // Add/update the theme based on the name
@@ -30,12 +57,13 @@ const themeController = {
 
       // write the new pages configuration back to the file
       writeFileSync(filename, JSON.stringify(data, null, 2));
+      addToActive(appId, "themes", name);
 
       console.log("[themeController] Theme saved successfully");
 
       // Return the data for ipcMain.handle() - modern promise-based approach
       return {
-        themes: data,
+        themes: themesForActiveProfile(appId, data),
         key: name,
         theme: obj,
         success: true,
@@ -59,9 +87,9 @@ const themeController = {
    */
   listThemesForApplication: (win, appId) => {
     try {
-      const filename = getProfileFilePath(appId, configFilename);
+      const filename = getAppFilePath(appId, configFilename);
 
-      const data = getFileContents(filename, {});
+      const data = themesForActiveProfile(appId, getFileContents(filename, {}));
 
       console.log(
         "[themeController] Loading themes from:",
@@ -96,18 +124,19 @@ const themeController = {
    */
   deleteThemeForApplication: (win, appId, themeKey) => {
     try {
-      const filename = getProfileFilePath(appId, configFilename);
+      const filename = getAppFilePath(appId, configFilename);
       const data = getFileContents(filename, {});
 
       if (themeKey in data) {
         delete data[themeKey];
         writeFileSync(filename, JSON.stringify(data, null, 2));
       }
+      removeEverywhere(appId, "themes", themeKey);
 
       console.log("[themeController] Theme deleted successfully:", themeKey);
 
       return {
-        themes: data,
+        themes: themesForActiveProfile(appId, data),
         success: true,
       };
     } catch (e) {
