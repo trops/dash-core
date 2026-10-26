@@ -44,6 +44,7 @@ import { CreateBuildingStep } from "./CreateBuildingStep";
 import { PlanSketch } from "./PlanSketch";
 import { botPlanRequest, forWhere } from "./botCreate";
 import { forEdit } from "./editCreate";
+import { earlierTurns } from "./askThread";
 
 /** Create › Widget: the Planner plans one widget, not a dashboard. */
 const widgetPlanRequest = (prompt) =>
@@ -393,13 +394,22 @@ export const CreatePlanStep = ({
   const statusTokens = useStatusTokens();
   const app = useContext(AppContext) || {};
   // [{ who: "you" | "planner" | "note", text, meta? }]
+  // A conversation handed over from the Dash team chat (its answer already
+  // has the plan or its questions): shown as it was, nothing asked again.
+  const handedOver = !!(
+    seed &&
+    Array.isArray(seed.messages) &&
+    seed.messages.length
+  );
   const [messages, setMessages] = useState(
     recentId
       ? []
-      : [
-          { who: "you", text: seed ? seed.label : prompt },
-          ...(note ? [{ who: "note", text: note }] : []),
-        ],
+      : handedOver
+        ? seed.messages
+        : [
+            { who: "you", text: seed ? seed.label : prompt },
+            ...(note ? [{ who: "note", text: note }] : []),
+          ],
   );
   const [busy, setBusy] = useState(true);
   // Recent (4e-1): this conversation's id (its plan memory too); whether
@@ -451,6 +461,9 @@ export const CreatePlanStep = ({
       reopened.current = false;
       cont = false;
       request = reopenedRequest(origPrompt, plan, text);
+      // Handed over from the Dash team chat: what was said there comes too.
+      const earlier = handedOver ? earlierTurns(seed.messages) : "";
+      if (earlier) request = `${earlier}\n\n${request}`;
       // Still one bot, where it was going (2c-1).
       if (botMode) request = botPlanRequest(request, where);
     }
@@ -567,6 +580,16 @@ export const CreatePlanStep = ({
             ? bots.saveCreateRecent({
                 prompt: first,
                 ...(savedWidget ? { conversation: { widget: true } } : {}),
+                // Handed over: kept whole from the start, so a reopen from
+                // Recent shows it rather than asking the Planner again.
+                ...(handedOver
+                  ? {
+                      conversation: {
+                        messages: seed.messages,
+                        plan: seed.plan,
+                      },
+                    }
+                  : {}),
               })
             : null,
         )
@@ -590,6 +613,10 @@ export const CreatePlanStep = ({
               // The Planner hasn't seen it: a first question brings it along.
               setOrigPrompt(seed.label);
               reopened.current = true;
+              if (handedOver) {
+                setBusy(false);
+                return;
+              }
               setMessages((m) => [
                 ...m,
                 {

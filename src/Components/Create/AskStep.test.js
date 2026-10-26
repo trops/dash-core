@@ -12,7 +12,8 @@ import {
   leadQuestion,
   reopenedQuestion,
   hasPlan,
-  planSeed,
+  handoverSeed,
+  earlierTurns,
 } from "./askThread";
 import { questionThreads, recentRows, recentStatus } from "./recentRows";
 
@@ -83,14 +84,39 @@ describe("askThread", () => {
     expect(reopenedQuestion([], "Hi")).toBe(questionRequest("Hi"));
   });
 
-  test("only a plan with pieces opens; the seed carries the plan", () => {
+  test("a plan with pieces or questions opens; the seed carries the chat", () => {
     expect(hasPlan(null)).toBe(false);
     expect(hasPlan({ summary: "x", pieces: [] })).toBe(false);
     expect(hasPlan(PLAN)).toBe(true);
-    const seed = planSeed("Show that", PLAN);
+    expect(hasPlan({ summary: "x", questions: [{ question: "Which?" }] })).toBe(
+      true,
+    );
+    const seed = handoverSeed(
+      [
+        { who: "you", text: " Show that " },
+        { who: "planner", text: "Here.", meta: "m", plan: PLAN },
+        { who: "lead", text: "not mine" },
+      ],
+      PLAN,
+    );
     expect(seed.plan).toBe(PLAN);
-    expect(seed.label).toBe("From a question: Show that");
-    expect(seed.request).toContain(`<plan>${JSON.stringify(PLAN)}</plan>`);
+    expect(seed.label).toBe("Show that");
+    expect(seed.request).toBeUndefined();
+    expect(seed.messages).toEqual([
+      { who: "you", text: " Show that " },
+      { who: "planner", text: "Here.", meta: "m" },
+    ]);
+  });
+
+  test("the earlier turns, for the Planner in Create", () => {
+    expect(earlierTurns([])).toBe("");
+    expect(
+      earlierTurns([
+        { who: "you", text: "a" },
+        { who: "note", text: "n" },
+        { who: "planner", text: "b" },
+      ]),
+    ).toBe("Earlier in this conversation:\nMe: a\nYou: b");
   });
 });
 
@@ -142,11 +168,12 @@ describe("AskStep", () => {
     );
   });
 
-  test("a follow-up continues; an answer with a plan opens as one", async () => {
+  test("a follow-up continues; an answer with a plan moves on to Create with the chat", async () => {
     const bots = api();
     const onOpenPlan = jest.fn();
     render(<AskStep question="What ran?" onOpenPlan={onOpenPlan} />);
     await screen.findByTestId("ask-answer");
+    expect(onOpenPlan).not.toHaveBeenCalled();
     bots.run.mockResolvedValueOnce(
       answered(`Here's a widget for it.\n<plan>${JSON.stringify(PLAN)}</plan>`),
     );
@@ -154,13 +181,62 @@ describe("AskStep", () => {
       target: { value: "Show that on a widget" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Ask" }));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Open as a plan" }),
-    );
+    await waitFor(() => expect(onOpenPlan).toHaveBeenCalledTimes(1));
     expect(bots.run.mock.calls[1][2]).toBe(true);
-    expect(onOpenPlan).toHaveBeenCalledWith(
-      planSeed("Show that on a widget", PLAN),
-    );
+    const seed = onOpenPlan.mock.calls[0][0];
+    expect(seed.plan).toEqual(PLAN);
+    expect(seed.label).toBe("What ran?");
+    expect(seed.messages.map((m) => [m.who, m.text])).toEqual([
+      ["you", "What ran?"],
+      ["planner", "Morning Briefer sent a brief today at 8:02."],
+      ["you", "Show that on a widget"],
+      ["planner", "Here's a widget for it."],
+    ]);
+    // Still there if the chat is reopened.
+    fireEvent.click(screen.getByRole("button", { name: "Open as a plan" }));
+    expect(onOpenPlan).toHaveBeenCalledTimes(2);
+  });
+
+  test("questions before a plan move on to Create too (QA 2026-10-26)", async () => {
+    const asking = {
+      summary: "Home",
+      questions: [{ question: "Include sprinklers?", options: ["Yes", "No"] }],
+      pieces: [],
+    };
+    api({
+      run: jest
+        .fn()
+        .mockResolvedValue(
+          answered(
+            `A few choices before I write the full plan:\n<plan>${JSON.stringify(asking)}</plan>`,
+          ),
+        ),
+    });
+    const onOpenPlan = jest.fn();
+    // Like the Dash team modal: it closes as Create opens.
+    const Host = () => {
+      const [open, setOpen] = React.useState(true);
+      return open ? (
+        <AskStep
+          question="Make me a home dashboard"
+          onOpenPlan={(seed) => {
+            onOpenPlan(seed);
+            setOpen(false);
+          }}
+        />
+      ) : null;
+    };
+    render(<Host />);
+    await waitFor(() => expect(onOpenPlan).toHaveBeenCalledTimes(1));
+    expect(onOpenPlan.mock.calls[0][0].plan).toEqual(asking);
+    // The thread keeps the answer, though it closed before showing it.
+    const bots = window.mainApi.bots;
+    const saved = bots.saveCreateRecent.mock.calls
+      .map((c) => c[0])
+      .filter((r) => r.id === "plan_q1" && r.conversation);
+    const last = saved[saved.length - 1].conversation.messages;
+    expect(last.map((m) => m.who)).toEqual(["you", "planner"]);
+    expect(last[1].plan).toEqual(asking);
   });
 
   test("reopened: as it was; the next question carries the conversation", async () => {
