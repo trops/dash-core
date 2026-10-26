@@ -16,15 +16,16 @@ import {
   leadQuestion,
   reopenedQuestion,
   hasPlan,
-  planSeed,
+  handoverSeed,
 } from "./askThread";
 
 /**
  * AskStep — a question to the Dash team's Planner (create-entry PRD CRE-007
  * AC4 / CRE-011 AC6, phase 5e). It reads the user's bot results and runs
  * (bot_results / bot_runs) and answers; follow-ups carry on. Saved
- * as a "question". When an answer plans something, Open as a plan starts
- * Create from it (`onOpenPlan(seed)`).
+ * as a "question". When an answer plans something (or asks the questions a
+ * plan needs), Create takes over at once with the conversation so far
+ * (`onOpenPlan(seed)`); a reopened answer's Open as a plan does the same.
  *
  * Asked of a team lead instead (5e-2a, the Ask box's "To:"): `recipient` is
  * the lead ({ botId, leadName, dashboardName, dashboardLabel }); the question
@@ -156,12 +157,30 @@ export const AskStep = ({
       return;
     }
     const plan = extractPlan(res.output);
-    add({
+    const msg = {
       who: "planner",
       text: withoutPlan(res.output) || (plan ? plan.summary : "(no answer)"),
       meta: runCostLabel(res),
       ...(hasPlan(plan) ? { plan, asked: text } : {}),
-    });
+    };
+    add(msg);
+    // An answer that plans (or asks what a plan needs) moves on to Create:
+    // its questions are taps there, and Build is there.
+    if (hasPlan(plan) && onOpenPlan && alive.current) {
+      const all = [...messagesRef.current, msg];
+      // Saved now: the host closes this step before it renders the answer,
+      // so the as-it-goes save wouldn't see it.
+      const bots = window.mainApi && window.mainApi.bots;
+      if (askId.current && bots && bots.saveCreateRecent) {
+        Promise.resolve(
+          bots.saveCreateRecent({
+            id: askId.current,
+            conversation: { messages: all },
+          }),
+        ).catch(() => {});
+      }
+      onOpenPlan(handoverSeed(all, plan));
+    }
   };
 
   useEffect(() => {
@@ -285,7 +304,11 @@ export const AskStep = ({
                     <Button3
                       size="sm"
                       title="Open as a plan"
-                      onClick={() => onOpenPlan(planSeed(m.asked, m.plan))}
+                      onClick={() =>
+                        onOpenPlan(
+                          handoverSeed(messages.slice(0, i + 1), m.plan),
+                        )
+                      }
                     />
                   ) : null
                 }

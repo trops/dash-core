@@ -43,22 +43,52 @@ export function reopenedQuestion(
     : now;
 }
 
-/** Whether an answer's plan is worth opening (it plans something). */
+/**
+ * Whether an answer's plan is worth opening: it plans something, or it asks
+ * the questions that come before a plan (they're answered in Create).
+ */
 export function hasPlan(plan) {
-  return !!(plan && Array.isArray(plan.pieces) && plan.pieces.length);
+  const some = (list) => Array.isArray(list) && list.length > 0;
+  return !!(plan && (some(plan.pieces) || some(plan.questions)));
 }
 
 /**
- * Open as a plan: Create starts from the plan the answer suggested, and the
- * Planner is asked to carry on with it (the seed CreatePlanStep takes, 5b).
+ * The Dash team chat hands a plan to Create as soon as an answer has one:
+ * the conversation so far comes along, and nothing is asked again — the
+ * answer's questions show as taps, and Build is there.
+ * @param {{ who: string, text: string, meta?: string }[]} messages
  */
-export function planSeed(question, plan) {
-  const asked = String(question || "").trim();
+export function handoverSeed(messages, plan) {
+  const kept = (messages || [])
+    .filter(
+      (m) =>
+        m &&
+        (m.who === "you" || m.who === "planner" || m.who === "note") &&
+        m.text,
+    )
+    .map((m) => ({
+      who: m.who,
+      text: m.text,
+      ...(m.meta ? { meta: m.meta } : {}),
+    }));
+  const first = kept.find((m) => m.who === "you");
   return {
     plan,
-    label: asked ? `From a question: ${asked}` : "From a question",
-    request: `I asked: "${asked}". You suggested the plan below. Keep it, change it only where I ask, and ask me anything you need before building.\n<plan>${JSON.stringify(
-      plan,
-    )}</plan>`,
+    label: first ? String(first.text).trim() : "From the Dash team chat",
+    messages: kept,
   };
+}
+
+/**
+ * The turns a handed-over conversation carries to the Planner's next
+ * question in Create (its own session there starts fresh).
+ */
+export function earlierTurns(messages, keep = 6) {
+  const turns = (messages || [])
+    .filter((m) => m && (m.who === "you" || m.who === "planner") && m.text)
+    .slice(-keep)
+    .map((m) => `${m.who === "you" ? "Me" : "You"}: ${m.text}`);
+  return turns.length
+    ? `Earlier in this conversation:\n${turns.join("\n")}`
+    : "";
 }
