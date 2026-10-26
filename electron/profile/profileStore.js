@@ -1,15 +1,21 @@
 /**
  * profileStore.js
  *
- * The list of profiles for an app and which one is active, kept in
- * <userData>/Dashboard/<appId>/profiles.json:
+ * The profiles for an app, which one is active, and what each one holds,
+ * kept in <userData>/Dashboard/<appId>/profiles.json:
  *
- *   { activeProfileId, profiles: [{ id, name, createdAt }] }
+ *   { activeProfileId,
+ *     profiles: [{ id, name, createdAt,
+ *                  items: { dashboards, folders, themes, bots } }] }
  *
- * Until a second profile is created the file doesn't exist and the app
- * has one profile, Default, whose data stays in Dashboard/<appId>/ exactly
- * as before profiles existed. Other profiles live in
- * Dashboard/<appId>/profiles/<id>/.
+ * Dashboards, folders, themes and bots live once, in the app's shared
+ * files; a profile is the list of ids it holds, so one item can be in
+ * several profiles.
+ *
+ * Until a second profile is created the file doesn't exist, the app has
+ * one profile, Default, and it holds everything (members() returns null:
+ * no filtering). Creating the first extra profile writes Default's lists
+ * out from what exists at that moment.
  */
 const { app } = require("electron");
 const path = require("path");
@@ -17,54 +23,83 @@ const fs = require("fs");
 
 const appName = "Dashboard";
 const storeFilename = "profiles.json";
-const profilesDirname = "profiles";
 
 const DEFAULT_PROFILE_ID = "default";
 const DEFAULT_PROFILE_NAME = "Default";
 
-// Ids we create are "p-<base36>"; only these are ever used in a path.
+const KINDS = ["dashboards", "folders", "themes", "bots"];
+
 const PROFILE_ID_PATTERN = /^[a-z0-9-]{1,64}$/;
 
 const cache = new Map();
 
-function getAppRootDir(appId) {
+function getStorePath(appId) {
   if (!appId || typeof appId !== "string") {
     throw new Error("profileStore: appId is required");
   }
-  return path.join(app.getPath("userData"), appName, appId);
+  return path.join(app.getPath("userData"), appName, appId, storeFilename);
 }
 
-function getStorePath(appId) {
-  return path.join(getAppRootDir(appId), storeFilename);
+function emptyItems() {
+  return { dashboards: [], folders: [], themes: [], bots: [] };
 }
 
-function defaultStore() {
-  return {
-    activeProfileId: DEFAULT_PROFILE_ID,
-    profiles: [{ id: DEFAULT_PROFILE_ID, name: DEFAULT_PROFILE_NAME }],
-  };
+// Ids are kept as strings: dashboards and folders use numbers, themes and
+// bots use strings, and the same id must match either way.
+function cleanIds(list) {
+  if (!Array.isArray(list)) return [];
+  return [...new Set(list.filter((id) => id != null).map(String))];
 }
 
-// A missing or unreadable file means "Default only" — never an error, so
-// a damaged profiles.json can't hide the user's dashboards.
+function cleanItems(items) {
+  const out = emptyItems();
+  for (const kind of KINDS) out[kind] = cleanIds(items && items[kind]);
+  return out;
+}
+
+function assertKind(kind) {
+  if (!KINDS.includes(kind)) throw new Error(`Unknown profile item: ${kind}`);
+}
+
+// A missing or unreadable file means "Default only, holding everything" —
+// never an error, so a damaged profiles.json can't hide the user's things.
 function normalize(raw) {
-  const base = defaultStore();
+  const base = {
+    explicit: false,
+    activeProfileId: DEFAULT_PROFILE_ID,
+    profiles: [
+      {
+        id: DEFAULT_PROFILE_ID,
+        name: DEFAULT_PROFILE_NAME,
+        items: emptyItems(),
+      },
+    ],
+  };
   if (!raw || !Array.isArray(raw.profiles)) return base;
-  const profiles = raw.profiles.filter(
-    (p) =>
-      p &&
-      typeof p.id === "string" &&
-      PROFILE_ID_PATTERN.test(p.id) &&
-      p.id !== DEFAULT_PROFILE_ID,
-  );
-  const defaultEntry = raw.profiles.find(
-    (p) => p && p.id === DEFAULT_PROFILE_ID,
-  );
-  const all = [{ ...base.profiles[0], ...defaultEntry }, ...profiles];
+  const defaultEntry =
+    raw.profiles.find((p) => p && p.id === DEFAULT_PROFILE_ID) || {};
+  const others = raw.profiles
+    .filter(
+      (p) =>
+        p &&
+        typeof p.id === "string" &&
+        PROFILE_ID_PATTERN.test(p.id) &&
+        p.id !== DEFAULT_PROFILE_ID,
+    )
+    .map((p) => ({ ...p, items: cleanItems(p.items) }));
+  const all = [
+    {
+      ...base.profiles[0],
+      ...defaultEntry,
+      id: DEFAULT_PROFILE_ID,
+      items: cleanItems(defaultEntry.items),
+    },
+    ...others,
+  ];
   const activeProfileId = all.some((p) => p.id === raw.activeProfileId)
     ? raw.activeProfileId
     : DEFAULT_PROFILE_ID;
-  return { activeProfileId, profiles: all };
+  return { explicit: true, activeProfileId, profiles: all };
 }
 
 function readStore(appId) {
@@ -82,10 +117,12 @@ function readStore(appId) {
 
 function writeStore(appId, store) {
   const file = getStorePath(appId);
+  const { explicit, ...onDisk } = store;
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(store, null, 2));
-  cache.set(appId, store);
-  return store;
+  fs.writeFileSync(file, JSON.stringify(onDisk, null, 2));
+  const next = { ...store, explicit: true };
+  cache.set(appId, next);
+  return next;
 }
 
 function sameName(a, b) {
@@ -114,21 +151,28 @@ function newProfileId(store) {
   return id;
 }
 
-/**
- * The folder holding a profile's per-profile files. Default keeps the
- * app folder itself.
- */
-function getProfileDir(appId, profileId) {
-  if (profileId === DEFAULT_PROFILE_ID) return getAppRootDir(appId);
-  if (!PROFILE_ID_PATTERN.test(profileId || "")) {
-    throw new Error(`Invalid profile id: ${profileId}`);
-  }
-  return path.join(getAppRootDir(appId), profilesDirname, profileId);
+function copyProfile(p) {
+  return { ...p, items: cleanItems(p.items) };
+}
+
+function updateItems(appId, store, profileIds, kind, change) {
+  const profiles = store.profiles.map((p) => {
+    if (!profileIds.includes(p.id)) return p;
+    const current = p.items[kind];
+    const next = cleanIds(change(current));
+    return { ...p, items: { ...p.items, [kind]: next } };
+  });
+  return writeStore(appId, { ...store, profiles });
 }
 
 const profileStore = {
+  /** True once a second profile has been created (profiles.json exists). */
+  hasProfiles(appId) {
+    return readStore(appId).explicit;
+  },
+
   list(appId) {
-    return readStore(appId).profiles.map((p) => ({ ...p }));
+    return readStore(appId).profiles.map(copyProfile);
   },
 
   getActiveProfileId(appId) {
@@ -137,26 +181,38 @@ const profileStore = {
 
   getActive(appId) {
     const store = readStore(appId);
-    return { ...findProfile(store, store.activeProfileId) };
+    return copyProfile(findProfile(store, store.activeProfileId));
   },
 
-  create(appId, name) {
-    const store = readStore(appId);
+  /**
+   * Creates an empty profile. The first time, Default's lists are written
+   * out from `defaultItems` (everything that exists now) so Default keeps
+   * holding it all once filtering starts.
+   */
+  create(appId, name, { defaultItems, items } = {}) {
+    let store = readStore(appId);
     const clean = cleanName(name);
     if (store.profiles.some((p) => sameName(p.name, clean))) {
       throw new Error(`A profile named "${clean}" already exists`);
+    }
+    if (!store.explicit) {
+      store = {
+        ...store,
+        profiles: store.profiles.map((p) =>
+          p.id === DEFAULT_PROFILE_ID
+            ? { ...p, items: cleanItems(defaultItems) }
+            : p,
+        ),
+      };
     }
     const profile = {
       id: newProfileId(store),
       name: clean,
       createdAt: new Date().toISOString(),
+      items: cleanItems(items),
     };
-    writeStore(appId, {
-      ...store,
-      profiles: [...store.profiles, profile],
-    });
-    fs.mkdirSync(getProfileDir(appId, profile.id), { recursive: true });
-    return { ...profile };
+    writeStore(appId, { ...store, profiles: [...store.profiles, profile] });
+    return copyProfile(profile);
   },
 
   rename(appId, profileId, name) {
@@ -172,12 +228,13 @@ const profileStore = {
       p.id === profileId ? { ...p, name: clean } : p,
     );
     writeStore(appId, { ...store, profiles });
-    return { ...profiles.find((p) => p.id === profileId) };
+    return copyProfile(profiles.find((p) => p.id === profileId));
   },
 
   /**
-   * Removes a profile and its folder. Default and the active profile
-   * can't be deleted.
+   * Removes a profile. Its items stay in the shared files (and in any
+   * other profile that holds them). Default and the active profile can't
+   * be removed.
    */
   remove(appId, profileId) {
     const store = readStore(appId);
@@ -192,22 +249,81 @@ const profileStore = {
       ...store,
       profiles: store.profiles.filter((p) => p.id !== profileId),
     });
-    fs.rmSync(getProfileDir(appId, profileId), {
-      recursive: true,
-      force: true,
-    });
     return { success: true };
   },
 
   setActive(appId, profileId) {
     const store = readStore(appId);
-    findProfile(store, profileId);
-    writeStore(appId, { ...store, activeProfileId: profileId });
-    return { ...findProfile(store, profileId) };
+    const profile = findProfile(store, profileId);
+    if (store.explicit || profileId !== DEFAULT_PROFILE_ID) {
+      writeStore(appId, { ...store, activeProfileId: profileId });
+    }
+    return copyProfile(profile);
   },
 
-  getProfileDir,
-  getAppRootDir,
+  /**
+   * The ids of `kind` a profile holds, or null when there is only Default
+   * (no filtering: Default holds everything).
+   */
+  members(appId, kind, profileId) {
+    assertKind(kind);
+    const store = readStore(appId);
+    if (!store.explicit) return null;
+    const id = profileId || store.activeProfileId;
+    return [...findProfile(store, id).items[kind]];
+  },
+
+  /** Adds ids to a profile (default: the active one). No-op before profiles exist. */
+  add(appId, kind, ids, profileId) {
+    assertKind(kind);
+    const store = readStore(appId);
+    if (!store.explicit) return;
+    const target = profileId || store.activeProfileId;
+    findProfile(store, target);
+    updateItems(appId, store, [target], kind, (current) => [
+      ...current,
+      ...cleanIds([].concat(ids)),
+    ]);
+  },
+
+  /** Takes ids out of one profile; the items themselves stay. */
+  removeFromProfile(appId, kind, ids, profileId) {
+    assertKind(kind);
+    const store = readStore(appId);
+    if (!store.explicit) return;
+    const target = profileId || store.activeProfileId;
+    findProfile(store, target);
+    const drop = new Set(cleanIds([].concat(ids)));
+    updateItems(appId, store, [target], kind, (current) =>
+      current.filter((id) => !drop.has(id)),
+    );
+  },
+
+  /** Takes ids out of every profile — used when the item is deleted. */
+  removeEverywhere(appId, kind, ids) {
+    assertKind(kind);
+    const store = readStore(appId);
+    if (!store.explicit) return;
+    const drop = new Set(cleanIds([].concat(ids)));
+    updateItems(
+      appId,
+      store,
+      store.profiles.map((p) => p.id),
+      kind,
+      (current) => current.filter((id) => !drop.has(id)),
+    );
+  },
+
+  /** Profiles (other than `exceptProfileId`) that hold this id. */
+  profilesHolding(appId, kind, id, exceptProfileId) {
+    assertKind(kind);
+    const key = String(id);
+    return readStore(appId)
+      .profiles.filter(
+        (p) => p.id !== exceptProfileId && p.items[kind].includes(key),
+      )
+      .map((p) => ({ id: p.id, name: p.name }));
+  },
 
   // Tests only: forget what was read so the next call reads the disk.
   _resetCache() {
@@ -218,3 +334,4 @@ const profileStore = {
 module.exports = profileStore;
 module.exports.DEFAULT_PROFILE_ID = DEFAULT_PROFILE_ID;
 module.exports.DEFAULT_PROFILE_NAME = DEFAULT_PROFILE_NAME;
+module.exports.KINDS = KINDS;

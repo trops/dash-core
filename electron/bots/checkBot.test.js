@@ -190,6 +190,8 @@ function fakeController(over = {}) {
       },
     },
     _scheduler: { register: () => {} },
+    // No profiles here: every bot is in the active (Default) profile.
+    _inActiveProfile: () => true,
     _pause: {
       pauseBot: (id) => paused.add(id),
       isPaused: (id) => paused.has(id),

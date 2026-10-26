@@ -43,7 +43,7 @@ describe("botController — Bots view backend", () => {
     assert.match(ctrl, /listRecentRuns\(\{ limit = 10 \} = \{\}\)/);
     assert.match(
       ctrl,
-      /recentRuns\(\{\s*bots: this\._store\.list\(\),\s*getRuns: \(id\) => this\._store\.getRuns\(id\),/,
+      /recentRuns\(\{\s*bots: this\._activeBots\(\),\s*getRuns: \(id\) => this\._store\.getRuns\(id\),/,
     );
   });
 
@@ -54,7 +54,7 @@ describe("botController — Bots view backend", () => {
     );
     assert.match(
       ctrl,
-      /lastRuns\(\) \{\s*return lastRuns\(\{\s*bots: this\._store\.list\(\)\.filter\(\(b\) => !isDashTeam\(b\)\),/,
+      /lastRuns\(\) \{\s*return lastRuns\(\{\s*bots: this\.list\(\),/,
     );
   });
 
@@ -222,7 +222,7 @@ describe("botController — budgets stop runs (US-019)", () => {
   it("budgetStatus covers user bots; keeping one running refreshes lists", () => {
     assert.match(
       ctrl,
-      /budgetStatus\(\) \{[\s\S]{0,200}isDashTeam\(bot\)[\s\S]{0,120}this\._budgets\.botStatus\(bot\.id, bot\.workspaceId\)/,
+      /budgetStatus\(\) \{[\s\S]{0,200}for \(const bot of this\.list\(\)\)[\s\S]{0,120}this\._budgets\.botStatus\(bot\.id, bot\.workspaceId\)/,
     );
     assert.match(
       ctrl,
@@ -244,7 +244,7 @@ describe("botController — spending summary (US-019 slice B)", () => {
     );
     assert.match(
       ctrl,
-      /spendingSummary\(\) \{[\s\S]{0,700}summarizeSpending\(\{[\s\S]{0,300}bots: this\._store\.list\(\)\.filter\(\(b\) => !isDashTeam\(b\)\),/,
+      /spendingSummary\(\) \{[\s\S]{0,700}summarizeSpending\(\{[\s\S]{0,300}bots: this\.list\(\),/,
     );
     assert.equal(events.BOTS_SPENDING_SUMMARY, "bots-spending-summary");
     assert.match(
@@ -356,7 +356,7 @@ describe("botController — events for paused bots (US-011 AC8)", () => {
     );
     assert.match(
       ctrl,
-      /this\._pausedQueue\.clear\(botId\);\s+return this\._store\.delete\(botId\);/,
+      /this\._pausedQueue\.clear\(botId\);[\s\S]{0,200}return this\._store\.delete\(botId\);/,
     );
     assert.match(ctrl, /queued: this\._pausedQueue\.counts\(\)/);
   });

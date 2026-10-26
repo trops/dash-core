@@ -171,6 +171,7 @@ const { findProviders } = require("../bots/providerDiscovery");
 const { searchRegistry } = require("../bots/registrySearch");
 
 const { onWorkspaceDeleted } = require("../utils/workspaceEvents");
+const profileMembership = require("../profile/profileMembership");
 const {
   checkChain,
   causeFromEvent,
@@ -441,6 +442,8 @@ const botController = {
           !!this._testRuns &&
           this._testRuns.has(botId) &&
           !this._pause.isGloballyPaused();
+        if (!this._inActiveProfile(this._store.get(botId)))
+          return "this bot isn't in the active profile";
         if (this._pause.isGloballyPaused()) return "all bots are paused";
         if (this._pause.isPaused(botId) && !testRun)
           return "this bot is paused";
@@ -500,7 +503,7 @@ const botController = {
 
     // Register schedules for existing bots and run any that were missed while
     // Dash was closed.
-    const bots = this._store.list();
+    const bots = this._activeBots();
     this._scheduler.registerAll(bots);
     for (const bot of bots)
       this._scheduler.catchUp(bot, this._lastRunAt(bot.id));
@@ -563,7 +566,7 @@ const botController = {
   /** Re-evaluate missed schedules on system resume (powerMonitor). */
   handleResume() {
     if (!this._ready) return;
-    for (const bot of this._store.list()) {
+    for (const bot of this._activeBots()) {
       this._scheduler.catchUp(bot, this._lastRunAt(bot.id));
     }
   },
@@ -579,7 +582,7 @@ const botController = {
    */
   handleEvent(event) {
     if (!this._ready || !event || !event.eventType) return;
-    const bots = matchSubscribedBots(this._store.list(), event, {
+    const bots = matchSubscribedBots(this._activeBots(), event, {
       excludeBotId: event.originBotId,
     });
     for (const bot of bots) {
@@ -672,6 +675,8 @@ const botController = {
     const ids = botIds || this._pausedQueue.botIds();
     for (const botId of ids) {
       if (!this._pausedQueue.count(botId) || this._isHeld(botId)) continue;
+      // Another profile's bot keeps its events until that profile is active.
+      if (!this._inActiveProfile(this._store.get(botId))) continue;
       drainBot({
         queue: this._pausedQueue,
         botId,
@@ -702,7 +707,40 @@ const botController = {
 
   /** Every bot the user made — the Dash team is listed separately. */
   list() {
-    return this._store.list().filter((b) => !isDashTeam(b));
+    return this._activeBots().filter((b) => !isDashTeam(b));
+  },
+
+  /**
+   * Bots in the active profile, plus the Dash team (shared by every
+   * profile). With only Default, every bot.
+   */
+  _activeBots() {
+    return this._store.list().filter((b) => this._inActiveProfile(b));
+  },
+
+  _inActiveProfile(bot) {
+    if (!bot || isDashTeam(bot) || !this._appId) return true;
+    return profileMembership.isActiveMember(this._appId, "bots", bot.id);
+  },
+
+  /**
+   * After a profile switch: schedule the new profile's bots (catching up
+   * missed runs), unschedule and stop the rest, and run anything queued
+   * for the bots that are now active. A bot in both profiles keeps going.
+   */
+  applyActiveProfile() {
+    if (!this._ready) return;
+    for (const bot of this._store.list()) {
+      if (this._inActiveProfile(bot)) {
+        this._scheduler.register(bot);
+        this._scheduler.catchUp(bot, this._lastRunAt(bot.id));
+      } else {
+        this._scheduler.unregister(bot.id);
+        if (this._runner.listActive().includes(bot.id)) this.stop(bot.id);
+      }
+    }
+    this._drainQueued();
+    this._notifyListChanged();
   },
 
   /**
@@ -793,13 +831,16 @@ const botController = {
     const saved = isNew
       ? this._store.create(definition)
       : this._store.update(definition.id, definition);
+    if (isNew && saved && !isDashTeam(saved)) {
+      profileMembership.addToActive(this._appId, "bots", saved.id);
+    }
     // Every new bot starts paused until the user turns it on (Phase 1d) —
     // the Dash team and leads are the app's own and aren't saved here.
     if (isNew && saved && !isDashTeam(saved) && saved.role !== "lead") {
       // PauseController logs it (pause-bot).
       this._pause.pauseBot(saved.id);
     }
-    this._scheduler.register(saved);
+    if (this._inActiveProfile(saved)) this._scheduler.register(saved);
     if (isNew && saved)
       this._logAudit({ type: "bot-created", botId: saved.id });
     return saved;
@@ -875,6 +916,9 @@ const botController = {
     this._memory.forgetBot(botId);
     // Events it was keeping while paused go too.
     this._pausedQueue.clear(botId);
+    if (this._appId) {
+      profileMembership.removeEverywhere(this._appId, "bots", botId);
+    }
     return this._store.delete(botId);
   },
 
@@ -1042,7 +1086,7 @@ const botController = {
    */
   listRecentRuns({ limit = 10 } = {}) {
     return recentRuns({
-      bots: this._store.list(),
+      bots: this._activeBots(),
       getRuns: (id) => this._store.getRuns(id),
       limit,
     });
@@ -1051,7 +1095,7 @@ const botController = {
   /** Each user bot's latest run — the Bots dock's contacts (TEAM-015). */
   lastRuns() {
     return lastRuns({
-      bots: this._store.list().filter((b) => !isDashTeam(b)),
+      bots: this.list(),
       getRuns: (id) => this._store.getRuns(id),
     });
   },
@@ -1089,9 +1133,15 @@ const botController = {
       return { lead, created: false, reason: "upgraded" };
     }
     if (plan.action !== "create") {
+      // Opening a dashboard in a profile brings its lead along.
+      if (plan.lead && this._appId) {
+        profileMembership.addToActive(this._appId, "bots", plan.lead.id);
+      }
       return { lead: plan.lead || null, created: false, reason: plan.reason };
     }
     const lead = this._store.create(plan.definition);
+    if (this._appId)
+      profileMembership.addToActive(this._appId, "bots", lead.id);
     return { lead, created: true };
   },
 
@@ -1197,7 +1247,7 @@ const botController = {
     const { summarizeLeads } = require("../bots/teamDirectory");
     return summarizeLeads({
       workspaces,
-      bots: this._store.list(),
+      bots: this._activeBots(),
       availability: (id) => this.leadAvailability(id),
       isRunning: (id) => this._runner.listActive().includes(id),
     });
@@ -1995,7 +2045,7 @@ const botController = {
       month: this._budgets.currentMonth(),
       spend: this._budgets.getSpend(),
       budgets: this._budgets.getBudgets(),
-      bots: this._store.list().filter((b) => !isDashTeam(b)),
+      bots: this.list(),
       workspaces,
       isOver: (id, ws) => this._budgets.isOverBudget(id, ws),
     });
@@ -2007,8 +2057,8 @@ const botController = {
    */
   budgetStatus() {
     const out = {};
-    for (const bot of this._store.list()) {
-      if (!bot || !bot.id || isDashTeam(bot)) continue;
+    for (const bot of this.list()) {
+      if (!bot || !bot.id) continue;
       out[bot.id] = this._budgets.botStatus(bot.id, bot.workspaceId);
     }
     return out;

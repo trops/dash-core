@@ -93,9 +93,11 @@ const {
   markOnboardingCompleted,
 } = require("./onboardingController");
 const { exportEverythingForApplication } = require("./exportController");
+const profileController = require("./profileController");
 const {
   getRecentDashboards,
   addRecentDashboard,
+  removeRecentDashboard,
   clearRecentDashboards,
   getSessionState,
   saveSessionState,
@@ -203,8 +205,10 @@ module.exports = {
   getOnboardingStatus,
   markOnboardingCompleted,
   exportEverythingForApplication,
+  profileController,
   getRecentDashboards,
   addRecentDashboard,
+  removeRecentDashboard,
   clearRecentDashboards,
   getSessionState,
   saveSessionState,

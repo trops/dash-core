@@ -81,9 +81,11 @@ function loadController() {
     if (mod === "./registryController") return mockRegistryController;
     if (mod === "./themeController") return { getThemeRegistry: () => [] };
     if (mod === "../utils/file") return { getFileContents: () => null };
-    if (mod === "../profile/profilePaths")
+    if (mod === "../profile/profileMembership")
+      return { filterToActive: (appId, kind, items) => items };
+    if (mod === "../utils/appPaths")
       return {
-        getProfileFilePath: (appId, file) =>
+        getAppFilePath: (appId, file) =>
           path.join("/tmp", "Dashboard", appId, file),
       };
     if (mod === "../widgetRegistry") return { validateZipEntries: () => {} };

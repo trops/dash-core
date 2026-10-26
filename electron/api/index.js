@@ -26,5 +26,6 @@ module.exports = {
   publisherKeyApi: require("./publisherKeyApi"),
   onboardingApi: require("./onboardingApi"),
   exportApi: require("./exportApi"),
+  profileApi: require("./profileApi"),
   webSocketApi: require("./webSocketApi"),
 };

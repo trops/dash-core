@@ -11,7 +11,7 @@ const {
   validateAndBuildRating,
   enrichWithRatings,
 } = require("../schema/dashboardRatingsUtils");
-const { getProfileFilePath } = require("../profile/profilePaths");
+const { getAppFilePath } = require("../utils/appPaths");
 
 const ratingsFilename = "dashboard-ratings.json";
 
@@ -19,7 +19,7 @@ const ratingsFilename = "dashboard-ratings.json";
  * Get the ratings file path for an app.
  */
 function getRatingsPath(appId) {
-  return getProfileFilePath(appId, ratingsFilename);
+  return getAppFilePath(appId, ratingsFilename);
 }
 
 /**

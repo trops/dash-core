@@ -1,7 +1,12 @@
 const { writeFileSync } = require("fs");
 const events = require("../events");
 const { getFileContents } = require("../utils/file");
-const { getProfileFilePath } = require("../profile/profilePaths");
+const { getAppFilePath } = require("../utils/appPaths");
+const {
+  filterToActive,
+  addToActive,
+  removeEverywhere,
+} = require("../profile/profileMembership");
 const { emitWorkspaceDeleted } = require("../utils/workspaceEvents");
 
 const configFilename = "workspaces.json";
@@ -46,7 +51,7 @@ const workspaceController = {
   saveWorkspaceForApplication: (win, appId, workspaceObject) => {
     try {
       // filename to the pages file (live pages)
-      const filename = getProfileFilePath(appId, configFilename);
+      const filename = getAppFilePath(appId, configFilename);
       const workspacesArray = getFileContents(filename);
 
       // lets check to see if we already have this one!
@@ -64,6 +69,7 @@ const workspaceController = {
       } else {
         // add the pageObject to the pages file
         workspacesArray.push(workspaceObject);
+        addToActive(appId, "dashboards", workspaceObject["id"]);
       }
 
       // write the new pages configuration back to the file
@@ -73,7 +79,12 @@ const workspaceController = {
 
       // Return the data for ipcMain.handle() - modern promise-based approach
       return {
-        workspaces: workspacesArray,
+        workspaces: filterToActive(
+          appId,
+          "dashboards",
+          workspacesArray,
+          (w) => w.id,
+        ),
         success: true,
       };
     } catch (e) {
@@ -90,7 +101,7 @@ const workspaceController = {
   saveMenuItemsForApplication: (win, appId, menuItems) => {
     try {
       // filename to the workspaces file
-      const filename = getProfileFilePath(appId, configFilename);
+      const filename = getAppFilePath(appId, configFilename);
       const workspacesArray = getFileContents(filename);
 
       // Update menu items for workspaces
@@ -111,7 +122,12 @@ const workspaceController = {
 
       // Return the data for ipcMain.handle() - modern promise-based approach
       return {
-        workspaces: workspacesArray,
+        workspaces: filterToActive(
+          appId,
+          "dashboards",
+          workspacesArray,
+          (w) => w.id,
+        ),
         success: true,
       };
     } catch (e) {
@@ -134,7 +150,7 @@ const workspaceController = {
    */
   deleteWorkspaceForApplication: (win, appId, workspaceId) => {
     try {
-      const filename = getProfileFilePath(appId, configFilename);
+      const filename = getAppFilePath(appId, configFilename);
       const workspacesArray = getFileContents(filename);
 
       const filtered = workspacesArray.filter(
@@ -145,6 +161,7 @@ const workspaceController = {
 
       // Let the Bot Factory unassign + pause the deleted dashboard's team.
       if (filtered.length < workspacesArray.length) {
+        removeEverywhere(appId, "dashboards", workspaceId);
         emitWorkspaceDeleted(workspaceId);
       }
 
@@ -153,7 +170,7 @@ const workspaceController = {
       );
 
       return {
-        workspaces: filtered,
+        workspaces: filterToActive(appId, "dashboards", filtered, (w) => w.id),
         success: true,
       };
     } catch (e) {
@@ -168,9 +185,14 @@ const workspaceController = {
 
   listWorkspacesForApplication: (win, appId) => {
     try {
-      const filename = getProfileFilePath(appId, configFilename);
+      const filename = getAppFilePath(appId, configFilename);
 
-      const workspacesArray = getFileContents(filename);
+      const workspacesArray = filterToActive(
+        appId,
+        "dashboards",
+        getFileContents(filename),
+        (w) => w.id,
+      );
       console.log(
         `[workspaceController] Loaded ${workspacesArray.length} workspaces for appId: ${appId}`,
       );
@@ -191,8 +213,13 @@ const workspaceController = {
 
   listMenuItemsForApplication: (win, appId) => {
     try {
-      const filename = getProfileFilePath(appId, configFilename);
-      const workspacesArray = getFileContents(filename);
+      const filename = getAppFilePath(appId, configFilename);
+      const workspacesArray = filterToActive(
+        appId,
+        "dashboards",
+        getFileContents(filename),
+        (w) => w.id,
+      );
 
       // Extract unique menu items from workspaces
       // Each workspace can have a menuId, we need to build the menu items list

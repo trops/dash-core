@@ -20,7 +20,8 @@ const path = require("path");
 const fs = require("fs");
 const AdmZip = require("adm-zip");
 const { getFileContents } = require("../utils/file");
-const { getProfileFilePath } = require("../profile/profilePaths");
+const { getAppFilePath } = require("../utils/appPaths");
+const { filterToActive } = require("../profile/profileMembership");
 const {
   validateDashboardConfig,
   applyDefaults,
@@ -69,7 +70,7 @@ async function exportDashboardConfig(
 ) {
   try {
     // 1. Read workspace from workspaces.json
-    const filename = getProfileFilePath(appId, configFilename);
+    const filename = getAppFilePath(appId, configFilename);
     const workspacesArray = getFileContents(filename);
     const workspace = workspacesArray.find(
       (w) => w.id === workspaceId || w.id === Number(workspaceId),
@@ -1218,7 +1219,7 @@ async function collectDashboardDependencies(
 ) {
   try {
     // 1. Read workspace
-    const filename = getProfileFilePath(appId, configFilename);
+    const filename = getAppFilePath(appId, configFilename);
     const workspacesArray = getFileContents(filename);
     const workspace = workspacesArray.find(
       (w) => w.id === workspaceId || w.id === Number(workspaceId),
@@ -1492,7 +1493,7 @@ async function prepareDashboardForPublish(
     const { resolveNextVersion } = require("../schema/widgetPublishManifest");
 
     // 1. Read workspace
-    const filename = getProfileFilePath(appId, configFilename);
+    const filename = getAppFilePath(appId, configFilename);
     const workspacesArray = getFileContents(filename);
     const workspace = workspacesArray.find(
       (w) => w.id === workspaceId || w.id === Number(workspaceId),
@@ -2025,8 +2026,13 @@ async function checkDashboardUpdatesForApp(appId) {
   const { fetchRegistryIndex } = require("./registryController");
 
   try {
-    const filename = getProfileFilePath(appId, configFilename);
-    const workspaces = getFileContents(filename) || [];
+    const filename = getAppFilePath(appId, configFilename);
+    const workspaces = filterToActive(
+      appId,
+      "dashboards",
+      getFileContents(filename) || [],
+      (w) => w.id,
+    );
 
     const index = await fetchRegistryIndex();
     const registryPackages = index.packages || [];
@@ -2091,7 +2097,7 @@ function getProviderSetupManifest(appId, requiredProviders = []) {
  */
 function getDashboardPublishPreview(appId, workspaceId, widgetRegistry = null) {
   try {
-    const filename = getProfileFilePath(appId, configFilename);
+    const filename = getAppFilePath(appId, configFilename);
     const workspacesArray = getFileContents(filename);
     const workspace = workspacesArray.find(
       (w) => w.id === workspaceId || w.id === Number(workspaceId),

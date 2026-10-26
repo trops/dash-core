@@ -2,10 +2,12 @@ const path = require("path");
 const { writeFileSync } = require("fs");
 const events = require("../events");
 const { getFileContents } = require("../utils/file");
+const { getAppFilePath, getAppDataDir } = require("../utils/appPaths");
 const {
-  getProfileFilePath,
-  getProfileDataDir,
-} = require("../profile/profilePaths");
+  filterToActive,
+  addToActive,
+  removeEverywhere,
+} = require("../profile/profileMembership");
 const { upsertMenuItem } = require("../utils/upsertMenuItem");
 
 const configFilename = "menuItems.json";
@@ -13,12 +15,18 @@ const configFilename = "menuItems.json";
 const menuItemsController = {
   saveMenuItemForApplication: (win, appId, menuItem) => {
     try {
-      const filename = getProfileFilePath(appId, configFilename);
+      const filename = getAppFilePath(appId, configFilename);
       const raw = getFileContents(filename) || [];
       const deduped = upsertMenuItem(raw, menuItem);
       writeFileSync(filename, JSON.stringify(deduped, null, 2));
+      if (menuItem && menuItem.id != null) {
+        addToActive(appId, "folders", menuItem.id);
+      }
       console.log("[menuItemsController] Menu item saved successfully");
-      return { menuItems: deduped, success: true };
+      return {
+        menuItems: filterToActive(appId, "folders", deduped, (m) => m.id),
+        success: true,
+      };
     } catch (e) {
       console.error("[menuItemsController] Error saving menu item:", e);
       return { error: true, message: e.message, menuItems: [] };
@@ -27,9 +35,14 @@ const menuItemsController = {
 
   listMenuItemsForApplication: (win, appId) => {
     try {
-      const filename = getProfileFilePath(appId, configFilename);
+      const filename = getAppFilePath(appId, configFilename);
       const menuItemsArray = getFileContents(filename);
-      const filtered = menuItemsArray.filter((mi) => mi !== null);
+      const filtered = filterToActive(
+        appId,
+        "folders",
+        menuItemsArray.filter((mi) => mi !== null),
+        (m) => m.id,
+      );
       // Return the data for ipcMain.handle() - modern promise-based approach
       return {
         menuItems: filtered,
@@ -49,12 +62,22 @@ const menuItemsController = {
   // a missing menuId would read as folder 1), as the confirm says.
   deleteMenuItemForApplication: (win, appId, menuItemId) => {
     try {
-      const dir = getProfileDataDir(appId);
-      return deleteMenuItemFromFiles(
+      const dir = getAppDataDir(appId);
+      const result = deleteMenuItemFromFiles(
         path.join(dir, configFilename),
         path.join(dir, "workspaces.json"),
         menuItemId,
       );
+      removeEverywhere(appId, "folders", menuItemId);
+      return {
+        ...result,
+        menuItems: filterToActive(
+          appId,
+          "folders",
+          result.menuItems,
+          (m) => m.id,
+        ),
+      };
     } catch (e) {
       console.error("[menuItemsController] Error deleting menu item:", e);
       return { error: true, message: e.message, menuItems: [] };
