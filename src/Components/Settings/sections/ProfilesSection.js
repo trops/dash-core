@@ -14,6 +14,7 @@ import {
 import { AppContext } from "../../../Context/App/AppContext";
 import { useConfigTokens } from "../../Dashboard/ConfigListRow";
 import { SectionLayout } from "../SectionLayout";
+import { SaveProfileModal } from "./SaveProfileModal";
 
 // What a profile holds, in the order the detail pane shows it.
 const KINDS = [
@@ -137,6 +138,9 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
   const [nameDraft, setNameDraft] = useState("");
   // { type: "delete" | "switch" | "untick", ... } — at most one confirm.
   const [confirm, setConfirm] = useState(null);
+  // The profile being saved to a file, and the last save's result.
+  const [saving, setSaving] = useState(null);
+  const [notice, setNotice] = useState(null);
 
   const loadProfiles = useCallback(async () => {
     if (!appId || !profilesApi()) return;
@@ -415,6 +419,14 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
                   testId="profile-switch"
                 />
               ) : null}
+              <Button3
+                title="Save to file…"
+                onClick={() => {
+                  setNotice(null);
+                  setSaving(selected);
+                }}
+                testId="profile-save-file"
+              />
               <Button3 title="Rename" onClick={() => openNameForm("rename")} />
               <Button3
                 title="Duplicate"
@@ -485,6 +497,14 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
       {error ? (
         <AlertBanner variant="error" size="compact" message={error} />
       ) : null}
+      {notice ? (
+        <AlertBanner
+          variant="success"
+          size="compact"
+          message={notice}
+          onClose={() => setNotice(null)}
+        />
+      ) : null}
       <SectionLayout
         listContent={listContent}
         detailContent={detailContent}
@@ -492,6 +512,27 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
       />
       {/* Inside the Settings modal: mount confirms only while open, or
           they open beneath it. */}
+      {saving ? (
+        <SaveProfileModal
+          appId={appId}
+          profile={saving}
+          onClose={() => setSaving(null)}
+          onSaved={(res) => {
+            setSaving(null);
+            const parts = String(res.filePath || "").split(/[\\/]/);
+            const file = parts.pop();
+            const folder = parts.pop();
+            setNotice(`Saved "${file}"${folder ? ` in ${folder}` : ""}.`);
+            // Widgets that should have gone in but weren't found here.
+            if (res.missingWidgets && res.missingWidgets.length) {
+              setError(
+                `These widgets couldn't be found on this computer and aren't in the file: ${res.missingWidgets.join(", ")}.`,
+              );
+            }
+            loadProfiles();
+          }}
+        />
+      ) : null}
       {confirm?.type === "delete" ? (
         <ConfirmationModal
           isOpen

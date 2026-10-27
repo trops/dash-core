@@ -230,6 +230,39 @@ const profileController = {
   },
 
   /**
+   * What "Save to file" would write: counts, each widget's registry
+   * check, and the size of the widgets copied into the file.
+   */
+  async previewSave(appId, profileId, options = {}) {
+    try {
+      const { gatherProfile, summarize } = require("../profile/profileFile");
+      const gathered = await gatherProfile(appId, profileId, options);
+      let signedIn = false;
+      try {
+        signedIn = !!require("./registryAuthController").getStoredToken();
+      } catch (_e) {
+        signedIn = false;
+      }
+      return { success: true, ...summarize(gathered), signedIn };
+    } catch (e) {
+      return fail(e);
+    }
+  },
+
+  /** Save a profile to a .dashprofile file (a save dialog picks where). */
+  async saveProfileFile(win, appId, profileId, options = {}) {
+    try {
+      const { saveProfileToFile } = require("../profile/profileFile");
+      // Where to write is always the user's choice in the save dialog —
+      // never a path from the renderer.
+      const { filePath, ...choices } = options || {};
+      return await saveProfileToFile(win, appId, profileId, choices);
+    } catch (e) {
+      return fail(e);
+    }
+  },
+
+  /**
    * Make a profile active and bring the bots in line: the new profile's
    * bots are scheduled, the old profile's stop. The caller reloads the
    * window so every list re-reads.
