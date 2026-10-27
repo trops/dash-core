@@ -259,6 +259,28 @@ computer.
        ConfirmationModal has no disabled state — backlog), and the dialog can't close while publishing.
      - Loading a v2 file comes in V2-B; dash-electron moves to the new dash-core only once both are in.
 
+   - **V2-B — load** (`electron/profile/profileLoadV2.js`, `LoadProfileV2Modal`; v1 files still load):
+     - The file is read as JSON and checked (kind, schema 2, package names, exact versions, at most 500 items).
+     - Each item is matched to this computer by package, not id: install, update (the profile's is newer — ticked),
+       already here, kept (this Mac's is newer, or a widget built here — the profile's can be ticked), or
+       unavailable (deleted, or not shared with this user — skipped and said). A registry that can't be reached
+       stops the load.
+     - Order: widgets at exact versions, themes, folders, dashboards (`exactWidgetVersions`, in place when one is
+       here, with its own team when the profile says so), then bots and teams (paused).
+     - The overlay goes back on: each widget's settings and providers by section and widget id — a blanked key
+       never overwrites one this Mac has, and an update in place only fills what's missing; bots get their
+       provider choices back. Provider names map to this Mac's: the same name is used; one of the same type is
+       offered ("Use for …"); otherwise **Set up** opens the provider form for that type and says which name to
+       give it (prefilling the name is a follow-up).
+     - The profile's lists use this computer's ids (dashboards, themes, folders, bots and the dashboards' leads).
+     - Default is never replaced; app settings only when ticked; keys to enter and paused bots are listed after.
+     - Review fixes: the file is untrusted — names must be strings (else dropped), and widget or bot settings may
+       only name providers the file lists (each shown in the preview); "constructor"-like names resolve to
+       nothing. Everything the load adds is taken back out of the profile in use (installs add to it). A dashboard's
+       own team is in the loaded profile and named in the preview. Folders are matched to this computer's ids
+       (numbers). Updating a bot in place uses that copy and keeps this Mac's provider choices. A results widget's
+       bot isn't carried between computers. The keys list names the widget.
+
 Step 2 (separate plan): registry `users/{sub}/profiles/` storage, `/api/me/profiles`, the out-of-sync alert in `AppUpdatesModal`, and
 auto-save.
 

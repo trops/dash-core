@@ -110,7 +110,7 @@ function fail(e) {
 const openedFiles = new Map();
 const OPENED_FILE_TTL_MS = 10 * 60 * 1000;
 
-function rememberOpened(appId, read) {
+function rememberOpened(appId, read, win = null) {
   const now = Date.now();
   for (const [token, entry] of openedFiles) {
     if (now - entry.at > OPENED_FILE_TTL_MS) openedFiles.delete(token);
@@ -119,7 +119,8 @@ function rememberOpened(appId, read) {
     openedFiles.delete(openedFiles.keys().next().value);
   }
   const token = `pl_${now.toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-  openedFiles.set(token, { appId, read, at: now });
+  // The window that opened it: installs report their progress there.
+  openedFiles.set(token, { appId, read, win, at: now });
   return token;
 }
 
@@ -368,7 +369,19 @@ const profileController = {
       if (fs.statSync(file).size > MAX_FILE_BYTES) {
         return { success: false, error: "The file is too big." };
       }
-      const read = readProfileZip(fs.readFileSync(file));
+      const bytes = fs.readFileSync(file);
+      // A v2 profile (JSON: packages from the registry) or a v1 zip.
+      const v2 = require("../profile/profileLoadV2");
+      if (v2.isProfileV2(bytes)) {
+        const parsed = v2.parseProfileV2(bytes);
+        if (parsed.error) return { success: false, error: parsed.error };
+        const plan = await v2.planLoadV2(appId, parsed.manifest);
+        return {
+          ...plan,
+          token: rememberOpened(appId, { v2: parsed.manifest }, win),
+        };
+      }
+      const read = readProfileZip(bytes);
       if (read.error) return { success: false, error: read.error };
       const plan = planLoad(appId, read);
       return { success: true, token: rememberOpened(appId, read), ...plan };
@@ -395,6 +408,22 @@ const profileController = {
         ? undefined
         : currentItems(appId, bots);
       const { defaultItems: _ignored, ...picked } = choices || {};
+      if (entry.read && entry.read.v2) {
+        const { BrowserWindow } = require("electron");
+        const win =
+          entry.win && !entry.win.isDestroyed()
+            ? entry.win
+            : BrowserWindow.getFocusedWindow() ||
+              BrowserWindow.getAllWindows()[0] ||
+              null;
+        const { applyLoadV2 } = require("../profile/profileLoadV2");
+        const result = await applyLoadV2(win, appId, entry.read.v2, {
+          ...picked,
+          defaultItems,
+        });
+        if (result.success) openedFiles.delete(token);
+        return result;
+      }
       const result = await applyLoad(appId, entry.read, {
         ...picked,
         defaultItems,
