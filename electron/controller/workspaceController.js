@@ -48,8 +48,14 @@ const workspaceController = {
    * @param {string} appId the application id
    * @param {object} pageObject the page config object
    */
-  saveWorkspaceForApplication: (win, appId, workspaceObject) => {
+  saveWorkspaceForApplication: (win, appId, workspace) => {
     try {
+      // When it was last changed: loading a profile file keeps the more
+      // recently edited copy of a dashboard by default.
+      const workspaceObject = {
+        ...workspace,
+        updatedAt: new Date().toISOString(),
+      };
       // filename to the pages file (live pages)
       const filename = getAppFilePath(appId, configFilename);
       const workspacesArray = getFileContents(filename);

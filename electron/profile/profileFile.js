@@ -375,13 +375,23 @@ async function gatherProfile(appId, profileId, options = {}, deps = {}) {
     }
   }
 
-  const bots = opts.bots
-    ? keep(
-        "bots",
-        d.allBots().filter((b) => b && b.system !== "dash-team"),
-        (b) => b.id,
-      )
-    : [];
+  let bots = [];
+  if (opts.bots) {
+    const all = d.allBots().filter((b) => b && b.system !== "dash-team");
+    bots = keep("bots", all, (b) => b.id);
+    // A dashboard's lead goes with it, held or not.
+    const dashIds = new Set(dashboards.map((w) => String(w.id)));
+    const have = new Set(bots.map((b) => String(b.id)));
+    for (const b of all) {
+      if (
+        b.role === "lead" &&
+        dashIds.has(String(b.workspaceId)) &&
+        !have.has(String(b.id))
+      ) {
+        bots.push(b);
+      }
+    }
+  }
 
   // Widgets: every package the dashboards use, checked by exact version.
   const registry = d.widgetRegistry();

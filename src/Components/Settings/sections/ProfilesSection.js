@@ -15,6 +15,7 @@ import { AppContext } from "../../../Context/App/AppContext";
 import { useConfigTokens } from "../../Dashboard/ConfigListRow";
 import { SectionLayout } from "../SectionLayout";
 import { SaveProfileModal } from "./SaveProfileModal";
+import { LoadProfileModal } from "./LoadProfileModal";
 
 // What a profile holds, in the order the detail pane shows it.
 const KINDS = [
@@ -141,6 +142,8 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
   // The profile being saved to a file, and the last save's result.
   const [saving, setSaving] = useState(null);
   const [notice, setNotice] = useState(null);
+  // What loading the picked file would do (the Load dialog is open).
+  const [loadPreview, setLoadPreview] = useState(null);
 
   const loadProfiles = useCallback(async () => {
     if (!appId || !profilesApi()) return;
@@ -287,6 +290,24 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
     await afterChange();
   }
 
+  // Pick a .dashprofile (the system dialog) and preview loading it.
+  async function openFileToLoad() {
+    setError(null);
+    setNotice(null);
+    let res;
+    try {
+      res = await profilesApi()?.previewLoad?.(appId);
+    } catch (e) {
+      res = { success: false, error: e?.message };
+    }
+    if (!res || res.canceled) return;
+    if (!res.success) {
+      setError(res.error || "Couldn't open the file.");
+      return;
+    }
+    setLoadPreview(res);
+  }
+
   async function afterChange() {
     await loadContents(selectedId);
     loadProfiles();
@@ -325,6 +346,11 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
           openNameForm("create");
         }}
         testId="profiles-new"
+      />
+      <Button3
+        title="Load from file…"
+        onClick={openFileToLoad}
+        testId="profiles-load"
       />
       <nav aria-label="Profiles" className="flex flex-col gap-0.5">
         {profiles.map((p) => {
@@ -512,6 +538,40 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
       />
       {/* Inside the Settings modal: mount confirms only while open, or
           they open beneath it. */}
+      {loadPreview ? (
+        <LoadProfileModal
+          appId={appId}
+          preview={loadPreview}
+          onClose={() => setLoadPreview(null)}
+          onLoaded={(res) => {
+            setLoadPreview(null);
+            const c = res.counts || {};
+            const parts = [
+              c.added ? `${c.added} added` : null,
+              c.updated ? `${c.updated} updated` : null,
+              (res.widgetsInstalled || []).length
+                ? `${plural(res.widgetsInstalled.length, "widget")} installed`
+                : null,
+            ].filter(Boolean);
+            setNotice(
+              `${res.replaced ? "Replaced" : "Loaded"} "${res.profile.name}"${
+                parts.length ? ` · ${parts.join(", ")}` : ""
+              }.${
+                (res.providersToSetUp || []).length
+                  ? ` Set up on this Mac: ${res.providersToSetUp.join(", ")}.`
+                  : ""
+              }`,
+            );
+            if ((res.problems || []).length) setError(res.problems.join(" "));
+            setSelectedId(res.profile.id);
+            loadProfiles();
+            loadContents(res.profile.id);
+            // Records are shared: one changed by the load may be on screen
+            // in the active profile too.
+            if (onReloadContents) onReloadContents();
+          }}
+        />
+      ) : null}
       {saving ? (
         <SaveProfileModal
           appId={appId}

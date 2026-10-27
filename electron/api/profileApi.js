@@ -20,6 +20,8 @@ const {
   PROFILE_PREVIEW_SAVE,
   PROFILE_SAVE_FILE,
   PROFILE_PUBLISH_WIDGET,
+  PROFILE_PREVIEW_LOAD,
+  PROFILE_APPLY_LOAD,
 } = require("../events");
 
 const profileApi = {
@@ -76,6 +78,18 @@ const profileApi = {
       packageName,
       options,
     }),
+  /**
+   * Pick a .dashprofile (the main process shows the open dialog) and get
+   * what loading it would do: { token, target, items, widgets, providers,
+   * settings } — or { canceled }.
+   */
+  previewLoad: (appId) => ipcRenderer.invoke(PROFILE_PREVIEW_LOAD, { appId }),
+  /**
+   * Load the file previewLoad opened. choices: { asNew, name, useFile,
+   * widgets, applySettings }.
+   */
+  applyLoad: (appId, token, choices) =>
+    ipcRenderer.invoke(PROFILE_APPLY_LOAD, { appId, token, choices }),
 };
 
 module.exports = profileApi;

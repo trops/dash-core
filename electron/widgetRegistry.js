@@ -2146,6 +2146,18 @@ function folderBundle(widgetPath) {
  * over a stale cached entry would otherwise keep the old manifest. Drop
  * the whole cache here — cheap, infrequent.
  */
+/**
+ * Tell every window a widget was installed (so it loads the new code) and
+ * refresh its permissions — what the install handlers do, for installs
+ * made from the main process (loading a profile file).
+ */
+function announceInstalled(widgetName, config) {
+  BrowserWindow.getAllWindows().forEach((win) => {
+    win.webContents.send("widget:installed", { widgetName, config });
+  });
+  maybeEmitMcpConsentRequired(widgetName);
+}
+
 function maybeEmitMcpConsentRequired(widgetName) {
   try {
     clearWidgetPermsCache();
@@ -2479,6 +2491,7 @@ Object.defineProperty(module.exports, "widgetRegistry", {
 module.exports.setupWidgetRegistryHandlers = setupWidgetRegistryHandlers;
 module.exports.validateZipEntries = validateZipEntries;
 module.exports.setInstallGate = setInstallGate;
+module.exports.announceInstalled = announceInstalled;
 module.exports.checkPackage = checkPackage;
 module.exports.findBundlePath = findBundlePath;
 module.exports.isInsideWidgetsDir = isInsideWidgetsDir;

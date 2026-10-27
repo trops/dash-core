@@ -183,4 +183,36 @@ describe("profileStore", () => {
       /Unknown profile item/,
     );
   });
+
+  it("put creates or replaces a profile by id, never Default", () => {
+    const loaded = store.put(
+      appId,
+      { id: "p-macmini", name: "Mac Mini", items: { dashboards: [101] } },
+      { defaultItems: everything },
+    );
+    assert.equal(loaded.id, "p-macmini");
+    // Starting profiles here: Default keeps what was here.
+    assert.deepEqual(store.members(appId, "dashboards", "default"), [
+      "1",
+      "2",
+      "3",
+    ]);
+    const replaced = store.put(appId, {
+      id: "p-macmini",
+      name: "Mac Mini",
+      items: { dashboards: [102] },
+      link: { revision: 4 },
+    });
+    assert.deepEqual(replaced.items.dashboards, ["102"]);
+    assert.equal(replaced.link.revision, 4);
+    assert.equal(store.list(appId).length, 2);
+    assert.throws(
+      () => store.put(appId, { id: "default", name: "X", items: {} }),
+      /can't be replaced/,
+    );
+    assert.throws(
+      () => store.put(appId, { id: "p-other", name: "mac mini", items: {} }),
+      /already exists/,
+    );
+  });
 });

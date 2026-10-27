@@ -105,6 +105,24 @@ function fail(e) {
   return { success: false, error: e.message };
 }
 
+// Profile files opened for loading, kept in the main process until the user
+// confirms (the renderer only ever holds the token). Opened files expire.
+const openedFiles = new Map();
+const OPENED_FILE_TTL_MS = 10 * 60 * 1000;
+
+function rememberOpened(appId, read) {
+  const now = Date.now();
+  for (const [token, entry] of openedFiles) {
+    if (now - entry.at > OPENED_FILE_TTL_MS) openedFiles.delete(token);
+  }
+  while (openedFiles.size >= 2) {
+    openedFiles.delete(openedFiles.keys().next().value);
+  }
+  const token = `pl_${now.toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  openedFiles.set(token, { appId, read, at: now });
+  return token;
+}
+
 const profileController = {
   listProfiles(appId) {
     try {
@@ -323,6 +341,72 @@ const profileController = {
       // never a path from the renderer.
       const { filePath, ...choices } = options || {};
       return await saveProfileToFile(win, appId, profileId, choices);
+    } catch (e) {
+      return fail(e);
+    }
+  },
+
+  /**
+   * Pick a .dashprofile (an open dialog — never a path from the renderer)
+   * and say what loading it would do. Nothing changes yet.
+   */
+  async previewLoad(win, appId) {
+    try {
+      const { dialog } = require("electron");
+      const { PROFILE_FILE_EXTENSION } = require("../profile/profileFile");
+      const res = await dialog.showOpenDialog(win, {
+        title: "Load a profile",
+        properties: ["openFile"],
+        filters: [
+          { name: "Dash profile", extensions: [PROFILE_FILE_EXTENSION] },
+        ],
+      });
+      if (res.canceled || !res.filePaths || !res.filePaths[0]) {
+        return { success: false, canceled: true };
+      }
+      const fs = require("fs");
+      const {
+        MAX_FILE_BYTES,
+        readProfileZip,
+        planLoad,
+      } = require("../profile/profileLoad");
+      const file = res.filePaths[0];
+      if (fs.statSync(file).size > MAX_FILE_BYTES) {
+        return { success: false, error: "The file is too big." };
+      }
+      const read = readProfileZip(fs.readFileSync(file));
+      if (read.error) return { success: false, error: read.error };
+      const plan = planLoad(appId, read);
+      return { success: true, token: rememberOpened(appId, read), ...plan };
+    } catch (e) {
+      return fail(e);
+    }
+  },
+
+  /** Load the file opened by previewLoad, with the user's choices. */
+  async applyLoad(appId, token, choices = {}) {
+    try {
+      const entry = openedFiles.get(token);
+      if (!entry || entry.appId !== appId) {
+        return {
+          success: false,
+          error: "Open the file again — it was closed.",
+        };
+      }
+      const { applyLoad } = require("../profile/profileLoad");
+      const bots = botControllerOrNull();
+      // What Default holds if this load starts profiles — before anything
+      // from the file is written.
+      const defaultItems = profileStore.hasProfiles(appId)
+        ? undefined
+        : currentItems(appId, bots);
+      const { defaultItems: _ignored, ...picked } = choices || {};
+      const result = await applyLoad(appId, entry.read, {
+        ...picked,
+        defaultItems,
+      });
+      if (result.success) openedFiles.delete(token);
+      return result;
     } catch (e) {
       return fail(e);
     }

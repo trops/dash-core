@@ -17,6 +17,8 @@ const PROFILE_SET_MEMBERSHIP = "profile:set-membership";
 const PROFILE_PREVIEW_SAVE = "profile:preview-save";
 const PROFILE_SAVE_FILE = "profile:save-file";
 const PROFILE_PUBLISH_WIDGET = "profile:publish-widget";
+const PROFILE_PREVIEW_LOAD = "profile:preview-load";
+const PROFILE_APPLY_LOAD = "profile:apply-load";
 
 module.exports = {
   PROFILE_LIST,
@@ -31,4 +33,6 @@ module.exports = {
   PROFILE_PREVIEW_SAVE,
   PROFILE_SAVE_FILE,
   PROFILE_PUBLISH_WIDGET,
+  PROFILE_PREVIEW_LOAD,
+  PROFILE_APPLY_LOAD,
 };

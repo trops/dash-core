@@ -1,6 +1,6 @@
 # PRD: Dash Profiles
 
-**Status:** In Progress (PR 4b: publish from Save)
+**Status:** In Progress (PR 5: load from file)
 **Last Updated:** 2026-10-26
 **Owner:** trops
 **Related PRDs:** [Dashboard Marketplace](./dashboard-marketplace.md), [Bot Teams](./bot-teams.md)
@@ -132,7 +132,36 @@ computer.
          which the registry rejects (`packageJsonFromDashJson` keeps just the package name).
      - A published package must still pass the publish checks (e.g. no hard-coded colors). Older `@ai-built` widgets that
        fail them stay in the file, with the reason shown.
-5. **Load from file.** Create-or-replace with the difference preview, plus the sync groundwork: `revision` and dashboard hashes.
+5. **Load from file** (`electron/profile/profileLoad.js`, `LoadProfileModal.js`), user decisions:
+   - Settings › Profiles › **Load from file…**. The main process shows the open dialog and keeps the file under a token
+     (10 minutes, at most 2); the renderer never passes a path.
+   - The file is refused if any entry is outside it (`..`, absolute, backslashes), a symlink, not one of the known files or
+     `widgets/<safe package id>/…`, or if it is too big; `kind` and `schemaVersion` must match.
+   - Target: matched by profile id, then by name; otherwise a new profile (keeping the file's profile id when free).
+     **Default is never replaced** — a file of Default loads as "Default (from <computer>)". Replacing can become
+     "Load as a new profile instead" (asks for a name).
+   - Records keep their ids (the profile is an id list over shared records). Each item is new, already here, changed, or
+     leaves this profile (it stays on this Mac).
+   - **The newer copy wins by default** (user, 2026-10-27): for a changed item, the newer published version when both
+     copies have one (`_dashboardConfig.version`/`installedVersion`, bot `published`/`installedFrom`, theme
+     `_registryMeta`), else the more recently edited (`updatedAt`; dashboard saves now stamp it), else this Mac's. Each
+     changed item has a "use the file's" checkbox, with the reason and which other profiles hold it.
+   - Widgets: missing → installed (registry ones at the exact version; copies from the file through
+     `installFromLocalPath`); the file's newer version → update (ticked; says how many dashboards here use it); this
+     Mac's newer → kept; **a build made on this Mac** (local/url install, folder copy, `@ai-built`) → kept unless ticked.
+   - Code copied into the file is ticked by default only for the user's own widgets (`@ai-built/*` or their scope) and
+     never over a registry-installed widget; anything else is offered unticked as "Code from the file, not the registry".
+     Installs are announced to the windows (`widget:installed`) and permissions refreshed, like the install handlers.
+   - A dashboard's lead bot goes with it: Save includes it; on load this Mac's lead for that dashboard is kept and the
+     file's isn't added.
+   - New bots arrive **paused** (a loaded lead too); their ids go into the loaded profile's list (`botController.save(def, {addToProfile,
+     keepId})`), never the active one's.
+   - App settings (theme, update check): opt-in checkbox, off.
+   - Providers aren't created (one without its key would look set up but fail): the preview and the result list the ones
+     to set up on this Mac.
+   - The profile records `link: { revision, savedAt, loadedAt, loadedFrom, dashboardHashes }` for sync.
+   - **Fast follow** (user): the Save dialog offers private publishing for everything in the profile — dashboards, bots,
+     themes as well as widgets — opt-in like widgets.
 6. **dash-electron** picks up the new version.
 
 Step 2 (separate plan): registry `users/{sub}/profiles/` storage, `/api/me/profiles`, the out-of-sync alert in `AppUpdatesModal`, and
