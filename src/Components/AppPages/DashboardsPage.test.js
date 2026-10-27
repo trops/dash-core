@@ -103,6 +103,12 @@ const sales = {
     version: "1.0.0",
     origin: "installed",
   },
+  _dashboardConfig: {
+    registryPackage: "sales",
+    registryScope: "trops",
+    version: "1.0.0",
+    originalAuthor: "Trops",
+  },
 };
 const loose = { id: 9, name: "Loose", menuId: null, pages: [], layout: [] };
 const menuItems = [
@@ -269,6 +275,10 @@ describe("DashboardsPage — detail", () => {
     expect(
       h.dashApi.saveWorkspace.mock.calls[1][1].registryRef,
     ).toBeUndefined();
+    // …nor what it was published as; who made it stays.
+    expect(h.dashApi.saveWorkspace.mock.calls[1][1]._dashboardConfig).toEqual({
+      originalAuthor: "Trops",
+    });
 
     fireEvent.click(
       within(detail()).getByRole("button", { name: "More actions" }),

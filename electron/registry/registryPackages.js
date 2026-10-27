@@ -25,8 +25,11 @@ function registryBase() {
  * The registry's details for "@scope/name".
  *
  * @param {string|{scope: string, name: string}} pkg
- * @param {{fetch?: Function}} [opts] a fetch to use (tests); defaults to
- *   the signed-in `authedFetch`
+ * @param {{fetch?: Function, authFailuresUnreachable?: boolean}} [opts]
+ *   `fetch`: a fetch to use (tests); defaults to the signed-in
+ *   `authedFetch`. `authFailuresUnreachable`: a 401/403 (the sign-in wasn't
+ *   accepted) answers "unreachable" rather than "not there" — for deciding
+ *   a name is free.
  * @returns {Promise<object|null|"unreachable">} null when it isn't there or
  *   this user can't see it (the registry answers 404 for someone else's
  *   private package); "unreachable" when the registry couldn't be asked
@@ -44,9 +47,10 @@ async function getPackageInfo(pkg, opts = {}) {
   } catch (_e) {
     return "unreachable";
   }
-  if (!res || res.status === 404 || res.status === 401 || res.status === 403) {
-    return null;
+  if (res && (res.status === 401 || res.status === 403)) {
+    return opts.authFailuresUnreachable ? "unreachable" : null;
   }
+  if (!res || res.status === 404) return null;
   if (!res.ok) return "unreachable";
   const body = await res.json().catch(() => null);
   if (!body || typeof body !== "object") return "unreachable";
@@ -233,10 +237,96 @@ function themeKeyFor(themes, pkg, preferredKey) {
   }
 }
 
+const MAX_NAME_TRIES = 50;
+
+/**
+ * Where publishing a dashboard, theme, bot or team without asking goes
+ * (user, 2026-10-27: pick a free name automatically and show it):
+ *
+ *   - an item already published from (or installed from) the user's own
+ *     account keeps that package — later publishes are new versions of it;
+ *   - otherwise a slug of its name under the user's scope, "-2", "-3"… when
+ *     that name is taken — by another item of the user's, of any kind —
+ *     so a different item never lands on top of an existing package.
+ *
+ * The version is this computer's, or the next one the registry doesn't
+ * have. A new package is private; an existing one keeps its visibility
+ * (none is sent).
+ *
+ * @param {{kind: string, record: object, displayName: string,
+ *   localVersion?: string, username: string}} item
+ * @param {(pkg: string) => Promise<object|null|"unreachable">} [lookup]
+ * @returns {Promise<{package: string, name: string, version: string,
+ *   exists: boolean, visibility?: "private", renamed: boolean}|{error: string}>}
+ */
+async function planPackagePublish(
+  item,
+  // A sign-in the registry didn't accept isn't "no such package" (it hides
+  // private packages behind a 404/401): only a clear "not there" is free.
+  lookup = (pkg) => getPackageInfo(pkg, { authFailuresUnreachable: true }),
+) {
+  const { readRegistryRef } = require("./packageRef");
+  const {
+    slugifyPackageName,
+    suffixedPackageName,
+  } = require("../schema/dashboardConfigUtils");
+  const user = String(item.username || "").replace(/^@/, "");
+  if (!user) return { error: "Sign in to publish." };
+  const kind = item.kind;
+  const ref = readRegistryRef(kind, item.record);
+  const bound = ref && ref.package ? normalizePackageRef(ref.package) : null;
+  const ownBound = bound && isOwnScope(bound.scope, user) ? bound.name : null;
+  const slug = slugifyPackageName(
+    item.displayName,
+    kind === "bot-team" ? "team" : kind,
+  );
+  // Its own package continues from its version; a new package (even of
+  // something installed from someone else) starts fresh.
+  const localVersion = ownBound
+    ? item.localVersion || (ref && ref.version) || null
+    : null;
+
+  const at = (name) => `@${user}/${name}`;
+  const ready = (name, info, renamed) => ({
+    package: at(name),
+    name,
+    version: nextFreeVersion(localVersion, info),
+    exists: !!info,
+    ...(info ? {} : { visibility: "private" }),
+    renamed,
+  });
+
+  // Already this package: a new version of it (or, if it was deleted from
+  // the registry, published again under the same name).
+  if (ownBound) {
+    const info = await lookup(at(ownBound));
+    if (info === "unreachable") {
+      return { error: "Couldn't reach the registry right now." };
+    }
+    if (!info || !kindConflict(at(ownBound), kind, info)) {
+      return ready(ownBound, info, false);
+    }
+    // Its name now belongs to another kind of package: a free name below.
+  }
+
+  for (let n = 1; n <= MAX_NAME_TRIES; n++) {
+    const name = n === 1 ? slug : suffixedPackageName(slug, n);
+    const info = await lookup(at(name));
+    if (info === "unreachable") {
+      return { error: "Couldn't reach the registry right now." };
+    }
+    if (!info) return ready(name, null, name !== slug || !!ownBound);
+  }
+  return {
+    error: `Couldn't find a free name for "${item.displayName}" — rename it and try again.`,
+  };
+}
+
 module.exports = {
   EXACT_VERSION,
   isOwnScope,
   themeKeyFor,
+  planPackagePublish,
   resolveForInstall,
   packageDownloadUrl,
   getPackageInfo,

@@ -38,6 +38,8 @@ const {
   applyEventWiringToLayout,
   stripPersonalizationFromWorkspace,
   keepPersonalization,
+  publishScopeOf,
+  localScopesOf,
   remapLayoutPackageScopes,
   assertNoLocalScopes,
 } = require("../schema/dashboardConfigUtils");
@@ -58,6 +60,7 @@ const {
   packageDownloadUrl,
   isOwnScope,
   EXACT_VERSION,
+  planPackagePublish,
 } = require("../registry/registryPackages");
 
 const configFilename = "workspaces.json";
@@ -1511,10 +1514,16 @@ async function getDashboardPublishPlan(
     // latest version" reflect reality.
     const profile = await getRegistryProfile().catch(() => null);
     const callerScope = profile?.username || null;
+    const planLocalScopes = localScopesOf(
+      widgetRegistry ? widgetRegistry.getWidgets() || [] : [],
+      callerScope,
+    );
 
+    // `@ai-built` widgets publish under the caller's name; anyone else's
+    // stays under its author's (it's installed from there).
     const publishScopeFor = (w) => {
       if (!w.scope || !w.packageName) return null;
-      return callerScope || w.scope;
+      return publishScopeOf(w.scope, callerScope, planLocalScopes) || null;
     };
 
     // Dedupe by publish-scope/name — many components share the same
@@ -1632,6 +1641,7 @@ async function prepareDashboardForPublish(
   options = {},
   widgetRegistry = null,
 ) {
+  let headlessTmpDir = null;
   try {
     const {
       generateRegistryManifest,
@@ -1680,7 +1690,9 @@ async function prepareDashboardForPublish(
     // registry never saw a new version, so the update-check never
     // fired a notification for installers.
     const previousVersion = workspace._dashboardConfig?.version || "1.0.0";
-    const nextVersion = resolveNextVersion(previousVersion, {
+    // (Without a dialog — `headless` — the name and version come from the
+    // registry instead: planPackagePublish below.)
+    let nextVersion = resolveNextVersion(previousVersion, {
       bump: options.bump,
       version: options.version,
     });
@@ -1722,11 +1734,45 @@ async function prepareDashboardForPublish(
         resolvedCallerScope = options.authorId || "";
       }
     }
+    // Scopes that exist only here — `@ai-built` and widgets built on this
+    // computer — go out under the publisher's name; a widget installed
+    // from someone else's account keeps theirs.
+    const localScopes = localScopesOf(
+      widgetRegistry ? widgetRegistry.getWidgets() || [] : [],
+      resolvedCallerScope,
+    );
     if (resolvedCallerScope) {
       sharedWorkspace = remapLayoutPackageScopes(
         sharedWorkspace,
         resolvedCallerScope,
+        localScopes,
       );
+    }
+
+    // Publishing without a dialog (a profile's dashboards): signed in,
+    // under a name picked automatically — this dashboard's own package, or
+    // a free one — at the next version the registry doesn't have.
+    let headlessPlan = null;
+    if (options.headless) {
+      const { getAuthStatus } = require("./registryAuthController");
+      if (!getAuthStatus().authenticated || !resolvedCallerScope) {
+        return {
+          success: false,
+          authRequired: true,
+          error: "Sign in to publish.",
+        };
+      }
+      headlessPlan = await planPackagePublish({
+        kind: "dashboard",
+        record: workspace,
+        displayName: workspace.name || workspace.label || "Dashboard",
+        localVersion: workspace._dashboardConfig?.version || null,
+        username: resolvedCallerScope,
+      });
+      if (headlessPlan.error) {
+        return { success: false, error: headlessPlan.error };
+      }
+      nextVersion = headlessPlan.version;
     }
     // Defense in depth: if remap was a no-op (no resolved caller scope)
     // OR if a code path slipped a local-scope reference in after the
@@ -1870,15 +1916,17 @@ async function prepareDashboardForPublish(
       const refs = [];
       for (const w of widgets) {
         if (w.required === false) continue;
-        const scope = w.scope || registryUsername;
         const name = w.package || w.packageName;
+        // Resolve under the scope it's published as: the caller's for an
+        // `@ai-built` widget, else its own author's.
+        const scope =
+          publishScopeOf(w.scope, registryUsername, localScopes) ||
+          registryUsername;
         if (!scope || !name) continue;
         const key = `${scope}/${name}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        // Resolve under the caller's scope — that's where the package
-        // would have been published regardless of the local scope on disk.
-        refs.push({ scope: registryUsername || scope, name });
+        refs.push({ scope, name });
       }
       if (refs.length > 0) {
         const res = await resolvePackages(refs);
@@ -1894,7 +1942,10 @@ async function prepareDashboardForPublish(
             if (w.required === false) continue;
             const name = w.package || w.packageName;
             if (!name) continue;
-            const resolveKey = `${registryUsername || w.scope}/${name}`;
+            const resolveKey = `${
+              publishScopeOf(w.scope, registryUsername, localScopes) ||
+              registryUsername
+            }/${name}`;
             const exists = existsByKey.get(resolveKey);
             if (exists) continue;
             const widgetName = w.id?.includes(".")
@@ -1931,10 +1982,13 @@ async function prepareDashboardForPublish(
       : [];
     const unpinnedDeps = [];
     for (const w of dashboardConfig.widgets || []) {
-      const remappedScope =
-        resolvedCallerScope && w.scope && w.scope !== resolvedCallerScope
-          ? resolvedCallerScope
-          : w.scope || "";
+      // `@ai-built` goes out under the publisher's name; anyone else's
+      // widget keeps its author's scope.
+      const remappedScope = publishScopeOf(
+        w.scope,
+        resolvedCallerScope,
+        localScopes,
+      );
       const bareName = (w.packageName || w.package || "").replace(
         /^@[^/]+\//,
         "",
@@ -1991,6 +2045,20 @@ async function prepareDashboardForPublish(
         error: `Cannot publish dashboard with unpinned widget versions: ${unpinnedDeps.join(", ")}. Reinstall these widgets from the registry to lock their versions before publishing.`,
       };
     }
+    // Without a dialog there's no one to warn: a dashboard whose widgets
+    // the registry can't supply wouldn't load anywhere else, so it isn't
+    // published (its widgets go first).
+    if (headlessPlan && (registryCheckFailed || missingFromRegistry.length)) {
+      return {
+        success: false,
+        error: registryCheckFailed
+          ? "Couldn't check the dashboard's widgets with the registry right now."
+          : `These widgets aren't in the registry yet: ${missingFromRegistry
+              .map((m) => m.package)
+              .join(", ")}`,
+        missingFromRegistry,
+      };
+    }
 
     // 8. Generate registry manifest — pass callerScope so local-only
     //    scopes (e.g. `@ai-built/…`) get rewritten to the publisher's
@@ -1998,27 +2066,46 @@ async function prepareDashboardForPublish(
     const manifest = generateRegistryManifest(dashboardConfig, {
       githubUser: registryUsername,
       callerScope: registryUsername,
+      localScopes,
       category: options.category || "general",
       repository: options.repository || "",
       appOrigin: appId,
-      visibility: options.visibility || "public",
+      visibility: headlessPlan
+        ? headlessPlan.visibility
+        : options.visibility || "public",
+      // An existing package keeps its visibility (none is sent).
+      keepVisibility: !!(headlessPlan && headlessPlan.exists),
+      packageName: headlessPlan ? headlessPlan.name : undefined,
       version: nextVersion,
       widgetPermissions,
     });
 
-    // 9. Show save dialog for the publish package
+    // 9. Where the package zip goes: the user picks, or (headless) a temp
+    //    file that's removed once it's sent
     const sanitizedName = manifest.name;
-    const { canceled, filePath } = await dialog.showSaveDialog(win, {
-      title: "Save Dashboard Package for Registry",
-      defaultPath: path.join(
-        app.getPath("desktop"),
+    let filePath;
+    if (headlessPlan) {
+      const tmpDir = fs.mkdtempSync(
+        path.join(app.getPath("temp"), "dash-publish-"),
+      );
+      headlessTmpDir = tmpDir;
+      filePath = path.join(
+        tmpDir,
         `dashboard-${sanitizedName}-v${manifest.version}.zip`,
-      ),
-      filters: [{ name: "ZIP Archive", extensions: ["zip"] }],
-    });
-
-    if (canceled || !filePath) {
-      return { success: false, canceled: true };
+      );
+    } else {
+      const picked = await dialog.showSaveDialog(win, {
+        title: "Save Dashboard Package for Registry",
+        defaultPath: path.join(
+          app.getPath("desktop"),
+          `dashboard-${sanitizedName}-v${manifest.version}.zip`,
+        ),
+        filters: [{ name: "ZIP Archive", extensions: ["zip"] }],
+      });
+      if (picked.canceled || !picked.filePath) {
+        return { success: false, canceled: true };
+      }
+      filePath = picked.filePath;
     }
 
     // 10. Create ZIP with manifest and dashboard config
@@ -2106,6 +2193,34 @@ async function prepareDashboardForPublish(
       registrySubmission = { success: false, error: err.message };
     }
 
+    if (headlessPlan) {
+      // Nothing is left behind on disk; the outcome is the registry's.
+      try {
+        fs.rmSync(path.dirname(filePath), { recursive: true, force: true });
+      } catch (_e) {
+        // a leftover temp file is harmless
+      }
+      const ok = !!(registrySubmission && registrySubmission.success);
+      return {
+        success: ok,
+        ...(ok
+          ? {}
+          : {
+              error:
+                (registrySubmission && registrySubmission.error) ||
+                "The registry didn't accept the dashboard.",
+              authRequired: !!(
+                registrySubmission && registrySubmission.authRequired
+              ),
+            }),
+        package: headlessPlan.package,
+        version: nextVersion,
+        renamed: headlessPlan.renamed,
+        visibility: headlessPlan.exists ? "unchanged" : "private",
+        registrySubmission,
+      };
+    }
+
     return {
       success: true,
       filePath,
@@ -2119,6 +2234,14 @@ async function prepareDashboardForPublish(
       registrySubmission,
     };
   } catch (error) {
+    // A headless publish that failed partway leaves no temp folder.
+    if (headlessTmpDir) {
+      try {
+        fs.rmSync(headlessTmpDir, { recursive: true, force: true });
+      } catch (_e) {
+        // harmless
+      }
+    }
     console.error(
       "[DashboardConfigController] Error preparing dashboard for publish:",
       error,
@@ -2296,6 +2419,40 @@ function getDashboardPublishPreview(appId, workspaceId, widgetRegistry = null) {
   }
 }
 
+/**
+ * Publish a dashboard to the user's account without asking (a profile's
+ * dashboards, dash-profiles v2): no save dialog, the name picked
+ * automatically (planPackagePublish), private when new, and — unless
+ * `includeBots: true` — without its bots, which publish as their own
+ * packages.
+ *
+ * @returns {Promise<{success: boolean, package?: string, version?: string,
+ *   renamed?: boolean, error?: string, missingFromRegistry?: Array}>}
+ */
+function publishDashboardHeadless(
+  appId,
+  workspaceId,
+  options = {},
+  widgetRegistry = null,
+) {
+  return prepareDashboardForPublish(
+    null,
+    appId,
+    workspaceId,
+    {
+      description: options.description,
+      tags: options.tags,
+      icon: options.icon,
+      authorName: options.authorName,
+      authorId: options.authorId,
+      componentConfigs: options.componentConfigs,
+      includeBots: options.includeBots === true,
+      headless: true,
+    },
+    widgetRegistry,
+  );
+}
+
 module.exports = {
   exportDashboardConfig,
   selectDashboardFile,
@@ -2303,6 +2460,7 @@ module.exports = {
   installDashboardFromRegistry,
   checkCompatibility,
   prepareDashboardForPublish,
+  publishDashboardHeadless,
   collectDashboardDependencies,
   getDashboardPublishPlan,
   getDashboardPreview,
