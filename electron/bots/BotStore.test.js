@@ -67,6 +67,37 @@ describe("BotStore CRUD", () => {
     assert.ok(fs.existsSync(path.join(root, bot.id, "files")));
   });
 
+  it("create keeps a loaded bot's id when asked and it's free", () => {
+    const { store } = freshStore();
+    const kept = store.create(
+      {
+        ...validDef,
+        id: "bot_lqf3k9_7f3a1b_0",
+        createdAt: "2026-01-02T00:00:00.000Z",
+        updatedAt: "2026-02-03T00:00:00.000Z",
+      },
+      { keepId: true },
+    );
+    assert.equal(kept.id, "bot_lqf3k9_7f3a1b_0");
+    // Its times come along too, so loading the file again finds it unchanged.
+    assert.equal(kept.createdAt, "2026-01-02T00:00:00.000Z");
+    assert.equal(kept.updatedAt, "2026-02-03T00:00:00.000Z");
+    // Taken, malformed, or not asked: a new id.
+    const again = store.create(
+      { ...validDef, id: "bot_lqf3k9_7f3a1b_0" },
+      { keepId: true },
+    );
+    assert.notEqual(again.id, kept.id);
+    assert.notEqual(
+      store.create({ ...validDef, id: "../x" }, { keepId: true }).id,
+      "../x",
+    );
+    assert.notEqual(
+      store.create({ ...validDef, id: "bot_other_1" }).id,
+      "bot_other_1",
+    );
+  });
+
   it("create rejects an invalid definition and persists nothing", () => {
     const { store } = freshStore();
     assert.throws(() => store.create({ name: "" }), /invalid bot/);

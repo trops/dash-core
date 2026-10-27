@@ -215,6 +215,49 @@ const profileStore = {
     return copyProfile(profile);
   },
 
+  /**
+   * Create or replace a profile with a given id and lists — loading a
+   * profile file. Default can't be replaced. The first time profiles are
+   * written, Default's lists come from `defaultItems`.
+   */
+  put(appId, { id, name, items, link }, { defaultItems } = {}) {
+    let store = readStore(appId);
+    const clean = cleanName(name);
+    if (id === DEFAULT_PROFILE_ID) {
+      throw new Error("The Default profile can't be replaced");
+    }
+    if (store.profiles.some((p) => p.id !== id && sameName(p.name, clean))) {
+      throw new Error(`A profile named "${clean}" already exists`);
+    }
+    if (!store.explicit) {
+      store = {
+        ...store,
+        profiles: store.profiles.map((p) =>
+          p.id === DEFAULT_PROFILE_ID
+            ? { ...p, items: cleanItems(defaultItems) }
+            : p,
+        ),
+      };
+    }
+    const existing = store.profiles.find((p) => p.id === id);
+    const profileId =
+      existing || (typeof id === "string" && PROFILE_ID_PATTERN.test(id))
+        ? id
+        : newProfileId(store);
+    const profile = {
+      ...(existing || { createdAt: new Date().toISOString() }),
+      id: profileId,
+      name: clean,
+      items: cleanItems(items),
+      ...(link ? { link } : {}),
+    };
+    const profiles = existing
+      ? store.profiles.map((p) => (p.id === profileId ? profile : p))
+      : [...store.profiles, profile];
+    writeStore(appId, { ...store, profiles });
+    return copyProfile(profile);
+  },
+
   rename(appId, profileId, name) {
     const store = readStore(appId);
     findProfile(store, profileId);

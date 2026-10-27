@@ -135,22 +135,36 @@ class BotStore {
    * @returns {object} the stored definition
    * @throws if validation fails
    */
-  create(def) {
+  create(def, { keepId = false } = {}) {
     const filled = withDefaults(def);
     const { valid, errors } = validateBotDefinition(filled);
     if (!valid) {
       throw new Error(`BotStore.create: invalid bot — ${errors.join("; ")}`);
     }
-    const id = newBotId();
+    // A bot loaded from a profile file keeps its id, so the profile's lists
+    // (and a later load of the same file) still point at it.
+    const id =
+      keepId &&
+      typeof def.id === "string" &&
+      /^bot_[a-z0-9_]{1,64}$/i.test(def.id) &&
+      !this._load().bots[def.id]
+        ? def.id
+        : newBotId();
     const ts = this._now();
+    // A loaded bot also keeps when it was made and last edited, so loading
+    // the same file again finds it unchanged.
+    const keptTime = (t) =>
+      keepId && id === def.id && typeof t === "string" && !isNaN(Date.parse(t))
+        ? t
+        : ts;
     // Stable identity for bot events (bot:<ref>[<id>].<event>): a template's
     // registry id when supplied, else local/<slug of name>. Never changes.
     const bot = {
       ...filled,
       ref: botRef(filled),
       id,
-      createdAt: ts,
-      updatedAt: ts,
+      createdAt: keptTime(def.createdAt),
+      updatedAt: keptTime(def.updatedAt),
     };
 
     const data = this._load();

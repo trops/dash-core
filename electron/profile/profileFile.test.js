@@ -240,6 +240,8 @@ describe("gatherProfile + saveProfileToFile", () => {
     allBots: () => [
       { id: "b1", name: "memo", session: "s", mcpServers: ["github"] },
       { id: "b2", name: "work bot" },
+      { id: "lead1", name: "Kitchen Lead", role: "lead", workspaceId: 1 },
+      { id: "lead2", name: "Sales Lead", role: "lead", workspaceId: 2 },
       { id: "d1", name: "Planner", system: "dash-team" },
     ],
     providers: () => [
@@ -279,9 +281,10 @@ describe("gatherProfile + saveProfileToFile", () => {
       ["Home"],
     );
     assert.deepEqual(Object.keys(g.themes), ["refresh"]);
+    // A dashboard's lead comes with it, even when not ticked.
     assert.deepEqual(
       g.bots.map((b) => b.name),
-      ["memo"],
+      ["memo", "Kitchen Lead"],
     );
     // Providers it uses (by name), never their keys.
     assert.deepEqual(g.providers.map((p) => p.name).sort(), ["github", "home"]);

@@ -792,7 +792,14 @@ const botController = {
     return this._store.get(botId);
   },
 
-  save(definition) {
+  /**
+   * @param {object} definition
+   * @param {{addToProfile?: string, keepId?: boolean}} [opts] loading a
+   *   profile file: a new bot's id goes into that profile's list (not the
+   *   active one's), and it keeps the id it has in the file. Nothing is
+   *   written onto the bot itself.
+   */
+  save(definition, opts = {}) {
     const existing =
       definition && definition.id ? this._store.get(definition.id) : null;
     // The Dash team's identity is fixed: a form can't turn a team bot into a
@@ -829,14 +836,29 @@ const botController = {
       );
     }
     const saved = isNew
-      ? this._store.create(definition)
+      ? this._store.create(definition, { keepId: !!opts.keepId })
       : this._store.update(definition.id, definition);
     if (isNew && saved && !isDashTeam(saved)) {
-      profileMembership.addToActive(this._appId, "bots", saved.id);
+      if (opts.addToProfile) {
+        require("../profile/profileStore").add(
+          this._appId,
+          "bots",
+          saved.id,
+          opts.addToProfile,
+        );
+      } else {
+        profileMembership.addToActive(this._appId, "bots", saved.id);
+      }
     }
     // Every new bot starts paused until the user turns it on (Phase 1d) —
-    // the Dash team and leads are the app's own and aren't saved here.
-    if (isNew && saved && !isDashTeam(saved) && saved.role !== "lead") {
+    // the Dash team and leads are the app's own and aren't saved here. A
+    // lead loaded from a profile file isn't the app's own: it's paused too.
+    if (
+      isNew &&
+      saved &&
+      !isDashTeam(saved) &&
+      (saved.role !== "lead" || opts.addToProfile)
+    ) {
       // PauseController logs it (pause-bot).
       this._pause.pauseBot(saved.id);
     }
