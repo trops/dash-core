@@ -235,6 +235,33 @@ describe("which copy is newer", () => {
     const file = { published: { name: "trops/brief", version: "1.0.0" } };
     assert.equal(newerCopy("bots", here, file).useFile, false);
   });
+  it("versions of different packages with the same name aren't compared", () => {
+    const here = {
+      installedFrom: { package: "someone/brief", version: "9.0.0" },
+      updatedAt: "2026-10-01T00:00:00Z",
+    };
+    const file = {
+      published: { name: "trops/brief", version: "1.0.0" },
+      updatedAt: "2026-10-20T00:00:00Z",
+    };
+    const r = newerCopy("bots", here, file);
+    assert.equal(r.useFile, true);
+    assert.match(r.reason, /Edited more recently/);
+  });
+  it("registryRef is read first", () => {
+    const ref = (version) => ({
+      registryRef: {
+        package: "@trops/ha",
+        kind: "dashboard",
+        version,
+        origin: "installed",
+      },
+    });
+    assert.equal(
+      newerCopy("dashboards", ref("1.0.0"), ref("1.1.0")).useFile,
+      true,
+    );
+  });
   it("otherwise the more recently edited copy wins", () => {
     const here = { updatedAt: "2026-10-01T00:00:00Z" };
     const file = { updatedAt: "2026-10-20T00:00:00Z" };

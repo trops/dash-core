@@ -24,6 +24,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { isNewerVersion } = require("../utils/isNewerVersion");
+const { readRegistryRef, samePackage } = require("../registry/packageRef");
 const {
   PROFILE_FILE_KIND,
   PROFILE_FILE_SCHEMA_VERSION,
@@ -208,39 +209,12 @@ function readProfileZip(buffer) {
 
 // ---- which copy is newer --------------------------------------------------
 
-function lastSegment(pkg) {
-  return String(pkg || "")
-    .replace(/^@/, "")
-    .split("/")
-    .pop()
-    .toLowerCase();
-}
+const REF_KIND = { dashboards: "dashboard", bots: "bot", themes: "theme" };
 
 /** The registry package and version a record was published or installed as. */
 function versionOf(kind, rec) {
-  if (!rec) return null;
-  if (kind === "dashboards") {
-    const c = rec._dashboardConfig || {};
-    const version = c.version || c.installedVersion;
-    return c.registryPackage && version
-      ? { pkg: lastSegment(c.registryPackage), version }
-      : null;
-  }
-  if (kind === "bots") {
-    const p = rec.published || rec.installedFrom;
-    const pkg = p && (p.name || p.package);
-    return pkg && p.version
-      ? { pkg: lastSegment(pkg), version: p.version }
-      : null;
-  }
-  if (kind === "themes") {
-    const m = rec._registryMeta || {};
-    const version = m.lastPublishedVersion || rec.version;
-    return m.packageName && version
-      ? { pkg: lastSegment(m.packageName), version }
-      : null;
-  }
-  return null;
+  const ref = REF_KIND[kind] ? readRegistryRef(REF_KIND[kind], rec) : null;
+  return ref && ref.version ? ref : null;
 }
 
 function editedAt(rec) {
@@ -255,7 +229,7 @@ function editedAt(rec) {
 function newerCopy(kind, here, inFile) {
   const a = versionOf(kind, here);
   const b = versionOf(kind, inFile);
-  if (a && b && a.pkg === b.pkg && a.version !== b.version) {
+  if (a && b && samePackage(a, b) && a.version !== b.version) {
     const fileNewer = isNewerVersion(b.version, a.version);
     return {
       useFile: fileNewer,

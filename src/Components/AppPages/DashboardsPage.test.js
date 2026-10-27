@@ -91,7 +91,19 @@ const ks = {
     },
   ],
 };
-const sales = { id: 8, name: "Sales", menuId: 2, pages: [], layout: [] };
+const sales = {
+  id: 8,
+  name: "Sales",
+  menuId: 2,
+  pages: [],
+  layout: [],
+  registryRef: {
+    package: "@trops/sales",
+    kind: "dashboard",
+    version: "1.0.0",
+    origin: "installed",
+  },
+};
 const loose = { id: 9, name: "Loose", menuId: null, pages: [], layout: [] };
 const menuItems = [
   { id: 1, name: "Work" },
@@ -253,6 +265,10 @@ describe("DashboardsPage — detail", () => {
       within(detail()).getByRole("menuitem", { name: "Duplicate" }),
     );
     expect(h.dashApi.saveWorkspace.mock.calls[1][1].name).toBe("Sales (Copy)");
+    // The copy isn't the registry package the original came from.
+    expect(
+      h.dashApi.saveWorkspace.mock.calls[1][1].registryRef,
+    ).toBeUndefined();
 
     fireEvent.click(
       within(detail()).getByRole("button", { name: "More actions" }),

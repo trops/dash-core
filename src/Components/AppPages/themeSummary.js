@@ -53,6 +53,7 @@ export function duplicateTheme(raw, key, now = Date.now()) {
   const newKey = `theme-${now}`;
   const copy = JSON.parse(JSON.stringify(raw || {}));
   delete copy._registryMeta;
+  delete copy.registryRef;
   return {
     key: newKey,
     theme: { ...copy, id: newKey, name: `${nameOf(key, raw)} (Copy)` },

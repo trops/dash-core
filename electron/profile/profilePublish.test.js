@@ -63,6 +63,16 @@ describe("planPublish", () => {
     assert.equal(k.bumped, true);
   });
 
+  it("a name already used by another kind of package isn't offered", async () => {
+    const rows = await planPublish(
+      [{ package: "@ai-built/kitchen", version: "1.0.0", source: "bundled" }],
+      "trops",
+      async () => ({ type: "dashboard", versions: ["1.0.0"] }),
+    );
+    assert.equal(rows[0].publishable, false);
+    assert.match(rows[0].reason, /already the name of a dashboard/);
+  });
+
   it("can't reach the account → not offered", async () => {
     const rows = await planPublish(widgets, "trops", async () => "unreachable");
     assert.ok(rows.every((r) => !r.publishable));

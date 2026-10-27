@@ -79,6 +79,7 @@ const BOT_WIDGETS = {
   activity: "dash.bots.BotActivity",
 };
 const { registryIdentity, zipAndPublish } = require("./botPublish");
+const { makeRegistryRef } = require("../registry/packageRef");
 const { unassignTeam, isOnTeam } = require("../bots/teams");
 const {
   TEAM_SERVER,
@@ -1450,15 +1451,24 @@ const botController = {
       };
     }
     const created = {};
+    const registryRef =
+      source &&
+      makeRegistryRef({
+        package: source.package,
+        kind: source.kind === "bot-team" ? "bot-team" : "bot",
+        version: source.version,
+        origin: "installed",
+      });
+    const definitionOf = (member) =>
+      source
+        ? {
+            ...member.definition,
+            installedFrom: { ...source, role: member.role },
+            ...(registryRef ? { registryRef } : {}),
+          }
+        : member.definition;
     for (const member of plan.members) {
-      const bot = this.save(
-        source
-          ? {
-              ...member.definition,
-              installedFrom: { ...source, role: member.role },
-            }
-          : member.definition,
-      );
+      const bot = this.save(definitionOf(member));
       // Installed in setup state: nothing runs until the user resumes it.
       this._pause.pauseBot(bot.id);
       created[member.role] = bot;
@@ -1574,6 +1584,7 @@ const botController = {
     const source = {
       package: dl.pkg.scope ? `${dl.pkg.scope}/${dl.pkg.name}` : dl.pkg.name,
       version: dl.pkg.version,
+      kind: dl.pkg.type,
     };
     if (!this._registryPreviews) this._registryPreviews = new Map();
     // Keep only the latest few previews.
@@ -1726,10 +1737,18 @@ const botController = {
       visibility,
       at: new Date().toISOString(),
     };
+    const registryRef = makeRegistryRef({
+      package: published.name,
+      kind: manifest.type,
+      version: published.version,
+      origin: "published",
+      at: published.at,
+    });
+    const record = registryRef ? { published, registryRef } : { published };
     if (opts.kind === "team") {
-      this._store.setTeamSettings(opts.workspaceId, { published });
+      this._store.setTeamSettings(opts.workspaceId, record);
     } else {
-      this._store.update(opts.botId, { published });
+      this._store.update(opts.botId, record);
     }
     return {
       success: true,

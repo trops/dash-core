@@ -1083,6 +1083,9 @@ function stripPersonalizationFromWorkspace(workspace) {
   // some older workspaces; drop it too so the installer doesn't get
   // bindings to provider names that don't exist on their machine.
   if ("selectedProviders" in cleaned) delete cleaned.selectedProviders;
+  // Which package the publisher's copy came from is theirs, not the
+  // installer's (the install records its own).
+  if ("registryRef" in cleaned) delete cleaned.registryRef;
   return cleaned;
 }
 
