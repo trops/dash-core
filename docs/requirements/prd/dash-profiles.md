@@ -281,8 +281,33 @@ computer.
        (numbers). Updating a bot in place uses that copy and keeps this Mac's provider choices. A results widget's
        bot isn't carried between computers. The keys list names the widget.
 
-Step 2 (separate plan): registry `users/{sub}/profiles/` storage, `/api/me/profiles`, the out-of-sync alert in `AppUpdatesModal`, and
-auto-save.
+Step 2 (plan approved 2026-10-27): profiles kept in your account, the out-of-sync alert, auto-save. User decisions: the
+registry's existing per-user table (no new storage or IAM; about 350 KB per profile); auto-save never releases a public
+item (it waits for the user to release it); when both computers changed, the choice is for the whole profile (keep this
+Mac's / use the account's).
+
+   - **S1 — registry** (dash-registry v1.10.0): `/api/auth/me/profiles` list / get / save / delete, only the signed-in
+     user's. A save sends the revision it last saw and is refused (409) when the account has a newer one — checked again
+     as it's written. Stored in the UserLibrary table under `~profile#<id>` (no package scope can start with `~`).
+
+   - **S2 — save to and load from the account** (`electron/profile/profileAccount.js`, `AccountProfilesModal`):
+     - Each profile here can be linked to one account copy: `profileAccounts.json` (`{ accountId, revision, savedAt,
+       updatedOn }`), kept apart from profiles.json so Default can be kept in the account without starting profiles.
+       An account copy is linked to one profile here at most; deleting a profile here forgets its link.
+     - **Save to my account** (next to Save to file): the same review and publishing, then kept in the account. When
+       another computer saved it since, nothing is published and the save says when and where the newer copy came from;
+       a copy removed from the account is added back as new on the next save.
+     - **Load from my account…** lists the account's profiles (where and when saved, which profile here holds it) and
+       opens the same Load preview as a file — the account copy is untrusted, checked like a file. Loading replaces the
+       profile it's linked to (even if renamed here); Default is never replaced, so Default's account copy loads as its
+       own profile and Default stays linked. A profile can be removed from the account there (asked first).
+     - New IPC: `profile:save-account | list-account | preview-load-account | delete-account` (handlers in dash-electron).
+     - Review fixes: links belong to the registry user who made them (`{ owner: { profileId: link } }`) — someone else
+       signed in on the same computer sees none and can't move them. A load links only when no other profile here holds
+       that copy and the target isn't linked to a different one (loading "as new" never steals a link). After a refused
+       save the dialog offers **Replace the account's copy** ("keep this computer's", the approved whole-profile choice) —
+       it replaces only the revision the user saw — so Default, which a load never replaces, can always be saved again.
+       A refusal after publishing says what was published. Registry text is checked before it's stored or shown.
 
 ---
 
@@ -333,6 +358,7 @@ auto-save.
 
 ## Revision History
 
+- 2026-10-27: Step 2 planned and approved; S1 (registry v1.10.0) merged; S2 save to / load from the account.
 - 2026-10-27: v2 planned (registry as source of truth); 7a package identity.
 - 2026-10-26: Created. Plan approved; PR 1 (profile storage) merged in dash-core v0.1.834.
 - 2026-10-26: PR 2: profiles became id lists (user decision), plus switching and bots per profile. Merged in v0.1.835.

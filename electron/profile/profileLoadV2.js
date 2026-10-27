@@ -412,8 +412,16 @@ function itemRow(kind, pkg, version, local, info, extra = {}) {
 /**
  * What loading `manifest` would do. Asks the registry about each package;
  * changes nothing.
+ *
+ * `linkedProfileId`: the profile here linked to the account copy being
+ * loaded (profileAccount.js) — it's the one replaced, unless it's Default.
  */
-async function planLoadV2(appId, manifest, deps = {}) {
+async function planLoadV2(
+  appId,
+  manifest,
+  deps = {},
+  { linkedProfileId } = {},
+) {
   const d = { ...defaultDeps(), ...deps };
   const profiles = d.store.list(appId);
 
@@ -426,6 +434,7 @@ async function planLoadV2(appId, manifest, deps = {}) {
     : manifest.name;
   const others = profiles.filter((p) => p.id !== DEFAULT_PROFILE_ID);
   const existing =
+    (linkedProfileId && others.find((p) => p.id === linkedProfileId)) ||
     (!fromDefault && others.find((p) => p.id === manifest.profileId)) ||
     others.find((p) => sameName(p.name, name)) ||
     null;
@@ -693,7 +702,9 @@ function botPatch(overlay, nameProvider = (n) => n) {
  */
 async function applyLoadV2(win, appId, manifest, choices = {}, deps = {}) {
   const d = { ...defaultDeps(), ...deps };
-  const plan = await planLoadV2(appId, manifest, d);
+  const plan = await planLoadV2(appId, manifest, d, {
+    linkedProfileId: choices.linkedProfileId,
+  });
   if (plan.unreachable) {
     return {
       success: false,

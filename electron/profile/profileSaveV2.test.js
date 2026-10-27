@@ -541,3 +541,196 @@ describe("review fixes", () => {
     assert.equal(plan.items.find((i) => i.key === "9").action, "publish");
   });
 });
+
+describe("executeSave to the account", () => {
+  // A fake account: one profile linked here at `linkRevision`, the account
+  // at `remoteRevision` (null: not there).
+  function fakeAccount({ link = null, remoteRevision = null } = {}) {
+    const fake = {
+      puts: [],
+      links: [],
+      getLink: () => link,
+      revisionOf: require("./profileAccount").revisionOf,
+      newAccountId: () => "anew",
+      listRemote: async () => ({
+        success: true,
+        profiles:
+          link && remoteRevision != null
+            ? [
+                {
+                  id: link.accountId,
+                  revision: remoteRevision,
+                  updatedOn: "laptop",
+                },
+              ]
+            : [],
+      }),
+      putRemote: async (id, manifest, base) => {
+        fake.puts.push({ id, manifest, base });
+        return {
+          success: true,
+          saved: {
+            id,
+            revision: (base || 0) + 1,
+            updatedAt: "t",
+            updatedOn: "here",
+          },
+        };
+      },
+      setLink: (a, owner, profileId, l) => {
+        assert.equal(owner, USER);
+        fake.links.push({ profileId, ...l });
+        return l;
+      },
+    };
+    return fake;
+  }
+
+  it("a first save adds it to the account and links it", async () => {
+    const acct = fakeAccount();
+    const d = deps({ account: () => acct });
+    const res = await executeSave(
+      null,
+      appId,
+      "mini",
+      {},
+      { target: "account" },
+      d,
+    );
+    assert.equal(res.success, true, res.error);
+    assert.equal(acct.puts.length, 1);
+    assert.equal(acct.puts[0].id, "anew");
+    assert.equal(acct.puts[0].base, null);
+    assert.equal(acct.puts[0].manifest.schemaVersion, 2);
+    assert.deepEqual(acct.links[0], {
+      profileId: "mini",
+      accountId: "anew",
+      revision: 1,
+      savedAt: "t",
+      updatedOn: "here",
+    });
+    assert.equal(res.account.revision, 1);
+  });
+
+  it("saves over the copy it last saw", async () => {
+    const acct = fakeAccount({
+      link: { accountId: "a1", revision: 4 },
+      remoteRevision: 4,
+    });
+    const d = deps({ account: () => acct });
+    const res = await executeSave(
+      null,
+      appId,
+      "mini",
+      {},
+      { target: "account" },
+      d,
+    );
+    assert.equal(res.success, true, res.error);
+    assert.equal(acct.puts[0].id, "a1");
+    assert.equal(acct.puts[0].base, 4);
+  });
+
+  it("never over a newer copy — and nothing is published", async () => {
+    const acct = fakeAccount({
+      link: { accountId: "a1", revision: 4 },
+      remoteRevision: 5,
+    });
+    const d = deps({ account: () => acct });
+    const res = await executeSave(
+      null,
+      appId,
+      "mini",
+      {},
+      { target: "account" },
+      d,
+    );
+    assert.equal(res.success, false);
+    assert.equal(res.conflict.revision, 5);
+    assert.equal(res.conflict.updatedOn, "laptop");
+    assert.equal(acct.puts.length, 0);
+    assert.equal(
+      d.calls.some((c) =>
+        ["widget", "theme", "dashboard", "bot"].includes(c[0]),
+      ),
+      false,
+    );
+  });
+
+  it("keep this computer's: replaces the newer copy the user saw — not a still newer one", async () => {
+    const acct = fakeAccount({
+      link: { accountId: "a1", revision: 4 },
+      remoteRevision: 5,
+    });
+    const res = await executeSave(
+      null,
+      appId,
+      "mini",
+      {},
+      { target: "account", replaceRevision: 5 },
+      deps({ account: () => acct }),
+    );
+    assert.equal(res.success, true, res.error);
+    assert.equal(acct.puts[0].base, 5);
+    const stale = fakeAccount({
+      link: { accountId: "a1", revision: 4 },
+      remoteRevision: 6,
+    });
+    const again = await executeSave(
+      null,
+      appId,
+      "mini",
+      {},
+      { target: "account", replaceRevision: 5 },
+      deps({ account: () => stale }),
+    );
+    assert.equal(again.conflict.revision, 6);
+    assert.equal(stale.puts.length, 0);
+  });
+
+  it("refused after publishing (another save got there first): says what was published", async () => {
+    const acct = fakeAccount();
+    acct.putRemote = async () => ({
+      success: false,
+      error: "newer",
+      conflict: { revision: 2, missing: false },
+    });
+    const res = await executeSave(
+      null,
+      appId,
+      "mini",
+      {},
+      { target: "account" },
+      deps({ account: () => acct }),
+    );
+    assert.equal(res.success, false);
+    assert.equal(res.conflict.revision, 2);
+    assert.ok(res.published.length > 0);
+    assert.equal(acct.links.length, 0);
+  });
+
+  it("removed from the account: refused until saved as new", async () => {
+    const acct = fakeAccount({ link: { accountId: "a1", revision: 4 } });
+    const d = deps({ account: () => acct });
+    const res = await executeSave(
+      null,
+      appId,
+      "mini",
+      {},
+      { target: "account" },
+      d,
+    );
+    assert.equal(res.conflict.missing, true);
+    const again = await executeSave(
+      null,
+      appId,
+      "mini",
+      {},
+      { target: "account", asNew: true },
+      deps({ account: () => acct }),
+    );
+    assert.equal(again.success, true, again.error);
+    assert.equal(acct.puts[0].id, "anew");
+    assert.equal(acct.puts[0].base, null);
+  });
+});

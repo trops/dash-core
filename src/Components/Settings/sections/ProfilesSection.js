@@ -17,8 +17,10 @@ import { SectionLayout } from "../SectionLayout";
 import {
   SaveProfileModal,
   savedNoticeText,
+  savedWhenText,
   leftOutText,
 } from "./SaveProfileModal";
+import { AccountProfilesModal } from "./AccountProfilesModal";
 import { LoadProfileModal } from "./LoadProfileModal";
 import { LoadProfileV2Modal } from "./LoadProfileV2Modal";
 
@@ -146,6 +148,10 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
   const [confirm, setConfirm] = useState(null);
   // The profile being saved to a file, and the last save's result.
   const [saving, setSaving] = useState(null);
+  // Where it's being saved: "file" or "account".
+  const [saveTo, setSaveTo] = useState("file");
+  // "Load from my account…" is open.
+  const [accountOpen, setAccountOpen] = useState(false);
   const [notice, setNotice] = useState(null);
   // What loading the picked file would do (the Load dialog is open).
   const [loadPreview, setLoadPreview] = useState(null);
@@ -362,6 +368,15 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
         onClick={openFileToLoad}
         testId="profiles-load"
       />
+      <Button3
+        title="Load from my account…"
+        onClick={() => {
+          setError(null);
+          setNotice(null);
+          setAccountOpen(true);
+        }}
+        testId="profiles-load-account"
+      />
       <nav aria-label="Profiles" className="flex flex-col gap-0.5">
         {profiles.map((p) => {
           const counts = p.items
@@ -444,6 +459,18 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
             <div className="flex flex-row items-center gap-2 min-w-0">
               <SubHeading3 title={selected.name} padding={false} />
               {isActive ? <Tag3 text="Active" /> : null}
+              {selected.account ? (
+                <span
+                  className={`text-xs ${muted}`}
+                  data-testid="profile-account-status"
+                >
+                  {`In your account${
+                    savedWhenText(selected.account)
+                      ? ` · saved ${savedWhenText(selected.account)}`
+                      : ""
+                  }`}
+                </span>
+              ) : null}
             </div>
           )}
           {nameForm ? null : (
@@ -456,9 +483,19 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
                 />
               ) : null}
               <Button3
+                title="Save to my account"
+                onClick={() => {
+                  setNotice(null);
+                  setSaveTo("account");
+                  setSaving(selected);
+                }}
+                testId="profile-save-account"
+              />
+              <Button3
                 title="Save to file…"
                 onClick={() => {
                   setNotice(null);
+                  setSaveTo("file");
                   setSaving(selected);
                 }}
                 testId="profile-save-file"
@@ -592,10 +629,21 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
           }}
         />
       ) : null}
+      {accountOpen ? (
+        <AccountProfilesModal
+          appId={appId}
+          onClose={() => setAccountOpen(false)}
+          onPreview={(res) => {
+            setAccountOpen(false);
+            setLoadPreview(res);
+          }}
+        />
+      ) : null}
       {saving ? (
         <SaveProfileModal
           appId={appId}
           profile={saving}
+          to={saveTo}
           onClose={() => setSaving(null)}
           onSaved={(res) => {
             setSaving(null);

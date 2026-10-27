@@ -330,6 +330,28 @@ describe("planLoadV2", () => {
     assert.equal(replace.target.profileId, "x");
   });
 
+  it("from the account: the profile linked to it is the one replaced, whatever its name — never Default", async () => {
+    const d = computer();
+    d.store.list = () => [
+      { id: "default", name: "Default" },
+      { id: "x", name: "Mac Mini" },
+      { id: "y", name: "Renamed here" },
+    ];
+    const linked = await planLoadV2("app", manifest(), d, {
+      linkedProfileId: "y",
+    });
+    assert.equal(linked.target.mode, "replace");
+    assert.equal(linked.target.profileId, "y");
+    const toDefault = await planLoadV2(
+      "app",
+      manifest({ profileId: "default", name: "Default" }),
+      d,
+      { linkedProfileId: "default" },
+    );
+    assert.equal(toDefault.target.mode, "create");
+    assert.match(toDefault.target.name, /^Default \(from laptop\)/);
+  });
+
   it("a team whose dashboard isn't available isn't either; an unreachable registry is said", async () => {
     const d = computer({
       lookup: async (pkg) =>

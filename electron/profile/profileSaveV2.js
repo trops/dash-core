@@ -44,6 +44,8 @@ function defaultDeps() {
     return c && c._ready ? c : null;
   };
   return {
+    // Profiles kept in the account (step 2).
+    account: () => require("./profileAccount"),
     gather: (appId, profileId, options) =>
       require("./profileFile").gatherProfile(appId, profileId, options),
     username: async () => {
@@ -431,12 +433,18 @@ async function planSave(appId, profileId, options = {}, deps = {}) {
 
 /**
  * Save: publish what the plan says (in an order that keeps references
- * whole), then write the v2 file.
+ * whole), then write the v2 file — or, with `target: "account"`, keep it
+ * in the user's account (profileAccount.js).
  *
  * @param {{skipPublic?: string[], confirmPersonalPaths?: string[],
- *   filePath?: string}} choices  `skipPublic`: "<kind>:<key>" of the user's
- *   public items not to release now; `confirmPersonalPaths`: widgets whose
- *   files mention this computer's folders, confirmed by the user
+ *   filePath?: string, target?: "file" | "account", asNew?: boolean,
+ *   replaceRevision?: number}} choices
+ *   `skipPublic`: "<kind>:<key>" of the user's public items not to release
+ *   now; `confirmPersonalPaths`: widgets whose files mention this
+ *   computer's folders, confirmed by the user; `asNew`: add it to the
+ *   account as a new profile (its account copy was removed);
+ *   `replaceRevision`: the newer account revision the user chose to replace
+ *   ("keep this computer's")
  */
 async function executeSave(
   win,
@@ -456,6 +464,50 @@ async function executeSave(
       error: "Some items can't be saved yet.",
       blockers: plan.blockers,
     };
+  }
+  // Kept in the account: checked before anything is published, so a save
+  // that would be refused (another computer saved since) changes nothing.
+  const toAccount = choices.target === "account";
+  let accountTarget = null;
+  if (toAccount) {
+    const account = d.account();
+    const link = choices.asNew
+      ? null
+      : account.getLink(appId, plan.username, profileId);
+    accountTarget = link
+      ? {
+          accountId: link.accountId,
+          baseRevision: account.revisionOf(link.revision),
+        }
+      : { accountId: account.newAccountId(), baseRevision: null };
+    if (link) {
+      const remote = await account.listRemote();
+      if (!remote.success) return remote;
+      const there = remote.profiles.find((p) => p.id === link.accountId);
+      // "Keep this computer's": the user saw the newer copy (its revision)
+      // and chose to replace it. A save from yet another computer since
+      // still refuses (the registry checks the revision).
+      const replacing =
+        there &&
+        choices.replaceRevision != null &&
+        account.revisionOf(choices.replaceRevision) === there.revision;
+      if (replacing) {
+        accountTarget.baseRevision = there.revision;
+      } else if (!there || there.revision !== accountTarget.baseRevision) {
+        return {
+          success: false,
+          error: there
+            ? "Your account has a newer copy of this profile, saved from another computer."
+            : "This profile isn't in your account any more.",
+          conflict: {
+            revision: there ? there.revision : null,
+            updatedOn: there ? there.updatedOn || null : null,
+            updatedAt: there ? there.updatedAt || null : null,
+            missing: !there,
+          },
+        };
+      }
+    }
   }
   const user = plan.username;
   const skip = new Set(choices.skipPublic || []);
@@ -649,6 +701,37 @@ async function executeSave(
     appVersion: d.appVersion(),
   });
 
+  const counts = {
+    dashboards: out.dashboards.length,
+    bots: out.bots.length,
+    themes: out.themes.length,
+    widgets: Object.keys(widgets).length,
+  };
+  if (toAccount) {
+    const account = d.account();
+    const put = await account.putRemote(
+      accountTarget.accountId,
+      manifest,
+      accountTarget.baseRevision,
+    );
+    if (!put.success) return { ...put, published };
+    const link = account.setLink(appId, user, profileId, {
+      accountId: accountTarget.accountId,
+      revision: put.saved.revision,
+      savedAt: put.saved.updatedAt || manifest.createdAt,
+      updatedOn: put.saved.updatedOn || manifest.createdOn,
+    });
+    return {
+      success: true,
+      account: link,
+      published,
+      skipped: [...skipped],
+      leftOut,
+      counts,
+      secretsLeftOut: (g.secretsLeftOut || []).length,
+    };
+  }
+
   let filePath = choices.filePath || null;
   if (!filePath) {
     const { dialog, app } = require("electron");
@@ -685,12 +768,7 @@ async function executeSave(
     published,
     skipped: [...skipped],
     leftOut,
-    counts: {
-      dashboards: out.dashboards.length,
-      bots: out.bots.length,
-      themes: out.themes.length,
-      widgets: Object.keys(widgets).length,
-    },
+    counts,
     secretsLeftOut: (g.secretsLeftOut || []).length,
   };
 }
