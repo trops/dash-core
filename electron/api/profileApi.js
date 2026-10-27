@@ -17,6 +17,8 @@ const {
   PROFILE_DUPLICATE,
   PROFILE_LIST_CONTENTS,
   PROFILE_SET_MEMBERSHIP,
+  PROFILE_PREVIEW_SAVE,
+  PROFILE_SAVE_FILE,
 } = require("../events");
 
 const profileApi = {
@@ -49,6 +51,16 @@ const profileApi = {
       id,
       include,
     }),
+  /**
+   * What "Save to file" would write: { counts, widgets: [{ package,
+   * version, source, status, registryVersion }], bundledBytes, signedIn }.
+   * options: { bots, providers, settings } (all on by default).
+   */
+  previewSave: (appId, profileId, options) =>
+    ipcRenderer.invoke(PROFILE_PREVIEW_SAVE, { appId, profileId, options }),
+  /** Save to a .dashprofile file; the main process shows the save dialog. */
+  saveFile: (appId, profileId, options) =>
+    ipcRenderer.invoke(PROFILE_SAVE_FILE, { appId, profileId, options }),
 };
 
 module.exports = profileApi;

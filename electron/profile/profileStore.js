@@ -314,6 +314,21 @@ const profileStore = {
     );
   },
 
+  /**
+   * Record the last save or load of a profile — `{ revision, savedAt,
+   * dashboardHashes }` — so later saves count up and sync can tell what
+   * changed. No-op before profiles exist.
+   */
+  setLink(appId, profileId, link) {
+    const store = readStore(appId);
+    if (!store.explicit) return;
+    findProfile(store, profileId);
+    const profiles = store.profiles.map((p) =>
+      p.id === profileId ? { ...p, link: { ...(p.link || {}), ...link } } : p,
+    );
+    writeStore(appId, { ...store, profiles });
+  },
+
   /** Profiles (other than `exceptProfileId`) that hold this id. */
   profilesHolding(appId, kind, id, exceptProfileId) {
     assertKind(kind);

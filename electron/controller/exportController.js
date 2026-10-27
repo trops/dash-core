@@ -72,8 +72,49 @@ function stripProviderCredentials(providers) {
     for (const field of SAFE_PROVIDER_FIELDS) {
       if (field in p) safe[field] = p[field];
     }
+    if (safe.mcpConfig) safe.mcpConfig = safeMcpConfig(safe.mcpConfig);
+    if (safe.wsConfig) safe.wsConfig = safeWsConfig(safe.wsConfig);
     return safe;
   });
+}
+
+// Inside mcpConfig, only how to start or reach the server. Literal values
+// that can be keys — staticEnv, OAuth client secrets, header templates,
+// token refresh — never leave the computer; the user adds them again.
+const SAFE_MCP_CONFIG_FIELDS = [
+  "transport",
+  "command",
+  "args",
+  "argsMapping",
+  "envMapping",
+  "url",
+  "builtin",
+];
+
+function safeMcpConfig(config) {
+  if (!config || typeof config !== "object") return config;
+  const out = {};
+  for (const field of SAFE_MCP_CONFIG_FIELDS) {
+    if (field in config) out[field] = config[field];
+  }
+  // Which env vars it had, never their values.
+  if (config.staticEnv && typeof config.staticEnv === "object") {
+    out.staticEnvKeys = Object.keys(config.staticEnv);
+  }
+  return out;
+}
+
+// WebSocket: the address and subprotocols; header names only (values can
+// be Authorization tokens).
+function safeWsConfig(config) {
+  if (!config || typeof config !== "object") return config;
+  const out = {};
+  if ("url" in config) out.url = config.url;
+  if ("subprotocols" in config) out.subprotocols = config.subprotocols;
+  if (config.headers && typeof config.headers === "object") {
+    out.headerNames = Object.keys(config.headers);
+  }
+  return out;
 }
 
 /**

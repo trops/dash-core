@@ -1,11 +1,5 @@
 import React, { useContext, useEffect, useState } from "react";
-import {
-  Button2,
-  DataList,
-  StatusBadge,
-  SubHeading3,
-  Switch,
-} from "@trops/dash-react";
+import { Button2, DataList, SubHeading3, Switch } from "@trops/dash-react";
 import { AppContext } from "../../../Context/App/AppContext";
 import { useConfigTokens } from "../../Dashboard/ConfigListRow";
 
@@ -93,50 +87,12 @@ function useBackgroundSettings() {
   return [settings, change];
 }
 
-export const GeneralSection = () => {
+export const GeneralSection = ({ onOpenSection = null }) => {
   const { muted, hairline, selectedBg: recessed } = useConfigTokens();
   const appContext = useContext(AppContext);
   const debugMode = appContext?.debugMode || false;
   const credentials = appContext?.credentials || {};
   const [dataDirectory, setDataDirectory] = useState(null);
-
-  // Export Everything (Phase 4A) — kind: "success" | "error"
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportFeedback, setExportFeedback] = useState(null);
-
-  async function handleExportEverything() {
-    if (!credentials?.appId) {
-      setExportFeedback({ kind: "error", message: "No application context." });
-      return;
-    }
-    setIsExporting(true);
-    setExportFeedback(null);
-    try {
-      const result = await window.mainApi?.export?.exportEverything?.(
-        credentials.appId,
-      );
-      if (result?.success) {
-        setExportFeedback({
-          kind: "success",
-          message: `Saved to ${result.filePath}`,
-        });
-      } else if (result?.canceled) {
-        // User dismissed the dialog — no feedback row.
-      } else {
-        setExportFeedback({
-          kind: "error",
-          message: result?.error || "Export failed.",
-        });
-      }
-    } catch (err) {
-      setExportFeedback({
-        kind: "error",
-        message: err?.message || "Export failed.",
-      });
-    } finally {
-      setIsExporting(false);
-    }
-  }
 
   useEffect(() => {
     const dashApi = appContext?.dashApi;
@@ -268,39 +224,19 @@ export const GeneralSection = () => {
         </SettingRow>
       </SettingsGroup>
 
-      {/* Backup — Phase 4A. Bundles workspaces + themes + folders +
-          providers (sans credentials) into a single ZIP. The
-          credential strip is enforced server-side via the
-          exportController allowlist; this button just routes the
-          user through the save dialog. */}
+      {/* Backup (dash-profiles PR 4): a profile saved to a file can be
+          loaded on another computer — Export Everything couldn't be
+          loaded back, so it's gone. */}
       <SettingsGroup title="Backup">
         <SettingRow
-          label="Export everything"
-          description="Save a ZIP of your dashboards, themes, folders and provider settings. Credentials are not included."
-          extra={
-            // Always mounted, so screen readers announce the result when it
-            // appears (a live region that shows up already filled is often
-            // skipped).
-            <span role="status">
-              {exportFeedback ? (
-                <span data-testid="export-feedback">
-                  <StatusBadge
-                    state={
-                      exportFeedback.kind === "success" ? "success" : "error"
-                    }
-                    compact
-                    label={exportFeedback.message}
-                  />
-                </span>
-              ) : null}
-            </span>
-          }
+          label="Save a profile to a file"
+          description="Save your dashboards, bots, folders and themes to a file you can load on another computer. Keys and passwords are not included."
         >
           <Button2
-            title={isExporting ? "Exporting…" : "Export Everything"}
-            onClick={handleExportEverything}
-            disabled={isExporting}
-            testId="export-everything-button"
+            title="Open Profiles"
+            onClick={() => onOpenSection && onOpenSection("profiles")}
+            disabled={!onOpenSection}
+            testId="backup-open-profiles"
           />
         </SettingRow>
       </SettingsGroup>

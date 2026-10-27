@@ -1,6 +1,6 @@
 # PRD: Dash Profiles
 
-**Status:** In Progress (PR 3 of 6: profiles UI)
+**Status:** In Progress (PR 4a: save to file)
 **Last Updated:** 2026-10-26
 **Owner:** trops
 **Related PRDs:** [Dashboard Marketplace](./dashboard-marketplace.md), [Bot Teams](./bot-teams.md)
@@ -101,7 +101,18 @@ computer.
      dashboard, bot, folder and theme, each saying which other profiles hold it.
    - "Remove from <profile>" in the Dashboards page "…" menu and on a bot's page.
    - Switching asks first when bots are running.
-4. **Save to file.** The `.dashprofile` format.
+4. **Save to file.**
+   - **4a** (`electron/profile/profileFile.js`): Settings › Profiles › Save to file… writes a `.dashprofile` zip of the
+     profile's own records as they are (ids, widget settings, pages), the folders and themes its dashboards use, bot
+     definitions without the session, providers it uses without keys, and app theme + update check.
+   - Every widget is checked against the registry by exact version. Only an exact version installed from the registry is
+     referenced. Otherwise (newer here, a local build, not published, `@ai-built`) its installed folder is copied into the file,
+     without `node_modules`. If the registry can't be reached, widgets are referenced and marked unchecked.
+   - New installs record `installSource` (registry / url / local) so a local build of a published version is detected.
+   - Each save records `link: { revision, savedAt, dashboardHashes }` on the profile.
+   - General › Backup now points to profiles; Export Everything could not be loaded back.
+   - **4b** (user decision): when signed in, Save offers to publish those widgets privately to your account instead (already
+     published ones keep their visibility), and this computer's dashboards switch to the published package.
 5. **Load from file.** Create-or-replace with the difference preview, plus the sync groundwork: `revision` and dashboard hashes.
 6. **dash-electron** picks up the new version.
 
@@ -141,6 +152,9 @@ auto-save.
   the right bots; events skip other profiles' bots; delete removes a bot everywhere.
 - `electron/profile/sessionProfiles.test.js`: recents and open tabs per profile; `removeRecentDashboard`.
 - `electron/profile/profileContents.test.js`: contents with inProfile/alsoIn; unticking never deletes; duplicate.
+- `electron/profile/profileFile.test.js`: widget classification (6 cases), no secrets in the zip, bundled folder without
+  node_modules, revision counts up, Default-only writes no profiles.json.
+- `src/Components/Settings/sections/SaveProfileModal.test.js`: counts, widget status text, options, save and cancel.
 - `src/Components/Settings/sections/ProfilesSection.test.js`: active marker, Delete guards, ticks, the untick and switch confirms.
 
 ---
@@ -149,4 +163,5 @@ auto-save.
 
 - 2026-10-26: Created. Plan approved; PR 1 (profile storage) merged in dash-core v0.1.834.
 - 2026-10-26: PR 2: profiles became id lists (user decision), plus switching and bots per profile. Merged in v0.1.835.
+- 2026-10-26: PR 4a: save to file, with exact-version registry checks (user: make sure the registry copy is up to date).
 - 2026-10-26: PR 3: profiles UI; `profile:duplicate | list-contents | set-membership` IPC.

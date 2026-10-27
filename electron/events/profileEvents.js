@@ -14,6 +14,8 @@ const PROFILE_SWITCH = "profile:switch";
 const PROFILE_DUPLICATE = "profile:duplicate";
 const PROFILE_LIST_CONTENTS = "profile:list-contents";
 const PROFILE_SET_MEMBERSHIP = "profile:set-membership";
+const PROFILE_PREVIEW_SAVE = "profile:preview-save";
+const PROFILE_SAVE_FILE = "profile:save-file";
 
 module.exports = {
   PROFILE_LIST,
@@ -25,4 +27,6 @@ module.exports = {
   PROFILE_DUPLICATE,
   PROFILE_LIST_CONTENTS,
   PROFILE_SET_MEMBERSHIP,
+  PROFILE_PREVIEW_SAVE,
+  PROFILE_SAVE_FILE,
 };

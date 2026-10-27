@@ -91,6 +91,47 @@ test("stripProviderCredentials preserves every allowlisted field that's present"
   assert.ok(!("credentials" in out[0]));
 });
 
+test("stripProviderCredentials drops secrets nested in mcpConfig and wsConfig", () => {
+  const [out] = stripProviderCredentials([
+    {
+      name: "custom",
+      type: "custom-mcp",
+      mcpConfig: {
+        transport: "stdio",
+        command: "npx",
+        args: ["server"],
+        envMapping: { apiKey: "API_KEY" },
+        staticEnv: { API_KEY: "STATIC-SECRET" },
+        oauth: { clientId: "id", clientSecret: "OAUTH-SECRET" },
+        headerTemplate: { Authorization: "Bearer HEADER-SECRET" },
+        tokenRefresh: { refreshToken: "REFRESH-SECRET" },
+      },
+      wsConfig: {
+        url: "wss://x",
+        subprotocols: ["v1"],
+        headers: { Authorization: "Bearer WS-SECRET" },
+      },
+    },
+  ]);
+  const text = JSON.stringify(out);
+  for (const secret of [
+    "STATIC-SECRET",
+    "OAUTH-SECRET",
+    "HEADER-SECRET",
+    "REFRESH-SECRET",
+    "WS-SECRET",
+  ]) {
+    assert.ok(!text.includes(secret), `${secret} leaked`);
+  }
+  // What it needs to be set up again stays: how to start it, which env
+  // vars and headers it had.
+  assert.strictEqual(out.mcpConfig.command, "npx");
+  assert.deepStrictEqual(out.mcpConfig.envMapping, { apiKey: "API_KEY" });
+  assert.deepStrictEqual(out.mcpConfig.staticEnvKeys, ["API_KEY"]);
+  assert.strictEqual(out.wsConfig.url, "wss://x");
+  assert.deepStrictEqual(out.wsConfig.headerNames, ["Authorization"]);
+});
+
 test("stripProviderCredentials handles non-array input gracefully", () => {
   assert.deepStrictEqual(stripProviderCredentials(null), []);
   assert.deepStrictEqual(stripProviderCredentials(undefined), []);

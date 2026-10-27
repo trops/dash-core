@@ -1167,6 +1167,9 @@ class WidgetRegistry {
         {
           ...config,
           ...record,
+          // Where the code came from — a profile save checks whether the
+          // registry has this exact code (dash-profiles PR 4).
+          installSource: "local",
           ...(isDirectory ? { copiedFromFolder: true } : {}),
         },
         widgetPath,
@@ -1574,7 +1577,11 @@ class WidgetRegistry {
 
       this.registerWidget(
         widgetName,
-        { ...config, ...record },
+        {
+          ...config,
+          ...record,
+          installSource: fromRegistry ? "registry" : "url",
+        },
         widgetPath,
         false,
       );
