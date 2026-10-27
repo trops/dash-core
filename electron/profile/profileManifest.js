@@ -34,9 +34,10 @@ function dashboardOverlay(workspace) {
   if (workspace && typeof workspace === "object") {
     mapItems(workspace, (item, key) => {
       const entry = {};
-      if (item.userPrefs && Object.keys(item.userPrefs).length) {
-        entry.userPrefs = item.userPrefs;
-      }
+      // Settings that point at this computer (a results widget's bot)
+      // stay here.
+      const { botId: _bot, ...prefs } = item.userPrefs || {};
+      if (Object.keys(prefs).length) entry.userPrefs = prefs;
       if (
         item.selectedProviders &&
         Object.keys(item.selectedProviders).length

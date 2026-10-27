@@ -20,6 +20,7 @@ import {
   leftOutText,
 } from "./SaveProfileModal";
 import { LoadProfileModal } from "./LoadProfileModal";
+import { LoadProfileV2Modal } from "./LoadProfileV2Modal";
 
 // What a profile holds, in the order the detail pane shows it.
 const KINDS = [
@@ -148,6 +149,11 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
   const [notice, setNotice] = useState(null);
   // What loading the picked file would do (the Load dialog is open).
   const [loadPreview, setLoadPreview] = useState(null);
+  // A v2 profile (packages from the registry) has its own preview.
+  const LoadModal =
+    loadPreview && loadPreview.schemaVersion === 2
+      ? LoadProfileV2Modal
+      : LoadProfileModal;
 
   const loadProfiles = useCallback(async () => {
     if (!appId || !profilesApi()) return;
@@ -543,7 +549,7 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
       {/* Inside the Settings modal: mount confirms only while open, or
           they open beneath it. */}
       {loadPreview ? (
-        <LoadProfileModal
+        <LoadModal
           appId={appId}
           preview={loadPreview}
           onClose={() => setLoadPreview(null)}
@@ -570,6 +576,12 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
                   : ""
               }`,
             );
+            if ((res.botsPaused || []).length) {
+              setNotice(
+                (n) =>
+                  `${n} ${plural(res.botsPaused.length, "bot")} arrived paused — turn them on when you're ready.`,
+              );
+            }
             if ((res.problems || []).length) setError(res.problems.join(" "));
             setSelectedId(res.profile.id);
             loadProfiles();

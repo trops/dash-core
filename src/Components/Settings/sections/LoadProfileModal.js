@@ -298,7 +298,7 @@ export const LoadProfileModal = ({ appId, preview, onClose, onLoaded }) => {
             </span>
             {preview.secretsToEnter.map((s, i) => (
               <span key={i}>
-                {s.dashboard} › {s.widget} › {s.field}
+                {s.dashboard} › {s.title || s.component || s.widget} › {s.field}
               </span>
             ))}
           </div>
