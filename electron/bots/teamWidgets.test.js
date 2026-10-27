@@ -305,7 +305,10 @@ describe("controllers are wired (pins)", () => {
     );
   });
   it("import: bots installed paused and wired to the new dashboard", () => {
-    assert.match(ctrl, /^  installDashboardTeam\(workspaceId, manifest\)/m);
+    assert.match(
+      ctrl,
+      /^  installDashboardTeam\(workspaceId, manifest, embedded = null\)/m,
+    );
     assert.match(
       ctrl,
       /const widgetWiring = wireWidgets\(plan, created, dashboardId\);/,
@@ -317,7 +320,7 @@ describe("controllers are wired (pins)", () => {
     assert.match(ctrl, /this\._pause\.pauseBot\(bot\.id\);/);
     assert.match(
       dash,
-      /botsSummary = installTeamForImport\(workspace\.id, dashboardConfig\.team\);/,
+      /botsSummary = installTeamForImport\(\s*workspace\.id,\s*dashboardConfig\.team,/,
     );
   });
 });

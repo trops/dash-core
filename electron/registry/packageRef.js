@@ -60,7 +60,14 @@ function bareName(pkg) {
 }
 
 /** A `registryRef` to store on a record, or null when the package is unknown. */
-function makeRegistryRef({ package: pkg, kind, version, origin, at } = {}) {
+function makeRegistryRef({
+  package: pkg,
+  kind,
+  version,
+  origin,
+  at,
+  contentHash,
+} = {}) {
   const ref = normalizePackageRef(pkg);
   if (!ref || !KINDS.includes(kind) || !ORIGINS.includes(origin)) return null;
   return {
@@ -69,6 +76,9 @@ function makeRegistryRef({ package: pkg, kind, version, origin, at } = {}) {
     version: typeof version === "string" && version ? version : null,
     origin,
     at: at || new Date().toISOString(),
+    // What it was when published or installed (registry/fingerprint.js):
+    // a profile save publishes only what changed since.
+    ...(typeof contentHash === "string" && contentHash ? { contentHash } : {}),
   };
 }
 
@@ -101,7 +111,9 @@ function readRegistryRef(kind, record) {
   if (!record || typeof record !== "object") return null;
   const r = record.registryRef;
   if (r && r.kind === kind && normalizePackageRef(r.package)) {
-    return found(r.package, kind, r.version, r.origin);
+    const out = found(r.package, kind, r.version, r.origin);
+    if (out && r.contentHash) out.contentHash = r.contentHash;
+    return out;
   }
 
   if (kind === "dashboard") {

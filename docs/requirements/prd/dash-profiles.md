@@ -232,6 +232,33 @@ computer.
        missed `componentName`, `workspace` and event wiring, and the publish check didn't look at them;
        Publish was hidden for themes the user had published before.
 
+8. **v2 save and load** (plan approved 2026-10-27; user: a changed public package of the user's is shown ticked and can
+   be held back; a save publishes only what changed):
+   - **V2-A — save** (`electron/registry/fingerprint.js`, `electron/profile/profileManifest.js`,
+     `electron/profile/profileSaveV2.js`, `botController.publishHeadless`, `SaveProfileModal`):
+     - The file is a small JSON (`schemaVersion: 2`): packages at exact versions (dashboards with their id, name,
+       folder and theme; bots and a dashboard's team; themes; widgets), folders, providers without keys, and the
+       settings publishing leaves out — each widget's settings and providers by section and widget id (secret
+       values blanked) and each bot's providers, tools and AI (never approvals). No records, no code.
+     - Every publish and install records a content fingerprint on `registryRef` (what would be published, not
+       where it is here or the user's settings); a save publishes only what changed since.
+     - Each item is referenced (unchanged), published (the user's, new or changed — private when new), published as
+       a remix (someone else's, changed, if allowed), or left out with the reason (a dashboard imported from a file,
+       one using a widget nobody can publish, someone else's that doesn't allow remixes, installed before Dash
+       recorded its source). The user's own item that can't be published blocks the save; signed in only.
+     - Order: widgets (`@ai-built` ones become the user's, and dashboards switch to them), themes, dashboards, then
+       bots — a dashboard's bots as one team package (its lead goes with it), others one by one.
+     - The Save dialog reviews it first; a changed public package of the user's is ticked "Release this as a new
+       public version" and can be held back (the file keeps its last version).
+     - Review fixes: fingerprints are taken once an install is finished (a team wired, a dashboard's listeners
+       written) and a bot's covers its wiring and approval policy; a dashboard's team is the whole team on it; a
+       dashboard's own team (it came with the dashboard package — its bots record that package) goes with the
+       dashboard while unchanged (`withTeam`) and, once changed, publishes as a remix of the dashboard; a bot from a
+       team package isn't saved on its own; a held-back public widget keeps the version the registry has; an old
+       publish without a recorded scope is published again. The Save button says what's missing (dash-react's
+       ConfirmationModal has no disabled state — backlog), and the dialog can't close while publishing.
+     - Loading a v2 file comes in V2-B; dash-electron moves to the new dash-core only once both are in.
+
 Step 2 (separate plan): registry `users/{sub}/profiles/` storage, `/api/me/profiles`, the out-of-sync alert in `AppUpdatesModal`, and
 auto-save.
 

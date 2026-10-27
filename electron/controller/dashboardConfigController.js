@@ -63,6 +63,7 @@ const {
   planPackagePublish,
 } = require("../registry/registryPackages");
 const { remixOrigin, checkRemix } = require("../registry/remix");
+const { publishFingerprint } = require("../registry/fingerprint");
 
 const configFilename = "workspaces.json";
 
@@ -930,7 +931,13 @@ async function processDashboardConfig(
   // imported from a file has none.
   // (Set to undefined rather than deleted, so an update in place doesn't
   // keep the old one; it isn't written.)
-  workspace.registryRef = options.registryRef || undefined;
+  workspace.registryRef = options.registryRef
+    ? {
+        ...options.registryRef,
+        // What it is as installed: a profile save sees later edits.
+        contentHash: publishFingerprint("dashboard", workspace),
+      }
+    : undefined;
   // An install is the registry's package (or the file's), not a copy of
   // something: whatever the publisher's copy recorded stays theirs. Updating
   // the user's own remix in place keeps what it's a remix of.
@@ -957,7 +964,33 @@ async function processDashboardConfig(
   // own packages); updating a dashboard in place never adds them again.
   let botsSummary = null;
   if (dashboardConfig.team && options.withTeam !== false && !existing) {
-    botsSummary = installTeamForImport(workspace.id, dashboardConfig.team);
+    botsSummary = installTeamForImport(
+      workspace.id,
+      dashboardConfig.team,
+      // The bots came with this registry package (their author's work).
+      options.registryRef
+        ? {
+            package: options.registryRef.package,
+            version: options.registryRef.version,
+          }
+        : null,
+    );
+    // Wiring the team edits the layout: what the dashboard is as installed
+    // is taken after (a profile save sees only later edits).
+    if (workspace.registryRef) {
+      const fresh = (
+        getFileContents(getAppFilePath(appId, "workspaces.json")) || []
+      ).find((w) => w && String(w.id) === String(workspace.id));
+      if (fresh) {
+        workspaceController.saveWorkspaceForApplication(win, appId, {
+          ...fresh,
+          registryRef: {
+            ...workspace.registryRef,
+            contentHash: publishFingerprint("dashboard", fresh),
+          },
+        });
+      }
+    }
   }
 
   // Build provider requirements summary
@@ -1011,13 +1044,13 @@ function teamForExport(workspace, options = {}) {
  * Install an imported dashboard's team: { installed, unwired, droppedWiring }
  * or { error } — the dashboard itself is already saved either way.
  */
-function installTeamForImport(workspaceId, team) {
+function installTeamForImport(workspaceId, team, embedded = null) {
   try {
     const botController = require("./botController");
     if (!botController._ready) {
       return { error: "Bots aren't available right now." };
     }
-    return botController.installDashboardTeam(workspaceId, team);
+    return botController.installDashboardTeam(workspaceId, team, embedded);
   } catch (err) {
     return { error: err.message };
   }
@@ -2186,6 +2219,7 @@ async function prepareDashboardForPublish(
               kind: "dashboard",
               version: nextVersion,
               origin: "published",
+              contentHash: publishFingerprint("dashboard", workspace),
             });
             if (registryRef) nextWorkspace.registryRef = registryRef;
             else delete nextWorkspace.registryRef;

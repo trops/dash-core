@@ -1,70 +1,100 @@
-import React, { useEffect, useState } from "react";
-import { AlertBanner, Checkbox, ConfirmationModal } from "@trops/dash-react";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  AlertBanner,
+  Button2,
+  Checkbox,
+  ConfirmationModal,
+} from "@trops/dash-react";
 import { useConfigTokens } from "../../Dashboard/ConfigListRow";
+import { useRegistryAuthGate } from "../../../hooks/useRegistryAuthGate";
 
 const plural = (n, noun) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
-function sizeText(bytes) {
-  if (!bytes) return null;
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+const KIND_LABEL = {
+  widget: "Widget",
+  theme: "Theme",
+  dashboard: "Dashboard",
+  bot: "Bot",
+  team: "Team",
+};
+
+/** What publishing does to one item, in a few words. */
+export function publishText(item) {
+  if (item.action === "remix") {
+    return `Your remix, published privately${item.package ? ` (credits ${item.package})` : ""}`;
+  }
+  if (!item.package) return "New — published privately to your account";
+  return `Changed — published as a new version of ${item.package}${
+    item.public ? " (public)" : ""
+  }`;
 }
 
-/** What happens to one widget on the other computer, in a few words. */
-export function widgetStatusText(w) {
-  switch (w.status) {
-    case "in-registry":
-    case "assumed-registry": {
-      const base = "Downloads automatically when loaded";
-      return w.updateAvailable
-        ? `${base} · an update (${w.registryVersion}) is available`
-        : base;
-    }
-    case "unchecked":
-      return "Couldn't check right now — downloads when loaded, if available";
-    case "newer-here":
-      return `Newer here than the published one (${w.registryVersion}) — included in this file`;
-    case "local-build":
-      return "Installed from a file or folder — included in this file";
-    case "version-missing":
-      return "This version isn't published — included in this file";
-    default:
-      return "Not published — included in this file";
+/** The "Saved" notice for the Profiles screen. */
+export function savedNoticeText(res) {
+  const parts = String(res.filePath || "").split(/[\\/]/);
+  const file = parts.pop();
+  const folder = parts.pop();
+  const published = (res.published || []).map(
+    (p) => `${p.name} (${p.package} ${p.version})`,
+  );
+  let text = `Saved "${file}"${folder ? ` in ${folder}` : ""}.`;
+  if (published.length) {
+    text += ` Published to your account: ${published.join(", ")}.`;
   }
+  if (res.secretsLeftOut) {
+    text += ` ${plural(res.secretsLeftOut, "key")} typed into widgets ${
+      res.secretsLeftOut === 1 ? "isn't" : "aren't"
+    } included.`;
+  }
+  return text;
+}
+
+/** Items left out, said once the dialog has closed. */
+export function leftOutText(res) {
+  const list = res.leftOut || [];
+  if (!list.length) return null;
+  return `Not in the profile: ${list
+    .map((l) => `${l.name} — ${String(l.reason || "").replace(/\.$/, "")}`)
+    .join("; ")}.`;
 }
 
 /**
- * Save a profile to a .dashprofile file (dash-profiles PR 4): what goes in,
- * where each widget will come from on the other computer, and a few
- * options. The save dialog itself is the system's.
+ * Save a profile (dash-profiles v2): everything it holds goes to the
+ * user's registry account — what changed is published (private when new),
+ * the rest is referenced as it is — and the file lists them. The dialog
+ * shows the plan first; the save itself asks where to write the file.
  *
  * Mounted only while open (it opens inside the Settings modal).
  */
 export const SaveProfileModal = ({ appId, profile, onClose, onSaved }) => {
   const { muted, strong, hairline } = useConfigTokens();
+  const { ensureAuthed, authGate, isAuthGateOpen } = useRegistryAuthGate();
   const [options, setOptions] = useState({
     bots: true,
     providers: true,
     settings: true,
   });
-  const [preview, setPreview] = useState(null);
+  const [plan, setPlan] = useState(null);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
-  // Publish to your account (PR 4b): nothing is ticked until the user
-  // ticks it. results: package → { status, error, findings, ... }.
-  const [toPublish, setToPublish] = useState(() => new Set());
-  const [confirmPaths, setConfirmPaths] = useState(() => new Set());
-  const [results, setResults] = useState({});
+  // The user's public items not to release now ("<kind>:<key>").
+  const [skipPublic, setSkipPublic] = useState(() => new Set());
+  // A widget whose files mention this computer's folders: shown, then
+  // confirmed before it's published.
+  const [confirm, setConfirm] = useState(null);
+  const [confirmed, setConfirmed] = useState(() => new Set());
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let alive = true;
-    setPreview(null);
+    setPlan(null);
+    setError(null);
     Promise.resolve(
       window.mainApi?.profiles?.previewSave?.(appId, profile.id, options),
     )
       .then((res) => {
         if (!alive) return;
-        if (res && res.success) setPreview(res);
+        if (res && (res.success || res.signInRequired)) setPlan(res);
         else setError(res?.error || "Couldn't read this profile.");
       })
       .catch(
@@ -73,283 +103,240 @@ export const SaveProfileModal = ({ appId, profile, onClose, onSaved }) => {
     return () => {
       alive = false;
     };
-  }, [appId, profile.id, options]);
+  }, [appId, profile.id, options, reload]);
 
-  // Publish the ticked widgets one at a time. `ready` is false when one
-  // needs the user's confirmation first (personal paths), so nothing is
-  // saved yet.
-  async function publishTicked() {
-    const rows = (preview?.publishPlan || []).filter(
-      (r) => r.publishable && toPublish.has(r.package),
-    );
-    let ready = true;
-    const outcomes = { ...results };
-    for (const row of rows) {
-      if (results[row.package]?.status === "published") continue;
-      setResults((r) => ({ ...r, [row.package]: { status: "publishing" } }));
-      let res;
-      try {
-        res = await window.mainApi?.profiles?.publishWidget?.(
-          appId,
-          profile.id,
-          row.package,
-          { confirmPersonalPaths: confirmPaths.has(row.package) },
-        );
-      } catch (e) {
-        res = { status: "failed", error: e?.message };
-      }
-      const outcome = res || { status: "failed" };
-      outcomes[row.package] = outcome;
-      setResults((r) => ({ ...r, [row.package]: outcome }));
-      if (outcome.status === "needs-confirmation") ready = false;
-    }
-    // The dialog closes once the file is saved, so what happened goes
-    // along to the "Saved" notice.
-    const ticked = rows.map((r) => ({
-      package: r.package,
-      ...outcomes[r.package],
-    }));
-    return {
-      ready,
-      published: ticked.filter((o) => o.status === "published"),
-      notPublished: ticked.filter((o) => o.status === "failed"),
-    };
-  }
+  const signIn = useCallback(async () => {
+    const ok = await ensureAuthed({
+      message: "Sign in to the registry to save this profile to your account.",
+    });
+    if (ok) setReload((n) => n + 1);
+  }, [ensureAuthed]);
 
   async function save() {
-    if (saving) return;
+    if (saving || !plan || !plan.success || plan.blockers.length) return;
     setSaving(true);
     setError(null);
-    let publishing = { published: [], notPublished: [] };
-    if (toPublish.size) {
-      const { ready, ...outcomes } = await publishTicked();
-      publishing = outcomes;
-      if (!ready) {
-        setSaving(false);
-        setError(
-          "Check the widget below before it's published, then press Save again.",
-        );
-        return;
-      }
-    }
     let res;
     try {
-      res = await window.mainApi?.profiles?.saveFile?.(
-        appId,
-        profile.id,
-        options,
-      );
+      res = await window.mainApi?.profiles?.saveFile?.(appId, profile.id, {
+        ...options,
+        skipPublic: [...skipPublic],
+        confirmPersonalPaths: [...confirmed],
+      });
     } catch (e) {
       res = { success: false, error: e?.message };
     } finally {
       setSaving(false);
     }
     if (res && res.success) {
-      onSaved({ ...res, ...publishing });
+      onSaved(res);
       return;
     }
     if (res && res.canceled) return;
-    setError(res?.error || "Couldn't save the file.");
+    if (res && res.needsConfirmation) {
+      setConfirm(res.needsConfirmation);
+      setError(res.error);
+      return;
+    }
+    setError(res?.error || "Couldn't save the profile.");
+    // Something may have been published before the failure: show the
+    // current state.
+    setReload((n) => n + 1);
   }
 
-  const publishRows = preview?.publishPlan || [];
-  const toggle = (set, setter, key, on) => {
-    const next = new Set(set);
-    if (on) next.add(key);
-    else next.delete(key);
-    setter(next);
-  };
-  const resultText = (r) => {
-    if (!r) return null;
-    if (r.status === "publishing") return "Publishing…";
-    if (r.status === "published") {
-      const n = r.dashboardsSwitched || 0;
-      return `Published as ${r.publishedAs} ${r.version}${
-        n ? ` · ${plural(n, "dashboard")} on this computer now use it` : ""
-      }`;
-    }
-    if (r.status === "needs-confirmation") {
-      return "Some files mention folders on this computer. Publish anyway?";
-    }
-    return `Not published: ${r.error || "something went wrong"} — it stays in the file`;
-  };
-
-  const counts = preview?.counts;
-  const bundled = (preview?.widgets || []).filter(
-    (w) => w.source === "bundled",
+  const items = (plan && plan.items) || [];
+  const toPublish = items.filter(
+    (i) => i.action === "publish" || i.action === "remix",
   );
-  // What still goes into the file once the ticked widgets are published.
-  const stillBundled = bundled.filter((w) => !toPublish.has(w.package));
+  const referenced = items.filter((i) => i.action === "reference");
+  const leftOut = items.filter((i) => i.action === "leave-out");
+  const blockers = (plan && plan.blockers) || [];
   const option = (key, label) => (
     <Checkbox
       label={label}
       checked={options[key]}
+      disabled={saving}
       onChange={(checked) => {
         setError(null);
         setOptions({ ...options, [key]: checked });
       }}
     />
   );
+  // The dialog's button says what's missing (it can't be disabled).
+  const confirmLabel = saving
+    ? "Publishing and saving…"
+    : !plan
+      ? "Checking…"
+      : plan.signInRequired
+        ? "Sign in first"
+        : blockers.length
+          ? "Fix the items above first"
+          : "Save…";
+  const close = () => {
+    if (!saving) onClose();
+  };
+  const toggleSkip = (id, release) => {
+    const next = new Set(skipPublic);
+    if (release) next.delete(id);
+    else next.add(id);
+    setSkipPublic(next);
+  };
 
   return (
-    <ConfirmationModal
-      isOpen
-      setIsOpen={onClose}
-      title={`Save ${profile.name} to a file`}
-      confirmLabel={saving ? "Saving…" : "Save…"}
-      onConfirm={save}
-      onCancel={onClose}
-    >
-      <div
-        className={`flex flex-col gap-4 text-sm ${strong}`}
-        data-testid="save-profile"
+    <>
+      <ConfirmationModal
+        isOpen
+        // Not closed while publishing (it would go on unseen).
+        setIsOpen={close}
+        title={`Save ${profile.name}`}
+        confirmLabel={confirmLabel}
+        onConfirm={save}
+        onCancel={close}
       >
-        <span className={`${muted} max-w-prose`}>
-          Load this file on another computer to get the same dashboards, bots
-          and widgets. Keys and passwords are never included — you'll add them
-          there.
-        </span>
-
-        {counts ? (
-          <span data-testid="save-profile-counts">
-            {[
-              plural(counts.dashboards, "dashboard"),
-              plural(counts.bots, "bot"),
-              plural(counts.folders, "folder"),
-              plural(counts.themes, "theme"),
-              plural(counts.providers, "provider"),
-            ].join(" · ")}
+        <div
+          className={`flex flex-col gap-4 text-sm max-h-96 overflow-y-auto ${strong}`}
+          data-testid="save-profile"
+        >
+          <span className={`${muted} max-w-prose`}>
+            Everything in this profile goes to your registry account — private
+            unless you already made it public — and the file lists it. Load the
+            file on another computer to get the same setup. Keys and passwords
+            are never included.
           </span>
-        ) : (
-          <span className={muted}>Checking what goes in…</span>
-        )}
 
-        <div className="flex flex-col gap-2">
-          {option("bots", "Bots")}
-          {option("providers", "Providers (without their keys)")}
-          {option("settings", "App settings (theme, update check)")}
-        </div>
-
-        {preview && preview.widgets.length ? (
-          <div
-            className={`flex flex-col gap-2 rounded-lg border p-3 max-h-60 overflow-y-auto ${hairline}`}
-          >
-            <span className="font-medium">
-              {plural(preview.widgets.length, "widget")}
-            </span>
-            {preview.widgets.map((w) => (
-              <div key={w.package} className="flex flex-col">
-                <span>
-                  {w.package}
-                  {w.version ? ` ${w.version}` : ""}
-                </span>
-                <span className={muted}>{widgetStatusText(w)}</span>
+          {plan && plan.signInRequired ? (
+            <div className="flex flex-col gap-2" data-testid="save-sign-in">
+              <span>Sign in to the registry to save a profile.</span>
+              <div className="self-start">
+                <Button2 title="Sign in" size="sm" onClick={signIn} />
               </div>
-            ))}
-          </div>
-        ) : null}
+            </div>
+          ) : null}
 
-        {publishRows.length ? (
-          <div
-            className={`flex flex-col gap-3 rounded-lg border p-3 ${hairline}`}
-            data-testid="save-profile-publish"
-          >
-            <span className="font-medium">Publish to your account</span>
-            <span className={`${muted} max-w-prose`}>
-              Instead of copying these into the file, publish them to your
-              account. The other computer downloads them, and later updates
-              reach both. This computer's dashboards switch to the published
-              copy — the same code.
+          {plan && plan.success ? (
+            <span data-testid="save-profile-counts">
+              {[
+                `${plural(plan.counts.publish, "item")} to publish`,
+                `${plan.counts.reference} up to date`,
+                plan.counts.leaveOut
+                  ? `${plan.counts.leaveOut} left out`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </span>
-            {publishRows.map((row) => {
-              const result = results[row.package];
-              return (
-                <div key={row.package} className="flex flex-col gap-1">
-                  <Checkbox
-                    label={
-                      row.publishable
-                        ? `${row.publishAs} ${row.version}`
-                        : row.package
-                    }
-                    checked={toPublish.has(row.package)}
-                    disabled={!row.publishable || saving}
-                    onChange={(on) =>
-                      toggle(toPublish, setToPublish, row.package, on)
-                    }
-                  />
-                  <span className={muted}>
-                    {row.publishable
-                      ? [
-                          row.visibility === "public"
-                            ? "Stays public"
-                            : "Private — only you can see it",
-                          row.bumped
-                            ? `${row.currentVersion} is already published, so this is ${row.version}`
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")
-                      : row.reason}
-                  </span>
-                  {result ? (
-                    <span data-testid={`publish-result-${row.package}`}>
-                      {resultText(result)}
-                    </span>
-                  ) : null}
-                  {result?.status === "needs-confirmation" ? (
-                    <>
-                      {(result.findings || []).slice(0, 5).map((f, i) => (
-                        <span key={i} className={muted}>
-                          {f.file || f.path}
-                          {f.match ? `: ${f.match}` : ""}
-                        </span>
-                      ))}
-                      <Checkbox
-                        label="Publish anyway"
-                        checked={confirmPaths.has(row.package)}
-                        onChange={(on) =>
-                          toggle(confirmPaths, setConfirmPaths, row.package, on)
-                        }
-                      />
-                    </>
-                  ) : null}
-                </div>
-              );
-            })}
+          ) : !plan && !error ? (
+            <span className={muted}>Checking what goes in…</span>
+          ) : null}
+
+          <div className="flex flex-col gap-2">
+            {option("bots", "Bots")}
+            {option("providers", "Providers (without their keys)")}
+            {option("settings", "App settings (theme, update check)")}
           </div>
-        ) : null}
 
-        {bundled.length && preview && !preview.signedIn ? (
-          <span className={`${muted} max-w-prose`}>
-            Sign in to publish these to your account instead of copying them
-            into the file.
-          </span>
-        ) : null}
+          {blockers.length ? (
+            <div className="flex flex-col gap-1" data-testid="save-blockers">
+              <AlertBanner
+                variant="error"
+                size="compact"
+                message="Fix these before saving:"
+              />
+              {blockers.map((b) => (
+                <span key={`${b.kind}:${b.key}`}>
+                  {`${KIND_LABEL[b.kind] || b.kind} ${b.name}: ${b.reason}`}
+                </span>
+              ))}
+            </div>
+          ) : null}
 
-        {counts && counts.secretsLeftOut ? (
-          <span className={`${muted} max-w-prose`}>
-            {counts.secretsLeftOut === 1
-              ? "1 key typed into a widget isn't included"
-              : `${counts.secretsLeftOut} keys typed into widgets aren't included`}{" "}
-            — the other computer asks for{" "}
-            {counts.secretsLeftOut === 1 ? "it" : "them"}.
-          </span>
-        ) : null}
+          {toPublish.length ? (
+            <div
+              className={`flex flex-col gap-2 rounded-lg border p-3 ${hairline}`}
+              data-testid="save-publish"
+            >
+              <span className="font-medium">Published to your account</span>
+              {toPublish.map((i) => {
+                const id = `${i.kind}:${i.key}`;
+                return (
+                  <div key={id} className="flex flex-col gap-0.5">
+                    <span>{`${KIND_LABEL[i.kind] || i.kind}: ${i.name}`}</span>
+                    <span className={muted}>{publishText(i)}</span>
+                    {i.public ? (
+                      <Checkbox
+                        label="Release this as a new public version"
+                        checked={!skipPublic.has(id)}
+                        disabled={saving}
+                        onChange={(on) => toggleSkip(id, on)}
+                      />
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
 
-        {stillBundled.length ? (
-          <span className={`${muted} max-w-prose`}>
-            {plural(stillBundled.length, "widget")} will be included in the file
-            {sizeText(preview.bundledBytes)
-              ? ` (up to ${sizeText(preview.bundledBytes)})`
-              : ""}
-            .
-          </span>
-        ) : null}
+          {referenced.length ? (
+            <span className={muted} data-testid="save-referenced">
+              {`Up to date in the registry: ${referenced
+                .map((i) => i.name)
+                .join(", ")}.`}
+            </span>
+          ) : null}
 
-        {error ? (
-          <AlertBanner variant="error" size="compact" message={error} />
-        ) : null}
-      </div>
-    </ConfirmationModal>
+          {leftOut.length ? (
+            <div className="flex flex-col gap-1" data-testid="save-left-out">
+              <span className="font-medium">Left out</span>
+              {leftOut.map((i) => (
+                <span key={`${i.kind}:${i.key}`} className={muted}>
+                  {`${KIND_LABEL[i.kind] || i.kind} ${i.name}: ${i.reason}`}
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          {confirm ? (
+            <div
+              className="flex flex-col gap-1"
+              data-testid="save-confirm-paths"
+            >
+              <span>{`${confirm.package}'s files mention folders on this computer:`}</span>
+              {(confirm.findings || []).slice(0, 5).map((f, n) => (
+                <span key={n} className={muted}>
+                  {f.file || f.path}
+                  {f.match ? `: ${f.match}` : ""}
+                </span>
+              ))}
+              <Checkbox
+                label="Publish anyway"
+                checked={confirmed.has(confirm.package)}
+                onChange={(on) => {
+                  const next = new Set(confirmed);
+                  if (on) next.add(confirm.package);
+                  else next.delete(confirm.package);
+                  setConfirmed(next);
+                }}
+              />
+            </div>
+          ) : null}
+
+          {plan && plan.success && plan.secretsLeftOut ? (
+            <span className={`${muted} max-w-prose`}>
+              {plan.secretsLeftOut === 1
+                ? "1 key typed into a widget isn't included"
+                : `${plan.secretsLeftOut} keys typed into widgets aren't included`}{" "}
+              — the other computer asks for{" "}
+              {plan.secretsLeftOut === 1 ? "it" : "them"}.
+            </span>
+          ) : null}
+
+          {error ? (
+            <AlertBanner variant="error" size="compact" message={error} />
+          ) : null}
+        </div>
+      </ConfirmationModal>
+      {/* Mounted only while open: a nested dialog opens beneath its Modal. */}
+      {isAuthGateOpen ? authGate : null}
+    </>
   );
 };

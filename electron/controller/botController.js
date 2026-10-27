@@ -86,6 +86,7 @@ const {
 } = require("../registry/packageRef");
 const { validateBotDefinition } = require("../bots/botSchema");
 const { botUpdatePatch } = require("../bots/botUpdate");
+const { publishFingerprint } = require("../registry/fingerprint");
 const { remixOrigin, checkRemix, checkRemixAll } = require("../registry/remix");
 const { unassignTeam, isOnTeam } = require("../bots/teams");
 const {
@@ -1373,7 +1374,7 @@ const botController = {
    * the wiring re-pointed to the new bots and this dashboard. The manifest
    * is re-checked here.
    */
-  installDashboardTeam(workspaceId, manifest) {
+  installDashboardTeam(workspaceId, manifest, embedded = null) {
     const { valid, errors, manifest: clean } = validateTeamManifest(manifest);
     if (!valid) return { error: "The dashboard's team isn't valid.", errors };
     return this._installTeamPlan(
@@ -1382,6 +1383,8 @@ const botController = {
         providers: this._providerList(),
       }),
       null,
+      // The dashboard package it came with (`{ package, version }`).
+      embedded,
     );
   },
 
@@ -1436,7 +1439,51 @@ const botController = {
    * Create a planned team's bots (paused, no grants) and wire them. With a
    * registry `source`, each bot records where it came from (TEAM-007 AC8).
    */
-  _installTeamPlan(plan, source) {
+  /**
+   * What each installed bot (and its team) is as installed — taken once it's
+   * wired, so a profile save sees only later edits (registry/fingerprint).
+   * A dashboard's own team (`embedded`: the dashboard package it came with)
+   * remembers that package: its bots are the dashboard author's work.
+   */
+  _recordInstalled(plan, created, registryRef, embedded) {
+    const teamDashboard =
+      plan.members[0] && plan.members[0].definition.workspaceId;
+    const ids = Object.values(created).map((b) => b.id);
+    const fresh = () => ids.map((id) => this._store.get(id)).filter(Boolean);
+    if (registryRef) {
+      for (const b of fresh()) {
+        this._store.update(b.id, {
+          registryRef: {
+            ...registryRef,
+            contentHash: publishFingerprint("bot", b),
+          },
+        });
+      }
+      if (registryRef.kind === "bot-team" && teamDashboard != null) {
+        this._store.setTeamSettings(teamDashboard, {
+          registryRef: {
+            ...registryRef,
+            contentHash: publishFingerprint("bot-team", fresh()),
+          },
+        });
+      }
+    }
+    if (embedded && embedded.package && teamDashboard != null) {
+      const origin = {
+        package: embedded.package,
+        version: embedded.version || null,
+      };
+      for (const id of ids) this._store.update(id, { remixedFrom: origin });
+      this._store.setTeamSettings(teamDashboard, {
+        embeddedFrom: {
+          ...origin,
+          contentHash: publishFingerprint("bot-team", fresh()),
+        },
+      });
+    }
+  },
+
+  _installTeamPlan(plan, source, embedded = null) {
     if (!plan.members.length)
       return { error: "Pick at least one bot to install." };
     // Every member checked before any is created (Phase 1d) — a bad one
@@ -1544,6 +1591,7 @@ const botController = {
     for (const [role, subscriptions] of Object.entries(subs)) {
       this.save({ ...created[role], subscriptions });
     }
+    this._recordInstalled(plan, created, registryRef, embedded);
     return {
       installed: plan.members.map((m) => ({
         role: m.role,
@@ -1804,6 +1852,19 @@ const botController = {
     return checkRemix(bot ? remixOrigin("bot", bot, username) : null);
   },
 
+  /** What a bot (or a dashboard's team) is as published (registry/fingerprint). */
+  _publishFingerprint(opts) {
+    if (opts.kind === "team") {
+      return publishFingerprint(
+        "bot-team",
+        this._store
+          .list()
+          .filter((b) => isOnTeam(b, opts.workspaceId) && !isLead(b)),
+      );
+    }
+    return publishFingerprint("bot", this._store.get(opts.botId));
+  },
+
   async publish(opts = {}) {
     const meta = (opts && opts.meta) || {};
     const errors = checkPublishMeta(meta);
@@ -1829,6 +1890,9 @@ const botController = {
     const remix = await this._remixCheck(opts, identity.username);
     if (remix.error) return { success: false, error: remix.error };
     const visibility = meta.visibility === "public" ? "public" : "private";
+    // `keepVisibility`: republishing an existing package sends none, so
+    // the registry keeps what it has.
+    const keepVisibility = !!meta.keepVisibility;
     const manifest = registryManifestFor(pkg, {
       scope: identity.username,
       name: meta.name,
@@ -1843,6 +1907,7 @@ const botController = {
     if (typeof meta.allowRemix === "boolean") {
       manifest.allowRemix = meta.allowRemix;
     }
+    if (keepVisibility) delete manifest.visibility;
     const result = await zipAndPublish(publishFiles(pkg, manifest), manifest);
     if (!result || !result.success) {
       return {
@@ -1853,10 +1918,16 @@ const botController = {
       };
     }
     // Remember what was published so the next publish bumps from here.
+    const before =
+      opts.kind === "team"
+        ? (this._store.getTeamSettings(opts.workspaceId) || {}).published
+        : (this._store.get(opts.botId) || {}).published;
     const published = {
       name: `${identity.username}/${meta.name}`,
       version: meta.version,
-      visibility,
+      visibility: keepVisibility
+        ? (before && before.visibility) || null
+        : visibility,
       at: new Date().toISOString(),
     };
     const registryRef = makeRegistryRef({
@@ -1865,6 +1936,7 @@ const botController = {
       version: published.version,
       origin: "published",
       at: published.at,
+      contentHash: this._publishFingerprint(opts),
     });
     const record = registryRef ? { published, registryRef } : { published };
     // A remix remembers its original: a later publish — even under another
@@ -1888,6 +1960,62 @@ const botController = {
       registryUrl: result.registryUrl || null,
       warnings: result.warnings || [],
     };
+  },
+
+  /**
+   * Publish a bot, or a dashboard's team, to the user's account without the
+   * dialog (a profile's bots, dash-profiles v2): the name is picked
+   * automatically — its own package if it has one, else a free one — at the
+   * next version the registry doesn't have; private when new, an existing
+   * package keeps its visibility.
+   *
+   * @param {{kind: "bot"|"team", botId?: string, workspaceId?: string}} opts
+   */
+  async publishHeadless(opts = {}) {
+    const identity = await registryIdentity();
+    if (!identity.signedIn) {
+      return {
+        success: false,
+        authRequired: true,
+        error: "Sign in to publish.",
+      };
+    }
+    const isTeam = opts.kind === "team";
+    const record = isTeam
+      ? this._store.getTeamSettings(opts.workspaceId) || {}
+      : this._store.get(opts.botId);
+    if (!record) return { success: false, error: "That bot isn't here." };
+    const ws = isTeam ? this._loadWorkspace(opts.workspaceId) : null;
+    const displayName = isTeam
+      ? `${(ws && (ws.name || ws.label)) || "Dashboard"} team`
+      : record.name || "Bot";
+    const { planPackagePublish } = require("../registry/registryPackages");
+    const plan = await planPackagePublish({
+      kind: isTeam ? "bot-team" : "bot",
+      record,
+      displayName,
+      localVersion: (record.published && record.published.version) || null,
+      username: identity.username,
+    });
+    if (plan.error) return { success: false, error: plan.error };
+    const res = await this.publish({
+      ...opts,
+      meta: {
+        name: plan.name,
+        displayName: displayName.slice(0, 100),
+        version: plan.version,
+        description: "",
+        visibility: "private",
+        keepVisibility: plan.exists,
+      },
+    });
+    return res && res.success
+      ? {
+          ...res,
+          renamed: plan.renamed,
+          visibility: plan.exists ? "unchanged" : "private",
+        }
+      : res;
   },
 
   /** A saved dashboard by id, or null. */

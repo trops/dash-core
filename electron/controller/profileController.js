@@ -261,37 +261,14 @@ const profileController = {
   },
 
   /**
-   * What "Save to file" would write: counts, each widget's registry
-   * check, and the size of the widgets copied into the file.
+   * What "Save" would do (dash-profiles v2): each item referenced,
+   * published, published as a remix, or left out (with why), and what
+   * blocks the save. Nothing is published yet.
    */
   async previewSave(appId, profileId, options = {}) {
     try {
-      const { gatherProfile, summarize } = require("../profile/profileFile");
-      const gathered = await gatherProfile(appId, profileId, options);
-      let signedIn = false;
-      try {
-        signedIn = !!require("./registryAuthController").getStoredToken();
-      } catch (_e) {
-        signedIn = false;
-      }
-      const summary = summarize(gathered);
-      // Signed in: which of the widgets going into the file could be
-      // published to the user's account instead (PR 4b).
-      let username = null;
-      let publishPlan = [];
-      if (signedIn) {
-        username = await signedInUsername();
-        if (username) {
-          const { planPublish } = require("../profile/profilePublish");
-          const { lookupRegistryPackage } = require("../profile/profileFile");
-          publishPlan = await planPublish(
-            summary.widgets,
-            username,
-            lookupRegistryPackage,
-          );
-        }
-      }
-      return { success: true, ...summary, signedIn, username, publishPlan };
+      const { planSave } = require("../profile/profileSaveV2");
+      return await planSave(appId, profileId, options);
     } catch (e) {
       return fail(e);
     }
@@ -333,14 +310,31 @@ const profileController = {
     }
   },
 
-  /** Save a profile to a .dashprofile file (a save dialog picks where). */
+  /**
+   * Save a profile (dash-profiles v2): publish what changed, then write the
+   * file (a save dialog picks where). `options`: what goes in (bots,
+   * providers, settings) and the user's choices in the review —
+   * `skipPublic` (their public items not to release now) and
+   * `confirmPersonalPaths` (widgets whose files mention this computer's
+   * folders, checked).
+   */
   async saveProfileFile(win, appId, profileId, options = {}) {
     try {
-      const { saveProfileToFile } = require("../profile/profileFile");
+      const { executeSave } = require("../profile/profileSaveV2");
       // Where to write is always the user's choice in the save dialog —
       // never a path from the renderer.
-      const { filePath, ...choices } = options || {};
-      return await saveProfileToFile(win, appId, profileId, choices);
+      const {
+        filePath: _ignored,
+        skipPublic,
+        confirmPersonalPaths,
+        ...what
+      } = options || {};
+      return await executeSave(win, appId, profileId, what, {
+        skipPublic: Array.isArray(skipPublic) ? skipPublic.map(String) : [],
+        confirmPersonalPaths: Array.isArray(confirmPersonalPaths)
+          ? confirmPersonalPaths.map(String)
+          : [],
+      });
     } catch (e) {
       return fail(e);
     }
