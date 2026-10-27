@@ -25,6 +25,7 @@ const {
   getPackageInfo,
   nextFreeVersion,
 } = require("../registry/registryPackages");
+const { remixOrigin, checkRemix } = require("../registry/remix");
 const {
   getAuthStatus,
   getRegistryProfile,
@@ -87,6 +88,12 @@ function generateThemeRegistryManifest(themeData, themeKey, options = {}) {
     colors,
     appOrigin: options.appOrigin || "",
     publishedAt: new Date().toISOString(),
+    // Remixes (registry 1.9.0): the original this copies, and whether this
+    // one may be remixed (sent only when the user chose).
+    ...(options.remixedFrom ? { remixedFrom: options.remixedFrom } : {}),
+    ...(typeof options.allowRemix === "boolean"
+      ? { allowRemix: options.allowRemix }
+      : {}),
   };
 }
 
@@ -240,6 +247,12 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
       profile?.username ||
       "";
 
+    // A copy of someone else's theme is published as a remix of it,
+    // credited — unless its author doesn't allow remixes.
+    const remix = await checkRemix(remixOrigin("theme", themeData, scope));
+    if (remix.error) return { success: false, error: remix.error };
+    const remixedFrom = remix.remixedFrom;
+
     // Generate manifest
     const manifest = generateThemeRegistryManifest(themeData, themeKey, {
       ...options,
@@ -247,6 +260,7 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
       appOrigin: appId,
       version: nextVersion,
       authorName: resolvedAuthor,
+      remixedFrom: remix.remixedFrom,
       ...(headlessPlan
         ? {
             packageName: headlessPlan.name,
@@ -302,7 +316,11 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
     // carry the previous one, so installers' version checks were off by
     // one), and without the publisher's record of where their copy came
     // from (the installer records its own).
-    const { registryRef: _ownRef, ...ownTheme } = themeData;
+    const {
+      registryRef: _ownRef,
+      remixedFrom: _ownRemix,
+      ...ownTheme
+    } = themeData;
     const publishedTheme = {
       ...ownTheme,
       version: nextVersion,
@@ -354,6 +372,15 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
           });
           if (registryRef) updatedTheme.registryRef = registryRef;
           else delete updatedTheme.registryRef;
+          // A remix remembers its original: a later publish — even under
+          // another name — is still a remix of it (and checked against it).
+          if (remixedFrom) {
+            updatedTheme.remixedFrom = {
+              package: `${remixedFrom.scope}/${remixedFrom.name}`,
+              version: remixedFrom.version,
+            };
+          }
+
           themeController.saveThemeForApplication(
             win,
             appId,
@@ -702,6 +729,8 @@ async function installThemeFromRegistry(win, appId, packageName, options = {}) {
       version: urlVersion,
       origin: "installed",
     });
+    // An install is the registry's package, not a copy of something.
+    delete themeData.remixedFrom;
     if (registryRef) themeData.registryRef = registryRef;
     else delete themeData.registryRef;
 
@@ -903,6 +932,7 @@ function publishThemeHeadless(appId, themeKey, options = {}) {
     authorName: options.authorName,
     description: options.description,
     tags: options.tags,
+    allowRemix: options.allowRemix,
     headless: true,
   });
 }

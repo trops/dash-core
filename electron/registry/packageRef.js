@@ -171,7 +171,9 @@ function samePackage(a, b) {
 /** A copy of a record without its `registryRef` (for sharing or copying). */
 function withoutRegistryRef(record) {
   if (!record || typeof record !== "object") return record;
-  const { registryRef: _ref, ...rest } = record;
+  // `remixedFrom` too: what a local copy was copied from is its owner's
+  // record (the registry keeps the credit of what's published).
+  const { registryRef: _ref, remixedFrom: _remix, ...rest } = record;
   return rest;
 }
 

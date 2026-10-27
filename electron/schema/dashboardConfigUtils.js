@@ -646,6 +646,12 @@ function generateRegistryManifest(dashboardConfig, options = {}) {
     description: dashboardConfig.description || "",
     version,
     ...(visibility ? { visibility } : {}),
+    // Remixes (registry 1.9.0): the original this copies, and whether this
+    // one may be remixed (sent only when the user chose).
+    ...(options.remixedFrom ? { remixedFrom: options.remixedFrom } : {}),
+    ...(typeof options.allowRemix === "boolean"
+      ? { allowRemix: options.allowRemix }
+      : {}),
     type: "dashboard",
     category: options.category || "general",
     tags: dashboardConfig.tags || [],
@@ -1173,6 +1179,7 @@ function stripPersonalizationFromWorkspace(workspace) {
   // Which package the publisher's copy came from is theirs, not the
   // installer's (the install records its own).
   if ("registryRef" in cleaned) delete cleaned.registryRef;
+  if ("remixedFrom" in cleaned) delete cleaned.remixedFrom;
   return cleaned;
 }
 

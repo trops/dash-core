@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext } from "react";
+import { AllowRemixOption, allowRemixOption } from "./AllowRemixOption";
 import {
   ThemeContext,
   FontAwesomeIcon,
@@ -256,6 +257,8 @@ export const PublishDashboardModal = ({
 
   // Visibility — chosen on the Details step. Defaults to public.
   const [visibility, setVisibility] = useState("public");
+  // "Allow remixes": null follows the visibility until the user chooses.
+  const [allowRemix, setAllowRemix] = useState(null);
 
   // Dashboard version bump — chosen on the Details step. Defaults to
   // "patch" so repeat-publishes auto-increment the registry's
@@ -327,6 +330,7 @@ export const PublishDashboardModal = ({
     setIsPublishing(false);
     setResult(null);
     setVisibility("public");
+    setAllowRemix(null);
     setPlan(null);
     setPlanLoading(false);
     setPlanError(null);
@@ -597,6 +601,7 @@ export const PublishDashboardModal = ({
             tags: selectedTags,
             icon: icon || undefined,
             visibility,
+            ...allowRemixOption(allowRemix),
             componentConfigs: collectComponentConfigs(),
             // Thread the bump through. "none" means keep the current
             // version (caller should pass nothing). Any other value
@@ -955,6 +960,12 @@ export const PublishDashboardModal = ({
                     })}
                   </div>
                 </div>
+                <AllowRemixOption
+                  visibility={visibility}
+                  value={allowRemix}
+                  onChange={setAllowRemix}
+                  disabled={isPublishing}
+                />
               </div>
             </Stepper.Step>
 

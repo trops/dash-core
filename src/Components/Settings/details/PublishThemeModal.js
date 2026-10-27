@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext } from "react";
+import { AllowRemixOption, allowRemixOption } from "./AllowRemixOption";
 import {
   ThemeContext,
   FontAwesomeIcon,
@@ -75,6 +76,8 @@ export const PublishThemeModal = ({
 
   // Visibility — chosen on the Details step. Defaults to public.
   const [visibility, setVisibility] = useState("public");
+  // "Allow remixes": null follows the visibility until the user chooses.
+  const [allowRemix, setAllowRemix] = useState(null);
 
   // Fetch publish preview on open
   useEffect(() => {
@@ -137,6 +140,7 @@ export const PublishThemeModal = ({
     setIsPublishing(false);
     setResult(null);
     setVisibility("public");
+    setAllowRemix(null);
   }
 
   function handleClose() {
@@ -173,6 +177,7 @@ export const PublishThemeModal = ({
         description: description.trim() || undefined,
         tags: selectedTags,
         visibility,
+        ...allowRemixOption(allowRemix),
       };
       const res = await window.mainApi.themes.publishTheme(
         appId,
@@ -488,6 +493,12 @@ export const PublishThemeModal = ({
                     })}
                   </div>
                 </div>
+                <AllowRemixOption
+                  visibility={visibility}
+                  value={allowRemix}
+                  onChange={setAllowRemix}
+                  disabled={isPublishing}
+                />
               </div>
             </Stepper.Step>
 

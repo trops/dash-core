@@ -12,6 +12,10 @@ import {
   themeObjects,
 } from "@trops/dash-react";
 import { wiringText } from "./TeamImportReview";
+import {
+  AllowRemixOption,
+  allowRemixOption,
+} from "../Settings/details/AllowRemixOption";
 
 const NAME_RE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 const VERSION_RE = /^\d+\.\d+\.\d+(-[0-9A-Za-z-]+)?$/;
@@ -170,6 +174,12 @@ export const PublishBotDialog = ({
                     onChange={set("visibility")}
                   />
                 </div>
+                <AllowRemixOption
+                  visibility={fields.visibility || "private"}
+                  value={fields.allowRemix ?? null}
+                  onChange={set("allowRemix")}
+                  disabled={publishing}
+                />
               </div>
 
               <div className="flex flex-col gap-2">
@@ -233,6 +243,7 @@ export const PublishBotDialog = ({
                       description: fields.description || "",
                       visibility:
                         fields.visibility === "public" ? "public" : "private",
+                      ...allowRemixOption(fields.allowRemix),
                     })
                   }
                 />

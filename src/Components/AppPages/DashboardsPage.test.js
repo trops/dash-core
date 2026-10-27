@@ -279,6 +279,11 @@ describe("DashboardsPage — detail", () => {
     expect(h.dashApi.saveWorkspace.mock.calls[1][1]._dashboardConfig).toEqual({
       originalAuthor: "Trops",
     });
+    // It stays credited to the dashboard it copies (publishing it is a remix).
+    expect(h.dashApi.saveWorkspace.mock.calls[1][1].remixedFrom).toEqual({
+      package: "@trops/sales",
+      version: "1.0.0",
+    });
 
     fireEvent.click(
       within(detail()).getByRole("button", { name: "More actions" }),
