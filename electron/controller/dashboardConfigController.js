@@ -46,6 +46,10 @@ const {
   downloadRefusal,
 } = require("../registryDownload");
 const themeController = require("./themeController");
+const {
+  makeRegistryRef,
+  withoutRegistryRef,
+} = require("../registry/packageRef");
 
 const configFilename = "workspaces.json";
 
@@ -157,7 +161,7 @@ async function exportDashboardConfig(
         if (themeData) {
           dashboardConfig.theme = {
             key: workspace.themeKey,
-            data: themeData,
+            data: withoutRegistryRef(themeData),
           };
           if (themeData._registryMeta?.packageName) {
             dashboardConfig.theme.registryPackage =
@@ -670,7 +674,8 @@ async function processDashboardConfig(
             total: progressTotal,
           });
 
-          const themeData = { ...bundledTheme.data };
+          // Without the publisher's record of where their copy came from.
+          const themeData = withoutRegistryRef({ ...bundledTheme.data });
           if (bundledTheme.registryPackage) {
             themeData._registryMeta = {
               source: "dashboard-import",
@@ -839,6 +844,10 @@ async function processDashboardConfig(
     registryPackage: options.registryPackage || null,
     installedVersion: options.installedVersion || null,
   };
+  // Which registry package this is ("@scope/name" + version); a dashboard
+  // imported from a file has none.
+  if (options.registryRef) workspace.registryRef = options.registryRef;
+  else delete workspace.registryRef;
 
   // Save workspace to workspaces.json
   const workspaceController = require("./workspaceController");
@@ -1146,6 +1155,12 @@ async function installDashboardFromRegistry(
         source: "registry",
         registryPackage: packageName,
         installedVersion: registryPkg.version || null,
+        registryRef: makeRegistryRef({
+          package: { scope: registryPkg.scope, name: registryPkg.name },
+          kind: "dashboard",
+          version: registryPkg.version,
+          origin: "installed",
+        }),
         name: installOptions.name,
         menuId: installOptions.menuId,
         themeKey: installOptions.themeKey,
@@ -1664,7 +1679,7 @@ async function prepareDashboardForPublish(
         if (themeData) {
           dashboardConfig.theme = {
             key: workspace.themeKey,
-            data: themeData,
+            data: withoutRegistryRef(themeData),
           };
           if (themeData._registryMeta?.packageName) {
             dashboardConfig.theme.registryPackage =
@@ -1913,6 +1928,17 @@ async function prepareDashboardForPublish(
                 registryScope: manifest.scope || manifest.githubUser,
               },
             };
+            const registryRef = makeRegistryRef({
+              package: {
+                scope: manifest.scope || manifest.githubUser,
+                name: manifest.name,
+              },
+              kind: "dashboard",
+              version: nextVersion,
+              origin: "published",
+            });
+            if (registryRef) nextWorkspace.registryRef = registryRef;
+            else delete nextWorkspace.registryRef;
             workspaceController.saveWorkspaceForApplication(
               win,
               appId,

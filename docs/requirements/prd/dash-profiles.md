@@ -170,6 +170,25 @@ computer.
    - **Fast follow** (user): the Save dialog offers private publishing for everything in the profile — dashboards, bots,
      themes as well as widgets — opt-in like widgets.
 6. **dash-electron** picks up the new version.
+7. **v2: the registry is the source of truth** (user, 2026-10-27). A profile becomes a package.json-like manifest:
+   every dashboard, bot (and team), theme and widget is published privately and listed as `"@user/name": version`,
+   plus a provider list (no keys) and a small personal settings overlay. Bots and teams are their own packages
+   (dashboards publish with `includeBots: false`); an item of the user's that fails the publish checks blocks the
+   save; a third-party widget the registry doesn't have leaves its dashboard out, with a warning. Groundwork first:
+   - **7a. Package identity** (`electron/registry/packageRef.js`, `registryPackages.js`):
+     - `normalizePackageRef` gives one name, `@scope/name`, for any form the kinds used.
+     - Install and publish of dashboards, themes, bots and teams also write
+       `registryRef: { package, kind, version, origin: "installed"|"published", at }`. `readRegistryRef` reads it,
+       falling back to the older fields (`_dashboardConfig`, `_registryMeta`, `installedFrom`, `published`), so
+       nothing needs migrating. A published dashboard or theme leaves out the publisher's `registryRef`.
+     - `getPackageInfo` (kind, versions, latest, visibility), `nextFreeVersion` and `kindConflict` (the registry's
+       "a package keeps its kind" rule, checked before publishing). The Save dialog doesn't offer a widget whose
+       name is already another kind of package.
+     - Loading compares versions only between copies of the same `@scope/name`.
+   - **7b. Exact versions and in-place installs** for dashboards, bots/teams and themes; your own installed items
+     can be republished; update checks read `registryRef`.
+   - **7c. Publishing dashboards and themes without a save dialog**, at `nextFreeVersion`; a new package is
+     private, an existing one keeps its visibility.
 
 Step 2 (separate plan): registry `users/{sub}/profiles/` storage, `/api/me/profiles`, the out-of-sync alert in `AppUpdatesModal`, and
 auto-save.
@@ -214,11 +233,16 @@ auto-save.
 - `electron/profile/profilePublish.test.js`: free versions, the publish plan, repointing incl. event wiring, publish + install +
   switch with fakes, failures change nothing.
 - `src/Components/Settings/sections/ProfilesSection.test.js`: active marker, Delete guards, ticks, the untick and switch confirms.
+- `electron/registry/packageRef.test.js`: names in every form, `registryRef` and each kind's older fields, same-package
+  checks, a published dashboard without the publisher's ref.
+- `electron/registry/registryPackages.test.js`: package info with a fake fetch (404/401/403, errors), next free version,
+  kind conflicts.
 
 ---
 
 ## Revision History
 
+- 2026-10-27: v2 planned (registry as source of truth); 7a package identity.
 - 2026-10-26: Created. Plan approved; PR 1 (profile storage) merged in dash-core v0.1.834.
 - 2026-10-26: PR 2: profiles became id lists (user decision), plus switching and bots per profile. Merged in v0.1.835.
 - 2026-10-26: PR 4b: publish from Save (opt-in ticks; every dashboard on this computer switches to the published package).

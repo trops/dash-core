@@ -13,6 +13,7 @@ const AdmZip = require("adm-zip");
 const themeController = require("./themeController");
 const registryController = require("./registryController");
 const registryApiController = require("./registryApiController");
+const { makeRegistryRef } = require("../registry/packageRef");
 const {
   getAuthStatus,
   getRegistryProfile,
@@ -228,9 +229,12 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
       "manifest.json",
       Buffer.from(JSON.stringify(manifest, null, 2), "utf-8"),
     );
+    // Which package this copy came from is the publisher's; the installer
+    // records its own.
+    const { registryRef: _ownRef, ...publishedTheme } = themeData;
     zip.addFile(
       `${sanitizedName}.theme.json`,
-      Buffer.from(JSON.stringify(themeData, null, 2), "utf-8"),
+      Buffer.from(JSON.stringify(publishedTheme, null, 2), "utf-8"),
     );
     zip.writeZip(filePath);
 
@@ -266,6 +270,14 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
               lastPublishedVersion: nextVersion,
             },
           };
+          const registryRef = makeRegistryRef({
+            package: { scope, name: manifest.name },
+            kind: "theme",
+            version: nextVersion,
+            origin: "published",
+          });
+          if (registryRef) updatedTheme.registryRef = registryRef;
+          else delete updatedTheme.registryRef;
           themeController.saveThemeForApplication(
             win,
             appId,
@@ -566,6 +578,15 @@ async function installThemeFromRegistry(win, appId, packageName) {
       packageName,
       installedAt: new Date().toISOString(),
     };
+    // The version downloaded (the theme's own `version` can lag behind it).
+    const registryRef = makeRegistryRef({
+      package: { scope: pkg.scope, name: pkg.name },
+      kind: "theme",
+      version: urlVersion,
+      origin: "installed",
+    });
+    if (registryRef) themeData.registryRef = registryRef;
+    else delete themeData.registryRef;
 
     // Stage 5: Theme save
     const themeKey = pkg.displayName || pkg.name;

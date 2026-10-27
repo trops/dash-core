@@ -93,12 +93,6 @@ function portableSettings(settings) {
   return out;
 }
 
-function splitPackage(pkg) {
-  const stripped = String(pkg || "").replace(/^@/, "");
-  const [scope, ...rest] = stripped.split("/");
-  return rest.length ? { scope, name: rest.join("/") } : null;
-}
-
 /**
  * Where a widget comes from on the other computer.
  *
@@ -266,35 +260,13 @@ function defaultDeps() {
   };
 }
 
-/** The registry's versions of a package, as this user sees them. */
-async function lookupRegistryPackage(pkg) {
-  const ref = splitPackage(pkg);
-  if (!ref) return null;
-  const { authedFetch } = require("../controller/registryAuthController");
-  const base =
-    process.env.DASH_REGISTRY_API_URL ||
-    "https://main.d919rwhuzp7rj.amplifyapp.com";
-  let res;
-  try {
-    res = await authedFetch(
-      `${base}/api/packages/${encodeURIComponent(ref.scope)}/${encodeURIComponent(ref.name)}`,
-    );
-  } catch (_e) {
-    return "unreachable";
-  }
-  // Not there, or this user can't download it: the other computer
-  // couldn't either, so it goes in the file.
-  if (res.status === 404 || res.status === 401 || res.status === 403) {
-    return null;
-  }
-  if (!res.ok) return "unreachable";
-  const body = await res.json().catch(() => null);
-  if (!body) return "unreachable";
-  return {
-    latestVersion: body.latestVersion || null,
-    versions: (body.versions || []).map((v) => v.version).filter(Boolean),
-    visibility: body.visibility || null,
-  };
+/**
+ * The registry's versions of a package, as this user sees them. Not there,
+ * or this user can't download it (null): the other computer couldn't
+ * either, so it goes in the file.
+ */
+function lookupRegistryPackage(pkg) {
+  return require("../registry/registryPackages").getPackageInfo(pkg);
 }
 
 /** "@scope/name" for a dependency (or the bare name when it has no scope). */

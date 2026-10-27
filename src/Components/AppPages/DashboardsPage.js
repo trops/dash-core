@@ -186,8 +186,10 @@ const DashboardDetailPanel = ({
   };
 
   const duplicate = () => {
+    // The copy isn't the registry package the original came from.
+    const { registryRef: _ref, ...copy } = deepCopy(ws);
     save({
-      ...deepCopy(ws),
+      ...copy,
       id: Date.now(),
       version: Date.now(),
       name: `${ws.name || "Dashboard"} (Copy)`,

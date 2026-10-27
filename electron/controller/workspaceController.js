@@ -8,6 +8,7 @@ const {
   removeEverywhere,
 } = require("../profile/profileMembership");
 const { emitWorkspaceDeleted } = require("../utils/workspaceEvents");
+const { keepRegistryRef } = require("../registry/packageRef");
 
 const configFilename = "workspaces.json";
 
@@ -70,8 +71,12 @@ const workspaceController = {
 
       // replace item if we have an id already matching our input object
       if (indexOfExistingItem !== null) {
-        // update the existing workspace item
-        workspacesArray[indexOfExistingItem] = workspaceObject;
+        // update the existing workspace item (keeping which registry
+        // package it is — the editor's save doesn't carry that)
+        workspacesArray[indexOfExistingItem] = keepRegistryRef(
+          workspaceObject,
+          workspacesArray[indexOfExistingItem],
+        );
       } else {
         // add the pageObject to the pages file
         workspacesArray.push(workspaceObject);

@@ -18,29 +18,16 @@
  * `@<user>/x` — the same code and version — so both computers run one
  * package and later updates reach both.
  */
-const { isNewerVersion } = require("../utils/isNewerVersion");
+const {
+  freeVersion,
+  bumpPatch,
+  nextFreeVersion,
+  kindConflict,
+} = require("../registry/registryPackages");
 
 function splitPackage(pkg) {
   const m = String(pkg || "").match(/^@?([^/]+)\/(.+)$/);
   return m ? { scope: m[1], name: m[2] } : null;
-}
-
-function bumpPatch(version) {
-  const m = String(version || "").match(/^(\d+)\.(\d+)\.(\d+)/);
-  if (!m) return "1.0.0";
-  return `${m[1]}.${m[2]}.${Number(m[3]) + 1}`;
-}
-
-/** The first version at or after `version` that the registry doesn't have. */
-function freeVersion(version, taken) {
-  const have = new Set(taken || []);
-  let v = /^\d+\.\d+\.\d+/.test(String(version || "")) ? version : "1.0.0";
-  // Never below what's published: start past the newest taken version.
-  for (const t of have) {
-    if (isNewerVersion(t, v)) v = t;
-  }
-  while (have.has(v)) v = bumpPatch(v);
-  return v;
 }
 
 /**
@@ -81,8 +68,16 @@ async function planPublish(widgets, username, lookup) {
       });
       continue;
     }
-    const taken = (info && info.versions) || [];
-    const version = freeVersion(w.version, taken);
+    if (kindConflict(publishAs, "widget", info)) {
+      rows.push({
+        package: w.package,
+        publishAs,
+        publishable: false,
+        reason: `${publishAs} is already the name of a ${info.type} you published — it stays in the file`,
+      });
+      continue;
+    }
+    const version = nextFreeVersion(w.version, info);
     rows.push({
       package: w.package,
       publishAs,

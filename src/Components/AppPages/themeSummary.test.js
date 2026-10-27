@@ -68,6 +68,12 @@ describe("duplicateTheme (NAV-009 AC3)", () => {
       primary: "sky",
       dark: { "bg-primary-dark": "bg-sky-900" },
       _registryMeta: { package: "@trops/bravo" },
+      registryRef: {
+        package: "@trops/bravo",
+        kind: "theme",
+        version: "1.0.0",
+        origin: "installed",
+      },
     };
     const { key, theme } = duplicateTheme(raw, "theme-b", 1234);
     expect(key).toBe("theme-1234");
