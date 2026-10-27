@@ -358,4 +358,6 @@ module.exports = {
   hasSecretValue,
   redactUrl,
   redactArgs,
+  mapItems,
+  itemsByKey,
 };

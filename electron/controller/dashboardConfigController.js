@@ -37,6 +37,7 @@ const {
   buildProviderRequirements,
   applyEventWiringToLayout,
   stripPersonalizationFromWorkspace,
+  keepPersonalization,
   remapLayoutPackageScopes,
   assertNoLocalScopes,
 } = require("../schema/dashboardConfigUtils");
@@ -49,7 +50,15 @@ const themeController = require("./themeController");
 const {
   makeRegistryRef,
   withoutRegistryRef,
+  readRegistryRef,
+  normalizePackageRef,
 } = require("../registry/packageRef");
+const {
+  resolveForInstall,
+  packageDownloadUrl,
+  isOwnScope,
+  EXACT_VERSION,
+} = require("../registry/registryPackages");
 
 const configFilename = "workspaces.json";
 
@@ -579,12 +588,43 @@ async function processDashboardConfig(
       // Try to find the widget in the registry and install it
       try {
         const registryPkg = await getPackage(packageName);
-        if (registryPkg && registryPkg.downloadUrl) {
-          const config = await widgetRegistry.downloadWidget(
-            packageName,
-            registryPkg.downloadUrl,
-            registryPkg.dashConfigUrl || null,
-          );
+        // The version the dashboard was published with, when the caller
+        // asks for exact versions (a profile); otherwise the latest, so a
+        // gallery install doesn't start out with old widgets.
+        const exactUrl =
+          options.exactWidgetVersions &&
+          registryPkg &&
+          EXACT_VERSION.test(String(widgetDep.version || ""))
+            ? packageDownloadUrl(
+                registryPkg.scope
+                  ? { scope: registryPkg.scope, name: registryPkg.name }
+                  : packageName,
+                widgetDep.version,
+              )
+            : null;
+        if (registryPkg && (exactUrl || registryPkg.downloadUrl)) {
+          let config = null;
+          if (exactUrl) {
+            try {
+              config = await widgetRegistry.downloadWidget(
+                packageName,
+                exactUrl,
+              );
+            } catch (exactErr) {
+              // That version is gone (or private): the latest instead.
+              if (!registryPkg.downloadUrl) throw exactErr;
+              console.warn(
+                `[DashboardConfigController] ${packageName}@${widgetDep.version} didn't install (${exactErr.message}); installing the latest`,
+              );
+            }
+          }
+          if (!config) {
+            config = await widgetRegistry.downloadWidget(
+              packageName,
+              registryPkg.downloadUrl,
+              registryPkg.dashConfigUrl || null,
+            );
+          }
           installSummary.installed.push({ packageName, config });
           installedPackages.add(packageName);
           // Also add the canonical form so a subsequent dep that
@@ -651,6 +691,7 @@ async function processDashboardConfig(
   let themeInstalled = null;
   // A theme the registry wouldn't install isn't bound to the dashboard.
   let themeFailed = false;
+  let registryThemeKey = null;
   if (dashboardConfig.theme) {
     const bundledTheme = dashboardConfig.theme;
     const themeDisplay =
@@ -741,6 +782,10 @@ async function processDashboardConfig(
             if (themeResult && themeResult.success === false) {
               throw new Error(themeResult.error || "The theme didn't install");
             }
+            // Where it went (not over a different theme with that name).
+            if (themeResult && themeResult.themeKey) {
+              registryThemeKey = themeResult.themeKey;
+            }
             console.log(
               `[DashboardConfigController] Installed theme from registry: ${bundledTheme.registryPackage}`,
             );
@@ -778,7 +823,7 @@ async function processDashboardConfig(
           });
         }
         // Bind the workspace to the theme, unless it didn't install
-        if (!themeFailed) themeInstalled = themeKey;
+        if (!themeFailed) themeInstalled = registryThemeKey || themeKey;
       }
     } catch (themeErr) {
       console.warn(
@@ -805,16 +850,45 @@ async function processDashboardConfig(
     };
   }
 
-  // Generate a unique ID for the imported workspace
-  workspace.id = Date.now();
+  // Into an existing dashboard (an update, or loading a profile): it keeps
+  // its id — so folders, profiles and links still point at it — its name,
+  // folder and theme, and the widget settings made on this computer (a
+  // published dashboard carries none).
+  let existing = null;
+  if (
+    options.intoWorkspaceId !== undefined &&
+    options.intoWorkspaceId !== null
+  ) {
+    const all = getFileContents(getAppFilePath(appId, "workspaces.json")) || [];
+    // Ids are numbers here but may arrive as strings (a profile file).
+    existing =
+      all.find((w) => w && String(w.id) === String(options.intoWorkspaceId)) ||
+      null;
+    if (!existing) {
+      return {
+        success: false,
+        error: "The dashboard to update isn't on this computer.",
+      };
+    }
+    Object.assign(workspace, keepPersonalization(workspace, existing), {
+      id: existing.id,
+      name: existing.name,
+      menuId: existing.menuId,
+      themeKey: existing.themeKey,
+    });
+  } else {
+    // Generate a unique ID for the imported workspace
+    workspace.id = Date.now();
+  }
 
   // Apply name/menuId/themeKey overrides if provided
   if (options.name) workspace.name = options.name;
   if (options.menuId !== undefined) workspace.menuId = options.menuId;
   if (options.themeKey !== undefined) workspace.themeKey = options.themeKey;
 
-  // Set themeKey from bundled theme if it was installed and no override given
-  if (themeInstalled && options.themeKey === undefined) {
+  // Set themeKey from bundled theme if it was installed and no override
+  // given (an existing dashboard keeps its own)
+  if (themeInstalled && options.themeKey === undefined && !existing) {
     workspace.themeKey = themeInstalled;
   }
 
@@ -833,9 +907,10 @@ async function processDashboardConfig(
     }
   }
 
-  // 5. Mark as not shareable (imported dashboards cannot be re-published)
+  // 5. Mark as not shareable (someone else's dashboard can't be published
+  //    again); one from the user's own account can.
   workspace._dashboardConfig = {
-    shareable: false,
+    shareable: !!options.ownPackage,
     source,
     importedFrom: dashboardConfig.name,
     importedAt: new Date().toISOString(),
@@ -846,8 +921,9 @@ async function processDashboardConfig(
   };
   // Which registry package this is ("@scope/name" + version); a dashboard
   // imported from a file has none.
-  if (options.registryRef) workspace.registryRef = options.registryRef;
-  else delete workspace.registryRef;
+  // (Set to undefined rather than deleted, so an update in place doesn't
+  // keep the old one; it isn't written.)
+  workspace.registryRef = options.registryRef || undefined;
 
   // Save workspace to workspaces.json
   const workspaceController = require("./workspaceController");
@@ -866,8 +942,10 @@ async function processDashboardConfig(
 
   // The dashboard's bots (create-entry 5a, US-027): created paused, wired
   // to this dashboard's widgets and to each other.
+  // `withTeam: false` leaves them out (a profile installs its bots as their
+  // own packages); updating a dashboard in place never adds them again.
   let botsSummary = null;
-  if (dashboardConfig.team) {
+  if (dashboardConfig.team && options.withTeam !== false && !existing) {
     botsSummary = installTeamForImport(workspace.id, dashboardConfig.team);
   }
 
@@ -953,22 +1031,35 @@ function installTeamForImport(workspaceId, team) {
  * @returns {Promise<{ success: true, registryPkg, dashboardConfig } |
  *   { success: false, error, authRequired? }>}
  */
-async function downloadDashboardPackage(packageName, { purpose = null } = {}) {
-  // 1. Look up the dashboard package in the registry
-  const registryPkg = await getPackage(packageName);
-  if (!registryPkg) {
+async function downloadDashboardPackage(
+  packageName,
+  { purpose = null, version = null } = {},
+) {
+  // 1. Look up the dashboard package in the registry — at an exact
+  //    version when asked (a profile lists exact versions), else the latest
+  const resolved = await resolveForInstall(
+    packageName,
+    { kinds: ["dashboard"], version },
+    {
+      getPackage,
+      refreshIndex: () =>
+        require("./registryController").fetchRegistryIndex?.(true),
+    },
+  );
+  if (resolved.error) {
     return {
       success: false,
-      error: `Dashboard package not found in registry: ${packageName}`,
+      error: `Couldn't install the dashboard: ${resolved.error}`,
     };
   }
+  const registryPkg = resolved.pkg;
 
   // 2. Construct download URL via /api/packages/.../download endpoint
   //    (matches theme download flow in themeRegistryController.js)
   const registryBaseUrl =
     process.env.DASH_REGISTRY_API_URL ||
     "https://main.d919rwhuzp7rj.amplifyapp.com";
-  const downloadUrl = `${registryBaseUrl}/api/packages/${encodeURIComponent(registryPkg.scope)}/${encodeURIComponent(registryPkg.name)}/download?version=${encodeURIComponent(registryPkg.version || "1.0.0")}`;
+  const downloadUrl = `${registryBaseUrl}/api/packages/${encodeURIComponent(registryPkg.scope)}/${encodeURIComponent(registryPkg.name)}/download?version=${encodeURIComponent(registryPkg.version)}`;
 
   console.log(
     `[DashboardConfigController] Fetching dashboard from: ${downloadUrl}`,
@@ -990,6 +1081,8 @@ async function downloadDashboardPackage(packageName, { purpose = null } = {}) {
   const contentType = response.headers.get("content-type") || "";
   const arrayBuffer = await response.arrayBuffer();
   let zipBuffer = Buffer.from(arrayBuffer);
+  // The publisher's signing details, from the registry's JSON answer.
+  let signingMeta = {};
 
   if (zipBuffer.length === 0) {
     return {
@@ -1023,6 +1116,12 @@ async function downloadDashboardPackage(packageName, { purpose = null } = {}) {
       };
     }
     if (jsonData.downloadUrl) {
+      signingMeta = {
+        zipSignature: jsonData.zipSignature || null,
+        publisherCert: jsonData.publisherCert || null,
+        publisherKeyId: jsonData.publisherKeyId || null,
+        publisherFingerprint: jsonData.publisherFingerprint || null,
+      };
       let zipResponse;
       try {
         zipResponse = await fetch(jsonData.downloadUrl);
@@ -1046,6 +1145,31 @@ async function downloadDashboardPackage(packageName, { purpose = null } = {}) {
         };
       }
     }
+  }
+
+  // Verify the publisher's signature before opening the zip, like themes,
+  // bots and widgets (strict refuses; the default, warn, logs and goes on).
+  try {
+    const {
+      verifyDownloadedPackage,
+    } = require("../security/verifyRegistryInstall");
+    const verified = await verifyDownloadedPackage({
+      zipBuffer,
+      zipSignature: signingMeta.zipSignature,
+      publisherCert: signingMeta.publisherCert,
+      publisherKeyId: signingMeta.publisherKeyId,
+      publisherFingerprint: signingMeta.publisherFingerprint,
+    });
+    if (!verified.verified && verified.mode === "warn") {
+      console.warn(
+        `[DashboardConfigController] Installing unverified dashboard "${packageName}" — ${verified.reason}`,
+      );
+    }
+  } catch (verifyErr) {
+    return {
+      success: false,
+      error: `Install verification failed: ${verifyErr.message || verifyErr}`,
+    };
   }
 
   const zip = new AdmZip(zipBuffer);
@@ -1139,7 +1263,10 @@ async function installDashboardFromRegistry(
   installOptions = {},
 ) {
   try {
-    const downloaded = await downloadDashboardPackage(packageName);
+    // installOptions.version: an exact version (else the latest).
+    const downloaded = await downloadDashboardPackage(packageName, {
+      version: installOptions.version || null,
+    });
     if (!downloaded.success) return downloaded;
     const { registryPkg, dashboardConfig } = downloaded;
 
@@ -1164,6 +1291,10 @@ async function installDashboardFromRegistry(
         name: installOptions.name,
         menuId: installOptions.menuId,
         themeKey: installOptions.themeKey,
+        intoWorkspaceId: installOptions.intoWorkspaceId,
+        withTeam: installOptions.withTeam,
+        exactWidgetVersions: !!installOptions.exactWidgetVersions,
+        ownPackage: isOwnScope(registryPkg.scope),
       },
     );
   } catch (error) {
@@ -1521,10 +1652,18 @@ async function prepareDashboardForPublish(
       };
     }
 
-    // 2. Check shareable flag — imported dashboards cannot be published
+    // 2. Check shareable flag — someone else's imported dashboard can't be
+    //    published; one installed from the user's own account can (older
+    //    installs of it were marked not shareable too)
+    const fromOwnAccount = (() => {
+      const ref = readRegistryRef("dashboard", workspace);
+      const parsed = ref && normalizePackageRef(ref.package);
+      return !!parsed && isOwnScope(parsed.scope);
+    })();
     if (
       workspace._dashboardConfig &&
-      workspace._dashboardConfig.shareable === false
+      workspace._dashboardConfig.shareable === false &&
+      !fromOwnAccount
     ) {
       return {
         success: false,

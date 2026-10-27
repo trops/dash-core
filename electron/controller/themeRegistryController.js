@@ -15,6 +15,10 @@ const registryController = require("./registryController");
 const registryApiController = require("./registryApiController");
 const { makeRegistryRef } = require("../registry/packageRef");
 const {
+  resolveForInstall,
+  themeKeyFor,
+} = require("../registry/registryPackages");
+const {
   getAuthStatus,
   getRegistryProfile,
 } = require("./registryAuthController");
@@ -318,19 +322,28 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
  * @param {string} packageName - Registry package name (e.g., "username/ocean-depth")
  * @returns {Object} Result with success, themeKey, theme
  */
-async function installThemeFromRegistry(win, appId, packageName) {
+async function installThemeFromRegistry(win, appId, packageName, options = {}) {
   const TAG = "[ThemeInstall]";
   try {
-    // Stage 1: Package lookup
+    // Stage 1: Package lookup — at an exact version when asked
+    // (options.version; a profile lists exact versions), else the latest
     console.log(`${TAG} [1/5 Package Lookup] input="${packageName}"`);
-    const pkg = await registryController.getPackage(packageName);
-    if (!pkg) {
-      console.log(`${TAG} [1/5 Package Lookup] FAIL — package not found`);
+    const resolved = await resolveForInstall(
+      packageName,
+      { kinds: ["theme"], version: options.version || null },
+      {
+        getPackage: (ref) => registryController.getPackage(ref),
+        refreshIndex: () => registryController.fetchRegistryIndex?.(true),
+      },
+    );
+    if (resolved.error) {
+      console.log(`${TAG} [1/5 Package Lookup] FAIL — ${resolved.error}`);
       return {
         success: false,
-        error: `Package lookup failed: "${packageName}" was not found in the registry index. The package may have been removed or the name may be incorrect.`,
+        error: `Package lookup failed: ${resolved.error} The package may have been removed or the name may be incorrect.`,
       };
     }
+    const pkg = resolved.pkg;
     console.log(
       `${TAG} [1/5 Package Lookup] resolved scope="${pkg.scope}" name="${pkg.name}" version="${pkg.version || "1.0.0"}"`,
     );
@@ -588,8 +601,15 @@ async function installThemeFromRegistry(win, appId, packageName) {
     if (registryRef) themeData.registryRef = registryRef;
     else delete themeData.registryRef;
 
-    // Stage 5: Theme save
-    const themeKey = pkg.displayName || pkg.name;
+    // Stage 5: Theme save — over the theme already installed from this
+    // package (an update), never over a different theme with the same name
+    const existingThemes =
+      themeController.listThemesForApplication(win, appId)?.themes || {};
+    const themeKey = themeKeyFor(
+      existingThemes,
+      { scope: pkg.scope, name: pkg.name },
+      pkg.displayName || pkg.name,
+    );
     console.log(
       `${TAG} [5/5 Theme Save] themeKey="${themeKey}" hasName=${!!themeData.name} hasColors=${!!(themeData.colors || themeData.primary)}`,
     );
