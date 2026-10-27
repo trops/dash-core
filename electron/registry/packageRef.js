@@ -175,21 +175,26 @@ function withoutRegistryRef(record) {
   return rest;
 }
 
+// Where a dashboard came from: `registryRef`, and `_dashboardConfig` (the
+// older record — install source, version, author, whether it can be
+// published).
+const PACKAGE_FIELDS = ["registryRef", "_dashboardConfig"];
+
 /**
  * The record to store when `incoming` replaces `existing`: the dashboard
- * editor saves from a model that doesn't carry `registryRef`, so the stored
- * one is kept unless the incoming record says otherwise.
+ * editor saves from a model that doesn't carry where the dashboard came
+ * from, so the stored fields are kept unless the incoming record has them
+ * (even as undefined, to clear one).
  */
 function keepRegistryRef(incoming, existing) {
-  if (
-    !incoming ||
-    !existing ||
-    "registryRef" in incoming ||
-    !existing.registryRef
-  ) {
-    return incoming;
+  if (!incoming || !existing) return incoming;
+  let out = incoming;
+  for (const field of PACKAGE_FIELDS) {
+    if (field in incoming || existing[field] === undefined) continue;
+    if (out === incoming) out = { ...incoming };
+    out[field] = existing[field];
   }
-  return { ...incoming, registryRef: existing.registryRef };
+  return out;
 }
 
 module.exports = {

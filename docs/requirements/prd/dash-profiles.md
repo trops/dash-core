@@ -185,8 +185,32 @@ computer.
        "a package keeps its kind" rule, checked before publishing). The Save dialog doesn't offer a widget whose
        name is already another kind of package.
      - Loading compares versions only between copies of the same `@scope/name`.
-   - **7b. Exact versions and in-place installs** for dashboards, bots/teams and themes; your own installed items
-     can be republished; update checks read `registryRef`.
+   - **7b. Exact versions and in-place installs** (`resolveForInstall`, `electron/bots/botUpdate.js`):
+     - Dashboards, themes and bots/teams install at an exact version when asked (else the latest), check the
+       package's kind, and look again past the cached registry index for something just published elsewhere.
+       Dashboard installs now verify the publisher's signature like the other kinds, and install the widgets
+       they need at the version the dashboard recorded (the latest if that version is gone).
+     - `installDashboardFromRegistry(…, { version, intoWorkspaceId, withTeam })`: into an existing dashboard it
+       keeps its id, name, folder, theme and this computer's widget settings and providers
+       (`keepPersonalization`, by section and widget id), and never adds the team again; `withTeam: false`
+       leaves the team out (a profile installs bots as their own packages).
+     - Themes: an update goes over the theme installed from that package; a new one never over a different
+       theme with the same name ("Ocean (2)") — `themeKeyFor`.
+     - Bots: `updateFromRegistry(previewId, botIdsByRole)` updates existing bots: what a bot does comes from
+       the package, how it runs here (providers, approvals, wiring, run state) stays; a provider the new
+       version needs is reported, never added.
+     - A dashboard installed from your own account can be published again (others' still can't).
+     - The editor's save no longer drops where a dashboard came from (`registryRef`, `_dashboardConfig`) —
+       before, one edit lost it, and with it the "can't publish someone else's dashboard" rule. So an edited
+       copy of someone else's dashboard now stays unpublishable; publishing it as a credited **remix** under
+       your name is planned next (user, 2026-10-27: editing someone else's widget or dashboard is a remix that
+       credits the original author).
+     - Widgets a dashboard needs install at its recorded versions only when asked (`exactWidgetVersions`, for
+       profiles); gallery and onboarding installs still get the latest.
+     - Widget settings carried over in place match by page and widget id, or by the same widget and component
+       anywhere when the page ids differ (unless that's ambiguous).
+     - The dashboard update check reads `registryRef` and offers only newer versions (your own published
+       dashboards no longer always showed "update available").
    - **7c. Publishing dashboards and themes without a save dialog**, at `nextFreeVersion`; a new package is
      private, an existing one keeps its visibility.
 

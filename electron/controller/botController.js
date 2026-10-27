@@ -79,7 +79,13 @@ const BOT_WIDGETS = {
   activity: "dash.bots.BotActivity",
 };
 const { registryIdentity, zipAndPublish } = require("./botPublish");
-const { makeRegistryRef } = require("../registry/packageRef");
+const {
+  makeRegistryRef,
+  readRegistryRef,
+  samePackage,
+} = require("../registry/packageRef");
+const { validateBotDefinition } = require("../bots/botSchema");
+const { botUpdatePatch } = require("../bots/botUpdate");
 const { unassignTeam, isOnTeam } = require("../bots/teams");
 const {
   TEAM_SERVER,
@@ -1576,8 +1582,11 @@ const botController = {
    * preview id — installFromRegistry installs from it, never from a copy the
    * renderer sends back.
    */
-  async previewRegistryInstall(workspaceId, packageRef) {
-    const dl = await downloadBotPackage(packageRef);
+  async previewRegistryInstall(workspaceId, packageRef, opts = {}) {
+    // opts.version: an exact version (a profile lists them), else the latest.
+    const dl = await downloadBotPackage(packageRef, {
+      version: opts.version || null,
+    });
     if (dl.error) return dl;
     const read = readPackageFiles(dl.files);
     if (read.error) return read;
@@ -1606,6 +1615,84 @@ const botController = {
         workspaceId,
         providers: this._providerList(),
       }),
+    };
+  },
+
+  /**
+   * Update bots already on this computer from the previewed package (a
+   * newer version of what they were installed from or published as):
+   * `botIdsByRole` names the existing bot for each of the package's roles
+   * (one bot: its only role). What a bot does comes from the package; how
+   * it runs here — providers, approvals, wiring, run state — stays. A role
+   * with no bot here is skipped (installFromRegistry adds new ones).
+   */
+  updateFromRegistry(previewId, botIdsByRole = {}) {
+    const preview =
+      this._registryPreviews && this._registryPreviews.get(previewId);
+    if (!preview) {
+      return { error: "That preview has expired — find the package again." };
+    }
+    this._registryPreviews.delete(previewId);
+    const plan = planTeamInstall(preview.manifest, {
+      workspaceId: null,
+      providers: this._providerList(),
+    });
+    const source = preview.source;
+    const registryRef = makeRegistryRef({
+      package: source.package,
+      kind: source.kind === "bot-team" ? "bot-team" : "bot",
+      version: source.version,
+      origin: "installed",
+    });
+    const skipped = [];
+    const missingProviders = [];
+    const changes = [];
+    const fromPackage = readRegistryRef("bot", { installedFrom: source });
+    // Every bot checked before any changes: it must be a copy of this
+    // package (installed from it or published as it), and its updated
+    // definition must be valid — a bad one can't leave half a team updated.
+    for (const member of plan.members) {
+      const id = botIdsByRole[member.role];
+      const existing = id ? this._store.get(id) : null;
+      if (!existing) {
+        skipped.push(member.role);
+        continue;
+      }
+      const ref =
+        readRegistryRef("bot", existing) ||
+        readRegistryRef("bot-team", existing);
+      if (!samePackage(ref, fromPackage)) {
+        return {
+          error: `${existing.name} isn't a copy of ${source.package}, so it wasn't updated.`,
+        };
+      }
+      const { patch, missingProviders: missing } = botUpdatePatch(
+        existing,
+        member,
+        {
+          installedFrom: { ...source, role: member.role },
+          ...(registryRef ? { registryRef } : {}),
+        },
+      );
+      const { valid, errors } = validateBotDefinition({
+        ...existing,
+        ...patch,
+      });
+      if (!valid) {
+        return {
+          error: `${existing.name} wasn't updated: ${errors.join("; ")}`,
+        };
+      }
+      changes.push({ id, patch });
+      for (const type of missing) {
+        missingProviders.push(`${existing.name}: ${type}`);
+      }
+    }
+    for (const { id, patch } of changes) this._store.update(id, patch);
+    return {
+      updated: changes.map((c) => c.id),
+      skipped,
+      missingProviders,
     };
   },
 

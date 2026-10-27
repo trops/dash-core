@@ -785,38 +785,35 @@ function checkDashboardUpdates(workspaces = [], registryPackages = []) {
 
   const updates = [];
 
+  const { readRegistryRef } = require("../registry/packageRef");
+  const { isNewerVersion } = require("../utils/isNewerVersion");
   for (const ws of workspaces) {
-    const config = ws._dashboardConfig;
-    if (!config || !config.registryPackage) continue;
-
-    // Lookup chain: try the scoped form first, fall back to bare. The
-    // installed config may record either. Scope is stored on the
-    // config by the install flow (or set here by the publish persist
-    // step we just added).
-    const installedScope =
-      config.registryScope ||
-      (config.registryPackage.startsWith("@")
-        ? config.registryPackage.slice(1).split("/")[0]
-        : null);
-    const installedName = config.registryPackage.includes("/")
-      ? config.registryPackage.split("/").pop()
-      : config.registryPackage;
-    const scopedKey = asKey(installedScope, installedName);
+    // Which package and version this is — installed or published from
+    // here (registryRef, else the older _dashboardConfig fields).
+    const ref = readRegistryRef("dashboard", ws);
+    if (!ref) continue;
+    const config = ws._dashboardConfig || {};
+    const installedScope = ref.package
+      ? ref.package.slice(1).split("/")[0]
+      : null;
+    const scopedKey = asKey(installedScope, ref.name);
 
     const registryPkg =
       (scopedKey && registryByKey.get(scopedKey)) ||
-      registryByKey.get(config.registryPackage) ||
-      registryByKey.get(installedName);
+      (config.registryPackage && registryByKey.get(config.registryPackage)) ||
+      registryByKey.get(ref.name);
     if (!registryPkg) continue;
 
-    const installedVersion = config.installedVersion || "0.0.0";
+    const installedVersion = ref.version || "0.0.0";
     const latestVersion = registryPkg.version || "0.0.0";
 
-    if (installedVersion !== latestVersion) {
+    // Only a newer version is an update (a dashboard published from here
+    // is already at the latest).
+    if (isNewerVersion(latestVersion, installedVersion)) {
       updates.push({
         workspaceId: ws.id,
         workspaceName: ws.name || ws.label || "",
-        registryPackage: config.registryPackage,
+        registryPackage: config.registryPackage || ref.package,
         registryScope: installedScope,
         installedVersion,
         latestVersion,
@@ -1087,6 +1084,54 @@ function stripPersonalizationFromWorkspace(workspace) {
   // installer's (the install records its own).
   if ("registryRef" in cleaned) delete cleaned.registryRef;
   return cleaned;
+}
+
+/**
+ * The reverse, for updating a dashboard in place from its published copy:
+ * each widget keeps the settings (userPrefs) and providers this computer
+ * gave it, matched by section and widget id — or, when the page ids differ
+ * (the editor names pages after this computer's dashboard id), by the same
+ * widget and component anywhere, if that's unambiguous. A widget the update
+ * adds starts with its defaults; one it removes goes with its settings.
+ * Pure — returns a new workspace.
+ */
+function keepPersonalization(incoming, local) {
+  if (!incoming || !local) return incoming;
+  const { mapItems, itemsByKey } = require("../profile/secretFields");
+  const mine = itemsByKey(local);
+  const widgetKey = (item) =>
+    `${item.uuid || item.id}|${item.componentName || item.component || ""}`;
+  // The same widget in several places (the top-level layout mirrors the
+  // active page) counts once; different settings make it ambiguous.
+  const byWidget = new Map();
+  for (const item of mine.values()) {
+    const k = widgetKey(item);
+    const seen = byWidget.get(k);
+    if (seen === undefined) byWidget.set(k, item);
+    else if (
+      seen &&
+      JSON.stringify(seen.userPrefs || null) !==
+        JSON.stringify(item.userPrefs || null)
+    ) {
+      byWidget.set(k, null);
+    }
+  }
+  const next = mapItems(incoming, (item, key) => {
+    const out = { ...item };
+    const here = mine.get(key) || byWidget.get(widgetKey(item)) || null;
+    if (!here) return out;
+    if (here.userPrefs && typeof here.userPrefs === "object") {
+      out.userPrefs = { ...(item.userPrefs || {}), ...here.userPrefs };
+    }
+    if (here.selectedProviders !== undefined) {
+      out.selectedProviders = here.selectedProviders;
+    }
+    return out;
+  });
+  if (local.selectedProviders !== undefined) {
+    next.selectedProviders = local.selectedProviders;
+  }
+  return next;
 }
 
 /**
@@ -1387,6 +1432,7 @@ module.exports = {
   buildProviderSetupManifest,
   checkApiCompatibility,
   stripPersonalizationFromWorkspace,
+  keepPersonalization,
   remapLayoutPackageScopes,
   repointLayoutPackage,
   assertNoLocalScopes,

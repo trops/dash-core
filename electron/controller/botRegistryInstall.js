@@ -23,22 +23,26 @@ function registryBaseUrl() {
 
 /**
  * @param {string} packageRef  "scope/name" (any form registryController.getPackage accepts)
+ * @param {{version?: string}} [opts]  an exact version (else the latest)
  * @returns {Promise<{ files: { [path]: string }, pkg: object } |
  *                   { error: string, authRequired?: boolean }>}
  */
-async function downloadBotPackage(packageRef) {
-  const registryController = require("./registryController");
+async function downloadBotPackage(packageRef, opts = {}) {
+  const { resolveForInstall } = require("../registry/registryPackages");
   const {
     registryDownloadFetch,
     downloadRefusal,
   } = require("../registryDownload");
 
-  const pkg = await registryController.getPackage(packageRef);
-  if (!pkg) return { error: `"${packageRef}" wasn't found in the registry.` };
+  const resolved = await resolveForInstall(packageRef, {
+    version: opts.version || null,
+  });
+  if (resolved.error) return { error: resolved.error };
+  const pkg = resolved.pkg;
   if (pkg.type !== "bot" && pkg.type !== "bot-team") {
     return { error: `"${packageRef}" isn't a bot or a team.` };
   }
-  const version = pkg.version || pkg.latestVersion || "1.0.0";
+  const version = pkg.version;
   const scopePath = pkg.scope ? `${encodeURIComponent(pkg.scope)}/` : "";
   const url = `${registryBaseUrl()}/api/packages/${scopePath}${encodeURIComponent(pkg.name)}/download?version=${encodeURIComponent(version)}`;
 
