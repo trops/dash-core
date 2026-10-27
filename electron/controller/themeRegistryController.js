@@ -26,6 +26,7 @@ const {
   nextFreeVersion,
 } = require("../registry/registryPackages");
 const { remixOrigin, checkRemix } = require("../registry/remix");
+const { publishFingerprint } = require("../registry/fingerprint");
 const {
   getAuthStatus,
   getRegistryProfile,
@@ -369,6 +370,7 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
             kind: "theme",
             version: nextVersion,
             origin: "published",
+            contentHash: publishFingerprint("theme", themeData),
           });
           if (registryRef) updatedTheme.registryRef = registryRef;
           else delete updatedTheme.registryRef;
@@ -728,6 +730,7 @@ async function installThemeFromRegistry(win, appId, packageName, options = {}) {
       kind: "theme",
       version: urlVersion,
       origin: "installed",
+      contentHash: publishFingerprint("theme", themeData),
     });
     // An install is the registry's package, not a copy of something.
     delete themeData.remixedFrom;

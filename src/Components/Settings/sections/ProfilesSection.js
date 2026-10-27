@@ -14,7 +14,11 @@ import {
 import { AppContext } from "../../../Context/App/AppContext";
 import { useConfigTokens } from "../../Dashboard/ConfigListRow";
 import { SectionLayout } from "../SectionLayout";
-import { SaveProfileModal } from "./SaveProfileModal";
+import {
+  SaveProfileModal,
+  savedNoticeText,
+  leftOutText,
+} from "./SaveProfileModal";
 import { LoadProfileModal } from "./LoadProfileModal";
 
 // What a profile holds, in the order the detail pane shows it.
@@ -583,41 +587,10 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
           onClose={() => setSaving(null)}
           onSaved={(res) => {
             setSaving(null);
-            const parts = String(res.filePath || "").split(/[\\/]/);
-            const file = parts.pop();
-            const folder = parts.pop();
-            const published = (res.published || []).map((p) => {
-              const n = p.dashboardsSwitched || 0;
-              return `${p.publishedAs} ${p.version}${
-                n
-                  ? ` (${n} ${n === 1 ? "dashboard" : "dashboards"} here now use it)`
-                  : ""
-              }`;
-            });
-            setNotice(
-              `Saved "${file}"${folder ? ` in ${folder}` : ""}.${
-                published.length
-                  ? ` Published to your account: ${published.join(", ")}.`
-                  : ""
-              }`,
-            );
-            const problems = [];
-            // Ticked to publish but it didn't: it's in the file instead.
-            for (const p of res.notPublished || []) {
-              const reason = String(p.error || "something went wrong")
-                .split("\n")[0]
-                .replace(/:$/, "");
-              problems.push(
-                `${p.package} wasn't published, so it's in the file instead: ${reason}.`,
-              );
-            }
-            // Widgets that should have gone in but weren't found here.
-            if (res.missingWidgets && res.missingWidgets.length) {
-              problems.push(
-                `These widgets couldn't be found on this computer and aren't in the file: ${res.missingWidgets.join(", ")}.`,
-              );
-            }
-            if (problems.length) setError(problems.join(" "));
+            setNotice(savedNoticeText(res));
+            // What didn't go in, and why (left out of the profile).
+            const left = leftOutText(res);
+            if (left) setError(left);
             loadProfiles();
           }}
         />
