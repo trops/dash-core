@@ -92,7 +92,17 @@ function seedSelections(plan, dashboardVisibility) {
     // Widgets under a local-only scope (@ai-built/*) are always owned
     // by the publisher for the purposes of this flow — the backend
     // republishes them under the caller's scope. Force include=true.
-    const owned = w.requiresRepublish ? true : reg?.ownedByMe || !reg?.exists;
+    // Otherwise it's the publisher's when the registry says so, or when it
+    // isn't published yet under their own name. Someone else's widget the
+    // registry doesn't have (or a lookup that failed) isn't republished
+    // under the publisher's name.
+    const owned = w.requiresRepublish
+      ? true
+      : !!reg?.ownedByMe ||
+        (!!reg &&
+          !reg.exists &&
+          !!plan.callerScope &&
+          w.publishScope === plan.callerScope);
     selections[key] = {
       kind: "widget",
       owned,

@@ -211,8 +211,26 @@ computer.
        anywhere when the page ids differ (unless that's ambiguous).
      - The dashboard update check reads `registryRef` and offers only newer versions (your own published
        dashboards no longer always showed "update available").
-   - **7c. Publishing dashboards and themes without a save dialog**, at `nextFreeVersion`; a new package is
-     private, an existing one keeps its visibility.
+   - **7c. Publishing dashboards and themes without a save dialog** (`publishDashboardHeadless`,
+     `publishThemeHeadless`, `planPackagePublish`):
+     - Names are picked automatically (user, 2026-10-27), never asked: an item already published from (or
+       installed from) the user's own account keeps that package — later publishes are new versions of it,
+       even after a rename; otherwise a slug of its name, with "-2", "-3"… when another item of any kind has
+       it. A different item never lands on an existing package as a new version of it.
+     - The version is this computer's, or the next the registry doesn't have. A new package is private; an
+       existing one keeps its visibility (none is sent; the registry keeps it).
+     - Signed in only; nothing is left on disk; a dashboard whose widgets the registry can't supply isn't
+       published (they go first); dashboards go without their bots (bots are their own packages).
+     - Picked names follow the registry's rule (kebab-case, starting with a letter, 2-50 characters):
+       "2024 Plan" → `dashboard-2024-plan`; a suffix still fits.
+     - A duplicated dashboard drops what the original was published as, so publishing the copy never updates
+       the original's package.
+     - Fixed on the way: a published theme carried the previous version; the theme Publish dialog re-sent a
+       version its package already had (now the next free one); dashboard publish listed other people's
+       widgets under the publisher's name — now only `@ai-built` and scopes of widgets built on this computer
+       are renamed, and the Publish dialog no longer republishes a widget it couldn't look up; the rename
+       missed `componentName`, `workspace` and event wiring, and the publish check didn't look at them;
+       Publish was hidden for themes the user had published before.
 
 Step 2 (separate plan): registry `users/{sub}/profiles/` storage, `/api/me/profiles`, the out-of-sync alert in `AppUpdatesModal`, and
 auto-save.

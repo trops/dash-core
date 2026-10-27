@@ -520,6 +520,89 @@ function checkDashboardCompatibility(
 
 const { toDisplayColor } = require("../../src/utils/colorUtils");
 
+// Scopes that exist only on the publisher's computer: a widget under one
+// is published under the publisher's own name along with the dashboard.
+const LOCAL_ONLY_SCOPES = ["ai-built"];
+
+/**
+ * The scope a dashboard's widget dependency is published under: the
+ * publisher's for a local-only scope (`@ai-built`, or the scope of widgets
+ * built on this computer — `localScopes`), else its own — a third-party
+ * widget stays the author's, installed from the author's.
+ */
+function publishScopeOf(scope, callerScope, localScopes = LOCAL_ONLY_SCOPES) {
+  const bare = String(scope || "").replace(/^@/, "");
+  if (!bare) return "";
+  const local = new Set(
+    (localScopes || []).map((s) => String(s).replace(/^@/, "").toLowerCase()),
+  );
+  if (callerScope && local.has(bare.toLowerCase())) {
+    return String(callerScope).replace(/^@/, "");
+  }
+  return bare;
+}
+
+/**
+ * The scopes that exist only on this computer: `@ai-built`, plus any scope
+ * whose installed widgets were all built here (a local or URL install, a
+ * folder copy) — never one with a widget installed from the registry, which
+ * belongs to its author. `installed` is the widget registry's list.
+ */
+function localScopesOf(installed, callerScope) {
+  const caller = String(callerScope || "")
+    .replace(/^@/, "")
+    .toLowerCase();
+  const local = new Set();
+  const fromRegistry = new Set();
+  for (const w of Array.isArray(installed) ? installed : []) {
+    if (!w) continue;
+    const m = String(w.packageId || "").match(/^@([^/]+)\//);
+    const scope = String((m && m[1]) || w.scope || "")
+      .replace(/^@/, "")
+      .toLowerCase();
+    if (!scope || scope === caller) continue;
+    const builtHere =
+      w.installSource === "local" ||
+      w.installSource === "url" ||
+      !!w.copiedFromFolder;
+    (builtHere ? local : fromRegistry).add(scope);
+  }
+  return [
+    ...LOCAL_ONLY_SCOPES,
+    ...[...local].filter(
+      (s) => !fromRegistry.has(s) && !LOCAL_ONLY_SCOPES.includes(s),
+    ),
+  ];
+}
+
+// The registry's package names: kebab-case starting with a letter, 2-50
+// characters (dash-registry src/lib/validate.ts).
+const MAX_PACKAGE_NAME = 50;
+
+/**
+ * A registry package name from a display name: "Home Lab!" → "home-lab",
+ * "2024 Plan" → "dashboard-2024-plan", "日本" → "dashboard". `fallback` is
+ * the kind ("dashboard", "theme"…), itself a valid name.
+ */
+function slugifyPackageName(displayName, fallback = "dashboard") {
+  let slug = String(displayName || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (slug && !/^[a-z]/.test(slug)) slug = `${fallback}-${slug}`;
+  if (slug.length < 2) slug = fallback;
+  slug = slug.slice(0, MAX_PACKAGE_NAME).replace(/-+$/, "");
+  return slug || fallback;
+}
+
+/** `slug` with "-n" on the end, still within the registry's length. */
+function suffixedPackageName(slug, n) {
+  const suffix = `-${n}`;
+  return `${slug
+    .slice(0, MAX_PACKAGE_NAME - suffix.length)
+    .replace(/-+$/, "")}${suffix}`;
+}
+
 /**
  * Generate a registry manifest from a dashboard config.
  * Converts the internal .dashboard.json format into the registry
@@ -535,10 +618,9 @@ const { toDisplayColor } = require("../../src/utils/colorUtils");
  * @returns {Object} Registry manifest object
  */
 function generateRegistryManifest(dashboardConfig, options = {}) {
-  const name = (dashboardConfig.name || "dashboard")
-    .replace(/[^a-zA-Z0-9-_ ]/g, "")
-    .replace(/\s+/g, "-")
-    .toLowerCase();
+  // The package name: given (an existing package, or a free name picked
+  // for a first publish), else a slug of the dashboard's name.
+  const name = options.packageName || slugifyPackageName(dashboardConfig.name);
 
   const githubUser = options.githubUser || "";
   // Prefer an explicitly-passed version (caller resolved it already,
@@ -548,7 +630,13 @@ function generateRegistryManifest(dashboardConfig, options = {}) {
   // latestVersion never advanced, so downstream update-check never
   // saw a diff and no notification fired.
   const version = options.version || dashboardConfig.version || "1.0.0";
-  const visibility = options.visibility === "private" ? "private" : "public";
+  // `keepVisibility`: republishing an existing package sends none, so the
+  // registry keeps what it has (sending one would change it).
+  const visibility = options.keepVisibility
+    ? undefined
+    : options.visibility === "private"
+      ? "private"
+      : "public";
 
   const manifest = {
     githubUser,
@@ -557,7 +645,7 @@ function generateRegistryManifest(dashboardConfig, options = {}) {
     author: dashboardConfig.author?.name || "",
     description: dashboardConfig.description || "",
     version,
-    visibility,
+    ...(visibility ? { visibility } : {}),
     type: "dashboard",
     category: options.category || "general",
     tags: dashboardConfig.tags || [],
@@ -569,11 +657,13 @@ function generateRegistryManifest(dashboardConfig, options = {}) {
       // Remap local scopes (e.g. `@ai-built/…` for AI-generated widgets)
       // to the caller's published scope. Local conventions are private to
       // the publisher's machine — installers can only resolve packages
-      // under the scope they were actually published as.
-      const remappedScope =
-        options.callerScope && w.scope && w.scope !== options.callerScope
-          ? options.callerScope
-          : w.scope || "";
+      // under the scope they were actually published as. Someone else's
+      // widget keeps its own scope: it's theirs, installed from theirs.
+      const remappedScope = publishScopeOf(
+        w.scope,
+        options.callerScope,
+        options.localScopes,
+      );
       // Packaged id — the scoped "@<scope>/<packageName>" string that
       // the install flow looks up in the registry. Build this from the
       // REMAPPED scope + bare packageName so installers resolve against
@@ -1201,9 +1291,33 @@ function remapLayoutPackageScopes(
       const remapped = remapPackageId(item._sourcePackage);
       if (remapped !== item._sourcePackage) next._sourcePackage = remapped;
     }
-    if (item.component) {
-      const remapped = remapComponent(item.component);
-      if (remapped !== item.component) next.component = remapped;
+    // `componentName` wins over `component` when a layout loads, so both
+    // move (as repointLayoutPackage does).
+    for (const key of ["component", "componentName"]) {
+      if (!item[key]) continue;
+      const remapped = remapComponent(item[key]);
+      if (remapped !== item[key]) next[key] = remapped;
+    }
+    if (
+      item.type === "widget" &&
+      typeof item.workspace === "string" &&
+      localScopeSet.has(item.workspace.replace(/^@/, ""))
+    ) {
+      next.workspace = callerScopeBare;
+    }
+    // Event wiring: `${component}[${itemId}].${event}`.
+    if (item.listeners && typeof item.listeners === "object") {
+      const listeners = {};
+      for (const [handler, events] of Object.entries(item.listeners)) {
+        listeners[handler] = Array.isArray(events)
+          ? events.map((e) => {
+              if (typeof e !== "string") return e;
+              const m = e.match(/^([^[]+)(\[[^\]]+\]\..+)$/);
+              return m ? `${remapComponent(m[1])}${m[2]}` : e;
+            })
+          : events;
+      }
+      next.listeners = listeners;
     }
     if (Array.isArray(item.items)) next.items = item.items.map(remapItem);
     if (Array.isArray(item.layout)) next.layout = item.layout.map(remapItem);
@@ -1377,6 +1491,18 @@ function assertNoLocalScopes(workspace, localOnlyScopes = ["ai-built"]) {
       checkPackageId(item._sourcePackage, `${at}._sourcePackage`);
     }
     if (item.component) checkComponent(item.component, `${at}.component`);
+    if (item.componentName) {
+      checkComponent(item.componentName, `${at}.componentName`);
+    }
+    if (item.listeners && typeof item.listeners === "object") {
+      for (const [handler, events] of Object.entries(item.listeners)) {
+        for (const e of Array.isArray(events) ? events : []) {
+          if (typeof e !== "string") continue;
+          const m = e.match(/^([^[]+)\[/);
+          if (m) checkComponent(m[1], `${at}.listeners.${handler}`);
+        }
+      }
+    }
     if (Array.isArray(item.items)) {
       item.items.forEach((c, i) => walkItem(c, `${at}.items[${i}]`));
     }
@@ -1433,6 +1559,11 @@ module.exports = {
   checkApiCompatibility,
   stripPersonalizationFromWorkspace,
   keepPersonalization,
+  publishScopeOf,
+  localScopesOf,
+  slugifyPackageName,
+  suffixedPackageName,
+  LOCAL_ONLY_SCOPES,
   remapLayoutPackageScopes,
   repointLayoutPackage,
   assertNoLocalScopes,

@@ -186,8 +186,20 @@ const DashboardDetailPanel = ({
   };
 
   const duplicate = () => {
-    // The copy isn't the registry package the original came from.
+    // The copy isn't the registry package the original came from or was
+    // published as (publishing it must never update the original's). Where
+    // it came from otherwise — author, can it be published — stays.
     const { registryRef: _ref, ...copy } = deepCopy(ws);
+    if (copy._dashboardConfig) {
+      const {
+        registryPackage: _p,
+        registryScope: _s,
+        version: _v,
+        installedVersion: _i,
+        ...origin
+      } = copy._dashboardConfig;
+      copy._dashboardConfig = origin;
+    }
     save({
       ...copy,
       id: Date.now(),

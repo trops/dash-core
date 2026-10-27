@@ -16,7 +16,12 @@ import { DiscoverThemesDetail } from "../Settings/details/DiscoverThemesDetail";
 import { PublishThemeModal } from "../Settings/details/PublishThemeModal";
 import { ColorSwatchGrid } from "../Theme/ColorSwatchGrid";
 import { ThemePreview } from "./ThemePreview";
-import { duplicateTheme, filterThemes, themeRows } from "./themeSummary";
+import {
+  canPublishTheme,
+  duplicateTheme,
+  filterThemes,
+  themeRows,
+} from "./themeSummary";
 import { ManageLayout, OverflowMenu } from "./ManageLayout";
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -55,7 +60,7 @@ const ThemeDetailPanel = ({
   const [variant, setVariant] = useState(appVariant || "dark");
   const [publishOpen, setPublishOpen] = useState(false);
   const theme = row.theme || {};
-  const canPublish = !theme._registryMeta && !(rawTheme || {})._registryMeta;
+  const canPublish = canPublishTheme(theme, rawTheme);
 
   return (
     <div className="flex flex-col gap-5">

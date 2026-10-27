@@ -13,10 +13,17 @@ const AdmZip = require("adm-zip");
 const themeController = require("./themeController");
 const registryController = require("./registryController");
 const registryApiController = require("./registryApiController");
-const { makeRegistryRef } = require("../registry/packageRef");
+const {
+  makeRegistryRef,
+  readRegistryRef,
+  normalizePackageRef,
+} = require("../registry/packageRef");
 const {
   resolveForInstall,
   themeKeyFor,
+  planPackagePublish,
+  getPackageInfo,
+  nextFreeVersion,
 } = require("../registry/registryPackages");
 const {
   getAuthStatus,
@@ -49,9 +56,15 @@ function sanitizeName(name) {
  */
 function generateThemeRegistryManifest(themeData, themeKey, options = {}) {
   const humanName = themeData.name || themeKey;
-  const sanitizedName = sanitizeName(humanName);
+  // A name picked for it (its own package, or a free one), else a slug.
+  const sanitizedName = options.packageName || sanitizeName(humanName);
   const colors = extractColors(themeData);
-  const visibility = options.visibility === "private" ? "private" : "public";
+  // `keepVisibility`: an existing package keeps its visibility (none sent).
+  const visibility = options.keepVisibility
+    ? undefined
+    : options.visibility === "private"
+      ? "private"
+      : "public";
   // Prefer an explicitly-resolved version (caller already bumped),
   // then the theme's own stored version, then the 1.0.0 baseline.
   // The old hardcoded 1.0.0 meant republishes silently clobbered the
@@ -66,7 +79,7 @@ function generateThemeRegistryManifest(themeData, themeKey, options = {}) {
       options.authorName || themeData.author || options.fallbackAuthor || "",
     description: options.description || "",
     version,
-    visibility,
+    ...(visibility ? { visibility } : {}),
     type: "theme",
     category: "general",
     tags: options.tags || [],
@@ -134,6 +147,7 @@ function extractColors(themeData) {
  * @returns {Object} Result with success, manifest, registryResult
  */
 async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
+  let headlessTmpDir = null;
   try {
     const { resolveNextVersion } = require("../schema/widgetPublishManifest");
     // Read the theme data
@@ -173,10 +187,47 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
     // version, then start at 1.0.0. Without this themes always
     // published as 1.0.0 and update-check could never diff.
     const previousVersion = themeData.version || "1.0.0";
-    const nextVersion = resolveNextVersion(previousVersion, {
+    let nextVersion = resolveNextVersion(previousVersion, {
       bump: options.bump,
       version: options.version,
     });
+
+    // Without a dialog (`headless`, a profile's themes): the name is picked
+    // automatically — this theme's own package or a free one — and the
+    // version is the next the registry doesn't have.
+    let headlessPlan = null;
+    if (options.headless) {
+      headlessPlan = await planPackagePublish({
+        kind: "theme",
+        record: themeData,
+        displayName: themeData.name || themeKey,
+        localVersion: themeData.version || null,
+        username: scope,
+      });
+      if (headlessPlan.error) {
+        return { success: false, error: headlessPlan.error };
+      }
+      nextVersion = headlessPlan.version;
+    } else if (!options.version) {
+      // Republishing this theme's own package: never a version the
+      // registry already has (it refuses those, and the Publish dialog
+      // doesn't bump by default). Only its own package — a different theme
+      // that happens to share the name gets the registry's refusal, not a
+      // quiet new version of the other theme.
+      const name = sanitizeName(themeData.name || themeKey);
+      const ref = readRegistryRef("theme", themeData);
+      const own = ref && normalizePackageRef(ref.package);
+      if (
+        own &&
+        own.scope.toLowerCase() === String(scope).toLowerCase() &&
+        own.name.toLowerCase() === name
+      ) {
+        const info = await getPackageInfo({ scope, name });
+        if (info && typeof info === "object") {
+          nextVersion = nextFreeVersion(nextVersion, info);
+        }
+      }
+    }
 
     // Author fallback chain (F7): explicit → theme data → registry
     // profile displayName/username → blank. Matches the widget
@@ -196,6 +247,13 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
       appOrigin: appId,
       version: nextVersion,
       authorName: resolvedAuthor,
+      ...(headlessPlan
+        ? {
+            packageName: headlessPlan.name,
+            visibility: headlessPlan.visibility,
+            keepVisibility: headlessPlan.exists,
+          }
+        : {}),
     });
 
     // Validate colors
@@ -211,21 +269,28 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
       };
     }
 
-    // Show save dialog
+    // Where the zip goes: the user picks, or (headless) a temp file that's
+    // removed once it's sent
     const sanitizedName = sanitizeName(themeKey);
     const defaultFilename = `theme-${sanitizedName}-v${manifest.version}.zip`;
-
-    const saveResult = await dialog.showSaveDialog(win, {
-      title: "Save Theme Package",
-      defaultPath: defaultFilename,
-      filters: [{ name: "ZIP Files", extensions: ["zip"] }],
-    });
-
-    if (saveResult.canceled || !saveResult.filePath) {
-      return { success: false, error: "Save canceled" };
+    let filePath;
+    if (headlessPlan) {
+      const tmpDir = fs.mkdtempSync(
+        path.join(app.getPath("temp"), "dash-publish-"),
+      );
+      headlessTmpDir = tmpDir;
+      filePath = path.join(tmpDir, defaultFilename);
+    } else {
+      const saveResult = await dialog.showSaveDialog(win, {
+        title: "Save Theme Package",
+        defaultPath: defaultFilename,
+        filters: [{ name: "ZIP Files", extensions: ["zip"] }],
+      });
+      if (saveResult.canceled || !saveResult.filePath) {
+        return { success: false, error: "Save canceled" };
+      }
+      filePath = saveResult.filePath;
     }
-
-    const filePath = saveResult.filePath;
 
     // Create ZIP with manifest.json + {name}.theme.json
     const zip = new AdmZip();
@@ -233,9 +298,16 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
       "manifest.json",
       Buffer.from(JSON.stringify(manifest, null, 2), "utf-8"),
     );
-    // Which package this copy came from is the publisher's; the installer
-    // records its own.
-    const { registryRef: _ownRef, ...publishedTheme } = themeData;
+    // The theme as published: at the version being published (it used to
+    // carry the previous one, so installers' version checks were off by
+    // one), and without the publisher's record of where their copy came
+    // from (the installer records its own).
+    const { registryRef: _ownRef, ...ownTheme } = themeData;
+    const publishedTheme = {
+      ...ownTheme,
+      version: nextVersion,
+      ...(resolvedAuthor ? { author: resolvedAuthor } : {}),
+    };
     zip.addFile(
       `${sanitizedName}.theme.json`,
       Buffer.from(JSON.stringify(publishedTheme, null, 2), "utf-8"),
@@ -296,6 +368,30 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
       }
     }
 
+    if (headlessPlan) {
+      try {
+        fs.rmSync(path.dirname(filePath), { recursive: true, force: true });
+      } catch (_e) {
+        // a leftover temp file is harmless
+      }
+      const ok = !!(registryResult && registryResult.success);
+      return {
+        success: ok,
+        ...(ok
+          ? {}
+          : {
+              error:
+                (registryResult && registryResult.error) ||
+                "The registry didn't accept the theme.",
+            }),
+        package: headlessPlan.package,
+        version: nextVersion,
+        renamed: headlessPlan.renamed,
+        visibility: headlessPlan.exists ? "unchanged" : "private",
+        registryResult,
+      };
+    }
+
     return {
       success: true,
       manifest,
@@ -303,6 +399,14 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
       registryResult,
     };
   } catch (err) {
+    // A headless publish that failed partway leaves no temp folder.
+    if (headlessTmpDir) {
+      try {
+        fs.rmSync(headlessTmpDir, { recursive: true, force: true });
+      } catch (_e) {
+        // harmless
+      }
+    }
     console.error(
       "[ThemeRegistryController] Error preparing theme for publish:",
       err,
@@ -789,8 +893,23 @@ async function checkThemeUpdatesForApp(win, appId) {
   }
 }
 
+/**
+ * Publish a theme to the user's account without asking (a profile's
+ * themes, dash-profiles v2): no save dialog, its name picked automatically,
+ * private when new, at the next version the registry doesn't have.
+ */
+function publishThemeHeadless(appId, themeKey, options = {}) {
+  return prepareThemeForPublish(null, appId, themeKey, {
+    authorName: options.authorName,
+    description: options.description,
+    tags: options.tags,
+    headless: true,
+  });
+}
+
 module.exports = {
   prepareThemeForPublish,
+  publishThemeHeadless,
   installThemeFromRegistry,
   getThemePublishPreview,
   generateThemeRegistryManifest,

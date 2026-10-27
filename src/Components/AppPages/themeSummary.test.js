@@ -1,4 +1,41 @@
-import { themeRows, filterThemes, duplicateTheme, paint } from "./themeSummary";
+import {
+  themeRows,
+  filterThemes,
+  duplicateTheme,
+  paint,
+  canPublishTheme,
+} from "./themeSummary";
+
+describe("canPublishTheme", () => {
+  it("a theme the user made, or one they published before", () => {
+    expect(canPublishTheme({ name: "Mine" })).toBe(true);
+    expect(
+      canPublishTheme({
+        _registryMeta: {
+          packageName: "trops/ocean",
+          lastPublishedVersion: "1.0.1",
+        },
+      }),
+    ).toBe(true);
+    expect(
+      canPublishTheme({
+        _registryMeta: { packageName: "trops/ocean" },
+        registryRef: { package: "@trops/ocean", origin: "published" },
+      }),
+    ).toBe(true);
+  });
+
+  it("not one installed from the registry", () => {
+    expect(
+      canPublishTheme({
+        _registryMeta: { source: "registry", packageName: "alice/ocean" },
+      }),
+    ).toBe(false);
+    expect(
+      canPublishTheme({ name: "x" }, { _registryMeta: { source: "registry" } }),
+    ).toBe(false);
+  });
+});
 
 const themes = {
   "theme-a": { name: "Aurora", primary: "indigo" },

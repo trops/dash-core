@@ -45,6 +45,23 @@ export function filterThemes(rows, { query = "", chip } = {}) {
 }
 
 /**
+ * Whether Publish is offered for a theme: one the user made, or one they
+ * published before (a new version) — not one installed from someone else
+ * (Duplicate makes it theirs).
+ */
+export function canPublishTheme(theme, raw) {
+  for (const t of [theme, raw]) {
+    if (!t) continue;
+    const meta = t._registryMeta;
+    const publishedHere =
+      (t.registryRef && t.registryRef.origin === "published") ||
+      (meta && meta.lastPublishedVersion);
+    if (meta && !publishedHere) return false;
+  }
+  return true;
+}
+
+/**
  * A copy of a raw (stored) theme for Duplicate: a new `theme-<time>` key (as
  * the creation wizard makes), "<name> (Copy)", and no registry metadata — the
  * copy is the user's own, so it can be published.
